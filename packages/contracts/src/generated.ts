@@ -16732,12 +16732,14 @@ export interface components {
         PaperSearchPlan: {
             /**
              * Version
-             * @default 2026.08.09
+             * @default 2026.08.12
              */
             version: string;
             /** Normalized Query */
             normalized_query: string;
             constraints: components["schemas"]["PaperSearchConstraints"];
+            /** Removed Categories */
+            removed_categories?: ("instruction_scaffold" | "code" | "credential" | "private_material" | "email" | "url")[];
         };
         /**
          * PatchAction
@@ -20934,7 +20936,10 @@ export interface components {
             /** @default none */
             required_search: components["schemas"]["TeachingSearchSource"];
             search_status?: components["schemas"]["TeachingCardStatus"] | null;
-            /** Search Error Code */
+            /**
+             * Search Error Code
+             * @description 公开搜索失败的稳定错误码，不包含提供方正文。
+             */
             search_error_code?: string | null;
             /**
              * Gap
@@ -21000,7 +21005,7 @@ export interface components {
          * @description 教学引用的来源层级与公开来源类型。
          * @enum {string}
          */
-        TeachingEvidenceSourceType: "attachment" | "project" | "knowledge_base" | "duckduckgo" | "arxiv" | "local";
+        TeachingEvidenceSourceType: "attachment" | "project" | "knowledge_base" | "duckduckgo" | "brave_search" | "arxiv" | "local";
         /**
          * TeachingEvidenceStatus
          * @description 教学正式回答使用的证据裁决。
@@ -22446,6 +22451,12 @@ export interface components {
             claim_id?: string | null;
         };
         /**
+         * WebSearchPageClassification
+         * @description DuckDuckGo 响应页面的确定性分类。
+         * @enum {string}
+         */
+        WebSearchPageClassification: "normal_results" | "normal_empty" | "challenge" | "invalid";
+        /**
          * WebSearchProjection
          * @description 聊天消息与 SSE 使用的公网搜索状态投影。
          */
@@ -22489,10 +22500,7 @@ export interface components {
              * @description 提供方 HTTP 状态类别，例如 2xx、4xx。
              */
             http_status_category?: string | null;
-            /**
-             * Page Classification
-             * @description 提供方页面分类，不保存页面正文。
-             */
+            /** @description 提供方页面分类，不保存页面正文。 */
             page_classification?: components["schemas"]["WebSearchPageClassification"] | null;
             /**
              * Cooldown Until
@@ -22518,7 +22526,7 @@ export interface components {
             plan_id?: string | null;
             /**
              * Provider
-             * @description 固定联网提供方。
+             * @description 最终选用或主用提供方。
              * @default duckduckgo
              */
             provider: string;
@@ -22528,6 +22536,21 @@ export interface components {
              * @default duckduckgo-html-v1
              */
             provider_version: string;
+            /**
+             * Selected Provider
+             * @description 实际采用结果的提供方；全部失败时为空。
+             */
+            selected_provider?: string | null;
+            /**
+             * Selected Provider Version
+             * @description 实际采用结果的提供方版本。
+             */
+            selected_provider_version?: string | null;
+            /**
+             * Provider Attempts
+             * @description 本轮各提供方尝试的脱敏结果轨迹。
+             */
+            provider_attempts?: components["schemas"]["WebSearchProviderAttempt"][];
             /**
              * Rules Version
              * @description 本地触发/脱敏规则版本。
@@ -22578,6 +22601,46 @@ export interface components {
              * @description 外发查询前删除的敏感类别。
              */
             deleted_categories?: string[];
+        };
+        /**
+         * WebSearchProviderAttempt
+         * @description 一次提供方尝试的脱敏审计投影。
+         */
+        WebSearchProviderAttempt: {
+            /**
+             * Provider
+             * @description 提供方注册标识。
+             */
+            provider: string;
+            /**
+             * Provider Version
+             * @description 提供方合同版本。
+             */
+            provider_version: string;
+            /**
+             * Result Code
+             * @description 脱敏结果码，不包含供应商正文。
+             */
+            result_code: string;
+            /**
+             * Result Count
+             * @description 该次尝试返回的安全结果数。
+             * @default 0
+             */
+            result_count: number;
+            /**
+             * Duration Ms
+             * @description 该次尝试耗时。
+             * @default 0
+             */
+            duration_ms: number;
+            /**
+             * Http Status Category
+             * @description HTTP 状态类别。
+             */
+            http_status_category?: string | null;
+            /** @description 页面或结构化响应分类。 */
+            page_classification?: components["schemas"]["WebSearchPageClassification"] | null;
         };
         /**
          * WebSearchResult
@@ -22633,7 +22696,7 @@ export interface components {
              */
             content_summary: string;
             /**
-             * @description 来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。
+             * @description 来源证据状态：verified、cross_verified、structured、summary_only、fetch_failed 或 conflicting。
              * @default verified
              */
             verification: components["schemas"]["WebSearchVerification"];
@@ -22648,6 +22711,18 @@ export interface components {
              * @default 0
              */
             redirect_count: number;
+            /**
+             * Provider
+             * @description 实际返回该来源的提供方。
+             * @default duckduckgo
+             */
+            provider: string;
+            /**
+             * Provider Version
+             * @description 实际返回该来源的提供方版本。
+             * @default duckduckgo-html-v1
+             */
+            provider_version: string;
         };
         /**
          * WebSearchStatus
@@ -22656,17 +22731,11 @@ export interface components {
          */
         WebSearchStatus: "loading" | "success" | "partial" | "empty" | "fetch_error" | "evidence_insufficient" | "source_conflict" | "error" | "permission" | "recovery" | "cancelled";
         /**
-         * WebSearchPageClassification
-         * @description DuckDuckGo 响应页面的确定性分类。
-         * @enum {string}
-         */
-        WebSearchPageClassification: "normal_results" | "normal_empty" | "challenge" | "invalid";
-        /**
          * WebSearchVerification
          * @description 单个来源的确定性证据状态。
          * @enum {string}
          */
-        WebSearchVerification: "verified" | "cross_verified" | "summary_only" | "fetch_failed" | "conflicting";
+        WebSearchVerification: "verified" | "cross_verified" | "structured" | "summary_only" | "fetch_failed" | "conflicting";
         /**
          * WordingStrength
          * @description Deterministic ceiling on how strongly a claim may be worded.

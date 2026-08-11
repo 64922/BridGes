@@ -14,6 +14,16 @@ const failureStatusLabel: Record<string, string> = {
 const providerChallengeLabel =
   `公网搜索提供方暂时受阻，请稍后显式重试${unverifiedSearchSuffix}`;
 
+const providerLabel: Record<string, string> = {
+  duckduckgo: "DuckDuckGo",
+  brave_search: "Brave Search",
+};
+
+function displayProvider(provider: string | null | undefined): string {
+  if (!provider) return "未选定提供方";
+  return providerLabel[provider] ?? provider;
+}
+
 function accessedAt(value: string | null): string {
   if (!value) return "访问时间未知";
   const date = new Date(value);
@@ -64,10 +74,15 @@ function ResultItem({ result }: { result: WebSearchResult }) {
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
         {result.verification === "verified" || result.verification === "cross_verified"
           ? "已抓取核验 · "
+          : result.verification === "structured"
+            ? "结构化结果 · "
           : result.verification === "summary_only"
             ? "仅搜索摘要，未完成页面核验 · "
             : "来源页面抓取失败 · "}
         {accessedAt(result.fetched_at ?? result.accessed_at)}
+      </span>
+      <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
+        提供方：{displayProvider(result.provider)}（{result.provider_version}）
       </span>
     </li>
   );
@@ -126,6 +141,9 @@ export function WebSearchCard({
 }) {
   if (!search) return null;
   const results = search.results ?? [];
+  const selectedProvider = search.selected_provider ?? search.provider;
+  const selectedProviderVersion =
+    search.selected_provider_version ?? search.provider_version;
 
   const shellStyle: React.CSSProperties = {
     margin: "var(--space-3) 0 0",
@@ -168,7 +186,7 @@ export function WebSearchCard({
           )}
         </div>
         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
-          {search.trigger_reason} · 查询概述：{search.query_summary}
+          {search.trigger_reason} · 查询概述：{search.query_summary} · 主用提供方：{displayProvider(search.provider)}
         </span>
       </section>
     );
@@ -240,7 +258,7 @@ export function WebSearchCard({
         </span>
       </div>
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-        {search.trigger_reason} · 查询概述：{search.query_summary}
+        {search.trigger_reason} · 查询概述：{search.query_summary} · 实际提供方：{displayProvider(selectedProvider)}（{selectedProviderVersion}）
       </span>
       <QueryTrail search={search} />
       <ul

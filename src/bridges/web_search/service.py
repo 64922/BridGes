@@ -24,10 +24,15 @@ from bridges.web_search.client import (
     WebSearchError,
 )
 from bridges.web_search.contracts import (
+    WebSearchHealth,
+    WebSearchHealthStatus,
+    WebSearchHealthSummary,
     WebSearchProjection,
     WebSearchPageClassification,
+    WebSearchProviderAttempt,
     WebSearchResult,
     WebSearchStatus,
+    aggregate_public_search_health,
 )
 
 WEB_SEARCH_RULES_VERSION = "web-search-plan-v2"
@@ -35,6 +40,22 @@ DEFAULT_PROVIDER = "duckduckgo"
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 _FRESH_CACHE_TTL_SECONDS = 60 * 60
 _CURRENT_CACHE_TTL_SECONDS = 15 * 60
+FALLBACK_RESERVE_SECONDS = 2.0
+FALLBACK_MIN_BUDGET_SECONDS = 0.25
+_PRIMARY_FAILOVER_ERROR_CODES = frozenset(
+    {
+        "web_search_provider_challenge",
+        "web_search_rate_limit",
+        "web_search_dns",
+        "web_search_offline",
+        "web_search_connect",
+        "web_search_timeout",
+        "web_search_parse",
+        "web_search_response_too_large",
+        "web_search_redirect",
+        "web_search_provider",
+    }
+)
 
 
 class _SearchStopSignal:
@@ -138,29 +159,43 @@ class InMemoryWebSearchCache:
 
     def __init__(self) -> None:
         self._entries: dict[
-            tuple[str, str, str, int], tuple[datetime, WebSearchProjection]
+            tuple[str, str, str, str, int], tuple[datetime, WebSearchProjection]
         ] = {}
         self._lock = RLock()
 
     @staticmethod
-    def _key(account_id: str, plan: SearchPlan) -> tuple[str, str, str, int]:
+    def _key(
+        account_id: str,
+        query_hash: str,
+        provider: str,
+        provider_version: str,
+        freshness_window_seconds: int,
+    ) -> tuple[str, str, str, str, int]:
         return (
             account_id,
-            plan.query_hash,
-            plan.provider_version,
-            plan.freshness_window_seconds,
+            query_hash,
+            provider,
+            provider_version,
+            freshness_window_seconds,
         )
 
     def get(
         self, account_id: str, plan: SearchPlan, now: datetime
     ) -> WebSearchProjection | None:
         with self._lock:
-            entry = self._entries.get(self._key(account_id, plan))
+            key = self._key(
+                account_id,
+                plan.query_hash,
+                plan.provider,
+                plan.provider_version,
+                plan.freshness_window_seconds,
+            )
+            entry = self._entries.get(key)
             if entry is None:
                 return None
             expires_at, projection = entry
             if expires_at <= now:
-                self._entries.pop(self._key(account_id, plan), None)
+                self._entries.pop(key, None)
                 return None
             return projection.model_copy(update={"cache_hit": True})
 
@@ -172,7 +207,15 @@ class InMemoryWebSearchCache:
         expires_at: datetime,
     ) -> None:
         with self._lock:
-            self._entries[self._key(account_id, plan)] = (expires_at, projection)
+            self._entries[
+                self._key(
+                    account_id,
+                    plan.query_hash,
+                    projection.provider,
+                    projection.provider_version,
+                    plan.freshness_window_seconds,
+                )
+            ] = (expires_at, projection)
 
 
 class LocalQueryPlanner:
@@ -330,12 +373,20 @@ class WebSearchService:
         self,
         *,
         client: SearchClient | None = None,
+        fallback_client: SearchClient | None = None,
+        fallback_provider: str = "brave_search",
+        fallback_provider_version: str = "brave-search-api-v1",
+        fallback_reserve_seconds: float = FALLBACK_RESERVE_SECONDS,
         planner: LocalQueryPlanner | None = None,
         observability: ObservabilityService | None = None,
         cache: WebSearchCache | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client or DuckDuckGoClient()
+        self._fallback_client = fallback_client
+        self._fallback_provider = fallback_provider
+        self._fallback_provider_version = fallback_provider_version
+        self._fallback_reserve_seconds = max(0.0, fallback_reserve_seconds)
         self._planner = planner or LocalQueryPlanner()
         self._observability = observability
         self._cache = cache or InMemoryWebSearchCache()
@@ -351,6 +402,52 @@ class WebSearchService:
         force: bool = False,
     ) -> SearchPlan:
         return self._planner.plan(content, mode, force=force)
+
+    def health_check(self) -> WebSearchHealthSummary:
+        """检查已登记来源，并按至少一个来源就绪聚合整体状态。"""
+
+        clients = [(self._client, DEFAULT_PROVIDER, DUCKDUCKGO_PROVIDER_VERSION)]
+        if self._fallback_client is not None:
+            clients.append(
+                (
+                    self._fallback_client,
+                    self._fallback_provider,
+                    self._fallback_provider_version,
+                )
+            )
+        health: list[WebSearchHealth] = []
+        for client, provider, provider_version in clients:
+            checker = getattr(client, "health_check", None)
+            if not callable(checker):
+                health.append(
+                    WebSearchHealth(
+                        provider=provider,
+                        provider_version=provider_version,
+                        status=WebSearchHealthStatus.UPSTREAM_ERROR,
+                        checked_at=datetime.now(UTC),
+                        error_code="web_search_health_check",
+                    )
+                )
+                continue
+            try:
+                result = checker()
+            except Exception:  # noqa: BLE001 - 单一健康检查失败不影响备用来源
+                result = WebSearchHealth(
+                    provider=provider,
+                    provider_version=provider_version,
+                    status=WebSearchHealthStatus.UPSTREAM_ERROR,
+                    checked_at=datetime.now(UTC),
+                    error_code="web_search_health_check",
+                )
+            health.append(
+                result.model_copy(
+                    update={
+                        "provider": provider,
+                        "provider_version": provider_version,
+                    }
+                )
+            )
+        return aggregate_public_search_health(health)
 
     def initial_projection(
         self, plan: SearchPlan, *, recovery: bool = False
@@ -409,6 +506,15 @@ class WebSearchService:
             return result
 
         cooldown_until = self._active_provider_cooldown(now)
+        if self._fallback_client is not None:
+            return self._search_with_fallback(
+                account_id,
+                plan,
+                stop_event=stop_event,
+                deadline=deadline,
+                started=started,
+                cooldown_until=cooldown_until,
+            )
         if cooldown_until is not None:
             result = self._projection(
                 plan,
@@ -738,6 +844,536 @@ class WebSearchService:
                 pending.difference_update(completed)
             executor.shutdown(wait=not pending, cancel_futures=True)
 
+    def _search_with_fallback(
+        self,
+        account_id: str,
+        plan: SearchPlan,
+        *,
+        stop_event: Event | None,
+        deadline: float | None,
+        started: float,
+        cooldown_until: datetime | None,
+    ) -> WebSearchProjection:
+        """在共享公网阶段内执行一次主用到备用的有界切换。"""
+
+        stage_deadline = time.monotonic() + max(0.0, plan.total_timeout_seconds)
+        if deadline is not None:
+            stage_deadline = min(stage_deadline, deadline)
+        attempts = 0
+        query_count = 0
+        query_history: list[str] = []
+        provider_attempts: list[WebSearchProviderAttempt] = []
+        primary_provider = self._provider_name(self._client, plan.provider)
+        primary_version = self._provider_version(
+            self._client, plan.provider_version
+        )
+        primary_classification: WebSearchPageClassification | None = None
+        primary_status_category: str | None = None
+        primary_error: BaseException | None = None
+
+        if _user_cancelled(stop_event):
+            return self._finish_search_result(
+                account_id,
+                plan,
+                self._projection(
+                    plan,
+                    status=WebSearchStatus.CANCELLED,
+                    error_message="已取消本轮联网搜索。",
+                    provider_attempts=provider_attempts,
+                ),
+                started=started,
+                deadline=stage_deadline,
+            )
+
+        # 主用只使用保留窗口之前的预算；主用挂起时备用仍有非零窗口。
+        primary_budget = max(
+            0.0,
+            stage_deadline
+            - time.monotonic()
+            - max(self._fallback_reserve_seconds, FALLBACK_MIN_BUDGET_SECONDS),
+        )
+        primary_deadline = min(stage_deadline, time.monotonic() + primary_budget)
+        if cooldown_until is not None:
+            provider_attempts.append(
+                WebSearchProviderAttempt(
+                    provider=primary_provider,
+                    provider_version=primary_version,
+                    result_code="web_search_provider_challenge",
+                    page_classification=WebSearchPageClassification.CHALLENGE,
+                )
+            )
+        elif primary_budget > 0 and plan.query:
+            attempts += 1
+            query_count += 1
+            query_history.append(plan.query)
+            primary_started = time.monotonic()
+            primary_value, primary_error = self._call_provider_with_deadline(
+                self._client,
+                plan.query,
+                deadline=primary_deadline,
+                stop_event=stop_event,
+            )
+            primary_classification = getattr(primary_value, "page_classification", None)
+            primary_status_category = getattr(primary_value, "http_status_category", None)
+            if isinstance(primary_error, WebSearchError):
+                primary_classification = primary_error.page_classification
+                primary_status_category = primary_error.http_status_category
+            primary_results = self._annotate_results(
+                primary_value, primary_provider, primary_version
+            )
+            if (
+                primary_error is None
+                and primary_classification == WebSearchPageClassification.CHALLENGE
+            ):
+                primary_error = WebSearchError(
+                    "web_search_provider_challenge",
+                    "DuckDuckGo 搜索提供方返回挑战页。",
+                    page_classification=WebSearchPageClassification.CHALLENGE,
+                    http_status_category=primary_status_category,
+                )
+            elif (
+                primary_error is None
+                and primary_classification == WebSearchPageClassification.INVALID
+            ):
+                primary_error = WebSearchError(
+                    "web_search_parse",
+                    "DuckDuckGo 搜索返回无效响应。",
+                    page_classification=WebSearchPageClassification.INVALID,
+                    http_status_category=primary_status_category,
+                )
+            provider_attempts.append(
+                self._provider_attempt(
+                    primary_provider,
+                    primary_version,
+                    primary_results,
+                    primary_error,
+                    primary_value,
+                    duration_ms=_elapsed_ms(primary_started),
+                )
+            )
+            if primary_results and primary_error is None:
+                return self._finish_search_result(
+                    account_id,
+                    plan,
+                    self._project_results(
+                        plan,
+                        primary_results,
+                        attempts,
+                        query_count=query_count,
+                        query_history=query_history,
+                        page_classification=primary_classification,
+                        http_status_category=primary_status_category,
+                        provider=primary_provider,
+                        provider_version=primary_version,
+                        selected_provider=primary_provider,
+                        selected_provider_version=primary_version,
+                        provider_attempts=provider_attempts,
+                    ),
+                    started=started,
+                    deadline=stage_deadline,
+                )
+
+            # 真实空结果最多进行一次有界改写；挑战、限流、超时和解析错误
+            # 直接进入备用源，避免同一 HTML 提供方重复制造压力。
+            if primary_error is None and primary_classification in {
+                None,
+                WebSearchPageClassification.NORMAL_EMPTY,
+            }:
+                rewrite = self._rewrite_query(plan, query_history)
+                if rewrite is not None and time.monotonic() < primary_deadline:
+                    attempts += 1
+                    query_count += 1
+                    query_history.append(rewrite)
+                    rewrite_started = time.monotonic()
+                    rewrite_value, rewrite_error = self._call_provider_with_deadline(
+                        self._client,
+                        rewrite,
+                        deadline=primary_deadline,
+                        stop_event=stop_event,
+                    )
+                    rewrite_classification = getattr(
+                        rewrite_value, "page_classification", None
+                    )
+                    rewrite_status_category = getattr(
+                        rewrite_value, "http_status_category", None
+                    )
+                    if isinstance(rewrite_error, WebSearchError):
+                        rewrite_classification = rewrite_error.page_classification
+                        rewrite_status_category = rewrite_error.http_status_category
+                    rewrite_results = self._annotate_results(
+                        rewrite_value, primary_provider, primary_version
+                    )
+                    provider_attempts.append(
+                        self._provider_attempt(
+                            primary_provider,
+                            primary_version,
+                            rewrite_results,
+                            rewrite_error,
+                            rewrite_value,
+                            duration_ms=_elapsed_ms(rewrite_started),
+                        )
+                    )
+                    if rewrite_results:
+                        return self._finish_search_result(
+                            account_id,
+                            plan,
+                            self._project_results(
+                                plan,
+                                rewrite_results,
+                                attempts,
+                                query_count=query_count,
+                                query_history=query_history,
+                                page_classification=rewrite_classification,
+                                http_status_category=rewrite_status_category,
+                                provider=primary_provider,
+                                provider_version=primary_version,
+                                selected_provider=primary_provider,
+                                selected_provider_version=primary_version,
+                                provider_attempts=provider_attempts,
+                            ),
+                            started=started,
+                            deadline=stage_deadline,
+                        )
+                    primary_error = rewrite_error
+                    primary_classification = rewrite_classification
+                    primary_status_category = rewrite_status_category
+            if isinstance(primary_error, WebSearchError) and (
+                primary_error.code == "web_search_provider_challenge"
+            ):
+                cooldown_until = self._activate_provider_cooldown(
+                    self._clock(),
+                    primary_error.cooldown_seconds
+                    or DEFAULT_PROVIDER_COOLDOWN_SECONDS,
+                )
+
+            if isinstance(primary_error, WebSearchError) and not self._can_failover(
+                primary_error
+            ):
+                return self._finish_search_result(
+                    account_id,
+                    plan,
+                    self._projection(
+                        plan,
+                        status=(
+                            WebSearchStatus.CANCELLED
+                            if primary_error.code == "web_search_cancelled"
+                            else self._error_status(
+                                primary_error.code, primary_error.permission
+                            )
+                        ),
+                        searched_at=self._clock(),
+                        error_code=primary_error.code,
+                        error_message=primary_error.message,
+                        can_retry=primary_error.retryable,
+                        attempt_count=attempts,
+                        query_count=query_count,
+                        query_history=query_history,
+                        page_classification=primary_error.page_classification,
+                        http_status_category=primary_error.http_status_category,
+                        provider_attempts=provider_attempts,
+                    ),
+                    started=started,
+                    deadline=stage_deadline,
+                )
+
+        if _user_cancelled(stop_event):
+            return self._finish_search_result(
+                account_id,
+                plan,
+                self._projection(
+                    plan,
+                    status=WebSearchStatus.CANCELLED,
+                    searched_at=self._clock(),
+                    error_message="已取消本轮联网搜索。",
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                    provider_attempts=provider_attempts,
+                ),
+                started=started,
+                deadline=stage_deadline,
+            )
+
+        remaining = stage_deadline - time.monotonic()
+        if remaining < FALLBACK_MIN_BUDGET_SECONDS:
+            return self._finish_search_result(
+                account_id,
+                plan,
+                self._projection(
+                    plan,
+                    status=WebSearchStatus.ERROR,
+                    searched_at=self._clock(),
+                    error_code="web_search_fallback_not_started",
+                    error_message=(
+                        "主用搜索已耗尽备用源保留窗口，本轮未启动备用源；请稍后重试。"
+                    ),
+                    can_retry=True,
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                    page_classification=primary_classification,
+                    http_status_category=primary_status_category,
+                    provider_attempts=provider_attempts,
+                ),
+                started=started,
+                deadline=stage_deadline,
+            )
+
+        fallback_started = time.monotonic()
+        fallback_query = plan.query
+        fallback_value: list[WebSearchResult] = []
+        fallback_results: list[WebSearchResult] = []
+        fallback_error: BaseException | None = None
+        if fallback_query:
+            attempts += 1
+            query_count += 1
+            query_history.append(fallback_query)
+            fallback_value, fallback_error = self._call_provider_with_deadline(
+                self._fallback_client,
+                fallback_query,
+                deadline=stage_deadline,
+                stop_event=stop_event,
+            )
+            fallback_results = self._annotate_results(
+                fallback_value,
+                self._fallback_provider_name(),
+                self._fallback_provider_version_value(),
+            )
+            provider_attempts.append(
+                self._provider_attempt(
+                    self._fallback_provider_name(),
+                    self._fallback_provider_version_value(),
+                    fallback_results,
+                    fallback_error,
+                    fallback_value,
+                    duration_ms=_elapsed_ms(fallback_started),
+                )
+            )
+        if fallback_results:
+            return self._finish_search_result(
+                account_id,
+                plan,
+                self._project_results(
+                    plan,
+                    fallback_results,
+                    attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                    page_classification=getattr(
+                        fallback_value, "page_classification", None
+                    ),
+                    http_status_category=getattr(
+                        fallback_value, "http_status_category", None
+                    ),
+                    provider=self._fallback_provider_name(),
+                    provider_version=self._fallback_provider_version_value(),
+                    selected_provider=self._fallback_provider_name(),
+                    selected_provider_version=self._fallback_provider_version_value(),
+                    cooldown_until=cooldown_until,
+                    provider_attempts=provider_attempts,
+                ),
+                started=started,
+                deadline=stage_deadline,
+            )
+
+        error_message = (
+            f"{primary_provider} 与 {self._fallback_provider_name()} 备用提供方均未完成，"
+            "请稍后重试。"
+        )
+        return self._finish_search_result(
+            account_id,
+            plan,
+            self._projection(
+                plan,
+                status=WebSearchStatus.ERROR,
+                searched_at=self._clock(),
+                error_code="web_search_all_providers_failed",
+                error_message=error_message,
+                can_retry=True,
+                attempt_count=attempts,
+                query_count=query_count,
+                query_history=query_history,
+                page_classification=(
+                    getattr(fallback_error, "page_classification", None)
+                    or primary_classification
+                ),
+                http_status_category=(
+                    getattr(fallback_error, "http_status_category", None)
+                    or primary_status_category
+                ),
+                provider_attempts=provider_attempts,
+            ),
+            started=started,
+            deadline=stage_deadline,
+        )
+
+    @staticmethod
+    def _provider_name(client: Any, fallback: str) -> str:
+        return str(getattr(client, "provider_name", fallback))
+
+    @staticmethod
+    def _provider_version(client: Any, fallback: str) -> str:
+        return str(getattr(client, "provider_version", fallback))
+
+    def _fallback_provider_name(self) -> str:
+        return self._fallback_provider
+
+    def _fallback_provider_version_value(self) -> str:
+        return self._fallback_provider_version
+
+    @staticmethod
+    def _can_failover(error: WebSearchError) -> bool:
+        return error.code in _PRIMARY_FAILOVER_ERROR_CODES
+
+    @staticmethod
+    def _annotate_results(
+        results: list[WebSearchResult], provider: str, provider_version: str
+    ) -> list[WebSearchResult]:
+        return [
+            result.model_copy(
+                update={"provider": provider, "provider_version": provider_version}
+            )
+            for result in results
+        ]
+
+    @staticmethod
+    def _call_provider(
+        client: SearchClient | None,
+        query: str,
+        *,
+        deadline: float,
+        stop_event: Any | None,
+    ) -> tuple[list[WebSearchResult], BaseException | None]:
+        if client is None:
+            return [], WebSearchError(
+                "web_search_fallback_not_configured", "备用公网搜索未配置。"
+            )
+        try:
+            return (
+                _invoke_search_client(
+                    client,
+                    query,
+                    deadline=deadline,
+                    stop_event=stop_event,
+                ),
+                None,
+            )
+        except Exception as exc:  # noqa: BLE001 - 单一提供方失败交给备用编排
+            return [], exc
+
+    @classmethod
+    def _call_provider_with_deadline(
+        cls,
+        client: SearchClient | None,
+        query: str,
+        *,
+        deadline: float,
+        stop_event: Event | None,
+    ) -> tuple[list[WebSearchResult], BaseException | None]:
+        """把适配器限制在绝对截止时间内，避免耗尽备用窗口。"""
+
+        worker_signal = _SearchStopSignal(stop_event)
+        executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="web-search-provider"
+        )
+        future = executor.submit(
+            cls._call_provider,
+            client,
+            query,
+            deadline=deadline,
+            stop_event=worker_signal,
+        )
+        pending = {future}
+        result: tuple[list[WebSearchResult], BaseException | None] | None = None
+        terminal_error: BaseException | None = None
+        try:
+            while pending:
+                if _user_cancelled(stop_event):
+                    worker_signal.set()
+                    terminal_error = WebSearchError(
+                        "web_search_cancelled", "已取消本轮联网搜索。"
+                    )
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    worker_signal.set()
+                    terminal_error = WebSearchError(
+                        "web_search_timeout", "联网搜索超时，请重试。"
+                    )
+                    break
+                completed, _ = wait(
+                    pending,
+                    timeout=min(0.05, remaining),
+                    return_when=ALL_COMPLETED,
+                )
+                if completed:
+                    result = future.result()
+                    pending.difference_update(completed)
+            if result is not None:
+                return result
+            return [], terminal_error or WebSearchError(
+                "web_search_provider", "公网搜索提供方暂时不可用，请稍后重试。"
+            )
+        finally:
+            for pending_future in pending:
+                pending_future.cancel()
+            if pending:
+                completed, _ = wait(pending, timeout=0.05)
+                pending.difference_update(completed)
+            executor.shutdown(wait=not pending, cancel_futures=True)
+
+    @staticmethod
+    def _provider_attempt(
+        provider: str,
+        provider_version: str,
+        results: list[WebSearchResult],
+        error: BaseException | None,
+        raw_results: list[WebSearchResult],
+        *,
+        duration_ms: int,
+    ) -> WebSearchProviderAttempt:
+        if error is not None:
+            result_code = getattr(error, "code", "web_search_provider")
+            classification = getattr(error, "page_classification", None)
+            status_category = getattr(error, "http_status_category", None)
+        else:
+            result_code = "success" if results else "web_search_no_results"
+            classification = getattr(raw_results, "page_classification", None)
+            status_category = getattr(raw_results, "http_status_category", None)
+        return WebSearchProviderAttempt(
+            provider=provider,
+            provider_version=provider_version,
+            result_code=result_code,
+            result_count=len(results),
+            duration_ms=duration_ms,
+            http_status_category=status_category,
+            page_classification=classification,
+        )
+
+    def _finish_search_result(
+        self,
+        account_id: str,
+        plan: SearchPlan,
+        result: WebSearchProjection,
+        *,
+        started: float,
+        deadline: float,
+    ) -> WebSearchProjection:
+        if result.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}:
+            expires_at = self._clock() + timedelta(
+                seconds=plan.freshness_window_seconds
+            )
+            result = result.model_copy(update={"cache_expires_at": expires_at})
+            self._cache.put(account_id, plan, result, expires_at)
+        self._audit(
+            account_id,
+            plan,
+            result,
+            duration_ms=_elapsed_ms(started),
+            deadline=deadline,
+        )
+        return result
+
     def _search_one(
         self, query: str, deadline: float, stop_event: Any | None
     ) -> list[WebSearchResult]:
@@ -783,7 +1419,23 @@ class WebSearchService:
         query_history: list[str],
         page_classification: WebSearchPageClassification | None = None,
         http_status_category: str | None = None,
+        provider: str | None = None,
+        provider_version: str | None = None,
+        selected_provider: str | None = None,
+        selected_provider_version: str | None = None,
+        cooldown_until: datetime | None = None,
+        provider_attempts: list[WebSearchProviderAttempt] | None = None,
     ) -> WebSearchProjection:
+        resolved_provider = provider or plan.provider
+        resolved_provider_version = provider_version or plan.provider_version
+        provider_fields: dict[str, Any] = {
+            "provider": resolved_provider,
+            "provider_version": resolved_provider_version,
+            "selected_provider": selected_provider or (resolved_provider if results else None),
+            "selected_provider_version": selected_provider_version
+            or (resolved_provider_version if results else None),
+            "provider_attempts": provider_attempts,
+        }
         conflicting = [
             result
             for result in results
@@ -803,11 +1455,14 @@ class WebSearchService:
                 query_history=query_history,
                 page_classification=page_classification,
                 http_status_category=http_status_category,
+                cooldown_until=cooldown_until,
+                **provider_fields,
             )
         verified = [
             result
             for result in results
-            if getattr(result, "verification", "verified") in {"verified", "cross_verified"}
+            if getattr(result, "verification", "verified")
+            in {"verified", "cross_verified", "structured"}
         ]
         failed = [
             result
@@ -828,6 +1483,8 @@ class WebSearchService:
                     query_history=query_history,
                     page_classification=page_classification,
                     http_status_category=http_status_category,
+                    cooldown_until=cooldown_until,
+                    **provider_fields,
                 )
             return self._projection(
                 plan,
@@ -841,6 +1498,8 @@ class WebSearchService:
                 query_history=query_history,
                 page_classification=page_classification,
                 http_status_category=http_status_category,
+                cooldown_until=cooldown_until,
+                **provider_fields,
             )
         if not verified:
             code = "web_search_page_fetch" if failed else "web_search_evidence_insufficient"
@@ -866,6 +1525,8 @@ class WebSearchService:
                 query_history=query_history,
                 page_classification=page_classification,
                 http_status_category=http_status_category,
+                cooldown_until=cooldown_until,
+                **provider_fields,
             )
         status = WebSearchStatus.PARTIAL if failed else WebSearchStatus.SUCCESS
         return self._projection(
@@ -880,6 +1541,8 @@ class WebSearchService:
             query_history=query_history,
             page_classification=page_classification,
             http_status_category=http_status_category,
+            cooldown_until=cooldown_until,
+            **provider_fields,
         )
 
     @staticmethod
@@ -928,6 +1591,11 @@ class WebSearchService:
         page_classification: WebSearchPageClassification | None = None,
         http_status_category: str | None = None,
         cooldown_until: datetime | None = None,
+        provider: str | None = None,
+        provider_version: str | None = None,
+        selected_provider: str | None = None,
+        selected_provider_version: str | None = None,
+        provider_attempts: list[WebSearchProviderAttempt] | None = None,
     ) -> WebSearchProjection:
         rewrite_count = sum(
             query not in plan.queries for query in (query_history or [])
@@ -950,8 +1618,11 @@ class WebSearchService:
             can_retry=can_retry,
             can_cancel=can_cancel,
             plan_id=plan.plan_id,
-            provider=plan.provider,
-            provider_version=plan.provider_version,
+            provider=provider or plan.provider,
+            provider_version=provider_version or plan.provider_version,
+            selected_provider=selected_provider,
+            selected_provider_version=selected_provider_version,
+            provider_attempts=provider_attempts or [],
             rules_version=plan.rules_version,
             query_hash=plan.query_hash,
             original_query_hash=plan.original_query_hash,
@@ -995,8 +1666,14 @@ class WebSearchService:
             details={
                 "data_categories": ["public_query_terms"],
                 "authorization_snapshot": "authz-1.0",
-                "provider": plan.provider,
-                "provider_version": plan.provider_version,
+                "provider": result.provider,
+                "provider_version": result.provider_version,
+                "selected_provider": result.selected_provider,
+                "selected_provider_version": result.selected_provider_version,
+                "provider_attempts": [
+                    attempt.model_dump(mode="json")
+                    for attempt in result.provider_attempts
+                ],
                 "rules_version": plan.rules_version,
                 "plan_id": plan.plan_id,
                 "query_hash": plan.query_hash,
@@ -1025,7 +1702,12 @@ class WebSearchService:
                 "request_profile_version": DUCKDUCKGO_REQUEST_PROFILE_VERSION,
                 "cooldown_active": result.cooldown_until is not None,
                 "stage_duration_ms": duration_ms,
-                "active_sources": ["web"],
+                "active_sources": [
+                    *dict.fromkeys(
+                        attempt.provider for attempt in result.provider_attempts
+                    )
+                ]
+                or [result.provider],
                 "budget_source": "web_search",
                 "deadline_remaining_ms": (
                     max(0, int((deadline - time.monotonic()) * 1000))

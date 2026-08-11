@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 43
+SCHEMA_VERSION = 44
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2122,6 +2122,51 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_profile_extraction_privacy_blocks_account
         ON profile_extraction_privacy_blocks(account_id, scope, normalized_value)
+        """,
+    ],
+    # Issue 02：缓存唯一键显式包含提供方，避免同一版本标识被不同注册源
+    # 误当成同一结果；存量缓存只读搬迁，不改变其投影内容。
+    44: [
+        """
+        CREATE TABLE web_search_cache_v44 (
+            cache_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            query_hash TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            provider_version TEXT NOT NULL,
+            rules_version TEXT NOT NULL,
+            freshness_window_seconds INTEGER NOT NULL,
+            plan_id TEXT NOT NULL,
+            projection_json TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (
+                account_id,
+                query_hash,
+                provider,
+                provider_version,
+                freshness_window_seconds
+            )
+        )
+        """,
+        """
+        INSERT INTO web_search_cache_v44 (
+            cache_id, account_id, query_hash, provider, provider_version,
+            rules_version, freshness_window_seconds, plan_id, projection_json,
+            expires_at, created_at, updated_at
+        )
+        SELECT
+            cache_id, account_id, query_hash, provider, provider_version,
+            rules_version, freshness_window_seconds, plan_id, projection_json,
+            expires_at, created_at, updated_at
+        FROM web_search_cache
+        """,
+        "DROP TABLE web_search_cache",
+        "ALTER TABLE web_search_cache_v44 RENAME TO web_search_cache",
+        """
+        CREATE INDEX idx_web_search_cache_account_expiry
+        ON web_search_cache(account_id, expires_at)
         """,
     ],
 }

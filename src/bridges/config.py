@@ -95,6 +95,25 @@ class Settings(BaseSettings):
         default=None, validation_alias=_env_aliases("QWEN_API_KEY")
     )
 
+    # Issue 02：结构化公开搜索备用源默认关闭；启用时只允许注册表中的
+    # 固定提供方，不接受任意 URL。Brave Search 凭据只从部署配置或其
+    # *_FILE 引用读取，不进入消息、投影、审计或前端。
+    public_search_fallback_enabled: bool = Field(
+        default=False, validation_alias=_env_aliases("PUBLIC_SEARCH_FALLBACK_ENABLED")
+    )
+    public_search_fallback_provider: str = Field(
+        default="brave_search",
+        validation_alias=_env_aliases("PUBLIC_SEARCH_FALLBACK_PROVIDER"),
+    )
+    public_search_fallback_endpoint: str | None = Field(
+        default=None,
+        validation_alias=_env_aliases("PUBLIC_SEARCH_FALLBACK_ENDPOINT"),
+        description="保留用于拒绝任意端点配置；生产不允许设置。",
+    )
+    brave_search_api_key: SecretStr | None = Field(
+        default=None, validation_alias=_env_aliases("BRAVE_SEARCH_API_KEY")
+    )
+
     # 账户级凭据存储后端：源码环境用操作系统凭据库（os），容器用自动生成
     # 主密钥保护的加密凭据卷（encrypted-volume）。容器 Compose 显式设置
     # encrypted-volume；其余环境默认 os。
@@ -157,7 +176,14 @@ class Settings(BaseSettings):
     )
 
     _SECRET_FIELDS: frozenset[str] = frozenset(
-        {"secret_key", "database_url", "redis_url", "object_storage_url", "qwen_api_key"}
+        {
+            "secret_key",
+            "database_url",
+            "redis_url",
+            "object_storage_url",
+            "qwen_api_key",
+            "brave_search_api_key",
+        }
     )
 
     @field_validator("allowed_origins", mode="before")

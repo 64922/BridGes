@@ -354,6 +354,21 @@ _ERROR_MESSAGES: dict[str, str] = {
     "web_search_permission": "当前网络未允许访问公网搜索，请检查网络权限后重试。",
     "web_search_parse": "搜索结果暂时无法解析，请重试。",
     "web_search_request": "公网搜索请求未完成，请重试。",
+    "web_search_fallback_credentials": "备用公网搜索凭据未配置，请联系管理员。",
+    "web_search_fallback_timeout": "备用公网搜索超时，请稍后重试。",
+    "web_search_fallback_rate_limit": "备用公网搜索请求过于频繁，请稍后重试。",
+    "web_search_fallback_dns": "无法解析备用公网搜索地址，请稍后重试。",
+    "web_search_fallback_offline": "当前无法连接备用公网搜索，请检查网络后重试。",
+    "web_search_fallback_connect": "当前无法连接备用公网搜索，请稍后重试。",
+    "web_search_fallback_permission": "备用公网搜索权限未通过，请联系管理员。",
+    "web_search_fallback_parse": "备用公网搜索结果暂时无法解析，请稍后重试。",
+    "web_search_fallback_request": "备用公网搜索请求未完成，请稍后重试。",
+    "web_search_fallback_provider": "备用公网搜索提供方暂时不可用，请稍后重试。",
+    "web_search_fallback_redirect": "备用公网搜索来源地址不安全，已拒绝处理。",
+    "web_search_fallback_response_too_large": "备用公网搜索响应过大，已拒绝处理。",
+    "web_search_fallback_not_configured": "备用公网搜索尚未配置，请稍后重试。",
+    "web_search_fallback_not_started": "本轮公网阶段预算不足，未启动备用搜索，请稍后重试。",
+    "web_search_all_providers_failed": "主用与备用公网搜索均未完成，请稍后重试。",
     "web_search_provider_challenge": (
         "DuckDuckGo 搜索提供方暂时受阻，请等待冷却后显式重试；"
         "系统不会在本轮自动重复请求。"
@@ -398,6 +413,16 @@ _RETRYABLE_CODES = frozenset(
         "web_search_offline",
         "web_search_parse",
         "web_search_request",
+        "web_search_fallback_timeout",
+        "web_search_fallback_rate_limit",
+        "web_search_fallback_dns",
+        "web_search_fallback_offline",
+        "web_search_fallback_connect",
+        "web_search_fallback_parse",
+        "web_search_fallback_request",
+        "web_search_fallback_provider",
+        "web_search_fallback_not_started",
+        "web_search_all_providers_failed",
         "web_search_provider_challenge",
         "web_search_evidence_insufficient",
         "web_search_no_results",
@@ -700,22 +725,32 @@ def retrieval_context(citations: list[CitationProjection]) -> str:
 # ---------------------------------------------------------------------------
 
 
+_WEB_EVIDENCE_VERIFICATIONS = {"verified", "cross_verified", "structured"}
+
+
+def _web_provider_summary(projection: WebSearchProjection) -> str:
+    provider = projection.selected_provider or projection.provider
+    version = projection.selected_provider_version or projection.provider_version
+    return f"实际提供方：{provider}（{version}）"
+
+
 def web_search_thinking(
     thinking: ChatThinkingSummary, projection: WebSearchProjection
 ) -> ChatThinkingSummary:
     """把搜索触发原因、结果与失败状态变成可公开进度。"""
     tools = [
-        f"已触发联网搜索：{projection.trigger_reason}；查询概述：{projection.query_summary}"
+        f"已触发联网搜索：{projection.trigger_reason}；查询概述：{projection.query_summary}",
+        _web_provider_summary(projection),
     ]
     if projection.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}:
         verified = [
             item
             for item in projection.results
-            if item.verification in {"verified", "cross_verified"}
+            if item.verification in _WEB_EVIDENCE_VERIFICATIONS
         ]
         evidence = [f"{item.title}（{item.site}）" for item in verified]
         tools.append(
-            f"已返回 {len(verified)} 条可核验公开网页结果"
+            f"已返回 {len(verified)} 条可引用公开网页结果"
             + ("，另有来源页面抓取失败" if projection.status == WebSearchStatus.PARTIAL else "")
         )
         return thinking.model_copy(
@@ -744,12 +779,13 @@ def web_search_context(projection: WebSearchProjection) -> str:
     ]
     used = 0
     for result in projection.results:
-        if result.verification not in {"verified", "cross_verified"}:
+        if result.verification not in _WEB_EVIDENCE_VERIFICATIONS:
             continue
         snippet = result.snippet[:_EVIDENCE_SNIPPET_MAX]
         line = (
             f"<untrusted_web_evidence id='{result.result_id}'>\n"
             f"标题：{result.title}\n站点：{result.site}\n"
+            f"提供方：{result.provider}（{result.provider_version}）\n"
             f"URL：{result.url}\n摘要：{snippet}\n"
             f"访问时间：{result.accessed_at.isoformat()}\n</untrusted_web_evidence>"
         )
@@ -3054,7 +3090,7 @@ class TurnOrchestrator:
                         [
                             result
                             for result in web_search_projection.results
-                            if result.verification in {"verified", "cross_verified"}
+                            if result.verification in _WEB_EVIDENCE_VERIFICATIONS
                         ]
                         if web_search_projection is not None
                         else []

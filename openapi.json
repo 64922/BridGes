@@ -44022,7 +44022,7 @@
           "version": {
             "type": "string",
             "title": "Version",
-            "default": "2026.08.09"
+            "default": "2026.08.12"
           },
           "normalized_query": {
             "type": "string",
@@ -44032,6 +44032,22 @@
           },
           "constraints": {
             "$ref": "#/components/schemas/PaperSearchConstraints"
+          },
+          "removed_categories": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "instruction_scaffold",
+                "code",
+                "credential",
+                "private_material",
+                "email",
+                "url"
+              ]
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Removed Categories"
           }
         },
         "additionalProperties": false,
@@ -51029,6 +51045,7 @@
           "project",
           "knowledge_base",
           "duckduckgo",
+          "brave_search",
           "arxiv",
           "local"
         ],
@@ -53390,7 +53407,7 @@
           "provider": {
             "type": "string",
             "title": "Provider",
-            "description": "固定联网提供方。",
+            "description": "最终选用或主用提供方。",
             "default": "duckduckgo"
           },
           "provider_version": {
@@ -53398,6 +53415,38 @@
             "title": "Provider Version",
             "description": "提供方合同版本。",
             "default": "duckduckgo-html-v1"
+          },
+          "selected_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Provider",
+            "description": "实际采用结果的提供方；全部失败时为空。"
+          },
+          "selected_provider_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Provider Version",
+            "description": "实际采用结果的提供方版本。"
+          },
+          "provider_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/WebSearchProviderAttempt"
+            },
+            "type": "array",
+            "title": "Provider Attempts",
+            "description": "本轮各提供方尝试的脱敏结果轨迹。"
           },
           "rules_version": {
             "type": "string",
@@ -53487,6 +53536,70 @@
         "title": "WebSearchProjection",
         "description": "聊天消息与 SSE 使用的公网搜索状态投影。"
       },
+      "WebSearchProviderAttempt": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "提供方注册标识。"
+          },
+          "provider_version": {
+            "type": "string",
+            "title": "Provider Version",
+            "description": "提供方合同版本。"
+          },
+          "result_code": {
+            "type": "string",
+            "title": "Result Code",
+            "description": "脱敏结果码，不包含供应商正文。"
+          },
+          "result_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Result Count",
+            "description": "该次尝试返回的安全结果数。",
+            "default": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "description": "该次尝试耗时。",
+            "default": 0
+          },
+          "http_status_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status Category",
+            "description": "HTTP 状态类别。"
+          },
+          "page_classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchPageClassification"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "页面或结构化响应分类。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "provider_version",
+          "result_code"
+        ],
+        "title": "WebSearchProviderAttempt",
+        "description": "一次提供方尝试的脱敏审计投影。"
+      },
       "WebSearchResult": {
         "properties": {
           "result_id": {
@@ -53555,7 +53668,7 @@
           },
           "verification": {
             "$ref": "#/components/schemas/WebSearchVerification",
-            "description": "来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。",
+            "description": "来源证据状态：verified、cross_verified、structured、summary_only、fetch_failed 或 conflicting。",
             "default": "verified"
           },
           "fetch_error_code": {
@@ -53576,6 +53689,18 @@
             "title": "Redirect Count",
             "description": "本次抓取重定向次数。",
             "default": 0
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "实际返回该来源的提供方。",
+            "default": "duckduckgo"
+          },
+          "provider_version": {
+            "type": "string",
+            "title": "Provider Version",
+            "description": "实际返回该来源的提供方版本。",
+            "default": "duckduckgo-html-v1"
           }
         },
         "type": "object",
@@ -53612,6 +53737,7 @@
         "enum": [
           "verified",
           "cross_verified",
+          "structured",
           "summary_only",
           "fetch_failed",
           "conflicting"

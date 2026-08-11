@@ -164,7 +164,11 @@ def _web_sources(web_search: WebSearchProjection | None) -> list[TeachingEvidenc
         return []
     return [
         TeachingEvidenceSource(
-            source_type=TeachingEvidenceSourceType.DUCKDUCKGO,
+            source_type=(
+                TeachingEvidenceSourceType.BRAVE_SEARCH
+                if result.provider == "brave_search"
+                else TeachingEvidenceSourceType.DUCKDUCKGO
+            ),
             source_id=result.result_id,
             title=result.title,
             locator=result.url,
@@ -172,7 +176,7 @@ def _web_sources(web_search: WebSearchProjection | None) -> list[TeachingEvidenc
             accessed_at=result.accessed_at,
         )
         for result in web_search.results
-        if result.verification in {"verified", "cross_verified"}
+        if result.verification in {"verified", "cross_verified", "structured"}
     ]
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class WebSearchVerification(StrEnum):
 
     VERIFIED = "verified"
     CROSS_VERIFIED = "cross_verified"
+    STRUCTURED = "structured"
     SUMMARY_ONLY = "summary_only"
     FETCH_FAILED = "fetch_failed"
     CONFLICTING = "conflicting"
@@ -58,9 +59,53 @@ class WebSearchHealth(BaseModel):
     """不带用户查询的提供方健康检查结果。"""
 
     provider: str
+    provider_version: str = Field(
+        default="unknown", description="提供方健康检查所使用的版本。"
+    )
     status: WebSearchHealthStatus
     checked_at: datetime
     error_code: str | None = None
+
+
+class WebSearchHealthSummary(BaseModel):
+    """公开搜索整体健康摘要；任一提供方就绪即表示当前有可用来源。"""
+
+    available: bool = Field(description="当前是否至少有一个公开搜索来源可用。")
+    status: WebSearchHealthStatus = Field(description="整体健康状态。")
+    checked_at: datetime = Field(description="本次整体健康检查时间。")
+    providers: list[WebSearchHealth] = Field(
+        default_factory=list, description="已登记提供方的逐项健康状态。"
+    )
+
+
+def aggregate_public_search_health(
+    providers: list[WebSearchHealth], *, checked_at: datetime | None = None
+) -> WebSearchHealthSummary:
+    """按“至少一个提供方就绪”聚合公开搜索健康状态。"""
+
+    if providers:
+        summary_status = next(
+            (
+                provider.status
+                for provider in providers
+                if provider.status == WebSearchHealthStatus.READY
+            ),
+            providers[0].status,
+        )
+        summary_checked_at = checked_at or max(
+            provider.checked_at for provider in providers
+        )
+    else:
+        summary_status = WebSearchHealthStatus.UPSTREAM_ERROR
+        summary_checked_at = checked_at or datetime.now(UTC)
+    return WebSearchHealthSummary(
+        available=any(
+            provider.status == WebSearchHealthStatus.READY for provider in providers
+        ),
+        status=summary_status,
+        checked_at=summary_checked_at,
+        providers=providers,
+    )
 
 
 class WebSearchResult(BaseModel):
@@ -84,13 +129,31 @@ class WebSearchResult(BaseModel):
     verification: WebSearchVerification = Field(
         default=WebSearchVerification.VERIFIED,
         description=(
-            "来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。"
+            "来源证据状态：verified、cross_verified、structured、summary_only、fetch_failed 或 conflicting。"
         ),
     )
     fetch_error_code: str | None = Field(
         default=None, description="来源页面抓取失败分类码。"
     )
     redirect_count: int = Field(default=0, ge=0, description="本次抓取重定向次数。")
+    provider: str = Field(default="duckduckgo", description="实际返回该来源的提供方。")
+    provider_version: str = Field(
+        default="duckduckgo-html-v1", description="实际返回该来源的提供方版本。"
+    )
+
+
+class WebSearchProviderAttempt(BaseModel):
+    """一次提供方尝试的脱敏审计投影。"""
+
+    provider: str = Field(description="提供方注册标识。")
+    provider_version: str = Field(description="提供方合同版本。")
+    result_code: str = Field(description="脱敏结果码，不包含供应商正文。")
+    result_count: int = Field(default=0, ge=0, description="该次尝试返回的安全结果数。")
+    duration_ms: int = Field(default=0, ge=0, description="该次尝试耗时。")
+    http_status_category: str | None = Field(default=None, description="HTTP 状态类别。")
+    page_classification: WebSearchPageClassification | None = Field(
+        default=None, description="页面或结构化响应分类。"
+    )
 
 
 class WebSearchProjection(BaseModel):
@@ -119,9 +182,18 @@ class WebSearchProjection(BaseModel):
     can_retry: bool = Field(default=False, description="本轮是否可以重试。")
     can_cancel: bool = Field(default=False, description="本轮是否可以取消。")
     plan_id: str | None = Field(default=None, description="持久化联网计划标识。")
-    provider: str = Field(default="duckduckgo", description="固定联网提供方。")
+    provider: str = Field(default="duckduckgo", description="最终选用或主用提供方。")
     provider_version: str = Field(
         default="duckduckgo-html-v1", description="提供方合同版本。"
+    )
+    selected_provider: str | None = Field(
+        default=None, description="实际采用结果的提供方；全部失败时为空。"
+    )
+    selected_provider_version: str | None = Field(
+        default=None, description="实际采用结果的提供方版本。"
+    )
+    provider_attempts: list[WebSearchProviderAttempt] = Field(
+        default_factory=list, description="本轮各提供方尝试的脱敏结果轨迹。"
     )
     rules_version: str = Field(
         default="web-search-plan-v2", description="本地触发/脱敏规则版本。"
