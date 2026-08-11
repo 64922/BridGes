@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -28,11 +29,39 @@ EXTERNAL_TIMEOUT_SECONDS: dict[str, float] = {
     "web_search": 8.0,
     "arxiv_search": 10.0,
 }
+#: 来源名到预算常量的映射；只把本轮实际启动的来源纳入计算。
+_SEARCH_SOURCE_TIMEOUT_KEYS: dict[str, str] = {
+    "web": "web_search",
+    "arxiv": "arxiv_search",
+}
 #: 阶段结果码常量。
 RESULT_OK = "ok"
 RESULT_SKIPPED = "skipped"
 RESULT_TIMEOUT = "timeout"
 RESULT_FAILED = "failed"
+
+
+def source_aware_search_budget_seconds(
+    active_sources: Iterable[str], *, remaining_ms: int | None = None
+) -> float:
+    """返回公开搜索的来源预算，并与剩余 run 预算取更严格者。
+
+    单来源使用该来源的合同预算；多来源并行使用活跃来源中的最大预算，
+    因而未启动的来源不会用更短预算提前截断本轮。空来源不应启动搜索，
+    预算返回 0。未知来源不参与计算，避免把调用方的内部标签误当成公开
+    搜索来源。
+    """
+    active = frozenset(
+        source for source in active_sources if source in _SEARCH_SOURCE_TIMEOUT_KEYS
+    )
+    if not active:
+        return 0.0
+    source_budget = max(
+        EXTERNAL_TIMEOUT_SECONDS[_SEARCH_SOURCE_TIMEOUT_KEYS[source]] for source in active
+    )
+    if remaining_ms is None:
+        return source_budget
+    return min(source_budget, max(0, remaining_ms) / 1000)
 
 
 class RunStage(StrEnum):
@@ -90,6 +119,7 @@ class RunBudget:
         # 运行时读取模块常量（测试可 monkeypatch 注入小预算验证降级路径）
         self._total_ms = total_ms if total_ms is not None else TOTAL_BUDGET_MS
         self._started = time.monotonic()
+        self._deadline = self._started + max(0, self._total_ms) / 1000
         self._current: RunStage | None = None
         self._current_started: float | None = None
         self._metrics: list[StageMetric] = []
@@ -102,8 +132,18 @@ class RunBudget:
 
     def remaining_ms(self) -> int:
         """剩余总预算（毫秒）；耗尽时为 0。"""
-        remaining = self._total_ms - int((time.monotonic() - self._started) * 1000)
-        return max(0, remaining)
+        return max(0, int((self._deadline - time.monotonic()) * 1000))
+
+    def absolute_deadline(self) -> float:
+        """本次 run 的绝对截止单调时刻。"""
+        return self._deadline
+
+    def search_deadline(self, active_sources: Iterable[str]) -> float:
+        """为活跃公开来源派生与 run 预算共享的绝对截止时刻。"""
+        source_budget = source_aware_search_budget_seconds(
+            active_sources, remaining_ms=self.remaining_ms()
+        )
+        return min(self._deadline, time.monotonic() + source_budget)
 
     def elapsed_ms(self) -> int:
         """本次 run 已耗用毫秒。"""

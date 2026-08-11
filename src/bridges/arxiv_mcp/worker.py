@@ -12,6 +12,8 @@ import json
 import sys
 from contextlib import suppress
 from dataclasses import asdict
+from inspect import Parameter, signature
+from typing import Any
 
 from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
 
@@ -33,9 +35,17 @@ def main() -> None:
                 raise ArxivMcpError("arxiv_request", "arXiv 请求格式无效，请重试。")
             query = request.get("query")
             max_results = request.get("max_results", 5)
-            if not isinstance(query, str) or not isinstance(max_results, int):
+            deadline = request.get("deadline")
+            if (
+                not isinstance(query, str)
+                or not isinstance(max_results, int)
+                or (deadline is not None and not isinstance(deadline, (int, float)))
+            ):
                 raise ArxivMcpError("arxiv_request", "arXiv 请求格式无效，请重试。")
-            papers = client.search(query, max_results=max_results)
+            kwargs: dict[str, Any] = {"max_results": max_results}
+            if deadline is not None and _supports_keyword(client.search, "deadline"):
+                kwargs["deadline"] = float(deadline)
+            papers = client.search(query, **kwargs)
             payload = {
                 "ok": True,
                 "papers": [
@@ -67,6 +77,18 @@ def _configure_utf8_stdio() -> None:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         with suppress(AttributeError, ValueError):
             stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+
+
+def _supports_keyword(callable_obj: object, keyword: str) -> bool:
+    """兼容收尾测试替身，同时把截止时间传给生产客户端。"""
+    try:
+        parameters = signature(callable_obj).parameters.values()  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return True
+    return any(
+        parameter.name == keyword or parameter.kind == Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
 
 
 if __name__ == "__main__":

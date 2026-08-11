@@ -12,6 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from html.parser import HTMLParser
+from threading import Event
 from time import monotonic
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
@@ -74,15 +75,28 @@ class DuckDuckGoClient:
         self._should_fetch_sources = fetch_sources
 
     def search(
-        self, query: str, *, timeout: float | None = None
+        self,
+        query: str,
+        *,
+        timeout: float | None = None,
+        deadline: float | None = None,
+        stop_event: Event | None = None,
     ) -> list[WebSearchResult]:
         if not query.strip():
             raise WebSearchError(
                 "web_search_request", "公网搜索查询不能为空。", retryable=False
             )
-        if timeout is not None and timeout <= 0:
+        if _user_cancelled(stop_event):
+            raise WebSearchError("web_search_cancelled", "已取消本轮联网搜索。")
+        relative_deadline = monotonic() + timeout if timeout is not None else None
+        if relative_deadline is not None:
+            deadline = (
+                relative_deadline
+                if deadline is None
+                else min(deadline, relative_deadline)
+            )
+        if deadline is not None and deadline <= monotonic():
             raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
-        deadline = monotonic() + timeout if timeout is not None else None
         try:
             with self._client.stream(
                 "GET",
@@ -110,6 +124,11 @@ class DuckDuckGoClient:
                 "web_search_offline", "当前无法连接公网搜索，请检查网络后重试。"
             ) from exc
 
+        if _user_cancelled(stop_event):
+            raise WebSearchError("web_search_cancelled", "已取消本轮联网搜索。")
+        if deadline is not None and deadline <= monotonic():
+            raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
+
         try:
             results = _parse_results(body, max_results=self._max_results)
         except WebSearchError:
@@ -120,7 +139,9 @@ class DuckDuckGoClient:
             ) from exc
         if not self._should_fetch_sources:
             return results
-        return self._fetch_source_pages(results, deadline=deadline)
+        return self._fetch_source_pages(
+            results, deadline=deadline, stop_event=stop_event
+        )
 
     def health_check(self) -> WebSearchHealth:
         """探测固定提供方；请求不包含任何用户查询。"""
@@ -188,13 +209,31 @@ class DuckDuckGoClient:
             )
 
     def _fetch_source(
-        self, result: WebSearchResult, *, deadline: float | None = None
+        self,
+        result: WebSearchResult,
+        *,
+        deadline: float | None = None,
+        stop_event: Event | None = None,
     ) -> WebSearchResult:
         fetched_at = datetime.now(UTC)
         current_url = result.url
         redirect_count = 0
         try:
             while True:
+                if stop_event is not None and stop_event.is_set():
+                    code = (
+                        "web_search_cancelled"
+                        if _user_cancelled(stop_event)
+                        else "web_search_timeout"
+                    )
+                    message = (
+                        "已取消本轮联网搜索。"
+                        if code == "web_search_cancelled"
+                        else "联网搜索超时，请重试。"
+                    )
+                    raise WebSearchError(code, message)
+                if deadline is not None and deadline <= monotonic():
+                    raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
                 unsafe_code = _unsafe_url_code(current_url)
                 if unsafe_code is not None:
                     return result.model_copy(
@@ -309,7 +348,11 @@ class DuckDuckGoClient:
         )
 
     def _fetch_source_pages(
-        self, results: list[WebSearchResult], *, deadline: float | None
+        self,
+        results: list[WebSearchResult],
+        *,
+        deadline: float | None,
+        stop_event: Event | None = None,
     ) -> list[WebSearchResult]:
         """用有界线程池并行回抓结果页面，且不等待超出阶段预算的任务。"""
 
@@ -324,14 +367,27 @@ class DuckDuckGoClient:
                 self._fetch_source,
                 result,
                 deadline=deadline,
+                stop_event=stop_event,
             ): result
             for result in results
         }
+        pending = set(futures)
+        done: set[object] = set()
         try:
-            done, _ = wait(
-                list(futures),
-                timeout=_remaining_timeout(deadline),
-            )
+            while pending:
+                if stop_event is not None and stop_event.is_set():
+                    break
+                remaining = (
+                    None if deadline is None else deadline - monotonic()
+                )
+                if remaining is not None and remaining <= 0:
+                    break
+                completed, _ = wait(
+                    pending,
+                    timeout=min(0.05, remaining) if remaining is not None else 0.05,
+                )
+                done.update(completed)
+                pending.difference_update(completed)
             fetched: list[WebSearchResult] = []
             for future, result in futures.items():
                 if future not in done:
@@ -359,7 +415,12 @@ class DuckDuckGoClient:
                     )
             return fetched
         finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+            for future in pending:
+                future.cancel()
+            if pending:
+                completed, _ = wait(pending, timeout=0.5)
+                pending.difference_update(completed)
+            executor.shutdown(wait=not pending, cancel_futures=True)
 
 
 def _health_error(checked_at: datetime, code: str) -> WebSearchHealth:
@@ -580,3 +641,11 @@ def _remaining_timeout(deadline: float | None) -> float | None:
     if deadline is None:
         return None
     return max(0.001, deadline - monotonic())
+
+
+def _user_cancelled(stop_event: Event | None) -> bool:
+    """区分用户取消与来源截止信号。"""
+    if stop_event is None:
+        return False
+    marker = getattr(stop_event, "user_is_set", None)
+    return bool(marker()) if callable(marker) else stop_event.is_set()
