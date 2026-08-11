@@ -1,8 +1,8 @@
 """持久化文档摄取状态机（Issue 17，GQ-05 迁移）。
 
 把账户内的安全对象转换为可追溯、可恢复的本地检索材料：入队 → 解析
-（账户内同内容复用解析缓存）→ 哈希分块 → 向量化（凭据来源为唯一的
-全局百炼运行凭据，GQ-01/GQ-05）→ 写入版本化全文/向量索引。失败保留
+（账户内同内容复用解析缓存；图片可经 OCR 端口提取文字）→ 哈希分块
+→ 向量化（凭据来源为唯一的全局百炼运行凭据，GQ-01/GQ-05）→ 写入版本化全文/向量索引。失败保留
 原文件与中文原因，可从失败阶段安全重试且不产生重复分块；后台执行器
 重启后按租约自动恢复未完成任务，重复领取保持幂等。Embedding 可用性
 由运行时是否成功构造全局端口决定，不再依赖账户探测快照；调用失败时
@@ -25,6 +25,7 @@ from bridges.contracts.knowledge_base import KnowledgeBaseMaterialProjection
 from bridges.ingestion.chunker import TextChunk, chunk_document
 from bridges.ingestion.embedding import EmbeddingError, EmbeddingPort
 from bridges.ingestion.index import IndexWriteError, VersionedIndex, build_index_status
+from bridges.ingestion.ocr import OcrError, OcrPort
 from bridges.ingestion.parsers import (
     DOCX_PARSER_VERSION,
     IMAGE_PARSER_VERSION,
@@ -149,7 +150,7 @@ class IngestionService:
 
     API 进程只使用入队/重试/投影路径（只读数据库 + 全局 Embedding
     端口可用性）；后台执行器进程使用领取/处理/索引维护路径（解析、
-    向量化与版本化索引）。
+    图片 OCR、向量化与版本化索引）。
     """
 
     def __init__(
@@ -158,12 +159,14 @@ class IngestionService:
         database: BridgesDatabase,
         object_repository: BridgesObjectRepository,
         embedding: EmbeddingPort | None = None,
+        ocr: OcrPort | None = None,
         index: VersionedIndex | None = None,
         task_queue: TaskQueue | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
         self._embedding = embedding
+        self._ocr = ocr
         self._index = index
         # Issue 43：领取/租约/退避/崩溃恢复由统一任务队列承担；本服务
         # 只提供「处理这一份文档」的 handler。
@@ -842,7 +845,20 @@ class IngestionService:
                 return ParsedDocument.from_json(str(cache["parsed_json"]))
             except (ValueError, TypeError, KeyError):
                 pass  # 缓存损坏则重新解析
-        parsed = parse_document(content, filename, media_type)
+        ocr_text: str | None = None
+        if media_type.startswith("image/") and self._ocr is not None:
+            try:
+                ocr_text = self._ocr.extract(account_id, content, media_type)
+            except OcrError:
+                # 图片 OCR 失败时保留元数据并由解析器追加诚实标记；OCR
+                # 是可选增强，不得把材料推进 error。
+                ocr_text = None
+        parsed = parse_document(
+            content,
+            filename,
+            media_type,
+            ocr_text=ocr_text,
+        )
         with self._database.transaction():
             self._database.connection.execute(
                 "INSERT INTO document_parse_cache"

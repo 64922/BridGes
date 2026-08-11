@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
+from bridges.ingestion.ocr import OcrPort
 from bridges.ingestion.service import IngestionService
 from bridges.storage import (
     BridgesDatabase,
@@ -52,6 +53,7 @@ def make_ingestion(
     *,
     embedding_available: bool = True,
     embedding: DeterministicEmbeddingPort | None = None,
+    ocr: OcrPort | None = None,
     dimensions: int = 1024,
 ) -> tuple[IngestionService, DeterministicEmbeddingPort]:
     """构造摄取服务；``embedding_available=False`` 时不注入 Embedding 端口。
@@ -67,6 +69,7 @@ def make_ingestion(
         database=database,
         object_repository=repository,
         embedding=embedding if embedding_available else None,
+        ocr=ocr,
         index=index,
     )
     return service, embedding

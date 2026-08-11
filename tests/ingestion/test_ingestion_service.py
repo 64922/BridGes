@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from conftest import (
@@ -11,11 +12,43 @@ from conftest import (
 
 from bridges.contracts.ingestion import DocumentIngestionStatus
 from bridges.ingestion.embedding import DeterministicEmbeddingPort, EmbeddingError
+from bridges.ingestion.ocr import OcrError
 from bridges.ingestion.service import IngestionService
 
 TEXT_CONTENT = "这是一份测试文档。\n\n包含两个段落，用于验证分块与索引。\n"
 #: TEXT_CONTENT 在目标块长内合并为一个分块。
 EXPECTED_CHUNKS = 1
+IMAGE_CONTENT = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\x0dIHDR"
+    b"\x00\x00\x03\x20\x00\x00\x02\x58"
+    b"\x08\x06\x00\x00\x00"
+    b"\x00" * 40
+)
+
+
+def upload_image(storage, account_id: str, filename: str = "题目.png") -> str:
+    stored = storage["repository"].create_object(
+        account_id,
+        filename,
+        IMAGE_CONTENT,
+        media_type="image/png",
+    )
+    return stored.object_id
+
+
+class _FakeOcrPort:
+    def __init__(self, text: str | None = None, error: bool = False) -> None:
+        self.text = text
+        self.error = error
+        self.calls: list[tuple[str, bytes, str]] = []
+
+    def extract(self, account_id: str, content: bytes, media_type: str) -> str:
+        self.calls.append((account_id, content, media_type))
+        if self.error:
+            raise OcrError("图片文字识别失败：服务暂时不可用。")
+        assert self.text is not None
+        return self.text
 
 
 def _ready_projection(service: IngestionService, account_id: str, object_id: str):
@@ -427,3 +460,138 @@ def test_object_deletion_decrements_index_version_counts(storage) -> None:
     assert active is not None
     assert int(active["chunk_count"]) == 0
     assert int(active["vector_count"]) == 0
+
+
+def test_image_ocr_text_is_indexed_and_material_is_ready(storage) -> None:
+    ocr = _FakeOcrPort("三角形面积公式 S=ah/2")
+    service, _ = make_ingestion(storage, ocr=ocr)
+    account_id = storage["account_a"]
+    object_id = upload_image(storage, account_id)
+
+    service.enqueue(account_id, object_id)
+    service.process_pending()
+
+    projection = _ready_projection(service, account_id, object_id)
+    assert projection.status == DocumentIngestionStatus.READY
+    assert projection.failure_reason is None
+    assert len(ocr.calls) == 1
+    assert ocr.calls[0][0] == account_id
+    assert ocr.calls[0][1] == IMAGE_CONTENT
+    assert ocr.calls[0][2] == "image/png"
+    row = storage["database"].connection.execute(
+        "SELECT content FROM document_chunks WHERE document_id = ?",
+        (projection.document_id,),
+    ).fetchone()
+    assert row is not None
+    assert "三角形面积公式 S=ah/2" in str(row["content"])
+
+
+def test_image_ocr_failure_falls_back_honestly_and_stays_ready(storage) -> None:
+    ocr = _FakeOcrPort(error=True)
+    service, _ = make_ingestion(storage, ocr=ocr)
+    account_id = storage["account_a"]
+    object_id = upload_image(storage, account_id)
+
+    service.enqueue(account_id, object_id)
+    service.process_pending()
+
+    projection = _ready_projection(service, account_id, object_id)
+    assert projection.status == DocumentIngestionStatus.READY
+    assert projection.failure_stage is None
+    row = storage["database"].connection.execute(
+        "SELECT content FROM document_chunks WHERE document_id = ?",
+        (projection.document_id,),
+    ).fetchone()
+    assert row is not None
+    content = str(row["content"])
+    assert "图片内容未做文字识别" in content
+    assert "题目.png" in content
+
+
+def test_image_ocr_without_port_falls_back_honestly_and_stays_ready(storage) -> None:
+    service, _ = make_ingestion(storage, ocr=None)
+    account_id = storage["account_a"]
+    object_id = upload_image(storage, account_id)
+
+    service.enqueue(account_id, object_id)
+    service.process_pending()
+
+    projection = _ready_projection(service, account_id, object_id)
+    assert projection.status == DocumentIngestionStatus.READY
+    row = storage["database"].connection.execute(
+        "SELECT content FROM document_chunks WHERE document_id = ?",
+        (projection.document_id,),
+    ).fetchone()
+    assert row is not None
+    assert "图片内容未做文字识别" in str(row["content"])
+
+
+def test_image_parse_cache_version_expiry_reparses_with_ocr(storage) -> None:
+    ocr = _FakeOcrPort("缓存失效后重新识别")
+    service, _ = make_ingestion(storage, ocr=ocr)
+    account_id = storage["account_a"]
+    object_id = upload_image(storage, account_id)
+    service.enqueue(account_id, object_id)
+
+    object_row = storage["database"].connection.execute(
+        "SELECT content_hash FROM objects WHERE object_id = ?", (object_id,)
+    ).fetchone()
+    assert object_row is not None
+    legacy_text = "图片：题目.png\n类型：image/png\n尺寸：800×600 像素\n大小：52 字节\n"
+    legacy = {
+        "title": "题目",
+        "text": legacy_text,
+        "spans": [{"start": 0, "end": len(legacy_text), "page": None, "section": None}],
+        "page_count": 0,
+        "section_count": 0,
+        "parser_version": "image-metadata-v1",
+    }
+
+    with storage["database"].transaction():
+        storage["database"].connection.execute(
+            "INSERT INTO document_parse_cache"
+            " (account_id, content_hash, parser_version, parsed_json, created_at)"
+            " VALUES (?, ?, ?, ?, datetime('now'))",
+            (
+                account_id,
+                str(object_row["content_hash"]),
+                "image-metadata-v1",
+                json.dumps(legacy, ensure_ascii=False),
+            ),
+        )
+
+    service.process_pending()
+
+    projection = _ready_projection(service, account_id, object_id)
+    assert projection.status == DocumentIngestionStatus.READY
+    assert len(ocr.calls) == 1
+    row = storage["database"].connection.execute(
+        "SELECT content FROM document_chunks WHERE document_id = ?",
+        (projection.document_id,),
+    ).fetchone()
+    assert row is not None
+    assert "缓存失效后重新识别" in str(row["content"])
+
+
+def test_same_image_content_reuses_ocr_parse_cache(storage) -> None:
+    ocr = _FakeOcrPort("相同图片内容")
+    service, _ = make_ingestion(storage, ocr=ocr)
+    account_id = storage["account_a"]
+    object_1 = upload_image(storage, account_id, "第一张.png")
+    object_2 = storage["repository"].create_object(
+        account_id,
+        "第二张.png",
+        IMAGE_CONTENT,
+        media_type="image/png",
+    ).object_id
+
+    service.enqueue(account_id, object_1)
+    service.enqueue(account_id, object_2)
+    service.process_pending()
+
+    assert len(ocr.calls) == 1
+    rows = storage["database"].connection.execute(
+        "SELECT COUNT(*) AS count FROM document_chunks WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert rows is not None and int(rows["count"]) == 2
