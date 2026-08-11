@@ -43,14 +43,37 @@ def _build_v42_database(path: Path) -> None:
         )
 
 
-def test_v43_migration_preserves_records_and_adds_default_evidence_fields(
+def test_v44_migration_preserves_records_and_adds_default_evidence_fields(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "bridges.db"
     _build_v42_database(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO profile_extraction_runs ("
+            "extraction_id, account_id, message_id, extractor_version, source_hash, "
+            "source_snapshot, status, attempts, record_ids_json, observed_count, "
+            "last_error, created_at, updated_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "failed-run",
+                "account-alice",
+                "message-1",
+                "profile-auto-v1",
+                "hash-1",
+                "snapshot",
+                "exhausted",
+                3,
+                "[]",
+                0,
+                "client_error_400",
+                "2026-08-01T00:00:00+00:00",
+                "2026-08-01T00:00:00+00:00",
+            ),
+        )
 
     database = BridgesDatabase(path)
-    assert database.initialize() == SCHEMA_VERSION == 43
+    assert database.initialize() == SCHEMA_VERSION == 44
 
     columns = {
         str(row[1])
@@ -65,6 +88,17 @@ def test_v43_migration_preserves_records_and_adds_default_evidence_fields(
         "correction_count",
         "change_note",
     } <= columns
+    extraction_columns = {
+        str(row[1])
+        for row in database.connection.execute(
+            "PRAGMA table_info(profile_extraction_runs)"
+        ).fetchall()
+    }
+    assert "outcome" in extraction_columns
+    outcome = database.connection.execute(
+        "SELECT outcome FROM profile_extraction_runs WHERE extraction_id = 'failed-run'"
+    ).fetchone()
+    assert outcome["outcome"] == "permanent_failure"
 
     row = database.connection.execute(
         "SELECT content, confidence, evidence_quote, evidence_message_id, "

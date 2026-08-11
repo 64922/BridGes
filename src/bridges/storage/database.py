@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 43
+SCHEMA_VERSION = 44
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2122,6 +2122,27 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_profile_extraction_privacy_blocks_account
         ON profile_extraction_privacy_blocks(account_id, scope, normalized_value)
+        """,
+    ],
+    # Issue 07: persist the stable extraction outcome separately from queue status.
+    44: [
+        (
+            "ALTER TABLE profile_extraction_runs "
+            "ADD COLUMN outcome TEXT NOT NULL DEFAULT 'succeeded_empty'"
+        ),
+        """
+        UPDATE profile_extraction_runs
+        SET outcome = CASE
+            WHEN status IN ('pending', 'running') THEN 'pending_retry'
+            WHEN status = 'exhausted'
+                AND last_error IS NOT NULL
+                AND last_error NOT LIKE '用户已停止%'
+                AND last_error NOT LIKE '原消息已撤回%'
+                THEN 'permanent_failure'
+            WHEN record_ids_json <> '[]' THEN 'succeeded_written'
+            WHEN observed_count > 0 THEN 'succeeded_observed'
+            ELSE 'succeeded_empty'
+        END
         """,
     ],
 }

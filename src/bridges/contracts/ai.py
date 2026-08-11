@@ -8,7 +8,7 @@ immutable model or tool run lock that can be replayed, audited and compared.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -27,6 +27,13 @@ class CapabilityStatus(str, Enum):
     VERIFIED = "verified"
     DEPRECATED = "deprecated"
     DISABLED = "disabled"
+
+
+class StructuredOutputFormat(StrEnum):
+    """Structured response format declared by a model capability."""
+
+    JSON_OBJECT = "json_object"
+    JSON_SCHEMA = "json_schema"
 
 
 class ModelCallStatus(str, Enum):
@@ -97,6 +104,10 @@ class CapabilityRecord(BaseModel):
     )
     input_schema_version: str = Field(description="Version of the input contract.")
     output_schema_version: str = Field(description="Version of the output contract.")
+    structured_output_format: StructuredOutputFormat | None = Field(
+        default=None,
+        description="Provider-supported structured response format, when applicable.",
+    )
     max_input_tokens: int | None = Field(default=None, description="Maximum input tokens if known.")
     supported_modalities: list[str] = Field(
         default_factory=lambda: ["text"],

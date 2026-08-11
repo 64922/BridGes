@@ -13,6 +13,8 @@ import json
 from collections.abc import Iterator
 from typing import Any
 
+from pydantic import ValidationError
+
 from bridges.ai.adapters import (
     AdapterError,
     AdapterResult,
@@ -20,7 +22,12 @@ from bridges.ai.adapters import (
     StreamChunk,
 )
 from bridges.ai.qwen_client import QwenApiClient, first_choice
-from bridges.contracts.ai import CapabilityRecord
+from bridges.contracts.ai import CapabilityRecord, StructuredOutputFormat
+from bridges.contracts.profile_extraction import (
+    ProfileExtractionAction,
+    ProfileExtractionOutput,
+)
+from bridges.contracts.profiles import FourDimension
 from bridges.contracts.workflows import RunContextEnvelope
 
 
@@ -135,7 +142,7 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
         payload: dict[str, Any],
     ) -> AdapterResult:
         messages = self._build_messages(payload)
-        response_format = self._build_response_format(payload)
+        response_format = self._build_response_format(capability, payload)
         request_body = {
             "model": capability.model_id,
             "messages": messages,
@@ -146,7 +153,37 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
 
         response_body = self._client.chat_completions(request_body)
         choice = first_choice(response_body)
-        content = choice.get("message", {}).get("content", "")
+        message = choice.get("message")
+        contract_error_code = (
+            "profile_extraction_contract_invalid"
+            if payload.get("output_contract") == "profile-extraction-v1"
+            else "structured_output_contract_invalid"
+        )
+        if choice.get("finish_reason") in {"content_filter", "safety"}:
+            raise AdapterError(
+                code="safety_refusal",
+                message="Qwen refused the structured output request.",
+                retryable=False,
+            )
+        if not isinstance(message, dict):
+            raise AdapterError(
+                code=contract_error_code,
+                message="Structured output response did not contain a message object.",
+                retryable=False,
+            )
+        if message.get("refusal") is not None:
+            raise AdapterError(
+                code="safety_refusal",
+                message="Qwen refused the structured output request.",
+                retryable=False,
+            )
+        content = message.get("content")
+        if not isinstance(content, str):
+            raise AdapterError(
+                code=contract_error_code,
+                message="Structured output content must be a string.",
+                retryable=False,
+            )
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as exc:
@@ -155,11 +192,61 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
                 message=f"Model output was not valid JSON: {exc}",
                 retryable=False,
             ) from exc
+        if not isinstance(parsed, dict):
+            raise AdapterError(
+                code=contract_error_code,
+                message="Structured output must be a JSON object.",
+                retryable=False,
+            )
+        if payload.get("output_contract") == "profile-extraction-v1":
+            if "items" not in parsed:
+                raise AdapterError(
+                    code="profile_extraction_contract_invalid",
+                    message="Profile extraction output must contain items.",
+                    retryable=False,
+                )
+            try:
+                self._validate_profile_extraction_json_types(parsed)
+                ProfileExtractionOutput.model_validate(parsed)
+            except ValidationError as exc:
+                raise AdapterError(
+                    code="profile_extraction_contract_invalid",
+                    message="Profile extraction output did not match its contract.",
+                    retryable=False,
+                ) from exc
+            except ValueError as exc:
+                raise AdapterError(
+                    code="profile_extraction_contract_invalid",
+                    message="Profile extraction output did not match its contract.",
+                    retryable=False,
+                ) from exc
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,
             output=parsed,
             usage=response_body.get("usage"),
         )
+
+    @staticmethod
+    def _validate_profile_extraction_json_types(payload: dict[str, Any]) -> None:
+        items = payload.get("items")
+        if not isinstance(items, list):
+            raise ValueError("items must be a JSON array")
+        dimensions = {dimension.value for dimension in FourDimension}
+        actions = {action.value for action in ProfileExtractionAction}
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("items must contain JSON objects")
+            if not isinstance(item.get("dimension"), str) or item["dimension"] not in dimensions:
+                raise ValueError("dimension must be a known string enum")
+            if not isinstance(item.get("normalized_value"), str):
+                raise ValueError("normalized_value must be a string")
+            if not isinstance(item.get("evidence_ref"), str):
+                raise ValueError("evidence_ref must be a string")
+            reliability = item.get("reliability")
+            if isinstance(reliability, bool) or not isinstance(reliability, (int, float)):
+                raise ValueError("reliability must be a number")
+            if not isinstance(item.get("action"), str) or item["action"] not in actions:
+                raise ValueError("action must be a known string enum")
 
     def _build_messages(self, payload: dict[str, Any]) -> list[dict[str, str]]:
         if "messages" in payload:
@@ -178,16 +265,36 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
             {"role": "user", "content": user_content},
         ]
 
-    def _build_response_format(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _build_response_format(
+        self, capability: CapabilityRecord, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        declared_format = capability.structured_output_format
         if "response_format" in payload:
             response_format = payload["response_format"]
             if isinstance(response_format, dict):
+                if (
+                    declared_format == StructuredOutputFormat.JSON_OBJECT
+                    and response_format.get("type") == StructuredOutputFormat.JSON_SCHEMA
+                ):
+                    raise AdapterError(
+                        code="unsupported_structured_output_format",
+                        message="This capability only supports JSON object output.",
+                        retryable=False,
+                    )
                 return response_format
             raise AdapterError(
                 code="invalid_response_format",
                 message="response_format must be a JSON object.",
                 retryable=False,
             )
+        if declared_format == StructuredOutputFormat.JSON_OBJECT:
+            if "json_schema" in payload:
+                raise AdapterError(
+                    code="unsupported_structured_output_format",
+                    message="This capability only supports JSON object output.",
+                    retryable=False,
+                )
+            return {"type": "json_object"}
         if "json_schema" in payload:
             return {
                 "type": "json_schema",

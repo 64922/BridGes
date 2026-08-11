@@ -44,8 +44,8 @@ from bridges.api import (
     science,
     scope,
     search,
-    skills,
     sharing,
+    skills,
     sync,
     vault,
     workflows,
@@ -67,16 +67,16 @@ from bridges.chat import (
     ChatService,
     ConversationRepository,
 )
-from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.routing import NaturalLanguageImageRouter
+from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
 from bridges.config import Settings, get_settings
-from bridges.retirement import retire_user_extensions
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
     RetryPolicy,
+    StructuredOutputFormat,
 )
 from bridges.contracts.domain import (
     PackImpactAction,
@@ -177,7 +177,7 @@ from bridges.profiles.api import router as profiles_router
 from bridges.profiles.legacy_api import router as legacy_profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
-from bridges.retirement import CompatibilityMetrics, run_reminder_retirement
+from bridges.retirement import CompatibilityMetrics, retire_user_extensions, run_reminder_retirement
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.science import (
     ClaimEvidenceService,
@@ -263,9 +263,11 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             model_id="qwen3.6-flash",
             input_schema_version="profile-message-v1",
             output_schema_version="profile-extraction-v1",
+            structured_output_format=StructuredOutputFormat.JSON_OBJECT,
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=1, backoff_seconds=0),
             prompt_version="2026-08-09",
+            validation_probe_version="profile-json-object-v1",
         )
     )
     # T061: real Qwen OCR and vision capabilities for media/science ingestion.
@@ -619,6 +621,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # ``BridGes start`` 直接启动 API，也不会出现 "ready=pass、模型不可用"
     # 的半启动实例。test 环境由确定性适配器驱动，豁免此门。
     app.state.qwen_key_error = None
+    app.state.profile_capability_canary_error = None
     settings_for_qwen_gate = app.state.settings
     if (
         settings_for_qwen_gate is not None
@@ -703,6 +706,45 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 )
             )
             projection.ready = HealthStatus.FAIL
+        settings = getattr(app.state, "settings", None)
+        if settings is None or settings.environment.lower() != "test":
+            profile_capability_error = getattr(
+                getattr(app.state, "automatic_profile_service", None),
+                "capability_degraded_reason",
+                None,
+            )
+            profile_capability_error = profile_capability_error or getattr(
+                app.state, "profile_capability_canary_error", None
+            )
+            capability_registry = getattr(app.state, "capability_registry", None)
+            model_gateway = getattr(app.state, "model_gateway", None)
+            if capability_registry is None or model_gateway is None:
+                profile_capability_error = profile_capability_error or "not_bound"
+            else:
+                try:
+                    profile_capability = capability_registry.get(
+                        "qwen_profile_extraction", "1"
+                    )
+                    if profile_capability.status != CapabilityStatus.VERIFIED:
+                        profile_capability_error = profile_capability_error or "not_verified"
+                    elif not profile_capability.validation_probe_version:
+                        profile_capability_error = profile_capability_error or "canary_not_configured"
+                    elif not model_gateway.is_adapter_registered(
+                        "qwen_profile_extraction", "1"
+                    ):
+                        profile_capability_error = profile_capability_error or "not_bound"
+                except Exception:  # noqa: BLE001 - 健康检查必须继续返回结构化结果
+                    profile_capability_error = profile_capability_error or "not_registered"
+            if profile_capability_error:
+                projection.dependencies.append(
+                    DependencyHealth(
+                        name="profile_extraction",
+                        status=HealthStatus.FAIL,
+                        required=False,
+                        message="画像整理能力当前不可用。",
+                    )
+                )
+                projection.degraded = HealthStatus.FAIL
         # Issue 05: 配置了版本化数据库时，把 bridges.db 健康度作为可选依赖
         # 上报；数据库不可查询时进入降级状态而非静默成功。
         bridges_database = getattr(app.state, "bridges_database", None)
@@ -1057,6 +1099,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             if profile_database is not None
             else None
         ),
+        observability_service=app.state.observability_service,
     )
 
     # Issue 11: 持久化流式聊天纵向切片。对话/消息/运行锁写入 bridges.db；

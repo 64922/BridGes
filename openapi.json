@@ -12304,6 +12304,66 @@
         }
       }
     },
+    "/profiles/status": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Profile Status",
+        "description": "Return only the current account's extraction and record status.",
+        "operationId": "profile_status_profiles_status_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileStatusProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profiles/four-dimensions/{record_id}": {
       "patch": {
         "tags": [
@@ -44022,7 +44082,7 @@
           "version": {
             "type": "string",
             "title": "Version",
-            "default": "2026.08.09"
+            "default": "2026.08.12"
           },
           "normalized_query": {
             "type": "string",
@@ -44032,6 +44092,22 @@
           },
           "constraints": {
             "$ref": "#/components/schemas/PaperSearchConstraints"
+          },
+          "removed_categories": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "instruction_scaffold",
+                "code",
+                "credential",
+                "private_material",
+                "email",
+                "url"
+              ]
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Removed Categories"
           }
         },
         "additionalProperties": false,
@@ -44403,6 +44479,40 @@
         ],
         "title": "ProfileError",
         "description": "Uniform profile error response."
+      },
+      "ProfilePageStatus": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "empty",
+          "pending",
+          "failed"
+        ],
+        "title": "ProfilePageStatus",
+        "description": "Account-scoped status projected to the profile page."
+      },
+      "ProfileStatusProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ProfilePageStatus"
+          },
+          "has_records": {
+            "type": "boolean",
+            "title": "Has Records"
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "has_records"
+        ],
+        "title": "ProfileStatusProjection",
+        "description": "Minimal current-account aggregate for the profile page."
       },
       "Project": {
         "properties": {

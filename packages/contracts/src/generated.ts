@@ -2604,6 +2604,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Profile Status
+         * @description Return only the current account's extraction and record status.
+         */
+        get: operations["profile_status_profiles_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/four-dimensions/{record_id}": {
         parameters: {
             query?: never;
@@ -16732,12 +16752,14 @@ export interface components {
         PaperSearchPlan: {
             /**
              * Version
-             * @default 2026.08.09
+             * @default 2026.08.12
              */
             version: string;
             /** Normalized Query */
             normalized_query: string;
             constraints: components["schemas"]["PaperSearchConstraints"];
+            /** Removed Categories */
+            removed_categories?: ("instruction_scaffold" | "code" | "credential" | "private_material" | "email" | "url")[];
         };
         /**
          * PatchAction
@@ -16970,6 +16992,26 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ProfilePageStatus
+         * @description Account-scoped status projected to the profile page.
+         * @enum {string}
+         */
+        ProfilePageStatus: "ready" | "empty" | "pending" | "failed";
+        /**
+         * ProfileStatusProjection
+         * @description Minimal current-account aggregate for the profile page.
+         */
+        ProfileStatusProjection: {
+            status: components["schemas"]["ProfilePageStatus"];
+            /** Has Records */
+            has_records: boolean;
+            /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
         };
         /**
          * Project
@@ -20934,7 +20976,10 @@ export interface components {
             /** @default none */
             required_search: components["schemas"]["TeachingSearchSource"];
             search_status?: components["schemas"]["TeachingCardStatus"] | null;
-            /** Search Error Code */
+            /**
+             * Search Error Code
+             * @description 公开搜索失败的稳定错误码，不包含提供方正文。
+             */
             search_error_code?: string | null;
             /**
              * Gap
@@ -22446,6 +22491,12 @@ export interface components {
             claim_id?: string | null;
         };
         /**
+         * WebSearchPageClassification
+         * @description DuckDuckGo 响应页面的确定性分类。
+         * @enum {string}
+         */
+        WebSearchPageClassification: "normal_results" | "normal_empty" | "challenge" | "invalid";
+        /**
          * WebSearchProjection
          * @description 聊天消息与 SSE 使用的公网搜索状态投影。
          */
@@ -22489,10 +22540,7 @@ export interface components {
              * @description 提供方 HTTP 状态类别，例如 2xx、4xx。
              */
             http_status_category?: string | null;
-            /**
-             * Page Classification
-             * @description 提供方页面分类，不保存页面正文。
-             */
+            /** @description 提供方页面分类，不保存页面正文。 */
             page_classification?: components["schemas"]["WebSearchPageClassification"] | null;
             /**
              * Cooldown Until
@@ -22655,12 +22703,6 @@ export interface components {
          * @enum {string}
          */
         WebSearchStatus: "loading" | "success" | "partial" | "empty" | "fetch_error" | "evidence_insufficient" | "source_conflict" | "error" | "permission" | "recovery" | "cancelled";
-        /**
-         * WebSearchPageClassification
-         * @description DuckDuckGo 响应页面的确定性分类。
-         * @enum {string}
-         */
-        WebSearchPageClassification: "normal_results" | "normal_empty" | "challenge" | "invalid";
         /**
          * WebSearchVerification
          * @description 单个来源的确定性证据状态。
@@ -31276,6 +31318,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FourDimensionProfileProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_status_profiles_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileStatusProjection"];
                 };
             };
             /** @description Unauthorized */

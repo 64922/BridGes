@@ -12,17 +12,23 @@ from contextlib import AbstractContextManager, ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from bridges.ai import ModelGateway
 from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import (
     AutomaticProfileObservation,
     ProfileExtractionAction,
+    ProfileExtractionOutcome,
     ProfileExtractionOutput,
     ProfileExtractionRetryTask,
     ProfileExtractionRun,
     ProfileExtractionStatus,
+    ProfilePageStatus,
     ProfilePreprocessResult,
     ProfilePrivacyNotice,
+    ProfileStatusProjection,
 )
 from bridges.contracts.profiles import (
     FourDimension,
@@ -36,6 +42,7 @@ from bridges.contracts.profiles import (
 )
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.observability.service import ObservabilityService
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -58,6 +65,41 @@ AUTOMATIC_PRIVACY_NOTICE_TEXT = (
 )
 PROFILE_EXTRACTION_QUEUE = "profile-extraction"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
+_TRANSIENT_PROFILE_ERROR_CODES = frozenset(
+    {
+        "network_error",
+        "region_error",
+        "rate_limit",
+        "transient",
+        "profile_extraction_transient_failure",
+        "profile_extraction_unexpected",
+    }
+)
+_PERMANENT_PROFILE_ERROR_CODES = frozenset(
+    {
+        "auth_error",
+        "client_error_400",
+        "empty_response",
+        "capability_not_verified",
+        "no_adapter",
+        "profile_extraction_contract_invalid",
+        "profile_extraction_evidence_mismatch",
+        "profile_extraction_failed",
+        "profile_extraction_forbidden_value",
+        "profile_extraction_observation_classification_invalid",
+        "profile_extraction_self_statement_missing",
+        "profile_extraction_privacy_blocked",
+        "profile_extraction_source_invalidated",
+        "profile_extraction_source_missing",
+        "profile_extraction_version_unavailable",
+        "safety_refusal",
+        "structured_output_contract_invalid",
+        "structured_output_parse_failed",
+        "invalid_response_format",
+        "unregistered_capability",
+        "unsupported_structured_output_format",
+    }
+)
 _KNOWLEDGE_PROMOTION_WINDOW = timedelta(days=90)
 _MAX_SLICE_ITEMS = 6
 _MAX_EVIDENCE_QUOTE_LENGTH = 240
@@ -94,6 +136,14 @@ _HOBBY_TERMS = frozenset(
 class AutomaticProfileError(RuntimeError):
     """自动抽取失败；调用方应保留聊天主流程并安排重试。"""
 
+    def __init__(
+        self, code: str, message: str | None = None, *, retryable: bool = True
+    ) -> None:
+        self.code = code
+        self.message = message or code
+        self.retryable = retryable
+        super().__init__(self.message)
+
 
 class AutomaticProfileExtractor(Protocol):
     """一次只处理一条消息的抽取器接缝。"""
@@ -125,6 +175,9 @@ class AutomaticProfileRepository(ABC):
 
     @abstractmethod
     def save_run(self, run: ProfileExtractionRun) -> ProfileExtractionRun: ...
+
+    @abstractmethod
+    def list_runs(self, account_id: str | None = None) -> list[ProfileExtractionRun]: ...
 
     @abstractmethod
     def get_task(
@@ -483,20 +536,40 @@ class GatewayAutomaticProfileExtractor:
                     },
                     {"role": "user", "content": content},
                 ],
-                "json_schema": ProfileExtractionOutput.model_json_schema(),
+                "output_contract": "profile-extraction-v1",
+                "response_format": {"type": "json_object"},
                 "temperature": 0,
                 "max_tokens": 512,
             },
         )
+        if result.status == ModelCallStatus.RETRYABLE_FAIL:
+            error_code = result.error_code or "profile_extraction_transient_failure"
+            raise AutomaticProfileError(
+                error_code,
+                result.error_message or error_code,
+                retryable=True,
+            )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "profile_extraction_failed"
-            if result.error_message and error_code not in result.error_message:
-                error_code = f"{error_code}: {result.error_message}"
-            raise AutomaticProfileError(error_code)
+            retryable = error_code in {
+                "network_error",
+                "region_error",
+                "rate_limit",
+                "transient",
+            }
+            raise AutomaticProfileError(
+                error_code,
+                f"{error_code}: {result.error_message or error_code}",
+                retryable=retryable,
+            )
         try:
             return ProfileExtractionOutput.model_validate(result.output)
-        except Exception as exc:  # noqa: BLE001 - 合同错误进入持久重试
-            raise AutomaticProfileError("profile_extraction_contract_invalid") from exc
+        except Exception as exc:  # noqa: BLE001 - 合同错误不重复发送相同请求
+            raise AutomaticProfileError(
+                "profile_extraction_contract_invalid",
+                "Profile extraction output did not match its contract.",
+                retryable=False,
+            ) from exc
 
 
 class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
@@ -554,6 +627,16 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
             )
         ] = run
         return run
+
+    def list_runs(self, account_id: str | None = None) -> list[ProfileExtractionRun]:
+        return sorted(
+            (
+                run
+                for run in self._runs.values()
+                if account_id is None or run.account_id == account_id
+            ),
+            key=lambda run: run.created_at,
+        )
 
     def get_task(
         self, account_id: str, message_id: str, version: str, source_hash: str
@@ -684,6 +767,7 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             source_hash=str(row["source_hash"]),
             source_snapshot=str(row["source_snapshot"]),
             status=ProfileExtractionStatus(str(row["status"])),
+            outcome=ProfileExtractionOutcome(str(row["outcome"])),
             attempts=int(row["attempts"]),
             committed_record_ids=json.loads(str(row["record_ids_json"])),
             observed_count=int(row["observed_count"]),
@@ -722,7 +806,16 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
 
     def save_run(self, run: ProfileExtractionRun) -> ProfileExtractionRun:
         self.database.scoped(run.account_id).execute(
-            "INSERT INTO profile_extraction_runs (extraction_id, account_id, message_id, extractor_version, source_hash, source_snapshot, status, attempts, record_ids_json, observed_count, last_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(extraction_id) DO UPDATE SET status=excluded.status, attempts=excluded.attempts, record_ids_json=excluded.record_ids_json, observed_count=excluded.observed_count, last_error=excluded.last_error, updated_at=excluded.updated_at",
+            "INSERT INTO profile_extraction_runs ("
+            "extraction_id, account_id, message_id, extractor_version, "
+            "source_hash, source_snapshot, status, outcome, attempts, "
+            "record_ids_json, observed_count, last_error, created_at, updated_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(extraction_id) DO UPDATE SET "
+            "status=excluded.status, outcome=excluded.outcome, "
+            "attempts=excluded.attempts, record_ids_json=excluded.record_ids_json, "
+            "observed_count=excluded.observed_count, last_error=excluded.last_error, "
+            "updated_at=excluded.updated_at",
             (
                 run.extraction_id,
                 run.account_id,
@@ -731,6 +824,7 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
                 run.source_hash,
                 run.source_snapshot,
                 run.status.value,
+                run.outcome.value,
                 run.attempts,
                 json.dumps(run.committed_record_ids),
                 run.observed_count,
@@ -740,6 +834,22 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             ),
         )
         return run
+
+    def list_runs(self, account_id: str | None = None) -> list[ProfileExtractionRun]:
+        if account_id is None:
+            rows = self.database.connection.execute(
+                "SELECT * FROM profile_extraction_runs ORDER BY created_at"
+            ).fetchall()
+        else:
+            rows = (
+                self.database.scoped(account_id)
+                .execute(
+                    "SELECT * FROM profile_extraction_runs WHERE account_id = ? ORDER BY created_at",
+                    (account_id,),
+                )
+                .fetchall()
+            )
+        return [self._run(row) for row in rows]
 
     def get_task(
         self, account_id: str, message_id: str, version: str, source_hash: str
@@ -932,6 +1042,7 @@ class AutomaticProfileService:
         slice_repository: ProfileRepository | None = None,
         message_reader: Callable[[str, str], Any | None] | None = None,
         classifier: ProfileSignalClassifier | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self._four_dimensions = four_dimension_service
         self._repository = repository
@@ -939,6 +1050,8 @@ class AutomaticProfileService:
         self._extractor = extractor or RuleBasedAutomaticProfileExtractor(self._classifier)
         self._slice_repository = slice_repository
         self._message_reader = message_reader
+        self._observability = observability_service
+        self._capability_degraded_reason: str | None = None
         self._queue = (
             TaskQueue(repository.database, default_lease_seconds=60)
             if isinstance(repository, SqliteAutomaticProfileRepository)
@@ -946,6 +1059,7 @@ class AutomaticProfileService:
         )
         if self._queue is not None:
             self._queue.set_lease_seconds(PROFILE_EXTRACTION_QUEUE, 60)
+            self._recover_inflight_runs()
 
     @property
     def extractor_version(self) -> str:
@@ -956,6 +1070,144 @@ class AutomaticProfileService:
     @property
     def classifier_version(self) -> str:
         return self._classifier.version
+
+    @property
+    def capability_degraded_reason(self) -> str | None:
+        """Return the latest stable gateway degradation code, if any."""
+
+        return self._capability_degraded_reason
+
+    @staticmethod
+    def _error_code(error: BaseException | str) -> str:
+        if isinstance(error, str):
+            return "profile_extraction_unexpected"
+        code = getattr(error, "code", None)
+        return str(code) if code else "profile_extraction_unexpected"
+
+    @classmethod
+    def _is_retryable_error(cls, error: BaseException | str) -> bool:
+        if isinstance(error, AutomaticProfileError):
+            return error.retryable
+        if isinstance(error, str):
+            return True
+        code = cls._error_code(error)
+        if code in _PERMANENT_PROFILE_ERROR_CODES:
+            return False
+        if code in _TRANSIENT_PROFILE_ERROR_CODES:
+            return True
+        return True
+
+    @staticmethod
+    def _is_permanent_code(code: str) -> bool:
+        return code in _PERMANENT_PROFILE_ERROR_CODES or code.startswith("client_error_")
+
+    @classmethod
+    def _safe_error_code(cls, error: BaseException | str) -> str:
+        return cls._error_code(error)
+
+    def _audit_outcome(
+        self,
+        run: ProfileExtractionRun,
+        *,
+        result: AuditResult,
+        reason: str | None = None,
+    ) -> None:
+        if self._observability is None:
+            return
+        self._observability.record_profile_outcome(
+            outcome=run.outcome.value,
+            reason=reason or run.outcome.value,
+            exhausted=run.status == ProfileExtractionStatus.EXHAUSTED,
+        )
+        self._observability.record_profile_queue_depth(
+            sum(
+                task.status
+                in {ProfileExtractionStatus.PENDING, ProfileExtractionStatus.RUNNING}
+                for task in self._repository.list_tasks(run.account_id)
+            )
+        )
+        self._observability.log_audit(
+            actor_account_id=run.account_id,
+            action=AuditAction.PROFILE_AUTO_WRITE,
+            result=result,
+            reason=reason or run.outcome.value,
+            details={
+                "extraction_id": run.extraction_id,
+                "message_id": run.message_id,
+                "outcome": run.outcome.value,
+                "attempts": run.attempts,
+                "observed_count": run.observed_count,
+                "committed_record_count": len(run.committed_record_ids),
+            },
+        )
+
+    def _recover_inflight_runs(self) -> None:
+        """恢复进程中断时尚未落入重试任务的运行记录。"""
+
+        if self._queue is None:
+            return
+        for run in self._repository.list_runs():
+            if run.status != ProfileExtractionStatus.RUNNING:
+                continue
+            task = self._repository.get_task(
+                run.account_id, run.message_id, run.extractor_version, run.source_hash
+            )
+            if task is not None:
+                continue
+            now = _now()
+            recovery_code = "profile_extraction_recovered_after_restart"
+            task = ProfileExtractionRetryTask(
+                task_id=_stable_id(
+                    "profile-retry",
+                    run.account_id,
+                    run.message_id,
+                    run.extractor_version,
+                    run.source_hash,
+                ),
+                account_id=run.account_id,
+                message_id=run.message_id,
+                extractor_version=run.extractor_version,
+                source_hash=run.source_hash,
+                status=ProfileExtractionStatus.PENDING,
+                attempts=run.attempts,
+                last_error=recovery_code,
+                created_at=now,
+                updated_at=now,
+            )
+            run.status = ProfileExtractionStatus.PENDING
+            run.outcome = ProfileExtractionOutcome.PENDING_RETRY
+            run.last_error = recovery_code
+            run.updated_at = now
+            with self._repository.transaction():
+                self._repository.save_run(run)
+                self._repository.save_task(task)
+                self._queue.enqueue(
+                    PROFILE_EXTRACTION_QUEUE,
+                    task.task_id,
+                    payload={
+                        "account_id": run.account_id,
+                        "message_id": run.message_id,
+                        "extractor_version": run.extractor_version,
+                        "source_hash": run.source_hash,
+                    },
+                )
+
+    @staticmethod
+    def _success_outcome(
+        committed_record_ids: list[str], observed_count: int
+    ) -> ProfileExtractionOutcome:
+        if committed_record_ids:
+            return ProfileExtractionOutcome.SUCCEEDED_WRITTEN
+        if observed_count:
+            return ProfileExtractionOutcome.SUCCEEDED_OBSERVED
+        return ProfileExtractionOutcome.SUCCEEDED_EMPTY
+
+    def _gateway_attempted(
+        self, signal_classification: ProfileSignalClassification
+    ) -> bool:
+        return isinstance(self._extractor, GatewayAutomaticProfileExtractor) and not (
+            signal_classification.is_local
+        )
 
     def preprocess_message(
         self,
@@ -1018,6 +1270,7 @@ class AutomaticProfileService:
                     source_hash=source_hash,
                     source_snapshot=content,
                     status=ProfileExtractionStatus.EXHAUSTED,
+                    outcome=ProfileExtractionOutcome.NO_SIGNAL,
                     attempts=0,
                     last_error="原消息已撤回或被墓碑阻止",
                     created_at=now,
@@ -1029,6 +1282,7 @@ class AutomaticProfileService:
                 ProfileExtractionStatus.EXHAUSTED,
             }:
                 existing.status = ProfileExtractionStatus.EXHAUSTED
+                existing.outcome = ProfileExtractionOutcome.NO_SIGNAL
                 existing.last_error = "原消息已撤回或被墓碑阻止"
                 existing.updated_at = _now()
                 self._repository.save_run(existing)
@@ -1062,6 +1316,7 @@ class AutomaticProfileService:
             source_hash=source_hash,
             source_snapshot=content,
             status=ProfileExtractionStatus.RUNNING,
+            outcome=ProfileExtractionOutcome.PENDING_RETRY,
             attempts=0,
             created_at=now,
             updated_at=now,
@@ -1069,8 +1324,10 @@ class AutomaticProfileService:
         signal_classification = self._classifier.classify(content)
         if not signal_classification.should_process:
             run.status = ProfileExtractionStatus.SUCCEEDED
+            run.outcome = ProfileExtractionOutcome.NO_SIGNAL
             run.updated_at = now
             self._repository.save_run(run)
+            self._audit_outcome(run, result=AuditResult.SUCCESS)
             return ProfilePreprocessResult(run=run)
 
         # 只有真正进入画像判定（明确自述或普通知识提问）时才展示一次说明，
@@ -1102,12 +1359,16 @@ class AutomaticProfileService:
                 run.attempts += 1
                 run.committed_record_ids = record_ids
                 run.observed_count = observed_count
+                run.outcome = self._success_outcome(record_ids, observed_count)
                 run.last_error = None
                 run.updated_at = _now()
                 self._repository.save_run(run)
         except Exception as exc:  # noqa: BLE001 - 抽取是聊天辅助路径
-            return self._schedule_retry(run, notice, str(exc))
+            return self._schedule_retry(run, notice, exc)
 
+        if self._gateway_attempted(signal_classification):
+            self._capability_degraded_reason = None
+        self._audit_outcome(run, result=AuditResult.SUCCESS)
         return ProfilePreprocessResult(
             run=run,
             privacy_notice=notice,
@@ -1143,6 +1404,7 @@ class AutomaticProfileService:
                 source_hash=source_hash,
                 source_snapshot=content,
                 status=ProfileExtractionStatus.EXHAUSTED,
+                outcome=ProfileExtractionOutcome.NO_SIGNAL,
                 attempts=0,
                 last_error=reason,
                 created_at=now,
@@ -1150,9 +1412,11 @@ class AutomaticProfileService:
             )
         else:
             run.status = ProfileExtractionStatus.EXHAUSTED
+            run.outcome = ProfileExtractionOutcome.NO_SIGNAL
             run.last_error = reason
             run.updated_at = now
         self._repository.save_run(run)
+        self._audit_outcome(run, result=AuditResult.SUCCESS, reason="privacy_blocked")
         return ProfilePreprocessResult(
             run=run,
             committed_record_ids=[],
@@ -1171,24 +1435,49 @@ class AutomaticProfileService:
             and signal_classification.is_local
         ):
             extractor = RuleBasedAutomaticProfileExtractor(self._classifier)
-        output = extractor.extract(
-            signal_classification=signal_classification,
-            **kwargs,
-        )
-        if not isinstance(output, ProfileExtractionOutput):
-            output = ProfileExtractionOutput.model_validate(output)
-        return output
+        try:
+            output = extractor.extract(
+                signal_classification=signal_classification,
+                **kwargs,
+            )
+            if not isinstance(output, ProfileExtractionOutput):
+                output = ProfileExtractionOutput.model_validate(output)
+            return output
+        except AutomaticProfileError:
+            raise
+        except ValidationError as exc:
+            raise AutomaticProfileError(
+                "profile_extraction_contract_invalid",
+                "Profile extraction output did not match its contract.",
+                retryable=False,
+            ) from exc
 
     def _schedule_retry(
         self,
         run: ProfileExtractionRun,
         notice: ProfilePrivacyNotice | None,
-        error: str,
+        error: BaseException | str,
     ) -> ProfilePreprocessResult:
         now = _now()
+        error_code = self._safe_error_code(error)
+        if self._is_permanent_code(error_code) or error_code in _TRANSIENT_PROFILE_ERROR_CODES:
+            self._capability_degraded_reason = error_code
+        if not self._is_retryable_error(error):
+            run.status = ProfileExtractionStatus.EXHAUSTED
+            run.outcome = ProfileExtractionOutcome.PERMANENT_FAILURE
+            run.attempts += 1
+            run.last_error = error_code
+            run.updated_at = now
+            self._repository.save_run(run)
+            self._audit_outcome(
+                run, result=AuditResult.BLOCKED, reason=error_code
+            )
+            return ProfilePreprocessResult(run=run, privacy_notice=notice)
+
         run.status = ProfileExtractionStatus.PENDING
+        run.outcome = ProfileExtractionOutcome.PENDING_RETRY
         run.attempts += 1
-        run.last_error = error[:500]
+        run.last_error = error_code
         run.updated_at = now
         task = self._repository.get_task(
             run.account_id, run.message_id, run.extractor_version, run.source_hash
@@ -1212,7 +1501,7 @@ class AutomaticProfileService:
                 updated_at=now,
             )
         task.status = ProfileExtractionStatus.PENDING
-        task.last_error = error[:500]
+        task.last_error = error_code
         task.updated_at = now
         with self._repository.transaction():
             self._repository.save_run(run)
@@ -1228,6 +1517,7 @@ class AutomaticProfileService:
                         "source_hash": run.source_hash,
                     },
                 )
+        self._audit_outcome(run, result=AuditResult.RETRYABLE_FAIL, reason=error_code)
         return ProfilePreprocessResult(run=run, privacy_notice=notice)
 
     def run_retry_tick(self) -> str:
@@ -1301,16 +1591,16 @@ class AutomaticProfileService:
             return task.status
         if task.extractor_version != self.extractor_version:
             return self._exhaust_task(
-                task, run, "原抽取器版本不可用，禁止改用新版本重放"
+                task, run, "profile_extraction_version_unavailable"
             )
         if self._repository.is_message_tombstoned(
             task.account_id, task.message_id
         ) or not self._message_snapshot_is_current(
             task.account_id, task.message_id, task.source_hash
         ):
-            return self._exhaust_task(task, run, "原消息已修改、撤回或被墓碑阻止")
+            return self._exhaust_task(task, run, "profile_extraction_source_invalidated")
         if self._repository.is_recording_blocked(task.account_id):
-            return self._exhaust_task(task, run, "用户已停止产生新的记录")
+            return self._exhaust_task(task, run, "profile_extraction_privacy_blocked")
         task.status = ProfileExtractionStatus.RUNNING
         task.attempts = attempt
         task.updated_at = _now()
@@ -1350,21 +1640,29 @@ class AutomaticProfileService:
                 run.last_error = None
                 run.committed_record_ids = record_ids
                 run.observed_count = observed_count
+                run.outcome = self._success_outcome(record_ids, observed_count)
                 run.updated_at = task.updated_at
                 self._repository.save_task(task)
                 self._repository.save_run(run)
         except Exception as exc:  # noqa: BLE001 - 留在有界重试状态机
-            if attempt >= PROFILE_EXTRACTION_MAX_RETRIES:
-                return self._exhaust_task(task, run, str(exc))
+            error_code = self._safe_error_code(exc)
+            if self._is_permanent_code(error_code) or error_code in _TRANSIENT_PROFILE_ERROR_CODES:
+                self._capability_degraded_reason = error_code
+            if not self._is_retryable_error(exc) or attempt >= PROFILE_EXTRACTION_MAX_RETRIES:
+                return self._exhaust_task(task, run, error_code)
             task.status = ProfileExtractionStatus.PENDING
-            task.last_error = str(exc)[:500]
+            task.last_error = error_code
             task.updated_at = _now()
             run.status = ProfileExtractionStatus.PENDING
+            run.outcome = ProfileExtractionOutcome.PENDING_RETRY
             run.last_error = task.last_error
             run.updated_at = task.updated_at
             self._repository.save_task(task)
             self._repository.save_run(run)
             return task.status
+        if self._gateway_attempted(signal_classification):
+            self._capability_degraded_reason = None
+        self._audit_outcome(run, result=AuditResult.SUCCESS)
         return task.status
 
     def _exhaust_task(
@@ -1375,10 +1673,12 @@ class AutomaticProfileService:
         task.last_error = error[:500]
         task.updated_at = now
         run.status = ProfileExtractionStatus.EXHAUSTED
+        run.outcome = ProfileExtractionOutcome.PERMANENT_FAILURE
         run.last_error = task.last_error
         run.updated_at = now
         self._repository.save_task(task)
         self._repository.save_run(run)
+        self._audit_outcome(run, result=AuditResult.BLOCKED, reason=error)
         return task.status
 
     def _message_snapshot_is_current(
@@ -1398,7 +1698,11 @@ class AutomaticProfileService:
             return snapshot
         message = self._message_reader(account_id, message_id)
         if message is None:
-            raise AutomaticProfileError("原消息不存在")
+            raise AutomaticProfileError(
+                "profile_extraction_source_missing",
+                "原消息不存在",
+                retryable=False,
+            )
         return str(message.content)
 
     def _commit_output(
@@ -1539,19 +1843,35 @@ class AutomaticProfileService:
     ) -> None:
         del account_id, content
         if item.evidence_ref != message_id:
-            raise AutomaticProfileError("画像抽取证据引用不匹配")
+            raise AutomaticProfileError(
+                "profile_extraction_evidence_mismatch",
+                "画像抽取证据引用不匹配",
+                retryable=False,
+            )
         value_classification = self._classifier.classify(item.normalized_value)
         if value_classification.category == ProfileSignalCategory.FORBIDDEN:
-            raise AutomaticProfileError("画像抽取值包含禁止内容")
+            raise AutomaticProfileError(
+                "profile_extraction_forbidden_value",
+                "画像抽取值包含禁止内容",
+                retryable=False,
+            )
         if item.action == ProfileExtractionAction.OBSERVE:
             if signal_classification.category not in {
                 ProfileSignalCategory.BEHAVIOR_OBSERVATION,
                 ProfileSignalCategory.AMBIGUOUS,
             }:
-                raise AutomaticProfileError("内部观察缺少行为观察分类")
+                raise AutomaticProfileError(
+                    "profile_extraction_observation_classification_invalid",
+                    "内部观察缺少行为观察分类",
+                    retryable=False,
+                )
             return
         if not signal_classification.is_self_statement:
-            raise AutomaticProfileError("画像抽取缺少明确的用户自述边界")
+            raise AutomaticProfileError(
+                "profile_extraction_self_statement_missing",
+                "画像抽取缺少明确的用户自述边界",
+                retryable=False,
+            )
 
     def _is_explicit_self_statement(
         self,
@@ -1682,6 +2002,54 @@ class AutomaticProfileService:
 
     def get_record(self, account_id: str, record_id: str) -> FourDimensionProfileRecord:
         return self._four_dimensions.get_record(account_id, record_id)
+
+    def profile_status(self, account_id: str) -> ProfileStatusProjection:
+        """Project only the current account's profile readiness state."""
+
+        records = self._four_dimensions.list_records(account_id)
+        runs = self._repository.list_runs(account_id)
+        tasks = self._repository.list_tasks(account_id)
+        pending = any(
+            run.status in {
+                ProfileExtractionStatus.PENDING,
+                ProfileExtractionStatus.RUNNING,
+            }
+            for run in runs
+        ) or any(
+            task.status
+            in {ProfileExtractionStatus.PENDING, ProfileExtractionStatus.RUNNING}
+            for task in tasks
+        )
+        failed_runs = [
+            run
+            for run in runs
+            if run.outcome == ProfileExtractionOutcome.PERMANENT_FAILURE
+            or (
+                run.status == ProfileExtractionStatus.EXHAUSTED
+                and run.outcome != ProfileExtractionOutcome.NO_SIGNAL
+                and run.last_error is not None
+            )
+        ]
+        if pending:
+            status = ProfilePageStatus.PENDING
+        elif failed_runs:
+            status = ProfilePageStatus.FAILED
+        elif records:
+            status = ProfilePageStatus.READY
+        else:
+            status = ProfilePageStatus.EMPTY
+        can_retry = bool(
+            failed_runs
+            and any(
+                not self._is_permanent_code(run.last_error or "")
+                for run in failed_runs
+            )
+        )
+        return ProfileStatusProjection(
+            status=status,
+            has_records=bool(records),
+            can_retry=can_retry,
+        )
 
     def mark_message_tombstone(self, account_id: str, message_id: str) -> None:
         self._repository.mark_message_tombstone(account_id, message_id)

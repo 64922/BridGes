@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictFloat,
+    StrictStr,
+    field_validator,
+)
 
 from bridges.contracts.profiles import FourDimension
 
@@ -17,6 +24,26 @@ class ProfileExtractionStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     EXHAUSTED = "exhausted"
+
+
+class ProfileExtractionOutcome(StrEnum):
+    """Stable internal outcome, independent from queue lifecycle status."""
+
+    NO_SIGNAL = "no_signal"
+    SUCCEEDED_EMPTY = "succeeded_empty"
+    SUCCEEDED_OBSERVED = "succeeded_observed"
+    SUCCEEDED_WRITTEN = "succeeded_written"
+    PENDING_RETRY = "pending_retry"
+    PERMANENT_FAILURE = "permanent_failure"
+
+
+class ProfilePageStatus(StrEnum):
+    """Account-scoped status projected to the profile page."""
+
+    READY = "ready"
+    EMPTY = "empty"
+    PENDING = "pending"
+    FAILED = "failed"
 
 
 class ProfileExtractionAction(StrEnum):
@@ -34,16 +61,30 @@ class ProfileExtractionItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dimension: FourDimension = Field(description="四维画像枚举。")
-    normalized_value: str = Field(
+    normalized_value: StrictStr = Field(
         min_length=1, max_length=200, description="规范化画像值。"
     )
-    evidence_ref: str = Field(
+    evidence_ref: StrictStr = Field(
         min_length=1, max_length=200, description="内部消息证据引用。"
     )
-    reliability: float = Field(ge=0, le=1, description="内部可靠度。")
+    reliability: StrictFloat = Field(ge=0, le=1, description="内部可靠度。")
     action: ProfileExtractionAction = Field(
         description="create/update/observe/ignore。"
     )
+
+    @field_validator("normalized_value", "evidence_ref", mode="before")
+    @classmethod
+    def _require_string(cls, value: object) -> object:
+        if not isinstance(value, str):
+            raise ValueError("profile extraction text fields must be strings")
+        return value
+
+    @field_validator("reliability", mode="before")
+    @classmethod
+    def _require_number(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("profile extraction reliability must be a number")
+        return value
 
 
 class ProfileExtractionOutput(BaseModel):
@@ -51,7 +92,7 @@ class ProfileExtractionOutput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    items: list[ProfileExtractionItem] = Field(default_factory=list, max_length=4)
+    items: list[ProfileExtractionItem] = Field(max_length=4)
 
 
 class ProfileExtractionRun(BaseModel):
@@ -64,6 +105,7 @@ class ProfileExtractionRun(BaseModel):
     source_hash: str
     source_snapshot: str = Field(max_length=4000)
     status: ProfileExtractionStatus
+    outcome: ProfileExtractionOutcome = ProfileExtractionOutcome.SUCCEEDED_EMPTY
     attempts: int = Field(ge=0)
     committed_record_ids: list[str] = Field(default_factory=list)
     observed_count: int = Field(default=0, ge=0)
@@ -116,3 +158,11 @@ class ProfilePreprocessResult(BaseModel):
     privacy_notice: ProfilePrivacyNotice | None = None
     committed_record_ids: list[str] = Field(default_factory=list)
     observed_count: int = Field(default=0, ge=0)
+
+
+class ProfileStatusProjection(BaseModel):
+    """Minimal current-account aggregate for the profile page."""
+
+    status: ProfilePageStatus
+    has_records: bool
+    can_retry: bool = False
