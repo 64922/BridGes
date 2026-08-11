@@ -292,6 +292,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     "arxiv_internal": "arXiv 搜索服务异常，请重试。",
     "arxiv_cancelled": "已取消本轮论文搜索。",
     "arxiv_no_results": "没有找到匹配的 arXiv 论文，请调整领域或约束后重试。",
+    "arxiv_no_relevant_results": "没有找到与主题相关的 arXiv 论文，请调整领域或约束后重试。",
     "arxiv_citation_invalid": "论文回答缺少可核实的 arXiv 引用，请重试。",
     # Issue 07：humanizer 独有错误码不在此映射——其错误消息由编排服务
     # 构造（含冲突项与恢复方式的中文可操作说明），命中映射会吞掉详情；
@@ -763,6 +764,21 @@ def arxiv_search_thinking(
     else:
         tools.append(projection.error_message or "arXiv 论文搜索未完成")
     return thinking.model_copy(update={"tools": [*thinking.tools, *tools]})
+
+
+def paper_search_history(
+    history: list[dict[str, str]], route: CapabilityRoute
+) -> list[dict[str, str]]:
+    """为论文回答建立只含最小公开查询的模型历史。"""
+    if route.paper_search is None or not history:
+        return history
+    return [
+        history[0],
+        {
+            "role": "user",
+            "content": f"请基于公开论文查询：{route.paper_search.normalized_query}",
+        },
+    ]
 
 
 def arxiv_search_context(projection: ArxivSearchProjection) -> str:
@@ -1539,6 +1555,12 @@ class TurnOrchestrator:
                 assistant_message_id,
             )
             owner_query = owner_message_for_decision.content if owner_message_for_decision else ""
+            protected_owner_query = owner_query
+            if paper_route and route is not None and route.paper_search is not None:
+                # 论文回答只需要公开查询快照；不把原始用户消息或其保护片段
+                # 重新带入模型载荷/输出恢复路径。
+                history = paper_search_history(history, route)
+                protected_owner_query = route.paper_search.normalized_query
             owner_skill_for_decision = skill_input_from(owner_message_for_decision)
             owner_image_for_decision = image_payload_from(owner_message_for_decision)
             owner_video_for_decision = video_payload_from(owner_message_for_decision)
@@ -2632,18 +2654,28 @@ class TurnOrchestrator:
             # 用户发送前关闭画像时本轮不编译、不注入，披露与审计都不含
             # 画像内容。编译/披露失败一律静默降级（回答照常，披露 error
             # 态可解释），绝不阻断生成。
-            context_note, profile_context, profile_items, profile_slice_id = (
-                self._compile_profile_slice(
-                    account_id,
-                    conversation_id,
-                    assistant_message_id,
-                    mode,
-                    use_profile=use_profile,
-                    retrieval_round=retrieval_round,
-                    web_search_projection=web_search_projection,
-                    arxiv_search_projection=arxiv_search_projection,
+            profile_items: list[ProfileSliceItem]
+            if paper_route:
+                # 论文搜索的模型上下文只允许公开 arXiv 结果，不注入账户画像。
+                context_note, profile_context, profile_items, profile_slice_id = (
+                    None,
+                    None,
+                    [],
+                    None,
                 )
-            )
+            else:
+                context_note, profile_context, profile_items, profile_slice_id = (
+                    self._compile_profile_slice(
+                        account_id,
+                        conversation_id,
+                        assistant_message_id,
+                        mode,
+                        use_profile=use_profile,
+                        retrieval_round=retrieval_round,
+                        web_search_projection=web_search_projection,
+                        arxiv_search_projection=arxiv_search_projection,
+                    )
+                )
             if context_note is not None:
                 thinking = context_note_thinking(thinking, context_note)
             writing_policy = self._compile_writing_policy(
@@ -2787,7 +2819,7 @@ class TurnOrchestrator:
                             candidate_content
                         )
                     protected_content = restore_protected_regions(
-                        owner_query,
+                        protected_owner_query,
                         candidate_content,
                         append_missing=False,
                         additional_sources=protected_sources,
@@ -2837,7 +2869,7 @@ class TurnOrchestrator:
                     if allow_model_knowledge_fallback:
                         content = strip_unverified_teaching_references(content)
                     protected_content = restore_protected_regions(
-                        owner_query,
+                        protected_owner_query,
                         content,
                         additional_sources=protected_sources,
                     )

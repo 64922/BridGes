@@ -133,6 +133,10 @@ def test_arxiv_search_is_persisted_and_only_public_results_reach_model(tmp_path:
     assert final.arxiv_search.papers[0].abs_url == "https://arxiv.org/abs/2401.12345v2"
     assert client.queries and "内部代号蓝鲸" not in client.queries[0]
     assert "secret-123" not in client.queries[0]
+    assert "内部代号蓝鲸" not in final.arxiv_search.query_summary
+    assert "secret-123" not in final.arxiv_search.query_summary
+    assert "内部代号蓝鲸" not in str(adapter.payloads[0])
+    assert "secret-123" not in str(adapter.payloads[0])
     assert "https://arxiv.org/abs/2401.12345v2" in str(adapter.payloads[0])
     assert any(event.kind == "done" for event in events)
 
