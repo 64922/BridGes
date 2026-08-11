@@ -14,6 +14,7 @@ from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
 from bridges.arxiv_mcp.manifest import assert_registered_arxiv_url, builtin_arxiv_manifest
 from bridges.arxiv_mcp.service import ArxivQueryPlanner, ArxivSearchPlan, ArxivSearchService
 from bridges.contracts.chat import ChatMode
+from bridges.observability.service import ObservabilityService
 
 ATOM_RESPONSE = """
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -131,6 +132,13 @@ def test_arxiv_planner_searches_in_both_modes_and_scrubs_private_context() -> No
     assert planner.plan("陪我聊聊今天的心情", ChatMode.COMPANION).should_search is False
 
 
+def test_forced_planner_does_not_fallback_to_a_broad_public_topic() -> None:
+    plan = ArxivQueryPlanner().plan("给我找几篇论文", ChatMode.STUDY, force=True)
+
+    assert plan.should_search is False
+    assert plan.query == ""
+
+
 def _paper() -> ArxivPaper:
     return ArxivPaper(
         arxiv_id="2401.12345v2",
@@ -173,6 +181,70 @@ def test_service_returns_chinese_context_and_learning_advice_without_fallback() 
     assert "量子" in projection.papers[0].relevance_basis
     assert projection.papers[0].learning_advice_zh
     assert client.queries == ["量子 纠错"]
+
+
+def test_service_whitelists_only_deterministically_relevant_papers() -> None:
+    relevant = _paper()
+    relevant = ArxivPaper(
+        arxiv_id=relevant.arxiv_id,
+        title="Transformer Models for Structured Representations",
+        authors=relevant.authors,
+        published_at=relevant.published_at,
+        abs_url=relevant.abs_url,
+        pdf_url=relevant.pdf_url,
+        abstract="We evaluate Transformer architectures on structured data.",
+    )
+    unrelated = _paper()
+    client = _FakeArxivClient([relevant, unrelated])
+    planner = ArxivQueryPlanner()
+    service = ArxivSearchService(client=client)
+
+    plan = planner.plan("给我找几篇Transformer方向相关的论文", ChatMode.COMPANION)
+    projection = service.search("acct-1", plan)
+
+    assert projection is not None
+    assert projection.status == ArxivSearchStatus.SUCCESS
+    assert [paper.title for paper in projection.papers] == [relevant.title]
+
+
+def test_all_unrelated_papers_fail_closed_with_a_distinct_result_code() -> None:
+    client = _FakeArxivClient([_paper()])
+    planner = ArxivQueryPlanner()
+    service = ArxivSearchService(client=client)
+
+    plan = planner.plan("搜索Transformer论文", ChatMode.COMPANION)
+    projection = service.search("acct-1", plan)
+
+    assert projection is not None
+    assert projection.status == ArxivSearchStatus.EMPTY
+    assert projection.error_code == "arxiv_no_relevant_results"
+    assert projection.can_retry is True
+
+
+def test_arxiv_audit_contains_counts_and_no_query_or_private_body() -> None:
+    private_values = ("内部代号蓝鲸", "alice@example.com", "secret-123")
+    client = _FakeArxivClient([])
+    observations = ObservabilityService()
+    service = ArxivSearchService(client=client, observability=observations)
+    plan = ArxivSearchPlan(
+        True,
+        "Transformer",
+        "用户输入：" + "；".join(private_values),
+    )
+
+    projection = service.search("acct-1", plan)
+    events = observations.list_audit_events(account_id="acct-1")
+
+    assert projection is not None
+    assert len(events) == 1
+    details = events[0].details
+    assert details["public_term_count"] == 0
+    assert details["removed_categories"] == []
+    assert details["candidate_count"] == 0
+    assert details["relevant_result_count"] == 0
+    serialized = str(events[0])
+    for private_value in private_values:
+        assert private_value not in serialized
 
 
 def test_service_exposes_empty_permission_cancelled_and_recovery_states() -> None:

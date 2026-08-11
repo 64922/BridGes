@@ -16,6 +16,15 @@ from bridges.video.constants import (
 
 
 ROUTE_CONTRACT_VERSION = "2026.08.09"
+PAPER_QUERY_VERSION = "2026.08.12"
+RemovedQueryCategory = Literal[
+    "instruction_scaffold",
+    "code",
+    "credential",
+    "private_material",
+    "email",
+    "url",
+]
 
 
 class MainCapability(StrEnum):
@@ -67,9 +76,12 @@ class PaperSearchPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: str = ROUTE_CONTRACT_VERSION
+    version: str = PAPER_QUERY_VERSION
     normalized_query: str = Field(min_length=1, max_length=240)
     constraints: PaperSearchConstraints
+    removed_categories: list[RemovedQueryCategory] = Field(
+        default_factory=list, max_length=8
+    )
 
 
 class VideoGenerationPlan(BaseModel):

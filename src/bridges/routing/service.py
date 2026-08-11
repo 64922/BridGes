@@ -16,6 +16,7 @@ from bridges.routing.contracts import (
     MainCapability,
     PaperSearchConstraints,
     PaperSearchPlan,
+    RemovedQueryCategory,
     RouteStatus,
     VideoGenerationPlan,
 )
@@ -58,13 +59,13 @@ class NaturalLanguageRouter:
     _CODE = re.compile(r"```.*?```", re.S)
     _PRIVATE = re.compile(
         r"(?:私人|私密|个人)?(?:文档|文件|附件|资料|画像|档案|凭据|密码|密钥|"
-        r"attachment|private\s*(?:document|file)|token|secret|api\s*key|apikey|qq|邮箱|用户名|"
+        r"attachment|private\s*(?:document|file)|token|secret|api\s*key|apikey|qq|邮箱|用户名|网址|"
         r"profile|account[_ ]?id|user[_ ]?id)[^。！？；;\n]*[。！？；;]?",
         re.I,
     )
     _PERSONAL = re.compile(
         r"(?:^|(?<=[。！？；;\n]))(?=[^。！？；;\n]*(?:我的(?:姓名|名字|职业|背景|资料|画像|账户|账号|邮箱|"
-        r"密码|密钥|附件|档案|个人信息)|本人|个人|我(?:是|叫|住在|来自|有|使用)))"
+        r"密码|密钥|附件|档案|个人信息)|本人|我(?:是|叫|住在|来自|有|使用)))"
         r"[^。！？；;\n]+[。！？；;]?",
         re.I,
     )
@@ -82,17 +83,25 @@ class NaturalLanguageRouter:
         re.I,
     )
     _TITLE = re.compile(r"(?:标题|title)\s*(?:是|为|叫|:|：)?\s*[《“\"']?([^》”\"'，。；;\n]{2,200})", re.I)
-    _QUERY_DIRECTIVES = re.compile(
-        r"请|帮我|帮忙|一下|看看|告诉我|搜索|搜|查找|查一下|检索|筛选|找出|找几篇|找|"
-        r"推荐|核对|对比|关于|有关|论文|文献|文章|研究|作者|author(?:s)?|标题|title|"
-        r"是|为|叫|最多|至少|返回|前|篇|个|条|years?|year|年|20\d{2}",
+    # 只移除请求骨架，不把“方向”这类可能属于学科主题的词列入全局停用词。
+    _QUERY_PREFIX = re.compile(
+        r"^\s*(?:请\s*)?(?:(?:帮我|帮忙|给我|我想(?:要)?|想(?:要)?|能否|可以)\s*)?"
+        r"(?:搜索|搜|查找|查一下|检索|筛选|推荐|找出|找)\s*"
+        r"(?:几篇|一些|若干|相关)?\s*",
+        re.I,
+    )
+    _QUERY_LEADING = re.compile(r"^\s*(?:关于|有关)\s*", re.I)
+    _QUERY_SUFFIX = re.compile(
+        r"(?:方向\s*相关|相关|有关)\s*(?:的|地)?\s*(?:论文|文献|文章)\s*$|"
+        r"(?:的\s*)?(?:论文|文献|文章)\s*$",
         re.I,
     )
     _STOPWORDS = frozenset(
         {
-            "请", "帮我", "帮忙", "一下", "看看", "告诉我", "论文", "文献", "文章",
+            "请", "帮我", "给我", "帮忙", "一下", "看看", "告诉我", "论文", "文献", "文章",
             "研究", "搜索", "搜", "查找", "检索", "筛选", "找出", "推荐", "核对", "对比",
-            "近", "年", "作者", "标题", "关于", "有关", "的", "并且", "以及", "最好", "前",
+            "查一下", "几篇", "一些", "若干", "相关", "方向相关", "近", "年", "作者", "标题",
+            "关于", "有关", "的", "并且", "以及", "最好", "前",
             "最多", "至少", "返回", "篇", "个", "条", "arxiv", "paper", "papers", "find",
             "search", "look", "up", "retrieve", "filter", "last", "years", "year",
             "please", "help", "me", "about", "show", "give", "return", "at", "most",
@@ -221,6 +230,11 @@ class NaturalLanguageRouter:
     def __init__(self, registry: CapabilityRouteRegistry | None = None) -> None:
         self.registry = registry or CapabilityRouteRegistry.builtin()
 
+    def normalize_public_query(self, content: str) -> str:
+        """提炼不含身份材料的公开主题词，供被迫补充检索时复用。"""
+        cleaned = self._strip_query_scaffolding(self._scrub(content))
+        return " ".join(self._topic_tokens(cleaned))[:240].strip()
+
     def classify(self, content: str) -> CapabilityRoute:
         text = content.strip()
         if not text:
@@ -275,7 +289,9 @@ class NaturalLanguageRouter:
         if not any((constraints.topic_terms, constraints.author, constraints.title, constraints.arxiv_id)):
             return self._clarify("paper_empty_query", "你想查哪一主题、作者、标题或 arXiv 标识符？")
         plan = PaperSearchPlan(
-            normalized_query=self._normalized_query(constraints), constraints=constraints
+            normalized_query=self._normalized_query(constraints),
+            constraints=constraints,
+            removed_categories=self._removed_categories(text),
         )
         return CapabilityRoute(
             status=RouteStatus.MATCHED,
@@ -582,9 +598,9 @@ class NaturalLanguageRouter:
 
     def _constraints(self, text: str) -> PaperSearchConstraints:
         cleaned = self._scrub(text)
-        arxiv_match = self._ARXIV_ID.search(text)
+        arxiv_match = self._ARXIV_ID.search(cleaned)
         arxiv_id = arxiv_match.group(1) if arxiv_match else None
-        author_match = self._AUTHOR.search(text)
+        author_match = self._AUTHOR.search(cleaned)
         explicit_author = bool(author_match and re.search(r"作者|author|by", author_match.group(0), re.I))
         author = author_match.group(1).strip(" .,:：") if explicit_author and author_match else None
         if author:
@@ -592,13 +608,13 @@ class NaturalLanguageRouter:
                 r"\s+(?:from|between|in|about|on|for)$", "", author, flags=re.I
             ).strip()
         title_match = (
-            self._TITLE_QUOTED.search(text)
-            or self._TITLE_PLAIN.search(text)
-            or self._TITLE.search(text)
+            self._TITLE_QUOTED.search(cleaned)
+            or self._TITLE_PLAIN.search(cleaned)
+            or self._TITLE.search(cleaned)
         )
         title = title_match.group(1).strip() if title_match else None
-        year_from, year_to = self._years(text)
-        count_match = self._COUNT.search(text) or self._ENGLISH_COUNT.search(text)
+        year_from, year_to = self._years(cleaned)
+        count_match = self._COUNT.search(cleaned) or self._ENGLISH_COUNT.search(cleaned)
         max_results = int(count_match.group(1)) if count_match else 5
         if not 1 <= max_results <= 10:
             raise _InvalidPaperQuery("paper_result_limit", "一次最多只能查询 10 篇论文，请缩小数量范围。")
@@ -611,15 +627,10 @@ class NaturalLanguageRouter:
             cleaned_for_tokens = cleaned_for_tokens.replace(arxiv_id, " ")
         cleaned_for_tokens = self._YEAR_RANGE.sub(" ", cleaned_for_tokens)
         cleaned_for_tokens = self._YEAR_SINGLE.sub(" ", cleaned_for_tokens)
-        cleaned_for_tokens = self._QUERY_DIRECTIVES.sub(" ", cleaned_for_tokens)
-        tokens = [
-            token.strip("-_的")
-            for token in self._TOKEN.findall(cleaned_for_tokens)
-            if token.lower() not in self._STOPWORDS
-            and not self._CONSTRAINT_WORDS.fullmatch(token)
-            and token != arxiv_id
-            and token.strip("-_的")
-        ]
+        cleaned_for_tokens = self._RECENT_YEARS.sub(" ", cleaned_for_tokens)
+        tokens = self._topic_tokens(
+            self._strip_query_scaffolding(cleaned_for_tokens), arxiv_id=arxiv_id
+        )
         # 明确作者/标题条件才保留；普通“作者”提及不能把身份信息发往 arXiv。
         topic_terms = tokens[:10]
         if author and not any(author_part.lower() in " ".join(topic_terms).lower() for author_part in author.split()):
@@ -675,6 +686,60 @@ class NaturalLanguageRouter:
         cleaned = self._PERSONAL_ENGLISH.sub(" ", cleaned)
         cleaned = self._URL.sub(" ", cleaned)
         return cleaned
+
+    def _removed_categories(self, text: str) -> list[RemovedQueryCategory]:
+        categories: list[RemovedQueryCategory] = []
+        if any(
+            pattern.search(text)
+            for pattern in (
+                self._QUERY_PREFIX,
+                self._QUERY_LEADING,
+                self._QUERY_SUFFIX,
+            )
+        ):
+            categories.append("instruction_scaffold")
+        if self._CODE.search(text):
+            categories.append("code")
+        if self._SECRET.search(text):
+            categories.append("credential")
+        if (
+            self._PRIVATE.search(text)
+            or self._PERSONAL.search(text)
+            or self._PERSONAL_ENGLISH.search(text)
+        ):
+            categories.append("private_material")
+        if self._EMAIL.search(text):
+            categories.append("email")
+        if self._URL.search(text):
+            categories.append("url")
+        return categories
+
+    def _strip_query_scaffolding(self, text: str) -> str:
+        cleaned = self._QUERY_PREFIX.sub(" ", text, count=1)
+        cleaned = self._QUERY_LEADING.sub(" ", cleaned, count=1)
+        cleaned = self._QUERY_SUFFIX.sub(" ", cleaned, count=1)
+        cleaned = self._RECENT_YEARS.sub(" ", cleaned)
+        cleaned = self._COUNT.sub(" ", cleaned)
+        cleaned = self._ENGLISH_COUNT.sub(" ", cleaned)
+        cleaned = re.sub(r"(?:关于|有关)", " ", cleaned)
+        cleaned = re.sub(r"(?:作者|标题)\s*(?:是|为|叫)?\s*", " ", cleaned)
+        cleaned = re.sub(r"(?:的\s*)?(?:论文|文献|文章)", " ", cleaned)
+        cleaned = re.sub(r"(?<![\u4e00-\u9fff])年", " ", cleaned)
+        cleaned = re.sub(r"方向\s*相关", " ", cleaned)
+        return cleaned
+
+    def _topic_tokens(self, text: str, *, arxiv_id: str | None = None) -> list[str]:
+        tokens: list[str] = []
+        for raw_token in self._TOKEN.findall(text):
+            token = raw_token.strip("-_的")
+            if (
+                token
+                and token.lower() not in self._STOPWORDS
+                and not self._CONSTRAINT_WORDS.fullmatch(token)
+                and token != arxiv_id
+            ):
+                tokens.append(token)
+        return tokens
 
     def _normalized_query(self, constraints: PaperSearchConstraints) -> str:
         return " ".join(constraints.topic_terms)[:240].strip() or "公开论文主题"

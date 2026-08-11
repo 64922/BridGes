@@ -1,10 +1,12 @@
 """聊天自然语言能力路由。"""
 
 from bridges.routing.contracts import (
+    PAPER_QUERY_VERSION,
     CapabilityRoute,
     MainCapability,
     PaperSearchConstraints,
     PaperSearchPlan,
+    RemovedQueryCategory,
     RouteStatus,
     VideoGenerationPlan,
 )
@@ -22,8 +24,10 @@ __all__ = [
     "CapabilityRouteRegistryError",
     "MainCapability",
     "NaturalLanguageRouter",
+    "PAPER_QUERY_VERSION",
     "PaperSearchConstraints",
     "PaperSearchPlan",
+    "RemovedQueryCategory",
     "RouteStatus",
     "VideoGenerationPlan",
 ]

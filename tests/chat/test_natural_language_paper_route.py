@@ -11,9 +11,9 @@ from bridges.chat.service import ChatService
 from bridges.web_search.service import SearchPlan
 from tests.chat.test_arxiv_search_chat import (
     _CapturingAdapter,
+    _context,
     _FakeArxivClient,
     _service,
-    _context,
 )
 
 
@@ -95,6 +95,34 @@ def test_ambiguous_paper_request_asks_before_any_side_effect(tmp_path: Path) -> 
 
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None and final.content
+    assert final.route is not None and final.route.status.value == "clarify"
+    assert final.arxiv_search is None
+    assert client.queries == []
+    assert adapter.payloads == []
+    assert events[-1].kind == "done"
+
+
+def test_empty_chinese_paper_topic_clarifies_without_arxiv_call(tmp_path: Path) -> None:
+    client = _FakeArxivClient()
+    adapter = _CapturingAdapter()
+    service: ChatService = _service(tmp_path, ArxivSearchService(client=client), adapter)
+    conversation = service.create_conversation("alice")
+
+    user, assistant = service.start_generation(
+        "alice", conversation.conversation_id, "给我找几篇论文"
+    )
+    events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            _context(),
+            until_user_message_id=user.message_id,
+        )
+    )
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
     assert final.route is not None and final.route.status.value == "clarify"
     assert final.arxiv_search is None
     assert client.queries == []
