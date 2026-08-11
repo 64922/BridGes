@@ -931,6 +931,7 @@ class FourDimensionProfileService:
         evidence_quote: str | None = None,
         evidence_message_id: str | None = None,
         change_note: str | None = None,
+        migration_version: str = "profile-auto-v1",
     ) -> FourDimensionProfileRecord:
         """提交一条 Issue 15 自动抽取结果到四维目标表。
 
@@ -984,7 +985,7 @@ class FourDimensionProfileService:
             existing.source_record_id = source_record_id
             existing.content_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
             existing.write_origin = "automatic"
-            existing.migration_version = "profile-auto-v1"
+            existing.migration_version = migration_version
             existing.confidence = confidence
             existing.evidence_quote = evidence_quote
             existing.evidence_message_id = evidence_message_id
@@ -1017,7 +1018,7 @@ class FourDimensionProfileService:
                 source_version=1,
                 content_hash=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
                 write_origin="automatic",
-                migration_version="profile-auto-v1",
+                migration_version=migration_version,
             )
         )
 

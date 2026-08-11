@@ -58,12 +58,15 @@ _QUOTED_CONTEXT = re.compile(
 )
 _THIRD_PARTY = re.compile(
     r"(?:我(?:的)?(?:朋友|同学|同事|家人|老师)|(?:^|[，。；：:\s])"
-    r"(?:朋友|同学|同事|家人|老师|他|她|他们|她们)(?:是|想|喜欢|在|要|正在|的)?)"
+    r"(?:第三方|朋友|同学|同事|家人|老师|网友|别人|他|她|他们|她们)"
+    r"(?:是|想|喜欢|在|要|正在|的|说)?"
+    r")"
 )
 _HYPOTHETICAL = re.compile(r"(?:假设|假如|如果|设想|模拟|扮演|角色扮演)")
 _NEGATION = re.compile(r"(?:不想|不喜欢|不要|别|不是|没有|无需|不再|拒绝|避免)")
 _SENSITIVE = re.compile(
-    r"(?:焦虑|抑郁|情绪|健康|疾病|病史|诊断|人格|心理|政治|宗教|"
+    r"(?:焦虑|抑郁|情绪|健康|疾病|病史|诊断|人格|心理|性格|政治|宗教|"
+    r"佛教|基督教|伊斯兰教|道教|天主教|犹太教|糖尿病|癌症|高血压|"
     r"身份证|身份信息|财务|密码|密钥|邮箱|手机号|住址|地址|精确位置|"
     r"私信|私人通信)"
 )
@@ -81,6 +84,12 @@ _HIGH_GOAL = re.compile(r"^(?:目标|计划|打算|规划)(?:是|为|：|:)?\s*\
 _HIGH_LEARNING = re.compile(
     r"^(?!(?:如何|怎么|为什么|什么是))"
     r"(?:(?:想|要|准备|正在|在)\s*)?(?:学(?:习)?|研究)\s*\S+"
+)
+_QUESTION_LIKE = re.compile(
+    r"^(?:(?:目前|现在)?(?:大[一二三四]|研[一二三]|本科(?:生)?|研究生|"
+    r"硕士(?:生)?|博士(?:生)?|大学生|学生|目标|计划|打算|规划)?"
+    r"(?:是|为|：|:)?\s*"
+    r"(?:如何|怎么|为什么|什么|能否|请问|是否|有没有))"
 )
 _BEHAVIOR_PREFIX = re.compile(
     r"^(?:找|搜索|查找|检索|查|看|阅读|推荐|了解|介绍|什么是|"
@@ -107,6 +116,13 @@ class ProfileSignalClassifier:
                 ProfileSignalCategory.AMBIGUOUS,
                 "ambiguous_profile_candidate",
                 0.5,
+            )
+
+        if _QUESTION_LIKE.search(text):
+            return self._result(
+                ProfileSignalCategory.BEHAVIOR_OBSERVATION,
+                "course_or_profile_question",
+                0.9,
             )
 
         if _EXPLICIT_PROFILE.search(text) and self._has_profile_expression(text):

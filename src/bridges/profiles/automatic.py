@@ -200,6 +200,17 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}-{_hash('|'.join(parts))[:32]}"
 
 
+def _signal_audit_version(
+    pipeline_version: str, classification: ProfileSignalClassification
+) -> str:
+    """把受控分类元数据绑定到每条自动画像写入的版本字段。"""
+
+    return (
+        f"{pipeline_version}|category={classification.category.value}"
+        f"|reason={classification.reason_code}"
+    )
+
+
 def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip(" \t\r\n，。；：:、,;.!！？?"))
 
@@ -938,7 +949,9 @@ class AutomaticProfileService:
 
     @property
     def extractor_version(self) -> str:
-        return self._extractor.version
+        """返回绑定分类策略的不可变抽取流水线版本。"""
+
+        return f"{self._extractor.version}+signal-{self.classifier_version}"
 
     @property
     def classifier_version(self) -> str:
@@ -1402,6 +1415,9 @@ class AutomaticProfileService:
     ) -> tuple[list[str], int]:
         record_ids: list[str] = []
         observed_count = 0
+        audit_version = _signal_audit_version(
+            self.extractor_version, signal_classification
+        )
         for item in output.items:
             if self._repository.is_message_tombstoned(account_id, message_id):
                 continue
@@ -1423,18 +1439,18 @@ class AutomaticProfileService:
                     "profile-observation",
                     account_id,
                     message_id,
-                    self.extractor_version,
+                    audit_version,
                     item.dimension.value,
                     item.normalized_value,
                 ),
                 account_id=account_id,
                 message_id=message_id,
-                extractor_version=self.extractor_version,
+                extractor_version=audit_version,
                 dimension=item.dimension,
                 normalized_value=item.normalized_value,
                 evidence_ref=item.evidence_ref,
                 reliability=(
-                    0.0
+                    min(item.reliability, _MIN_PROMOTION_RELIABILITY - 0.01)
                     if item.action == ProfileExtractionAction.OBSERVE
                     else item.reliability
                 ),
@@ -1454,9 +1470,13 @@ class AutomaticProfileService:
                 entry.message_id
                 for entry in observations
                 if entry.reliability >= _MIN_PROMOTION_RELIABILITY
+                or (
+                    signal_classification.is_self_statement
+                    and entry.reliability > 0
+                )
             }
             explicit_self_statement = self._is_explicit_self_statement(
-                content, item.dimension, signal_classification
+                content, signal_classification
             )
             if not explicit_self_statement and len(unique_messages) < 2:
                 continue
@@ -1476,7 +1496,7 @@ class AutomaticProfileService:
                     FourDimension.STAGE_GOAL,
                 }
                 and self._is_explicit_self_statement(
-                    content, item.dimension, signal_classification
+                    content, signal_classification
                 )
             ):
                 # 学业阶段与阶段目标是当前稳定状态；后来的明确自述
@@ -1502,12 +1522,13 @@ class AutomaticProfileService:
                     if confidence == FourDimensionConfidence.HIGH
                     else "首次明确表达，等待再次确认"
                 ),
+                migration_version=audit_version,
             )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids)), observed_count
 
-    @staticmethod
     def _validate_item(
+        self,
         item: Any,
         account_id: str,
         message_id: str,
@@ -1517,7 +1538,7 @@ class AutomaticProfileService:
         del account_id, content
         if item.evidence_ref != message_id:
             raise AutomaticProfileError("画像抽取证据引用不匹配")
-        value_classification = ProfileSignalClassifier().classify(item.normalized_value)
+        value_classification = self._classifier.classify(item.normalized_value)
         if value_classification.category == ProfileSignalCategory.FORBIDDEN:
             raise AutomaticProfileError("画像抽取值包含禁止内容")
         if item.action == ProfileExtractionAction.OBSERVE:
@@ -1530,16 +1551,12 @@ class AutomaticProfileService:
         if not signal_classification.is_self_statement:
             raise AutomaticProfileError("画像抽取缺少明确的用户自述边界")
 
-    @staticmethod
     def _is_explicit_self_statement(
+        self,
         content: str,
-        dimension: FourDimension,
         signal_classification: ProfileSignalClassification | None = None,
     ) -> bool:
-        del dimension
-        classification = signal_classification or ProfileSignalClassifier().classify(
-            content
-        )
+        classification = signal_classification or self._classifier.classify(content)
         return classification.is_self_statement
 
     @staticmethod

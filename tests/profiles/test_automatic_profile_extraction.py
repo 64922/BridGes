@@ -24,6 +24,7 @@ from bridges.profiles import (
     SqliteFourDimensionProfileRepository,
 )
 from bridges.profiles.signals import (
+    PROFILE_SIGNAL_CLASSIFIER_VERSION,
     ProfileSignalCategory,
     ProfileSignalClassification,
     ProfileSignalClassifier,
@@ -350,9 +351,12 @@ def test_rule_extractor_routes_explicit_self_signals_to_four_dimensions(
         ("想学习Transformer", ProfileSignalCategory.HIGH_CONFIDENCE_SELF),
         ("找Transformer论文", ProfileSignalCategory.BEHAVIOR_OBSERVATION),
         ("我朋友是大三人工智能专业", ProfileSignalCategory.FORBIDDEN),
+        ("第三方说：我想学习 Transformer", ProfileSignalCategory.FORBIDDEN),
         ("我不想学习 Transformer", ProfileSignalCategory.FORBIDDEN),
         ("引用：我想学习 Transformer", ProfileSignalCategory.FORBIDDEN),
         ("我最近焦虑", ProfileSignalCategory.FORBIDDEN),
+        ("我喜欢佛教", ProfileSignalCategory.FORBIDDEN),
+        ("我对糖尿病感兴趣", ProfileSignalCategory.FORBIDDEN),
         ("今天天气不错", ProfileSignalCategory.NO_SIGNAL),
     ],
 )
@@ -364,6 +368,19 @@ def test_profile_signal_classifier_uses_one_shared_category(
     assert result.category == category
     assert result.reason_code
     assert result.strategy_version
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["大学生如何学习Transformer", "目标是什么"],
+)
+def test_course_and_profile_questions_do_not_become_stable_self_statements(
+    content: str,
+) -> None:
+    result = ProfileSignalClassifier().classify(content)
+
+    assert result.category == ProfileSignalCategory.BEHAVIOR_OBSERVATION
+    assert not result.is_self_statement
 
 
 def test_subject_omission_messages_create_three_dimensions_without_hobby() -> None:
@@ -455,18 +472,29 @@ def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> No
         "message-search",
         "message-learning",
     ]
+    assert 0 < observations[0].reliability < 0.6
+    assert all(
+        PROFILE_SIGNAL_CLASSIFIER_VERSION in observation.extractor_version
+        for observation in observations
+    )
+    record = target_service.list_records("account-alice")[0]
+    assert PROFILE_SIGNAL_CLASSIFIER_VERSION in record.migration_version
+    assert "category=high_confidence_self" in record.migration_version
 
 
 @pytest.mark.parametrize(
     "content",
     [
         "我朋友是大三人工智能专业",
+        "第三方说：我想学习 Transformer",
         "假设我是大三学生",
         "我不想学习 Transformer",
         "角色扮演：我想学习 Transformer",
         "引用：我想学习 Transformer",
         "我最近焦虑，想学习 Transformer",
         "我想学习政治",
+        "我喜欢佛教",
+        "我对糖尿病感兴趣",
     ],
 )
 def test_forbidden_subject_omission_variants_never_write_profile(
