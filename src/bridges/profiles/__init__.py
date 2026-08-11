@@ -17,6 +17,7 @@ from bridges.profiles.four_dimensions import (
 )
 from bridges.profiles.automatic import (
     AUTOMATIC_EXTRACTOR_VERSION,
+    PROFILE_REPLAY_QUEUE,
     AutomaticProfileError,
     AutomaticProfileService,
     GatewayAutomaticProfileExtractor,
@@ -30,6 +31,17 @@ from bridges.profiles.signals import (
     ProfileSignalCategory,
     ProfileSignalClassification,
     ProfileSignalClassifier,
+)
+from bridges.profiles.replay import (
+    DatabaseIdentity,
+    ProfileReplayCoordinator,
+    ProfileReplayError,
+    ProfileReplayReport,
+    VerifiedBackup,
+    create_verified_backup,
+    load_runtime_application_state,
+    resolve_authoritative_database,
+    upgrade_authoritative_schema,
 )
 
 __all__ = [
@@ -45,6 +57,7 @@ __all__ = [
     "InMemoryFourDimensionProfileRepository",
     "SqliteFourDimensionProfileRepository",
     "AUTOMATIC_EXTRACTOR_VERSION",
+    "PROFILE_REPLAY_QUEUE",
     "AutomaticProfileError",
     "AutomaticProfileService",
     "GatewayAutomaticProfileExtractor",
@@ -56,4 +69,13 @@ __all__ = [
     "ProfileSignalCategory",
     "ProfileSignalClassification",
     "ProfileSignalClassifier",
+    "DatabaseIdentity",
+    "ProfileReplayCoordinator",
+    "ProfileReplayError",
+    "ProfileReplayReport",
+    "VerifiedBackup",
+    "create_verified_backup",
+    "load_runtime_application_state",
+    "resolve_authoritative_database",
+    "upgrade_authoritative_schema",
 ]

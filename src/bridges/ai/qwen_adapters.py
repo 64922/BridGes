@@ -156,7 +156,8 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
         message = choice.get("message")
         contract_error_code = (
             "profile_extraction_contract_invalid"
-            if payload.get("output_contract") == "profile-extraction-v1"
+            if payload.get("output_contract")
+            in {"profile-extraction-v1", "profile-extraction-v2"}
             else "structured_output_contract_invalid"
         )
         if choice.get("finish_reason") in {"content_filter", "safety"}:
@@ -198,7 +199,10 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
                 message="Structured output must be a JSON object.",
                 retryable=False,
             )
-        if payload.get("output_contract") == "profile-extraction-v1":
+        if payload.get("output_contract") in {
+            "profile-extraction-v1",
+            "profile-extraction-v2",
+        }:
             if "items" not in parsed:
                 raise AdapterError(
                     code="profile_extraction_contract_invalid",

@@ -263,12 +263,12 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             region="cn-beijing",
             model_id="qwen3.6-flash",
             input_schema_version="profile-message-v1",
-            output_schema_version="profile-extraction-v1",
+            output_schema_version="profile-extraction-v2",
             structured_output_format=StructuredOutputFormat.JSON_OBJECT,
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=1, backoff_seconds=0),
-            prompt_version="2026-08-09",
-            validation_probe_version="profile-json-object-v1",
+            prompt_version="2026-08-12",
+            validation_probe_version="profile-json-object-v2",
         )
     )
     # T061: real Qwen OCR and vision capabilities for media/science ingestion.

@@ -416,9 +416,10 @@ class InMemoryFourDimensionProfileRepository(FourDimensionProfileRepository):
 class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
     """SQLite 四维目标仓库；每条语句都按账户作用域执行。"""
 
-    def __init__(self, database: BridgesDatabase) -> None:
+    def __init__(self, database: BridgesDatabase, *, initialize: bool = True) -> None:
         self._db = database
-        self._db.initialize()
+        if initialize:
+            self._db.initialize()
 
     def transaction(self) -> AbstractContextManager[None]:
         return self._db.transaction()
@@ -712,6 +713,18 @@ class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
             (owner_id,),
         ).fetchone()
         return self._report_from_row(row) if row is not None else None
+
+    def has_migration_version_prefix(self, prefix: str) -> bool:
+        """检查迁移审计前缀；供回放协调器验证备份来源。"""
+
+        return (
+            self._db.connection.execute(
+                "SELECT 1 FROM profile_four_dimension_migrations "
+                "WHERE migration_version LIKE ? LIMIT 1",
+                (f"{prefix}%",),
+            ).fetchone()
+            is not None
+        )
 
 
 _EDUCATION_TERMS = frozenset(

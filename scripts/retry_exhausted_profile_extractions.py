@@ -1,21 +1,15 @@
-"""一次性重跑画像抽取历史 400 失败记录。
+"""旧版画像 400 清理的兼容函数。
 
-用法：
-
-    .venv/Scripts/python.exe scripts/retry_exhausted_profile_extractions.py --db bridges.db
-
-脚本只处理 ``exhausted`` 且 ``last_error`` 以 ``client_error_400`` 开头的
-记录。非墓碑消息会把 runs/tasks 的 ``attempts`` 重置为 0，重新入队到统一的
-``profile-extraction`` 队列，由 ``run_retry_tick`` 使用修复后的网关重处理；
-墓碑消息保持 exhausted 并记录跳过原因。重跑后再次失败时，运行时会把新的
-供应商错误写回 ``last_error``，作为可复查备注。脚本不会静默迁移 schema。
+模块中的 cleanup_exhausted_profile_extractions 仅为已有测试和内部调用保留，
+要求调用方传入已完成显式 schema upgrade 的数据库。直接命令行入口已停用；
+正式操作请使用 replay_profile_extractions.py 的权威库、备份、dry-run 和 v2
+队列流程。
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bridges.runtime.queue import TaskQueue  # noqa: E402
 from bridges.storage import BridgesDatabase  # noqa: E402
+from bridges.storage.database import SCHEMA_VERSION  # noqa: E402
 
 _QUEUE_NAME = "profile-extraction"
 _ERROR_PREFIX = "client_error_400"
@@ -89,7 +84,13 @@ def cleanup_exhausted_profile_extractions(
 ) -> CleanupSummary:
     """重置可安全重跑的历史 400 行，并将其放回统一任务队列。"""
 
-    database.initialize()
+    schema_row = database.connection.execute(
+        "SELECT value FROM schema_meta WHERE key = 'version'"
+    ).fetchone()
+    if schema_row is None or int(str(schema_row["value"])) != SCHEMA_VERSION:
+        raise RuntimeError(
+            "旧版清理脚本不会隐式升级 schema；请先执行显式 schema upgrade。"
+        )
     queue = TaskQueue(database, default_lease_seconds=60)
     queue.set_lease_seconds(_QUEUE_NAME, 60)
     summary = CleanupSummary()
@@ -255,19 +256,15 @@ def cleanup_exhausted_profile_extractions(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="重跑画像抽取历史 400 失败记录")
-    parser.add_argument("--db", required=True, help="要处理的 bridges.db 路径")
-    args = parser.parse_args(argv)
-    database_path = Path(args.db)
-    if not database_path.is_file():
-        parser.error(f"数据库文件不存在：{database_path}")
-    database = BridgesDatabase(database_path)
-    try:
-        summary = cleanup_exhausted_profile_extractions(database)
-    finally:
-        database.close()
-    print(json.dumps(summary.as_dict(), ensure_ascii=False, indent=2))
-    return 0
+    parser = argparse.ArgumentParser(
+        description="旧版画像 400 清理入口已停用，请使用 profile-auto-v2 安全回放。"
+    )
+    parser.parse_args(argv)
+    parser.error(
+        "请改用 scripts/replay_profile_extractions.py，按 inspect、schema-upgrade、"
+        "backup、dry-run、replay 顺序执行。"
+    )
+    return 2
 
 
 if __name__ == "__main__":
