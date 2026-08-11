@@ -23,6 +23,12 @@ from bridges.profiles import (
     SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
+from bridges.profiles.signals import (
+    PROFILE_SIGNAL_CLASSIFIER_VERSION,
+    ProfileSignalCategory,
+    ProfileSignalClassification,
+    ProfileSignalClassifier,
+)
 from bridges.storage import BridgesDatabase
 
 
@@ -334,6 +340,285 @@ def test_rule_extractor_routes_explicit_self_signals_to_four_dimensions(
 
     assert [(item.dimension, item.normalized_value) for item in output.items] == [
         (dimension, value)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("content", "category"),
+    [
+        ("大三人工智能专业", ProfileSignalCategory.HIGH_CONFIDENCE_SELF),
+        ("目标考211相关专业/考研", ProfileSignalCategory.HIGH_CONFIDENCE_SELF),
+        ("想学习Transformer", ProfileSignalCategory.HIGH_CONFIDENCE_SELF),
+        ("找Transformer论文", ProfileSignalCategory.BEHAVIOR_OBSERVATION),
+        ("我朋友是大三人工智能专业", ProfileSignalCategory.FORBIDDEN),
+        ("第三方说：我想学习 Transformer", ProfileSignalCategory.FORBIDDEN),
+        ("我不想学习 Transformer", ProfileSignalCategory.FORBIDDEN),
+        ("引用：我想学习 Transformer", ProfileSignalCategory.FORBIDDEN),
+        ("我最近焦虑", ProfileSignalCategory.FORBIDDEN),
+        ("我喜欢佛教", ProfileSignalCategory.FORBIDDEN),
+        ("我对糖尿病感兴趣", ProfileSignalCategory.FORBIDDEN),
+        ("今天天气不错", ProfileSignalCategory.NO_SIGNAL),
+    ],
+)
+def test_profile_signal_classifier_uses_one_shared_category(
+    content: str, category: ProfileSignalCategory
+) -> None:
+    result = ProfileSignalClassifier().classify(content)
+
+    assert result.category == category
+    assert result.reason_code
+    assert result.strategy_version
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["大学生如何学习Transformer", "目标是什么"],
+)
+def test_course_and_profile_questions_do_not_become_stable_self_statements(
+    content: str,
+) -> None:
+    result = ProfileSignalClassifier().classify(content)
+
+    assert result.category == ProfileSignalCategory.BEHAVIOR_OBSERVATION
+    assert not result.is_self_statement
+
+
+def test_subject_omission_messages_create_three_dimensions_without_hobby() -> None:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    messages = (
+        ("conversation-academic", "大三人工智能专业"),
+        ("conversation-goal", "目标考211相关专业/考研"),
+        ("conversation-knowledge", "想学习Transformer"),
+        ("conversation-search", "找Transformer论文"),
+    )
+    results = [
+        service.preprocess_message(
+            "account-alice",
+            conversation_id=conversation_id,
+            message_id=f"message-{index}",
+            content=content,
+            run_id=f"run-{index}",
+            mode="study",
+        )
+        for index, (conversation_id, content) in enumerate(messages, start=1)
+    ]
+
+    assert all(result.run.status == "succeeded" for result in results)
+    assert {
+        (record.dimension, record.content)
+        for record in target_service.list_records("account-alice")
+    } == {
+        (FourDimension.ACADEMIC_STATUS, "大三人工智能专业"),
+        (FourDimension.STAGE_GOAL, "考211相关专业/考研"),
+        (FourDimension.KNOWLEDGE_INTEREST, "Transformer"),
+    }
+    assert not any(
+        record.dimension == FourDimension.HOBBY
+        for record in target_service.list_records("account-alice")
+    )
+
+
+def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> None:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    repository = InMemoryAutomaticProfileRepository()
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=repository,
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    search = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-search",
+        message_id="message-search",
+        content="找Transformer论文",
+        run_id="run-search",
+        mode="study",
+    )
+    learning = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-learning",
+        message_id="message-learning",
+        content="想学习Transformer",
+        run_id="run-learning",
+        mode="study",
+    )
+
+    assert search.observed_count == 1
+    assert learning.committed_record_ids
+    assert [
+        (record.dimension, record.content)
+        for record in target_service.list_records("account-alice")
+    ] == [(FourDimension.KNOWLEDGE_INTEREST, "Transformer")]
+    observations = repository.list_observations(
+        "account-alice",
+        FourDimension.KNOWLEDGE_INTEREST,
+        "Transformer",
+        since=datetime.now(UTC) - timedelta(days=1),
+    )
+    assert [observation.message_id for observation in observations] == [
+        "message-search",
+        "message-learning",
+    ]
+    assert 0 < observations[0].reliability < 0.6
+    assert all(
+        PROFILE_SIGNAL_CLASSIFIER_VERSION in observation.extractor_version
+        for observation in observations
+    )
+    record = target_service.list_records("account-alice")[0]
+    assert PROFILE_SIGNAL_CLASSIFIER_VERSION in record.migration_version
+    assert "category=high_confidence_self" in record.migration_version
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "我朋友是大三人工智能专业",
+        "第三方说：我想学习 Transformer",
+        "假设我是大三学生",
+        "我不想学习 Transformer",
+        "角色扮演：我想学习 Transformer",
+        "引用：我想学习 Transformer",
+        "我最近焦虑，想学习 Transformer",
+        "我想学习政治",
+        "我喜欢佛教",
+        "我对糖尿病感兴趣",
+    ],
+)
+def test_forbidden_subject_omission_variants_never_write_profile(
+    content: str,
+) -> None:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="study",
+    )
+
+    assert result.run.status == "succeeded"
+    assert result.observed_count == 0
+    assert target_service.list_records("account-alice") == []
+
+
+def test_submission_validation_reuses_precheck_classification() -> None:
+    class _ClassificationAwareExtractor:
+        version = "classification-aware-v1"
+
+        def __init__(self) -> None:
+            self.classifications: list[ProfileSignalClassification] = []
+
+        def extract(
+            self,
+            *,
+            message_id: str,
+            signal_classification: ProfileSignalClassification,
+            **_: object,
+        ) -> ProfileExtractionOutput:
+            self.classifications.append(signal_classification)
+            return ProfileExtractionOutput.model_validate(
+                {
+                    "items": [
+                        {
+                            "dimension": FourDimension.KNOWLEDGE_INTEREST,
+                            "normalized_value": "Transformer",
+                            "evidence_ref": message_id,
+                            "reliability": 0.99,
+                            "action": "create",
+                        }
+                    ]
+                }
+            )
+
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    extractor = _ClassificationAwareExtractor()
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=extractor,
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-search",
+        message_id="message-search",
+        content="找Transformer论文",
+        run_id="run-search",
+        mode="study",
+    )
+
+    assert extractor.classifications[0].category == (
+        ProfileSignalCategory.BEHAVIOR_OBSERVATION
+    )
+    assert result.run.status == "pending"
+    assert target_service.list_records("account-alice") == []
+
+
+def test_gateway_configuration_keeps_deterministic_signals_local() -> None:
+    class _CountingGateway:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def invoke(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            del args, kwargs
+            self.calls += 1
+            return SimpleNamespace(
+                status=ModelCallStatus.SUCCESS,
+                output={"items": []},
+                error_code=None,
+                error_message=None,
+            )
+
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    gateway = _CountingGateway()
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-learning",
+        message_id="message-learning",
+        content="想学习 CNN",
+        run_id="run-learning",
+        mode="study",
+    )
+
+    assert result.run.status == "succeeded"
+    assert gateway.calls == 0
+    assert [record.content for record in target_service.list_records("account-alice")] == [
+        "CNN"
     ]
 
 
@@ -702,6 +987,81 @@ def test_sqlite_repository_survives_restart_and_isolates_accounts(tmp_path) -> N
     assert (
         len(second_service._four_dimensions.list_records("account-bob")) == 1
     )  # noqa: SLF001
+    second_database.close()
+
+
+def test_sqlite_subject_omission_path_survives_restart_and_isolates_accounts(
+    tmp_path,
+) -> None:
+    database_path = tmp_path / "issue06.db"
+    first_database = BridgesDatabase(database_path)
+    first_database.initialize()
+    first_target = SqliteFourDimensionProfileRepository(first_database)
+    first_automatic = SqliteAutomaticProfileRepository(first_database)
+    first_service = AutomaticProfileService(
+        four_dimension_service=FourDimensionProfileService(
+            source_repository=None,  # type: ignore[arg-type]
+            repository=first_target,
+        ),
+        repository=first_automatic,
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+    for index, content in enumerate(
+        (
+            "大三人工智能专业",
+            "目标考211相关专业/考研",
+            "想学习Transformer",
+            "找Transformer论文",
+        ),
+        start=1,
+    ):
+        first_service.preprocess_message(
+            "account-alice",
+            conversation_id=f"conversation-{index}",
+            message_id=f"message-{index}",
+            content=content,
+            run_id=f"run-{index}",
+            mode="study",
+        )
+    first_database.close()
+
+    second_database = BridgesDatabase(database_path)
+    second_service = AutomaticProfileService(
+        four_dimension_service=FourDimensionProfileService(
+            source_repository=None,  # type: ignore[arg-type]
+            repository=SqliteFourDimensionProfileRepository(second_database),
+        ),
+        repository=SqliteAutomaticProfileRepository(second_database),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+    replay = second_service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-3",
+        message_id="message-3",
+        content="想学习Transformer",
+        run_id="replay",
+        mode="study",
+    )
+    bob = second_service.preprocess_message(
+        "account-bob",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="找Transformer论文",
+        run_id="bob-run",
+        mode="study",
+    )
+
+    assert replay.run.status == "succeeded"
+    assert bob.run.account_id == "account-bob"
+    assert {
+        (record.dimension, record.content)
+        for record in second_service._four_dimensions.list_records("account-alice")
+    } == {
+        (FourDimension.ACADEMIC_STATUS, "大三人工智能专业"),
+        (FourDimension.STAGE_GOAL, "考211相关专业/考研"),
+        (FourDimension.KNOWLEDGE_INTEREST, "Transformer"),
+    }  # noqa: SLF001
+    assert second_service._four_dimensions.list_records("account-bob") == []  # noqa: SLF001
     second_database.close()
 
 

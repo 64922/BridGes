@@ -42,6 +42,11 @@ from bridges.profiles.four_dimensions import (
     is_recallable_confidence,
 )
 from bridges.profiles.ports import ProfileRepository
+from bridges.profiles.signals import (
+    ProfileSignalCategory,
+    ProfileSignalClassification,
+    ProfileSignalClassifier,
+)
 from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
@@ -58,39 +63,8 @@ _MAX_SLICE_ITEMS = 6
 _MAX_EVIDENCE_QUOTE_LENGTH = 240
 _MIN_PROMOTION_RELIABILITY = 0.6
 
-_PROFILE_SIGNAL = re.compile(
-    r"(?:^|[，。；：\s])(?:我(?:的|目前|现在|对|喜欢|计划|想|正在|是|在读|就读)|"
-    r"(?:给|帮)我规划|什么是|如何学|怎么学)"
-)
-_QUESTION_SIGNAL = re.compile(r"(?:什么是|如何|怎么|为什么|能否|请问|？|\?)")
-_SELF_SIGNAL = re.compile(
-    r"(?:^|[，。；：\s])(?:我|我的|目前我|我现在|我对|我喜欢|我计划)"
-)
 _CONFIRMATION_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:对|是的|没错|确实)[，,：:]?\s*我"
-)
-_STAGE_GOAL_SELF_SIGNAL = re.compile(r"(?:^|[，。；：\s])(?:给|帮)我规划")
-_FORBIDDEN_SIGNAL = re.compile(
-    r"(?:他人|第三方|朋友|同学|同事|他|她|他们|她们|假设|如果我是|扮演|角色扮演|"
-    r"引用|据说|有人说|不喜欢|不想|不要|别|没有|不是|焦虑|抑郁|健康|政治|宗教|财务|"
-    r"身份证|密码|密钥|邮箱|手机号|住址|精确位置|私信|私人通信|病|诊断)"
-)
-_KNOWLEDGE_TERMS = frozenset(
-    {
-        "物理",
-        "化学",
-        "生物",
-        "数学",
-        "历史",
-        "哲学",
-        "天文",
-        "地理",
-        "编程",
-        "计算机",
-        "科学",
-        "技术",
-        "语言",
-    }
 )
 _HOBBY_TERMS = frozenset(
     {
@@ -134,6 +108,7 @@ class AutomaticProfileExtractor(Protocol):
         message_id: str,
         content: str,
         run_id: str,
+        signal_classification: ProfileSignalClassification | None = None,
     ) -> ProfileExtractionOutput: ...
 
 
@@ -225,6 +200,17 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}-{_hash('|'.join(parts))[:32]}"
 
 
+def _signal_audit_version(
+    pipeline_version: str, classification: ProfileSignalClassification
+) -> str:
+    """把受控分类元数据绑定到每条自动画像写入的版本字段。"""
+
+    return (
+        f"{pipeline_version}|category={classification.category.value}"
+        f"|reason={classification.reason_code}"
+    )
+
+
 def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip(" \t\r\n，。；：:、,;.!！？?"))
 
@@ -274,8 +260,7 @@ def _privacy_directive(content: str) -> tuple[str, str | None] | None:
 def has_probable_profile_signal(content: str) -> bool:
     """确定性预检：明显无画像信号的机器/空载荷零次调用。"""
 
-    text = content.strip()
-    return bool(text and _PROFILE_SIGNAL.search(text))
+    return ProfileSignalClassifier().classify(content).should_process
 
 
 def _extract_value(text: str, patterns: tuple[str, ...]) -> str | None:
@@ -309,10 +294,41 @@ def _record_matches_question(
     return any(keyword in question for keyword in keyword_groups[record.dimension])
 
 
+def _extract_observation_topic(content: str) -> str | None:
+    """从搜索/提问观察中去掉动作词和文档类型后保留主题。"""
+
+    text = _normalize(content)
+    text = re.sub(
+        r"^(?:找|搜索|查找|检索|查|看|阅读|推荐|了解|介绍)\s*"
+        r"(?:几篇|一些|相关的?|一份)?\s*",
+        "",
+        text,
+    )
+    text = re.sub(
+        r"^(?:如何|怎么)\s*学(?:习)?\s*|^(?:什么是|为什么|能否|请问)\s*",
+        "",
+        text,
+    )
+    text = re.sub(
+        r"\s*(?:的)?(?:论文|文献|文章|资料|教程|课程|书籍|是什么|是啥)$",
+        "",
+        text,
+    )
+    text = _normalize(text)
+    return text if len(text) > 1 else None
+
+
+def _is_hobby_value(value: str) -> bool:
+    return any(term in value for term in _HOBBY_TERMS)
+
+
 class RuleBasedAutomaticProfileExtractor:
     """高置信自述的本地抽取器；生产可替换为网关抽取器。"""
 
     version = AUTOMATIC_EXTRACTOR_VERSION
+
+    def __init__(self, classifier: ProfileSignalClassifier | None = None) -> None:
+        self._classifier = classifier or ProfileSignalClassifier()
 
     def extract(
         self,
@@ -322,10 +338,32 @@ class RuleBasedAutomaticProfileExtractor:
         message_id: str,
         content: str,
         run_id: str,
+        signal_classification: ProfileSignalClassification | None = None,
     ) -> ProfileExtractionOutput:
         del account_id, conversation_id, run_id
         text = content.strip()
-        if not text or _FORBIDDEN_SIGNAL.search(text):
+        classification = signal_classification or self._classifier.classify(text)
+        if not classification.should_process:
+            return ProfileExtractionOutput(items=[])
+
+        if classification.category == ProfileSignalCategory.BEHAVIOR_OBSERVATION:
+            topic = _extract_observation_topic(text)
+            if topic is None:
+                return ProfileExtractionOutput(items=[])
+            return ProfileExtractionOutput.model_validate(
+                {
+                    "items": [
+                        {
+                            "dimension": FourDimension.KNOWLEDGE_INTEREST,
+                            "normalized_value": topic,
+                            "action": ProfileExtractionAction.OBSERVE,
+                            "evidence_ref": message_id,
+                            "reliability": 0.99,
+                        }
+                    ]
+                }
+            )
+        if not classification.is_self_statement:
             return ProfileExtractionOutput(items=[])
 
         items: list[dict[str, Any]] = []
@@ -335,6 +373,7 @@ class RuleBasedAutomaticProfileExtractor:
                 r"(?:我的|我这阶段的|我目前的)?目标(?:是|为)?\s*([^。！？!?；;，,]+)",
                 r"我(?:计划|打算)\s*([^。！？!?；;，,]+)",
                 r"(?:给|帮)我规划(?:一下|一份|一个)?\s*([^。！？!?；;，,]+)",
+                r"(?:^|[，。；;])(?:目标|计划|打算|规划)(?:是|为|：|:)?\s*([^。！？!?；;，,]+)",
             ),
         )
         if goal is not None:
@@ -350,15 +389,18 @@ class RuleBasedAutomaticProfileExtractor:
                 r"我对\s*([^。！？!?；;，,]+?)\s*(?:很)?感兴趣",
                 r"我(?:现在|目前)?更喜欢\s*([^。！？!?；;，,]+)",
                 r"我(?:很|比较|特别)?喜欢\s*([^。！？!?；;，,]+)",
-                r"我想学(?:习)?\s*([^。！？!?；;，,]+)",
+                r"我(?:想|要|准备)\s*学(?:习)?\s*([^。！？!?；;，,]+)",
+                r"我(?:正在|在)\s*学(?:习)?\s*([^。！？!?；;，,]+)",
+                r"(?:想|要|准备|正在|在)\s*学(?:习)?\s*([^。！？!?；;，,]+)",
+                r"(?:我\s*)?(?:正在|在)?\s*研究\s*([^。！？!?；;，,]+)",
             ),
         )
         if interest is not None:
             dimension = (
-                FourDimension.KNOWLEDGE_INTEREST
-                if re.search(r"我想学(?:习)?", text)
-                or any(term in interest for term in _KNOWLEDGE_TERMS)
-                else FourDimension.HOBBY
+                FourDimension.HOBBY
+                if _is_hobby_value(interest)
+                and not re.search(r"(?:学习|学|研究|专业|论文|知识|技术)", text)
+                else FourDimension.KNOWLEDGE_INTEREST
             )
             items.append({
                 "dimension": dimension,
@@ -370,21 +412,16 @@ class RuleBasedAutomaticProfileExtractor:
             text,
             (r"我(?:现在|目前)?(?:在读|就读|是)\s*([^。！？!?；;，,]+)",),
         )
+        if academic is None and classification.reason_code == (
+            "subject_omitted_academic_statement"
+        ):
+            academic = _normalize(re.split(r"[，。；;]", text, maxsplit=1)[0])
         if academic is not None:
             items.append({
                 "dimension": FourDimension.ACADEMIC_STATUS,
                 "normalized_value": academic,
                 "action": ProfileExtractionAction.CREATE,
             })
-
-        if not items and _QUESTION_SIGNAL.search(text):
-            topic = next((term for term in _KNOWLEDGE_TERMS if term in text), None)
-            if topic is not None:
-                items.append({
-                    "dimension": FourDimension.KNOWLEDGE_INTEREST,
-                    "normalized_value": topic,
-                    "action": ProfileExtractionAction.OBSERVE,
-                })
 
         if not items:
             return ProfileExtractionOutput(items=[])
@@ -398,8 +435,13 @@ class GatewayAutomaticProfileExtractor:
 
     version = AUTOMATIC_EXTRACTOR_VERSION
 
-    def __init__(self, gateway: ModelGateway) -> None:
+    def __init__(
+        self,
+        gateway: ModelGateway,
+        classifier: ProfileSignalClassifier | None = None,
+    ) -> None:
         self._gateway = gateway
+        self._classifier = classifier or ProfileSignalClassifier()
 
     def extract(
         self,
@@ -409,7 +451,11 @@ class GatewayAutomaticProfileExtractor:
         message_id: str,
         content: str,
         run_id: str,
+        signal_classification: ProfileSignalClassification | None = None,
     ) -> ProfileExtractionOutput:
+        classification = signal_classification or self._classifier.classify(content)
+        if not classification.should_process:
+            return ProfileExtractionOutput(items=[])
         context = RunContextEnvelope(
             run_id=run_id,
             account_id=account_id,
@@ -431,6 +477,8 @@ class GatewayAutomaticProfileExtractor:
                             "只抽取用户关于自己的明确稳定信号。禁止第三方、引用、假设、"
                             "角色扮演、敏感信息与一次性情绪。只输出四维枚举、规范化值、"
                             "消息证据引用、可靠度和动作。以 JSON 输出结果。"
+                            f"本条消息的确定性分类为 {classification.category.value}，"
+                            f"原因码为 {classification.reason_code}。"
                         ),
                     },
                     {"role": "user", "content": content},
@@ -883,10 +931,12 @@ class AutomaticProfileService:
         extractor: AutomaticProfileExtractor | None = None,
         slice_repository: ProfileRepository | None = None,
         message_reader: Callable[[str, str], Any | None] | None = None,
+        classifier: ProfileSignalClassifier | None = None,
     ) -> None:
         self._four_dimensions = four_dimension_service
         self._repository = repository
-        self._extractor = extractor or RuleBasedAutomaticProfileExtractor()
+        self._classifier = classifier or ProfileSignalClassifier()
+        self._extractor = extractor or RuleBasedAutomaticProfileExtractor(self._classifier)
         self._slice_repository = slice_repository
         self._message_reader = message_reader
         self._queue = (
@@ -899,7 +949,13 @@ class AutomaticProfileService:
 
     @property
     def extractor_version(self) -> str:
-        return self._extractor.version
+        """返回绑定分类策略的不可变抽取流水线版本。"""
+
+        return f"{self._extractor.version}+signal-{self.classifier_version}"
+
+    @property
+    def classifier_version(self) -> str:
+        return self._classifier.version
 
     def preprocess_message(
         self,
@@ -1010,7 +1066,8 @@ class AutomaticProfileService:
             created_at=now,
             updated_at=now,
         )
-        if not has_probable_profile_signal(content):
+        signal_classification = self._classifier.classify(content)
+        if not signal_classification.should_process:
             run.status = ProfileExtractionStatus.SUCCEEDED
             run.updated_at = now
             self._repository.save_run(run)
@@ -1029,6 +1086,7 @@ class AutomaticProfileService:
                     message_id=message_id,
                     content=content,
                     run_id=run_id,
+                    signal_classification=signal_classification,
                 )
                 record_ids, observed_count = self._commit_output(
                     account_id,
@@ -1038,6 +1096,7 @@ class AutomaticProfileService:
                     mode=mode,
                     output=output,
                     now=now,
+                    signal_classification=signal_classification,
                 )
                 run.status = ProfileExtractionStatus.SUCCEEDED
                 run.attempts += 1
@@ -1100,8 +1159,22 @@ class AutomaticProfileService:
             observed_count=0,
         )
 
-    def _extract_once(self, **kwargs: object) -> ProfileExtractionOutput:
-        output = self._extractor.extract(**kwargs)  # type: ignore[arg-type]
+    def _extract_once(
+        self,
+        *,
+        signal_classification: ProfileSignalClassification,
+        **kwargs: Any,
+    ) -> ProfileExtractionOutput:
+        extractor = self._extractor
+        if (
+            isinstance(extractor, GatewayAutomaticProfileExtractor)
+            and signal_classification.is_local
+        ):
+            extractor = RuleBasedAutomaticProfileExtractor(self._classifier)
+        output = extractor.extract(
+            signal_classification=signal_classification,
+            **kwargs,
+        )
         if not isinstance(output, ProfileExtractionOutput):
             output = ProfileExtractionOutput.model_validate(output)
         return output
@@ -1251,12 +1324,14 @@ class AutomaticProfileService:
                 content = self._message_content(
                     task.account_id, task.message_id, run.source_snapshot
                 )
+                signal_classification = self._classifier.classify(content)
                 output = self._extract_once(
                     account_id=task.account_id,
                     conversation_id="retry",
                     message_id=task.message_id,
                     content=content,
                     run_id=run.extraction_id,
+                    signal_classification=signal_classification,
                 )
                 record_ids, observed_count = self._commit_output(
                     task.account_id,
@@ -1266,6 +1341,7 @@ class AutomaticProfileService:
                     mode="companion",
                     output=output,
                     now=_now(),
+                    signal_classification=signal_classification,
                 )
                 task.status = ProfileExtractionStatus.SUCCEEDED
                 task.last_error = None
@@ -1335,13 +1411,23 @@ class AutomaticProfileService:
         mode: str,
         output: ProfileExtractionOutput,
         now: datetime,
+        signal_classification: ProfileSignalClassification,
     ) -> tuple[list[str], int]:
         record_ids: list[str] = []
         observed_count = 0
+        audit_version = _signal_audit_version(
+            self.extractor_version, signal_classification
+        )
         for item in output.items:
             if self._repository.is_message_tombstoned(account_id, message_id):
                 continue
-            self._validate_item(item, account_id, message_id, content)
+            self._validate_item(
+                item,
+                account_id,
+                message_id,
+                content,
+                signal_classification,
+            )
             if item.action == ProfileExtractionAction.IGNORE:
                 continue
             if self._repository.is_recording_blocked(
@@ -1353,18 +1439,18 @@ class AutomaticProfileService:
                     "profile-observation",
                     account_id,
                     message_id,
-                    self.extractor_version,
+                    audit_version,
                     item.dimension.value,
                     item.normalized_value,
                 ),
                 account_id=account_id,
                 message_id=message_id,
-                extractor_version=self.extractor_version,
+                extractor_version=audit_version,
                 dimension=item.dimension,
                 normalized_value=item.normalized_value,
                 evidence_ref=item.evidence_ref,
                 reliability=(
-                    0.0
+                    min(item.reliability, _MIN_PROMOTION_RELIABILITY - 0.01)
                     if item.action == ProfileExtractionAction.OBSERVE
                     else item.reliability
                 ),
@@ -1384,9 +1470,13 @@ class AutomaticProfileService:
                 entry.message_id
                 for entry in observations
                 if entry.reliability >= _MIN_PROMOTION_RELIABILITY
+                or (
+                    signal_classification.is_self_statement
+                    and entry.reliability > 0
+                )
             }
             explicit_self_statement = self._is_explicit_self_statement(
-                content, item.dimension
+                content, signal_classification
             )
             if not explicit_self_statement and len(unique_messages) < 2:
                 continue
@@ -1405,7 +1495,9 @@ class AutomaticProfileService:
                     FourDimension.ACADEMIC_STATUS,
                     FourDimension.STAGE_GOAL,
                 }
-                and self._is_explicit_self_statement(content, item.dimension)
+                and self._is_explicit_self_statement(
+                    content, signal_classification
+                )
             ):
                 # 学业阶段与阶段目标是当前稳定状态；后来的明确自述
                 # 更新现有记录，避免把冲突陈述并列注入模型。
@@ -1430,44 +1522,42 @@ class AutomaticProfileService:
                     if confidence == FourDimensionConfidence.HIGH
                     else "首次明确表达，等待再次确认"
                 ),
+                migration_version=audit_version,
             )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids)), observed_count
 
-    @staticmethod
     def _validate_item(
-        item: Any, account_id: str, message_id: str, content: str
+        self,
+        item: Any,
+        account_id: str,
+        message_id: str,
+        content: str,
+        signal_classification: ProfileSignalClassification,
     ) -> None:
-        del account_id
+        del account_id, content
         if item.evidence_ref != message_id:
             raise AutomaticProfileError("画像抽取证据引用不匹配")
-        if _FORBIDDEN_SIGNAL.search(item.normalized_value):
+        value_classification = self._classifier.classify(item.normalized_value)
+        if value_classification.category == ProfileSignalCategory.FORBIDDEN:
             raise AutomaticProfileError("画像抽取值包含禁止内容")
         if item.action == ProfileExtractionAction.OBSERVE:
-            if not _QUESTION_SIGNAL.search(content):
-                raise AutomaticProfileError("内部观察缺少普通提问依据")
+            if signal_classification.category not in {
+                ProfileSignalCategory.BEHAVIOR_OBSERVATION,
+                ProfileSignalCategory.AMBIGUOUS,
+            }:
+                raise AutomaticProfileError("内部观察缺少行为观察分类")
             return
-        self_signal = _SELF_SIGNAL.search(content)
-        if item.dimension == FourDimension.STAGE_GOAL:
-            self_signal = self_signal or _STAGE_GOAL_SELF_SIGNAL.search(content)
-        if _FORBIDDEN_SIGNAL.search(content) or not self_signal:
+        if not signal_classification.is_self_statement:
             raise AutomaticProfileError("画像抽取缺少明确的用户自述边界")
 
-    @staticmethod
-    def _is_explicit_self_statement(content: str, dimension: FourDimension) -> bool:
-        self_signal = _SELF_SIGNAL.search(content)
-        if dimension == FourDimension.STAGE_GOAL:
-            self_signal = self_signal or _STAGE_GOAL_SELF_SIGNAL.search(content)
-        if _FORBIDDEN_SIGNAL.search(content) or not self_signal:
-            return False
-        if dimension == FourDimension.KNOWLEDGE_INTEREST:
-            return bool(
-                re.search(
-                    r"我对.+感兴趣|我(?:现在|目前)?更喜欢|我喜欢|我想学(?:习)?",
-                    content,
-                )
-            )
-        return True
+    def _is_explicit_self_statement(
+        self,
+        content: str,
+        signal_classification: ProfileSignalClassification | None = None,
+    ) -> bool:
+        classification = signal_classification or self._classifier.classify(content)
+        return classification.is_self_statement
 
     @staticmethod
     def _is_user_confirmation(content: str) -> bool:
