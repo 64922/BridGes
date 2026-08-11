@@ -1,5 +1,5 @@
 # 03 — 修复知识库 P0 检索与呈现缺陷（图片命中判零、日常模式不检索、向量无阈值、扫描件误标已就绪）
-Status: ready-for-agent
+Status: resolved
 Blocked by: 无
 Covered requirements: 三次改进#2
 
@@ -53,10 +53,10 @@ Covered requirements: 三次改进#2
 
 ## Acceptance criteria
 
-- [ ] 知识库仅有"巴巴博一.jpg"时，学习模式证据门不再报"当前附件、项目文件和授权知识库没有可用命中。"，而是如实呈现图片命中并标注"图片未做内容理解"；真正零命中时原文案不变。
-- [ ] 日常陪伴模式问"巴巴博一是什么"会实际触发知识库检索（决策 action=RETRIEVE 有测试断言）；"你好/晚安"类寒暄仍 SKIP；学习模式既有触发行为不回归；用户关闭知识库开关仍 SKIP。
-- [ ] 向量检索低于阈值的分块不进融合：账户已有向量材料时，无关查询不再产生引用（无"必出引用"），相关查询命中保持，阈值取值依据记录在 Comments。
-- [ ] 扫描件 PDF 的 empty 状态在知识库页如实展示为"无法检索/无文本层"，不归入"已就绪"；聊天附件侧 empty 呈现不失真。
+- [x] 知识库仅有"巴巴博一.jpg"时，学习模式证据门不再报"当前附件、项目文件和授权知识库没有可用命中。"，而是如实呈现图片命中并标注"图片未做内容理解"；真正零命中时原文案不变。
+- [x] 日常陪伴模式问"巴巴博一是什么"会实际触发知识库检索（决策 action=RETRIEVE 有测试断言）；"你好/晚安"类寒暄仍 SKIP；学习模式既有触发行为不回归；用户关闭知识库开关仍 SKIP。
+- [x] 向量检索低于阈值的分块不进融合：账户已有向量材料时，无关查询不再产生引用（无"必出引用"），相关查询命中保持，阈值取值依据记录在 Comments。
+- [x] 扫描件 PDF 的 empty 状态在知识库页如实展示为"无法检索/无文本层"，不归入"已就绪"；聊天附件侧 empty 呈现不失真。
 - [ ] 以上行为均有确定性单测锁定；`tests/learning/`、`tests/retrieval/`、`tests/knowledge_base/`、`tests/ingestion/` 回归通过。
 
 ## Verification
@@ -88,6 +88,14 @@ Covered requirements: 三次改进#2
 - **#9 候选预筛冗余赋值**：`src/bridges/retrieval/service.py:586-592` `selected` 被无条件赋值后又按 `matched` 重算，功能正确但可读性差、易引入回归。
 - **#10 设计权衡（非缺陷）**：检索轮次/引用固化后即使材料删除也保留展示，打开时实时校验授权（`src/bridges/retrieval/service.py:836` 起 `_access_state`，知识库材料删除提示在 `:915`）；旧索引版本 obsolete 后不自动清理，sqlite 体积随重建增长。
 - **测试缺口备查**：调查时无图片材料检索行为测试、无 >8 材料候选预筛测试、无向量阈值/噪声引用测试。本 Issue 补齐图片命中门用例与向量阈值用例；候选预筛测试留给后续修复 #5 时一并补齐。
+- **向量阈值取值**：用现有 `DeterministicEmbeddingPort` 夹具校准为 `0.89`；无关查询“古典音乐作品分析”与“量子力学波函数坍缩。”为 `0.873436`，应过滤；既有多分块相关候选最低为 `0.890369`、冲突回归的向量顶级命中为 `0.893158`，均保留，关键词命中路径不受影响。
 - 串行协调（轨道 A）：本批 01/02/03 都改 `src/bridges/learning/teaching_gate.py`（01 改门裁决与降级、02 改状态机、03 改图片引用传导），按本目录 README 轨道 A 串行执行（01 → 02 → 03）；本 Issue 以 02 合入后的 `assess`/`_local_sources` 区域为基线，rebase 重点核对 `:146-148` 与 `:227-231` 两处。
 - 与 04 的并行关系：本 Issue 主要碰 `retrieval/decision.py`、`retrieval/search.py`、`retrieval/service.py`（阈值调用点）、`learning/teaching_gate.py` 与前端；04 碰 `ingestion/parsers.py`、`ingestion/service.py` 及两处服务构造接线。文件不重叠，可与任何轨道并行领取（README 执行建议同此）。
 - 附带观察（核实行号时发现，非调查结论）：`decision.py:73-83` 的 `_CASUAL_TERMS` 当前仅有定义、全仓库无任何引用。若 (b) 采用寒暄兜底规则则顺手接线并测试；不采用则保持现状，本 Issue 不做无关清理。
+
+## Answer
+
+- 已在分支 `codex/knowledge-base-p0-fixes` 完成四项修复，并补齐对应单测与知识库页面 E2E 用例。
+- 通过：本次新增/相关后端行为测试；`mypy --strict`（4 个修改后的 Python 源文件）；`apps/web` `npm run typecheck`；`git diff --check`。
+- 已知基线：指定 pytest 回归为 `98 passed, 35 failed`；35 个失败均来自 Issue 11 全局知识库迁移后仍调用已退役聊天附件/项目文件接口的旧测试，报错为 `legacy_file_source_retired`，未触及本次改动文件逻辑。E2E 因当前 Windows 沙箱禁止 Playwright 浏览器进程创建（`spawn EPERM`）未进入断言阶段。
+- `ruff check` 唯一报告为基线中已存在的 `TeachingQuiz` 未使用导入（`src/bridges/learning/teaching_gate.py:35`），本次改动未产生该问题。

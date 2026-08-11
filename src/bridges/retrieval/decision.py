@@ -17,7 +17,7 @@ from bridges.contracts.retrieval import (
     RetrievalDecisionReason,
 )
 
-RULES_VERSION = "retrieval-intent/v1"
+RULES_VERSION = "retrieval-intent/v2"
 
 _EXPLICIT_KNOWLEDGE_BASE_TERMS = (
     "知识库",
@@ -33,6 +33,9 @@ _UPLOADED_MATERIAL_TERMS = (
     "上传材料",
     "上传的文件",
     "上传文件",
+    "资料",
+    "材料",
+    "文件",
     "附件",
     "文档",
     "讲义",
@@ -80,6 +83,24 @@ _CASUAL_TERMS = (
     "在吗",
     "陪我聊",
     "聊聊天",
+)
+_COMPANION_KNOWLEDGE_TERMS = (
+    "是什么",
+    "什么是",
+    "什么意思",
+    "怎么理解",
+    "为什么",
+    "为何",
+    "如何理解",
+    "原理",
+    "概念",
+    "解释",
+    "介绍",
+    "定义",
+    "含义",
+    "区别",
+    "关系",
+    "作用",
 )
 
 
@@ -192,6 +213,17 @@ def decide_retrieval(
             RetrievalDecisionAction.RETRIEVE,
             RetrievalDecisionReason.KNOWLEDGE_BASE_REQUIRED,
         )
+    if mode == "companion":
+        if any(term in query for term in _CASUAL_TERMS):
+            return RetrievalDecision(
+                RetrievalDecisionAction.SKIP,
+                RetrievalDecisionReason.COMPANION_DEFAULT,
+            )
+        if any(term in query for term in _COMPANION_KNOWLEDGE_TERMS):
+            return RetrievalDecision(
+                RetrievalDecisionAction.RETRIEVE,
+                RetrievalDecisionReason.KNOWLEDGE_BASE_REQUIRED,
+            )
     return RetrievalDecision(
         RetrievalDecisionAction.SKIP,
         RetrievalDecisionReason.COMPANION_DEFAULT,

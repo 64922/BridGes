@@ -396,6 +396,34 @@ test.describe("Issue 18 — 全局知识库", () => {
     await expect(row).toContainText("可用于对话");
   });
 
+  test("扫描件 empty 状态显示无法检索/无文本层并独立筛选", async ({ page }) => {
+    await installAuthenticatedSession(page);
+    await installKnowledgeBaseApi(page, [
+      material({
+        filename: "扫描件.pdf",
+        status: "empty",
+        chunk_count: 0,
+        vector_indexed: false,
+        index_version_id: null,
+        usable_for_chat: false,
+      }),
+    ]);
+    await page.goto("/knowledge-base");
+
+    const row = page.getByTestId("kb-material-row");
+    await expect(row).toContainText("扫描件.pdf");
+    await expect(page.getByTestId("ingestion-status-empty")).toContainText("无法检索/无文本层");
+
+    await page.getByTestId("kb-filter-ready").click();
+    await expect(page.getByTestId("state-empty")).toContainText("没有匹配的材料");
+    await page.getByTestId("kb-filter-empty").click();
+    await expect(row).toHaveCount(1);
+
+    await page.getByRole("button", { name: "材料操作：扫描件.pdf" }).click();
+    await page.getByRole("menuitem", { name: "查看详情" }).click();
+    await expect(page.getByTestId("dialog")).toContainText("无法检索/无文本层");
+  });
+
   test("筛选无结果呈现独立空态，清除筛选恢复列表", async ({ page }) => {
     await installAuthenticatedSession(page);
     await installKnowledgeBaseApi(page, [material()]);

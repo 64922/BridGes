@@ -45,6 +45,7 @@ from bridges.retrieval.repository import RetrievalRepository
 from bridges.retrieval.search import (
     LAYER_QUOTAS,
     MAX_CITATIONS,
+    VECTOR_MIN_SIMILARITY,
     FusedCandidate,
     LayerSearchResult,
     clean_query,
@@ -347,7 +348,11 @@ class LayeredRetrievalService:
             if layers[layer]["status"] != RetrievalLayerStatus.OK:
                 continue
             vector_hits = (
-                search_vectors(vector_rows[layer], query_vector)
+                search_vectors(
+                    vector_rows[layer],
+                    query_vector,
+                    min_similarity=VECTOR_MIN_SIMILARITY,
+                )
                 if query_vector is not None
                 else []
             )

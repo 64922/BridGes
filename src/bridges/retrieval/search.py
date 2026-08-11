@@ -53,6 +53,8 @@ QUERY_MAX_LEN = 200
 KEYWORD_FETCH_LIMIT = 40
 #: 向量检索单层抓取上限。
 VECTOR_FETCH_LIMIT = 40
+#: 向量候选进入融合前的最小余弦相似度。
+VECTOR_MIN_SIMILARITY = 0.89
 #: 整词无命中时的回退窗口长度（递减，滑动步长 3）。
 WINDOW_LENGTHS = (18, 15, 12, 9, 6)
 #: 查询清理时剥离的常见标点（保留汉字/字母/数字用于检索）。
@@ -231,11 +233,14 @@ def search_vectors(
     vector_rows: Iterable[dict[str, Any]],
     query_vector: Sequence[float],
     limit: int = VECTOR_FETCH_LIMIT,
+    *,
+    min_similarity: float = VECTOR_MIN_SIMILARITY,
 ) -> list[ChunkHit]:
     """向量余弦检索：按相似度降序返回前 limit 条命中。
 
     查询向量与存量向量都已按索引合同 L2 规范化，余弦即点积。
-    位次按 (相似度降序, chunk_id 升序) 稳定排序。
+    低于 ``min_similarity`` 的候选在排序截断前丢弃；位次按
+    (相似度降序, chunk_id 升序) 稳定排序。
     """
     scored: list[tuple[float, ChunkHit]] = []
     for row in vector_rows:
@@ -249,6 +254,8 @@ def search_vectors(
             similarity = _cosine(values, query_vector)
         except ValueError:
             # 维度与合同不符（脏数据）：该分块不参与排序，不阻断整层检索
+            continue
+        if similarity < min_similarity:
             continue
         scored.append((similarity, chunk))
     scored.sort(key=lambda item: (-item[0], item[1].chunk_id))

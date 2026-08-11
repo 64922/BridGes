@@ -29,7 +29,43 @@ def test_companion_greeting_skips_global_knowledge_base(env):
 
     assert decision.action == RetrievalDecisionAction.SKIP
     assert decision.reason == RetrievalDecisionReason.COMPANION_DEFAULT
-    assert decision.rules_version == "retrieval-intent/v1"
+    assert decision.rules_version == "retrieval-intent/v2"
+
+
+def test_companion_topic_name_retrieves_global_knowledge_base() -> None:
+    decision = decide_retrieval(
+        "巴巴博一是什么",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=True,
+    )
+
+    assert decision.action == RetrievalDecisionAction.RETRIEVE
+    assert decision.reason == RetrievalDecisionReason.KNOWLEDGE_BASE_REQUIRED
+
+
+def test_user_disabled_still_skips_global_knowledge_base() -> None:
+    decision = decide_retrieval(
+        "巴巴博一是什么",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=False,
+    )
+
+    assert decision.action == RetrievalDecisionAction.SKIP
+    assert decision.reason == RetrievalDecisionReason.USER_DISABLED
+
+
+def test_companion_creative_request_still_skips_global_knowledge_base() -> None:
+    decision = decide_retrieval(
+        "写一首关于春天的小诗",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=True,
+    )
+
+    assert decision.action == RetrievalDecisionAction.SKIP
+    assert decision.reason == RetrievalDecisionReason.COMPANION_DEFAULT
 
 
 def test_study_explanation_retrieves_without_model_classifier(env):

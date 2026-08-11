@@ -25,7 +25,10 @@ NOW = datetime(2026, 8, 4, tzinfo=UTC)
 
 
 def _local_round(
-    sufficiency: RetrievalSufficiency, *, note: str | None = None
+    sufficiency: RetrievalSufficiency,
+    *,
+    note: str | None = None,
+    media_type: str = "text/plain",
 ) -> RetrievalRoundProjection:
     citations = []
     if sufficiency == RetrievalSufficiency.SUFFICIENT:
@@ -34,8 +37,8 @@ def _local_round(
                 citation_id="cit-1",
                 source_layer=RetrievalSourceLayer.ATTACHMENT,
                 object_id="obj-1",
-                filename="讲义.txt",
-                media_type="text/plain",
+                filename="图表.jpg" if media_type.startswith("image/") else "讲义.txt",
+                media_type=media_type,
                 snippet="核心机制",
                 rank=1,
             )
@@ -118,6 +121,22 @@ def test_sufficient_local_material_skips_external_search_and_creates_one_overvie
     assert turn.quiz is None
     assert "全面介绍" in turn.steps[1]
     assert "不强制测验" in turn.check_method
+
+
+def test_image_local_hit_is_preserved_and_annotated() -> None:
+    turn = TeachingTurnService().prepare(
+        "这张图片是什么",
+        retrieval=_local_round(
+            RetrievalSufficiency.SUFFICIENT,
+            media_type="image/jpeg",
+        ),
+    )
+
+    assert turn.evidence_gate.status == TeachingEvidenceStatus.SUFFICIENT
+    assert turn.evidence_gate.required_search.value == "none"
+    assert [source.title for source in turn.evidence_gate.local_sources] == ["图表.jpg"]
+    assert turn.evidence_gate.local_sources[0].locator == "图片未做内容理解"
+    assert "没有可用命中" not in turn.evidence_gate.reason
 
 
 def test_conflict_keeps_conflict_status_and_arxiv_source_type_distinct() -> None:

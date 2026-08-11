@@ -289,6 +289,18 @@ def test_no_hits_is_structured_not_silent_success(env: dict[str, Any]) -> None:
     assert "关键词检索" in (round_.note or "")
 
 
+def test_unrelated_query_does_not_emit_vector_only_citations(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "量子材料.txt", "量子力学波函数坍缩。", layer="knowledge_base")
+
+    round_ = _run(env, account, conversation_id, "assistant-1", "古典音乐作品分析")
+
+    assert round_ is not None
+    assert round_.sufficiency == RetrievalSufficiency.NO_HITS
+    assert round_.citations == []
+
+
 def test_conflict_signal_when_keyword_and_vector_disagree(env: dict[str, Any]) -> None:
     account = env["account_a"]
     conversation_id = seed_conversation(env, account)

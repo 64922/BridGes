@@ -142,6 +142,9 @@ def _local_sources(retrieval: RetrievalRoundProjection | None) -> list[TeachingE
                     for part in (
                         f"第 {citation.page_number} 页" if citation.page_number else None,
                         citation.section_title,
+                        "图片未做内容理解"
+                        if citation.media_type.startswith("image/")
+                        else None,
                     )
                     if part
                 )
@@ -149,9 +152,7 @@ def _local_sources(retrieval: RetrievalRoundProjection | None) -> list[TeachingE
             ),
             accessed_at=retrieval.created_at,
         )
-        # Issue 08：图片没有可用 OCR/文本证据时不能成为教学引用。
         for citation in retrieval.citations
-        if not citation.media_type.startswith("image/")
     ]
 
 
@@ -230,11 +231,6 @@ class TeachingEvidenceGateService:
         local = _local_sources(retrieval)
         local_status = retrieval.sufficiency if retrieval is not None else None
         local_stale = _local_is_stale(retrieval)
-        # Issue 08：本地命中全部是没有文本证据的图片时，视为无本地命中，
-        # 强制公开补充——图片不能支撑教学断言。
-        if retrieval is not None and retrieval.citations and not local:
-            local_status = RetrievalSufficiency.NO_HITS
-            local_stale = False
         required = self.required_search(query, None if local_stale else local_status)
         external = _external_sources(required, web_search, arxiv_search)
 

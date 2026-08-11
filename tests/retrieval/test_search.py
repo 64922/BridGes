@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import json
+import math
+
 from bridges.contracts.retrieval import RetrievalSourceLayer, RetrievalSufficiency
 from bridges.retrieval.search import (
     LAYER_QUOTAS,
@@ -18,6 +21,7 @@ from bridges.retrieval.search import (
     layer_has_conflict,
     merge_layers,
     query_tokens,
+    search_vectors,
 )
 
 
@@ -36,6 +40,22 @@ def _hit(
         content_hash=content_hash,
         chunk_content_hash=chunk_content_hash,
     )
+
+
+def _vector_row(chunk_id: str, first_component: float) -> dict[str, object]:
+    return {
+        "chunk_id": chunk_id,
+        "document_id": f"doc-{chunk_id}",
+        "object_id": f"obj-{chunk_id}",
+        "content": f"内容 {chunk_id}",
+        "section_title": None,
+        "page_number": None,
+        "content_hash": f"hash-{chunk_id}",
+        "chunk_content_hash": f"chunk-hash-{chunk_id}",
+        "vector_json": json.dumps(
+            [first_component, math.sqrt(1 - first_component**2)]
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +77,15 @@ def test_query_tokens_splits_whitespace_and_drops_short_terms() -> None:
     # 引号剥离、过短词（不足 3 字符）丢弃
     assert query_tokens('"ab" cde') == ["cde"]
     assert query_tokens("") == []
+
+
+def test_search_vectors_filters_hits_below_similarity_threshold() -> None:
+    hits = search_vectors(
+        [_vector_row("below", 0.889), _vector_row("above", 0.95)],
+        [1.0, 0.0],
+    )
+
+    assert [hit.chunk_id for hit in hits] == ["above"]
 
 
 # ---------------------------------------------------------------------------

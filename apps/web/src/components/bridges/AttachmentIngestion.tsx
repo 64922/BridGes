@@ -18,6 +18,7 @@ import {
  */
 export interface IngestionStatusChipProps {
   status: string;
+  label?: string;
   error?: string | null;
   onRetry?: () => void;
   retrying?: boolean;
@@ -82,6 +83,7 @@ const STATUS_CONFIG: Record<string, { label: string; icon: IconName; color: stri
 
 export function IngestionStatusChip({
   status,
+  label,
   error,
   onRetry,
   retrying,
@@ -111,7 +113,7 @@ export function IngestionStatusChip({
         <Icon name={config.icon} size={14} aria-hidden />
       )}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {config.label}
+        {label ?? config.label}
       </span>
       {isError && onRetry && (
         <button

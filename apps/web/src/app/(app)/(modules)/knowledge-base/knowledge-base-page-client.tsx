@@ -25,19 +25,21 @@ const ACCEPT_ATTRIBUTE = ".pdf,.docx,.txt,.md,.markdown,.png,.jpg,.jpeg,.gif,.we
 const SUPPORTED_EXTENSION = /\.(pdf|docx|txt|md|markdown|png|jpe?g|gif|webp)$/i;
 const POLL_INTERVAL_MS = 2500;
 
-type StatusFilter = "all" | "processing" | "ready" | "failed";
+type StatusFilter = "all" | "processing" | "ready" | "empty" | "failed";
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "全部" },
   { key: "processing", label: "处理中" },
   { key: "ready", label: "已就绪" },
+  { key: "empty", label: "无法检索/无文本层" },
   { key: "failed", label: "失败" },
 ];
 
-/** 状态筛选分桶：error → 失败；ready/empty → 已就绪；其余（含恢复中、重建中）→ 处理中。 */
+/** 状态筛选分桶：empty 单独呈现；error → 失败；其余 → 处理中。 */
 function statusBucket(material: KnowledgeBaseMaterialProjection): Exclude<StatusFilter, "all"> {
   if (material.status === "error") return "failed";
-  if (material.status === "ready" || material.status === "empty") return "ready";
+  if (material.status === "empty") return "empty";
+  if (material.status === "ready") return "ready";
   return "processing";
 }
 
@@ -114,7 +116,15 @@ interface StageStates {
 
 /** 由摄取状态与失败阶段推导四个处理阶段的呈现状态。 */
 function deriveStageStates(material: KnowledgeBaseMaterialProjection): StageStates {
-  if (material.status === "ready" || material.status === "empty") {
+  if (material.status === "empty") {
+    return {
+      upload: "done",
+      parse: "done",
+      fulltext: "unavailable",
+      vector: "unavailable",
+    };
+  }
+  if (material.status === "ready") {
     return {
       upload: "done",
       parse: "done",
@@ -595,7 +605,10 @@ export default function KnowledgeBasePageClient() {
             >
               {material.filename}
             </span>
-            <IngestionStatusChip status={material.status} />
+            <IngestionStatusChip
+              status={material.status}
+              label={material.status === "empty" ? "无法检索/无文本层" : undefined}
+            />
             {degraded && (
               <span
                 title={material.vector_unavailable_reason ?? "向量检索暂不可用"}
@@ -732,6 +745,19 @@ export default function KnowledgeBasePageClient() {
           </MetaRow>
           <MetaRow label="分块数">{material.chunk_count}</MetaRow>
         </div>
+
+        {material.status === "empty" && (
+          <p
+            role="status"
+            style={{
+              marginTop: "var(--space-3)",
+              color: "var(--color-status-wait)",
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            无法检索/无文本层：未发现可建立索引的文本内容。
+          </p>
+        )}
 
         <div
           style={{
