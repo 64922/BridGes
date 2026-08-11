@@ -57,6 +57,7 @@ from bridges.skills.humanizer.genre_rules import (
     genre_rule_set,
 )
 from bridges.skills.humanizer.intent import HUMANIZER_ROUTE_VERSION
+from bridges.skills.humanizer.method_rules import MethodScene, render_method_rules
 from bridges.skills.registry import SkillRegistry
 from bridges.web_search.service import WebSearchService
 
@@ -700,6 +701,15 @@ class HumanizerService:
         genre_doc = genre_rule_set(contract.genre)
         required_lines = "；".join(rule.label for rule in genre_doc.required)
         prohibited_lines = "；".join(rule.label for rule in genre_doc.prohibited)
+        method_scene = (
+            MethodScene.ARTICLE_REWRITE
+            if contract.path == HumanizerPath.REWRITE
+            else MethodScene.ARTICLE_GENERATE
+        )
+        method_block = render_method_rules(
+            method_scene,
+            genre_name=genre_doc.display_name,
+        )
         return f"""你是 BridGes 内置「文章人味化」SKILL（版本 {skill_version}）的执行器。
 
 【任务边界】
@@ -707,6 +717,9 @@ class HumanizerService:
 - 禁止：规避 AI 检测、冒充真人、伪造个人经历、欺骗性代写；不虚构事实、论文或引用；不以牺牲科学事实换取口语化。
 - 体裁：{genre_doc.display_name}。必含：{required_lines}。禁止：{prohibited_lines}。
 - 体裁责任：{genre_doc.human_responsibility}
+
+【方法体系（必须执行）】
+{method_block}
 
 【事实锁（不得改变，冲突时宁可保留原文）】
 {lock_lines}
@@ -717,7 +730,7 @@ class HumanizerService:
 【输出要求】严格输出 JSON，不得输出 JSON 之外的任何内容：
 {{"final_text": 最终文本, "edits": [{{"original": 原文片段, "revised": 新文片段,
 "kind": "rewrite|restructure|word_choice|audience_adapt|no_change",
-"reason": 理由（对应哪条体裁规则）}}], "fact_check": [{{"item": 核查对象,
+"reason": 理由（对应哪条体裁或方法规则）}}], "fact_check": [{{"item": 核查对象,
 "result": "已核实|需人工确认|存在虚构风险", "evidence": 依据}}],
 "open_questions": [尚未解决的问题]}}"""  # noqa: E501
 
