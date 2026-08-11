@@ -63,6 +63,7 @@ DEFAULT_HANDSHAKE_TIMEOUT = 5.0
 DEFAULT_RESPONSE_TIMEOUT = 30.0
 #: 默认安全重启上限：首次崩溃后最多重启一次，仍失败才返回终态。
 DEFAULT_MAX_RESTARTS = 1
+DEFAULT_MAX_CONCURRENT_SEARCHES = 4
 
 _SANITIZE_PATTERNS = (
     (re.compile(r"sk-[A-Za-z0-9_\-]{16,}"), "<api-key>"),
@@ -103,6 +104,7 @@ class ArxivMcpProcessClient:
         handshake_timeout: float = DEFAULT_HANDSHAKE_TIMEOUT,
         response_timeout: float = DEFAULT_RESPONSE_TIMEOUT,
         max_restarts: int = DEFAULT_MAX_RESTARTS,
+        max_concurrent_searches: int = DEFAULT_MAX_CONCURRENT_SEARCHES,
     ) -> None:
         self._python_executable = python_executable or sys.executable
         # 测试注入边界：收尾 smoke 用它在 worker 侧替换确定性 arXiv 客户端
@@ -112,6 +114,7 @@ class ArxivMcpProcessClient:
         self._handshake_timeout = handshake_timeout
         self._response_timeout = response_timeout
         self._max_restarts = max_restarts
+        self._max_concurrent_searches = max(1, max_concurrent_searches)
         self._process: subprocess.Popen[str] | None = None
         #: 当前进程是否已完成 ready 握手（spawn 时重置）。
         self._ready = False
@@ -123,6 +126,13 @@ class ArxivMcpProcessClient:
         self._restarts = 0
         #: 当前协议阶段（handshake/search），供诊断日志区分失败发生阶段。
         self._stage = "handshake"
+        #: 单个可复用 worker 串行使用；并发请求使用隔离的临时 worker。
+        self._search_lock = threading.Lock()
+        self._extra_slots = threading.BoundedSemaphore(
+            max(0, self._max_concurrent_searches - 1)
+        )
+        self._children_lock = threading.Lock()
+        self._children: set[ArxivMcpProcessClient] = set()
 
     def search(
         self,
@@ -130,21 +140,79 @@ class ArxivMcpProcessClient:
         *,
         max_results: int = 5,
         stop_event: threading.Event | None = None,
+        deadline: float | None = None,
     ) -> list[ArxivPaper]:
-        """执行一次搜索：握手 → 请求 → 单次响应，失败后最多重启一次。"""
+        """执行一次搜索：每个请求使用隔离 worker 与同一绝对截止时间。"""
+        if _user_cancelled(stop_event):
+            raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+        if deadline is not None and deadline <= time.monotonic():
+            raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。")
+        if self._search_lock.acquire(blocking=False):
+            try:
+                return self._search_with_process(
+                    query,
+                    max_results=max_results,
+                    stop_event=stop_event,
+                    deadline=deadline,
+                )
+            finally:
+                self._search_lock.release()
+        if not self._extra_slots.acquire(blocking=False):
+            raise ArxivMcpError(
+                "arxiv_backpressure", "arXiv 搜索请求过多，请稍后重试。"
+            )
+        child = ArxivMcpProcessClient(
+            python_executable=self._python_executable,
+            extra_env=self._extra_env,
+            handshake_timeout=self._handshake_timeout,
+            response_timeout=self._response_timeout,
+            max_restarts=self._max_restarts,
+            max_concurrent_searches=1,
+        )
+        with self._children_lock:
+            self._children.add(child)
+        try:
+            return child._search_with_process(
+                query,
+                max_results=max_results,
+                stop_event=stop_event,
+                deadline=deadline,
+            )
+        finally:
+            child.close()
+            with self._children_lock:
+                self._children.discard(child)
+            self._extra_slots.release()
+
+    def _search_with_process(
+        self,
+        query: str,
+        *,
+        max_results: int,
+        stop_event: threading.Event | None,
+        deadline: float | None,
+    ) -> list[ArxivPaper]:
+        """在已分配的 worker 会话上执行请求；重试不重置绝对截止时间。"""
         self._restarts = 0
         for _ in range(self._max_restarts + 1):
+            if _user_cancelled(stop_event):
+                raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+            if deadline is not None and deadline <= time.monotonic():
+                raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。")
             process = self._ensure_process()
             started = time.monotonic()
             try:
                 self._stage = "handshake"
-                self._ensure_handshake(process, stop_event=stop_event)
+                self._ensure_handshake(
+                    process, stop_event=stop_event, deadline=deadline
+                )
                 self._stage = "search"
-                self._send_request(process, query, max_results)
+                self._send_request(process, query, max_results, deadline=deadline)
                 line = self._wait_line(
                     process,
                     stop_event=stop_event,
                     timeout=self._response_timeout,
+                    deadline=deadline,
                     stage="search",
                 )
                 papers = self._decode_response(line)
@@ -156,9 +224,16 @@ class ArxivMcpProcessClient:
                 )
                 return papers
             except _ProcessWaitError as exc:
+                if _user_cancelled(stop_event):
+                    raise ArxivMcpError(
+                        "arxiv_cancelled", "已取消本轮论文搜索。"
+                    ) from exc
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise ArxivMcpError(exc.code, exc.message) from exc
                 if self._restarts >= self._max_restarts:
                     self._log_terminal_failure(process, exc, started)
                     raise ArxivMcpError(exc.code, exc.message) from exc
+                self._close_process(process)
                 self._restarts += 1
                 logger.warning(
                     "arxiv worker 等待失败 pid=%s stage=%s code=%s elapsed=%.2fs"
@@ -176,6 +251,10 @@ class ArxivMcpProcessClient:
     def close(self) -> None:
         """关闭受限 worker：终止进程、关闭管道，避免遗留子进程与句柄。"""
         self._close_process(self._process)
+        with self._children_lock:
+            children = list(self._children)
+        for child in children:
+            child.close()
 
     # ------------------------------------------------------------------
     # 协议步骤
@@ -185,9 +264,29 @@ class ArxivMcpProcessClient:
         process = self._process
         if process is not None and process.poll() is None:
             return process
+        command = [self._python_executable, "-m", "bridges.arxiv_mcp.worker"]
+        if "PYTHONPATH" in self._extra_env:
+            # 收尾替身通过 sitecustomize 注入。-S 防止 editable .pth 把主
+            # 仓库源码重新加回 sys.path，bootstrap 再显式加载替身并运行 worker。
+            worker_bootstrap = """
+import importlib.util
+import os
+import runpy
+import sys
+
+paths = [path for path in os.environ.get("PYTHONPATH", "").split(os.pathsep) if path]
+sys.path[:0] = paths
+spec = importlib.util.find_spec("sitecustomize")
+if spec is not None and spec.loader is not None:
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["sitecustomize"] = module
+    spec.loader.exec_module(module)
+runpy.run_module("bridges.arxiv_mcp.worker", run_name="__main__")
+"""
+            command = [self._python_executable, "-S", "-c", worker_bootstrap]
         try:
             process = subprocess.Popen(
-                [self._python_executable, "-m", "bridges.arxiv_mcp.worker"],
+                command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -210,7 +309,11 @@ class ArxivMcpProcessClient:
         return process
 
     def _ensure_handshake(
-        self, process: subprocess.Popen[str], *, stop_event: threading.Event | None
+        self,
+        process: subprocess.Popen[str],
+        *,
+        stop_event: threading.Event | None,
+        deadline: float | None,
     ) -> None:
         """等待 worker 的 ready 握手行并校验协议版本（只在首个请求前执行）。"""
         if self._ready:
@@ -219,6 +322,7 @@ class ArxivMcpProcessClient:
             process,
             stop_event=stop_event,
             timeout=self._handshake_timeout,
+            deadline=deadline,
             stage="handshake",
         )
         try:
@@ -241,15 +345,24 @@ class ArxivMcpProcessClient:
         logger.info("arxiv worker 握手完成 pid=%s", process.pid)
 
     def _send_request(
-        self, process: subprocess.Popen[str], query: str, max_results: int
+        self,
+        process: subprocess.Popen[str],
+        query: str,
+        max_results: int,
+        *,
+        deadline: float | None,
     ) -> None:
         if process.stdin is None or process.stdout is None:
             raise _ProcessWaitError(
                 "arxiv_worker_exit", "arXiv 搜索服务进程已退出，请重试。"
             )
-        request = json.dumps(
-            {"query": query, "max_results": max_results}, ensure_ascii=False
-        )
+        request_payload: dict[str, Any] = {
+            "query": query,
+            "max_results": max_results,
+        }
+        if deadline is not None:
+            request_payload["deadline"] = deadline
+        request = json.dumps(request_payload, ensure_ascii=False)
         try:
             process.stdin.write(request + "\n")
             process.stdin.flush()
@@ -264,18 +377,25 @@ class ArxivMcpProcessClient:
         *,
         stop_event: threading.Event | None,
         timeout: float,
+        deadline: float | None,
         stage: str,
     ) -> str:
         """按截止时间等待一行协议输出；取消/超时/EOF 各自映射稳定错误。"""
-        deadline = time.monotonic() + timeout
+        phase_deadline = time.monotonic() + timeout
+        if deadline is not None:
+            phase_deadline = min(phase_deadline, deadline)
         lines = self._lines
         while True:
-            if stop_event is not None and stop_event.is_set():
+            if _user_cancelled(stop_event):
                 self._close_process(process)
                 raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
-            remaining = deadline - time.monotonic()
+            remaining = phase_deadline - time.monotonic()
             if remaining <= 0:
                 self._close_process(process)
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise _ProcessWaitError(
+                        "arxiv_timeout", "arXiv 搜索超时，请重试。"
+                    )
                 if stage == "handshake":
                     raise _ProcessWaitError(
                         "arxiv_handshake", "arXiv 搜索服务启动超时，请重试。"
@@ -392,10 +512,17 @@ class ArxivMcpProcessClient:
         if process.poll() is None:
             process.terminate()
             try:
-                process.wait(timeout=2)
+                process.wait(timeout=0.5)
             except subprocess.TimeoutExpired:
                 process.kill()
-                process.wait(timeout=2)  # kill 后回收退出码，避免僵尸残留
+                try:
+                    process.wait(timeout=0.5)  # kill 后回收退出码，避免僵尸残留
+                except subprocess.TimeoutExpired:
+                    logger.warning("arxiv worker 终止回收超时 pid=%s", process.pid)
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                with suppress(OSError, ValueError):
+                    stream.close()
 
     def _log_terminal_failure(
         self,
@@ -435,8 +562,27 @@ class ArxivMcpProcessClient:
             "PYTHONUTF8": "1",
         }
         if "PYTHONPATH" in self._extra_env:
+            source_root = os.path.normcase(
+                os.path.abspath(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                )
+            )
+            # worktree 场景下解释器可能还通过 editable 安装暴露主仓库的
+            # ``src``；只在测试替身注入路径时过滤兄弟源码根，不改写宿主
+            # 进程的全局 sys.path。
+            isolated_paths = [
+                path
+                for path in sys.path
+                if not (
+                    path
+                    and os.path.basename(os.path.normcase(os.path.abspath(path))) == "src"
+                    and os.path.normcase(os.path.abspath(path)) != source_root
+                )
+            ]
             env["PYTHONPATH"] = (
-                self._extra_env["PYTHONPATH"] + os.pathsep + os.pathsep.join(sys.path)
+                self._extra_env["PYTHONPATH"]
+                + os.pathsep
+                + os.pathsep.join(isolated_paths)
             )
         else:
             env["PYTHONPATH"] = os.pathsep.join(sys.path)
@@ -462,3 +608,11 @@ def _paper_from_payload(payload: Any) -> ArxivPaper:
         pdf_url=str(payload["pdf_url"]),
         abstract=str(payload["abstract"]),
     )
+
+
+def _user_cancelled(stop_event: threading.Event | None) -> bool:
+    """区分用户取消与编排器为截止时间发出的内部停止信号。"""
+    if stop_event is None:
+        return False
+    marker = getattr(stop_event, "user_is_set", None)
+    return bool(marker()) if callable(marker) else stop_event.is_set()

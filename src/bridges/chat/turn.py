@@ -23,6 +23,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import replace
 from datetime import UTC, datetime
+from inspect import Parameter, signature
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
@@ -37,7 +38,6 @@ from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intake import assess_intake
 from bridges.career.intent import is_career_intent
 from bridges.chat.budget import (
-    EXTERNAL_TIMEOUT_SECONDS,
     RESULT_FAILED,
     RESULT_OK,
     RESULT_TIMEOUT,
@@ -127,6 +127,8 @@ CHAT_CAPABILITY_VERSION = "1"
 
 #: 并行公开搜索超时占位（预算到期未完成的结果；调用方按降级处理）。
 _SEARCH_TIMEOUT = object()
+#: 用户取消后未完成来源的占位；不能折叠为超时错误。
+_SEARCH_CANCELLED = object()
 _UNVERIFIED_TEACHING_PREFIX = "本轮未联网核实："
 
 
@@ -137,18 +139,93 @@ def _initial_web_search_projection(
     initial_projection = getattr(service, "initial_projection", None)
     if not callable(initial_projection):
         return None
-    return initial_projection(plan)
+    result = initial_projection(plan)
+    return result if isinstance(result, WebSearchProjection) else None
 
 
-def _wait_timeout(futures: list[Any], timeout: float) -> tuple[set[Any], set[Any]]:
-    """等待全部 future 完成或总超时（并行语义：总耗时接近较慢者）。"""
-    if not futures:
-        return set(), set()
-    if timeout <= 0:
-        return set(), set(futures)
-    # 等全部来源完成（或总超时）：并行语义 = 总耗时接近较慢者而非之和
-    done, pending = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
-    return done, pending
+class _SearchStopEvent:
+    """把用户停止信号与搜索阶段截止信号合并成一个只读观察边界。"""
+
+    def __init__(self, parent: threading.Event | None) -> None:
+        self._parent = parent
+        self._deadline_stop = threading.Event()
+
+    def is_set(self) -> bool:
+        return self._deadline_stop.is_set() or bool(
+            self._parent is not None and self._parent.is_set()
+        )
+
+    def user_is_set(self) -> bool:
+        return bool(self._parent is not None and self._parent.is_set())
+
+    def set(self) -> None:
+        self._deadline_stop.set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        if self.is_set():
+            return True
+        end = None if timeout is None else time.monotonic() + timeout
+        while not self.is_set():
+            remaining = None if end is None else end - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                return self.is_set()
+            self._deadline_stop.wait(
+                0.05 if remaining is None else min(0.05, remaining)
+            )
+        return True
+
+
+def _supports_keyword(callable_obj: object, keyword: str) -> bool:
+    """兼容旧测试替身，同时让生产服务消费绝对截止时间。"""
+    try:
+        parameters = tuple(
+            signature(callable_obj).parameters.values()  # type: ignore[arg-type]
+        )
+    except (TypeError, ValueError):
+        return True
+    return any(
+        parameter.name == keyword or parameter.kind == Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+
+
+def _invoke_search(
+    service: Any,
+    account_id: str,
+    plan: object,
+    *,
+    stop_event: object,
+    deadline: float,
+) -> object:
+    """调用搜索服务并把同一绝对截止时刻传到支持它的实现。"""
+    search = service.search
+    kwargs: dict[str, object] = {"stop_event": stop_event}
+    if _supports_keyword(search, "deadline"):
+        kwargs["deadline"] = deadline
+    return search(account_id, plan, **kwargs)
+
+
+def _make_search_call(
+    service: Any,
+    account_id: str,
+    plan: object,
+    *,
+    stop_event: _SearchStopEvent,
+    deadline: float | Callable[[], float],
+) -> Callable[[], object]:
+    """固定搜索输入，并在提交前读取最终的来源截止时间。"""
+
+    def call() -> object:
+        call_deadline = deadline() if callable(deadline) else deadline
+        return _invoke_search(
+            service,
+            account_id,
+            plan,
+            stop_event=stop_event,
+            deadline=call_deadline,
+        )
+
+    return call
 
 
 #: 对话双模式（ADR-0022）：普通新聊天默认日常陪伴，学习项目新建对话默认学习模式。
@@ -2042,6 +2119,8 @@ class TurnOrchestrator:
                     # 总耗时接近较慢者而非两者之和；结果按固定顺序（先论文
                     # 后公网）处理，顺序确定。
                     calls: list[tuple[str, Callable[[], object] | None]] = []
+                    search_stop_event = _SearchStopEvent(stop_event)
+                    search_deadline = budget.absolute_deadline()
                     if (
                         required_search.value in {"arxiv", "both"}
                         and self._arxiv_search is not None
@@ -2053,8 +2132,12 @@ class TurnOrchestrator:
                         calls.append(
                             (
                                 "arxiv",
-                                lambda: self._arxiv_search.search(  # type: ignore[union-attr]
-                                    account_id, arxiv_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                _make_search_call(
+                                    self._arxiv_search,
+                                    account_id,
+                                    arxiv_plan,
+                                    stop_event=search_stop_event,
+                                    deadline=lambda: search_deadline,
                                 ),
                             )
                         )
@@ -2079,23 +2162,36 @@ class TurnOrchestrator:
                         calls.append(
                             (
                                 "web",
-                                lambda: self._web_search.search(  # type: ignore[union-attr]
-                                    account_id, search_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                _make_search_call(
+                                    self._web_search,
+                                    account_id,
+                                    search_plan,
+                                    stop_event=search_stop_event,
+                                    deadline=lambda: search_deadline,
                                 ),
                             )
                         )
-                    # 搜索阶段墙钟：取来源超时中较小者，且不超出剩余总预算
-                    stage_budget = min(
-                        EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
-                        EXTERNAL_TIMEOUT_SECONDS["web_search"],
+                    search_deadline = budget.search_deadline(
+                        {name for name, call in calls if call is not None}
                     )
                     search_results = self._parallel_search(
                         calls,
-                        timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
+                        deadline=search_deadline,
+                        stop_event=stop_event,
+                        search_stop_event=search_stop_event,
                     )
                     arxiv_result = search_results.get("arxiv")
                     web_result = search_results.get("web")
-                    if arxiv_plan is not None and arxiv_result is not _SEARCH_TIMEOUT:
+                    if arxiv_plan is not None and arxiv_result is _SEARCH_CANCELLED:
+                        arxiv_search_projection = ArxivSearchProjection(
+                            status=ArxivSearchStatus.CANCELLED,
+                            trigger_reason=arxiv_plan.reason,
+                            query_summary=arxiv_plan.query,
+                            error_code="arxiv_cancelled",
+                            error_message="已取消本轮论文搜索。",
+                            can_retry=False,
+                        )
+                    elif arxiv_plan is not None and arxiv_result is not _SEARCH_TIMEOUT:
                         if isinstance(arxiv_result, Exception):
                             # Issue 05：意外异常不再折叠成启动失败，投影为
                             # 独立的内部错误码（常规失败由服务层分类）。
@@ -2119,7 +2215,16 @@ class TurnOrchestrator:
                             error_message="arXiv 搜索超时，请重试。",
                             can_retry=True,
                         )
-                    if search_plan is not None and web_result is not _SEARCH_TIMEOUT:
+                    if search_plan is not None and web_result is _SEARCH_CANCELLED:
+                        web_search_projection = WebSearchProjection(
+                            status=WebSearchStatus.CANCELLED,
+                            trigger_reason=search_plan.reason,
+                            query_summary=search_plan.query,
+                            error_code="web_search_cancelled",
+                            error_message="已取消本轮联网搜索。",
+                            can_retry=False,
+                        )
+                    elif search_plan is not None and web_result is not _SEARCH_TIMEOUT:
                         if isinstance(web_result, Exception):
                             web_search_projection = WebSearchProjection(
                                 status=WebSearchStatus.ERROR,
@@ -2322,28 +2427,34 @@ class TurnOrchestrator:
                     if conversation is not None
                     else CHAT_MODE
                 )
-                arxiv_plan = None
-                search_plan = None
+                paper_arxiv_plan = None
+                paper_search_plan = None
                 public_search_entered = False
                 if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
                     public_search_entered = True
                     yield self._stage_event(
                         assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
                     )
-                    calls: list[tuple[str, Callable[[], object] | None]] = []
+                    paper_calls: list[tuple[str, Callable[[], object] | None]] = []
+                    paper_search_stop_event = _SearchStopEvent(stop_event)
+                    paper_search_deadline = budget.absolute_deadline()
                     if (
                         paper_route
                         and self._arxiv_search is not None
                         and arxiv_search_projection is None
                     ):
-                        planned = self._arxiv_search.plan_from_route(route)  # type: ignore[arg-type]
-                        if planned.should_search:
-                            arxiv_plan = planned
-                            calls.append(
+                        paper_arxiv_planned = self._arxiv_search.plan_from_route(route)  # type: ignore[arg-type]
+                        if paper_arxiv_planned.should_search:
+                            paper_arxiv_plan = paper_arxiv_planned
+                            paper_calls.append(
                                 (
                                     "arxiv",
-                                    lambda: self._arxiv_search.search(  # type: ignore[union-attr]
-                                        account_id, arxiv_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                    _make_search_call(
+                                        self._arxiv_search,
+                                        account_id,
+                                        paper_arxiv_plan,
+                                        stop_event=paper_search_stop_event,
+                                        deadline=lambda: paper_search_deadline,
                                     ),
                                 )
                             )
@@ -2352,11 +2463,11 @@ class TurnOrchestrator:
                         and not paper_route
                         and web_search_projection is None
                     ):
-                        planned = self._web_search.plan(round_query, mode_for_plan)
-                        if planned.should_search:
-                            search_plan = planned
+                        paper_web_planned = self._web_search.plan(round_query, mode_for_plan)
+                        if paper_web_planned.should_search:
+                            paper_search_plan = paper_web_planned
                             loading = _initial_web_search_projection(
-                                self._web_search, search_plan
+                                self._web_search, paper_search_plan
                             )
                             if loading is not None:
                                 self._repo.update_message_web_search(
@@ -2365,29 +2476,43 @@ class TurnOrchestrator:
                                     loading.model_dump(mode="json"),
                                     datetime.now(UTC),
                                 )
-                            calls.append(
+                            paper_calls.append(
                                 (
                                     "web",
-                                    lambda: self._web_search.search(  # type: ignore[union-attr]
-                                        account_id, search_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                    _make_search_call(
+                                        self._web_search,
+                                        account_id,
+                                        paper_search_plan,
+                                        stop_event=paper_search_stop_event,
+                                        deadline=lambda: paper_search_deadline,
                                     ),
                                 )
                             )
-                    stage_budget = min(
-                        EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
-                        EXTERNAL_TIMEOUT_SECONDS["web_search"],
+                    paper_search_deadline = budget.search_deadline(
+                        {name for name, call in paper_calls if call is not None}
                     )
-                    search_results = self._parallel_search(
-                        calls,
-                        timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
+                    paper_search_results = self._parallel_search(
+                        paper_calls,
+                        deadline=paper_search_deadline,
+                        stop_event=stop_event,
+                        search_stop_event=paper_search_stop_event,
                     )
-                    arxiv_result = search_results.get("arxiv")
-                    if arxiv_plan is not None:
-                        if arxiv_result is _SEARCH_TIMEOUT:
+                    arxiv_result = paper_search_results.get("arxiv")
+                    if paper_arxiv_plan is not None:
+                        if arxiv_result is _SEARCH_CANCELLED:
+                            arxiv_search_projection = ArxivSearchProjection(
+                                status=ArxivSearchStatus.CANCELLED,
+                                trigger_reason=paper_arxiv_plan.reason,
+                                query_summary=paper_arxiv_plan.query,
+                                error_code="arxiv_cancelled",
+                                error_message="已取消本轮论文搜索。",
+                                can_retry=False,
+                            )
+                        elif arxiv_result is _SEARCH_TIMEOUT:
                             arxiv_search_projection = ArxivSearchProjection(
                                 status=ArxivSearchStatus.ERROR,
-                                trigger_reason=arxiv_plan.reason,
-                                query_summary=arxiv_plan.query,
+                                trigger_reason=paper_arxiv_plan.reason,
+                                query_summary=paper_arxiv_plan.query,
                                 error_code="arxiv_timeout",
                                 error_message="arXiv 搜索超时，请重试。",
                                 can_retry=True,
@@ -2395,8 +2520,8 @@ class TurnOrchestrator:
                         elif isinstance(arxiv_result, Exception):
                             arxiv_search_projection = ArxivSearchProjection(
                                 status=ArxivSearchStatus.ERROR,
-                                trigger_reason=arxiv_plan.reason,
-                                query_summary=arxiv_plan.query,
+                                trigger_reason=paper_arxiv_plan.reason,
+                                query_summary=paper_arxiv_plan.query,
                                 error_code="arxiv_startup",
                                 error_message="arXiv 搜索服务启动失败，请重试。",
                                 can_retry=True,
@@ -2470,18 +2595,29 @@ class TurnOrchestrator:
                                     error_message=error_message,
                                 )
                                 return
-                    web_result = search_results.get("web")
-                    if search_plan is not None:
+                    web_result = paper_search_results.get("web")
+                    if paper_search_plan is not None:
                         loading = _initial_web_search_projection(
-                            self._web_search, search_plan
+                            self._web_search, paper_search_plan
                         )
                         if loading is None:
                             loading = WebSearchProjection(
                                 status=WebSearchStatus.LOADING,
-                                trigger_reason=search_plan.reason,
-                                query_summary=search_plan.query,
+                                trigger_reason=paper_search_plan.reason,
+                                query_summary=paper_search_plan.query,
                             )
-                        if web_result is _SEARCH_TIMEOUT:
+                        if web_result is _SEARCH_CANCELLED:
+                            web_search_projection = loading.model_copy(
+                                update={
+                                    "status": WebSearchStatus.CANCELLED,
+                                    "searched_at": datetime.now(UTC),
+                                    "error_code": "web_search_cancelled",
+                                    "error_message": "已取消本轮联网搜索。",
+                                    "can_retry": False,
+                                    "can_cancel": False,
+                                }
+                            )
+                        elif web_result is _SEARCH_TIMEOUT:
                             web_search_projection = loading.model_copy(
                                 update={
                                     "status": WebSearchStatus.ERROR,
@@ -3306,33 +3442,70 @@ class TurnOrchestrator:
         self,
         calls: list[tuple[str, Callable[[], object] | None]],
         *,
-        timeout_seconds: float,
+        timeout_seconds: float | None = None,
+        deadline: float | None = None,
+        stop_event: threading.Event | None = None,
+        search_stop_event: _SearchStopEvent | None = None,
     ) -> dict[str, Any]:
         """并行执行彼此独立且都已确定需要的公开搜索（Issue 06 T3）。
 
         ``calls`` 为 ``(来源名, 可调用)`` 列表，全部经线程池提交（单源
-        同样受阶段墙钟约束，避免慢来源阻塞主流程）。结果按原列表顺序
-        返回（顺序确定）；超时未完成或抛异常的结果以 ``_SEARCH_TIMEOUT``
-        /异常对象占位，由调用方按既有失败语义降级，
-        后台线程自灭（搜索客户端自带超时），主流程绝不等待超预算来源。
+        同样受阶段绝对截止时间约束，避免慢来源阻塞主流程。结果按原列表
+        顺序返回（顺序确定）；超时、取消或抛异常的结果分别以
+        ``_SEARCH_TIMEOUT``、``_SEARCH_CANCELLED`` /异常对象占位，由调用
+        方按既有失败语义降级。截止或取消会先传播停止信号，再取消尚未
+        开始的 future，并在有界清理窗口内回收已结束的线程。
         """
         if not calls:
             return {}
+        if deadline is None:
+            deadline = time.monotonic() + max(0.0, timeout_seconds or 0.0)
+        search_stop = search_stop_event or _SearchStopEvent(stop_event)
         executor = ThreadPoolExecutor(
             max_workers=len(calls), thread_name_prefix="public-search"
         )
+        futures: dict[str, Any] = {}
+        pending: set[Any] = set()
+        cancelled = False
         try:
+            if search_stop.is_set() or time.monotonic() >= deadline:
+                search_stop.set()
+                cancelled = search_stop.user_is_set()
+                return {
+                    name: (_SEARCH_CANCELLED if cancelled else _SEARCH_TIMEOUT)
+                    for name, call in calls
+                }
             futures = {
                 name: executor.submit(call) if call is not None else None
                 for name, call in calls
             }
-            done, _ = _wait_timeout(
-                [f for f in futures.values() if f is not None], timeout_seconds
-            )
+            pending = {future for future in futures.values() if future is not None}
+            done: set[Any] = set()
+            while pending:
+                if search_stop.user_is_set():
+                    cancelled = True
+                    search_stop.set()
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    search_stop.set()
+                    break
+                completed, _ = wait(
+                    pending,
+                    timeout=min(0.05, remaining),
+                    return_when=ALL_COMPLETED,
+                )
+                done.update(completed)
+                pending.difference_update(completed)
+            if search_stop.user_is_set():
+                cancelled = True
+                search_stop.set()
             results: dict[str, Any] = {}
             for name, future in futures.items():
                 if future is None:
                     results[name] = None
+                elif cancelled:
+                    results[name] = _SEARCH_CANCELLED
                 elif future not in done:
                     results[name] = _SEARCH_TIMEOUT
                 else:
@@ -3342,8 +3515,14 @@ class TurnOrchestrator:
                         results[name] = exc
             return results
         finally:
-            # 不等待后台线程（超时来源自灭）；工作线程由进程退出回收
-            executor.shutdown(wait=False)
+            if pending:
+                for future in pending:
+                    future.cancel()
+                completed, _ = wait(pending, timeout=0.5)
+                pending.difference_update(completed)
+            # 合作式来源在清理窗口内完成时同步回收；不合作的第三方调用
+            # 不得阻塞前台终态，executor 仍取消未启动任务。
+            executor.shutdown(wait=not pending, cancel_futures=True)
 
     # ------------------------------------------------------------------
     # 检索（全部编排路径的单一实现）
@@ -3491,54 +3670,85 @@ class TurnOrchestrator:
             # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
             # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
             calls: list[tuple[str, Callable[[], object] | None]] = []
+            search_stop_event = _SearchStopEvent(stop_event)
+            search_deadline = budget.absolute_deadline()
             search_plan = None
             arxiv_plan = None
             if self._web_search is not None:
-                planned = self._web_search.plan(round_query, mode_for_plan)
-                if planned.should_search:
-                    search_plan = planned
+                humanizer_web_planned = self._web_search.plan(round_query, mode_for_plan)
+                if humanizer_web_planned.should_search:
+                    search_plan = humanizer_web_planned
                     calls.append(
                         (
                             "web",
-                            lambda plan=planned: self._web_search.search(  # type: ignore[union-attr]
-                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            _make_search_call(
+                                self._web_search,
+                                account_id,
+                                humanizer_web_planned,
+                                stop_event=search_stop_event,
+                                deadline=lambda: search_deadline,
                             ),
                         )
                     )
             if self._arxiv_search is not None:
-                planned = self._arxiv_search.plan(round_query, mode_for_plan)
-                if planned.should_search:
-                    arxiv_plan = planned
+                humanizer_arxiv_planned = self._arxiv_search.plan(round_query, mode_for_plan)
+                if humanizer_arxiv_planned.should_search:
+                    arxiv_plan = humanizer_arxiv_planned
                     calls.append(
                         (
                             "arxiv",
-                            lambda plan=planned: self._arxiv_search.search(  # type: ignore[union-attr]
-                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            _make_search_call(
+                                self._arxiv_search,
+                                account_id,
+                                humanizer_arxiv_planned,
+                                stop_event=search_stop_event,
+                                deadline=lambda: search_deadline,
                             ),
                         )
                     )
-            stage_budget = min(
-                EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
-                EXTERNAL_TIMEOUT_SECONDS["web_search"],
+            search_deadline = budget.search_deadline(
+                {name for name, call in calls if call is not None}
             )
             search_results = self._parallel_search(
                 calls,
-                timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
+                deadline=search_deadline,
+                stop_event=stop_event,
+                search_stop_event=search_stop_event,
             )
             web_result = search_results.get("web")
             if (
                 search_plan is not None
                 and web_result is not _SEARCH_TIMEOUT
+                and web_result is not _SEARCH_CANCELLED
                 and not isinstance(web_result, Exception)
             ):
                 web_search_projection = web_result
+            elif search_plan is not None and web_result is _SEARCH_CANCELLED:
+                web_search_projection = WebSearchProjection(
+                    status=WebSearchStatus.CANCELLED,
+                    trigger_reason=search_plan.reason,
+                    query_summary=search_plan.query,
+                    error_code="web_search_cancelled",
+                    error_message="已取消本轮联网搜索。",
+                    can_retry=False,
+                )
             arxiv_result = search_results.get("arxiv")
             if (
                 arxiv_plan is not None
                 and arxiv_result is not _SEARCH_TIMEOUT
+                and arxiv_result is not _SEARCH_CANCELLED
                 and not isinstance(arxiv_result, Exception)
             ):
                 arxiv_search_projection = arxiv_result
+            elif arxiv_plan is not None and arxiv_result is _SEARCH_CANCELLED:
+                arxiv_search_projection = ArxivSearchProjection(
+                    status=ArxivSearchStatus.CANCELLED,
+                    trigger_reason=arxiv_plan.reason,
+                    query_summary=arxiv_plan.query,
+                    error_code="arxiv_cancelled",
+                    error_message="已取消本轮论文搜索。",
+                    can_retry=False,
+                )
             if web_search_projection is not None:
                 self._repo.update_message_web_search(
                     account_id,
@@ -3574,6 +3784,32 @@ class TurnOrchestrator:
                 "done",
                 duration_ms=budget.metrics()[-1].duration_ms,
             )
+        if stop_event.is_set():
+            finalize_message(
+                self._repo,
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.STOPPED,
+                error_code=None,
+                error_message=None,
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=datetime.now(UTC),
+                thinking=stopped_thinking(thinking),
+                web_search=(
+                    web_search_projection.model_dump(mode="json")
+                    if web_search_projection is not None
+                    else None
+                ),
+                arxiv_search=(
+                    arxiv_search_projection.model_dump(mode="json")
+                    if arxiv_search_projection is not None
+                    else None
+                ),
+            )
+            return
         try:
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
             if generation_entered:
@@ -3923,54 +4159,85 @@ class TurnOrchestrator:
             # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
             # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
             calls: list[tuple[str, Callable[[], object] | None]] = []
+            search_stop_event = _SearchStopEvent(stop_event)
+            search_deadline = budget.absolute_deadline()
             search_plan = None
             arxiv_plan = None
             if self._web_search is not None:
-                planned = self._web_search.plan(intent, mode)
-                if planned.should_search:
-                    search_plan = planned
+                career_web_planned = self._web_search.plan(intent, mode)
+                if career_web_planned.should_search:
+                    search_plan = career_web_planned
                     calls.append(
                         (
                             "web",
-                            lambda plan=planned: self._web_search.search(  # type: ignore[union-attr]
-                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            _make_search_call(
+                                self._web_search,
+                                account_id,
+                                career_web_planned,
+                                stop_event=search_stop_event,
+                                deadline=lambda: search_deadline,
                             ),
                         )
                     )
             if self._arxiv_search is not None:
-                planned = self._arxiv_search.plan(intent, mode)
-                if planned.should_search:
-                    arxiv_plan = planned
+                career_arxiv_planned = self._arxiv_search.plan(intent, mode)
+                if career_arxiv_planned.should_search:
+                    arxiv_plan = career_arxiv_planned
                     calls.append(
                         (
                             "arxiv",
-                            lambda plan=planned: self._arxiv_search.search(  # type: ignore[union-attr]
-                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            _make_search_call(
+                                self._arxiv_search,
+                                account_id,
+                                career_arxiv_planned,
+                                stop_event=search_stop_event,
+                                deadline=lambda: search_deadline,
                             ),
                         )
                     )
-            stage_budget = min(
-                EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
-                EXTERNAL_TIMEOUT_SECONDS["web_search"],
+            search_deadline = budget.search_deadline(
+                {name for name, call in calls if call is not None}
             )
             search_results = self._parallel_search(
                 calls,
-                timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
+                deadline=search_deadline,
+                stop_event=stop_event,
+                search_stop_event=search_stop_event,
             )
             web_result = search_results.get("web")
             if (
                 search_plan is not None
                 and web_result is not _SEARCH_TIMEOUT
+                and web_result is not _SEARCH_CANCELLED
                 and not isinstance(web_result, Exception)
             ):
                 web_search_projection = web_result
+            elif search_plan is not None and web_result is _SEARCH_CANCELLED:
+                web_search_projection = WebSearchProjection(
+                    status=WebSearchStatus.CANCELLED,
+                    trigger_reason=search_plan.reason,
+                    query_summary=search_plan.query,
+                    error_code="web_search_cancelled",
+                    error_message="已取消本轮联网搜索。",
+                    can_retry=False,
+                )
             arxiv_result = search_results.get("arxiv")
             if (
                 arxiv_plan is not None
                 and arxiv_result is not _SEARCH_TIMEOUT
+                and arxiv_result is not _SEARCH_CANCELLED
                 and not isinstance(arxiv_result, Exception)
             ):
                 arxiv_search_projection = arxiv_result
+            elif arxiv_plan is not None and arxiv_result is _SEARCH_CANCELLED:
+                arxiv_search_projection = ArxivSearchProjection(
+                    status=ArxivSearchStatus.CANCELLED,
+                    trigger_reason=arxiv_plan.reason,
+                    query_summary=arxiv_plan.query,
+                    error_code="arxiv_cancelled",
+                    error_message="已取消本轮论文搜索。",
+                    can_retry=False,
+                )
             if web_search_projection is not None:
                 self._repo.update_message_web_search(
                     account_id,
@@ -4006,6 +4273,32 @@ class TurnOrchestrator:
                 "done",
                 duration_ms=budget.metrics()[-1].duration_ms,
             )
+        if stop_event.is_set():
+            finalize_message(
+                self._repo,
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.STOPPED,
+                error_code=None,
+                error_message=None,
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=datetime.now(UTC),
+                thinking=stopped_thinking(thinking),
+                web_search=(
+                    web_search_projection.model_dump(mode="json")
+                    if web_search_projection is not None
+                    else None
+                ),
+                arxiv_search=(
+                    arxiv_search_projection.model_dump(mode="json")
+                    if arxiv_search_projection is not None
+                    else None
+                ),
+            )
+            return
         # 最小画像切片编译与「本次上下文说明」披露：模型提示词由编排服务
         # 自行组装（这里只复用编译/披露/审计，切片上下文不在本路径注入）。
         context_note, profile_context, profile_items, profile_slice_id = (

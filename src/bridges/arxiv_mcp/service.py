@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from inspect import Parameter, signature
 from threading import Event
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import (
@@ -171,10 +173,11 @@ class ArxivSearchService:
         plan: ArxivSearchPlan,
         *,
         stop_event: Event | None = None,
+        deadline: float | None = None,
     ) -> ArxivSearchProjection | None:
         if not plan.should_search:
             return None
-        if stop_event is not None and stop_event.is_set():
+        if _user_cancelled(stop_event):
             result = self._cancelled_projection(plan)
             self._audit(account_id, plan, result)
             return result
@@ -191,8 +194,12 @@ class ArxivSearchService:
             self._audit(account_id, plan, result)
             return result
         try:
-            papers = self._client.search(
-                plan.query, max_results=plan.max_results, stop_event=stop_event
+            papers = _invoke_arxiv_client(
+                self._client,
+                plan.query,
+                max_results=plan.max_results,
+                stop_event=stop_event,
+                deadline=deadline,
             )
         except ArxivMcpError as exc:
             if exc.code == "arxiv_cancelled":
@@ -214,11 +221,23 @@ class ArxivSearchService:
                     error_message=exc.message,
                     can_retry=True,
                 )
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, deadline=deadline)
             return result
-        if stop_event is not None and stop_event.is_set():
+        if _user_cancelled(stop_event):
             result = self._cancelled_projection(plan, with_timestamp=True)
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, deadline=deadline)
+            return result
+        if deadline is not None and time.monotonic() >= deadline:
+            result = ArxivSearchProjection(
+                status=ArxivSearchStatus.ERROR,
+                trigger_reason=plan.reason,
+                query_summary=plan.query,
+                searched_at=datetime.now(UTC),
+                error_code="arxiv_timeout",
+                error_message="arXiv 搜索超时，请重试。",
+                can_retry=True,
+            )
+            self._audit(account_id, plan, result, deadline=deadline)
             return result
         candidates = _deduplicate_papers(papers)
         relevant_papers = [
@@ -247,7 +266,13 @@ class ArxivSearchService:
             error_message=error_message,
             can_retry=not bool(projection),
         )
-        self._audit(account_id, plan, result, candidate_count=len(candidates))
+        self._audit(
+            account_id,
+            plan,
+            result,
+            candidate_count=len(candidates),
+            deadline=deadline,
+        )
         return result
 
     @staticmethod
@@ -275,6 +300,7 @@ class ArxivSearchService:
         result: ArxivSearchProjection,
         *,
         candidate_count: int = 0,
+        deadline: float | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -301,6 +327,17 @@ class ArxivSearchService:
                 "removed_candidate_count": max(0, candidate_count - len(result.papers)),
                 "terminal": result.status.value,
                 "result_code": result.error_code,
+                "query_length": len(plan.query),
+                "result_count": len(result.papers),
+                "status": result.status.value,
+                "error_code": result.error_code,
+                "active_sources": ["arxiv"],
+                "budget_source": "arxiv_search",
+                "deadline_remaining_ms": (
+                    max(0, int((deadline - time.monotonic()) * 1000))
+                    if deadline is not None
+                    else None
+                ),
             },
         )
 
@@ -430,3 +467,37 @@ def _deduplicate_papers(papers: list[ArxivPaper]) -> list[ArxivPaper]:
         seen.add(paper.arxiv_id)
         unique.append(paper)
     return unique
+
+
+def _invoke_arxiv_client(
+    client: Any,
+    query: str,
+    *,
+    max_results: int,
+    stop_event: Event | None,
+    deadline: float | None,
+) -> list[ArxivPaper]:
+    """把截止时间传给新客户端，同时兼容旧的确定性测试替身。"""
+    search = client.search
+    try:
+        parameters = tuple(signature(search).parameters.values())
+    except (TypeError, ValueError):
+        parameters = ()
+        accepts_deadline = True
+    else:
+        accepts_deadline = any(
+            parameter.name == "deadline" or parameter.kind == Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+    kwargs: dict[str, Any] = {"max_results": max_results, "stop_event": stop_event}
+    if deadline is not None and accepts_deadline:
+        kwargs["deadline"] = deadline
+    return cast(list[ArxivPaper], search(query, **kwargs))
+
+
+def _user_cancelled(stop_event: Event | None) -> bool:
+    """区分用户取消与编排器为截止时间发出的内部停止信号。"""
+    if stop_event is None:
+        return False
+    marker = getattr(stop_event, "user_is_set", None)
+    return bool(marker()) if callable(marker) else stop_event.is_set()

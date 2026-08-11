@@ -6,11 +6,12 @@ import hashlib
 import re
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from inspect import Parameter, signature
 from threading import Event, RLock
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
@@ -34,6 +35,25 @@ DEFAULT_PROVIDER = "duckduckgo"
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 _FRESH_CACHE_TTL_SECONDS = 60 * 60
 _CURRENT_CACHE_TTL_SECONDS = 15 * 60
+
+
+class _SearchStopSignal:
+    """搜索内部停止信号：不把预算到期误写成用户取消。"""
+
+    def __init__(self, parent: Event | None) -> None:
+        self._parent = parent
+        self._local = Event()
+
+    def is_set(self) -> bool:
+        return self._local.is_set() or bool(
+            self._parent is not None and self._parent.is_set()
+        )
+
+    def user_is_set(self) -> bool:
+        return bool(self._parent is not None and self._parent.is_set())
+
+    def set(self) -> None:
+        self._local.set()
 
 
 @dataclass(frozen=True)
@@ -349,10 +369,24 @@ class WebSearchService:
         plan: SearchPlan,
         *,
         stop_event: Event | None = None,
+        deadline: float | None = None,
     ) -> WebSearchProjection | None:
         if not plan.should_search:
             return None
         started = time.monotonic()
+        if _user_cancelled(stop_event):
+            result = self._projection(
+                plan,
+                status=WebSearchStatus.CANCELLED,
+                error_message="已取消本轮联网搜索。",
+            )
+            self._audit(
+                account_id,
+                plan,
+                result,
+                duration_ms=_elapsed_ms(started),
+            )
+            return result
         now = self._clock()
         cached = self._cache.get(account_id, plan, now)
         if cached is not None:
@@ -365,7 +399,7 @@ class WebSearchService:
             )
             self._audit(account_id, plan, cached, duration_ms=_elapsed_ms(started))
             return cached
-        if stop_event is not None and stop_event.is_set():
+        if _user_cancelled(stop_event):
             result = self._projection(
                 plan,
                 status=WebSearchStatus.CANCELLED,
@@ -392,7 +426,12 @@ class WebSearchService:
             self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
             return result
 
-        deadline = time.monotonic() + max(0.0, plan.total_timeout_seconds)
+        plan_deadline = time.monotonic() + max(0.0, plan.total_timeout_seconds)
+        deadline = (
+            plan_deadline
+            if deadline is None
+            else min(deadline, plan_deadline)
+        )
         attempts = 0
         query_count = 0
         query_history: list[str] = []
@@ -404,6 +443,24 @@ class WebSearchService:
         same_query_retries = 0
         rewrite_attempted = False
         while queries:
+            if _user_cancelled(stop_event):
+                result = self._projection(
+                    plan,
+                    status=WebSearchStatus.CANCELLED,
+                    searched_at=self._clock(),
+                    error_message="已取消本轮联网搜索。",
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                )
+                self._audit(
+                    account_id,
+                    plan,
+                    result,
+                    duration_ms=_elapsed_ms(started),
+                    deadline=deadline,
+                )
+                return result
             if time.monotonic() >= deadline:
                 result = self._timeout_projection(
                     plan,
@@ -411,7 +468,13 @@ class WebSearchService:
                     query_count=query_count,
                     query_history=query_history,
                 )
-                self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+                self._audit(
+                    account_id,
+                    plan,
+                    result,
+                    duration_ms=_elapsed_ms(started),
+                    deadline=deadline,
+                )
                 return result
             attempts += 1
             (
@@ -436,7 +499,7 @@ class WebSearchService:
             errors = round_errors
             if results:
                 break
-            if stop_event is not None and stop_event.is_set():
+            if _user_cancelled(stop_event):
                 break
             challenge_error = next(
                 (
@@ -470,7 +533,13 @@ class WebSearchService:
                     http_status_category=challenge_error.http_status_category,
                     cooldown_until=cooldown_until,
                 )
-                self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+                self._audit(
+                    account_id,
+                    plan,
+                    result,
+                    duration_ms=_elapsed_ms(started),
+                    deadline=deadline,
+                )
                 return result
             if queries and not errors:
                 continue
@@ -504,9 +573,15 @@ class WebSearchService:
                 query_count=query_count,
                 query_history=query_history,
             )
-            self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+            self._audit(
+                account_id,
+                plan,
+                result,
+                duration_ms=_elapsed_ms(started),
+                deadline=deadline,
+            )
             return result
-        if stop_event is not None and stop_event.is_set():
+        if _user_cancelled(stop_event):
             result = self._projection(
                 plan,
                 status=WebSearchStatus.CANCELLED,
@@ -516,9 +591,14 @@ class WebSearchService:
                 query_count=query_count,
                 query_history=query_history,
             )
-            self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+            self._audit(
+                account_id,
+                plan,
+                result,
+                duration_ms=_elapsed_ms(started),
+                deadline=deadline,
+            )
             return result
-
         if not results and errors:
             error = next(
                 (item for item in errors if isinstance(item, WebSearchError)), None
@@ -565,7 +645,13 @@ class WebSearchService:
             )
             result = result.model_copy(update={"cache_expires_at": expires_at})
             self._cache.put(account_id, plan, result, expires_at)
-        self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+        self._audit(
+            account_id,
+            plan,
+            result,
+            duration_ms=_elapsed_ms(started),
+            deadline=deadline,
+        )
         return result
 
     def _run_queries(
@@ -583,21 +669,38 @@ class WebSearchService:
     ]:
         """在阶段预算内并行执行一组最小查询。"""
 
-        if stop_event is not None and stop_event.is_set():
+        if _user_cancelled(stop_event):
             return [], [], 0, [], []
         request_queries = (
             queries[:1] if isinstance(self._client, DuckDuckGoClient) else queries
         )
+        query_stop_event = _SearchStopSignal(stop_event)
         executor = ThreadPoolExecutor(
             max_workers=min(len(request_queries), 4),
             thread_name_prefix="web-search-query",
         )
         futures = {
-            executor.submit(self._search_one, query, deadline): query
+            executor.submit(self._search_one, query, deadline, query_stop_event): query
             for query in request_queries
         }
+        pending = set(futures)
+        done: set[Any] = set()
         try:
-            done, _ = wait(list(futures), timeout=_remaining_seconds(deadline))
+            while pending:
+                if _user_cancelled(stop_event):
+                    query_stop_event.set()
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    query_stop_event.set()
+                    break
+                completed, _ = wait(
+                    pending,
+                    timeout=min(0.05, remaining),
+                    return_when=ALL_COMPLETED,
+                )
+                done.update(completed)
+                pending.difference_update(completed)
             results: list[WebSearchResult] = []
             errors: list[BaseException] = []
             page_classifications: list[WebSearchPageClassification] = []
@@ -628,12 +731,22 @@ class WebSearchService:
                 http_status_categories,
             )
         finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+            for future in pending:
+                future.cancel()
+            if pending:
+                completed, _ = wait(pending, timeout=0.5)
+                pending.difference_update(completed)
+            executor.shutdown(wait=not pending, cancel_futures=True)
 
-    def _search_one(self, query: str, deadline: float) -> list[WebSearchResult]:
-        if isinstance(self._client, DuckDuckGoClient):
-            return self._client.search(query, timeout=_remaining_seconds(deadline))
-        return self._client.search(query)
+    def _search_one(
+        self, query: str, deadline: float, stop_event: Any | None
+    ) -> list[WebSearchResult]:
+        return _invoke_search_client(
+            self._client,
+            query,
+            deadline=deadline,
+            stop_event=stop_event,
+        )
 
     @staticmethod
     def _merge_results(
@@ -855,7 +968,8 @@ class WebSearchService:
         plan: SearchPlan,
         result: WebSearchProjection,
         *,
-        duration_ms: int,
+        duration_ms: int = 0,
+        deadline: float | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -911,6 +1025,13 @@ class WebSearchService:
                 "request_profile_version": DUCKDUCKGO_REQUEST_PROFILE_VERSION,
                 "cooldown_active": result.cooldown_until is not None,
                 "stage_duration_ms": duration_ms,
+                "active_sources": ["web"],
+                "budget_source": "web_search",
+                "deadline_remaining_ms": (
+                    max(0, int((deadline - time.monotonic()) * 1000))
+                    if deadline is not None
+                    else None
+                ),
             },
         )
 
@@ -943,3 +1064,48 @@ def _remaining_seconds(deadline: float) -> float:
 
 def _elapsed_ms(started: float) -> int:
     return max(0, int((time.monotonic() - started) * 1000))
+
+
+def _user_cancelled(stop_event: Event | None) -> bool:
+    """区分用户取消与编排器为截止时间发出的内部停止信号。"""
+    if stop_event is None:
+        return False
+    marker = getattr(stop_event, "user_is_set", None)
+    return bool(marker()) if callable(marker) else stop_event.is_set()
+
+
+def _invoke_search_client(
+    client: Any,
+    query: str,
+    *,
+    deadline: float,
+    stop_event: Event | None,
+) -> list[WebSearchResult]:
+    """把同一绝对截止时间传给客户端，同时兼容旧测试替身。"""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
+    search = client.search
+    try:
+        parameters = tuple(signature(search).parameters.values())
+    except (TypeError, ValueError):
+        parameters = ()
+        accepts_kwargs = True
+    else:
+        accepts_kwargs = any(
+            parameter.kind == Parameter.VAR_KEYWORD for parameter in parameters
+        )
+    names = {
+        parameter.name
+        for parameter in parameters
+        if parameter.kind
+        in {Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY}
+    }
+    kwargs: dict[str, Any] = {}
+    if accepts_kwargs or "timeout" in names:
+        kwargs["timeout"] = remaining
+    if accepts_kwargs or "deadline" in names:
+        kwargs["deadline"] = deadline
+    if accepts_kwargs or "stop_event" in names:
+        kwargs["stop_event"] = stop_event
+    return cast(list[WebSearchResult], search(query, **kwargs))

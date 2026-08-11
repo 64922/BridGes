@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from threading import Event
+from time import monotonic
+from typing import Any
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree
 
@@ -40,16 +43,32 @@ class ArxivMcpClient:
     ) -> None:
         self._client = http_client or httpx.Client(timeout=timeout)
 
-    def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]:
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        stop_event: Event | None = None,
+        deadline: float | None = None,
+    ) -> list[ArxivPaper]:
         if not query.strip():
             raise ArxivMcpError("arxiv_request", "论文搜索主题不能为空，请补充领域或约束。")
         if not 1 <= max_results <= 10:
             raise ArxivMcpError("arxiv_request", "论文搜索结果数量不在允许范围内。")
+        if _user_cancelled(stop_event):
+            raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+        if deadline is not None and deadline <= monotonic():
+            raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。")
         try:
             assert_registered_arxiv_url(ARXIV_API_ENDPOINT)
+            request_kwargs: dict[str, Any] = {
+                "params": _build_search_params(query, max_results)
+            }
+            if deadline is not None:
+                request_kwargs["timeout"] = max(0.001, deadline - monotonic())
             response = self._client.get(
                 ARXIV_API_ENDPOINT,
-                params=_build_search_params(query, max_results),
+                **request_kwargs,
             )
         except httpx.TimeoutException as exc:
             raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。") from exc
@@ -68,6 +87,11 @@ class ArxivMcpClient:
                 "当前网络未允许访问 arXiv，请检查网络权限后重试。",
                 permission=True,
             )
+
+        if _user_cancelled(stop_event):
+            raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+        if deadline is not None and deadline <= monotonic():
+            raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。")
         if response.status_code >= 500:
             raise ArxivMcpError("arxiv_offline", "arXiv 暂时不可用，请稍后重试。")
         if response.status_code >= 400:
@@ -191,3 +215,11 @@ def _matching_link(links: list[ElementTree.Element], arxiv_id: str, kind: str) -
 
 def _clean_text(value: str) -> str:
     return " ".join(value.split())
+
+
+def _user_cancelled(stop_event: Event | None) -> bool:
+    """区分用户取消与来源截止信号。"""
+    if stop_event is None:
+        return False
+    marker = getattr(stop_event, "user_is_set", None)
+    return bool(marker()) if callable(marker) else stop_event.is_set()
