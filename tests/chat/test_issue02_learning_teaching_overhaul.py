@@ -42,6 +42,8 @@ class _SearchClient:
                 url="https://example.com/cnn",
                 snippet="卷积神经网络的基础机制。",
                 accessed_at=datetime.now(UTC),
+                fetched_at=datetime.now(UTC),
+                content_summary="卷积神经网络的基础机制。",
             )
         ]
 

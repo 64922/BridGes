@@ -55,6 +55,10 @@ class _SearchClient:
                 url="https://example.com/transformer",
                 snippet="Transformer 使用自注意力机制并行处理序列。",
                 accessed_at=datetime.now(UTC),
+                fetched_at=datetime.now(UTC),
+                content_summary=(
+                    "Transformer 是人工智能模型的架构，包含编码器、解码器和自注意力机制。"
+                ),
             )
         ]
 
@@ -163,9 +167,7 @@ def test_clear_goal_publishes_one_overview_and_lightweight_progress(
     assert modified_teaching.plan is None
     assert modified_teaching.lesson is None
     assert modified_teaching.quiz is None
-    assert modified_teaching.learning_progress is not None
-    assert "Python" in modified_teaching.learning_progress.goal
-    assert modified_teaching.learning_progress.covered_topics == ["核心机制"]
+    assert modified_teaching.learning_progress is None
 
 
 @pytest.mark.parametrize("query", ["我想学一下", "帮我制定学习计划", "学习目标是"])

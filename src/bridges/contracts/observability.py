@@ -84,6 +84,7 @@ class AuditAction(str, Enum):
     REMINDER_MANUAL_SEND = "reminder_manual_send"
     REMINDER_CATCH_UP = "reminder_catch_up"
     WEB_SEARCH = "web_search"
+    TEACHING_EVIDENCE_ADJUDICATION = "teaching_evidence_adjudication"
     ARXIV_SEARCH = "arxiv_search"
     PLUGIN_INSTALL = "plugin_install"
     PLUGIN_UNINSTALL = "plugin_uninstall"

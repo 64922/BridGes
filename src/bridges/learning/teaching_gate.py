@@ -13,6 +13,7 @@ import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
+from time import perf_counter
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.contracts.learning import AnswerEvaluatedState
@@ -21,6 +22,7 @@ from bridges.contracts.teaching import (
     TeachingAnswerEvidence,
     TeachingArtifactStatus,
     TeachingCardStatus,
+    TeachingEvidenceCoverage,
     TeachingEvidenceGate,
     TeachingEvidenceSource,
     TeachingEvidenceSourceType,
@@ -38,10 +40,16 @@ from bridges.contracts.teaching import (
     TeachingTurnProjection,
 )
 from bridges.contracts.teaching_progress import LearningProgressProjection
+from bridges.learning.evidence_coverage import (
+    EVIDENCE_COVERAGE_RULES_VERSION,
+    WebEvidenceCoverage,
+    adjudicate_web_sources,
+)
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 
 _PAPER_QUERY = re.compile(r"arxiv|论文|文献|期刊|研究综述", re.IGNORECASE)
 _PUBLIC_QUERY = re.compile(r"最新|公开|网页|新闻|现状|政策|规范|官方|事实", re.IGNORECASE)
+_IMAGE_QUERY = re.compile(r"图片|图像|照片|这张图|这幅图|image|photo", re.IGNORECASE)
 _SKIP_ANSWER = re.compile(
     r"^(?:跳过|跳过这题|跳过这道理解检查(?:，|,)?.*|先跳过|不答|暂时不答|skip)\s*[。.!！]?$",
     re.I,
@@ -128,7 +136,11 @@ def _is_follow_up(text: str) -> bool:
     return normalized.endswith(("？", "?")) or bool(_FOLLOW_UP.search(normalized))
 
 
-def _local_sources(retrieval: RetrievalRoundProjection | None) -> list[TeachingEvidenceSource]:
+def _local_sources(
+    retrieval: RetrievalRoundProjection | None,
+    *,
+    include_images: bool,
+) -> list[TeachingEvidenceSource]:
     if retrieval is None:
         return []
     return [
@@ -153,10 +165,15 @@ def _local_sources(retrieval: RetrievalRoundProjection | None) -> list[TeachingE
             accessed_at=retrieval.created_at,
         )
         for citation in retrieval.citations
+        if include_images or not citation.media_type.lower().startswith("image/")
     ]
 
 
-def _web_sources(web_search: WebSearchProjection | None) -> list[TeachingEvidenceSource]:
+def _web_sources(
+    web_search: WebSearchProjection | None,
+    *,
+    accepted_result_ids: set[str] | None = None,
+) -> list[TeachingEvidenceSource]:
     if web_search is None or web_search.status not in {
         WebSearchStatus.SUCCESS,
         WebSearchStatus.PARTIAL,
@@ -177,6 +194,9 @@ def _web_sources(web_search: WebSearchProjection | None) -> list[TeachingEvidenc
         )
         for result in web_search.results
         if result.verification in {"verified", "cross_verified", "structured"}
+        and (
+            accepted_result_ids is None or result.result_id in accepted_result_ids
+        )
     ]
 
 
@@ -201,12 +221,16 @@ def _external_sources(
     required: TeachingSearchSource,
     web_search: WebSearchProjection | None,
     arxiv_search: ArxivSearchProjection | None,
+    *,
+    accepted_web_result_ids: set[str] | None = None,
 ) -> list[TeachingEvidenceSource]:
     """只把本轮证据门实际要求且成功返回的公开来源纳入证据。"""
 
     sources: list[TeachingEvidenceSource] = []
     if required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}:
-        sources.extend(_web_sources(web_search))
+        sources.extend(
+            _web_sources(web_search, accepted_result_ids=accepted_web_result_ids)
+        )
     if required in {TeachingSearchSource.ARXIV, TeachingSearchSource.BOTH}:
         sources.extend(_arxiv_sources(arxiv_search))
     return sources
@@ -232,11 +256,59 @@ class TeachingEvidenceGateService:
         web_search: WebSearchProjection | None = None,
         arxiv_search: ArxivSearchProjection | None = None,
     ) -> TeachingEvidenceGate:
-        local = _local_sources(retrieval)
+        local = _local_sources(
+            retrieval,
+            include_images=bool(_IMAGE_QUERY.search(query)),
+        )
         local_status = retrieval.sufficiency if retrieval is not None else None
         local_stale = _local_is_stale(retrieval)
         required = self.required_search(query, None if local_stale else local_status)
-        external = _external_sources(required, web_search, arxiv_search)
+        coverage_started = perf_counter()
+        coverage_query = web_search.query_summary if web_search is not None else ""
+        web_coverage = (
+            adjudicate_web_sources(coverage_query, web_search.results)
+            if (
+                required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}
+                and web_search is not None
+            )
+            else None
+        )
+        coverage = (
+            TeachingEvidenceCoverage(
+                rules_version=EVIDENCE_COVERAGE_RULES_VERSION,
+                candidate_count=web_coverage.candidate_count,
+                fetched_count=web_coverage.fetched_count,
+                accepted_count=(
+                    web_coverage.accepted_count
+                    if web_search is not None
+                    and web_search.status
+                    in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}
+                    else 0
+                ),
+                rejection_counts=web_coverage.rejection_counts,
+                conflict_count=web_coverage.conflict_count,
+                adjudication_duration_ms=max(
+                    0, int((perf_counter() - coverage_started) * 1000)
+                ),
+            )
+            if web_coverage is not None
+            else None
+        )
+        accepted_web_result_ids = (
+            {result.result_id for result in web_coverage.accepted_results}
+            if (
+                web_coverage is not None
+                and web_search is not None
+                and web_search.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}
+            )
+            else None
+        )
+        external = _external_sources(
+            required,
+            web_search,
+            arxiv_search,
+            accepted_web_result_ids=accepted_web_result_ids,
+        )
         search_error_code = self._search_error_code(
             web_search, arxiv_search, required
         )
@@ -249,6 +321,7 @@ class TeachingEvidenceGateService:
                 local_sources=local,
                 required_search=TeachingSearchSource.NONE,
                 search_status=None,
+                coverage=coverage,
                 checked_at=_now(),
             )
 
@@ -268,7 +341,21 @@ class TeachingEvidenceGateService:
             local_reason = "本地材料存在，但不足以覆盖本轮教学目标。"
             base_status = TeachingEvidenceStatus.INSUFFICIENT
 
-        search_status = self._search_status(web_search, arxiv_search, required)
+        coverage_insufficient = bool(
+            web_coverage is not None
+            and web_search is not None
+            and web_search.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}
+            and not web_coverage.has_accepted_source
+        )
+        coverage_conflict = bool(
+            web_coverage is not None and web_coverage.conflict_count > 0
+        )
+        search_status = self._search_status(
+            web_search,
+            arxiv_search,
+            required,
+            web_coverage=web_coverage,
+        )
         allow_model_knowledge = (
             not local
             and base_status != TeachingEvidenceStatus.CONFLICT
@@ -280,6 +367,38 @@ class TeachingEvidenceGateService:
                 TeachingCardStatus.EMPTY,
             }
         )
+        if coverage_conflict:
+            return TeachingEvidenceGate(
+                status=TeachingEvidenceStatus.CONFLICT,
+                reason=f"{local_reason}公开来源存在冲突，暂不能形成可靠教学依据。",
+                local_sources=local,
+                external_sources=[],
+                required_search=required,
+                search_status=TeachingCardStatus.RECOVERY,
+                search_error_code=search_error_code or "web_search_source_conflict",
+                gap="公开来源存在冲突，暂不能可靠断言关键结论。",
+                allow_model_knowledge=False,
+                recovery_steps=["分别核对冲突来源，或重试公开检索。"],
+                coverage=coverage,
+                checked_at=_now(),
+            )
+        if coverage_insufficient:
+            return TeachingEvidenceGate(
+                status=base_status,
+                reason=f"{local_reason}已搜索但未覆盖本轮目标。",
+                local_sources=local,
+                external_sources=external,
+                required_search=required,
+                search_status=TeachingCardStatus.EMPTY,
+                search_error_code=search_error_code or "web_search_coverage_insufficient",
+                gap="已搜索但未覆盖本轮目标，暂不能可靠断言关键结论。",
+                allow_model_knowledge=allow_model_knowledge,
+                recovery_steps=[
+                    "重试公开检索，或上传一份与目标直接相关的材料。"
+                ],
+                coverage=coverage,
+                checked_at=_now(),
+            )
         if search_status in {TeachingCardStatus.ERROR, TeachingCardStatus.PERMISSION}:
             blocked_notice = (
                 "DuckDuckGo 提供方受阻，已进入冷却；本轮不会自动重复请求。"
@@ -315,6 +434,7 @@ class TeachingEvidenceGateService:
                     if provider_challenge
                     else ["检查网络或权限后重试；也可以上传或选择一份可用材料。"]
                 ),
+                coverage=coverage,
                 checked_at=_now(),
             )
 
@@ -341,6 +461,7 @@ class TeachingEvidenceGateService:
                 ),
                 allow_model_knowledge=allow_model_knowledge,
                 recovery_steps=["重试公开检索，或上传一份与目标直接相关的材料。"],
+                coverage=coverage,
                 checked_at=_now(),
             )
 
@@ -358,6 +479,7 @@ class TeachingEvidenceGateService:
                 ),
                 allow_model_knowledge=allow_model_knowledge,
                 recovery_steps=["重试公开检索，或上传一份与目标直接相关的材料。"],
+                coverage=coverage,
                 checked_at=_now(),
             )
 
@@ -386,6 +508,7 @@ class TeachingEvidenceGateService:
                     else None
                 ),
                 recovery_steps=["展开每条来源核对原文，再继续回答。"],
+                coverage=coverage,
                 checked_at=_now(),
             )
 
@@ -402,6 +525,7 @@ class TeachingEvidenceGateService:
                 else None
             ),
             recovery_steps=["重试公开检索，或上传一份与目标直接相关的材料。"],
+            coverage=coverage,
             checked_at=_now(),
         )
 
@@ -426,12 +550,22 @@ class TeachingEvidenceGateService:
         web_search: WebSearchProjection | None,
         arxiv_search: ArxivSearchProjection | None,
         required: TeachingSearchSource,
+        *,
+        web_coverage: WebEvidenceCoverage | None = None,
     ) -> TeachingCardStatus | None:
         projections: list[TeachingCardStatus] = []
         if required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}:
             if web_search is None:
                 return None
-            projections.append(_web_status(web_search.status))
+            web_status = _web_status(web_search.status)
+            if (
+                web_coverage is not None
+                and web_coverage.conflict_count == 0
+                and web_search.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}
+                and not web_coverage.has_accepted_source
+            ):
+                web_status = TeachingCardStatus.EMPTY
+            projections.append(web_status)
         if required in {TeachingSearchSource.ARXIV, TeachingSearchSource.BOTH}:
             if arxiv_search is None:
                 return None
