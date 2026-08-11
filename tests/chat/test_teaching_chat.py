@@ -261,7 +261,8 @@ def test_study_mode_normal_results_provide_verified_source_and_bindable_citation
             200,
             content=(
                 "<html><head><title>Transformer 架构</title></head>"
-                "<body>Transformer architecture source content.</body></html>"
+                "<body>Transformer architecture uses self-attention to build "
+                "an AI model architecture.</body></html>"
             ).encode(),
         )
 

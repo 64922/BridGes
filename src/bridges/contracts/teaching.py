@@ -113,6 +113,25 @@ class TeachingEvidenceSource(BaseModel):
     accessed_at: datetime = Field(description="本次读取或搜索来源的时间。")
 
 
+class TeachingEvidenceCoverage(BaseModel):
+    """公开来源覆盖裁决的脱敏观测摘要。"""
+
+    rules_version: str = Field(description="覆盖裁决规则版本。")
+    candidate_count: int = Field(default=0, ge=0, description="进入裁决的候选来源数。")
+    fetched_count: int = Field(default=0, ge=0, description="标记为已抓取的候选数。")
+    accepted_count: int = Field(default=0, ge=0, description="通过覆盖裁决的来源数。")
+    rejection_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="按稳定原因码聚合的拒绝数，不包含来源正文。",
+    )
+    conflict_count: int = Field(default=0, ge=0, description="冲突来源数。")
+    adjudication_duration_ms: int = Field(
+        default=0,
+        ge=0,
+        description="覆盖裁决耗时（毫秒）。",
+    )
+
+
 class TeachingEvidenceGate(BaseModel):
     """每轮教学开始前的结构化证据裁决。"""
 
@@ -131,6 +150,10 @@ class TeachingEvidenceGate(BaseModel):
         description="公开证据不可用且没有本地可用证据时，是否允许模型以谨慎方式回答。",
     )
     recovery_steps: list[str] = Field(default_factory=list)
+    coverage: TeachingEvidenceCoverage | None = Field(
+        default=None,
+        description="公开来源覆盖裁决的脱敏观测摘要。",
+    )
     checked_at: datetime = Field(description="证据门检查时间。")
 
 

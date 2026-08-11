@@ -56,6 +56,10 @@ class _SearchClient:
                 url="https://example.com/transformer",
                 snippet="Transformer 使用自注意力机制处理序列。",
                 accessed_at=datetime.now(UTC),
+                fetched_at=datetime.now(UTC),
+                content_summary=(
+                    "Transformer 是人工智能模型的架构，包含编码器、解码器和自注意力机制。"
+                ),
             )
         ]
 
