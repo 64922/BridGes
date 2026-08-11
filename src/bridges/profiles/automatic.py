@@ -1473,6 +1473,8 @@ class AutomaticProfileService:
                 or (
                     signal_classification.is_self_statement
                     and entry.reliability > 0
+                    and "reason=search_or_question_observation"
+                    in entry.extractor_version
                 )
             }
             explicit_self_statement = self._is_explicit_self_statement(
