@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from conftest import ARTICLE_FAITHFUL_OUTPUT, CHAT_FAITHFUL_OUTPUT
-
 from bridges.humanize_eval.cases import HUMANIZE_CASES
 from bridges.humanize_eval.packet import (
     JudgePacketItem,
@@ -27,21 +25,18 @@ def _outputs() -> dict[str, list[SUTOutput]]:
         parameters=GenerationParameters().model_dump(),
         status=GenerationStatus.SUCCESS,
     )
-    by_case = {
-        "article-time-management-v1": ARTICLE_FAITHFUL_OUTPUT,
-        "chat-tomato-method-v1": CHAT_FAITHFUL_OUTPUT,
-    }
     outputs = {
         "current-production": [],
         "candidate": [],
     }
     for case in HUMANIZE_CASES:
+        text = (case.source_text or "") + "".join(case.protected_items)
         for sut_id in ("current-production", "candidate"):
             outputs[sut_id].append(
                 SUTOutput(
                     sut_id=sut_id,
                     case_id=case.case_id,
-                    text=by_case[case.case_id],
+                    text=text,
                     generation=result,
                 )
             )
@@ -69,11 +64,11 @@ def test_packet_contains_required_judge_context():
         outputs_by_sut=_outputs(),
         anon_seed=2026,
     )
-    assert len(packet.items) == 2
+    assert len(packet.items) == len(HUMANIZE_CASES)
     for item in packet.items:
         assert item.item_id.startswith("item-")
         assert item.user_request
-        assert item.source_text
+        # 生成类文章案例没有原文（source_text 为空是正常形态），任务边界必在。
         assert item.task_bounds
         assert item.protected_items
         assert item.output_a and item.output_b

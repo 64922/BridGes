@@ -1,6 +1,6 @@
 # Issue 09：建立分层语料与真实对照运行锁
 
-Status: ready-for-agent
+Status: done（分支 09-benchmark-corpus-and-run-lock，2026-08-12）
 
 Type: task
 

@@ -1,13 +1,16 @@
-"""版本化人味评测案例（Issue 01 tracer bullet）。
+"""版本化人味评测案例与分层语料注册表（Issue 01 + Issue 09）。
 
-每个案例是 Immutable 定义：包含用户请求、原文或上下文、表面类型、模式、
-受众、渠道、长度、允许材料、禁止新增 claim、保护项、许可证/来源说明与
-内容哈希。案例定义以 ``case_id`` 结尾版本号（``-v1``）标识，任何内容
-变化都必须升版本，不得原地修改（与 ``natural_language_eval.md`` 的
-冻结语义一致）。
+每个案例是 Immutable 定义：包含用户请求、原文或上下文、表面类型、操作、
+对话模式、体裁/profile、风险、长度、允许材料、禁止新增 claim、保护项、
+do-no-harm 标志、切片标签、许可证/来源说明、development/holdout 分区
+与内容哈希。案例定义以 ``case_id`` 结尾版本号（``-v1``）标识，任何内容
+变化都必须升版本，不得原地修改。
 
-本文件中的全部案例文本均为 BridGes 原创（净室），不复制任何外部参考
-项目的文字、结构或示例（见 docs/adr/0011 与 humanizer/skill/CLEAN_ROOM.md）。
+Issue 09 在此建立分层语料：``chat-naturalness`` 与 ``article-humanization``
+两个语料面分别建集、分别报告；holdout 分区在调优前冻结哈希，解封事件有
+审计（见 ``holdout.py``）。全部案例文本均为 BridGes 原创（净室），不复制
+任何外部参考项目的文字、结构或示例（docs/adr/0011 与 humanizer/skill/
+CLEAN_ROOM.md）。
 """
 
 from __future__ import annotations
@@ -26,6 +29,58 @@ class HumanizeCaseKind(StrEnum):
     CHAT = "chat"
 
 
+class CaseOperation(StrEnum):
+    """案例操作：改写 / 按主题生成 / 直接回答（聊天）。"""
+
+    REWRITE = "rewrite"
+    GENERATE = "generate"
+    DIRECT_ANSWER = "direct_answer"
+
+
+class ConversationMode(StrEnum):
+    """普通聊天的模式合同（与 expression_task.ConversationMode 对齐）。"""
+
+    CASUAL = "casual"
+    LEARNING = "learning"
+
+
+class ArticleGenre(StrEnum):
+    """文章体裁/profile（Issue 09 覆盖清单：邮件/报告/教程/观点/演讲/科普/科研）。"""
+
+    EMAIL = "email"
+    REPORT = "report"
+    TUTORIAL = "tutorial"
+    OPINION = "opinion"
+    SPEECH = "speech"
+    POPULAR_SCIENCE = "popular_science"
+    RESEARCH_TECHNICAL = "research_technical"
+    INSTRUCTION = "instruction"
+    GENERAL = "general"
+
+
+class RewriteIntensity(StrEnum):
+    """三级改写强度（与 expression_task.RewriteIntensity 对齐）。"""
+
+    LIGHT = "light"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+class RiskLevel(StrEnum):
+    """风险级别：高风险内容（健康/财务/安全）必须守住边界。"""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class CasePartition(StrEnum):
+    """语料分区：development 可看；holdout 冻结，发布 Issue 12 才可解封。"""
+
+    DEVELOPMENT = "development"
+    HOLDOUT = "holdout"
+
+
 class HumanizeCase(BaseModel):
     """一个版本化的人味评测案例（不可变，升版本不改原样）。"""
 
@@ -42,7 +97,20 @@ class HumanizeCase(BaseModel):
         default=None, description="聊天案例的上下文；无历史时为空。"
     )
     surface_type: str = Field(description="表面类型描述：改写 / 生成 / 直接回答。")
-    mode: str = Field(description="模式：文章改写档位或聊天模式。")
+    operation: CaseOperation = Field(description="操作：改写/生成/直接回答。")
+    mode: str = Field(description="模式描述：文章改写档位或聊天模式。")
+    conversation_mode: ConversationMode | None = Field(
+        default=None, description="聊天案例的对话模式（日常陪伴/学习模式）。"
+    )
+    genre_profile: ArticleGenre | None = Field(
+        default=None, description="文章体裁/profile（聊天案例为空）。"
+    )
+    rewrite_intensity: RewriteIntensity | None = Field(
+        default=None, description="文章改写强度（生成案例可为空）。"
+    )
+    risk: RiskLevel = Field(
+        default=RiskLevel.LOW, description="风险级别（健康/财务/安全等）。"
+    )
     audience: str = Field(description="目标受众。")
     channel: str = Field(description="发布渠道。")
     target_length: str = Field(description="目标篇幅。")
@@ -54,6 +122,22 @@ class HumanizeCase(BaseModel):
     )
     protected_items: list[str] = Field(
         default_factory=list, description="必须原样保留的保护项。"
+    )
+    do_no_harm: bool = Field(
+        default=False, description="do-no-harm 标志：高风险内容的边界必须守住。"
+    )
+    slice_tags: list[str] = Field(
+        default_factory=list, description="切片标签（路径/模式/密度/场景，覆盖统计用）。"
+    )
+    adversarial_type: str | None = Field(
+        default=None, description="对抗类型标签（非对抗案例为空）。"
+    )
+    partition: CasePartition = Field(
+        default=CasePartition.DEVELOPMENT, description="语料分区。"
+    )
+    task_contract_version: str = Field(
+        default="3",
+        description="任务契约版本（对应 expression_task 契约世代，进入运行锁）。",
     )
     license_source_note: str = Field(description="许可证/来源说明。")
     content_sha256: str = Field(
@@ -82,111 +166,33 @@ class HumanizeCaseIntegrityError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# 文章案例：抽象时间管理文章（原文无个人亲历）
+# 语料注册表（来自 corpus 包；Issue 09 起按 chat/article 两个语料面聚合）
 # ---------------------------------------------------------------------------
-
-_ARTICLE_TIME_MANAGEMENT_V1 = HumanizeCase(
-    case_id="article-time-management-v1",
-    kind=HumanizeCaseKind.ARTICLE,
-    title="时间块管理法改写（抽象时间管理文章）",
-    user_request=(
-        "请把下面这篇时间管理说明改写得更像一个真实作者写的：去掉 PPT 腔和抽象包装，"
-        "保留所有事实、数字、引用和否定边界，不新增任何内容。"
-    ),
-    source_text=(
-        "时间块管理法（Time Blocking）的核心价值在于通过日程结构化实现注意力配置的最优化。"
-        "该方法最早见于 1992 年出版的《Getting Things Done》相关讨论（简称 GTD），"
-        "随后在 2024 年的多篇效率研究综述中被重新检视"
-        "（参见 https://research.example.org/time-blocking-2024 的综述全文）。"
-        "具体操作分为三个层次：其一，以 90 分钟为一个深度工作块，配合 25 分钟番茄钟单元；"
-        "其二，在每个工作块之间保留 5 分钟过渡缓冲；其三，每周日晚规划下一周的块状日程。\n"
-        "需要强调的是，时间块方法不鼓励把任务切得过碎，也不鼓励跨块切换。"
-        "正如管理学者所言：“计划赶不上变化”，因此每个工作块需要预留 10% 的弹性余量。"
-        "上述方法适用于每周工作时间超过 40 小时的办公室人员，对自由职业者与远程工作者同样成立，"
-        "但并非适合所有人：研究表明大约 30% 的受试者更依赖任务清单而非时间块。\n"
-        "从根本上讲，时间块管理是目标导向的时间资源配置哲学，其底层逻辑在于把“注意力带宽”"
-        "视为稀缺资源。通过元认知层面的自我监控，用户可以持续优化工作节奏，"
-        "最终实现从局部迈向全局的效率跃迁。"
-    ),
-    surface_type="改写（原文无个人亲历）",
-    mode="标准改写",
-    audience="普通办公室读者",
-    channel="职场公众号",
-    target_length="中等（约原文长度）",
-    allowed_materials=[],
-    forbidden_claims=[
-        "作者个人亲历（我过去/我试过/我之前等）",
-        "朋友对话（我一个朋友/上周和朋友聊等）",
-        "具体时间地点（上周三晚/半小时前/楼下咖啡店等）",
-        "未经来源支持的数据或功能（如 5000 例用户调研）",
-        "新增产品功能或工具名",
-    ],
-    protected_items=[
-        "90 分钟",
-        "25 分钟番茄钟单元",
-        "5 分钟过渡缓冲",
-        "每周日晚规划",
-        "10%",
-        "40 小时",
-        "30%",
-        "1992 年出版",
-        "2024 年",
-        "GTD",
-        "《Getting Things Done》",
-        "Time Blocking",
-        "https://research.example.org/time-blocking-2024",
-        "计划赶不上变化",
-        "不鼓励把任务切得过碎",
-        "不鼓励跨块切换",
-        "并非适合所有人",
-    ],
-    license_source_note=(
-        "案例原文为 BridGes 原创净室素材（docs/adr/0011），"
-        "无第三方文本复用；文中研究链接为占位示例，不指向真实资源。"
-    ),
-)
-
-# ---------------------------------------------------------------------------
-# 聊天案例：简单问题不应扩成教学长文
-# ---------------------------------------------------------------------------
-
-_CHAT_TOMATO_METHOD_V1 = HumanizeCase(
-    case_id="chat-tomato-method-v1",
-    kind=HumanizeCaseKind.CHAT,
-    title="番茄工作法是什么（简单问题直接回答）",
-    user_request="番茄工作法是什么？",
-    context="普通日常聊天，用户没有要求详解，也没有要求学习模式。",
-    surface_type="直接回答",
-    mode="日常对话",
-    audience="普通用户",
-    channel="聊天界面",
-    target_length="短答（一两句话）",
-    allowed_materials=[],
-    forbidden_claims=[
-        "教学长文结构（编号步骤/分节标题/完整课程）",
-        "客服式尾句（希望有帮助/如有问题随时问我）",
-        "无来源数据（如 95% 效率提升）",
-        "虚构个人经验",
-    ],
-    protected_items=[
-        "25 分钟专注工作",
-        "5 分钟休息",
-        "一短一长两个时间单元",
-    ],
-    license_source_note="BridGes 原创净室素材；番茄工作法为通用公共知识描述。",
-)
-
 
 def _finalize_case(case: HumanizeCase) -> HumanizeCase:
     """填充内容哈希并冻结：注册表中的案例必须携带与内容一致的哈希。"""
     return case.model_copy(update={"content_sha256": case.compute_hash()})
 
 
-#: 当前 Issue 的案例注册表（版本化，只追加；哈希已填充）。
-HUMANIZE_CASES: tuple[HumanizeCase, ...] = (
-    _finalize_case(_ARTICLE_TIME_MANAGEMENT_V1),
-    _finalize_case(_CHAT_TOMATO_METHOD_V1),
-)
+def _load_corpus() -> tuple[HumanizeCase, ...]:
+    """加载全部案例并填充哈希（数据文件在 corpus/ 包中按面组织）。"""
+    from bridges.humanize_eval.corpus.article_cases import ARTICLE_CASE_DEFS
+    from bridges.humanize_eval.corpus.chat_cases import CHAT_CASE_DEFS
+
+    return tuple(
+        _finalize_case(case)
+        for case in (*CHAT_CASE_DEFS, *ARTICLE_CASE_DEFS)
+    )
+
+
+#: 当前语料注册表（版本化，只追加；哈希已填充）。
+HUMANIZE_CASES: tuple[HumanizeCase, ...] = _load_corpus()
+
+#: 语料版本：schema/内容集合每次变更递增（进入运行锁）。
+CORPUS_VERSION = "9.1"
+
+#: 各语料面的最低有效案例数（低于此数该面结论必须为 inconclusive）。
+MIN_CASES_PER_SURFACE = 40
 
 
 def case_hashes() -> dict[str, str]:
@@ -194,8 +200,65 @@ def case_hashes() -> dict[str, str]:
     return {case.case_id: case.ensure_hash() for case in HUMANIZE_CASES}
 
 
+def _surface_aggregate_hash(payload_for: list[object]) -> str:
+    """按面聚合任意 case 载荷的规范化哈希（corpus/ledger 共用）。"""
+    canonical = json.dumps(payload_for, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def corpus_hashes() -> dict[str, str]:
+    """语料面 -> 注册表聚合哈希（id+hash 规范化摘要；运行锁记录）。"""
+    result: dict[str, str] = {}
+    for surface in SURFACE_NAMES_BY_KIND:
+        result[surface] = _surface_aggregate_hash(
+            [
+                f"{case.case_id}:{case.ensure_hash()}"
+                for case in HUMANIZE_CASES
+                if case.kind.value == surface
+            ]
+        )
+    return result
+
+
+def surface_cases(kind: HumanizeCaseKind) -> tuple[HumanizeCase, ...]:
+    """按语料面返回案例（分别建集、分别报告的切片入口）。"""
+    return tuple(case for case in HUMANIZE_CASES if case.kind is kind)
+
+
+def ledger_hashes() -> dict[str, str]:
+    """来源账本聚合哈希：每个 case 的来源/许可/保护字段的规范化摘要。
+
+    面级（chat/article）聚合，进入运行锁；任何许可字段或保护项变化
+    都会改变哈希，比较前完整性检查的依据。
+    """
+    result: dict[str, str] = {}
+    for surface in SURFACE_NAMES_BY_KIND:
+        payloads = []
+        for case in HUMANIZE_CASES:
+            if case.kind.value != surface:
+                continue
+            payloads.append(
+                {
+                    "id": case.case_id,
+                    "allowed": sorted(case.allowed_materials),
+                    "forbidden": sorted(case.forbidden_claims),
+                    "protected": sorted(case.protected_items),
+                    "license": case.license_source_note,
+                }
+            )
+        result[surface] = _surface_aggregate_hash(payloads)
+    return result
+
+
+#: 语料面名 -> 案例类型（单一事实源：cases/runner/cli 共用）。
+SURFACE_NAMES_BY_KIND: dict[str, HumanizeCaseKind] = {
+    "chat": HumanizeCaseKind.CHAT,
+    "article": HumanizeCaseKind.ARTICLE,
+}
+
+
 def validate_cases() -> list[str]:
-    """校验全部注册案例：哈希一致、必填字段非空；返回问题清单（空=通过）。"""
+    """校验全部注册案例：哈希一致、必填字段非空、分区与切片约束；返回问题清单。"""
     problems: list[str] = []
     seen: set[str] = set()
     for case in HUMANIZE_CASES:
@@ -209,11 +272,30 @@ def validate_cases() -> list[str]:
         if not case.user_request.strip():
             problems.append(f"{case.case_id}：user_request 为空")
         if case.kind == HumanizeCaseKind.ARTICLE and not case.source_text:
-            problems.append(f"{case.case_id}：文章案例缺少原文")
+            if case.operation is not CaseOperation.GENERATE:
+                problems.append(
+                    f"{case.case_id}：文章非生成案例缺少原文"
+                )
         if not case.forbidden_claims:
             problems.append(f"{case.case_id}：缺少禁止新增 claim 清单")
         if not case.protected_items:
             problems.append(f"{case.case_id}：缺少保护项清单")
         if not case.license_source_note.strip():
             problems.append(f"{case.case_id}：缺少许可证/来源说明")
+        if not case.task_contract_version.strip():
+            problems.append(f"{case.case_id}：缺少任务契约版本")
+        if case.kind == HumanizeCaseKind.CHAT:
+            if case.conversation_mode is None:
+                problems.append(f"{case.case_id}：聊天案例缺少对话模式")
+            if case.operation is not CaseOperation.DIRECT_ANSWER:
+                problems.append(f"{case.case_id}：聊天案例操作必须是 direct_answer")
+        if case.kind == HumanizeCaseKind.ARTICLE:
+            if case.operation is CaseOperation.REWRITE and not case.source_text:
+                problems.append(f"{case.case_id}：改写案例缺少原文")
+            if case.rewrite_intensity is None:
+                problems.append(f"{case.case_id}：文章案例缺少改写强度")
+            if case.genre_profile is None:
+                problems.append(f"{case.case_id}：文章案例缺少体裁 profile")
+            if case.source_text and case.do_no_harm and case.risk is RiskLevel.LOW:
+                problems.append(f"{case.case_id}：do_no_harm 案例风险级别不得为 low")
     return problems
