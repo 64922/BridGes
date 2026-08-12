@@ -141,6 +141,31 @@ def _run_command(args: argparse.Namespace) -> int:
         print("注：系统自动裁判结果，未经真实用户或人工验证。")
     summary_path = args.outdir / "runs" / summary.run_id / "summary.json"
     print(f"脱敏执行摘要：{summary_path}")
+    # Issue 11：发布质量门（chat/article 分别裁决）。候选未通过时返回
+    # 非零退出状态与稳定中文原因；普通非人味评测不受本门控影响。
+    gate = summary.gate_report
+    if gate is not None:
+        from bridges.humanize_eval.release_gate import format_gate_blockers
+
+        print(
+            "发布质量门（automated_system_judges_only=true，"
+            "human_validated=false）："
+        )
+        for name, verdict in gate.surface_verdicts.items():
+            print(f"  [{name}] {verdict}")
+        blockers = format_gate_blockers(gate)
+        for blocker in blockers:
+            print(f"  - {blocker}")
+        if gate.passed:
+            print("发布门通过（全部语料面 passed）。")
+            return 0
+        print("发布门未通过：candidate 不得发布（含 inconclusive 不得视为通过）。")
+        return 1
+    # 无门报告（生成失败/裁判全部不可用等）但结论不是 passed：
+    # 不得沿用自动成功语义，同样返回非零。
+    if summary.verdict != "passed":
+        print("无发布门报告且运行结论不是 passed，candidate 不得发布。")
+        return 1
     return 0
 
 

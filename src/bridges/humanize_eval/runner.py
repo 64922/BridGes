@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import statistics
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -52,7 +53,12 @@ from bridges.humanize_eval.cases import (
     ledger_hashes,
     validate_cases,
 )
-from bridges.humanize_eval.fidelity import FidelityReport, run_fidelity_check
+from bridges.humanize_eval.fidelity import (
+    FidelityCheckItem,
+    FidelityReport,
+    FidelitySeverity,
+    run_fidelity_check,
+)
 from bridges.humanize_eval.generation import (
     GenerationPort,
     GenerationResult,
@@ -77,6 +83,30 @@ from bridges.humanize_eval.packet import (
     build_packets,
     scan_packet_leaks,
 )
+from bridges.humanize_eval.paired_stats import (
+    ItemPreference,
+    PairedStatistics,
+    aggregate_case_preferences,
+    compute_dimension_statistics,
+    compute_paired_statistics,
+    resolve_judge_outcome,
+)
+from bridges.humanize_eval.release_gate import (
+    CaseSliceInput,
+    FidelityGateInput,
+    HumanizeGateReport,
+    PanelHealth,
+    StyleGateInput,
+    SurfaceInput,
+    SURFACE_ARTICLE,
+    SURFACE_CHAT,
+    evaluate_humanize_gate,
+)
+from bridges.humanize_eval.statistics_plan import (
+    StatisticsPlan,
+    default_statistics_plan,
+)
+from bridges.humanize_eval.style_diagnostics import run_style_diagnostics
 from bridges.humanize_eval.registry import (
     JudgeRegistry,
     build_default_registry,
@@ -236,6 +266,17 @@ class RunSummary(BaseModel):
     panel_issues: list[str] = Field(default_factory=list, description="panel 门问题。")
     aggregation: AggregationResult | None = Field(
         default=None, description="预注册聚合结果（含分歧/可靠性）。"
+    )
+    # Issue 11：预注册统计计划、配对统计与发布质量门。
+    statistics_plan_digest: str = Field(
+        default="", description="预注册统计计划哈希（锁定计划身份）。"
+    )
+    paired_statistics: dict[str, dict[str, PairedStatistics]] = Field(
+        default_factory=dict,
+        description="surface -> peer_sut_id -> 配对统计（case 为统计单位）。",
+    )
+    gate_report: HumanizeGateReport | None = Field(
+        default=None, description="发布质量门报告（含 surface 分别裁决）。"
     )
     automated_only: bool = True
     note: str = AUTOMATED_ONLY_NOTE
@@ -487,6 +528,7 @@ class HumanizeRunner:
     def run(self) -> RunSummary:
         """执行一次完整运行：校验 → 生成 → 保真 → canary 门 → 裁判 → 聚合。"""
         self._guard_real_port()
+        plan = default_statistics_plan()
         started = datetime.now(UTC).isoformat()
         problems = validate_cases()
         if problems:
@@ -531,8 +573,11 @@ class HumanizeRunner:
         generation_counts: dict[str, int] = {}
         fidelity_failures: list[str] = []
         fidelity_missing: list[str] = []
+        # Issue 11：按 SUT 收集保真报告（发布门只消费 candidate 的保真）。
+        fidelity_by_sut: dict[str, list[FidelityReport]] = {}
         for spec in suts:
             outputs: list[SUTOutput] = []
+            fidelity_reports: list[FidelityReport] = []
             if not spec.available:
                 sut_status[spec.sut_id] = "unavailable"
                 generation_counts[spec.sut_id] = 0
@@ -571,6 +616,7 @@ class HumanizeRunner:
                         f"{case.case_id}:{item.label}"
                         for item in fidelity.missing_checks
                     )
+                    fidelity_reports.append(fidelity)
                 outputs.append(output)
                 outcome = RunOutcome(
                     run_id=run_id,
@@ -597,12 +643,14 @@ class HumanizeRunner:
                 1 for o in outputs if o.generation.ok
             )
             outputs_by_sut[spec.sut_id] = outputs
+            fidelity_by_sut[spec.sut_id] = fidelity_reports
 
-        # 裁判与匿名包：current vs candidate 配对（reference/plain 输出留作原始证据）。
+        # 裁判与匿名包：current vs candidate 配对 + Issue 11 的 candidate vs
+        # Humanizer-zh 参考配对（reference/plain 输出留作原始证据）。
         # packet 构建与泄漏扫描先于 canary 门与裁判调用：泄漏是 P0 完整性事件，
         # 泄漏检查失败时不调用任何裁判（含 canary 校准调用）。
-        packet: JudgePacket | None = None
-        sealed: SealedMapping | None = None
+        packets: list[JudgePacket] = []
+        sealed_mappings: dict[str, SealedMapping] = {}
         judge_outcomes: list[JudgeOutcome] = []
         inconsistent_items: list[str] = []
         invalid_verdicts = 0
@@ -615,25 +663,54 @@ class HumanizeRunner:
             o.generation.ok for o in outputs_by_sut.get("candidate", [])
         )
         if outputs_ready:
-            packet, sealed = build_packets(
-                packet_id=_packet_id(run_id, self.anon_seed),
+            packet_current, sealed_current = build_packets(
+                packet_id=_packet_id(run_id, self.anon_seed, "current"),
                 cases=runnable_cases,
                 outputs_by_sut=outputs_by_sut,
                 anon_seed=self.anon_seed,
                 run_id=run_id,
             )
-            identities = self._registered_identities(suts, lock)
-            packet_leaks = scan_packet_leaks(packet, identities=identities)
-            if packet_leaks:
-                # 泄漏检查失败时不调用裁判：评测完整性事件，运行被拒绝。
-                raise HumanizeRunError(
-                    "裁判包匿名性泄漏（P0 评测完整性事件），不调用任何裁判：\n"
-                    + "\n".join(packet_leaks)
+            packets.append(packet_current)
+            sealed_mappings[packet_current.packet_id] = sealed_current
+            # candidate vs Humanizer-zh 参考对照（仅文章案例；参考可用时）。
+            # 文章非劣效门需要该配对（AC-5），缺参考时文章结论为 inconclusive。
+            reference_outputs = outputs_by_sut.get("humanizer-zh-reference", [])
+            reference_ready = bool(reference_outputs) and all(
+                o.generation.ok for o in reference_outputs
+            )
+            article_cases = [
+                case for case in runnable_cases
+                if case.kind is HumanizeCaseKind.ARTICLE
+            ]
+            if reference_ready and article_cases:
+                packet_ref, sealed_ref = build_packets(
+                    packet_id=_packet_id(run_id, self.anon_seed, "reference"),
+                    cases=article_cases,
+                    outputs_by_sut=outputs_by_sut,
+                    anon_seed=self.anon_seed,
+                    run_id=run_id,
+                    peer_pair=("candidate", "humanizer-zh-reference"),
+                    item_salt="reference",
                 )
-            packet_file = runs_dir / "packets" / f"{packet.packet_id}.json"
-            mapping_file = runs_dir / "mappings" / f"{packet.packet_id}.json"
-            _append_only_write(packet_file, packet.model_dump_json(indent=2))
-            _append_only_write(mapping_file, sealed.model_dump_json(indent=2))
+                packets.append(packet_ref)
+                sealed_mappings[packet_ref.packet_id] = sealed_ref
+            identities = self._registered_identities(suts, lock)
+            for packet in packets:
+                leaks = scan_packet_leaks(packet, identities=identities)
+                if leaks:
+                    # 泄漏检查失败时不调用裁判：评测完整性事件，运行被拒绝。
+                    raise HumanizeRunError(
+                        "裁判包匿名性泄漏（P0 评测完整性事件），不调用任何裁判：\n"
+                        + "\n".join(leaks)
+                    )
+            for packet in packets:
+                packet_file = runs_dir / "packets" / f"{packet.packet_id}.json"
+                mapping_file = runs_dir / "mappings" / f"{packet.packet_id}.json"
+                _append_only_write(packet_file, packet.model_dump_json(indent=2))
+                _append_only_write(
+                    mapping_file,
+                    sealed_mappings[packet.packet_id].model_dump_json(indent=2),
+                )
 
         # canary 门：每个裁判通过冻结 canary 硬门（100%）才进入正式 panel。
         # 漂移检测：相对冻结基线超过预注册阈值 → drifted 停用。
@@ -677,7 +754,7 @@ class HumanizeRunner:
                         })
                         canary_passed[judge.judge_id] = False
                         canary_failures[judge.judge_id] = [
-                            f"漂移 {drift:.2f} 超过阈值 "
+                            f"漂移 {drift:.2f} 超过预注册阈值 "
                             f"{registry.drift_threshold:.2f}（{'；'.join(drift_reasons)}）"
                         ]
                 # 本次 canary 结果落盘（append-only 证据；可作为下次冻结基线）。
@@ -709,51 +786,57 @@ class HumanizeRunner:
             ]
             panel_issues = panel_gate_issues(registry)
             if enabled_judges:
-                # outputs_ready 时 packet/sealed 必已构建（上方无条件赋值）。
-                assert packet is not None and sealed is not None
+                # outputs_ready 时 packets/sealed_mappings 必已构建（上方无条件赋值）。
+                assert packets and sealed_mappings
                 for judge in enabled_judges:
-                    for item in packet.items:
-                        # AC-14：裁判异常（网络/解析）只产生无效裁决与机器可读
-                        # 原因，绝不中断整个 run——无人值守下任何异常不崩溃。
-                        try:
-                            verdict_ab, verdict_ba = judge_pair(judge, item)
-                        except Exception as exc:
-                            invalid_reason = (
-                                f"裁判调用异常：{type(exc).__name__}（{exc}）。"
+                    for packet in packets:
+                        for item in packet.items:
+                            # AC-14：裁判异常（网络/解析）只产生无效裁决与
+                            # 机器可读原因，绝不中断整个 run——无人值守下
+                            # 任何异常不崩溃。
+                            try:
+                                verdict_ab, verdict_ba = judge_pair(judge, item)
+                            except Exception as exc:
+                                invalid_reason = (
+                                    f"裁判调用异常：{type(exc).__name__}（{exc}）。"
+                                )
+                                verdict_ab = _failed_verdict(
+                                    judge, item, JudgeOrder.AB, invalid_reason
+                                )
+                                verdict_ba = _failed_verdict(
+                                    judge, item, JudgeOrder.BA, invalid_reason
+                                )
+                            consistent = (
+                                verdict_ab.is_valid and verdict_ba.is_valid
                             )
-                            verdict_ab = _failed_verdict(
-                                judge, item, JudgeOrder.AB, invalid_reason
+                            if not consistent:
+                                inconsistent_items.append(item.item_id)
+                                invalid_verdicts += 2
+                            judge_outcomes.append(
+                                JudgeOutcome(
+                                    judge_id=judge.judge_id,
+                                    judge_version=judge.judge_version,
+                                    item_id=item.item_id,
+                                    verdict_ab=verdict_ab,
+                                    verdict_ba=verdict_ba,
+                                    consistent=consistent,
+                                )
                             )
-                            verdict_ba = _failed_verdict(
-                                judge, item, JudgeOrder.BA, invalid_reason
-                            )
-                        consistent = (
-                            verdict_ab.is_valid and verdict_ba.is_valid
-                        )
-                        if not consistent:
-                            inconsistent_items.append(item.item_id)
-                            invalid_verdicts += 2
-                        judge_outcomes.append(
-                            JudgeOutcome(
-                                judge_id=judge.judge_id,
-                                judge_version=judge.judge_version,
-                                item_id=item.item_id,
-                                verdict_ab=verdict_ab,
-                                verdict_ba=verdict_ba,
-                                consistent=consistent,
-                            )
-                        )
                 # sealed mapping 读取审计（Observability：读取有机器审计）。
+                # 全部 packet 的读取事件合并为一次写入（append-only 不覆盖）。
                 _append_only_write(
                     runs_dir / "mappings" / "audit.log",
                     json.dumps(
-                        {
-                            "event": "sealed_mapping_read",
-                            "actor": "aggregator",
-                            "packet_id": packet.packet_id,
-                            "run_id": run_id,
-                            "at": datetime.now(UTC).isoformat(),
-                        },
+                        [
+                            {
+                                "event": "sealed_mapping_read",
+                                "actor": "aggregator",
+                                "packet_id": sealed.packet_id,
+                                "run_id": run_id,
+                                "at": datetime.now(UTC).isoformat(),
+                            }
+                            for sealed in sealed_mappings.values()
+                        ],
                         ensure_ascii=False,
                     )
                     + "\n",
@@ -764,6 +847,7 @@ class HumanizeRunner:
                 }
                 item_case_ids = {
                     item_id: entry.case_id
+                    for sealed in sealed_mappings.values()
                     for item_id, entry in sealed.entries.items()
                 }
                 aggregation = aggregate_panel(
@@ -771,6 +855,21 @@ class HumanizeRunner:
                     outcomes=judge_outcomes,
                     fidelity_failed_case_ids=fidelity_failed_cases,
                     item_case_ids=item_case_ids,
+                )
+                # Issue 11：配对统计与发布质量门（chat/article 分别裁决）。
+                paired, gate_report = self._compute_gate(
+                    plan=plan,
+                    runnable_cases=runnable_cases,
+                    judge_outcomes=judge_outcomes,
+                    sealed_mappings=sealed_mappings,
+                    outputs_by_sut=outputs_by_sut,
+                    fidelity_by_sut=fidelity_by_sut,
+                    registry=registry,
+                    canary_passed=canary_passed,
+                    inconsistent_items=inconsistent_items,
+                    generation_counts=generation_counts,
+                    lock=lock,
+                    aggregation=aggregation,
                 )
 
         ended = datetime.now(UTC).isoformat()
@@ -791,7 +890,7 @@ class HumanizeRunner:
             generation_counts=generation_counts,
             fidelity_failures=fidelity_failures,
             fidelity_missing=fidelity_missing,
-            packet=packet,
+            packets=packets,
             packet_leaks=packet_leaks,
             inconsistent_items=inconsistent_items,
             invalid_verdicts=invalid_verdicts,
@@ -805,11 +904,18 @@ class HumanizeRunner:
             panel_issues=panel_issues,
             aggregation=aggregation,
         )
-        if packet is not None:
+        if outputs_ready and aggregation is not None and packets:
             summary = summary.model_copy(
                 update={
-                    "packet_path": str(runs_dir / "packets" / f"{packet.packet_id}.json"),
-                    "mapping_path": str(runs_dir / "mappings" / f"{packet.packet_id}.json"),
+                    "statistics_plan_digest": plan.digest(),
+                    "paired_statistics": paired,
+                    "gate_report": gate_report,
+                }
+            )
+            summary = summary.model_copy(
+                update={
+                    "packet_path": str(runs_dir / "packets" / f"{packets[0].packet_id}.json"),
+                    "mapping_path": str(runs_dir / "mappings" / f"{packets[0].packet_id}.json"),
                 }
             )
         summary_file = runs_dir / "summary.json"
@@ -821,6 +927,264 @@ class HumanizeRunner:
         if not runs_dir.is_dir():
             return 1
         return sum(1 for entry in runs_dir.iterdir() if entry.is_dir()) + 1
+
+    def _compute_gate(
+        self,
+        *,
+        plan: StatisticsPlan,
+        runnable_cases: list[HumanizeCase],
+        judge_outcomes: list[JudgeOutcome],
+        sealed_mappings: dict[str, SealedMapping],
+        outputs_by_sut: dict[str, list[SUTOutput]],
+        fidelity_by_sut: dict[str, list[FidelityReport]],
+        registry: JudgeRegistry,
+        canary_passed: dict[str, bool],
+        inconsistent_items: list[str],
+        generation_counts: dict[str, int],
+        lock: HumanizeRunLock,
+        aggregation: AggregationResult | None,
+    ) -> tuple[dict[str, dict[str, PairedStatistics]], HumanizeGateReport]:
+        """配对统计 + 发布质量门（Issue 11；chat/article 分别裁决）。"""
+        # item -> (case_id, candidate 是否在 label_a, 对照 SUT) 跨配对索引。
+        item_index: dict[str, tuple[str, bool, str]] = {}
+        for sealed in sealed_mappings.values():
+            for item_id, entry in sealed.entries.items():
+                sources = {entry.candidate_source_a, entry.candidate_source_b}
+                peer = next(iter(sources - {"candidate"}), "")
+                item_index[item_id] = (
+                    entry.case_id,
+                    entry.candidate_source_a == "candidate",
+                    peer,
+                )
+        case_by_item = {item_id: info[0] for item_id, info in item_index.items()}
+        candidate_in_a_by_item = {
+            item_id: info[1] for item_id, info in item_index.items()
+        }
+
+        # 1) 保真观测（candidate 输出；fail closed，缺失 = 不完整）。
+        candidate_fidelity = fidelity_by_sut.get("candidate", [])
+        critical_cases: set[str] = set()
+        noncritical_checks: list[FidelityCheckItem] = []
+        missing_checks: list[str] = []
+        # 预注册硬失败类别消费（AC-7）：critical 检查项必须全部在计划
+        # 注册的零容忍类别内，出现未注册类别 = 硬门定义不完整，fail closed。
+        registered_categories = set(plan.hard_failure_categories)
+        unregistered_critical: list[str] = []
+        for report in candidate_fidelity:
+            for check in report.checks:
+                if check.missing:
+                    missing_checks.append(f"{report.case_id}:{check.label}")
+                if check.severity is FidelitySeverity.CRITICAL:
+                    if check.check_id not in registered_categories:
+                        unregistered_critical.append(
+                            f"{report.case_id}:{check.check_id}"
+                        )
+                if (
+                    check.severity is FidelitySeverity.CRITICAL
+                    and check.effective_failure
+                ):
+                    critical_cases.add(report.case_id)
+                elif (
+                    check.severity is not FidelitySeverity.CRITICAL
+                    and not check.not_applicable
+                ):
+                    noncritical_checks.append(check)
+        if unregistered_critical:
+            missing_checks.extend(
+                f"{case_id}:{check_id}（未注册硬失败类别）"
+                for case_id, check_id in (
+                    item.split(":", 1) for item in unregistered_critical
+                )
+            )
+        noncritical_pass_rate = (
+            sum(1 for c in noncritical_checks if c.passed) / len(noncritical_checks)
+            if noncritical_checks
+            else 1.0
+        )
+        fidelity_input = FidelityGateInput(
+            critical_failed_cases=sorted(critical_cases),
+            noncritical_pass_rate=noncritical_pass_rate,
+            noncritical_fail_count=sum(1 for c in noncritical_checks if not c.passed),
+            noncritical_check_count=len(noncritical_checks),
+            missing_checks=list(dict.fromkeys(missing_checks)),
+            missing_cases=sorted({m.split(":", 1)[0] for m in missing_checks}),
+        )
+
+        # 2) 风格诊断（candidate 输出；fail closed 读取保真结果）。
+        style_blocked: list[str] = []
+        style_fail_closed: list[str] = []
+        candidate_outputs = {
+            o.case_id: o for o in outputs_by_sut.get("candidate", [])
+        }
+        candidate_fidelity_map = {r.case_id: r for r in candidate_fidelity}
+        for case in runnable_cases:
+            output = candidate_outputs.get(case.case_id)
+            if output is None or not output.generation.ok:
+                continue
+            diagnostic = run_style_diagnostics(
+                case, output.text, candidate_fidelity_map.get(case.case_id)
+            )
+            if diagnostic.verdict == "blocked":
+                style_blocked.append(case.case_id)
+            elif diagnostic.verdict == "fail_closed":
+                style_fail_closed.append(case.case_id)
+
+        # 3) 配对统计：surface × peer（case 为统计单位，AC-2 三层聚合）。
+        chat_cases = [c for c in runnable_cases if c.kind is HumanizeCaseKind.CHAT]
+        article_cases = [
+            c for c in runnable_cases if c.kind is HumanizeCaseKind.ARTICLE
+        ]
+        pairs: list[tuple[str, str, list[HumanizeCase]]] = [
+            (SURFACE_CHAT, "current-production", chat_cases),
+            (SURFACE_ARTICLE, "current-production", article_cases),
+        ]
+        reference_outputs = outputs_by_sut.get("humanizer-zh-reference", [])
+        reference_available = bool(reference_outputs) and all(
+            o.generation.ok for o in reference_outputs
+        )
+        if article_cases and reference_available:
+            pairs.append(
+                (SURFACE_ARTICLE, "humanizer-zh-reference", article_cases)
+            )
+
+        paired: dict[str, dict[str, PairedStatistics]] = {}
+        dimensions_by_surface: dict[str, dict[str, dict]] = {}
+        surface_inputs: dict[str, SurfaceInput] = {}
+        for surface, peer, cases in pairs:
+            peer_case_ids = {c.case_id for c in cases}
+            peer_outcomes = [
+                outcome
+                for outcome in judge_outcomes
+                if (
+                    (info := item_index.get(outcome.item_id)) is not None
+                    and info[2] == peer
+                    and info[0] in peer_case_ids
+                )
+            ]
+            prefs: list[ItemPreference] = [
+                resolve_judge_outcome(
+                    outcome,
+                    case_by_item=case_by_item,
+                    candidate_in_a_by_item=candidate_in_a_by_item,
+                )
+                for outcome in peer_outcomes
+            ]
+            aggregated = aggregate_case_preferences(prefs)
+            stats = compute_paired_statistics(
+                peer_sut_id=peer,
+                preferences=prefs,
+                case_ids=sorted(peer_case_ids),
+                bootstrap_seed=plan.bootstrap_seed,
+                bootstrap_iterations=plan.bootstrap_iterations,
+                ci_level=plan.ci_level,
+            )
+            paired.setdefault(surface, {})[peer] = stats
+            # AC-6：七维度均值/中位数、成对差、CI 与裁判间分歧。
+            dimensions_by_surface.setdefault(surface, {})[peer] = (
+                compute_dimension_statistics(
+                    outcomes=peer_outcomes,
+                    case_by_item=case_by_item,
+                    candidate_in_a_by_item=candidate_in_a_by_item,
+                    bootstrap_seed=plan.bootstrap_seed,
+                    bootstrap_iterations=plan.bootstrap_iterations,
+                    ci_level=plan.ci_level,
+                )
+            )
+            # 切片退化只针对主对照（candidate vs current-production）聚合的
+            # 偏好，避免与 Humanizer-zh 对照的聚合结果混合或互相覆盖。
+            existing = surface_inputs.get(surface)
+            slice_cases = (
+                [
+                    CaseSliceInput(
+                        case_id=case.case_id,
+                        preference=aggregated.get(
+                            case.case_id, JudgePreference.CANNOT_JUDGE
+                        ),
+                        slices=_case_slices(case),
+                    )
+                    for case in cases
+                    if case.case_id in aggregated
+                ]
+                if peer == "current-production"
+                else (existing.slice_cases if existing is not None else [])
+            )
+            surface_inputs[surface] = SurfaceInput(
+                paired_statistics={
+                    **({} if existing is None else existing.paired_statistics),
+                    peer: stats,
+                },
+                fidelity=fidelity_input,
+                style=StyleGateInput(
+                    blocked_cases=style_blocked,
+                    fail_closed_cases=style_fail_closed,
+                ),
+                slice_cases=slice_cases,
+                reference_available=reference_available,
+            )
+
+        # 4) 发布质量门评估。
+        panel = PanelHealth(
+            judge_count=len(self.judges or []),
+            panel_gate_ok=not panel_gate_issues(registry),
+            canary_all_passed=bool(self.judges) and all(canary_passed.values()),
+            drift_all_ok=all(
+                reg.canary_status != "drifted"
+                for reg in registry.registrations.values()
+            ),
+            inconsistent_items=inconsistent_items,
+            cannot_judge_ratio=_cannot_judge_ratio(judge_outcomes),
+            aggregation_verdict=(
+                aggregation.verdict if aggregation is not None else "passed"
+            ),
+            aggregation_reasons=(
+                list(aggregation.reasons) if aggregation is not None else []
+            ),
+        )
+        latencies = [
+            output.generation.latency_ms
+            for outputs in outputs_by_sut.values()
+            for output in outputs
+            if output.generation.latency_ms > 0
+        ]
+        gate_report = evaluate_humanize_gate(
+            plan=plan,
+            surface_inputs=surface_inputs,
+            dimensions=dimensions_by_surface,
+            panel=panel,
+            judge_versions={
+                judge.judge_id: judge.judge_version
+                for judge in (self.judges or [])
+            },
+            disagreement_items=(
+                list(aggregation.disagreement_items)
+                if aggregation is not None
+                else []
+            ),
+            missing_lock_items=self._lock_missing_items(lock),
+            failed_case_ids=sorted(critical_cases),
+            cost_latency={
+                "total_generation_calls": sum(generation_counts.values()),
+                "candidate_calls": generation_counts.get("candidate", 0),
+                "judge_calls": len(judge_outcomes),
+                "mean_latency_ms": (
+                    statistics.fmean(latencies) if latencies else 0.0
+                ),
+            },
+        )
+        return paired, gate_report
+
+    def _lock_missing_items(self, lock: HumanizeRunLock) -> list[str]:
+        """运行锁缺失键（与 _aggregate 同语义；未配置裁判时排除裁判键）。"""
+        missing = [
+            key for key in LOCK_REQUIRED_KEYS
+            if getattr(lock, key, None) in ("", None, [], {}, 0)
+        ]
+        if not self.judges:
+            missing = [
+                key for key in missing
+                if key not in ("judge_versions", "registry_digest", "judge_prompt_sha")
+            ]
+        return missing
 
     def _surface_aggregate(
         self,
@@ -897,7 +1261,7 @@ class HumanizeRunner:
         generation_counts: dict[str, int],
         fidelity_failures: list[str],
         fidelity_missing: list[str],
-        packet: JudgePacket | None,
+        packets: list[JudgePacket],
         packet_leaks: list[str],
         inconsistent_items: list[str],
         invalid_verdicts: int,
@@ -912,16 +1276,7 @@ class HumanizeRunner:
         aggregation: AggregationResult | None,
     ) -> RunSummary:
         reasons: list[str] = []
-        missing_lock_items = [
-            key for key in LOCK_REQUIRED_KEYS
-            if getattr(lock, key, None) in ("", None, [], {}, 0)
-        ]
-        # 未配置裁判时 judge_versions 为空是合法状态（"未提供系统裁判"已单独报告）。
-        if not self.judges:
-            missing_lock_items = [
-                key for key in missing_lock_items
-                if key not in ("judge_versions", "registry_digest", "judge_prompt_sha")
-            ]
+        missing_lock_items = self._lock_missing_items(lock)
 
         cases_ran = sum(generation_counts.values())
         cases_total = len(runnable_cases)
@@ -1027,7 +1382,7 @@ class HumanizeRunner:
             judge_diverse=not panel_issues,
             inconsistent_items=list(dict.fromkeys(inconsistent_items)),
             invalid_verdicts=invalid_verdicts,
-            packet_id=packet.packet_id if packet else None,
+            packet_id=packets[0].packet_id if packets else None,
             packet_leaks=packet_leaks,
             cases_ran=cases_ran,
             cases_total=cases_total,
@@ -1073,12 +1428,40 @@ def _failed_verdict(
     )
 
 
-def _packet_id(run_id: str, anon_seed: int) -> str:
-    """随机不透明 packet ID（不携带 run/身份信息）。"""
+def _packet_id(run_id: str, anon_seed: int, salt: str = "packet") -> str:
+    """随机不透明 packet ID（不携带 run/身份信息；salt 区分配对）。"""
     digest = hashlib.sha256(
-        f"{run_id}|{anon_seed}|packet".encode()
+        f"{run_id}|{anon_seed}|{salt}".encode()
     ).hexdigest()
     return f"packet-{digest[:16]}"
+
+
+def _case_slices(case: HumanizeCase) -> dict[str, str]:
+    """关键切片属性（模式/强度/体裁/长度/风险/do-no-harm，AC-9）。"""
+    slices: dict[str, str] = {
+        "mode": case.mode or "",
+        "target_length": case.target_length or "",
+        "risk": case.risk.value,
+        "do_no_harm": str(case.do_no_harm),
+    }
+    if case.rewrite_intensity is not None:
+        slices["rewrite_intensity"] = case.rewrite_intensity.value
+    if case.genre_profile is not None:
+        slices["genre"] = case.genre_profile.value
+    return slices
+
+
+def _cannot_judge_ratio(outcomes: list[JudgeOutcome]) -> float:
+    """有效裁决中无法判断票的占比（预注册阈值在统计计划中）。"""
+    valid_total = 0
+    cannot_total = 0
+    for outcome in outcomes:
+        if not outcome.verdict_ab.is_valid:
+            continue
+        valid_total += 1
+        if outcome.verdict_ab.preference is JudgePreference.CANNOT_JUDGE:
+            cannot_total += 1
+    return cannot_total / valid_total if valid_total else 0.0
 
 
 def _append_only_write(

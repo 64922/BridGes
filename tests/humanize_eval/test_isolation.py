@@ -212,9 +212,11 @@ def test_no_caching_between_judge_calls(tmp_path: Path, workspace: Path):
     runner.run()
     # 裁判通过 port.generate 发起调用：每个 item × 双向（AB/BA）× 裁判数
     # 都是独立调用（无缓存命中复用同一响应）。
+    # Issue 11 起存在两个配对 packet（current 对照 + Humanizer-zh 参考对照），
+    # item 总数按落盘的 packet 文件统计。
     judge_calls = port.calls
     assert judge_calls, "裁判应通过端口发起独立模型调用"
-    item_count = len(packet_items_for(runner))
+    item_count = packet_items_for(tmp_path / "out")
     assert len(judge_calls) == item_count * 2 * 3, (
         f"每 item × AB/BA × 3 裁判应有独立调用（实际 {len(judge_calls)}，"
         f"item 数 {item_count}）"
@@ -224,19 +226,17 @@ def test_no_caching_between_judge_calls(tmp_path: Path, workspace: Path):
         assert "cache" not in call["user_prompt"].lower()
 
 
-def packet_items_for(runner: HumanizeRunner) -> list[object]:
-    """从最近一次运行结果中取 packet item 数（无直接引用的辅助）。"""
-    from bridges.humanize_eval.cases import HUMANIZE_CASES
-    from bridges.humanize_eval.holdout import HoldoutController
+def packet_items_for(outdir: Path) -> int:
+    """从落盘的 packet 文件统计 item 总数（含两个配对，无直接引用依赖）。"""
+    import json
 
-    holdout = runner.holdout
-    cases = list(HUMANIZE_CASES)
-    if runner.surface:
-        cases = [c for c in cases if c.kind.value == runner.surface]
-    if holdout is not None:
-        runnable_ids = holdout.runnable_case_ids([c.case_id for c in cases])
-        cases = [c for c in cases if c.case_id in runnable_ids]
-    return cases
+    runs_dir = Path(outdir) / "runs"
+    run_dir = max(runs_dir.iterdir(), key=lambda p: p.stat().st_mtime)
+    total = 0
+    for packet_file in (run_dir / "packets").glob("*.json"):
+        payload = json.loads(packet_file.read_text(encoding="utf-8"))
+        total += len(payload["items"])
+    return total
 
 
 def test_prompt_injection_in_candidate_does_not_leak_identity(

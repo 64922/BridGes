@@ -123,9 +123,13 @@ def _opaque_id(seed: int, *parts: str) -> str:
     return digest[:16]
 
 
-def _item_id(case_id: str, seed: int) -> str:
-    """不透明 item ID：与 case 名无直接可读关系。"""
-    return f"item-{_opaque_id(seed, case_id)}"
+def _item_id(case_id: str, seed: int, salt: str = "") -> str:
+    """不透明 item ID：与 case 名无直接可读关系。
+
+    ``salt`` 区分同一 case 在不同配对（current 对照 / Humanizer-zh
+    参考对照）中的 item，避免两个 packet 的 item_id 冲突。
+    """
+    return f"item-{_opaque_id(seed, case_id, salt)}"
 
 
 def _task_context(case: HumanizeCase) -> dict[str, Any]:
@@ -159,11 +163,13 @@ def build_packets(
     anon_seed: int,
     peer_pair: tuple[str, str] = ("current-production", "candidate"),
     run_id: str = "",
+    item_salt: str = "",
 ) -> tuple[JudgePacket, SealedMapping]:
     """按固定种子把成对 SUT 输出匿名化为 A/B，并生成 evaluator-private 映射。
 
     同一种子产生相同映射；改变种子改变左右顺序。当前把 current 与
     candidate 配成一对（reference/plain 的输出另存为原始证据，不进入本包）。
+    ``item_salt`` 区分同一 case 在不同配对中的 item（Issue 11 参考对照）。
     """
     rng = random.Random(anon_seed)
     sut_a, sut_b = peer_pair
@@ -178,7 +184,7 @@ def build_packets(
         output_b = by_sut[sut_b].get(case.case_id)
         if output_a is None or output_b is None:
             continue
-        item_id = _item_id(case.case_id, anon_seed)
+        item_id = _item_id(case.case_id, anon_seed, item_salt)
         flip = rng.random() < 0.5
         if flip:
             shown_a, shown_b = output_b.text, output_a.text
