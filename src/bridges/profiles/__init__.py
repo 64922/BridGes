@@ -17,6 +17,7 @@ from bridges.profiles.four_dimensions import (
 )
 from bridges.profiles.automatic import (
     AUTOMATIC_EXTRACTOR_VERSION,
+    PROFILE_CORRECTION_RULES_VERSION,
     PROFILE_REPLAY_QUEUE,
     AutomaticProfileError,
     AutomaticProfileService,
@@ -58,6 +59,7 @@ __all__ = [
     "SqliteFourDimensionProfileRepository",
     "AUTOMATIC_EXTRACTOR_VERSION",
     "PROFILE_REPLAY_QUEUE",
+    "PROFILE_CORRECTION_RULES_VERSION",
     "AutomaticProfileError",
     "AutomaticProfileService",
     "GatewayAutomaticProfileExtractor",

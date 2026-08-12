@@ -1198,6 +1198,34 @@ def profile_slice_context(
     return "\n".join(lines)
 
 
+def profile_correction_context(metadata: dict[str, Any] | None) -> str | None:
+    """把聊天画像纠正结果编译为仅含维度和状态的模型上下文。"""
+
+    if not metadata:
+        return None
+    status = str(metadata.get("status") or "")
+    dimension = str(metadata.get("dimension") or "未确定")
+    if not status:
+        return None
+    if status == "written":
+        instruction = (
+            "本轮画像纠正已真实写入。可以确认已更新，但只能依据本轮用户消息和当前"
+            "已授权画像切片说明维度和新内容；不要补充其中没有提供的内容。"
+        )
+    else:
+        instruction = (
+            "本轮画像纠正没有写入成功。不得说已经修改、已更新或已换成任何新内容；"
+            "如需回应，请说明可以在用户画像页手动修改或删除。"
+        )
+    return "【本轮画像纠正结果】\n" + "\n".join(
+        (
+            f"维度：{dimension}",
+            f"结果状态：{status}",
+            f"回复约束：{instruction}",
+        )
+    )
+
+
 def dimension_label(dimension: str) -> str:
     """画像维度中文标签；未知维度直接回退原始值，不抛错。"""
     try:
@@ -1440,6 +1468,7 @@ def assemble_payload(
     arxiv_search_projection: ArxivSearchProjection | None = None,
     teaching_projection: TeachingTurnProjection | None = None,
     profile_context: str | None = None,
+    profile_correction_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
 ) -> dict[str, Any]:
     """提示词组装单点：上下文按固定顺序以独立 system 块注入。
@@ -1478,6 +1507,7 @@ def assemble_payload(
             else None
         ),
         profile_context,
+        profile_correction_context,
     ]
     for block in blocks:
         if block:
@@ -2909,6 +2939,9 @@ class TurnOrchestrator:
             )
             if writing_policy.profile_context is not None:
                 profile_context = writing_policy.profile_context
+            correction_context = self._profile_correction_context(
+                account_id, assistant_message_id
+            )
             payload = assemble_payload(
                 history,
                 tools_context=tools_context,
@@ -2917,6 +2950,7 @@ class TurnOrchestrator:
                 arxiv_search_projection=arxiv_search_projection,
                 teaching_projection=teaching_projection,
                 profile_context=profile_context,
+                profile_correction_context=correction_context,
                 writing_policy=writing_policy,
             )
             protected_web_results = (
@@ -4409,6 +4443,19 @@ class TurnOrchestrator:
                 context_note is not None and context_note.state == ContextNoteState.ERROR
             ),
         )
+        correction_context = self._profile_correction_context(
+            account_id, assistant_message_id
+        )
+        if correction_context is not None:
+            writing_policy = writing_policy.model_copy(
+                update={
+                    "system_block": (
+                        writing_policy.system_block
+                        + "\n\n"
+                        + correction_context
+                    )
+                }
+            )
         profile_used = (
             context_note.state == ContextNoteState.READY if context_note else False
         )
@@ -5467,6 +5514,13 @@ class TurnOrchestrator:
             config["global_writing_policy"] = snapshot.model_dump(mode="json")
             self._repo.update_generation_config(account_id, run.run_id, config)
         return snapshot
+
+    def _profile_correction_context(
+        self, account_id: str, assistant_message_id: str
+    ) -> str | None:
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        metadata = (run.config or {}).get("profile_correction") if run is not None else None
+        return profile_correction_context(metadata if isinstance(metadata, dict) else None)
 
     def _persist_context_note(
         self,

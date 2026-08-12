@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
+from bridges.contracts.profiles import FourDimension
+
 
 PROFILE_SIGNAL_CLASSIFIER_VERSION = "profile-signal-v2"
 
@@ -19,6 +21,15 @@ class ProfileSignalCategory(StrEnum):
     BEHAVIOR_OBSERVATION = "behavior_observation"
     AMBIGUOUS = "ambiguous"
     FORBIDDEN = "forbidden"
+    CORRECTION = "correction"
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileCorrectionIntent:
+    """用户明确要求修改画像时解析出的目标维度和新值。"""
+
+    dimension: FourDimension | None
+    new_value: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +40,7 @@ class ProfileSignalClassification:
     reason_code: str
     confidence: float
     strategy_version: str = PROFILE_SIGNAL_CLASSIFIER_VERSION
+    correction_intent: ProfileCorrectionIntent | None = None
 
     @property
     def is_self_statement(self) -> bool:
@@ -43,6 +55,7 @@ class ProfileSignalClassification:
             ProfileSignalCategory.EXPLICIT_SELF,
             ProfileSignalCategory.HIGH_CONFIDENCE_SELF,
             ProfileSignalCategory.BEHAVIOR_OBSERVATION,
+            ProfileSignalCategory.CORRECTION,
         }
 
     @property
@@ -75,6 +88,39 @@ _EXPLICIT_PROFILE = re.compile(
     r"(?:^|[，。；：:,\s])(?:"
     r"我(?:的|目前|现在|对|喜欢|计划|打算|想|要|准备|正在|在|是|在读|就读|研究)"
     r"|(?:给|帮)我规划)"
+)
+_CORRECTION_MARKER = re.compile(
+    r"(?:改主意|换方向|改变方向|转向|不是.{0,40}而是|不感兴趣.{0,20}更喜欢|"
+    r"(?:修改|改|换|替换|调整|更新)(?:成|为|一下))"
+)
+_CORRECTION_REPLACEMENT = re.compile(
+    r"(?:修改|改|换|替换|调整|更新)(?:[^，。；;:：]{0,24})?(?:成|为)\s*"
+    r"([^。！？!?；;，,]+)"
+)
+_CORRECTION_NEGATED_REPLACEMENT = re.compile(
+    r"不是[^，。；;]+[，,、]?而是\s*([^。！？!?；;，,]+)"
+)
+_CORRECTION_DISINTERESTED_REPLACEMENT = re.compile(
+    r"不感兴趣了?[^，。；;]*[，,、]?\s*(?:现在)?(?:更)?喜欢\s*"
+    r"([^。！？!?；;，,]+)"
+)
+_CORRECTION_DIRECTION = re.compile(
+    r"(?:改主意了?|换方向了?|改变方向了?|转向了?)[，,：:]?\s*"
+    r"(.+?)(?:[。！？!?；;]|$)"
+)
+_KNOWLEDGE_HINT = re.compile(
+    r"(?i)(?:cnn|transformer|卷积|神经网络|算法|编程|数学|物理|化学|"
+    r"生物|历史|哲学|天文|地理|科学|技术|知识|学习|研究|论文|专业)"
+)
+_ACADEMIC_HINT = re.compile(
+    r"(?:大[一二三四]|研[一二三]|本科|研究生|硕士|博士|大学生|学生|专业|学历|年级|在读)"
+)
+_GOAL_HINT = re.compile(
+    r"(?:目标|计划|打算|规划|考研|雅思|托福|考试|毕业|申请|完成|通过|提升)"
+)
+_HOBBY_HINT = re.compile(
+    r"(?:跑步|游泳|运动|音乐|乐器|绘画|画画|摄影|旅行|旅游|游戏|烘焙|"
+    r"做饭|园艺|电影|追剧|书法|手工|宠物)"
 )
 _HIGH_ACADEMIC = re.compile(
     r"^(?:目前|现在)?(?!(?:目标|计划|打算|规划))(?:大[一二三四]|研[一二三]|本科(?:生)?|研究生|"
@@ -110,6 +156,20 @@ class ProfileSignalClassifier:
         forbidden_reason = self._forbidden_reason(text)
         if forbidden_reason is not None:
             return self._result(ProfileSignalCategory.FORBIDDEN, forbidden_reason, 1.0)
+
+        correction_intent = self._correction_intent(text)
+        if correction_intent is not None:
+            return self._result(
+                ProfileSignalCategory.CORRECTION,
+                (
+                    "profile_correction_intent"
+                    if correction_intent.dimension is not None
+                    and correction_intent.new_value is not None
+                    else "profile_correction_unresolved"
+                ),
+                1.0,
+                correction_intent=correction_intent,
+            )
 
         if self._has_ambiguous_profile_expression(text):
             return self._result(
@@ -159,12 +219,14 @@ class ProfileSignalClassifier:
         category: ProfileSignalCategory,
         reason_code: str,
         confidence: float,
+        correction_intent: ProfileCorrectionIntent | None = None,
     ) -> ProfileSignalClassification:
         return ProfileSignalClassification(
             category=category,
             reason_code=reason_code,
             confidence=confidence,
             strategy_version=self.version,
+            correction_intent=correction_intent,
         )
 
     @staticmethod
@@ -175,7 +237,10 @@ class ProfileSignalClassifier:
             return "hypothetical_or_role_play"
         if _THIRD_PARTY.search(text):
             return "third_party_statement"
-        if _NEGATION.search(text):
+        if _NEGATION.search(text) and not (
+            _CORRECTION_NEGATED_REPLACEMENT.search(text)
+            or _CORRECTION_DISINTERESTED_REPLACEMENT.search(text)
+        ):
             return "negated_statement"
         if _SENSITIVE.search(text):
             return "sensitive_content"
@@ -197,10 +262,91 @@ class ProfileSignalClassifier:
             re.search(r"(?:我|我的).{0,20}(?:可能|也许|似乎|不确定|倾向于)", text)
         )
 
+    @classmethod
+    def _correction_intent(cls, text: str) -> ProfileCorrectionIntent | None:
+        if not _CORRECTION_MARKER.search(text):
+            return None
+
+        raw_value: str | None = None
+        replacement = _CORRECTION_REPLACEMENT.search(text)
+        if replacement is not None:
+            raw_value = replacement.group(1)
+        if raw_value is None:
+            replacement = _CORRECTION_NEGATED_REPLACEMENT.search(text)
+            if replacement is not None:
+                raw_value = replacement.group(1)
+        if raw_value is None:
+            replacement = _CORRECTION_DISINTERESTED_REPLACEMENT.search(text)
+            if replacement is not None:
+                raw_value = replacement.group(1)
+        if raw_value is None:
+            direction = _CORRECTION_DIRECTION.search(text)
+            if direction is not None:
+                raw_value = direction.group(1)
+
+        value = cls._normalize_correction_value(raw_value)
+        dimension = cls._infer_correction_dimension(text, value)
+        if dimension is None and not cls._has_explicit_correction_context(text):
+            return None
+        return ProfileCorrectionIntent(dimension=dimension, new_value=value)
+
+    @staticmethod
+    def _has_explicit_correction_context(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(?:画像|关注点|学业情况|学业|兴趣爱好|阶段目标|"
+                r"改主意|换方向|改变方向|转向)",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _normalize_correction_value(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = re.sub(r"\s+", " ", value.strip(" \t\r\n，。；：:、,;.!！？?"))
+        normalized = re.sub(
+            r"^我(?:现在|目前)?(?:更)?喜欢\s*(?:学(?:习)?|研究)?\s*",
+            "",
+            normalized,
+        )
+        normalized = re.sub(
+            r"^(?:现在|目前)?(?:想|要|准备|正在|在)\s*(?:学(?:习)?|研究)?\s*",
+            "",
+            normalized,
+        )
+        normalized = re.sub(r"^(?:学(?:习)?|研究)\s*", "", normalized)
+        normalized = normalized.strip(" \t，,：:")
+        return normalized if 1 < len(normalized) <= 200 else None
+
+    @staticmethod
+    def _infer_correction_dimension(
+        text: str, value: str | None
+    ) -> FourDimension | None:
+        if re.search(r"(?:阶段目标|目标|计划|打算|规划)", text):
+            return FourDimension.STAGE_GOAL
+        if re.search(r"(?:学业情况|学业|学校|专业|学历|年级|在读)", text):
+            return FourDimension.ACADEMIC_STATUS
+        if re.search(r"(?:兴趣爱好|爱好)", text):
+            return FourDimension.HOBBY
+        if re.search(r"(?:关注点|感兴趣的知识|知识兴趣|学习|学|研究)", text):
+            return FourDimension.KNOWLEDGE_INTEREST
+        semantic_text = f"{text} {value or ''}"
+        if _GOAL_HINT.search(semantic_text):
+            return FourDimension.STAGE_GOAL
+        if value is not None and _ACADEMIC_HINT.search(value):
+            return FourDimension.ACADEMIC_STATUS
+        if value is not None and _HOBBY_HINT.search(value):
+            return FourDimension.HOBBY
+        if value is not None and _KNOWLEDGE_HINT.search(value):
+            return FourDimension.KNOWLEDGE_INTEREST
+        return None
+
 
 __all__ = [
     "PROFILE_SIGNAL_CLASSIFIER_VERSION",
     "ProfileSignalCategory",
     "ProfileSignalClassification",
+    "ProfileCorrectionIntent",
     "ProfileSignalClassifier",
 ]

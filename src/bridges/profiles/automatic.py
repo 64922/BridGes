@@ -26,6 +26,8 @@ from bridges.contracts.profile_extraction import (
     ProfileExtractionRun,
     ProfileExtractionStatus,
     ProfilePageStatus,
+    ProfileCorrectionResult,
+    ProfileCorrectionStatus,
     ProfilePreprocessResult,
     ProfilePrivacyNotice,
     ProfileStatusProjection,
@@ -66,6 +68,7 @@ AUTOMATIC_PRIVACY_NOTICE_TEXT = (
 PROFILE_EXTRACTION_QUEUE = "profile-extraction"
 PROFILE_REPLAY_QUEUE = "profile-replay-v2"
 PROFILE_REPLAY_SOURCE_HASH_PREFIX = ":replay-v1:"
+PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
 _TRANSIENT_PROFILE_ERROR_CODES = frozenset(
     {
@@ -1146,6 +1149,26 @@ class AutomaticProfileService:
             },
         )
 
+    def _audit_correction_outcome(
+        self, run: ProfileExtractionRun, status: ProfileCorrectionStatus
+    ) -> None:
+        """记录纠正状态指标，不把账户、消息或画像正文送入观测审计。"""
+
+        if self._observability is None:
+            return
+        self._observability.record_profile_outcome(
+            outcome=run.outcome.value,
+            reason=f"{PROFILE_CORRECTION_RULES_VERSION}_{status.value}",
+            exhausted=run.status == ProfileExtractionStatus.EXHAUSTED,
+        )
+        self._observability.record_profile_queue_depth(
+            sum(
+                task.status
+                in {ProfileExtractionStatus.PENDING, ProfileExtractionStatus.RUNNING}
+                for task in self._repository.list_tasks(run.account_id)
+            )
+        )
+
     def _recover_inflight_runs(self) -> None:
         """恢复进程中断时尚未落入重试任务的运行记录。"""
 
@@ -1231,6 +1254,7 @@ class AutomaticProfileService:
     ) -> ProfilePreprocessResult:
         now = _now()
         source_hash = _source_hash(account_id, message_id, content)
+        signal_classification = self._classifier.classify(content)
         directive = _privacy_directive(content)
         if directive is not None:
             scope, normalized_value = directive
@@ -1310,6 +1334,9 @@ class AutomaticProfileService:
                 run=existing,
                 committed_record_ids=existing.committed_record_ids,
                 observed_count=existing.observed_count,
+                correction=self._replayed_correction_result(
+                    existing, signal_classification
+                ),
             )
 
         run = existing or ProfileExtractionRun(
@@ -1331,7 +1358,6 @@ class AutomaticProfileService:
             created_at=now,
             updated_at=now,
         )
-        signal_classification = self._classifier.classify(content)
         if not signal_classification.should_process:
             run.status = ProfileExtractionStatus.SUCCEEDED
             run.outcome = ProfileExtractionOutcome.NO_SIGNAL
@@ -1340,9 +1366,16 @@ class AutomaticProfileService:
             self._audit_outcome(run, result=AuditResult.SUCCESS)
             return ProfilePreprocessResult(run=run)
 
-        # 只有真正进入画像判定（明确自述或普通知识提问）时才展示一次说明，
-        # 避免对明显无关的寒暄和机器载荷产生打扰。
+        # 只有真正进入画像判定（明确自述、普通知识提问或纠正请求）时才展示一次说明。
         notice = self._repository.claim_privacy_notice(account_id, now)
+
+        if signal_classification.category == ProfileSignalCategory.CORRECTION:
+            return self._preprocess_correction(
+                account_id=account_id,
+                run=run,
+                notice=notice,
+                signal_classification=signal_classification,
+            )
 
         self._repository.save_run(run)
         try:
@@ -1385,6 +1418,127 @@ class AutomaticProfileService:
             committed_record_ids=record_ids,
             observed_count=observed_count,
         )
+
+    def _preprocess_correction(
+        self,
+        *,
+        account_id: str,
+        run: ProfileExtractionRun,
+        notice: ProfilePrivacyNotice | None,
+        signal_classification: ProfileSignalClassification,
+    ) -> ProfilePreprocessResult:
+        intent = signal_classification.correction_intent
+        if intent is None or intent.dimension is None or not intent.new_value:
+            run.status = ProfileExtractionStatus.SUCCEEDED
+            run.attempts += 1
+            run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_UNRESOLVED
+            run.updated_at = _now()
+            self._repository.save_run(run)
+            self._audit_correction_outcome(run, ProfileCorrectionStatus.UNRESOLVED)
+            return ProfilePreprocessResult(
+                run=run,
+                privacy_notice=notice,
+                correction=ProfileCorrectionResult(
+                    status=ProfileCorrectionStatus.UNRESOLVED,
+                    dimension=intent.dimension if intent is not None else None,
+                ),
+            )
+
+        record_ids: list[str] = []
+        correction: ProfileCorrectionResult
+        try:
+            with self._commit_transaction():
+                record, changed = self._four_dimensions.correct_record(
+                    account_id,
+                    dimension=intent.dimension,
+                    content=intent.new_value,
+                    manage_transaction=False,
+                )
+                if record is None:
+                    run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE
+                    correction = ProfileCorrectionResult(
+                        status=ProfileCorrectionStatus.NO_ACTIVE_RECORD,
+                        dimension=intent.dimension,
+                    )
+                elif not changed:
+                    run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED
+                    correction = ProfileCorrectionResult(
+                        status=ProfileCorrectionStatus.PROTECTED,
+                        dimension=intent.dimension,
+                        record_id=record.record_id,
+                    )
+                else:
+                    record_ids.append(record.record_id)
+                    run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
+                    correction = ProfileCorrectionResult(
+                        status=ProfileCorrectionStatus.WRITTEN,
+                        dimension=intent.dimension,
+                        record_id=record.record_id,
+                    )
+                run.status = ProfileExtractionStatus.SUCCEEDED
+                run.attempts += 1
+                run.committed_record_ids = record_ids
+                run.observed_count = 0
+                run.last_error = None
+                run.updated_at = _now()
+                self._repository.save_run(run)
+        except Exception as exc:  # noqa: BLE001 - 纠正是聊天辅助路径
+            return self._schedule_retry(
+                run,
+                notice,
+                exc,
+                correction=ProfileCorrectionResult(
+                    status=ProfileCorrectionStatus.FAILED,
+                    dimension=intent.dimension,
+                ),
+            )
+
+        self._audit_correction_outcome(run, correction.status)
+        return ProfilePreprocessResult(
+            run=run,
+            privacy_notice=notice,
+            committed_record_ids=record_ids,
+            correction=correction,
+        )
+
+    def _replayed_correction_result(
+        self,
+        run: ProfileExtractionRun,
+        classification: ProfileSignalClassification,
+    ) -> ProfileCorrectionResult | None:
+        if classification.category != ProfileSignalCategory.CORRECTION:
+            return None
+        intent = classification.correction_intent
+        if intent is None or intent.dimension is None or not intent.new_value:
+            return ProfileCorrectionResult(
+                status=ProfileCorrectionStatus.UNRESOLVED,
+                dimension=intent.dimension if intent is not None else None,
+            )
+        outcome_status = {
+            ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN: ProfileCorrectionStatus.WRITTEN,
+            ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED: ProfileCorrectionStatus.PROTECTED,
+            ProfileExtractionOutcome.SUCCEEDED_CORRECTION_UNRESOLVED: ProfileCorrectionStatus.UNRESOLVED,
+            ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE: ProfileCorrectionStatus.NO_ACTIVE_RECORD,
+            ProfileExtractionOutcome.CORRECTION_FAILED: ProfileCorrectionStatus.FAILED,
+        }.get(run.outcome)
+        if outcome_status is not None:
+            return ProfileCorrectionResult(
+                status=outcome_status,
+                dimension=intent.dimension,
+                record_id=run.committed_record_ids[0]
+                if run.committed_record_ids
+                else None,
+            )
+        if run.status in {
+            ProfileExtractionStatus.PENDING,
+            ProfileExtractionStatus.RUNNING,
+            ProfileExtractionStatus.EXHAUSTED,
+        }:
+            return ProfileCorrectionResult(
+                status=ProfileCorrectionStatus.FAILED,
+                dimension=intent.dimension,
+            )
+        return None
 
     def _blocked_result(
         self,
@@ -1467,6 +1621,7 @@ class AutomaticProfileService:
         run: ProfileExtractionRun,
         notice: ProfilePrivacyNotice | None,
         error: BaseException | str,
+        correction: ProfileCorrectionResult | None = None,
     ) -> ProfilePreprocessResult:
         now = _now()
         error_code = self._safe_error_code(error)
@@ -1474,18 +1629,29 @@ class AutomaticProfileService:
             self._capability_degraded_reason = error_code
         if not self._is_retryable_error(error):
             run.status = ProfileExtractionStatus.EXHAUSTED
-            run.outcome = ProfileExtractionOutcome.PERMANENT_FAILURE
+            run.outcome = (
+                ProfileExtractionOutcome.CORRECTION_FAILED
+                if correction is not None
+                else ProfileExtractionOutcome.PERMANENT_FAILURE
+            )
             run.attempts += 1
             run.last_error = error_code
             run.updated_at = now
             self._repository.save_run(run)
-            self._audit_outcome(
-                run, result=AuditResult.BLOCKED, reason=error_code
+            if correction is not None:
+                self._audit_correction_outcome(run, correction.status)
+            else:
+                self._audit_outcome(run, result=AuditResult.BLOCKED, reason=error_code)
+            return ProfilePreprocessResult(
+                run=run, privacy_notice=notice, correction=correction
             )
-            return ProfilePreprocessResult(run=run, privacy_notice=notice)
 
         run.status = ProfileExtractionStatus.PENDING
-        run.outcome = ProfileExtractionOutcome.PENDING_RETRY
+        run.outcome = (
+            ProfileExtractionOutcome.CORRECTION_FAILED
+            if correction is not None
+            else ProfileExtractionOutcome.PENDING_RETRY
+        )
         run.attempts += 1
         run.last_error = error_code
         run.updated_at = now
@@ -1527,8 +1693,13 @@ class AutomaticProfileService:
                         "source_hash": run.source_hash,
                     },
                 )
-        self._audit_outcome(run, result=AuditResult.RETRYABLE_FAIL, reason=error_code)
-        return ProfilePreprocessResult(run=run, privacy_notice=notice)
+        if correction is not None:
+            self._audit_correction_outcome(run, correction.status)
+        else:
+            self._audit_outcome(run, result=AuditResult.RETRYABLE_FAIL, reason=error_code)
+        return ProfilePreprocessResult(
+            run=run, privacy_notice=notice, correction=correction
+        )
 
     def run_retry_tick(self) -> str:
         if self._queue is not None:
@@ -1640,30 +1811,83 @@ class AutomaticProfileService:
         run.attempts = attempt
         run.updated_at = _now()
         self._repository.save_run(run)
+        signal_classification: ProfileSignalClassification | None = None
+        correction: ProfileCorrectionResult | None = None
         try:
             with self._commit_transaction():
                 content = self._message_content(
                     task.account_id, task.message_id, run.source_snapshot
                 )
                 signal_classification = self._classifier.classify(content)
-                output = self._extract_once(
-                    account_id=task.account_id,
-                    conversation_id="retry",
-                    message_id=task.message_id,
-                    content=content,
-                    run_id=run.extraction_id,
-                    signal_classification=signal_classification,
-                )
-                record_ids, observed_count = self._commit_output(
-                    task.account_id,
-                    conversation_id="retry",
-                    message_id=task.message_id,
-                    content=content,
-                    mode="companion",
-                    output=output,
-                    now=_now(),
-                    signal_classification=signal_classification,
-                )
+                if signal_classification.category == ProfileSignalCategory.CORRECTION:
+                    intent = signal_classification.correction_intent
+                    record_ids = []
+                    observed_count = 0
+                    if (
+                        intent is None
+                        or intent.dimension is None
+                        or not intent.new_value
+                    ):
+                        correction = ProfileCorrectionResult(
+                            status=ProfileCorrectionStatus.UNRESOLVED,
+                            dimension=intent.dimension if intent is not None else None,
+                        )
+                        run.outcome = (
+                            ProfileExtractionOutcome.SUCCEEDED_CORRECTION_UNRESOLVED
+                        )
+                    else:
+                        record, changed = self._four_dimensions.correct_record(
+                            task.account_id,
+                            dimension=intent.dimension,
+                            content=intent.new_value,
+                            manage_transaction=False,
+                        )
+                        if record is None:
+                            correction = ProfileCorrectionResult(
+                                status=ProfileCorrectionStatus.NO_ACTIVE_RECORD,
+                                dimension=intent.dimension,
+                            )
+                            run.outcome = (
+                                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE
+                            )
+                        elif not changed:
+                            correction = ProfileCorrectionResult(
+                                status=ProfileCorrectionStatus.PROTECTED,
+                                dimension=intent.dimension,
+                                record_id=record.record_id,
+                            )
+                            run.outcome = (
+                                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED
+                            )
+                        else:
+                            record_ids.append(record.record_id)
+                            correction = ProfileCorrectionResult(
+                                status=ProfileCorrectionStatus.WRITTEN,
+                                dimension=intent.dimension,
+                                record_id=record.record_id,
+                            )
+                            run.outcome = (
+                                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
+                            )
+                else:
+                    output = self._extract_once(
+                        account_id=task.account_id,
+                        conversation_id="retry",
+                        message_id=task.message_id,
+                        content=content,
+                        run_id=run.extraction_id,
+                        signal_classification=signal_classification,
+                    )
+                    record_ids, observed_count = self._commit_output(
+                        task.account_id,
+                        conversation_id="retry",
+                        message_id=task.message_id,
+                        content=content,
+                        mode="companion",
+                        output=output,
+                        now=_now(),
+                        signal_classification=signal_classification,
+                    )
                 task.status = ProfileExtractionStatus.SUCCEEDED
                 task.last_error = None
                 task.updated_at = _now()
@@ -1671,7 +1895,8 @@ class AutomaticProfileService:
                 run.last_error = None
                 run.committed_record_ids = record_ids
                 run.observed_count = observed_count
-                run.outcome = self._success_outcome(record_ids, observed_count)
+                if signal_classification.category != ProfileSignalCategory.CORRECTION:
+                    run.outcome = self._success_outcome(record_ids, observed_count)
                 run.updated_at = task.updated_at
                 self._repository.save_task(task)
                 self._repository.save_run(run)
@@ -1685,15 +1910,31 @@ class AutomaticProfileService:
             task.last_error = error_code
             task.updated_at = _now()
             run.status = ProfileExtractionStatus.PENDING
-            run.outcome = ProfileExtractionOutcome.PENDING_RETRY
+            run.outcome = (
+                ProfileExtractionOutcome.CORRECTION_FAILED
+                if (
+                    signal_classification is not None
+                    and signal_classification.category == ProfileSignalCategory.CORRECTION
+                )
+                else ProfileExtractionOutcome.PENDING_RETRY
+            )
             run.last_error = task.last_error
             run.updated_at = task.updated_at
             self._repository.save_task(task)
             self._repository.save_run(run)
             return task.status
-        if self._gateway_attempted(signal_classification):
+        if signal_classification is not None and self._gateway_attempted(
+            signal_classification
+        ):
             self._capability_degraded_reason = None
-        self._audit_outcome(run, result=AuditResult.SUCCESS)
+        if (
+            signal_classification is not None
+            and signal_classification.category == ProfileSignalCategory.CORRECTION
+            and correction is not None
+        ):
+            self._audit_correction_outcome(run, correction.status)
+        else:
+            self._audit_outcome(run, result=AuditResult.SUCCESS)
         return task.status
 
     def _exhaust_task(
@@ -1704,12 +1945,19 @@ class AutomaticProfileService:
         task.last_error = error[:500]
         task.updated_at = now
         run.status = ProfileExtractionStatus.EXHAUSTED
-        run.outcome = ProfileExtractionOutcome.PERMANENT_FAILURE
+        run.outcome = (
+            ProfileExtractionOutcome.CORRECTION_FAILED
+            if run.outcome == ProfileExtractionOutcome.CORRECTION_FAILED
+            else ProfileExtractionOutcome.PERMANENT_FAILURE
+        )
         run.last_error = task.last_error
         run.updated_at = now
         self._repository.save_task(task)
         self._repository.save_run(run)
-        self._audit_outcome(run, result=AuditResult.BLOCKED, reason=error)
+        if run.outcome == ProfileExtractionOutcome.CORRECTION_FAILED:
+            self._audit_correction_outcome(run, ProfileCorrectionStatus.FAILED)
+        else:
+            self._audit_outcome(run, result=AuditResult.BLOCKED, reason=error)
         return task.status
 
     def _message_snapshot_is_current(

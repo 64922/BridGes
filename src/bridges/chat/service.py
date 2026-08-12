@@ -105,6 +105,11 @@ from bridges.contracts.humanizer import (
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpError
 from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.profile_extraction import (
+    ProfileCorrectionResult,
+    ProfileCorrectionStatus,
+    ProfilePreprocessResult,
+)
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.speech import ReadAloudProjection
@@ -121,6 +126,7 @@ from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
+from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
@@ -1161,7 +1167,7 @@ class ChatService:
         content: str,
         mode: ChatMode,
         run_id: str,
-    ) -> None:
+    ) -> ProfilePreprocessResult | None:
         """首轮/续轮的画像记忆副作用：处理消息并把通知追加为 profile 事件。
 
         Issue 26：确定性记忆意图处理（明确记住/不记/仅会话、许可内自动
@@ -1172,7 +1178,7 @@ class ChatService:
         """
         if self._automatic_profiles is not None:
             try:
-                self._automatic_profiles.preprocess_message(
+                result = self._automatic_profiles.preprocess_message(
                     account_id,
                     conversation_id=conversation_id,
                     message_id=user_message_id,
@@ -1180,7 +1186,24 @@ class ChatService:
                     run_id=run_id,
                     mode=mode.value,
                 )
+                if result.correction is not None:
+                    self._persist_profile_correction_result(
+                        account_id, run_id, result.correction
+                    )
+                return result
             except Exception as exc:  # noqa: BLE001 - 聊天主流程对画像提取保持 fail-open
+                correction: ProfileCorrectionResult | None = None
+                classification = ProfileSignalClassifier().classify(content)
+                if classification.category == ProfileSignalCategory.CORRECTION:
+                    intent = classification.correction_intent
+                    correction = ProfileCorrectionResult(
+                        status=ProfileCorrectionStatus.FAILED,
+                        dimension=intent.dimension if intent is not None else None,
+                    )
+                    with contextlib.suppress(Exception):
+                        self._persist_profile_correction_result(
+                            account_id, run_id, correction
+                        )
                 if self._observability is not None:
                     error_code = str(
                         getattr(exc, "code", "profile_extraction_unexpected")
@@ -1198,6 +1221,7 @@ class ChatService:
                             reason=error_code,
                             details={"stage": "preprocess", "outcome": "unhandled"},
                         )
+                return None
         elif self._four_dimension_profiles is None and self._profiles is not None:
             with contextlib.suppress(Exception):  # noqa: BLE001 - 辅助路径静默降级
                 self._profiles.process_conversation_message(
@@ -1207,6 +1231,20 @@ class ChatService:
                     content=content,
                     mode=mode.value,
                 )
+        return None
+
+    def _persist_profile_correction_result(
+        self,
+        account_id: str,
+        run_id: str,
+        correction: ProfileCorrectionResult,
+    ) -> None:
+        run = self._repo.get_generation_run(account_id, run_id)
+        if run is None:
+            return
+        config = dict(run.config or {})
+        config["profile_correction"] = correction.context_metadata()
+        self._repo.update_generation_config(account_id, run_id, config)
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -1749,6 +1787,9 @@ class ChatService:
         }
         if policy_snapshot is not None:
             run_config["global_writing_policy"] = policy_snapshot
+        profile_correction = (previous_config or {}).get("profile_correction")
+        if isinstance(profile_correction, dict):
+            run_config["profile_correction"] = dict(profile_correction)
         run_record = GenerationRunRecord(
             run_id=run_id,
             account_id=account_id,
