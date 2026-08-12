@@ -74,7 +74,7 @@ export function RotatingQuote() {
       data-quote-count={LEARNING_QUOTES.length}
       style={{
         margin: 0,
-        fontSize: "var(--text-xl)",
+        fontSize: "var(--text-2xl)",
         textAlign: "center",
         fontFamily: "var(--font-serif)",
         fontWeight: 600,

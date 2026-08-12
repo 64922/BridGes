@@ -1,6 +1,6 @@
 # Issue 04：增大首页格言字号并将免责声明钉至屏幕底部
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -56,4 +56,11 @@ User stories: US-04
 ## Comments
 
 - 2026-08-12：字号档位（xl→2xl）与"钉底用 margin-top:auto 而非 absolute 定位"为推荐实现，用户确认目标效果为"略微增大"与"下移到屏幕底部"。
-- 后续讨论、实施证据和验收结果追加于本节。
+
+## Answer
+
+- 2026-08-12：`RotatingQuote` 的首页格言字号已从 `var(--text-xl)` 调整为 `var(--text-2xl)`，出处行继续使用 `var(--text-sm)`；轮换、淡入淡出、`data-quote-index` 与 reduced-motion 行为未改动。
+- 免责声明已移出 `.blankStateInner`，作为 `.blankState` 的末尾子元素；空白态使用三行 Grid 保持格言与输入框居中，note 继续使用 `margin-top: auto` 贴近底部，并允许内容超高时滚动查看。
+- 新增 E2E 断言覆盖 900px 视口字号/底部间距/居中、600px 视口三者不重叠与滚动到底、以及发送错误横幅出现后的 note 稳定性。
+- 验证：Web 单元测试 6 个文件、30 个测试通过；`npx tsc --noEmit --incremental false` 通过；`npm run lint` 通过（仅保留仓库既有 warning）；Issue 13 的布局、短视口和错误恢复目标用例 3/3 通过。
+- 完整 Issue 13 套件仍有一个基线测试引用源码不存在的 `composer-sending-status`，另一个键盘视口用例首轮失败后重试通过；完整 Web E2E 套件因固定服务端口冲突及服务链未在 10 分钟内结束而超时。上述问题均不由本次 Issue 04 变更引入，未修改 Composer 或其他非目标页面。
