@@ -14,6 +14,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from bridges.contracts.expression import Genre
+from bridges.contracts.expression_task import ExpressionTaskContract
 
 
 class HumanizerPath(StrEnum):
@@ -321,7 +322,13 @@ class HumanizerTaskContract(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: HumanizerPath = Field(description="改写或生成路径。")
-    genre: Genre = Field(description="四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）。")
+    genre: Genre | None = Field(
+        default=None,
+        description=(
+            "四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）；"
+            "None 表示未识别体裁，使用通用文章 profile，不强制科普必现模板。"
+        ),
+    )
     topic: str | None = Field(
         default=None, description="生成路径的主题；改写路径可为空。"
     )
@@ -378,6 +385,13 @@ class HumanizerSkillInput(BaseModel):
     )
     route: HumanizerRouteDecision | None = Field(
         default=None, description="进入能力前保存的路由决策快照。"
+    )
+    expression_contract: ExpressionTaskContract | None = Field(
+        default=None,
+        description=(
+            "版本化表达任务契约（人味化改造 Issue 03）；不可变快照，"
+            "同一任务重试必须复用，未知版本执行前拒绝。"
+        ),
     )
 
 
@@ -520,8 +534,14 @@ class HumanizerResultProjection(BaseModel):
     skill_id: str = Field(description="SKILL 注册标识。")
     skill_version: str = Field(description="使用的 SKILL 固定版本。")
     path: HumanizerPath = Field(description="任务路径。")
-    genre: Genre = Field(description="使用的体裁合同。")
+    genre: Genre | None = Field(
+        default=None, description="使用的体裁合同；None 为通用文章 profile。"
+    )
     contract: HumanizerTaskContract = Field(description="任务契约快照。")
+    expression_contract: ExpressionTaskContract | None = Field(
+        default=None,
+        description="版本化表达任务契约快照（人味化改造 Issue 03）；重试复用同一快照。",
+    )
     status: HumanizerResultStatus = Field(description="任务终态。")
     output: HumanizerOutputContract | None = Field(
         default=None, description="输出合同；失败时可能为 None。"

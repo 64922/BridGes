@@ -3,6 +3,10 @@
 每类体裁从 ``skill/genres/*.md`` 加载独立的表达合同（必含/禁止/保留/人工
 责任），并映射为可测试的断言：required 标记缺失 → 复核不通过；prohibited
 标记出现 → 复核不通过。四类体裁规则集各自独立，不共用单一泛化模板。
+
+人味化改造 Issue 03 起支持通用文章 profile（``genre=None``）：未识别体裁
+时不强制任何必现或禁止套话，避免邮件、报告、教程、观点文等被强迫套用科普
+必现模板；体裁检查只判断任务是否完成，不搜索指定套话。
 """
 
 from __future__ import annotations
@@ -36,9 +40,12 @@ class GenreRule:
 
 @dataclass(frozen=True)
 class GenreRuleSet:
-    """单个体裁的完整规则集（与 SKILL 资产一一对应）。"""
+    """单个体裁的完整规则集（与 SKILL 资产一一对应）。
 
-    genre: Genre
+    ``genre`` 为 None 表示通用文章 profile（无必现/禁止元素）。
+    """
+
+    genre: Genre | None
     display_name: str
     required: tuple[GenreRule, ...] = ()
     prohibited: tuple[GenreRule, ...] = ()
@@ -58,9 +65,9 @@ class GenreCheckFinding:
 
 @dataclass
 class GenreCheckResult:
-    """一次体裁规则复核的结果。"""
+    """一次体裁规则复核的结果；genre 为 None 表示通用文章 profile。"""
 
-    genre: Genre
+    genre: Genre | None
     passed: bool
     findings: list[GenreCheckFinding] = field(default_factory=list)
 
@@ -223,8 +230,26 @@ _GENRE_FILE: dict[Genre, str] = {
 }
 
 
-def check_genre(text: str, genre: Genre) -> GenreCheckResult:
-    """对一段文本执行指定体裁的确定性规则复核。"""
+def check_genre(text: str, genre: Genre | None) -> GenreCheckResult:
+    """对一段文本执行指定体裁的确定性规则复核。
+
+    ``genre`` 为 None（通用文章 profile）时只报告一条说明性发现，
+    不搜索任何必现或禁止套话——未识别体裁不得被强迫套用科普必现模板。
+    """
+    if genre is None:
+        return GenreCheckResult(
+            genre=None,
+            passed=True,
+            findings=[
+                GenreCheckFinding(
+                    rule_id="generic_no_mandatory_elements",
+                    label="通用文章 profile",
+                    kind="required",
+                    passed=True,
+                    detail="未识别体裁，不强制任何必现元素",
+                )
+            ],
+        )
     rules = _GENRE_RULES[genre]
     findings: list[GenreCheckFinding] = []
     for rule in rules.required:
@@ -253,8 +278,17 @@ def check_genre(text: str, genre: Genre) -> GenreCheckResult:
     return GenreCheckResult(genre=genre, passed=passed, findings=findings)
 
 
-def genre_rule_set(genre: Genre) -> GenreRuleSet:
-    """读取单个体裁的完整规则集（含资产文档）。"""
+def genre_rule_set(genre: Genre | None) -> GenreRuleSet:
+    """读取单个体裁的完整规则集（含资产文档）。
+
+    ``None`` 返回通用文章 profile：无必现/禁止元素，只有通用责任说明。
+    """
+    if genre is None:
+        return GenreRuleSet(
+            genre=None,
+            display_name="通用文章",
+            human_responsibility="未识别体裁时按通用文章 profile 处理，不强制科普定义、类比或边界提醒。",
+        )
     return _GENRE_RULES[genre]
 
 
