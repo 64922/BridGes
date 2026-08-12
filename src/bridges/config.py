@@ -137,6 +137,13 @@ class Settings(BaseSettings):
     # Issue 41：生产配置不再提供 qwen_force_stub 开关——任何环境都不允许
     # 把 StubQwenAdapter 注册到真实模型能力上伪装成功（AC3）。
 
+    # Issue 09：只供 test 环境显式启用的外部协议 fixture。应用装配层还会
+    # 校验 environment == test；development/production 不会因为这个开关
+    # 读取或替换任何真实提供方。
+    closeout_fixture_mode: bool = Field(
+        default=False, validation_alias=_env_aliases("CLOSEOUT_FIXTURES")
+    )
+
     # Issue 04: 已上传未绑定附件的安全期限（小时）。超过期限且未绑定消息
     # 的孤儿由后台执行器定期清理；窗口内用户可经会话页恢复草稿附件。
     unbound_attachment_ttl_hours: float = Field(

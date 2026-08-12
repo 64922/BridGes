@@ -70,6 +70,11 @@ from bridges.chat import (
 from bridges.chat.routing import NaturalLanguageImageRouter
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
+from bridges.closeout.fixtures import (
+    CloseoutArxivClient,
+    CloseoutQwenAdapter,
+    CloseoutWebSearchClient,
+)
 from bridges.config import Settings, get_settings
 from bridges.contracts.ai import (
     CapabilityKind,
@@ -875,12 +880,18 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # 启用且通过注册表合同后才实例化。凭据只在此处注入客户端，不进入聊天
     # 投影、审计、日志或前端。
     web_search_database = getattr(app.state, "bridges_database", None)
+    use_closeout_fixtures = bool(
+        app.state.settings is not None
+        and app.state.settings.environment.lower() == "test"
+        and app.state.settings.closeout_fixture_mode
+    )
     fallback_provider = (
         build_fallback_provider(app.state.settings)
         if app.state.settings is not None
         else None
     )
     app.state.web_search_service = WebSearchService(
+        client=CloseoutWebSearchClient() if use_closeout_fixtures else None,
         observability=app.state.observability_service,
         fallback_client=fallback_provider,
         cache=(
@@ -892,6 +903,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # Issue 22：固定版本、只读、受限的 arXiv MCP；只接收本地脱敏后的
     # public_query_terms，不继承账户凭据或画像上下文。
     app.state.arxiv_search_service = ArxivSearchService(
+        client=CloseoutArxivClient() if use_closeout_fixtures else None,
         observability=app.state.observability_service
     )
     app.router.add_event_handler("shutdown", app.state.arxiv_search_service.close)
@@ -1074,7 +1086,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # （领域包校验器）由领域包运行时直接执行。qwen_force_stub 环境开关
     # 已随 Issue 41 移除，任何环境都无法通过配置项开启生产假成功。
     if settings is not None and settings.environment.lower() == "test":
-        stub_adapter = StubQwenAdapter()
+        stub_adapter = (
+            CloseoutQwenAdapter()
+            if settings.closeout_fixture_mode
+            else StubQwenAdapter()
+        )
         for capability in capability_registry.list_active():
             if not model_gateway.is_adapter_registered(capability.name, capability.version):
                 model_gateway.register_adapter(
