@@ -133,6 +133,7 @@ export default defineConfig({
         BRIDGES_ENVIRONMENT: "test",
         BRIDGES_DATABASE_URL: DATABASE_URL,
         BRIDGES_SECRET_KEY: "e2e-closeout-secret-key-01",
+        BRIDGES_CLOSEOUT_FIXTURES: "true",
         BRIDGES_API_HOST: "127.0.0.1",
         BRIDGES_API_PORT: String(PORTS.api),
         // Issue 03：与全局 playwright.config.ts 对齐——收尾真实链路同样
