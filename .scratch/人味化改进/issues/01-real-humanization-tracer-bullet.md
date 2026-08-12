@@ -1,6 +1,6 @@
 # Issue 01：跑通真实人味评测 tracer bullet
 
-Status: ready-for-agent
+Status: done（分支 01-real-humanization-tracer-bullet，2026-08-12）
 
 Type: task
 
@@ -70,3 +70,4 @@ None - can start immediately.
 
 - 2026-08-12：作为最短真实纵向切片建立；候选质量不要求在此 Issue 达标，但禁止用脚本答案声称改进有效。
 - 2026-08-12：用户要求完全取消人工评审，本切片改为隔离多模型自动裁判；系统分歧不等待人工处理。
+- 2026-08-12：实现完成（`src/bridges/humanize_eval/` + `tests/humanize_eval/`，52 测试通过）。真实链路：版本化案例（article+chat，内容哈希）→ 三 SUT（current 绑定 git HEAD / candidate 绑定工作区 / Humanizer-zh 快照记录来源+哈希+MIT+模型+参数）→ QwenGenerationPort 真实生成（缺凭据→inconclusive 列缺项，绝不假成功）→ 8 项保真检查（失败关闭）→ 匿名裁判包（A/B 固定标签+不透明 item ID+organizer mapping 分离、同种子重现）→ 三个隔离裁判双向判断（位置偏差无效裁决）→ append-only 证据树 + 脱敏摘要。双轴审查修复 11 处：日期正则空格、成功空输出降级、TIE→偏好位置偏差、git 故障失败关闭、anon_seed 入锁、lock 值级校验、MAJOR 保真阻止通过、裁判 A=候选一声明、CLI 错误捕获、测试不依赖机器快照、死代码清理。真实 smoke 需 `BRIDGES_QWEN_API_KEY` + `--allow-real`（默认跳过）。

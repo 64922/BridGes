@@ -158,3 +158,20 @@
 - [x] T6 E2E 拓扑补 worker：playwright webServer 增加 e2e_worker.py（独立健康端口 8027，摄取/清理真实执行）；issue28 附件 mock 补 GET 分支；Composer 恢复逻辑数组守卫 → verify: issue04 4 绿 + issue28 6 绿 + issue03 7 绿 + closeout-smoke 2 绿 + 11/13/14/15/29/30/36 批量回归（issue14 首页一条为 issue03 合入后遗留既有失败，main 上复现，与本分支无关）
 - [x] T7 双轴代码审查修复：删除 send 内不可达 hasUploading 分支；formatFileType/formatSize 收拢到 lib/format.ts 共用（Composer/HumanizerDialog 同源）；恢复去重只在 updater 内做一次；v32 触发器 RAISE 改中文；E2E 收紧 KB 种子仅 ready + 上传中禁用/类型大小/草稿恢复断言；补绑定 UPDATE 语句故障注入测试；openapi.json + generated.ts 重新生成（含新 GET 路由；SmtpAttemptState 移除系基线 openapi 本就与 904c1d1 源码脱钩的同步修正）；test_schema_v10 v9 骨架补 chat_attachments 表（v32 触发器引用） → verify: 单文件全绿 + issue04 4/4 E2E 绿
 - [x] T8 全量回归 + 提交 → verify: 全量 2247 pytest 通过（2 条既有失败：arxiv 模块缺失为 worktree 环境伪影（主仓库通过）、邮件 10 秒投递为 issue10 必红）+ ruff/tsc/lint 干净（232 ruff 为基线）；提交 4ab640c
+
+## 人味化改进 Issue 01：真实人味评测 tracer bullet（2026-08-12）
+
+来源：`.scratch/人味化改进/issues/01-real-humanization-tracer-bullet.md`（P0，done）。
+
+- [x] 新增 `src/bridges/humanize_eval/`（cases/generation/suts/fidelity/packet/judges/runner/cli）+
+      `tests/humanize_eval/`（52 测试通过，1 真实 smoke 默认跳过）
+- [x] 链路：版本化案例（article+chat，内容哈希）→ 三 SUT（current 绑 git HEAD /
+      candidate 绑工作区 / Humanizer-zh 快照记录来源+哈希+MIT+模型+参数）→
+      QwenGenerationPort 真实生成（缺凭据→inconclusive 列缺项）→ 8 项保真检查（失败关闭）→
+      匿名裁判包（A/B+不透明 item ID+organizer mapping 分离同种子重现）→
+      三隔离裁判双向判断（位置偏差无效）→ append-only 证据树 + 脱敏摘要
+- [x] 双轴审查修复 11 处：日期正则空格、成功空输出降级、TIE→偏好位置偏差、
+      git 故障失败关闭、anon_seed 入锁、lock 值级校验、MAJOR 保真阻止通过、
+      裁判 A=候选一声明、CLI 错误捕获、测试不依赖机器快照、死代码清理
+- [x] verify: 52 测试全绿、ruff/mypy 干净、相邻模块（humanizer/evaluation 154 测试）全绿；
+      全量回归 205 failed 为仓库既有基线（main 上同样复现，与本次改动无关）

@@ -191,7 +191,7 @@ flowchart TD
 
 | # | Issue | Priority | Status | Blocked by |
 | --- | --- | --- | --- | --- |
-| 01 | [跑通真实人味评测 tracer bullet](issues/01-real-humanization-tracer-bullet.md) | P0 | ready-for-agent | None |
+| 01 | [跑通真实人味评测 tracer bullet](issues/01-real-humanization-tracer-bullet.md) | P0 | done | None |
 | 02 | [建立来源账本与保真硬门](issues/02-source-ledger-fidelity-gate.md) | P0 | ready-for-agent | None |
 | 03 | [重构表达任务契约](issues/03-expression-task-contract.md) | P0 | ready-for-agent | None |
 | 04 | [重建文章首稿与表达审稿器](issues/04-article-draft-and-style-review.md) | P0 | ready-for-agent | 02, 03 |
