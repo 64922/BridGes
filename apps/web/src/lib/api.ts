@@ -40,6 +40,15 @@ export type HumanizerEdit = components["schemas"]["HumanizerEdit"];
 export type HumanizerSkillInput = components["schemas"]["HumanizerSkillInput"];
 export type HumanizerTaskContract = components["schemas"]["HumanizerTaskContract"];
 export type HumanizerPath = components["schemas"]["HumanizerPath"];
+// Issue 08：版本化文章结果投影（正文优先交付界面）。
+export type HumanizerArticleProjection = components["schemas"]["HumanizerArticleProjection"];
+export type ArticleDeliveryStatus = components["schemas"]["ArticleDeliveryStatus"];
+export type ArticleMaterialState = components["schemas"]["ArticleMaterialState"];
+export type ArticleFidelitySummary = components["schemas"]["ArticleFidelitySummary"];
+export type ArticleStyleReviewSummary = components["schemas"]["ArticleStyleReviewSummary"];
+export type ArticleRevisionSummary = components["schemas"]["ArticleRevisionSummary"];
+export type ArticleEvidenceItem = components["schemas"]["ArticleEvidenceItem"];
+export type ArticleConfirmationItem = components["schemas"]["ArticleConfirmationItem"];
 // Issue 31：图片生成与编辑契约（生成类型来自 openapi.json）。
 export type ImageTaskProjection = components["schemas"]["ImageTaskProjection"];
 export type ImageTaskKind = components["schemas"]["ImageTaskKind"];

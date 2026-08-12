@@ -586,6 +586,174 @@ class HumanizerRevisionAudit(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# 版本化文章结果投影（Issue 08：正文优先交付界面）
+# ---------------------------------------------------------------------------
+
+ARTICLE_PROJECTION_VERSION = "1"
+"""文章结果投影版本：前端据 ``HumanizerResultProjection.article`` 是否存在
+决定渲染正文优先的新界面或 legacy 旧界面。"""
+
+ARTICLE_AUDIT_VERSION = "1"
+"""投影内全部稳定 code（失败码/风险码/触发类别）的版本标识；任一 code
+语义变更时递增，保证审计计数跨版本可比。"""
+
+
+class ArticleDeliveryStatus(StrEnum):
+    """正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。"""
+
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class ArticleMaterialState(StrEnum):
+    """材料状态：材料充足为 sufficient；缺原文/缺主题/材料不可读为
+    insufficient（界面只展示一个最高价值问题，不堆叠通用建议）。"""
+
+    SUFFICIENT = "sufficient"
+    INSUFFICIENT = "insufficient"
+
+
+class ArticleFidelityItem(BaseModel):
+    """一条保真失败/待确认项（确定性投影自 FidelityFailure，不含正文）。"""
+
+    code: str = Field(description="稳定失败码（审计用）。")
+    severity: str = Field(description="严重度：blocking / needs_user_confirmation。")
+    category: str = Field(description="中文类别说明。")
+    note: str = Field(description="中文说明（用户可见）。")
+
+
+class ArticleFidelitySummary(BaseModel):
+    """保真摘要：确定性计数与失败项；通过时 items 为空，不生成空洞总结。"""
+
+    passed: bool = Field(description="无关键失败即为通过。")
+    blocking_count: int = Field(description="硬失败数。")
+    needs_confirmation_count: int = Field(description="需用户确认项数。")
+    items: list[ArticleFidelityItem] = Field(
+        default_factory=list, description="失败/待确认项清单。"
+    )
+
+
+class ArticleStyleReviewItem(BaseModel):
+    """一条表达审稿定向项（确定性投影自 ExpressionReviewReport 的发现）。"""
+
+    severity: str = Field(description="warning / suggestion。")
+    category: str = Field(description="中文类别说明。")
+    evidence: str = Field(description="触发审稿发现的正文证据片段。")
+    suggestion: str = Field(description="定向建议。")
+    location: SpanLocation = Field(description="发现位置。")
+
+
+class ArticleStyleReviewSummary(BaseModel):
+    """表达审稿摘要：计数 + 定向项；无发现时 items 为空。"""
+
+    finding_count: int = Field(description="全部发现数。")
+    warning_count: int = Field(description="warning 级发现数。")
+    suggestion_count: int = Field(description="suggestion 级发现数。")
+    items: list[ArticleStyleReviewItem] = Field(
+        default_factory=list, description="定向审稿项（仅 warning/suggestion）。"
+    )
+
+
+class ArticleRevisionSummary(BaseModel):
+    """定向修订摘要（Issue 05）：为何触发、解决哪些问题、仍有哪些风险。
+
+    只投影确定性审计数据，不包含内部提示词、思维链或完整规则清单。
+    """
+
+    triggered: bool = Field(description="是否执行了修订调用。")
+    trigger_label: str | None = Field(
+        default=None, description="触发类别中文说明（保真/契约遗漏/审稿）。"
+    )
+    problem_count: int = Field(default=0, description="触发时待修问题数。")
+    resolved_count: int = Field(default=0, description="修订解决的问题数。")
+    remaining_count: int = Field(
+        default=0, description="修订后仍存在的风险数（警告+遗漏+保真）。"
+    )
+    skipped_reason: str | None = Field(
+        default=None, description="未执行修订的原因中文说明。"
+    )
+
+
+class ArticleEvidenceItem(BaseModel):
+    """一条证据风险/变化项（确定性投影自 EvidenceSafeReport）。
+
+    kind 区分：risk=默认模式风险项（正文保持原结论）；change=证据安全
+    修订的实质变化；hold=材料不足/无法判定，保持原文待用户确认。
+    """
+
+    code: str = Field(description="稳定风险/变化 code。")
+    category: str = Field(description="中文类别说明。")
+    kind: str = Field(description="risk / change / hold。")
+    original_span: str | None = Field(
+        default=None, description="原文片段（change 项为修订前，其余为 None）。"
+    )
+    revised_span: str | None = Field(
+        default=None, description="改后片段（change 项为修订后，其余为 None）。"
+    )
+    reason: str = Field(description="为何构成风险/为何修订的中文理由。")
+    source_label: str | None = Field(
+        default=None, description="消费的来源条目显示名；无法判定为 None。"
+    )
+    needs_user_confirmation: bool = Field(
+        default=False, description="是否需用户确认（删除/升级/无法判定时 True）。"
+    )
+
+
+class ArticleConfirmationItem(BaseModel):
+    """一条待用户确认项（保真待确认、契约需人工、证据 hold 等汇总）。"""
+
+    code: str = Field(description="稳定来源 code。")
+    label: str = Field(description="中文类别标签。")
+    detail: str = Field(description="中文说明（用户可见）。")
+
+
+class HumanizerArticleProjection(BaseModel):
+    """版本化文章结果投影（Issue 08）。
+
+    新任务（表达路径或旧路径）的终态都生成该结构挂到
+    ``HumanizerResultProjection.article``；前端只消费它渲染正文优先的
+    交付界面。旧任务无此字段（None），按 legacy 投影展示，不伪造新
+    来源硬门或新审稿通过状态。
+    """
+
+    projection_version: str = Field(
+        default=ARTICLE_PROJECTION_VERSION, description="投影版本。"
+    )
+    audit_version: str = Field(
+        description="审计版本：本结构内全部稳定 code 的版本标识。"
+    )
+    delivery_status: ArticleDeliveryStatus = Field(description="正文交付状态。")
+    material_state: ArticleMaterialState = Field(
+        default=ArticleMaterialState.SUFFICIENT, description="材料状态。"
+    )
+    one_question: str | None = Field(
+        default=None,
+        description=(
+            "材料不足时唯一要问的最高价值问题（表达契约裁决产生）；"
+            "界面只展示这一个问题，不堆叠通用建议。"
+        ),
+    )
+    final_text: str | None = Field(
+        default=None, description="最终正文；硬门失败或材料不足时为 None。"
+    )
+    fidelity: ArticleFidelitySummary | None = Field(
+        default=None, description="保真摘要（未检查为 None）。"
+    )
+    style_review: ArticleStyleReviewSummary | None = Field(
+        default=None, description="表达审稿摘要（新流程有；旧路径为 None）。"
+    )
+    revision: ArticleRevisionSummary | None = Field(
+        default=None, description="定向修订摘要（未修订为 None）。"
+    )
+    evidence: list[ArticleEvidenceItem] = Field(
+        default_factory=list, description="证据风险/变化项。"
+    )
+    confirmations: list[ArticleConfirmationItem] = Field(
+        default_factory=list, description="待用户确认项汇总。"
+    )
+
+
 class HumanizerResultProjection(BaseModel):
     """人味化任务的结果投影（挂载到助手消息）。"""
 
@@ -668,6 +836,14 @@ class HumanizerResultProjection(BaseModel):
     error_message: str | None = Field(
         default=None, description="可操作的中文错误说明。"
     )
+    article: HumanizerArticleProjection | None = Field(
+        default=None,
+        description=(
+            "版本化文章结果投影（Issue 08）：新任务终态生成，前端据此渲染"
+            "正文优先交付界面；旧任务为 None，按 legacy 投影展示，不伪造"
+            "新来源硬门或新审稿通过状态。"
+        ),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC), description="创建时间。"
     )
@@ -743,4 +919,16 @@ __all__ = [
     "HumanizerSkillManifest",
     "HumanizerRevisionAudit",
     "HUMANIZER_CHECKPOINT_KEY",
+    "ARTICLE_PROJECTION_VERSION",
+    "ARTICLE_AUDIT_VERSION",
+    "ArticleDeliveryStatus",
+    "ArticleMaterialState",
+    "ArticleFidelityItem",
+    "ArticleFidelitySummary",
+    "ArticleStyleReviewItem",
+    "ArticleStyleReviewSummary",
+    "ArticleRevisionSummary",
+    "ArticleEvidenceItem",
+    "ArticleConfirmationItem",
+    "HumanizerArticleProjection",
 ]

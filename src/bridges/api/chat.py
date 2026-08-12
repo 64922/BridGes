@@ -12,11 +12,12 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from bridges.api.auth import SubjectDep
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
@@ -47,15 +48,41 @@ from bridges.contracts.feedback import (
     FeedbackResolveRequest,
 )
 from bridges.contracts.retrieval import CitationDetailProjection
+from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
 )
 from bridges.ingestion.service import IngestionService
+from bridges.observability.service import ObservabilityService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 from bridges.retirement import record_compatibility_observation, raise_retired_file_source
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+class HumanizerProjectionEventRequest(BaseModel):
+    """文章结果投影前端事件载荷（Issue 08 Observability）。
+
+    只含投影版本、交付状态、风险类型、事件名与 legacy 标志；请求体
+    Schema 无正文字段，任何正文/引语/diff 内容都无法进入审计。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event: Literal["expand", "copy", "legacy_read"] = Field(
+        description="前端事件类型：展开审计/复制正文/legacy 读取。"
+    )
+    projection_version: str | None = Field(
+        default=None, description="投影版本（旧结果读取时为 null）。"
+    )
+    delivery_status: str | None = Field(
+        default=None, description="交付状态（delivered/failed）。"
+    )
+    risk_types: list[str] = Field(
+        default_factory=list, description="风险类型 code 清单（稳定枚举）。"
+    )
+    legacy: bool = Field(default=False, description="是否旧版结果（无新投影）。")
 
 #: 订阅长轮询窗口（秒）：窗口内无新事件时发心跳保持连接。
 _LONG_POLL_SECONDS = 25.0
@@ -1157,3 +1184,43 @@ def resolve_message_feedback(
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+
+
+@router.post(
+    "/humanizer/events",
+    response_model=dict[str, bool],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+    },
+)
+def record_humanizer_projection_event(
+    body: HumanizerProjectionEventRequest,
+    request: Request,
+    subject: SubjectDep,
+) -> dict[str, bool]:
+    """记录文章结果投影前端事件（Issue 08 Observability）。
+
+    只接受投影版本、交付状态、风险类型、事件名与 legacy 标志；请求体
+    Schema 无正文字段，正文/引语/diff 内容无法进入审计。审计失败不
+    阻断用户操作（遥测尽力而为）。
+    """
+    try:
+        observability: ObservabilityService = request.app.state.observability_service
+        observability.log_audit(
+            actor_account_id=subject.account_id,
+            action=AuditAction.HUMANIZER_RESULT_VIEW,
+            result=AuditResult.SUCCESS,
+            object_refs=[],
+            reason="前端记录文章结果投影查看事件（展开/复制/legacy 读取）。",
+            details={
+                "event": body.event,
+                "projection_version": body.projection_version,
+                "delivery_status": body.delivery_status,
+                "risk_types": body.risk_types,
+                "legacy": body.legacy,
+            },
+        )
+    except Exception:  # noqa: BLE001 - 遥测失败不阻断用户操作
+        pass
+    return {"ok": True}

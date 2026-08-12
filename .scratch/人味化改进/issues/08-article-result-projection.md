@@ -1,6 +1,6 @@
 # Issue 08：实现正文优先的文章交付界面
 
-Status: ready-for-agent
+Status: done（分支 08-article-result-projection，2026-08-12）
 
 Type: task
 
@@ -67,3 +67,23 @@ User stories: US-02、US-04、US-05
 ## Comments
 
 - 2026-08-12：用户确认正文优先、审计按需展开，风险存在时才突出显示。
+
+- 2026-08-12：完成（分支 08-article-result-projection）。
+  - 版本化文章结果投影 HumanizerArticleProjection v1（projection_version/audit_version/
+    delivery_status/material_state/one_question/final_text/fidelity/style_review/revision/
+    evidence/confirmations），挂到 HumanizerResultProjection.article；旧结果 article=None 按
+    legacy 展示（AC 1/10）。确定性组装自保真硬门/表达审稿/修订审计/证据安全报告/材料充分度
+    裁决与稳定错误码，模型自由文本不进入投影（AC 8）。
+  - 前端 HumanizerResultCard 重写：有 article 时正文优先（正文即消息主体），审计分区折叠
+    带计数与状态徽章，复制正文按钮（折叠不影响复制，AC 2/3/9）；硬门失败正文区域明确
+    「未交付」不显示违规稿（AC 4）；材料不足只显示一个最高价值问题 one_question（AC 5）；
+    证据 change 项展示原文/改后/原因/来源/需确认（AC 6）；修订摘要展示触发原因/解决/剩余
+    （AC 7）；无 article 渲染 legacy 卡并标注「旧版结果」。
+  - 遥测：POST /chat/humanizer/events 只接受投影版本/状态/风险类型/事件名/legacy 标志
+    （Schema 无正文字段，extra=forbid 拒绝正文），审计 HUMANIZER_RESULT_VIEW；后端
+    _audit 补 projection_version。
+  - 测试：投影契约 16（成功无风险/软警告/材料不足两种形态/硬门失败/证据风险/证据安全
+    修订/hold/二次修订/待确认汇总/legacy）；事件端点 5；前端组件 6；E2E 6（mock 替身 +
+    真实 webServer；含刷新恢复/窄屏/复制内容验证）；真实 API smoke 2（显式启用，默认跳过）。
+  - 验证：humanizer 329+16、前端 36 单测 + tsc + lint、issue08 E2E 6/6、issue11/03 E2E
+    回归通过；后端全量回归失败集合与 main 基线一致（均为既有失败，无新增）。

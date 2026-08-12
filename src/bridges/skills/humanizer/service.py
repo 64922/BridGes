@@ -30,16 +30,30 @@ from bridges.contracts.evidence_safety import (
     EvidenceRevisionStatus,
     EvidenceSafeReport,
 )
+from bridges.contracts.expression_task import MaterialSufficiency
 from bridges.contracts.expression_review import (
     ExpressionReviewReport,
     ReviewSeverity,
 )
 from bridges.contracts.humanizer import (
+    ARTICLE_AUDIT_VERSION,
+    ARTICLE_PROJECTION_VERSION,
+    ArticleConfirmationItem,
+    ArticleDeliveryStatus,
+    ArticleEvidenceItem,
+    ArticleFidelityItem,
+    ArticleFidelitySummary,
+    ArticleMaterialState,
+    ArticleRevisionSummary,
+    ArticleStyleReviewItem,
+    ArticleStyleReviewSummary,
     FactLockCheckResult,
     FactLockKind,
     FactLockSeverity,
     FactLockStatus,
     FidelityCheckResult,
+    FidelityFailureCode,
+    HumanizerArticleProjection,
     HumanizerEdit,
     HumanizerEditKind,
     HumanizerFactCheckItem,
@@ -1325,6 +1339,235 @@ class HumanizerService:
             )
         ]
 
+    #: 材料不足的错误码（Issue 08：界面据此只展示一个最高价值问题）。
+    _INSUFFICIENT_MATERIAL_CODES = frozenset(
+        {
+            "empty_source",
+            "empty_topic",
+            "knowledge_base_material_unreadable",
+            "knowledge_base_material_parse_failed",
+            "knowledge_base_reference_unreadable",
+            "knowledge_base_reference_ambiguous",
+        }
+    )
+
+    @staticmethod
+    def _build_article_projection(
+        *,
+        status: HumanizerResultStatus,
+        output: HumanizerOutputContract | None,
+        error_code: str | None = None,
+        material_sufficiency: str | None = None,
+        one_question: str | None = None,
+        fidelity_check: FidelityCheckResult | None = None,
+        review: Any | None = None,
+        evidence_report: EvidenceSafeReport | None = None,
+        revision_audit: HumanizerRevisionAudit | None = None,
+        contract_check: FactLockCheckResult | None = None,
+        fact_lock_check: FactLockCheckResult | None = None,
+        ledger: SourceLedger | None = None,
+    ) -> HumanizerArticleProjection:
+        """确定性组装版本化文章结果投影（Issue 08）。
+
+        全部数据来自结构化检查记录（保真/审稿/修订/证据）与稳定错误码；
+        模型自由文本、内部提示词与思维链不进入本结构。UI 只消费
+        ``article`` 字段渲染正文优先交付界面。
+
+        材料不足两种形态：错误路径（empty_source 等错误码）与表达契约
+        路径（material_sufficiency 为 ask_one_question/shorten/
+        use_placeholders）都投影为 INSUFFICIENT，界面只展示一个最高价值
+        问题（``one_question`` 或错误消息），不堆叠通用建议。
+        """
+        delivered = status in (
+            HumanizerResultStatus.DONE,
+            HumanizerResultStatus.NEEDS_HUMAN,
+        )
+        material_state = ArticleMaterialState.INSUFFICIENT if (
+            error_code in HumanizerService._INSUFFICIENT_MATERIAL_CODES
+            or material_sufficiency
+            in {
+                MaterialSufficiency.ASK_ONE_QUESTION.value,
+                MaterialSufficiency.SHORTEN.value,
+                MaterialSufficiency.USE_PLACEHOLDERS.value,
+            }
+        ) else ArticleMaterialState.SUFFICIENT
+        final_text = output.final_text if output is not None else None
+        one_question = one_question or None
+
+        # 保真摘要：确定性计数与失败项；通过时 items 为空，不生成空洞总结。
+        fidelity: ArticleFidelitySummary | None = None
+        if fidelity_check is not None:
+            fidelity = ArticleFidelitySummary(
+                passed=fidelity_check.passed,
+                blocking_count=len(fidelity_check.blocking_failures),
+                needs_confirmation_count=len(fidelity_check.needs_confirmation),
+                items=[
+                    ArticleFidelityItem(
+                        code=failure.code.value,
+                        severity=failure.severity.value,
+                        category=failure.category,
+                        note=failure.note,
+                    )
+                    for failure in (
+                        *fidelity_check.blocking_failures,
+                        *fidelity_check.needs_confirmation,
+                    )
+                ],
+            )
+
+        # 表达审稿摘要：只投影 warning/suggestion 定向项。
+        style_review: ArticleStyleReviewSummary | None = None
+        if review is not None:
+            targeted = [
+                finding
+                for finding in review.findings
+                if finding.severity
+                in (ReviewSeverity.WARNING, ReviewSeverity.SUGGESTION)
+            ]
+            style_review = ArticleStyleReviewSummary(
+                finding_count=review.summary.finding_count,
+                warning_count=review.summary.warning_count,
+                suggestion_count=review.summary.suggestion_count,
+                items=[
+                    ArticleStyleReviewItem(
+                        severity=finding.severity.value,
+                        category=finding.category,
+                        evidence=finding.evidence,
+                        suggestion=finding.suggestion,
+                        location=finding.location,
+                    )
+                    for finding in targeted
+                ],
+            )
+
+        # 定向修订摘要：为何触发、解决哪些问题、仍有哪些风险。
+        revision: ArticleRevisionSummary | None = None
+        if revision_audit is not None:
+            revised = revision_audit.skipped_reason is None and (
+                revision_audit.triggered
+            )
+            if revised:
+                remaining_count = sum(
+                    max(0, value or 0)
+                    for value in (
+                        revision_audit.revised_fidelity_blocking,
+                        revision_audit.revised_contract_omissions,
+                        revision_audit.revised_warning_count,
+                    )
+                )
+            else:
+                remaining_count = sum(
+                    max(0, value)
+                    for value in (
+                        revision_audit.draft_fidelity_blocking,
+                        revision_audit.draft_contract_omissions,
+                        revision_audit.draft_warning_count,
+                    )
+                )
+            trigger_code = revision_audit.trigger_code or ""
+            trigger_label = (
+                _revision_trigger_label(trigger_code)
+                if revision_audit.triggered and trigger_code
+                else None
+            )
+            revision = ArticleRevisionSummary(
+                triggered=revision_audit.triggered,
+                trigger_label=trigger_label,
+                problem_count=revision_audit.problem_count,
+                resolved_count=revision_audit.resolved_problem_count or 0,
+                remaining_count=remaining_count,
+                skipped_reason=_revision_skip_label(revision_audit.skipped_reason),
+            )
+
+        # 证据风险/变化：默认模式风险项、授权修订变化与待用户确认。
+        evidence: list[ArticleEvidenceItem] = []
+        if evidence_report is not None:
+            for risk in evidence_report.risks:
+                evidence.append(
+                    ArticleEvidenceItem(
+                        code=risk.code.value,
+                        category=risk.category,
+                        kind="risk",
+                        original_span=risk.surface,
+                        reason=risk.explanation,
+                    )
+                )
+            for change in evidence_report.revisions:
+                evidence.append(
+                    ArticleEvidenceItem(
+                        code=change.change_type.value,
+                        category=change.kind.value,
+                        kind="change",
+                        original_span=change.original_span,
+                        revised_span=change.revised_span,
+                        reason=change.reason,
+                        source_label=_ledger_entry_label(
+                            ledger, change.source_entry_id
+                        ),
+                        needs_user_confirmation=change.needs_user_confirmation,
+                    )
+                )
+            if (
+                evidence_report.revision_status
+                == EvidenceRevisionStatus.HOLD_FOR_USER
+            ):
+                evidence.append(
+                    ArticleEvidenceItem(
+                        code="hold_for_user",
+                        category="证据安全修订未应用",
+                        kind="hold",
+                        reason=(
+                            "修订未通过、材料不足或无法判定，正文保持原结论，"
+                            "请人工确认后决定是否调整。"
+                        ),
+                        needs_user_confirmation=True,
+                    )
+                )
+
+        # 待用户确认汇总：保真待确认 + 契约需人工 + 事实锁需人工。
+        confirmations: list[ArticleConfirmationItem] = []
+        if fidelity_check is not None:
+            confirmations.extend(
+                ArticleConfirmationItem(
+                    code=failure.code.value,
+                    label="来源保真",
+                    detail=failure.note,
+                )
+                for failure in fidelity_check.needs_confirmation
+            )
+        if contract_check is not None:
+            confirmations.extend(
+                ArticleConfirmationItem(
+                    code="contract", label="任务契约", detail=item
+                )
+                for item in contract_check.needs_human
+            )
+        if fact_lock_check is not None:
+            confirmations.extend(
+                ArticleConfirmationItem(
+                    code="fact_lock", label="事实锁", detail=item
+                )
+                for item in fact_lock_check.needs_human
+            )
+
+        return HumanizerArticleProjection(
+            projection_version=ARTICLE_PROJECTION_VERSION,
+            audit_version=ARTICLE_AUDIT_VERSION,
+            delivery_status=(
+                ArticleDeliveryStatus.DELIVERED
+                if delivered
+                else ArticleDeliveryStatus.FAILED
+            ),
+            material_state=material_state,
+            one_question=one_question,
+            final_text=final_text,
+            fidelity=fidelity,
+            style_review=style_review,
+            revision=revision,
+            evidence=evidence,
+            confirmations=confirmations,
+        )
+
     def _expression_finalize(
         self,
         account_id: str,
@@ -1473,6 +1716,21 @@ class HumanizerService:
             process_steps=list(progress),
             error_code=error_code,
             error_message=error_message,
+            article=self._build_article_projection(
+                status=status,
+                output=output if status != HumanizerResultStatus.ERROR else None,
+                error_code=error_code,
+                material_sufficiency=(
+                    getattr(expression_contract, "material_sufficiency", None)
+                ),
+                one_question=getattr(expression_contract, "one_question", None),
+                fidelity_check=fidelity_check,
+                review=review,
+                evidence_report=evidence_report,
+                revision_audit=revision_audit,
+                contract_check=contract_check,
+                ledger=ledger,
+            ),
             created_at=datetime.now(UTC),
         )
         self._audit(
@@ -1491,6 +1749,9 @@ class HumanizerService:
             revision_audit=revision_audit,
             writing_call_count=writing_call_count,
             evidence_safe=evidence_report,
+            projection_version=(
+                result.article.projection_version if result.article else None
+            ),
         )
         return result
 
@@ -2292,6 +2553,13 @@ class HumanizerService:
             process_state=state,
             error_code=error_code,
             error_message=error_message,
+            article=self._build_article_projection(
+                status=status,
+                output=output if status != HumanizerResultStatus.ERROR else None,
+                error_code=error_code,
+                fidelity_check=fidelity_check,
+                fact_lock_check=fact_lock_check,
+            ),
             created_at=datetime.now(UTC),
         )
         self._audit(
@@ -2306,6 +2574,9 @@ class HumanizerService:
             fidelity_check,
             checkpoint.ledger,
             expression_contract=skill_input.expression_contract,
+            projection_version=(
+                result.article.projection_version if result.article else None
+            ),
         )
         return result
 
@@ -2480,6 +2751,7 @@ class HumanizerService:
             HumanizerResultStatus.ERROR,
             None,
             expression_contract=skill_input.expression_contract,
+            projection_version=ARTICLE_PROJECTION_VERSION,
         )
         return HumanizerResultProjection(
             task_id=assistant_message_id,
@@ -2498,6 +2770,11 @@ class HumanizerService:
             process_steps=process_steps,
             error_code=error_code,
             error_message=error_message + ("（可重试，输入保留）" if retryable else ""),
+            article=self._build_article_projection(
+                status=HumanizerResultStatus.ERROR,
+                output=None,
+                error_code=error_code,
+            ),
             created_at=datetime.now(UTC),
         )
 
@@ -2519,6 +2796,7 @@ class HumanizerService:
         revision_audit: HumanizerRevisionAudit | None = None,
         writing_call_count: int | None = None,
         evidence_safe: EvidenceSafeReport | None = None,
+        projection_version: str | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -2748,6 +3026,8 @@ class HumanizerService:
                         if expression_metrics is not None
                         else None
                     ),
+                    # Issue 08：结果投影版本（前端据此渲染正文优先交付界面）
+                    "projection_version": projection_version,
                 },
             )
 
@@ -2824,6 +3104,56 @@ class HumanizerService:
 _PERMISSION_ERROR_CODES = frozenset(
     {"auth_error", "capability_not_verified", "unregistered_capability", "region_error"}
 )
+
+#: 保真类触发 code 集合（模块级一次性构建，不随调用重建）。
+_FIDELITY_TRIGGER_CODES = frozenset(member.value for member in FidelityFailureCode)
+
+
+def _revision_trigger_label(code: str) -> str | None:
+    """把修订触发 code 映射为类别中文说明（Issue 08；稳定 code 映射）。
+
+    只识别契约遗漏与保真两类硬类别；未知 code 不猜测为表达审稿，避免
+    显示错误的触发原因（表达审稿 code 是剩余合法类别，但稳定 code 之外
+    的输入不冒充判定）。
+    """
+    if code == "contract":
+        return "任务契约遗漏"
+    if code in _FIDELITY_TRIGGER_CODES:
+        return "来源保真"
+    return None
+
+
+#: 定向修订未执行原因的中文说明（Issue 08；稳定 code 映射，不含内部细节）。
+_REVISION_SKIP_LABELS: dict[str, str] = {
+    "capability_disabled": "定向修订能力未启用",
+    "call_limit_reached": "写作调用额度已达上限",
+    "user_stopped": "用户已停止",
+    "budget_insufficient": "预算不足",
+    "recheck_failed": "修订后复核失败",
+}
+
+
+def _revision_skip_label(reason: str | None) -> str | None:
+    """把修订未执行原因 code 映射为中文说明；模型失败前缀保留错误码。"""
+    if not reason:
+        return None
+    if reason in _REVISION_SKIP_LABELS:
+        return _REVISION_SKIP_LABELS[reason]
+    if reason.startswith("model_error:"):
+        return "修订调用失败"
+    return reason
+
+
+def _ledger_entry_label(
+    ledger: SourceLedger | None, entry_id: str | None
+) -> str | None:
+    """从来源账本解析条目显示名；无法判定时返回 None（不伪造来源）。"""
+    if ledger is None or not entry_id:
+        return None
+    for entry in ledger.entries:
+        if entry.entry_id == entry_id:
+            return entry.source_label or entry.source_type.value
+    return None
 
 __all__ = [
     "HumanizerService",

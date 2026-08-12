@@ -842,6 +842,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/humanizer/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Humanizer Projection Event
+         * @description 记录文章结果投影前端事件（Issue 08 Observability）。
+         *
+         *     只接受投影版本、交付状态、风险类型、事件名与 legacy 标志；请求体
+         *     Schema 无正文字段，正文/引语/diff 内容无法进入审计。审计失败不
+         *     阻断用户操作（遥测尽力而为）。
+         */
+        post: operations["record_humanizer_projection_event_chat_humanizer_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations/{conversation_id}/attachments/{object_id}/ingestion": {
         parameters: {
             query?: never;
@@ -6400,6 +6424,237 @@ export interface components {
             nodes?: components["schemas"]["ArgumentNode"][];
         };
         /**
+         * ArticleConfirmationItem
+         * @description 一条待用户确认项（保真待确认、契约需人工、证据 hold 等汇总）。
+         */
+        ArticleConfirmationItem: {
+            /**
+             * Code
+             * @description 稳定来源 code。
+             */
+            code: string;
+            /**
+             * Label
+             * @description 中文类别标签。
+             */
+            label: string;
+            /**
+             * Detail
+             * @description 中文说明（用户可见）。
+             */
+            detail: string;
+        };
+        /**
+         * ArticleDeliveryStatus
+         * @description 正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。
+         * @enum {string}
+         */
+        ArticleDeliveryStatus: "delivered" | "failed";
+        /**
+         * ArticleEvidenceItem
+         * @description 一条证据风险/变化项（确定性投影自 EvidenceSafeReport）。
+         *
+         *     kind 区分：risk=默认模式风险项（正文保持原结论）；change=证据安全
+         *     修订的实质变化；hold=材料不足/无法判定，保持原文待用户确认。
+         */
+        ArticleEvidenceItem: {
+            /**
+             * Code
+             * @description 稳定风险/变化 code。
+             */
+            code: string;
+            /**
+             * Category
+             * @description 中文类别说明。
+             */
+            category: string;
+            /**
+             * Kind
+             * @description risk / change / hold。
+             */
+            kind: string;
+            /**
+             * Original Span
+             * @description 原文片段（change 项为修订前，其余为 None）。
+             */
+            original_span?: string | null;
+            /**
+             * Revised Span
+             * @description 改后片段（change 项为修订后，其余为 None）。
+             */
+            revised_span?: string | null;
+            /**
+             * Reason
+             * @description 为何构成风险/为何修订的中文理由。
+             */
+            reason: string;
+            /**
+             * Source Label
+             * @description 消费的来源条目显示名；无法判定为 None。
+             */
+            source_label?: string | null;
+            /**
+             * Needs User Confirmation
+             * @description 是否需用户确认（删除/升级/无法判定时 True）。
+             * @default false
+             */
+            needs_user_confirmation: boolean;
+        };
+        /**
+         * ArticleFidelityItem
+         * @description 一条保真失败/待确认项（确定性投影自 FidelityFailure，不含正文）。
+         */
+        ArticleFidelityItem: {
+            /**
+             * Code
+             * @description 稳定失败码（审计用）。
+             */
+            code: string;
+            /**
+             * Severity
+             * @description 严重度：blocking / needs_user_confirmation。
+             */
+            severity: string;
+            /**
+             * Category
+             * @description 中文类别说明。
+             */
+            category: string;
+            /**
+             * Note
+             * @description 中文说明（用户可见）。
+             */
+            note: string;
+        };
+        /**
+         * ArticleFidelitySummary
+         * @description 保真摘要：确定性计数与失败项；通过时 items 为空，不生成空洞总结。
+         */
+        ArticleFidelitySummary: {
+            /**
+             * Passed
+             * @description 无关键失败即为通过。
+             */
+            passed: boolean;
+            /**
+             * Blocking Count
+             * @description 硬失败数。
+             */
+            blocking_count: number;
+            /**
+             * Needs Confirmation Count
+             * @description 需用户确认项数。
+             */
+            needs_confirmation_count: number;
+            /**
+             * Items
+             * @description 失败/待确认项清单。
+             */
+            items?: components["schemas"]["ArticleFidelityItem"][];
+        };
+        /**
+         * ArticleMaterialState
+         * @description 材料状态：材料充足为 sufficient；缺原文/缺主题/材料不可读为
+         *     insufficient（界面只展示一个最高价值问题，不堆叠通用建议）。
+         * @enum {string}
+         */
+        ArticleMaterialState: "sufficient" | "insufficient";
+        /**
+         * ArticleRevisionSummary
+         * @description 定向修订摘要（Issue 05）：为何触发、解决哪些问题、仍有哪些风险。
+         *
+         *     只投影确定性审计数据，不包含内部提示词、思维链或完整规则清单。
+         */
+        ArticleRevisionSummary: {
+            /**
+             * Triggered
+             * @description 是否执行了修订调用。
+             */
+            triggered: boolean;
+            /**
+             * Trigger Label
+             * @description 触发类别中文说明（保真/契约遗漏/审稿）。
+             */
+            trigger_label?: string | null;
+            /**
+             * Problem Count
+             * @description 触发时待修问题数。
+             * @default 0
+             */
+            problem_count: number;
+            /**
+             * Resolved Count
+             * @description 修订解决的问题数。
+             * @default 0
+             */
+            resolved_count: number;
+            /**
+             * Remaining Count
+             * @description 修订后仍存在的风险数（警告+遗漏+保真）。
+             * @default 0
+             */
+            remaining_count: number;
+            /**
+             * Skipped Reason
+             * @description 未执行修订的原因中文说明。
+             */
+            skipped_reason?: string | null;
+        };
+        /**
+         * ArticleStyleReviewItem
+         * @description 一条表达审稿定向项（确定性投影自 ExpressionReviewReport 的发现）。
+         */
+        ArticleStyleReviewItem: {
+            /**
+             * Severity
+             * @description warning / suggestion。
+             */
+            severity: string;
+            /**
+             * Category
+             * @description 中文类别说明。
+             */
+            category: string;
+            /**
+             * Evidence
+             * @description 触发审稿发现的正文证据片段。
+             */
+            evidence: string;
+            /**
+             * Suggestion
+             * @description 定向建议。
+             */
+            suggestion: string;
+            /** @description 发现位置。 */
+            location: components["schemas"]["SpanLocation"];
+        };
+        /**
+         * ArticleStyleReviewSummary
+         * @description 表达审稿摘要：计数 + 定向项；无发现时 items 为空。
+         */
+        ArticleStyleReviewSummary: {
+            /**
+             * Finding Count
+             * @description 全部发现数。
+             */
+            finding_count: number;
+            /**
+             * Warning Count
+             * @description warning 级发现数。
+             */
+            warning_count: number;
+            /**
+             * Suggestion Count
+             * @description suggestion 级发现数。
+             */
+            suggestion_count: number;
+            /**
+             * Items
+             * @description 定向审稿项（仅 warning/suggestion）。
+             */
+            items?: components["schemas"]["ArticleStyleReviewItem"][];
+        };
+        /**
          * ArxivPaperProjection
          * @description 绑定 arXiv 返回值的论文结果与可展开引用内容。
          */
@@ -9726,6 +9981,12 @@ export interface components {
          */
         ControlledContentAccessStatus: "pending" | "approved" | "expired" | "revoked" | "completed";
         /**
+         * ConversationMode
+         * @description 普通聊天的模式合同；文章流程不使用。
+         * @enum {string}
+         */
+        ConversationMode: "casual" | "learning";
+        /**
          * CoverageGap
          * @description A coverage or recall gap reported to the caller.
          */
@@ -11617,6 +11878,12 @@ export interface components {
          */
         EvidenceRelation: "supports" | "refutes" | "limits" | "contextualizes";
         /**
+         * EvidenceRevisionMode
+         * @description 证据修订模式：默认保留原结论；只有用户明确选择才证据安全修订。
+         * @enum {string}
+         */
+        EvidenceRevisionMode: "preserve" | "evidence_safe";
+        /**
          * EvidenceState
          * @description Aggregated evidence state for a single claim.
          * @enum {string}
@@ -12059,6 +12326,98 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * ExpressionTaskContract
+         * @description 版本化表达任务契约：生成前回答全部任务边界问题。
+         *
+         *     ``version_hash`` 是除自身外的规范化字段哈希，构成不可变快照；重试时
+         *     调用方必须原样回传契约，编译器只做版本校验后复用，不重新编译。
+         */
+        ExpressionTaskContract: {
+            /**
+             * Schema Version
+             * @description 契约 Schema 版本（如 expression-task-v1）。
+             */
+            schema_version: string;
+            /**
+             * Version Hash
+             * @description 规范化序列化哈希，不可变快照。
+             */
+            version_hash: string;
+            /** @description 聊天还是文章。 */
+            surface: components["schemas"]["Surface"];
+            /** @description 改写、扩写还是按主题生成。 */
+            operation: components["schemas"]["Operation"];
+            /** @description 普通聊天的模式合同；文章为 None。 */
+            conversation_mode?: components["schemas"]["ConversationMode"] | null;
+            /** @description 现实/虚构/混合承诺。 */
+            reality_mode: components["schemas"]["RealityMode"];
+            /** @description 改写强度；标准为默认，用户显式选择优先。 */
+            rewrite_intensity: components["schemas"]["RewriteIntensity"];
+            /**
+             * Speaker Position
+             * @description 说话位置（谁在说、以什么身份说）。
+             */
+            speaker_position: string;
+            /**
+             * First Person Permission
+             * @description 是否允许第一人称。
+             */
+            first_person_permission: boolean;
+            /**
+             * Hypothetical Permission
+             * @description 是否允许假设或设想内容。
+             */
+            hypothetical_permission: boolean;
+            /**
+             * Audience
+             * @description 目标受众；未声明为 None。
+             */
+            audience?: string | null;
+            /**
+             * Channel
+             * @description 渠道；未声明为 None。
+             */
+            channel?: string | null;
+            /**
+             * Length Target
+             * @description 长度或时长目标。
+             */
+            length_target?: string | null;
+            /** @description 识别出的科学体裁；未识别为 None（通用文章 profile）。 */
+            genre?: components["schemas"]["Genre"] | null;
+            material_sufficiency: components["schemas"]["MaterialSufficiency"];
+            source_scope: components["schemas"]["SourceScope"];
+            /** @description 证据修订模式；默认保留原结论。 */
+            evidence_revision_mode: components["schemas"]["EvidenceRevisionMode"];
+            /**
+             * User Constraints
+             * @description 用户声明的硬约束。
+             */
+            user_constraints?: string[];
+            /**
+             * One Question
+             * @description 材料不足时返回的最高价值问题（只问一个）。
+             */
+            one_question?: string | null;
+            /**
+             * Profile Slice Id
+             * @description 允许使用的最小画像切片标识。
+             */
+            profile_slice_id?: string | null;
+            /**
+             * Profile Item Count
+             * @description 最小画像条目数（日志不含画像正文）。
+             * @default 0
+             */
+            profile_item_count: number;
+            /**
+             * Source Text Present
+             * @description 本次任务是否有用户提供的原文/材料。
+             * @default false
+             */
+            source_text_present: boolean;
+        };
+        /**
          * FactLock
          * @description A single locked fact derived from a claim and its evidence.
          *
@@ -12368,6 +12727,145 @@ export interface components {
          * @enum {string}
          */
         FeedbackStatus: "submitted" | "resolved";
+        /**
+         * FidelityCheckResult
+         * @description 一次保真检查的完整结果：缺任一字段不标记成功（失败关闭）。
+         */
+        FidelityCheckResult: {
+            /**
+             * Check Id
+             * @description 稳定检查标识。
+             */
+            check_id: string;
+            /**
+             * Ledger Version
+             * @description 账本版本（须受支持才可成功）。
+             */
+            ledger_version: string;
+            /**
+             * Checker Version
+             * @description 检查器版本。
+             */
+            checker_version: string;
+            /**
+             * Ledger Hash
+             * @description 本次检查使用的账本哈希。
+             */
+            ledger_hash: string;
+            /**
+             * Passed
+             * @description 无关键失败即为通过。
+             */
+            passed: boolean;
+            /**
+             * Blocking Failures
+             * @description 硬失败清单。
+             */
+            blocking_failures?: components["schemas"]["FidelityFailure"][];
+            /**
+             * Needs Confirmation
+             * @description 需用户确认项清单。
+             */
+            needs_confirmation?: components["schemas"]["FidelityFailure"][];
+            /** @description 脱敏检查摘要。 */
+            summary: components["schemas"]["FidelitySummary"];
+        };
+        /**
+         * FidelityFailure
+         * @description 一条保真失败：只含位置与失败码描述，正文片段仅进结果投影。
+         */
+        FidelityFailure: {
+            /**
+             * Failure Id
+             * @description 稳定失败标识。
+             */
+            failure_id: string;
+            /** @description 失败码（审计用）。 */
+            code: components["schemas"]["FidelityFailureCode"];
+            /** @description 严重度。 */
+            severity: components["schemas"]["FidelitySeverity"];
+            /**
+             * Category
+             * @description 中文类别说明。
+             */
+            category: string;
+            /**
+             * Item Type
+             * @description 项类型（number/date/proper_noun/…）。
+             */
+            item_type: string;
+            /** @description 失败位置。 */
+            location?: components["schemas"]["SpanLocation"] | null;
+            /**
+             * Note
+             * @description 中文说明（用户可见的结果投影）。
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * FidelityFailureCode
+         * @description 保真失败码（审计日志只记录失败码，不记录正文）。
+         * @enum {string}
+         */
+        FidelityFailureCode: "number_changed" | "date_changed" | "proper_noun_changed" | "quote_changed" | "code_changed" | "formula_changed" | "url_changed" | "citation_changed" | "direction_flipped" | "strength_upgraded" | "strength_downgraded" | "qualifier_removed" | "unattributed_claim" | "first_person_unbound" | "assumption_not_allowed" | "assumption_carries_fact" | "undetermined";
+        /**
+         * FidelitySeverity
+         * @description 保真失败严重度：关键失败硬门阻止，无法判定项需用户确认。
+         * @enum {string}
+         */
+        FidelitySeverity: "blocking" | "needs_user_confirmation";
+        /**
+         * FidelitySummary
+         * @description 保真检查摘要：脱敏计数（指标与审计用）。
+         */
+        FidelitySummary: {
+            /**
+             * Protected Span Count
+             * @description 账本保护区域总数。
+             */
+            protected_span_count: number;
+            /**
+             * Preserved Count
+             * @description 保持检查通过的保护项数。
+             */
+            preserved_count: number;
+            /**
+             * New Claim Count
+             * @description 候选新增 claim 数。
+             */
+            new_claim_count: number;
+            /**
+             * Attributed Claim Count
+             * @description 有来源绑定的新增 claim 数。
+             */
+            attributed_claim_count: number;
+            /**
+             * Unattributed Claim Count
+             * @description 无来源新增 claim 数。
+             */
+            unattributed_claim_count: number;
+            /**
+             * First Person Interception Count
+             * @description 第一人称经历拦截数。
+             */
+            first_person_interception_count: number;
+            /**
+             * Assumption Count
+             * @description 允许的标注假设数。
+             */
+            assumption_count: number;
+            /**
+             * Blocking Count
+             * @description 硬失败数。
+             */
+            blocking_count: number;
+            /**
+             * Needs Confirmation Count
+             * @description 需用户确认项数。
+             */
+            needs_confirmation_count: number;
+        };
         /**
          * FigureElement
          * @description A labeled element in a scientific figure.
@@ -12830,6 +13328,61 @@ export interface components {
          */
         HumanTodoStatus: "open" | "resolved" | "blocked";
         /**
+         * HumanizerArticleProjection
+         * @description 版本化文章结果投影（Issue 08）。
+         *
+         *     新任务（表达路径或旧路径）的终态都生成该结构挂到
+         *     ``HumanizerResultProjection.article``；前端只消费它渲染正文优先的
+         *     交付界面。旧任务无此字段（None），按 legacy 投影展示，不伪造新
+         *     来源硬门或新审稿通过状态。
+         */
+        HumanizerArticleProjection: {
+            /**
+             * Projection Version
+             * @description 投影版本。
+             * @default 1
+             */
+            projection_version: string;
+            /**
+             * Audit Version
+             * @description 审计版本：本结构内全部稳定 code 的版本标识。
+             */
+            audit_version: string;
+            /** @description 正文交付状态。 */
+            delivery_status: components["schemas"]["ArticleDeliveryStatus"];
+            /**
+             * @description 材料状态。
+             * @default sufficient
+             */
+            material_state: components["schemas"]["ArticleMaterialState"];
+            /**
+             * One Question
+             * @description 材料不足时唯一要问的最高价值问题（表达契约裁决产生）；界面只展示这一个问题，不堆叠通用建议。
+             */
+            one_question?: string | null;
+            /**
+             * Final Text
+             * @description 最终正文；硬门失败或材料不足时为 None。
+             */
+            final_text?: string | null;
+            /** @description 保真摘要（未检查为 None）。 */
+            fidelity?: components["schemas"]["ArticleFidelitySummary"] | null;
+            /** @description 表达审稿摘要（新流程有；旧路径为 None）。 */
+            style_review?: components["schemas"]["ArticleStyleReviewSummary"] | null;
+            /** @description 定向修订摘要（未修订为 None）。 */
+            revision?: components["schemas"]["ArticleRevisionSummary"] | null;
+            /**
+             * Evidence
+             * @description 证据风险/变化项。
+             */
+            evidence?: components["schemas"]["ArticleEvidenceItem"][];
+            /**
+             * Confirmations
+             * @description 待用户确认项汇总。
+             */
+            confirmations?: components["schemas"]["ArticleConfirmationItem"][];
+        };
+        /**
          * HumanizerEdit
          * @description 一次修改细节：原文片段、新文片段、类别与理由。
          */
@@ -12951,6 +13504,42 @@ export interface components {
          */
         HumanizerProcessState: "loading" | "empty" | "error" | "permission" | "recovery" | "done";
         /**
+         * HumanizerProjectionEventRequest
+         * @description 文章结果投影前端事件载荷（Issue 08 Observability）。
+         *
+         *     只含投影版本、交付状态、风险类型、事件名与 legacy 标志；请求体
+         *     Schema 无正文字段，任何正文/引语/diff 内容都无法进入审计。
+         */
+        HumanizerProjectionEventRequest: {
+            /**
+             * Event
+             * @description 前端事件类型：展开审计/复制正文/legacy 读取。
+             * @enum {string}
+             */
+            event: "expand" | "copy" | "legacy_read";
+            /**
+             * Projection Version
+             * @description 投影版本（旧结果读取时为 null）。
+             */
+            projection_version?: string | null;
+            /**
+             * Delivery Status
+             * @description 交付状态（delivered/failed）。
+             */
+            delivery_status?: string | null;
+            /**
+             * Risk Types
+             * @description 风险类型 code 清单（稳定枚举）。
+             */
+            risk_types?: string[];
+            /**
+             * Legacy
+             * @description 是否旧版结果（无新投影）。
+             * @default false
+             */
+            legacy: boolean;
+        };
+        /**
          * HumanizerQualityStatus
          * @description 软门质量状态：风格类指标（句式/节奏/体裁/重复/口吻）的交付口径。
          *
@@ -13019,16 +13608,32 @@ export interface components {
             skill_version: string;
             /** @description 任务路径。 */
             path: components["schemas"]["HumanizerPath"];
-            /** @description 使用的体裁合同。 */
-            genre: components["schemas"]["Genre"];
+            /** @description 使用的体裁合同；None 为通用文章 profile。 */
+            genre?: components["schemas"]["Genre"] | null;
             /** @description 任务契约快照。 */
             contract: components["schemas"]["HumanizerTaskContract"];
+            /** @description 版本化表达任务契约快照（人味化改造 Issue 03）；重试复用同一快照。 */
+            expression_contract?: components["schemas"]["ExpressionTaskContract"] | null;
             /** @description 任务终态。 */
             status: components["schemas"]["HumanizerResultStatus"];
             /** @description 输出合同；失败时可能为 None。 */
             output?: components["schemas"]["HumanizerOutputContract"] | null;
             /** @description 事实锁前后比较结果。 */
             fact_lock_check?: components["schemas"]["FactLockCheckResult"] | null;
+            /** @description 本次任务使用的来源账本快照（新账本版本任务才有；旧任务为空，不得伪装成已通过新增来源检查）。 */
+            source_ledger?: components["schemas"]["SourceLedger"] | null;
+            /** @description 保真硬门检查结果（新账本版本任务才有；缺失不得标记成功）。 */
+            fidelity_check?: components["schemas"]["FidelityCheckResult"] | null;
+            /**
+             * Expression Review
+             * @description 表达审稿报告（人味化改造 Issue 04）；只有走表达任务契约的新流程才有。旧任务为空，风格发现默认为软审稿，不阻止交付。类型为ExpressionReviewReport（避免与 expression_review 模块循环导入，运行时不做 pydantic 校验）。
+             */
+            expression_review?: unknown | null;
+            /**
+             * Evidence Safe
+             * @description 证据安全检查报告（人味化改造 Issue 06）：默认模式的风险项与授权修订的变化记录；普通无风险文章为空列表，不生成空洞的固定事实核查总结。类型为 EvidenceSafeReport（避免循环导入，运行时不做 pydantic 校验）。
+             */
+            evidence_safe?: unknown | null;
             /**
              * References
              * @description 保持的引用清单。
@@ -13051,6 +13656,14 @@ export interface components {
              */
             repair_attempts: number;
             /**
+             * Writing Call Count
+             * @description 累计写作模型调用数（首稿+定向修订，上限 2；持久运行状态，重试与恢复沿用，服务重启不得重新获得修订额度）。
+             * @default 0
+             */
+            writing_call_count: number;
+            /** @description 定向修订审计（Issue 05，脱敏）。 */
+            revision?: components["schemas"]["HumanizerRevisionAudit"] | null;
+            /**
              * @description 过程卡当前状态。
              * @default loading
              */
@@ -13070,6 +13683,8 @@ export interface components {
              * @description 可操作的中文错误说明。
              */
             error_message?: string | null;
+            /** @description 版本化文章结果投影（Issue 08）：新任务终态生成，前端据此渲染正文优先交付界面；旧任务为 None，按 legacy 投影展示，不伪造新来源硬门或新审稿通过状态。 */
+            article?: components["schemas"]["HumanizerArticleProjection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -13083,6 +13698,96 @@ export interface components {
          * @enum {string}
          */
         HumanizerResultStatus: "done" | "needs_human" | "error";
+        /**
+         * HumanizerRevisionAudit
+         * @description 一次定向修订的运行审计（Issue 05；脱敏，不含正文）。
+         *
+         *     ``triggered`` 为 False 时修订未执行，问题计数仍反映首稿检查摘要；
+         *     ``skipped_reason`` 记录未执行原因（预算不足/用户停止/开关关闭/模型
+         *     失败），此时首稿的真实硬门/软审稿状态照常交付。
+         */
+        HumanizerRevisionAudit: {
+            /**
+             * Revision Version
+             * @description 修订策略版本（revision-policy-v1）。
+             */
+            revision_version: string;
+            /**
+             * Triggered
+             * @description 是否触发修订调用。
+             */
+            triggered: boolean;
+            /**
+             * Trigger Code
+             * @description 主要触发 code（保真/契约/审稿 code）。
+             */
+            trigger_code?: string | null;
+            /**
+             * Problem Count
+             * @description 待修问题数（触发时 >0）。
+             * @default 0
+             */
+            problem_count: number;
+            /**
+             * Draft Fidelity Blocking
+             * @description 首稿关键保真失败数。
+             * @default 0
+             */
+            draft_fidelity_blocking: number;
+            /**
+             * Draft Contract Omissions
+             * @description 首稿契约遗漏数。
+             * @default 0
+             */
+            draft_contract_omissions: number;
+            /**
+             * Draft Warning Count
+             * @description 首稿高置信风格发现数。
+             * @default 0
+             */
+            draft_warning_count: number;
+            /**
+             * Revised Fidelity Blocking
+             * @description 修订后关键保真失败数（未修订为 None）。
+             */
+            revised_fidelity_blocking?: number | null;
+            /**
+             * Revised Contract Omissions
+             * @description 修订后契约遗漏数（未修订为 None）。
+             */
+            revised_contract_omissions?: number | null;
+            /**
+             * Revised Warning Count
+             * @description 修订后高置信风格发现数（未修订为 None）。
+             */
+            revised_warning_count?: number | null;
+            /**
+             * Resolved Problem Count
+             * @description 修订解决的问题数（触发问题数减修订后仍存在数）。
+             */
+            resolved_problem_count?: number | null;
+            /**
+             * Extra Tokens
+             * @description 修订调用 token 数（未修订为 None）。
+             */
+            extra_tokens?: number | null;
+            /**
+             * Extra Latency Ms
+             * @description 修订调用延迟毫秒（未修订为 None）。
+             */
+            extra_latency_ms?: number | null;
+            /**
+             * Final State
+             * @description 终态：pending/deliver_revised/deliver_draft/stop_delivery。
+             * @default pending
+             */
+            final_state: string;
+            /**
+             * Skipped Reason
+             * @description 未执行修订的原因（capability_disabled/call_limit_reached/user_stopped/budget_insufficient/model_error:<code>/recheck_failed）。
+             */
+            skipped_reason?: string | null;
+        };
         /**
          * HumanizerRouteDecision
          * @description 自然语言路由的不可变快照。
@@ -13132,6 +13837,8 @@ export interface components {
             version?: string | null;
             /** @description 进入能力前保存的路由决策快照。 */
             route?: components["schemas"]["HumanizerRouteDecision"] | null;
+            /** @description 版本化表达任务契约（人味化改造 Issue 03）；不可变快照，同一任务重试必须复用，未知版本执行前拒绝。 */
+            expression_contract?: components["schemas"]["ExpressionTaskContract"] | null;
         };
         /**
          * HumanizerTaskContract
@@ -13143,8 +13850,8 @@ export interface components {
         HumanizerTaskContract: {
             /** @description 改写或生成路径。 */
             path: components["schemas"]["HumanizerPath"];
-            /** @description 四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）。 */
-            genre: components["schemas"]["Genre"];
+            /** @description 四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）；None 表示未识别体裁，使用通用文章 profile，不强制科普必现模板。 */
+            genre?: components["schemas"]["Genre"] | null;
             /**
              * Topic
              * @description 生成路径的主题；改写路径可为空。
@@ -13190,6 +13897,23 @@ export interface components {
              * @description 用户明确引用的当前账户知识库文档名；为空时不得泛化检索。
              */
             knowledge_base_reference?: string | null;
+            /**
+             * Allow Assumptions
+             * @description 契约是否允许显式假设（以「比如/假设/设想」标注且不冒充亲历、不承载高风险事实）；默认关闭，不自动扩大事实范围。
+             * @default false
+             */
+            allow_assumptions: boolean;
+            /**
+             * Allow First Person
+             * @description 用户是否明确授权代写作者口吻（第一人称亲历绑定）；原文已有的亲历不受此字段限制。
+             * @default false
+             */
+            allow_first_person: boolean;
+            /**
+             * Explicit Common Knowledge
+             * @description 用户显式列为普通常识的内容（可作来源放行）；为空时不静默豁免任何新增内容。
+             */
+            explicit_common_knowledge?: string[];
         };
         /**
          * ImageAltTextSource
@@ -15385,6 +16109,49 @@ export interface components {
             pause_prompt?: string | null;
         };
         /**
+         * LedgerCompileSummary
+         * @description 账本编译摘要：脱敏计数（供审计与指标，不含正文）。
+         */
+        LedgerCompileSummary: {
+            /**
+             * Entry Count
+             * @description 来源条目数。
+             */
+            entry_count: number;
+            /**
+             * Protected Spans By Kind
+             * @description 各保护区域类别的数量。
+             */
+            protected_spans_by_kind: {
+                [key: string]: number;
+            };
+            /**
+             * Proper Noun Count
+             * @description 专名数。
+             */
+            proper_noun_count: number;
+            /**
+             * Number Count
+             * @description 数字/单位数。
+             */
+            number_count: number;
+            /**
+             * Date Count
+             * @description 日期数。
+             */
+            date_count: number;
+            /**
+             * Quote Count
+             * @description 精确引语数。
+             */
+            quote_count: number;
+            /**
+             * Experience Entries
+             * @description 含第一人称权限的条目数。
+             */
+            experience_entries: number;
+        };
+        /**
          * LessonEvidenceBundle
          * @description Evidence and fact-lock input carried from a claim graph (T016) into a lesson.
          *
@@ -15508,6 +16275,12 @@ export interface components {
          * @enum {string}
          */
         MainCapability: "ordinary_chat" | "paper_search" | "clarification" | "humanizer" | "image" | "video" | "career";
+        /**
+         * MaterialSufficiency
+         * @description 材料充分度裁决。
+         * @enum {string}
+         */
+        MaterialSufficiency: "sufficient" | "ask_one_question" | "shorten" | "use_placeholders";
         /**
          * McpAttachmentSlice
          * @description 调用数据切片中的一条附件：只含元数据与已授权正文片段。
@@ -16457,6 +17230,12 @@ export interface components {
             version: number;
         };
         /**
+         * Operation
+         * @description 文章操作：改写、扩写与按主题生成。
+         * @enum {string}
+         */
+        Operation: "rewrite" | "expand" | "generate_by_topic";
+        /**
          * PackImpactAction
          * @description 失效对单个下游对象要求的动作。
          * @enum {string}
@@ -16767,6 +17546,12 @@ export interface components {
          * @enum {string}
          */
         PatchAction: "accept" | "reject" | "rewrite";
+        /**
+         * PersonalExperienceMode
+         * @description 第一人称建模：当下判断与亲历分开，亲历必须可绑定来源。
+         * @enum {string}
+         */
+        PersonalExperienceMode: "none" | "present_judgment" | "past_experience";
         /**
          * PlanAdjustment
          * @description 只影响尚未交付课时的版本化计划调整。
@@ -17245,6 +18030,32 @@ export interface components {
             record_ids?: string[] | null;
         };
         /**
+         * ProtectedSpan
+         * @description 一条受保护区域：只记录种类、内容哈希与位置，不记录正文。
+         */
+        ProtectedSpan: {
+            /**
+             * Span Id
+             * @description 稳定保护区域标识。
+             */
+            span_id: string;
+            /** @description 保护区域类别。 */
+            kind: components["schemas"]["ProtectedSpanKind"];
+            /**
+             * Text Hash
+             * @description 区域内容哈希（sha256）。
+             */
+            text_hash: string;
+            /** @description 规范化文本中的位置。 */
+            location: components["schemas"]["SpanLocation"];
+        };
+        /**
+         * ProtectedSpanKind
+         * @description 保护区域类别：后续表达审稿只检查作者新增正文，不改写这些区域。
+         * @enum {string}
+         */
+        ProtectedSpanKind: "quote" | "code" | "formula" | "url" | "citation" | "user_phrase";
+        /**
          * PublishArtifactRequest
          * @description Request to publish an expression artifact.
          */
@@ -17451,6 +18262,12 @@ export interface components {
          * @enum {string}
          */
         ReadAloudState: "not_generated" | "ready" | "failed";
+        /**
+         * RealityMode
+         * @description 现实承诺：现实禁止补亲历；虚构或混合必须标明哪些内容允许创作。
+         * @enum {string}
+         */
+        RealityMode: "real" | "fictional" | "mixed";
         /**
          * ReauthenticationRequest
          * @description Password confirmation for sensitive account settings.
@@ -18415,6 +19232,12 @@ export interface components {
             /** Second Factor */
             second_factor: string;
         };
+        /**
+         * RewriteIntensity
+         * @description 三级改写强度：轻度/标准/深度，默认标准，用户显式选择优先。
+         * @enum {string}
+         */
+        RewriteIntensity: "light" | "standard" | "deep";
         /**
          * RiskTier
          * @description Risk tier of an expression task.
@@ -20006,6 +20829,117 @@ export interface components {
             updated_at: string;
         };
         /**
+         * SourceEntry
+         * @description 账本中一条来源：内容哈希、类型、允许用途与提取的保护项。
+         */
+        SourceEntry: {
+            /**
+             * Entry Id
+             * @description 稳定来源条目标识。
+             */
+            entry_id: string;
+            /** @description 来源类型。 */
+            source_type: components["schemas"]["SourceType"];
+            /**
+             * Content Hash
+             * @description 条目内容哈希（sha256，不含正文存储）。
+             */
+            content_hash: string;
+            /**
+             * Usage
+             * @description 允许用途；纯改写默认只含 REWRITE。
+             */
+            usage: components["schemas"]["SourceUsage"][];
+            /**
+             * Proper Nouns
+             * @description 专名规范化键。
+             */
+            proper_nouns?: string[];
+            /**
+             * Numbers
+             * @description 数字/单位规范化键。
+             */
+            numbers?: string[];
+            /**
+             * Dates
+             * @description 日期规范化键。
+             */
+            dates?: string[];
+            /**
+             * Formulas
+             * @description 公式代码规范化键。
+             */
+            formulas?: string[];
+            /**
+             * Urls
+             * @description URL 规范化键。
+             */
+            urls?: string[];
+            /**
+             * Quotes
+             * @description 精确引语规范化键。
+             */
+            quotes?: string[];
+            /**
+             * Citations
+             * @description 引用规范化键。
+             */
+            citations?: string[];
+            /**
+             * Directions
+             * @description 否定与因果方向描述。
+             */
+            directions?: string[];
+            /**
+             * Qualifiers
+             * @description 限定词。
+             */
+            qualifiers?: string[];
+            /**
+             * Conclusion Strength
+             * @description 结论强度分级（weak/medium/strong）。
+             */
+            conclusion_strength?: string | null;
+            /**
+             * @description 第一人称建模。
+             * @default none
+             */
+            personal_experience: components["schemas"]["PersonalExperienceMode"];
+            /**
+             * Allow First Person
+             * @description 是否允许绑定第一人称亲历（原文已有或用户授权）。
+             * @default false
+             */
+            allow_first_person: boolean;
+            /**
+             * Protected Spans
+             * @description 受保护区域。
+             */
+            protected_spans?: components["schemas"]["ProtectedSpan"][];
+            /**
+             * Source Label
+             * @description 来源显示名（文件名/说明）。
+             * @default
+             */
+            source_label: string;
+            /**
+             * Codes
+             * @description 代码块规范化键。
+             */
+            codes?: string[];
+            /**
+             * Experiences
+             * @description 第一人称亲历规范化键（原文已有）。
+             */
+            experiences?: string[];
+            /**
+             * Text Key
+             * @description 条目全文规范化键（内部比较用，审计不记录）。
+             * @default
+             */
+            text_key: string;
+        };
+        /**
          * SourceError
          * @description Uniform source error response.
          */
@@ -20034,6 +20968,36 @@ export interface components {
          * @enum {string}
          */
         SourceKind: "user_upload" | "publisher" | "repository" | "standards_body" | "government" | "database" | "web";
+        /**
+         * SourceLedger
+         * @description 版本化来源账本：调用方只提交来源与权限，不各自维护事实词表。
+         */
+        SourceLedger: {
+            /**
+             * Ledger Version
+             * @description 账本版本。
+             * @default 2
+             */
+            ledger_version: string;
+            /**
+             * Ledger Hash
+             * @description 账本哈希（版本与全部条目规范化摘要）。
+             */
+            ledger_hash: string;
+            /**
+             * Entries
+             * @description 来源条目。
+             */
+            entries?: components["schemas"]["SourceEntry"][];
+            /**
+             * Compiled At
+             * Format: date-time
+             * @description 编译时间。
+             */
+            compiled_at?: string;
+            /** @description 编译摘要（脱敏计数）。 */
+            compile_summary?: components["schemas"]["LedgerCompileSummary"] | null;
+        };
         /**
          * SourceLicense
          * @description License snapshot for a document version.
@@ -20080,6 +21044,12 @@ export interface components {
                 [key: string]: components["schemas"]["GateResult"];
             };
         };
+        /**
+         * SourceScope
+         * @description 允许使用的来源范围。
+         * @enum {string}
+         */
+        SourceScope: "original_only" | "knowledge_base" | "web";
         /**
          * SourceStatus
          * @description Current status of a source entry.
@@ -20138,6 +21108,12 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * SourceType
+         * @description 来源类型：区分用户原文、补充/授权材料、外部来源、常识与显式假设。
+         * @enum {string}
+         */
+        SourceType: "user_original" | "user_supplement" | "account_scoped" | "external_allowed" | "common_knowledge" | "explicit_assumption";
+        /**
          * SourceUploadRequest
          * @description Request to upload a text or PDF scientific source.
          */
@@ -20161,6 +21137,12 @@ export interface components {
             canonical_identity?: string | null;
         };
         /**
+         * SourceUsage
+         * @description 来源条目的允许用途；纯改写默认只消费用户原文。
+         * @enum {string}
+         */
+        SourceUsage: "rewrite" | "fact" | "quote" | "experience";
+        /**
          * SourceVersionRequest
          * @description Request to create a new document version from a corrected source.
          */
@@ -20181,6 +21163,22 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /**
+         * SpanLocation
+         * @description 规范化文本中的起止偏移（审计用位置，不含正文）。
+         */
+        SpanLocation: {
+            /**
+             * Start
+             * @description 起始偏移。
+             */
+            start: number;
+            /**
+             * End
+             * @description 结束偏移。
+             */
+            end: number;
         };
         /**
          * SpatialTemporalLocator
@@ -20660,6 +21658,12 @@ export interface components {
             /** @description Confirmed routing target. */
             routed_to: components["schemas"]["UserFeedbackTarget"];
         };
+        /**
+         * Surface
+         * @description 表面类型：明确区分普通聊天与文章。
+         * @enum {string}
+         */
+        Surface: "chat" | "article";
         /**
          * SyncControlSnapshot
          * @description Control state pulled before the server evaluates device content edits.
@@ -23298,7 +24302,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -23340,7 +24344,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -23558,7 +24562,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Content Too Large */
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -23693,7 +24697,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -23744,7 +24748,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24262,7 +25266,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24342,7 +25346,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24542,7 +25546,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25044,7 +26048,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25508,7 +26512,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25672,7 +26676,53 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    record_humanizer_projection_event_chat_humanizer_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanizerProjectionEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25976,7 +27026,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Content Too Large */
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -26533,7 +27583,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -27124,7 +28174,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29001,7 +30051,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29107,7 +30157,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29242,7 +30292,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29409,7 +30459,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29517,7 +30567,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29612,7 +30662,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29791,7 +30841,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29904,7 +30954,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -29966,7 +31016,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30030,7 +31080,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30092,7 +31142,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30546,7 +31596,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30663,7 +31713,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30714,7 +31764,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30891,7 +31941,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31006,7 +32056,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31172,7 +32222,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31287,7 +32337,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31350,7 +32400,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31411,7 +32461,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31553,7 +32603,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31617,7 +32667,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31681,7 +32731,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32977,7 +34027,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33042,7 +34092,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33159,7 +34209,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33225,7 +34275,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33328,7 +34378,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33379,7 +34429,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33446,7 +34496,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33507,7 +34557,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33676,7 +34726,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33773,7 +34823,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33866,7 +34916,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34023,7 +35073,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34183,7 +35233,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34236,7 +35286,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34291,7 +35341,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34386,7 +35436,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34748,7 +35798,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34905,7 +35955,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34961,7 +36011,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35016,7 +36066,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35071,7 +36121,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35179,7 +36229,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35232,7 +36282,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35287,7 +36337,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35340,7 +36390,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35446,7 +36496,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35501,7 +36551,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35598,7 +36648,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35642,7 +36692,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35746,7 +36796,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35779,7 +36829,7 @@ export interface operations {
                     "application/json": components["schemas"]["SpecValidationResult"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36041,7 +37091,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36141,7 +37191,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36404,7 +37454,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36582,7 +37632,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36712,7 +37762,7 @@ export interface operations {
                     "application/json": components["schemas"]["LearningError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36800,7 +37850,7 @@ export interface operations {
                     "application/json": components["schemas"]["LearningError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37941,7 +38991,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Content Too Large */
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -38546,7 +39596,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -39000,7 +40050,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -40026,7 +41076,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -40097,7 +41147,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
