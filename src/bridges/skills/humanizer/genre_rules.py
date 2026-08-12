@@ -1,12 +1,10 @@
-"""四体裁表达规则加载与确定性校验（Issue 28）。
+"""体裁表达 profile 与确定性复核（Issue 28，人味化改造 Issue 03/04）。
 
-每类体裁从 ``skill/genres/*.md`` 加载独立的表达合同（必含/禁止/保留/人工
-责任），并映射为可测试的断言：required 标记缺失 → 复核不通过；prohibited
-标记出现 → 复核不通过。四类体裁规则集各自独立，不共用单一泛化模板。
-
-人味化改造 Issue 03 起支持通用文章 profile（``genre=None``）：未识别体裁
-时不强制任何必现或禁止套话，避免邮件、报告、教程、观点文等被强迫套用科普
-必现模板；体裁检查只判断任务是否完成，不搜索指定套话。
+每类体裁从 ``skill/genres/*.md`` 加载独立表达合同。人味化改造 Issue 04
+起，体裁 profile 只规定任务目标、风险和可选表达方式，不再有「必须出现
+定义短语/类比/练习停顿/局限/下一步」等正则完成条件；可选表达一律按需
+使用，未声明体裁使用通用文章 profile。体裁复核只判断任务完成（正文
+非空）与禁止模式，不搜索指定套话。
 """
 
 from __future__ import annotations
@@ -31,7 +29,7 @@ class GenreRuleError(Exception):
 
 @dataclass(frozen=True)
 class GenreRule:
-    """一条可测试的表达规则断言（required/prohibited 由所在元组决定）。"""
+    """一条可测试的禁止模式断言。"""
 
     rule_id: str
     label: str
@@ -39,15 +37,18 @@ class GenreRule:
 
 
 @dataclass(frozen=True)
-class GenreRuleSet:
-    """单个体裁的完整规则集（与 SKILL 资产一一对应）。
+class GenreStyleProfile:
+    """单个体裁的表达 profile：任务目标、风险、可选表达与禁止模式。
 
-    ``genre`` 为 None 表示通用文章 profile（无必现/禁止元素）。
+    ``genre`` 为 None 表示通用文章 profile（无强制元素、无禁止模式）。
+    可选表达方式全部按需使用，不构成正则完成条件。
     """
 
     genre: Genre | None
     display_name: str
-    required: tuple[GenreRule, ...] = ()
+    task_goal: str = ""
+    risks: tuple[str, ...] = ()
+    optional_devices: tuple[str, ...] = ()
     prohibited: tuple[GenreRule, ...] = ()
     human_responsibility: str = ""
 
@@ -58,14 +59,17 @@ class GenreCheckFinding:
 
     rule_id: str
     label: str
-    kind: str  # required | prohibited
+    kind: str  # completion | prohibited
     passed: bool
     detail: str
 
 
 @dataclass
 class GenreCheckResult:
-    """一次体裁规则复核的结果；genre 为 None 表示通用文章 profile。"""
+    """一次体裁复核的结果；genre 为 None 表示通用文章 profile。
+
+    Issue 04 起不检查任何必现元素：passed 只要求正文非空且无禁止模式。
+    """
 
     genre: Genre | None
     passed: bool
@@ -77,136 +81,114 @@ class GenreCheckResult:
 
 
 # ---------------------------------------------------------------------------
-# 规则定义（与 skill/genres/*.md 一一对应，可测试断言）
+# 体裁 profile 定义（与 skill/genres/*.md 一一对应，BridGes 原创）
 # ---------------------------------------------------------------------------
 
 def _rule(rule_id: str, label: str, pattern: str) -> GenreRule:
     return GenreRule(rule_id, label, re.compile(pattern))
 
 
-_POPULAR_SCIENCE = GenreRuleSet(
+_POPULAR_SCIENCE = GenreStyleProfile(
     genre=Genre.POPULAR_SCIENCE,
     display_name="科普文案",
-    required=(
-        _rule(
-            "ps_core_concept",
-            "核心概念的一句话定义",
-            r"所谓|指的是|简单说就是|可以理解为|本质上是",
-        ),
-        _rule(
-            "ps_analogy",
-            "至少一个类比（好比/就像/比作）",
-            r"好比|就像|如同|仿佛|比作|可以比作",
-        ),
-        _rule(
-            "ps_analogy_boundary",
-            "类比的边界说明（类比不能无限延伸）",
-            r"但|不过|需要注意的是|类比到此为止|只能说明|并不等于|不能理解为|并不意味着",
-        ),
-        _rule(
-            "ps_action_relevance",
-            "与读者生活相关的行动或关联",
-            r"你可以|对你来说|对你说来|生活中|例如|比如|实际上|下次|当你",
-        ),
+    task_goal="向非专业读者解释科学主题：让读者理解核心概念、知道与自己相关、清楚行动边界。",
+    risks=(
+        "把相关性说成因果或把初步结果说成定论",
+        "隐藏不确定性（删除「可能/初步/在……条件下」等限定词）",
+        "术语堆砌且不做解释",
+    ),
+    optional_devices=(
+        "用一句话定义核心概念（按需使用，不需要时不加）",
+        "用类比帮助理解并说明类比边界（按需使用）",
+        "把科学内容与读者的行动或日常关联（按需使用）",
+        "用设问或小标题引导阅读（按需使用）",
     ),
     prohibited=(
         _rule(
             "ps_paper_tone", "论文腔套话（本文将/综上所述）",
-            r"本文将|综上所述|首先，我们"
+            r"本文将|综上所述|首先，我们",
         ),
         _rule(
             "ps_overclaim", "绝对化结论词（必定/毫无疑问地治愈等）",
-            r"必定|毫无疑问地|绝对能|保证(?:治愈|解决)"
+            r"必定|毫无疑问地|绝对能|保证(?:治愈|解决)",
         ),
     ),
     human_responsibility="类比准确性由作者复核；涉及健康、安全、理财等高风险建议时作者须确认。",
 )
 
 
-_LECTURE_SCRIPT = GenreRuleSet(
+_LECTURE_SCRIPT = GenreStyleProfile(
     genre=Genre.LECTURE_SCRIPT,
     display_name="课程讲稿",
-    required=(
-        _rule(
-            "ls_learning_objective",
-            "可观察的学习目标",
-            r"学完本节，你将能|本讲目标|学习目标|你能做到|学完后你可以",
-        ),
-        _rule(
-            "ls_prerequisite",
-            "先备知识提醒",
-            r"你需要先知道|前提是|如果你还不熟悉|先备|如果之前没接触过",
-        ),
-        _rule(
-            "ls_example",
-            "讲解中的举例（比如/举个例子）",
-            r"比如|举个例子|例如|以……为例",
-        ),
-        _rule(
-            "ls_comprehension_check",
-            "至少一处理解检查（提问句式）",
-            r"检查一下|想想看|你能说出|提问|来，问大家|试着回答",
-        ),
-        _rule(
-            "ls_practice_pause",
-            "至少一处练习停顿建议",
-            r"停一下|花\s?1\s?分钟|花一分钟|尝试做|请同学们|现在练习",
-        ),
+    task_goal="在课堂场景下讲清知识，让听众能跟上并自己完成一次检查或练习。",
+    risks=(
+        "把理解检查写成自问自答装饰句",
+        "练习与学习目标不一致",
+    ),
+    optional_devices=(
+        "开场给出学习目标或预告（按需使用）",
+        "提醒先备知识（按需使用）",
+        "举例讲解（按需使用）",
+        "在关键处设置理解检查或练习停顿（按需使用）",
     ),
     prohibited=(
         _rule(
             "ls_no_question_answer", "理解检查写成自问自答装饰句",
-            r"提问：[^。]{1,12}。答案："
+            r"提问：[^。]{1,12}。答案：",
         ),
     ),
     human_responsibility="学习目标与检查点须与真实教学计划一致；高风险主题（实验操作、医疗）步骤须教师确认。",
 )
 
 
-_RESEARCH_REPORT = GenreRuleSet(
+_RESEARCH_REPORT = GenreStyleProfile(
     genre=Genre.RESEARCH_REPORT,
     display_name="科研汇报",
-    required=(
-        _rule("rr_topic", "研究问题或汇报主题", r"本报告|本次汇报|研究问题|围绕|汇报主题"),
-        _rule(
-            "rr_observation", "观察句（数据/结果显示）",
-            r"数据显示|结果表明|结果显示|观察到|实验发现"
-        ),
-        _rule(
-            "rr_method", "分析方法说明",
-            r"采用|使用|通过[^。]{0,20}?方法|统计|实验设计|采集"
-        ),
-        _rule("rr_limitation", "局限性说明", r"局限|限制|需要说明的是|不足|受限于"),
-        _rule("rr_next_step", "下一步计划", r"下一步|接下来|后续计划|未来工作|后续将"),
+    task_goal="让同行看清做了什么、看到什么、能说明什么、还不能说明什么。",
+    risks=(
+        "隐藏负面结果",
+        "过度修辞（惊人/重大突破）",
+        "把初步结果说成定论",
+    ),
+    optional_devices=(
+        "先交代研究问题与背景（按需使用）",
+        "用数据或结果说明观察（按需使用）",
+        "说明方法与分析（按需使用）",
+        "交代局限与下一步（按需使用）",
     ),
     prohibited=(
         _rule(
             "rr_positive_only", "隐藏负面结果（结果部分无任何转折）",
-            r"全部为正|毫无异常"
+            r"全部为正|毫无异常",
         ),
         _rule(
             "rr_hyperbole", "过度修辞（惊人/重大突破）",
-            r"惊人|重大突破|石破天惊|颠覆性"
+            r"惊人|重大突破|石破天惊|颠覆性",
         ),
     ),
     human_responsibility="数据真实性由汇报者负责；未发表数据的使用须经数据所有者确认。",
 )
 
 
-_PAPER_ASSIST = GenreRuleSet(
+_PAPER_ASSIST = GenreStyleProfile(
     genre=Genre.PAPER_ASSIST,
     display_name="论文写作",
-    required=(
-        _rule("pa_structure", "结构建议（章节级）", r"摘要|引言|方法|结果|讨论|章节|结构"),
-        _rule("pa_language", "具体语言建议", r"句式|术语|表达|措辞|长句|主语|语言"),
-        _rule("pa_citation", "引用核查条目", r"引用|参考文献|文献核查|cite|DOI"),
-        _rule("pa_argument", "论证建议", r"论证|逻辑|证据强度|因果|推理"),
-        _rule("pa_disclosure", "AI 使用披露提醒", r"披露|声明|AI 辅助|人工智能辅助|使用说明"),
+    task_goal="辅助作者完成结构、语言、引用与论证建议，帮助论文达到投稿标准。",
+    risks=(
+        "编造已完成实验或数据",
+        "建议与期刊要求脱节",
+    ),
+    optional_devices=(
+        "给出章节级结构建议（按需使用）",
+        "给出具体语言建议（按需使用）",
+        "核查引用完整性（按需使用）",
+        "给出论证与证据强度建议（按需使用）",
+        "提醒 AI 使用披露（按需使用）",
     ),
     prohibited=(
         _rule(
             "pa_fabricate", "编造已完成实验（建议补充必须标注未实施）",
-            r"我们完成了.{0,30}实验并得到"
+            r"我们完成了.{0,30}实验并得到",
         ),
     ),
     human_responsibility=(
@@ -215,7 +197,17 @@ _PAPER_ASSIST = GenreRuleSet(
     ),
 )
 
-_GENRE_RULES: dict[Genre, GenreRuleSet] = {
+
+_GENERIC_PROFILE = GenreStyleProfile(
+    genre=None,
+    display_name="通用文章",
+    task_goal="按任务需要组织文章，完成用户要求的写作目标；材料支持到哪里就写到哪里。",
+    risks=(),
+    optional_devices=(),
+    human_responsibility="未识别体裁时按通用文章 profile 处理，不强制科普定义、类比或边界提醒。",
+)
+
+_GENRE_PROFILES: dict[Genre, GenreStyleProfile] = {
     Genre.POPULAR_SCIENCE: _POPULAR_SCIENCE,
     Genre.LECTURE_SCRIPT: _LECTURE_SCRIPT,
     Genre.RESEARCH_REPORT: _RESEARCH_REPORT,
@@ -231,39 +223,28 @@ _GENRE_FILE: dict[Genre, str] = {
 
 
 def check_genre(text: str, genre: Genre | None) -> GenreCheckResult:
-    """对一段文本执行指定体裁的确定性规则复核。
+    """对一段文本执行体裁复核：只判断任务完成与禁止模式，不搜索必现套话。
 
-    ``genre`` 为 None（通用文章 profile）时只报告一条说明性发现，
-    不搜索任何必现或禁止套话——未识别体裁不得被强迫套用科普必现模板。
+    ``genre`` 为 None（通用文章 profile）时只报告一条完成性说明。
+    正文非空且无禁止模式即通过——Issue 04 起不再有「必现元素」概念。
     """
     if genre is None:
         return GenreCheckResult(
             genre=None,
-            passed=True,
+            passed=bool(text.strip()),
             findings=[
                 GenreCheckFinding(
-                    rule_id="generic_no_mandatory_elements",
+                    rule_id="generic_completion",
                     label="通用文章 profile",
-                    kind="required",
-                    passed=True,
-                    detail="未识别体裁，不强制任何必现元素",
+                    kind="completion",
+                    passed=bool(text.strip()),
+                    detail="正文已交付，不强制任何必现元素" if text.strip() else "缺少正文",
                 )
             ],
         )
-    rules = _GENRE_RULES[genre]
+    profile = _GENRE_PROFILES[genre]
     findings: list[GenreCheckFinding] = []
-    for rule in rules.required:
-        found = rule.pattern.search(text) is not None
-        findings.append(
-            GenreCheckFinding(
-                rule_id=rule.rule_id,
-                label=rule.label,
-                kind="required",
-                passed=found,
-                detail="已出现" if found else "缺失",
-            )
-        )
-    for rule in rules.prohibited:
+    for rule in profile.prohibited:
         found = rule.pattern.search(text) is not None
         findings.append(
             GenreCheckFinding(
@@ -274,22 +255,18 @@ def check_genre(text: str, genre: Genre | None) -> GenreCheckResult:
                 detail="存在禁止模式" if found else "未出现",
             )
         )
-    passed = all(f.passed for f in findings)
+    passed = bool(text.strip()) and all(f.passed for f in findings)
     return GenreCheckResult(genre=genre, passed=passed, findings=findings)
 
 
-def genre_rule_set(genre: Genre | None) -> GenreRuleSet:
-    """读取单个体裁的完整规则集（含资产文档）。
+def genre_rule_set(genre: Genre | None) -> GenreStyleProfile:
+    """读取单个体裁的表达 profile（含资产文档）。
 
-    ``None`` 返回通用文章 profile：无必现/禁止元素，只有通用责任说明。
+    ``None`` 返回通用文章 profile：无强制元素、无禁止模式。
     """
     if genre is None:
-        return GenreRuleSet(
-            genre=None,
-            display_name="通用文章",
-            human_responsibility="未识别体裁时按通用文章 profile 处理，不强制科普定义、类比或边界提醒。",
-        )
-    return _GENRE_RULES[genre]
+        return _GENERIC_PROFILE
+    return _GENRE_PROFILES[genre]
 
 
 @lru_cache(maxsize=1)
@@ -302,13 +279,13 @@ def skill_doc(genre: Genre) -> str:
 
 
 def all_genres() -> list[Genre]:
-    """四类体裁清单（保证各自独立规则，不共用泛化模板）。"""
-    return list(_GENRE_RULES.keys())
+    """四类体裁清单（各自独立 profile，不共用泛化模板）。"""
+    return list(_GENRE_PROFILES.keys())
 
 
 __all__ = [
     "GenreRule",
-    "GenreRuleSet",
+    "GenreStyleProfile",
     "GenreCheckFinding",
     "GenreCheckResult",
     "check_genre",

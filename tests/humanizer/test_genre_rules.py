@@ -1,7 +1,8 @@
-"""四体裁表达规则可测试性测试（Issue 28）。
+"""体裁表达 profile 测试（Issue 28，人味化改造 Issue 04）。
 
-断言四类体裁各自使用独立的规则集（不共用单一泛化模板），规则在
-SKILL 资产中都有对应文档，且同一文本在不同体裁下判定不同。
+断言四类体裁各自使用独立 profile（任务目标/风险/可选表达/禁止模式），
+不再存在「必现元素」正则完成条件；体裁复核只判断任务完成与禁止模式，
+不搜索指定套话；通用文章 profile 不强制任何元素。
 """
 
 from __future__ import annotations
@@ -14,35 +15,8 @@ from bridges.skills.humanizer.genre_rules import (
     skill_doc,
 )
 
-_POPULAR_SCIENCE_TEXT = (
-    "光合作用指的是植物把光能转化为化学能的过程。你可以把它比作植物的"
-    "充电过程，但比喻到此为止，实际机制是叶绿素吸收光子。对你说来，这"
-    "意味着多吃绿叶菜有助于理解这一过程。数据显示约 25 μmol·m⁻²·s⁻¹ 的"
-    "净光合速率在光照充足时常见。"
-)
 
-_LECTURE_SCRIPT_TEXT = (
-    "学完本节，你将能复述光合作用的基本过程。前提是你知道什么是化学能。"
-    "首先引入概念：叶绿体是光合作用的场所，比如植物的叶片里就有很多。"
-    "检查一下：你能说出光合作用的原料有哪些吗？请尝试画一张流程图，"
-    "花 1 分钟完成。数据显示约 25 μmol·m⁻²·s⁻¹ 的速率在光照充足时常见。"
-)
-
-_RESEARCH_REPORT_TEXT = (
-    "本报告围绕水稻净光合速率展开。采用便携式光合仪采集数据，结果显示"
-    "在 35°C 下净光合速率显著下降。该样本仅包含三个品种，需要说明的是，"
-    "结果不能直接外推到田间。下一步计划在高温胁迫条件下补充重复实验。"
-)
-
-_PAPER_ASSIST_TEXT = (
-    "针对引言部分的结构建议：先综述光合速率研究现状再提出研究缺口。"
-    "语言建议：将'做实验'改为'开展实验'。引用核查：Smith (2020) 已核实"
-    "存在于 PubMed。论证建议：结论的因果推断需补充中介分析。请注意在"
-    "投稿时按期刊要求完成 AI 使用披露声明。"
-)
-
-
-def test_four_genres_have_distinct_rule_sets() -> None:
+def test_four_genres_have_distinct_profiles() -> None:
     genres = all_genres()
     assert set(genres) == {
         Genre.POPULAR_SCIENCE,
@@ -50,34 +24,37 @@ def test_four_genres_have_distinct_rule_sets() -> None:
         Genre.RESEARCH_REPORT,
         Genre.PAPER_ASSIST,
     }
-    rule_ids = [
-        tuple(rule.rule_id for rule in genre_rule_set(genre).required)
-        + tuple(rule.rule_id for rule in genre_rule_set(genre).prohibited)
-        for genre in genres
-    ]
-    # 四类体裁规则标识互不重叠（不共用单一泛化模板）
-    assert len(set(rule_ids)) == 4
-    for ids in rule_ids:
-        assert len(ids) >= 5, f"体裁规则过少：{ids}"
+    goals = [genre_rule_set(genre).task_goal for genre in genres]
+    # 四类体裁各自独立，目标互不相同
+    assert len(set(goals)) == 4
+    for genre in genres:
+        profile = genre_rule_set(genre)
+        assert profile.risks, f"{genre.value} 缺少风险说明"
+        assert profile.optional_devices, f"{genre.value} 缺少可选表达方式"
+        assert profile.human_responsibility
 
 
-def test_each_genre_passes_its_own_contract() -> None:
+def test_profiles_have_no_mandatory_elements() -> None:
+    """Issue 04：体裁 profile 不再有必现元素正则完成条件。"""
+    for genre in all_genres():
+        profile = genre_rule_set(genre)
+        for device in profile.optional_devices:
+            assert "按需使用" in device, (
+                f"{genre.value} 可选表达被写成必现条件：{device}"
+            )
+
+
+def test_genre_check_passes_without_mandatory_phrases() -> None:
+    """正文即使没有定义/类比/练习/局限/下一步，也通过体裁复核。"""
     cases = [
-        (Genre.POPULAR_SCIENCE, _POPULAR_SCIENCE_TEXT),
-        (Genre.LECTURE_SCRIPT, _LECTURE_SCRIPT_TEXT),
-        (Genre.RESEARCH_REPORT, _RESEARCH_REPORT_TEXT),
-        (Genre.PAPER_ASSIST, _PAPER_ASSIST_TEXT),
+        (Genre.POPULAR_SCIENCE, "光合作用把光能转化为化学能。数据显示速率约为 25 单位。"),
+        (Genre.LECTURE_SCRIPT, "我们来看光合作用的两个阶段。先是光反应，再是暗反应。"),
+        (Genre.RESEARCH_REPORT, "我们采集了三个品种的叶片，结果显示 35°C 下速率下降。"),
+        (Genre.PAPER_ASSIST, "引言部分建议先综述研究现状，再提出研究缺口。"),
     ]
     for genre, text in cases:
         result = check_genre(text, genre)
-        assert result.passed, f"{genre.value} 未通过自身规则：{result.summary()}"
-
-
-def test_genre_check_is_discriminating() -> None:
-    # 科普文案文本按课程讲稿规则判定应缺失学习目标等要素
-    result = check_genre(_POPULAR_SCIENCE_TEXT, Genre.LECTURE_SCRIPT)
-    assert not result.passed
-    assert any(f.rule_id == "ls_learning_objective" and not f.passed for f in result.findings)
+        assert result.passed, f"{genre.value} 不应因缺少必现元素而失败：{result.summary()}"
 
 
 def test_prohibited_pattern_detected() -> None:
@@ -86,8 +63,22 @@ def test_prohibited_pattern_detected() -> None:
     assert any(f.rule_id == "ps_paper_tone" and not f.passed for f in result.findings)
 
 
+def test_empty_text_fails_completion() -> None:
+    result = check_genre("   ", Genre.RESEARCH_REPORT)
+    assert not result.passed
+
+
+def test_generic_profile_passes_any_text() -> None:
+    result = check_genre("一些没有套话的自然段落。", None)
+    assert result.passed
+    assert result.genre is None
+
+
 def test_skill_assets_exist_for_all_genres() -> None:
     for genre in all_genres():
         doc = skill_doc(genre)
         assert doc.strip(), f"{genre.value} 的体裁合同资产为空"
         assert "## " in doc  # 资产含结构化章节
+        # Issue 04：资产文档不得再有「必含」章节（声明说明文字除外）
+        assert "## 必含" not in doc, f"{genre.value} 资产仍声明必含元素"
+        assert "缺失即复核不通过" not in doc
