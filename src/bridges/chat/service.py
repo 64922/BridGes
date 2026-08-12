@@ -60,6 +60,7 @@ from bridges.chat.turn import (
     error_is_retryable,  # noqa: F401 - re-export
     failed_thinking,
     finalize_message,
+    humanizer_recovery_state,
     initial_thinking,
     owner_user_message,
     result_summary,
@@ -99,6 +100,7 @@ from bridges.contracts.feedback import (
     FeedbackStatus,
 )
 from bridges.contracts.humanizer import (
+    HUMANIZER_CHECKPOINT_KEY,
     HumanizerResultProjection,
     HumanizerSkillInput,
 )
@@ -189,6 +191,20 @@ def _route_projection(
         return RouteDecision.model_validate(route)
     except ValidationError:
         return CapabilityRoute.model_validate(route)
+
+
+def _humanizer_projection(
+    message: MessageRecord,
+) -> HumanizerResultProjection | None:
+    """把助手消息 skill 列解析为人味化结果投影（Issue 05 检查点容错）。
+
+    生成中途的 skill 列可能只含写作调用检查点（非完整投影）——刷新/轮询
+    期间解析失败返回 None，不抛异常；终态后始终是完整结果投影。
+    """
+    try:
+        return HumanizerResultProjection.model_validate(message.skill)
+    except ValidationError:
+        return None
 
 
 class ChatDomainError(Exception):
@@ -1692,6 +1708,17 @@ class ChatService:
             default=0,
         )
         now = datetime.now(UTC)
+        # Issue 05：重试沿用旧尝试的写作调用计数与已产出正文（持久运行状态
+        # 原子记录；服务重启不能重新获得修订额度）。旧尝试正文缺失时退回
+        # 该尝试消息的 content 列（草稿已按 Issue 07 语义持久化）。
+        humanizer_recovery = (0, None)
+        for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
+            recovered_count, recovered_text = humanizer_recovery_state(previous_attempt)
+            if recovered_count >= 1:
+                if not recovered_text and previous_attempt.content:
+                    recovered_text = previous_attempt.content
+                humanizer_recovery = (recovered_count, recovered_text)
+                break
         mode = ChatMode(record.mode)
         route = capability_route_from(owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None
@@ -1766,6 +1793,18 @@ class ChatService:
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
             route=(route.model_dump(mode="json") if route is not None else owner.route),
+            # Issue 05：新尝试以初始检查点携带旧尝试的写作调用计数与已产出
+            # 正文——重试沿用计数，恢复尝试跳过首稿调用，直接检查与修订。
+            skill=(
+                {
+                    HUMANIZER_CHECKPOINT_KEY: {
+                        "writing_call_count": humanizer_recovery[0],
+                        "recovered_text": humanizer_recovery[1] or "",
+                    }
+                }
+                if humanizer_recovery[0] >= 1
+                else None
+            ),
         )
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
@@ -2359,11 +2398,19 @@ class ChatService:
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
-            skill=message.skill,
+            skill=(
+                # Issue 05：生成中途的 skill 列可能只含写作调用检查点
+                # （非完整投影），不向用户面透出内部检查点键。
+                None
+                if isinstance(message.skill, dict)
+                and HUMANIZER_CHECKPOINT_KEY in message.skill
+                else message.skill
+            ),
             # 助手消息的 skill 列只承载人味化结果投影（输入快照只在用户消息），
-            # 直接按结果投影解析，无需魔数判别。
+            # 直接按结果投影解析，无需魔数判别；生成中途的检查点解析失败
+            # 时返回 None（刷新/轮询期间不崩）。
             humanizer=(
-                HumanizerResultProjection.model_validate(message.skill)
+                _humanizer_projection(message)
                 if message.skill is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None

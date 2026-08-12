@@ -80,6 +80,8 @@ from bridges.contracts.chat import (
     VideoRequestPayload,
 )
 from bridges.contracts.humanizer import (
+    HUMANIZER_CHECKPOINT_KEY,
+    HumanizerResultProjection,
     HumanizerResultStatus,
     HumanizerRouteSource,
     HumanizerSkillInput,
@@ -484,6 +486,10 @@ class HumanizerOrchestrator(Protocol):
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
+        budget: RunBudget | None = None,
+        writing_call_count: int = 0,
+        recovered_draft: str | None = None,
+        stop_event: Any | None = None,
     ) -> Iterator[HumanizerRunEvent]: ...
 
 
@@ -1295,6 +1301,33 @@ def skill_input_from(owner: MessageRecord | None) -> HumanizerSkillInput | None:
         return HumanizerSkillInput.model_validate(owner.skill)
     except ValidationError:
         return None
+
+
+def humanizer_recovery_state(message: MessageRecord | None) -> tuple[int, str | None]:
+    """从消息的持久化 skill 列恢复写作调用计数与可复用正文（Issue 05）。
+
+    计数在持久运行状态中原子记录（检查点或完整结果投影），重试与恢复
+    沿用计数，服务重启不能重新获得修订额度；``recovered_text`` 是上次
+    已产出的正文（检查点显式携带，或完整投影的 output），供恢复尝试跳过
+    首稿调用直接检查与修订。
+    """
+    if message is None or not message.skill:
+        return 0, None
+    raw = message.skill
+    checkpoint = raw.get(HUMANIZER_CHECKPOINT_KEY) if isinstance(raw, dict) else None
+    if isinstance(checkpoint, dict):
+        count = int(checkpoint.get("writing_call_count") or 0)
+        recovered = checkpoint.get("recovered_text")
+        return count, (str(recovered) if recovered else None)
+    try:
+        projection = HumanizerResultProjection.model_validate(raw)
+    except ValidationError:
+        return 0, None
+    count = projection.writing_call_count
+    if count < 1:
+        return 0, None
+    text = projection.output.final_text if projection.output is not None else None
+    return count, text
 
 
 def image_payload_from(owner: MessageRecord | None) -> ImageRequestPayload | None:
@@ -3725,6 +3758,12 @@ class TurnOrchestrator:
         messages = self._repo.list_messages(account_id, conversation_id)
         owner = owner_user_message(messages, assistant_message_id)
         round_query = owner.content if owner is not None else ""
+        # Issue 05：从持久运行状态恢复写作调用计数与可复用正文（重试/恢复
+        # 沿用计数，服务重启不得重新获得修订额度）。
+        current = next(
+            (m for m in messages if m.message_id == assistant_message_id), None
+        )
+        writing_call_count, recovered_draft = humanizer_recovery_state(current)
         # Issue 07：改写路径只以用户粘贴/附件为原文，默认不检索全局知识库
         # （知识库中不相关图片等材料绝不进入证据合同）；用户显式开启「补充
         # 检索全局知识库」时检索轮次进入改写证据合同（仅作补充，不替代原文）。
@@ -3979,7 +4018,28 @@ class TurnOrchestrator:
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
                 budget=budget,
+                writing_call_count=writing_call_count,
+                recovered_draft=recovered_draft,
+                stop_event=stop_event,
             ):
+                # Issue 05 审查修复：草稿事件先于预算/停止检查持久化——模型
+                # 已产出的正文与写作调用计数绝不因预算到期/用户停止而丢失；
+                # 随后再按预算/停止语义终态，重试沿用已落库的计数。
+                if run_event.kind == "draft" and run_event.draft_text:
+                    self._repo.update_message_content(
+                        account_id,
+                        assistant_message_id,
+                        run_event.draft_text,
+                        datetime.now(UTC),
+                    )
+                    if run_event.writing_call_count is not None:
+                        self._repo.update_message_humanizer_checkpoint(
+                            account_id,
+                            assistant_message_id,
+                            writing_call_count=run_event.writing_call_count,
+                            updated_at=datetime.now(UTC),
+                        )
+                    continue
                 if budget.expired():
                     # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
                     budget.mark_exhausted()
@@ -4039,17 +4099,6 @@ class TurnOrchestrator:
                             progress_steps=run_event.progress_steps,
                         ),
                     )
-                    continue
-                if run_event.kind == "draft":
-                    # Issue 07：模型产出正文后立即持久化草稿——刷新/切会话
-                    # 后仍可见；随后的软门修复与复核只更新状态，不删草稿。
-                    if run_event.draft_text:
-                        self._repo.update_message_content(
-                            account_id,
-                            assistant_message_id,
-                            run_event.draft_text,
-                            datetime.now(UTC),
-                        )
                     continue
                 result = run_event.result
                 if result is None:

@@ -528,6 +528,64 @@ class HumanizerReference(BaseModel):
     )
 
 
+#: 持久化运行检查点键（Issue 05）：助手消息 skill 列中的中间检查点 JSON。
+#: 检查点形如 ``{"_humanizer_checkpoint": {"writing_call_count": 1}}``，只含
+#: 脱敏写作调用计数，不是完整结果投影；服务重启后重试据此沿用调用额度。
+#: （重试新尝试的初始检查点还携带 ``recovered_text`` 用于跳过首稿调用，
+#: 运行中的检查点只更新计数——正文已在消息 content 列持久化。）
+HUMANIZER_CHECKPOINT_KEY = "_humanizer_checkpoint"
+
+
+class HumanizerRevisionAudit(BaseModel):
+    """一次定向修订的运行审计（Issue 05；脱敏，不含正文）。
+
+    ``triggered`` 为 False 时修订未执行，问题计数仍反映首稿检查摘要；
+    ``skipped_reason`` 记录未执行原因（预算不足/用户停止/开关关闭/模型
+    失败），此时首稿的真实硬门/软审稿状态照常交付。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision_version: str = Field(description="修订策略版本（revision-policy-v1）。")
+    triggered: bool = Field(description="是否触发修订调用。")
+    trigger_code: str | None = Field(
+        default=None, description="主要触发 code（保真/契约/审稿 code）。"
+    )
+    problem_count: int = Field(default=0, description="待修问题数（触发时 >0）。")
+    draft_fidelity_blocking: int = Field(
+        default=0, description="首稿关键保真失败数。"
+    )
+    draft_contract_omissions: int = Field(default=0, description="首稿契约遗漏数。")
+    draft_warning_count: int = Field(default=0, description="首稿高置信风格发现数。")
+    revised_fidelity_blocking: int | None = Field(
+        default=None, description="修订后关键保真失败数（未修订为 None）。"
+    )
+    revised_contract_omissions: int | None = Field(
+        default=None, description="修订后契约遗漏数（未修订为 None）。"
+    )
+    revised_warning_count: int | None = Field(
+        default=None, description="修订后高置信风格发现数（未修订为 None）。"
+    )
+    resolved_problem_count: int | None = Field(
+        default=None, description="修订解决的问题数（触发问题数减修订后仍存在数）。"
+    )
+    extra_tokens: int | None = Field(
+        default=None, description="修订调用 token 数（未修订为 None）。"
+    )
+    extra_latency_ms: int | None = Field(
+        default=None, description="修订调用延迟毫秒（未修订为 None）。"
+    )
+    final_state: str = Field(
+        default="pending",
+        description="终态：pending/deliver_revised/deliver_draft/stop_delivery。",
+    )
+    skipped_reason: str | None = Field(
+        default=None,
+        description="未执行修订的原因（capability_disabled/call_limit_reached/"
+        "user_stopped/budget_insufficient/model_error:<code>/recheck_failed）。",
+    )
+
+
 class HumanizerResultProjection(BaseModel):
     """人味化任务的结果投影（挂载到助手消息）。"""
 
@@ -580,6 +638,14 @@ class HumanizerResultProjection(BaseModel):
     )
     repair_attempts: int = Field(
         default=0, description="软门定向修复次数（最多 1 次，受总预算约束）。"
+    )
+    writing_call_count: int = Field(
+        default=0,
+        description="累计写作模型调用数（首稿+定向修订，上限 2；持久运行状态，"
+        "重试与恢复沿用，服务重启不得重新获得修订额度）。",
+    )
+    revision: HumanizerRevisionAudit | None = Field(
+        default=None, description="定向修订审计（Issue 05，脱敏）。"
     )
     process_state: HumanizerProcessState = Field(
         default=HumanizerProcessState.LOADING, description="过程卡当前状态。"
@@ -666,4 +732,6 @@ __all__ = [
     "HumanizerResultProjection",
     "HumanizerProcessData",
     "HumanizerSkillManifest",
+    "HumanizerRevisionAudit",
+    "HUMANIZER_CHECKPOINT_KEY",
 ]

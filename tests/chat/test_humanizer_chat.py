@@ -630,6 +630,189 @@ def test_natural_language_route_without_source_does_not_call_model(
     assert adapter.calls == 0
 
 
+# ---------------------------------------------------------------------------
+# Issue 05：文章定向二次修订（真实消息流：触发、检查点与重试恢复）
+# ---------------------------------------------------------------------------
+
+
+def _templated_draft() -> dict[str, Any]:
+    return {
+        "final_text": (
+            "本助手认为，总而言之，番茄工作法把时间切成 25 分钟的工作块"
+            "和 5 分钟的休息块，四个工作块后休息 15 分钟。未来可期。"
+        )
+    }
+
+
+def _fixed_draft() -> dict[str, Any]:
+    return {
+        "final_text": (
+            "把时间切成 25 分钟的工作块和 5 分钟的休息块，四个工作块后"
+            "休息 15 分钟，这就是番茄工作法的大致框架。"
+        )
+    }
+
+
+def test_natural_language_revision_triggers_second_call_and_checkpoint(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """高置信表达问题触发一次定向修订：两次写作调用、检查点随投影落库。"""
+    _register(client)
+    adapter = _ProgrammableStructuredAdapter(
+        sequence=[_templated_draft(), _fixed_draft()]
+    )
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": (
+                "请帮我润色这篇科普文章：番茄工作法把时间切成 25 分钟的"
+                "工作块和 5 分钟的休息块。四个工作块后休息 15 分钟。"
+            )
+        },
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "done"
+    message = events[-1][1]["message"]
+    humanizer = message["humanizer"]
+    assert humanizer["status"] == "done"
+    assert humanizer["writing_call_count"] == 2
+    assert humanizer["revision"]["triggered"] is True
+    assert humanizer["revision"]["final_state"] == "deliver_revised"
+    assert adapter.calls == 2
+    # 正文 = 修订稿（最小修改保留首稿已通过部分）
+    assert message["content"] == _fixed_draft()["final_text"]
+    # 刷新投影：计数与修订审计随结果投影持久化（重试恢复的依据）
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assistant = next(
+        m
+        for m in history["messages"]
+        if m["role"] == "assistant"
+        and m["message_id"] == created["assistant_message"]["message_id"]
+    )
+    assert assistant["humanizer"]["writing_call_count"] == 2
+
+
+def test_retry_after_quota_exhausted_never_calls_model_third_time(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """首次 run 用尽两次调用仍保真失败；重试沿用计数，不再调用模型。"""
+    _register(client)
+    violating = {"final_text": "番茄工作法把时间切成 35 分钟的工作块和 5 分钟的休息块。"}
+    adapter = _ProgrammableStructuredAdapter(sequence=[violating, violating])
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    created = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": (
+                "请帮我润色这篇科普文章：番茄工作法把时间切成 25 分钟的"
+                "工作块和 5 分钟的休息块。四个工作块后休息 15 分钟。"
+            )
+        },
+    ).json()
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "error"
+    assert adapter.calls == 2  # 首稿 + 修订，均破坏事实 → 停止交付
+    failed_message_id = events[-1][1]["message_id"]
+
+    # 重试：计数从持久状态恢复为 2，新尝试不再调用模型（无第三次写作调用）
+    adapter2 = _ProgrammableStructuredAdapter(output={"final_text": "不应被调用"})
+    _swap_gateways(sqlite_app, adapter2)
+    retry = client.post(
+        f"/chat/conversations/{conversation_id}/messages/{failed_message_id}/retry",
+        json={},
+    )
+    assert retry.status_code == 200, retry.text
+    retried = retry.json()
+    generation_helpers["drive"](sqlite_app)
+    retry_events = generation_helpers["subscribe"](
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
+    assert adapter2.calls == 0
+    assert retry_events[-1][0] == "error"
+    assert retry_events[-1][1]["error"]["code"] == "writing_call_limit_reached"
+    # 新尝试的结果投影记录了明确错误（无第三次写作调用）
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    retry_assistant = next(
+        m
+        for m in history["messages"]
+        if m["role"] == "assistant"
+        and m["message_id"] == retried["assistant_message"]["message_id"]
+    )
+    assert retry_assistant["humanizer"]["error_code"] == "writing_call_limit_reached"
+    assert retry_assistant["humanizer"]["writing_call_count"] == 2
+
+
+def test_retry_recovers_draft_and_revises_without_redrafting(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """修订模型失败后重试：恢复首稿正文与计数 1，只再调用一次修订。"""
+    _register(client)
+    adapter = _ProgrammableStructuredAdapter(
+        sequence=[_templated_draft(), AdapterError(code="transient", message="慢")]
+    )
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    created = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": (
+                "请帮我润色这篇科普文章：番茄工作法把时间切成 25 分钟的"
+                "工作块和 5 分钟的休息块。四个工作块后休息 15 分钟。"
+            )
+        },
+    ).json()
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    # 修订失败 → 交付首稿的真实软审稿状态（WARN），不把未通过稿标为成功
+    assert events[-1][0] == "done"
+    first_message = events[-1][1]["message"]
+    assert first_message["humanizer"]["writing_call_count"] == 1
+    assert first_message["humanizer"]["revision"]["skipped_reason"].startswith(
+        "model_error:"
+    )
+    assert adapter.calls == 2
+    first_message_id = first_message["message_id"]
+
+    # 重试：恢复计数 1 与首稿正文（跳过首稿调用），只执行一次修订
+    adapter2 = _ProgrammableStructuredAdapter(sequence=[_fixed_draft()])
+    _swap_gateways(sqlite_app, adapter2)
+    retry = client.post(
+        f"/chat/conversations/{conversation_id}/messages/{first_message_id}/retry",
+        json={},
+    )
+    assert retry.status_code == 200, retry.text
+    retried = retry.json()
+    generation_helpers["drive"](sqlite_app)
+    retry_events = generation_helpers["subscribe"](
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
+    assert retry_events[-1][0] == "done"
+    retry_message = retry_events[-1][1]["message"]
+    assert retry_message["humanizer"]["status"] == "done"
+    assert retry_message["humanizer"]["writing_call_count"] == 2
+    assert retry_message["humanizer"]["revision"]["triggered"] is True
+    assert retry_message["humanizer"]["revision"]["final_state"] == "deliver_revised"
+    # 首稿未重新生成：本次只调用一次（修订）
+    assert adapter2.calls == 1
+    assert retry_message["content"] == _fixed_draft()["final_text"]
+
+
 def test_natural_language_first_turn_is_idempotent(
     sqlite_app: Any, client: TestClient
 ) -> None:

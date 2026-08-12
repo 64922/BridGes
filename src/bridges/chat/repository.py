@@ -17,6 +17,7 @@ from typing import Any
 
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
+from bridges.contracts.humanizer import HUMANIZER_CHECKPOINT_KEY as _HUMANIZER_CHECKPOINT_JSON_KEY
 from bridges.contracts.feedback import AnswerFeedback, FeedbackKind, FeedbackStatus
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
@@ -634,6 +635,38 @@ class ConversationRepository:
                 "UPDATE messages SET skill = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(humanizer), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_humanizer_checkpoint(
+        self,
+        account_id: str,
+        message_id: str,
+        *,
+        writing_call_count: int,
+        updated_at: datetime,
+    ) -> int:
+        """原子记录写作调用检查点（Issue 05）；只允许写入生成中的助手消息。
+
+        在单条 UPDATE 内以 ``json_patch`` 合并进 skill 列（检查点键
+        ``_humanizer_checkpoint``），与消息级运行锁共同保证同一消息无并发
+        run——进程崩溃或服务重启后重试沿用计数，不能重新获得修订额度。
+        最终结果投影在 RESULT 事件时整体覆盖 skill 列。
+        """
+        checkpoint = {"writing_call_count": writing_call_count}
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET"
+                " skill = json_patch(COALESCE(skill, '{}'), json_object(?,"
+                " json_object('writing_call_count', ?))), updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (
+                    _HUMANIZER_CHECKPOINT_JSON_KEY,
+                    writing_call_count,
+                    _iso(updated_at),
+                    message_id,
+                    account_id,
+                ),
             )
             return cursor.rowcount
 

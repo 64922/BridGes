@@ -190,10 +190,15 @@ def test_fidelity_gate_blocks_expression_path() -> None:
     violating = _draft_text(_SOURCE.replace("25 分钟", "35 分钟"))
     adapter = _ProgrammableStructuredAdapter(violating)
     _, result = _run(_make_service(adapter), _expression_input())
+    # Issue 05：可修复保真问题触发一次定向修订；修订稿仍破坏事实时停止交付
+    assert adapter.calls == 2
     assert result.status == HumanizerResultStatus.ERROR
     assert result.error_code == "fidelity_gate_conflict"
     assert result.output is None
-    assert adapter.calls == 1
+    assert result.writing_call_count == 2
+    assert result.revision is not None
+    assert result.revision.triggered is True
+    assert result.revision.final_state == "stop_delivery"
     assert result.fidelity_check is not None
     assert result.fidelity_check.blocking_failures
 

@@ -44,6 +44,7 @@ from bridges.contracts.humanizer import (
     HumanizerReference,
     HumanizerResultProjection,
     HumanizerResultStatus,
+    HumanizerRevisionAudit,
     HumanizerSkillInput,
     HumanizerTaskContract,
     SourceLedger,
@@ -73,6 +74,16 @@ from bridges.skills.humanizer.genre_rules import (
 )
 from bridges.skills.humanizer.intent import HUMANIZER_ROUTE_VERSION
 from bridges.skills.humanizer.method_rules import MethodScene, render_method_rules
+from bridges.skills.humanizer.revision_policy import (
+    REVISION_CAPABILITY_ENABLED,
+    REVISION_POLICY_VERSION,
+    adjudicate_revision,
+)
+from bridges.skills.humanizer.revision_prompt import (
+    REVISION_MAX_TOKENS,
+    REVISION_OUTPUT_JSON_SCHEMA,
+    compile_revision_prompt,
+)
 from bridges.skills.humanizer.source_ledger import (
     FidelityCheckError,
     compile_source_ledger,
@@ -87,6 +98,18 @@ HUMANIZER_CAPABILITY_VERSION = "1"
 #: Issue 02 能力开关：关闭时新任务恢复旧流程（无来源账本与保真检查），
 #: 投影不携带保真字段，不得把旧流程标记为新硬门通过（灰度与回滚用）。
 FIDELITY_GATE_ENABLED = True
+
+#: 每篇文章任务的写作模型调用上限（首稿 + 一次定向修订；Issue 05 ADR-0027）。
+WRITING_CALL_LIMIT = 2
+
+#: 修订第二阶段独立预算（毫秒）：剩余总预算不足该值时启动修订没有把握在
+#: 前台截止时间内完成，不启动修订，返回首稿的真实检查状态（Issue 05 AC10）。
+REVISION_BUDGET_MS = 30_000
+
+#: 写作调用上限用尽时的统一中文说明（新旧路径共享同一文案）。
+_WRITING_LIMIT_MESSAGE = (
+    "本任务写作调用已用完（上限 2 次），请修正输入后重新发送任务。"
+)
 
 # 结构化输出 JSON Schema（与 HumanizerOutputContract 字段一一对应）
 _OUTPUT_JSON_SCHEMA: dict[str, Any] = {
@@ -165,6 +188,8 @@ class HumanizerRunEvent:
     progress_steps: list[str] = field(default_factory=list)
     #: 草稿事件携带的正文（终态前的最新可交付文本）。
     draft_text: str | None = None
+    #: 草稿事件携带的累计写作调用数（Issue 05：供聊天层原子持久化检查点）。
+    writing_call_count: int | None = None
     result: HumanizerResultProjection | None = None
 
 
@@ -186,6 +211,26 @@ class _ExpressionMetrics:
 
     rule_count: int = 0
     draft_latency_ms: int | None = None
+
+
+@dataclass
+class _ExpressionChecks:
+    """一次候选正文的统一检查结果（首稿或修订稿共用，Issue 05）。"""
+
+    final_text: str
+    fidelity_check: FidelityCheckResult | None
+    contract_check: FactLockCheckResult
+    review: Any
+    output: HumanizerOutputContract
+
+
+@dataclass
+class _RevisionOutcome:
+    """触发裁决与修订的执行结果：修订成功时 checks 为修订稿检查。"""
+
+    checks: _ExpressionChecks
+    audit: HumanizerRevisionAudit
+    writing_call_count: int
 
 
 class HumanizerService:
@@ -246,6 +291,9 @@ class HumanizerService:
         web_search_projection: Any | None = None,
         arxiv_search_projection: Any | None = None,
         budget: RunBudget | None = None,
+        writing_call_count: int = 0,
+        recovered_draft: str | None = None,
+        stop_event: Any | None = None,
     ) -> Iterator[HumanizerRunEvent]:
         """执行一条人味化任务：yield 过程事件，最后 yield 结果事件。
 
@@ -254,8 +302,11 @@ class HumanizerService:
         结构化生成并执行确定性复核，仍未完全通过时交付当前最佳正文与
         具体警告；旧显式 SKILL 继续保留既有的一次定向修复兼容行为。
         Issue 04：带版本化表达任务契约的任务走新流程（首稿 profile +
-        表达审稿 + 程序生成审计信息，模型调用至多一次）；旧显式 SKILL
-        （无契约）保持原行为，直到 Issue 08 完成投影迁移。
+        表达审稿 + 程序生成审计信息）；Issue 05 在首稿后按触发裁决追加
+        至多一次定向修订，写作调用总计不超过 2 次。
+        ``writing_call_count`` 与 ``recovered_draft`` 由聊天层从持久化
+        运行状态恢复（重试/恢复沿用计数，服务重启不得重新获得修订额度）；
+        ``stop_event`` 供修订启动前检查用户停止信号。
         """
         skill_version = self.resolve_skill(skill_input)
         if skill_input.expression_contract is not None:
@@ -270,6 +321,9 @@ class HumanizerService:
                 web_search_projection,
                 arxiv_search_projection,
                 budget,
+                writing_call_count=writing_call_count,
+                recovered_draft=recovered_draft,
+                stop_event=stop_event,
             )
             return
         contract = skill_input.contract
@@ -292,6 +346,13 @@ class HumanizerService:
             )
 
         try:
+            # Issue 05：写作调用上限门（旧显式 SKILL 与新自然语言路径共享）。
+            if writing_call_count >= WRITING_CALL_LIMIT:
+                raise HumanizerError(
+                    "writing_call_limit_reached",
+                    _WRITING_LIMIT_MESSAGE,
+                    retryable=False,
+                )
             # 步骤 1：解析任务契约与来源（改写路径）
             yield process(HumanizerProcessState.LOADING, "正在解析任务契约…")
             (
@@ -350,6 +411,7 @@ class HumanizerService:
                 references,
                 run_context,
             )
+            writing_call_count += 1
             progress.append("按体裁规则生成")
 
             # 步骤 3.5：模型产出正文后立即下发草稿事件——聊天服务据此
@@ -366,6 +428,9 @@ class HumanizerService:
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.DRAFT,
                 draft_text=output.final_text.strip(),
+                # Issue 05：旧路径草稿事件也携带累计计数，聊天层立即落检查点
+                # （崩溃/预算到期后重试沿用计数，不重新获得修订额度）。
+                writing_call_count=writing_call_count,
                 progress_steps=list(progress),
             )
 
@@ -384,20 +449,26 @@ class HumanizerService:
                 and not checkpoint.genre_check.passed
                 and not checkpoint.fact_lock_check.blocking_conflicts
             ):
-                repair_attempts, checkpoint = self._repair_once(
-                    account_id,
-                    conversation_id,
-                    assistant_message_id,
-                    skill_input,
-                    skill_version,
-                    source_text,
-                    source_label,
-                    locks,
-                    run_context,
-                    checkpoint,
-                    budget,
-                    fact_lock_source,
-                )
+                # Issue 05：修复调用共享写作调用上限（首稿 1 + 修复 1 = 2）；
+                # 额度用尽时修复未发生，attempts 记 0（与预算不足语义一致）。
+                if writing_call_count >= WRITING_CALL_LIMIT:
+                    repair_attempts = 0
+                else:
+                    repair_attempts, writing_call_count, checkpoint = self._repair_once(
+                        account_id,
+                        conversation_id,
+                        assistant_message_id,
+                        skill_input,
+                        skill_version,
+                        source_text,
+                        source_label,
+                        locks,
+                        run_context,
+                        checkpoint,
+                        budget,
+                        fact_lock_source,
+                        writing_call_count,
+                    )
             final_result = self._finalize_result(
                 account_id,
                 conversation_id,
@@ -406,6 +477,9 @@ class HumanizerService:
                 skill_version,
                 checkpoint,
                 repair_attempts,
+            )
+            final_result = final_result.model_copy(
+                update={"writing_call_count": writing_call_count}
             )
             progress.append("确定性复核")
             final_result.process_steps = progress
@@ -435,6 +509,7 @@ class HumanizerService:
                 retryable=exc.retryable,
                 process_steps=progress,
                 state=state,
+                writing_call_count=writing_call_count,
             )
             yield process(
                 state,
@@ -465,13 +540,22 @@ class HumanizerService:
         web_search_projection: Any | None,
         arxiv_search_projection: Any | None,
         budget: RunBudget | None,
+        writing_call_count: int = 0,
+        recovered_draft: str | None = None,
+        stop_event: Any | None = None,
     ) -> Iterator[HumanizerRunEvent]:
         """带版本化表达任务契约的新文章流程。
 
         执行器只从契约与来源账本取得任务、权限和材料：契约版本未知或
         快照哈希不一致时在模型调用前稳定拒绝；首稿只编译当前 profile 的
-        6—10 条正向规则；模型只产出候选正文（一次调用）；修改清单、保真
-        结果、模式命中与可确定性差异全部由程序生成，不伪装成模型自证。
+        6—10 条正向规则；模型只产出候选正文；修改清单、保真结果、模式
+        命中与可确定性差异全部由程序生成，不伪装成模型自证。
+        Issue 05：首稿后执行版本化触发裁决，只有可修复硬问题、契约遗漏
+        或达到预注册阈值的高置信表达问题才追加一次定向修订（预算/停止/
+        开关条件满足时）；写作调用总计不超过 2 次，计数与首稿正文由
+        聊天层从持久化运行状态恢复。``recovered_draft`` 非空且计数 ≥1 时
+        跳过首稿调用，直接检查与修订；计数已达上限（≥2）时稳定拒绝，
+        不调用模型、不恢复正文（额度用尽的明确语义）。
         """
         expression_contract = skill_input.expression_contract
         contract = skill_input.contract
@@ -494,6 +578,13 @@ class HumanizerService:
             )
 
         try:
+            # Issue 05：写作调用上限门（重试恢复的计数已用尽时稳定拒绝）。
+            if writing_call_count >= WRITING_CALL_LIMIT:
+                raise HumanizerError(
+                    "writing_call_limit_reached",
+                    _WRITING_LIMIT_MESSAGE,
+                    retryable=False,
+                )
             # 步骤 1：契约版本校验（模型调用前稳定拒绝）
             yield process(HumanizerProcessState.LOADING, "正在校验表达任务契约…")
             self._validate_expression_contract(expression_contract)
@@ -537,68 +628,74 @@ class HumanizerService:
             )
             progress.append("编译首稿规则")
 
-            # 步骤 5：一次模型调用，模型只产出候选正文（至多一次）
+            # 步骤 5：一次模型调用，模型只产出候选正文（至多一次；恢复时
+            # 复用持久化正文，不重新获得修订额度）
             yield process(HumanizerProcessState.LOADING, "正在起草正文…")
-            final_text, draft_latency_ms = self._invoke_draft_model(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                run_context,
-                draft.system_prompt,
-                source_text,
-            )
+            if recovered_draft is not None and writing_call_count >= 1:
+                final_text = recovered_draft.strip()
+                draft_latency_ms = None
+            else:
+                if writing_call_count >= WRITING_CALL_LIMIT:
+                    raise HumanizerError(
+                        "writing_call_limit_reached",
+                        _WRITING_LIMIT_MESSAGE,
+                        retryable=False,
+                    )
+                final_text, draft_latency_ms = self._invoke_draft_model(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    run_context,
+                    draft.system_prompt,
+                    source_text,
+                )
+                writing_call_count += 1
             progress.append("起草正文")
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.DRAFT,
                 draft_text=final_text,
+                writing_call_count=writing_call_count,
                 progress_steps=list(progress),
             )
 
-            # 步骤 6：来源保真硬门（Issue 02 失败关闭）
+            # 步骤 6：首稿统一检查（保真硬门 + 任务契约检查 + 表达审稿）
             yield process(HumanizerProcessState.LOADING, "正在检查来源保真…")
-            fidelity_check = None
-            if ledger is not None:
-                try:
-                    fidelity_check = run_fidelity_check(
-                        ledger,
-                        final_text,
-                        contract_path=contract.path,
-                        allow_assumptions=contract.allow_assumptions,
-                    )
-                except FidelityCheckError as exc:
-                    raise HumanizerError(
-                        "fidelity_check_failed",
-                        f"来源保真检查未完成：{exc}",
-                        retryable=False,
-                    ) from exc
-            progress.append("来源保真检查")
-
-            # 步骤 7：表达审稿（软审稿，只报警不做机械替换）
-            review = run_expression_review(
-                final_text,
-                contract=expression_contract,
-                source_text=(
-                    source_text if contract.path == HumanizerPath.REWRITE else ""
-                ),
-                ledger=ledger,
-            )
-            progress.append("表达审稿")
-
-            # 步骤 8：确定性适配器生成输出合同（修改清单/事实核查/未决问题）
-            output = self._expression_output_contract(
+            checks = self._expression_checks(
                 contract,
+                expression_contract,
                 final_text,
-                fidelity_check,
-                review,
+                source_text,
+                ledger,
                 source_knowledge_base_object_ids,
             )
-            progress.append("生成审计信息")
+            progress.append("首稿检查")
             metrics = _ExpressionMetrics(
                 rule_count=draft.rule_count,
                 draft_latency_ms=draft_latency_ms,
             )
 
-            # 步骤 9：终态判定与结果投影（旧投影字段保持兼容）
+            # 步骤 7：触发裁决与一次定向修订（Issue 05；不触发或条件不
+            # 满足时原样返回首稿检查与未触发审计）
+            outcome = yield from self._run_targeted_revision(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                run_context,
+                expression_contract,
+                contract,
+                source_text,
+                source_label,
+                ledger,
+                checks,
+                source_knowledge_base_object_ids,
+                budget,
+                stop_event,
+                writing_call_count,
+                progress,
+            )
+            writing_call_count = outcome.writing_call_count
+
+            # 步骤 8：终态判定与结果投影（旧投影字段保持兼容）
             yield process(HumanizerProcessState.LOADING, "正在完成交付…")
             final_result = self._expression_finalize(
                 account_id,
@@ -608,14 +705,17 @@ class HumanizerService:
                 skill_version,
                 contract,
                 expression_contract,
-                final_text,
-                output,
-                fidelity_check,
-                review,
+                outcome.checks.final_text,
+                outcome.checks.output,
+                outcome.checks.fidelity_check,
+                outcome.checks.review,
                 references,
                 progress,
                 ledger,
                 metrics,
+                writing_call_count=writing_call_count,
+                revision_audit=outcome.audit,
+                contract_check=outcome.checks.contract_check,
             )
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.RESULT,
@@ -642,6 +742,7 @@ class HumanizerService:
                 retryable=exc.retryable,
                 process_steps=progress,
                 state=state,
+                writing_call_count=writing_call_count,
             )
             yield process(
                 state,
@@ -716,6 +817,267 @@ class HumanizerService:
                 retryable=True,
             )
         return final_text, latency_ms
+
+    def _expression_checks(
+        self,
+        contract: HumanizerTaskContract,
+        expression_contract: Any,
+        final_text: str,
+        source_text: str,
+        ledger: SourceLedger | None,
+        source_knowledge_base_object_ids: list[str],
+    ) -> _ExpressionChecks:
+        """一次候选正文（首稿或修订稿）的统一检查，供触发裁决与终态判定。
+
+        Issue 05：修订后重新执行同一版本来源硬门、任务契约检查与表达
+        审稿——保真失败仍停止交付，只有非关键风格警告按 WARN 语义交付。
+        """
+        # 来源保真硬门（Issue 02 失败关闭）
+        fidelity_check: FidelityCheckResult | None = None
+        if ledger is not None:
+            try:
+                fidelity_check = run_fidelity_check(
+                    ledger,
+                    final_text,
+                    contract_path=contract.path,
+                    allow_assumptions=contract.allow_assumptions,
+                )
+            except FidelityCheckError as exc:
+                raise HumanizerError(
+                    "fidelity_check_failed",
+                    f"来源保真检查未完成：{exc}",
+                    retryable=False,
+                ) from exc
+        # 任务契约检查：硬约束必须包含（Issue 05 触发裁决的契约遗漏输入）
+        contract_check = check_requirements(
+            contract.hard_constraints,
+            final_text,
+            source_label="硬约束 vs 候选正文",
+        )
+        # 表达审稿（软审稿，只报警不做机械替换）
+        review = run_expression_review(
+            final_text,
+            contract=expression_contract,
+            source_text=(
+                source_text if contract.path == HumanizerPath.REWRITE else ""
+            ),
+            ledger=ledger,
+        )
+        # 确定性适配器生成输出合同（修改清单/事实核查/未决问题）
+        output = self._expression_output_contract(
+            contract,
+            final_text,
+            fidelity_check,
+            review,
+            source_knowledge_base_object_ids,
+        )
+        return _ExpressionChecks(
+            final_text=final_text,
+            fidelity_check=fidelity_check,
+            contract_check=contract_check,
+            review=review,
+            output=output,
+        )
+
+    def _run_targeted_revision(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        run_context: Any,
+        expression_contract: Any,
+        contract: HumanizerTaskContract,
+        source_text: str,
+        source_label: str,
+        ledger: SourceLedger | None,
+        checks: _ExpressionChecks,
+        source_knowledge_base_object_ids: list[str],
+        budget: RunBudget | None,
+        stop_event: Any | None,
+        writing_call_count: int,
+        progress: list[str],
+    ) -> Iterator[_RevisionOutcome]:
+        """Issue 05 触发裁决与一次定向修订（生成器，最后返回执行结果）。
+
+        不触发或条件不满足（开关关闭/额度用尽/用户停止/预算不足）时返回
+        首稿检查与未触发审计；触发且修订成功时返回修订稿检查（同一版本
+        硬门/契约/审稿重跑）；修订调用失败时返回首稿检查并记录跳过原因。
+        绝不循环调用，绝不把未通过稿标为成功。
+        """
+        adjudication = adjudicate_revision(
+            fidelity_check=checks.fidelity_check,
+            contract_check=checks.contract_check,
+            review=checks.review,
+        )
+        audit = HumanizerRevisionAudit(
+            revision_version=REVISION_POLICY_VERSION,
+            triggered=adjudication.triggered,
+            trigger_code=(
+                adjudication.trigger_codes[0]
+                if adjudication.trigger_codes
+                else None
+            ),
+            problem_count=len(adjudication.problems),
+            draft_fidelity_blocking=(
+                len(checks.fidelity_check.blocking_failures)
+                if checks.fidelity_check is not None
+                else 0
+            ),
+            draft_contract_omissions=(
+                len(checks.contract_check.blocking_conflicts)
+                + len(checks.contract_check.needs_human)
+            ),
+            draft_warning_count=checks.review.summary.warning_count,
+        )
+
+        def skipped(reason: str) -> _RevisionOutcome:
+            audit.skipped_reason = reason
+            return _RevisionOutcome(checks, audit, writing_call_count)
+
+        if not adjudication.triggered:
+            return _RevisionOutcome(checks, audit, writing_call_count)
+        if not REVISION_CAPABILITY_ENABLED:
+            return skipped("capability_disabled")
+        if writing_call_count >= WRITING_CALL_LIMIT:
+            return skipped("call_limit_reached")
+        if stop_event is not None and stop_event.is_set():
+            return skipped("user_stopped")
+        if budget is not None and budget.remaining_ms() < REVISION_BUDGET_MS:
+            return skipped("budget_insufficient")
+
+        # 修订请求只含待修问题（code/位置/证据/目标）与必要上下文，不包含
+        # 已通过项、全量规则清单或与当前问题无关的体裁规则（Issue 05 AC5）。
+        prompt = compile_revision_prompt(
+            expression_contract,
+            draft_text=checks.final_text,
+            problems=adjudication.problems,
+            ledger=ledger,
+            source_text=source_text,
+            source_label=source_label,
+        )
+        yield HumanizerRunEvent(
+            kind=HumanizerRunKind.PROCESS,
+            state=HumanizerProcessState.LOADING,
+            step_label="正在定向修订…",
+            detail=(
+                f"发现 {len(adjudication.problems)} 个可修复问题，"
+                "按清单做一次定向修订。"
+            ),
+            progress_steps=list(progress),
+        )
+        try:
+            revised_text, extra_tokens, extra_latency_ms = self._invoke_revision_model(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                run_context,
+                prompt.system_prompt,
+                source_text,
+            )
+        except HumanizerError as exc:
+            audit.skipped_reason = f"model_error:{exc.code}"
+            return _RevisionOutcome(checks, audit, writing_call_count)
+        writing_call_count += 1
+        progress.append("定向修订")
+        yield HumanizerRunEvent(
+            kind=HumanizerRunKind.DRAFT,
+            draft_text=revised_text,
+            writing_call_count=writing_call_count,
+            progress_steps=list(progress),
+        )
+        # 修订后重新执行同一版本来源硬门、任务契约检查与表达审稿
+        try:
+            revised_checks = self._expression_checks(
+                contract,
+                expression_contract,
+                revised_text,
+                source_text,
+                ledger,
+                source_knowledge_base_object_ids,
+            )
+        except HumanizerError:
+            audit.skipped_reason = "recheck_failed"
+            return _RevisionOutcome(checks, audit, writing_call_count)
+        audit.revised_fidelity_blocking = (
+            len(revised_checks.fidelity_check.blocking_failures)
+            if revised_checks.fidelity_check is not None
+            else 0
+        )
+        audit.revised_contract_omissions = (
+            len(revised_checks.contract_check.blocking_conflicts)
+            + len(revised_checks.contract_check.needs_human)
+        )
+        audit.revised_warning_count = revised_checks.review.summary.warning_count
+        audit.extra_tokens = extra_tokens
+        audit.extra_latency_ms = extra_latency_ms
+        # 问题解决数：触发问题数减修订后仍存在的问题数（检查摘要级近似）
+        audit.resolved_problem_count = max(
+            0,
+            len(adjudication.problems)
+            - (
+                audit.revised_fidelity_blocking
+                + audit.revised_contract_omissions
+                + audit.revised_warning_count
+            ),
+        )
+        return _RevisionOutcome(revised_checks, audit, writing_call_count)
+
+    def _invoke_revision_model(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        run_context: Any,
+        system_prompt: str,
+        source_text: str,
+    ) -> tuple[str, int | None, int]:
+        """一次定向修订调用：输出合同只有完整候选正文（Issue 05）。
+
+        返回（正文, 额外 token, 修订延迟毫秒）。token 来自调用 usage
+        （缺失为 None），正文与载荷不进普通日志。
+        """
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": source_text.strip() or "请按上述要求修订正文。",
+                },
+            ],
+            "json_schema": REVISION_OUTPUT_JSON_SCHEMA,
+            # 修订比首稿更保守：最小修改，温度略低避免过度重写
+            "temperature": 0.3,
+            "max_tokens": REVISION_MAX_TOKENS,
+        }
+        started = perf_counter()
+        call_result = self._gateway.invoke(
+            HUMANIZER_CAPABILITY_NAME,
+            HUMANIZER_CAPABILITY_VERSION,
+            run_context,
+            payload,
+        )
+        latency_ms = int((perf_counter() - started) * 1000)
+        if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
+            raise HumanizerError(
+                call_result.error_code or "humanizer_revision_failed",
+                call_result.error_message or "定向修订失败，请重试。",
+                retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
+            )
+        raw = call_result.output or {}
+        final_text = str(raw.get("final_text") or "").strip()
+        if not final_text:
+            raise HumanizerError(
+                "empty_output",
+                "修订结果缺少正文，请重试。",
+                retryable=True,
+            )
+        usage = getattr(call_result.lock, "usage", None)
+        extra_tokens = None
+        if isinstance(usage, dict):
+            extra_tokens = int(usage.get("prompt_tokens") or 0) + int(
+                usage.get("completion_tokens") or 0
+            )
+        return final_text, extra_tokens, latency_ms
 
     def _expression_output_contract(
         self,
@@ -873,8 +1235,16 @@ class HumanizerService:
         progress: list[str],
         ledger: SourceLedger | None,
         metrics: _ExpressionMetrics,
+        writing_call_count: int = 0,
+        revision_audit: HumanizerRevisionAudit | None = None,
+        contract_check: FactLockCheckResult | None = None,
     ) -> HumanizerResultProjection:
-        """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。"""
+        """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。
+
+        Issue 05：写作调用计数与修订审计随投影持久化（重试恢复沿用计数）；
+        修订后仍有关键保真失败时停止交付，只有非关键风格警告按 WARN 交付
+        并展示具体风险（契约遗漏同样展示，不静默隐藏）。
+        """
         genre_check = check_genre(final_text, contract.genre)
         fidelity_blocking = (
             list(fidelity_check.blocking_failures)
@@ -902,6 +1272,19 @@ class HumanizerService:
             output = output.model_copy(
                 update={"quality_status": HumanizerQualityStatus.WARN}
             )
+        # Issue 05 审查修复：契约遗漏（硬约束未满足）是具体风险，交付时
+        # 展示而非静默隐藏；与风格警告共享 WARN 语义。
+        if contract_check is not None:
+            omissions = (
+                list(contract_check.blocking_conflicts)
+                + list(contract_check.needs_human)
+            )
+            if omissions:
+                for omission in omissions[:5]:
+                    quality_warnings.append(f"任务契约遗漏：{omission}")
+                output = output.model_copy(
+                    update={"quality_status": HumanizerQualityStatus.WARN}
+                )
 
         status = HumanizerResultStatus.DONE
         state = HumanizerProcessState.DONE
@@ -917,6 +1300,21 @@ class HumanizerService:
                 + "。恢复方式：删除或修正无来源的新增内容后重试"
                 "（任务输入与附件已保留）。"
             )
+
+        # Issue 05 终态标注：修订实际执行后仍保真失败 → 停止交付；修订
+        # 执行且通过 → 交付修订稿；未触发或被跳过（预算/停止/开关/模型
+        # 失败）→ 交付首稿的真实检查状态（首稿本身保真失败时同样停止交付）。
+        if revision_audit is not None:
+            if not revision_audit.triggered:
+                revision_audit.final_state = "deliver_draft"
+            elif revision_audit.skipped_reason is not None:
+                revision_audit.final_state = (
+                    "stop_delivery" if fidelity_blocking else "deliver_draft"
+                )
+            else:
+                revision_audit.final_state = (
+                    "stop_delivery" if fidelity_blocking else "deliver_revised"
+                )
 
         result = HumanizerResultProjection(
             task_id=assistant_message_id,
@@ -936,6 +1334,8 @@ class HumanizerService:
             genre_check=genre_check.summary(),
             quality_warnings=quality_warnings,
             repair_attempts=0,
+            writing_call_count=writing_call_count,
+            revision=revision_audit,
             process_state=state,
             process_steps=list(progress),
             error_code=error_code,
@@ -955,6 +1355,8 @@ class HumanizerService:
             expression_contract=expression_contract,
             expression_review=review,
             expression_metrics=metrics,
+            revision_audit=revision_audit,
+            writing_call_count=writing_call_count,
         )
         return result
 
@@ -1521,20 +1923,25 @@ class HumanizerService:
         checkpoint: _ReviewCheckpoint,
         budget: RunBudget | None,
         fact_lock_source: str,
-    ) -> tuple[int, _ReviewCheckpoint]:
-        """软门定向修复：至多一次、受总预算约束；失败则交付原草稿。
+        writing_call_count: int,
+    ) -> tuple[int, int, _ReviewCheckpoint]:
+        """软门定向修复：至多一次、受总预算与写作调用上限约束；失败交付原草稿。
 
         只针对未满足的体裁规则做一次有预算的修复调用；预算不足、修复
-        调用失败或修复稿复核失败时返回 ``(0 或 1, 原 checkpoint)``——
-        正文与警告照常交付，绝不循环重生成（Issue 07）。
+        调用失败或修复稿复核失败时返回 ``(0 或 1, 原计数, 原 checkpoint)``——
+        正文与警告照常交付，绝不循环重生成（Issue 07）。Issue 05：修复
+        调用计入写作调用上限（首稿 1 + 修复 1 = 2），计数成功产出后递增。
         """
         failed_rules = [
             f.label for f in checkpoint.genre_check.findings if not f.passed
         ]
         if not failed_rules:
-            return 0, checkpoint
+            return 0, writing_call_count, checkpoint
         if budget is None or not budget.can_retry():
-            return 0, checkpoint
+            return 0, writing_call_count, checkpoint
+        if writing_call_count >= WRITING_CALL_LIMIT:
+            # 额度用尽：修复调用未发生，attempts 记 0（与预算不足语义一致）
+            return 0, writing_call_count, checkpoint
         entered = budget.enter(RunStage.REPAIR)
         try:
             repair_result = self._invoke_model(
@@ -1559,11 +1966,12 @@ class HumanizerService:
         except HumanizerError:
             if entered:
                 budget.exit(RunStage.REPAIR, result=RESULT_FAILED, count=1)
-            return 1, checkpoint
+            return 1, writing_call_count, checkpoint
+        writing_call_count += 1
         try:
             repaired = self._coerce_output(repair_result.output or {})
             if not repaired.final_text.strip():
-                return 1, checkpoint
+                return 1, writing_call_count, checkpoint
             repaired = repaired.model_copy(
                 update={
                     "source_attachment_ids": list(checkpoint.output.source_attachment_ids),
@@ -1572,7 +1980,7 @@ class HumanizerService:
                     ),
                 }
             )
-            return 1, self._review_checks(
+            return 1, writing_call_count, self._review_checks(
                 skill_input.contract,
                 repaired,
                 source_text,
@@ -1582,7 +1990,7 @@ class HumanizerService:
             )
         except (HumanizerError, TypeError, ValueError):
             # 修复稿不可解析/合同不完整/复核失败：交付原草稿与具体警告
-            return 1, checkpoint
+            return 1, writing_call_count, checkpoint
 
     def _finalize_result(
         self,
@@ -1878,6 +2286,7 @@ class HumanizerService:
         retryable: bool,
         process_steps: list[str],
         state: HumanizerProcessState,
+        writing_call_count: int | None = None,
     ) -> HumanizerResultProjection:
         self._audit(
             account_id,
@@ -1900,6 +2309,9 @@ class HumanizerService:
             expression_contract=skill_input.expression_contract,
             status=HumanizerResultStatus.ERROR,
             output=None,
+            # Issue 05：失败投影保留持久写作调用计数——重试恢复沿用计数，
+            # 服务重启或再次重试不能重新获得修订额度。
+            writing_call_count=writing_call_count or 0,
             process_state=state,
             process_steps=process_steps,
             error_code=error_code,
@@ -1922,6 +2334,8 @@ class HumanizerService:
         expression_contract: Any = None,
         expression_review: ExpressionReviewReport | None = None,
         expression_metrics: _ExpressionMetrics | None = None,
+        revision_audit: HumanizerRevisionAudit | None = None,
+        writing_call_count: int | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -2037,6 +2451,84 @@ class HumanizerService:
                         if expression_metrics is not None
                         else None
                     ),
+                    # Issue 05 定向修订观测：触发/触发码/问题数/解决数/额外
+                    # token 与延迟/终态（脱敏计数，不记录正文）
+                    "revision_version": (
+                        revision_audit.revision_version
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_triggered": (
+                        revision_audit.triggered
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_trigger_code": (
+                        revision_audit.trigger_code
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_problem_count": (
+                        revision_audit.problem_count
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_draft_blocking": (
+                        revision_audit.draft_fidelity_blocking
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_draft_omissions": (
+                        revision_audit.draft_contract_omissions
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_draft_warnings": (
+                        revision_audit.draft_warning_count
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_revised_blocking": (
+                        revision_audit.revised_fidelity_blocking
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_revised_omissions": (
+                        revision_audit.revised_contract_omissions
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_revised_warnings": (
+                        revision_audit.revised_warning_count
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_resolved": (
+                        revision_audit.resolved_problem_count
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_extra_tokens": (
+                        revision_audit.extra_tokens
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_extra_latency_ms": (
+                        revision_audit.extra_latency_ms
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_final_state": (
+                        revision_audit.final_state
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "revision_skipped_reason": (
+                        revision_audit.skipped_reason
+                        if revision_audit is not None
+                        else None
+                    ),
+                    "writing_call_count": writing_call_count,
                 },
             )
 
