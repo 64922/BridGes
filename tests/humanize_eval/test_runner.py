@@ -13,6 +13,7 @@ from bridges.humanize_eval.generation import (
     GenerationResult,
     GenerationStatus,
 )
+from bridges.humanize_eval.judges import JudgePreference
 from bridges.humanize_eval.holdout import HoldoutController
 from bridges.humanize_eval.runner import (
     HumanizeRunError,
@@ -22,6 +23,9 @@ from bridges.humanize_eval.runner import (
 
 SUT_IDS = ("current-production", "candidate", "plain-model", "humanizer-zh-reference")
 TOTAL_CASES = len(HUMANIZE_CASES)
+
+#: 测试用：canary 错误应答偏好（偏好 A 违反 canary 期望）。
+F_JUDGE_PREF_A = JudgePreference.A
 
 
 def _make_runner(outdir: Path, workspace: Path, **kwargs) -> HumanizeRunner:
@@ -231,7 +235,7 @@ def test_lock_update_rejects_value_tampering(tmp_path: Path):
 
 
 def test_major_fidelity_failure_blocks_passed(tmp_path: Path, workspace: Path):
-    """MAJOR 保真失败（如数字+单位丢失）也必须阻止通过。"""
+    """MAJOR 保真失败（如数字+单位丢失）直接判 failed（硬门，多数票不能放行）。"""
     from conftest import ARTICLE_FAITHFUL_OUTPUT
 
     class MajorFailurePort:
@@ -250,7 +254,7 @@ def test_major_fidelity_failure_blocks_passed(tmp_path: Path, workspace: Path):
 
     runner = _make_runner(tmp_path, workspace, port=MajorFailurePort(), judges=[])
     summary = runner.run()
-    assert summary.verdict == "inconclusive"
+    assert summary.verdict == "failed"
     assert any("保真" in r for r in summary.reasons)
     assert summary.fidelity_failures, "MAJOR 保真失败应被记录"
 
@@ -351,23 +355,221 @@ def test_holdout_hash_change_blocks_run(tmp_path: Path, workspace: Path):
 def test_parameters_change_changes_lock_identity(tmp_path: Path, workspace: Path):
     """模型参数不同 => 锁身份不同（同配置才是同一锁）。"""
     from bridges.humanize_eval.generation import GenerationParameters
+    from bridges.humanize_eval.registry import build_default_registry
     from bridges.humanize_eval.suts import build_suts
 
     runner = _make_runner(tmp_path, workspace)
+    registry = build_default_registry(generation_model_id="qwen3.7-plus")
     suts_a = build_suts(workspace, params=GenerationParameters(temperature=0.5))
     suts_b = build_suts(workspace, params=GenerationParameters(temperature=0.9))
-    lock_a = runner._lock(suts_a, run_count=1)
-    lock_b = runner._lock(suts_b, run_count=1)
+    lock_a = runner._lock(suts_a, run_count=1, registry=registry)
+    lock_b = runner._lock(suts_b, run_count=1, registry=registry)
     assert lock_a.digest() != lock_b.digest()
 
 
 def test_skill_hash_change_changes_lock(tmp_path: Path, workspace: Path):
     """SKILL/策略哈希变化会改变运行锁身份（比较前完整性）。"""
+    from bridges.humanize_eval.registry import build_default_registry
     from bridges.humanize_eval.suts import build_suts
 
     runner = _make_runner(tmp_path, workspace)
+    registry = build_default_registry(generation_model_id="qwen3.7-plus")
     suts = build_suts(workspace)
-    lock_a = runner._lock(suts, run_count=1)
+    lock_a = runner._lock(suts, run_count=1, registry=registry)
     altered = [s.model_copy(update={"policy_sha256": "f" * 64}) for s in suts]
-    lock_b = runner._lock(altered, run_count=1)
+    lock_b = runner._lock(altered, run_count=1, registry=registry)
     assert lock_a.digest() != lock_b.digest()
+
+
+def test_lock_records_registry_and_judge_prompt_hashes(
+    tmp_path: Path, workspace: Path
+):
+    """运行锁记录 registry digest 与裁判提示/schema/参数哈希（AC-6）。"""
+    runner = _make_runner(tmp_path, workspace)
+    summary = runner.run()
+    lock = json.loads(
+        (tmp_path / "runs" / summary.run_id / "lock.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert lock["registry_digest"], "运行锁缺少 registry 哈希"
+    assert lock["judge_prompt_sha"], "运行锁缺少裁判提示哈希"
+    assert lock["contract_versions"]["packet_schema"]
+    assert lock["contract_versions"]["judge_schema"]
+
+
+def test_canary_failure_blocks_panel(tmp_path: Path, workspace: Path):
+    """裁判 canary 硬门未通过 → 不进入正式 panel → inconclusive。"""
+    from bridges.humanize_eval.judges import FakeSystemJudge as F
+
+    judges = [
+        F(judge_id="family-a-judge-1", model_family="family-a"),
+        F(judge_id="family-b-judge-1", model_family="family-b"),
+        F(
+            judge_id="family-c-judge-1",
+            model_family="family-c",
+            scripted_preferences={"canary-fact-break": F_JUDGE_PREF_A},
+        ),
+    ]
+    runner = _make_runner(tmp_path, workspace, judges=judges)
+    summary = runner.run()
+    assert summary.verdict == "inconclusive"
+    assert summary.canary_passed["family-c-judge-1"] is False
+    assert any("canary" in reason for reason in summary.reasons)
+
+
+def test_judge_exception_does_not_crash_run(tmp_path: Path, workspace: Path):
+    """AC-14：裁判异常只产生无效裁决与原因，绝不中断整个 run。"""
+
+    class ExplodingJudge:
+        judge_id = "family-a-boom"
+        judge_version = "v1"
+        model_family = "family-a"
+
+        def judge(self, item, order):
+            raise RuntimeError("裁判模型网络故障")
+
+    judges = [
+        ExplodingJudge(),  # type: ignore[list-item]
+        *make_fake_judges()[:2],
+    ]
+    runner = HumanizeRunner(
+        outdir=tmp_path,
+        workspace=workspace,
+        port=FakeGenerationPort(),
+        judges=judges,  # type: ignore[arg-type]
+        run_canary_gate=False,
+    )
+    summary = runner.run()
+    # 爆炸裁判的裁决全部无效；run 不崩溃，结论为 inconclusive。
+    assert summary.verdict == "inconclusive"
+    assert any("无效裁决" in reason for reason in summary.reasons)
+    assert summary.invalid_verdicts > 0
+
+
+def test_canary_result_persisted_and_baseline_dir_detects_drift(
+    tmp_path: Path, workspace: Path
+):
+    """AC-11：canary 结果落盘；基线目录自动加载检测漂移。"""
+    from bridges.humanize_eval.judges import FakeSystemJudge as F
+
+    judges = make_fake_judges()
+    first_runner = HumanizeRunner(
+        outdir=tmp_path / "out1",
+        workspace=workspace,
+        port=FakeGenerationPort(),
+        judges=judges,
+    )
+    first = first_runner.run()
+    canary_dir = tmp_path / "out1" / "runs" / first.run_id / "canary"
+    # 基线目录 = 第一次运行的 canary 证据（冻结基线）。
+    baseline_file = canary_dir / "family-a-judge-1.json"
+    assert baseline_file.is_file(), "canary 结果应落盘"
+
+    # 第二次运行：judge-1 偏好翻转（漂移）→ 基线目录自动检测 → 停用。
+    drifted = F(
+        judge_id="family-a-judge-1",
+        model_family="family-a",
+        provider="provider-a",
+        scripted_preferences={"canary-protocol-leak": "A"},
+    )
+    judges[0] = drifted
+    registry = _make_registry_for(judges, drift_threshold=0.1)
+    second_runner = HumanizeRunner(
+        outdir=tmp_path / "out2",
+        workspace=workspace,
+        port=FakeGenerationPort(),
+        judges=judges,
+        registry=registry,
+        canary_baseline_dir=canary_dir,
+    )
+    second = second_runner.run()
+    assert second.canary_passed["family-a-judge-1"] is False
+    assert any("漂移" in reason for reason in second.reasons)
+
+
+def test_sealed_mapping_read_audited(tmp_path: Path, workspace: Path):
+    """Observability：sealed mapping 读取有机器审计（聚合器读取记录）。"""
+    runner = HumanizeRunner(
+        outdir=tmp_path,
+        workspace=workspace,
+        port=FakeGenerationPort(),
+        judges=make_fake_judges(),
+    )
+    summary = runner.run()
+    audit_file = tmp_path / "runs" / summary.run_id / "mappings" / "audit.log"
+    assert audit_file.is_file()
+    audit = audit_file.read_text(encoding="utf-8").strip()
+    assert "sealed_mapping_read" in audit
+    assert "aggregator" in audit
+
+
+def _make_registry_for(judges, *, drift_threshold: float):
+    from bridges.humanize_eval.generation import GenerationParameters
+    from bridges.humanize_eval.registry import JudgeRegistry, register_judge
+
+    registry = JudgeRegistry(
+        generation_family="qwen", drift_threshold=drift_threshold
+    )
+    for judge in judges:
+        registry = register_judge(
+            registry,
+            judge_id=judge.judge_id,
+            model_family=judge.model_family,
+            provider=judge.provider,
+            model_id="fake",
+            judge_version="v1",
+            system_prompt_sha256="sha",
+            schema_version="judge-schema-v2",
+            parameters=GenerationParameters(),
+        )
+    return registry
+
+
+def test_canary_drift_disables_judge(tmp_path: Path, workspace: Path):
+    """相对冻结基线漂移超阈值 → 裁判停用 → inconclusive。"""
+    from bridges.humanize_eval.canary import run_canaries
+    from bridges.humanize_eval.generation import GenerationParameters
+    from bridges.humanize_eval.judges import FakeSystemJudge as F
+    from bridges.humanize_eval.registry import JudgeRegistry, register_judge
+
+    judges = make_fake_judges()
+    # 冻结基线：judge-1 通过全部 canary（protocol-leak 观测偏好 TIE）。
+    baseline = run_canaries(judges[0])
+    # 新版本仍通过 canary（protocol-leak 无固定偏好要求），但偏好翻转
+    # （TIE -> A）→ 相对基线漂移，禁止进入正式 panel。
+    drifted_judge = F(
+        judge_id="family-a-judge-1",
+        model_family="family-a",
+        provider="provider-a",
+        scripted_preferences={"canary-protocol-leak": "A"},
+    )
+    judges[0] = drifted_judge
+    # 预注册低漂移阈值（1/8 单 canary 翻转即可触发）。
+    registry = JudgeRegistry(
+        generation_family="qwen", drift_threshold=0.1
+    )
+    for judge in judges:
+        registry = register_judge(
+            registry,
+            judge_id=judge.judge_id,
+            model_family=judge.model_family,
+            provider=judge.provider,
+            model_id="fake",
+            judge_version="v1",
+            system_prompt_sha256="sha",
+            schema_version="judge-schema-v2",
+            parameters=GenerationParameters(),
+        )
+    runner = HumanizeRunner(
+        outdir=tmp_path,
+        workspace=workspace,
+        port=FakeGenerationPort(),
+        judges=judges,
+        registry=registry,
+        canary_baseline=baseline,
+    )
+    summary = runner.run()
+    assert summary.canary_passed["family-a-judge-1"] is False
+    assert any("漂移" in reason for reason in summary.reasons)
+    assert summary.verdict == "inconclusive"

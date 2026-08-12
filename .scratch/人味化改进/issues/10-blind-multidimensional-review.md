@@ -76,3 +76,4 @@ User stories: US-01、US-02、US-04、US-06、US-07
 
 - 2026-08-12：现有 ID 和标签元数据可能泄漏内部比较身份，本项按 P0 处理。
 - 2026-08-12：用户要求完全取消人工评审；正式质量结论改由隔离多模型 panel 自动产生，分歧不设置人工仲裁。
+- 2026-08-12：实现完成（分支 worktree-10-blind-multidimensional-review，145 pytest 通过）。新增 `registry.py`（版本化 judge registry：panel 预注册、模型家族/提供方、canary 门）、`canary.py`（8 类冻结 canary 硬门 100% 通过 + 漂移检测）、`aggregator.py`（预注册聚合：分歧/可靠性/保真硬门优先）；升级 `packet.py`（SealedMapping 替代 OrganizerMapping、结构化最小上下文、递归泄漏扫描）、`judges.py`（非平局必须有效 span + reason code、裁判参数入运行锁）、`runner.py`（canary 门接入、泄漏失败不调用裁判、failed 语义、自动裁判标注）；`fidelity.py` URL 正则修复（URL 后接中文误吞导致的假失败）；旧盲评集 legacy 只读标记（`BlindReviewSet.legacy` + 提交拒绝）。

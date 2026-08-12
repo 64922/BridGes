@@ -22,6 +22,16 @@ from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
 
+def _as_legacy_view(review_set: BlindReviewSet) -> BlindReviewSet:
+    """读取视图：含人工提交的旧盲评集只读标记为 legacy（Issue 10）。
+
+    不修改存储内容；旧集以只读视图展示，不进入新的隔离多模型自动统计。
+    """
+    if review_set.legacy or not review_set.submissions:
+        return review_set
+    return review_set.model_copy(update={"legacy": True})
+
+
 class EvaluationRepositoryError(Exception):
     """评测仓库领域错误。"""
 
@@ -215,7 +225,9 @@ class EvaluationRepository:
         ).fetchone()
         if row is None:
             return None
-        return BlindReviewSet.model_validate_json(str(row["set_json"]))
+        return _as_legacy_view(
+            BlindReviewSet.model_validate_json(str(row["set_json"]))
+        )
 
     def save_review_submission(
         self, review_set_id: str, set_json: dict[str, Any]
@@ -231,7 +243,10 @@ class EvaluationRepository:
             "SELECT set_json FROM eval_blind_reviews WHERE lock_id = ? ORDER BY created_at",
             (lock_id,),
         ).fetchall()
-        return [BlindReviewSet.model_validate_json(str(row["set_json"])) for row in rows]
+        return [
+            _as_legacy_view(BlindReviewSet.model_validate_json(str(row["set_json"])))
+            for row in rows
+        ]
 
 
 __all__ = ["EvaluationRepository", "EvaluationRepositoryError"]
