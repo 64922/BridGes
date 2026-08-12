@@ -1,6 +1,6 @@
 # Issue 06：实现证据安全修订模式
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -68,3 +68,4 @@ User stories: US-02、US-04、US-05
 ## Comments
 
 - 2026-08-12：用户确认普通人味化不静默改变结论，证据安全修订必须显式授权并展示差异。
+- 2026-08-12：完成。新增 `evidence_safety.py`（九类 claim 分类 + 五类风险检测 + 修订提示编译 + 确定性 diff）与 `contracts/evidence_safety.py`；默认 PRESERVE 只生成独立风险项不改变正文；EVIDENCE_SAFE 至多一次定向修订（修订后重跑来源硬门与受保护项检查，失败保持首稿返回 hold_for_user）；结果投影 `evidence_safe` 稳定结构供 Issue 08；审计只记录模式/风险/修订计数。294 条 humanizer 测试通过（新增 48 条：核心 38 + 服务集成 10），ruff 全过；chat/contracts/profiles 既有失败清单与 main 基线一致。ADR 0011 追加授权修订的第二次调用条款，SKILL.md 与 CLEAN_ROOM.md 同步更新。

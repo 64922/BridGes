@@ -24,6 +24,12 @@ from bridges.ai.model_gateway import ModelGateway
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.budget import RESULT_FAILED, RunBudget, RunStage
 from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.evidence_safety import (
+    EvidenceRevisionChange,
+    EvidenceRevisionMode,
+    EvidenceRevisionStatus,
+    EvidenceSafeReport,
+)
 from bridges.contracts.expression_review import (
     ExpressionReviewReport,
     ReviewSeverity,
@@ -58,6 +64,11 @@ from bridges.skills.humanizer.draft_compiler import (
     DRAFT_MAX_TOKENS,
     DRAFT_OUTPUT_JSON_SCHEMA,
     compile_draft_prompt,
+)
+from bridges.skills.humanizer.evidence_safety import (
+    build_revision_prompt,
+    compare_claim_changes,
+    run_evidence_safety,
 )
 from bridges.skills.humanizer.expression_review import run_expression_review
 from bridges.skills.humanizer.factlock import _KIND_LABEL_CN as _KIND_CN
@@ -186,6 +197,7 @@ class _ExpressionMetrics:
 
     rule_count: int = 0
     draft_latency_ms: int | None = None
+    revision_latency_ms: int | None = None
 
 
 class HumanizerService:
@@ -537,7 +549,7 @@ class HumanizerService:
             )
             progress.append("编译首稿规则")
 
-            # 步骤 5：一次模型调用，模型只产出候选正文（至多一次）
+            # 步骤 5：一次模型调用，模型只产出候选正文（首稿，至多一次）
             yield process(HumanizerProcessState.LOADING, "正在起草正文…")
             final_text, draft_latency_ms = self._invoke_draft_model(
                 account_id,
@@ -554,7 +566,86 @@ class HumanizerService:
                 progress_steps=list(progress),
             )
 
-            # 步骤 6：来源保真硬门（Issue 02 失败关闭）
+            # 步骤 6：证据安全（Issue 06）。
+            # 默认模式只分类 claim 并生成独立风险项，不改变正文；只有契约
+            # 进入 EVIDENCE_SAFE 且存在风险时才执行至多一次定向修订，修订
+            # 后重新通过来源硬门与受保护项检查才应用，否则保持首稿并返回
+            # 稳定的 hold_for_user 风险状态。
+            yield process(HumanizerProcessState.LOADING, "正在检查证据边界…")
+            evidence_report: EvidenceSafeReport | None = None
+            revision_latency_ms: int | None = None
+            if ledger is not None:
+                evidence_report = run_evidence_safety(
+                    final_text,
+                    contract=expression_contract,
+                    ledger=ledger,
+                )
+                progress.append("证据边界检查")
+                if (
+                    expression_contract.evidence_revision_mode
+                    == EvidenceRevisionMode.EVIDENCE_SAFE
+                    and evidence_report.risks
+                ):
+                    yield process(
+                        HumanizerProcessState.LOADING, "正在执行证据安全修订…"
+                    )
+                    try:
+                        revision_prompt = build_revision_prompt(
+                            expression_contract,
+                            final_text,
+                            evidence_report.risks,
+                            ledger,
+                        )
+                        revised_text, revision_latency_ms = self._invoke_draft_model(
+                            account_id,
+                            conversation_id,
+                            assistant_message_id,
+                            run_context,
+                            revision_prompt,
+                            final_text,
+                        )
+                        revision_fidelity = run_fidelity_check(
+                            ledger,
+                            revised_text,
+                            contract_path=contract.path,
+                            allow_assumptions=contract.allow_assumptions,
+                        )
+                    except (FidelityCheckError, HumanizerError):
+                        # 修订调用或硬门失败：保持首稿，稳定返回待用户确认；
+                        # 账本版本/哈希等系统问题由步骤 7 最终保真硬门失败
+                        # 关闭兜底（同一账本，不会静默放行）。
+                        revision_latency_ms = None
+                        evidence_report = self._hold_evidence_report(
+                            evidence_report, []
+                        )
+                        progress.append("证据安全修订保持原文")
+                    else:
+                        changes, conflicts = compare_claim_changes(
+                            final_text, revised_text, evidence_report.claims
+                        )
+                        applied = (
+                            revision_fidelity.passed
+                            and not conflicts
+                            and not any(
+                                change.needs_user_confirmation
+                                for change in changes
+                            )
+                        )
+                        if applied:
+                            final_text = revised_text
+                            evidence_report = self._apply_evidence_report(
+                                evidence_report, changes
+                            )
+                            progress.append("证据安全修订已应用")
+                        else:
+                            evidence_report = self._hold_evidence_report(
+                                evidence_report,
+                                changes,
+                                conflicts=conflicts,
+                            )
+                            progress.append("证据安全修订保持原文")
+
+            # 步骤 7：来源保真硬门（Issue 02 失败关闭，对最终交付文本执行）
             yield process(HumanizerProcessState.LOADING, "正在检查来源保真…")
             fidelity_check = None
             if ledger is not None:
@@ -573,7 +664,7 @@ class HumanizerService:
                     ) from exc
             progress.append("来源保真检查")
 
-            # 步骤 7：表达审稿（软审稿，只报警不做机械替换）
+            # 步骤 8：表达审稿（软审稿，只报警不做机械替换）
             review = run_expression_review(
                 final_text,
                 contract=expression_contract,
@@ -584,7 +675,7 @@ class HumanizerService:
             )
             progress.append("表达审稿")
 
-            # 步骤 8：确定性适配器生成输出合同（修改清单/事实核查/未决问题）
+            # 步骤 9：确定性适配器生成输出合同（修改清单/事实核查/未决问题）
             output = self._expression_output_contract(
                 contract,
                 final_text,
@@ -596,9 +687,10 @@ class HumanizerService:
             metrics = _ExpressionMetrics(
                 rule_count=draft.rule_count,
                 draft_latency_ms=draft_latency_ms,
+                revision_latency_ms=revision_latency_ms,
             )
 
-            # 步骤 9：终态判定与结果投影（旧投影字段保持兼容）
+            # 步骤 10：终态判定与结果投影（旧投影字段保持兼容）
             yield process(HumanizerProcessState.LOADING, "正在完成交付…")
             final_result = self._expression_finalize(
                 account_id,
@@ -616,6 +708,7 @@ class HumanizerService:
                 progress,
                 ledger,
                 metrics,
+                evidence_report,
             )
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.RESULT,
@@ -873,6 +966,7 @@ class HumanizerService:
         progress: list[str],
         ledger: SourceLedger | None,
         metrics: _ExpressionMetrics,
+        evidence_report: EvidenceSafeReport | None = None,
     ) -> HumanizerResultProjection:
         """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。"""
         genre_check = check_genre(final_text, contract.genre)
@@ -882,6 +976,29 @@ class HumanizerService:
             else []
         )
         quality_warnings: list[str] = []
+        if evidence_report is not None:
+            revision_applied = (
+                evidence_report.revision_status
+                == EvidenceRevisionStatus.APPLIED
+            )
+            for risk in evidence_report.risks:
+                detail = (
+                    "已按证据安全修订处理"
+                    if revision_applied
+                    else "默认模式保持原文结论语义，未自动改写"
+                )
+                quality_warnings.append(
+                    f"证据风险「{risk.category}」：{risk.explanation}"
+                    f"（位置 {risk.location.start}-{risk.location.end}，{detail}）"
+                )
+            if (
+                evidence_report.revision_status
+                == EvidenceRevisionStatus.HOLD_FOR_USER
+            ):
+                quality_warnings.append(
+                    "证据安全修订未应用：修订未通过、材料不足或无法判定，"
+                    "正文保持原结论，请人工确认后决定是否调整。"
+                )
         if not review.no_change_recommended:
             for finding in review.findings:
                 if finding.severity in (
@@ -932,6 +1049,7 @@ class HumanizerService:
             source_ledger=ledger,
             fidelity_check=fidelity_check,
             expression_review=review,
+            evidence_safe=evidence_report,
             references=references,
             genre_check=genre_check.summary(),
             quality_warnings=quality_warnings,
@@ -955,8 +1073,57 @@ class HumanizerService:
             expression_contract=expression_contract,
             expression_review=review,
             expression_metrics=metrics,
+            evidence_safe=evidence_report,
         )
         return result
+
+    @staticmethod
+    def _apply_evidence_report(
+        report: EvidenceSafeReport,
+        changes: list[EvidenceRevisionChange],
+    ) -> EvidenceSafeReport:
+        """修订已应用：记录实质变化，状态置 applied。"""
+        return report.model_copy(
+            update={
+                "revisions": list(changes),
+                "revision_status": EvidenceRevisionStatus.APPLIED,
+                "summary": report.summary.model_copy(
+                    update={
+                        "revision_count": len(changes),
+                        "hold_for_user_count": 0,
+                        "protected_conflict_count": 0,
+                    }
+                ),
+            }
+        )
+
+    @staticmethod
+    def _hold_evidence_report(
+        report: EvidenceSafeReport,
+        changes: list[EvidenceRevisionChange],
+        *,
+        conflicts: list[str] | None = None,
+    ) -> EvidenceSafeReport:
+        """修订未应用：正文保持原文，返回稳定 hold_for_user 状态。
+
+        证据不足、来源冲突或无法判定时都走此路径；不为了让文本「更科学」
+        自动添加保守套话，也不进入人工审稿队列。
+        """
+        conflicts = conflicts or []
+        summary = report.summary
+        return report.model_copy(
+            update={
+                "revisions": list(changes),
+                "revision_status": EvidenceRevisionStatus.HOLD_FOR_USER,
+                "summary": summary.model_copy(
+                    update={
+                        "revision_count": len(changes),
+                        "hold_for_user_count": len(changes) + len(conflicts),
+                        "protected_conflict_count": len(conflicts),
+                    }
+                ),
+            }
+        )
 
     # ------------------------------------------------------------------
     # 来源解析
@@ -1922,6 +2089,7 @@ class HumanizerService:
         expression_contract: Any = None,
         expression_review: ExpressionReviewReport | None = None,
         expression_metrics: _ExpressionMetrics | None = None,
+        evidence_safe: EvidenceSafeReport | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -2034,6 +2202,42 @@ class HumanizerService:
                     ),
                     "draft_latency_ms": (
                         expression_metrics.draft_latency_ms
+                        if expression_metrics is not None
+                        else None
+                    ),
+                    # Issue 06 证据安全：只记录模式/风险/修订/保持计数，不记录正文
+                    "evidence_mode": (
+                        evidence_safe.mode.value if evidence_safe is not None else None
+                    ),
+                    "evidence_claim_count": (
+                        evidence_safe.summary.claim_count if evidence_safe else 0
+                    ),
+                    "evidence_risk_count": (
+                        evidence_safe.summary.risk_count if evidence_safe else 0
+                    ),
+                    "evidence_risk_codes": (
+                        dict(evidence_safe.summary.by_risk_code)
+                        if evidence_safe
+                        else {}
+                    ),
+                    "evidence_revision_status": (
+                        evidence_safe.revision_status.value
+                        if evidence_safe is not None
+                        else None
+                    ),
+                    "evidence_revision_count": (
+                        evidence_safe.summary.revision_count if evidence_safe else 0
+                    ),
+                    "evidence_hold_for_user": (
+                        evidence_safe.summary.hold_for_user_count if evidence_safe else 0
+                    ),
+                    "evidence_protected_conflicts": (
+                        evidence_safe.summary.protected_conflict_count
+                        if evidence_safe
+                        else 0
+                    ),
+                    "revision_latency_ms": (
+                        expression_metrics.revision_latency_ms
                         if expression_metrics is not None
                         else None
                     ),
