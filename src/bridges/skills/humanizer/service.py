@@ -699,8 +699,20 @@ class HumanizerService:
             for ref in references
         ) or "（无：只能依赖原文，新增引用一律标记为需人工核实）"
         genre_doc = genre_rule_set(contract.genre)
-        required_lines = "；".join(rule.label for rule in genre_doc.required)
-        prohibited_lines = "；".join(rule.label for rule in genre_doc.prohibited)
+        if contract.genre is None:
+            # 未识别体裁：通用文章 profile，不强制任何必现元素（不落科普必现模板）。
+            # 文案从通用 profile 派生，避免与 genre_rules 的定义重复漂移。
+            genre_line = (
+                f"体裁：{genre_doc.display_name} profile。必含：（无，按任务需要选择表达手段）。"
+                "禁止：（无全局禁词）。"
+            )
+        else:
+            required_lines = "；".join(rule.label for rule in genre_doc.required)
+            prohibited_lines = "；".join(rule.label for rule in genre_doc.prohibited)
+            genre_line = (
+                f"体裁：{genre_doc.display_name}。必含：{required_lines}。"
+                f"禁止：{prohibited_lines}。体裁责任：{genre_doc.human_responsibility}"
+            )
         method_scene = (
             MethodScene.ARTICLE_REWRITE
             if contract.path == HumanizerPath.REWRITE
@@ -715,8 +727,7 @@ class HumanizerService:
 【任务边界】
 - 目标：在保持科学判断、证据强度、限定条件和引用关系的前提下，改进表达的自然度、任务适配度与可读性。
 - 禁止：规避 AI 检测、冒充真人、伪造个人经历、欺骗性代写；不虚构事实、论文或引用；不以牺牲科学事实换取口语化。
-- 体裁：{genre_doc.display_name}。必含：{required_lines}。禁止：{prohibited_lines}。
-- 体裁责任：{genre_doc.human_responsibility}
+- {genre_line}
 
 【方法体系（必须执行）】
 {method_block}
@@ -1050,6 +1061,7 @@ class HumanizerService:
             path=contract.path,
             genre=contract.genre,
             contract=contract,
+            expression_contract=skill_input.expression_contract,
             status=status,
             output=output if status != HumanizerResultStatus.ERROR else None,
             fact_lock_check=fact_lock_check,
@@ -1071,6 +1083,7 @@ class HumanizerService:
             contract,
             status,
             fact_lock_check,
+            expression_contract=skill_input.expression_contract,
         )
         return result
 
@@ -1243,6 +1256,7 @@ class HumanizerService:
             skill_input.contract,
             HumanizerResultStatus.ERROR,
             None,
+            expression_contract=skill_input.expression_contract,
         )
         return HumanizerResultProjection(
             task_id=assistant_message_id,
@@ -1251,6 +1265,7 @@ class HumanizerService:
             path=skill_input.contract.path,
             genre=skill_input.contract.genre,
             contract=skill_input.contract,
+            expression_contract=skill_input.expression_contract,
             status=HumanizerResultStatus.ERROR,
             output=None,
             process_state=state,
@@ -1270,6 +1285,7 @@ class HumanizerService:
         contract: HumanizerTaskContract,
         status: HumanizerResultStatus,
         fact_lock_check: FactLockCheckResult | None,
+        expression_contract: Any = None,
     ) -> None:
         if self._observability is None:
             return
@@ -1288,7 +1304,17 @@ class HumanizerService:
                     "skill_id": skill_id,
                     "skill_version": skill_version,
                     "path": contract.path.value,
-                    "genre": contract.genre.value,
+                    "genre": contract.genre.value if contract.genre else None,
+                    "contract_version": (
+                        expression_contract.version_hash
+                        if expression_contract is not None
+                        else None
+                    ),
+                    "contract_surface": (
+                        expression_contract.surface.value
+                        if expression_contract is not None
+                        else None
+                    ),
                     "status": status.value,
                     "blocking_conflicts": (
                         len(fact_lock_check.blocking_conflicts) if fact_lock_check else 0
