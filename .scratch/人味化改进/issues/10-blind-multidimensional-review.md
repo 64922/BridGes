@@ -1,6 +1,6 @@
 # Issue 10：建立隔离的多模型自动盲评
 
-Status: ready-for-agent
+Status: done（分支 worktree-10-blind-multidimensional-review，2026-08-12）
 
 Type: task
 
