@@ -1049,43 +1049,112 @@ class FourDimensionProfileService:
         request: FourDimensionProfileModifyRequest,
     ) -> FourDimensionProfileRecord:
         with self._repository.transaction():
-            record = self._repository.get_record(account_id, record_id)
-            self._validate_version(record, request.version)
-            previous_content = record.content
-            record.content = request.content.strip()
-            if not record.content:
-                raise FourDimensionProfileError("画像内容不合法。")
-            record.version += 1
-            record.updated_at = datetime.now(UTC)
-            record.content_hash = hashlib.sha256(record.content.encode("utf-8")).hexdigest()
-            record.write_origin = "user"
-            record.correction_count += 1
-            record.evidence_quote = record.content
-            record.evidence_message_id = None
-            if record.correction_count == 1:
-                if record.confidence == FourDimensionConfidence.LOW:
-                    record.confidence = FourDimensionConfidence.MEDIUM
-                record.change_note = "用户纠正后已更新"
-            elif record.correction_count == 2:
-                record.confidence = downgraded_confidence(record.confidence)
-                record.change_note = "反复纠错：可靠程度已降低一档"
-            else:
-                record.confidence = FourDimensionConfidence.LOW
-                record.change_note = "当前不可信：连续收到多次纠正，暂不再使用"
-            updated = self._repository.save_record(record)
-            if (
-                self._observation_delete_callback is not None
-                and previous_content != updated.content
-            ):
-                self._observation_delete_callback(
-                    account_id, updated.dimension, previous_content
-                )
+            updated = self._modify_record_in_transaction(account_id, record_id, request)
         self._notify_learning_adjustment(
             account_id,
             PlanAdjustmentTrigger.PROFILE_UPDATED,
             f"profile:{updated.record_id}:v{updated.version}",
             "四维画像记录已修改，下一课重新编排。",
         )
+        return updated
+
+    def correct_record(
+        self,
+        account_id: str,
+        *,
+        dimension: FourDimension,
+        content: str,
+        manage_transaction: bool = True,
+    ) -> tuple[FourDimensionProfileRecord | None, bool]:
+        """按维度更新最近的活动自动画像记录。
+
+        返回 ``(record, changed)``。保护阈值命中时返回原记录和 ``False``；
+        没有活动记录时返回 ``(None, False)``。``manage_transaction=False``
+        供自动画像预处理复用既有消息级事务，保证消息幂等和记录更新原子提交。
+        """
+        if manage_transaction:
+            with self._repository.transaction():
+                record, changed = self._correct_record_in_transaction(
+                    account_id, dimension=dimension, content=content
+                )
+        else:
+            record, changed = self._correct_record_in_transaction(
+                account_id, dimension=dimension, content=content
+            )
+        if changed and record is not None and manage_transaction:
+            self._notify_learning_adjustment(
+                account_id,
+                PlanAdjustmentTrigger.PROFILE_UPDATED,
+                f"profile:{record.record_id}:v{record.version}",
+                "四维画像记录已修改，下一课重新编排。",
+            )
+        return record, changed
+
+    def _correct_record_in_transaction(
+        self,
+        account_id: str,
+        *,
+        dimension: FourDimension,
+        content: str,
+    ) -> tuple[FourDimensionProfileRecord | None, bool]:
+        normalized = content.strip()
+        if not normalized:
+            raise FourDimensionProfileError("画像内容不合法。")
+        candidates = [
+            record
+            for record in self._repository.list_records(account_id)
+            if record.dimension == dimension
+        ]
+        if not candidates:
+            return None, False
+        record = max(
+            candidates,
+            key=lambda item: (item.updated_at, item.version, item.record_id),
+        )
+        if record.correction_count >= 3:
+            return record, False
+        updated = self._modify_record_in_transaction(
+            account_id,
+            record.record_id,
+            FourDimensionProfileModifyRequest(content=normalized, version=record.version),
+        )
+        return updated, True
+
+    def _modify_record_in_transaction(
+        self,
+        account_id: str,
+        record_id: str,
+        request: FourDimensionProfileModifyRequest,
+    ) -> FourDimensionProfileRecord:
+        record = self._repository.get_record(account_id, record_id)
+        self._validate_version(record, request.version)
+        previous_content = record.content
+        record.content = request.content.strip()
+        if not record.content:
+            raise FourDimensionProfileError("画像内容不合法。")
+        record.version += 1
+        record.updated_at = datetime.now(UTC)
+        record.content_hash = hashlib.sha256(record.content.encode("utf-8")).hexdigest()
+        record.write_origin = "user"
+        record.correction_count += 1
+        record.evidence_quote = record.content
+        record.evidence_message_id = None
+        if record.correction_count == 1:
+            if record.confidence == FourDimensionConfidence.LOW:
+                record.confidence = FourDimensionConfidence.MEDIUM
+            record.change_note = "用户纠正后已更新"
+        elif record.correction_count == 2:
+            record.confidence = downgraded_confidence(record.confidence)
+            record.change_note = "反复纠错：可靠程度已降低一档"
+        else:
+            record.confidence = FourDimensionConfidence.LOW
+            record.change_note = "当前不可信：连续收到多次纠正，暂不再使用"
+        updated = self._repository.save_record(record)
+        if (
+            self._observation_delete_callback is not None
+            and previous_content != updated.content
+        ):
+            self._observation_delete_callback(account_id, updated.dimension, previous_content)
         return updated
 
     def withdraw_record(

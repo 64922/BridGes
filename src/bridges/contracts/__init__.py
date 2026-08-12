@@ -120,6 +120,8 @@ from .learning import (
 )
 from .profile_extraction import (
     AutomaticProfileObservation,
+    ProfileCorrectionResult,
+    ProfileCorrectionStatus,
     ProfileExtractionAction,
     ProfileExtractionItem,
     ProfileExtractionOutput,
@@ -191,6 +193,8 @@ __all__ = [
     "ControlledContentAccessStatus",
     "DependencyHealth",
     "AutomaticProfileObservation",
+    "ProfileCorrectionResult",
+    "ProfileCorrectionStatus",
     "ProfileExtractionAction",
     "ProfileExtractionItem",
     "ProfileExtractionOutput",

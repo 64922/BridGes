@@ -1,6 +1,6 @@
 # Issue 01：闭合聊天中的画像纠正回路
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -64,6 +64,11 @@ User stories: US-01
 ## Blocked by
 
 - None
+
+## Answer
+
+- 2026-08-12：在 `codex/issue-01-chat-profile-correction-loop` worktree 完成聊天画像纠正闭环：覆盖四维意图解析、原地 UPDATE、保护阈值、幂等/重试、SQLite 重启持久化，以及模型调用前的维度/状态脱敏约束。
+- 验证：`tests/profiles/` 226 项通过；issue 专项与聊天 payload 测试 26 项通过；相关新增代码 mypy 通过。全仓 `mypy src` 仍有 83 个既有错误；聊天基线有 1 个既有项目归属测试因当前接口按产品契约返回 410 而失败。
 
 ## Comments
 

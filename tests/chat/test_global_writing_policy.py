@@ -116,3 +116,20 @@ def test_assemble_payload_places_policy_in_the_existing_generation_call() -> Non
     assert len(payload["messages"]) == 3
     assert payload["messages"][1]["content"] == snapshot.system_block
     assert payload["global_writing_policy"]["version"] == snapshot.version
+
+
+def test_assemble_payload_includes_only_deidentified_correction_result() -> None:
+    payload = assemble_payload(
+        [{"role": "user", "content": "把我的关注点换成 CNN"}],
+        profile_correction_context=(
+            "【本轮画像纠正结果】维度：感兴趣的知识；状态：written。"
+            "仅根据当前画像切片回答，不要补造内部字段。"
+        ),
+    )
+
+    correction_message = next(
+        message for message in payload["messages"] if "本轮画像纠正结果" in message["content"]
+    )
+    assert correction_message["role"] == "system"
+    assert "record_id" not in correction_message["content"]
+    assert "CNN" not in correction_message["content"]

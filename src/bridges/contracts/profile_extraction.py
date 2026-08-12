@@ -33,6 +33,11 @@ class ProfileExtractionOutcome(StrEnum):
     SUCCEEDED_EMPTY = "succeeded_empty"
     SUCCEEDED_OBSERVED = "succeeded_observed"
     SUCCEEDED_WRITTEN = "succeeded_written"
+    SUCCEEDED_CORRECTION_WRITTEN = "succeeded_correction_written"
+    SUCCEEDED_CORRECTION_PROTECTED = "succeeded_correction_protected"
+    SUCCEEDED_CORRECTION_UNRESOLVED = "succeeded_correction_unresolved"
+    SUCCEEDED_CORRECTION_NO_ACTIVE = "succeeded_correction_no_active"
+    CORRECTION_FAILED = "correction_failed"
     PENDING_RETRY = "pending_retry"
     PERMANENT_FAILURE = "permanent_failure"
 
@@ -53,6 +58,34 @@ class ProfileExtractionAction(StrEnum):
     UPDATE = "update"
     OBSERVE = "observe"
     IGNORE = "ignore"
+
+
+class ProfileCorrectionStatus(StrEnum):
+    """一次聊天画像纠正的脱敏结果状态。"""
+
+    WRITTEN = "written"
+    PROTECTED = "protected"
+    UNRESOLVED = "unresolved"
+    NO_ACTIVE_RECORD = "no_active_record"
+    FAILED = "failed"
+
+
+class ProfileCorrectionResult(BaseModel):
+    """聊天纠正结果；不保存或注入用户的新值正文。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: ProfileCorrectionStatus
+    dimension: FourDimension | None = None
+    record_id: StrictStr | None = None
+
+    def context_metadata(self) -> dict[str, str | None]:
+        """返回允许进入聊天提示词的最小脱敏元数据。"""
+
+        return {
+            "status": self.status.value,
+            "dimension": self.dimension.label if self.dimension is not None else None,
+        }
 
 
 class ProfileExtractionItem(BaseModel):
@@ -158,6 +191,7 @@ class ProfilePreprocessResult(BaseModel):
     privacy_notice: ProfilePrivacyNotice | None = None
     committed_record_ids: list[str] = Field(default_factory=list)
     observed_count: int = Field(default=0, ge=0)
+    correction: ProfileCorrectionResult | None = None
 
 
 class ProfileStatusProjection(BaseModel):
