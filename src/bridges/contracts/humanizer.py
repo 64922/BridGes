@@ -71,6 +71,212 @@ class FactLockSeverity(StrEnum):
     INFO = "info"
 
 
+# ---------------------------------------------------------------------------
+# 来源账本与保真硬门（Issue 02）
+# ---------------------------------------------------------------------------
+
+SOURCE_LEDGER_VERSION = "2"
+"""来源账本版本：1 为旧事实锁（无账本），2 为版本化来源账本。"""
+
+FIDELITY_CHECKER_VERSION = "2.0"
+"""保真检查器版本：随检查规则变更递增。"""
+
+
+class SourceType(StrEnum):
+    """来源类型：区分用户原文、补充/授权材料、外部来源、常识与显式假设。"""
+
+    USER_ORIGINAL = "user_original"
+    USER_SUPPLEMENT = "user_supplement"
+    ACCOUNT_SCOPED = "account_scoped"
+    EXTERNAL_ALLOWED = "external_allowed"
+    COMMON_KNOWLEDGE = "common_knowledge"
+    EXPLICIT_ASSUMPTION = "explicit_assumption"
+
+
+class SourceUsage(StrEnum):
+    """来源条目的允许用途；纯改写默认只消费用户原文。"""
+
+    REWRITE = "rewrite"
+    FACT = "fact"
+    QUOTE = "quote"
+    EXPERIENCE = "experience"
+
+
+class ProtectedSpanKind(StrEnum):
+    """保护区域类别：后续表达审稿只检查作者新增正文，不改写这些区域。"""
+
+    QUOTE = "quote"
+    CODE = "code"
+    FORMULA = "formula"
+    URL = "url"
+    CITATION = "citation"
+    USER_PHRASE = "user_phrase"
+
+
+class PersonalExperienceMode(StrEnum):
+    """第一人称建模：当下判断与亲历分开，亲历必须可绑定来源。"""
+
+    NONE = "none"
+    PRESENT_JUDGMENT = "present_judgment"
+    PAST_EXPERIENCE = "past_experience"
+
+
+class SpanLocation(BaseModel):
+    """规范化文本中的起止偏移（审计用位置，不含正文）。"""
+
+    start: int = Field(description="起始偏移。")
+    end: int = Field(description="结束偏移。")
+
+
+class ProtectedSpan(BaseModel):
+    """一条受保护区域：只记录种类、内容哈希与位置，不记录正文。"""
+
+    span_id: str = Field(description="稳定保护区域标识。")
+    kind: ProtectedSpanKind = Field(description="保护区域类别。")
+    text_hash: str = Field(description="区域内容哈希（sha256）。")
+    location: SpanLocation = Field(description="规范化文本中的位置。")
+
+
+class SourceEntry(BaseModel):
+    """账本中一条来源：内容哈希、类型、允许用途与提取的保护项。"""
+
+    entry_id: str = Field(description="稳定来源条目标识。")
+    source_type: SourceType = Field(description="来源类型。")
+    content_hash: str = Field(description="条目内容哈希（sha256，不含正文存储）。")
+    usage: list[SourceUsage] = Field(description="允许用途；纯改写默认只含 REWRITE。")
+    proper_nouns: list[str] = Field(default_factory=list, description="专名规范化键。")
+    numbers: list[str] = Field(default_factory=list, description="数字/单位规范化键。")
+    dates: list[str] = Field(default_factory=list, description="日期规范化键。")
+    formulas: list[str] = Field(default_factory=list, description="公式代码规范化键。")
+    urls: list[str] = Field(default_factory=list, description="URL 规范化键。")
+    quotes: list[str] = Field(default_factory=list, description="精确引语规范化键。")
+    citations: list[str] = Field(default_factory=list, description="引用规范化键。")
+    directions: list[str] = Field(
+        default_factory=list, description="否定与因果方向描述。"
+    )
+    qualifiers: list[str] = Field(default_factory=list, description="限定词。")
+    conclusion_strength: str | None = Field(
+        default=None, description="结论强度分级（weak/medium/strong）。"
+    )
+    personal_experience: PersonalExperienceMode = Field(
+        default=PersonalExperienceMode.NONE, description="第一人称建模。"
+    )
+    allow_first_person: bool = Field(
+        default=False, description="是否允许绑定第一人称亲历（原文已有或用户授权）。"
+    )
+    protected_spans: list[ProtectedSpan] = Field(
+        default_factory=list, description="受保护区域。"
+    )
+    source_label: str = Field(default="", description="来源显示名（文件名/说明）。")
+    codes: list[str] = Field(default_factory=list, description="代码块规范化键。")
+    experiences: list[str] = Field(
+        default_factory=list, description="第一人称亲历规范化键（原文已有）。"
+    )
+    text_key: str = Field(
+        default="", description="条目全文规范化键（内部比较用，审计不记录）。"
+    )
+
+
+class LedgerCompileSummary(BaseModel):
+    """账本编译摘要：脱敏计数（供审计与指标，不含正文）。"""
+
+    entry_count: int = Field(description="来源条目数。")
+    protected_spans_by_kind: dict[str, int] = Field(
+        description="各保护区域类别的数量。"
+    )
+    proper_noun_count: int = Field(description="专名数。")
+    number_count: int = Field(description="数字/单位数。")
+    date_count: int = Field(description="日期数。")
+    quote_count: int = Field(description="精确引语数。")
+    experience_entries: int = Field(description="含第一人称权限的条目数。")
+
+
+class SourceLedger(BaseModel):
+    """版本化来源账本：调用方只提交来源与权限，不各自维护事实词表。"""
+
+    ledger_version: str = Field(default=SOURCE_LEDGER_VERSION, description="账本版本。")
+    ledger_hash: str = Field(description="账本哈希（版本与全部条目规范化摘要）。")
+    entries: list[SourceEntry] = Field(default_factory=list, description="来源条目。")
+    compiled_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), description="编译时间。"
+    )
+    compile_summary: LedgerCompileSummary | None = Field(
+        default=None, description="编译摘要（脱敏计数）。"
+    )
+
+
+class FidelityFailureCode(StrEnum):
+    """保真失败码（审计日志只记录失败码，不记录正文）。"""
+
+    NUMBER_CHANGED = "number_changed"
+    DATE_CHANGED = "date_changed"
+    PROPER_NOUN_CHANGED = "proper_noun_changed"
+    QUOTE_CHANGED = "quote_changed"
+    CODE_CHANGED = "code_changed"
+    FORMULA_CHANGED = "formula_changed"
+    URL_CHANGED = "url_changed"
+    CITATION_CHANGED = "citation_changed"
+    DIRECTION_FLIPPED = "direction_flipped"
+    STRENGTH_UPGRADED = "strength_upgraded"
+    STRENGTH_DOWNGRADED = "strength_downgraded"
+    QUALIFIER_REMOVED = "qualifier_removed"
+    UNATTRIBUTED_CLAIM = "unattributed_claim"
+    FIRST_PERSON_UNBOUND = "first_person_unbound"
+    ASSUMPTION_NOT_ALLOWED = "assumption_not_allowed"
+    ASSUMPTION_CARRIES_FACT = "assumption_carries_fact"
+    UNDETERMINED = "undetermined"
+
+
+class FidelitySeverity(StrEnum):
+    """保真失败严重度：关键失败硬门阻止，无法判定项需用户确认。"""
+
+    BLOCKING = "blocking"
+    NEEDS_USER_CONFIRMATION = "needs_user_confirmation"
+
+
+class FidelityFailure(BaseModel):
+    """一条保真失败：只含位置与失败码描述，正文片段仅进结果投影。"""
+
+    failure_id: str = Field(description="稳定失败标识。")
+    code: FidelityFailureCode = Field(description="失败码（审计用）。")
+    severity: FidelitySeverity = Field(description="严重度。")
+    category: str = Field(description="中文类别说明。")
+    item_type: str = Field(description="项类型（number/date/proper_noun/…）。")
+    location: SpanLocation | None = Field(default=None, description="失败位置。")
+    note: str = Field(default="", description="中文说明（用户可见的结果投影）。")
+
+
+class FidelitySummary(BaseModel):
+    """保真检查摘要：脱敏计数（指标与审计用）。"""
+
+    protected_span_count: int = Field(description="账本保护区域总数。")
+    preserved_count: int = Field(description="保持检查通过的保护项数。")
+    new_claim_count: int = Field(description="候选新增 claim 数。")
+    attributed_claim_count: int = Field(description="有来源绑定的新增 claim 数。")
+    unattributed_claim_count: int = Field(description="无来源新增 claim 数。")
+    first_person_interception_count: int = Field(description="第一人称经历拦截数。")
+    assumption_count: int = Field(description="允许的标注假设数。")
+    blocking_count: int = Field(description="硬失败数。")
+    needs_confirmation_count: int = Field(description="需用户确认项数。")
+
+
+class FidelityCheckResult(BaseModel):
+    """一次保真检查的完整结果：缺任一字段不标记成功（失败关闭）。"""
+
+    check_id: str = Field(description="稳定检查标识。")
+    ledger_version: str = Field(description="账本版本（须受支持才可成功）。")
+    checker_version: str = Field(description="检查器版本。")
+    ledger_hash: str = Field(description="本次检查使用的账本哈希。")
+    passed: bool = Field(description="无关键失败即为通过。")
+    blocking_failures: list[FidelityFailure] = Field(
+        default_factory=list, description="硬失败清单。"
+    )
+    needs_confirmation: list[FidelityFailure] = Field(
+        default_factory=list, description="需用户确认项清单。"
+    )
+    summary: FidelitySummary = Field(description="脱敏检查摘要。")
+
+
 class HumanizerProcessState(StrEnum):
     """人味化过程卡的可见状态（中文五态 + 终态 done）。
 
@@ -144,6 +350,21 @@ class HumanizerTaskContract(BaseModel):
     knowledge_base_reference: str | None = Field(
         default=None,
         description="用户明确引用的当前账户知识库文档名；为空时不得泛化检索。",
+    )
+    allow_assumptions: bool = Field(
+        default=False,
+        description="契约是否允许显式假设（以「比如/假设/设想」标注且不冒充"
+        "亲历、不承载高风险事实）；默认关闭，不自动扩大事实范围。",
+    )
+    allow_first_person: bool = Field(
+        default=False,
+        description="用户是否明确授权代写作者口吻（第一人称亲历绑定）；"
+        "原文已有的亲历不受此字段限制。",
+    )
+    explicit_common_knowledge: list[str] = Field(
+        default_factory=list,
+        description="用户显式列为普通常识的内容（可作来源放行）；"
+        "为空时不静默豁免任何新增内容。",
     )
 
 
@@ -308,6 +529,15 @@ class HumanizerResultProjection(BaseModel):
     fact_lock_check: FactLockCheckResult | None = Field(
         default=None, description="事实锁前后比较结果。"
     )
+    source_ledger: SourceLedger | None = Field(
+        default=None,
+        description="本次任务使用的来源账本快照（新账本版本任务才有；"
+        "旧任务为空，不得伪装成已通过新增来源检查）。",
+    )
+    fidelity_check: FidelityCheckResult | None = Field(
+        default=None,
+        description="保真硬门检查结果（新账本版本任务才有；缺失不得标记成功）。",
+    )
     references: list[HumanizerReference] = Field(
         default_factory=list, description="保持的引用清单。"
     )
@@ -372,6 +602,22 @@ class HumanizerSkillManifest(BaseModel):
 
 __all__ = [
     "HumanizerPath",
+    "SOURCE_LEDGER_VERSION",
+    "FIDELITY_CHECKER_VERSION",
+    "SourceType",
+    "SourceUsage",
+    "ProtectedSpanKind",
+    "PersonalExperienceMode",
+    "SpanLocation",
+    "ProtectedSpan",
+    "SourceEntry",
+    "LedgerCompileSummary",
+    "SourceLedger",
+    "FidelityFailureCode",
+    "FidelitySeverity",
+    "FidelityFailure",
+    "FidelitySummary",
+    "FidelityCheckResult",
     "FactLockKind",
     "FactLockStatus",
     "FactLockSeverity",
