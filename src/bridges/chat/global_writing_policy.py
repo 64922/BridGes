@@ -1,8 +1,11 @@
-"""Issue 17：一次主生成内使用的全局轻量有人味表达策略。
+"""Issue 17/07：一次主生成内使用的全局轻量有人味表达策略（兼容入口）。
 
-该模块只编译自然语言正文的表达约束，不执行第二次模型调用，也不承载
-文章人味化任务。编译结果是不可变快照，调用方可以把它放进生成运行配置
-和模型运行锁的脱敏元数据中，保证重试与租约恢复不随热更新漂移。
+Issue 07 起普通聊天策略由 ``bridges.chat.lightweight_policy`` 重建：每轮
+按回答形态只编译少量高优先级正向规则，不再注入共享方法规则块、文章体裁
+规则或全量禁词表。本模块保留 ``GlobalWritingPolicyCompiler`` 等公开接口
+并委托轻量编译器，同时继续提供确定性保护区恢复函数，保证既有调用方与
+旧快照重试兼容。该模块只编译自然语言正文的表达约束，不执行第二次模型
+调用，也不承载文章人味化任务。
 """
 
 from __future__ import annotations
@@ -11,120 +14,86 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
+from bridges.chat.lightweight_policy import (
+    GLOBAL_CHAT_LIGHTWEIGHT_SOURCE,
+    GLOBAL_CHAT_LIGHTWEIGHT_VERSION,
+    SAFE_BASELINE_POLICY_VERSION,
+    ChatLightweightPolicyCompiler,
+    ChatLightweightPolicySnapshot,
+    ChatResponseForm,
+)
 from bridges.contracts.chat import ChatMode
+from bridges.contracts.expression_task import ExpressionTaskContract
 from bridges.contracts.profiles import ProfileSliceItem
 
-
+#: 旧策略版本常量（兼容快照解码；技能注册表 manifest 已改用新版本）。
 GLOBAL_WRITING_POLICY_VERSION = "global-humanized-writing-v2"
-SAFE_BASELINE_POLICY_VERSION = "global-humanized-writing-safe-baseline-v1"
-GLOBAL_WRITING_POLICY_SOURCE = (
-    "BridGes 原创净室规则（见 src/bridges/skills/humanizer/skill/CLEAN_ROOM.md）"
-)
+GLOBAL_WRITING_POLICY_SOURCE = GLOBAL_CHAT_LIGHTWEIGHT_SOURCE
 _DEFAULT_RESOURCE = object()
-
-
-def _chat_method_rules_instruction() -> str:
-    """延迟读取共享规则，避免 chat 与 skills 包初始化时互相导入。"""
-    from bridges.skills.humanizer.method_rules import CHAT_METHOD_RULES_INSTRUCTION
-
-    return CHAT_METHOD_RULES_INSTRUCTION
-
-
-def _ensure_chat_method_rules(instruction: str) -> str:
-    """保证内部资源覆盖或更新时仍然带有共享聊天方法规则。"""
-    shared_rules = _chat_method_rules_instruction()
-    if shared_rules in instruction:
-        return instruction
-    return f"{instruction}\n{shared_rules}"
 
 
 @dataclass(frozen=True)
 class GlobalWritingPolicyResource:
-    """编译器使用的只读策略资源。"""
+    """编译器使用的只读策略资源（兼容旧接口；自定义 instruction 保留）。"""
 
-    version: str = GLOBAL_WRITING_POLICY_VERSION
-    instruction: str = field(
-        default_factory=lambda: (
-            "只调整面向用户的自然语言正文：先准确完成当前任务，再遵守以下聊天档"
-            "方法规则；对依据、证据强度和不确定性保持诚实。不要为了流畅删除限定"
-            "条件、升级因果、编造经历、引用或来源，也不要规避 AI 检测、冒充真人、"
-            "名人或特定作者。\n"
-            + _chat_method_rules_instruction()
-        )
-    )
+    version: str = GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    instruction: str | None = field(default=None)
 
 
-class GlobalWritingPolicySnapshot(BaseModel):
-    """绑定一次生成尝试的轻量表达策略快照。"""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    version: str = Field(description="全局表达策略版本。")
-    mode: str = Field(description="本轮固定对话模式。")
-    profile_slice_id: str | None = Field(
-        default=None, description="当前账户最小画像切片标识，不含画像全文。"
-    )
-    profile_items: tuple[str, ...] = Field(
-        default_factory=tuple, description="允许影响表达的画像切片值的最小快照。"
-    )
-    profile_context: str | None = Field(
-        default=None, description="本轮最小画像提示片段，用于同一策略快照重试。"
-    )
-    snapshot_complete: bool = Field(
-        default=True, description="是否已经绑定本轮画像切片结果。"
-    )
-    fallback_reason: str | None = Field(
-        default=None, description="降级到安全基线的确定性原因。"
-    )
-    source_record: str = Field(
-        default=GLOBAL_WRITING_POLICY_SOURCE,
-        description="策略来源清洁记录标识，不包含第三方正文。",
-    )
-    system_block: str = Field(description="注入主生成的中文表达合同。")
-
-    def metadata(self) -> dict[str, Any]:
-        """返回可写入运行配置/模型运行锁的非秘密元数据。"""
-        return {
-            "version": self.version,
-            "mode": self.mode,
-            "profile_slice_id": self.profile_slice_id,
-            "profile_item_count": len(self.profile_items),
-            "snapshot_complete": self.snapshot_complete,
-            "fallback_reason": self.fallback_reason,
-            "source_record": self.source_record,
-        }
+#: 轻量策略快照类型别名：旧公开类型名保持可导入，字段向后兼容。
+GlobalWritingPolicySnapshot = ChatLightweightPolicySnapshot
 
 
 class GlobalWritingPolicyCompiler:
-    """把模式与最小画像切片编译为一次性策略快照。"""
+    """把模式与最小画像切片编译为一次性策略快照（Issue 07 轻量策略）。
+
+    内部委托 :class:`ChatLightweightPolicyCompiler`：每轮按当前意图与回答
+    形态只编译 6—10 条正向规则；``user_text`` 参与形态路由；重试回传
+    完整快照时原样复用，不因热更新漂移。
+    """
 
     def __init__(
         self,
         resource: GlobalWritingPolicyResource | None | object = _DEFAULT_RESOURCE,
     ) -> None:
-        # ``None`` is an explicit way for startup/测试环境模拟策略资源缺失；
-        # omitted resource still使用内置原创资源。
-        self._resource = (
-            GlobalWritingPolicyResource()
-            if resource is _DEFAULT_RESOURCE
-            else resource
-            if isinstance(resource, GlobalWritingPolicyResource)
-            else None
-        )
+        # ``None`` 是启动/测试环境模拟策略资源缺失的显式方式；
+        # omitted resource 仍使用内置原创资源。
+        if resource is _DEFAULT_RESOURCE:
+            self._delegate = ChatLightweightPolicyCompiler()
+            self._custom_instruction = None
+        elif resource is None:
+            self._delegate = ChatLightweightPolicyCompiler(resource=None)
+            self._custom_instruction = None
+        elif isinstance(resource, GlobalWritingPolicyResource):
+            self._delegate = ChatLightweightPolicyCompiler(
+                instruction=resource.instruction,
+                version=resource.version,
+            )
+            self._custom_instruction = resource.instruction
+        else:
+            # 非预期对象资源：与旧行为一致，按资源缺失降级。
+            self._delegate = ChatLightweightPolicyCompiler(resource=None)
+            self._custom_instruction = None
 
     def compile(
         self,
         mode: ChatMode | str,
         *,
+        user_text: str | None = None,
+        expression_contract: ExpressionTaskContract | None = None,
         profile_slice_id: str | None = None,
         profile_items: list[ProfileSliceItem] | tuple[ProfileSliceItem, ...] = (),
         profile_context: str | None = None,
         profile_failed: bool = False,
+        tool_error: bool = False,
+        tool_result: bool = False,
+        refusal: bool = False,
+        lesson: bool = False,
         existing_snapshot: GlobalWritingPolicySnapshot | dict[str, Any] | None = None,
     ) -> GlobalWritingPolicySnapshot:
         """编译策略；完整已有快照优先，保证重试不受热更新影响。"""
+        # 复用路径：完整快照原样返回（含旧版快照），不追加资源指令，
+        # 保证“旧任务重试继续复用原策略快照”语义不被自定义指令污染。
         if existing_snapshot is not None:
             snapshot = (
                 existing_snapshot
@@ -133,107 +102,37 @@ class GlobalWritingPolicyCompiler:
             )
             if snapshot.snapshot_complete:
                 return snapshot
-
-        mode_value = mode.value if isinstance(mode, ChatMode) else str(mode)
-        if self._resource is None or profile_failed:
-            reason = (
-                "profile_slice_unavailable" if profile_failed else "policy_resource_unavailable"
-            )
-            return self._fallback_snapshot(mode_value, reason)
-
-        values = tuple(
-            item.value_or_rule.strip()
-            for item in profile_items[:6]
-            if item.value_or_rule.strip()
-        )
-        return GlobalWritingPolicySnapshot(
-            version=self._resource.version,
-            mode=mode_value,
+        snapshot = self._delegate.compile(
+            mode,
+            user_text=user_text or "",
+            expression_contract=expression_contract,
             profile_slice_id=profile_slice_id,
-            profile_items=values,
+            profile_items=profile_items,
             profile_context=profile_context,
-            snapshot_complete=True,
-            fallback_reason=None,
-            source_record=GLOBAL_WRITING_POLICY_SOURCE,
-            system_block=self._render(
-                mode_value,
-                values,
-                self._resource.instruction,
-                version=self._resource.version,
-            ),
+            profile_failed=profile_failed,
+            tool_error=tool_error,
+            tool_result=tool_result,
+            refusal=refusal,
+            lesson=lesson,
+            existing_snapshot=existing_snapshot,
         )
+        return self._append_custom_instruction(snapshot)
 
     def seed(self, mode: ChatMode | str) -> GlobalWritingPolicySnapshot:
         """为 queued 运行创建尚未绑定画像切片的稳定策略种子。"""
-        mode_value = mode.value if isinstance(mode, ChatMode) else str(mode)
-        if self._resource is None:
-            return self._fallback_snapshot(mode_value, "policy_resource_unavailable")
-        return GlobalWritingPolicySnapshot(
-            version=self._resource.version,
-            mode=mode_value,
-            snapshot_complete=False,
-            system_block=self._render(
-                mode_value,
-                (),
-                self._resource.instruction,
-                version=self._resource.version,
-            ),
-        )
+        return self._append_custom_instruction(self._delegate.seed(mode))
 
-    def _fallback_snapshot(
-        self, mode: str, reason: str
+    def _append_custom_instruction(
+        self, snapshot: GlobalWritingPolicySnapshot
     ) -> GlobalWritingPolicySnapshot:
-        return GlobalWritingPolicySnapshot(
-            version=SAFE_BASELINE_POLICY_VERSION,
-            mode=mode,
-            profile_slice_id=None,
-            profile_items=(),
-            profile_context=None,
-            snapshot_complete=True,
-            fallback_reason=reason,
-            source_record=GLOBAL_WRITING_POLICY_SOURCE,
-            system_block=self._render(
-                mode,
-                (),
-                "只完成任务本身，使用清楚、诚实、简洁的中文。保持原始事实、"
-                "数字、限定条件、代码、公式、JSON、引用、链接、错误码、工具"
-                "结果和协议字段不变；不规避 AI 检测、不冒充真人或名人、不伪造"
-                "经历、来源或引用。\n"
-                + _chat_method_rules_instruction(),
-                version=SAFE_BASELINE_POLICY_VERSION,
-            ),
-        )
-
-    @staticmethod
-    def _render(
-        mode: str,
-        profile_items: tuple[str, ...],
-        instruction: str,
-        *,
-        version: str = GLOBAL_WRITING_POLICY_VERSION,
-    ) -> str:
-        instruction = _ensure_chat_method_rules(instruction)
-        role = (
-            "日常陪伴像可靠且有分寸的朋友，接住当前语境但不替用户编造经历。"
-            if mode == ChatMode.COMPANION.value
-            else "学习模式像因材施教的老师，从当前水平循序解释，必要时用例子和"
-            "短检查帮助理解，但不凭一次回答宣布掌握。"
-        )
-        profile = (
-            "\n允许使用的当前账户画像信息（只影响例子、解释深度和称呼分寸）：\n"
-            + "\n".join(f"- {value}" for value in profile_items)
-            if profile_items
-            else "\n本轮没有可用画像信息，不得自行推断用户经历、身份、人格或偏好。"
-        )
-        return (
-            "【全局轻量有人味表达策略】\n"
-            f"策略版本：{version}\n"
-            f"{role}\n{instruction}\n"
-            "只作用于模型生成的自然语言正文；代码、公式、JSON、引用、链接、"
-            "结构化工具结果、确定性错误提示、加载/停止状态和协议字段属于受保护区，"
-            "必须原样保留。工具结果外可以加简短说明，但不得改写证据。文章人味化"
-            "任务的最终文章不经过本策略二次改写。"
-            f"{profile}"
+        if self._custom_instruction is None:
+            return snapshot
+        return snapshot.model_copy(
+            update={
+                "system_block": (
+                    snapshot.system_block + "\n" + self._custom_instruction
+                )
+            }
         )
 
 
@@ -296,5 +195,6 @@ __all__ = [
     "GlobalWritingPolicyResource",
     "GlobalWritingPolicySnapshot",
     "SAFE_BASELINE_POLICY_VERSION",
+    "ChatResponseForm",
     "restore_protected_regions",
 ]

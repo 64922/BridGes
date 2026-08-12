@@ -50,7 +50,7 @@ from bridges.chat.global_writing_policy import (
     restore_protected_regions,
 )
 from bridges.chat.lifecycle import GenerationLifecycle
-from bridges.chat.repository import ConversationRepository, MessageRecord
+from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.career import (
@@ -2941,6 +2941,9 @@ class TurnOrchestrator:
                     context_note is not None
                     and context_note.state == ContextNoteState.ERROR
                 ),
+                # Issue 07：只有真实课时任务（teaching 合同已加载）才启用
+                # 学习课时形态；普通短问不因学习模式自动加载教学结构。
+                lesson=teaching_projection is not None,
             )
             if writing_policy.profile_context is not None:
                 profile_context = writing_policy.profile_context
@@ -5497,19 +5500,27 @@ class TurnOrchestrator:
         profile_items: list[ProfileSliceItem],
         profile_context: str | None,
         profile_failed: bool,
+        lesson: bool = False,
     ) -> GlobalWritingPolicySnapshot:
-        """编译并保存本次运行唯一的全局表达策略快照。"""
+        """编译并保存本次运行唯一的全局表达策略快照。
+
+        Issue 07：以当前轮用户正文做确定性形态路由（不调用模型）；
+        重试回传已有完整快照时原样复用，不重新编译形态或规则。
+        """
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
         existing_data = (
             (run.config or {}).get("global_writing_policy") if run is not None else None
         )
+        user_text = self._owner_user_content(account_id, run, assistant_message_id)
         try:
             snapshot = self._writing_policy.compile(
                 mode,
+                user_text=user_text,
                 profile_slice_id=profile_slice_id,
                 profile_items=profile_items,
                 profile_context=profile_context,
                 profile_failed=profile_failed,
+                lesson=lesson,
                 existing_snapshot=existing_data,
             )
         except Exception:  # noqa: BLE001 - 编译失败必须静默回退安全基线
@@ -5519,6 +5530,19 @@ class TurnOrchestrator:
             config["global_writing_policy"] = snapshot.model_dump(mode="json")
             self._repo.update_generation_config(account_id, run.run_id, config)
         return snapshot
+
+    def _owner_user_content(
+        self,
+        account_id: str,
+        run: GenerationRunRecord | None,
+        assistant_message_id: str,
+    ) -> str:
+        """返回当前轮用户消息正文（形态路由输入）；缺失时为空串。"""
+        if run is None:
+            return ""
+        messages = self._repo.list_messages(account_id, run.conversation_id)
+        owner = owner_user_message(messages, assistant_message_id)
+        return owner.content if owner is not None else ""
 
     def _profile_correction_context(
         self, account_id: str, assistant_message_id: str

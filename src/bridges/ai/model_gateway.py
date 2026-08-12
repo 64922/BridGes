@@ -584,10 +584,13 @@ class ModelGateway:
             for source_key, target_key in (
                 ("version", "global_writing_policy_version"),
                 ("mode", "global_writing_policy_mode"),
+                ("form", "global_writing_policy_form"),
+                ("rule_count", "global_writing_policy_rule_count"),
                 ("profile_slice_id", "global_writing_policy_profile_slice_id"),
                 ("profile_item_count", "global_writing_policy_profile_item_count"),
                 ("snapshot_complete", "global_writing_policy_snapshot_complete"),
                 ("fallback_reason", "global_writing_policy_fallback_reason"),
+                ("degradation_reason", "global_writing_policy_degradation_reason"),
             ):
                 if source_key in policy:
                     params[target_key] = policy[source_key]

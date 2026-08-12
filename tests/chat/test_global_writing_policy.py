@@ -5,20 +5,20 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from bridges.chat.global_writing_policy import (
+    SAFE_BASELINE_POLICY_VERSION,
     GlobalWritingPolicyCompiler,
     GlobalWritingPolicyResource,
-    SAFE_BASELINE_POLICY_VERSION,
     restore_protected_regions,
 )
 from bridges.chat.turn import assemble_payload
 from bridges.contracts.chat import ChatMode
-from bridges.contracts.profiles import ProfileSliceItem, ProfileSensitivityClass
+from bridges.contracts.profiles import ProfileSensitivityClass, ProfileSliceItem
 
 
-def _profile_item(value: str) -> ProfileSliceItem:
+def _profile_item(value: str, dimension: str = "expression_habit") -> ProfileSliceItem:
     return ProfileSliceItem(
         assertion_id="assertion-alice-1",
-        dimension="knowledge_interest",
+        dimension=dimension,
         value_or_rule=value,
         inclusion_reason="与当前问题相关",
         sensitivity_class=ProfileSensitivityClass.PREFERENCE,
@@ -32,21 +32,28 @@ def test_compile_policy_uses_mode_and_only_authorized_profile_slice() -> None:
     companion = compiler.compile(
         ChatMode.COMPANION,
         profile_slice_id="slice-alice-1",
-        profile_items=[_profile_item("喜欢用天文例子理解概念")],
+        profile_items=[
+            _profile_item("回答喜欢简短直接", dimension="expression_habit")
+        ],
     )
     study = compiler.compile(
         ChatMode.STUDY,
         profile_slice_id="slice-alice-1",
-        profile_items=[_profile_item("喜欢用天文例子理解概念")],
+        profile_items=[
+            _profile_item("回答喜欢简短直接", dimension="expression_habit")
+        ],
     )
 
     assert companion.version != SAFE_BASELINE_POLICY_VERSION
     assert companion.mode == ChatMode.COMPANION.value
     assert study.mode == ChatMode.STUDY.value
     assert companion.profile_slice_id == "slice-alice-1"
-    assert companion.profile_items == ("喜欢用天文例子理解概念",)
-    assert "可靠且有分寸的朋友" in companion.system_block
-    assert "因材施教的老师" in study.system_block
+    assert companion.profile_items == ("回答喜欢简短直接",)
+    # Issue 07：轻量策略按模式编译，不再注入模式人格形容词。
+    assert "对话模式：companion" in companion.system_block
+    assert "对话模式：study" in study.system_block
+    assert "可靠且有分寸的朋友" not in companion.system_block
+    assert "因材施教的老师" not in study.system_block
     assert "assertion-alice-1" not in companion.system_block
 
 

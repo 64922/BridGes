@@ -1,6 +1,6 @@
 # Issue 07：重建普通聊天轻量策略
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -70,3 +70,4 @@ User stories: US-01、US-06、US-07
 ## Comments
 
 - 2026-08-12：用户确认有限画像使用、取消礼貌性收尾与表演式共情，普通聊天仍保持一次模型调用。
+- 2026-08-12：实现完成并提交。新模块 `src/bridges/chat/lightweight_policy.py`（十种回答形态路由 + 每轮 6—10 条正向规则 + 契约消费 + AC9 画像封闭清单），`global_writing_policy.py` 变兼容壳，`turn.py` 接线用户正文与课时信号。37 项新测试全绿；全量 2647 通过（209 项为 main 存量失败，与本改动无关）；mypy/ruff 干净。真实生成 smoke 默认跳过，原始输出保留在 `.scratch/人味化改进/artifacts/07-chat-policy-development-cases.json` 供 Issue 09/10 盲评。

@@ -71,7 +71,7 @@ class SkillRegistry:
 
 def _humanizer_manifest() -> HumanizerSkillManifest:
     """bridges-humanizer 的固定注册清单（与 SKILL.md 版本一致）。"""
-    from bridges.chat.global_writing_policy import GLOBAL_WRITING_POLICY_VERSION
+    from bridges.chat.lightweight_policy import GLOBAL_CHAT_LIGHTWEIGHT_VERSION
 
     return HumanizerSkillManifest(
         skill_id="bridges-humanizer",
@@ -87,7 +87,7 @@ def _humanizer_manifest() -> HumanizerSkillManifest:
         source="BridGes 原创净室实现（见 SKILL/CLEAN_ROOM.md 来源清洁记录）",
         license="原创，零第三方复用（净室声明）",
         capabilities=[
-            f"普通自然语言正文全局轻量表达策略（{GLOBAL_WRITING_POLICY_VERSION}；零额外模型调用）",
+            f"普通自然语言正文全局轻量表达策略（{GLOBAL_CHAT_LIGHTWEIGHT_VERSION}；零额外模型调用）",
             "改写已有文本（粘贴或当前账户文件）",
             "按主题/受众/体裁/渠道/硬约束生成新文章",
             "四类体裁独立表达规则（不共用泛化模板）",
