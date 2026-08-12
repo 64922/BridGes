@@ -1,6 +1,6 @@
-"""三个被测系统（SUT）与统一执行协议（Issue 01 tracer bullet）。
+"""四个被测系统（SUT）与统一执行协议（Issue 01 tracer bullet + Issue 09）。
 
-三个 SUT 身份真实且不混淆：
+四个 SUT 身份真实且不混淆：
 
 - ``current-production``：冻结的当前生产策略。策略来源为 git HEAD
   已提交的 humanizer SKILL 与聊天全局写作策略；``policy_ref`` 记录
@@ -8,11 +8,14 @@
 - ``candidate``：当前代码候选。策略来源为工作区磁盘文件，记录
   内容哈希；本 Issue 尚未改进候选，输出允许与 current 相同，但
   质量结论必须为 inconclusive。
+- ``plain-model``：同一基础模型与采样参数下的"无 humanizer"对照
+  （Issue 09 新增）：系统提示只含任务边界，不含任何策略文本，
+  用于衡量人味化策略本身的增量。
 - ``humanizer-zh-reference``：挂载指定 ``Humanizer-zh`` SKILL 快照
   的参考配置。快照记录绝对来源路径、内容哈希、许可证状态（MIT）、
   基础模型与采样参数；缺快照时该 SUT 不可运行并列入缺项。
 
-三个 SUT 共用同一 ``GenerationPort`` 执行协议：不读取任何案例内
+四个 SUT 共用同一 ``GenerationPort`` 执行协议：不读取任何案例内
 脚本答案，也不查预写输出；脚本化 executor 在本链路中不可被选中。
 """
 
@@ -32,6 +35,7 @@ from bridges.humanize_eval.generation import (
     GenerationParameters,
     GenerationPort,
     GenerationResult,
+    GenerationStatus,
 )
 
 #: Humanizer-zh 快照默认位置：优先环境变量覆盖（跨机器可移植），
@@ -41,12 +45,17 @@ HUMANIZER_ZH_DEFAULT_SNAPSHOT = os.environ.get(
     _HUMANIZER_ZH_ENV, r"C:\Users\33755\Desktop\参考资料\Humanizer-zh-main"
 )
 
+#: 快照目录下的冻结输出子目录：存在即表示外部参考不可重放，
+#: 以冻结证据标记（frozen_external_reference），不调用模型端口。
+FROZEN_OUTPUTS_DIR = "frozen_outputs"
+
 
 class SUTKind(StrEnum):
     """SUT 身份类别（judge packet 中绝不出现这些名字）。"""
 
     CURRENT_PRODUCTION = "current-production"
     CANDIDATE = "candidate"
+    PLAIN_MODEL = "plain-model"
     HUMANIZER_ZH_REFERENCE = "humanizer-zh-reference"
 
 
@@ -63,6 +72,12 @@ class HumanizerZhSnapshot(BaseModel):
     available: bool = Field(description="快照文件是否可读（缺快照时不可运行）。")
     missing_items: list[str] = Field(
         default_factory=list, description="缺项清单（available=False 时列出）。"
+    )
+    frozen_external_reference: bool = Field(
+        default=False, description="外部参考不可重放（冻结证据标记）。"
+    )
+    frozen_reference_note: str = Field(
+        default="", description="冻结参考说明。"
     )
 
 
@@ -81,6 +96,13 @@ class SUTSpec(BaseModel):
     parameters: GenerationParameters = Field(description="采样参数。")
     available: bool = Field(default=True, description="是否满足运行前置条件。")
     missing_items: list[str] = Field(default_factory=list, description="缺项清单。")
+    frozen_external_reference: bool = Field(
+        default=False,
+        description="外部参考不可重放：输出为冻结证据，不伪称可复现。",
+    )
+    frozen_reference_note: str = Field(
+        default="", description="冻结参考说明（来源/时间/模型/参数）。"
+    )
 
 
 class SUTOutput(BaseModel):
@@ -181,10 +203,16 @@ def resolve_humanizer_zh_snapshot(
     model_id: str = CHAT_MODEL_ID,
     params: GenerationParameters | None = None,
 ) -> HumanizerZhSnapshot:
-    """解析 Humanizer-zh 快照并记录来源/哈希/许可证/模型/参数。"""
+    """解析 Humanizer-zh 快照并记录来源/哈希/许可证/模型/参数。
+
+    快照目录下存在 ``frozen_outputs/`` 时，该参考被标记为外部不可重放：
+    输出为冻结证据（frozen_external_reference），不调用模型端口，
+    也不伪称完全可复现。
+    """
     base = Path(snapshot_dir or HUMANIZER_ZH_DEFAULT_SNAPSHOT)
     skill_file = base / _REFERENCE_SKILL_FILE
     license_file = base / "LICENSE"
+    frozen_dir = base / FROZEN_OUTPUTS_DIR
     missing: list[str] = []
     available = True
     skill_text = ""
@@ -213,6 +241,13 @@ def resolve_humanizer_zh_snapshot(
         parameters=params or GenerationParameters(),
         available=available,
         missing_items=missing,
+        frozen_external_reference=frozen_dir.is_dir(),
+        frozen_reference_note=(
+            f"快照含 {FROZEN_OUTPUTS_DIR}/：外部参考输出为冻结证据，"
+            "不调用模型端口，不可完全重放。"
+            if frozen_dir.is_dir()
+            else ""
+        ),
     )
 
 
@@ -287,6 +322,18 @@ def build_suts(
             missing_items=candidate_missing,
         ),
         SUTSpec(
+            sut_id="plain-model",
+            kind=SUTKind.PLAIN_MODEL,
+            description="无 humanizer 策略的普通模型对照（仅任务边界）。",
+            policy_origin="none",
+            policy_sha256=_sha256(""),
+            policy_ref="无策略（空系统提示基线）",
+            model_id=CHAT_MODEL_ID,
+            parameters=params,
+            available=True,
+            missing_items=[],
+        ),
+        SUTSpec(
             sut_id="humanizer-zh-reference",
             kind=SUTKind.HUMANIZER_ZH_REFERENCE,
             description="挂载 Humanizer-zh SKILL 快照的参考配置（MIT）。",
@@ -297,6 +344,8 @@ def build_suts(
             parameters=params,
             available=snapshot.available,
             missing_items=list(snapshot.missing_items),
+            frozen_external_reference=snapshot.frozen_external_reference,
+            frozen_reference_note=snapshot.frozen_reference_note,
         ),
     ]
 
@@ -307,9 +356,12 @@ def system_prompt_for(
     """按 SUT 身份加载策略文本并组装系统提示。
 
     current/candidate 使用本仓库现行 humanizer SKILL 与聊天策略
-    （净室原创）；reference 使用外部 Humanizer-zh 快照的 SKILL.md
-    （MIT，仅运行时读取，不复制进仓库）。
+    （净室原创）；plain-model 不带任何策略（仅任务边界，见
+    ``_build_user_prompt``）；reference 使用外部 Humanizer-zh 快照的
+    SKILL.md（MIT，仅运行时读取，不复制进仓库）。
     """
+    if spec.kind is SUTKind.PLAIN_MODEL:
+        return "你是 BridGes 的助手。按照用户的请求完成任务。"
     if spec.kind is SUTKind.HUMANIZER_ZH_REFERENCE:
         policy_path = Path(spec.policy_ref) / _REFERENCE_SKILL_FILE
         try:
@@ -344,10 +396,34 @@ def execute_sut(
     *,
     system_prompt: str | None = None,
 ) -> SUTOutput:
-    """通过统一执行协议运行一个 SUT×case：只调用端口，不查脚本答案。"""
+    """通过统一执行协议运行一个 SUT×case：只调用端口，不查脚本答案。
+
+    外部冻结参考（frozen_external_reference）不调用端口：从快照的
+    ``frozen_outputs/<case_id>.txt`` 读取冻结证据；缺文件时失败关闭，
+    不伪称可复现。
+    """
     if not spec.available:
         raise SUTUnavailableError(
             f"SUT {spec.sut_id} 前置条件不满足：{'；'.join(spec.missing_items)}"
+        )
+    if spec.frozen_external_reference:
+        frozen_file = Path(spec.policy_ref) / FROZEN_OUTPUTS_DIR / f"{case.case_id}.txt"
+        try:
+            text = frozen_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise SUTUnavailableError(
+                f"外部冻结参考缺少 {case.case_id} 的冻结输出：{frozen_file}（{exc}）"
+            ) from exc
+        return SUTOutput(
+            sut_id=spec.sut_id,
+            case_id=case.case_id,
+            text=text,
+            generation=GenerationResult(
+                text=text,
+                model_id=spec.model_id,
+                parameters=spec.parameters.model_dump(),
+                status=GenerationStatus.SUCCESS,
+            ),
         )
     prompt = system_prompt or system_prompt_for(spec, case, workspace)
     result = port.generate(

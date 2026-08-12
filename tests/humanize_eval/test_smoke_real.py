@@ -1,6 +1,6 @@
 """真实提供方 smoke（Test plan 6，默认跳过）。
 
-在显式允许真实提供方的开发环境运行一次三方生成与多裁判 smoke，保存
+在显式允许真实提供方的开发环境运行一次四方生成与多裁判 smoke，保存
 脱敏运行摘要和机器可重放的裁判包。普通 CI 不运行本测试：
 ``BRIDGES_HUMANIZE_EVAL_REAL_SMOKE=1`` 且配置了
 ``BRIDGES_QWEN_API_KEY`` 时才执行。
@@ -28,8 +28,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_real_three_sut_generation_and_judge_smoke(tmp_path: Path):
-    """真实三方生成 + 多裁判 + 脱敏摘要（真实凭据必须可用）。"""
+def test_real_four_sut_generation_and_judge_smoke(tmp_path: Path):
+    """真实四方生成 + 多裁判 + 脱敏摘要（真实凭据必须可用）。"""
     from bridges.humanize_eval.generation import QwenGenerationPort
     from bridges.humanize_eval.judges import build_judges
     from bridges.humanize_eval.runner import HumanizeRunner
@@ -48,11 +48,15 @@ def test_real_three_sut_generation_and_judge_smoke(tmp_path: Path):
         allow_real=True,
     )
     summary = runner.run()
-    assert summary.sut_status == {
-        "current-production": "success",
-        "candidate": "success",
-        "humanizer-zh-reference": "success",
-    }, summary.sut_status
+    assert set(summary.sut_status) == {
+        "current-production",
+        "candidate",
+        "plain-model",
+        "humanizer-zh-reference",
+    }
+    # 不可用（缺快照）的 reference 允许存在，其余必须成功。
+    for sut_id, status in summary.sut_status.items():
+        assert status in ("success", "unavailable"), f"{sut_id}: {status}"
     assert summary.packet_id
     # 脱敏摘要不包含私人正文。
     summary_text = summary.model_dump_json()

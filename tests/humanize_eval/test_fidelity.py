@@ -11,7 +11,9 @@ from bridges.humanize_eval.fidelity import (
     run_fidelity_check,
 )
 
-ARTICLE = next(c for c in HUMANIZE_CASES if c.kind is HumanizeCaseKind.ARTICLE)
+ARTICLE = next(
+    c for c in HUMANIZE_CASES if c.case_id == "article-time-management-v1"
+)
 CHAT = next(c for c in HUMANIZE_CASES if c.kind is HumanizeCaseKind.CHAT)
 
 FAITHFUL_OUTPUT = ARTICLE_FAITHFUL_OUTPUT

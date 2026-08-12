@@ -1,4 +1,4 @@
-"""运行锁与 append-only 语义（Test plan 2：双跑不覆盖、哈希、重放）。"""
+"""运行锁与 append-only 语义（Test plan 2/3：双跑不覆盖、哈希、重放、完整性）。"""
 
 from __future__ import annotations
 
@@ -8,15 +8,20 @@ from pathlib import Path
 import pytest
 from conftest import FakeGenerationPort, make_fake_judges
 
+from bridges.humanize_eval.cases import HUMANIZE_CASES, case_hashes
 from bridges.humanize_eval.generation import (
     GenerationResult,
     GenerationStatus,
 )
+from bridges.humanize_eval.holdout import HoldoutController
 from bridges.humanize_eval.runner import (
     HumanizeRunError,
     HumanizeRunner,
     _append_only_write,
 )
+
+SUT_IDS = ("current-production", "candidate", "plain-model", "humanizer-zh-reference")
+TOTAL_CASES = len(HUMANIZE_CASES)
 
 
 def _make_runner(outdir: Path, workspace: Path, **kwargs) -> HumanizeRunner:
@@ -38,26 +43,34 @@ def test_run_produces_complete_evidence_tree(tmp_path: Path, workspace: Path):
     lock = json.loads((run_dir / "lock.json").read_text(encoding="utf-8"))
     assert lock["lock_id"].startswith("lock-")
     raw_dir = run_dir / "raw"
-    # 每个可用 SUT × 2 case 一份原始输出（不依赖外部快照存在与否）。
+    # 每个可用 SUT × 全部 case 一份原始输出（不依赖外部快照存在与否）。
     from bridges.humanize_eval.suts import build_suts
 
     available_suts = sum(1 for s in build_suts(workspace) if s.available)
-    assert len(list(raw_dir.glob("*.json"))) == available_suts * 2
+    assert len(list(raw_dir.glob("*.json"))) == available_suts * TOTAL_CASES
     assert (run_dir / "packets").is_dir()
     assert (run_dir / "mappings").is_dir()
     assert summary.packet_path and summary.mapping_path
-    # 锁记录代码/build、SUT、策略哈希、模型快照、采样参数、case 哈希与时间。
+    # 锁记录代码/build、语料/账本/契约、SUT、策略哈希、模型快照、
+    # 采样参数、环境、执行次数、case 哈希与时间。
     for key in (
         "code_commit",
         "code_digest",
+        "corpus_hashes",
+        "ledger_hashes",
+        "contract_versions",
         "sut_specs",
         "model_snapshot",
         "parameters",
+        "environment",
+        "run_count",
         "case_hashes",
         "started_at",
         "ended_at",
     ):
         assert lock[key], f"运行锁缺少 {key}"
+    assert set(lock["corpus_hashes"]) == {"chat", "article"}
+    assert lock["run_count"] == 1
 
 
 def test_lock_records_strategy_hashes(tmp_path: Path, workspace: Path):
@@ -89,6 +102,7 @@ def test_second_run_appends_not_overwrites(tmp_path: Path, workspace: Path):
         (runs_dir / second.run_id / "lock.json").read_text(encoding="utf-8")
     )
     assert lock_first["lock_id"] == lock_second["lock_id"]
+    assert lock_second["run_count"] == 2
 
 
 def test_raw_outputs_are_immutable_and_content_hashed(tmp_path: Path, workspace: Path):
@@ -103,6 +117,15 @@ def test_raw_outputs_are_immutable_and_content_hashed(tmp_path: Path, workspace:
         # 篡改内容后重写应被拒绝（append-only）。
         with pytest.raises(HumanizeRunError):
             _append_only_write(raw_file, "tampered")
+
+
+def test_raw_files_unique_per_case_sut(tmp_path: Path, workspace: Path):
+    """原始输出按 case/SUT/run 唯一定位。"""
+    runner = _make_runner(tmp_path, workspace)
+    summary = runner.run()
+    raw_dir = tmp_path / "runs" / summary.run_id / "raw"
+    keys = sorted(p.stem for p in raw_dir.glob("*.json"))
+    assert len(keys) == len(set(keys)), "case/SUT 定位重复"
 
 
 def test_append_only_conflict_raises(tmp_path: Path):
@@ -148,6 +171,7 @@ def test_missing_credentials_report_not_configured(tmp_path: Path, workspace: Pa
     assert summary.generation_counts == {
         "current-production": 0,
         "candidate": 0,
+        "plain-model": 0,
         "humanizer-zh-reference": 0,
     }
     assert any("凭据" in r for r in summary.reasons)
@@ -172,6 +196,7 @@ def test_empty_success_output_is_failed_not_crash(tmp_path: Path, workspace: Pat
     assert summary.generation_counts == {
         "current-production": 0,
         "candidate": 0,
+        "plain-model": 0,
         "humanizer-zh-reference": 0,
     }
     assert any("失败" in r for r in summary.reasons)
@@ -228,3 +253,121 @@ def test_major_fidelity_failure_blocks_passed(tmp_path: Path, workspace: Path):
     assert summary.verdict == "inconclusive"
     assert any("保真" in r for r in summary.reasons)
     assert summary.fidelity_failures, "MAJOR 保真失败应被记录"
+
+
+def test_surface_reports_are_separate(tmp_path: Path, workspace: Path):
+    """聊天与文章分别报告、分别计数。"""
+    runner = _make_runner(tmp_path, workspace)
+    summary = runner.run()
+    assert set(summary.surface_verdicts) == {
+        "chat_naturalness",
+        "article_humanization",
+    }
+    assert summary.surface_cases["chat_naturalness"] >= 40
+    assert summary.surface_cases["article_humanization"] >= 40
+    assert summary.surface_case_total["chat_naturalness"] == 45
+    assert summary.surface_case_total["article_humanization"] == 48
+
+
+def test_surface_filter_runs_one_surface(tmp_path: Path, workspace: Path):
+    runner = _make_runner(tmp_path, workspace, surface="chat")
+    summary = runner.run()
+    assert summary.cases_total == 45
+    assert summary.surface_case_total["chat_naturalness"] == 45
+    assert summary.surface_case_total["article_humanization"] == 0
+
+
+def _tmp_holdout(tmp_path: Path, workspace: Path) -> HoldoutController:
+    """在 tmp 目录构造 holdout 控制器（不污染真实仓库的冻结资产）。"""
+    holdout_dir = tmp_path / "holdout"
+    return HoldoutController(
+        workspace,
+        manifest_path=holdout_dir / "manifest.json",
+        audit_path=holdout_dir / "audit.log",
+    )
+
+
+def _sealed_case_hashes() -> dict[str, str]:
+    return {
+        c.case_id: case_hashes()[c.case_id]
+        for c in HUMANIZE_CASES
+        if c.partition.value == "holdout"
+    }
+
+
+def test_run_without_holdout_excludes_sealed(tmp_path: Path, workspace: Path):
+    """默认运行：holdout 冻结案例被排除且记录排除数。"""
+    holdout = _tmp_holdout(tmp_path, workspace)
+    holdout.save_manifest(
+        holdout.build_manifest(_sealed_case_hashes(), corpus_version="9.1")
+    )
+    runner = _make_runner(tmp_path, workspace, holdout=holdout)
+    summary = runner.run()
+    assert summary.holdout_excluded == len(_sealed_case_hashes())
+    assert summary.cases_total == TOTAL_CASES - len(_sealed_case_hashes())
+    raw_dir = tmp_path / "runs" / summary.run_id / "raw"
+    # 任一 SUT 的 raw 文件都不包含 holdout 案例。
+    raw_names = [p.stem for p in raw_dir.glob("*.json")]
+    sealed = _sealed_case_hashes()
+    assert all(
+        not any(cid in name for cid in sealed) for name in raw_names
+    ), "holdout 案例泄漏到 development 运行"
+
+
+def test_holdout_early_access_rejected(tmp_path: Path, workspace: Path):
+    """未解封时显式请求 holdout 一律拒绝。"""
+    holdout = _tmp_holdout(tmp_path, workspace)
+    holdout.save_manifest(
+        holdout.build_manifest(_sealed_case_hashes(), corpus_version="9.1")
+    )
+    runner = _make_runner(tmp_path, workspace, holdout=holdout, allow_holdout=True)
+    with pytest.raises(HumanizeRunError, match="未解封"):
+        runner.run()
+
+
+def test_holdout_hash_change_blocks_run(tmp_path: Path, workspace: Path):
+    """holdout 冻结哈希与注册表不一致时运行被拒绝。"""
+    holdout = _tmp_holdout(tmp_path, workspace)
+    holdout.save_manifest(
+        holdout.build_manifest(_sealed_case_hashes(), corpus_version="9.1")
+    )
+    # 篡改冻结清单中的哈希，模拟 holdout 内容变化。
+    manifest = holdout.load_manifest()
+    manifest = manifest.model_copy(
+        update={
+            "sealed_cases": {
+                cid: ("f" * 64) for cid in manifest.sealed_cases
+            }
+        }
+    )
+    holdout.manifest_path.write_text(
+        manifest.model_dump_json(indent=2), encoding="utf-8"
+    )
+    runner = _make_runner(tmp_path, workspace, holdout=holdout)
+    with pytest.raises(HumanizeRunError, match="冻结校验失败"):
+        runner.run()
+
+
+def test_parameters_change_changes_lock_identity(tmp_path: Path, workspace: Path):
+    """模型参数不同 => 锁身份不同（同配置才是同一锁）。"""
+    from bridges.humanize_eval.generation import GenerationParameters
+    from bridges.humanize_eval.suts import build_suts
+
+    runner = _make_runner(tmp_path, workspace)
+    suts_a = build_suts(workspace, params=GenerationParameters(temperature=0.5))
+    suts_b = build_suts(workspace, params=GenerationParameters(temperature=0.9))
+    lock_a = runner._lock(suts_a, run_count=1)
+    lock_b = runner._lock(suts_b, run_count=1)
+    assert lock_a.digest() != lock_b.digest()
+
+
+def test_skill_hash_change_changes_lock(tmp_path: Path, workspace: Path):
+    """SKILL/策略哈希变化会改变运行锁身份（比较前完整性）。"""
+    from bridges.humanize_eval.suts import build_suts
+
+    runner = _make_runner(tmp_path, workspace)
+    suts = build_suts(workspace)
+    lock_a = runner._lock(suts, run_count=1)
+    altered = [s.model_copy(update={"policy_sha256": "f" * 64}) for s in suts]
+    lock_b = runner._lock(altered, run_count=1)
+    assert lock_a.digest() != lock_b.digest()
