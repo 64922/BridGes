@@ -392,7 +392,7 @@ export function Composer({
             void send();
           }
         }}
-        placeholder="向 BridGes 提问，或描述你的学习目标"
+        placeholder="和 BridGes 一起学习，可以搜论文、人味化你的文章、生涯规划或者生成图片或视频"
         style={{
           width: "100%",
           border: "none",
