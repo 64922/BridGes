@@ -20968,6 +20968,11 @@ export interface components {
              */
             rules_version: string;
             /**
+             * Topic Aliases Version
+             * @description 主题别名表版本；历史投影可为空。
+             */
+            topic_aliases_version?: string | null;
+            /**
              * Candidate Count
              * @description 进入裁决的候选来源数。
              * @default 0

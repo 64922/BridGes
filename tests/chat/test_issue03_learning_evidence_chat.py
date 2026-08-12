@@ -170,6 +170,52 @@ def test_chat_只把已接受来源放进模型上下文并推进一次进度(tm
     assert teaching.learning_progress is not None
 
 
+def test_chat_cnn_source_is_accepted_from_the_learning_goal(tmp_path: Path) -> None:
+    service, adapter = _service(
+        tmp_path,
+        [
+            _result(
+                "web-cnn",
+                "卷积神经网络（CNN）基础知识入门",
+                "卷积神经网络是常见的神经网络架构。",
+                "卷积神经网络通过局部感受野提取特征，构成其核心机制。",
+            ),
+            _result(
+                "web-power",
+                "电力变压器工作原理",
+                "电力系统中的变压器用于改变电压。",
+                "电力变压器通过电磁感应改变交流电压。",
+            ),
+        ],
+    )
+    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+
+    final = _send(
+        service,
+        conversation.conversation_id,
+        "我想学习卷积神经网络的相关基础知识",
+    )
+
+    assert final.status == ChatMessageStatus.DONE
+    assert final.teaching is not None
+    teaching = TeachingTurnProjection.model_validate(final.teaching)
+    assert teaching.can_answer_reliably is True
+    assert teaching.status.value == "ready"
+    assert [source.source_id for source in teaching.evidence_gate.external_sources] == [
+        "web-cnn"
+    ]
+    assert "未联网核实" not in final.content
+    assert "已降级为模型知识回答" not in final.content
+    assert "[reference:1]" in final.content
+    assert teaching.learning_progress is not None
+    assert service.learning_progress("alice", conversation.conversation_id) is not None
+    payload_text = "\n".join(
+        str(message.get("content", "")) for message in adapter.payloads[0]["messages"]
+    )
+    assert "卷积神经网络（CNN）基础知识入门" in payload_text
+    assert "电力变压器工作原理" not in payload_text
+
+
 def test_chat_搜索成功但无覆盖时不伪造引用也不写入学习进度(tmp_path: Path) -> None:
     service, adapter = _service(
         tmp_path,
@@ -234,4 +280,5 @@ def test_chat_覆盖裁决审计只记录脱敏计数(tmp_path: Path) -> None:
     assert details["fetched_count"] == 1
     assert details["accepted_count"] == 0
     assert details["rejection_counts"] == {"topic_mismatch": 1}
+    assert details["topic_aliases_version"] == "learning-evidence-topic-aliases-v1"
     assert "Transformer" not in str(details)

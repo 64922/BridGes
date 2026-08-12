@@ -44,6 +44,51 @@ function teachingProjection() {
   };
 }
 
+function insufficientTeachingProjection() {
+  const base = teachingProjection();
+  return {
+    ...base,
+    status: "empty",
+    evidence_gate: {
+      ...base.evidence_gate,
+      status: "insufficient",
+      reason: "本地材料不足；已搜索但未覆盖本轮目标。",
+      external_sources: [],
+      required_search: "duckduckgo",
+      search_status: "empty",
+      gap: "已搜索但未覆盖本轮目标，暂不能可靠断言关键结论。",
+      recovery_steps: ["重试公开检索，或上传一份与目标直接相关的材料。"],
+    },
+    learning_progress: null,
+    gap_response: "这轮我先不把不确定内容说成结论。",
+    can_answer_reliably: false,
+    can_retry: true,
+  };
+}
+
+function unavailableTeachingProjection() {
+  const base = teachingProjection();
+  return {
+    ...base,
+    status: "error",
+    evidence_gate: {
+      ...base.evidence_gate,
+      status: "unavailable",
+      reason: "公开补充检索未完成。",
+      external_sources: [],
+      required_search: "duckduckgo",
+      search_status: "error",
+      gap: "本轮未联网核实。",
+      recovery_steps: ["重试公开检索。"],
+      allow_model_knowledge: true,
+    },
+    learning_progress: null,
+    gap_response: "本轮未联网核实。",
+    can_answer_reliably: false,
+    can_retry: true,
+  };
+}
+
 function message(id: string, role: "user" | "assistant", content: string, teaching: unknown = null) {
   return {
     message_id: id,
@@ -109,5 +154,90 @@ test.describe("Issue 02：统一聊天流中的学习教学卡片", () => {
     await expect(card).toContainText("已覆盖主题");
     await expect(card).toContainText("核心思想、应用场景");
     await expect(card.getByRole("button", { name: "跳过这题" })).toHaveCount(0);
+  });
+
+  test("区分搜索成功但覆盖不足与证据充足", async ({ page }) => {
+    const history = {
+      conversation_id: CONVERSATION_ID,
+      title: "Issue 02 覆盖不足",
+      mode: "study",
+      pinned: false,
+      project_id: null,
+      created_at: NOW,
+      updated_at: NOW,
+      messages: [
+        message("u-1", "user", "解释量子纠缠"),
+        message(
+          "a-1",
+          "assistant",
+          "本轮未联网核实：已搜索但未覆盖本轮目标。",
+          insufficientTeachingProjection(),
+        ),
+      ],
+      mode_events: [],
+    };
+
+    await page.route("**/api/chat/conversations", async (route) => {
+      await route.fulfill({
+        status: route.request().method() === "POST" ? 201 : 200,
+        contentType: "application/json",
+        body: JSON.stringify(route.request().method() === "POST" ? history : { conversations: [] }),
+      });
+    });
+    await page.route(`**/api/chat/conversations/${CONVERSATION_ID}`, async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(history) });
+    });
+
+    const credentials = uniqueCredentials("issue23-coverage-gap");
+    await signUp(page, credentials.username, credentials.qqEmail, "Passw0rd123!");
+    await page.goto(`/chat/${CONVERSATION_ID}`);
+
+    const card = page.getByTestId("teaching-card");
+    await expect(card).toContainText("证据门：证据不足");
+    await expect(card).toContainText("已搜索但未覆盖本轮目标");
+    await expect(card).not.toContainText("证据门：证据充足");
+    await expect(card).not.toContainText("已降级为模型知识回答");
+  });
+
+  test("搜索失败显示未联网核实与模型知识降级", async ({ page }) => {
+    const history = {
+      conversation_id: CONVERSATION_ID,
+      title: "Issue 02 搜索失败",
+      mode: "study",
+      pinned: false,
+      project_id: null,
+      created_at: NOW,
+      updated_at: NOW,
+      messages: [
+        message("u-1", "user", "解释量子纠缠"),
+        message(
+          "a-1",
+          "assistant",
+          "本轮未联网核实：搜索失败。",
+          unavailableTeachingProjection(),
+        ),
+      ],
+      mode_events: [],
+    };
+
+    await page.route("**/api/chat/conversations", async (route) => {
+      await route.fulfill({
+        status: route.request().method() === "POST" ? 201 : 200,
+        contentType: "application/json",
+        body: JSON.stringify(route.request().method() === "POST" ? history : { conversations: [] }),
+      });
+    });
+    await page.route(`**/api/chat/conversations/${CONVERSATION_ID}`, async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(history) });
+    });
+
+    const credentials = uniqueCredentials("issue23-search-failure");
+    await signUp(page, credentials.username, credentials.qqEmail, "Passw0rd123!");
+    await page.goto(`/chat/${CONVERSATION_ID}`);
+
+    const card = page.getByTestId("teaching-card");
+    await expect(card).toContainText("已降级为模型知识回答（本轮未联网核实）");
+    await expect(card).toContainText("证据暂不可用（本轮未联网核实）");
+    await expect(card).not.toContainText("证据门：证据充足");
   });
 });

@@ -118,6 +118,9 @@ class TeachingEvidenceCoverage(BaseModel):
     """公开来源覆盖裁决的脱敏观测摘要。"""
 
     rules_version: str = Field(description="覆盖裁决规则版本。")
+    topic_aliases_version: str | None = Field(
+        default=None, description="主题别名表版本；历史投影可为空。"
+    )
     candidate_count: int = Field(default=0, ge=0, description="进入裁决的候选来源数。")
     fetched_count: int = Field(default=0, ge=0, description="标记为已抓取的候选数。")
     accepted_count: int = Field(default=0, ge=0, description="通过覆盖裁决的来源数。")
