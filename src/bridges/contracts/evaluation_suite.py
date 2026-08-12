@@ -671,7 +671,11 @@ class BlindReviewSubmission(BaseModel):
 
 
 class BlindReviewSet(BaseModel):
-    """一个盲评集：匿名对照项 + 评审提交 + 一致性统计。"""
+    """一个盲评集：匿名对照项 + 评审提交 + 一致性统计。
+
+    ``legacy`` 标记旧人工评审集（Issue 10 起）：只读展示，不接受新提交，
+    不进入新的隔离多模型自动统计，也不阻塞全自动流程。
+    """
 
     review_set_id: str = Field(description="盲评集标识。")
     lock_id: str = Field(description="关联运行锁。")
@@ -680,6 +684,10 @@ class BlindReviewSet(BaseModel):
         default_factory=list, description="评审提交。"
     )
     created_at: str = Field(description="创建时间（ISO 8601）。")
+    legacy: bool = Field(
+        default=False,
+        description="旧人工评审集标记：只读，不进入新的自动统计。",
+    )
 
     def item(self, item_id: str) -> BlindReviewItem:
         for item in self.items:

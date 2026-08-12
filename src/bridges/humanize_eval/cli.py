@@ -123,11 +123,22 @@ def _run_command(args: argparse.Namespace) -> int:
     for name, verdict in summary.surface_verdicts.items():
         print(f"  [{name}] {verdict}（{summary.surface_cases.get(name, 0)}/"
               f"{summary.surface_case_total.get(name, 0)} 成功）")
+    if summary.canary_passed:
+        canary_line = "；".join(
+            f"{judge_id}:{'通过' if passed else '未通过'}"
+            for judge_id, passed in summary.canary_passed.items()
+        )
+        print(f"裁判 canary 硬门：{canary_line}")
+    if summary.panel_issues:
+        for issue in summary.panel_issues:
+            print(f"  - {issue}")
     for reason in summary.reasons:
         print(f"  - {reason}")
     if summary.packet_path:
         print(f"裁判包：{summary.packet_path}")
-        print(f"organizer mapping：{summary.mapping_path}")
+        print(f"sealed mapping：{summary.mapping_path}")
+    if summary.judge_count:
+        print("注：系统自动裁判结果，未经真实用户或人工验证。")
     summary_path = args.outdir / "runs" / summary.run_id / "summary.json"
     print(f"脱敏执行摘要：{summary_path}")
     return 0

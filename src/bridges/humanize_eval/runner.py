@@ -1,4 +1,4 @@
-"""运行锁、append-only 原始输出与分别报告（Issue 01 + Issue 09）。
+"""运行锁、append-only 原始输出与分别报告（Issue 01 + Issue 09 + Issue 10）。
 
 每次运行记录：代码/build、语料版本与面级哈希、契约版本、来源账本哈希、
 SUT/策略/SKILL 哈希、模型快照、temperature/top_p/seed、重试、匿名种子、
@@ -9,6 +9,12 @@ Issue 09 起聊天与文章分别建集、分别报告：``surface_verdicts`` �
 chat_naturalness / article_humanization 分别给出结论，任一面的有效案例
 不足 40 时该面结论固定为 inconclusive。holdout 默认冻结：未解封时只运行
 development 分区，冻结哈希不一致或提前读取一律拒绝。
+
+Issue 10：隔离多模型自动盲评。裁判包与 sealed mapping 分离；递归泄漏
+扫描失败时不调用裁判；每个裁判先通过冻结 canary 硬门（100%）才进入正式
+panel；预注册聚合器报告双向结果、证据、分歧与可靠性，分歧超阈值返回
+``inconclusive``；保真硬门优先于所有裁判，任一关键失败直接判 ``failed``，
+多数票不能放行。报告明确标注系统自动裁判结果未经真实用户或人工验证。
 """
 
 from __future__ import annotations
@@ -23,12 +29,24 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from bridges import __version__ as package_version
+from bridges.ai.fixed_models import CHAT_MODEL_ID
+from bridges.humanize_eval.aggregator import (
+    AUTOMATED_ONLY_NOTE,
+    AggregationResult,
+    aggregate_panel,
+)
+from bridges.humanize_eval.canary import (
+    CanaryRunResult,
+    apply_canary_gate,
+    canary_set_sha256,
+    detect_drift,
+)
 from bridges.humanize_eval.cases import (
     CORPUS_VERSION,
     HUMANIZE_CASES,
+    MIN_CASES_PER_SURFACE,
     HumanizeCase,
     HumanizeCaseKind,
-    MIN_CASES_PER_SURFACE,
     case_hashes,
     corpus_hashes,
     ledger_hashes,
@@ -42,15 +60,28 @@ from bridges.humanize_eval.generation import (
 )
 from bridges.humanize_eval.holdout import HoldoutController, HoldoutError
 from bridges.humanize_eval.judges import (
+    JUDGE_PARAMETERS,
+    JUDGE_SCHEMA_VERSION,
+    JudgeOrder,
+    JudgePreference,
     JudgeVerdict,
     SystemJudge,
     judge_pair,
+    judge_prompt_sha256,
 )
 from bridges.humanize_eval.packet import (
+    PACKET_SCHEMA_VERSION,
     JudgePacket,
-    OrganizerMapping,
+    JudgePacketItem,
+    SealedMapping,
     build_packets,
     scan_packet_leaks,
+)
+from bridges.humanize_eval.registry import (
+    JudgeRegistry,
+    build_default_registry,
+    model_family_of,
+    panel_gate_issues,
 )
 from bridges.humanize_eval.suts import (
     SUTOutput,
@@ -75,6 +106,8 @@ LOCK_REQUIRED_KEYS = (
     "environment",
     "run_count",
     "judge_versions",
+    "registry_digest",
+    "judge_prompt_sha",
     "started_at",
     "ended_at",
 )
@@ -95,7 +128,7 @@ class HumanizeRunLock(BaseModel):
     corpus_hashes: dict[str, str] = Field(description="语料面 -> 注册表聚合哈希。")
     ledger_hashes: dict[str, str] = Field(description="语料面 -> 来源账本聚合哈希。")
     contract_versions: dict[str, str] = Field(
-        description="语料/契约 schema 版本（如 case_schema）。"
+        description="语料/契约 schema 版本（case_schema/packet/judge）。"
     )
     case_hashes: dict[str, str] = Field(description="case_id -> 内容哈希。")
     sut_specs: list[SUTSpec] = Field(description="四个 SUT 规格（含策略哈希）。")
@@ -108,6 +141,13 @@ class HumanizeRunLock(BaseModel):
     )
     run_count: int = Field(description="该输出目录下的执行次数。")
     judge_versions: dict[str, str] = Field(description="裁判 id -> 版本。")
+    registry_digest: str = Field(
+        default="", description="judge registry 内容哈希（panel/多样性/canary 门）。"
+    )
+    judge_prompt_sha: str = Field(
+        default="",
+        description="裁判系统提示/schema/参数的规范化哈希（变化触发 canary 重跑）。",
+    )
     started_at: str
     ended_at: str
 
@@ -184,6 +224,21 @@ class RunSummary(BaseModel):
     holdout_problems: list[str] = Field(
         default_factory=list, description="holdout 冻结哈希校验问题。"
     )
+    # Issue 10：panel/canary/聚合观测。
+    registry_digest: str = Field(default="", description="judge registry 哈希。")
+    canary_sha256: str = Field(default="", description="冻结 canary 集哈希。")
+    canary_passed: dict[str, bool] = Field(
+        default_factory=dict, description="judge_id -> canary 硬门是否通过。"
+    )
+    canary_failures: dict[str, list[str]] = Field(
+        default_factory=dict, description="judge_id -> 失败 canary 清单。"
+    )
+    panel_issues: list[str] = Field(default_factory=list, description="panel 门问题。")
+    aggregation: AggregationResult | None = Field(
+        default=None, description="预注册聚合结果（含分歧/可靠性）。"
+    )
+    automated_only: bool = True
+    note: str = AUTOMATED_ONLY_NOTE
     started_at: str
     ended_at: str
 
@@ -193,7 +248,7 @@ class HumanizeRunError(Exception):
 
 
 class HumanizeRunner:
-    """评测运行器：校验 → 生成 → 保真 → 裁判 → 导出，全程可重放。"""
+    """评测运行器：校验 → 生成 → 保真 → canary 门 → 裁判 → 聚合 → 导出。"""
 
     def __init__(
         self,
@@ -208,6 +263,10 @@ class HumanizeRunner:
         holdout: HoldoutController | None = None,
         surface: str | None = None,
         allow_holdout: bool = False,
+        registry: JudgeRegistry | None = None,
+        canary_baseline: CanaryRunResult | None = None,
+        canary_baseline_dir: Path | None = None,
+        run_canary_gate: bool = True,
     ) -> None:
         self.outdir = Path(outdir)
         self.workspace = Path(workspace)
@@ -219,6 +278,27 @@ class HumanizeRunner:
         self.holdout = holdout
         self.surface = surface
         self.allow_holdout = allow_holdout
+        self.registry = registry
+        self.canary_baseline = canary_baseline
+        self.canary_baseline_dir = canary_baseline_dir
+        self.run_canary_gate = run_canary_gate
+
+    def _load_canary_baseline(self, judge_id: str) -> CanaryRunResult | None:
+        """从冻结基线目录加载该裁判的 canary 基线（AC-11 漂移门）。
+
+        优先使用显式注入的 ``canary_baseline``（测试用）；否则从
+        ``canary_baseline_dir`` 读取 ``<judge_id>.json`` 冻结基线。
+        """
+        if self.canary_baseline is not None:
+            return self.canary_baseline
+        if self.canary_baseline_dir is None:
+            return None
+        baseline_file = Path(self.canary_baseline_dir) / f"{judge_id}.json"
+        if not baseline_file.is_file():
+            return None
+        return CanaryRunResult.model_validate_json(
+            baseline_file.read_text(encoding="utf-8")
+        )
 
     def _default_port(self) -> GenerationPort:
         from bridges.humanize_eval.generation import QwenGenerationPort
@@ -297,7 +377,7 @@ class HumanizeRunner:
             return "unknown"
 
     def _lock(
-        self, suts: list[SUTSpec], run_count: int
+        self, suts: list[SUTSpec], run_count: int, registry: JudgeRegistry
     ) -> HumanizeRunLock:
         started = datetime.now(UTC).isoformat()
         code_commit = self._current_commit()
@@ -311,6 +391,8 @@ class HumanizeRunner:
                 "case_schema": CORPUS_VERSION,
                 "corpus_version": CORPUS_VERSION,
                 "task_contract": "3",
+                "packet_schema": PACKET_SCHEMA_VERSION,
+                "judge_schema": JUDGE_SCHEMA_VERSION,
             },
             case_hashes=case_hashes(),
             sut_specs=suts,
@@ -324,7 +406,10 @@ class HumanizeRunner:
             },
             environment={
                 "platform": platform.system(),
-                "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                "python": (
+                    f"{sys.version_info.major}.{sys.version_info.minor}."
+                    f"{sys.version_info.micro}"
+                ),
                 "package": package_version,
             },
             run_count=run_count,
@@ -333,6 +418,8 @@ class HumanizeRunner:
                 if self.judges
                 else {}
             ),
+            registry_digest=registry.digest(),
+            judge_prompt_sha=judge_prompt_sha256(),
             started_at=started,
             ended_at="",
         )
@@ -350,8 +437,55 @@ class HumanizeRunner:
         _append_only_write(lock_file, lock.model_dump_json(indent=2))
         return run_id, runs_dir
 
+    def _registered_identities(
+        self, suts: list[SUTSpec], lock: HumanizeRunLock
+    ) -> dict[str, list[str]]:
+        """登记禁止出现在裁判包中的标识（SUT/model/strategy/git/mapping）。"""
+        identities: dict[str, list[str]] = {
+            "sut": [spec.sut_id for spec in suts],
+            "model": [spec.model_id for spec in suts]
+            + [CHAT_MODEL_ID, "qwen3.7-plus"],
+            "strategy": [
+                spec.policy_ref or "" for spec in suts
+            ] + [spec.policy_sha256 for spec in suts],
+            "git": [lock.code_commit],
+            "mapping": [
+                "label_mapping",
+                "candidate_source",
+                "left_right",
+                "output_sha",
+                "anon_seed",
+            ],
+        }
+        return identities
+
+    def _ensure_registered(
+        self, registry: JudgeRegistry
+    ) -> JudgeRegistry:
+        """把自建裁判（含测试假裁判）登记进 registry（预注册：只追加）。
+
+        每个裁判必须登记才能运行 canary 门；未登记项按裁判自带属性登记。
+        """
+        from bridges.humanize_eval.registry import register_judge
+
+        for judge in self.judges or []:
+            if judge.judge_id in registry.registrations:
+                continue
+            registry = register_judge(
+                registry,
+                judge_id=judge.judge_id,
+                model_family=getattr(judge, "model_family", "unknown"),
+                provider=getattr(judge, "provider", "unknown"),
+                model_id=getattr(judge, "model_id", CHAT_MODEL_ID),
+                judge_version=getattr(judge, "judge_version", "v1"),
+                system_prompt_sha256=judge_prompt_sha256(),
+                schema_version=JUDGE_SCHEMA_VERSION,
+                parameters=getattr(judge, "parameters", JUDGE_PARAMETERS),
+            )
+        return registry
+
     def run(self) -> RunSummary:
-        """执行一次完整运行：校验 → 生成 → 保真 → 裁判 → 导出。"""
+        """执行一次完整运行：校验 → 生成 → 保真 → canary 门 → 裁判 → 聚合。"""
         self._guard_real_port()
         started = datetime.now(UTC).isoformat()
         problems = validate_cases()
@@ -372,8 +506,24 @@ class HumanizeRunner:
         excluded = len(sealed_ids & {case.case_id for case in HUMANIZE_CASES})
 
         suts = build_suts(self.workspace, snapshot_dir=self.snapshot_dir)
+        # 预注册 registry：登记实际使用的裁判 + 生成模型家族参照。
+        # 调用方提供裁判时只登记这些裁判（默认 qwen panel 不混入
+        # 多样性计算）；未提供裁判时才用默认 registry 记录预注册面板。
+        generation_model = suts[0].model_id if suts else CHAT_MODEL_ID
+        if self.registry is not None:
+            registry = self.registry
+        elif self.judges:
+            registry = JudgeRegistry(
+                generation_family=model_family_of(generation_model),
+            )
+        else:
+            registry = build_default_registry(
+                generation_model_id=generation_model,
+                parameters=JUDGE_PARAMETERS,
+            )
+        registry = self._ensure_registered(registry)
         run_count = self._next_run_count()
-        lock = self._lock(suts, run_count)
+        lock = self._lock(suts, run_count, registry)
         run_id, runs_dir = self._persist_lock(lock)
 
         outputs_by_sut: dict[str, list[SUTOutput]] = {}
@@ -407,7 +557,7 @@ class HumanizeRunner:
                 fidelity = None
                 if output.generation.ok:
                     fidelity = run_fidelity_check(case, output.text)
-                    # 任一保真失败（含 MAJOR）都阻止通过：保真硬门不允许被均分抵消。
+                    # 任一保真失败（含 MAJOR）都是硬门：多数票不能放行。
                     # 失败记录带 case_id 前缀，面级归属按结构化前缀判定。
                     failed_checks = [
                         item for item in fidelity.checks if item.effective_failure
@@ -449,48 +599,179 @@ class HumanizeRunner:
             outputs_by_sut[spec.sut_id] = outputs
 
         # 裁判与匿名包：current vs candidate 配对（reference/plain 输出留作原始证据）。
+        # packet 构建与泄漏扫描先于 canary 门与裁判调用：泄漏是 P0 完整性事件，
+        # 泄漏检查失败时不调用任何裁判（含 canary 校准调用）。
         packet: JudgePacket | None = None
-        mapping: OrganizerMapping | None = None
+        sealed: SealedMapping | None = None
         judge_outcomes: list[JudgeOutcome] = []
         inconsistent_items: list[str] = []
         invalid_verdicts = 0
-        if self.judges and all(
+        packet_leaks: list[str] = []
+        panel_issues: list[str] = []
+        aggregation: AggregationResult | None = None
+        outputs_ready = all(
             o.generation.ok for o in outputs_by_sut.get("current-production", [])
         ) and all(
             o.generation.ok for o in outputs_by_sut.get("candidate", [])
-        ):
-            packet, mapping = build_packets(
-                packet_id=f"packet-{run_id}",
+        )
+        if outputs_ready:
+            packet, sealed = build_packets(
+                packet_id=_packet_id(run_id, self.anon_seed),
                 cases=runnable_cases,
                 outputs_by_sut=outputs_by_sut,
                 anon_seed=self.anon_seed,
+                run_id=run_id,
             )
-            packet_leaks = scan_packet_leaks(packet)
-            for judge in self.judges:
-                for item in packet.items:
-                    verdict_ab, verdict_ba = judge_pair(judge, item)
-                    consistent = (
-                        verdict_ab.is_valid and verdict_ba.is_valid
-                    )
-                    if not consistent:
-                        inconsistent_items.append(item.item_id)
-                        invalid_verdicts += 2
-                    judge_outcomes.append(
-                        JudgeOutcome(
-                            judge_id=judge.judge_id,
-                            judge_version=judge.judge_version,
-                            item_id=item.item_id,
-                            verdict_ab=verdict_ab,
-                            verdict_ba=verdict_ba,
-                            consistent=consistent,
-                        )
-                    )
+            identities = self._registered_identities(suts, lock)
+            packet_leaks = scan_packet_leaks(packet, identities=identities)
+            if packet_leaks:
+                # 泄漏检查失败时不调用裁判：评测完整性事件，运行被拒绝。
+                raise HumanizeRunError(
+                    "裁判包匿名性泄漏（P0 评测完整性事件），不调用任何裁判：\n"
+                    + "\n".join(packet_leaks)
+                )
             packet_file = runs_dir / "packets" / f"{packet.packet_id}.json"
             mapping_file = runs_dir / "mappings" / f"{packet.packet_id}.json"
             _append_only_write(packet_file, packet.model_dump_json(indent=2))
-            _append_only_write(mapping_file, mapping.model_dump_json(indent=2))
-        else:
-            packet_leaks = []
+            _append_only_write(mapping_file, sealed.model_dump_json(indent=2))
+
+        # canary 门：每个裁判通过冻结 canary 硬门（100%）才进入正式 panel。
+        # 漂移检测：相对冻结基线超过预注册阈值 → drifted 停用。
+        canary_passed: dict[str, bool] = {}
+        canary_failures: dict[str, list[str]] = {}
+        canary_sha = canary_set_sha256()
+        if self.judges and self.run_canary_gate:
+            for judge in self.judges:
+                registry, canary_result = apply_canary_gate(
+                    judge,
+                    registry=registry,
+                    canary_sha256=canary_sha,
+                    run_id=run_id,
+                )
+                canary_passed[judge.judge_id] = canary_result.passed
+                if not canary_result.passed:
+                    canary_failures[judge.judge_id] = [
+                        check.canary_id for check in canary_result.failed_checks()
+                    ]
+                # 漂移检测：相对冻结基线（显式注入或基线目录）超过预注册
+                # 阈值 → drifted 停用（AC-11：提示/schema/参数变化后重跑）。
+                baseline = self._load_canary_baseline(judge.judge_id)
+                if canary_result.passed and baseline is not None:
+                    drift, drift_reasons = detect_drift(
+                        baseline,
+                        canary_result,
+                        threshold=registry.drift_threshold,
+                    )
+                    if drift > registry.drift_threshold:
+                        registration = registry.registrations[judge.judge_id]
+                        registry = registry.model_copy(update={
+                            "registrations": {
+                                **registry.registrations,
+                                judge.judge_id: registration.model_copy(
+                                    update={
+                                        "canary_status": "drifted",
+                                        "enabled": False,
+                                    }
+                                ),
+                            }
+                        })
+                        canary_passed[judge.judge_id] = False
+                        canary_failures[judge.judge_id] = [
+                            f"漂移 {drift:.2f} 超过阈值 "
+                            f"{registry.drift_threshold:.2f}（{'；'.join(drift_reasons)}）"
+                        ]
+                # 本次 canary 结果落盘（append-only 证据；可作为下次冻结基线）。
+                canary_file = runs_dir / "canary" / f"{judge.judge_id}.json"
+                _append_only_write(canary_file, canary_result.model_dump_json(indent=2))
+        elif self.judges and not self.run_canary_gate:
+            # 显式关闭 canary 门（测试开关）：全部裁判视为已通过校准，
+            # 并同步 registry.enabled（单一事实源，聚合器读 registry）。
+            for judge in self.judges:
+                canary_passed[judge.judge_id] = True
+                # 裁判必已登记（_ensure_registered 保证）：直接索引，类型明确。
+                existing = registry.registrations[judge.judge_id]
+                registry = registry.model_copy(update={
+                    "registrations": {
+                        **registry.registrations,
+                        judge.judge_id: existing.model_copy(
+                            update={
+                                "canary_status": "passed",
+                                "enabled": True,
+                            }
+                        ),
+                    }
+                })
+
+        if outputs_ready:
+            enabled_judges = [
+                judge for judge in (self.judges or [])
+                if canary_passed.get(judge.judge_id, False)
+            ]
+            panel_issues = panel_gate_issues(registry)
+            if enabled_judges:
+                # outputs_ready 时 packet/sealed 必已构建（上方无条件赋值）。
+                assert packet is not None and sealed is not None
+                for judge in enabled_judges:
+                    for item in packet.items:
+                        # AC-14：裁判异常（网络/解析）只产生无效裁决与机器可读
+                        # 原因，绝不中断整个 run——无人值守下任何异常不崩溃。
+                        try:
+                            verdict_ab, verdict_ba = judge_pair(judge, item)
+                        except Exception as exc:
+                            invalid_reason = (
+                                f"裁判调用异常：{type(exc).__name__}（{exc}）。"
+                            )
+                            verdict_ab = _failed_verdict(
+                                judge, item, JudgeOrder.AB, invalid_reason
+                            )
+                            verdict_ba = _failed_verdict(
+                                judge, item, JudgeOrder.BA, invalid_reason
+                            )
+                        consistent = (
+                            verdict_ab.is_valid and verdict_ba.is_valid
+                        )
+                        if not consistent:
+                            inconsistent_items.append(item.item_id)
+                            invalid_verdicts += 2
+                        judge_outcomes.append(
+                            JudgeOutcome(
+                                judge_id=judge.judge_id,
+                                judge_version=judge.judge_version,
+                                item_id=item.item_id,
+                                verdict_ab=verdict_ab,
+                                verdict_ba=verdict_ba,
+                                consistent=consistent,
+                            )
+                        )
+                # sealed mapping 读取审计（Observability：读取有机器审计）。
+                _append_only_write(
+                    runs_dir / "mappings" / "audit.log",
+                    json.dumps(
+                        {
+                            "event": "sealed_mapping_read",
+                            "actor": "aggregator",
+                            "packet_id": packet.packet_id,
+                            "run_id": run_id,
+                            "at": datetime.now(UTC).isoformat(),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n",
+                )
+                # 预注册聚合：分歧超阈值 → inconclusive；保真硬门 → failed。
+                fidelity_failed_cases = {
+                    item.split(":", 1)[0] for item in fidelity_failures
+                }
+                item_case_ids = {
+                    item_id: entry.case_id
+                    for item_id, entry in sealed.entries.items()
+                }
+                aggregation = aggregate_panel(
+                    registry=registry,
+                    outcomes=judge_outcomes,
+                    fidelity_failed_case_ids=fidelity_failed_cases,
+                    item_case_ids=item_case_ids,
+                )
 
         ended = datetime.now(UTC).isoformat()
         lock.ended_at = ended
@@ -517,6 +798,12 @@ class HumanizeRunner:
             judge_outcomes=judge_outcomes,
             holdout_problems=holdout_problems,
             holdout_excluded=excluded,
+            registry=registry,
+            canary_sha256=canary_sha,
+            canary_passed=canary_passed,
+            canary_failures=canary_failures,
+            panel_issues=panel_issues,
+            aggregation=aggregation,
         )
         if packet is not None:
             summary = summary.model_copy(
@@ -617,6 +904,12 @@ class HumanizeRunner:
         judge_outcomes: list[JudgeOutcome],
         holdout_problems: list[str],
         holdout_excluded: int,
+        registry: JudgeRegistry,
+        canary_sha256: str,
+        canary_passed: dict[str, bool],
+        canary_failures: dict[str, list[str]],
+        panel_issues: list[str],
+        aggregation: AggregationResult | None,
     ) -> RunSummary:
         reasons: list[str] = []
         missing_lock_items = [
@@ -626,7 +919,8 @@ class HumanizeRunner:
         # 未配置裁判时 judge_versions 为空是合法状态（"未提供系统裁判"已单独报告）。
         if not self.judges:
             missing_lock_items = [
-                key for key in missing_lock_items if key != "judge_versions"
+                key for key in missing_lock_items
+                if key not in ("judge_versions", "registry_digest", "judge_prompt_sha")
             ]
 
         cases_ran = sum(generation_counts.values())
@@ -655,18 +949,21 @@ class HumanizeRunner:
             reasons.append(f"保真检查存在缺失项（{missing_detail}）。")
         if not self.judges:
             reasons.append("未提供系统裁判。")
-        elif len(self.judges) < 3:
-            reasons.append(
-                f"系统裁判只有 {len(self.judges)} 个（少于 3），结论固定为 inconclusive。"
-            )
-        elif judge_outcomes:
-            # 多样性：全部裁判来自同一适配器族时不足（本项目当前只有 Qwen）。
-            judge_ids = {outcome.judge_id for outcome in judge_outcomes}
-            diverse = len({j.split("-")[0] for j in judge_ids}) > 1
-            if not diverse:
-                reasons.append(
-                    "系统裁判多样性不足（全部来自同一模型家族），结论固定为 inconclusive。"
+        else:
+            failed_judges = [
+                judge_id for judge_id, passed in canary_passed.items() if not passed
+            ]
+            if failed_judges:
+                detail = "；".join(
+                    f"{judge_id}:{','.join(canary_failures.get(judge_id, []))}"
+                    for judge_id in failed_judges
                 )
+                reasons.append(
+                    "裁判 canary 硬门未通过（100% 要求），不得进入正式 panel："
+                    f"{detail}"
+                )
+            if panel_issues:
+                reasons.extend(panel_issues)
             if inconsistent_items:
                 reasons.append(
                     f"顺序一致性失败 item：{'、'.join(dict.fromkeys(inconsistent_items))}"
@@ -679,6 +976,13 @@ class HumanizeRunner:
             reasons.append("运行锁不完整，缺少：" + "、".join(missing_lock_items))
         if holdout_problems:
             reasons.append("holdout 冻结校验问题：" + "；".join(holdout_problems))
+        if aggregation is not None:
+            if aggregation.reasons:
+                reasons.extend(aggregation.reasons)
+            if aggregation.verdict == "failed":
+                reasons.append(
+                    "预注册聚合判定失败（保真硬门/多数票不能放行）。"
+                )
 
         # 分别报告：聊天/文章各自检查样本量与失败。
         surface_reasons: dict[str, list[str]] = {}
@@ -700,8 +1004,14 @@ class HumanizeRunner:
             name: "inconclusive" if surf_reasons else "passed"
             for name, surf_reasons in surface_reasons.items()
         }
-        # 全量结论：任一原因存在即 inconclusive（passed 只有全部满足）。
-        verdict = "inconclusive" if reasons else "passed"
+        # 全量结论：保真硬门失败 → failed；其余任何原因 → inconclusive；
+        # passed 只有全部满足（含聚合器 verdict=passed）。
+        if fidelity_failures or (aggregation is not None and aggregation.verdict == "failed"):
+            verdict = "failed"
+        elif reasons or (aggregation is not None and aggregation.verdict != "passed"):
+            verdict = "inconclusive"
+        else:
+            verdict = "passed"
 
         return RunSummary(
             run_id=run_id,
@@ -714,9 +1024,7 @@ class HumanizeRunner:
             fidelity_failures=list(dict.fromkeys(fidelity_failures)),
             fidelity_missing=list(dict.fromkeys(fidelity_missing)),
             judge_count=len(self.judges or []),
-            judge_diverse=len(
-                {outcome.judge_id.split("-")[0] for outcome in judge_outcomes}
-            ) > 1 if judge_outcomes else False,
+            judge_diverse=not panel_issues,
             inconsistent_items=list(dict.fromkeys(inconsistent_items)),
             invalid_verdicts=invalid_verdicts,
             packet_id=packet.packet_id if packet else None,
@@ -736,9 +1044,41 @@ class HumanizeRunner:
             },
             holdout_excluded=holdout_excluded,
             holdout_problems=holdout_problems,
+            registry_digest=registry.digest(),
+            canary_sha256=canary_sha256,
+            canary_passed=canary_passed,
+            canary_failures=canary_failures,
+            panel_issues=panel_issues,
+            aggregation=aggregation,
             started_at=started_at,
             ended_at=ended_at,
         )
+
+
+def _failed_verdict(
+    judge: SystemJudge,
+    item: JudgePacketItem,
+    order: JudgeOrder,
+    invalid_reason: str,
+) -> JudgeVerdict:
+    """裁判异常时的占位裁决：无效 + 机器可读原因（AC-14 不崩溃）。"""
+    return JudgeVerdict(
+        judge_id=judge.judge_id,
+        judge_version=judge.judge_version,
+        item_id=item.item_id,
+        order=order,
+        preference=JudgePreference.CANNOT_JUDGE,
+        cannot_judge_reason=invalid_reason,
+        invalid_reason=invalid_reason,
+    )
+
+
+def _packet_id(run_id: str, anon_seed: int) -> str:
+    """随机不透明 packet ID（不携带 run/身份信息）。"""
+    digest = hashlib.sha256(
+        f"{run_id}|{anon_seed}|packet".encode()
+    ).hexdigest()
+    return f"packet-{digest[:16]}"
 
 
 def _append_only_write(

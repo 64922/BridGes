@@ -128,7 +128,15 @@ def record_submission(
     rationale: str | None = None,
     submission_id: str | None = None,
 ) -> BlindReviewSubmission:
-    """记录一位评审者的盲评提交；选择必须是 label_a/label_b/tie。"""
+    """记录一位评审者的盲评提交；选择必须是 label_a/label_b/tie。
+
+    legacy 标记的旧人工评审集只读：拒绝新提交（不进入新的自动统计）。
+    """
+    if review_set.legacy:
+        raise BlindReviewError(
+            f"盲评集 {review_set.review_set_id} 已标记为 legacy（旧人工评审集），"
+            "只读展示，不接受新提交。"
+        )
     review_set.item(item_id)
     if chosen not in {"label_a", "label_b", "tie"}:
         raise BlindReviewError(
@@ -152,7 +160,11 @@ def record_submission(
 
 
 def consensus_summary(review_set: BlindReviewSet) -> dict[str, Any]:
-    """盲评一致性摘要：评审数、一致率、低一致性项目与自动裁判标注。"""
+    """盲评一致性摘要：评审数、一致率、低一致性项目与自动裁判标注。
+
+    含 ``legacy`` 标记：旧人工评审集只读展示，不进入新的隔离多模型
+    自动统计（统计入口见 bridges.humanize_eval.aggregator）。
+    """
     return {
         "reviewer_count": len({s.reviewer_id for s in review_set.submissions}),
         "item_count": len(review_set.items),
@@ -160,6 +172,7 @@ def consensus_summary(review_set: BlindReviewSet) -> dict[str, Any]:
         "agreement": review_set.pair_agreement(),
         "low_consistency_items": review_set.low_consistency_items(),
         "auto_judge_primary": review_set.submission_count() == 0,
+        "legacy": review_set.legacy,
     }
 
 

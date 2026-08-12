@@ -79,13 +79,25 @@ class FakeGenerationPort:
 
 
 def make_fake_judges():
-    """三个不同家族标识的假裁判（默认 TIE，双向一致性通过）。"""
+    """三个不同家族标识的假裁判（默认 TIE，双向一致性通过，canary 通过）。"""
     from bridges.humanize_eval.judges import FakeSystemJudge
 
     return [
-        FakeSystemJudge(judge_id="family-a-judge-1"),
-        FakeSystemJudge(judge_id="family-b-judge-1"),
-        FakeSystemJudge(judge_id="family-c-judge-1"),
+        FakeSystemJudge(
+            judge_id="family-a-judge-1",
+            model_family="family-a",
+            provider="provider-a",
+        ),
+        FakeSystemJudge(
+            judge_id="family-b-judge-1",
+            model_family="family-b",
+            provider="provider-b",
+        ),
+        FakeSystemJudge(
+            judge_id="family-c-judge-1",
+            model_family="family-c",
+            provider="provider-c",
+        ),
     ]
 
 
