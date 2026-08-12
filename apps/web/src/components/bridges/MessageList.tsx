@@ -614,6 +614,30 @@ export function MessageList({
                     <Icon name="alert" size={18} aria-hidden />
                     <span style={{ fontSize: "var(--text-sm)" }}>{message.errorText}</span>
                   </div>
+                ) : message.humanizer?.article?.delivery_status === "failed" ? (
+                  /* Issue 08：交付失败时正文区域明确「未交付」，
+                     不把违规候选显示为最终正文；展示稳定失败原因
+                     （硬门/材料不足/模型错误各有具体文案，AC 4）。 */
+                  <div
+                    role="alert"
+                    data-testid="humanizer-not-delivered"
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "var(--space-2)",
+                      padding: "var(--space-3)",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--color-status-error)",
+                      backgroundColor: "var(--color-status-error-bg)",
+                      color: "var(--color-status-error)",
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    <Icon name="alert" size={18} aria-hidden />
+                    <span style={{ fontSize: "var(--text-sm)" }}>
+                      {message.humanizer.error_message ?? "正文未交付。"}
+                    </span>
+                  </div>
                 ) : (
                   message.content
                 )}

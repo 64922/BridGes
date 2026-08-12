@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -594,7 +594,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +656,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -1487,7 +1487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1597,7 +1597,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1706,7 +1706,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -2666,7 +2666,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -3435,7 +3435,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -3736,7 +3736,81 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/chat/humanizer/events": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Record Humanizer Projection Event",
+        "description": "记录文章结果投影前端事件（Issue 08 Observability）。\n\n只接受投影版本、交付状态、风险类型、事件名与 legacy 标志；请求体\nSchema 无正文字段，正文/引语/diff 内容无法进入审计。审计失败不\n阻断用户操作（遥测尽力而为）。",
+        "operationId": "record_humanizer_projection_event_chat_humanizer_events_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HumanizerProjectionEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Record Humanizer Projection Event Chat Humanizer Events Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -4104,7 +4178,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "503": {
             "content": {
@@ -4946,7 +5020,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -5878,7 +5952,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -8385,7 +8459,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8609,7 +8683,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -8758,7 +8832,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9076,7 +9150,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9246,7 +9320,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9395,7 +9469,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9618,7 +9692,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9849,7 +9923,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9939,7 +10013,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10038,7 +10112,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10128,7 +10202,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10807,7 +10881,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11049,7 +11123,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11128,7 +11202,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11319,7 +11393,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11591,7 +11665,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11769,7 +11843,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11949,7 +12023,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12137,7 +12211,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12235,7 +12309,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12458,7 +12532,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12548,7 +12622,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12647,7 +12721,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14594,7 +14668,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14702,7 +14776,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14898,7 +14972,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15015,7 +15089,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15167,7 +15241,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15258,7 +15332,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15366,7 +15440,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15464,7 +15538,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15748,7 +15822,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15837,7 +15911,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -15988,7 +16062,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -16299,7 +16373,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16557,7 +16631,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16637,7 +16711,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16726,7 +16800,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16806,7 +16880,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -17457,7 +17531,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17704,7 +17778,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17802,7 +17876,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17891,7 +17965,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17980,7 +18054,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18164,7 +18238,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18244,7 +18318,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18333,7 +18407,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18413,7 +18487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18581,7 +18655,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18670,7 +18744,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18821,7 +18895,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18891,7 +18965,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19058,7 +19132,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19117,7 +19191,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19559,7 +19633,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19746,7 +19820,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -20161,7 +20235,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -20377,7 +20451,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -20607,7 +20681,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -20833,7 +20907,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -22799,7 +22873,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -23771,7 +23845,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -24504,7 +24578,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -26044,7 +26118,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -26144,7 +26218,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "502": {
             "content": {
@@ -27285,6 +27359,324 @@
         ],
         "title": "ArgumentPlan",
         "description": "Ordered plan that structures the draft before wording is chosen."
+      },
+      "ArticleConfirmationItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "稳定来源 code。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "中文类别标签。"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "中文说明（用户可见）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "label",
+          "detail"
+        ],
+        "title": "ArticleConfirmationItem",
+        "description": "一条待用户确认项（保真待确认、契约需人工、证据 hold 等汇总）。"
+      },
+      "ArticleDeliveryStatus": {
+        "type": "string",
+        "enum": [
+          "delivered",
+          "failed"
+        ],
+        "title": "ArticleDeliveryStatus",
+        "description": "正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。"
+      },
+      "ArticleEvidenceItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "稳定风险/变化 code。"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "中文类别说明。"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "risk / change / hold。"
+          },
+          "original_span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Span",
+            "description": "原文片段（change 项为修订前，其余为 None）。"
+          },
+          "revised_span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised Span",
+            "description": "改后片段（change 项为修订后，其余为 None）。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "为何构成风险/为何修订的中文理由。"
+          },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Label",
+            "description": "消费的来源条目显示名；无法判定为 None。"
+          },
+          "needs_user_confirmation": {
+            "type": "boolean",
+            "title": "Needs User Confirmation",
+            "description": "是否需用户确认（删除/升级/无法判定时 True）。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "category",
+          "kind",
+          "reason"
+        ],
+        "title": "ArticleEvidenceItem",
+        "description": "一条证据风险/变化项（确定性投影自 EvidenceSafeReport）。\n\nkind 区分：risk=默认模式风险项（正文保持原结论）；change=证据安全\n修订的实质变化；hold=材料不足/无法判定，保持原文待用户确认。"
+      },
+      "ArticleFidelityItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "稳定失败码（审计用）。"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "description": "严重度：blocking / needs_user_confirmation。"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "中文类别说明。"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "中文说明（用户可见）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "category",
+          "note"
+        ],
+        "title": "ArticleFidelityItem",
+        "description": "一条保真失败/待确认项（确定性投影自 FidelityFailure，不含正文）。"
+      },
+      "ArticleFidelitySummary": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "无关键失败即为通过。"
+          },
+          "blocking_count": {
+            "type": "integer",
+            "title": "Blocking Count",
+            "description": "硬失败数。"
+          },
+          "needs_confirmation_count": {
+            "type": "integer",
+            "title": "Needs Confirmation Count",
+            "description": "需用户确认项数。"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleFidelityItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "失败/待确认项清单。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "blocking_count",
+          "needs_confirmation_count"
+        ],
+        "title": "ArticleFidelitySummary",
+        "description": "保真摘要：确定性计数与失败项；通过时 items 为空，不生成空洞总结。"
+      },
+      "ArticleMaterialState": {
+        "type": "string",
+        "enum": [
+          "sufficient",
+          "insufficient"
+        ],
+        "title": "ArticleMaterialState",
+        "description": "材料状态：材料充足为 sufficient；缺原文/缺主题/材料不可读为\ninsufficient（界面只展示一个最高价值问题，不堆叠通用建议）。"
+      },
+      "ArticleRevisionSummary": {
+        "properties": {
+          "triggered": {
+            "type": "boolean",
+            "title": "Triggered",
+            "description": "是否执行了修订调用。"
+          },
+          "trigger_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Label",
+            "description": "触发类别中文说明（保真/契约遗漏/审稿）。"
+          },
+          "problem_count": {
+            "type": "integer",
+            "title": "Problem Count",
+            "description": "触发时待修问题数。",
+            "default": 0
+          },
+          "resolved_count": {
+            "type": "integer",
+            "title": "Resolved Count",
+            "description": "修订解决的问题数。",
+            "default": 0
+          },
+          "remaining_count": {
+            "type": "integer",
+            "title": "Remaining Count",
+            "description": "修订后仍存在的风险数（警告+遗漏+保真）。",
+            "default": 0
+          },
+          "skipped_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped Reason",
+            "description": "未执行修订的原因中文说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "triggered"
+        ],
+        "title": "ArticleRevisionSummary",
+        "description": "定向修订摘要（Issue 05）：为何触发、解决哪些问题、仍有哪些风险。\n\n只投影确定性审计数据，不包含内部提示词、思维链或完整规则清单。"
+      },
+      "ArticleStyleReviewItem": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "description": "warning / suggestion。"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "中文类别说明。"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence",
+            "description": "触发审稿发现的正文证据片段。"
+          },
+          "suggestion": {
+            "type": "string",
+            "title": "Suggestion",
+            "description": "定向建议。"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SpanLocation",
+            "description": "发现位置。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "category",
+          "evidence",
+          "suggestion",
+          "location"
+        ],
+        "title": "ArticleStyleReviewItem",
+        "description": "一条表达审稿定向项（确定性投影自 ExpressionReviewReport 的发现）。"
+      },
+      "ArticleStyleReviewSummary": {
+        "properties": {
+          "finding_count": {
+            "type": "integer",
+            "title": "Finding Count",
+            "description": "全部发现数。"
+          },
+          "warning_count": {
+            "type": "integer",
+            "title": "Warning Count",
+            "description": "warning 级发现数。"
+          },
+          "suggestion_count": {
+            "type": "integer",
+            "title": "Suggestion Count",
+            "description": "suggestion 级发现数。"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleStyleReviewItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "定向审稿项（仅 warning/suggestion）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_count",
+          "warning_count",
+          "suggestion_count"
+        ],
+        "title": "ArticleStyleReviewSummary",
+        "description": "表达审稿摘要：计数 + 定向项；无发现时 items 为空。"
       },
       "ArxivPaperProjection": {
         "properties": {
@@ -32998,6 +33390,15 @@
         "title": "ControlledContentAccessStatus",
         "description": "Status of a controlled content access request."
       },
+      "ConversationMode": {
+        "type": "string",
+        "enum": [
+          "casual",
+          "learning"
+        ],
+        "title": "ConversationMode",
+        "description": "普通聊天的模式合同；文章流程不使用。"
+      },
       "CoverageGap": {
         "properties": {
           "gap_type": {
@@ -35905,6 +36306,15 @@
         "title": "EvidenceRelation",
         "description": "Relationship between a source fragment and a claim."
       },
+      "EvidenceRevisionMode": {
+        "type": "string",
+        "enum": [
+          "preserve",
+          "evidence_safe"
+        ],
+        "title": "EvidenceRevisionMode",
+        "description": "证据修订模式：默认保留原结论；只有用户明确选择才证据安全修订。"
+      },
       "EvidenceState": {
         "type": "string",
         "enum": [
@@ -36675,6 +37085,181 @@
         "title": "ExpressionGateResult",
         "description": "Result of running the expression quality gate over a draft."
       },
+      "ExpressionTaskContract": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "description": "契约 Schema 版本（如 expression-task-v1）。"
+          },
+          "version_hash": {
+            "type": "string",
+            "title": "Version Hash",
+            "description": "规范化序列化哈希，不可变快照。"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/Surface",
+            "description": "聊天还是文章。"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/Operation",
+            "description": "改写、扩写还是按主题生成。"
+          },
+          "conversation_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "普通聊天的模式合同；文章为 None。"
+          },
+          "reality_mode": {
+            "$ref": "#/components/schemas/RealityMode",
+            "description": "现实/虚构/混合承诺。"
+          },
+          "rewrite_intensity": {
+            "$ref": "#/components/schemas/RewriteIntensity",
+            "description": "改写强度；标准为默认，用户显式选择优先。"
+          },
+          "speaker_position": {
+            "type": "string",
+            "title": "Speaker Position",
+            "description": "说话位置（谁在说、以什么身份说）。"
+          },
+          "first_person_permission": {
+            "type": "boolean",
+            "title": "First Person Permission",
+            "description": "是否允许第一人称。"
+          },
+          "hypothetical_permission": {
+            "type": "boolean",
+            "title": "Hypothetical Permission",
+            "description": "是否允许假设或设想内容。"
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience",
+            "description": "目标受众；未声明为 None。"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel",
+            "description": "渠道；未声明为 None。"
+          },
+          "length_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Target",
+            "description": "长度或时长目标。"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Genre"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "识别出的科学体裁；未识别为 None（通用文章 profile）。"
+          },
+          "material_sufficiency": {
+            "$ref": "#/components/schemas/MaterialSufficiency"
+          },
+          "source_scope": {
+            "$ref": "#/components/schemas/SourceScope"
+          },
+          "evidence_revision_mode": {
+            "$ref": "#/components/schemas/EvidenceRevisionMode",
+            "description": "证据修订模式；默认保留原结论。"
+          },
+          "user_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "User Constraints",
+            "description": "用户声明的硬约束。"
+          },
+          "one_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "One Question",
+            "description": "材料不足时返回的最高价值问题（只问一个）。"
+          },
+          "profile_slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Slice Id",
+            "description": "允许使用的最小画像切片标识。"
+          },
+          "profile_item_count": {
+            "type": "integer",
+            "title": "Profile Item Count",
+            "description": "最小画像条目数（日志不含画像正文）。",
+            "default": 0
+          },
+          "source_text_present": {
+            "type": "boolean",
+            "title": "Source Text Present",
+            "description": "本次任务是否有用户提供的原文/材料。",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "version_hash",
+          "surface",
+          "operation",
+          "reality_mode",
+          "rewrite_intensity",
+          "speaker_position",
+          "first_person_permission",
+          "hypothetical_permission",
+          "material_sufficiency",
+          "source_scope",
+          "evidence_revision_mode"
+        ],
+        "title": "ExpressionTaskContract",
+        "description": "版本化表达任务契约：生成前回答全部任务边界问题。\n\n``version_hash`` 是除自身外的规范化字段哈希，构成不可变快照；重试时\n调用方必须原样回传契约，编译器只做版本校验后复用，不重新编译。"
+      },
       "FactLock": {
         "properties": {
           "lock_id": {
@@ -37118,6 +37703,216 @@
         ],
         "title": "FeedbackStatus",
         "description": "一条反馈的生命周期状态。\n\n- ``submitted``：已提交，等待处理；\n- ``resolved``：已按反馈修正画像或调整策略。"
+      },
+      "FidelityCheckResult": {
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "title": "Check Id",
+            "description": "稳定检查标识。"
+          },
+          "ledger_version": {
+            "type": "string",
+            "title": "Ledger Version",
+            "description": "账本版本（须受支持才可成功）。"
+          },
+          "checker_version": {
+            "type": "string",
+            "title": "Checker Version",
+            "description": "检查器版本。"
+          },
+          "ledger_hash": {
+            "type": "string",
+            "title": "Ledger Hash",
+            "description": "本次检查使用的账本哈希。"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "无关键失败即为通过。"
+          },
+          "blocking_failures": {
+            "items": {
+              "$ref": "#/components/schemas/FidelityFailure"
+            },
+            "type": "array",
+            "title": "Blocking Failures",
+            "description": "硬失败清单。"
+          },
+          "needs_confirmation": {
+            "items": {
+              "$ref": "#/components/schemas/FidelityFailure"
+            },
+            "type": "array",
+            "title": "Needs Confirmation",
+            "description": "需用户确认项清单。"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/FidelitySummary",
+            "description": "脱敏检查摘要。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_id",
+          "ledger_version",
+          "checker_version",
+          "ledger_hash",
+          "passed",
+          "summary"
+        ],
+        "title": "FidelityCheckResult",
+        "description": "一次保真检查的完整结果：缺任一字段不标记成功（失败关闭）。"
+      },
+      "FidelityFailure": {
+        "properties": {
+          "failure_id": {
+            "type": "string",
+            "title": "Failure Id",
+            "description": "稳定失败标识。"
+          },
+          "code": {
+            "$ref": "#/components/schemas/FidelityFailureCode",
+            "description": "失败码（审计用）。"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FidelitySeverity",
+            "description": "严重度。"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "中文类别说明。"
+          },
+          "item_type": {
+            "type": "string",
+            "title": "Item Type",
+            "description": "项类型（number/date/proper_noun/…）。"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpanLocation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败位置。"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "中文说明（用户可见的结果投影）。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "failure_id",
+          "code",
+          "severity",
+          "category",
+          "item_type"
+        ],
+        "title": "FidelityFailure",
+        "description": "一条保真失败：只含位置与失败码描述，正文片段仅进结果投影。"
+      },
+      "FidelityFailureCode": {
+        "type": "string",
+        "enum": [
+          "number_changed",
+          "date_changed",
+          "proper_noun_changed",
+          "quote_changed",
+          "code_changed",
+          "formula_changed",
+          "url_changed",
+          "citation_changed",
+          "direction_flipped",
+          "strength_upgraded",
+          "strength_downgraded",
+          "qualifier_removed",
+          "unattributed_claim",
+          "first_person_unbound",
+          "assumption_not_allowed",
+          "assumption_carries_fact",
+          "undetermined"
+        ],
+        "title": "FidelityFailureCode",
+        "description": "保真失败码（审计日志只记录失败码，不记录正文）。"
+      },
+      "FidelitySeverity": {
+        "type": "string",
+        "enum": [
+          "blocking",
+          "needs_user_confirmation"
+        ],
+        "title": "FidelitySeverity",
+        "description": "保真失败严重度：关键失败硬门阻止，无法判定项需用户确认。"
+      },
+      "FidelitySummary": {
+        "properties": {
+          "protected_span_count": {
+            "type": "integer",
+            "title": "Protected Span Count",
+            "description": "账本保护区域总数。"
+          },
+          "preserved_count": {
+            "type": "integer",
+            "title": "Preserved Count",
+            "description": "保持检查通过的保护项数。"
+          },
+          "new_claim_count": {
+            "type": "integer",
+            "title": "New Claim Count",
+            "description": "候选新增 claim 数。"
+          },
+          "attributed_claim_count": {
+            "type": "integer",
+            "title": "Attributed Claim Count",
+            "description": "有来源绑定的新增 claim 数。"
+          },
+          "unattributed_claim_count": {
+            "type": "integer",
+            "title": "Unattributed Claim Count",
+            "description": "无来源新增 claim 数。"
+          },
+          "first_person_interception_count": {
+            "type": "integer",
+            "title": "First Person Interception Count",
+            "description": "第一人称经历拦截数。"
+          },
+          "assumption_count": {
+            "type": "integer",
+            "title": "Assumption Count",
+            "description": "允许的标注假设数。"
+          },
+          "blocking_count": {
+            "type": "integer",
+            "title": "Blocking Count",
+            "description": "硬失败数。"
+          },
+          "needs_confirmation_count": {
+            "type": "integer",
+            "title": "Needs Confirmation Count",
+            "description": "需用户确认项数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "protected_span_count",
+          "preserved_count",
+          "new_claim_count",
+          "attributed_claim_count",
+          "unattributed_claim_count",
+          "first_person_interception_count",
+          "assumption_count",
+          "blocking_count",
+          "needs_confirmation_count"
+        ],
+        "title": "FidelitySummary",
+        "description": "保真检查摘要：脱敏计数（指标与审计用）。"
       },
       "FigureElement": {
         "properties": {
@@ -37925,6 +38720,110 @@
         "title": "HumanTodoStatus",
         "description": "Status of a named human decision attached to a run."
       },
+      "HumanizerArticleProjection": {
+        "properties": {
+          "projection_version": {
+            "type": "string",
+            "title": "Projection Version",
+            "description": "投影版本。",
+            "default": "1"
+          },
+          "audit_version": {
+            "type": "string",
+            "title": "Audit Version",
+            "description": "审计版本：本结构内全部稳定 code 的版本标识。"
+          },
+          "delivery_status": {
+            "$ref": "#/components/schemas/ArticleDeliveryStatus",
+            "description": "正文交付状态。"
+          },
+          "material_state": {
+            "$ref": "#/components/schemas/ArticleMaterialState",
+            "description": "材料状态。",
+            "default": "sufficient"
+          },
+          "one_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "One Question",
+            "description": "材料不足时唯一要问的最高价值问题（表达契约裁决产生）；界面只展示这一个问题，不堆叠通用建议。"
+          },
+          "final_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Text",
+            "description": "最终正文；硬门失败或材料不足时为 None。"
+          },
+          "fidelity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleFidelitySummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "保真摘要（未检查为 None）。"
+          },
+          "style_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleStyleReviewSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "表达审稿摘要（新流程有；旧路径为 None）。"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleRevisionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "定向修订摘要（未修订为 None）。"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleEvidenceItem"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "证据风险/变化项。"
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleConfirmationItem"
+            },
+            "type": "array",
+            "title": "Confirmations",
+            "description": "待用户确认项汇总。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audit_version",
+          "delivery_status"
+        ],
+        "title": "HumanizerArticleProjection",
+        "description": "版本化文章结果投影（Issue 08）。\n\n新任务（表达路径或旧路径）的终态都生成该结构挂到\n``HumanizerResultProjection.article``；前端只消费它渲染正文优先的\n交付界面。旧任务无此字段（None），按 legacy 投影展示，不伪造新\n来源硬门或新审稿通过状态。"
+      },
       "HumanizerEdit": {
         "properties": {
           "edit_id": {
@@ -38096,6 +38995,65 @@
         "title": "HumanizerProcessState",
         "description": "人味化过程卡的可见状态（中文五态 + 终态 done）。\n\ndone 只出现在结果投影的终态快照上（过程卡已由结果卡接管），\nSSE 过程事件只下发前五种状态。"
       },
+      "HumanizerProjectionEventRequest": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": [
+              "expand",
+              "copy",
+              "legacy_read"
+            ],
+            "title": "Event",
+            "description": "前端事件类型：展开审计/复制正文/legacy 读取。"
+          },
+          "projection_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projection Version",
+            "description": "投影版本（旧结果读取时为 null）。"
+          },
+          "delivery_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Status",
+            "description": "交付状态（delivered/failed）。"
+          },
+          "risk_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Types",
+            "description": "风险类型 code 清单（稳定枚举）。"
+          },
+          "legacy": {
+            "type": "boolean",
+            "title": "Legacy",
+            "description": "是否旧版结果（无新投影）。",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event"
+        ],
+        "title": "HumanizerProjectionEventRequest",
+        "description": "文章结果投影前端事件载荷（Issue 08 Observability）。\n\n只含投影版本、交付状态、风险类型、事件名与 legacy 标志；请求体\nSchema 无正文字段，任何正文/引语/diff 内容都无法进入审计。"
+      },
       "HumanizerQualityStatus": {
         "type": "string",
         "enum": [
@@ -38178,12 +39136,30 @@
             "description": "任务路径。"
           },
           "genre": {
-            "$ref": "#/components/schemas/Genre",
-            "description": "使用的体裁合同。"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Genre"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "使用的体裁合同；None 为通用文章 profile。"
           },
           "contract": {
             "$ref": "#/components/schemas/HumanizerTaskContract",
             "description": "任务契约快照。"
+          },
+          "expression_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpressionTaskContract"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "版本化表达任务契约快照（人味化改造 Issue 03）；重试复用同一快照。"
           },
           "status": {
             "$ref": "#/components/schemas/HumanizerResultStatus",
@@ -38210,6 +39186,48 @@
               }
             ],
             "description": "事实锁前后比较结果。"
+          },
+          "source_ledger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceLedger"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本次任务使用的来源账本快照（新账本版本任务才有；旧任务为空，不得伪装成已通过新增来源检查）。"
+          },
+          "fidelity_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FidelityCheckResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "保真硬门检查结果（新账本版本任务才有；缺失不得标记成功）。"
+          },
+          "expression_review": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expression Review",
+            "description": "表达审稿报告（人味化改造 Issue 04）；只有走表达任务契约的新流程才有。旧任务为空，风格发现默认为软审稿，不阻止交付。类型为ExpressionReviewReport（避免与 expression_review 模块循环导入，运行时不做 pydantic 校验）。"
+          },
+          "evidence_safe": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Safe",
+            "description": "证据安全检查报告（人味化改造 Issue 06）：默认模式的风险项与授权修订的变化记录；普通无风险文章为空列表，不生成空洞的固定事实核查总结。类型为 EvidenceSafeReport（避免循环导入，运行时不做 pydantic 校验）。"
           },
           "references": {
             "items": {
@@ -38240,6 +39258,23 @@
             "title": "Repair Attempts",
             "description": "软门定向修复次数（最多 1 次，受总预算约束）。",
             "default": 0
+          },
+          "writing_call_count": {
+            "type": "integer",
+            "title": "Writing Call Count",
+            "description": "累计写作模型调用数（首稿+定向修订，上限 2；持久运行状态，重试与恢复沿用，服务重启不得重新获得修订额度）。",
+            "default": 0
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerRevisionAudit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "定向修订审计（Issue 05，脱敏）。"
           },
           "process_state": {
             "$ref": "#/components/schemas/HumanizerProcessState",
@@ -38278,6 +39313,17 @@
             "title": "Error Message",
             "description": "可操作的中文错误说明。"
           },
+          "article": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerArticleProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "版本化文章结果投影（Issue 08）：新任务终态生成，前端据此渲染正文优先交付界面；旧任务为 None，按 legacy 投影展示，不伪造新来源硬门或新审稿通过状态。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -38291,7 +39337,6 @@
           "skill_id",
           "skill_version",
           "path",
-          "genre",
           "contract",
           "status"
         ],
@@ -38307,6 +39352,154 @@
         ],
         "title": "HumanizerResultStatus",
         "description": "人味化任务的终态；needs_human 表示事实锁冲突或待核事项。"
+      },
+      "HumanizerRevisionAudit": {
+        "properties": {
+          "revision_version": {
+            "type": "string",
+            "title": "Revision Version",
+            "description": "修订策略版本（revision-policy-v1）。"
+          },
+          "triggered": {
+            "type": "boolean",
+            "title": "Triggered",
+            "description": "是否触发修订调用。"
+          },
+          "trigger_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Code",
+            "description": "主要触发 code（保真/契约/审稿 code）。"
+          },
+          "problem_count": {
+            "type": "integer",
+            "title": "Problem Count",
+            "description": "待修问题数（触发时 >0）。",
+            "default": 0
+          },
+          "draft_fidelity_blocking": {
+            "type": "integer",
+            "title": "Draft Fidelity Blocking",
+            "description": "首稿关键保真失败数。",
+            "default": 0
+          },
+          "draft_contract_omissions": {
+            "type": "integer",
+            "title": "Draft Contract Omissions",
+            "description": "首稿契约遗漏数。",
+            "default": 0
+          },
+          "draft_warning_count": {
+            "type": "integer",
+            "title": "Draft Warning Count",
+            "description": "首稿高置信风格发现数。",
+            "default": 0
+          },
+          "revised_fidelity_blocking": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised Fidelity Blocking",
+            "description": "修订后关键保真失败数（未修订为 None）。"
+          },
+          "revised_contract_omissions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised Contract Omissions",
+            "description": "修订后契约遗漏数（未修订为 None）。"
+          },
+          "revised_warning_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised Warning Count",
+            "description": "修订后高置信风格发现数（未修订为 None）。"
+          },
+          "resolved_problem_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Problem Count",
+            "description": "修订解决的问题数（触发问题数减修订后仍存在数）。"
+          },
+          "extra_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Tokens",
+            "description": "修订调用 token 数（未修订为 None）。"
+          },
+          "extra_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Latency Ms",
+            "description": "修订调用延迟毫秒（未修订为 None）。"
+          },
+          "final_state": {
+            "type": "string",
+            "title": "Final State",
+            "description": "终态：pending/deliver_revised/deliver_draft/stop_delivery。",
+            "default": "pending"
+          },
+          "skipped_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped Reason",
+            "description": "未执行修订的原因（capability_disabled/call_limit_reached/user_stopped/budget_insufficient/model_error:<code>/recheck_failed）。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revision_version",
+          "triggered"
+        ],
+        "title": "HumanizerRevisionAudit",
+        "description": "一次定向修订的运行审计（Issue 05；脱敏，不含正文）。\n\n``triggered`` 为 False 时修订未执行，问题计数仍反映首稿检查摘要；\n``skipped_reason`` 记录未执行原因（预算不足/用户停止/开关关闭/模型\n失败），此时首稿的真实硬门/软审稿状态照常交付。"
       },
       "HumanizerRouteDecision": {
         "properties": {
@@ -38382,6 +39575,17 @@
               }
             ],
             "description": "进入能力前保存的路由决策快照。"
+          },
+          "expression_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpressionTaskContract"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "版本化表达任务契约（人味化改造 Issue 03）；不可变快照，同一任务重试必须复用，未知版本执行前拒绝。"
           }
         },
         "type": "object",
@@ -38399,8 +39603,15 @@
             "description": "改写或生成路径。"
           },
           "genre": {
-            "$ref": "#/components/schemas/Genre",
-            "description": "四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）。"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Genre"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）；None 表示未识别体裁，使用通用文章 profile，不强制科普必现模板。"
           },
           "topic": {
             "anyOf": [
@@ -38501,13 +39712,32 @@
             ],
             "title": "Knowledge Base Reference",
             "description": "用户明确引用的当前账户知识库文档名；为空时不得泛化检索。"
+          },
+          "allow_assumptions": {
+            "type": "boolean",
+            "title": "Allow Assumptions",
+            "description": "契约是否允许显式假设（以「比如/假设/设想」标注且不冒充亲历、不承载高风险事实）；默认关闭，不自动扩大事实范围。",
+            "default": false
+          },
+          "allow_first_person": {
+            "type": "boolean",
+            "title": "Allow First Person",
+            "description": "用户是否明确授权代写作者口吻（第一人称亲历绑定）；原文已有的亲历不受此字段限制。",
+            "default": false
+          },
+          "explicit_common_knowledge": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Explicit Common Knowledge",
+            "description": "用户显式列为普通常识的内容（可作来源放行）；为空时不静默豁免任何新增内容。"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "path",
-          "genre"
+          "path"
         ],
         "title": "HumanizerTaskContract",
         "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text、知识库引用或历史兼容附件；生成路径必带 topic。"
@@ -41681,6 +42911,60 @@
         "title": "LectureScriptElement",
         "description": "A structural element required by the lecture-script genre contract.\n\nThe element exposes learning objectives, prerequisites, comprehension checks\nand practice pauses as first-class objects so a teacher can review and\nadjust them independently of the wording."
       },
+      "LedgerCompileSummary": {
+        "properties": {
+          "entry_count": {
+            "type": "integer",
+            "title": "Entry Count",
+            "description": "来源条目数。"
+          },
+          "protected_spans_by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Protected Spans By Kind",
+            "description": "各保护区域类别的数量。"
+          },
+          "proper_noun_count": {
+            "type": "integer",
+            "title": "Proper Noun Count",
+            "description": "专名数。"
+          },
+          "number_count": {
+            "type": "integer",
+            "title": "Number Count",
+            "description": "数字/单位数。"
+          },
+          "date_count": {
+            "type": "integer",
+            "title": "Date Count",
+            "description": "日期数。"
+          },
+          "quote_count": {
+            "type": "integer",
+            "title": "Quote Count",
+            "description": "精确引语数。"
+          },
+          "experience_entries": {
+            "type": "integer",
+            "title": "Experience Entries",
+            "description": "含第一人称权限的条目数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_count",
+          "protected_spans_by_kind",
+          "proper_noun_count",
+          "number_count",
+          "date_count",
+          "quote_count",
+          "experience_entries"
+        ],
+        "title": "LedgerCompileSummary",
+        "description": "账本编译摘要：脱敏计数（供审计与指标，不含正文）。"
+      },
       "LessonEvidenceBundle": {
         "properties": {
           "graph_id": {
@@ -41876,6 +43160,17 @@
         ],
         "title": "MainCapability",
         "description": "当前主能力集合；后续能力只能以新注册项追加。"
+      },
+      "MaterialSufficiency": {
+        "type": "string",
+        "enum": [
+          "sufficient",
+          "ask_one_question",
+          "shorten",
+          "use_placeholders"
+        ],
+        "title": "MaterialSufficiency",
+        "description": "材料充分度裁决。"
       },
       "McpAttachmentSlice": {
         "properties": {
@@ -43416,6 +44711,16 @@
         "title": "ObjectRef",
         "description": "Stable reference to an owned object.\n\nObjectRef carries enough context to re-authenticate and re-authorize a deep\nlink without relying on ambient session state alone."
       },
+      "Operation": {
+        "type": "string",
+        "enum": [
+          "rewrite",
+          "expand",
+          "generate_by_topic"
+        ],
+        "title": "Operation",
+        "description": "文章操作：改写、扩写与按主题生成。"
+      },
       "PackImpactAction": {
         "type": "string",
         "enum": [
@@ -44128,6 +45433,16 @@
         ],
         "title": "PatchAction",
         "description": "User decision on a single revision patch."
+      },
+      "PersonalExperienceMode": {
+        "type": "string",
+        "enum": [
+          "none",
+          "present_judgment",
+          "past_experience"
+        ],
+        "title": "PersonalExperienceMode",
+        "description": "第一人称建模：当下判断与亲历分开，亲历必须可绑定来源。"
       },
       "PlanAdjustment": {
         "properties": {
@@ -44895,6 +46210,50 @@
         "title": "ProposeKnowledgeStateUpdateRequest",
         "description": "Request to propose a knowledge-state update from learning records."
       },
+      "ProtectedSpan": {
+        "properties": {
+          "span_id": {
+            "type": "string",
+            "title": "Span Id",
+            "description": "稳定保护区域标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProtectedSpanKind",
+            "description": "保护区域类别。"
+          },
+          "text_hash": {
+            "type": "string",
+            "title": "Text Hash",
+            "description": "区域内容哈希（sha256）。"
+          },
+          "location": {
+            "$ref": "#/components/schemas/SpanLocation",
+            "description": "规范化文本中的位置。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "span_id",
+          "kind",
+          "text_hash",
+          "location"
+        ],
+        "title": "ProtectedSpan",
+        "description": "一条受保护区域：只记录种类、内容哈希与位置，不记录正文。"
+      },
+      "ProtectedSpanKind": {
+        "type": "string",
+        "enum": [
+          "quote",
+          "code",
+          "formula",
+          "url",
+          "citation",
+          "user_phrase"
+        ],
+        "title": "ProtectedSpanKind",
+        "description": "保护区域类别：后续表达审稿只检查作者新增正文，不改写这些区域。"
+      },
       "PublishArtifactRequest": {
         "properties": {
           "run_id": {
@@ -45266,6 +46625,16 @@
         ],
         "title": "ReadAloudState",
         "description": "单条回答朗读的持久化状态。\n\n- ``not_generated``：尚未生成朗读（可发起生成）；\n- ``ready``：音频已生成并转存到账户对象库，可请求播放；\n- ``failed``：生成失败，error_message 说明原因，可重试。"
+      },
+      "RealityMode": {
+        "type": "string",
+        "enum": [
+          "real",
+          "fictional",
+          "mixed"
+        ],
+        "title": "RealityMode",
+        "description": "现实承诺：现实禁止补亲历；虚构或混合必须标明哪些内容允许创作。"
       },
       "ReauthenticationRequest": {
         "properties": {
@@ -46853,6 +48222,16 @@
         ],
         "title": "RevocationRequest",
         "description": "安全管理员紧急撤销请求；要求二次认证并确认影响范围。"
+      },
+      "RewriteIntensity": {
+        "type": "string",
+        "enum": [
+          "light",
+          "standard",
+          "deep"
+        ],
+        "title": "RewriteIntensity",
+        "description": "三级改写强度：轻度/标准/深度，默认标准，用户显式选择优先。"
       },
       "RiskTier": {
         "type": "string",
@@ -49364,6 +50743,172 @@
         "title": "SourceAsset",
         "description": "Original, immutable media input.\n\nA SourceAsset is the raw uploaded image, scan fragment, formula image or table\nfile. Its bytes are hashed and its status is tracked independently of any\nderived extraction result."
       },
+      "SourceEntry": {
+        "properties": {
+          "entry_id": {
+            "type": "string",
+            "title": "Entry Id",
+            "description": "稳定来源条目标识。"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType",
+            "description": "来源类型。"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "条目内容哈希（sha256，不含正文存储）。"
+          },
+          "usage": {
+            "items": {
+              "$ref": "#/components/schemas/SourceUsage"
+            },
+            "type": "array",
+            "title": "Usage",
+            "description": "允许用途；纯改写默认只含 REWRITE。"
+          },
+          "proper_nouns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Proper Nouns",
+            "description": "专名规范化键。"
+          },
+          "numbers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Numbers",
+            "description": "数字/单位规范化键。"
+          },
+          "dates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dates",
+            "description": "日期规范化键。"
+          },
+          "formulas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Formulas",
+            "description": "公式代码规范化键。"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Urls",
+            "description": "URL 规范化键。"
+          },
+          "quotes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Quotes",
+            "description": "精确引语规范化键。"
+          },
+          "citations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citations",
+            "description": "引用规范化键。"
+          },
+          "directions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Directions",
+            "description": "否定与因果方向描述。"
+          },
+          "qualifiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Qualifiers",
+            "description": "限定词。"
+          },
+          "conclusion_strength": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conclusion Strength",
+            "description": "结论强度分级（weak/medium/strong）。"
+          },
+          "personal_experience": {
+            "$ref": "#/components/schemas/PersonalExperienceMode",
+            "description": "第一人称建模。",
+            "default": "none"
+          },
+          "allow_first_person": {
+            "type": "boolean",
+            "title": "Allow First Person",
+            "description": "是否允许绑定第一人称亲历（原文已有或用户授权）。",
+            "default": false
+          },
+          "protected_spans": {
+            "items": {
+              "$ref": "#/components/schemas/ProtectedSpan"
+            },
+            "type": "array",
+            "title": "Protected Spans",
+            "description": "受保护区域。"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label",
+            "description": "来源显示名（文件名/说明）。",
+            "default": ""
+          },
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Codes",
+            "description": "代码块规范化键。"
+          },
+          "experiences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Experiences",
+            "description": "第一人称亲历规范化键（原文已有）。"
+          },
+          "text_key": {
+            "type": "string",
+            "title": "Text Key",
+            "description": "条目全文规范化键（内部比较用，审计不记录）。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_id",
+          "source_type",
+          "content_hash",
+          "usage"
+        ],
+        "title": "SourceEntry",
+        "description": "账本中一条来源：内容哈希、类型、允许用途与提取的保护项。"
+      },
       "SourceError": {
         "properties": {
           "error": {
@@ -49404,6 +50949,52 @@
         ],
         "title": "SourceKind",
         "description": "Kind of source entry."
+      },
+      "SourceLedger": {
+        "properties": {
+          "ledger_version": {
+            "type": "string",
+            "title": "Ledger Version",
+            "description": "账本版本。",
+            "default": "2"
+          },
+          "ledger_hash": {
+            "type": "string",
+            "title": "Ledger Hash",
+            "description": "账本哈希（版本与全部条目规范化摘要）。"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SourceEntry"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "来源条目。"
+          },
+          "compiled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Compiled At",
+            "description": "编译时间。"
+          },
+          "compile_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LedgerCompileSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "编译摘要（脱敏计数）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ledger_hash"
+        ],
+        "title": "SourceLedger",
+        "description": "版本化来源账本：调用方只提交来源与权限，不各自维护事实词表。"
       },
       "SourceLicense": {
         "properties": {
@@ -49504,6 +51095,16 @@
         ],
         "title": "SourceProjection",
         "description": "Public projection of a source with its current document version."
+      },
+      "SourceScope": {
+        "type": "string",
+        "enum": [
+          "original_only",
+          "knowledge_base",
+          "web"
+        ],
+        "title": "SourceScope",
+        "description": "允许使用的来源范围。"
       },
       "SourceStatus": {
         "type": "string",
@@ -49612,6 +51213,19 @@
         "title": "SourceTrustAssertion",
         "description": "A recorded trust assertion about a source."
       },
+      "SourceType": {
+        "type": "string",
+        "enum": [
+          "user_original",
+          "user_supplement",
+          "account_scoped",
+          "external_allowed",
+          "common_knowledge",
+          "explicit_assumption"
+        ],
+        "title": "SourceType",
+        "description": "来源类型：区分用户原文、补充/授权材料、外部来源、常识与显式假设。"
+      },
       "SourceUploadRequest": {
         "properties": {
           "filename": {
@@ -49673,6 +51287,17 @@
         "title": "SourceUploadRequest",
         "description": "Request to upload a text or PDF scientific source."
       },
+      "SourceUsage": {
+        "type": "string",
+        "enum": [
+          "rewrite",
+          "fact",
+          "quote",
+          "experience"
+        ],
+        "title": "SourceUsage",
+        "description": "来源条目的允许用途；纯改写默认只消费用户原文。"
+      },
       "SourceVersionRequest": {
         "properties": {
           "base_document_id": {
@@ -49701,6 +51326,27 @@
         ],
         "title": "SourceVersionRequest",
         "description": "Request to create a new document version from a corrected source."
+      },
+      "SpanLocation": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "description": "起始偏移。"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End",
+            "description": "结束偏移。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "SpanLocation",
+        "description": "规范化文本中的起止偏移（审计用位置，不含正文）。"
       },
       "SpatialTemporalLocator": {
         "properties": {
@@ -50532,6 +52178,15 @@
         ],
         "title": "SubmitExpressionFeedbackResult",
         "description": "Result of submitting user feedback."
+      },
+      "Surface": {
+        "type": "string",
+        "enum": [
+          "chat",
+          "article"
+        ],
+        "title": "Surface",
+        "description": "表面类型：明确区分普通聊天与文章。"
       },
       "SyncControlSnapshot": {
         "properties": {
