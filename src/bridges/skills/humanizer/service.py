@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import secrets
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from bridges.contracts.humanizer import (
     FactLockKind,
     FactLockSeverity,
     FactLockStatus,
+    FidelityCheckResult,
     HumanizerEdit,
     HumanizerEditKind,
     HumanizerFactCheckItem,
@@ -39,6 +41,7 @@ from bridges.contracts.humanizer import (
     HumanizerResultStatus,
     HumanizerSkillInput,
     HumanizerTaskContract,
+    SourceLedger,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.ingestion.parsers import ParsedDocument, ParseError, parse_document
@@ -58,11 +61,20 @@ from bridges.skills.humanizer.genre_rules import (
 )
 from bridges.skills.humanizer.intent import HUMANIZER_ROUTE_VERSION
 from bridges.skills.humanizer.method_rules import MethodScene, render_method_rules
+from bridges.skills.humanizer.source_ledger import (
+    FidelityCheckError,
+    compile_source_ledger,
+    run_fidelity_check,
+)
 from bridges.skills.registry import SkillRegistry
 from bridges.web_search.service import WebSearchService
 
 HUMANIZER_CAPABILITY_NAME = "qwen_structured_output"
 HUMANIZER_CAPABILITY_VERSION = "1"
+
+#: Issue 02 能力开关：关闭时新任务恢复旧流程（无来源账本与保真检查），
+#: 投影不携带保真字段，不得把旧流程标记为新硬门通过（灰度与回滚用）。
+FIDELITY_GATE_ENABLED = True
 
 # 结构化输出 JSON Schema（与 HumanizerOutputContract 字段一一对应）
 _OUTPUT_JSON_SCHEMA: dict[str, Any] = {
@@ -152,6 +164,8 @@ class _ReviewCheckpoint:
     fact_lock_check: FactLockCheckResult
     genre_check: GenreCheckResult
     references: list[HumanizerReference]
+    ledger: SourceLedger | None = None
+    fidelity_check: FidelityCheckResult | None = None
 
 
 class HumanizerService:
@@ -243,11 +257,15 @@ class HumanizerService:
         try:
             # 步骤 1：解析任务契约与来源（改写路径）
             yield process(HumanizerProcessState.LOADING, "正在解析任务契约…")
-            source_text, source_label, references, source_knowledge_base_object_ids = (
-                self._resolve_source(
-                    account_id, conversation_id, contract, retrieval_round,
-                    web_search_projection, arxiv_search_projection,
-                )
+            (
+                source_text,
+                source_label,
+                references,
+                source_knowledge_base_object_ids,
+                account_materials,
+            ) = self._resolve_source(
+                account_id, conversation_id, contract, retrieval_round,
+                web_search_projection, arxiv_search_projection,
             )
             progress.append("解析任务契约")
 
@@ -266,6 +284,17 @@ class HumanizerService:
                 constraints_text = self._constraints_text(contract)
                 locks = extract_locks(constraints_text)
                 fact_lock_source = constraints_text
+            ledger = self._compile_ledger(
+                contract,
+                fact_lock_source,
+                source_label,
+                references,
+                account_materials=account_materials,
+                external_evidence_requested=bool(
+                    skill_input.route is not None
+                    and skill_input.route.external_evidence_requested
+                ),
+            )
             progress.append(
                 "提取事实锁" if contract.path == HumanizerPath.REWRITE else "编译硬约束"
             )
@@ -303,12 +332,13 @@ class HumanizerService:
                 progress_steps=list(progress),
             )
 
-            # 步骤 4：确定性复核——硬门（事实锁冲突）停止交付；软门
-            # （体裁等风格指标）至多一次有预算的定向修复，仍不过则交付
-            # 当前最佳正文与具体警告（Issue 07 两级质量门）。
+            # 步骤 4：确定性复核——硬门（事实锁/来源账本保真冲突）停止交付；
+            # 软门（体裁等风格指标）至多一次有预算的定向修复，仍不过则交付
+            # 当前最佳正文与具体警告（Issue 07 两级质量门 + Issue 02 保真硬门）。
             yield process(HumanizerProcessState.LOADING, "正在复核事实锁与体裁规则…")
             checkpoint = self._review_checks(
-                contract, output, source_text, fact_lock_source, references
+                contract, output, source_text, fact_lock_source, references,
+                ledger=ledger,
             )
             repair_attempts = 0
             if (
@@ -394,21 +424,24 @@ class HumanizerService:
         retrieval_round: Any | None,
         web_search_projection: Any | None,
         arxiv_search_projection: Any | None,
-    ) -> tuple[str, str, list[HumanizerReference], list[str]]:
+    ) -> tuple[str, str, list[HumanizerReference], list[str], list[tuple[str, str]]]:
         """改写路径解析原文（粘贴或知识库材料），并组装证据合同引用清单。
 
         Issue 11：改写原文只来自用户粘贴/知识库材料，默认不引用知识库检索
         候选（知识库中不相关图片等材料绝不进入改写证据合同）；解析成功
         的知识库材料 ID 随输出持久化，与账户授权一致，供界面核对原文文件名。
+        Issue 02：知识库材料作为「账户作用域授权材料」返回（标题, 正文），
+        供来源账本区分来源类型；粘贴文本仍是唯一主来源。
         """
         references: list[HumanizerReference] = []
+        account_materials: list[tuple[str, str]] = []
         if contract.path == HumanizerPath.GENERATE:
             topic = (contract.topic or "").strip()
             if not topic:
                 raise HumanizerError(
                     "empty_topic", "缺少主题：请填写要生成的文章主题。", retryable=True
                 )
-            return topic, "主题", references, []
+            return topic, "主题", references, [], account_materials
 
         source_parts: list[str] = []
         label_parts: list[str] = []
@@ -422,6 +455,7 @@ class HumanizerService:
             source_parts.append(parsed.text)
             label_parts.append(parsed.title)
             source_knowledge_base_object_ids.append(object_id)
+            account_materials.append((parsed.title, parsed.text))
             references.append(
                 HumanizerReference(
                     reference_id=f"ref-{secrets.token_urlsafe(8)}",
@@ -487,6 +521,7 @@ class HumanizerService:
             "、".join(label_parts) or "原文",
             references,
             source_knowledge_base_object_ids,
+            account_materials,
         )
 
     def _parse_knowledge_base_material(
@@ -818,11 +853,16 @@ class HumanizerService:
         source_text: str,
         fact_lock_source: str,
         references: list[HumanizerReference],
+        *,
+        ledger: SourceLedger | None = None,
     ) -> _ReviewCheckpoint:
-        """确定性复核（不含终态判定）：事实锁/硬约束、体裁、引用与合同完整性。
+        """确定性复核（不含终态判定）：事实锁/硬约束、保真硬门、体裁、引用与
+        合同完整性。
 
         Issue 07：软门（体裁等风格指标）只生成复核结果，不在此清空正文；
-        硬门（事实锁冲突）由调用方在终态判定中停止交付。
+        硬门（事实锁冲突、来源账本保真冲突）由调用方在终态判定中停止交付。
+        Issue 02：保真检查失败关闭——账本版本不受支持、哈希不一致或检查
+        异常时抛错，不把缺失检查的结果标记为通过。
         """
         final_text = output.final_text.strip()
         if not final_text:
@@ -843,6 +883,23 @@ class HumanizerService:
                 final_text,
                 source_label="硬约束 vs 生成结果",
             )
+
+        # 来源账本保真硬门（Issue 02）：保留检查 + 新增 claim 来源检查
+        fidelity_check: FidelityCheckResult | None = None
+        if ledger is not None:
+            try:
+                fidelity_check = run_fidelity_check(
+                    ledger,
+                    final_text,
+                    contract_path=contract.path,
+                    allow_assumptions=contract.allow_assumptions,
+                )
+            except FidelityCheckError as exc:
+                raise HumanizerError(
+                    "fidelity_check_failed",
+                    f"来源保真检查未完成：{exc}",
+                    retryable=False,
+                ) from exc
 
         # 体裁规则复核（软门）
         genre_check = check_genre(final_text, contract.genre)
@@ -891,6 +948,8 @@ class HumanizerService:
             fact_lock_check=fact_lock_check,
             genre_check=genre_check,
             references=references,
+            ledger=ledger,
+            fidelity_check=fidelity_check,
         )
 
     def _repair_once(
@@ -964,6 +1023,7 @@ class HumanizerService:
                 source_text,
                 fact_lock_source,
                 checkpoint.references,
+                ledger=checkpoint.ledger,
             )
         except (HumanizerError, TypeError, ValueError):
             # 修复稿不可解析/合同不完整/复核失败：交付原草稿与具体警告
@@ -992,6 +1052,12 @@ class HumanizerService:
         output = checkpoint.output
         references = checkpoint.references
         final_text = output.final_text.strip()
+        fidelity_check = checkpoint.fidelity_check
+        fidelity_blocking = (
+            list(fidelity_check.blocking_failures)
+            if fidelity_check is not None
+            else []
+        )
 
         # 软门：体裁风格未完全通过 → 正文照常交付并附未完全满足项
         quality_warnings: list[str] = []
@@ -1016,7 +1082,19 @@ class HumanizerService:
         state = HumanizerProcessState.LOADING
         error_code: str | None = None
         error_message: str | None = None
-        if fact_lock_check.blocking_conflicts:
+        if fidelity_blocking:
+            # 硬门：来源保真冲突（新增无来源 claim/亲历/保护项被破坏）→
+            # 阻止把违规正文标记为最终稿；任何风格均分不能覆盖该失败。
+            status = HumanizerResultStatus.ERROR
+            state = HumanizerProcessState.ERROR
+            error_code = "fidelity_gate_conflict"
+            error_message = (
+                "来源保真硬门未通过，已停止交付："
+                + "；".join(f.note for f in fidelity_blocking[:3])
+                + "。恢复方式：删除或修正无来源的新增内容后重试"
+                "（任务输入与附件已保留）。"
+            )
+        elif fact_lock_check.blocking_conflicts:
             # 硬门：事实锁冲突 → 阻止把错误版本标记为最终稿（不交付违规
             # 正文）；投影附冲突项与恢复方式，保留输入供重试。
             status = HumanizerResultStatus.ERROR
@@ -1032,11 +1110,17 @@ class HumanizerService:
             # 软门未完全通过：交付正文 + 警告（重新生成是可选操作，不是唯一出口）
             status = HumanizerResultStatus.NEEDS_HUMAN
             state = HumanizerProcessState.DONE
-        elif fact_lock_check.needs_human or any(
-            not ref.preserved for ref in references
+        elif (
+            fact_lock_check.needs_human
+            or any(not ref.preserved for ref in references)
+            or (
+                checkpoint.fidelity_check is not None
+                and bool(checkpoint.fidelity_check.needs_confirmation)
+            )
         ):
-            # 需人工事项（事实锁弱冲突/新增未核实引用）→ 明确标注人工确认；
-            # 输出合同的「未决问题」属于正常交付内容，不强制 needs_human。
+            # 需人工事项（事实锁弱冲突/新增未核实引用/保真无法判定项）→
+            # 明确标注人工确认；输出合同的「未决问题」属于正常交付内容，
+            # 不强制 needs_human。
             status = HumanizerResultStatus.NEEDS_HUMAN
             state = HumanizerProcessState.DONE
         else:
@@ -1053,6 +1137,8 @@ class HumanizerService:
             status=status,
             output=output if status != HumanizerResultStatus.ERROR else None,
             fact_lock_check=fact_lock_check,
+            source_ledger=checkpoint.ledger,
+            fidelity_check=fidelity_check,
             references=references,
             genre_check=genre_summary,
             quality_warnings=quality_warnings,
@@ -1071,6 +1157,8 @@ class HumanizerService:
             contract,
             status,
             fact_lock_check,
+            fidelity_check,
+            checkpoint.ledger,
         )
         return result
 
@@ -1270,6 +1358,8 @@ class HumanizerService:
         contract: HumanizerTaskContract,
         status: HumanizerResultStatus,
         fact_lock_check: FactLockCheckResult | None,
+        fidelity_check: FidelityCheckResult | None = None,
+        ledger: SourceLedger | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -1296,9 +1386,105 @@ class HumanizerService:
                     "needs_human": (
                         len(fact_lock_check.needs_human) if fact_lock_check else 0
                     ),
+                    # Issue 02 保真硬门：只记录版本/哈希/计数/失败码，不记录正文
+                    "ledger_version": (
+                        fidelity_check.ledger_version if fidelity_check else None
+                    ),
+                    "checker_version": (
+                        fidelity_check.checker_version if fidelity_check else None
+                    ),
+                    "ledger_hash": (
+                        fidelity_check.ledger_hash if fidelity_check else None
+                    ),
+                    "fidelity_blocking": (
+                        len(fidelity_check.blocking_failures) if fidelity_check else 0
+                    ),
+                    "fidelity_needs_confirmation": (
+                        len(fidelity_check.needs_confirmation) if fidelity_check else 0
+                    ),
+                    "fidelity_failure_codes": (
+                        [f.code.value for f in fidelity_check.blocking_failures]
+                        + [f.code.value for f in fidelity_check.needs_confirmation]
+                        if fidelity_check
+                        else []
+                    ),
+                    "fidelity_new_claims": (
+                        fidelity_check.summary.new_claim_count if fidelity_check else 0
+                    ),
+                    "fidelity_unattributed": (
+                        fidelity_check.summary.unattributed_claim_count if fidelity_check else 0
+                    ),
+                    "fidelity_first_person_interceptions": (
+                        fidelity_check.summary.first_person_interception_count
+                        if fidelity_check else 0
+                    ),
+                    "fidelity_protected_spans": (
+                        fidelity_check.summary.protected_span_count if fidelity_check else 0
+                    ),
+                    "fidelity_spans_by_kind": (
+                        ledger.compile_summary.protected_spans_by_kind
+                        if ledger is not None
+                        and ledger.compile_summary is not None
+                        else {}
+                    ),
                 },
             )
 
+
+    def _compile_ledger(
+        self,
+        contract: HumanizerTaskContract,
+        primary_text: str,
+        source_label: str,
+        references: list[HumanizerReference],
+        *,
+        account_materials: list[tuple[str, str]] | None = None,
+        external_evidence_requested: bool = False,
+    ) -> SourceLedger | None:
+        """编译来源账本（Issue 02）：粘贴原文/约束为唯一主来源，知识库材料
+        作为账户作用域授权材料，外部引用仅在用户明确请求外部证据时作为
+        授权外部来源；用户指定措辞从硬约束提取。能力开关关闭时返回 None
+        （回滚为旧流程）。"""
+        if not FIDELITY_GATE_ENABLED:
+            return None
+        external_allowed: list[tuple[str, str]] = []
+        if external_evidence_requested:
+            for ref in references:
+                detail = ref.detail or ref.citation_surface or ""
+                if ref.label or detail:
+                    external_allowed.append((ref.label or "外部来源", detail))
+        return compile_source_ledger(
+            primary_text,
+            primary_label=source_label,
+            account_scoped=account_materials or [],
+            external_allowed=external_allowed,
+            common_knowledge=list(contract.explicit_common_knowledge),
+            user_phrases=self._user_phrases_from_constraints(contract),
+            allow_first_person=contract.allow_first_person,
+        )
+
+    @staticmethod
+    def _user_phrases_from_constraints(
+        contract: HumanizerTaskContract,
+    ) -> list[str]:
+        """从硬约束提取用户指定措辞（必须保留/不得改写的引号内或指定短语）。"""
+        phrases: list[str] = []
+        for constraint in contract.hard_constraints:
+            for match in re.finditer(
+                r"[「“『\"]([^「」“”『』\"']{2,40})[」”』\"]",
+                constraint,
+            ):
+                phrase = match.group(1).strip()
+                if phrase:
+                    phrases.append(phrase)
+            for match in re.finditer(
+                r"必须(?:保留|写清|使用|体现|写出)[：:，,]?\s*([一-鿿A-Za-z0-9]{2,30})",
+                constraint,
+            ):
+                phrase = match.group(1).strip()
+                if phrase and phrase not in phrases:
+                    phrases.append(phrase)
+        return phrases
 
     def _constraints_text(self, contract: HumanizerTaskContract) -> str:
         parts: list[str] = []

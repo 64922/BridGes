@@ -1,6 +1,6 @@
 # Issue 02：建立来源账本与保真硬门
 
-Status: ready-for-agent
+Status: completed
 
 Type: task
 
@@ -67,3 +67,4 @@ None - can start immediately.
 ## Comments
 
 - 2026-08-12：用户确认“来源保真高于自然度”，这是 BridGes 相对 `Humanizer-zh` 的核心差异点。
+- 2026-08-12：完成并提交（分支 `02-source-ledger-fidelity-gate`）。交付：版本化 `SourceLedger`（六类来源、允许用途、内容哈希、保护 span、专名/数字/日期/公式/URL/引语/方向/限定词/结论强度/亲历建模）、双向保真检查器（保留检查 + 新增 claim 来源检查 + 失败关闭）、`protected spans` 建模（引语/代码/公式/URL/引用/用户指定措辞）、审计脱敏（ID/类型/哈希/计数/位置/失败码）、能力开关灰度与回滚不伪装、旧任务只读兼容。双轴审查修复：`facts` 假实现删除、`primary_text` 死参数、`_user_phrases_from_constraints` 引号失配、vague_time 绑定误报、亲历权限校验、假设走私 method/feature、结构化项按类集合绑定、事件 claim 提取、知识库材料接入 ACCOUNT_SCOPED、审计补保护项分类计数。148 条 humanizer 测试 + 231 条依赖/评测回归通过（全量 2684 收集，仅既有 `test_schema_v33.py` 同名模块收集冲突与 208 条既有基线失败除外，stash 验证与本次改动无关）。

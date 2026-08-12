@@ -220,10 +220,13 @@ def test_rewrite_fact_lock_conflict_stops_delivery() -> None:
     service = _make_service(_ProgrammableStructuredAdapter(output=violating))
     _, result = _run(service, _rewrite_input())
     assert result.status == HumanizerResultStatus.ERROR
-    assert result.error_code == "fact_lock_conflict"
+    # Issue 02：保真硬门先于事实锁拦截数字破坏
+    assert result.error_code == "fidelity_gate_conflict"
     assert result.output is None  # 冲突时停止交付，不输出违规文本
     assert result.fact_lock_check is not None
     assert result.fact_lock_check.blocking_conflicts
+    assert result.fidelity_check is not None
+    assert result.fidelity_check.blocking_failures
 
 
 def test_strength_upgrade_stops_delivery() -> None:
@@ -231,7 +234,7 @@ def test_strength_upgrade_stops_delivery() -> None:
     service = _make_service(_ProgrammableStructuredAdapter(output=violating))
     _, result = _run(service, _rewrite_input())
     assert result.status == HumanizerResultStatus.ERROR
-    assert result.error_code == "fact_lock_conflict"
+    assert result.error_code == "fidelity_gate_conflict"
 
 
 def test_output_contract_incomplete_rejected() -> None:
@@ -343,13 +346,14 @@ def test_generate_path_collects_and_reviews() -> None:
         ),
     )
     _, result = _run(service, skill_input)
-    # 正向自由文本约束（必须给出/引用来源）无法确定性验证 → 诚实标注
-    # needs_human 并交付完整输出（不阻断、不伪造核查结论）
-    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
-    assert result.output is not None
+    # Issue 02：生成路径候选中的数字（14 小时/7-8 小时等）无账本来源 →
+    # 保真硬门拦截（新增可核查信息必须有授权来源），不再以 needs_human 交付
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "fidelity_gate_conflict"
+    assert result.output is None
+    assert result.fidelity_check is not None
+    assert result.fidelity_check.blocking_failures
     assert result.fact_lock_check is not None and result.fact_lock_check.passed
-    assert "婴儿期" in result.output.final_text
-    assert result.output.completeness_gaps() == []
 
 
 def test_generate_violating_relation_is_blocking() -> None:
@@ -422,11 +426,15 @@ def test_added_citation_without_evidence_is_unverified() -> None:
     output = _good_output(final_with_new_cite)
     service = _make_service(_ProgrammableStructuredAdapter(output=output))
     _, result = _run(service, _rewrite_input())
-    # 新增引用不在证据合同内 → 标记未核实（不阻断，但事实核查披露）
-    unverified = [r for r in result.references if r.source_type == "unverified"]
-    assert unverified
-    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
-    assert any("引用" in item.item for item in result.output.fact_check)
+    # Issue 02：新增引用无账本来源 → 保真硬门拦截（引用编号/作者-年份须可绑定）
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "fidelity_gate_conflict"
+    assert result.output is None
+    assert result.fidelity_check is not None
+    assert any(
+        f.code.value == "unattributed_claim"
+        for f in result.fidelity_check.blocking_failures
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -580,10 +588,13 @@ def test_fact_lock_conflict_message_includes_recovery_path() -> None:
     service = _make_service(_ProgrammableStructuredAdapter(output=violating))
     events, result = _run(service, _rewrite_input(), budget=_budget())
     assert result.status == HumanizerResultStatus.ERROR
-    assert result.error_code == "fact_lock_conflict"
+    # Issue 02：数字破坏先被保真硬门拦截（错误码 fidelity_gate_conflict）
+    assert result.error_code == "fidelity_gate_conflict"
     assert result.output is None  # 硬门：不交付违规版本（允许无 final text）
     assert result.fact_lock_check is not None
     assert result.fact_lock_check.blocking_conflicts
+    assert result.fidelity_check is not None
+    assert result.fidelity_check.blocking_failures
     assert "恢复方式" in (result.error_message or "")
     assert "重试" in (result.error_message or "")
     # 硬门不执行软门修复：修复只在无硬门冲突时触发
@@ -694,3 +705,128 @@ def test_ambiguous_knowledge_base_reference_fails_before_model_call() -> None:
     assert result is not None
     assert result.error_code == "knowledge_base_reference_ambiguous"
     assert adapter.calls == 0
+
+
+# ---------------------------------------------------------------------------
+# Issue 02：来源账本与保真硬门接线
+# ---------------------------------------------------------------------------
+
+
+def test_success_projection_carries_ledger_and_fidelity() -> None:
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    _, result = _run(service, _rewrite_input())
+    assert result.status == HumanizerResultStatus.DONE
+    assert result.source_ledger is not None
+    assert result.source_ledger.ledger_version == "2"
+    assert result.source_ledger.ledger_hash
+    assert result.source_ledger.entries
+    assert result.fidelity_check is not None
+    assert result.fidelity_check.passed
+    assert result.fidelity_check.ledger_version == "2"
+    assert result.fidelity_check.checker_version == "2.0"
+    assert result.fidelity_check.ledger_hash == result.source_ledger.ledger_hash
+    assert result.fidelity_check.summary.protected_span_count > 0
+
+
+def test_fidelity_needs_confirmation_marks_needs_human() -> None:
+    final = _COMPLIANT_FINAL + "最近有研究显示该速率可能更高。"
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output(final)))
+    _, result = _run(service, _rewrite_input())
+    # 模糊时间无法判定来源 → needs_user_confirmation（不阻断但披露）
+    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
+    assert result.fidelity_check is not None
+    assert any(
+        f.code.value == "undetermined" for f in result.fidelity_check.needs_confirmation
+    )
+    assert result.output is not None  # 非关键仍交付正文
+
+
+def test_fidelity_check_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bridges.skills.humanizer.service as service_module
+    from bridges.skills.humanizer.source_ledger import FidelityCheckError
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise FidelityCheckError("模拟检查器异常")
+
+    monkeypatch.setattr(service_module, "run_fidelity_check", _boom)
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    _, result = _run(service, _rewrite_input())
+    # 检查异常 → 失败关闭，不标记成功
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "fidelity_check_failed"
+    assert result.fidelity_check is None
+
+
+def test_audit_records_redacted_fidelity_counts() -> None:
+    class _FakeObservability:
+        def __init__(self) -> None:
+            self.audits: list[dict[str, Any]] = []
+
+        def log_audit(self, **kwargs: Any) -> None:
+            self.audits.append(kwargs)
+
+    observability = _FakeObservability()
+    service = HumanizerService(
+        registry=create_builtin_registry(),
+        gateway=_gateway_with(
+            _ProgrammableStructuredAdapter(
+                output=_good_output(_COMPLIANT_FINAL.replace("25 μmol·m⁻²·s⁻¹", "30 μmol·m⁻²·s⁻¹"))
+            )
+        ),
+        observability_service=observability,  # type: ignore[arg-type]
+    )
+    _, result = _run(service, _rewrite_input())
+    assert result.status == HumanizerResultStatus.ERROR
+    assert observability.audits
+    details = observability.audits[-1]["details"]
+    # 脱敏：只记录版本/哈希/计数/失败码，不记录私人正文
+    assert details["ledger_version"] == "2"
+    assert details["checker_version"] == "2.0"
+    assert details["ledger_hash"]
+    assert details["fidelity_blocking"] >= 1
+    assert "number_changed" in details["fidelity_failure_codes"]
+    assert details["fidelity_protected_spans"] >= 0
+    assert details["fidelity_spans_by_kind"]
+    serialized = str(details)
+    # 脱敏：不记录原文正文片段或数值表面
+    assert "光合作用" not in serialized
+    assert "25 μmol" not in serialized
+    assert "30 μmol" not in serialized
+
+
+def test_old_projection_without_ledger_remains_readable() -> None:
+    from bridges.contracts.humanizer import HumanizerResultProjection
+
+    old = {
+        "task_id": "msg-old",
+        "skill_id": "bridges-humanizer",
+        "skill_version": "1.0.0",
+        "path": "rewrite",
+        "genre": "popular_science",
+        "contract": {
+            "path": "rewrite",
+            "genre": "popular_science",
+            "source_text": "旧任务原文。",
+        },
+        "status": "done",
+    }
+    projection = HumanizerResultProjection.model_validate(old)
+    # 旧任务仍可读取：账本与保真检查为空，不得伪装成已通过新增来源检查
+    assert projection.source_ledger is None
+    assert projection.fidelity_check is None
+
+
+def test_fidelity_gate_disabled_rolls_back_without_fake_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """能力开关关闭（回滚）：新任务恢复旧流程，投影不携带保真字段，
+    不得把旧流程标记为新硬门通过。"""
+    import bridges.skills.humanizer.service as service_module
+
+    monkeypatch.setattr(service_module, "FIDELITY_GATE_ENABLED", False)
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    _, result = _run(service, _rewrite_input())
+    assert result.status == HumanizerResultStatus.DONE
+    assert result.source_ledger is None
+    assert result.fidelity_check is None
+    assert result.fact_lock_check is not None  # 旧事实锁流程仍工作
