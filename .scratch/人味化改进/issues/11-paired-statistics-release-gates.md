@@ -1,6 +1,6 @@
 # Issue 11：建立配对统计与发布质量门
 
-Status: ready-for-agent
+Status: done
 
 Type: task
 
@@ -72,3 +72,4 @@ User stories: US-01、US-02、US-04、US-06、US-07
 ## Comments
 
 - 2026-08-12：用户批准 current 显著改善、`Humanizer-zh` 5pp 非劣效及聊天/文章独立门禁；随后要求完全取消人工评审，裁决改为至少三个隔离系统裁判。
+- 2026-08-12：完成并提交（5b9ad37，210 pytest 通过，含双轴审查修复 12 处：分歧门消费、CLI 无门报告退出码、切片公式对齐预注册、七维报告、死配置清理等）。
