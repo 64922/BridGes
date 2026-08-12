@@ -568,6 +568,15 @@ class HumanizerResultProjection(BaseModel):
             "运行时不做 pydantic 校验）。"
         ),
     )
+    evidence_safe: Any | None = Field(
+        default=None,
+        description=(
+            "证据安全检查报告（人味化改造 Issue 06）：默认模式的风险项与"
+            "授权修订的变化记录；普通无风险文章为空列表，不生成空洞的固定"
+            "事实核查总结。类型为 EvidenceSafeReport（避免循环导入，运行时"
+            "不做 pydantic 校验）。"
+        ),
+    )
     references: list[HumanizerReference] = Field(
         default_factory=list, description="保持的引用清单。"
     )
