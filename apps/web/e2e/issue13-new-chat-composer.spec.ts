@@ -186,6 +186,12 @@ async function registerAndEnterHome(page: Page): Promise<void> {
   await expect(page.locator("h1.sc-visually-hidden")).toHaveText("新聊天");
 }
 
+function getBlankStateNote(page: Page) {
+  return page.getByText("BridGes 的回答会标注依据与来源；重要内容请核对引用。", {
+    exact: true,
+  });
+}
+
 test.describe("Issue 21 — 精简新聊天首页", () => {
   test("登录落点与侧栏新聊天是同一最小空白态", async ({ page }) => {
     await registerAndEnterHome(page);
@@ -213,17 +219,84 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
   });
 
   test("轮换名言保留，减少动态效果时静止在第一条", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
     await registerAndEnterHome(page);
     const quote = page.getByTestId("empty-quote");
+    const note = getBlankStateNote(page);
     await expect(quote).toHaveAttribute("data-quote-count", "5");
     await expect(quote).toContainText("——");
+    await expect(quote).toHaveCSS("font-size", "24px");
+    await expect(note).toBeVisible();
     const quoteBox = await quote.boundingBox();
     const composerBox = await page.getByTestId("composer").boundingBox();
     expect(quoteBox!.y + quoteBox!.height).toBeLessThanOrEqual(composerBox!.y);
 
+    const centeredGroup = await page.getByTestId("new-chat-home").evaluate((blankState) => {
+      const quote = blankState.querySelector('[data-testid="empty-quote"]');
+      const composer = blankState.querySelector('[data-testid="composer"]');
+      if (!quote || !composer) throw new Error("首页居中块缺少格言或输入框");
+      const blankStateBox = blankState.getBoundingClientRect();
+      const quoteBox = quote.getBoundingClientRect();
+      const composerBox = composer.getBoundingClientRect();
+      const style = getComputedStyle(blankState);
+      const contentTop = blankStateBox.top + Number.parseFloat(style.paddingTop);
+      const contentBottom = blankStateBox.bottom - Number.parseFloat(style.paddingBottom);
+      return {
+        groupCenter: (quoteBox.top + composerBox.bottom) / 2,
+        contentCenter: (contentTop + contentBottom) / 2,
+      };
+    });
+    expect(Math.abs(centeredGroup.groupCenter - centeredGroup.contentCenter)).toBeLessThanOrEqual(12);
+
+    const layout = await note.evaluate((element) => {
+      const blankState = element.closest('[data-testid="new-chat-home"]');
+      if (!blankState) throw new Error("免责声明未位于新聊天空白态中");
+      const noteBox = element.getBoundingClientRect();
+      const blankStateBox = blankState.getBoundingClientRect();
+      const blankStateStyle = getComputedStyle(blankState);
+      return {
+        noteBottom: noteBox.bottom,
+        blankStateBottom: blankStateBox.bottom,
+        paddingBottom: Number.parseFloat(blankStateStyle.paddingBottom),
+        parentTestId: element.parentElement?.getAttribute("data-testid"),
+      };
+    });
+    expect(layout.parentTestId).toBe("new-chat-home");
+    expect(layout.blankStateBottom - layout.noteBottom).toBeCloseTo(layout.paddingBottom, 0);
+
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.reload();
     await expect(page.getByTestId("empty-quote")).toHaveAttribute("data-quote-index", "0");
+  });
+
+  test("短视口下免责声明不与输入框重叠", async ({ page }) => {
+    await registerAndEnterHome(page);
+    await page.setViewportSize({ width: 1280, height: 600 });
+
+    const note = getBlankStateNote(page);
+    const quote = page.getByTestId("empty-quote");
+    const composer = page.getByTestId("composer");
+    const noteBox = await note.boundingBox();
+    const quoteBox = await quote.boundingBox();
+    const composerBox = await composer.boundingBox();
+
+    expect(noteBox).not.toBeNull();
+    expect(quoteBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(noteBox!.y).toBeGreaterThanOrEqual(quoteBox!.y + quoteBox!.height);
+    expect(noteBox!.y).toBeGreaterThanOrEqual(composerBox!.y + composerBox!.height);
+
+    const blankState = page.getByTestId("new-chat-home");
+    await blankState.locator(":scope > div").evaluate((element) => {
+      element.style.minHeight = "1200px";
+    });
+    expect(
+      await blankState.evaluate((element) => element.scrollHeight > element.clientHeight)
+    ).toBe(true);
+    await blankState.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(note).toBeInViewport();
   });
 
   test("两种模式首轮请求只携带自然语言合同字段", async ({ page }) => {
@@ -280,10 +353,20 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     const mock = await installMockChatApi(page, { failOnce: true });
     await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).click();
     const input = page.getByLabel("输入消息");
+    const note = getBlankStateNote(page);
+    const noteBeforeSend = await note.boundingBox();
+    expect(noteBeforeSend).not.toBeNull();
     await input.fill("需要保留的文本");
     await page.getByRole("button", { name: "发送消息" }).click();
     await expect(page.getByTestId("new-chat-home").getByRole("alert")).toContainText("对话存储暂不可用");
     await expect(input).toHaveValue("需要保留的文本");
+    await expect(input).toBeFocused();
+    const noteAfterError = await note.boundingBox();
+    expect(noteAfterError).not.toBeNull();
+    expect(noteAfterError!.y + noteAfterError!.height).toBeCloseTo(
+      noteBeforeSend!.y + noteBeforeSend!.height,
+      0
+    );
     await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
     await expect(page).toHaveURL(/\/$/);
     await input.press("Enter");

@@ -111,10 +111,10 @@ export function NewChatHome() {
                 ensureConversation={ensureConversation}
                 generating={sending}
               />
-              <p className={styles.blankStateNote}>
-                BridGes 的回答会标注依据与来源；重要内容请核对引用。
-              </p>
             </div>
+            <p className={styles.blankStateNote}>
+              BridGes 的回答会标注依据与来源；重要内容请核对引用。
+            </p>
           </div>
         </main>
       </div>
