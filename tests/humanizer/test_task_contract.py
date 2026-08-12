@@ -209,10 +209,10 @@ def test_no_popular_science_default(content: str, expected_genre) -> None:
         genre_check = check_genre("任何文本", None)
         assert genre_check.passed
         assert genre_rule_set(None).display_name == "通用文章"
-        # 通用 profile 的 required/prohibited 均为空，不注入科普必现句型。
+        # 通用 profile 无禁止模式、无可选表达，不注入科普必现句型。
         generic = genre_rule_set(None)
-        assert not generic.required
         assert not generic.prohibited
+        assert not generic.optional_devices
         # 裁决链记录未识别体裁使用通用 profile。
         assert any(
             a.rule_id == "genre-generic-profile" for a in result.record.adjudications

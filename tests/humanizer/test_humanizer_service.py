@@ -250,7 +250,7 @@ def test_output_contract_incomplete_rejected() -> None:
 def test_genre_check_failure_delivers_text_with_warnings() -> None:
     # Issue 07：软门（体裁等风格指标）失败不扣留正文——交付当前最佳
     # 正文并附未完全满足项；重新生成是可选项而非唯一出口。
-    bad_genre = _good_output(_COMPLIANT_FINAL.split("你可以把光合作用比作")[0].rstrip("。"))
+    bad_genre = _bad_genre_output()
     service = _make_service(_ProgrammableStructuredAdapter(output=bad_genre))
     events, result = _run(service, _rewrite_input())
     assert result.status == HumanizerResultStatus.NEEDS_HUMAN
@@ -258,7 +258,7 @@ def test_genre_check_failure_delivers_text_with_warnings() -> None:
     assert result.output.final_text == bad_genre["final_text"]
     assert result.output.quality_status == HumanizerQualityStatus.WARN
     assert result.quality_warnings  # 具体未满足项
-    assert any("类比" in warning for warning in result.quality_warnings)
+    assert any("论文腔" in warning for warning in result.quality_warnings)
     assert result.repair_attempts == 0  # 未传预算 → 预算内未执行修复
     # 草稿事件：模型产出正文后立即下发
     drafts = [e.draft_text for e in events if e.kind == "draft"]
@@ -443,8 +443,12 @@ def test_added_citation_without_evidence_is_unverified() -> None:
 # ---------------------------------------------------------------------------
 
 def _bad_genre_output() -> dict[str, Any]:
-    """保持全部事实锁但缺失类比/边界/行动相关性的科普文案（体裁软门不过）。"""
-    return _good_output(_COMPLIANT_FINAL.split("你可以把光合作用比作")[0].rstrip("。"))
+    """保持全部事实锁但含科普禁止模式（论文腔套话）的正文（体裁软门不过）。
+
+    Issue 04 起体裁复核不再检查必现元素（类比/定义/练习等），软门失败
+    只能由禁止模式触发。
+    """
+    return _good_output("本文将介绍光合作用。" + _COMPLIANT_FINAL)
 
 
 def _budget(total_ms: int = 120_000) -> Any:
@@ -513,7 +517,7 @@ def test_soft_gate_repairs_at_most_once() -> None:
     assert result.output.final_text == bad["final_text"]
     assert result.repair_attempts == 1
     assert adapter.calls == 2  # 恰好一次修复，无第三次调用
-    assert any("类比" in warning for warning in result.quality_warnings)
+    assert any("论文腔" in warning for warning in result.quality_warnings)
 
 
 def test_soft_gate_skips_repair_when_budget_exhausted() -> None:

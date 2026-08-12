@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -557,6 +558,15 @@ class HumanizerResultProjection(BaseModel):
     fidelity_check: FidelityCheckResult | None = Field(
         default=None,
         description="保真硬门检查结果（新账本版本任务才有；缺失不得标记成功）。",
+    )
+    expression_review: Any | None = Field(
+        default=None,
+        description=(
+            "表达审稿报告（人味化改造 Issue 04）；只有走表达任务契约的新流程"
+            "才有。旧任务为空，风格发现默认为软审稿，不阻止交付。类型为"
+            "ExpressionReviewReport（避免与 expression_review 模块循环导入，"
+            "运行时不做 pydantic 校验）。"
+        ),
     )
     references: list[HumanizerReference] = Field(
         default_factory=list, description="保持的引用清单。"

@@ -17,12 +17,17 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from time import perf_counter
 from typing import Any
 
 from bridges.ai.model_gateway import ModelGateway
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.budget import RESULT_FAILED, RunBudget, RunStage
 from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.expression_review import (
+    ExpressionReviewReport,
+    ReviewSeverity,
+)
 from bridges.contracts.humanizer import (
     FactLockCheckResult,
     FactLockKind,
@@ -48,6 +53,13 @@ from bridges.ingestion.parsers import ParsedDocument, ParseError, parse_document
 from bridges.knowledge_base.service import KnowledgeBaseError, KnowledgeBaseService
 from bridges.observability.service import ObservabilityService
 from bridges.retrieval.service import LayeredRetrievalService
+from bridges.skills.humanizer.contract_compiler import KNOWN_SCHEMA_VERSIONS
+from bridges.skills.humanizer.draft_compiler import (
+    DRAFT_MAX_TOKENS,
+    DRAFT_OUTPUT_JSON_SCHEMA,
+    compile_draft_prompt,
+)
+from bridges.skills.humanizer.expression_review import run_expression_review
 from bridges.skills.humanizer.factlock import _KIND_LABEL_CN as _KIND_CN
 from bridges.skills.humanizer.factlock import (
     check_requirements,
@@ -168,6 +180,14 @@ class _ReviewCheckpoint:
     fidelity_check: FidelityCheckResult | None = None
 
 
+@dataclass
+class _ExpressionMetrics:
+    """表达任务契约新流程的观测元数据（脱敏计数，不记录正文）。"""
+
+    rule_count: int = 0
+    draft_latency_ms: int | None = None
+
+
 class HumanizerService:
     """bridges-humanizer 的两条路径编排。"""
 
@@ -233,8 +253,25 @@ class HumanizerService:
         消息正文，软检查只更新状态不删草稿）；自然语言路由只做一次
         结构化生成并执行确定性复核，仍未完全通过时交付当前最佳正文与
         具体警告；旧显式 SKILL 继续保留既有的一次定向修复兼容行为。
+        Issue 04：带版本化表达任务契约的任务走新流程（首稿 profile +
+        表达审稿 + 程序生成审计信息，模型调用至多一次）；旧显式 SKILL
+        （无契约）保持原行为，直到 Issue 08 完成投影迁移。
         """
         skill_version = self.resolve_skill(skill_input)
+        if skill_input.expression_contract is not None:
+            yield from self._run_expression_task(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                skill_input,
+                skill_version,
+                run_context,
+                retrieval_round,
+                web_search_projection,
+                arxiv_search_projection,
+                budget,
+            )
+            return
         contract = skill_input.contract
         progress: list[str] = []
 
@@ -411,6 +448,515 @@ class HumanizerService:
     def _is_natural_language_route(skill_input: HumanizerSkillInput) -> bool:
         route = skill_input.route
         return route is not None and route.source.value == "natural_language"
+
+    # ------------------------------------------------------------------
+    # 表达任务契约新流程（Issue 04：首稿 profile + 表达审稿 + 程序审计）
+    # ------------------------------------------------------------------
+
+    def _run_expression_task(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        skill_input: HumanizerSkillInput,
+        skill_version: str,
+        run_context: Any,
+        retrieval_round: Any | None,
+        web_search_projection: Any | None,
+        arxiv_search_projection: Any | None,
+        budget: RunBudget | None,
+    ) -> Iterator[HumanizerRunEvent]:
+        """带版本化表达任务契约的新文章流程。
+
+        执行器只从契约与来源账本取得任务、权限和材料：契约版本未知或
+        快照哈希不一致时在模型调用前稳定拒绝；首稿只编译当前 profile 的
+        6—10 条正向规则；模型只产出候选正文（一次调用）；修改清单、保真
+        结果、模式命中与可确定性差异全部由程序生成，不伪装成模型自证。
+        """
+        expression_contract = skill_input.expression_contract
+        contract = skill_input.contract
+        progress: list[str] = []
+
+        def process(
+            state: HumanizerProcessState,
+            label: str,
+            *,
+            detail: str | None = None,
+            retryable: bool = False,
+        ) -> HumanizerRunEvent:
+            return HumanizerRunEvent(
+                kind=HumanizerRunKind.PROCESS,
+                state=state,
+                step_label=label,
+                detail=detail,
+                retryable=retryable,
+                progress_steps=list(progress),
+            )
+
+        try:
+            # 步骤 1：契约版本校验（模型调用前稳定拒绝）
+            yield process(HumanizerProcessState.LOADING, "正在校验表达任务契约…")
+            self._validate_expression_contract(expression_contract)
+            progress.append("校验表达任务契约")
+
+            # 步骤 2：解析来源与材料（原文/知识库/外部证据合同）
+            (
+                source_text,
+                source_label,
+                references,
+                source_knowledge_base_object_ids,
+                account_materials,
+            ) = self._resolve_source(
+                account_id, conversation_id, contract, retrieval_round,
+                web_search_projection, arxiv_search_projection,
+            )
+            progress.append("解析任务契约")
+
+            # 步骤 3：编译来源账本（Issue 02 硬门，新流程强制启用）
+            ledger = self._compile_ledger(
+                contract,
+                source_text if contract.path == HumanizerPath.REWRITE
+                else self._constraints_text(contract),
+                source_label,
+                references,
+                account_materials=account_materials,
+                external_evidence_requested=bool(
+                    skill_input.route is not None
+                    and skill_input.route.external_evidence_requested
+                ),
+            )
+            progress.append("编译来源账本")
+
+            # 步骤 4：编译首稿提示（当前 profile 的 6—10 条正向规则）
+            yield process(HumanizerProcessState.LOADING, "正在编译首稿规则…")
+            draft = compile_draft_prompt(
+                expression_contract,
+                source_text=source_text,
+                source_label=source_label,
+                ledger=ledger,
+            )
+            progress.append("编译首稿规则")
+
+            # 步骤 5：一次模型调用，模型只产出候选正文（至多一次）
+            yield process(HumanizerProcessState.LOADING, "正在起草正文…")
+            final_text, draft_latency_ms = self._invoke_draft_model(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                run_context,
+                draft.system_prompt,
+                source_text,
+            )
+            progress.append("起草正文")
+            yield HumanizerRunEvent(
+                kind=HumanizerRunKind.DRAFT,
+                draft_text=final_text,
+                progress_steps=list(progress),
+            )
+
+            # 步骤 6：来源保真硬门（Issue 02 失败关闭）
+            yield process(HumanizerProcessState.LOADING, "正在检查来源保真…")
+            fidelity_check = None
+            if ledger is not None:
+                try:
+                    fidelity_check = run_fidelity_check(
+                        ledger,
+                        final_text,
+                        contract_path=contract.path,
+                        allow_assumptions=contract.allow_assumptions,
+                    )
+                except FidelityCheckError as exc:
+                    raise HumanizerError(
+                        "fidelity_check_failed",
+                        f"来源保真检查未完成：{exc}",
+                        retryable=False,
+                    ) from exc
+            progress.append("来源保真检查")
+
+            # 步骤 7：表达审稿（软审稿，只报警不做机械替换）
+            review = run_expression_review(
+                final_text,
+                contract=expression_contract,
+                source_text=(
+                    source_text if contract.path == HumanizerPath.REWRITE else ""
+                ),
+                ledger=ledger,
+            )
+            progress.append("表达审稿")
+
+            # 步骤 8：确定性适配器生成输出合同（修改清单/事实核查/未决问题）
+            output = self._expression_output_contract(
+                contract,
+                final_text,
+                fidelity_check,
+                review,
+                source_knowledge_base_object_ids,
+            )
+            progress.append("生成审计信息")
+            metrics = _ExpressionMetrics(
+                rule_count=draft.rule_count,
+                draft_latency_ms=draft_latency_ms,
+            )
+
+            # 步骤 9：终态判定与结果投影（旧投影字段保持兼容）
+            yield process(HumanizerProcessState.LOADING, "正在完成交付…")
+            final_result = self._expression_finalize(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                skill_input,
+                skill_version,
+                contract,
+                expression_contract,
+                final_text,
+                output,
+                fidelity_check,
+                review,
+                references,
+                progress,
+                ledger,
+                metrics,
+            )
+            yield HumanizerRunEvent(
+                kind=HumanizerRunKind.RESULT,
+                step_label="人味化完成",
+                result=final_result,
+            )
+        except HumanizerError as exc:
+            if exc.code in ("empty_source", "empty_topic"):
+                state = HumanizerProcessState.EMPTY
+            elif exc.code in _PERMISSION_ERROR_CODES:
+                state = HumanizerProcessState.PERMISSION
+            elif exc.retryable:
+                state = HumanizerProcessState.RECOVERY
+            else:
+                state = HumanizerProcessState.ERROR
+            failed = self._failed_projection(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                skill_input,
+                skill_version,
+                exc.code,
+                exc.message,
+                retryable=exc.retryable,
+                process_steps=progress,
+                state=state,
+            )
+            yield process(
+                state,
+                "任务未完成",
+                detail=exc.message,
+                retryable=exc.retryable,
+            )
+            yield HumanizerRunEvent(kind=HumanizerRunKind.RESULT, result=failed)
+
+    @staticmethod
+    def _validate_expression_contract(expression_contract: Any) -> None:
+        """契约版本校验：未知版本或哈希不一致时在模型调用前稳定拒绝。"""
+        if expression_contract.schema_version not in KNOWN_SCHEMA_VERSIONS:
+            raise HumanizerError(
+                "expression_contract_unsupported",
+                f"表达任务契约版本 {expression_contract.schema_version} 不受支持，"
+                "请重新发送任务。",
+                retryable=False,
+            )
+        if (
+            expression_contract.compute_version_hash()
+            != expression_contract.version_hash
+        ):
+            raise HumanizerError(
+                "expression_contract_hash_mismatch",
+                "表达任务契约快照哈希不一致，拒绝执行。",
+                retryable=False,
+            )
+
+    def _invoke_draft_model(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        run_context: Any,
+        system_prompt: str,
+        source_text: str,
+    ) -> tuple[str, int]:
+        """一次正文生成调用：输出合同只有候选正文（不要求模型生产审计元数据）。
+
+        返回（正文, 首稿延迟毫秒）供观测记录，不记录正文内容。
+        """
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": source_text.strip() or "请按上述要求起草正文。"},
+            ],
+            "json_schema": DRAFT_OUTPUT_JSON_SCHEMA,
+            "temperature": 0.4,
+            "max_tokens": DRAFT_MAX_TOKENS,
+        }
+        started = perf_counter()
+        call_result = self._gateway.invoke(
+            HUMANIZER_CAPABILITY_NAME,
+            HUMANIZER_CAPABILITY_VERSION,
+            run_context,
+            payload,
+        )
+        latency_ms = int((perf_counter() - started) * 1000)
+        if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
+            raise HumanizerError(
+                call_result.error_code or "humanizer_generation_failed",
+                call_result.error_message or "人味化生成失败，请重试。",
+                retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
+            )
+        raw = call_result.output or {}
+        final_text = str(raw.get("final_text") or "").strip()
+        if not final_text:
+            raise HumanizerError(
+                "empty_output",
+                "生成结果缺少正文，请重试。",
+                retryable=True,
+            )
+        return final_text, latency_ms
+
+    def _expression_output_contract(
+        self,
+        contract: HumanizerTaskContract,
+        final_text: str,
+        fidelity_check: FidelityCheckResult | None,
+        review: ExpressionReviewReport,
+        source_knowledge_base_object_ids: list[str],
+    ) -> HumanizerOutputContract:
+        """确定性适配器生成输出合同：修改清单/事实核查/未决问题全部程序生成。"""
+        edits = self._expression_edits(review, final_text)
+        fact_check = self._expression_fact_check(fidelity_check, review)
+        open_questions = self._expression_open_questions(fidelity_check)
+        return HumanizerOutputContract(
+            final_text=final_text,
+            edits=edits,
+            fact_check=fact_check,
+            open_questions=open_questions,
+            quality_status=(
+                HumanizerQualityStatus.WARN
+                if not review.no_change_recommended
+                else HumanizerQualityStatus.OK
+            ),
+            source_attachment_ids=[],
+            source_knowledge_base_object_ids=list(source_knowledge_base_object_ids),
+        )
+
+    @staticmethod
+    def _expression_edits(
+        review: ExpressionReviewReport, final_text: str
+    ) -> list[HumanizerEdit]:
+        """从审稿发现生成逐项修改清单（定向建议，非机械替换）。
+
+        只有 warning/suggestion 级发现才生成定向修改项；info 级观察与
+        自然稿一致报告 NO_CHANGE，与 no_change_recommended 语义一致。
+        """
+        high_value = [
+            finding
+            for finding in review.findings
+            if finding.severity in (ReviewSeverity.WARNING, ReviewSeverity.SUGGESTION)
+        ]
+        if not high_value:
+            return [
+                HumanizerEdit(
+                    edit_id=f"ed-{secrets.token_urlsafe(8)}",
+                    kind=HumanizerEditKind.NO_CHANGE,
+                    original=final_text[:60],
+                    revised=final_text[:60],
+                    reason="表达审稿未发现高价值修改建议（no_change_recommended）。",
+                )
+            ]
+        edits: list[HumanizerEdit] = []
+        for finding in high_value[:8]:
+            kind = (
+                HumanizerEditKind.WORD_CHOICE
+                if finding.location.end - finding.location.start <= 30
+                else HumanizerEditKind.REWRITE
+            )
+            edits.append(
+                HumanizerEdit(
+                    edit_id=f"ed-{secrets.token_urlsafe(8)}",
+                    kind=kind,
+                    original=finding.evidence,
+                    revised=finding.suggestion,
+                    reason=f"表达审稿「{finding.category}」：{finding.explanation}"
+                    f"（定向建议，待修订时应用）",
+                )
+            )
+        return edits
+
+    @staticmethod
+    def _expression_fact_check(
+        fidelity_check: FidelityCheckResult | None,
+        review: ExpressionReviewReport,
+    ) -> list[HumanizerFactCheckItem]:
+        """保真结果由程序生成：不把模型输出伪装成模型自证。"""
+        items: list[HumanizerFactCheckItem] = []
+        if fidelity_check is None:
+            items.append(
+                HumanizerFactCheckItem(
+                    item="来源保真",
+                    result="需人工确认",
+                    evidence="未配置来源账本，正文事实与引用须人工核对。",
+                )
+            )
+        else:
+            for failure in (
+                *fidelity_check.blocking_failures,
+                *fidelity_check.needs_confirmation,
+            ):
+                result_label = (
+                    "需人工确认"
+                    if failure.severity.value == "needs_user_confirmation"
+                    else "存在虚构风险"
+                )
+                items.append(
+                    HumanizerFactCheckItem(
+                        item=f"保真「{failure.code.value}」",
+                        result=result_label,
+                        evidence=failure.note,
+                    )
+                )
+            if fidelity_check.passed:
+                items.append(
+                    HumanizerFactCheckItem(
+                        item="来源保真检查",
+                        result="已核实",
+                        evidence=(
+                            f"账本版本 {fidelity_check.ledger_version}，"
+                            "保留检查与新增 claim 来源检查通过。"
+                        ),
+                    )
+                )
+        if not review.no_change_recommended:
+            items.append(
+                HumanizerFactCheckItem(
+                    item="表达审稿",
+                    result="需人工确认",
+                    evidence=(
+                        f"发现 {review.summary.finding_count} 条风格发现（软审稿），"
+                        "不影响正文交付，可在修订阶段处理。"
+                    ),
+                )
+            )
+        return items
+
+    @staticmethod
+    def _expression_open_questions(
+        fidelity_check: FidelityCheckResult | None,
+    ) -> list[str]:
+        if fidelity_check is None:
+            return ["未配置来源账本：正文中的事实与引用须人工核对。"]
+        return [
+            failure.note
+            for failure in (
+                *fidelity_check.blocking_failures,
+                *fidelity_check.needs_confirmation,
+            )
+        ]
+
+    def _expression_finalize(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        skill_input: HumanizerSkillInput,
+        skill_version: str,
+        contract: HumanizerTaskContract,
+        expression_contract: Any,
+        final_text: str,
+        output: HumanizerOutputContract,
+        fidelity_check: FidelityCheckResult | None,
+        review: ExpressionReviewReport,
+        references: list[HumanizerReference],
+        progress: list[str],
+        ledger: SourceLedger | None,
+        metrics: _ExpressionMetrics,
+    ) -> HumanizerResultProjection:
+        """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。"""
+        genre_check = check_genre(final_text, contract.genre)
+        fidelity_blocking = (
+            list(fidelity_check.blocking_failures)
+            if fidelity_check is not None
+            else []
+        )
+        quality_warnings: list[str] = []
+        if not review.no_change_recommended:
+            for finding in review.findings:
+                if finding.severity in (
+                    ReviewSeverity.WARNING,
+                    ReviewSeverity.SUGGESTION,
+                ):
+                    quality_warnings.append(
+                        f"表达审稿「{finding.category}」：{finding.explanation}"
+                        f"（位置 {finding.location.start}-{finding.location.end}，"
+                        f"定向建议：{finding.suggestion}）"
+                    )
+        if not genre_check.passed:
+            for finding in genre_check.findings:
+                if not finding.passed:
+                    quality_warnings.append(
+                        f"体裁复核「{finding.label}」：{finding.detail}"
+                    )
+            output = output.model_copy(
+                update={"quality_status": HumanizerQualityStatus.WARN}
+            )
+
+        status = HumanizerResultStatus.DONE
+        state = HumanizerProcessState.DONE
+        error_code: str | None = None
+        error_message: str | None = None
+        if fidelity_blocking:
+            status = HumanizerResultStatus.ERROR
+            state = HumanizerProcessState.ERROR
+            error_code = "fidelity_gate_conflict"
+            error_message = (
+                "来源保真硬门未通过，已停止交付："
+                + "；".join(f.note for f in fidelity_blocking[:3])
+                + "。恢复方式：删除或修正无来源的新增内容后重试"
+                "（任务输入与附件已保留）。"
+            )
+
+        result = HumanizerResultProjection(
+            task_id=assistant_message_id,
+            skill_id=skill_input.skill_id,
+            skill_version=skill_version,
+            path=contract.path,
+            genre=contract.genre,
+            contract=contract,
+            expression_contract=expression_contract,
+            status=status,
+            output=output if status != HumanizerResultStatus.ERROR else None,
+            fact_lock_check=None,
+            source_ledger=ledger,
+            fidelity_check=fidelity_check,
+            expression_review=review,
+            references=references,
+            genre_check=genre_check.summary(),
+            quality_warnings=quality_warnings,
+            repair_attempts=0,
+            process_state=state,
+            process_steps=list(progress),
+            error_code=error_code,
+            error_message=error_message,
+            created_at=datetime.now(UTC),
+        )
+        self._audit(
+            account_id,
+            conversation_id,
+            assistant_message_id,
+            skill_input.skill_id,
+            skill_version,
+            contract,
+            status,
+            None,
+            fidelity_check,
+            expression_contract=expression_contract,
+            expression_review=review,
+            expression_metrics=metrics,
+        )
+        return result
 
     # ------------------------------------------------------------------
     # 来源解析
@@ -734,20 +1280,18 @@ class HumanizerService:
             for ref in references
         ) or "（无：只能依赖原文，新增引用一律标记为需人工核实）"
         genre_doc = genre_rule_set(contract.genre)
-        if contract.genre is None:
-            # 未识别体裁：通用文章 profile，不强制任何必现元素（不落科普必现模板）。
-            # 文案从通用 profile 派生，避免与 genre_rules 的定义重复漂移。
-            genre_line = (
-                f"体裁：{genre_doc.display_name} profile。必含：（无，按任务需要选择表达手段）。"
-                "禁止：（无全局禁词）。"
-            )
-        else:
-            required_lines = "；".join(rule.label for rule in genre_doc.required)
-            prohibited_lines = "；".join(rule.label for rule in genre_doc.prohibited)
-            genre_line = (
-                f"体裁：{genre_doc.display_name}。必含：{required_lines}。"
-                f"禁止：{prohibited_lines}。体裁责任：{genre_doc.human_responsibility}"
-            )
+        # Issue 04：体裁 profile 只规定任务目标/风险/可选表达，不再有必现元素。
+        risk_lines = "；".join(genre_doc.risks) if genre_doc.risks else "（无）"
+        optional_lines = (
+            "；".join(genre_doc.optional_devices)
+            if genre_doc.optional_devices
+            else "（无，按任务需要选择表达手段）"
+        )
+        genre_line = (
+            f"体裁：{genre_doc.display_name} profile。任务目标：{genre_doc.task_goal} "
+            f"风险：{risk_lines}。可选表达（按需使用）：{optional_lines}。"
+            f"体裁责任：{genre_doc.human_responsibility}"
+        )
         method_scene = (
             MethodScene.ARTICLE_REWRITE
             if contract.path == HumanizerPath.REWRITE
@@ -1376,6 +1920,8 @@ class HumanizerService:
         fidelity_check: FidelityCheckResult | None = None,
         ledger: SourceLedger | None = None,
         expression_contract: Any = None,
+        expression_review: ExpressionReviewReport | None = None,
+        expression_metrics: _ExpressionMetrics | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -1452,6 +1998,44 @@ class HumanizerService:
                         if ledger is not None
                         and ledger.compile_summary is not None
                         else {}
+                    ),
+                    # Issue 04 表达审稿：只记录 profile/规则数/code 计数，不记录正文
+                    "review_version": (
+                        expression_review.review_version
+                        if expression_review is not None
+                        else None
+                    ),
+                    "review_scene_profile": (
+                        expression_review.scene_profile
+                        if expression_review is not None
+                        else None
+                    ),
+                    "review_finding_count": (
+                        expression_review.summary.finding_count
+                        if expression_review is not None
+                        else 0
+                    ),
+                    # 各审稿 code 数量（不合并为单一总分，避免隐藏 profile 退化）
+                    "review_code_counts": (
+                        dict(expression_review.summary.by_code)
+                        if expression_review is not None
+                        else {}
+                    ),
+                    "review_no_change": (
+                        expression_review.no_change_recommended
+                        if expression_review is not None
+                        else None
+                    ),
+                    # Issue 04 观测：编译规则数量与首稿延迟（不记录正文）
+                    "draft_rule_count": (
+                        expression_metrics.rule_count
+                        if expression_metrics is not None
+                        else None
+                    ),
+                    "draft_latency_ms": (
+                        expression_metrics.draft_latency_ms
+                        if expression_metrics is not None
+                        else None
                     ),
                 },
             )
