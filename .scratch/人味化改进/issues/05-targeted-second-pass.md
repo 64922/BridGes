@@ -1,6 +1,6 @@
 # Issue 05：增加文章定向二次修订
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
