@@ -1,6 +1,6 @@
 # Issue 03：更新输入框占位文案以体现全部能力
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -53,4 +53,9 @@ User stories: US-03
 ## Comments
 
 - 2026-08-12：文案全文由用户指定，逐字采用，不润色。
-- 后续讨论、实施证据和验收结果追加于本节。
+
+## Answer
+
+- 2026-08-12：已在 `apps/web/src/components/bridges/Composer.tsx` 将共享输入框 placeholder 更新为“和 BridGes 一起学习，可以搜论文、人味化你的文章、生涯规划或者生成图片或视频”；`conversation` 与 `new-chat` 两种变体共用该来源，因此新聊天首页和已有对话页同步生效。
+- 新增 `apps/web/src/components/bridges/Composer.test.tsx`，断言两种变体的 textarea 均使用新文案。
+- 验证结果：Composer 组件测试 2/2 通过；Web 单元测试 30/30 通过；`npm run typecheck` 通过；`issue13-new-chat-composer.spec.ts` 提升权限单 worker 执行 6/8 通过，另一个视口用例单独重跑通过。剩余“创建中显示状态”用例因既有 `composer-sending-status` 元素缺失失败，与本次 placeholder 改动无关。
