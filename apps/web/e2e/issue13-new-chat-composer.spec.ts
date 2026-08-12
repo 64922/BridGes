@@ -248,6 +248,21 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     });
     expect(Math.abs(centeredGroup.groupCenter - centeredGroup.contentCenter)).toBeLessThanOrEqual(12);
 
+    const horizontalLayout = await page.getByTestId("composer").evaluate((composer) => {
+      const blankState = composer.closest('[data-testid="new-chat-home"]');
+      if (!blankState) throw new Error("输入框未位于新聊天空白态中");
+      const blankStateBox = blankState.getBoundingClientRect();
+      const composerBox = composer.getBoundingClientRect();
+      const style = getComputedStyle(blankState);
+      const contentLeft = blankStateBox.left + Number.parseFloat(style.paddingLeft);
+      const contentRight = blankStateBox.right - Number.parseFloat(style.paddingRight);
+      return {
+        composerCenter: (composerBox.left + composerBox.right) / 2,
+        contentCenter: (contentLeft + contentRight) / 2,
+      };
+    });
+    expect(Math.abs(horizontalLayout.composerCenter - horizontalLayout.contentCenter)).toBeLessThanOrEqual(12);
+
     const layout = await note.evaluate((element) => {
       const blankState = element.closest('[data-testid="new-chat-home"]');
       if (!blankState) throw new Error("免责声明未位于新聊天空白态中");
