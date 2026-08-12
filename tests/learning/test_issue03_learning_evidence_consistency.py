@@ -43,12 +43,47 @@ def _result(
 
 
 def _web(*results: WebSearchResult) -> WebSearchProjection:
+    return _web_with_query("Transformer 架构", *results)
+
+
+def _web_with_query(
+    query_summary: str, *results: WebSearchResult
+) -> WebSearchProjection:
     return WebSearchProjection(
         status=WebSearchStatus.SUCCESS,
         trigger_reason="本地材料不足",
-        query_summary="Transformer 架构",
+        query_summary=query_summary,
         results=list(results),
         searched_at=NOW,
+    )
+
+
+def test_cnn_goal_accepts_chinese_source_despite_a_truncated_query_summary() -> None:
+    turn = TeachingTurnService().prepare(
+        "学习“卷积神经网络的相关基础知识”并理解其核心机制",
+        retrieval=None,
+        web_search=_web_with_query(
+            "topic:核心机制",
+            _result(
+                "web-cnn",
+                "卷积神经网络（CNN）基础知识入门",
+                snippet="卷积神经网络是常见的神经网络架构。",
+                content="卷积神经网络通过局部感受野提取特征，构成其核心机制。",
+            ),
+        ),
+        goal="学习“卷积神经网络的相关基础知识”并理解其核心机制",
+    )
+
+    assert turn.can_answer_reliably is True
+    assert turn.status == TeachingCardStatus.READY
+    assert turn.evidence_gate.status == TeachingEvidenceStatus.SUFFICIENT
+    assert [source.source_id for source in turn.evidence_gate.external_sources] == [
+        "web-cnn"
+    ]
+    assert turn.evidence_gate.coverage is not None
+    assert turn.evidence_gate.coverage.rules_version == "learning-evidence-coverage-v2"
+    assert turn.evidence_gate.coverage.topic_aliases_version == (
+        "learning-evidence-topic-aliases-v1"
     )
 
 

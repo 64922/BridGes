@@ -50978,6 +50978,18 @@
             "title": "Rules Version",
             "description": "覆盖裁决规则版本。"
           },
+          "topic_aliases_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Aliases Version",
+            "description": "主题别名表版本；历史投影可为空。"
+          },
           "candidate_count": {
             "type": "integer",
             "minimum": 0.0,

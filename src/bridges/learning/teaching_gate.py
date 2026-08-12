@@ -41,7 +41,8 @@ from bridges.contracts.teaching import (
 )
 from bridges.contracts.teaching_progress import LearningProgressProjection
 from bridges.learning.evidence_coverage import (
-    EVIDENCE_COVERAGE_RULES_VERSION,
+    ACCEPTED_WEB_VERIFICATIONS,
+    TOPIC_ALIASES_VERSION,
     WebEvidenceCoverage,
     adjudicate_web_sources,
 )
@@ -193,7 +194,7 @@ def _web_sources(
             accessed_at=result.accessed_at,
         )
         for result in web_search.results
-        if result.verification in {"verified", "cross_verified", "structured"}
+        if result.verification.value in ACCEPTED_WEB_VERIFICATIONS
         and (
             accepted_result_ids is None or result.result_id in accepted_result_ids
         )
@@ -255,6 +256,8 @@ class TeachingEvidenceGateService:
         retrieval: RetrievalRoundProjection | None,
         web_search: WebSearchProjection | None = None,
         arxiv_search: ArxivSearchProjection | None = None,
+        *,
+        goal: str | None = None,
     ) -> TeachingEvidenceGate:
         local = _local_sources(
             retrieval,
@@ -266,7 +269,7 @@ class TeachingEvidenceGateService:
         coverage_started = perf_counter()
         coverage_query = web_search.query_summary if web_search is not None else ""
         web_coverage = (
-            adjudicate_web_sources(coverage_query, web_search.results)
+            adjudicate_web_sources(coverage_query, web_search.results, goal=goal)
             if (
                 required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}
                 and web_search is not None
@@ -275,7 +278,8 @@ class TeachingEvidenceGateService:
         )
         coverage = (
             TeachingEvidenceCoverage(
-                rules_version=EVIDENCE_COVERAGE_RULES_VERSION,
+                rules_version=web_coverage.rules_version,
+                topic_aliases_version=TOPIC_ALIASES_VERSION,
                 candidate_count=web_coverage.candidate_count,
                 fetched_count=web_coverage.fetched_count,
                 accepted_count=(
@@ -1064,7 +1068,9 @@ class TeachingTurnService:
         goal: str | None = None,
         learning_progress: LearningProgressProjection | None = None,
     ) -> TeachingTurnProjection:
-        gate = self._gate.assess(query, retrieval, web_search, arxiv_search)
+        gate = self._gate.assess(
+            query, retrieval, web_search, arxiv_search, goal=goal
+        )
         answer = None
         evidence = list(previous_turn.evidence) if previous_turn is not None else []
         if (

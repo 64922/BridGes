@@ -109,6 +109,7 @@ from bridges.contracts.teaching import (
 )
 from bridges.contracts.video import VideoError, VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.learning.evidence_coverage import ACCEPTED_WEB_VERIFICATIONS
 from bridges.learning.progress import TeachingProgressService
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
@@ -726,7 +727,7 @@ def retrieval_context(citations: list[CitationProjection]) -> str:
 # ---------------------------------------------------------------------------
 
 
-_WEB_EVIDENCE_VERIFICATIONS = {"verified", "cross_verified", "structured"}
+_WEB_EVIDENCE_VERIFICATIONS = ACCEPTED_WEB_VERIFICATIONS
 
 
 def _web_provider_summary(projection: WebSearchProjection) -> str:
@@ -816,7 +817,11 @@ def teaching_web_result_ids(
     return {
         source.source_id
         for source in teaching.evidence_gate.external_sources
-        if source.source_type == TeachingEvidenceSourceType.DUCKDUCKGO
+        if source.source_type
+        in {
+            TeachingEvidenceSourceType.DUCKDUCKGO,
+            TeachingEvidenceSourceType.BRAVE_SEARCH,
+        }
     }
 
 
@@ -5567,6 +5572,7 @@ class TurnOrchestrator:
             reason="学习公开来源覆盖裁决。",
             details={
                 "rules_version": coverage.rules_version,
+                "topic_aliases_version": coverage.topic_aliases_version,
                 "candidate_count": coverage.candidate_count,
                 "fetched_count": coverage.fetched_count,
                 "accepted_count": coverage.accepted_count,
