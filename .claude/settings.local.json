@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"- [Issue 11 完成]\\(issue11-closeout-release-acceptance-completed.md\\) — Issue 11 收尾发布验收完成并提交（三轮串行套件 + 2 处组合缺陷修复 + 验收报告）\")",
+      "Read(//c/Users/33755/.claude/projects/C--Users-33755-desktop-try5/memory/**)",
+      "Bash(printf '%s\\\\n' '- [Issue 05 完成]\\(issue05-targeted-second-pass-completed.md\\) — 人味化 Issue 05 文章定向二次修订已完成并合并 main（315a39a，与 Issue 06 证据安全修订共享写作调用上限）')",
+      "Read(//c/Users/33755/.claude/projects/C--Users-33755-Desktop-try5/memory/**)"
+    ]
+  }
+}
