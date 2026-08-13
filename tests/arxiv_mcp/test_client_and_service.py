@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from threading import Event
 
@@ -69,6 +70,156 @@ def test_client_parses_real_atom_metadata_and_derives_only_matching_links() -> N
     assert paper.pdf_url == "https://arxiv.org/pdf/2401.12345v2"
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_query"),
+    [
+        ("Transformer", "all:Transformer"),
+        ("  graph   neural networks  ", "all:graph AND all:neural AND all:networks"),
+        ('"graph neural networks"', "all:graph AND all:neural AND all:networks"),
+        (
+            "graph neural networks author:Kipf year:2016-2018",
+            "all:graph AND all:neural AND all:networks AND au:\"Kipf\" "
+            "AND submittedDate:[201601010000 TO 201812312359]",
+        ),
+        (
+            'title:"Attention Is All You Need"',
+            'ti:"Attention Is All You Need"',
+        ),
+        (
+            'title:“Attention Is All You Need” transformer',
+            'all:transformer AND ti:"Attention Is All You Need"',
+        ),
+        (
+            'title:"Attention Is All You Need" transformer',
+            'all:transformer AND ti:"Attention Is All You Need"',
+        ),
+        (
+            'graph author:"Kipf" networks',
+            'all:graph AND all:networks AND au:"Kipf"',
+        ),
+    ],
+)
+def test_client_sends_plain_and_structured_topics_to_arxiv(
+    query: str, expected_query: str
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search(query)
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == expected_query
+
+
+def test_client_uses_id_list_for_id_queries() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search('id:"2401.12345v2"')
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["id_list"] == "2401.12345v2"
+    assert "search_query" not in params
+
+
+def test_client_normalizes_spaced_id_lists_without_turning_ids_into_topics() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search("id:2401.12345v2, 2401.12346v1")
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["id_list"] == "2401.12345v2,2401.12346v1"
+    assert "search_query" not in params
+
+
+def test_client_rejects_invalid_id_list_before_network() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search("id:not-an-arxiv-id")
+
+    assert exc_info.value.upstream_status == "local_invariant"
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["   ", "author:", 'title:""', "year:", "id:"],
+)
+def test_client_rejects_queries_without_effective_constraints_before_network(
+    query: str,
+) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search(query)
+
+    assert exc_info.value.code == "arxiv_request"
+    assert exc_info.value.upstream_status == "local_invariant"
+    assert calls == 0
+    assert client.query_invariant_failures == 1
+
+
+def test_client_proves_plain_topic_crosses_the_real_request_boundary() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        params = dict(request.url.params.multi_items())
+        if not params.get("search_query") and not params.get("id_list"):
+            return httpx.Response(400, text="missing query")
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    papers = client.search("Transformer", max_results=1)
+
+    assert papers[0].arxiv_id == "2401.12345v2"
+    assert dict(requests[0].url.params.multi_items())["search_query"] == "all:Transformer"
+
+
 def test_client_preserves_structured_route_constraints_in_arxiv_query() -> None:
     requests: list[httpx.Request] = []
 
@@ -94,14 +245,22 @@ def test_client_preserves_structured_route_constraints_in_arxiv_query() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status_code", "body", "expected_code"),
+    ("status_code", "body", "expected_code", "expected_status", "expected_retryable"),
     [
-        (429, "", "arxiv_rate_limit"),
-        (200, "not xml", "arxiv_parse"),
+        (401, "", "arxiv_permission", "http_4xx_permission", True),
+        (403, "", "arxiv_permission", "http_4xx_permission", True),
+        (429, "", "arxiv_rate_limit", "http_429", True),
+        (404, "", "arxiv_request", "http_4xx", False),
+        (503, "", "arxiv_offline", "http_5xx", True),
+        (200, "not xml", "arxiv_parse", "parse", True),
     ],
 )
 def test_client_maps_rate_limit_and_corrupt_response(
-    status_code: int, body: str, expected_code: str
+    status_code: int,
+    body: str,
+    expected_code: str,
+    expected_status: str,
+    expected_retryable: bool,
 ) -> None:
     client = ArxivMcpClient(
         http_client=httpx.Client(
@@ -115,6 +274,65 @@ def test_client_maps_rate_limit_and_corrupt_response(
         client.search("公开主题")
 
     assert exc_info.value.code == expected_code
+    assert exc_info.value.upstream_status == expected_status
+    assert exc_info.value.retryable is expected_retryable
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_code", "expected_status"),
+    [
+        (
+            lambda request: httpx.ConnectError("offline", request=request),
+            "arxiv_offline",
+            "network",
+        ),
+        (
+            lambda request: httpx.ReadTimeout("timed out", request=request),
+            "arxiv_timeout",
+            "timeout",
+        ),
+    ],
+)
+def test_client_distinguishes_network_failures_and_timeouts(
+    failure: Callable[[httpx.Request], Exception],
+    expected_code: str,
+    expected_status: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise failure(request)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search("公开主题")
+
+    assert exc_info.value.code == expected_code
+    assert exc_info.value.upstream_status == expected_status
+
+
+def test_client_distinguishes_cancellation_before_network() -> None:
+    stop_event = Event()
+    stop_event.set()
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search("公开主题", stop_event=stop_event)
+
+    assert exc_info.value.code == "arxiv_cancelled"
+    assert exc_info.value.upstream_status == "cancelled"
+    assert exc_info.value.retryable is False
+    assert calls == 0
 
 
 def test_arxiv_planner_searches_in_both_modes_and_scrubs_private_context() -> None:
@@ -284,6 +502,50 @@ def test_service_exposes_empty_permission_cancelled_and_recovery_states() -> Non
     assert recovery.status == ArxivSearchStatus.RECOVERY
 
 
+def test_service_preserves_upstream_status_and_retryability() -> None:
+    class _ServerClient:
+        def search(
+            self,
+            query: str,
+            *,
+            max_results: int = 5,
+            stop_event: Event | None = None,
+        ) -> list[ArxivPaper]:
+            raise ArxivMcpError(
+                "arxiv_offline",
+                "arXiv 暂时不可用，请稍后重试。",
+                upstream_status="http_5xx",
+                retryable=True,
+            )
+
+    result = ArxivSearchService(client=_ServerClient()).search(
+        "acct-1", ArxivSearchPlan(True, "公开主题", "用户明确要求搜索论文")
+    )
+
+    assert result is not None
+    assert result.error_code == "arxiv_offline"
+    assert result.upstream_status == "http_5xx"
+    assert result.can_retry is True
+
+
+def test_service_audit_has_query_fingerprint_and_terminal_metadata() -> None:
+    observations = ObservabilityService()
+    service = ArxivSearchService(client=_FakeArxivClient([]), observability=observations)
+
+    result = service.search(
+        "acct-1",
+        ArxivSearchPlan(True, "Transformer", "用户明确要求搜索论文"),
+    )
+
+    assert result is not None
+    details = observations.list_audit_events(account_id="acct-1")[0].details
+    assert details["query_type"] == "ordinary"
+    assert len(details["query_fingerprint"]) == 16
+    assert details["elapsed_ms"] >= 0
+    assert details["upstream_status"] is None
+    assert details["provider"] == "arxiv"
+
+
 def test_service_projects_mid_search_cancel_as_cancelled_not_startup() -> None:
     """Issue 05：搜索期间取消必须投影为 cancelled，而不是折叠成启动失败。"""
 
@@ -305,6 +567,7 @@ def test_service_projects_mid_search_cancel_as_cancelled_not_startup() -> None:
     assert projection.status == ArxivSearchStatus.CANCELLED
     assert projection.error_code == "arxiv_cancelled"
     assert projection.error_message == "已取消本轮论文搜索。"
+    assert projection.upstream_status == "cancelled"
     assert projection.can_retry is False
 
 

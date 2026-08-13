@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from inspect import Parameter, signature
 from threading import Event
 from typing import Any, Protocol, cast
@@ -177,9 +178,10 @@ class ArxivSearchService:
     ) -> ArxivSearchProjection | None:
         if not plan.should_search:
             return None
+        started = time.monotonic()
         if _user_cancelled(stop_event):
             result = self._cancelled_projection(plan)
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, elapsed_ms=_elapsed_ms(started))
             return result
         if not 1 <= plan.max_results <= 10 or not plan.query.strip():
             result = ArxivSearchProjection(
@@ -189,9 +191,10 @@ class ArxivSearchService:
                 searched_at=datetime.now(UTC),
                 error_code="arxiv_request",
                 error_message="论文搜索参数不合法，请调整主题、年份或结果数量后重试。",
+                upstream_status="local_invariant",
                 can_retry=False,
             )
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, elapsed_ms=_elapsed_ms(started))
             return result
         try:
             papers = _invoke_arxiv_client(
@@ -205,7 +208,11 @@ class ArxivSearchService:
             if exc.code == "arxiv_cancelled":
                 # 搜索期间用户取消：投影为 cancelled，而不是折叠成启动失败
                 result = self._cancelled_projection(
-                    plan, with_timestamp=True, error_code=exc.code, error_message=exc.message
+                    plan,
+                    with_timestamp=True,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    upstream_status=exc.upstream_status,
                 )
             else:
                 result = ArxivSearchProjection(
@@ -219,13 +226,28 @@ class ArxivSearchService:
                     searched_at=datetime.now(UTC),
                     error_code=exc.code,
                     error_message=exc.message,
-                    can_retry=True,
+                    upstream_status=exc.upstream_status,
+                    can_retry=exc.retryable,
                 )
-            self._audit(account_id, plan, result, deadline=deadline)
+            self._audit(
+                account_id,
+                plan,
+                result,
+                deadline=deadline,
+                elapsed_ms=_elapsed_ms(started),
+            )
             return result
         if _user_cancelled(stop_event):
-            result = self._cancelled_projection(plan, with_timestamp=True)
-            self._audit(account_id, plan, result, deadline=deadline)
+            result = self._cancelled_projection(
+                plan, with_timestamp=True, upstream_status="cancelled"
+            )
+            self._audit(
+                account_id,
+                plan,
+                result,
+                deadline=deadline,
+                elapsed_ms=_elapsed_ms(started),
+            )
             return result
         if deadline is not None and time.monotonic() >= deadline:
             result = ArxivSearchProjection(
@@ -235,9 +257,16 @@ class ArxivSearchService:
                 searched_at=datetime.now(UTC),
                 error_code="arxiv_timeout",
                 error_message="arXiv 搜索超时，请重试。",
+                upstream_status="timeout",
                 can_retry=True,
             )
-            self._audit(account_id, plan, result, deadline=deadline)
+            self._audit(
+                account_id,
+                plan,
+                result,
+                deadline=deadline,
+                elapsed_ms=_elapsed_ms(started),
+            )
             return result
         candidates = _deduplicate_papers(papers)
         relevant_papers = [
@@ -272,6 +301,7 @@ class ArxivSearchService:
             result,
             candidate_count=len(candidates),
             deadline=deadline,
+            elapsed_ms=_elapsed_ms(started),
         )
         return result
 
@@ -282,6 +312,7 @@ class ArxivSearchService:
         with_timestamp: bool = False,
         error_code: str | None = None,
         error_message: str = "已取消本轮论文搜索。",
+        upstream_status: str | None = "cancelled",
     ) -> ArxivSearchProjection:
         """构造取消投影（入口预检/搜索期间/后置检查三处共用）。"""
         return ArxivSearchProjection(
@@ -291,6 +322,7 @@ class ArxivSearchService:
             searched_at=datetime.now(UTC) if with_timestamp else None,
             error_code=error_code,
             error_message=error_message,
+            upstream_status=upstream_status,
         )
 
     def _audit(
@@ -301,6 +333,7 @@ class ArxivSearchService:
         *,
         candidate_count: int = 0,
         deadline: float | None = None,
+        elapsed_ms: int | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -320,6 +353,8 @@ class ArxivSearchService:
                 "permission_version": "2026.08.04",
                 "route_version": plan.route_version,
                 "relevance_rule_version": ARXIV_RELEVANCE_VERSION,
+                "query_type": _query_type(plan),
+                "query_fingerprint": _query_fingerprint(plan.query),
                 "public_term_count": len(_topic_terms(plan.constraints)),
                 "removed_categories": list(plan.removed_categories),
                 "candidate_count": candidate_count,
@@ -331,8 +366,11 @@ class ArxivSearchService:
                 "result_count": len(result.papers),
                 "status": result.status.value,
                 "error_code": result.error_code,
+                "upstream_status": result.upstream_status,
+                "provider": "arxiv",
                 "active_sources": ["arxiv"],
                 "budget_source": "arxiv_search",
+                "elapsed_ms": elapsed_ms,
                 "deadline_remaining_ms": (
                     max(0, int((deadline - time.monotonic()) * 1000))
                     if deadline is not None
@@ -434,6 +472,25 @@ def _topic_terms(constraints: PaperSearchConstraints | None) -> list[str]:
         for term in constraints.topic_terms
         if not re.match(r"^(?:author|title|id|year):", term, re.IGNORECASE)
     ]
+
+
+def _query_type(plan: ArxivSearchPlan) -> str:
+    constraints = plan.constraints
+    if constraints is not None and constraints.arxiv_id:
+        return "id"
+    if constraints is not None and any(
+        (constraints.author, constraints.title, constraints.year_from, constraints.year_to)
+    ):
+        return "structured"
+    return "ordinary"
+
+
+def _query_fingerprint(query: str) -> str:
+    return sha256(" ".join(query.split()).encode("utf-8")).hexdigest()[:16]
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.monotonic() - started) * 1000))
 
 
 def _topic_matches(term: str, searchable: str) -> bool:

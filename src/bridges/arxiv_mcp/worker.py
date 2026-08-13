@@ -32,7 +32,12 @@ def main() -> None:
         try:
             request = json.loads(line)
             if not isinstance(request, dict):
-                raise ArxivMcpError("arxiv_request", "arXiv 请求格式无效，请重试。")
+                raise ArxivMcpError(
+                    "arxiv_request",
+                    "arXiv 请求格式无效，请重试。",
+                    upstream_status="local_invariant",
+                    retryable=False,
+                )
             query = request.get("query")
             max_results = request.get("max_results", 5)
             deadline = request.get("deadline")
@@ -41,7 +46,12 @@ def main() -> None:
                 or not isinstance(max_results, int)
                 or (deadline is not None and not isinstance(deadline, (int, float)))
             ):
-                raise ArxivMcpError("arxiv_request", "arXiv 请求格式无效，请重试。")
+                raise ArxivMcpError(
+                    "arxiv_request",
+                    "arXiv 请求格式无效，请重试。",
+                    upstream_status="local_invariant",
+                    retryable=False,
+                )
             kwargs: dict[str, Any] = {"max_results": max_results}
             if deadline is not None and _supports_keyword(client.search, "deadline"):
                 kwargs["deadline"] = float(deadline)
@@ -61,12 +71,16 @@ def main() -> None:
                 "ok": False,
                 "code": exc.code,
                 "message": exc.message,
+                "upstream_status": exc.upstream_status,
+                "retryable": exc.retryable,
             }
         except (json.JSONDecodeError, TypeError, ValueError):
             payload = {
                 "ok": False,
                 "code": "arxiv_request",
                 "message": "arXiv 请求格式无效，请重试。",
+                "upstream_status": "local_invariant",
+                "retryable": False,
             }
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
         sys.stdout.flush()

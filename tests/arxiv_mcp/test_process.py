@@ -11,6 +11,9 @@ import json
 import os
 import sys
 
+import pytest
+
+from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.process import ArxivMcpProcessClient
 
 #: worker 在真实流程中先输出 ready 握手行，再输出搜索结果行。
@@ -30,6 +33,16 @@ _RESPONSE_LINE = json.dumps(
             }
         ],
     }
+) + "\n"
+_ERROR_RESPONSE_LINE = json.dumps(
+    {
+        "ok": False,
+        "code": "arxiv_offline",
+        "message": "arXiv 暂时不可用，请稍后重试。",
+        "upstream_status": "http_5xx",
+        "retryable": True,
+    },
+    ensure_ascii=False,
 ) + "\n"
 
 
@@ -53,6 +66,11 @@ class _FakeProcess:
     def kill(self) -> None:
         return None
 
+
+class _ErrorProcess(_FakeProcess):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stdout = io.StringIO(_READY_LINE + _ERROR_RESPONSE_LINE)
 
 def test_process_uses_only_fixed_worker_and_clean_environment(monkeypatch) -> None:
     calls: dict[str, object] = {}
@@ -84,3 +102,22 @@ def test_process_uses_only_fixed_worker_and_clean_environment(monkeypatch) -> No
     assert json.loads(process.stdin.getvalue()) == {"query": "量子 纠错", "max_results": 1}
     assert papers[0].abs_url == "https://arxiv.org/abs/2401.12345v2"
     client.close()
+
+
+def test_process_preserves_worker_error_category_and_retryability(monkeypatch) -> None:
+    process = _ErrorProcess()
+    monkeypatch.setattr(
+        "bridges.arxiv_mcp.process.subprocess.Popen",
+        lambda command, **kwargs: process,
+    )
+    client = ArxivMcpProcessClient(python_executable="fixed-python")
+
+    try:
+        with pytest.raises(ArxivMcpError) as exc_info:
+            client.search("公开主题")
+    finally:
+        client.close()
+
+    assert exc_info.value.code == "arxiv_offline"
+    assert exc_info.value.upstream_status == "http_5xx"
+    assert exc_info.value.retryable is True
