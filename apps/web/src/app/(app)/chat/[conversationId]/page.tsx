@@ -12,6 +12,7 @@ import {
   type ChatThinking,
 } from "@/components/bridges/MessageList";
 import { AppShell } from "@/components/layout/AppShell";
+import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
   createChatRun,
@@ -644,7 +645,7 @@ export default function ChatConversationPage() {
     <AppShell>
       <div className={styles.chatShell}>
         <main
-          id="main-content"
+          id={MAIN_CONTENT_ID}
           tabIndex={-1}
           data-testid="main-content"
           className={styles.chatMain}

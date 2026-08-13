@@ -2,6 +2,8 @@ interface MainContentProps {
   children: React.ReactNode;
 }
 
+export const MAIN_CONTENT_ID = "main-content";
+
 /**
  * Main content landmark.
  *
@@ -12,7 +14,7 @@ interface MainContentProps {
 export function MainContent({ children }: MainContentProps) {
   return (
     <main
-      id="main-content"
+      id={MAIN_CONTENT_ID}
       tabIndex={-1}
       data-testid="main-content"
       className="main-content"
