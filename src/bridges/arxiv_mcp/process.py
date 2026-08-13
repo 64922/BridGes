@@ -53,7 +53,15 @@ _ENV_WHITELIST = (
 
 #: worker 经 ok:false 载荷上报的稳定错误码（协议可信任，原样透传）。
 _KNOWN_WORKER_CODES = frozenset(
-    {"arxiv_timeout", "arxiv_offline", "arxiv_rate_limit", "arxiv_permission", "arxiv_request"}
+    {
+        "arxiv_timeout",
+        "arxiv_offline",
+        "arxiv_rate_limit",
+        "arxiv_permission",
+        "arxiv_request",
+        "arxiv_parse",
+        "arxiv_cancelled",
+    }
 )
 
 #: 握手默认截止时间（秒）。
@@ -144,9 +152,16 @@ class ArxivMcpProcessClient:
     ) -> list[ArxivPaper]:
         """执行一次搜索：每个请求使用隔离 worker 与同一绝对截止时间。"""
         if _user_cancelled(stop_event):
-            raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+            raise ArxivMcpError(
+                "arxiv_cancelled",
+                "已取消本轮论文搜索。",
+                upstream_status="cancelled",
+                retryable=False,
+            )
         if deadline is not None and deadline <= time.monotonic():
-            raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。")
+            raise ArxivMcpError(
+                "arxiv_timeout", "arXiv 搜索超时，请重试。", upstream_status="timeout"
+            )
         if self._search_lock.acquire(blocking=False):
             try:
                 return self._search_with_process(
@@ -196,9 +211,16 @@ class ArxivMcpProcessClient:
         self._restarts = 0
         for _ in range(self._max_restarts + 1):
             if _user_cancelled(stop_event):
-                raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+                raise ArxivMcpError(
+                    "arxiv_cancelled",
+                    "已取消本轮论文搜索。",
+                    upstream_status="cancelled",
+                    retryable=False,
+                )
             if deadline is not None and deadline <= time.monotonic():
-                raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。")
+                raise ArxivMcpError(
+                    "arxiv_timeout", "arXiv 搜索超时，请重试。", upstream_status="timeout"
+                )
             process = self._ensure_process()
             started = time.monotonic()
             try:
@@ -226,13 +248,29 @@ class ArxivMcpProcessClient:
             except _ProcessWaitError as exc:
                 if _user_cancelled(stop_event):
                     raise ArxivMcpError(
-                        "arxiv_cancelled", "已取消本轮论文搜索。"
+                        "arxiv_cancelled",
+                        "已取消本轮论文搜索。",
+                        upstream_status="cancelled",
+                        retryable=False,
                     ) from exc
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise ArxivMcpError(exc.code, exc.message) from exc
+                    raise ArxivMcpError(
+                        exc.code,
+                        exc.message,
+                        upstream_status="timeout",
+                    ) from exc
                 if self._restarts >= self._max_restarts:
                     self._log_terminal_failure(process, exc, started)
-                    raise ArxivMcpError(exc.code, exc.message) from exc
+                    raise ArxivMcpError(
+                        exc.code,
+                        exc.message,
+                        upstream_status={
+                            "arxiv_timeout": "timeout",
+                            "arxiv_handshake": "handshake",
+                            "arxiv_startup": "startup",
+                            "arxiv_worker_exit": "worker_exit",
+                        }.get(exc.code),
+                    ) from exc
                 self._close_process(process)
                 self._restarts += 1
                 logger.warning(
@@ -428,9 +466,17 @@ runpy.run_module("bridges.arxiv_mcp.worker", run_name="__main__")
         try:
             payload = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。") from exc
+            raise ArxivMcpError(
+                "arxiv_parse",
+                "arXiv 返回内容损坏，无法解析，请重试。",
+                upstream_status="parse",
+            ) from exc
         if not isinstance(payload, dict):
-            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。")
+            raise ArxivMcpError(
+                "arxiv_parse",
+                "arXiv 返回内容损坏，无法解析，请重试。",
+                upstream_status="parse",
+            )
         if payload.get("ok") is not True:
             code = payload.get("code")
             message = payload.get("message")
@@ -439,15 +485,29 @@ runpy.run_module("bridges.arxiv_mcp.worker", run_name="__main__")
                     str(code),
                     str(message or "arXiv 搜索未完成，请重试。"),
                     permission=code == "arxiv_permission",
+                    upstream_status=_safe_worker_status(payload.get("upstream_status")),
+                    retryable=payload.get("retryable") is not False,
                 )
-            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。")
+            raise ArxivMcpError(
+                "arxiv_parse",
+                "arXiv 返回内容损坏，无法解析，请重试。",
+                upstream_status="parse",
+            )
         raw_papers = payload.get("papers")
         if not isinstance(raw_papers, list):
-            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。")
+            raise ArxivMcpError(
+                "arxiv_parse",
+                "arXiv 返回内容损坏，无法解析，请重试。",
+                upstream_status="parse",
+            )
         try:
             return [_paper_from_payload(item) for item in raw_papers]
         except (KeyError, TypeError, ValueError) as exc:
-            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。") from exc
+            raise ArxivMcpError(
+                "arxiv_parse",
+                "arXiv 返回内容损坏，无法解析，请重试。",
+                upstream_status="parse",
+            ) from exc
 
     # ------------------------------------------------------------------
     # 进程生命周期
@@ -608,6 +668,23 @@ def _paper_from_payload(payload: Any) -> ArxivPaper:
         pdf_url=str(payload["pdf_url"]),
         abstract=str(payload["abstract"]),
     )
+
+
+def _safe_worker_status(value: Any) -> str | None:
+    if isinstance(value, str) and value in {
+        "local_invariant",
+        "network",
+        "timeout",
+        "permission",
+        "http_4xx",
+        "http_4xx_permission",
+        "http_429",
+        "http_5xx",
+        "parse",
+        "cancelled",
+    }:
+        return value
+    return None
 
 
 def _user_cancelled(stop_event: threading.Event | None) -> bool:

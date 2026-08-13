@@ -60,5 +60,9 @@ class ArxivSearchProjection(BaseModel):
     searched_at: datetime | None = Field(default=None, description="搜索完成时间。")
     error_code: str | None = Field(default=None, description="搜索失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文提示。")
+    upstream_status: str | None = Field(
+        default=None,
+        description="脱敏的上游状态类别，例如 http_4xx、http_5xx 或 parse。",
+    )
     can_retry: bool = Field(default=False, description="本轮是否可以重试。")
     can_cancel: bool = Field(default=False, description="本轮是否可以取消。")

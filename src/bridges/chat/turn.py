@@ -1095,6 +1095,7 @@ def cancelled_arxiv_search(
             "searched_at": now.isoformat(),
             "error_code": None,
             "error_message": "已取消本轮论文搜索。",
+            "upstream_status": "cancelled",
             "can_retry": False,
             "can_cancel": False,
         }
@@ -2326,6 +2327,7 @@ class TurnOrchestrator:
                             query_summary=arxiv_plan.query,
                             error_code="arxiv_cancelled",
                             error_message="已取消本轮论文搜索。",
+                            upstream_status="cancelled",
                             can_retry=False,
                         )
                     elif arxiv_plan is not None and arxiv_result is not _SEARCH_TIMEOUT:
@@ -2338,6 +2340,7 @@ class TurnOrchestrator:
                                 query_summary=arxiv_plan.query,
                                 error_code="arxiv_internal",
                                 error_message="arXiv 搜索服务异常，请重试。",
+                                upstream_status="internal",
                                 can_retry=True,
                             )
                         else:
@@ -2350,6 +2353,7 @@ class TurnOrchestrator:
                             query_summary=arxiv_plan.query,
                             error_code="arxiv_timeout",
                             error_message="arXiv 搜索超时，请重试。",
+                            upstream_status="timeout",
                             can_retry=True,
                         )
                     if search_plan is not None and web_result is _SEARCH_CANCELLED:
@@ -2648,6 +2652,7 @@ class TurnOrchestrator:
                                 query_summary=paper_arxiv_plan.query,
                                 error_code="arxiv_cancelled",
                                 error_message="已取消本轮论文搜索。",
+                                upstream_status="cancelled",
                                 can_retry=False,
                             )
                         elif arxiv_result is _SEARCH_TIMEOUT:
@@ -2657,6 +2662,7 @@ class TurnOrchestrator:
                                 query_summary=paper_arxiv_plan.query,
                                 error_code="arxiv_timeout",
                                 error_message="arXiv 搜索超时，请重试。",
+                                upstream_status="timeout",
                                 can_retry=True,
                             )
                         elif isinstance(arxiv_result, Exception):
@@ -2666,6 +2672,7 @@ class TurnOrchestrator:
                                 query_summary=paper_arxiv_plan.query,
                                 error_code="arxiv_startup",
                                 error_message="arXiv 搜索服务启动失败，请重试。",
+                                upstream_status="startup",
                                 can_retry=True,
                             )
                         else:
@@ -3930,6 +3937,7 @@ class TurnOrchestrator:
                     query_summary=arxiv_plan.query,
                     error_code="arxiv_cancelled",
                     error_message="已取消本轮论文搜索。",
+                    upstream_status="cancelled",
                     can_retry=False,
                 )
             if web_search_projection is not None:
@@ -4429,6 +4437,7 @@ class TurnOrchestrator:
                     query_summary=arxiv_plan.query,
                     error_code="arxiv_cancelled",
                     error_message="已取消本轮论文搜索。",
+                    upstream_status="cancelled",
                     can_retry=False,
                 )
             if web_search_projection is not None:
