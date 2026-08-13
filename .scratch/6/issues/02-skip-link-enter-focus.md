@@ -1,6 +1,6 @@
 # Issue 02：修复 Enter 创建首轮后 skip link 误占焦点
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -84,3 +84,10 @@ npx playwright test e2e/t002-shell.spec.ts e2e/issue12-shell-sidebar.spec.ts e2e
 
 - 2026-08-13：根因已通过真实 Chromium 的 Enter 与鼠标对照验证；Enter 保持键盘 modality，因此原有 `!active.matches(":focus-visible")` 条件无法纠正错误焦点。
 - 2026-08-13：本 issue 的双重成功条件是“Enter 路径不再显示蓝色覆盖层”与“真正的 skip-link 键盘能力仍然完整”。
+
+## Answer
+
+- `SkipLink` 增加固定语义 ID，`MainContent`、新聊天首页和会话页共用固定主区 ID；生产焦点逻辑只读取这些语义 ID，不读取 `data-testid` 或通用隐藏类。
+- `AppShell` 在 pathname effect 中仅处理当前活动元素为 shell skip link 的场景，下一帧做一次有界检查；目标仍是当前活动 skip link 时，以 `preventScroll` 聚焦当前主区，目标未挂载或用户已移动焦点时直接结束。
+- 新增真实 Chromium 的 Enter 首轮回归、主区可见性断言和连续 20 次键盘 Enter 稳定性回归。
+- 验证通过：目标 Enter 用例重复 3 次、连续 20 次稳定性用例、Web 单元测试 39 项、TypeScript、ESLint 和 Next production build。shell/侧栏/a11y 批量回归中 25 项通过；其余 3 项单独重跑仍为既有模块标题等待和画像页重复 main 地标问题，与本次改动无关。全量 pytest 在收集阶段被仓库既有重复测试模块名阻断。

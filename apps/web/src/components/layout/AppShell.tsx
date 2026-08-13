@@ -4,13 +4,13 @@ import { Fragment, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { SkipLink } from "@/components/design-system/SkipLink";
+import { SKIP_LINK_ID, SkipLink } from "@/components/design-system/SkipLink";
 import { useAuth } from "@/context/AuthContext";
 import { readAloudSession } from "@/lib/read-aloud";
 import { saveSearchReturnFocus } from "@/lib/search-shortcut";
 
 import { AppSidebar } from "./AppSidebar";
-import { MainContent } from "./MainContent";
+import { MAIN_CONTENT_ID, MainContent } from "./MainContent";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -34,20 +34,26 @@ export function AppShell({ children, showSkipLink = true }: AppShellProps) {
     readAloudSession.dispose();
   }, [accountRevision]);
 
-  // Issue 03：客户端导航后浏览器可能把焦点程序化落在「跳转到主内容」
-  // 链接上（:focus 会触发其蓝色覆盖层、盖住 Logo）。程序化聚焦不触发
-  // :focus-visible，因此只在「焦点在跳转链接且非键盘聚焦」时纠正到
-  // 稳定的主区；键盘 Tab 到达（真实 focus-visible）保留不动，跳转链接
-  // 对键盘用户始终可见可用。整页加载/刷新不干预（pathname 无变化）。
+  // Issue 02：客户端导航后浏览器可能把焦点落在 shell 的跳转链接上。
+  // 只识别固定语义 ID，不把通用的 visually-hidden 样式类当作焦点契约；
+  // 用户主动 Tab 到跳转链接时 pathname 不变，因此不会触发这段纠正。
   useEffect(() => {
     const active = document.activeElement;
-    if (
-      active instanceof HTMLElement &&
-      active.classList.contains("sc-visually-hidden") &&
-      !active.matches(":focus-visible")
-    ) {
-      document.getElementById("main-content")?.focus();
-    }
+    if (!(active instanceof HTMLElement) || active.id !== SKIP_LINK_ID) return;
+
+    const focusMainContent = () => {
+      // 若用户已在等待期间自行移动焦点，不再抢回键盘控制权。
+      if (document.activeElement?.id !== SKIP_LINK_ID) return;
+      const mainContent = document.getElementById(MAIN_CONTENT_ID);
+      if (mainContent instanceof HTMLElement) {
+        mainContent.focus({ preventScroll: true });
+      }
+    };
+
+    // 主区可能在当前路由提交后下一帧才挂载；只允许一次有界检查，
+    // 避免同步命中旧路由的同名主区。
+    const frame = window.requestAnimationFrame(focusMainContent);
+    return () => window.cancelAnimationFrame(frame);
   }, [pathname]);
 
   // Issue 24：全局 Ctrl/Cmd+K 打开统一搜索页并记录触发元素（Esc 返回时

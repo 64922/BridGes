@@ -8,6 +8,7 @@ import { Composer } from "@/components/bridges/Composer";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { AppShell } from "@/components/layout/AppShell";
+import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { ApiError, createChatConversation, startFirstTurn } from "@/lib/api";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 
@@ -90,7 +91,7 @@ export function NewChatHome() {
     <AppShell showSkipLink={false}>
       <div className={styles.chatShell}>
         <main
-          id="main-content"
+          id={MAIN_CONTENT_ID}
           tabIndex={-1}
           data-testid="main-content"
           className={styles.chatMain}

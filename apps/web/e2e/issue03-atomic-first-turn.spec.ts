@@ -224,6 +224,73 @@ test("鼠标发送不显示跳转链接；地址栏进入按 Tab 可见且可跳
     .toBe("main-content");
 });
 
+test("键盘 Enter 发送首轮后焦点落到主内容且跳转链接保持隐藏", async ({ page }) => {
+  const credentials = uniqueCredentials("i3h");
+  await signUp(page, credentials.username, credentials.qqEmail, PASSWORD);
+
+  const composer = page.getByTestId("composer");
+  await composer.getByLabel("输入消息").fill("键盘 Enter 首轮焦点测试");
+  await composer.getByLabel("输入消息").press("Enter");
+
+  await expect(page).toHaveURL(/\/chat\/[^/]+$/);
+  await expect(page.getByTestId("chat-thread").getByText("键盘 Enter 首轮焦点测试", { exact: true }))
+    .toBeVisible();
+  await expect(page.getByTestId("main-content")).toBeVisible();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        activeId: document.activeElement?.id ?? "",
+        skipLinkHidden: (() => {
+          const element = document.getElementById("skip-link");
+          if (!element) return false;
+          const style = getComputedStyle(element);
+          return style.clip === "rect(0px, 0px, 0px, 0px)" && style.width === "1px";
+        })(),
+        mainVisible: (() => {
+          const element = document.getElementById("main-content");
+          return Boolean(element && element.getClientRects().length > 0);
+        })(),
+      }))
+    )
+    .toEqual({ activeId: "main-content", skipLinkHidden: true, mainVisible: true });
+});
+
+test("键盘 Enter 连续创建 20 次后焦点契约保持稳定", async ({ page }) => {
+  test.setTimeout(180_000);
+  const credentials = uniqueCredentials("i3i");
+  await signUp(page, credentials.username, credentials.qqEmail, PASSWORD);
+
+  for (let round = 0; round < 20; round += 1) {
+    const text = `键盘 Enter 稳定性 ${round}`;
+    const input = page.getByTestId("composer").getByLabel("输入消息");
+    await input.fill(text);
+    await input.press("Enter");
+
+    await expect(page).toHaveURL(/\/chat\/[^/]+$/);
+    await expect(page.getByTestId("chat-thread").getByText(text, { exact: true })).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          activeId: document.activeElement?.id ?? "",
+          skipLinkHidden: (() => {
+            const element = document.getElementById("skip-link");
+            if (!element) return false;
+            const style = getComputedStyle(element);
+            return style.clip === "rect(0px, 0px, 0px, 0px)" && style.width === "1px";
+          })(),
+        }))
+      )
+      .toEqual({ activeId: "main-content", skipLinkHidden: true });
+
+    await page
+      .getByTestId("app-sidebar")
+      .getByRole("link", { name: "新聊天", exact: true })
+      .click();
+    await expect(page.getByTestId("new-chat-home")).toBeVisible();
+  }
+});
+
 test("串行 100 次首轮场景：无空白、无重复、最近列表无遗漏", async ({ page }) => {
   test.setTimeout(600_000);
   const credentials = uniqueCredentials("i3g");
