@@ -647,7 +647,7 @@ def budget_warning_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummar
 _LAYER_NAMES: dict[RetrievalSourceLayer, str] = {
     RetrievalSourceLayer.ATTACHMENT: "当前附件",
     RetrievalSourceLayer.PROJECT: "学习项目文件",
-    RetrievalSourceLayer.KNOWLEDGE_BASE: "全局知识库",
+    RetrievalSourceLayer.KNOWLEDGE_BASE: "知识库材料",
 }
 #: 思考摘要中引用片段的最大长度。
 _EVIDENCE_SNIPPET_MAX = 160
@@ -1248,12 +1248,15 @@ def dimension_label(dimension: str) -> str:
             return dimension
 
 
+_PROFILE_CONTEXT_LABEL = "你已授权的用户背景信息"
+
+
 def context_note_ready_text(items: list[ProfileSliceItem]) -> str:
     """披露卡的中文一句话说明（ready 态）。"""
     categories = "、".join(dict.fromkeys(dimension_label(item.dimension) for item in items))
     return (
-        f"本轮回答参考了 {len(items)} 条已授权信息（{categories}），"
-        "只保留与当前任务相关的少量内容。"
+        f"本轮回答参考了 {len(items)} 条{_PROFILE_CONTEXT_LABEL}（{categories}），"
+        "仅用于当前任务；只保留与当前任务相关的少量内容。"
     )
 
 
@@ -1263,13 +1266,15 @@ def context_note_thinking(
     """把画像披露摘要并入可公开思考（不暴露隐藏提示或思维链）。"""
     tools = list(thinking.tools)
     if context_note.state == ContextNoteState.READY:
-        tools.append(f"已参考 {context_note.profile_item_count} 条相关信息（仅限当前任务）")
+        tools.append(
+            f"已参考 {context_note.profile_item_count} 条{_PROFILE_CONTEXT_LABEL}（仅限当前任务）"
+        )
     elif context_note.state == ContextNoteState.OFF:
-        tools.append("本轮未使用你此前提供的信息（发送前已关闭）")
+        tools.append(f"本轮未使用{_PROFILE_CONTEXT_LABEL}（发送前已关闭）")
     elif context_note.state == ContextNoteState.EMPTY:
-        tools.append("本轮没有与当前任务相关的已授权信息")
+        tools.append(f"本轮没有与你当前任务匹配的{_PROFILE_CONTEXT_LABEL}")
     elif context_note.state == ContextNoteState.ERROR:
-        tools.append("本轮相关信息暂时无法整理，回答未基于这些信息")
+        tools.append(f"本轮暂时无法整理{_PROFILE_CONTEXT_LABEL}，回答未基于这些信息")
     return thinking.model_copy(update={"tools": tools})
 
 
@@ -2822,6 +2827,20 @@ class TurnOrchestrator:
                                     web_search_projection.error_message
                                     or user_facing_error(error_code)
                                 )
+                                context_note, _, _, _ = self._compile_profile_slice(
+                                    account_id,
+                                    conversation_id,
+                                    assistant_message_id,
+                                    mode,
+                                    use_profile=use_profile,
+                                    retrieval_round=retrieval_round,
+                                    web_search_projection=web_search_projection,
+                                    arxiv_search_projection=arxiv_search_projection,
+                                )
+                                if context_note is not None:
+                                    thinking = context_note_thinking(
+                                        thinking, context_note
+                                    )
                                 finalize_message(
                                     self._repo,
                                     account_id,
@@ -5404,7 +5423,10 @@ class TurnOrchestrator:
                         mode=mode,
                         used_at=now,
                         material_categories=material_categories,
-                        note="本轮未使用你此前提供的信息（发送前已关闭）。回答不基于这些信息。",
+                        note=(
+                            f"本轮未使用{_PROFILE_CONTEXT_LABEL}（发送前已关闭）。"
+                            "回答不基于这些信息。"
+                        ),
                     ),
                 ),
                 None,
@@ -5490,7 +5512,10 @@ class TurnOrchestrator:
                         mode=mode,
                         used_at=now,
                         material_categories=material_categories,
-                        note="本轮相关信息暂时无法整理，回答已在不使用这些信息的情况下正常生成。",
+                        note=(
+                            f"本轮暂时无法整理{_PROFILE_CONTEXT_LABEL}；回答已在不使用"
+                            "这些信息的情况下正常生成。"
+                        ),
                     ),
                 ),
                 None,
@@ -5529,7 +5554,10 @@ class TurnOrchestrator:
             note=(
                 context_note_ready_text(profile_items)
                 if profile_items
-                else "本轮没有与你当前任务相关的已授权信息，因此没有使用额外背景。"
+                else (
+                    f"本轮没有与你当前任务匹配的{_PROFILE_CONTEXT_LABEL}，"
+                    "因此没有使用额外背景。"
+                )
             ),
         )
         return (
@@ -5624,20 +5652,21 @@ class TurnOrchestrator:
         """本轮实际使用的材料类别（仅成功且非空的来源进入披露）。"""
         categories: list[str] = []
         if retrieval_round is not None:
+            cited_layers = {citation.source_layer for citation in retrieval_round.citations}
             for layer in retrieval_round.layers:
-                if layer.status == RetrievalLayerStatus.OK and layer.candidates > 0:
+                if layer.status == RetrievalLayerStatus.OK and layer.layer in cited_layers:
                     categories.append(_LAYER_NAMES[layer.layer])
         if (
             web_search_projection is not None
             and web_search_projection.status
             in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}
         ):
-            categories.append("公网搜索")
+            categories.append("联网来源")
         if (
             arxiv_search_projection is not None
             and arxiv_search_projection.status == ArxivSearchStatus.SUCCESS
         ):
-            categories.append("arXiv 论文")
+            categories.append("论文来源")
         return categories
 
     def _audit_slice_usage(

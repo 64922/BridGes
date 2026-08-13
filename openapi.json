@@ -33136,7 +33136,7 @@
           "profile_enabled": {
             "type": "boolean",
             "title": "Profile Enabled",
-            "description": "本轮是否启用了画像使用。"
+            "description": "本轮是否启用了已授权用户背景信息使用。"
           },
           "mode": {
             "$ref": "#/components/schemas/ChatMode",
@@ -33152,7 +33152,7 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Profile Item Count",
-            "description": "本轮使用的画像记录数量，不包含记录详情。",
+            "description": "本轮使用的已授权用户背景信息条目数量，不包含条目详情。",
             "default": 0
           },
           "material_categories": {
@@ -33161,7 +33161,7 @@
             },
             "type": "array",
             "title": "Material Categories",
-            "description": "本轮使用的材料类别（检索层/联网来源等中文名）。"
+            "description": "本轮使用的其他来源类别（知识库材料、联网来源、论文来源等中文名）。"
           },
           "note": {
             "type": "string",
@@ -33178,7 +33178,7 @@
           "note"
         ],
         "title": "ContextNoteProjection",
-        "description": "普通聊天可见的上下文摘要。\n\n画像切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与\n审计域，不再进入普通聊天响应。"
+        "description": "普通聊天可见的上下文摘要。\n\n已授权用户背景信息切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与\n审计域，不再进入普通聊天响应。"
       },
       "ContextNoteState": {
         "type": "string",
@@ -33189,7 +33189,7 @@
           "error"
         ],
         "title": "ContextNoteState",
-        "description": "上下文说明的呈现状态（Issue 27）。\n\n- ``ready``：本轮使用了画像切片，披露完整可用；\n- ``empty``：启用画像但没有匹配的任务相关记录（合法空态，不表示错误）；\n- ``off``：用户发送前关闭了画像使用，本轮无任何画像内容；\n- ``error``：切片编译失败，本轮已安全降级为不注入画像（回答照常）。"
+        "description": "上下文说明的呈现状态（Issue 27）。\n\n- ``ready``：本轮使用了已授权用户背景信息切片，披露完整可用；\n- ``empty``：启用已授权用户背景信息但没有匹配的任务相关内容（合法空态，不表示错误）；\n- ``off``：用户发送前关闭了已授权用户背景信息使用，本轮无任何用户背景信息；\n- ``error``：切片编译失败，本轮已安全降级为不注入用户背景信息（回答照常）。"
       },
       "ControlledContentAccessApproval": {
         "properties": {

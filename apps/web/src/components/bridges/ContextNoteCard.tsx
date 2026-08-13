@@ -11,13 +11,15 @@ import {
 } from "@/lib/api";
 
 const stateLabel: Record<string, string> = {
-  loading: "正在生成上下文说明",
-  ready: "已使用画像切片",
-  empty: "本轮未使用画像记录",
-  off: "本轮未使用画像",
-  error: "上下文说明生成失败",
-  none: "本轮未生成上下文说明",
+  loading: "正在整理授权用户背景信息",
+  ready: "已使用授权用户背景信息",
+  empty: "未匹配到相关授权用户背景信息",
+  off: "本轮未使用授权用户背景信息",
+  error: "暂时无法整理授权用户背景信息",
+  none: "本轮未生成用户背景说明",
 };
+
+const contextNoteHeading = "本次上下文说明（已授权用户背景使用情况）";
 
 function stateTone(state: string): string {
   if (state === "ready") return "var(--color-status-success)";
@@ -35,7 +37,7 @@ interface ContextNoteCardProps {
   messageId: string;
 }
 
-/** 只展示上下文摘要，不把画像来源、版本或撤回账本暴露给普通聊天。 */
+/** 只展示用户背景摘要，不把来源、版本或撤回账本暴露给普通聊天。 */
 export function ContextNoteCard({
   note,
   streaming,
@@ -49,7 +51,7 @@ export function ContextNoteCard({
   return (
     <section
       data-testid="context-note-card"
-      aria-label="本次上下文说明"
+      aria-label={contextNoteHeading}
       style={{
         marginBottom: "var(--space-3)",
         border: "1px solid var(--color-border)",
@@ -83,7 +85,7 @@ export function ContextNoteCard({
       >
         <Icon name="profile" size={16} aria-hidden />
         <span style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>
-          本次上下文说明
+          {contextNoteHeading}
         </span>
         <span
           role={state === "error" ? "alert" : "status"}
@@ -128,7 +130,7 @@ export function ContextNoteCard({
                 fontSize: "var(--text-xs)",
               }}
             >
-              <span style={{ color: "var(--color-text-tertiary)" }}>本轮材料类别：</span>
+              <span style={{ color: "var(--color-text-tertiary)" }}>本轮其他来源类别：</span>
               {(note.material_categories ?? []).map((category) => (
                 <span
                   key={category}
