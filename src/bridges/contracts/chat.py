@@ -127,10 +127,10 @@ class ChatAttachmentProjection(BaseModel):
 class ContextNoteState(StrEnum):
     """上下文说明的呈现状态（Issue 27）。
 
-    - ``ready``：本轮使用了画像切片，披露完整可用；
-    - ``empty``：启用画像但没有匹配的任务相关记录（合法空态，不表示错误）；
-    - ``off``：用户发送前关闭了画像使用，本轮无任何画像内容；
-    - ``error``：切片编译失败，本轮已安全降级为不注入画像（回答照常）。
+    - ``ready``：本轮使用了已授权用户背景信息切片，披露完整可用；
+    - ``empty``：启用已授权用户背景信息但没有匹配的任务相关内容（合法空态，不表示错误）；
+    - ``off``：用户发送前关闭了已授权用户背景信息使用，本轮无任何用户背景信息；
+    - ``error``：切片编译失败，本轮已安全降级为不注入用户背景信息（回答照常）。
     """
 
     READY = "ready"
@@ -142,19 +142,22 @@ class ContextNoteState(StrEnum):
 class ContextNoteProjection(BaseModel):
     """普通聊天可见的上下文摘要。
 
-    画像切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与
+    已授权用户背景信息切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与
     审计域，不再进入普通聊天响应。
     """
 
     state: ContextNoteState = Field(description="披露状态（ready/empty/off/error）。")
-    profile_enabled: bool = Field(description="本轮是否启用了画像使用。")
+    profile_enabled: bool = Field(description="本轮是否启用了已授权用户背景信息使用。")
     mode: ChatMode = Field(description="回答时的对话模式。")
     used_at: datetime = Field(description="披露生成时间。")
     profile_item_count: int = Field(
-        default=0, ge=0, description="本轮使用的画像记录数量，不包含记录详情。"
+        default=0,
+        ge=0,
+        description="本轮使用的已授权用户背景信息条目数量，不包含条目详情。",
     )
     material_categories: list[str] = Field(
-        default_factory=list, description="本轮使用的材料类别（检索层/联网来源等中文名）。"
+        default_factory=list,
+        description="本轮使用的其他来源类别（知识库材料、联网来源、论文来源等中文名）。",
     )
     note: str = Field(description="面向用户的中文说明（含各状态的合法文案）。")
 

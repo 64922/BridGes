@@ -1,6 +1,6 @@
 # Issue 05：将画像信息文案明确为已授权用户背景
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -83,3 +83,10 @@ npx playwright test e2e/issue27-profile-slices-disclosure-feedback.spec.ts --pro
 
 - 2026-08-13：已确认当前“4 条相关信息”实际是 4 条画像上下文，不是 4 条网页来源；这是文案语义缺陷，不是 DDG 成功证据。
 - 2026-08-13：用户确认保留画像混合模式；本 issue 只做真实来源披露，不把本地规则改造成不必要的模型调用。
+
+## Answer
+
+- 已在 `codex/issue-05-profile-context-wording` 分支的 worktree 中统一上下文说明、thinking/tools、API 契约和前端卡片文案，明确使用“你已授权的用户背景信息”，并区分“知识库材料”“联网来源”和“论文来源”。
+- `profile_item_count` 继续只统计实际注入的已授权用户背景信息条目；联网、论文、知识库来源只进入独立的来源类别字段。
+- 已补充 READY/OFF/EMPTY/ERROR 状态、DDG 失败与 READY 组合、前端可访问名称及序列化契约测试。
+- 验证通过：后端目标测试 50 项，额外 arXiv 测试 3 项，前端单测 44 项、TypeScript 检查、OpenAPI 类型生成一致性检查。完整 Python 回归受仓库既有同名测试模块和目录级 `conftest` 导入冲突阻断；Playwright 受当前环境 Chromium `spawn EPERM` 阻断。

@@ -302,6 +302,9 @@ def test_study_mode_injects_only_expected_slice(study_env: dict[str, Any]) -> No
     assert note.state == ContextNoteState.READY
     assert note.profile_enabled is True
     assert note.profile_item_count == 1
+    assert note.material_categories == []
+    assert "你已授权的用户背景信息" in note.note
+    assert "仅用于当前任务" in note.note
     assert "少量内容" in note.note
 
 
@@ -341,6 +344,8 @@ def test_disabling_profile_excludes_everything(env: dict[str, Any]) -> None:
     assert note.state == ContextNoteState.OFF
     assert note.profile_enabled is False
     assert note.profile_item_count == 0
+    assert note.material_categories == []
+    assert "你已授权的用户背景信息" in note.note
     assert "关闭" in note.note
     # 审计记录 disabled 快照，且不复制画像正文
     events = _audit_events(env, AuditAction.PROFILE_SLICE_USED)
@@ -359,6 +364,8 @@ def test_empty_profile_yields_empty_state(env: dict[str, Any]) -> None:
     assert note is not None
     assert note.state == ContextNoteState.EMPTY
     assert note.profile_item_count == 0
+    assert note.material_categories == []
+    assert "你已授权的用户背景信息" in note.note
     assert "没有" in note.note
 
 
@@ -483,6 +490,8 @@ def test_broken_profile_service_does_not_block_generation(
     assert final is not None and final.status == ChatMessageStatus.DONE
     assert final.context_note is not None
     assert final.context_note.state == ContextNoteState.ERROR
+    assert "你已授权的用户背景信息" in final.context_note.note
+    assert "联网" not in final.context_note.note
     assert _slice_system_blocks(adapter.payloads[0]) == []  # 不注入未验证内容
 
 
@@ -596,4 +605,7 @@ def test_context_note_thinking_tool_entry(env: dict[str, Any]) -> None:
     conversation = env["chat"].create_conversation(env["account"])
     _, final = _send(env, conversation.conversation_id, "你好")
     assert final.thinking is not None
-    assert any("已参考" in tool for tool in final.thinking.tools)
+    assert final.context_note is not None
+    assert final.context_note.profile_item_count == 1
+    assert "已参考 1 条你已授权的用户背景信息（仅限当前任务）" in final.thinking.tools
+    assert all("已参考 1 条相关信息" not in tool for tool in final.thinking.tools)
