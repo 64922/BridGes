@@ -23,8 +23,6 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from bridges.ai import ModelGateway
-from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.expression import (
     ApplyRevisionPatchRequest,
     ApplyRevisionPatchResult,
@@ -319,14 +317,12 @@ class ExpressionService:
         self,
         claim_service: ClaimEvidenceService,
         profile_service: ProfileService | None = None,
-        model_gateway: ModelGateway | None = None,
         draft_generator: DraftGeneratorPort | None = None,
         invalidation_service: Any | None = None,
         workflow_service: Any | None = None,
     ) -> None:
         self._claim_service = claim_service
         self._profile_service = profile_service
-        self._model_gateway = model_gateway
         self._draft_generator = draft_generator or _DeterministicDraftGenerator()
         self._invalidation = invalidation_service
         self._workflow = workflow_service
@@ -493,35 +489,6 @@ class ExpressionService:
             graph_id=graph.graph_id,
             nodes=nodes,
         )
-
-    def _maybe_invoke_model(
-        self,
-        subject: SubjectContext,
-        brief: ExpressionBrief,
-        graph: ClaimGraph,
-    ) -> ModelRunLock | None:
-        if self._model_gateway is None:
-            return None
-        run_context = RunContextEnvelope(
-            run_id=_token("run"),
-            account_id=subject.account_id,
-            project_id=brief.brief_id,
-            workflow_name="expression_draft_generation",
-            workflow_version="1",
-            object_domain=ObjectDomain.PERSONAL_VAULT,
-            submitted_at=_now(),
-        )
-        result = self._model_gateway.invoke(
-            capability_name="expression_draft_generation",
-            capability_version="1",
-            run_context=run_context,
-            payload={
-                "brief_id": brief.brief_id,
-                "graph_id": graph.graph_id,
-                "genre": brief.genre.value,
-            },
-        )
-        return result.lock
 
     def _build_personalization_note(
         self, memory_slice: ProfileSlice | None
@@ -1157,18 +1124,6 @@ class ExpressionService:
             subject.account_id, request.memory_slice_id
         )
 
-        run_context: RunContextEnvelope | None = None
-        if self._model_gateway is not None:
-            run_context = RunContextEnvelope(
-                run_id=_token("run"),
-                account_id=subject.account_id,
-                project_id=request.project_id or brief.brief_id,
-                workflow_name="expression_draft_generation",
-                workflow_version="1",
-                object_domain=ObjectDomain.PERSONAL_VAULT,
-                submitted_at=_now(),
-            )
-
         argument_plan = self._build_argument_plan(brief, graph)
         spans = self._draft_generator.generate(
             brief=brief,
@@ -1176,10 +1131,9 @@ class ExpressionService:
             locks=locks,
             argument_plan=argument_plan,
             memory_slice=memory_slice,
-            run_context=run_context,
+            run_context=None,
         )
 
-        model_lock = self._maybe_invoke_model(subject, brief, graph)
         personalization_note = self._build_personalization_note(memory_slice)
 
         gate = self._run_expression_gate(
@@ -1206,7 +1160,7 @@ class ExpressionService:
             memory_slice_id=request.memory_slice_id,
             personalization_note=personalization_note,
             wording_strength_ceiling=validation_report.wording_strength_ceiling,
-            model_run_lock=model_lock,
+            model_run_lock=None,
             artifact_trust_status=ArtifactTrustStatus.DRAFT,
             approval_decisions=[],
             created_at=_now(),
@@ -1243,7 +1197,7 @@ class ExpressionService:
         return ExpressionDraftResult(
             draft=draft,
             gate=gate,
-            model_run_lock=model_lock,
+            model_run_lock=None,
         )
 
     def get_draft(self, account_id: str, draft_id: str) -> ExpressionDraft:

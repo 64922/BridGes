@@ -2,7 +2,7 @@
 
 import os
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -216,8 +216,8 @@ from bridges.vault import (
     VaultService,
 )
 from bridges.video.service import VideoService
-from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.providers import build_fallback_provider
+from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
 
@@ -306,23 +306,6 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             supported_modalities=["text", "image"],
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    # T025: expression draft generation capability; deterministic generator owns
-    # fact-lock binding, but the capability records an immutable run lock.
-    registry.register(
-        CapabilityRecord(
-            name="expression_draft_generation",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3.6-flash",
-            input_schema_version="expression-brief-v1",
-            output_schema_version="draft-spans-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
         )
     )
@@ -734,7 +717,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     if profile_capability.status != CapabilityStatus.VERIFIED:
                         profile_capability_error = profile_capability_error or "not_verified"
                     elif not profile_capability.validation_probe_version:
-                        profile_capability_error = profile_capability_error or "canary_not_configured"
+                        profile_capability_error = (
+                            profile_capability_error or "canary_not_configured"
+                        )
                     elif not model_gateway.is_adapter_registered(
                         "qwen_profile_extraction", "1"
                     ):
@@ -1691,12 +1676,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     # T025/T029: attach the expression service. It consumes claim graphs and fact
-    # locks from T016, memory slices from T019, records model run locks from T009,
-    # and uses the workflow service and invalidation service for release gating.
+    # locks from T016, memory slices from T019, and uses the workflow service and
+    # invalidation service for release gating. Legacy write routes are retired;
+    # the service no longer records model run locks for draft generation.
     expression_service = ExpressionService(
         claim_service=claim_evidence_service,
         profile_service=app.state.profile_service,
-        model_gateway=model_gateway,
         invalidation_service=invalidation_service,
         workflow_service=workflow_service,
     )
