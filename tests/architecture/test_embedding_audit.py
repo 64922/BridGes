@@ -21,9 +21,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: 允许直连 embeddings 的唯一生产模块（真实 adapter）。
 EMBEDDING_ADAPTER_MODULE = "src/bridges/ai/embedding_adapter.py"
 #: 允许构造 QwenEmbeddingPort 的生产组合根（API 与 worker）。
+#: Issue 17：真实性发布门（``bridges.closeout.authenticity_gate``）的 live
+#: suite 以同一生产组合装配 Embedding 探针端口（gateway+recorder 注入），
+#: 属于受控探针组合根，与 API/worker 共享同一固定模型事实源与 recorder。
 PORT_COMPOSITION_ROOTS = {
     "src/bridges/api/main.py",
     "src/bridges/runtime/executor.py",
+    "src/bridges/closeout/authenticity_gate.py",
 }
 #: 允许测试替身构造的生产模块（评估 harness 的 SUT 装配）。
 DETERMINISTIC_ALLOWED = {
