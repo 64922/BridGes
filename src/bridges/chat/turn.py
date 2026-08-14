@@ -16,6 +16,7 @@ interface 之后——``TurnOrchestrator.stream_turn`` 只回答「驱动一次�
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -82,6 +83,7 @@ from bridges.contracts.chat import (
 )
 from bridges.contracts.humanizer import (
     HUMANIZER_CHECKPOINT_KEY,
+    HumanizerProfileSlice,
     HumanizerResultProjection,
     HumanizerResultStatus,
     HumanizerRouteSource,
@@ -618,6 +620,10 @@ class HumanizerOrchestrator(Protocol):
         writing_call_count: int = 0,
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
+        # Issue 04：人味化轮次的最小画像切片输入（编译与披露由聊天层完成，
+        # 服务只按「风格与背景偏好」用途注入首稿/修订 prompt，绝不进入
+        # 证据与来源合同、运行锁、日志或语料产物）。
+        profile_slice: HumanizerProfileSlice | None = None,
     ) -> Iterator[HumanizerRunEvent]: ...
 
 
@@ -1418,6 +1424,11 @@ def context_note_thinking(
     return thinking.model_copy(update={"tools": tools})
 
 
+def profile_used_from_note(context_note: ContextNoteProjection | None) -> bool:
+    """本轮是否实际使用了画像切片：只有 ready 态算作使用（Issue 04）。"""
+    return context_note is not None and context_note.state == ContextNoteState.READY
+
+
 # ---------------------------------------------------------------------------
 # 用户消息载荷与轮次辅助（重试沿用同一份任务契约）
 # ---------------------------------------------------------------------------
@@ -2075,6 +2086,7 @@ class TurnOrchestrator:
                     until_user_message_id,
                     use_knowledge_base,
                     budget,
+                    use_profile=use_profile,
                 )
                 return
             # Issue 31：用户消息携带图片生成/编辑载荷（前端图片对话框提交）
@@ -3882,6 +3894,7 @@ class TurnOrchestrator:
         until_user_message_id: str | None,
         use_knowledge_base: bool,
         budget: RunBudget,
+        use_profile: bool = True,
     ) -> Iterator[StreamEvent]:
         """SKILL 编排：证据合同检索 → 过程事件 → 终态收敛（done/error）。
 
@@ -3898,9 +3911,8 @@ class TurnOrchestrator:
             else self._lifecycle.register(assistant_message_id)
         )
         conversation = self._repo.get_conversation(account_id, conversation_id)
-        thinking = initial_thinking(
-            ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-        )
+        mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+        thinking = initial_thinking(mode)
         retrieval_round: RetrievalRoundProjection | None = None
         messages = self._repo.list_messages(account_id, conversation_id)
         owner = owner_user_message(messages, assistant_message_id)
@@ -3975,9 +3987,7 @@ class TurnOrchestrator:
             messages = self._repo.list_messages(account_id, conversation_id)
             owner = owner_user_message(messages, assistant_message_id)
             round_query = owner.content if owner is not None else ""
-            mode_for_plan = (
-                ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-            )
+            mode_for_plan = mode
             # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
             # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
             calls: list[tuple[str, Callable[[], object] | None]] = []
@@ -4118,6 +4128,31 @@ class TurnOrchestrator:
                 ),
             )
             return
+        # Issue 04：人味化轮次编译最小画像切片并如实披露（与普通/生涯
+        # 路径同一编译接缝与裁剪规则）。切片上下文只以「风格与背景偏好」
+        # 用途经 run_task 传入技能执行，绝不进入证据合同/运行锁/日志；
+        # use_profile=False 时不编译不披露，画像服务异常时准确降级，
+        # 均不阻塞人味化主流程。
+        context_note, profile_context, profile_items, _profile_slice_id = (
+            self._compile_profile_slice(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                mode,
+                use_profile=use_profile,
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+            )
+        )
+        if context_note is not None:
+            thinking = context_note_thinking(thinking, context_note)
+        profile_used = profile_used_from_note(context_note)
+        profile_slice = HumanizerProfileSlice(
+            used=profile_used,
+            item_count=len(profile_items),
+            context=profile_context,
+        )
         try:
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
             if generation_entered:
@@ -4165,6 +4200,9 @@ class TurnOrchestrator:
                 writing_call_count=writing_call_count,
                 recovered_draft=recovered_draft,
                 stop_event=stop_event,
+                # Issue 04：画像切片只作「风格与背景偏好」用途注入，不改变
+                # 人味化的证据与来源合同（服务内部不再接触画像服务）。
+                profile_slice=profile_slice,
             ):
                 # Issue 05 审查修复：草稿事件先于预算/停止检查持久化——模型
                 # 已产出的正文与写作调用计数绝不因预算到期/用户停止而丢失；
@@ -4282,6 +4320,15 @@ class TurnOrchestrator:
                     assistant_message_id,
                     final_text,
                     now,
+                )
+                # Issue 04 不变量告警：画像原文不得进入人味化产物。产物
+                # （投影 JSON + 正文）中出现任一画像原文即记审计（只记
+                # 命中条数，不复制画像原文），供告警消费；不阻断交付。
+                self._audit_humanizer_profile_leak(
+                    account_id,
+                    assistant_message_id,
+                    profile_items,
+                    result,
                 )
                 if quality_entered:
                     budget.exit(
@@ -4654,9 +4701,7 @@ class TurnOrchestrator:
                     )
                 }
             )
-        profile_used = (
-            context_note.state == ContextNoteState.READY if context_note else False
-        )
+        profile_used = profile_used_from_note(context_note)
         try:
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
             if generation_entered:
@@ -5824,6 +5869,44 @@ class TurnOrchestrator:
             object_refs=[slice_id] if slice_id else None,
             reason="本轮画像切片使用披露。",
             details=details,
+        )
+
+    def _audit_humanizer_profile_leak(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        profile_items: list[ProfileSliceItem],
+        result: HumanizerResultProjection,
+    ) -> None:
+        """Issue 04 不变量告警：人味化产物中出现画像原文时记录审计。
+
+        产物指结果投影 JSON（output/edits/fact_check/open_questions 等）
+        与最终正文。扫描只判断「是否出现画像原文」并记录命中条数，绝不
+        复制画像原文；未挂载观测服务或未使用画像时直接跳过。告警只作
+        观测信号，不阻断人味化交付。
+        """
+        if self._observability is None or not profile_items:
+            return
+        artifact_text = json.dumps(result.model_dump(mode="json"), ensure_ascii=False)
+        if result.output is not None:
+            artifact_text += "\n" + result.output.final_text
+        leaked_count = sum(
+            1
+            for item in profile_items
+            if item.value_or_rule and item.value_or_rule in artifact_text
+        )
+        if leaked_count == 0:
+            return
+        self._observability.log_audit(
+            actor_account_id=account_id,
+            action=AuditAction.HUMANIZER_PROFILE_LEAK,
+            result=AuditResult.BLOCKED,
+            object_refs=[assistant_message_id],
+            reason="人味化产物中出现画像原文（不变量违反）。",
+            details={
+                "profile_item_count": len(profile_items),
+                "leaked_count": leaked_count,
+            },
         )
 
     def _audit_teaching_evidence(

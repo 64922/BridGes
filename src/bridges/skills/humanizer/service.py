@@ -61,6 +61,7 @@ from bridges.contracts.humanizer import (
     HumanizerOutputContract,
     HumanizerPath,
     HumanizerProcessState,
+    HumanizerProfileSlice,
     HumanizerQualityStatus,
     HumanizerReference,
     HumanizerResultProjection,
@@ -80,6 +81,7 @@ from bridges.skills.humanizer.draft_compiler import (
     DRAFT_MAX_TOKENS,
     DRAFT_OUTPUT_JSON_SCHEMA,
     compile_draft_prompt,
+    profile_style_block,
 )
 from bridges.skills.humanizer.evidence_safety import (
     build_revision_prompt,
@@ -364,6 +366,11 @@ class HumanizerService:
         writing_call_count: int = 0,
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
+        # Issue 04：聊天层已编译的最小画像切片输入（同一编译接缝与裁剪
+        # 规则）。服务只按「风格与背景偏好」用途注入首稿/修订 prompt，
+        # 不改变人味化的证据与来源合同；画像内容绝不进入运行锁、日志或
+        # 语料产物，审计只记 profile_used 与条数（不含内容）。
+        profile_slice: HumanizerProfileSlice | None = None,
     ) -> Iterator[HumanizerRunEvent]:
         """执行一条人味化任务：yield 过程事件，最后 yield 结果事件。
 
@@ -376,9 +383,18 @@ class HumanizerService:
         至多一次定向修订，写作调用总计不超过 2 次。
         ``writing_call_count`` 与 ``recovered_draft`` 由聊天层从持久化
         运行状态恢复（重试/恢复沿用计数，服务重启不得重新获得修订额度）；
-        ``stop_event`` 供修订启动前检查用户停止信号。
+        ``stop_event`` 供修订启动前检查用户停止信号。``profile_slice``
+        （Issue 04）是聊天层编译的最小画像切片输入，只按「风格与背景
+        偏好」用途注入首稿/修订 prompt；无切片时该块不出现。
         """
         skill_version = self.resolve_skill(skill_input)
+        profile_used = profile_slice.used if profile_slice is not None else False
+        profile_item_count = (
+            profile_slice.item_count if profile_slice is not None else 0
+        )
+        profile_context = (
+            profile_slice.context if profile_slice is not None else None
+        )
         # Issue 11：本次业务 run 的模型锁证据（run 标识 + 已记录锁 ID）。
         lock_evidence = _LockEvidence(run_id=run_context.run_id)
         if skill_input.expression_contract is not None:
@@ -397,6 +413,9 @@ class HumanizerService:
                 recovered_draft=recovered_draft,
                 stop_event=stop_event,
                 lock_evidence=lock_evidence,
+                profile_used=profile_used,
+                profile_item_count=profile_item_count,
+                profile_context=profile_context,
             )
             return
         contract = skill_input.contract
@@ -484,6 +503,9 @@ class HumanizerService:
                 references,
                 run_context,
                 lock_evidence=lock_evidence,
+                # Issue 04：旧显式 SKILL 路径同样以「风格与背景偏好」用途
+                # 注入画像切片（不改变证据与来源合同）。
+                profile_context=profile_context,
             )
             writing_call_count += 1
             progress.append("按体裁规则生成")
@@ -543,6 +565,7 @@ class HumanizerService:
                         fact_lock_source,
                         writing_call_count,
                         lock_evidence=lock_evidence,
+                        profile_context=profile_context,
                     )
             final_result = self._finalize_result(
                 account_id,
@@ -553,6 +576,8 @@ class HumanizerService:
                 checkpoint,
                 repair_attempts,
                 lock_evidence=lock_evidence,
+                profile_used=profile_used,
+                profile_item_count=profile_item_count,
             )
             final_result = final_result.model_copy(
                 update={"writing_call_count": writing_call_count}
@@ -587,6 +612,8 @@ class HumanizerService:
                 state=state,
                 writing_call_count=writing_call_count,
                 lock_evidence=lock_evidence,
+                profile_used=profile_used,
+                profile_item_count=profile_item_count,
             )
             yield process(
                 state,
@@ -621,6 +648,9 @@ class HumanizerService:
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
         lock_evidence: _LockEvidence | None = None,
+        profile_used: bool = False,
+        profile_item_count: int = 0,
+        profile_context: str | None = None,
     ) -> Iterator[HumanizerRunEvent]:
         """带版本化表达任务契约的新文章流程。
 
@@ -703,6 +733,9 @@ class HumanizerService:
                 source_text=source_text,
                 source_label=source_label,
                 ledger=ledger,
+                # Issue 04：画像切片以「风格与背景偏好」用途引用，不改变
+                # 材料边界与证据合同。
+                profile_context=profile_context,
             )
             progress.append("编译首稿规则")
 
@@ -874,6 +907,9 @@ class HumanizerService:
                 writing_call_count,
                 progress,
                 lock_evidence=lock_evidence,
+                # Issue 04：修订 prompt 同样以「风格与背景偏好」用途注入
+                # 画像切片（与首稿一致，不改变证据与来源合同）。
+                profile_context=profile_context,
             )
             writing_call_count = outcome.writing_call_count
 
@@ -900,6 +936,8 @@ class HumanizerService:
                 contract_check=outcome.checks.contract_check,
                 evidence_report=evidence_report,
                 lock_evidence=lock_evidence,
+                profile_used=profile_used,
+                profile_item_count=profile_item_count,
             )
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.RESULT,
@@ -928,6 +966,8 @@ class HumanizerService:
                 state=state,
                 writing_call_count=writing_call_count,
                 lock_evidence=lock_evidence,
+                profile_used=profile_used,
+                profile_item_count=profile_item_count,
             )
             yield process(
                 state,
@@ -1098,6 +1138,7 @@ class HumanizerService:
         writing_call_count: int,
         progress: list[str],
         lock_evidence: _LockEvidence | None = None,
+        profile_context: str | None = None,
     ) -> Iterator[_RevisionOutcome]:
         """Issue 05 触发裁决与一次定向修订（生成器，最后返回执行结果）。
 
@@ -1156,6 +1197,8 @@ class HumanizerService:
             ledger=ledger,
             source_text=source_text,
             source_label=source_label,
+            # Issue 04：修订 prompt 以「风格与背景偏好」用途引用画像切片。
+            profile_context=profile_context,
         )
         yield HumanizerRunEvent(
             kind=HumanizerRunKind.PROCESS,
@@ -1689,6 +1732,8 @@ class HumanizerService:
         contract_check: FactLockCheckResult | None = None,
         evidence_report: EvidenceSafeReport | None = None,
         lock_evidence: _LockEvidence | None = None,
+        profile_used: bool | None = None,
+        profile_item_count: int | None = None,
     ) -> HumanizerResultProjection:
         """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。
 
@@ -1859,6 +1904,8 @@ class HumanizerService:
                 result.article.projection_version if result.article else None
             ),
             lock_evidence=lock_evidence,
+            profile_used=profile_used,
+            profile_item_count=profile_item_count,
         )
         return result
 
@@ -2257,11 +2304,18 @@ class HumanizerService:
         lock_evidence: _LockEvidence | None = None,
         operation: str = HUMANIZER_STAGE_DRAFT,
         attempt_ordinal: int = DRAFT_CALL_ORDINAL,
+        profile_context: str | None = None,
     ) -> Any:
         contract = skill_input.contract
         genre_set = genre_rule_set(contract.genre)
         system_prompt = self._build_system_prompt(
-            skill_version, contract, genre_set, locks, source_label, references
+            skill_version,
+            contract,
+            genre_set,
+            locks,
+            source_label,
+            references,
+            profile_context=profile_context,
         )
         if repair_instructions:
             # 软门定向修复（Issue 07）：只针对未满足的风格规则修正正文，
@@ -2316,6 +2370,7 @@ class HumanizerService:
         locks: list[Any],
         source_label: str,
         references: list[HumanizerReference],
+        profile_context: str | None = None,
     ) -> str:
         """SKILL 规则 + 体裁合同 + 事实锁 + 证据合同的组装（非单一提示词）。"""
         lock_lines = "\n".join(
@@ -2348,6 +2403,7 @@ class HumanizerService:
             method_scene,
             genre_name=genre_doc.display_name,
         )
+        profile_block = profile_style_block(profile_context)
         return f"""你是 BridGes 内置「文章人味化」SKILL（版本 {skill_version}）的执行器。
 
 【任务边界】
@@ -2363,7 +2419,7 @@ class HumanizerService:
 
 【证据合同（可引用来源清单；只可引用清单内材料，不得虚构）】
 {reference_lines}
-
+{profile_block}
 【输出要求】严格输出 JSON，不得输出 JSON 之外的任何内容：
 {{"final_text": 最终文本, "edits": [{{"original": 原文片段, "revised": 新文片段,
 "kind": "rewrite|restructure|word_choice|audience_adapt|no_change",
@@ -2570,6 +2626,7 @@ class HumanizerService:
         fact_lock_source: str,
         writing_call_count: int,
         lock_evidence: _LockEvidence | None = None,
+        profile_context: str | None = None,
     ) -> tuple[int, int, _ReviewCheckpoint]:
         """软门定向修复：至多一次、受总预算与写作调用上限约束；失败交付原草稿。
 
@@ -2607,6 +2664,7 @@ class HumanizerService:
                 lock_evidence=lock_evidence,
                 operation=HUMANIZER_STAGE_REVISION,
                 attempt_ordinal=REVISION_CALL_ORDINAL,
+                profile_context=profile_context,
             )
             if entered:
                 budget.exit(
@@ -2657,6 +2715,8 @@ class HumanizerService:
         checkpoint: _ReviewCheckpoint,
         repair_attempts: int,
         lock_evidence: _LockEvidence | None = None,
+        profile_used: bool | None = None,
+        profile_item_count: int | None = None,
     ) -> HumanizerResultProjection:
         """终态判定与结果投影：硬门停止交付；软门交付正文与具体警告。
 
@@ -2797,6 +2857,8 @@ class HumanizerService:
                 result.article.projection_version if result.article else None
             ),
             lock_evidence=lock_evidence,
+            profile_used=profile_used,
+            profile_item_count=profile_item_count,
         )
         return result
 
@@ -2961,6 +3023,8 @@ class HumanizerService:
         state: HumanizerProcessState,
         writing_call_count: int | None = None,
         lock_evidence: _LockEvidence | None = None,
+        profile_used: bool | None = None,
+        profile_item_count: int | None = None,
     ) -> HumanizerResultProjection:
         self._audit(
             account_id,
@@ -2974,6 +3038,8 @@ class HumanizerService:
             expression_contract=skill_input.expression_contract,
             projection_version=ARTICLE_PROJECTION_VERSION,
             lock_evidence=lock_evidence,
+            profile_used=profile_used,
+            profile_item_count=profile_item_count,
         )
         return HumanizerResultProjection(
             task_id=assistant_message_id,
@@ -3025,6 +3091,8 @@ class HumanizerService:
         evidence_safe: EvidenceSafeReport | None = None,
         projection_version: str | None = None,
         lock_evidence: _LockEvidence | None = None,
+        profile_used: bool | None = None,
+        profile_item_count: int | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -3266,6 +3334,10 @@ class HumanizerService:
                         if lock_evidence is not None
                         else None
                     ),
+                    # Issue 04：画像使用披露审计——只记 profile_used 与条数，
+                    # 绝不记录画像原文或切片内容。
+                    "profile_used": profile_used,
+                    "profile_item_count": profile_item_count,
                 },
             )
 

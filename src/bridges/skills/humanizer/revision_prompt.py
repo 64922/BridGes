@@ -19,6 +19,7 @@ from bridges.contracts.expression_task import (
     MaterialSufficiency,
 )
 from bridges.contracts.humanizer import SourceLedger
+from bridges.skills.humanizer.draft_compiler import profile_style_block
 from bridges.skills.humanizer.revision_policy import RevisionProblem
 
 #: 修订提示编译版本（审计与观测用）。
@@ -99,11 +100,14 @@ def compile_revision_prompt(
     ledger: SourceLedger | None,
     source_text: str = "",
     source_label: str = "",
+    profile_context: str | None = None,
 ) -> RevisionPromptResult:
     """编译一次定向修订提示：只含原任务边界、必要原文/保护项、首稿与待修问题。
 
     调用方负责裁决（``adjudicate_revision``）与预算/停止/开关检查；本函数
-    只做确定性文本编译，不访问模型、账户或知识库。
+    只做确定性文本编译，不访问模型、账户或知识库。``profile_context``
+    （Issue 04）以「风格与背景偏好」用途引用，不作为事实来源，不改变
+    材料边界与证据合同。
     """
     speaker = contract.speaker_position or "用户本人（以作者身份）"
     permission = _permission_line(contract)
@@ -123,6 +127,7 @@ def compile_revision_prompt(
         if source_text.strip()
         else "【原文】（本次没有粘贴原文：正文只能使用材料内已有事实。）"
     )
+    profile_block = profile_style_block(profile_context)
 
     system_prompt = f"""你是 BridGes 文章表达助手，正在对首稿做一次定向修订
 （修订提示版本 {REVISION_PROMPT_VERSION}）。
@@ -133,7 +138,7 @@ def compile_revision_prompt(
 {permission}
 
 【材料边界】{material_boundary}
-
+{profile_block}
 {protection_note}
 
 【本次只修以下问题】（只动这些位置，其余一律保持）
