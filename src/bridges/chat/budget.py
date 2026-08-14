@@ -19,14 +19,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from bridges import public_search_budget as _public_search_budget
+
+PUBLIC_SEARCH_STAGE_SECONDS = _public_search_budget.PUBLIC_SEARCH_STAGE_SECONDS
+SEARCH_HANDOFF_RESERVE_SECONDS = _public_search_budget.SEARCH_HANDOFF_RESERVE_SECONDS
+SEARCH_MIN_REQUEST_WINDOW_SECONDS = _public_search_budget.SEARCH_MIN_REQUEST_WINDOW_SECONDS
+SEARCH_RETRY_BACKOFF_SECONDS = _public_search_budget.SEARCH_RETRY_BACKOFF_SECONDS
+
 #: 前台技能 run 硬上限（毫秒）：任一前台 run 必须在预算内进入终态。
 TOTAL_BUDGET_MS = 120_000
-#: 公开搜索阶段墙钟（秒）：与既有客户端默认超时一致（DuckDuckGo 8s、
-#: arXiv worker 往返 10s），作为并行搜索等待上限的单一事实源；其余
-#: 外部调用（模型流式 60s 等）由各自客户端超时承担，不在前台并行
-#: 等待路径内。
+#: 来源预算仍保留 arXiv 的独立默认值；包含 web 时 PUBLIC_SEARCH 使用上面的
+#: 统一阶段预算。
 EXTERNAL_TIMEOUT_SECONDS: dict[str, float] = {
-    "web_search": 8.0,
+    "web_search": PUBLIC_SEARCH_STAGE_SECONDS,
     "arxiv_search": 10.0,
 }
 #: 来源名到预算常量的映射；只把本轮实际启动的来源纳入计算。
@@ -39,6 +44,44 @@ RESULT_OK = "ok"
 RESULT_SKIPPED = "skipped"
 RESULT_TIMEOUT = "timeout"
 RESULT_FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class PublicSearchDeadlines:
+    """一次 PUBLIC_SEARCH 阶段的阶段与 DDG 子预算。"""
+
+    stage_deadline: float
+    provider_deadline: float
+    handoff_reserve_seconds: float
+
+
+def public_search_deadlines(
+    stage_started: float,
+    *,
+    run_deadline: float | None = None,
+    scale: float = 1.0,
+) -> PublicSearchDeadlines:
+    """从同一预算源派生阶段截止和 provider 截止。
+
+    ``scale`` 只用于确定性测试缩放整组预算；生产默认值始终是 8 秒、
+    750ms 和 200ms。``run_deadline`` 用于让 run 级总预算优先收紧阶段。
+    """
+
+    factor = max(0.0, scale)
+    # 保留 EXTERNAL_TIMEOUT_SECONDS 作为测试注入点；默认值仍唯一来自
+    # PUBLIC_SEARCH_STAGE_SECONDS。
+    stage_seconds = EXTERNAL_TIMEOUT_SECONDS["web_search"] * factor
+    handoff_seconds = SEARCH_HANDOFF_RESERVE_SECONDS * factor
+    stage_deadline = stage_started + stage_seconds
+    if run_deadline is not None:
+        stage_deadline = min(stage_deadline, run_deadline)
+    provider_deadline = max(stage_started, stage_deadline - handoff_seconds)
+    provider_deadline = min(provider_deadline, stage_deadline)
+    return PublicSearchDeadlines(
+        stage_deadline=stage_deadline,
+        provider_deadline=provider_deadline,
+        handoff_reserve_seconds=handoff_seconds,
+    )
 
 
 def source_aware_search_budget_seconds(
@@ -138,12 +181,35 @@ class RunBudget:
         """本次 run 的绝对截止单调时刻。"""
         return self._deadline
 
-    def search_deadline(self, active_sources: Iterable[str]) -> float:
-        """为活跃公开来源派生与 run 预算共享的绝对截止时刻。"""
-        source_budget = source_aware_search_budget_seconds(
-            active_sources, remaining_ms=self.remaining_ms()
+    def public_search_deadlines(
+        self, active_sources: Iterable[str], *, scale: float = 1.0
+    ) -> PublicSearchDeadlines:
+        """返回 PUBLIC_SEARCH 阶段截止及 DDG provider 子截止。
+
+        包含 DuckDuckGo 时，阶段预算统一为 8 秒；arXiv 单独运行时继续
+        使用原有来源预算，以免把未参与的 web 约束施加到论文路径。
+        """
+
+        active = frozenset(active_sources)
+        started = self._current_started or time.monotonic()
+        if "web" in active:
+            return public_search_deadlines(
+                started,
+                run_deadline=self._deadline,
+                scale=scale,
+            )
+        stage_deadline = min(
+            self._deadline,
+            started
+            + source_aware_search_budget_seconds(
+                active, remaining_ms=self.remaining_ms()
+            ),
         )
-        return min(self._deadline, time.monotonic() + source_budget)
+        return PublicSearchDeadlines(
+            stage_deadline=stage_deadline,
+            provider_deadline=stage_deadline,
+            handoff_reserve_seconds=0.0,
+        )
 
     def elapsed_ms(self) -> int:
         """本次 run 已耗用毫秒。"""

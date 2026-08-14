@@ -1,0 +1,10 @@
+"""公网搜索的共享预算常量。
+
+该模块不依赖聊天编排包，供搜索服务和聊天预算控制器共同读取，避免
+提供方层导入 ``bridges.chat`` 时形成循环依赖。
+"""
+
+PUBLIC_SEARCH_STAGE_SECONDS = 8.0
+SEARCH_HANDOFF_RESERVE_SECONDS = 0.75
+SEARCH_RETRY_BACKOFF_SECONDS = 0.20
+SEARCH_MIN_REQUEST_WINDOW_SECONDS = 0.05

@@ -624,14 +624,13 @@ def test_service_runs_queries_in_parallel_and_rewrites_empty_results() -> None:
 
     assert projection is not None
     assert projection.status == WebSearchStatus.SUCCESS
-    assert projection.query_count == 3
-    assert projection.query_history[:2] == list(plan.queries)
-    assert projection.query_history[-1].endswith("基础定义 原理")
+    assert projection.query_count == 2
+    assert projection.query_history == [plan.query, f"{plan.query} 基础定义 原理"]
     assert "改写查询 1 次" in projection.trigger_reason
-    assert client.max_active == 2
+    assert client.max_active == 1
 
 
-def test_service_rewrites_after_a_bounded_provider_retry() -> None:
+def test_service_retries_a_transient_provider_error_without_a_third_request() -> None:
     result = WebSearchResult(
         result_id="web-rewritten",
         title="基础定义来源",
@@ -640,17 +639,17 @@ def test_service_rewrites_after_a_bounded_provider_retry() -> None:
         accessed_at=datetime.now(UTC),
     )
 
-    class _FailThenRewriteClient:
+    class _FailThenRetryClient:
         def __init__(self) -> None:
             self.calls: list[str] = []
 
         def search(self, query: str) -> list[WebSearchResult]:
             self.calls.append(query)
-            if query == "卷积 神经 网络":
+            if len(self.calls) == 1:
                 raise WebSearchError("web_search_timeout", "超时")
             return [result]
 
-    client = _FailThenRewriteClient()
+    client = _FailThenRetryClient()
     service = WebSearchService(client=client)
     plan = SearchPlan(
         True,
@@ -663,12 +662,16 @@ def test_service_rewrites_after_a_bounded_provider_retry() -> None:
 
     assert projection is not None
     assert projection.status == WebSearchStatus.SUCCESS
-    assert client.calls == [
-        "卷积 神经 网络",
-        "卷积 神经 网络",
-        "卷积 神经 网络 基础定义 原理",
-    ]
-    assert projection.query_count == 3
+    assert client.calls == ["卷积 神经 网络", "卷积 神经 网络"]
+    assert projection.query_count == 2
+    assert projection.attempt_count == 2
+    assert projection.searched_at is not None
+    assert [attempt.attempt_number for attempt in projection.provider_attempts] == [1, 2]
+    assert all(
+        attempt.provider == "duckduckgo" and attempt.query_hash
+        for attempt in projection.provider_attempts
+    )
+    assert projection.provider_attempts[0].retry_planned is True
 
 
 def test_service_does_not_retry_non_retryable_provider_errors() -> None:
@@ -748,7 +751,7 @@ def test_service_enforces_zero_total_timeout_before_provider_call() -> None:
 
     assert projection is not None
     assert projection.status == WebSearchStatus.ERROR
-    assert projection.error_code == "web_search_timeout"
+    assert projection.error_code == "web_search_stage_timeout"
 
 
 def test_service_does_not_treat_conflicting_sources_as_verified() -> None:

@@ -16,8 +16,12 @@ from bridges.contracts.chat import ChatMessageStatus, ChatMode
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
-from bridges.web_search.client import DuckDuckGoClient
-from bridges.web_search.contracts import WebSearchStatus
+from bridges.web_search.client import DuckDuckGoClient, DuckDuckGoResults, WebSearchError
+from bridges.web_search.contracts import (
+    WebSearchPageClassification,
+    WebSearchResult,
+    WebSearchStatus,
+)
 from bridges.web_search.service import WebSearchService
 
 
@@ -219,6 +223,178 @@ def test_study_mode_challenge_is_persisted_as_provider_blocked_without_citations
     assert final.teaching.can_answer_reliably is False
     assert final.content.count("本轮未联网核实：") == 1
     assert "[web-1]" not in final.content
+
+
+def test_study_mode_search_failure_does_not_advance_plan_or_lesson(
+    tmp_path: Path,
+) -> None:
+    """DDG 失败轮不创建/推进 teaching plan、lesson progress 或联网证据。"""
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _FallbackAdapter()
+    registry = CapabilityRegistry()
+    registry.register(
+        CapabilityRecord(
+            name="qwen_text_chat",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.7-plus-2026-05-26",
+            input_schema_version="chat-messages-v1",
+            output_schema_version="chat-completion-v1",
+        )
+    )
+    gateway = ModelGateway(registry)
+    gateway.register_adapter("qwen_text_chat", "1", adapter)
+
+    class _FailingClient:
+        def search(self, query: str) -> list[WebSearchResult]:
+            raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
+
+    web_search = WebSearchService(client=_FailingClient())
+    service = ChatService(
+        repository=ConversationRepository(database),
+        gateway=gateway,
+        web_search_service=web_search,
+    )
+    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    _, assistant = service.start_generation(
+        "alice", conversation.conversation_id, "我想学习Transformer架构"
+    )
+
+    list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            RunContextEnvelope(
+                run_id="run-fail",
+                account_id="alice",
+                project_id="conversation-1",
+                workflow_name="chat",
+                workflow_version="1",
+                object_domain=ObjectDomain.PERSONAL_VAULT,
+                submitted_at=datetime.now(UTC),
+            ),
+        )
+    )
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert final.status == ChatMessageStatus.DONE
+    assert final.web_search is not None
+    assert final.web_search.status == WebSearchStatus.ERROR
+    assert final.web_search.error_code == "web_search_timeout"
+    assert final.teaching is not None
+    # 失败轮不创建教学计划/课次，也不写入联网证据。
+    assert final.teaching.plan is None
+    assert final.teaching.lesson is None
+    assert final.teaching.evidence_gate.external_sources == []
+    assert final.teaching.learning_progress is None
+    assert final.teaching.can_answer_reliably is False
+    assert final.content.count("本轮未联网核实：") == 1
+    assert "[web-1]" not in final.content and "https://" not in final.content
+
+
+def test_study_mode_retry_success_advances_plan_and_lesson_after_real_sources(
+    tmp_path: Path,
+) -> None:
+    """重试成功后才允许基于真实来源创建计划与课次，新旧尝试可区分。"""
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _VerifiedAdapter()
+    registry = CapabilityRegistry()
+    registry.register(
+        CapabilityRecord(
+            name="qwen_text_chat",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.7-plus-2026-05-26",
+            input_schema_version="chat-messages-v1",
+            output_schema_version="chat-completion-v1",
+        )
+    )
+    gateway = ModelGateway(registry)
+    gateway.register_adapter("qwen_text_chat", "1", adapter)
+    requests: list[httpx.Request] = []
+
+    class _FailFirstThenServe:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def search(self, query: str) -> list[WebSearchResult]:
+            self.calls += 1
+            if self.calls == 1:
+                raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
+            return DuckDuckGoResults(
+                [
+                    WebSearchResult(
+                        result_id="web-1",
+                        title="Transformer 架构公开资料",
+                        site="example.com",
+                        url="https://example.com/transformer",
+                        snippet="介绍模型的层次化结构。",
+                        content_summary=(
+                            "Transformer architecture uses self-attention to build "
+                            "an AI model architecture."
+                        ),
+                        fetched_at=datetime.now(UTC),
+                        accessed_at=datetime.now(UTC),
+                    )
+                ],
+                page_classification=WebSearchPageClassification.NORMAL_RESULTS,
+                http_status_category="2xx",
+            )
+
+    web_search = WebSearchService(client=_FailFirstThenServe())
+    service = ChatService(
+        repository=ConversationRepository(database),
+        gateway=gateway,
+        web_search_service=web_search,
+    )
+    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    _, assistant = service.start_generation(
+        "alice", conversation.conversation_id, "我想学习Transformer架构的相关知识"
+    )
+
+    list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            RunContextEnvelope(
+                run_id="run-retry",
+                account_id="alice",
+                project_id="conversation-1",
+                workflow_name="chat",
+                workflow_version="1",
+                object_domain=ObjectDomain.PERSONAL_VAULT,
+                submitted_at=datetime.now(UTC),
+            ),
+        )
+    )
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert final.status == ChatMessageStatus.DONE
+    assert final.web_search is not None
+    assert final.web_search.status == WebSearchStatus.SUCCESS
+    assert final.web_search.results
+    # 第二次尝试成功：attempts 保留两次调用，provider 尝试记录可区分。
+    assert final.web_search.attempt_count == 2
+    assert len(final.web_search.provider_attempts) == 2
+    assert final.web_search.provider_attempts[0].result_code == "web_search_timeout"
+    assert final.web_search.provider_attempts[1].result_code == "success"
+    assert final.teaching is not None
+    assert final.teaching.can_answer_reliably is True
+    assert final.teaching.evidence_gate.external_sources
+    assert final.teaching.learning_progress is not None
+    assert final.teaching.learning_progress.source_message_id == assistant.message_id
+    assert "本轮未联网核实" not in final.content
+    assert "[reference:1]" in final.content
 
 
 def test_study_mode_normal_results_provide_verified_source_and_bindable_citation(

@@ -221,7 +221,6 @@ from bridges.vault import (
     VaultService,
 )
 from bridges.video.service import VideoService
-from bridges.web_search.providers import build_fallback_provider
 from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
@@ -993,24 +992,17 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.state.learning_path_service = LearningPathService(
         repository=learning_repository,
     )
-    # Issue 21/02：DuckDuckGo 是默认主用；结构化备用源只有在部署配置显式
-    # 启用且通过注册表合同后才实例化。凭据只在此处注入客户端，不进入聊天
-    # 投影、审计、日志或前端。
+    # Issue 03：生产公网搜索只登记 DuckDuckGo；失败交给聊天层的 Qwen
+    # 一般知识降级，绝不在本轮切换第二提供方。
     web_search_database = getattr(app.state, "bridges_database", None)
     use_closeout_fixtures = bool(
         app.state.settings is not None
         and app.state.settings.environment.lower() == "test"
         and app.state.settings.closeout_fixture_mode
     )
-    fallback_provider = (
-        build_fallback_provider(app.state.settings)
-        if app.state.settings is not None
-        else None
-    )
     app.state.web_search_service = WebSearchService(
         client=CloseoutWebSearchClient() if use_closeout_fixtures else None,
         observability=app.state.observability_service,
-        fallback_client=fallback_provider,
         cache=(
             WebSearchCacheRepository(web_search_database)
             if web_search_database is not None

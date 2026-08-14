@@ -18,11 +18,13 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import httpx
 
+from bridges import public_search_budget as search_budget
 from bridges.web_search.contracts import (
     WebSearchHealth,
     WebSearchHealthStatus,
     WebSearchPageClassification,
     WebSearchResult,
+    WebSearchVerification,
 )
 
 DUCKDUCKGO_ENDPOINT = "https://html.duckduckgo.com/html/"
@@ -118,7 +120,7 @@ class DuckDuckGoClient:
         self,
         *,
         http_client: httpx.Client | None = None,
-        timeout: float = 8.0,
+        timeout: float = search_budget.PUBLIC_SEARCH_STAGE_SECONDS,
         max_results: int = DEFAULT_MAX_RESULTS,
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         max_redirects: int = DEFAULT_MAX_REDIRECTS,
@@ -310,7 +312,7 @@ class DuckDuckGoClient:
                 if unsafe_code is not None:
                     return result.model_copy(
                         update={
-                            "verification": "fetch_failed",
+                            "verification": WebSearchVerification.FETCH_FAILED,
                             "fetch_error_code": unsafe_code,
                             "fetched_at": fetched_at,
                             "redirect_count": redirect_count,
@@ -326,7 +328,7 @@ class DuckDuckGoClient:
                         if redirect_count >= self._max_redirects:
                             return result.model_copy(
                                 update={
-                                    "verification": "fetch_failed",
+                                    "verification": WebSearchVerification.FETCH_FAILED,
                                     "fetch_error_code": "web_search_redirect",
                                     "fetched_at": fetched_at,
                                     "redirect_count": redirect_count,
@@ -336,7 +338,7 @@ class DuckDuckGoClient:
                         if not location:
                             return result.model_copy(
                                 update={
-                                    "verification": "fetch_failed",
+                                    "verification": WebSearchVerification.FETCH_FAILED,
                                     "fetch_error_code": "web_search_redirect",
                                     "fetched_at": fetched_at,
                                     "redirect_count": redirect_count,
@@ -346,7 +348,7 @@ class DuckDuckGoClient:
                         if _unsafe_url_code(next_url) is not None:
                             return result.model_copy(
                                 update={
-                                    "verification": "fetch_failed",
+                                    "verification": WebSearchVerification.FETCH_FAILED,
                                     "fetch_error_code": "web_search_unsafe_url",
                                     "fetched_at": fetched_at,
                                     "redirect_count": redirect_count + 1,
@@ -361,7 +363,7 @@ class DuckDuckGoClient:
         except WebSearchError as exc:
             return result.model_copy(
                 update={
-                    "verification": "fetch_failed",
+                    "verification": WebSearchVerification.FETCH_FAILED,
                     "fetch_error_code": exc.code,
                     "fetched_at": fetched_at,
                     "redirect_count": redirect_count,
@@ -370,7 +372,7 @@ class DuckDuckGoClient:
         except httpx.TimeoutException:
             return result.model_copy(
                 update={
-                    "verification": "fetch_failed",
+                    "verification": WebSearchVerification.FETCH_FAILED,
                     "fetch_error_code": "web_search_page_timeout",
                     "fetched_at": fetched_at,
                     "redirect_count": redirect_count,
@@ -379,7 +381,7 @@ class DuckDuckGoClient:
         except httpx.ConnectError as exc:
             return result.model_copy(
                 update={
-                    "verification": "fetch_failed",
+                    "verification": WebSearchVerification.FETCH_FAILED,
                     "fetch_error_code": (
                         "web_search_page_dns"
                         if _connection_error_code(exc) == "web_search_dns"
@@ -392,7 +394,7 @@ class DuckDuckGoClient:
         except httpx.HTTPError:
             return result.model_copy(
                 update={
-                    "verification": "fetch_failed",
+                    "verification": WebSearchVerification.FETCH_FAILED,
                     "fetch_error_code": "web_search_page_fetch",
                     "fetched_at": fetched_at,
                     "redirect_count": redirect_count,
@@ -403,7 +405,7 @@ class DuckDuckGoClient:
         if not text:
             return result.model_copy(
                 update={
-                    "verification": "summary_only",
+                    "verification": WebSearchVerification.SUMMARY_ONLY,
                     "fetch_error_code": "web_search_page_empty",
                     "fetched_at": fetched_at,
                     "redirect_count": redirect_count,
@@ -411,7 +413,7 @@ class DuckDuckGoClient:
             )
         return result.model_copy(
             update={
-                "verification": "verified",
+                "verification": WebSearchVerification.VERIFIED,
                 "fetched_at": fetched_at,
                 "content_summary": text[:_SOURCE_SUMMARY_MAX_CHARS],
                 "published_at": _parse_published_at(body),
@@ -474,7 +476,7 @@ class DuckDuckGoClient:
                     fetched.append(
                         result.model_copy(
                             update={
-                                "verification": "fetch_failed",
+                    "verification": WebSearchVerification.FETCH_FAILED,
                                 "fetch_error_code": "web_search_page_timeout",
                                 "fetched_at": datetime.now(UTC),
                             }
@@ -487,7 +489,7 @@ class DuckDuckGoClient:
                     fetched.append(
                         result.model_copy(
                             update={
-                                "verification": "fetch_failed",
+                                "verification": WebSearchVerification.FETCH_FAILED,
                                 "fetch_error_code": "web_search_page_fetch",
                                 "fetched_at": datetime.now(UTC),
                             }

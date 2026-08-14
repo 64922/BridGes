@@ -27,6 +27,7 @@ from bridges.arxiv_mcp.contracts import (
     ArxivSearchStatus,
 )
 from bridges.arxiv_mcp.service import ArxivSearchPlan
+from bridges.chat import budget as budget_module
 from bridges.config import get_settings
 from bridges.web_search.contracts import (
     WebSearchProjection,
@@ -322,10 +323,43 @@ def test_slow_search_degrades_within_stage_budget_not_waiting(
     )
     elapsed = time.monotonic() - started
     assert elapsed < 20.0, f"慢搜索不得拖垮主流程（实耗 {elapsed:.1f}s）"
-    # 搜索超时降级为可重试错误（fail closed，未等待 30 秒慢来源）
-    assert events[-1][0] == "error"
-    assert events[-1][1]["error"]["code"] == "web_search_timeout"
-    assert events[-1][1]["error"]["retryable"] is True
+    # 搜索超时后继续模型知识回答，但正文必须显式标记未联网核实。
+    assert events[-1][0] == "done"
+
+
+def test_public_search_stage_wall_clock_respects_scaled_deadline_plus_tolerance(
+    sqlite_app: Any,
+    client: TestClient,
+    generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC1：PUBLIC_SEARCH 从开始到返回调用方不超过 stage 截止 + 100ms 容差。
+
+    生产默认 8 秒；这里把 web 阶段缩放为 0.4 秒，注入 5 秒慢搜索，断言
+    墙钟被 stage 截止封顶（等价于生产的 8s + 100ms 测量容差）。
+    """
+    monkeypatch.setitem(
+        budget_module.EXTERNAL_TIMEOUT_SECONDS, "web_search", 0.4
+    )
+    _register(client)
+    adapter = _ChunkedAdapter(chunks=1, citation_text="[web-1]")
+    sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
+    fake_web = _FakeWebSearchService(delay=5.0)
+    fake_arxiv = _FakeArxivSearchService(enabled=False)
+    _install_search_fakes(sqlite_app, web=fake_web, arxiv=fake_arxiv)
+    conversation_id = _create_conversation(client)
+    created = generation_helpers["send"](
+        client, conversation_id, content="请联网搜索最新消息"
+    )
+    message_id = created["assistant_message"]["message_id"]
+    started = time.monotonic()
+    generation_helpers["drive"](sqlite_app, timeout=10.0)
+    generation_helpers["subscribe"](client, conversation_id, message_id, timeout=10.0)
+    elapsed = time.monotonic() - started
+    assert elapsed < 0.4 + 0.6, (
+        f"缩放后的 PUBLIC_SEARCH 墙钟 {elapsed:.2f}s 应接近 0.4s 阶段截止"
+    )
+    assert elapsed < 2.0, f"慢搜索不得拖垮主流程（实耗 {elapsed:.2f}s）"
 
 
 def test_budget_exhaustion_delivers_draft_with_warning(
@@ -419,7 +453,7 @@ def test_performance_summary_p95_within_local_budget(
 def test_performance_summary_counts_timeout_rate(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """超时降级计入超时率（防回归：摘要能解释阶段超时占比）。"""
+    """搜索超时后以模型知识降级完成整轮：run 终态 done，不再计为 run 超时。"""
     account = _register(client)
     adapter = _ChunkedAdapter(chunks=1)
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
@@ -437,4 +471,14 @@ def test_performance_summary_counts_timeout_rate(
     )
     summary = sqlite_app.state.chat_service.performance_summary(account["id"])
     assert summary["run_count"] >= 1
-    assert summary["timeout_rate"] > 0, "超时降级必须计入超时率"
+    # 搜索超时不再把整轮 run 变成超时：run 以 done 终态完成，超时保留在
+    # web_search 投影的 provider 尝试记录中（AC3/AC8）。
+    assert summary["timeout_rate"] == 0.0
+    final = sqlite_app.state.chat_service.message_projection(
+        account["id"], message_id
+    )
+    assert final is not None and final.status.value == "done"
+    assert final.web_search is not None
+    assert final.web_search.status == WebSearchStatus.ERROR
+    # 30 秒替身直到 stage 硬截止仍无投影：独立 stage timeout（AC3）。
+    assert final.web_search.error_code == "web_search_stage_timeout"
