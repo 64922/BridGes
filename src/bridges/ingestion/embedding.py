@@ -303,22 +303,25 @@ def _l2_normalize(values: list[float]) -> list[float]:
     return [value / norm for value in values]
 
 
+#: 网关稳定错误码 → 面向用户的中文原因（与网关分类共享同一错误码集合；
+#: 不泄漏正文与凭据）。
+_FAILURE_MESSAGES: dict[str, str] = {
+    "auth_error": (
+        "向量化失败：全局百炼凭据无效或没有该模型权限，"
+        "请检查启动服务的全局百炼配置与权限。"
+    ),
+    "rate_limit": "向量化失败：请求过于频繁（限流），请稍后重试。",
+    "region_error": "向量化失败：区域接入点不可达，请检查网络。",
+    "transient": "向量化失败：服务暂时不可用或网络异常，请稍后重试。",
+    "actual_model_mismatch": "向量化失败：实际返回模型与固定合同不一致，调用失败关闭。",
+}
+
+
 def _failure_message(result: Any) -> str:
     """把网关失败结果映射为面向用户的中文原因（不泄漏正文与凭据）。"""
     code = result.error_code or ""
-    if code == "auth_error":
-        return (
-            "向量化失败：全局百炼凭据无效或没有该模型权限，"
-            "请检查启动服务的全局百炼配置与权限。"
-        )
-    if code == "rate_limit":
-        return "向量化失败：请求过于频繁（限流），请稍后重试。"
-    if code == "region_error":
-        return "向量化失败：区域接入点不可达，请检查网络。"
-    if code == "transient":
-        return "向量化失败：服务暂时不可用或网络异常，请稍后重试。"
-    if code == "actual_model_mismatch":
-        return "向量化失败：实际返回模型与固定合同不一致，调用失败关闭。"
+    if code in _FAILURE_MESSAGES:
+        return _FAILURE_MESSAGES[code]
     message = (result.error_message or "").strip()
     if message:
         return f"向量化失败：{message}"
