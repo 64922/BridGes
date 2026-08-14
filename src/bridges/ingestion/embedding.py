@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import time
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -30,6 +31,7 @@ from bridges.ai.errors import ModelRunLockError
 from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.ports import (
     EMBEDDING_BATCH_COUNT_MISMATCH,
+    EMBEDDING_CALL_FAILED,
     EMBEDDING_DIMENSION_MISMATCH,
     EMBEDDING_EMPTY_VECTOR,
     EMBEDDING_LOCK_PERSIST_FAILED,
@@ -140,6 +142,7 @@ class QwenEmbeddingPort:
             workflow_version="1",
             submitted_at=datetime.now(UTC),
         )
+        started = time.perf_counter()
         result = self._gateway.invoke(
             EMBEDDING_CAPABILITY_NAME,
             EMBEDDING_CAPABILITY_VERSION,
@@ -152,6 +155,7 @@ class QwenEmbeddingPort:
                 "batch_ordinal": context.batch_ordinal,
                 "normalization": NORMALIZATION,
                 "dimensions": EMBEDDING_DIMENSIONS,
+                "provider": "qwen",
             },
         )
         if result.lock is None:
@@ -160,14 +164,26 @@ class QwenEmbeddingPort:
                 retryable=True,
                 code=EMBEDDING_MISSING_RUN_LOCK,
             )
+        # 实测延迟在调用返回后计入锁参数（数值脱敏，不含任何正文）。
+        lock = result.lock.model_copy(
+            update={
+                "parameters": {
+                    **result.lock.parameters,
+                    "latency_seconds": round(time.perf_counter() - started, 4),
+                }
+            }
+        )
         try:
             self._recorder.record(
-                result.lock,
+                lock,
                 business_ref=BusinessRef(
                     object_type=context.object_type,
                     object_id=context.object_id,
                     operation=context.operation.value,
-                    attempt_ordinal=context.call_ordinal,
+                    # 真实重调新增调用序号：调用方显式给出更大序号时以调用方
+                    # 为准，否则取同一 run/operation/对象已有锁的下一序号
+                    # （重试不覆盖旧锁，排序稳定）。
+                    attempt_ordinal=self._next_attempt_ordinal(account_id, context),
                 ),
             )
         except ModelRunLockError as exc:
@@ -186,8 +202,29 @@ class QwenEmbeddingPort:
         raise EmbeddingError(
             _failure_message(result),
             retryable=result.status == ModelCallStatus.RETRYABLE_FAIL,
-            code=result.error_code or "embedding_call_failed",
+            code=result.error_code or EMBEDDING_CALL_FAILED,
         )
+
+    def _next_attempt_ordinal(
+        self, account_id: str, context: EmbeddingContext
+    ) -> int:
+        """同一 run/operation/对象已有锁的下一调用序号（真实重调新增序号）。
+
+        调用方显式给出更大 ``call_ordinal`` 时以调用方为准；否则在已持久化
+        锁的最大序号上加一——重试再次调用同一批次/对象时序号递增，旧失败
+        锁永不覆盖；多批次顺序调用时各批序号与批次顺序一致。
+        """
+        next_ordinal = context.call_ordinal
+        assert self._recorder is not None  # embed() 入口已失败关闭未装配接缝
+        existing = self._recorder.list_locks_by_run(account_id, context.run_id)
+        for persisted in existing:
+            for ref in persisted.business_refs:
+                if (
+                    ref.object_id == context.object_id
+                    and ref.operation == context.operation.value
+                ):
+                    next_ordinal = max(next_ordinal, ref.attempt_ordinal + 1)
+        return next_ordinal
 
 
 class DeterministicEmbeddingPort:

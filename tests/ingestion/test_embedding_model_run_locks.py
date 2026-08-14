@@ -51,74 +51,15 @@ from bridges.ingestion.embedding import (
 from bridges.ingestion.index import IndexWriteError
 from bridges.ingestion.service import IngestionService
 from bridges.storage import BridgesDatabase
+from tests.embedding_audit_support import (
+    FakeQwenClient,
+    embedding_response,
+    make_embedding_seam,
+)
 
 TEXT_A = "第一条测试材料。"
 TEXT_B = "第二条测试材料。"
 TEXT_C = "第三条测试材料。"
-
-
-def _embedding_response(
-    texts: list[str],
-    *,
-    model: str = EMBEDDING_MODEL_ID,
-    dimensions: int = EMBEDDING_DIMENSIONS,
-    count: int | None = None,
-    empty: bool = False,
-) -> dict[str, Any]:
-    """构造一次默认成功的 /embeddings 响应（可按数量/维度/空向量编排）。"""
-    total = len(texts) if count is None else count
-    return {
-        "model": model,
-        "data": [
-            {
-                "index": index,
-                "embedding": [] if empty else [0.1] * dimensions,
-            }
-            for index in range(total)
-        ],
-        "usage": {"total_tokens": total * 4, "prompt_tokens": total * 4},
-    }
-
-
-class _FakeQwenClient:
-    """记录 embeddings 请求的假客户端；脚本按调用顺序弹出响应或异常。"""
-
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.script: list[dict[str, Any] | Exception] = []
-
-    def embeddings(self, request_body: dict[str, Any]) -> dict[str, Any]:
-        self.calls.append(dict(request_body))
-        if self.script:
-            outcome = self.script.pop(0)
-            if isinstance(outcome, Exception):
-                raise outcome
-            return outcome
-        return _embedding_response(request_body["input"])
-
-
-def _make_seam(
-    database: BridgesDatabase,
-    client: _FakeQwenClient,
-    *,
-    recorder: ModelRunLockRecorder | None = None,
-) -> tuple[QwenEmbeddingPort, ModelRunLockRecorder]:
-    """按生产接线装配 Embedding 接缝：注册矩阵 + 真实 adapter + recorder。"""
-    registry = CapabilityRegistry()
-    register_builtin_capabilities(registry)
-    gateway = ModelGateway(registry)
-    gateway.register_adapter(
-        EMBEDDING_CAPABILITY_NAME,
-        EMBEDDING_CAPABILITY_VERSION,
-        QwenEmbeddingAdapter(client),
-    )
-    lock_recorder = recorder or SqliteModelRunLockRecorder(database)
-    port = QwenEmbeddingPort(
-        api_key=SecretStr("test-global-key"),
-        gateway=gateway,
-        recorder=lock_recorder,
-    )
-    return port, lock_recorder
 
 
 def _write_context(
@@ -161,8 +102,8 @@ def db(tmp_path: Path) -> BridgesDatabase:
 
 
 def test_empty_input_no_remote_call_no_lock(db) -> None:
-    client = _FakeQwenClient()
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    port, recorder = make_embedding_seam(db, client)
 
     vectors = port.embed(
         "acct-1",
@@ -178,8 +119,8 @@ def test_empty_input_no_remote_call_no_lock(db) -> None:
 
 
 def test_single_batch_success_records_one_lock_with_metadata(db) -> None:
-    client = _FakeQwenClient()
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    port, recorder = make_embedding_seam(db, client)
 
     vectors = port.embed(
         "acct-1",
@@ -205,12 +146,13 @@ def test_single_batch_success_records_one_lock_with_metadata(db) -> None:
     assert lock.actual_model_id == EMBEDDING_MODEL_ID
     assert lock.status == ModelCallStatus.SUCCESS
     assert lock.region == "cn-beijing"
-    assert lock.parameters == {
-        "batch_size": 3,
-        "batch_ordinal": 1,
-        "normalization": "l2",
-        "dimensions": EMBEDDING_DIMENSIONS,
-    }
+    assert lock.parameters["batch_size"] == 3
+    assert lock.parameters["batch_ordinal"] == 1
+    assert lock.parameters["normalization"] == "l2"
+    assert lock.parameters["dimensions"] == EMBEDDING_DIMENSIONS
+    assert lock.parameters["provider"] == "qwen"
+    assert isinstance(lock.parameters["latency_seconds"], float)
+    assert lock.parameters["latency_seconds"] >= 0
     assert lock.usage == {"total_tokens": 12, "prompt_tokens": 12}
     assert [ref.operation for ref in lock.business_refs] == ["ingestion_write"]
     assert lock.business_refs[0].object_type == "document"
@@ -222,8 +164,8 @@ def test_single_batch_success_records_one_lock_with_metadata(db) -> None:
 
 
 def test_multi_batch_locks_ordered_by_batch_and_call(db) -> None:
-    client = _FakeQwenClient()
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    port, recorder = make_embedding_seam(db, client)
 
     port.embed(
         "acct-1",
@@ -259,9 +201,9 @@ def test_multi_batch_locks_ordered_by_batch_and_call(db) -> None:
 
 
 def test_retry_with_new_call_ordinal_never_overwrites_old_lock(db) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     client.script = [RateLimitError("too many requests")]
-    port, recorder = _make_seam(db, client)
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as first:
         port.embed(
@@ -292,15 +234,45 @@ def test_retry_with_new_call_ordinal_never_overwrites_old_lock(db) -> None:
     assert locks[1].business_refs[0].attempt_ordinal == 2
 
 
+def test_retry_without_explicit_ordinal_auto_increments(db) -> None:
+    """调用方不跟踪序号时，端口按同 run 已有锁自动递增（真实重调新增序号）。"""
+    client = FakeQwenClient()
+    client.script = [RateLimitError("429")]
+    port, recorder = make_embedding_seam(db, client)
+
+    with pytest.raises(EmbeddingError):
+        port.embed(
+            "acct-1",
+            [TEXT_A],
+            context=_write_context(
+                EmbeddingOperation.INGESTION_WRITE, "run-1", "doc-1"
+            ),
+        )
+    # 重试：仍以默认 call_ordinal=1 调用，序号自动递增为 2
+    vectors = port.embed(
+        "acct-1",
+        [TEXT_A],
+        context=_write_context(
+            EmbeddingOperation.INGESTION_WRITE, "run-1", "doc-1"
+        ),
+    )
+    assert len(vectors) == 1
+
+    locks = recorder.list_locks_by_run("acct-1", "run-1")
+    assert [lock.business_refs[0].attempt_ordinal for lock in locks] == [1, 2]
+    assert locks[0].status == ModelCallStatus.RETRYABLE_FAIL
+    assert locks[1].status == ModelCallStatus.SUCCESS
+
+
 # ---------------------------------------------------------------------------
 # 本地合同校验：供应商成功但响应不合法
 # ---------------------------------------------------------------------------
 
 
 def test_count_mismatch_records_success_lock_then_local_error(db) -> None:
-    client = _FakeQwenClient()
-    client.script = [_embedding_response([TEXT_A, TEXT_B, TEXT_C], count=2)]
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    client.script = [embedding_response([TEXT_A, TEXT_B, TEXT_C], count=2)]
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -319,9 +291,9 @@ def test_count_mismatch_records_success_lock_then_local_error(db) -> None:
 
 
 def test_dimension_mismatch_records_lock_then_local_error(db) -> None:
-    client = _FakeQwenClient()
-    client.script = [_embedding_response([TEXT_A], dimensions=8)]
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    client.script = [embedding_response([TEXT_A], dimensions=8)]
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -338,9 +310,9 @@ def test_dimension_mismatch_records_lock_then_local_error(db) -> None:
 
 
 def test_empty_vector_records_lock_then_local_error(db) -> None:
-    client = _FakeQwenClient()
-    client.script = [_embedding_response([TEXT_A], empty=True)]
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    client.script = [embedding_response([TEXT_A], empty=True)]
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -357,9 +329,9 @@ def test_empty_vector_records_lock_then_local_error(db) -> None:
 
 
 def test_structural_garbage_records_blocked_lock(db) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     client.script = [{"model": EMBEDDING_MODEL_ID, "data": "not-a-list"}]
-    port, recorder = _make_seam(db, client)
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -392,9 +364,9 @@ def test_structural_garbage_records_blocked_lock(db) -> None:
 def test_vendor_failures_record_one_lock_each(
     db, exc, expected_code, expected_status, retryable
 ) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     client.script = [exc]
-    port, recorder = _make_seam(db, client)
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -416,9 +388,9 @@ def test_vendor_failures_record_one_lock_each(
 
 
 def test_actual_model_mismatch_fails_closed(db) -> None:
-    client = _FakeQwenClient()
-    client.script = [_embedding_response([TEXT_A], model="drift-model-9")]
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    client.script = [embedding_response([TEXT_A], model="drift-model-9")]
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -442,8 +414,8 @@ def test_actual_model_mismatch_fails_closed(db) -> None:
 
 
 def test_missing_context_fails_without_remote_call_or_lock(db) -> None:
-    client = _FakeQwenClient()
-    port, recorder = _make_seam(db, client)
+    client = FakeQwenClient()
+    port, recorder = make_embedding_seam(db, client)
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed("acct-1", [TEXT_A], context=None)
@@ -453,7 +425,7 @@ def test_missing_context_fails_without_remote_call_or_lock(db) -> None:
 
 
 def test_missing_gateway_or_recorder_fails_closed(db) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     registry = CapabilityRegistry()
     register_builtin_capabilities(registry)
     gateway = ModelGateway(registry)
@@ -494,8 +466,8 @@ def test_lock_persist_failure_fails_closed(db) -> None:
         def list_locks_by_business_ref(self, account_id, object_type, object_id):  # type: ignore[override]
             return []
 
-    client = _FakeQwenClient()
-    port, _ = _make_seam(db, client, recorder=_BrokenRecorder())
+    client = FakeQwenClient()
+    port, _ = make_embedding_seam(db, client, recorder=_BrokenRecorder())
 
     with pytest.raises(EmbeddingError) as exc_info:
         port.embed(
@@ -517,8 +489,8 @@ def test_locks_survive_restart_and_are_account_scoped(tmp_path: Path) -> None:
     path = tmp_path / "bridges.db"
     database = BridgesDatabase(path)
     database.initialize()
-    client = _FakeQwenClient()
-    port, recorder = _make_seam(database, client)
+    client = FakeQwenClient()
+    port, recorder = make_embedding_seam(database, client)
 
     port.embed(
         "acct-a",
@@ -555,12 +527,12 @@ def test_locks_survive_restart_and_are_account_scoped(tmp_path: Path) -> None:
 
 
 def _make_audited_ingestion(
-    storage: dict[str, Any], client: _FakeQwenClient
+    storage: dict[str, Any], client: FakeQwenClient
 ) -> tuple[IngestionService, ModelRunLockRecorder]:
     """真实接缝（假客户端）驱动的摄取服务；返回 (service, recorder)。"""
     from bridges.ingestion.index import VersionedIndex
 
-    port, recorder = _make_seam(storage["database"], client)
+    port, recorder = make_embedding_seam(storage["database"], client)
     index = VersionedIndex(storage["database"], port)
     service = IngestionService(
         database=storage["database"],
@@ -572,7 +544,7 @@ def _make_audited_ingestion(
 
 
 def test_ingestion_write_records_one_lock_with_document_context(storage) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     service, recorder = _make_audited_ingestion(storage, client)
     account_id = storage["account_a"]
     object_id = storage["repository"].create_object(
@@ -603,7 +575,7 @@ def test_ingestion_write_records_one_lock_with_document_context(storage) -> None
 
 
 def test_rebuild_multiple_batches_record_ordered_locks(storage) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     service, recorder = _make_audited_ingestion(storage, client)
     account_id = storage["account_a"]
     # 20 个独立段落（每段 950 字符 > 目标块长）→ 20 个分块 → 重建按
@@ -645,7 +617,7 @@ def test_rebuild_multiple_batches_record_ordered_locks(storage) -> None:
 
 
 def test_ingestion_remote_failure_degrades_and_keeps_failure_lock(storage) -> None:
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     # 首次向量化失败 → 文档按关键词降级；索引维护重建补向量再次失败
     # （能力未恢复），不写空向量、不伪装向量就绪。
     client.script = [TransientError("upstream timeout")] * 3
@@ -679,7 +651,7 @@ def test_remote_success_then_index_commit_failure_keeps_lock_no_false_switch(
     storage,
 ) -> None:
     """远端成功后、索引提交前失败：成功锁仍存在，版本不假切换。"""
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     service, recorder = _make_audited_ingestion(storage, client)
     account_id = storage["account_a"]
     paragraph = ("第 N 段材料内容，" * 95)[:950]
@@ -698,7 +670,7 @@ def test_remote_success_then_index_commit_failure_keeps_lock_no_false_switch(
     assert first_version is not None
     # 重建编排：首批远端成功、第二批限流失败 → 索引提交前失败
     client.calls.clear()
-    client.script = [_embedding_response([TEXT_A] * 16), RateLimitError("429")]
+    client.script = [embedding_response([TEXT_A] * 16), RateLimitError("429")]
     with pytest.raises(IndexWriteError):
         index.rebuild(account_id, embedding_available=True)
 

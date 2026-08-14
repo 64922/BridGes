@@ -18,7 +18,10 @@ from __future__ import annotations
 from typing import Any
 
 from bridges.ai.adapters import AdapterError, AdapterResult, CapabilityAdapter
-from bridges.ai.ports import EMBEDDING_INVALID_RESPONSE
+from bridges.ai.ports import (
+    EMBEDDING_EMPTY_INPUT,
+    EMBEDDING_INVALID_RESPONSE,
+)
 from bridges.ai.qwen_client import QwenApiClient
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
@@ -45,7 +48,7 @@ class QwenEmbeddingAdapter(CapabilityAdapter):
         texts = payload.get("texts")
         if not isinstance(texts, list) or not texts:
             raise AdapterError(
-                code="embedding_empty_input",
+                code=EMBEDDING_EMPTY_INPUT,
                 message="Embedding request must contain a non-empty texts list.",
                 retryable=False,
             )

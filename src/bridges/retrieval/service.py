@@ -338,7 +338,9 @@ class LayeredRetrievalService:
         search_results: dict[RetrievalSourceLayer, LayerSearchResult] = {}
         vector_note: str | None = None
         query_vector: list[float] | None = None
-        if self._embedding is not None:
+        # Issue 15：清理后为空的查询不向量化（无内容可检索，不发远端请求、
+        # 不建伪锁），本轮按纯关键词路径处理。
+        if self._embedding is not None and cleaned_query:
             try:
                 embedded = self._embedding.embed(
                     account_id,

@@ -282,9 +282,9 @@ class VersionedIndex:
             vectors_written = 0
             for batch_start in range(0, len(rows), EMBED_BATCH_SIZE):
                 batch = rows[batch_start : batch_start + EMBED_BATCH_SIZE]
-                # Issue 15：重建批次携带索引版本对象与批次序号，每个实际
-                # 远端批次一条锁，按批次/调用序号稳定排序（每批一次调用，
-                # 真实重试以更大 call_ordinal 新增锁）。
+                # Issue 15：重建批次携带索引版本对象与批次序号；调用序号由
+                # 端口按同 run 已有锁自动递增（每批一次调用，真实重调新增
+                # 序号，绝不覆盖旧锁）。
                 batch_ordinal = batch_start // EMBED_BATCH_SIZE + 1
                 texts = [str(row["content"]) for row in batch]
                 vectors = self._embed_or_fail(
@@ -297,7 +297,6 @@ class VersionedIndex:
                         object_type="index_version",
                         object_id=version_id,
                         batch_ordinal=batch_ordinal,
-                        call_ordinal=batch_ordinal,
                     ),
                 )
                 with self._database.transaction():

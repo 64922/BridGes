@@ -28,6 +28,10 @@ EMBEDDING_DIMENSION_MISMATCH = "embedding_dimension_mismatch"
 EMBEDDING_EMPTY_VECTOR = "embedding_empty_vector"
 #: 响应结构无法解析（缺少 data/embedding 字段或非数值）。
 EMBEDDING_INVALID_RESPONSE = "embedding_invalid_response"
+#: adapter 收到空输入（端口已短路空输入，仅防御性护栏）。
+EMBEDDING_EMPTY_INPUT = "embedding_empty_input"
+#: 网关失败但无稳定错误码可归类时的兜底码。
+EMBEDDING_CALL_FAILED = "embedding_call_failed"
 
 
 class EmbeddingOperation(StrEnum):
@@ -48,8 +52,8 @@ class EmbeddingContext:
 
     ``operation``/``run_id``/``object_type``/``object_id`` 决定运行锁的
     业务关联；``batch_ordinal`` 是同一业务 run 内的批次序号（多批次
-    重建），``call_ordinal`` 是同一批次的真实重调序号（重试新增序号，
-    不覆盖旧锁）。
+    重建）。``call_ordinal`` 是调用方给出的序号基准（默认 1）：真实重调
+    时端口按同一 run/operation/对象已有锁自动递增序号，绝不覆盖旧锁。
     """
 
     operation: EmbeddingOperation

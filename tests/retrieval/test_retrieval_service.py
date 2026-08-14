@@ -12,7 +12,6 @@ import secrets
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
 
 from bridges.ai.adapters import AuthError
 from bridges.ai.ports import EmbeddingContext
@@ -30,6 +29,7 @@ from bridges.ingestion.embedding import (
 from bridges.ingestion.index import VersionedIndex
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 from bridges.storage.database import BridgesDatabase
+from tests.embedding_audit_support import FakeQwenClient
 from tests.retrieval.conftest import (
     add_material,
     add_user_message,
@@ -585,53 +585,13 @@ def test_citation_detail_cross_message_404(env: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-class _FakeQwenClient:
-    """记录 embeddings 请求的假客户端；``fail_with`` 置位时每次调用失败。"""
-
-    def __init__(self, fail_with: Exception | None = None) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.fail_with = fail_with
-
-    def embeddings(self, request_body: dict[str, Any]) -> dict[str, Any]:
-        self.calls.append(dict(request_body))
-        if self.fail_with is not None:
-            raise self.fail_with
-        count = len(request_body["input"])
-        return {
-            "model": "text-embedding-v4",
-            "data": [
-                {"index": i, "embedding": [0.1] * 1024} for i in range(count)
-            ],
-            "usage": {"total_tokens": count * 4},
-        }
-
-
-def _audited_port(storage: dict[str, Any], client: _FakeQwenClient):
+def _audited_port(storage: dict[str, Any], client: FakeQwenClient):
     """真实接缝：注册矩阵 + QwenEmbeddingAdapter + 统一 recorder。"""
-    from bridges.ai.capability_registry import CapabilityRegistry
-    from bridges.ai.embedding_adapter import QwenEmbeddingAdapter
-    from bridges.ai.model_gateway import ModelGateway
-    from bridges.ai.production import register_builtin_capabilities
     from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
-    from bridges.ingestion.embedding import (
-        EMBEDDING_CAPABILITY_NAME,
-        EMBEDDING_CAPABILITY_VERSION,
-        QwenEmbeddingPort,
-    )
+    from tests.embedding_audit_support import make_embedding_seam
 
-    registry = CapabilityRegistry()
-    register_builtin_capabilities(registry)
-    gateway = ModelGateway(registry)
-    gateway.register_adapter(
-        EMBEDDING_CAPABILITY_NAME,
-        EMBEDDING_CAPABILITY_VERSION,
-        QwenEmbeddingAdapter(client),
-    )
-    recorder = SqliteModelRunLockRecorder(storage["database"])
-    port = QwenEmbeddingPort(
-        api_key=SecretStr("test-global-key"),
-        gateway=gateway,
-        recorder=recorder,
+    port, recorder = make_embedding_seam(
+        storage["database"], client, recorder=SqliteModelRunLockRecorder(storage["database"])
     )
     return port, recorder
 
@@ -646,7 +606,7 @@ def _audited_env(tmp_path) -> dict[str, Any]:
     from tests.retrieval.conftest import make_storage
 
     storage = make_storage(tmp_path)
-    client = _FakeQwenClient()
+    client = FakeQwenClient()
     port, recorder = _audited_port(storage, client)
     ingestion = IngestionService(
         database=storage["database"],
@@ -727,7 +687,7 @@ def test_query_vector_failure_keeps_keyword_results_and_failure_lock(tmp_path) -
         env, account, "材料.txt", "量子计算中的叠加态与纠缠。", layer="knowledge_base"
     )
 
-    client = _FakeQwenClient(fail_with=AuthError("bad key"))
+    client = FakeQwenClient(fail_with=AuthError("bad key"))
     port, recorder = _audited_port(storage, client)
     retrieval = LayeredRetrievalService(
         database=storage["database"],
@@ -782,3 +742,26 @@ def test_no_embedding_port_no_calls_no_locks(env: dict[str, Any]) -> None:
         "SELECT count(*) AS count FROM model_run_locks"
     ).fetchone()
     assert int(rows["count"]) == 0  # 纯本地步骤不建模型锁
+
+
+def test_empty_cleaned_query_does_not_embed(tmp_path) -> None:
+    """清理后为空的查询（纯标点）不向量化：不发远端请求、不建伪锁。"""
+    env = _audited_env(tmp_path)
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(
+        env, account, "材料.txt", "热力学内容。", layer="knowledge_base"
+    )
+    calls_before = len(env["client"].calls)
+
+    round_ = _run(
+        env,
+        account,
+        conversation_id,
+        f"assistant-{secrets.token_urlsafe(8)}",
+        "。。。！？",
+    )
+    assert round_ is not None
+    assert len(env["client"].calls) == calls_before  # 无新增远端调用
+    # 本轮没有向量化调用 → 没有该 round 的查询锁（摄取锁与查询锁互不影响）
+    assert env["recorder"].list_locks_by_run(account, round_.round_id) == []
