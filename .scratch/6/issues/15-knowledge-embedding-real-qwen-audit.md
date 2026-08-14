@@ -107,4 +107,5 @@ python -m pytest tests/ingestion/test_embedding_real_smoke.py -q -p no:cacheprov
   - 调用点分类接线：`ingestion_write`（文档 run/对象）、`index_rebuild`（索引版本 run/对象，多批次按批次顺序）、`retrieval_query`（round 对象，round_id 在向量化前生成，锁与轮次记录同标识）；空输入不发请求不建锁；清理后为空的查询不向量化；真实重调自动递增调用序号，旧失败锁永不覆盖；供应商成功但数量/维度/空向量不符时锁如实记录远端状态，本地另记稳定错误码（`embedding_batch_count_mismatch` 等）。
   - API 与 worker 组合根注入同一 gateway + recorder；静态架构测试扫描 `QwenApiClient.embeddings` 直连（只允许真实 adapter）、`QwenEmbeddingPort` 构造必须携带 `gateway`/`recorder`、`DeterministicEmbeddingPort` 禁入生产接线。
   - 附带修复：重建多批次 `vector_count` 未跨批累加导致 >16 分块重建必然校验失败的既有缺陷。
-  - 验证：新增接缝合同测试 22 项（`tests/ingestion/test_embedding_model_run_locks.py`）、检索查询锁测试 4 项、架构测试 6 项；完整 `tests` 套件失败集与 pristine main 一致（既有环境性失败：摄取 enqueue 410 陈旧测试、同名测试文件收集冲突等）；ruff 通过，mypy 相对 main 无新增错误。
+  - 验证：新增接缝合同测试 22 项（`tests/ingestion/test_embedding_model_run_locks.py`）、检索查询锁测试 4 项、架构测试 6 项；完整 `tests` 套件失败集与 main 一致（既有环境性失败：附件/项目层 enqueue 410 陈旧测试、同名测试文件收集冲突、start 桌面 profile 常驻挂起等）；ruff 通过，mypy 相对 main 无新增错误。
+  - 已 rebase 到合并 Issue 11–14/16 后的 main（`8188860`）：与 Issue 14 的 OCR 接缝共用同一生产组合与 recorder；Issue 14 修复 enqueue 旧测试后，`test_index.py::test_rebuild_failure_keeps_previous_version_serving` 的 `failing_embed` 适配 EmbeddingPort `context` 参数（补锁签名变更的既有测试适配）。
