@@ -21,6 +21,7 @@ from bridges.ai import (
     CapabilityRegistryError,
     StubQwenAdapter,
 )
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.production import build_production_composition
 from bridges.api import (
     auth,
@@ -1199,9 +1200,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
         # SKILL 随应用发布、版本固定、只读来源；编排复用同一模型网关与
         # 附件/检索/联网证据合同，不依赖用户手工上传或 `.env`。
+        # Issue 11：生产组合注入统一模型运行锁 recorder——每次真实 Qwen
+        # 调用（首稿/修订/修复）的锁与业务状态在同一存储原子持久化。
         app.state.humanizer_service = HumanizerService(
             registry=skill_registry,
             gateway=model_gateway,
+            run_lock_recorder=SqliteModelRunLockRecorder(bridges_database),
             attachment_service=getattr(app.state, "chat_attachment_service", None),
             knowledge_base_service=getattr(app.state, "knowledge_base_service", None),
             retrieval_service=getattr(app.state, "retrieval_service", None),

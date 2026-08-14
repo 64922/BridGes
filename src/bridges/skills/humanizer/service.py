@@ -21,20 +21,21 @@ from time import perf_counter
 from typing import Any
 
 from bridges.ai.model_gateway import ModelGateway
+from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.budget import RESULT_FAILED, RunBudget, RunStage
-from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.ai import BusinessRef, ModelCallResult, ModelCallStatus
 from bridges.contracts.evidence_safety import (
     EvidenceRevisionChange,
     EvidenceRevisionMode,
     EvidenceRevisionStatus,
     EvidenceSafeReport,
 )
-from bridges.contracts.expression_task import MaterialSufficiency
 from bridges.contracts.expression_review import (
     ExpressionReviewReport,
     ReviewSeverity,
 )
+from bridges.contracts.expression_task import MaterialSufficiency
 from bridges.contracts.humanizer import (
     ARTICLE_AUDIT_VERSION,
     ARTICLE_PROJECTION_VERSION,
@@ -119,6 +120,27 @@ from bridges.web_search.service import WebSearchService
 
 HUMANIZER_CAPABILITY_NAME = "qwen_structured_output"
 HUMANIZER_CAPABILITY_VERSION = "1"
+
+#: Issue 11：模型运行锁审计失败关闭的稳定错误码。模型调用已发生但锁
+#: 缺失、锁持久化失败或锁与业务运行关联不符时一律失败关闭，绝不把
+#: 无审计证据的真实模型输出提升为完成态。
+HUMANIZER_MISSING_RUN_LOCK = "humanizer_missing_run_lock"
+HUMANIZER_LOCK_PERSIST_FAILED = "humanizer_lock_persist_failed"
+HUMANIZER_LOCK_BUSINESS_MISMATCH = "humanizer_lock_business_mismatch"
+_LOCK_FAILURE_CODES = frozenset(
+    {
+        HUMANIZER_MISSING_RUN_LOCK,
+        HUMANIZER_LOCK_PERSIST_FAILED,
+        HUMANIZER_LOCK_BUSINESS_MISMATCH,
+    }
+)
+
+#: Issue 11：Humanizer 业务 run 内的稳定调用阶段（BusinessRef.operation）。
+HUMANIZER_STAGE_DRAFT = "humanizer_draft"
+HUMANIZER_STAGE_REVISION = "humanizer_revision"
+#: 写作调用序号：首稿 1、修订/修复 2（与写作调用预算一致）。
+DRAFT_CALL_ORDINAL = 1
+REVISION_CALL_ORDINAL = 2
 
 #: Issue 02 能力开关：关闭时新任务恢复旧流程（无来源账本与保真检查），
 #: 投影不携带保真字段，不得把旧流程标记为新硬门通过（灰度与回滚用）。
@@ -259,6 +281,23 @@ class _RevisionOutcome:
     writing_call_count: int
 
 
+@dataclass
+class _LockEvidence:
+    """一次 Humanizer 业务 run 的模型运行锁证据（Issue 11）。
+
+    只保存锁 ID 列表与业务 run 标识，不复制 prompt、正文或模型完整响应；
+    完整调用集合由统一锁仓库按 ``account_id + run_id`` 查询。首条锁即
+    主要锁（首稿锁），终态投影只引用它，不得覆盖或删除任何已持久化锁。
+    """
+
+    run_id: str
+    lock_ids: list[str] = field(default_factory=list)
+
+    @property
+    def primary_lock_id(self) -> str | None:
+        return self.lock_ids[0] if self.lock_ids else None
+
+
 class HumanizerService:
     """bridges-humanizer 的两条路径编排。"""
 
@@ -266,6 +305,7 @@ class HumanizerService:
         self,
         registry: SkillRegistry,
         gateway: ModelGateway,
+        run_lock_recorder: ModelRunLockRecorder | None = None,
         attachment_service: ChatAttachmentService | None = None,
         knowledge_base_service: KnowledgeBaseService | None = None,
         retrieval_service: LayeredRetrievalService | None = None,
@@ -274,6 +314,10 @@ class HumanizerService:
     ) -> None:
         self._registry = registry
         self._gateway = gateway
+        #: Issue 11：统一模型运行锁记录接缝（业务域只依赖该端口）。recorder
+        #: 未配置时跳过持久化（测试替身合同），生产组合必须注入真实实现；
+        #: 配置后写入失败/缺锁/业务关联不符一律失败关闭。
+        self._run_lock_recorder = run_lock_recorder
         self._attachments = attachment_service
         self._knowledge_base = knowledge_base_service
         self._retrieval = retrieval_service
@@ -335,6 +379,8 @@ class HumanizerService:
         ``stop_event`` 供修订启动前检查用户停止信号。
         """
         skill_version = self.resolve_skill(skill_input)
+        # Issue 11：本次业务 run 的模型锁证据（run 标识 + 已记录锁 ID）。
+        lock_evidence = _LockEvidence(run_id=run_context.run_id)
         if skill_input.expression_contract is not None:
             yield from self._run_expression_task(
                 account_id,
@@ -350,6 +396,7 @@ class HumanizerService:
                 writing_call_count=writing_call_count,
                 recovered_draft=recovered_draft,
                 stop_event=stop_event,
+                lock_evidence=lock_evidence,
             )
             return
         contract = skill_input.contract
@@ -436,6 +483,7 @@ class HumanizerService:
                 locks,
                 references,
                 run_context,
+                lock_evidence=lock_evidence,
             )
             writing_call_count += 1
             progress.append("按体裁规则生成")
@@ -494,6 +542,7 @@ class HumanizerService:
                         budget,
                         fact_lock_source,
                         writing_call_count,
+                        lock_evidence=lock_evidence,
                     )
             final_result = self._finalize_result(
                 account_id,
@@ -503,6 +552,7 @@ class HumanizerService:
                 skill_version,
                 checkpoint,
                 repair_attempts,
+                lock_evidence=lock_evidence,
             )
             final_result = final_result.model_copy(
                 update={"writing_call_count": writing_call_count}
@@ -536,6 +586,7 @@ class HumanizerService:
                 process_steps=progress,
                 state=state,
                 writing_call_count=writing_call_count,
+                lock_evidence=lock_evidence,
             )
             yield process(
                 state,
@@ -569,6 +620,7 @@ class HumanizerService:
         writing_call_count: int = 0,
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
+        lock_evidence: _LockEvidence | None = None,
     ) -> Iterator[HumanizerRunEvent]:
         """带版本化表达任务契约的新文章流程。
 
@@ -674,6 +726,7 @@ class HumanizerService:
                     run_context,
                     draft.system_prompt,
                     source_text,
+                    lock_evidence=lock_evidence,
                 )
                 writing_call_count += 1
             progress.append("起草正文")
@@ -723,6 +776,9 @@ class HumanizerService:
                             run_context,
                             revision_prompt,
                             final_text,
+                            lock_evidence=lock_evidence,
+                            operation=HUMANIZER_STAGE_REVISION,
+                            attempt_ordinal=REVISION_CALL_ORDINAL,
                         )
                         revision_fidelity = run_fidelity_check(
                             ledger,
@@ -730,7 +786,12 @@ class HumanizerService:
                             contract_path=contract.path,
                             allow_assumptions=contract.allow_assumptions,
                         )
-                    except (FidelityCheckError, HumanizerError):
+                    except (FidelityCheckError, HumanizerError) as exc:
+                        # Issue 11：模型运行锁审计失败关闭——锁缺失/持久化
+                        # 失败/业务关联不符必须让任务整体失败，不得把无审计
+                        # 的修订输出静默降级为「保持原文」。
+                        if isinstance(exc, HumanizerError) and exc.code in _LOCK_FAILURE_CODES:
+                            raise
                         # 修订调用或硬门失败：保持首稿，稳定返回待用户确认；
                         # 账本版本/哈希等系统问题由最终保真硬门失败关闭
                         # 兜底（同一账本，不会静默放行）。调用失败不计数。
@@ -812,6 +873,7 @@ class HumanizerService:
                 stop_event,
                 writing_call_count,
                 progress,
+                lock_evidence=lock_evidence,
             )
             writing_call_count = outcome.writing_call_count
 
@@ -837,6 +899,7 @@ class HumanizerService:
                 revision_audit=outcome.audit,
                 contract_check=outcome.checks.contract_check,
                 evidence_report=evidence_report,
+                lock_evidence=lock_evidence,
             )
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.RESULT,
@@ -864,6 +927,7 @@ class HumanizerService:
                 process_steps=progress,
                 state=state,
                 writing_call_count=writing_call_count,
+                lock_evidence=lock_evidence,
             )
             yield process(
                 state,
@@ -901,10 +965,16 @@ class HumanizerService:
         run_context: Any,
         system_prompt: str,
         source_text: str,
+        lock_evidence: _LockEvidence | None = None,
+        operation: str = HUMANIZER_STAGE_DRAFT,
+        attempt_ordinal: int = DRAFT_CALL_ORDINAL,
     ) -> tuple[str, int]:
         """一次正文生成调用：输出合同只有候选正文（不要求模型生产审计元数据）。
 
-        返回（正文, 首稿延迟毫秒）供观测记录，不记录正文内容。
+        返回（正文, 首稿延迟毫秒）供观测记录，不记录正文内容。Issue 11：
+        网关返回的运行锁在任何状态判断/输出解析之前立即持久化——成功、
+        降级、可重试失败、永久失败、空输出与本地复核失败都保留真实调用
+        证据；证据安全修订复用本方法并显式传修订阶段标识。
         """
         payload = {
             "messages": [
@@ -923,6 +993,16 @@ class HumanizerService:
             payload,
         )
         latency_ms = int((perf_counter() - started) * 1000)
+        self._record_model_run_lock(
+            call_result,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            run_context=run_context,
+            operation=operation,
+            attempt_ordinal=attempt_ordinal,
+            lock_evidence=lock_evidence,
+        )
         if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
             raise HumanizerError(
                 call_result.error_code or "humanizer_generation_failed",
@@ -1017,6 +1097,7 @@ class HumanizerService:
         stop_event: Any | None,
         writing_call_count: int,
         progress: list[str],
+        lock_evidence: _LockEvidence | None = None,
     ) -> Iterator[_RevisionOutcome]:
         """Issue 05 触发裁决与一次定向修订（生成器，最后返回执行结果）。
 
@@ -1094,8 +1175,14 @@ class HumanizerService:
                 run_context,
                 prompt.system_prompt,
                 source_text,
+                lock_evidence=lock_evidence,
             )
         except HumanizerError as exc:
+            # Issue 11：锁审计失败关闭——缺锁/持久化失败/业务关联不符必须
+            # 让任务整体失败，不得把「修订已发生但无审计证据」静默降级为
+            # 交付首稿；真实模型错误仍按既有语义跳过修订并交付首稿。
+            if exc.code in _LOCK_FAILURE_CODES:
+                raise
             audit.skipped_reason = f"model_error:{exc.code}"
             return _RevisionOutcome(checks, audit, writing_call_count)
         writing_call_count += 1
@@ -1151,11 +1238,13 @@ class HumanizerService:
         run_context: Any,
         system_prompt: str,
         source_text: str,
+        lock_evidence: _LockEvidence | None = None,
     ) -> tuple[str, int | None, int]:
         """一次定向修订调用：输出合同只有完整候选正文（Issue 05）。
 
         返回（正文, 额外 token, 修订延迟毫秒）。token 来自调用 usage
-        （缺失为 None），正文与载荷不进普通日志。
+        （缺失为 None），正文与载荷不进普通日志。Issue 11：网关返回的
+        运行锁在状态判断之前立即持久化，修订调用失败时同样保留失败锁。
         """
         payload = {
             "messages": [
@@ -1178,6 +1267,16 @@ class HumanizerService:
             payload,
         )
         latency_ms = int((perf_counter() - started) * 1000)
+        self._record_model_run_lock(
+            call_result,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            run_context=run_context,
+            operation=HUMANIZER_STAGE_REVISION,
+            attempt_ordinal=REVISION_CALL_ORDINAL,
+            lock_evidence=lock_evidence,
+        )
         if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
             raise HumanizerError(
                 call_result.error_code or "humanizer_revision_failed",
@@ -1589,6 +1688,7 @@ class HumanizerService:
         revision_audit: HumanizerRevisionAudit | None = None,
         contract_check: FactLockCheckResult | None = None,
         evidence_report: EvidenceSafeReport | None = None,
+        lock_evidence: _LockEvidence | None = None,
     ) -> HumanizerResultProjection:
         """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。
 
@@ -1732,6 +1832,12 @@ class HumanizerService:
                 ledger=ledger,
             ),
             created_at=datetime.now(UTC),
+            # Issue 11：投影只保存主要锁引用与业务 run 引用；完整调用集合
+            # 由统一锁仓库按 account_id + model_run_id 查询，不复制正文。
+            run_lock_id=(
+                lock_evidence.primary_lock_id if lock_evidence is not None else None
+            ),
+            model_run_id=lock_evidence.run_id if lock_evidence is not None else None,
         )
         self._audit(
             account_id,
@@ -1752,6 +1858,7 @@ class HumanizerService:
             projection_version=(
                 result.article.projection_version if result.article else None
             ),
+            lock_evidence=lock_evidence,
         )
         return result
 
@@ -2054,6 +2161,86 @@ class HumanizerService:
     # 模型调用
     # ------------------------------------------------------------------
 
+    def _record_model_run_lock(
+        self,
+        call_result: ModelCallResult,
+        *,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        run_context: Any,
+        operation: str,
+        attempt_ordinal: int,
+        lock_evidence: _LockEvidence | None,
+    ) -> None:
+        """统一记录接缝：每次 ``ModelGateway.invoke`` 返回的锁立即持久化。
+
+        Issue 11：Humanizer 服务内全部 ``qwen_structured_output`` 调用点
+        （首稿、证据安全修订、裁决定向修订、软门修复与旧兼容路径）都经由
+        本方法落锁。成功、降级、可重试失败、永久失败、空输出与本地复核
+        失败都必须保留模型调用锁——锁代表真实发生过的供应商调用，与业务
+        终态互相独立。
+
+        - recorder 未配置（测试替身合同）时跳过持久化；
+        - 网关返回结果缺锁 → ``humanizer_missing_run_lock`` 失败关闭；
+        - 锁的账户/run 与业务运行不符 → ``humanizer_lock_business_mismatch``
+          失败关闭（跨账户隔离，不写错账）；
+        - 持久化异常 → ``humanizer_lock_persist_failed`` 失败关闭，绝不把
+          无审计证据的模型输出提升为完成态。
+
+        每次真实调用以 lock_id 幂等写入（同一 lock_id + 相同内容重复投递
+        只保留一行）；恢复执行发起的新调用以网关生成的新 lock_id 保存为
+        新锁，不覆盖旧锁。锁与业务关联（助手消息为主、会话为辅）在同一
+        事务内提交，不复制 prompt、正文或模型完整响应。
+        """
+        if self._run_lock_recorder is None:
+            return
+        lock = call_result.lock
+        if lock is None:
+            raise HumanizerError(
+                HUMANIZER_MISSING_RUN_LOCK,
+                "模型调用已发生但网关未返回运行锁，为保持审计闭环已停止交付。",
+                retryable=True,
+            )
+        if lock.account_id != account_id or lock.run_id != run_context.run_id:
+            raise HumanizerError(
+                HUMANIZER_LOCK_BUSINESS_MISMATCH,
+                "模型运行锁与业务运行关联不一致，已停止交付。",
+                retryable=False,
+            )
+        requests = [
+            RecordRequest(
+                lock=lock,
+                business_ref=BusinessRef(
+                    object_type="message",
+                    object_id=assistant_message_id,
+                    operation=operation,
+                    attempt_ordinal=attempt_ordinal,
+                    is_primary=True,
+                ),
+            ),
+            RecordRequest(
+                lock=lock,
+                business_ref=BusinessRef(
+                    object_type="conversation",
+                    object_id=conversation_id,
+                    operation=operation,
+                    attempt_ordinal=attempt_ordinal,
+                    is_primary=False,
+                ),
+            ),
+        ]
+        try:
+            self._run_lock_recorder.record_many(requests)
+        except Exception as exc:  # noqa: BLE001 - 记录失败按审计合同失败关闭
+            raise HumanizerError(
+                HUMANIZER_LOCK_PERSIST_FAILED,
+                "模型运行锁持久化失败，已停止交付，请重试。",
+                retryable=True,
+            ) from exc
+        if lock_evidence is not None:
+            lock_evidence.lock_ids.append(lock.lock_id)
+
     def _invoke_model(
         self,
         account_id: str,
@@ -2067,6 +2254,9 @@ class HumanizerService:
         references: list[HumanizerReference],
         run_context: Any,
         repair_instructions: list[str] | None = None,
+        lock_evidence: _LockEvidence | None = None,
+        operation: str = HUMANIZER_STAGE_DRAFT,
+        attempt_ordinal: int = DRAFT_CALL_ORDINAL,
     ) -> Any:
         contract = skill_input.contract
         genre_set = genre_rule_set(contract.genre)
@@ -2097,6 +2287,18 @@ class HumanizerService:
             HUMANIZER_CAPABILITY_VERSION,
             run_context,
             payload,
+        )
+        # Issue 11：兼容路径与首稿/修订走同一记录接缝——旧显式 SKILL 的
+        # 首稿与软门定向修复都不能留下无锁入口。
+        self._record_model_run_lock(
+            call_result,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            run_context=run_context,
+            operation=operation,
+            attempt_ordinal=attempt_ordinal,
+            lock_evidence=lock_evidence,
         )
         if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
             raise HumanizerError(
@@ -2367,6 +2569,7 @@ class HumanizerService:
         budget: RunBudget | None,
         fact_lock_source: str,
         writing_call_count: int,
+        lock_evidence: _LockEvidence | None = None,
     ) -> tuple[int, int, _ReviewCheckpoint]:
         """软门定向修复：至多一次、受总预算与写作调用上限约束；失败交付原草稿。
 
@@ -2399,6 +2602,11 @@ class HumanizerService:
                 checkpoint.references,
                 run_context,
                 repair_instructions=failed_rules,
+                # Issue 11：软门定向修复与首稿共享写作调用预算（首稿 1 +
+                # 修复 1 = 2），锁阶段标识为修订、调用序号 2。
+                lock_evidence=lock_evidence,
+                operation=HUMANIZER_STAGE_REVISION,
+                attempt_ordinal=REVISION_CALL_ORDINAL,
             )
             if entered:
                 budget.exit(
@@ -2406,7 +2614,11 @@ class HumanizerService:
                     category="qwen_structured_output",
                     count=1,
                 )
-        except HumanizerError:
+        except HumanizerError as exc:
+            # Issue 11：锁审计失败关闭——缺锁/持久化失败/业务关联不符必须
+            # 让任务整体失败，不得把无审计的修复输出静默降级为交付原草稿。
+            if exc.code in _LOCK_FAILURE_CODES:
+                raise
             if entered:
                 budget.exit(RunStage.REPAIR, result=RESULT_FAILED, count=1)
             return 1, writing_call_count, checkpoint
@@ -2444,6 +2656,7 @@ class HumanizerService:
         skill_version: str,
         checkpoint: _ReviewCheckpoint,
         repair_attempts: int,
+        lock_evidence: _LockEvidence | None = None,
     ) -> HumanizerResultProjection:
         """终态判定与结果投影：硬门停止交付；软门交付正文与具体警告。
 
@@ -2560,6 +2773,12 @@ class HumanizerService:
                 fidelity_check=fidelity_check,
                 fact_lock_check=fact_lock_check,
             ),
+            # Issue 11：投影只保存主要锁引用与业务 run 引用；完整调用集合
+            # 由统一锁仓库按 account_id + model_run_id 查询，不复制正文。
+            run_lock_id=(
+                lock_evidence.primary_lock_id if lock_evidence is not None else None
+            ),
+            model_run_id=lock_evidence.run_id if lock_evidence is not None else None,
             created_at=datetime.now(UTC),
         )
         self._audit(
@@ -2577,6 +2796,7 @@ class HumanizerService:
             projection_version=(
                 result.article.projection_version if result.article else None
             ),
+            lock_evidence=lock_evidence,
         )
         return result
 
@@ -2740,6 +2960,7 @@ class HumanizerService:
         process_steps: list[str],
         state: HumanizerProcessState,
         writing_call_count: int | None = None,
+        lock_evidence: _LockEvidence | None = None,
     ) -> HumanizerResultProjection:
         self._audit(
             account_id,
@@ -2752,6 +2973,7 @@ class HumanizerService:
             None,
             expression_contract=skill_input.expression_contract,
             projection_version=ARTICLE_PROJECTION_VERSION,
+            lock_evidence=lock_evidence,
         )
         return HumanizerResultProjection(
             task_id=assistant_message_id,
@@ -2775,6 +2997,11 @@ class HumanizerService:
                 output=None,
                 error_code=error_code,
             ),
+            # Issue 11：失败投影同样保存主要锁引用与业务 run 引用。
+            run_lock_id=(
+                lock_evidence.primary_lock_id if lock_evidence is not None else None
+            ),
+            model_run_id=lock_evidence.run_id if lock_evidence is not None else None,
             created_at=datetime.now(UTC),
         )
 
@@ -2797,6 +3024,7 @@ class HumanizerService:
         writing_call_count: int | None = None,
         evidence_safe: EvidenceSafeReport | None = None,
         projection_version: str | None = None,
+        lock_evidence: _LockEvidence | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -3028,6 +3256,16 @@ class HumanizerService:
                     ),
                     # Issue 08：结果投影版本（前端据此渲染正文优先交付界面）
                     "projection_version": projection_version,
+                    # Issue 11：模型运行锁审计证据——只记录 run 标识与锁 ID
+                    # 这类不可逆安全标识，绝不记录 prompt/正文/完整响应。
+                    "model_run_id": (
+                        lock_evidence.run_id if lock_evidence is not None else None
+                    ),
+                    "run_lock_ids": (
+                        list(lock_evidence.lock_ids)
+                        if lock_evidence is not None
+                        else None
+                    ),
                 },
             )
 
@@ -3161,4 +3399,9 @@ __all__ = [
     "HumanizerError",
     "HUMANIZER_CAPABILITY_NAME",
     "HUMANIZER_CAPABILITY_VERSION",
+    "HUMANIZER_STAGE_DRAFT",
+    "HUMANIZER_STAGE_REVISION",
+    "HUMANIZER_MISSING_RUN_LOCK",
+    "HUMANIZER_LOCK_PERSIST_FAILED",
+    "HUMANIZER_LOCK_BUSINESS_MISMATCH",
 ]
