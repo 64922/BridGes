@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
 
+from bridges.chat.repository import ConversationRepository
 from bridges.storage import (
     SCHEMA_VERSION,
     BridgesDatabase,
@@ -14,7 +16,7 @@ from bridges.storage import (
     EncryptedFileObjectStore,
     StorageError,
 )
-from bridges.storage.database import MIGRATIONS
+from bridges.storage.database import MIGRATIONS, REQUIRED_INDEXES, REQUIRED_TABLES
 
 
 def _schema_version(database: Path) -> int:
@@ -398,4 +400,176 @@ def test_upgrade_backfills_legacy_claimable_rows_into_task_claims(
     assert ("deletion", "deletion:del-1") in keys
     # 已耗尽的 error 文档不回填（等用户手动重试时重新入队）。
     assert not any(key == "ingestion:acc-1:obj-2" for _, key in keys)
+    database.close()
+
+
+# ---------------------------------------------------------------------------
+# Issue 06：启动契约——schema 完整性、幂等、并发与损坏库失败关闭
+# ---------------------------------------------------------------------------
+
+
+def _object_names(path: Path) -> tuple[set[str], set[str]]:
+    with sqlite3.connect(path) as connection:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        indexes = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+    return tables, indexes
+
+
+def test_initialize_from_empty_creates_all_core_tables_and_indexes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bridges.db"
+    database = BridgesDatabase(path)
+    assert database.initialize() == SCHEMA_VERSION
+
+    tables, indexes = _object_names(path)
+    assert REQUIRED_TABLES <= tables
+    assert REQUIRED_INDEXES <= indexes
+    assert database.schema_version == SCHEMA_VERSION
+    assert database.schema_ready is True
+    database.close()
+
+
+def test_initialize_is_idempotent_for_current_version(tmp_path: Path) -> None:
+    path = tmp_path / "bridges.db"
+    database = BridgesDatabase(path)
+    database.initialize()
+
+    # 预置账户与对象，确认重复初始化不破坏已有数据。
+    repository = BridgesObjectRepository(
+        database,
+        EncryptedFileObjectStore(tmp_path / "objects", encryption_key="test-key"),
+    )
+    account_id = repository.register_account("idempotent@example.com")
+
+    for _ in range(3):
+        assert database.initialize() == SCHEMA_VERSION
+
+    tables, indexes = _object_names(path)
+    assert REQUIRED_TABLES <= tables
+    assert REQUIRED_INDEXES <= indexes
+
+    row = database.connection.execute(
+        "SELECT account_id FROM accounts WHERE account_id = ?", (account_id,)
+    ).fetchone()
+    assert row is not None and str(row["account_id"]) == account_id
+    database.close()
+
+
+def test_initialize_from_old_schema_migrates_and_preserves_data(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bridges.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO schema_meta(key, value) VALUES ('version', '32')"
+        )
+        for version in range(1, 33):
+            for statement in MIGRATIONS[version]:
+                connection.execute(statement)
+        connection.execute(
+            "INSERT INTO accounts(account_id, email, created_at)"
+            " VALUES ('legacy-account', 'legacy@example.com', '2026-08-01T00:00:00Z')"
+        )
+        connection.execute(
+            "INSERT INTO conversations"
+            " (conversation_id, account_id, title, mode, created_at, updated_at)"
+            " VALUES ('legacy-conversation', 'legacy-account', '旧会话', 'companion',"
+            " '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z')"
+        )
+        connection.commit()
+
+    database = BridgesDatabase(path)
+    assert database.initialize() == SCHEMA_VERSION
+
+    tables, indexes = _object_names(path)
+    assert "learning_project_migration_conversations" in tables
+    assert REQUIRED_INDEXES <= indexes
+
+    conversations = ConversationRepository(database)
+    conversation = conversations.get_conversation(
+        "legacy-account", "legacy-conversation"
+    )
+    assert conversation is not None
+    assert conversation.title == "旧会话"
+    # AC2：旧库迁移后会话列表同样可读（列表与详情都经过迁移审计表查询）。
+    listed = conversations.list_conversations("legacy-account")
+    assert [item.conversation_id for item in listed] == ["legacy-conversation"]
+    database.close()
+
+
+def test_initialize_fails_when_metadata_current_but_core_table_missing(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bridges.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        for version in range(1, SCHEMA_VERSION + 1):
+            for statement in MIGRATIONS[version]:
+                connection.execute(statement)
+        # 模拟损坏库：metadata 声称当前版本，但核心迁移审计表被手动删除。
+        connection.execute("DROP TABLE learning_project_migration_conversations")
+        connection.execute(
+            f"INSERT INTO schema_meta(key, value) VALUES ('version', '{SCHEMA_VERSION}')"
+        )
+        connection.commit()
+
+    database = BridgesDatabase(path)
+    with pytest.raises(StorageError) as exc_info:
+        database.initialize()
+    message = str(exc_info.value)
+    assert "database_schema_integrity" in message
+    assert "learning_project_migration_conversations" in message
+    assert database.schema_ready is False
+    database.close()
+
+
+def test_concurrent_initialize_is_serial_and_consistent(tmp_path: Path) -> None:
+    path = tmp_path / "bridges.db"
+    barrier = threading.Barrier(2)
+    results: list[int | BaseException] = []
+    errors: list[BaseException] = []
+
+    def initializer() -> None:
+        barrier.wait(timeout=5)
+        try:
+            database = BridgesDatabase(path)
+            results.append(database.initialize())
+            database.close()
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=initializer) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors, errors
+    assert all(version == SCHEMA_VERSION for version in results)
+
+    database = BridgesDatabase(path)
+    assert database.schema_ready is True
+    tables, indexes = _object_names(path)
+    assert REQUIRED_TABLES <= tables
+    assert REQUIRED_INDEXES <= indexes
+    version_rows = database.connection.execute(
+        "SELECT value FROM schema_meta WHERE key = 'version'"
+    ).fetchall()
+    assert len(version_rows) == 1
     database.close()

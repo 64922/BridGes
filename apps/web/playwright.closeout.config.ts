@@ -126,7 +126,8 @@ export default defineConfig({
   webServer: [
     {
       command: `"${PYTHON}" -m bridges.cli.main api --host 127.0.0.1 --port ${PORTS.api}`,
-      url: `http://127.0.0.1:${PORTS.api}/health`,
+      // Issue 06：必须等待 schema-ready 健康检查，保证数据库迁移完成后才开始测试。
+      url: `http://127.0.0.1:${PORTS.api}/health/ready`,
       reuseExistingServer: false,
       timeout: 60_000,
       env: {
@@ -136,6 +137,7 @@ export default defineConfig({
         BRIDGES_CLOSEOUT_FIXTURES: "true",
         BRIDGES_API_HOST: "127.0.0.1",
         BRIDGES_API_PORT: String(PORTS.api),
+        BRIDGES_RUN_ID: RUN_ID,
         // Issue 03：与全局 playwright.config.ts 对齐——收尾真实链路同样
         // 需要后台生成执行器（Issue 02 迁移后 test 环境默认不自动启动）。
         BRIDGES_GENERATION_EXECUTOR: "1",

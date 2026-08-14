@@ -1,10 +1,15 @@
 """FastAPI application for the BridGes API."""
 
+import hashlib
+import logging
 import os
 import threading
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Annotated, Any, cast
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
@@ -201,6 +206,8 @@ from bridges.skills import create_builtin_registry
 from bridges.skills.humanizer.service import HumanizerService
 from bridges.speech.service import SpeechService
 from bridges.storage import (
+    SCHEMA_INTEGRITY_ERROR_CODE,
+    SCHEMA_VERSION,
     BridgesDatabase,
     BridgesObjectRepository,
     EncryptedFileObjectStore,
@@ -636,12 +643,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     ):
         app.state.qwen_key_error = GLOBAL_QWEN_KEY_GUIDANCE
 
-    # Issue 05: 配置数据库时以同一数据目录初始化版本化 bridges.db 与账户隔离
+    # Issue 05/06: 配置数据库时以同一数据目录初始化版本化 bridges.db 与账户隔离
     # 加密对象库（对象目录为数据库同目录下的 objects/）。首次启动事务化创建
     # 带版本记录的 bridges.db；失败与持久化错误同样进入 503 拒绝路径，绝不
     # 静默降级。对象加密密钥派生自 BRIDGES_SECRET_KEY，任何位置不落盘密钥。
+    # Issue 06: 构造任何会话 repository 前必须完成 initialize() 并校验 schema
+    # 版本与核心契约表/索引；失败关闭并报告 database_schema_integrity。
     app.state.bridges_database = None
     app.state.object_repository = None
+    app.state.database_path_fingerprint = None
     if (
         isinstance(state_store, SqliteStateStore)
         and state_store.path != ":memory:"
@@ -651,11 +661,49 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         if settings is not None and settings.secret_key is not None:
             secret_value = settings.secret_key.get_secret_value()
             if secret_value:
+                database_path = Path(state_store.path)
+                run_id = os.environ.get("BRIDGES_RUN_ID", "")
+                path_fingerprint = (
+                    hashlib.sha256(str(database_path).encode("utf-8")).hexdigest()[:8]
+                )
+                app.state.database_path_fingerprint = path_fingerprint
                 try:
-                    database = BridgesDatabase(Path(state_store.path))
+                    database = BridgesDatabase(database_path)
+                    logger.info(
+                        "bridges_database_migration_start",
+                        extra={
+                            "run_id": run_id,
+                            "path_fingerprint": path_fingerprint,
+                            "expected_schema_version": SCHEMA_VERSION,
+                        },
+                    )
+                    migrate_start = time.monotonic()
+                    initialized_version = database.initialize()
+                    migrate_duration_ms = int(
+                        (time.monotonic() - migrate_start) * 1000
+                    )
+                    # Issue 06 启动契约：调用方校验返回版本等于当前支持版本，
+                    # 不能只依赖 initialize() 内部路径（纵深防御）。
+                    if initialized_version != SCHEMA_VERSION:
+                        raise StorageError(
+                            "数据库 schema 版本校验失败："
+                            f"initialize 返回 {initialized_version}，"
+                            f"当前程序支持 {SCHEMA_VERSION}。"
+                        )
+                    logger.info(
+                        "bridges_database_initialized",
+                        extra={
+                            "run_id": run_id,
+                            "path_fingerprint": path_fingerprint,
+                            "schema_version": initialized_version,
+                            "expected_schema_version": SCHEMA_VERSION,
+                            "schema_ready": database.schema_ready,
+                            "migrate_duration_ms": migrate_duration_ms,
+                        },
+                    )
                     app.state.bridges_database = database
                     object_store = EncryptedFileObjectStore(
-                        Path(state_store.path).parent / "objects",
+                        database_path.parent / "objects",
                         encryption_key=settings.secret_key,
                     )
                     app.state.object_store = object_store
@@ -664,6 +712,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                         object_store,
                     )
                 except StorageError as exc:
+                    logger.error(
+                        "bridges_database_initialization_failed",
+                        extra={
+                            "run_id": run_id,
+                            "path_fingerprint": path_fingerprint,
+                            "error_code": SCHEMA_INTEGRITY_ERROR_CODE
+                            if SCHEMA_INTEGRITY_ERROR_CODE in str(exc)
+                            else "database_initialization_failed",
+                        },
+                    )
                     app.state.persistence_error = str(exc)
 
     # Issue 39 AC2：CSRF 来源校验（在所有业务路由之前、持久化拒绝之后执行）。
@@ -687,6 +745,10 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     def app_health_projection() -> HealthProjection:
         """将持久化配置纳入统一就绪检查，避免静默降级到内存。"""
         projection = build_health_projection(service="api")
+        projection.extensions["run_id"] = os.environ.get("BRIDGES_RUN_ID", "")
+        projection.extensions["database_path_fingerprint"] = getattr(
+            app.state, "database_path_fingerprint", None
+        )
         persistence_error = getattr(app.state, "persistence_error", None)
         if persistence_error:
             projection.dependencies.append(
@@ -751,27 +813,49 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     )
                 )
                 projection.degraded = HealthStatus.FAIL
-        # Issue 05: 配置了版本化数据库时，把 bridges.db 健康度作为可选依赖
-        # 上报；数据库不可查询时进入降级状态而非静默成功。
+        # Issue 05/06: 配置了版本化数据库时，把 bridges.db schema 就绪状态
+        # 作为必需依赖上报；schema 版本不正确或核心表/索引缺失时服务必须
+        # FAIL，阻止 Playwright 在数据库未就绪时开始测试。
+        # extensions 只暴露脱敏遥测（版本号、对象名清单），绝不返回表内容
+        # 或任何账户数据；E2E 契约测试据此证明后端使用了本 run 的数据库。
         bridges_database = getattr(app.state, "bridges_database", None)
         if bridges_database is not None:
-            database_healthy = bridges_database.health_check()
+            schema_version = 0
+            schema_ready = False
+            schema_ready_message: str | None = None
+            schema_tables: list[str] = []
+            try:
+                schema_version = bridges_database.schema_version
+                schema_ready = bridges_database.schema_ready
+                schema_tables = bridges_database.schema_table_names()
+                if not schema_ready:
+                    # 拿到具体缺失对象信息，避免「version 已等于 expected 却
+                    # 报未就绪」的自相矛盾消息（verify 会抛稳定错误码）。
+                    bridges_database.verify_schema_integrity()
+            except StorageError as exc:
+                schema_ready = False
+                schema_ready_message = str(exc)
+            if not schema_ready and schema_ready_message is None:
+                schema_ready_message = (
+                    f"数据库 schema 未就绪："
+                    f"version={schema_version}，"
+                    f"expected={SCHEMA_VERSION}。"
+                )
+            projection.extensions["database_schema_version"] = schema_version
+            projection.extensions["expected_database_schema_version"] = SCHEMA_VERSION
+            projection.extensions["database_schema_tables"] = schema_tables
             projection.dependencies.append(
                 DependencyHealth(
-                    name="bridges_storage",
+                    name="database_schema_ready",
                     status=(
-                        HealthStatus.PASS if database_healthy else HealthStatus.FAIL
+                        HealthStatus.PASS if schema_ready else HealthStatus.FAIL
                     ),
-                    required=False,
-                    message=(
-                        None
-                        if database_healthy
-                        else "bridges.db 当前不可查询，请检查数据目录。"
-                    ),
+                    required=True,
+                    message=schema_ready_message,
                 )
             )
-            if not database_healthy:
-                projection.degraded = HealthStatus.FAIL
+            if not schema_ready:
+                projection.ready = HealthStatus.FAIL
         return projection
 
     # T007: attach the shared scope enforcer. All services, routes and background
@@ -1768,8 +1852,20 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     @app.get("/health/ready", response_model=HealthProjection)
     async def health_ready() -> HealthProjection:
-        """Readiness probe: required dependencies are healthy."""
-        return app_health_projection()
+        """Readiness probe: required dependencies are healthy.
+
+        Issue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时
+        返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，
+        只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是
+        在首个会话请求中报 500。响应体始终是同一份 HealthProjection。
+        """
+        projection = app_health_projection()
+        if projection.ready != HealthStatus.PASS:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=projection.model_dump(mode="json"),
+            )
+        return projection
 
     @app.get("/health/degraded", response_model=HealthProjection)
     async def health_degraded() -> HealthProjection:

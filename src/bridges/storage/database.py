@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -2189,11 +2190,33 @@ MIGRATIONS: dict[int, list[str]] = {
     ],
 }
 
+#: 启动完整性校验要求必须存在的核心契约表。
+#: 这些表被仓库层在构造后无条件查询，缺失时不得让服务进入可服务状态。
+REQUIRED_TABLES: frozenset[str] = frozenset({
+    "accounts",
+    "objects",
+    "conversations",
+    "learning_project_migration_conversations",
+    "schema_meta",
+})
+
+#: 启动完整性校验要求必须存在的核心契约索引。
+REQUIRED_INDEXES: frozenset[str] = frozenset({
+    "idx_conversations_account_updated",
+    "idx_learning_project_migration_conversations_account",
+})
+
+#: schema 完整性失败时写入错误消息的稳定错误码。
+#: 调用方（API 健康检查、E2E 断言）以此字符串判断失败类别，勿直接内联。
+SCHEMA_INTEGRITY_ERROR_CODE = "database_schema_integrity"
+
 
 class BridgesDatabase:
     """版本化事务 SQLite 数据库连接。
 
     单连接 + 显式事务边界；``initialize`` 幂等，可安全重复调用。
+    迁移完成后执行 schema 完整性校验，metadata 声称当前版本但核心对象缺失时
+    以稳定错误码失败关闭，避免缺表后继续服务。
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -2234,10 +2257,15 @@ class BridgesDatabase:
         return ScopedConnection(self, account_id)
 
     def _configure(self) -> None:
-        """启用 WAL、完整同步与外键约束。"""
+        """启用 WAL、完整同步与外键约束。
+
+        Issue 06：多个进程/线程并发打开同一数据库时，``journal_mode=WAL``
+        需要短暂独占锁；对 ``OperationalError``（database is locked）做有限
+        退避重试，使并发 initializer 能够安全串行，而不是立即失败。
+        """
         try:
             if self.path != ":memory:":
-                self._connection.execute("PRAGMA journal_mode=WAL")
+                self._set_journal_mode_wal_with_retry()
             self._connection.execute("PRAGMA synchronous=FULL")
             self._connection.execute("PRAGMA foreign_keys=ON")
         except sqlite3.Error as exc:
@@ -2245,11 +2273,110 @@ class BridgesDatabase:
                 "数据库初始化失败，请检查数据目录是否可写。"
             ) from exc
 
+    def _set_journal_mode_wal_with_retry(
+        self, max_attempts: int = 10, backoff_seconds: float = 0.05
+    ) -> None:
+        """尝试设置 WAL 模式，遇到 database is locked 时退避重试。"""
+        last_exc: sqlite3.OperationalError | None = None
+        for attempt in range(max_attempts):
+            try:
+                self._connection.execute("PRAGMA journal_mode=WAL")
+                return
+            except sqlite3.OperationalError as exc:
+                last_exc = exc
+                if "locked" not in str(exc).lower():
+                    raise
+                if attempt < max_attempts - 1:
+                    time.sleep(backoff_seconds * (attempt + 1))
+        raise StorageError(
+            "数据库初始化失败：并发初始化时无法获得独占锁以启用 WAL 模式。"
+        ) from last_exc
+
+    @property
+    def schema_version(self) -> int:
+        """返回数据库 metadata 中记录的模式版本；未初始化时返回 0。"""
+        try:
+            row = self._connection.execute(
+                "SELECT value FROM schema_meta WHERE key = 'version'"
+            ).fetchone()
+        except sqlite3.Error:
+            return 0
+        if row is None:
+            return 0
+        try:
+            return int(str(row["value"]))
+        except ValueError as exc:
+            raise StorageError(
+                "数据库迁移版本记录损坏，请检查数据目录。"
+            ) from exc
+
+    def _schema_object_names(self, object_type: str) -> set[str]:
+        """读取 ``sqlite_master`` 中指定类型的对象名；读取失败抛稳定错误。"""
+        try:
+            rows = self._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = ?", (object_type,)
+            ).fetchall()
+        except sqlite3.Error as exc:
+            raise StorageError(
+                "数据库 schema 完整性校验失败（无法读取 sqlite_master）："
+                f"{SCHEMA_INTEGRITY_ERROR_CODE}"
+            ) from exc
+        return {str(row["name"]) for row in rows}
+
+    def schema_table_names(self) -> list[str]:
+        """返回数据库当前全部表名（仅对象名，不含任何行数据）。
+
+        供健康检查/诊断遥测使用；读取失败时抛 StorageError 由调用方决定
+        降级策略。
+        """
+        return sorted(self._schema_object_names("table"))
+
+    def verify_schema_integrity(self) -> None:
+        """校验核心契约表与索引存在；缺失时抛出稳定错误码。
+
+        不依赖业务数据，只检查 ``sqlite_master``；错误信息不含完整路径。
+        """
+        tables = self._schema_object_names("table")
+        indexes = self._schema_object_names("index")
+
+        missing_tables = REQUIRED_TABLES - tables
+        missing_indexes = REQUIRED_INDEXES - indexes
+        if missing_tables or missing_indexes:
+            details: list[str] = []
+            if missing_tables:
+                details.append(f"缺失表：{sorted(missing_tables)}")
+            if missing_indexes:
+                details.append(f"缺失索引：{sorted(missing_indexes)}")
+            logger.error(
+                "database_schema_integrity_failed",
+                extra={
+                    "schema_version": self.schema_version,
+                    "missing_tables": sorted(missing_tables),
+                    "missing_indexes": sorted(missing_indexes),
+                },
+            )
+            raise StorageError(
+                "数据库 schema 完整性校验未通过"
+                f"（{SCHEMA_INTEGRITY_ERROR_CODE}）："
+                f"{'；'.join(details)}。请勿手动修改数据库文件。"
+            )
+
+    @property
+    def schema_ready(self) -> bool:
+        """数据库是否已达到当前目标版本且核心契约对象完整。"""
+        if self.schema_version != SCHEMA_VERSION:
+            return False
+        try:
+            self.verify_schema_integrity()
+        except StorageError:
+            return False
+        return True
+
     def initialize(self) -> int:
         """事务化创建或升级数据库模式，返回当前版本；重复调用安全。
 
         迁移脚本与版本号在单个事务内完成：中途失败整体回滚，不会留下
-        半迁移状态；已是最新版本时不做任何写操作。
+        半迁移状态；已是最新版本时仍执行完整性校验，确保核心表/索引存在。
         """
         try:
             with self.transaction():
@@ -2274,20 +2401,21 @@ class BridgesDatabase:
                         f"数据库迁移版本（{current}）高于当前程序支持的版本"
                         f"（{SCHEMA_VERSION}），请升级程序后再启动。"
                     )
-                if current == SCHEMA_VERSION:
-                    return current
-                for version in range(current + 1, SCHEMA_VERSION + 1):
-                    if version == 34:
-                        self._validate_conversation_modes_for_lock()
-                    for statement in MIGRATIONS[version]:
-                        self._connection.execute(statement)
-                # 升级路径：版本行已存在（旧版本号），必须覆盖而非新增，
-                # 否则 UNIQUE 约束使既有库永远无法升级。
-                self._connection.execute(
-                    "INSERT INTO schema_meta(key, value) VALUES ('version', ?)"
-                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (str(SCHEMA_VERSION),),
-                )
+                if current < SCHEMA_VERSION:
+                    for version in range(current + 1, SCHEMA_VERSION + 1):
+                        if version == 34:
+                            self._validate_conversation_modes_for_lock()
+                        for statement in MIGRATIONS[version]:
+                            self._connection.execute(statement)
+                    # 升级路径：版本行已存在（旧版本号），必须覆盖而非新增，
+                    # 否则 UNIQUE 约束使既有库永远无法升级。
+                    self._connection.execute(
+                        "INSERT INTO schema_meta(key, value) VALUES ('version', ?)"
+                        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        (str(SCHEMA_VERSION),),
+                    )
+                # 无论刚完成迁移还是原本就是当前版本，都校验核心对象完整性。
+                self.verify_schema_integrity()
                 return SCHEMA_VERSION
         except sqlite3.DatabaseError as exc:
             raise StorageError(

@@ -1,6 +1,6 @@
 # Issue 06：修复全新 E2E SQLite 缺少迁移会话表
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -90,3 +90,13 @@ npx playwright test e2e/issue03-atomic-first-turn.spec.ts --project=chromium
 
 - 2026-08-13：完整 E2E 回归已被 `no such table: learning_project_migration_conversations` 独立阻断；该问题与本轮其余功能缺陷解耦，可并行修复。
 - 2026-08-13：目标是让迁移在真实 E2E 启动链路中可证明完成，而不是在会话查询处为缺表提供静默兼容。
+
+## Answer
+
+- 启动契约：`BridgesDatabase.initialize()` 现无条件执行 schema 完整性校验（`verify_schema_integrity`，核心契约表/索引清单 `REQUIRED_TABLES`/`REQUIRED_INDEXES`）；metadata 声称当前版本但核心对象缺失时以稳定 `database_schema_integrity` 错误失败关闭，绝不静默建单表继续。WAL 切换对 `database is locked` 做退避重试，并发 initializer 安全串行。
+- API：`create_app` 在构造任何会话 repository 前完成 `initialize()` 并记录 path 指纹/run ID/耗时；`/health/ready` 未就绪时返回 HTTP 503（响应体仍是同一份 HealthProjection），extensions 暴露 `run_id`、`database_path_fingerprint`、实际/期望 schema 版本与脱敏对象名清单——Playwright 的 URL 轮询因此只在数据库真正 ready 后放行测试。
+- Worker：`BackgroundExecutor.ensure_database()` 在构造仓库前执行 `initialize()`；`scripts/e2e_worker.py` 健康端点在数据库就绪前返回 503，避免「端口通但生成不可用」的假 ready（`database_ready` 只反映数据库状态，不受其他惰性服务待机影响）。
+- Playwright：常规与 closeout 配置都等待 `/health/ready`；API/邮件/worker 条目 `reuseExistingServer: false`（复用会跳过 URL 轮询、可能误连上一次/开发数据库）；每次运行唯一隔离目录 `.tmp/e2e-run/run-*`（7 天自动回收，`.tmp/` 已 gitignore）；E2E spec 以磁盘为真相核对 run_id 与数据库路径指纹，失败时在本 run 目录写脱敏 `schema-diagnostics.json`。
+- 测试：storage 迁移/幂等/并发/损坏库失败关闭、API ready 契约（200/503）、health API 503 语义、executor 启动契约、Playwright 配置真实求值契约（vitest，含 closeout 配置）与真实浏览器跨进程 smoke 全部通过；`issue03` 原被缺表阻断的会话创建/列表/详情路径已可真实完成。
+- 代码评审补强：调用方（API/executor）显式校验 `initialize()` 返回版本等于 `SCHEMA_VERSION`；启动日志补迁移 start 事件与期望版本；错误码收敛为 `SCHEMA_INTEGRITY_ERROR_CODE` 常量；readiness 未就绪时直接报告具体缺失对象；worker 进程（`TEST_WORKER_INDEX`）不再落空 run 目录；旧库迁移测试补会话列表断言。
+- 环境备注：本机沙箱对 pytest `tmp_path`（0o700）目录有枚举/删除限制，验证时以系统临时目录为 basetemp 绕过；`tests/chat/test_chat_service.py` 一项与 closeout 邮件三项失败为分支上其他退役工作的既有漂移，与本次改动无关；`openapi.json` 同步测试的差异仅为 Starlette 版本短语差异（"Unprocessable Content"→"Unprocessable Entity"），未改动契约结构。

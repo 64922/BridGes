@@ -60,6 +60,7 @@ from bridges.persistence import (
 )
 from bridges.runtime.loop import supervised_loop
 from bridges.storage import (
+    SCHEMA_VERSION,
     BridgesDatabase,
     BridgesObjectRepository,
     EncryptedFileObjectStore,
@@ -78,6 +79,7 @@ class BackgroundExecutor:
         self._settings = settings
         self._repository: BridgesObjectRepository | None = None
         self._database: BridgesDatabase | None = None
+        self._database_initialized = False
         self._ingestion: IngestionService | None = None
         self._project_migration: ProjectMigrationService | None = None
         self._image: ImageService | None = None
@@ -86,10 +88,15 @@ class BackgroundExecutor:
         self._attachment_cleanup: ChatAttachmentService | None = None
         self._idle_reason: str | None = None
 
-    def _ensure_repository(self) -> BridgesObjectRepository | None:
-        """惰性建立对象仓库；配置缺失或打开失败时给出中文待机原因。"""
-        if self._repository is not None or self._idle_reason is not None:
-            return self._repository
+    def ensure_database(self) -> BridgesDatabase | None:
+        """启动契约（Issue 06）：构造任何仓库前对配置的数据库执行
+        ``initialize()`` 并校验 schema。
+
+        与 API 进程同一语义：迁移事务化、幂等；schema 未达当前版本或核心
+        表/索引缺失时以中文待机原因失败关闭，绝不带着缺表继续服务。
+        """
+        if self._database is not None or self._idle_reason is not None:
+            return self._database
         settings = self._settings
         if settings.database_url is None or not settings.database_url.get_secret_value():
             self._idle_reason = (
@@ -106,6 +113,47 @@ class BackgroundExecutor:
         try:
             path = Path(resolve_database_path(settings.database_url))
             database = BridgesDatabase(path)
+            initialized_version = database.initialize()
+            # Issue 06 启动契约：调用方校验返回版本等于当前支持版本，
+            # 不能只依赖 initialize() 内部路径（纵深防御）。
+            if initialized_version != SCHEMA_VERSION:
+                raise StorageError(
+                    "数据库 schema 版本校验失败："
+                    f"initialize 返回 {initialized_version}，"
+                    f"当前程序支持 {SCHEMA_VERSION}。"
+                )
+        except (StorageError, PersistenceError, ValueError) as exc:
+            self._idle_reason = f"error: {exc}"
+            return None
+        self._database = database
+        self._database_initialized = True
+        return database
+
+    @property
+    def database_ready(self) -> bool:
+        """数据库是否已初始化且 schema 就绪（供健康端点探测）。
+
+        只反映数据库初始化状态，不受其他惰性服务（摄取/图片/视频等）
+        待机原因影响——那些服务缺凭据待机不代表数据库不可用。
+        """
+        return self._database_initialized and self._database is not None
+
+    @property
+    def idle_reason(self) -> str | None:
+        """数据库/仓库待机原因（脱敏，供启动诊断输出）。"""
+        return self._idle_reason
+
+    def _ensure_repository(self) -> BridgesObjectRepository | None:
+        """惰性建立对象仓库；配置缺失或打开失败时给出中文待机原因。"""
+        if self._repository is not None or self._idle_reason is not None:
+            return self._repository
+        database = self.ensure_database()
+        if database is None:
+            assert self._idle_reason is not None
+            return None
+        settings = self._settings
+        try:
+            path = Path(resolve_database_path(settings.database_url or ""))
             repository = BridgesObjectRepository(
                 database,
                 EncryptedFileObjectStore(
@@ -116,7 +164,6 @@ class BackgroundExecutor:
         except (StorageError, PersistenceError, ValueError) as exc:
             self._idle_reason = f"error: {exc}"
             return None
-        self._database = database
         self._repository = repository
         return repository
 
