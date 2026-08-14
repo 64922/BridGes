@@ -245,6 +245,22 @@ class CareerReviewResult(BaseModel):
     )
 
 
+class CareerLockRef(BaseModel):
+    """一条模型运行锁的轻量引用（投影可定位完整调用集合）。
+
+    只保留锁 ID 与稳定阶段/序号，绝不嵌入完整锁、提示词、规划正文或
+    用户画像内容；调用集合可按账户 + ``run_id`` 或逐锁 ID 查询。
+    """
+
+    lock_id: str = Field(description="持久化的模型运行锁 ID。")
+    operation: str = Field(
+        description="稳定阶段：career_generation（首次）或 career_repair（一次有界修复）。"
+    )
+    attempt_ordinal: int = Field(
+        ge=1, description="同 run 内的调用序号：首次为 1，真实修复为 2。"
+    )
+
+
 class CareerPlanningProjection(BaseModel):
     """一条助手消息的生涯规划结果投影（按账户隔离持久化）。
 
@@ -283,6 +299,14 @@ class CareerPlanningProjection(BaseModel):
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(
         default=None, description="可操作中文错误说明（含安全替代步骤）。"
+    )
+    run_id: str | None = Field(
+        default=None,
+        description="业务 run 引用：同 run 的完整模型调用集合可按账户 + run_id 查询。",
+    )
+    run_lock_refs: list[CareerLockRef] = Field(
+        default_factory=list,
+        description="本轮实际发起的供应商调用的主要锁引用（按调用顺序）。",
     )
     created_at: datetime = Field(description="创建时间。")
 

@@ -14,18 +14,22 @@ Qwen 结构化生成 → 宽容解析 → 确定性复核（承诺词边界/完�
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from bridges.ai.errors import ModelRunLockError
 from bridges.ai.model_gateway import ModelGateway
-from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
+from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.chat.budget import RunBudget
-from bridges.contracts.ai import ModelCallStatus
+from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
+from bridges.contracts.ai import BusinessRef, ModelCallStatus
 from bridges.contracts.career import (
     CareerAssumption,
     CareerEvidenceKind,
     CareerEvidenceSource,
     CareerFact,
+    CareerLockRef,
     CareerOption,
     CareerPlanningOutputContract,
     CareerPlanningProcessState,
@@ -55,6 +59,16 @@ from .review import (
 
 CAREER_CAPABILITY_NAME = "qwen_structured_output"
 CAREER_CAPABILITY_VERSION = "1"
+
+#: 运行锁业务关联：锁链接到规划（以助手消息为对象 ID）与会话，两者都
+#: 按账户隔离；operation 是稳定阶段名，attempt_ordinal 是同 run 内真实
+#: 供应商调用的稳定序号。本地宽容解析、确定性复核与投影构造不产生锁。
+CAREER_LOCK_OBJECT_TYPE = "career_plan"
+CAREER_LOCK_CONVERSATION_OBJECT_TYPE = "conversation"
+CAREER_OPERATION_GENERATION = "career_generation"
+CAREER_OPERATION_REPAIR = "career_repair"
+CAREER_GENERATION_ORDINAL = 1
+CAREER_REPAIR_ORDINAL = 2
 
 #: 学习使命/知识状态进入证据的最小化上限（不整体上传学习域）。
 _MAX_MISSIONS = 3
@@ -86,6 +100,23 @@ class CareerError(Exception):
         self.retryable = retryable
 
 
+@dataclass(frozen=True)
+class _LockRefCollector:
+    """本轮 run 内已持久化模型运行锁的轻量引用（供投影与审计）。
+
+    ``refs`` 由调用方持有：即使后续抛出 ``CareerError`` 也能在失败投影
+    中保留已发生调用的锁引用，绝不把锁丢弃在异常栈里。
+    """
+
+    refs: list[CareerLockRef]
+
+    def add(self, ref: CareerLockRef) -> None:
+        self.refs.append(ref)
+
+    def as_list(self) -> list[CareerLockRef]:
+        return list(self.refs)
+
+
 class CareerPlannerService:
     """生涯规划编排：证据组装 → 结构化生成 → 确定性复核 → 投影。"""
 
@@ -95,11 +126,15 @@ class CareerPlannerService:
         profile_service: ProfileService | None = None,
         learning_service: LearningService | None = None,
         observability_service: ObservabilityService | None = None,
+        run_lock_recorder: ModelRunLockRecorder | None = None,
     ) -> None:
         self._gateway = gateway
         self._profiles = profile_service
         self._learning = learning_service
         self._observability = observability_service
+        #: Issue 10 统一持久化端口：None 时锁只进入投影引用（评估/替身
+        #: 环境），生产接线必须注入真实 recorder，缺审计证据即失败关闭。
+        self._run_lock_recorder = run_lock_recorder
 
     # ------------------------------------------------------------------
     # 对外入口
@@ -131,6 +166,8 @@ class CareerPlannerService:
         """
         progress: list[str] = []
         now = datetime.now(UTC)
+        #: 本轮真实供应商调用的锁引用（异常路径也保留，供失败投影定位）。
+        lock_refs = _LockRefCollector([])
 
         def process(
             state: CareerPlanningProcessState,
@@ -191,6 +228,7 @@ class CareerPlannerService:
                 writing_policy=writing_policy,
                 route_contract=route_contract,
                 budget=budget,
+                lock_refs=lock_refs,
             )
             progress.append("生成六类规划结果")
 
@@ -227,6 +265,8 @@ class CareerPlannerService:
                 process_steps=list(progress),
                 error_code=None,
                 error_message=None,
+                run_id=getattr(run_context, "run_id", None),
+                run_lock_refs=lock_refs.as_list(),
                 created_at=now,
             )
             self._audit(
@@ -262,6 +302,8 @@ class CareerPlannerService:
                 process_steps=progress,
                 state=state,
                 route_contract=route_contract,
+                run_id=getattr(run_context, "run_id", None),
+                run_lock_refs=lock_refs.as_list(),
             )
             self._audit(
                 account_id,
@@ -472,6 +514,7 @@ class CareerPlannerService:
         writing_policy: GlobalWritingPolicySnapshot | None = None,
         route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
+        lock_refs: _LockRefCollector | None = None,
     ) -> CareerPlanningOutputContract:
         intent_text = intent.strip()
         if not intent_text:
@@ -484,7 +527,16 @@ class CareerPlannerService:
             system_prompt = f"{system_prompt}\n\n{writing_policy.system_block}"
         user_prompt = _build_user_prompt(intent_text, evidence, route_contract)
         output, failure = self._invoke_structured(
-            run_context, system_prompt, user_prompt, writing_policy
+            run_context,
+            system_prompt,
+            user_prompt,
+            writing_policy,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            operation=CAREER_OPERATION_GENERATION,
+            attempt_ordinal=CAREER_GENERATION_ORDINAL,
+            lock_refs=lock_refs,
         )
         if failure is None:
             return output
@@ -498,11 +550,20 @@ class CareerPlannerService:
                 "请重试（输入已保留）。",
                 retryable=True,
             )
+        # 修复序号守门：只有首次生成锁已持久化才允许发起第二次真实模型
+        # 调用（Issue 12：稳定阶段 career_generation:1 → career_repair:2）。
+        self._assert_repair_sequence_allowed(account_id, assistant_message_id)
         output, failure = self._invoke_structured(
             run_context,
             system_prompt,
             _build_repair_user_prompt(user_prompt, output, failure),
             writing_policy,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            operation=CAREER_OPERATION_REPAIR,
+            attempt_ordinal=CAREER_REPAIR_ORDINAL,
+            lock_refs=lock_refs,
         )
         if failure is not None:
             raise CareerError(
@@ -512,15 +573,50 @@ class CareerPlannerService:
             )
         return output
 
+    def _assert_repair_sequence_allowed(
+        self, account_id: str, assistant_message_id: str
+    ) -> None:
+        """修复调用前的序号守门：必须已存在本次规划的 generation:1 锁。
+
+        任何路径都不得在缺少首次生成锁时发起第二次真实供应商调用；本地
+        宽容解析、确定性复核和投影构造不产生锁，因此不存在其他合法来源。
+        """
+        if self._run_lock_recorder is None:
+            return
+        recorded = self._run_lock_recorder.list_locks_by_business_ref(
+            account_id, CAREER_LOCK_OBJECT_TYPE, assistant_message_id
+        )
+        if not any(
+            ref.operation == CAREER_OPERATION_GENERATION
+            and ref.attempt_ordinal == CAREER_GENERATION_ORDINAL
+            for lock in recorded
+            for ref in lock.business_refs
+        ):
+            raise CareerError(
+                "career_call_sequence_mismatch",
+                "生涯规划调用序号异常：缺少首次生成锁，已停止修复。",
+                retryable=False,
+            )
+
     def _invoke_structured(
         self,
         run_context: Any,
         system_prompt: str,
         user_prompt: str,
         writing_policy: GlobalWritingPolicySnapshot | None = None,
+        *,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        operation: str,
+        attempt_ordinal: int,
+        lock_refs: _LockRefCollector | None = None,
     ) -> tuple[CareerPlanningOutputContract, str | None]:
         """调用固定结构化模型，返回 (输出, 可修复失败原因)。
 
+        - 每次真实网关调用后立即持久化返回锁（Issue 10 统一 recorder，
+          幂等重放；缺锁或持久化失败时失败关闭，不得把无审计证据的
+          结果提升为完成态）；
         - 成功/DEGRADED：宽容解析，结构非法时 ``failure`` 非空；
         - 格式类失败（如 JSON 解析失败，``structured_output_parse_failed``）：
           作为可修复失败返回（第二次调用带修复指令）；
@@ -544,6 +640,16 @@ class CareerPlannerService:
             run_context,
             payload,
         )
+        self._persist_call_lock(
+            call_result.lock,
+            run_context=run_context,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            operation=operation,
+            attempt_ordinal=attempt_ordinal,
+            lock_refs=lock_refs,
+        )
         if call_result.status in (
             ModelCallStatus.SUCCESS,
             ModelCallStatus.DEGRADED,
@@ -562,6 +668,97 @@ class CareerPlannerService:
             call_result.error_code or "career_generation_failed",
             call_result.error_message or "生涯规划生成失败，请重试（输入已保留）。",
             retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
+        )
+
+    def _persist_call_lock(
+        self,
+        lock: Any,
+        *,
+        run_context: Any,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        operation: str,
+        attempt_ordinal: int,
+        lock_refs: _LockRefCollector | None = None,
+    ) -> None:
+        """每次结构化调用后立即、幂等持久化返回锁（Issue 12 接线）。
+
+        失败关闭语义：
+        - 网关未返回锁（理论不可达的防御）→ ``career_missing_run_lock``；
+        - 锁与业务 run 标识不一致 → ``career_call_sequence_mismatch``；
+        - recorder 持久化失败 → ``career_lock_persist_failed``，业务终态
+          不得覆盖模型运行状态，规划不进入完成态。
+        锁关联规划（助手消息，主要锁）与会话两条业务引用；完整锁、提示词
+        与规划正文绝不进入投影或审计。
+        """
+        if lock is None:
+            raise CareerError(
+                "career_missing_run_lock",
+                "模型调用未返回运行锁，生涯规划已停止（输入已保留）。",
+                retryable=False,
+            )
+        if lock.run_id != getattr(run_context, "run_id", None):
+            raise CareerError(
+                "career_call_sequence_mismatch",
+                "模型调用与业务 run 关联异常，生涯规划已停止。",
+                retryable=False,
+            )
+        if self._run_lock_recorder is None:
+            # 评估/替身环境（无 recorder）：锁引用仍进入投影，不丢弃。
+            self._collect_lock_ref(lock, operation, attempt_ordinal, lock_refs)
+            return
+        try:
+            self._run_lock_recorder.record_many(
+                [
+                    RecordRequest(
+                        lock=lock,
+                        business_ref=BusinessRef(
+                            object_type=CAREER_LOCK_OBJECT_TYPE,
+                            object_id=assistant_message_id,
+                            operation=operation,
+                            attempt_ordinal=attempt_ordinal,
+                            is_primary=(
+                                attempt_ordinal == CAREER_GENERATION_ORDINAL
+                            ),
+                        ),
+                    ),
+                    RecordRequest(
+                        lock=lock,
+                        business_ref=BusinessRef(
+                            object_type=CAREER_LOCK_CONVERSATION_OBJECT_TYPE,
+                            object_id=conversation_id,
+                            operation=operation,
+                            attempt_ordinal=attempt_ordinal,
+                            is_primary=False,
+                        ),
+                    ),
+                ]
+            )
+        except ModelRunLockError as exc:
+            raise CareerError(
+                "career_lock_persist_failed",
+                "模型调用审计记录写入失败，生涯规划未完成（输入已保留）。",
+                retryable=False,
+            ) from exc
+        # 持久化成功后才记入投影引用：引用永远指向可查询的锁。
+        self._collect_lock_ref(lock, operation, attempt_ordinal, lock_refs)
+
+    @staticmethod
+    def _collect_lock_ref(
+        lock: Any,
+        operation: str,
+        attempt_ordinal: int,
+        lock_refs: _LockRefCollector | None,
+    ) -> None:
+        if lock_refs is None:
+            return
+        lock_refs.add(
+            CareerLockRef(
+                lock_id=lock.lock_id,
+                operation=operation,
+                attempt_ordinal=attempt_ordinal,
+            )
         )
 
     def _coerce_output(self, raw: dict[str, Any]) -> CareerPlanningOutputContract:
@@ -598,6 +795,8 @@ class CareerPlannerService:
         process_steps: list[str],
         state: CareerPlanningProcessState,
         route_contract: CareerPlanningRouteContract | None = None,
+        run_id: str | None = None,
+        run_lock_refs: list[CareerLockRef] | None = None,
     ) -> CareerPlanningProjection:
         return CareerPlanningProjection(
             plan_id=assistant_message_id,
@@ -614,6 +813,8 @@ class CareerPlannerService:
             process_steps=list(process_steps),
             error_code=error_code,
             error_message=_safe_alternative(error_code, error_message, retryable),
+            run_id=run_id,
+            run_lock_refs=list(run_lock_refs or []),
             created_at=datetime.now(UTC),
         )
 
@@ -649,6 +850,18 @@ class CareerPlannerService:
                 "profile_refs": profile_refs,
                 "profile_used": projection.profile_used,
                 "verified_at": projection.verified_at.isoformat(),
+                # 锁审计证据只含稳定引用（锁 ID/阶段/序号）与业务 run，
+                # 绝不包含提示词、规划正文、画像内容或完整模型响应。
+                "run_id": projection.run_id,
+                "lock_refs": [
+                    {
+                        "lock_id": ref.lock_id,
+                        "operation": ref.operation,
+                        "attempt_ordinal": ref.attempt_ordinal,
+                    }
+                    for ref in projection.run_lock_refs
+                ],
+                "error_code": projection.error_code,
             },
         )
 
@@ -1046,4 +1259,10 @@ __all__ = [
     "CareerError",
     "CAREER_CAPABILITY_NAME",
     "CAREER_CAPABILITY_VERSION",
+    "CAREER_LOCK_OBJECT_TYPE",
+    "CAREER_LOCK_CONVERSATION_OBJECT_TYPE",
+    "CAREER_OPERATION_GENERATION",
+    "CAREER_OPERATION_REPAIR",
+    "CAREER_GENERATION_ORDINAL",
+    "CAREER_REPAIR_ORDINAL",
 ]

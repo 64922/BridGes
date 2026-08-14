@@ -1,6 +1,6 @@
 # Issue 12：补齐 Career 真实 Qwen 生成与修复审计闭环
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -97,3 +97,11 @@ python -m pytest tests/career/test_career_real_smoke.py -q -p no:cacheprovider
 
 - 2026-08-13：已验证 Career 生成与一次有界结构修复都走真实结构化模型网关，但返回锁当前未持久化。
 - 2026-08-13：用户确认使用安装级全局 Qwen Key；本 issue 只记录模型运行元数据和业务关联，严禁读取或泄露 Key 与用户内容。
+- 2026-08-14：Issue 12 实现完成（分支 `issue-12-career-real-qwen-audit`，基于含 Issue 09/10 的 main）。
+  - `bridges.career.service` 通过 Issue 10 统一端口 `ModelRunLockRecorder` 接线：`_invoke_structured`（唯一网关调用点）每次真实 `qwen_structured_output` 调用后立即 `record_many` 幂等持久化返回锁，关联两条业务引用——规划（`career_plan`，对象为助手消息，generation 为主要锁）与会话（`conversation`）；稳定阶段/序号 `career_generation:1` → `career_repair:2`，仅真实发起修复请求才产生 repair 锁。
+  - 失败关闭：网关缺锁 → `career_missing_run_lock`；锁与业务 run 标识不一致或修复前缺少 generation:1 锁 → `career_call_sequence_mismatch`；recorder 持久化失败 → `career_lock_persist_failed`，均不提升为完成态。修复序号守门在预算检查之后，预算不足不发起第二次真实调用。
+  - 投影契约新增 `run_id` 与 `run_lock_refs`（锁 ID/阶段/序号轻量引用，按调用顺序），成功与失败投影都保留；完整锁、提示词、规划正文与用户内容绝不进入投影或审计（审计 details 只加 run_id、lock_refs 与 error_code）。模型状态与业务复核分离：结构非法/边界违反时锁仍如实记录调用成功，领域终态记录 `career_output_invalid`/`career_boundary_violation`。
+  - 生产组合（`bridges.api.main`）注入 `SqliteModelRunLockRecorder(bridges_database)`；评估执行器保持无 recorder 替身模式。模型 ID 单一事实源由架构测试断言（`fixed_models.MODEL_BY_CAPABILITY["qwen_structured_output"]` 与生产注册表/运行锁一致）。
+  - 测试：`tests/career/test_career_service.py` 扩展可编程 adapter（多响应/持续错误序列）断言 1 锁/2 锁/预算不足 1 锁/失败状态锁/持久化失败失败关闭/边界违反锁不篡改/本地步骤 spy 计数；新增 `tests/career/test_career_model_run_locks.py` SQLite 合同测试（同 run 多锁排序、重启查询、幂等重放、重执行新序号不覆盖、两账户并发隔离、投影前崩溃、模型 ID 单一事实源、序号守门）；新增 `tests/architecture/test_career_lock_wiring.py` 静态检查（唯一 invoke 调用点且立即持久化、统一 recorder 端口、生产接线注入）；新增可选真实 smoke `tests/career/test_career_real_smoke.py`（`BRIDGES_CAREER_REAL_SMOKE=1` + 全局 Key 才执行，禁用 cassette/Stub，重启查真实锁；修复分支由 fake 合同测试覆盖）。
+  - 验证：Issue 建议回归命令 43 通过；`tests/ai`、storage recorder/migration、chat run-lock tracer、gateway 集成、架构测试全绿；chat 层 career 集成测试 23/26 通过，3 个失败（profile context-note）为 pristine main 同样失败的环境性问题；mypy 对改动文件无新增错误（3 个既有错误与 main 一致）。全量套件结果待收集。
+  - 环境说明：`tests/career/test_career_routing.py` 在本机收集阶段即因 `bridges.routing` 循环导入失败（pristine main 同样失败，既有问题），本 issue 的回归命令未包含该文件；路由/review spy 断言由 service 测试的计数 recorder 覆盖（本地步骤不新增模型锁）。
