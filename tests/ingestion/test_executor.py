@@ -46,7 +46,7 @@ def test_worker_tick_processes_queued_documents_and_cleans(tmp_path: Path) -> No
     # 全局 Key 时向量化如实失败 → 文档按关键词检索诚实降级（全文索引
     # 仍独立完成，不写空向量、不伪装向量就绪）。
     executor._ensure_ingestion()  # type: ignore[attr-defined]
-    executor._ingestion.enqueue(account_id, object_id, "conversation-1")  # type: ignore[attr-defined]
+    executor._ingestion.enqueue(account_id, object_id)  # type: ignore[attr-defined]
     summary = executor.run_tick()
     assert "摄取完成" in summary
     assert "处理 1 份文档" in summary
@@ -88,7 +88,7 @@ def test_worker_tick_recovers_after_restart(tmp_path: Path) -> None:
     # 第一次执行器：入队后只领取不处理（模拟进程在完成前崩溃）
     first = BackgroundExecutor(settings)
     first._ensure_ingestion()  # type: ignore[attr-defined]
-    first._ingestion.enqueue(account_id, object_id, "conversation-1")  # type: ignore[attr-defined]
+    first._ingestion.enqueue(account_id, object_id)  # type: ignore[attr-defined]
     claim = first._ingestion._task_queue.claim_next(  # type: ignore[attr-defined]
         "ingestion", "test-worker"
     )

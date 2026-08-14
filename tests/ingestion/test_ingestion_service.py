@@ -12,7 +12,7 @@ from conftest import (
 
 from bridges.contracts.ingestion import DocumentIngestionStatus
 from bridges.ingestion.embedding import DeterministicEmbeddingPort, EmbeddingError
-from bridges.ingestion.ocr import OcrError
+from bridges.ingestion.ocr import OcrError, OcrPageRequest
 from bridges.ingestion.service import IngestionService
 
 TEXT_CONTENT = "这是一份测试文档。\n\n包含两个段落，用于验证分块与索引。\n"
@@ -41,10 +41,10 @@ class _FakeOcrPort:
     def __init__(self, text: str | None = None, error: bool = False) -> None:
         self.text = text
         self.error = error
-        self.calls: list[tuple[str, bytes, str]] = []
+        self.calls: list[OcrPageRequest] = []
 
-    def extract(self, account_id: str, content: bytes, media_type: str) -> str:
-        self.calls.append((account_id, content, media_type))
+    def extract(self, request: OcrPageRequest) -> str:
+        self.calls.append(request)
         if self.error:
             raise OcrError("图片文字识别失败：服务暂时不可用。")
         assert self.text is not None
@@ -62,7 +62,7 @@ def test_queued_document_becomes_ready_with_structure(storage) -> None:
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
 
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     queued = _ready_projection(service, account_id, object_id)
     assert queued.status == DocumentIngestionStatus.QUEUED
 
@@ -96,7 +96,7 @@ def test_embedding_unavailable_reports_reason_without_faking(storage) -> None:
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
 
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     summary = service.process_pending()
     assert "未启用" in summary  # 缺少向量化组件：worker 待机，不假成功
     projection = _ready_projection(service, account_id, object_id)
@@ -119,7 +119,7 @@ def test_parse_failure_keeps_object_and_chinese_reason(storage) -> None:
         account_id, "坏文件.txt", b"not utf-8: \xff\xfe\x00", media_type="text/plain"
     )
     object_id = stored.object_id
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
 
     projection = _ready_projection(service, account_id, object_id)
@@ -157,7 +157,7 @@ def test_embed_failure_degrades_to_keyword_and_recovers(storage) -> None:
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
 
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
     degraded = _ready_projection(service, account_id, object_id)
     assert degraded.status == DocumentIngestionStatus.READY
@@ -198,7 +198,7 @@ def test_retry_is_idempotent_across_ticks(storage) -> None:
     service, _ = make_ingestion(storage, embedding_available=True)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
     service.process_pending()
     service.process_pending()
@@ -222,7 +222,7 @@ def test_interrupted_task_recovered_after_lease_expiry(storage) -> None:
     service, _ = make_ingestion(storage, embedding_available=True)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
 
     # 模拟中断：领取后不完成处理，让队列租约过期（崩溃恢复的唯一规则）。
     claim = service._task_queue.claim_next("ingestion", "test-worker")  # noqa: SLF001
@@ -247,8 +247,8 @@ def test_same_content_different_accounts_isolated(storage) -> None:
     object_a = upload_text(storage, account_a, "共享内容.txt", TEXT_CONTENT.encode("utf-8"))
     object_b = upload_text(storage, account_b, "共享内容.txt", TEXT_CONTENT.encode("utf-8"))
 
-    service.enqueue(account_a, object_a, "conversation-a")
-    service.enqueue(account_b, object_b, "conversation-b")
+    service.enqueue(account_a, object_a)
+    service.enqueue(account_b, object_b)
     service.process_pending()
 
     ready_a = _ready_projection(service, account_a, object_a)
@@ -285,8 +285,8 @@ def test_parse_cache_reused_within_account(storage) -> None:
     object_1 = upload_text(storage, account_id, "一.txt", TEXT_CONTENT.encode("utf-8"))
     object_2 = upload_text(storage, account_id, "二.txt", TEXT_CONTENT.encode("utf-8"))
 
-    service.enqueue(account_id, object_1, "conversation-1")
-    service.enqueue(account_id, object_2, "conversation-1")
+    service.enqueue(account_id, object_1)
+    service.enqueue(account_id, object_2)
     service.process_pending()
 
     # 相同内容复用解析缓存：缓存只有一条记录，两份文档各自有分块（不混淆来源）
@@ -307,7 +307,7 @@ def test_empty_document_marks_empty_status(storage) -> None:
         account_id, "空白.txt", b"   \n\n  ", media_type="text/plain"
     )
     object_id = stored.object_id
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
 
     projection = _ready_projection(service, account_id, object_id)
@@ -320,7 +320,7 @@ def test_object_deletion_purges_ingestion_records(storage) -> None:
     service, _ = make_ingestion(storage, embedding_available=True)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
 
     storage["repository"].delete_object(account_id, object_id)
@@ -346,7 +346,7 @@ def test_unsupported_media_type_not_enqueued(storage) -> None:
         b"PK\x03\x04fake",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    service.enqueue(account_id, stored.object_id, "conversation-1")
+    service.enqueue(account_id, stored.object_id)
     assert service.projection(account_id, stored.object_id) is None
 
 
@@ -354,9 +354,9 @@ def test_enqueue_idempotent_does_not_duplicate(storage) -> None:
     service, _ = make_ingestion(storage, embedding_available=True)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
-    service.enqueue(account_id, object_id, "conversation-1")
-    service.enqueue(account_id, object_id, "conversation-1")
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
+    service.enqueue(account_id, object_id)
+    service.enqueue(account_id, object_id)
     rows = storage["database"].connection.execute(
         "SELECT count(*) AS count FROM document_records WHERE account_id = ?", (account_id,)
     ).fetchone()
@@ -375,7 +375,7 @@ def test_claim_does_not_starve_documents_behind_unclaimable_oldest(
             storage, account_id, f"材料{index}.txt",
             f"第 {index} 份文档内容。\n".encode(),
         )
-        service.enqueue(account_id, object_id, "conversation-1")
+        service.enqueue(account_id, object_id)
         object_ids.append(object_id)
 
     # 第一轮：最多领取 5 份，其余保持 queued
@@ -419,7 +419,7 @@ def test_permanent_failure_stops_auto_retry_until_manual_retry(storage) -> None:
         account_id, "坏文件.pdf", b"%PDF-1.7\ngarbage", media_type="application/pdf"
     )
     object_id = stored.object_id
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
 
     service.process_pending()
     failed = _ready_projection(service, account_id, object_id)
@@ -446,7 +446,7 @@ def test_object_deletion_decrements_index_version_counts(storage) -> None:
     service, _ = make_ingestion(storage, embedding_available=True)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
 
     index = service._index
@@ -475,9 +475,23 @@ def test_image_ocr_text_is_indexed_and_material_is_ready(storage) -> None:
     assert projection.status == DocumentIngestionStatus.READY
     assert projection.failure_reason is None
     assert len(ocr.calls) == 1
-    assert ocr.calls[0][0] == account_id
-    assert ocr.calls[0][1] == IMAGE_CONTENT
-    assert ocr.calls[0][2] == "image/png"
+    request = ocr.calls[0]
+    assert request.account_id == account_id
+    assert request.object_id == object_id
+    assert request.document_id == projection.document_id
+    assert request.page_ordinal == 1
+    assert request.call_ordinal == 1
+    assert request.media_type == "image/png"
+    assert request.content == IMAGE_CONTENT
+    assert request.content_hash == projection.content_hash
+    assert request.run_id.startswith(f"ingestion-ocr:{account_id}:")
+    assert "knowledge-base-ocr-" not in request.run_id
+    # 摄取投影给出脱敏汇总与来源证据：1 页真实 OCR 成功，非缓存命中。
+    assert projection.ocr_pages_total == 1
+    assert projection.ocr_pages_succeeded == 1
+    assert projection.ocr_pages_failed == 0
+    assert projection.parse_cache_hit is False
+    assert projection.ocr_evidence_run_id == request.run_id
     row = storage["database"].connection.execute(
         "SELECT content FROM document_chunks WHERE document_id = ?",
         (projection.document_id,),
@@ -498,6 +512,11 @@ def test_image_ocr_failure_falls_back_honestly_and_stays_ready(storage) -> None:
     projection = _ready_projection(service, account_id, object_id)
     assert projection.status == DocumentIngestionStatus.READY
     assert projection.failure_stage is None
+    # 失败页如实计入脱敏汇总，且不被标成「已识别」。
+    assert projection.ocr_pages_total == 1
+    assert projection.ocr_pages_succeeded == 0
+    assert projection.ocr_pages_failed == 1
+    assert projection.parse_cache_hit is False
     row = storage["database"].connection.execute(
         "SELECT content FROM document_chunks WHERE document_id = ?",
         (projection.document_id,),
@@ -564,7 +583,10 @@ def test_image_parse_cache_version_expiry_reparses_with_ocr(storage) -> None:
 
     projection = _ready_projection(service, account_id, object_id)
     assert projection.status == DocumentIngestionStatus.READY
+    # 缓存版本失效 → 重新识别：真实调用发生，非缓存命中，证据指向本轮 run。
     assert len(ocr.calls) == 1
+    assert projection.parse_cache_hit is False
+    assert projection.ocr_evidence_run_id == ocr.calls[0].run_id
     row = storage["database"].connection.execute(
         "SELECT content FROM document_chunks WHERE document_id = ?",
         (projection.document_id,),
@@ -574,6 +596,7 @@ def test_image_parse_cache_version_expiry_reparses_with_ocr(storage) -> None:
 
 
 def test_same_image_content_reuses_ocr_parse_cache(storage) -> None:
+    """相同内容第二次摄取：0 次 Qwen 调用、0 条新锁，缓存来源可追溯。"""
     ocr = _FakeOcrPort("相同图片内容")
     service, _ = make_ingestion(storage, ocr=ocr)
     account_id = storage["account_a"]
@@ -589,9 +612,29 @@ def test_same_image_content_reuses_ocr_parse_cache(storage) -> None:
     service.enqueue(account_id, object_2)
     service.process_pending()
 
+    # 第一次真实调用后第二次直接命中解析缓存：调用增量必须为 0。
     assert len(ocr.calls) == 1
     rows = storage["database"].connection.execute(
         "SELECT COUNT(*) AS count FROM document_chunks WHERE account_id = ?",
         (account_id,),
     ).fetchone()
     assert rows is not None and int(rows["count"]) == 2
+
+    first = _ready_projection(service, account_id, object_1)
+    second = _ready_projection(service, account_id, object_2)
+    assert first.status == DocumentIngestionStatus.READY
+    assert second.status == DocumentIngestionStatus.READY
+    # 第一份是真实 OCR（cache_hit=False，证据=原始 run）；第二份是缓存命中
+    # （cache_hit=True，证据引用同一原始 run，不伪造本轮模型成功）。
+    assert first.parse_cache_hit is False
+    assert first.ocr_pages_total == 1 and first.ocr_pages_succeeded == 1
+    assert first.ocr_evidence_run_id is not None
+    assert second.parse_cache_hit is True
+    assert second.ocr_pages_total == 0
+    assert second.ocr_evidence_run_id == first.ocr_evidence_run_id
+    # 模型锁同样零增量：锁表只有第一次调用留下的一条。
+    count = storage["database"].connection.execute(
+        "SELECT COUNT(*) AS count FROM model_run_locks WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert count is not None and int(count["count"]) == 0

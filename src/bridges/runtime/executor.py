@@ -34,6 +34,8 @@ from bridges.ai import (
     QwenWanAdapter,
 )
 from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID, VISION_MODEL_ID
+from bridges.ai.production import build_production_composition
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.repository import ConversationRepository
 from bridges.config import Settings
@@ -202,14 +204,14 @@ class BackgroundExecutor:
                 cassette_dir=settings.qwen_cassette_dir,
                 record_mode=record_mode,
             )
-            ocr = QwenOcrPort(
-                api_key=settings.qwen_api_key,
-                region=settings.qwen_region,
-                workspace_id=settings.qwen_workspace_id,
-                cassette_dir=settings.qwen_cassette_dir,
-                record_mode=record_mode,
-            )
+            # Issue 14：知识库 OCR 与 API 进程共用同一生产组合（Issue 09
+            # 注册能力 + 真实适配器）与同一运行记录接缝（Issue 10 recorder）；
+            # 缺少全局 Key 时组合不绑定适配器，OCR 端口失败关闭、诚实降级。
             assert self._database is not None
+            ocr = QwenOcrPort(
+                gateway=build_production_composition(settings).gateway,
+                recorder=SqliteModelRunLockRecorder(self._database),
+            )
             self._ingestion = IngestionService(
                 database=self._database,
                 object_repository=repository,
