@@ -88,3 +88,4 @@ python -m pytest `
 
 - 2026-08-13：用户确认旧 `/media/storyboards`、`/media/charts` 等写 API 退役；只有当前聊天产品中的图片、视频与语音智能功能需要继续保证真实使用全局 Qwen Key。
 - 2026-08-13：旧媒体确定性能力不等于模型造假；缺陷在于退役产品边界与能力声明不诚实。本 issue 用 410 消除歧义，不强行把本地工具改造成模型调用。
+- 2026-08-14：实现完成并合并到分支 `issue08-retire-legacy-media-writes`。旧写入口全部走 `legacy_media_retired` 410 合同（含 `GET /media/storyboards/{storyboard_id}/validate`）；生产组合不再实例化 deterministic generator/runtime/旁白合成器；历史只读 GET 保留并经快照测试证明无副作用；`tests/integration/test_media_retirement.py` 覆盖命令清单、正文形态、零 service 调用、幂等、model_run_locks 与路由分类门禁；现代图片/视频/语音/ASR/TTS 回归通过；openapi.json 已同步。验证命令 322 项全过，全量测试套件与 mypy 通过。

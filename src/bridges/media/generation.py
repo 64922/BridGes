@@ -777,8 +777,15 @@ class MediaGenerationService:
         spec_generator: SpecGenerator | None = None,
     ) -> None:
         self._model_gateway = model_gateway
-        self._spec_generator = spec_generator or DeterministicSpecGenerator()
+        self._spec_generator = spec_generator
         self._media_objects: dict[str, ScientificMediaObject] = {}
+
+    def _require_spec_generator(self) -> SpecGenerator:
+        if self._spec_generator is None:
+            raise MediaGenerationError(
+                "媒体生成器已退役：生产组合不再实例化确定性图表/图形生成器。"
+            )
+        return self._spec_generator
 
     def generate_chart(
         self,
@@ -788,7 +795,7 @@ class MediaGenerationService:
         fact_locks: list[FactLock] | None = None,
     ) -> GenerationResult:
         """Generate a chart from structured data and field mappings."""
-        spec = self._spec_generator.generate_chart_spec(request)
+        spec = self._require_spec_generator().generate_chart_spec(request)
         return self._finalize_chart(
             spec, account_id, request.project_id, fact_locks,
             request_claim_ids=request.claim_ids,
@@ -803,7 +810,7 @@ class MediaGenerationService:
         fact_locks: list[FactLock] | None = None,
     ) -> GenerationResult:
         """Generate a scientific figure from element definitions."""
-        spec = self._spec_generator.generate_figure_spec(request)
+        spec = self._require_spec_generator().generate_figure_spec(request)
         return self._finalize_figure(
             spec, account_id, request.project_id, fact_locks,
             request_claim_ids=request.claim_ids,

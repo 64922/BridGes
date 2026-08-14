@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -594,7 +594,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +656,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -1487,7 +1487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1597,7 +1597,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1706,7 +1706,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -2666,7 +2666,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -3435,7 +3435,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -3736,7 +3736,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -3810,7 +3810,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -4178,7 +4178,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "503": {
             "content": {
@@ -5020,7 +5020,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -5952,7 +5952,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -8459,7 +8459,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8683,7 +8683,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -8832,7 +8832,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9150,7 +9150,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9320,7 +9320,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9469,7 +9469,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9692,7 +9692,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9923,7 +9923,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10013,7 +10013,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10112,7 +10112,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10202,7 +10202,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10881,7 +10881,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11123,7 +11123,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11202,7 +11202,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11393,7 +11393,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11665,7 +11665,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11843,7 +11843,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12023,7 +12023,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12211,7 +12211,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12309,7 +12309,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12532,7 +12532,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12622,7 +12622,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12721,7 +12721,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14668,7 +14668,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14776,7 +14776,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14972,7 +14972,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15089,7 +15089,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15241,7 +15241,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15332,7 +15332,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15440,7 +15440,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15538,7 +15538,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15822,7 +15822,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15911,7 +15911,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -16062,7 +16062,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -16373,7 +16373,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16631,7 +16631,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16711,7 +16711,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16800,7 +16800,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16880,7 +16880,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -17251,7 +17251,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/bridges__contracts__science__ValidationReport"
+                  "$ref": "#/components/schemas/ValidationReport"
                 }
               }
             }
@@ -17531,7 +17531,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17778,7 +17778,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17876,7 +17876,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17965,7 +17965,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18054,7 +18054,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18238,7 +18238,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18318,7 +18318,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18329,7 +18329,6 @@
           "media"
         ],
         "summary": "Upload Media To Project",
-        "description": "Upload a media asset into a project.",
         "operationId": "upload_media_to_project_media_projects__project_id__assets_post",
         "parameters": [
           {
@@ -18358,56 +18357,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MediaUploadRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaIngestionRunRef"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -18418,7 +18387,6 @@
           "media"
         ],
         "summary": "Upload Media",
-        "description": "Upload a personal media asset (not bound to a project).",
         "operationId": "upload_media_media_assets_post",
         "parameters": [
           {
@@ -18438,56 +18406,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MediaUploadRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaIngestionRunRef"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -18577,7 +18515,6 @@
           "media"
         ],
         "summary": "Correct Derived Asset",
-        "description": "Apply a human correction to a derived asset and create a new version.",
         "operationId": "correct_derived_asset_media_assets__asset_id__derived_post",
         "parameters": [
           {
@@ -18606,56 +18543,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MediaCorrectionRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DerivedAsset"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -18666,7 +18573,6 @@
           "media"
         ],
         "summary": "Generate Media Claim Graph",
-        "description": "Generate a ClaimGraph from a media asset's derived structures.\n\nThe media service ensures the asset is accessible and active; the existing\nclaim-evidence service produces the locatable claim graph.",
         "operationId": "generate_media_claim_graph_media_assets__asset_id__claim_graph_post",
         "parameters": [
           {
@@ -18695,56 +18601,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClaimRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClaimGraphResult"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -18755,7 +18631,6 @@
           "media"
         ],
         "summary": "Revoke Media Asset",
-        "description": "Revoke a media asset so it cannot be used in new evidence.",
         "operationId": "revoke_media_asset_media_assets__asset_id__revoke_post",
         "parameters": [
           {
@@ -18785,37 +18660,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Revoke Media Asset Media Assets  Asset Id  Revoke Post"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -18836,7 +18689,6 @@
           "media"
         ],
         "summary": "Create Chart",
-        "description": "Generate a data chart from structured data with claim bindings.",
         "operationId": "create_chart_media_charts_post",
         "parameters": [
           {
@@ -18856,46 +18708,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChartGenerationRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenerationResult"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -18906,7 +18738,6 @@
           "media"
         ],
         "summary": "Create Figure",
-        "description": "Generate a scientific figure from element definitions.",
         "operationId": "create_figure_media_figures_post",
         "parameters": [
           {
@@ -18926,46 +18757,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FigureGenerationRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenerationResult"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -19055,7 +18866,6 @@
           "media"
         ],
         "summary": "Update Media Object Spec",
-        "description": "Update the editable source of a chart or figure and re-validate.",
         "operationId": "update_media_object_spec_media_objects__object_id__spec_put",
         "parameters": [
           {
@@ -19068,15 +18878,6 @@
             }
           },
           {
-            "name": "spec_json",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Spec Json"
-            }
-          },
-          {
             "name": "bridges_session",
             "in": "cookie",
             "required": false,
@@ -19094,45 +18895,25 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScientificMediaObject"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -19143,18 +18924,8 @@
           "media"
         ],
         "summary": "Validate Spec",
-        "description": "Validate a chart or figure spec JSON without generating output.",
         "operationId": "validate_spec_media_validate_spec_post",
         "parameters": [
-          {
-            "name": "spec_json",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Spec Json"
-            }
-          },
           {
             "name": "bridges_session",
             "in": "cookie",
@@ -19173,25 +18944,25 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SpecValidationResult"
-                }
-              }
-            }
-          },
-          "422": {
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -19202,7 +18973,6 @@
           "media"
         ],
         "summary": "Create Storyboard",
-        "description": "Create a structured storyboard from a generation request.",
         "operationId": "create_storyboard_media_storyboards_post",
         "parameters": [
           {
@@ -19222,46 +18992,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StoryboardGenerationRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoryboardResult"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "422": {
             "description": "Validation Error",
@@ -19359,7 +19099,6 @@
           "media"
         ],
         "summary": "Update Storyboard",
-        "description": "Update a storyboard's metadata.",
         "operationId": "update_storyboard_media_storyboards__storyboard_id__put",
         "parameters": [
           {
@@ -19369,22 +19108,6 @@
             "schema": {
               "type": "string",
               "title": "Storyboard Id"
-            }
-          },
-          {
-            "name": "title",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Title"
             }
           },
           {
@@ -19404,56 +19127,16 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Teaching Objectives"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaStoryboard"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -19474,7 +19157,6 @@
           "media"
         ],
         "summary": "Generate Storyboard Code",
-        "description": "Generate executable source code from a storyboard.",
         "operationId": "generate_storyboard_code_media_storyboards__storyboard_id__code_post",
         "parameters": [
           {
@@ -19484,16 +19166,6 @@
             "schema": {
               "type": "string",
               "title": "Storyboard Id"
-            }
-          },
-          {
-            "name": "code_language",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "html",
-              "title": "Code Language"
             }
           },
           {
@@ -19514,37 +19186,15 @@
           }
         ],
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Generate Storyboard Code Media Storyboards  Storyboard Id  Code Post"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -19565,7 +19215,6 @@
           "media"
         ],
         "summary": "Run Storyboard Sandbox",
-        "description": "Run generated code in the isolated sandbox.",
         "operationId": "run_storyboard_sandbox_media_storyboards__storyboard_id__sandbox_post",
         "parameters": [
           {
@@ -19594,46 +19243,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SandboxRunRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SandboxRunResult"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -19723,7 +19352,6 @@
           "media"
         ],
         "summary": "Repair Sandbox Run",
-        "description": "Attempt a limited repair on a failed sandbox run.",
         "operationId": "repair_sandbox_run_media_sandbox_runs__run_id__repair_post",
         "parameters": [
           {
@@ -19736,25 +19364,6 @@
             }
           },
           {
-            "name": "patch",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Patch"
-            }
-          },
-          {
-            "name": "code_language",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "python",
-              "title": "Code Language"
-            }
-          },
-          {
             "name": "bridges_session",
             "in": "cookie",
             "required": false,
@@ -19771,56 +19380,26 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Fact Lock Ids"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SandboxRunResult"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -19831,7 +19410,7 @@
           "media"
         ],
         "summary": "Validate Storyboard",
-        "description": "Get a validation report for a storyboard sandbox run.",
+        "description": "Retired: this route previously mutated storyboard status on read.",
         "operationId": "validate_storyboard_media_storyboards__storyboard_id__validate_get",
         "parameters": [
           {
@@ -19844,15 +19423,6 @@
             }
           },
           {
-            "name": "run_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          },
-          {
             "name": "bridges_session",
             "in": "cookie",
             "required": false,
@@ -19870,35 +19440,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/bridges__contracts__media__ValidationReport"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -19919,7 +19469,6 @@
           "media"
         ],
         "summary": "Generate Accessibility Bundle",
-        "description": "Generate a complete accessibility bundle for a media target.",
         "operationId": "generate_accessibility_bundle_media_accessibility_bundles_post",
         "parameters": [
           {
@@ -19939,46 +19488,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AccessibilityBundleRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AccessibilityBundle"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -20078,7 +19597,7 @@
           "media"
         ],
         "summary": "Validate Accessibility Bundle",
-        "description": "Validate claim/version sharing, operability and science checks.",
+        "description": "Validate a bundle. Read-only: does not mutate bundle or playback state.",
         "operationId": "validate_accessibility_bundle_media_accessibility_bundles__bundle_id__validate_get",
         "parameters": [
           {
@@ -20157,7 +19676,6 @@
           "media"
         ],
         "summary": "Control Accessibility Playback",
-        "description": "Pause, resume, seek and toggle reduced motion for timed content.",
         "operationId": "control_accessibility_playback_media_accessibility_bundles__bundle_id__playback_post",
         "parameters": [
           {
@@ -20186,56 +19704,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlaybackControlRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlaybackState"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       }
@@ -20246,7 +19734,6 @@
           "media"
         ],
         "summary": "Check Cross Media Consistency",
-        "description": "Check cross-media Claim consistency before publishing.",
         "operationId": "check_cross_media_consistency_media_cross_media_consistency_post",
         "parameters": [
           {
@@ -20266,40 +19753,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CrossMediaClaimEntry"
-                },
-                "title": "Entries"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CrossMediaConsistencyResult"
-                }
-              }
-            }
-          },
-          "401": {
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaError"
                 }
               }
-            },
-            "description": "Unauthorized"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -20320,7 +19783,6 @@
           "media"
         ],
         "summary": "Evaluate Publish Gate",
-        "description": "Evaluate multi-modal publish gates without publishing.",
         "operationId": "evaluate_publish_gate_media_publish_check_post",
         "parameters": [
           {
@@ -20340,36 +19802,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MediaPublishRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MultimodalPublishGateResult"
-                }
-              }
-            }
-          },
-          "401": {
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaError"
                 }
               }
-            },
-            "description": "Unauthorized"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -20390,7 +19832,6 @@
           "media"
         ],
         "summary": "Publish Media",
-        "description": "Execute multi-modal publish. All gates must pass.",
         "operationId": "publish_media_media_publish_post",
         "parameters": [
           {
@@ -20410,48 +19851,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MediaPublishRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Publish Media Media Publish Post"
+                  "$ref": "#/components/schemas/MediaError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MediaError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MediaError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Content"
+            }
           }
         }
       },
@@ -20460,7 +19879,7 @@
           "media"
         ],
         "summary": "List Publish Records",
-        "description": "List publish records for the current account, optionally filtered by project.",
+        "description": "List publish records for the current account.",
         "operationId": "list_publish_records_media_publish_get",
         "parameters": [
           {
@@ -20681,7 +20100,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -20907,7 +20326,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -22873,7 +22292,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -23845,7 +23264,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -24578,7 +23997,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -26118,7 +25537,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -26218,7 +25637,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "502": {
             "content": {
@@ -26648,43 +26067,6 @@
         ],
         "title": "AccessibilityBundle",
         "description": "一个科学媒体对象的完整无障碍替代包。\n\n汇集朗读、文字稿、字幕、替代文本、键盘路径、减少动画和顺序阅读版本。\n所有替代共享同一 Claim 集合和源版本，并经过相同的科学校验。"
-      },
-      "AccessibilityBundleRequest": {
-        "properties": {
-          "target_kind": {
-            "$ref": "#/components/schemas/AccessibilityTargetKind",
-            "description": "目标对象类型。"
-          },
-          "target_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Target Id",
-            "description": "目标对象 ID。"
-          },
-          "language": {
-            "type": "string",
-            "title": "Language",
-            "default": "zh-CN"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "target_kind",
-          "target_id"
-        ],
-        "title": "AccessibilityBundleRequest",
-        "description": "生成无障碍包的请求。"
       },
       "AccessibilityTargetKind": {
         "type": "string",
@@ -29455,166 +28837,6 @@
         "type": "object",
         "title": "ChartDataTable",
         "description": "Structured source data for a chart."
-      },
-      "ChartGenerationRequest": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Title",
-            "description": "Chart title."
-          },
-          "mark": {
-            "$ref": "#/components/schemas/ChartMark",
-            "description": "Visual mark type."
-          },
-          "data": {
-            "$ref": "#/components/schemas/ChartDataTable",
-            "description": "Source data for the chart."
-          },
-          "x_field": {
-            "type": "string",
-            "minLength": 1,
-            "title": "X Field",
-            "description": "Field name for the x-axis."
-          },
-          "y_field": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Y Field",
-            "description": "Field name for the y-axis."
-          },
-          "color_field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Color Field",
-            "description": "Field name for color encoding."
-          },
-          "error_field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Field",
-            "description": "Field name for error/uncertainty values."
-          },
-          "x_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "X Label",
-            "description": "X-axis label (auto if omitted)."
-          },
-          "y_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Y Label",
-            "description": "Y-axis label (auto if omitted)."
-          },
-          "x_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "X Unit"
-          },
-          "y_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Y Unit"
-          },
-          "claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Claim Ids"
-          },
-          "fact_lock_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Fact Lock Ids"
-          },
-          "aggregation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Aggregation"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "mark",
-          "data",
-          "x_field",
-          "y_field"
-        ],
-        "title": "ChartGenerationRequest",
-        "description": "Request to generate a data chart from source data.\n\nThe caller provides structured data and describes what to plot."
-      },
-      "ChartMark": {
-        "type": "string",
-        "enum": [
-          "bar",
-          "line",
-          "point",
-          "area",
-          "scatter",
-          "error_bar",
-          "histogram"
-        ],
-        "title": "ChartMark",
-        "description": "Visual mark type for a data chart."
       },
       "ChatAttachmentProjection": {
         "properties": {
@@ -32450,7 +31672,7 @@
           "validation_report": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/bridges__contracts__science__ValidationReport"
+                "$ref": "#/components/schemas/ValidationReport"
               },
               {
                 "type": "null"
@@ -33442,143 +32664,6 @@
         ],
         "title": "CoverageGap",
         "description": "A coverage or recall gap reported to the caller."
-      },
-      "CrossMediaClaimEntry": {
-        "properties": {
-          "claim_id": {
-            "type": "string",
-            "title": "Claim Id",
-            "description": "Claim ID。"
-          },
-          "media_ref": {
-            "type": "string",
-            "title": "Media Ref",
-            "description": "媒体对象中的引用位置：对象 ID、元素引用或轴字段。"
-          },
-          "media_kind": {
-            "type": "string",
-            "title": "Media Kind",
-            "description": "媒体类型：text, chart, figure, storyboard, audio, video, interactive。"
-          },
-          "canonical_value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canonical Value",
-            "description": "该 Claim 在此媒体中表达的标准值。"
-          },
-          "qualifiers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Qualifiers",
-            "description": "限定条件列表。"
-          },
-          "citation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Citation Ids"
-          }
-        },
-        "type": "object",
-        "required": [
-          "claim_id",
-          "media_ref",
-          "media_kind"
-        ],
-        "title": "CrossMediaClaimEntry",
-        "description": "一个媒体对象中引用的 Claim 及其上下文。"
-      },
-      "CrossMediaConsistencyResult": {
-        "properties": {
-          "consistent": {
-            "type": "boolean",
-            "title": "Consistent",
-            "description": "是否全部一致。"
-          },
-          "entries_checked": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Entries Checked",
-            "description": "检查的条目数。",
-            "default": 0
-          },
-          "inconsistencies": {
-            "items": {
-              "$ref": "#/components/schemas/CrossMediaInconsistency"
-            },
-            "type": "array",
-            "title": "Inconsistencies"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          }
-        },
-        "type": "object",
-        "required": [
-          "consistent"
-        ],
-        "title": "CrossMediaConsistencyResult",
-        "description": "跨媒体 Claim 一致性检查结果。"
-      },
-      "CrossMediaInconsistency": {
-        "properties": {
-          "inconsistency_id": {
-            "type": "string",
-            "title": "Inconsistency Id",
-            "description": "稳定不一致标识符。"
-          },
-          "claim_id": {
-            "type": "string",
-            "title": "Claim Id",
-            "description": "涉及的 Claim ID。"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind",
-            "description": "不一致类型：value_mismatch, qualifier_missing, citation_missing, terminology_conflict。"
-          },
-          "media_refs": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Media Refs",
-            "description": "涉及的媒体引用位置。"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "不一致描述。"
-          },
-          "severity": {
-            "type": "string",
-            "title": "Severity",
-            "description": "严重程度：error 或 warning。",
-            "default": "error"
-          }
-        },
-        "type": "object",
-        "required": [
-          "inconsistency_id",
-          "claim_id",
-          "kind",
-          "description"
-        ],
-        "title": "CrossMediaInconsistency",
-        "description": "跨媒体一致性检查发现的单条不一致。"
       },
       "DataBinding": {
         "properties": {
@@ -37926,117 +37011,6 @@
         "title": "FidelitySummary",
         "description": "保真检查摘要：脱敏计数（指标与审计用）。"
       },
-      "FigureElement": {
-        "properties": {
-          "element_id": {
-            "type": "string",
-            "title": "Element Id",
-            "description": "Stable element identifier."
-          },
-          "role": {
-            "type": "string",
-            "title": "Role",
-            "description": "Semantic role: axis_label, curve, annotation, legend, scale_bar, etc."
-          },
-          "label": {
-            "type": "string",
-            "title": "Label",
-            "description": "Display label text."
-          },
-          "claim_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Claim Id",
-            "description": "Bound claim if any."
-          },
-          "svg_fragment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Svg Fragment",
-            "description": "Inline SVG markup for this element."
-          }
-        },
-        "type": "object",
-        "required": [
-          "element_id",
-          "role",
-          "label"
-        ],
-        "title": "FigureElement",
-        "description": "A labeled element in a scientific figure."
-      },
-      "FigureGenerationRequest": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Title",
-            "description": "Figure title."
-          },
-          "elements": {
-            "items": {
-              "$ref": "#/components/schemas/FigureElement"
-            },
-            "type": "array",
-            "title": "Elements",
-            "description": "Figure elements. When empty, the service generates defaults."
-          },
-          "claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Claim Ids"
-          },
-          "fact_lock_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Fact Lock Ids"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title"
-        ],
-        "title": "FigureGenerationRequest",
-        "description": "Request to generate a scientific figure.\n\nThe caller provides element definitions and optional claim bindings."
-      },
       "FixtureResult": {
         "properties": {
           "fixture_id": {
@@ -38367,31 +37341,6 @@
         "type": "object",
         "title": "GenerateLessonRequest",
         "description": "Request to generate a short lesson from a teaching plan."
-      },
-      "GenerationResult": {
-        "properties": {
-          "media_object": {
-            "$ref": "#/components/schemas/ScientificMediaObject",
-            "description": "Generated media object."
-          },
-          "model_run_lock": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ModelRunLock"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Model run lock when a model was used."
-          }
-        },
-        "type": "object",
-        "required": [
-          "media_object"
-        ],
-        "title": "GenerationResult",
-        "description": "Result of a media generation task."
       },
       "GenerationStatus": {
         "type": "string",
@@ -43087,40 +42036,6 @@
         "title": "LicenseState",
         "description": "License/Access state for the document."
       },
-      "LifecycleStage": {
-        "properties": {
-          "stage": {
-            "type": "string",
-            "enum": [
-              "enter",
-              "hold",
-              "transform",
-              "exit"
-            ],
-            "title": "Stage",
-            "description": "阶段类型：进入、保持、变换、退出。"
-          },
-          "timing_seconds": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Timing Seconds",
-            "description": "阶段持续时间，单位秒。"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "description": "阶段描述。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "stage",
-          "timing_seconds",
-          "description"
-        ],
-        "title": "LifecycleStage",
-        "description": "动画对象的一个生命周期阶段。"
-      },
       "LifecycleStatus": {
         "type": "string",
         "enum": [
@@ -43482,68 +42397,6 @@
         "title": "MediaAssetStatus",
         "description": "Lifecycle status of a media asset or derived asset."
       },
-      "MediaCorrectionRequest": {
-        "properties": {
-          "derived_asset_id": {
-            "type": "string",
-            "title": "Derived Asset Id",
-            "description": "Derived asset to correct."
-          },
-          "correction_type": {
-            "$ref": "#/components/schemas/MediaCorrectionType",
-            "description": "Kind of correction."
-          },
-          "target_ref": {
-            "type": "string",
-            "title": "Target Ref",
-            "description": "Reference to the corrected element: token id, region id, cell coordinate, etc."
-          },
-          "corrected_value": {
-            "type": "string",
-            "title": "Corrected Value",
-            "description": "New value."
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "type": "object",
-        "required": [
-          "derived_asset_id",
-          "correction_type",
-          "target_ref",
-          "corrected_value"
-        ],
-        "title": "MediaCorrectionRequest",
-        "description": "Request to correct a derived asset and produce a new version."
-      },
-      "MediaCorrectionType": {
-        "type": "string",
-        "enum": [
-          "ocr_text",
-          "region_label",
-          "formula_latex",
-          "formula_symbol",
-          "table_cell",
-          "table_schema",
-          "scale",
-          "legend",
-          "transcript_term",
-          "speaker_segment",
-          "caption_text",
-          "keyframe_interpretation"
-        ],
-        "title": "MediaCorrectionType",
-        "description": "Kind of human correction applied to a derived asset."
-      },
       "MediaError": {
         "properties": {
           "error": {
@@ -43580,83 +42433,6 @@
         ],
         "title": "MediaGateResult",
         "description": "Result of a single media input quality gate."
-      },
-      "MediaIngestionRunRef": {
-        "properties": {
-          "run_id": {
-            "type": "string",
-            "title": "Run Id",
-            "description": "Ingestion run identifier."
-          },
-          "asset_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Asset Id"
-          },
-          "status": {
-            "$ref": "#/components/schemas/MediaIngestionStatus",
-            "default": "pending"
-          },
-          "gate_results": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/MediaGateResult"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/MediaQualityGate"
-            },
-            "type": "object",
-            "title": "Gate Results"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Run creation timestamp."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last run update timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "run_id",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "MediaIngestionRunRef",
-        "description": "Reference to an asynchronous media ingestion run."
-      },
-      "MediaIngestionStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "running",
-          "completed",
-          "failed",
-          "quarantined"
-        ],
-        "title": "MediaIngestionStatus",
-        "description": "Status of a media ingestion run."
       },
       "MediaManifest": {
         "properties": {
@@ -43811,56 +42587,6 @@
         "title": "MediaProjection",
         "description": "Public projection of a media asset with its manifest and derived assets."
       },
-      "MediaPublishRequest": {
-        "properties": {
-          "media_object_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Media Object Ids",
-            "description": "要发布的媒体对象 ID 列表。"
-          },
-          "source_asset_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Source Asset Ids",
-            "description": "关联的原始资产 ID 列表。"
-          },
-          "storyboard_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Storyboard Ids",
-            "description": "关联的分镜 ID 列表。"
-          },
-          "accessibility_bundle_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Accessibility Bundle Ids",
-            "description": "关联的无障碍包 ID 列表。"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id"
-          }
-        },
-        "type": "object",
-        "title": "MediaPublishRequest",
-        "description": "多模态发布请求。"
-      },
       "MediaQualityGate": {
         "type": "string",
         "enum": [
@@ -43980,56 +42706,6 @@
         ],
         "title": "MediaType",
         "description": "Media type of an imported document or asset."
-      },
-      "MediaUploadRequest": {
-        "properties": {
-          "filename": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Filename",
-            "description": "Original filename."
-          },
-          "media_type": {
-            "$ref": "#/components/schemas/MediaType",
-            "description": "Declared media type."
-          },
-          "content": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Content",
-            "description": "Base64-encoded raw content bytes."
-          },
-          "license_state": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LicenseState"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "type": "object",
-        "required": [
-          "filename",
-          "media_type",
-          "content"
-        ],
-        "title": "MediaUploadRequest",
-        "description": "Request to upload a scientific media asset."
       },
       "Membership": {
         "properties": {
@@ -44275,78 +42951,6 @@
         ],
         "title": "ModelRunLock",
         "description": "Immutable snapshot of one model invocation.\n\nThe lock records the exact capability, model, region, parameters, prompt\nversion and contract that were used, so the call can be replayed and audited."
-      },
-      "MultimodalGateResult": {
-        "type": "string",
-        "enum": [
-          "pass",
-          "fail"
-        ],
-        "title": "MultimodalGateResult",
-        "description": "多模态发布门单项结果。"
-      },
-      "MultimodalPublishGate": {
-        "type": "string",
-        "enum": [
-          "claim_consistency",
-          "license",
-          "authenticity",
-          "sandbox",
-          "accessibility",
-          "fact_lock",
-          "invalidation"
-        ],
-        "title": "MultimodalPublishGate",
-        "description": "多模态发布门名称。"
-      },
-      "MultimodalPublishGateResult": {
-        "properties": {
-          "passed": {
-            "type": "boolean",
-            "title": "Passed",
-            "description": "是否全部通过。"
-          },
-          "gate_results": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/MultimodalGateResult"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/MultimodalPublishGate"
-            },
-            "type": "object",
-            "title": "Gate Results"
-          },
-          "failed_gates": {
-            "items": {
-              "$ref": "#/components/schemas/MultimodalPublishGate"
-            },
-            "type": "array",
-            "title": "Failed Gates"
-          },
-          "reasons": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Reasons"
-          },
-          "consistency_result": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CrossMediaConsistencyResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "passed"
-        ],
-        "title": "MultimodalPublishGateResult",
-        "description": "多模态发布门综合结果。"
       },
       "NarrationAudio": {
         "properties": {
@@ -45539,53 +44143,6 @@
         "title": "PlanAdjustmentTrigger",
         "description": "能够改变未交付课时的触发源。"
       },
-      "PlaybackControlRequest": {
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "start",
-              "pause",
-              "resume",
-              "seek",
-              "set_reduced_motion"
-            ],
-            "title": "Action",
-            "description": "控制动作。"
-          },
-          "position_seconds": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Position Seconds",
-            "description": "seek 目标位置，单位秒。"
-          },
-          "enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enabled",
-            "description": "set_reduced_motion 的开关值。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "action"
-        ],
-        "title": "PlaybackControlRequest",
-        "description": "播放控制请求。"
-      },
       "PlaybackControls": {
         "properties": {
           "can_pause": {
@@ -45622,91 +44179,6 @@
         "type": "object",
         "title": "PlaybackControls",
         "description": "时间内容的播放控制能力声明。"
-      },
-      "PlaybackState": {
-        "properties": {
-          "state_id": {
-            "type": "string",
-            "title": "State Id",
-            "description": "稳定状态标识符。"
-          },
-          "bundle_id": {
-            "type": "string",
-            "title": "Bundle Id",
-            "description": "关联的无障碍包 ID。"
-          },
-          "paused": {
-            "type": "boolean",
-            "title": "Paused",
-            "default": false
-          },
-          "position_seconds": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Position Seconds",
-            "default": 0.0
-          },
-          "duration_seconds": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Duration Seconds",
-            "default": 0.0
-          },
-          "speed": {
-            "type": "number",
-            "exclusiveMinimum": 0.0,
-            "title": "Speed",
-            "default": 1.0
-          },
-          "reduced_motion_enabled": {
-            "type": "boolean",
-            "title": "Reduced Motion Enabled",
-            "default": false
-          },
-          "captions_enabled": {
-            "type": "boolean",
-            "title": "Captions Enabled",
-            "default": true
-          },
-          "active_caption_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Caption Text",
-            "description": "当前时间点的字幕文本。"
-          },
-          "active_frame_description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Frame Description",
-            "description": "减少动画模式下当前时间点的静态帧描述。"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "最后更新时间戳。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "state_id",
-          "bundle_id",
-          "updated_at"
-        ],
-        "title": "PlaybackState",
-        "description": "一个无障碍包的播放状态，支持暂停、时间控制和减少动画。"
       },
       "PopularScienceElement": {
         "properties": {
@@ -48734,53 +47206,6 @@
         "title": "SandboxDependency",
         "description": "沙箱运行的依赖项记录。"
       },
-      "SandboxResourceLimits": {
-        "properties": {
-          "max_cpu_seconds": {
-            "type": "number",
-            "minimum": 1.0,
-            "title": "Max Cpu Seconds",
-            "description": "最大 CPU 时间，单位秒。",
-            "default": 30.0
-          },
-          "max_memory_mb": {
-            "type": "integer",
-            "minimum": 32.0,
-            "title": "Max Memory Mb",
-            "description": "最大内存，单位 MB。",
-            "default": 512
-          },
-          "max_disk_mb": {
-            "type": "integer",
-            "minimum": 10.0,
-            "title": "Max Disk Mb",
-            "description": "最大磁盘，单位 MB。",
-            "default": 100
-          },
-          "max_processes": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Max Processes",
-            "description": "最大进程数。",
-            "default": 10
-          },
-          "network_allowed": {
-            "type": "boolean",
-            "title": "Network Allowed",
-            "description": "是否允许网络访问，默认禁止。",
-            "default": false
-          },
-          "keys_allowed": {
-            "type": "boolean",
-            "title": "Keys Allowed",
-            "description": "是否允许访问密钥，默认禁止。",
-            "default": false
-          }
-        },
-        "type": "object",
-        "title": "SandboxResourceLimits",
-        "description": "沙箱资源限制。"
-      },
       "SandboxResourceUsage": {
         "properties": {
           "cpu_time_ms": {
@@ -48820,52 +47245,6 @@
         "type": "object",
         "title": "SandboxResourceUsage",
         "description": "沙箱运行实际资源使用记录。"
-      },
-      "SandboxRunRequest": {
-        "properties": {
-          "storyboard_id": {
-            "type": "string",
-            "title": "Storyboard Id",
-            "description": "关联的分镜 ID。"
-          },
-          "source_code": {
-            "type": "string",
-            "title": "Source Code",
-            "description": "可执行代码（Python/HTML/JS）。"
-          },
-          "code_language": {
-            "type": "string",
-            "title": "Code Language",
-            "description": "代码语言：python, html, javascript。"
-          },
-          "repair_budget": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Repair Budget",
-            "description": "有限修复次数上限。",
-            "default": 3
-          },
-          "fact_lock_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Fact Lock Ids",
-            "description": "禁止触犯的事实锁 ID 列表。"
-          },
-          "resource_limits": {
-            "$ref": "#/components/schemas/SandboxResourceLimits",
-            "description": "资源限制。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "storyboard_id",
-          "source_code",
-          "code_language"
-        ],
-        "title": "SandboxRunRequest",
-        "description": "提交沙箱运行的请求。"
       },
       "SandboxRunResult": {
         "properties": {
@@ -48976,98 +47355,6 @@
         ],
         "title": "SandboxRunStatus",
         "description": "沙箱运行状态，只描述运行本身。"
-      },
-      "SceneAccessibility": {
-        "properties": {
-          "alt_text": {
-            "type": "string",
-            "title": "Alt Text",
-            "description": "场景替代文本。"
-          },
-          "long_description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Long Description",
-            "description": "场景长描述，用于复杂视觉场景。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "alt_text"
-        ],
-        "title": "SceneAccessibility",
-        "description": "无障碍描述信息，附加给一个场景。"
-      },
-      "SceneSpec": {
-        "properties": {
-          "scene_spec_id": {
-            "type": "string",
-            "title": "Scene Spec Id",
-            "description": "稳定场景规格标识符。"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title",
-            "description": "场景标题。"
-          },
-          "visual_objects": {
-            "items": {
-              "$ref": "#/components/schemas/VisualObject"
-            },
-            "type": "array",
-            "title": "Visual Objects",
-            "description": "场景中的视觉对象列表。"
-          },
-          "layout_description": {
-            "type": "string",
-            "title": "Layout Description",
-            "description": "布局描述。",
-            "default": ""
-          },
-          "state_description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "State Description",
-            "description": "场景状态描述。"
-          },
-          "accessibility": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SceneAccessibility"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "场景级无障碍描述。"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "创建时间戳。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "scene_spec_id",
-          "title",
-          "created_at"
-        ],
-        "title": "SceneSpec",
-        "description": "单场景视觉定义，可独立编辑和验证。\n\nSceneSpec 定义单个场景的静态视觉设计，包含视觉对象列表、布局、状态、\n数据绑定和无障碍描述。被 MediaStoryboard 中的镜头引用。"
       },
       "ScientificMediaObject": {
         "properties": {
@@ -51410,88 +49697,6 @@
         "title": "SpatialTemporalLocator",
         "description": "Locator of a derived asset within its source asset."
       },
-      "SpecValidationResult": {
-        "properties": {
-          "valid": {
-            "type": "boolean",
-            "title": "Valid",
-            "description": "Whether the spec passes all checks."
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Errors"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          },
-          "data_consistent": {
-            "type": "boolean",
-            "title": "Data Consistent",
-            "description": "Whether values match the source data.",
-            "default": true
-          },
-          "claims_consistent": {
-            "type": "boolean",
-            "title": "Claims Consistent",
-            "description": "Whether claim bindings are valid.",
-            "default": true
-          }
-        },
-        "type": "object",
-        "required": [
-          "valid"
-        ],
-        "title": "SpecValidationResult",
-        "description": "Result of validating a chart/figure spec against source data and facts."
-      },
-      "StaticCheckResult": {
-        "properties": {
-          "passed": {
-            "type": "boolean",
-            "title": "Passed",
-            "description": "是否通过静态检查。"
-          },
-          "ast_valid": {
-            "type": "boolean",
-            "title": "Ast Valid",
-            "description": "AST 解析是否有效。",
-            "default": true
-          },
-          "deps_whitelisted": {
-            "type": "boolean",
-            "title": "Deps Whitelisted",
-            "description": "依赖是否在白名单中。",
-            "default": true
-          },
-          "lint_ok": {
-            "type": "boolean",
-            "title": "Lint Ok",
-            "description": "代码规范检查是否通过。",
-            "default": true
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Errors",
-            "description": "检查错误列表。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "passed"
-        ],
-        "title": "StaticCheckResult",
-        "description": "代码生成后的静态检查结果。"
-      },
       "StoryboardClaimBinding": {
         "properties": {
           "binding_id": {
@@ -51543,73 +49748,6 @@
         "title": "StoryboardClaimBinding",
         "description": "分镜场景中视觉元素到 Claim/FactLock 的绑定。"
       },
-      "StoryboardGenerationRequest": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Title",
-            "description": "分镜标题。"
-          },
-          "teaching_objectives": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Teaching Objectives",
-            "description": "教学目标列表。"
-          },
-          "media_type": {
-            "type": "string",
-            "enum": [
-              "animation",
-              "interactive_html"
-            ],
-            "title": "Media Type",
-            "description": "媒体类型。"
-          },
-          "scenes": {
-            "items": {
-              "$ref": "#/components/schemas/StoryboardScene"
-            },
-            "type": "array",
-            "title": "Scenes",
-            "description": "预定义的镜头列表。为空时由生成器创建默认分镜。"
-          },
-          "claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Claim Ids"
-          },
-          "fact_lock_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Fact Lock Ids"
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "media_type"
-        ],
-        "title": "StoryboardGenerationRequest",
-        "description": "创建结构化分镜的请求。"
-      },
       "StoryboardNarration": {
         "properties": {
           "text": {
@@ -51650,28 +49788,6 @@
         ],
         "title": "StoryboardNarration",
         "description": "分镜中一个镜头的旁白描述。"
-      },
-      "StoryboardResult": {
-        "properties": {
-          "storyboard": {
-            "$ref": "#/components/schemas/MediaStoryboard",
-            "description": "生成的分镜。"
-          },
-          "scene_specs": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/SceneSpec"
-            },
-            "type": "object",
-            "title": "Scene Specs",
-            "description": "分镜引用的 SceneSpec 字典。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "storyboard"
-        ],
-        "title": "StoryboardResult",
-        "description": "分镜生成结果。"
       },
       "StoryboardScene": {
         "properties": {
@@ -54189,6 +52305,147 @@
         ],
         "title": "ValidationError"
       },
+      "ValidationReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "Stable validation report identifier."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph this report analyses."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "description": "Derived honest-degradation status."
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClaimTrustStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Status before this analysis."
+          },
+          "evidence_states": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EvidenceState"
+            },
+            "type": "object",
+            "title": "Evidence States",
+            "description": "Claim id -> aggregated evidence state."
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "missing_evidence_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Evidence Claim Ids"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "fact_lock_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Set Id"
+          },
+          "wording_strength_ceiling": {
+            "$ref": "#/components/schemas/WordingStrength",
+            "description": "Global wording strength ceiling for the graph.",
+            "default": "unassessable"
+          },
+          "scientific_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScientificQualityGateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "human_gate_required": {
+            "type": "boolean",
+            "title": "Human Gate Required",
+            "default": false
+          },
+          "human_gate_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Gate Reason"
+          },
+          "recovery_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Actions",
+            "description": "Suggested actions: add_evidence, human_review, revise_claim, block_publish."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Report timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "graph_id",
+          "account_id",
+          "status",
+          "created_at"
+        ],
+        "title": "ValidationReport",
+        "description": "Report produced by honest-degradation analysis of a claim graph.\n\nThe report records the evidence state for each claim, detected conflicts,\nmissing evidence, fact lock set id, wording strength ceiling, scientific\nquality gate result, and recommended recovery actions. It is the input to\ndownstream expression nodes (T025) and to the task stage (T006)."
+      },
       "VaultError": {
         "properties": {
           "error": {
@@ -55029,83 +53286,6 @@
         ],
         "title": "VideoTaskStatus",
         "description": "视频任务的呈现状态。\n\n- ``queued``：已提交，等待后台执行器领取；\n- ``submitting``：已领取，正在向供应商提交云端任务；\n- ``generating``：云端任务已接受，正在轮询生成；\n- ``recovery``：处理被中断（租约过期），后台正在恢复重领；\n- ``succeeded``：真实模型结果已落为账户资产；\n- ``failed``：失败，error_code/error_message 说明原因，可重试；\n- ``cancelling``：用户已发起取消，worker 正在收敛（尽力通知云端）；\n- ``cancelled``：已取消；迟到结果不会发布为成功资产。"
-      },
-      "VisualObject": {
-        "properties": {
-          "object_id": {
-            "type": "string",
-            "title": "Object Id",
-            "description": "稳定对象标识符。"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label",
-            "description": "对象显示标签。"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role",
-            "description": "语义角色，如 axis_label, curve, annotation, particle。"
-          },
-          "initial_state": {
-            "type": "string",
-            "title": "Initial State",
-            "description": "初始状态描述。"
-          },
-          "final_state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Final State",
-            "description": "终态描述。"
-          },
-          "lifecycle_stages": {
-            "items": {
-              "$ref": "#/components/schemas/LifecycleStage"
-            },
-            "type": "array",
-            "title": "Lifecycle Stages",
-            "description": "动画对象的进入/保持/变换/退出阶段。"
-          },
-          "motion_trajectory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Motion Trajectory",
-            "description": "运动轨迹描述，动画关键信息。"
-          },
-          "claim_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Claim Id",
-            "description": "绑定的 Claim ID。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "object_id",
-          "label",
-          "role",
-          "initial_state"
-        ],
-        "title": "VisualObject",
-        "description": "分镜场景中的一个视觉对象。"
       },
       "WebSearchPageClassification": {
         "type": "string",
@@ -56070,235 +54250,6 @@
         ],
         "title": "HumanDecisionType",
         "description": "Named human decision on a proposed knowledge-state or path change."
-      },
-      "bridges__contracts__media__ValidationReport": {
-        "properties": {
-          "report_id": {
-            "type": "string",
-            "title": "Report Id",
-            "description": "稳定报告标识符。"
-          },
-          "run_id": {
-            "type": "string",
-            "title": "Run Id",
-            "description": "关联的沙箱运行 ID。"
-          },
-          "storyboard_id": {
-            "type": "string",
-            "title": "Storyboard Id",
-            "description": "关联的分镜 ID。"
-          },
-          "static_check": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StaticCheckResult"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "静态检查结果。"
-          },
-          "sandbox_result": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SandboxRunResult"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "沙箱运行结果。"
-          },
-          "science_valid": {
-            "type": "boolean",
-            "title": "Science Valid",
-            "description": "科学一致性验证是否通过。",
-            "default": false
-          },
-          "fact_locks_preserved": {
-            "type": "boolean",
-            "title": "Fact Locks Preserved",
-            "description": "事实锁是否完整保持。",
-            "default": false
-          },
-          "accessibility_checked": {
-            "type": "boolean",
-            "title": "Accessibility Checked",
-            "description": "是否进行了无障碍检查。",
-            "default": false
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Errors"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "报告创建时间戳。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "report_id",
-          "run_id",
-          "storyboard_id",
-          "created_at"
-        ],
-        "title": "ValidationReport",
-        "description": "分镜沙箱运行的完整验证报告。"
-      },
-      "bridges__contracts__science__ValidationReport": {
-        "properties": {
-          "report_id": {
-            "type": "string",
-            "title": "Report Id",
-            "description": "Stable validation report identifier."
-          },
-          "graph_id": {
-            "type": "string",
-            "title": "Graph Id",
-            "description": "Claim graph this report analyses."
-          },
-          "account_id": {
-            "type": "string",
-            "title": "Account Id",
-            "description": "Owning account."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope if any."
-          },
-          "status": {
-            "$ref": "#/components/schemas/ClaimTrustStatus",
-            "description": "Derived honest-degradation status."
-          },
-          "previous_status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ClaimTrustStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Status before this analysis."
-          },
-          "evidence_states": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/EvidenceState"
-            },
-            "type": "object",
-            "title": "Evidence States",
-            "description": "Claim id -> aggregated evidence state."
-          },
-          "conflicts": {
-            "items": {
-              "$ref": "#/components/schemas/Conflict"
-            },
-            "type": "array",
-            "title": "Conflicts"
-          },
-          "missing_evidence_claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Missing Evidence Claim Ids"
-          },
-          "blocked_claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Blocked Claim Ids"
-          },
-          "fact_lock_set_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fact Lock Set Id"
-          },
-          "wording_strength_ceiling": {
-            "$ref": "#/components/schemas/WordingStrength",
-            "description": "Global wording strength ceiling for the graph.",
-            "default": "unassessable"
-          },
-          "scientific_gate": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScientificQualityGateResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "human_gate_required": {
-            "type": "boolean",
-            "title": "Human Gate Required",
-            "default": false
-          },
-          "human_gate_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Human Gate Reason"
-          },
-          "recovery_actions": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recovery Actions",
-            "description": "Suggested actions: add_evidence, human_review, revise_claim, block_publish."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Report timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "report_id",
-          "graph_id",
-          "account_id",
-          "status",
-          "created_at"
-        ],
-        "title": "ValidationReport",
-        "description": "Report produced by honest-degradation analysis of a claim graph.\n\nThe report records the evidence state for each claim, detected conflicts,\nmissing evidence, fact lock set id, wording strength ceiling, scientific\nquality gate result, and recommended recovery actions. It is the input to\ndownstream expression nodes (T025) and to the task stage (T006)."
       },
       "bridges__contracts__workflows__ArtifactTrustStatus": {
         "type": "string",

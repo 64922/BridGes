@@ -49,8 +49,12 @@ from bridges.media.accessibility_service import (
     CORE_MEDIA_TASKS,
     AccessibilityError,
     AccessibilityService,
+    DeterministicNarrationSynthesizer,
 )
-from bridges.media.storyboard_service import StoryboardService
+from bridges.media.storyboard_service import (
+    DeterministicStoryboardGenerator,
+    StoryboardService,
+)
 
 ACCOUNT = "account-alice"
 OTHER_ACCOUNT = "account-bob"
@@ -61,12 +65,14 @@ OTHER_ACCOUNT = "account-bob"
 
 @pytest.fixture
 def storyboard_service() -> StoryboardService:
-    return StoryboardService()
+    return StoryboardService(generator=DeterministicStoryboardGenerator())
 
 
 @pytest.fixture
 def generation_service() -> MediaGenerationService:
-    return MediaGenerationService()
+    from bridges.media.generation import DeterministicSpecGenerator
+
+    return MediaGenerationService(spec_generator=DeterministicSpecGenerator())
 
 
 @pytest.fixture
@@ -84,6 +90,7 @@ def service(
         storyboard_service=storyboard_service,
         generation_service=generation_service,
         media_ingestion_service=ingestion_service,
+        narration_synthesizer=DeterministicNarrationSynthesizer(),
     )
 
 

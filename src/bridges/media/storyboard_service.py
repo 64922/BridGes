@@ -298,11 +298,18 @@ class StoryboardService:
         self,
         generator: StoryboardGenerator | None = None,
     ) -> None:
-        self._generator = generator or DeterministicStoryboardGenerator()
+        self._generator = generator
         self._storyboards: dict[str, MediaStoryboard] = {}
         self._scene_specs: dict[str, SceneSpec] = {}
         #: 场景规格 -> 拥有账户（Issue 39 AC9：规格标识同样按账户隔离）。
         self._spec_accounts: dict[str, str] = {}
+
+    def _require_generator(self) -> StoryboardGenerator:
+        if self._generator is None:
+            raise StoryboardError(
+                "分镜生成器已退役：生产组合不再实例化确定性分镜生成器。"
+            )
+        return self._generator
 
     def generate_storyboard(
         self,
@@ -312,7 +319,7 @@ class StoryboardService:
         fact_locks: list[FactLock] | None = None,
     ) -> StoryboardResult:
         """Generate a storyboard from structured input."""
-        result = self._generator.generate_storyboard(request)
+        result = self._require_generator().generate_storyboard(request)
         storyboard = result.storyboard
         storyboard.account_id = account_id
         storyboard.status = StoryboardStatus.DESIGNING
@@ -726,12 +733,19 @@ class SandboxService:
         self,
         runtime: SandboxRuntime | None = None,
     ) -> None:
-        self._runtime = runtime or InMemorySandboxRuntime()
+        self._runtime = runtime
         self._runs: dict[str, SandboxRunResult] = {}
         # Store original source codes for fact-lock invariant checks.
         self._run_sources: dict[str, str] = {}
         #: 运行 -> 拥有账户（Issue 39 AC9：运行标识同样按账户隔离）。
         self._run_accounts: dict[str, str] = {}
+
+    def _require_runtime(self) -> SandboxRuntime:
+        if self._runtime is None:
+            raise SandboxError(
+                "沙箱运行时已退役：生产组合不再实例化内存沙箱运行时。"
+            )
+        return self._runtime
 
     def run(
         self,
@@ -746,7 +760,7 @@ class SandboxService:
         - No keys/secrets access (default blocked)
         - Limited resources (CPU, memory, disk, processes)
         """
-        result = self._runtime.execute(
+        result = self._require_runtime().execute(
             request.source_code,
             request.code_language,
             request.resource_limits,
@@ -853,7 +867,7 @@ class SandboxService:
             repair_budget=3,
             fact_lock_ids=merged_lock_ids,
         )
-        new_result = self._runtime.execute(
+        new_result = self._require_runtime().execute(
             patched_request.source_code,
             patched_request.code_language,
             SandboxResourceLimits(),
