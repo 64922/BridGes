@@ -27789,6 +27789,34 @@
         "title": "CareerItemState",
         "description": "条目证据状态（确定性复核结果，前端展示标签）。"
       },
+      "CareerLockRef": {
+        "properties": {
+          "lock_id": {
+            "type": "string",
+            "title": "Lock Id",
+            "description": "持久化的模型运行锁 ID。"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation",
+            "description": "稳定阶段：career_generation（首次）或 career_repair（一次有界修复）。"
+          },
+          "attempt_ordinal": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Attempt Ordinal",
+            "description": "同 run 内的调用序号：首次为 1，真实修复为 2。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lock_id",
+          "operation",
+          "attempt_ordinal"
+        ],
+        "title": "CareerLockRef",
+        "description": "一条模型运行锁的轻量引用（投影可定位完整调用集合）。\n\n只保留锁 ID 与稳定阶段/序号，绝不嵌入完整锁、提示词、规划正文或\n用户画像内容；调用集合可按账户 + ``run_id`` 或逐锁 ID 查询。"
+      },
       "CareerOption": {
         "properties": {
           "item_id": {
@@ -28066,6 +28094,26 @@
             ],
             "title": "Error Message",
             "description": "可操作中文错误说明（含安全替代步骤）。"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "业务 run 引用：同 run 的完整模型调用集合可按账户 + run_id 查询。"
+          },
+          "run_lock_refs": {
+            "items": {
+              "$ref": "#/components/schemas/CareerLockRef"
+            },
+            "type": "array",
+            "title": "Run Lock Refs",
+            "description": "本轮实际发起的供应商调用的主要锁引用（按调用顺序）。"
           },
           "created_at": {
             "type": "string",
