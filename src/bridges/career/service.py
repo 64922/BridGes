@@ -13,6 +13,7 @@ Qwen 结构化生成 → 宽容解析 → 确定性复核（承诺词边界/完�
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,6 +22,7 @@ from typing import Any
 from bridges.ai.errors import ModelRunLockConflictError, ModelRunLockError
 from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
+from bridges.career.metrics import NOOP_CAREER_LOCK_METRICS, CareerLockMetrics
 from bridges.chat.budget import RunBudget
 from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
 from bridges.contracts.ai import BusinessRef, ModelCallStatus, ModelRunLock
@@ -130,6 +132,7 @@ class CareerPlannerService:
         learning_service: LearningService | None = None,
         observability_service: ObservabilityService | None = None,
         run_lock_recorder: ModelRunLockRecorder | None = None,
+        lock_metrics: CareerLockMetrics | None = None,
     ) -> None:
         self._gateway = gateway
         self._profiles = profile_service
@@ -138,6 +141,9 @@ class CareerPlannerService:
         #: Issue 10 统一持久化端口：None 时锁只进入投影引用（评估/替身
         #: 环境），生产接线必须注入真实 recorder，缺审计证据即失败关闭。
         self._run_lock_recorder = run_lock_recorder
+        #: Issue 12 Observability：按阶段/模型状态/稳定错误码聚合调用数、
+        #: 锁数、缺锁数、延迟与 usage；不采集提示词或规划内容。
+        self._lock_metrics = lock_metrics or NOOP_CAREER_LOCK_METRICS
 
     # ------------------------------------------------------------------
     # 对外入口
@@ -594,6 +600,7 @@ class CareerPlannerService:
             for lock in recorded
             for ref in lock.business_refs
         ):
+            self._lock_metrics.record_sequence_mismatch()
             raise CareerError(
                 "career_call_sequence_mismatch",
                 "生涯规划调用序号异常：缺少首次生成锁，已停止修复。",
@@ -635,11 +642,22 @@ class CareerPlannerService:
         }
         if writing_policy is not None:
             payload["global_writing_policy"] = writing_policy.metadata()
+        started = time.monotonic()
         call_result = self._gateway.invoke(
             CAREER_CAPABILITY_NAME,
             CAREER_CAPABILITY_VERSION,
             run_context,
             payload,
+        )
+        duration_ms = max(0, int((time.monotonic() - started) * 1000))
+        # 每次真实调用都计入指标（含失败与缺锁，按阶段与模型状态聚合）。
+        self._lock_metrics.record_call(
+            operation=stage.operation,
+            status=call_result.status.value,
+            duration_ms=duration_ms,
+            usage=(
+                call_result.lock.usage if call_result.lock is not None else None
+            ),
         )
         self._persist_call_lock(
             call_result.lock,
@@ -685,7 +703,8 @@ class CareerPlannerService:
 
         失败关闭语义：
         - 网关未返回锁（理论不可达的防御）→ ``career_missing_run_lock``；
-        - 锁与业务 run 标识不一致 → ``career_call_sequence_mismatch``；
+        - 锁的账户/项目/run 标识与当前业务 run 不一致（跨账户完整性
+          防御）→ ``career_call_sequence_mismatch``；
         - 同一锁 ID 内容冲突（审计完整性异常）→
           ``career_call_sequence_mismatch``；
         - recorder 持久化失败 → ``career_lock_persist_failed``，业务终态
@@ -694,19 +713,27 @@ class CareerPlannerService:
         与规划正文绝不进入投影或审计。
         """
         if lock is None:
+            self._lock_metrics.record_missing_run_lock()
             raise CareerError(
                 "career_missing_run_lock",
                 "模型调用未返回运行锁，生涯规划已停止（输入已保留）。",
                 retryable=False,
             )
-        if lock.run_id != run_context.run_id:
+        if (
+            lock.run_id != run_context.run_id
+            or lock.account_id != run_context.account_id
+            or lock.project_id != run_context.project_id
+        ):
+            self._lock_metrics.record_sequence_mismatch()
             raise CareerError(
                 "career_call_sequence_mismatch",
                 "模型调用与业务 run 关联异常，生涯规划已停止。",
                 retryable=False,
             )
         if self._run_lock_recorder is None:
-            # 评估/替身环境（无 recorder）：锁引用仍进入投影，不丢弃。
+            # 评估/替身环境（无 recorder）：锁引用仍进入投影，不丢弃；
+            # 指标标记该组合没有持久化审计证据，供运营识别。
+            self._lock_metrics.record_recorder_missing()
             self._collect_lock_ref(lock, stage, lock_refs)
             return
         try:
@@ -738,12 +765,14 @@ class CareerPlannerService:
             )
         except ModelRunLockConflictError as exc:
             # 相同 lock_id 不同内容：审计完整性异常，按序号异常失败关闭。
+            self._lock_metrics.record_sequence_mismatch()
             raise CareerError(
                 "career_call_sequence_mismatch",
                 "生涯规划调用序号异常：运行锁内容冲突，已停止。",
                 retryable=False,
             ) from exc
         except ModelRunLockError as exc:
+            self._lock_metrics.record_persist_failed()
             raise CareerError(
                 "career_lock_persist_failed",
                 "模型调用审计记录写入失败，生涯规划未完成（输入已保留）。",
@@ -868,6 +897,12 @@ class CareerPlannerService:
                     }
                     for ref in projection.run_lock_refs
                 ],
+                # AC6：首次结构无效并真实发起修复时，领域审计另行记录
+                # repair 触发事实（模型锁仍如实记录调用成功，不改写）。
+                "repair_triggered": any(
+                    ref.operation == CAREER_OPERATION_REPAIR
+                    for ref in projection.run_lock_refs
+                ),
                 "error_code": projection.error_code,
             },
         )

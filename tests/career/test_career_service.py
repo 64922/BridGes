@@ -967,7 +967,186 @@ def test_audit_details_include_lock_refs_without_body(tmp_path: Path) -> None:
     assert lock_refs[0]["operation"] == CAREER_OPERATION_GENERATION
     assert lock_refs[0]["attempt_ordinal"] == 1
     assert lock_refs[0]["lock_id"]
+    assert details["repair_triggered"] is False
     serialized = str(details)
     assert "数据分析" not in serialized
     assert "包就业" not in serialized
     assert "【修复要求】" not in serialized
+
+
+def test_audit_records_repair_triggered_on_successful_repair(
+    tmp_path: Path,
+) -> None:
+    """首次结构无效且修复成功：领域审计显式记录 repair 触发（AC6），
+    终态仍为 SUCCESS 且不含正文。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    service, observability = _service_with_recorder(adapter, database)
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+    audit_events = observability.list_audit_events(
+        account_id="account-1", action=AuditAction.CAREER_PLANNING_GENERATED
+    )
+    assert len(audit_events) == 1
+    details = audit_events[0].details
+    assert details["repair_triggered"] is True
+    assert details["error_code"] is None, "修复成功后业务终态不携带错误码"
+    assert len(details["lock_refs"]) == 2
+    assert "【修复要求】" not in str(details)
+
+
+def test_lock_metrics_aggregate_calls_by_stage_and_status(
+    tmp_path: Path,
+) -> None:
+    """Observability：按阶段/模型状态聚合调用数与延迟/usage；
+    缺锁、持久化失败与序号异常有独立稳定计数。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    metrics = InMemoryCareerLockMetrics()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    observability = ObservabilityService()
+    learning_service = LearningService(repository=InMemoryLearningRepository())
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=learning_service,
+        observability_service=observability,
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+        lock_metrics=metrics,
+    )
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+
+    snapshot = metrics.snapshot()
+    assert snapshot.get(
+        "career_lock_call_total:career_generation:success"
+    ) == 1, "首次生成调用按阶段+状态聚合"
+    assert snapshot.get(
+        "career_lock_call_total:career_repair:success"
+    ) == 1, "真实修复调用单独成档"
+    assert metrics.call_count() == 2
+    assert metrics.last_duration_ms() is not None
+    assert metrics.last_usage() is None or isinstance(metrics.last_usage(), dict)
+    # 缺锁/持久化失败/序号异常计数在正常路径为零
+    assert "career_lock_missing_total" not in snapshot
+    assert "career_lock_persist_failed_total" not in snapshot
+    assert "career_call_sequence_mismatch_total" not in snapshot
+
+
+def test_lock_metrics_count_failure_paths(tmp_path: Path) -> None:
+    """持久化失败与鉴权失败分别产生稳定计数与状态聚合。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+
+    # 持久化失败 → career_lock_persist_failed_total
+    metrics_persist = InMemoryCareerLockMetrics()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=ObservabilityService(),
+        run_lock_recorder=_FailingRecorder(),
+        lock_metrics=metrics_persist,
+    )
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.error_code == "career_lock_persist_failed"
+    assert metrics_persist.snapshot().get(
+        "career_lock_persist_failed_total"
+    ) == 1
+    assert metrics_persist.snapshot().get(
+        "career_lock_call_total:career_generation:success"
+    ) == 1, "调用已真实发生，即使持久化失败也计入调用数"
+
+    # 鉴权失败 → 按 blocked 状态聚合
+    metrics_auth = InMemoryCareerLockMetrics()
+    adapter2 = _ProgrammableStructuredAdapter(error=AuthError("密钥无效"))
+    service2 = CareerPlannerService(
+        gateway=_gateway_with(adapter2),
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=ObservabilityService(),
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+        lock_metrics=metrics_auth,
+    )
+    events2 = _run(service2)
+    assert events2[-1].result is not None
+    assert events2[-1].result.process_state == CareerPlanningProcessState.PERMISSION
+    snapshot2 = metrics_auth.snapshot()
+    assert snapshot2.get(
+        "career_lock_call_total:career_generation:blocked"
+    ) == 1
+
+
+def test_lock_metrics_count_missing_recorder(tmp_path: Path) -> None:
+    """未注入 recorder 的组合（评估/替身）：调用发生后标记
+    career_lock_recorder_missing，投影仍携带锁引用（不丢弃）。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+
+    metrics = InMemoryCareerLockMetrics()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    observability = ObservabilityService()
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=observability,
+        run_lock_recorder=None,
+        lock_metrics=metrics,
+    )
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.DONE
+    assert len(projection.run_lock_refs) == 1, "无 recorder 时引用仍保留"
+    snapshot = metrics.snapshot()
+    assert snapshot.get("career_lock_recorder_missing_total") == 1
+
+
+def test_lock_metrics_count_missing_lock(tmp_path: Path) -> None:
+    """网关缺锁（防御路径）：career_lock_missing_total 计数且失败关闭。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+    from bridges.contracts.ai import ModelCallResult
+    from bridges.storage import BridgesDatabase
+
+    class _NoLockGateway:
+        """网关契约的缺锁替身：返回无锁结果（防御路径测试）。"""
+
+        def invoke(self, *args: Any, **kwargs: Any) -> ModelCallResult:
+            return ModelCallResult(
+                status=ModelCallStatus.SUCCESS,
+                lock=None,
+                output={},
+            )
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    metrics = InMemoryCareerLockMetrics()
+    service = CareerPlannerService(
+        gateway=_NoLockGateway(),  # type: ignore[arg-type]
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=ObservabilityService(),
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+        lock_metrics=metrics,
+    )
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.error_code == "career_missing_run_lock"
+    snapshot = metrics.snapshot()
+    assert snapshot.get("career_lock_missing_total") == 1
+    assert snapshot.get(
+        "career_lock_call_total:career_generation:success"
+    ) == 1, "调用本身已发起，仍计入调用数"
