@@ -101,6 +101,8 @@ class AuditAction(str, Enum):
     REMINDER_CATCH_UP = "reminder_catch_up"
     WEB_SEARCH = "web_search"
     TEACHING_EVIDENCE_ADJUDICATION = "teaching_evidence_adjudication"
+    # Issue 02：学习模式不变量告警（降级轮出现网络来源引用等）。
+    LEARNING_INVARIANT = "learning_invariant"
     ARXIV_SEARCH = "arxiv_search"
     PLUGIN_INSTALL = "plugin_install"
     PLUGIN_UNINSTALL = "plugin_uninstall"

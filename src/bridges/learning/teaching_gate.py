@@ -360,8 +360,18 @@ class TeachingEvidenceGateService:
             required,
             web_coverage=web_coverage,
         )
+        # Issue 02：本地覆盖不足（有命中但不足）且非 CONFLICT 时同样允许
+        # 带标注降级——降级回答以真实本地命中为锚，联网失败不再只剩拒绝。
+        # 过时/已取代材料仍不能作锚（与既有 stale 语义一致：stale 强制
+        # 公开补充，失败时拒绝而非用旧材料补位）。
         allow_model_knowledge = (
-            not local
+            (
+                not local
+                or (
+                    local_status == RetrievalSufficiency.INSUFFICIENT_COVERAGE
+                    and not local_stale
+                )
+            )
             and base_status != TeachingEvidenceStatus.CONFLICT
             and search_status
             in {
@@ -395,7 +405,11 @@ class TeachingEvidenceGateService:
                 required_search=required,
                 search_status=TeachingCardStatus.EMPTY,
                 search_error_code=search_error_code or "web_search_coverage_insufficient",
-                gap="已搜索但未覆盖本轮目标，暂不能可靠断言关键结论。",
+                gap=(
+                    _MODEL_KNOWLEDGE_GAP
+                    if allow_model_knowledge
+                    else "已搜索但未覆盖本轮目标，暂不能可靠断言关键结论。"
+                ),
                 allow_model_knowledge=allow_model_knowledge,
                 recovery_steps=[
                     "重试公开检索，或上传一份与目标直接相关的材料。"
@@ -414,9 +428,9 @@ class TeachingEvidenceGateService:
                 reason=(
                     f"{local_reason}{blocked_notice}公开补充检索未完成。"
                     + (
-                        "本轮将允许模型用一般知识谨慎回答，并明确标注未联网核实。"
+                        "本地材料不足、联网未完成，本轮为未联网核实的背景回答。"
                         if allow_model_knowledge
-                        else "不能用模型记忆替代现有材料。"
+                        else "不能仅凭模型记忆替代，需先核对来源。"
                     )
                 ),
                 local_sources=local,
@@ -448,9 +462,9 @@ class TeachingEvidenceGateService:
                 reason=(
                     f"{local_reason}公开补充检索尚未完成。"
                     + (
-                        "本轮将允许模型用一般知识谨慎回答，并明确标注未联网核实。"
+                        "本地材料不足、联网未完成，本轮为未联网核实的背景回答。"
                         if allow_model_knowledge
-                        else "不能用模型记忆替代现有材料。"
+                        else "不能仅凭模型记忆替代，需先核对来源。"
                     )
                 ),
                 local_sources=local,
@@ -472,7 +486,15 @@ class TeachingEvidenceGateService:
         if search_status == TeachingCardStatus.EMPTY:
             return TeachingEvidenceGate(
                 status=base_status,
-                reason=f"{local_reason}公开补充检索没有返回可用结果。",
+                reason=(
+                    f"{local_reason}公开补充检索没有返回可用结果。"
+                    + (
+                        "本地材料不足、公开补充未覆盖本轮目标，"
+                        "本轮为未联网核实的背景回答。"
+                        if allow_model_knowledge
+                        else ""
+                    )
+                ),
                 local_sources=local,
                 external_sources=external,
                 required_search=required,
