@@ -79,3 +79,10 @@ python -m pytest tests/arxiv_mcp tests/chat/test_arxiv_search_chat.py tests/chat
 
 - 2026-08-14：本轮冻结决策 #5 全包范围即本 issue 的 What to build 1-5。
 - 2026-08-14：用户网络下 arXiv 实测可达；429 主因是「超时请求已记账 + 立即重试无间隔」，不是上游永久封禁。
+- 2026-08-14：分支 `05-arxiv-cache-throttle-cooldown` 实现完成（worktree `.worktrees/05-arxiv-cache-throttle-cooldown`），待复查合入。实现说明：
+  - 新模块：`src/bridges/arxiv_mcp/limits.py`（TTL/间隔/冷却常量 + 缓存/节流/冷却独立回滚开关）、`cache.py`（规范化查询键：大小写/空白/词序归一、引号短语原子；TTL 10 分钟；按账户隔离，先例 `WebSearchCacheRepository`）、`guard.py`（进程级最小间隔 3 秒串行调度 + 20 秒冷却状态机）。
+  - `ArxivSearchProjection` 新增 `cache_hit`/`retry_after_seconds`/`attempt_count`（命名为 `attempt_count` 与 `WebSearchProjection` 既有字段一致，语义即 issue 的 `attempts`）；`attempt_count` 按服务层上游调用计数（缓存命中/冷却拒绝为 0），worker 内部重启重发属客户端有界内部重试，不计入投影。
+  - 冷却进入条件为 429（`arxiv_rate_limit`）与超时（`arxiv_timeout`）终态；编排层阶段超时（`_SEARCH_TIMEOUT` 哨兵）的合成投影不含倒计时，但后台服务调用完成时仍会激活冷却，下一次重试由冷却/节流兜底。
+  - 阶段预算 `EXTERNAL_TIMEOUT_SECONDS["arxiv_search"]` 10s→15s（ADR-0025 已同步）。
+  - 顺带修复既有循环导入（`bridges.contracts.chat → routing → ai.adapters → contracts.chat` 与 `ai/__init__ → qwen_wan_adapter → video.constants` 两处），否则 issue 测试计划要求的 `pytest tests/arxiv_mcp` 单独收集即 ImportError（main 上同样失败）。
+  - 测试：新增 `tests/arxiv_mcp/test_cache_throttle_cooldown.py`（21 例：键归一化/TTL/仅成功缓存/账户隔离、fake clock 节流间隔与预算不足、冷却状态机、MockTransport 纵向「超时→冷却→恢复→成功」、审计与指标快照）、`tests/chat/test_arxiv_search_chat.py` 冷却期手动重试 SSE 终态、前端 `ArxivPaperSearchCard.test.tsx` 倒计时禁用/恢复；回归命令全部通过（101 passed, 1 skipped）。

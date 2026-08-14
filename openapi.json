@@ -26922,6 +26922,31 @@
             "title": "Can Cancel",
             "description": "本轮是否可以取消。",
             "default": false
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "title": "Cache Hit",
+            "description": "是否复用了未过期的进程内结果缓存。",
+            "default": false
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After Seconds",
+            "description": "上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "description": "本次搜索实际上游请求调用次数（缓存命中与冷却拒绝为 0）。",
+            "default": 0
           }
         },
         "type": "object",

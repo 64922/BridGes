@@ -13,8 +13,8 @@ from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchPlan, ArxivSearchService
 from bridges.chat import budget as budget_module
 from bridges.chat.budget import (
-    SEARCH_HANDOFF_RESERVE_SECONDS,
     PUBLIC_SEARCH_STAGE_SECONDS,
+    SEARCH_HANDOFF_RESERVE_SECONDS,
     public_search_deadlines,
     source_aware_search_budget_seconds,
 )
@@ -28,8 +28,8 @@ from tests.chat.test_arxiv_search_chat import _CapturingAdapter, _context, _serv
     [
         (set(), None, 0.0),
         ({"web"}, None, 8.0),
-        ({"arxiv"}, None, 10.0),
-        ({"arxiv", "web"}, None, 10.0),
+        ({"arxiv"}, None, 15.0),
+        ({"arxiv", "web"}, None, 15.0),
         ({"arxiv", "web"}, 7_500, 7.5),
         ({"arxiv"}, 500, 0.5),
         ({"web"}, 0, 0.0),
