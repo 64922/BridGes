@@ -23,7 +23,6 @@ from bridges.ai import (
 )
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.production import build_production_composition
-from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.api import (
     auth,
     chat,

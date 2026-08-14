@@ -6,6 +6,7 @@ import pytest
 from conftest import make_ingestion, upload_text
 
 import bridges.ingestion.index as index_module
+from bridges.ai.ports import EmbeddingContext
 from bridges.ingestion.embedding import DeterministicEmbeddingPort, EmbeddingError
 from bridges.ingestion.index import (
     CURRENT_CONTRACT,
@@ -159,11 +160,16 @@ def test_rebuild_failure_keeps_previous_version_serving(
     embedding.fail_next = 1  # type: ignore[attr-defined]
     original_embed = embedding.embed
 
-    def failing_embed(account_id: str, texts: list[str]) -> list[list[float]]:
+    def failing_embed(
+        account_id: str,
+        texts: list[str],
+        *,
+        context: EmbeddingContext | None = None,
+    ) -> list[list[float]]:
         if getattr(embedding, "fail_next", 0) > 0:
             embedding.fail_next -= 1  # type: ignore[attr-defined]
             raise EmbeddingError("向量化失败：服务暂时不可用，请稍后重试。")
-        return original_embed(account_id, texts)
+        return original_embed(account_id, texts, context=context)
 
     embedding.embed = failing_embed  # type: ignore[method-assign]
     with pytest.raises(IndexWriteError):
