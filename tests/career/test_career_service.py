@@ -16,6 +16,8 @@ from bridges.ai.errors import ModelRunLockPersistError
 from bridges.ai.ports import ModelRunLockRecorder
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.career.service import (
+    CAREER_LOCK_CONVERSATION_OBJECT_TYPE,
+    CAREER_LOCK_OBJECT_TYPE,
     CAREER_OPERATION_GENERATION,
     CAREER_OPERATION_REPAIR,
     CareerPlannerService,
@@ -502,7 +504,7 @@ def test_generation_records_exactly_one_lock_with_associations(
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 1, "正常生成必须恰好写入一条锁"
     lock = locks[0]
@@ -516,7 +518,7 @@ def test_generation_records_exactly_one_lock_with_associations(
     plan_refs = [
         ref
         for ref in lock.business_refs
-        if ref.object_type == "career_plan" and ref.object_id == "assistant-1"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE and ref.object_id == "assistant-1"
     ]
     assert len(plan_refs) == 1
     assert plan_refs[0].operation == CAREER_OPERATION_GENERATION
@@ -526,7 +528,7 @@ def test_generation_records_exactly_one_lock_with_associations(
     conv_refs = [
         ref
         for ref in lock.business_refs
-        if ref.object_type == "conversation" and ref.object_id == "conv-1"
+        if ref.object_type == CAREER_LOCK_CONVERSATION_OBJECT_TYPE and ref.object_id == "conv-1"
     ]
     assert len(conv_refs) == 1
     assert conv_refs[0].operation == CAREER_OPERATION_GENERATION
@@ -564,21 +566,20 @@ def test_invalid_structure_then_repair_records_two_locks_in_order(
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 2, "首次无效 + 修复成功必须恰好两条锁"
-    assert [ref.operation for ref in locks[0].business_refs] or True
     first = next(
         ref
         for lock in locks
         for ref in lock.business_refs
-        if ref.object_type == "career_plan" and ref.attempt_ordinal == 1
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE and ref.attempt_ordinal == 1
     )
     second = next(
         ref
         for lock in locks
         for ref in lock.business_refs
-        if ref.object_type == "career_plan" and ref.attempt_ordinal == 2
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE and ref.attempt_ordinal == 2
     )
     assert first.operation == CAREER_OPERATION_GENERATION
     assert first.attempt_ordinal == 1
@@ -595,7 +596,7 @@ def test_invalid_structure_then_repair_records_two_locks_in_order(
         ref.attempt_ordinal
         for lock in by_run
         for ref in lock.business_refs
-        if ref.object_type == "career_plan"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
     ]
     assert ordinals == [1, 2], "锁集合必须按调用序号稳定排序"
 
@@ -630,14 +631,14 @@ def test_parse_failure_then_repair_records_two_locks(tmp_path: Path) -> None:
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 2
     by_ordinal = {
         ref.attempt_ordinal: lock
         for lock in locks
         for ref in lock.business_refs
-        if ref.object_type == "career_plan"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
     }
     first = by_ordinal[1]
     second = by_ordinal[2]
@@ -672,14 +673,14 @@ def test_budget_insufficient_records_only_generation_lock(
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 1
     refs = [
         ref
         for lock in locks
         for ref in lock.business_refs
-        if ref.object_type == "career_plan"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
     ]
     assert refs[0].operation == CAREER_OPERATION_GENERATION
     assert refs[0].attempt_ordinal == 1
@@ -705,7 +706,7 @@ def test_first_call_failure_records_failed_lock(tmp_path: Path) -> None:
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 1
     assert locks[0].status == ModelCallStatus.RETRYABLE_FAIL
@@ -713,7 +714,7 @@ def test_first_call_failure_records_failed_lock(tmp_path: Path) -> None:
     refs = [
         ref
         for ref in locks[0].business_refs
-        if ref.object_type == "career_plan"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
     ]
     assert refs[0].operation == CAREER_OPERATION_GENERATION
     assert refs[0].attempt_ordinal == 1
@@ -742,14 +743,14 @@ def test_repair_failure_records_two_locks_with_statuses(tmp_path: Path) -> None:
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 2
     by_ordinal = {
         ref.attempt_ordinal: lock
         for lock in locks
         for ref in lock.business_refs
-        if ref.object_type == "career_plan"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
     }
     assert by_ordinal[1].status == ModelCallStatus.SUCCESS
     assert by_ordinal[1].error_code is None
@@ -775,7 +776,7 @@ def test_auth_failure_records_blocked_lock(tmp_path: Path) -> None:
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 1
     assert locks[0].status == ModelCallStatus.BLOCKED
@@ -784,7 +785,7 @@ def test_auth_failure_records_blocked_lock(tmp_path: Path) -> None:
     refs = [
         ref
         for ref in locks[0].business_refs
-        if ref.object_type == "career_plan"
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
     ]
     assert refs[0].operation == CAREER_OPERATION_GENERATION
     assert refs[0].attempt_ordinal == 1
@@ -938,7 +939,7 @@ def test_boundary_violation_keeps_success_lock(tmp_path: Path) -> None:
 
     recorder = SqliteModelRunLockRecorder(database)
     locks = recorder.list_locks_by_business_ref(
-        "account-1", "career_plan", "assistant-1"
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
     )
     assert len(locks) == 1
     assert locks[0].status == ModelCallStatus.SUCCESS

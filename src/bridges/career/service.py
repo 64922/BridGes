@@ -18,12 +18,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from bridges.ai.errors import ModelRunLockError
+from bridges.ai.errors import ModelRunLockConflictError, ModelRunLockError
 from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.chat.budget import RunBudget
 from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
-from bridges.contracts.ai import BusinessRef, ModelCallStatus
+from bridges.contracts.ai import BusinessRef, ModelCallStatus, ModelRunLock
 from bridges.contracts.career import (
     CareerAssumption,
     CareerEvidenceKind,
@@ -47,6 +47,7 @@ from bridges.contracts.profiles import (
     PROFILE_DIMENSION_LABELS,
     ProfileDimension,
 )
+from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.service import LearningService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
@@ -101,20 +102,22 @@ class CareerError(Exception):
 
 
 @dataclass(frozen=True)
-class _LockRefCollector:
-    """本轮 run 内已持久化模型运行锁的轻量引用（供投影与审计）。
+class _CallStage:
+    """一次真实供应商调用的稳定阶段与序号（generation:1 → repair:2）。
 
-    ``refs`` 由调用方持有：即使后续抛出 ``CareerError`` 也能在失败投影
-    中保留已发生调用的锁引用，绝不把锁丢弃在异常栈里。
+    本地宽容解析、确定性复核与投影构造没有阶段，不产生模型锁。
     """
 
-    refs: list[CareerLockRef]
+    operation: str
+    attempt_ordinal: int
 
-    def add(self, ref: CareerLockRef) -> None:
-        self.refs.append(ref)
+    @classmethod
+    def generation(cls) -> _CallStage:
+        return cls(CAREER_OPERATION_GENERATION, CAREER_GENERATION_ORDINAL)
 
-    def as_list(self) -> list[CareerLockRef]:
-        return list(self.refs)
+    @classmethod
+    def repair(cls) -> _CallStage:
+        return cls(CAREER_OPERATION_REPAIR, CAREER_REPAIR_ORDINAL)
 
 
 class CareerPlannerService:
@@ -148,7 +151,7 @@ class CareerPlannerService:
         intent: str,
         *,
         mode: str,
-        run_context: Any,
+        run_context: RunContextEnvelope,
         profile_enabled: bool,
         profile_used: bool,
         profile_items: list[Any],
@@ -166,8 +169,9 @@ class CareerPlannerService:
         """
         progress: list[str] = []
         now = datetime.now(UTC)
-        #: 本轮真实供应商调用的锁引用（异常路径也保留，供失败投影定位）。
-        lock_refs = _LockRefCollector([])
+        #: 本轮真实供应商调用的锁引用（由本方法持有：即使后续抛出
+        #: CareerError 也能在失败投影中保留已发生调用的锁引用）。
+        lock_refs: list[CareerLockRef] = []
 
         def process(
             state: CareerPlanningProcessState,
@@ -265,8 +269,8 @@ class CareerPlannerService:
                 process_steps=list(progress),
                 error_code=None,
                 error_message=None,
-                run_id=getattr(run_context, "run_id", None),
-                run_lock_refs=lock_refs.as_list(),
+                run_id=run_context.run_id,
+                run_lock_refs=list(lock_refs),
                 created_at=now,
             )
             self._audit(
@@ -302,8 +306,8 @@ class CareerPlannerService:
                 process_steps=progress,
                 state=state,
                 route_contract=route_contract,
-                run_id=getattr(run_context, "run_id", None),
-                run_lock_refs=lock_refs.as_list(),
+                run_id=run_context.run_id,
+                run_lock_refs=list(lock_refs),
             )
             self._audit(
                 account_id,
@@ -510,11 +514,11 @@ class CareerPlannerService:
         intent: str,
         mode: str,
         evidence: list[CareerEvidenceSource],
-        run_context: Any,
+        run_context: RunContextEnvelope,
         writing_policy: GlobalWritingPolicySnapshot | None = None,
         route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
-        lock_refs: _LockRefCollector | None = None,
+        lock_refs: list[CareerLockRef] | None = None,
     ) -> CareerPlanningOutputContract:
         intent_text = intent.strip()
         if not intent_text:
@@ -534,8 +538,7 @@ class CareerPlannerService:
             account_id=account_id,
             conversation_id=conversation_id,
             assistant_message_id=assistant_message_id,
-            operation=CAREER_OPERATION_GENERATION,
-            attempt_ordinal=CAREER_GENERATION_ORDINAL,
+            stage=_CallStage.generation(),
             lock_refs=lock_refs,
         )
         if failure is None:
@@ -561,8 +564,7 @@ class CareerPlannerService:
             account_id=account_id,
             conversation_id=conversation_id,
             assistant_message_id=assistant_message_id,
-            operation=CAREER_OPERATION_REPAIR,
-            attempt_ordinal=CAREER_REPAIR_ORDINAL,
+            stage=_CallStage.repair(),
             lock_refs=lock_refs,
         )
         if failure is not None:
@@ -600,7 +602,7 @@ class CareerPlannerService:
 
     def _invoke_structured(
         self,
-        run_context: Any,
+        run_context: RunContextEnvelope,
         system_prompt: str,
         user_prompt: str,
         writing_policy: GlobalWritingPolicySnapshot | None = None,
@@ -608,9 +610,8 @@ class CareerPlannerService:
         account_id: str,
         conversation_id: str,
         assistant_message_id: str,
-        operation: str,
-        attempt_ordinal: int,
-        lock_refs: _LockRefCollector | None = None,
+        stage: _CallStage,
+        lock_refs: list[CareerLockRef] | None = None,
     ) -> tuple[CareerPlanningOutputContract, str | None]:
         """调用固定结构化模型，返回 (输出, 可修复失败原因)。
 
@@ -646,8 +647,7 @@ class CareerPlannerService:
             account_id=account_id,
             conversation_id=conversation_id,
             assistant_message_id=assistant_message_id,
-            operation=operation,
-            attempt_ordinal=attempt_ordinal,
+            stage=stage,
             lock_refs=lock_refs,
         )
         if call_result.status in (
@@ -672,21 +672,22 @@ class CareerPlannerService:
 
     def _persist_call_lock(
         self,
-        lock: Any,
+        lock: ModelRunLock | None,
         *,
-        run_context: Any,
+        run_context: RunContextEnvelope,
         account_id: str,
         conversation_id: str,
         assistant_message_id: str,
-        operation: str,
-        attempt_ordinal: int,
-        lock_refs: _LockRefCollector | None = None,
+        stage: _CallStage,
+        lock_refs: list[CareerLockRef] | None = None,
     ) -> None:
         """每次结构化调用后立即、幂等持久化返回锁（Issue 12 接线）。
 
         失败关闭语义：
         - 网关未返回锁（理论不可达的防御）→ ``career_missing_run_lock``；
         - 锁与业务 run 标识不一致 → ``career_call_sequence_mismatch``；
+        - 同一锁 ID 内容冲突（审计完整性异常）→
+          ``career_call_sequence_mismatch``；
         - recorder 持久化失败 → ``career_lock_persist_failed``，业务终态
           不得覆盖模型运行状态，规划不进入完成态。
         锁关联规划（助手消息，主要锁）与会话两条业务引用；完整锁、提示词
@@ -698,7 +699,7 @@ class CareerPlannerService:
                 "模型调用未返回运行锁，生涯规划已停止（输入已保留）。",
                 retryable=False,
             )
-        if lock.run_id != getattr(run_context, "run_id", None):
+        if lock.run_id != run_context.run_id:
             raise CareerError(
                 "career_call_sequence_mismatch",
                 "模型调用与业务 run 关联异常，生涯规划已停止。",
@@ -706,7 +707,7 @@ class CareerPlannerService:
             )
         if self._run_lock_recorder is None:
             # 评估/替身环境（无 recorder）：锁引用仍进入投影，不丢弃。
-            self._collect_lock_ref(lock, operation, attempt_ordinal, lock_refs)
+            self._collect_lock_ref(lock, stage, lock_refs)
             return
         try:
             self._run_lock_recorder.record_many(
@@ -716,10 +717,10 @@ class CareerPlannerService:
                         business_ref=BusinessRef(
                             object_type=CAREER_LOCK_OBJECT_TYPE,
                             object_id=assistant_message_id,
-                            operation=operation,
-                            attempt_ordinal=attempt_ordinal,
+                            operation=stage.operation,
+                            attempt_ordinal=stage.attempt_ordinal,
                             is_primary=(
-                                attempt_ordinal == CAREER_GENERATION_ORDINAL
+                                stage.attempt_ordinal == CAREER_GENERATION_ORDINAL
                             ),
                         ),
                     ),
@@ -728,13 +729,20 @@ class CareerPlannerService:
                         business_ref=BusinessRef(
                             object_type=CAREER_LOCK_CONVERSATION_OBJECT_TYPE,
                             object_id=conversation_id,
-                            operation=operation,
-                            attempt_ordinal=attempt_ordinal,
+                            operation=stage.operation,
+                            attempt_ordinal=stage.attempt_ordinal,
                             is_primary=False,
                         ),
                     ),
                 ]
             )
+        except ModelRunLockConflictError as exc:
+            # 相同 lock_id 不同内容：审计完整性异常，按序号异常失败关闭。
+            raise CareerError(
+                "career_call_sequence_mismatch",
+                "生涯规划调用序号异常：运行锁内容冲突，已停止。",
+                retryable=False,
+            ) from exc
         except ModelRunLockError as exc:
             raise CareerError(
                 "career_lock_persist_failed",
@@ -742,22 +750,21 @@ class CareerPlannerService:
                 retryable=False,
             ) from exc
         # 持久化成功后才记入投影引用：引用永远指向可查询的锁。
-        self._collect_lock_ref(lock, operation, attempt_ordinal, lock_refs)
+        self._collect_lock_ref(lock, stage, lock_refs)
 
     @staticmethod
     def _collect_lock_ref(
-        lock: Any,
-        operation: str,
-        attempt_ordinal: int,
-        lock_refs: _LockRefCollector | None,
+        lock: ModelRunLock,
+        stage: _CallStage,
+        lock_refs: list[CareerLockRef] | None,
     ) -> None:
         if lock_refs is None:
             return
-        lock_refs.add(
+        lock_refs.append(
             CareerLockRef(
                 lock_id=lock.lock_id,
-                operation=operation,
-                attempt_ordinal=attempt_ordinal,
+                operation=stage.operation,
+                attempt_ordinal=stage.attempt_ordinal,
             )
         )
 
