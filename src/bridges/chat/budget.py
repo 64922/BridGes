@@ -226,10 +226,6 @@ class RunBudget:
         """总预算是否已耗尽（或主动标记耗尽）。"""
         return self._exhausted or self.remaining_ms() <= 0
 
-    def can_retry(self, estimated_ms: int = 5_000) -> bool:
-        """重试门：仅当错误可重试且剩余预算足够估算成本时放行。"""
-        return not self.expired() and self.remaining_ms() >= estimated_ms
-
     def model_call_timeout_ms(self) -> int:
         """按剩余预算截断的单次模型调用超时（毫秒；Issue 06 第七轮）。
 

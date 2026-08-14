@@ -13,7 +13,6 @@ from bridges.chat.budget import (
     TOTAL_BUDGET_MS,
     RunBudget,
     RunStage,
-    StageMetric,
 )
 
 
@@ -58,12 +57,16 @@ def test_budget_exhaustion_blocks_new_stages_and_marks_skipped() -> None:
 
 
 def test_retry_gate_checks_remaining_budget() -> None:
-    """重试门：仅当剩余预算足够估算成本时放行。"""
+    """重试门：仅当剩余预算足够「最小调用窗口 + 交接预留」时放行。
+
+    Issue 06 第七轮：网关与技能修复门共用 ``can_retry_model_call`` 接缝，
+    旧的估算成本门 ``can_retry`` 已移除（去重）。
+    """
     budget = RunBudget("run-3", total_ms=60_000)
-    assert budget.can_retry(5_000) is True
+    assert budget.can_retry_model_call() is True
     # 模拟消耗预算（直接推进剩余预算：用总预算极小值验证）
     small = RunBudget("run-4", total_ms=0)
-    assert small.can_retry(5_000) is False
+    assert small.can_retry_model_call() is False
 
 
 def test_first_token_aggregates_minimum() -> None:
