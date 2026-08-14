@@ -64,6 +64,8 @@ class AuditAction(str, Enum):
     FEEDBACK_RESOLVED = "feedback_resolved"
     HUMANIZER_GENERATE = "humanizer_generate"
     HUMANIZER_RESULT_VIEW = "humanizer_result_view"
+    #: Issue 04 不变量告警：人味化产物中出现画像原文（应不出现，触发即告警）。
+    HUMANIZER_PROFILE_LEAK = "humanizer_profile_leak"
     CAREER_PLANNING_GENERATED = "career_planning_generated"
     ASR_TRANSCRIBE = "asr_transcribe"
     READ_ALOUD_GENERATE = "read_aloud_generate"

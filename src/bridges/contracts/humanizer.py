@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -16,6 +17,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from bridges.contracts.expression import Genre
 from bridges.contracts.expression_task import ExpressionTaskContract
+
+
+@dataclass(frozen=True)
+class HumanizerProfileSlice:
+    """Issue 04：人味化轮次的最小画像切片输入（聊天层编译后传入）。
+
+    只承载服务端实际需要的三件事：是否实际使用（``used``）、条数
+    （``item_count``，审计用）与编译好的上下文文本（``context``，按
+    「风格与背景偏好」用途注入 prompt）。画像原文绝不进入运行锁、日志、
+    SSE 事件或人味化语料产物；披露只含条数与类别。
+    """
+
+    used: bool
+    item_count: int = 0
+    context: str | None = None
 
 
 class HumanizerPath(StrEnum):
@@ -898,6 +914,7 @@ class HumanizerSkillManifest(BaseModel):
 
 
 __all__ = [
+    "HumanizerProfileSlice",
     "HumanizerPath",
     "SOURCE_LEDGER_VERSION",
     "FIDELITY_CHECKER_VERSION",

@@ -61,6 +61,7 @@ from bridges.contracts.humanizer import (
     HumanizerOutputContract,
     HumanizerPath,
     HumanizerProcessState,
+    HumanizerProfileSlice,
     HumanizerQualityStatus,
     HumanizerReference,
     HumanizerResultProjection,
@@ -71,7 +72,6 @@ from bridges.contracts.humanizer import (
     SourceLedger,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
-from bridges.contracts.profiles import ProfileSliceItem
 from bridges.ingestion.parsers import ParsedDocument, ParseError, parse_document
 from bridges.knowledge_base.service import KnowledgeBaseError, KnowledgeBaseService
 from bridges.observability.service import ObservabilityService
@@ -81,6 +81,7 @@ from bridges.skills.humanizer.draft_compiler import (
     DRAFT_MAX_TOKENS,
     DRAFT_OUTPUT_JSON_SCHEMA,
     compile_draft_prompt,
+    profile_style_block,
 )
 from bridges.skills.humanizer.evidence_safety import (
     build_revision_prompt,
@@ -365,13 +366,11 @@ class HumanizerService:
         writing_call_count: int = 0,
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
-        # Issue 04：聊天层已编译的最小画像切片（同一编译接缝与裁剪规则）。
-        # 服务只按「风格与背景偏好」用途注入首稿/修订 prompt，不改变人味化
-        # 的证据与来源合同；画像内容绝不进入运行锁、日志或语料产物，审计
-        # 只记 profile_used 与条数（不含内容）。
-        profile_used: bool = False,
-        profile_items: list[ProfileSliceItem] | None = None,
-        profile_context: str | None = None,
+        # Issue 04：聊天层已编译的最小画像切片输入（同一编译接缝与裁剪
+        # 规则）。服务只按「风格与背景偏好」用途注入首稿/修订 prompt，
+        # 不改变人味化的证据与来源合同；画像内容绝不进入运行锁、日志或
+        # 语料产物，审计只记 profile_used 与条数（不含内容）。
+        profile_slice: HumanizerProfileSlice | None = None,
     ) -> Iterator[HumanizerRunEvent]:
         """执行一条人味化任务：yield 过程事件，最后 yield 结果事件。
 
@@ -384,10 +383,18 @@ class HumanizerService:
         至多一次定向修订，写作调用总计不超过 2 次。
         ``writing_call_count`` 与 ``recovered_draft`` 由聊天层从持久化
         运行状态恢复（重试/恢复沿用计数，服务重启不得重新获得修订额度）；
-        ``stop_event`` 供修订启动前检查用户停止信号。
+        ``stop_event`` 供修订启动前检查用户停止信号。``profile_slice``
+        （Issue 04）是聊天层编译的最小画像切片输入，只按「风格与背景
+        偏好」用途注入首稿/修订 prompt；无切片时该块不出现。
         """
         skill_version = self.resolve_skill(skill_input)
-        profile_item_count = len(profile_items) if profile_items else 0
+        profile_used = profile_slice.used if profile_slice is not None else False
+        profile_item_count = (
+            profile_slice.item_count if profile_slice is not None else 0
+        )
+        profile_context = (
+            profile_slice.context if profile_slice is not None else None
+        )
         # Issue 11：本次业务 run 的模型锁证据（run 标识 + 已记录锁 ID）。
         lock_evidence = _LockEvidence(run_id=run_context.run_id)
         if skill_input.expression_contract is not None:
@@ -2396,12 +2403,7 @@ class HumanizerService:
             method_scene,
             genre_name=genre_doc.display_name,
         )
-        profile_block = (
-            "\n【风格与背景偏好】（仅用于把握表达风格与背景偏好；不作为事实"
-            "来源，不改变材料边界与证据合同）\n" + profile_context
-            if profile_context
-            else ""
-        )
+        profile_block = profile_style_block(profile_context)
         return f"""你是 BridGes 内置「文章人味化」SKILL（版本 {skill_version}）的执行器。
 
 【任务边界】

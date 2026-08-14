@@ -19,6 +19,7 @@ from bridges.contracts.expression_task import (
     MaterialSufficiency,
 )
 from bridges.contracts.humanizer import SourceLedger
+from bridges.skills.humanizer.draft_compiler import profile_style_block
 from bridges.skills.humanizer.revision_policy import RevisionProblem
 
 #: 修订提示编译版本（审计与观测用）。
@@ -126,12 +127,7 @@ def compile_revision_prompt(
         if source_text.strip()
         else "【原文】（本次没有粘贴原文：正文只能使用材料内已有事实。）"
     )
-    profile_block = (
-        "\n【风格与背景偏好】（仅用于把握表达风格与背景偏好；不作为事实"
-        "来源，不改变材料边界与证据合同）\n" + profile_context
-        if profile_context
-        else ""
-    )
+    profile_block = profile_style_block(profile_context)
 
     system_prompt = f"""你是 BridGes 文章表达助手，正在对首稿做一次定向修订
 （修订提示版本 {REVISION_PROMPT_VERSION}）。

@@ -67,10 +67,12 @@ python -m pytest tests/humanizer tests/chat -k humanizer -q -p no:cacheprovider 
 
 - 2026-08-14：本轮冻结决策 #3——人味化注入画像，论文搜索维持公开证据边界。
 - 2026-08-14（实现）：`_stream_humanizer` 在进入技能执行前经 `_compile_profile_slice`
-  编译最小画像切片并落库「本次上下文说明」披露；切片上下文经
-  `HumanizerOrchestrator.run_task` Protocol 接缝传入（`profile_used` /
-  `profile_items` / `profile_context`），首稿/修订/旧显式 SKILL 路径以
-  「风格与背景偏好」用途注入 prompt，不进入证据合同；`use_profile=False`
-  零编译零画像披露，无画像/画像服务异常分别 empty/error 态降级，均不
-  阻塞主流程；审计只记 `profile_used` 与条数。新增
-  `tests/chat/test_humanizer_profile_slice.py` 四矩阵 + 扫描式不泄漏断言。
+  编译最小画像切片并落库「本次上下文说明」披露；切片经
+  `HumanizerOrchestrator.run_task` Protocol 接缝以 `HumanizerProfileSlice`
+  （used/item_count/context）传入，首稿/修订/旧显式 SKILL 路径以
+  「风格与背景偏好」用途注入 prompt（`profile_style_block` 共享包装），
+  不进入证据合同；`use_profile=False` 零编译零画像披露，无画像/画像服务
+  异常分别 empty/error 态降级，均不阻塞主流程；审计只记 `profile_used` 与
+  条数，另有人味化产物画像原文的不变量告警（`HUMANIZER_PROFILE_LEAK`）。
+  新增 `tests/chat/test_humanizer_profile_slice.py` 四矩阵 + 扫描式不泄漏
+  + 泄漏告警断言。

@@ -47,6 +47,24 @@ _NO_HARM_INSTRUCTION = (
     "升华结尾；不虚构作者或用户的亲历、朋友对话与具体场景。"
 )
 
+#: Issue 04：画像切片在 prompt 中的用途标注（首稿/修订/旧路径共享）。
+_PROFILE_STYLE_PREFIX = (
+    "【风格与背景偏好】（仅用于把握表达风格与背景偏好；不作为事实"
+    "来源，不改变材料边界与证据合同）\n"
+)
+
+
+def profile_style_block(profile_context: str | None) -> str:
+    """把画像切片编译文本包装为「风格与背景偏好」用途块（Issue 04）。
+
+    首稿、定向修订与旧显式 SKILL 路径共用同一包装：只以风格/背景偏好
+    用途引用切片，明确标注不作为事实来源，不改变材料边界与证据合同。
+    无切片时返回空串，prompt 结构保持不变。
+    """
+    if not profile_context:
+        return ""
+    return "\n" + _PROFILE_STYLE_PREFIX + profile_context
+
 
 @dataclass(frozen=True)
 class DraftProfile:
@@ -251,12 +269,7 @@ def compile_draft_prompt(
         if source_text.strip()
         else "【材料】（无用户材料：正文只能做通用性说明，具体事实与案例留占位）"
     )
-    profile_block = (
-        "\n【风格与背景偏好】（仅用于把握表达风格与背景偏好；不作为事实"
-        "来源，不改变材料边界与证据合同）\n" + profile_context
-        if profile_context
-        else ""
-    )
+    profile_block = profile_style_block(profile_context)
 
     system_prompt = f"""你是 BridGes 文章表达助手，以作者身份起草文章正文
 （提示编译版本 {DRAFT_PROMPT_VERSION}）。
@@ -302,4 +315,5 @@ __all__ = [
     "DraftProfile",
     "DraftPromptResult",
     "compile_draft_prompt",
+    "profile_style_block",
 ]

@@ -24,6 +24,7 @@ from bridges.contracts.ai import (
     CapabilityStatus,
     RetryPolicy,
 )
+from bridges.contracts.observability import AuditAction
 from bridges.contracts.workflows import ObjectDomain, RunContextEnvelope
 
 _CORPUS = (
@@ -308,8 +309,6 @@ def test_humanizer_with_profile_injects_slice_and_discloses(
     assert assistant["context_note"]["profile_item_count"] == 1
 
     # 审计：人味化轮次记录 profile_used 与条数（不含画像原文）
-    from bridges.contracts.observability import AuditAction
-
     humanizer_audits = sqlite_app.state.observability_service.list_audit_events(
         account_id=account["id"], action=AuditAction.HUMANIZER_GENERATE
     )
@@ -468,6 +467,39 @@ def test_humanizer_profile_text_never_enters_locks_sse_or_artifacts(
     assert _PROFILE_VALUE not in json.dumps(message["humanizer"], ensure_ascii=False)
     # 画像原文只允许出现在模型请求（注入）与画像服务内部，绝不落库消息
     assert _PROFILE_VALUE not in json.dumps(message, ensure_ascii=False)
+
+
+def test_humanizer_profile_leak_into_artifact_fires_invariant_alert(
+    sqlite_app: Any,
+    client: TestClient,
+    generation_helpers: dict[str, Any],
+) -> None:
+    """不变量告警：画像原文进入人味化产物时记录告警审计（不含原文）。"""
+    account = _register(client)
+    # 模型输出把画像原文写进了 open_questions（模拟泄漏进产物）
+    leaking = _good_output()
+    leaking["open_questions"] = [_PROFILE_VALUE]
+    adapter = _CapturingStructuredAdapter(output=leaking)
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+    _seed_assertion(sqlite_app, account["id"])
+
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "done"
+
+    alerts = sqlite_app.state.observability_service.list_audit_events(
+        account_id=account["id"], action=AuditAction.HUMANIZER_PROFILE_LEAK
+    )
+    assert alerts, "画像原文进入产物必须触发不变量告警审计"
+    latest = alerts[-1]
+    assert latest.result == "blocked"
+    # 告警只记命中条数，绝不复制画像原文
+    assert latest.details["leaked_count"] == 1
+    assert _PROFILE_VALUE not in str(latest.model_dump())
 
 
 def test_humanizer_natural_language_route_injects_profile_slice(

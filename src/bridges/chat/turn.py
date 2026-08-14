@@ -16,6 +16,7 @@ interface 之后——``TurnOrchestrator.stream_turn`` 只回答「驱动一次�
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -82,6 +83,7 @@ from bridges.contracts.chat import (
 )
 from bridges.contracts.humanizer import (
     HUMANIZER_CHECKPOINT_KEY,
+    HumanizerProfileSlice,
     HumanizerResultProjection,
     HumanizerResultStatus,
     HumanizerRouteSource,
@@ -612,12 +614,10 @@ class HumanizerOrchestrator(Protocol):
         writing_call_count: int = 0,
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
-        # Issue 04：人味化轮次的最小画像切片（编译与披露由聊天层完成，
+        # Issue 04：人味化轮次的最小画像切片输入（编译与披露由聊天层完成，
         # 服务只按「风格与背景偏好」用途注入首稿/修订 prompt，绝不进入
         # 证据与来源合同、运行锁、日志或语料产物）。
-        profile_used: bool = False,
-        profile_items: list[ProfileSliceItem] | None = None,
-        profile_context: str | None = None,
+        profile_slice: HumanizerProfileSlice | None = None,
     ) -> Iterator[HumanizerRunEvent]: ...
 
 
@@ -1416,6 +1416,11 @@ def context_note_thinking(
     elif context_note.state == ContextNoteState.ERROR:
         tools.append(f"本轮暂时无法整理{_PROFILE_CONTEXT_LABEL}，回答未基于这些信息")
     return thinking.model_copy(update={"tools": tools})
+
+
+def profile_used_from_note(context_note: ContextNoteProjection | None) -> bool:
+    """本轮是否实际使用了画像切片：只有 ready 态算作使用（Issue 04）。"""
+    return context_note is not None and context_note.state == ContextNoteState.READY
 
 
 # ---------------------------------------------------------------------------
@@ -4136,9 +4141,11 @@ class TurnOrchestrator:
         )
         if context_note is not None:
             thinking = context_note_thinking(thinking, context_note)
-        profile_used = (
-            context_note is not None
-            and context_note.state == ContextNoteState.READY
+        profile_used = profile_used_from_note(context_note)
+        profile_slice = HumanizerProfileSlice(
+            used=profile_used,
+            item_count=len(profile_items),
+            context=profile_context,
         )
         try:
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
@@ -4189,9 +4196,7 @@ class TurnOrchestrator:
                 stop_event=stop_event,
                 # Issue 04：画像切片只作「风格与背景偏好」用途注入，不改变
                 # 人味化的证据与来源合同（服务内部不再接触画像服务）。
-                profile_used=profile_used,
-                profile_items=profile_items,
-                profile_context=profile_context,
+                profile_slice=profile_slice,
             ):
                 # Issue 05 审查修复：草稿事件先于预算/停止检查持久化——模型
                 # 已产出的正文与写作调用计数绝不因预算到期/用户停止而丢失；
@@ -4309,6 +4314,15 @@ class TurnOrchestrator:
                     assistant_message_id,
                     final_text,
                     now,
+                )
+                # Issue 04 不变量告警：画像原文不得进入人味化产物。产物
+                # （投影 JSON + 正文）中出现任一画像原文即记审计（只记
+                # 命中条数，不复制画像原文），供告警消费；不阻断交付。
+                self._audit_humanizer_profile_leak(
+                    account_id,
+                    assistant_message_id,
+                    profile_items,
+                    result,
                 )
                 if quality_entered:
                     budget.exit(
@@ -4681,9 +4695,7 @@ class TurnOrchestrator:
                     )
                 }
             )
-        profile_used = (
-            context_note.state == ContextNoteState.READY if context_note else False
-        )
+        profile_used = profile_used_from_note(context_note)
         try:
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
             if generation_entered:
@@ -5851,6 +5863,44 @@ class TurnOrchestrator:
             object_refs=[slice_id] if slice_id else None,
             reason="本轮画像切片使用披露。",
             details=details,
+        )
+
+    def _audit_humanizer_profile_leak(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        profile_items: list[ProfileSliceItem],
+        result: HumanizerResultProjection,
+    ) -> None:
+        """Issue 04 不变量告警：人味化产物中出现画像原文时记录审计。
+
+        产物指结果投影 JSON（output/edits/fact_check/open_questions 等）
+        与最终正文。扫描只判断「是否出现画像原文」并记录命中条数，绝不
+        复制画像原文；未挂载观测服务或未使用画像时直接跳过。告警只作
+        观测信号，不阻断人味化交付。
+        """
+        if self._observability is None or not profile_items:
+            return
+        artifact_text = json.dumps(result.model_dump(mode="json"), ensure_ascii=False)
+        if result.output is not None:
+            artifact_text += "\n" + result.output.final_text
+        leaked_count = sum(
+            1
+            for item in profile_items
+            if item.value_or_rule and item.value_or_rule in artifact_text
+        )
+        if leaked_count == 0:
+            return
+        self._observability.log_audit(
+            actor_account_id=account_id,
+            action=AuditAction.HUMANIZER_PROFILE_LEAK,
+            result=AuditResult.BLOCKED,
+            object_refs=[assistant_message_id],
+            reason="人味化产物中出现画像原文（不变量违反）。",
+            details={
+                "profile_item_count": len(profile_items),
+                "leaked_count": leaked_count,
+            },
         )
 
     def _audit_teaching_evidence(
