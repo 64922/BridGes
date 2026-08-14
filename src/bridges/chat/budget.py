@@ -22,7 +22,6 @@ from enum import StrEnum
 from bridges import public_search_budget as _public_search_budget
 
 PUBLIC_SEARCH_STAGE_SECONDS = _public_search_budget.PUBLIC_SEARCH_STAGE_SECONDS
-SEARCH_CLEANUP_WINDOW_SECONDS = _public_search_budget.SEARCH_CLEANUP_WINDOW_SECONDS
 SEARCH_HANDOFF_RESERVE_SECONDS = _public_search_budget.SEARCH_HANDOFF_RESERVE_SECONDS
 SEARCH_MIN_REQUEST_WINDOW_SECONDS = _public_search_budget.SEARCH_MIN_REQUEST_WINDOW_SECONDS
 SEARCH_RETRY_BACKOFF_SECONDS = _public_search_budget.SEARCH_RETRY_BACKOFF_SECONDS
@@ -181,13 +180,6 @@ class RunBudget:
     def absolute_deadline(self) -> float:
         """本次 run 的绝对截止单调时刻。"""
         return self._deadline
-
-    def search_deadline(self, active_sources: Iterable[str]) -> float:
-        """为活跃公开来源派生与 run 预算共享的绝对截止时刻。"""
-        source_budget = source_aware_search_budget_seconds(
-            active_sources, remaining_ms=self.remaining_ms()
-        )
-        return min(self._deadline, time.monotonic() + source_budget)
 
     def public_search_deadlines(
         self, active_sources: Iterable[str], *, scale: float = 1.0

@@ -244,6 +244,52 @@ def test_5xx_provider_error_is_retried_once() -> None:
     assert projection.http_status_category == "5xx"
 
 
+def test_provider_error_without_http_category_is_not_retried() -> None:
+    """AC4/AC5：无 HTTP 状态类别的 provider 错误不是“明确可重试 5xx”。"""
+    client = _FailingClient(
+        WebSearchError("web_search_provider", "提供方未知失败"),
+    )
+    service = _service(client, sleeper=lambda _: None)
+    projection = service.search(
+        "acct-1",
+        SearchPlan(True, "公开主题", "需要事实核查"),
+    )
+
+    assert projection is not None
+    assert client.calls == 1
+    assert projection.error_code == "web_search_provider"
+    assert projection.attempt_count == 1
+
+
+def test_final_error_keeps_last_real_attempt_priority() -> None:
+    """AC7：两次失败错误不同时，终态按最后一次真实尝试归类。"""
+    class _SequenceClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def search(self, query: str) -> list[WebSearchResult]:
+            self.calls += 1
+            if self.calls == 1:
+                raise WebSearchError("web_search_connect", "连接重置")
+            raise WebSearchError("web_search_dns", "DNS 失败")
+
+    client = _SequenceClient()
+    service = _service(client, sleeper=lambda _: None)
+    projection = service.search(
+        "acct-1",
+        SearchPlan(True, "公开主题", "需要事实核查"),
+    )
+
+    assert projection is not None
+    assert client.calls == 2
+    assert projection.error_code == "web_search_dns"
+    assert [a.result_code for a in projection.provider_attempts] == [
+        "web_search_connect",
+        "web_search_dns",
+    ]
+    assert projection.provider_attempts[0].retry_planned is True
+
+
 @pytest.mark.parametrize(
     ("code", "message", "extra"),
     [

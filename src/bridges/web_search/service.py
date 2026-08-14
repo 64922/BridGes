@@ -1289,7 +1289,12 @@ class WebSearchService:
         if error.code == "web_search_timeout":
             retryable = True
         elif error.code == "web_search_provider":
-            retryable = error.http_status_category is None or error.http_status_category.startswith("5")
+            # 只对明确可重试的 5xx 重试；无 HTTP 状态类别（非真实上游响应）
+            # 或 4xx 不立即重试（AC4/AC5）。
+            retryable = (
+                error.http_status_category is not None
+                and error.http_status_category.startswith("5")
+            )
         else:
             retryable = error.code in retryable_codes
         if not error.retryable or not retryable:
