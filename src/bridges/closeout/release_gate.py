@@ -613,6 +613,10 @@ def run_gate(
         str(root / "tests" / "web_search" / "test_public_search_fallback.py"),
         str(root / "tests" / "web_search" / "test_health_monitor.py"),
         str(root / "tests" / "web_search" / "test_health_probe_mapping.py"),
+        # Issue 17：真实性发布门确定性检查（清单/静态扫描/组合/spy/live）。
+        str(root / "tests" / "closeout" / "test_capability_manifest.py"),
+        str(root / "tests" / "closeout" / "test_authenticity_scans.py"),
+        str(root / "tests" / "closeout" / "test_authenticity_gate.py"),
     ]
     # 每次使用新的临时目录，避免不同权限身份的历史 pytest 目录互相阻塞。
     with tempfile.TemporaryDirectory(prefix=".release-gate-", dir=root) as basetemp:
@@ -645,6 +649,7 @@ def run_gate(
                 str(root / "src" / "bridges" / "config.py"),
                 str(root / "tests" / "closeout"),
                 str(root / "scripts" / "release_gate.py"),
+                str(root / "scripts" / "qwen_authenticity_gate.py"),
             ],
             cwd=root,
             environment=environment,
@@ -660,6 +665,7 @@ def run_gate(
                 "mypy",
                 str(root / "src" / "bridges" / "closeout"),
                 str(root / "scripts" / "release_gate.py"),
+                str(root / "scripts" / "qwen_authenticity_gate.py"),
             ],
             cwd=root,
             environment=environment,

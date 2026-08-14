@@ -1,6 +1,6 @@
 # Issue 17：建立全功能 Qwen 真实性发布门
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -152,3 +152,11 @@ python scripts/release_gate.py --real-probes --qwen-authenticity
 - 2026-08-13：用户确认使用安装级全局 Qwen Key，不改为每账号单独 Key；账户之间仍必须保持数据、上下文和运行关联隔离。
 - 2026-08-13：用户确认通用网页搜索只使用 DuckDuckGo，不引入 Brave 或其他带 Key 的备用源；DDG 失败时保留真实 Qwen 模型知识安全降级。
 - 2026-08-13：本 issue 是最终发布 Contract；局部修复可并行，只有依赖全部完成后才允许以此门禁给出“所有功能真实性已验证”的结论。
+- 2026-08-14：实现完成（分支 `17-production-qwen-authenticity-gate`，worktree `try5-wt-17`，conda 环境 `agent`）。
+  - **能力清单**（`src/bridges/closeout/manifest.py`）：`PRODUCTION_CAPABILITY_MANIFEST`（版本 1，31 个稳定条目）按本 issue 分类基线把公开 API 路由、聊天动作（`CHAT_ACTIONS` 30 项）与 UI 对应生产服务唯一归类为 `qwen_model`/`external_non_qwen`/`local_deterministic`/`retired`；`validate_manifest` 拒绝重复分类、qwen_model 缺/错绑 model capability、retired 无路由无能力名、未知聊天动作与未认领动作；`check_route_coverage` 以 FastAPI 应用实际注册路由（展开惰性 `_IncludedRouter`，361 条）核对：声明 410 的路由必须被 retired 项覆盖、非 410 路由不得被 retired 项覆盖、任何路由都必须被分类（`unclassified_capability`/`retired_route_active`）；`check_retired_registry` 拒绝退役能力名（`expression_draft_generation` 与旧 Media 能力名）复活。
+  - **静态扫描**（`src/bridges/closeout/scans.py`）：`direct_client_bypass`（业务模块直连 `QwenApiClient`，批准例外清单当前为空）、`model_matrix_drift`（批准模型 ID 只允许出现在 `fixed_models.py`，未批准历史 ID 任何文本出现即违规）、外部检索 Key 隔离（DDG/arXiv 模块读取 `BRIDGES_QWEN_API_KEY*` 或导入 Qwen 客户端/全局凭据判定即违规）、`production_stub`（Stub/确定性/closeout 类名特征进入生产接线即违规，evaluation harness 豁免）。当前生产树 0 违规。
+  - **真实性发布门**（`src/bridges/closeout/authenticity_gate.py`）：确定性检查（清单完整性含注册表反向覆盖、静态扫描、production-composition 组合门——复用 Issue 09 校验器并叠加按清单逐能力点名、退役 410 契约探针（含中文迁移说明断言）、本地旅程 spy 探针——注册/会话列表/关键词检索/画像管理/材料 CRUD 经计数网关与锁表断言 0 调用 0 锁）；受控 live suite（`--real-probes` 显式 opt-in；专用 `release-gate-probe` 账户与 `release-gate-authn:*` run；普通聊天经真实文本模型；Humanizer/Career 经业务服务完成真实结构化调用并逐次落锁（draft/revision、generation/repair 各保留独立锁）；Profile 歧义分支经真实画像抽取器落锁；视觉/OCR 校验非空实际输出（OCR 含已知文字）；ASR 短长/TTS/图片提交+取消/视频提交+取消/Embedding 入库+查询逐动作落锁；取消在拿不到可安全取消的云任务 ID 时以 `cancel_probe_unavailable` 失败关闭，绝不伪造取消成功）；重启后只读复查全部探针锁（含失败锁）与业务关联及账户隔离抽查；DDG/arXiv 真实探针复用 Issue 04 发布探针。缺全局 Key 时整体失败关闭（`missing_global_qwen_key` + `missing_adapter`），未显式 `--real-probes` 时永不通过（探针未证实即 blocked），报告仅含 build/capability/类别/provider/model/status/latency/lock ID/脱敏错误码。
+  - **接入命令**：`scripts/release_gate.py --real-probes --qwen-authenticity`（新增标志，依次运行两个门并合并退出码）与独立命令 `scripts/qwen_authenticity_gate.py [--real-probes]`。
+  - **测试**：`tests/closeout/test_capability_manifest.py`（18 项：自检/重复/缺绑/错绑/退役空项/未知动作/路由覆盖正反例/退役复活/注册表反向覆盖/真实应用 361 路由全分类）、`tests/closeout/test_authenticity_scans.py`（11 项含负向控制）、`tests/closeout/test_authenticity_gate.py`（12 项：Stub/missing adapter/缺 Key 组合门、410 契约（含中文迁移说明）、本地旅程 0 调用 0 锁与 spy 发现模型调用、可控 adapter live suite 每动作一锁且提交+取消两条不同锁、失败锁保留、缺 Key 全 inconclusive、重启复查、报告脱敏）；合计 41 项全绿，ruff 全绿，mypy 相对 main 无新增错误。
+  - **验证**：本 issue 建议回归命令按仓库既有同名 conftest 冲突（tests/ingestion 与 tests/retrieval、tests/closeout 的 conftest.py 同名互斥，pristine main 同样存在）拆分为逐目录执行（等价调整，未缩减覆盖类别）；credentials/chat/humanizer/career/profiles/ingestion/retrieval/image/video/speech/closeout 各自全量结果见实现复核记录：新增 47 项与 tests/architecture 全绿，失败集与 pristine main 逐项一致（chat 44、profiles 1、ingestion 5、retrieval 5、closeout mail 3-4 项为既有环境性失败）。"学习模式 DDG 失败→Qwen 降级两阶段"由发布门回归清单中的 `tests/web_search/test_public_search_fallback.py`、`tests/chat/test_issue03_learning_evidence_chat.py` 等确定性测试证明（DDG 失败投影与后续 Qwen 降级各记录独立阶段），live suite 的 DDG 探针失败不会生成模型成功锁。`python scripts/qwen_authenticity_gate.py` 在本机（未配置安装级全局 Qwen Key）输出脱敏报告并以退出码 1 失败关闭，符合"缺 Key/未证实不得通过发布门"。
+  - **后续真实验收**：在配置安装级全局 Qwen Key 的环境执行 `python scripts/release_gate.py --real-probes --qwen-authenticity`（或 `python scripts/qwen_authenticity_gate.py --real-probes --database-path <证据库路径>`）完成全能力真实探针与重启锁复查，形成基线证据；探针业务样本按既有保留策略清理，运行锁作为发布证据保留。
