@@ -93,6 +93,50 @@ def _build_v9_database(path: Path) -> None:
             " created_at TEXT NOT NULL,"
             " updated_at TEXT NOT NULL)"
         )
+        # v2 迁移建立的模型运行锁表：真实 v9 库必然存在（Issue 10 迁移 45
+        # 的 ALTER TABLE 引用它），骨架须复刻以免升级路径缺表。
+        connection.execute(
+            "CREATE TABLE model_run_locks ("
+            " lock_id TEXT PRIMARY KEY,"
+            " account_id TEXT NOT NULL,"
+            " capability_name TEXT NOT NULL,"
+            " capability_version TEXT NOT NULL,"
+            " actual_model_id TEXT,"
+            " region TEXT NOT NULL,"
+            " status TEXT NOT NULL,"
+            " error_code TEXT,"
+            " error_message TEXT,"
+            " usage TEXT,"
+            " created_at TEXT NOT NULL)"
+        )
+        # v1/v2 迁移建立的账户与对象表及其会话索引：真实 v9 库必然存在
+        # （Issue 06 起 initialize 的 schema 完整性校验要求核心表/索引在），
+        # 骨架须复刻以免升级路径校验失败。
+        connection.execute(
+            "CREATE TABLE accounts ("
+            " account_id TEXT PRIMARY KEY,"
+            " email TEXT NOT NULL UNIQUE,"
+            " created_at TEXT NOT NULL)"
+        )
+        connection.execute(
+            "CREATE TABLE objects ("
+            " object_id TEXT PRIMARY KEY,"
+            " account_id TEXT NOT NULL REFERENCES accounts(account_id),"
+            " content_hash TEXT NOT NULL,"
+            " original_filename TEXT NOT NULL,"
+            " content_length INTEGER NOT NULL,"
+            " status TEXT NOT NULL DEFAULT 'active',"
+            " cleanup_retry_count INTEGER NOT NULL DEFAULT 0,"
+            " last_cleanup_error TEXT,"
+            " created_at TEXT NOT NULL,"
+            " updated_at TEXT NOT NULL)"
+        )
+        connection.execute("CREATE INDEX idx_objects_account ON objects(account_id)")
+        connection.execute("CREATE INDEX idx_objects_status ON objects(status)")
+        connection.execute(
+            "CREATE INDEX idx_conversations_account_updated"
+            " ON conversations(account_id, updated_at DESC)"
+        )
         connection.execute(
             "INSERT INTO conversations"
             " (conversation_id, account_id, title, mode, created_at, updated_at)"

@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 44
+SCHEMA_VERSION = 45
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2186,6 +2186,90 @@ MIGRATIONS: dict[int, list[str]] = {
             WHEN observed_count > 0 THEN 'succeeded_observed'
             ELSE 'succeeded_empty'
         END
+        """,
+    ],
+    # Issue 10：通用、持久化、幂等的 model_run_lock 接口。
+    # 扩展 model_run_locks 保存完整审计字段（run_id、project_id、parameters、
+    # prompt_version、input_output_contract、fallback_path、retry_count、
+    # degradation_reason、cost_estimate、canonical_hash）；新增
+    # model_run_lock_links 让一个业务对象可关联多条锁，一条锁也可保留多业务
+    # 引用。旧行保留原 ID/时间/状态，缺失字段以 legacy 默认值回填，并生成稳定
+    # legacy 标记的 canonical_hash，避免与新锁冲突。
+    45: [
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN run_id TEXT NOT NULL DEFAULT 'legacy-unknown'
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN project_id TEXT NOT NULL DEFAULT 'legacy-unknown'
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN parameters TEXT NOT NULL DEFAULT '{}'
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN prompt_version TEXT NOT NULL DEFAULT 'legacy'
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN input_output_contract TEXT NOT NULL DEFAULT 'legacy'
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN fallback_path_json TEXT NOT NULL DEFAULT '[]'
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN degradation_reason TEXT
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN cost_estimate_json TEXT
+        """,
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN canonical_hash TEXT NOT NULL DEFAULT 'legacy'
+        """,
+        """
+        UPDATE model_run_locks
+        SET canonical_hash = 'legacy-' || lock_id
+        WHERE canonical_hash = 'legacy'
+        """,
+        """
+        CREATE TABLE model_run_lock_links (
+            link_id TEXT PRIMARY KEY,
+            lock_id TEXT NOT NULL REFERENCES model_run_locks(lock_id),
+            account_id TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            attempt_ordinal INTEGER NOT NULL,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            UNIQUE (lock_id, object_type, object_id, operation, attempt_ordinal)
+        )
+        """,
+        """
+        CREATE INDEX idx_run_locks_account_run
+        ON model_run_locks(account_id, run_id, created_at)
+        """,
+        """
+        CREATE INDEX idx_run_locks_canonical
+        ON model_run_locks(account_id, canonical_hash)
+        """,
+        """
+        CREATE INDEX idx_run_lock_links_object
+        ON model_run_lock_links(account_id, object_type, object_id, attempt_ordinal)
+        """,
+        """
+        CREATE INDEX idx_run_lock_links_lock
+        ON model_run_lock_links(account_id, lock_id)
         """,
     ],
 }

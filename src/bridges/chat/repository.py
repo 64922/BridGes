@@ -15,10 +15,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from bridges.contracts.ai import ModelRunLock
+from bridges.ai.ports import ModelRunLockRecorder
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
+from bridges.contracts.ai import BusinessRef, ModelRunLock
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
-from bridges.contracts.humanizer import HUMANIZER_CHECKPOINT_KEY as _HUMANIZER_CHECKPOINT_JSON_KEY
 from bridges.contracts.feedback import AnswerFeedback, FeedbackKind, FeedbackStatus
+from bridges.contracts.humanizer import HUMANIZER_CHECKPOINT_KEY as _HUMANIZER_CHECKPOINT_JSON_KEY
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
@@ -142,8 +144,13 @@ def _percentile(values: list[int], percentile: float) -> int | None:
 class ConversationRepository:
     """对话/消息/运行锁的 SQLite 仓库，全部操作限定在账户内。"""
 
-    def __init__(self, database: BridgesDatabase) -> None:
+    def __init__(
+        self,
+        database: BridgesDatabase,
+        run_lock_recorder: ModelRunLockRecorder | None = None,
+    ) -> None:
         self._db = database
+        self._run_lock_recorder = run_lock_recorder or SqliteModelRunLockRecorder(database)
 
     @property
     def database(self) -> BridgesDatabase:
@@ -745,7 +752,8 @@ class ConversationRepository:
         error_message: str | None,
         duration_ms: int,
         model_id: str | None,
-        run_lock_id: str | None,
+        run_lock_id: str | None = None,
+        lock: ModelRunLock | None = None,
         updated_at: datetime,
         thinking: dict[str, list[str]] | None = None,
         web_search: dict[str, Any] | None = None,
@@ -756,8 +764,34 @@ class ConversationRepository:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
         ``thinking`` 为 None 时保留消息已有的思考摘要（陈旧收敛等不覆盖场景）。
+
+        Issue 10：如果传入 ``lock``，在同一事务内通过 ``ModelRunLockRecorder``
+        持久化运行锁并建立到本消息的业务关联，确保消息终态与锁原子提交。
         """
+        effective_run_lock_id = run_lock_id
+        if lock is not None:
+            effective_run_lock_id = lock.lock_id
         with self._db.transaction():
+            if lock is not None:
+                # 调用序号取消息的 attempt_number：同一 run 的重试按尝试顺序
+                # 稳定编号，投影/发布门可按 attempt ordinal 排序全部锁。
+                attempt_row = self._db.scoped(account_id).execute(
+                    "SELECT attempt_number FROM messages"
+                    " WHERE message_id = ? AND account_id = ?",
+                    (message_id, account_id),
+                ).fetchone()
+                business_ref = BusinessRef(
+                    object_type="message",
+                    object_id=message_id,
+                    operation="generate",
+                    attempt_ordinal=(
+                        int(attempt_row["attempt_number"])
+                        if attempt_row is not None
+                        else 1
+                    ),
+                    is_primary=True,
+                )
+                self._run_lock_recorder.record(lock, business_ref=business_ref)
             if arxiv_search is not None:
                 assignments = [
                     "status = ?",
@@ -774,7 +808,7 @@ class ConversationRepository:
                     error_message,
                     duration_ms,
                     model_id,
-                    run_lock_id,
+                    effective_run_lock_id,
                     _iso(updated_at),
                 ]
                 if thinking is not None:
@@ -804,7 +838,7 @@ class ConversationRepository:
                         error_message,
                         duration_ms,
                         model_id,
-                        run_lock_id,
+                        effective_run_lock_id,
                         _iso(updated_at),
                         message_id,
                         account_id,
@@ -823,7 +857,7 @@ class ConversationRepository:
                         error_message,
                         duration_ms,
                         model_id,
-                        run_lock_id,
+                        effective_run_lock_id,
                         _iso(updated_at),
                         _json_dumps(web_search),
                         message_id,
@@ -842,7 +876,7 @@ class ConversationRepository:
                         error_message,
                         duration_ms,
                         model_id,
-                        run_lock_id,
+                        effective_run_lock_id,
                         _iso(updated_at),
                         _json_dumps(thinking),
                         message_id,
@@ -861,7 +895,7 @@ class ConversationRepository:
                         error_message,
                         duration_ms,
                         model_id,
-                        run_lock_id,
+                        effective_run_lock_id,
                         _iso(updated_at),
                         _json_dumps(thinking),
                         _json_dumps(web_search),
@@ -1024,29 +1058,30 @@ class ConversationRepository:
 
     # -- model run locks ---------------------------------------------------
 
-    def insert_run_lock(self, account_id: str, lock: ModelRunLock) -> None:
-        """持久化不可变模型运行锁，绑定稳定账户 ID。"""
-        with self._db.transaction():
-            self._db.scoped(account_id).execute(
-                "INSERT INTO model_run_locks"
-                "(lock_id, account_id, capability_name, capability_version,"
-                " actual_model_id, region, status, error_code, error_message,"
-                " usage, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    lock.lock_id,
-                    account_id,
-                    lock.capability_name,
-                    lock.capability_version,
-                    lock.actual_model_id,
-                    lock.region,
-                    lock.status.value,
-                    lock.error_code,
-                    lock.error_message,
-                    _json_dumps(lock.usage) if lock.usage is not None else None,
-                    _iso(lock.created_at),
-                ),
-            )
+    def insert_run_lock(
+        self,
+        account_id: str,
+        lock: ModelRunLock,
+        *,
+        object_type: str = "message",
+        object_id: str | None = None,
+        operation: str = "generate",
+        attempt_ordinal: int = 1,
+        is_primary: bool = True,
+    ) -> None:
+        """持久化不可变模型运行锁，绑定稳定账户 ID 与业务对象。
+
+        Issue 10 将本方法迁移到独立的 ``ModelRunLockRecorder``；chat 仓库只
+        保留这一兼容性入口，供尚未迁移的媒体/语音等域继续使用。
+        """
+        business_ref = BusinessRef(
+            object_type=object_type,
+            object_id=object_id or lock.run_id,
+            operation=operation,
+            attempt_ordinal=attempt_ordinal,
+            is_primary=is_primary,
+        )
+        self._run_lock_recorder.record(lock, business_ref=business_ref)
 
     # -- generation runs (Issue 02) ---------------------------------------
 

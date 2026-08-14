@@ -13,6 +13,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Stable error codes for model run lock persistence.
+MODEL_RUN_LOCK_CONFLICT = "model_run_lock_conflict"
+MODEL_RUN_LOCK_PERSIST_FAILED = "model_run_lock_persist_failed"
+MODEL_RUN_LOCK_LINK_FAILED = "model_run_lock_link_failed"
+MODEL_RUN_LOCK_RECOVERY_REQUIRED = "model_run_lock_recovery_required"
+MODEL_RUN_LOCK_SCOPE_VIOLATION = "model_run_lock_scope_violation"
+
 
 class CapabilityKind(str, Enum):
     """Whether a capability is backed by a model or by a deterministic tool."""
@@ -174,6 +181,41 @@ class ModelRunLock(BaseModel):
     cost_estimate: dict[str, Any] | None = Field(
         default=None,
         description="Cost estimate metadata; not a billing truth.",
+    )
+
+
+class BusinessRef(BaseModel):
+    """Link between a model run lock and a business object.
+
+    A single business action may produce multiple model invocations, and a single
+    invocation may participate in multiple business projections (e.g. a primary
+    message plus a downstream citation). The recorder stores these links in an
+    append-only association table scoped by account.
+    """
+
+    object_type: str = Field(description="Business object kind, e.g. message, document, task.")
+    object_id: str = Field(description="Stable business object identifier.")
+    operation: str = Field(description="Operation within the object, e.g. generate, revise, embed.")
+    attempt_ordinal: int = Field(default=1, ge=1, description="Call order within the operation.")
+    is_primary: bool = Field(
+        default=False,
+        description="Whether this is the primary lock for the object.",
+    )
+
+
+class PersistedModelRunLock(ModelRunLock):
+    """Model run lock as read back from durable storage.
+
+    Includes the immutable lock contract plus its business associations and legacy
+    markers. Legacy rows (written before Issue 10) keep their original id/time/status
+    but expose missing fields as sentinels rather than fabricated facts.
+    """
+
+    business_refs: list[BusinessRef] = Field(default_factory=list)
+    legacy: bool = Field(default=False, description="True if the row predates the Issue 10 schema.")
+    legacy_missing_fields: set[str] = Field(
+        default_factory=set,
+        description="Fields that were not present in the legacy row.",
     )
 
 

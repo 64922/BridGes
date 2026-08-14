@@ -73,8 +73,8 @@ def test_v44_migration_preserves_records_and_adds_default_evidence_fields(
         )
 
     database = BridgesDatabase(path)
-    # Issue 02/07 migrations both advance v42 fixtures to the current schema.
-    assert database.initialize() == SCHEMA_VERSION == 44
+    # Issue 02/07 迁移把 v42 夹具推进到当前 schema（含 Issue 10 的 v45）。
+    assert database.initialize() == SCHEMA_VERSION
 
     columns = {
         str(row[1])
