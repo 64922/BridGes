@@ -32,6 +32,7 @@ from bridges.ai.fixed_models import (
     ASR_MODEL_ID,
     CHAT_MODEL_ID,
     IMAGE_MODEL_ID,
+    MODEL_BY_CAPABILITY,
     TTS_MODEL_ID,
     VIDEO_MODEL_ID,
 )
@@ -80,15 +81,8 @@ from bridges.web_search.service import WebSearchService
 #: 合成评测账户的 QQ 邮箱（纯数字 @qq.com，与产品账户格式一致）。
 EVAL_QQ_EMAIL = "10000000@qq.com"
 
-#: 固定模型矩阵（与 ai/fixed_models.py 同源：能力名 -> 固定模型快照）。
-MODEL_BY_CAPABILITY: dict[str, str] = {
-    "qwen_text_chat": CHAT_MODEL_ID,
-    "qwen_structured_output": CHAT_MODEL_ID,
-    "qwen_asr_short": ASR_MODEL_ID,
-    "qwen_tts": TTS_MODEL_ID,
-    "qwen_image": IMAGE_MODEL_ID,
-    "qwen_wan": VIDEO_MODEL_ID,
-}
+#: 固定模型矩阵（Issue 09 起单一事实源为 ai/fixed_models.py：能力名 ->
+#: 固定模型快照；本模块不再维护第二份矩阵）。
 #: 本地资产服务器端口基址（TTS/图片/视频下载）。
 _EVAL_ASSET_PORT = 18763
 

@@ -368,3 +368,21 @@ def test_gateway_stream_does_not_auto_retry_streaming_failures() -> None:
     assert len(calls) == 1
     assert events[0].kind == "error"
     assert events[0].error_code == "transient"
+
+
+def test_gateway_stream_done_chunk_model_mismatch_errors() -> None:
+    """Issue 09：流式结束块上报的实际模型与批准 ID 不一致时失败关闭。"""
+    gateway = _gateway_with(
+        _ProgrammableStreamAdapter(
+            [
+                StreamChunk(kind="delta", delta="你好"),
+                StreamChunk(kind="done", actual_model_id="drifted-model"),
+            ]
+        )
+    )
+    events = list(gateway.stream("qwen_text_chat", "1", _context(), {}))
+    assert [e.kind for e in events] == ["delta", "error"]
+    assert events[1].error_code == "actual_model_mismatch"
+    assert events[1].lock is not None
+    assert events[1].lock.status == ModelCallStatus.BLOCKED
+    assert events[1].lock.actual_model_id == "drifted-model"

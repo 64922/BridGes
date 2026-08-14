@@ -33,7 +33,7 @@ from bridges.ai import (
     QwenVisionAdapter,
     QwenWanAdapter,
 )
-from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID
+from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID, VISION_MODEL_ID
 from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.repository import ConversationRepository
 from bridges.config import Settings
@@ -280,8 +280,9 @@ class BackgroundExecutor:
                     prompt_version="2026-08-05",
                 )
             )
-            # 替代文本由核心视觉模型（qwen_vision，固定矩阵）自动生成：
-            # 注册同一能力，失败时服务层确定性降级，不阻断生成完成。
+            # 替代文本由核心视觉模型（qwen_vision，Issue 09 与核心对话
+            # 对齐同一固定快照）自动生成：注册同一能力，失败时服务层
+            # 确定性降级，不阻断生成完成。
             registry.register(
                 CapabilityRecord(
                     name="qwen_vision",
@@ -289,7 +290,7 @@ class BackgroundExecutor:
                     kind=CapabilityKind.MODEL,
                     vendor="qwen",
                     region="cn-beijing",
-                    model_id="qwen3-vl-plus",
+                    model_id=VISION_MODEL_ID,
                     input_schema_version="image-vision-v1",
                     output_schema_version="vision-text-v1",
                     status=CapabilityStatus.VERIFIED,

@@ -19,20 +19,9 @@ from bridges import __version__
 from bridges.ai import (
     CapabilityRegistry,
     CapabilityRegistryError,
-    CassetteStore,
-    ModelGateway,
-    QwenApiClient,
-    QwenAsrAdapter,
-    QwenImageAdapter,
-    QwenOcrAdapter,
-    QwenStructuredOutputAdapter,
-    QwenTextChatAdapter,
-    QwenTtsAdapter,
-    QwenVisionAdapter,
-    QwenWanAdapter,
     StubQwenAdapter,
 )
-from bridges.ai.fixed_models import ASR_MODEL_ID, CHAT_MODEL_ID, TTS_MODEL_ID
+from bridges.ai.production import build_production_composition
 from bridges.api import (
     auth,
     chat,
@@ -85,8 +74,6 @@ from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
-    RetryPolicy,
-    StructuredOutputFormat,
 )
 from bridges.contracts.domain import (
     PackImpactAction,
@@ -225,185 +212,6 @@ from bridges.web_search.contracts import WebSearchHealthStatus
 from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
-
-
-def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
-    """Register the Qwen capabilities used by built-in workflows at T009.
-
-    Issue 10 起按 ADR-0009 固定模型矩阵：核心对话绑定
-    ``qwen3.7-plus-2026-05-26`` 唯一快照，不注册备用模型——失败只允许
-    重试同一绑定，不得暗中切换模型。
-    """
-    registry.register(
-        CapabilityRecord(
-            name="qwen_text_chat",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id=CHAT_MODEL_ID,
-            input_schema_version="chat-messages-v1",
-            output_schema_version="chat-completion-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    registry.register(
-        CapabilityRecord(
-            name="qwen_structured_output",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3.6-flash",
-            input_schema_version="structured-messages-v1",
-            output_schema_version="json-schema-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    registry.register(
-        CapabilityRecord(
-            name="qwen_profile_extraction",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3.6-flash",
-            input_schema_version="profile-message-v1",
-            output_schema_version="profile-extraction-v2",
-            structured_output_format=StructuredOutputFormat.JSON_OBJECT,
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=1, backoff_seconds=0),
-            prompt_version="2026-08-12",
-            validation_probe_version="profile-json-object-v2",
-        )
-    )
-    # T061: real Qwen OCR and vision capabilities for media/science ingestion.
-    registry.register(
-        CapabilityRecord(
-            name="qwen_ocr",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen-vl-ocr",
-            input_schema_version="image-ocr-v1",
-            output_schema_version="ocr-text-v1",
-            supported_modalities=["text", "image"],
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    registry.register(
-        CapabilityRecord(
-            name="qwen_vision",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3-vl-plus",
-            input_schema_version="image-vision-v1",
-            output_schema_version="vision-text-v1",
-            supported_modalities=["text", "image"],
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    # T060: ASR capabilities for audio/video ingestion. Real Qwen ASR adapters
-    # are registered when an API key is available; otherwise the stub adapter
-    # keeps local tests deterministic.
-    registry.register(
-        CapabilityRecord(
-            name="qwen_asr_short",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id=ASR_MODEL_ID,
-            input_schema_version="audio-upload-v1",
-            output_schema_version="transcript-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    registry.register(
-        CapabilityRecord(
-            name="qwen_asr_long",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3-asr-flash-filetrans",
-            input_schema_version="audio-file-v1",
-            output_schema_version="transcript-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    # T062: real Qwen TTS capability for accessibility narration synthesis.
-    # Issue 10 起按 ADR-0009 固定绑定 qwen3-tts-flash-2025-11-27，不注册
-    # 备用模型——失败只重试同一绑定。
-    registry.register(
-        CapabilityRecord(
-            name="qwen_tts",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id=TTS_MODEL_ID,
-            input_schema_version="tts-text-v1",
-            output_schema_version="tts-audio-v1",
-            supported_modalities=["text", "audio"],
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    # Issue 31: 图片生成与编辑（ADR-0009 固定绑定 qwen-image-2.0-pro-
-    # 2026-06-22）。异步任务经后台执行器轮询，不注册备用模型——失败
-    # 只重试同一绑定。
-    registry.register(
-        CapabilityRecord(
-            name="qwen_image",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen-image-2.0-pro-2026-06-22",
-            input_schema_version="image-prompt-v1",
-            output_schema_version="image-task-v1",
-            supported_modalities=["text", "image"],
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            prompt_version="2026-08-05",
-        )
-    )
-    # Issue 32: 文生视频（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外，
-    # 使用全局百炼运行凭据）。固定绑定 wan2.7-t2v-2026-06-12，异步
-    # 任务经后台执行器轮询，不注册备用模型——失败只重试同一绑定。
-    registry.register(
-        CapabilityRecord(
-            name="qwen_wan",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="wan",
-            region="cn-beijing",
-            model_id="wan2.7-t2v-2026-06-12",
-            input_schema_version="video-prompt-v1",
-            output_schema_version="video-task-v1",
-            supported_modalities=["text", "video"],
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            prompt_version="2026-08-05",
-        )
-    )
 
 
 def _register_builtin_workflows(service: WorkflowService) -> None:
@@ -1186,58 +994,13 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     # T009/T059: attach the capability registry, model gateway and adapters.
-    capability_registry = CapabilityRegistry()
-    _register_builtin_capabilities(capability_registry)
-    model_gateway = ModelGateway(capability_registry)
-
+    # Issue 09：生产组合由 bridges.ai.production 单一装配（批准矩阵 +
+    # 真实适配器接线），API 组合根、CLI 启动门与发布门复用同一实现；
+    # 注册表与 adapter 不再各自编写模型字面量。
     settings = app.state.settings
-    if _has_real_qwen_key(settings):
-        cassette_store = None
-        # Issue 39 AC5：cassette 会把完整请求/响应正文以明文 JSON 落盘，
-        # 生产环境强制禁止录制，避免私人对话正文落盘泄露。
-        cassette_record_mode = (
-            settings.qwen_record_cassettes
-            and settings.environment.lower() != "production"
-        )
-        if settings.qwen_cassette_dir is not None:
-            cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
-        qwen_client = QwenApiClient(
-            api_key=settings.qwen_api_key,
-            workspace_id=settings.qwen_workspace_id,
-            region=settings.qwen_region,
-            cassette_store=cassette_store,
-            record_mode=cassette_record_mode,
-        )
-        model_gateway.register_adapter(
-            "qwen_text_chat", "1", QwenTextChatAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
-            "qwen_structured_output", "1", QwenStructuredOutputAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
-            "qwen_profile_extraction", "1", QwenStructuredOutputAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
-            "qwen_ocr", "1", QwenOcrAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
-            "qwen_vision", "1", QwenVisionAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
-            "qwen_asr_short", "1", QwenAsrAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
-            "qwen_asr_long", "1", QwenAsrAdapter(qwen_client)
-        )
-        # T062: TTS adapter for accessibility narration synthesis.
-        tts_adapter = QwenTtsAdapter(qwen_client)
-        model_gateway.register_adapter("qwen_tts", "1", tts_adapter)
-        # Issue 31: 图片生成与编辑异步任务适配器（submit/poll/fetch/cancel）。
-        image_adapter = QwenImageAdapter(qwen_client)
-        model_gateway.register_adapter("qwen_image", "1", image_adapter)
-        # Issue 32: 文生视频异步任务适配器（Wan 例外，submit/poll/fetch/cancel）。
-        wan_adapter = QwenWanAdapter(qwen_client)
-        model_gateway.register_adapter("qwen_wan", "1", wan_adapter)
+    production_composition = build_production_composition(settings)
+    capability_registry = production_composition.registry
+    model_gateway = production_composition.gateway
 
     # Issue 41（AC3）：StubQwenAdapter 只注册在显式 test 环境（本地与 CI
     # 测试确定性，与 /_test/* 端点同一门控）——development/production

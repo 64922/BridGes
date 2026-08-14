@@ -675,9 +675,25 @@ class SpeechService:
         )
 
     def _persist_lock(self, account_id: str, lock: ModelRunLock | None) -> None:
-        """把固定模型标识写入运行记录（model_run_locks）。"""
+        """把固定模型标识写入运行记录（model_run_locks）。
+
+        失败锁的错误字段按 GQ-03 同源映射折叠为面向用户的中文提示后再
+        持久化：供应商原文（可能包含 authorization/token 等疑似凭据词）
+        绝不写入运行记录（Issue 10 录制器安全扫描拒绝此类自由文本），
+        也不把上游正文带进审计库。
+        """
         if lock is None or self._repo is None:
             return
+        if lock.error_message is not None or lock.degradation_reason is not None:
+            safe_message = _user_facing_error(
+                lock.error_code, None, "语音能力调用失败，请重试。"
+            )
+            lock = lock.model_copy(
+                update={
+                    "error_message": safe_message,
+                    "degradation_reason": safe_message,
+                }
+            )
         self._repo.insert_run_lock(account_id, lock)
 
     @staticmethod

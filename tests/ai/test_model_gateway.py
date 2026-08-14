@@ -200,7 +200,9 @@ def test_transient_error_retries_within_budget() -> None:
     primary = _cap("primary", retry=RetryPolicy(max_attempts=3, backoff_seconds=0))
     registry.register(primary)
     gateway = ModelGateway(registry)
-    adapter = _ProgrammableAdapter([TransientError(), TransientError(), _success_result("model")])
+    adapter = _ProgrammableAdapter(
+        [TransientError(), TransientError(), _success_result("primary-model")]
+    )
     gateway.register_adapter("primary", "1", adapter)
 
     result = gateway.invoke("primary", "1", _context())
@@ -287,3 +289,60 @@ def test_unverified_fallback_is_prohibited() -> None:
     result = gateway.invoke("primary", "1", _context())
 
     assert result.status == ModelCallStatus.RETRYABLE_FAIL
+
+
+def test_actual_model_mismatch_blocks_invoke_without_retry() -> None:
+    """Issue 09：adapter 返回的实际模型与批准 ID 不一致时立即失败关闭。
+
+    不得只记录警告后继续，也不得消耗重试预算重试同一漂移绑定；运行锁
+    如实记录漂移的实际模型 ID 供门禁报告 ``actual_model_mismatch``。
+    """
+    registry = CapabilityRegistry()
+    primary = _cap("primary", retry=RetryPolicy(max_attempts=3, backoff_seconds=0))
+    registry.register(primary)
+    gateway = ModelGateway(registry)
+    adapter = _ProgrammableAdapter([_success_result("drifted-model")])
+    gateway.register_adapter("primary", "1", adapter)
+
+    result = gateway.invoke("primary", "1", _context())
+
+    assert result.status == ModelCallStatus.BLOCKED
+    assert result.error_code == "actual_model_mismatch"
+    assert adapter.call_count == 1
+    assert result.lock is not None
+    assert result.lock.actual_model_id == "drifted-model"
+    assert result.lock.status == ModelCallStatus.BLOCKED
+    assert result.lock.retry_count == 0
+
+
+def test_retry_stays_on_same_capability_when_no_fallback_configured() -> None:
+    """Issue 09：限流/超时重试始终针对同一 capability/model，绝不静默换能力。
+
+    未配置 fallback 时重试耗尽只返回 RETRYABLE_FAIL，fallback_path 只含
+    主能力；即使注册表存在其他同 region 能力也不被触碰。
+    """
+    registry = CapabilityRegistry()
+    primary = _cap(
+        "primary",
+        retry=RetryPolicy(max_attempts=3, backoff_seconds=0),
+        fallback=FallbackPolicy(),
+    )
+    sibling = _cap("sibling")
+    registry.register(primary)
+    registry.register(sibling)
+    gateway = ModelGateway(registry)
+    primary_adapter = _ProgrammableAdapter(
+        [RateLimitError(), TransientError(), RateLimitError()]
+    )
+    sibling_adapter = _ProgrammableAdapter([_success_result("sibling-model")])
+    gateway.register_adapter("primary", "1", primary_adapter)
+    gateway.register_adapter("sibling", "1", sibling_adapter)
+
+    result = gateway.invoke("primary", "1", _context())
+
+    assert result.status == ModelCallStatus.RETRYABLE_FAIL
+    assert primary_adapter.call_count == 3
+    assert sibling_adapter.call_count == 0
+    assert result.lock is not None
+    assert result.lock.fallback_path == ["primary@1"]
+    assert result.lock.capability_name == "primary"

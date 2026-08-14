@@ -18,6 +18,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import Protocol
 
+from bridges.ai.fixed_models import ASR_MODEL_ID
 from bridges.contracts.ai import ModelCallStatus, ModelRunLock
 from bridges.contracts.media import (
     AssetRegion,
@@ -731,7 +732,7 @@ class AudioVideoExtractor(ExtractionPort):
             project_id=source_asset.project_id or "",
             capability_name="qwen_asr_short",
             capability_version="1",
-            actual_model_id="qwen3-asr-flash",
+            actual_model_id=ASR_MODEL_ID,
             region="cn-beijing",
             parameters={"temperature": 0.0, "max_tokens": 4096},
             prompt_version="2026-07-24",
