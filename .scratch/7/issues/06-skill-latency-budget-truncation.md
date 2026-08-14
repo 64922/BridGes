@@ -73,7 +73,7 @@ python -m pytest tests/chat/test_issue06_latency_budget.py tests/chat/test_issue
 
 - 2026-08-14：本轮冻结决策 #6 全包范围即本 issue 的 What to build 1-4。
 - 2026-08-14：非流式架构保持不变；若未来要把人味化/生涯改成流式，另行立项。
-- 2026-08-14：Issue 06 实现完成（分支 `06-skill-latency-budget-truncation`，commit 352ef8e）。
+- 2026-08-14：Issue 06 实现完成（分支 `06-skill-latency-budget-truncation`，commit 352ef8e + 复查修复 eea2bba、13a8e4f）。
   - 预算截断算术与常量集中在新增 `bridges/model_call_budget.py`（默认 60s、
     交接预留 1s、最小调用窗口 5s、正下限 50ms；与 `public_search_budget` 同一
     免循环依赖约定），`RunBudget` 新增 `model_call_timeout_ms()` /
