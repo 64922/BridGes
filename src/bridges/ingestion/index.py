@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bridges.ai.fixed_models import EMBEDDING_MODEL_ID
+from bridges.ai.ports import EmbeddingContext, EmbeddingOperation
 from bridges.contracts.ingestion import (
     IndexContractProjection,
     IndexStatusProjection,
@@ -281,12 +282,29 @@ class VersionedIndex:
             vectors_written = 0
             for batch_start in range(0, len(rows), EMBED_BATCH_SIZE):
                 batch = rows[batch_start : batch_start + EMBED_BATCH_SIZE]
+                # Issue 15：重建批次携带索引版本对象与批次序号，每个实际
+                # 远端批次一条锁，按批次/调用序号稳定排序（每批一次调用，
+                # 真实重试以更大 call_ordinal 新增锁）。
+                batch_ordinal = batch_start // EMBED_BATCH_SIZE + 1
                 texts = [str(row["content"]) for row in batch]
-                vectors = self._embed_or_fail(account_id, embedding_available, texts)
+                vectors = self._embed_or_fail(
+                    account_id,
+                    embedding_available,
+                    texts,
+                    context=EmbeddingContext(
+                        operation=EmbeddingOperation.INDEX_REBUILD,
+                        run_id=version_id,
+                        object_type="index_version",
+                        object_id=version_id,
+                        batch_ordinal=batch_ordinal,
+                        call_ordinal=batch_ordinal,
+                    ),
+                )
                 with self._database.transaction():
-                    written, vectors_written = self._insert_rows(
+                    written, batch_vectors = self._insert_rows(
                         version_id, account_id, batch, vectors, now, start=written
                     )
+                    vectors_written += batch_vectors
                     self._database.connection.execute(
                         "UPDATE index_versions SET chunk_count = ?, vector_count = ?,"
                         " built_at = ? WHERE version_id = ?",
@@ -351,12 +369,17 @@ class VersionedIndex:
         return written, vectors_written
 
     def _embed_or_fail(
-        self, account_id: str, embedding_available: bool, texts: list[str]
+        self,
+        account_id: str,
+        embedding_available: bool,
+        texts: list[str],
+        *,
+        context: EmbeddingContext,
     ) -> list[list[float] | None]:
         if not embedding_available:
             return [None] * len(texts)
         try:
-            embedded = self._embedding.embed(account_id, texts)
+            embedded = self._embedding.embed(account_id, texts, context=context)
         except Exception as exc:  # noqa: BLE001 - 失败统一折叠为可重试原因
             raise IndexWriteError(str(exc)) from exc
         return list(embedded)

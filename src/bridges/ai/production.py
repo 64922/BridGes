@@ -25,6 +25,7 @@ from bridges.ai import (
     ModelGateway,
     QwenApiClient,
     QwenAsrAdapter,
+    QwenEmbeddingAdapter,
     QwenImageAdapter,
     QwenOcrAdapter,
     QwenStructuredOutputAdapter,
@@ -37,6 +38,7 @@ from bridges.ai.fixed_models import (
     ASR_LONG_MODEL_ID,
     ASR_MODEL_ID,
     CHAT_MODEL_ID,
+    EMBEDDING_MODEL_ID,
     IMAGE_MODEL_ID,
     OCR_MODEL_ID,
     TTS_MODEL_ID,
@@ -234,6 +236,25 @@ def register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             prompt_version="2026-08-05",
         )
     )
+    # Issue 15: 知识库向量化（ADR-0008/0009 固定绑定 text-embedding-v4、
+    # 1024 维、L2 规范化）。真实批次的审计锁由网关产生、recorder 持久化；
+    # 网关不自动重试（max_attempts=1）——真正重试由业务层以新调用序号
+    # 重新发起，逐次留锁，绝不覆盖旧锁。
+    registry.register(
+        CapabilityRecord(
+            name="qwen_embedding",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id=EMBEDDING_MODEL_ID,
+            input_schema_version="embedding-texts-v1",
+            output_schema_version="embedding-vectors-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=1, backoff_seconds=0),
+            prompt_version="2026-08-13",
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -305,6 +326,8 @@ def build_production_composition(settings: Settings | None) -> ProductionComposi
     gateway.register_adapter("qwen_image", "1", QwenImageAdapter(qwen_client))
     # Issue 32: 文生视频异步任务适配器（Wan 例外，submit/poll/fetch/cancel）。
     gateway.register_adapter("qwen_wan", "1", QwenWanAdapter(qwen_client))
+    # Issue 15: 知识库向量化真实适配器（每次实际远端批次产生一条运行锁）。
+    gateway.register_adapter("qwen_embedding", "1", QwenEmbeddingAdapter(qwen_client))
     return ProductionComposition(
         registry=registry,
         gateway=gateway,

@@ -663,6 +663,12 @@ class ModelGateway:
         for key in ("voice", "language_type", "format", "sample_rate"):
             if payload and key in payload:
                 params[key] = payload[key]
+        # Embedding metadata (Issue 15): batch size/ordinal and the fixed
+        # dimension/normalization contract. Input texts are deliberately absent
+        # from this whitelist, so embedding payloads never leak into the lock.
+        for key in ("batch_size", "batch_ordinal", "normalization", "dimensions"):
+            if payload and key in payload:
+                params[key] = payload[key]
         policy = payload.get("global_writing_policy") if payload else None
         if isinstance(policy, dict):
             # 只记录版本、模式、切片数量等脱敏诊断字段，绝不把画像正文

@@ -10,6 +10,7 @@ from conftest import (
     upload_text,
 )
 
+from bridges.ai.ports import EmbeddingContext
 from bridges.contracts.ingestion import DocumentIngestionStatus
 from bridges.ingestion.embedding import DeterministicEmbeddingPort, EmbeddingError
 from bridges.ingestion.ocr import OcrError, OcrPageRequest
@@ -138,11 +139,17 @@ class _FlakyEmbeddingPort(DeterministicEmbeddingPort):
         super().__init__(dimensions=dimensions)
         self._failures = failures
 
-    def embed(self, account_id: str, texts: list[str]) -> list[list[float]]:
+    def embed(
+        self,
+        account_id: str,
+        texts: list[str],
+        *,
+        context: EmbeddingContext | None = None,
+    ) -> list[list[float]]:
         if self._failures > 0:
             self._failures -= 1
             raise EmbeddingError("向量化失败：服务暂时不可用或网络异常，请稍后重试。")
-        return super().embed(account_id, texts)
+        return super().embed(account_id, texts, context=context)
 
 
 def test_embed_failure_degrades_to_keyword_and_recovers(storage) -> None:

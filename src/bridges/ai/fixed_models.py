@@ -62,6 +62,7 @@ MODEL_BY_CAPABILITY: dict[str, str] = {
     "qwen_tts": TTS_MODEL_ID,
     "qwen_image": IMAGE_MODEL_ID,
     "qwen_wan": VIDEO_MODEL_ID,
+    "qwen_embedding": EMBEDDING_MODEL_ID,
 }
 
 __all__ = [

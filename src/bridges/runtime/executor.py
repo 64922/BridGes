@@ -191,25 +191,22 @@ class BackgroundExecutor:
             )
             return None
         try:
-            # Issue 39 AC5 / GQ-04：cassette 录制禁令与 API 进程同一语义——
-            # production 强制禁止录制（私人提示或响应正文绝不落盘）。
-            record_mode = (
-                settings.qwen_record_cassettes
-                and settings.environment.lower() != "production"
-            )
+            assert self._database is not None
+            # 生产组合（Issue 09 注册能力 + 真实适配器）与统一运行记录接缝
+            # （Issue 10 recorder）由 Embedding（Issue 15）与 OCR（Issue 14）
+            # 共享同一实例；缺少全局 Key 时组合不绑定适配器，端口失败关闭、
+            # 诚实降级。
+            composition = build_production_composition(settings)
+            # Issue 15：worker 摄取/重建与 API 查询向量共用同一生产组合
+            # 与统一运行锁 recorder，每次实际远端批次持久化一条审计锁。
             embedding = QwenEmbeddingPort(
                 api_key=settings.qwen_api_key,
-                region=settings.qwen_region,
-                workspace_id=settings.qwen_workspace_id,
-                cassette_dir=settings.qwen_cassette_dir,
-                record_mode=record_mode,
+                gateway=composition.gateway,
+                recorder=SqliteModelRunLockRecorder(self._database),
             )
-            # Issue 14：知识库 OCR 与 API 进程共用同一生产组合（Issue 09
-            # 注册能力 + 真实适配器）与同一运行记录接缝（Issue 10 recorder）；
-            # 缺少全局 Key 时组合不绑定适配器，OCR 端口失败关闭、诚实降级。
-            assert self._database is not None
+            # Issue 14：知识库 OCR 与 API 进程共用同一生产组合与 recorder。
             ocr = QwenOcrPort(
-                gateway=build_production_composition(settings).gateway,
+                gateway=composition.gateway,
                 recorder=SqliteModelRunLockRecorder(self._database),
             )
             self._ingestion = IngestionService(

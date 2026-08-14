@@ -19,6 +19,7 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
+from bridges.ai.ports import EmbeddingContext, EmbeddingOperation
 from bridges.chat.attachments_repository import AttachmentRepository
 from bridges.chat.repository import ConversationRepository
 from bridges.contracts.retrieval import (
@@ -302,6 +303,9 @@ class LayeredRetrievalService:
             )
 
         version_id = str(active["version_id"])
+        # Issue 15：查询向量锁关联到检索 round（round_id 在向量化前生成，
+        # 锁与轮次记录共享同一对象标识；无向量化的路径不建锁）。
+        round_id = f"rnd-{secrets.token_urlsafe(12)}"
         cleaned_query = clean_query(query)
         keyword_lists: dict[RetrievalSourceLayer, list[Any]] = {}
         vector_rows: dict[RetrievalSourceLayer, list[dict[str, Any]]] = {}
@@ -336,7 +340,17 @@ class LayeredRetrievalService:
         query_vector: list[float] | None = None
         if self._embedding is not None:
             try:
-                embedded = self._embedding.embed(account_id, [cleaned_query])
+                embedded = self._embedding.embed(
+                    account_id,
+                    [cleaned_query],
+                    context=EmbeddingContext(
+                        operation=EmbeddingOperation.RETRIEVAL_QUERY,
+                        run_id=round_id,
+                        object_type="retrieval_round",
+                        object_id=round_id,
+                        project_id=project_id or "default",
+                    ),
+                )
                 query_vector = list(embedded[0]) if embedded else None
             except EmbeddingError as exc:
                 # GQ-05：向量化调用失败 → 本轮诚实回退关键词检索，并把
@@ -404,6 +418,7 @@ class LayeredRetrievalService:
             assistant_message_id,
             user_message_id,
             use_knowledge_base=use_knowledge_base,
+            round_id=round_id,
             index_version_id=version_id,
             sufficiency=sufficiency,
             layers=self._layer_results(layers, index_unavailable=False, notes=notes),
@@ -657,8 +672,12 @@ class LayeredRetrievalService:
         layers: list[RetrievalLayerResult],
         candidates: list[tuple[RetrievalSourceLayer, FusedCandidate]],
         note: str | None,
+        round_id: str | None = None,
     ) -> RetrievalRoundProjection | None:
-        round_id = f"rnd-{secrets.token_urlsafe(12)}"
+        # 主路径的 round_id 在向量化前生成（查询锁与轮次共享同一对象标识）；
+        # 无向量化的提前返回路径在此自行生成。
+        if round_id is None:
+            round_id = f"rnd-{secrets.token_urlsafe(12)}"
         now = _now()
         try:
             with self._database.transaction():

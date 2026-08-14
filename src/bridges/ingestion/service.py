@@ -17,6 +17,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple, cast
 
+from bridges.ai.ports import EmbeddingContext, EmbeddingOperation
 from bridges.contracts.ingestion import (
     DocumentIngestionProjection,
     DocumentIngestionStatus,
@@ -890,8 +891,20 @@ class IngestionService:
         vectors: list[list[float] | None] = [None] * len(chunks)
         if available:
             try:
+                # Issue 15：入库向量化携带业务上下文（文档 run、对象关联、
+                # 批次/调用序号），运行锁按实际远端批次逐条持久化。
                 embedded = self._embedding.embed(  # type: ignore[union-attr]
-                    account_id, [chunk.content for chunk in chunks]
+                    account_id,
+                    [chunk.content for chunk in chunks],
+                    context=EmbeddingContext(
+                        operation=EmbeddingOperation.INGESTION_WRITE,
+                        run_id=document_id,
+                        object_type="document",
+                        object_id=document_id,
+                        project_id=(
+                            str(row["project_id"]) if row["project_id"] else "default"
+                        ),
+                    ),
                 )
                 vectors = list(embedded)
             except EmbeddingError:
