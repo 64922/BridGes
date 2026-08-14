@@ -1,6 +1,6 @@
 # Issue 02：修复学习模式降级空档与画像注入顺序
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Type: task
 
@@ -78,3 +78,4 @@ python -m pytest tests/chat/test_teaching_chat.py tests/learning -q -p no:cachep
 
 - 2026-08-14：本轮冻结决策 #2——覆盖不足 + 联网失败允许带标注降级，仅 CONFLICT 保持拒绝。该空档由第 6 轮之前的 58ae7b6 引入，第 6 轮 Issue 03 未触及。
 - 2026-08-14：画像前移同时修复用户在截图中抱怨的「没有调用用户画像」。
+- 2026-08-15：实现完成（分支 02-learning-fallback-profile）。降级开关放宽至 `insufficient_coverage` + 搜索失败；降级回答保留真实本地引用、剥离网络/论文引用与 URL、前缀「本轮未联网核实」；画像编译前移到证据门短路判定之前（拒绝路径只披露不注入）；「当前水平假设」以画像学业情况为准；reason 文案改为「本地材料不足、联网未完成，本轮为未联网核实的背景回答」；审计记录三种终态 + 本地充足性信号 + 画像条数，并新增降级轮网络引用不变量告警。验收与测试计划全部落地（门级 21 项、聊天级 18 项），`tests/chat` + `tests/learning` 失败集与基线完全一致（44 个均为预先存在）。
