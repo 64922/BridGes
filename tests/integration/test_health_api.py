@@ -67,7 +67,11 @@ def test_health_degraded_reports_optional_dependencies(client: TestClient) -> No
 
 
 def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
-    """Configuration failure (e.g. missing secret file) returns fail, not 500."""
+    """Configuration failure (e.g. missing secret file) returns 503 fail, not 200.
+
+    Issue 06：readiness 未就绪统一返回 503（响应体仍是同一份 projection），
+    使 Playwright 等只认状态码的探针不会在依赖未就绪时开始测试。
+    """
     env_key = "BRIDGES_SECRET_KEY_FILE"
     missing = tmp_path / "nonexistent-secret.key"
     os.environ[env_key] = str(missing)
@@ -75,7 +79,7 @@ def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
     try:
         failing_client = TestClient(create_app())
         response = failing_client.get("/health/ready")
-        assert response.status_code == 200
+        assert response.status_code == 503
         body = response.json()
         assert body["ready"] == "fail"
         config_dep = [d for d in body["dependencies"] if d["name"] == "configuration"]
@@ -106,7 +110,8 @@ def test_health_ready_fails_without_global_key_in_development() -> None:
     get_settings.cache_clear()
     try:
         response = TestClient(create_app()).get("/health/ready")
-        assert response.status_code == 200
+        # Issue 06：readiness 未就绪返回 503（而非 200）。
+        assert response.status_code == 503
         body = response.json()
         assert body["ready"] == "fail"
         qwen_dep = [
@@ -142,7 +147,8 @@ def test_health_ready_reports_missing_production_persistence() -> None:
     get_settings.cache_clear()
     try:
         response = TestClient(create_app()).get("/health/ready")
-        assert response.status_code == 200
+        # Issue 06：readiness 未就绪返回 503（而非 200）。
+        assert response.status_code == 503
         body = response.json()
         assert body["ready"] == "fail"
         persistence_dep = [

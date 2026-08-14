@@ -25474,7 +25474,7 @@
     "/health/ready": {
       "get": {
         "summary": "Health Ready",
-        "description": "Readiness probe: required dependencies are healthy.",
+        "description": "Readiness probe: required dependencies are healthy.\n\nIssue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时\n返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，\n只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是\n在首个会话请求中报 500。响应体始终是同一份 HealthProjection。",
         "operationId": "health_ready_health_ready_get",
         "responses": {
           "200": {

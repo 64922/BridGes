@@ -325,7 +325,9 @@ class TestExpressionCapabilityRetirement:
         )
 
         ready = authenticated_client.get("/health/ready")
-        assert ready.status_code == 200
+        # Issue 06：readiness 未就绪统一返回 503（响应体仍是同一份投影），
+        # 状态码即门禁——退役能力回归同样是"未就绪"，必须阻止探针放行。
+        assert ready.status_code == 503
         body = ready.json()
         assert body["ready"] == "fail"
         names = {d["name"] for d in body["dependencies"]}

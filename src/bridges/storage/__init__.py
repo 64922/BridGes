@@ -6,7 +6,12 @@ Issue 05 交付的桥梁：空的 ``bridges.db``（带版本记录、外键、�
 
 from __future__ import annotations
 
-from bridges.storage.database import MIGRATIONS, SCHEMA_VERSION, BridgesDatabase
+from bridges.storage.database import (
+    MIGRATIONS,
+    SCHEMA_INTEGRITY_ERROR_CODE,
+    SCHEMA_VERSION,
+    BridgesDatabase,
+)
 from bridges.storage.errors import StorageError
 from bridges.storage.object_store import EncryptedFileObjectStore
 from bridges.storage.repository import (
@@ -23,6 +28,7 @@ __all__ = [
     "MIGRATIONS",
     "OBJECT_STATUS_ACTIVE",
     "OBJECT_STATUS_PENDING_CLEANUP",
+    "SCHEMA_INTEGRITY_ERROR_CODE",
     "SCHEMA_VERSION",
     "StorageError",
     "StoredObject",
