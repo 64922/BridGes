@@ -12,6 +12,12 @@ from bridges.routing import MainCapability, NaturalLanguageRouter, RouteStatus
         "我该不该转行？现在很纠结",
         "大三计算机学生，想知道毕业后应该怎么规划求职方向",
         "我在科研和企业之间怎么选择长期发展路线？",
+        # 学习任务规划（Issue 03 feature 7）：含前端建议卡文案原句
+        "给我规划一下我的学习任务",
+        "帮我排一下研究生三年的学习优先级",
+        "帮我安排一下复习任务",
+        "给我规划一下考研的复习安排",
+        "帮我规划一下这学期的课程安排",
     ],
 )
 def test_typical_career_questions_route_to_planning(content: str) -> None:
@@ -33,6 +39,10 @@ def test_typical_career_questions_route_to_planning(content: str) -> None:
         "职业规划是什么？",
         "我想了解职业规划",
         "职业发展前景怎么样？",
+        # 学习任务规划的排除说法与普通语境（Issue 03 feature 7）
+        "今天帮我安排一下学习计划之外的事",
+        "帮我规划一下周末去爬山的路线",
+        "帮我安排一下明天的日程",
     ],
 )
 def test_learning_humanizer_and_general_career_chat_do_not_route_to_planning(

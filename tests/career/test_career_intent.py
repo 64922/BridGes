@@ -38,6 +38,14 @@ from bridges.career.intent import is_career_intent
         "找实习要注意什么",
         "选专业时应该考虑什么",
         "打算转行做数据分析",
+        # 学习任务规划（Issue 03 feature 7）：规划动作 + 学习语境词
+        "给我规划一下我的学习任务",
+        "帮我排一下研究生三年的学习优先级",
+        "帮我安排一下复习任务",
+        "给我规划一下考研的复习安排",
+        "帮我规划一下这学期的课程安排",
+        "帮我排一个考研的复习计划",
+        "帮我规划一下读研期间的学业安排",
     ],
 )
 def test_career_intent_hits(content: str) -> None:
@@ -66,6 +74,12 @@ def test_career_intent_hits(content: str) -> None:
         "我不是在问职业规划",
         "我没做过职业规划，先不说这个",
         "先放弃职业规划的念头吧",
+        # 学习任务规划的排除说法与否定（Issue 03 feature 7）
+        "今天帮我安排一下学习计划之外的事",
+        "帮我安排一下学习之外的事",
+        "不用帮我规划学习任务，我自己来",
+        "不要安排复习了，先吃饭",
+        "别帮我安排复习了，先吃饭",
     ],
 )
 def test_career_intent_misses(content: str) -> None:

@@ -9,6 +9,10 @@
 - 弱触发词（考研/考公/找工作/转行等情境词）需在同一消息中命中规划
   语境词（规划/选择/方向/要不要/想等），避免劫持普通聊天
   （如「考研英语怎么复习」「我朋友找工作失败怎么安慰他」）；
+- 学习任务规划（Issue 03 feature 7）：规划动作词（规划/安排/排一下）
+  与学习语境词（学习任务/复习/课程/考研/读研等）同现即触发
+  （「给我规划一下我的学习任务」「帮我排一下研究生三年的学习优先级」），
+  但「……学习计划之外的事」等排除说法不触发；
 - 否定式防护：关键词前紧邻窗口内出现「否定动词短语」则不触发；
   疑问结构（要不要/想不想/该不该）优先于否定短语放行。
 """
@@ -128,6 +132,49 @@ _QUESTION_MARKERS: tuple[str, ...] = (
 #: 否定防护的向前扫描窗口长度（字符），覆盖「不要帮我做」等结构。
 _NEGATION_WINDOW = 8
 
+#: 学习任务规划动作词（Issue 03 feature 7）：与学习语境词同现构成明确
+#: 的学习/发展任务规划意图。刻意不含「制定/列一个」等宽泛动作词，避免
+#: 「帮我制定一个机器学习学习计划」这类主题式学习计划被劫持为生涯规划。
+_STUDY_PLAN_VERBS: tuple[str, ...] = (
+    "规划",
+    "安排",
+    "排一下",
+    "排一个",
+    "排个",
+)
+
+#: 学习/发展语境词：与规划动作词同现即视为「给学习任务排优先级」类请求。
+_STUDY_PLAN_WORDS: tuple[str, ...] = (
+    "学习任务",
+    "学习优先级",
+    "学习计划",
+    "学习",
+    "任务",
+    "复习",
+    "课程",
+    "考研",
+    "读研",
+    "学业",
+    "备考",
+    "作业",
+)
+
+#: 排除说法：「安排学习计划之外的事」是普通聊天，不是学习任务规划。
+_STUDY_PLAN_EXCLUSIONS: tuple[str, ...] = (
+    "学习计划之外",
+    "学习计划以外",
+    "学习任务之外",
+    "学习任务以外",
+    "学习之外",
+    "学习以外",
+    "复习之外",
+    "复习以外",
+    "课程之外",
+    "课程以外",
+    "学业之外",
+    "学业以外",
+)
+
 
 def is_career_intent(content: str) -> bool:
     """判断一条用户消息是否携带明确的生涯规划意图。
@@ -139,6 +186,10 @@ def is_career_intent(content: str) -> bool:
     >>> is_career_intent("考研英语怎么复习")
     False
     >>> is_career_intent("今天不想聊职业规划")
+    False
+    >>> is_career_intent("给我规划一下我的学习任务")
+    True
+    >>> is_career_intent("今天帮我安排一下学习计划之外的事")
     False
     """
     text = (content or "").strip()
@@ -153,7 +204,22 @@ def is_career_intent(content: str) -> bool:
     for keyword in _WEAK_KEYWORDS:
         if _keyword_hits(text, keyword) and any(word in text for word in _CONTEXT_WORDS):
             return True
-    return False
+    return is_study_planning_request(text)
+
+
+def is_study_planning_request(text: str) -> bool:
+    """规划动作与学习/发展语境词同现的学习任务规划意图（Issue 03）。
+
+    「规划/安排/排一下 + 学习任务/复习/课程/考研/读研等」组合视为明确的
+    学习任务规划意图；「……学习计划之外的事」等排除说法与否定前缀不触发，
+    避免劫持普通聊天（「今天帮我安排一下学习计划之外的事」）。
+    """
+    text = (text or "").strip()
+    if not text or any(word in text for word in _STUDY_PLAN_EXCLUSIONS):
+        return False
+    if not any(_keyword_hits(text, verb) for verb in _STUDY_PLAN_VERBS):
+        return False
+    return any(word in text for word in _STUDY_PLAN_WORDS)
 
 
 def _keyword_hits(text: str, keyword: str) -> bool:
