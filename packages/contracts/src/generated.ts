@@ -3771,7 +3771,7 @@ export interface paths {
         put?: never;
         /**
          * Create Expression Draft
-         * @description Generate a fact-lock-bound expression draft from a brief and claim graph.
+         * @description Create a new expression draft. Retired; returns 410 during compatibility window.
          */
         post: operations["create_expression_draft_expression_drafts_post"];
         delete?: never;
@@ -3833,7 +3833,7 @@ export interface paths {
         put?: never;
         /**
          * Run Style Diagnostic
-         * @description Run or re-run the Chinese human-flavor diagnostic on a draft.
+         * @description Run style diagnostic on a draft. Retired; returns 410.
          */
         post: operations["run_style_diagnostic_expression_drafts__draft_id__style_diagnostic_post"];
         delete?: never;
@@ -3853,7 +3853,7 @@ export interface paths {
         put?: never;
         /**
          * Apply Revision Patch
-         * @description Accept, reject or rewrite a single revision patch.
+         * @description Apply a revision patch. Retired; returns 410.
          */
         post: operations["apply_revision_patch_expression_drafts__draft_id__patches__patch_id__apply_post"];
         delete?: never;
@@ -3873,10 +3873,7 @@ export interface paths {
         put?: never;
         /**
          * Submit Expression Feedback
-         * @description Submit user feedback for an expression draft.
-         *
-         *     Feedback is routed to the current version, a candidate preference, a learning
-         *     record, or a fact review according to its content.
+         * @description Submit feedback for a draft. Retired; returns 410.
          */
         post: operations["submit_expression_feedback_expression_drafts__draft_id__feedback_post"];
         delete?: never;
@@ -3896,10 +3893,7 @@ export interface paths {
         put?: never;
         /**
          * Approve Expression Artifact
-         * @description Approve, reject or request changes for an expression artifact.
-         *
-         *     Approval separates workflow success from scientific trust status and is
-         *     required before publication.
+         * @description Approve a draft artifact. Retired; returns 410.
          */
         post: operations["approve_expression_artifact_expression_drafts__draft_id__approve_post"];
         delete?: never;
@@ -3942,10 +3936,7 @@ export interface paths {
         put?: never;
         /**
          * Publish Expression Artifact
-         * @description Publish an expression artifact when it passes the release gate.
-         *
-         *     The publish event is bound to the exact draft version, the authorizing
-         *     account, the release gate result and the approval decision.
+         * @description Publish an expression artifact. Retired; returns 410.
          */
         post: operations["publish_expression_artifact_expression_drafts__draft_id__publish_post"];
         delete?: never;
@@ -3965,11 +3956,7 @@ export interface paths {
         put?: never;
         /**
          * Compare Expression Versions
-         * @description Compare two expression drafts and report semantic differences.
-         *
-         *     The comparison highlights changes to fact locks, claims, citations, wording
-         *     strength, argument structure, span text, model locks, applied patches and
-         *     artifact trust status, plus the release eligibility of each version.
+         * @description Compare expression draft versions. Retired; returns 410.
          */
         post: operations["compare_expression_versions_expression_drafts_compare_post"];
         delete?: never;
@@ -3987,10 +3974,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Upload Media To Project
-         * @description Upload a media asset into a project.
-         */
+        /** Upload Media To Project */
         post: operations["upload_media_to_project_media_projects__project_id__assets_post"];
         delete?: never;
         options?: never;
@@ -4007,10 +3991,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Upload Media
-         * @description Upload a personal media asset (not bound to a project).
-         */
+        /** Upload Media */
         post: operations["upload_media_media_assets_post"];
         delete?: never;
         options?: never;
@@ -4047,10 +4028,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Correct Derived Asset
-         * @description Apply a human correction to a derived asset and create a new version.
-         */
+        /** Correct Derived Asset */
         post: operations["correct_derived_asset_media_assets__asset_id__derived_post"];
         delete?: never;
         options?: never;
@@ -4067,13 +4045,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Generate Media Claim Graph
-         * @description Generate a ClaimGraph from a media asset's derived structures.
-         *
-         *     The media service ensures the asset is accessible and active; the existing
-         *     claim-evidence service produces the locatable claim graph.
-         */
+        /** Generate Media Claim Graph */
         post: operations["generate_media_claim_graph_media_assets__asset_id__claim_graph_post"];
         delete?: never;
         options?: never;
@@ -4090,10 +4062,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Revoke Media Asset
-         * @description Revoke a media asset so it cannot be used in new evidence.
-         */
+        /** Revoke Media Asset */
         post: operations["revoke_media_asset_media_assets__asset_id__revoke_post"];
         delete?: never;
         options?: never;
@@ -4110,10 +4079,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Create Chart
-         * @description Generate a data chart from structured data with claim bindings.
-         */
+        /** Create Chart */
         post: operations["create_chart_media_charts_post"];
         delete?: never;
         options?: never;
@@ -4130,10 +4096,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Create Figure
-         * @description Generate a scientific figure from element definitions.
-         */
+        /** Create Figure */
         post: operations["create_figure_media_figures_post"];
         delete?: never;
         options?: never;
@@ -4169,10 +4132,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Update Media Object Spec
-         * @description Update the editable source of a chart or figure and re-validate.
-         */
+        /** Update Media Object Spec */
         put: operations["update_media_object_spec_media_objects__object_id__spec_put"];
         post?: never;
         delete?: never;
@@ -4190,10 +4150,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Validate Spec
-         * @description Validate a chart or figure spec JSON without generating output.
-         */
+        /** Validate Spec */
         post: operations["validate_spec_media_validate_spec_post"];
         delete?: never;
         options?: never;
@@ -4210,10 +4167,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Create Storyboard
-         * @description Create a structured storyboard from a generation request.
-         */
+        /** Create Storyboard */
         post: operations["create_storyboard_media_storyboards_post"];
         delete?: never;
         options?: never;
@@ -4233,10 +4187,7 @@ export interface paths {
          * @description Get a storyboard by ID (owner-scoped, Issue 39 AC9).
          */
         get: operations["get_storyboard_media_storyboards__storyboard_id__get"];
-        /**
-         * Update Storyboard
-         * @description Update a storyboard's metadata.
-         */
+        /** Update Storyboard */
         put: operations["update_storyboard_media_storyboards__storyboard_id__put"];
         post?: never;
         delete?: never;
@@ -4254,10 +4205,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Generate Storyboard Code
-         * @description Generate executable source code from a storyboard.
-         */
+        /** Generate Storyboard Code */
         post: operations["generate_storyboard_code_media_storyboards__storyboard_id__code_post"];
         delete?: never;
         options?: never;
@@ -4274,10 +4222,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Run Storyboard Sandbox
-         * @description Run generated code in the isolated sandbox.
-         */
+        /** Run Storyboard Sandbox */
         post: operations["run_storyboard_sandbox_media_storyboards__storyboard_id__sandbox_post"];
         delete?: never;
         options?: never;
@@ -4314,10 +4259,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Repair Sandbox Run
-         * @description Attempt a limited repair on a failed sandbox run.
-         */
+        /** Repair Sandbox Run */
         post: operations["repair_sandbox_run_media_sandbox_runs__run_id__repair_post"];
         delete?: never;
         options?: never;
@@ -4334,7 +4276,7 @@ export interface paths {
         };
         /**
          * Validate Storyboard
-         * @description Get a validation report for a storyboard sandbox run.
+         * @description Retired: this route previously mutated storyboard status on read.
          */
         get: operations["validate_storyboard_media_storyboards__storyboard_id__validate_get"];
         put?: never;
@@ -4354,10 +4296,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Generate Accessibility Bundle
-         * @description Generate a complete accessibility bundle for a media target.
-         */
+        /** Generate Accessibility Bundle */
         post: operations["generate_accessibility_bundle_media_accessibility_bundles_post"];
         delete?: never;
         options?: never;
@@ -4394,7 +4333,7 @@ export interface paths {
         };
         /**
          * Validate Accessibility Bundle
-         * @description Validate claim/version sharing, operability and science checks.
+         * @description Validate a bundle. Read-only: does not mutate bundle or playback state.
          */
         get: operations["validate_accessibility_bundle_media_accessibility_bundles__bundle_id__validate_get"];
         put?: never;
@@ -4414,10 +4353,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Control Accessibility Playback
-         * @description Pause, resume, seek and toggle reduced motion for timed content.
-         */
+        /** Control Accessibility Playback */
         post: operations["control_accessibility_playback_media_accessibility_bundles__bundle_id__playback_post"];
         delete?: never;
         options?: never;
@@ -4434,10 +4370,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Check Cross Media Consistency
-         * @description Check cross-media Claim consistency before publishing.
-         */
+        /** Check Cross Media Consistency */
         post: operations["check_cross_media_consistency_media_cross_media_consistency_post"];
         delete?: never;
         options?: never;
@@ -4454,10 +4387,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Evaluate Publish Gate
-         * @description Evaluate multi-modal publish gates without publishing.
-         */
+        /** Evaluate Publish Gate */
         post: operations["evaluate_publish_gate_media_publish_check_post"];
         delete?: never;
         options?: never;
@@ -4474,14 +4404,11 @@ export interface paths {
         };
         /**
          * List Publish Records
-         * @description List publish records for the current account, optionally filtered by project.
+         * @description List publish records for the current account.
          */
         get: operations["list_publish_records_media_publish_get"];
         put?: never;
-        /**
-         * Publish Media
-         * @description Execute multi-modal publish. All gates must pass.
-         */
+        /** Publish Media */
         post: operations["publish_media_media_publish_post"];
         delete?: never;
         options?: never;
@@ -5750,6 +5677,11 @@ export interface paths {
         /**
          * Health Ready
          * @description Readiness probe: required dependencies are healthy.
+         *
+         *     Issue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时
+         *     返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，
+         *     只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是
+         *     在首个会话请求中报 500。响应体始终是同一份 HealthProjection。
          */
         get: operations["health_ready_health_ready_get"];
         put?: never;
@@ -5967,26 +5899,6 @@ export interface components {
              * @description 最后更新时间戳。
              */
             updated_at: string;
-        };
-        /**
-         * AccessibilityBundleRequest
-         * @description 生成无障碍包的请求。
-         */
-        AccessibilityBundleRequest: {
-            /** @description 目标对象类型。 */
-            target_kind: components["schemas"]["AccessibilityTargetKind"];
-            /**
-             * Target Id
-             * @description 目标对象 ID。
-             */
-            target_id: string;
-            /**
-             * Language
-             * @default zh-CN
-             */
-            language: string;
-            /** Project Id */
-            project_id?: string | null;
         };
         /**
          * AccessibilityTargetKind
@@ -6296,60 +6208,6 @@ export interface components {
              * @description 生涯规划结果的具体条目标识（逐项反馈定位，如 fact:1）。
              */
             career_item_ref?: string | null;
-        };
-        /**
-         * ApplyRevisionPatchRequest
-         * @description Request to accept, reject or rewrite a revision patch.
-         */
-        ApplyRevisionPatchRequest: {
-            /** @description User action. */
-            action: components["schemas"]["PatchAction"];
-            /**
-             * Rewrite Text
-             * @description User rewrite when action is REWRITE.
-             */
-            rewrite_text?: string | null;
-        };
-        /**
-         * ApplyRevisionPatchResult
-         * @description Result of applying a revision patch.
-         */
-        ApplyRevisionPatchResult: {
-            /**
-             * Patch Id
-             * @description Patch identifier.
-             */
-            patch_id: string;
-            /** @description Draft after the action. */
-            draft: components["schemas"]["ExpressionDraft"];
-            /** @description Invariance evidence. */
-            invariance: components["schemas"]["FactLockInvariance"];
-        };
-        /**
-         * ApproveArtifactRequest
-         * @description Request to approve, reject or request changes for an expression artifact.
-         */
-        ApproveArtifactRequest: {
-            /** @default approve */
-            decision: components["schemas"]["bridges__contracts__expression__HumanDecisionType"];
-            /**
-             * Reason
-             * @description Human-readable rationale.
-             */
-            reason: string;
-        };
-        /**
-         * ApproveArtifactResult
-         * @description Result of recording a human decision on an expression artifact.
-         */
-        ApproveArtifactResult: {
-            /**
-             * Decision Id
-             * @description Decision identifier.
-             */
-            decision_id: string;
-            /** @description Draft after the decision. */
-            draft: components["schemas"]["ExpressionDraft"];
         };
         /**
          * ArgumentNode
@@ -7718,71 +7576,6 @@ export interface components {
              */
             source_note?: string | null;
         };
-        /**
-         * ChartGenerationRequest
-         * @description Request to generate a data chart from source data.
-         *
-         *     The caller provides structured data and describes what to plot.
-         */
-        ChartGenerationRequest: {
-            /**
-             * Title
-             * @description Chart title.
-             */
-            title: string;
-            /** @description Visual mark type. */
-            mark: components["schemas"]["ChartMark"];
-            /** @description Source data for the chart. */
-            data: components["schemas"]["ChartDataTable"];
-            /**
-             * X Field
-             * @description Field name for the x-axis.
-             */
-            x_field: string;
-            /**
-             * Y Field
-             * @description Field name for the y-axis.
-             */
-            y_field: string;
-            /**
-             * Color Field
-             * @description Field name for color encoding.
-             */
-            color_field?: string | null;
-            /**
-             * Error Field
-             * @description Field name for error/uncertainty values.
-             */
-            error_field?: string | null;
-            /**
-             * X Label
-             * @description X-axis label (auto if omitted).
-             */
-            x_label?: string | null;
-            /**
-             * Y Label
-             * @description Y-axis label (auto if omitted).
-             */
-            y_label?: string | null;
-            /** X Unit */
-            x_unit?: string | null;
-            /** Y Unit */
-            y_unit?: string | null;
-            /** Claim Ids */
-            claim_ids?: string[];
-            /** Fact Lock Ids */
-            fact_lock_ids?: string[];
-            /** Aggregation */
-            aggregation?: string | null;
-            /** Project Id */
-            project_id?: string | null;
-        };
-        /**
-         * ChartMark
-         * @description Visual mark type for a data chart.
-         * @enum {string}
-         */
-        ChartMark: "bar" | "line" | "point" | "area" | "scatter" | "error_bar" | "histogram";
         /**
          * ChatAttachmentProjection
          * @description 聊天附件的安全公开投影；不包含宿主路径或对象存储密钥。
@@ -9378,7 +9171,7 @@ export interface components {
             /** @description Lock for the model call that generated claims. */
             model_run_lock?: components["schemas"]["ModelRunLock"] | null;
             /** @description Honest-degradation validation report (T016). */
-            validation_report?: components["schemas"]["bridges__contracts__science__ValidationReport"] | null;
+            validation_report?: components["schemas"]["ValidationReport"] | null;
         };
         /**
          * ClaimImportance
@@ -9524,22 +9317,6 @@ export interface components {
          * @enum {string}
          */
         CloudProjectionStatus: "active" | "pending_device" | "revoked" | "expired";
-        /**
-         * CompareVersionsRequest
-         * @description Request to compare two expression artifact versions.
-         */
-        CompareVersionsRequest: {
-            /**
-             * Draft Id A
-             * @description First draft identifier.
-             */
-            draft_id_a: string;
-            /**
-             * Draft Id B
-             * @description Second draft identifier.
-             */
-            draft_id_b: string;
-        };
         /**
          * Conflict
          * @description An explicit, user-visible evidence conflict.
@@ -10010,97 +9787,6 @@ export interface components {
             detail?: string | null;
         };
         /**
-         * CrossMediaClaimEntry
-         * @description 一个媒体对象中引用的 Claim 及其上下文。
-         */
-        CrossMediaClaimEntry: {
-            /**
-             * Claim Id
-             * @description Claim ID。
-             */
-            claim_id: string;
-            /**
-             * Media Ref
-             * @description 媒体对象中的引用位置：对象 ID、元素引用或轴字段。
-             */
-            media_ref: string;
-            /**
-             * Media Kind
-             * @description 媒体类型：text, chart, figure, storyboard, audio, video, interactive。
-             */
-            media_kind: string;
-            /**
-             * Canonical Value
-             * @description 该 Claim 在此媒体中表达的标准值。
-             */
-            canonical_value?: string | null;
-            /**
-             * Qualifiers
-             * @description 限定条件列表。
-             */
-            qualifiers?: string[];
-            /** Citation Ids */
-            citation_ids?: string[];
-        };
-        /**
-         * CrossMediaConsistencyResult
-         * @description 跨媒体 Claim 一致性检查结果。
-         */
-        CrossMediaConsistencyResult: {
-            /**
-             * Consistent
-             * @description 是否全部一致。
-             */
-            consistent: boolean;
-            /**
-             * Entries Checked
-             * @description 检查的条目数。
-             * @default 0
-             */
-            entries_checked: number;
-            /** Inconsistencies */
-            inconsistencies?: components["schemas"]["CrossMediaInconsistency"][];
-            /** Warnings */
-            warnings?: string[];
-        };
-        /**
-         * CrossMediaInconsistency
-         * @description 跨媒体一致性检查发现的单条不一致。
-         */
-        CrossMediaInconsistency: {
-            /**
-             * Inconsistency Id
-             * @description 稳定不一致标识符。
-             */
-            inconsistency_id: string;
-            /**
-             * Claim Id
-             * @description 涉及的 Claim ID。
-             */
-            claim_id: string;
-            /**
-             * Kind
-             * @description 不一致类型：value_mismatch, qualifier_missing, citation_missing, terminology_conflict。
-             */
-            kind: string;
-            /**
-             * Media Refs
-             * @description 涉及的媒体引用位置。
-             */
-            media_refs?: string[];
-            /**
-             * Description
-             * @description 不一致描述。
-             */
-            description: string;
-            /**
-             * Severity
-             * @description 严重程度：error 或 warning。
-             * @default error
-             */
-            severity: string;
-        };
-        /**
          * DataBinding
          * @description Binding from a table/chart to a dataset version and transformation.
          */
@@ -10135,7 +9821,7 @@ export interface components {
          */
         DecideKnowledgeStateProposalRequest: {
             /** @description Decision type. */
-            decision: components["schemas"]["bridges__contracts__learning__HumanDecisionType"];
+            decision: components["schemas"]["HumanDecisionType-Input"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -12230,46 +11916,6 @@ export interface components {
             created_at: string;
         };
         /**
-         * ExpressionDraftRequest
-         * @description Request to generate a fact-lock-bound expression draft.
-         */
-        ExpressionDraftRequest: {
-            /** @description Expression task brief. */
-            brief: components["schemas"]["ExpressionBrief"];
-            /**
-             * Graph Id
-             * @description Claim graph to base the draft on.
-             */
-            graph_id: string;
-            /**
-             * Project Id
-             * @description Project scope.
-             */
-            project_id?: string | null;
-            /**
-             * Memory Slice Id
-             * @description Optional memory slice for personalization.
-             */
-            memory_slice_id?: string | null;
-            /**
-             * Run Id
-             * @description Optional workflow run this artifact belongs to.
-             */
-            run_id?: string | null;
-        };
-        /**
-         * ExpressionDraftResult
-         * @description Result of generating an expression draft.
-         */
-        ExpressionDraftResult: {
-            /** @description Generated draft. */
-            draft: components["schemas"]["ExpressionDraft"];
-            /** @description Expression quality gate result. */
-            gate: components["schemas"]["ExpressionGateResult"];
-            /** @description Model run lock for the generator. */
-            model_run_lock?: components["schemas"]["ModelRunLock"] | null;
-        };
-        /**
          * ExpressionDraftStatus
          * @description Lifecycle status of an expression draft.
          * @enum {string}
@@ -12297,38 +11943,6 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
-        };
-        /**
-         * ExpressionGateCheck
-         * @description Named checks performed by the expression quality gate.
-         * @enum {string}
-         */
-        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review" | "strength_escalation_human_review" | "popular_science_elements_present" | "lecture_script_elements_present" | "research_report_elements_present" | "paper_assist_elements_present" | "author_responsibility_present" | "paper_assist_author_confirmation_required" | "style_diagnostic_complete" | "ai_detector_not_gate";
-        /**
-         * ExpressionGateResult
-         * @description Result of running the expression quality gate over a draft.
-         */
-        ExpressionGateResult: {
-            /**
-             * Passed
-             * @description Whether the draft may proceed.
-             */
-            passed: boolean;
-            /** @description Derived draft status. */
-            draft_status: components["schemas"]["ExpressionDraftStatus"];
-            /** Checks */
-            checks?: {
-                [key: string]: boolean;
-            };
-            /** Failed Checks */
-            failed_checks?: components["schemas"]["ExpressionGateCheck"][];
-            /** Blocked Claim Ids */
-            blocked_claim_ids?: string[];
-            /**
-             * Reason
-             * @description Human-readable gate summary.
-             */
-            reason?: string | null;
         };
         /**
          * ExpressionTaskContract
@@ -12872,63 +12486,6 @@ export interface components {
             needs_confirmation_count: number;
         };
         /**
-         * FigureElement
-         * @description A labeled element in a scientific figure.
-         */
-        FigureElement: {
-            /**
-             * Element Id
-             * @description Stable element identifier.
-             */
-            element_id: string;
-            /**
-             * Role
-             * @description Semantic role: axis_label, curve, annotation, legend, scale_bar, etc.
-             */
-            role: string;
-            /**
-             * Label
-             * @description Display label text.
-             */
-            label: string;
-            /**
-             * Claim Id
-             * @description Bound claim if any.
-             */
-            claim_id?: string | null;
-            /**
-             * Svg Fragment
-             * @description Inline SVG markup for this element.
-             */
-            svg_fragment?: string | null;
-        };
-        /**
-         * FigureGenerationRequest
-         * @description Request to generate a scientific figure.
-         *
-         *     The caller provides element definitions and optional claim bindings.
-         */
-        FigureGenerationRequest: {
-            /**
-             * Title
-             * @description Figure title.
-             */
-            title: string;
-            /**
-             * Elements
-             * @description Figure elements. When empty, the service generates defaults.
-             */
-            elements?: components["schemas"]["FigureElement"][];
-            /** Claim Ids */
-            claim_ids?: string[];
-            /** Fact Lock Ids */
-            fact_lock_ids?: string[];
-            /** Description */
-            description?: string | null;
-            /** Project Id */
-            project_id?: string | null;
-        };
-        /**
          * FixtureResult
          * @description Observed result of one replayable domain-pack fixture.
          */
@@ -13124,16 +12681,6 @@ export interface components {
             evidence_bundle?: components["schemas"]["LessonEvidenceBundle"] | null;
         };
         /**
-         * GenerationResult
-         * @description Result of a media generation task.
-         */
-        GenerationResult: {
-            /** @description Generated media object. */
-            media_object: components["schemas"]["ScientificMediaObject"];
-            /** @description Model run lock when a model was used. */
-            model_run_lock?: components["schemas"]["ModelRunLock"] | null;
-        };
-        /**
          * GenerationStatus
          * @description Lifecycle status of a media generation task.
          * @enum {string}
@@ -13290,6 +12837,12 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "pass" | "fail" | "unknown";
+        /**
+         * HumanDecisionType
+         * @description Named human decision on a proposed knowledge-state or path change.
+         * @enum {string}
+         */
+        "HumanDecisionType-Input": "accept" | "reject" | "modify";
         /**
          * HumanTodoItem
          * @description A named human decision attached to a run.
@@ -16230,28 +15783,6 @@ export interface components {
          */
         LicenseState: "unknown" | "public_domain" | "open_access" | "closed_access" | "embargoed" | "user_owned" | "pending_review";
         /**
-         * LifecycleStage
-         * @description 动画对象的一个生命周期阶段。
-         */
-        LifecycleStage: {
-            /**
-             * Stage
-             * @description 阶段类型：进入、保持、变换、退出。
-             * @enum {string}
-             */
-            stage: "enter" | "hold" | "transform" | "exit";
-            /**
-             * Timing Seconds
-             * @description 阶段持续时间，单位秒。
-             */
-            timing_seconds: number;
-            /**
-             * Description
-             * @description 阶段描述。
-             */
-            description: string;
-        };
-        /**
          * LifecycleStatus
          * @description Lifecycle status of a specific document version.
          * @enum {string}
@@ -16490,37 +16021,6 @@ export interface components {
          */
         MediaAssetStatus: "discovered" | "parsing" | "parsed" | "quarantined" | "blocked" | "corrected" | "revoked";
         /**
-         * MediaCorrectionRequest
-         * @description Request to correct a derived asset and produce a new version.
-         */
-        MediaCorrectionRequest: {
-            /**
-             * Derived Asset Id
-             * @description Derived asset to correct.
-             */
-            derived_asset_id: string;
-            /** @description Kind of correction. */
-            correction_type: components["schemas"]["MediaCorrectionType"];
-            /**
-             * Target Ref
-             * @description Reference to the corrected element: token id, region id, cell coordinate, etc.
-             */
-            target_ref: string;
-            /**
-             * Corrected Value
-             * @description New value.
-             */
-            corrected_value: string;
-            /** Reason */
-            reason?: string | null;
-        };
-        /**
-         * MediaCorrectionType
-         * @description Kind of human correction applied to a derived asset.
-         * @enum {string}
-         */
-        MediaCorrectionType: "ocr_text" | "region_label" | "formula_latex" | "formula_symbol" | "table_cell" | "table_schema" | "scale" | "legend" | "transcript_term" | "speaker_segment" | "caption_text" | "keyframe_interpretation";
-        /**
          * MediaError
          * @description Uniform media error response.
          */
@@ -16549,45 +16049,6 @@ export interface components {
          * @enum {string}
          */
         MediaGateResult: "pass" | "wait" | "fail";
-        /**
-         * MediaIngestionRunRef
-         * @description Reference to an asynchronous media ingestion run.
-         */
-        MediaIngestionRunRef: {
-            /**
-             * Run Id
-             * @description Ingestion run identifier.
-             */
-            run_id: string;
-            /** Asset Id */
-            asset_id?: string | null;
-            /** @default pending */
-            status: components["schemas"]["MediaIngestionStatus"];
-            /** Gate Results */
-            gate_results?: {
-                [key: string]: components["schemas"]["MediaGateResult"];
-            };
-            /** Error */
-            error?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Run creation timestamp.
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last run update timestamp.
-             */
-            updated_at: string;
-        };
-        /**
-         * MediaIngestionStatus
-         * @description Status of a media ingestion run.
-         * @enum {string}
-         */
-        MediaIngestionStatus: "pending" | "running" | "completed" | "failed" | "quarantined";
         /**
          * MediaManifest
          * @description Unified manifest for one scientific media object.
@@ -16679,34 +16140,6 @@ export interface components {
             };
         };
         /**
-         * MediaPublishRequest
-         * @description 多模态发布请求。
-         */
-        MediaPublishRequest: {
-            /**
-             * Media Object Ids
-             * @description 要发布的媒体对象 ID 列表。
-             */
-            media_object_ids?: string[];
-            /**
-             * Source Asset Ids
-             * @description 关联的原始资产 ID 列表。
-             */
-            source_asset_ids?: string[];
-            /**
-             * Storyboard Ids
-             * @description 关联的分镜 ID 列表。
-             */
-            storyboard_ids?: string[];
-            /**
-             * Accessibility Bundle Ids
-             * @description 关联的无障碍包 ID 列表。
-             */
-            accessibility_bundle_ids?: string[];
-            /** Project Id */
-            project_id?: string | null;
-        };
-        /**
          * MediaQualityGate
          * @description Named gates that imported media must pass before entering evidence.
          * @enum {string}
@@ -16780,27 +16213,6 @@ export interface components {
          * @enum {string}
          */
         MediaType: "text/plain" | "application/pdf" | "image/png" | "image/jpeg" | "image/svg+xml" | "image/webp" | "application/x-latex" | "text/csv" | "application/x-tex" | "audio/mpeg" | "audio/wav" | "audio/ogg" | "video/mp4" | "video/webm" | "video/ogg";
-        /**
-         * MediaUploadRequest
-         * @description Request to upload a scientific media asset.
-         */
-        MediaUploadRequest: {
-            /**
-             * Filename
-             * @description Original filename.
-             */
-            filename: string;
-            /** @description Declared media type. */
-            media_type: components["schemas"]["MediaType"];
-            /**
-             * Content
-             * @description Base64-encoded raw content bytes.
-             */
-            content: string;
-            license_state?: components["schemas"]["LicenseState"] | null;
-            /** Title */
-            title?: string | null;
-        };
         /**
          * Membership
          * @description Relationship between an account and an institution.
@@ -16959,38 +16371,6 @@ export interface components {
             cost_estimate?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * MultimodalGateResult
-         * @description 多模态发布门单项结果。
-         * @enum {string}
-         */
-        MultimodalGateResult: "pass" | "fail";
-        /**
-         * MultimodalPublishGate
-         * @description 多模态发布门名称。
-         * @enum {string}
-         */
-        MultimodalPublishGate: "claim_consistency" | "license" | "authenticity" | "sandbox" | "accessibility" | "fact_lock" | "invalidation";
-        /**
-         * MultimodalPublishGateResult
-         * @description 多模态发布门综合结果。
-         */
-        MultimodalPublishGateResult: {
-            /**
-             * Passed
-             * @description 是否全部通过。
-             */
-            passed: boolean;
-            /** Gate Results */
-            gate_results?: {
-                [key: string]: components["schemas"]["MultimodalGateResult"];
-            };
-            /** Failed Gates */
-            failed_gates?: components["schemas"]["MultimodalPublishGate"][];
-            /** Reasons */
-            reasons?: string[];
-            consistency_result?: components["schemas"]["CrossMediaConsistencyResult"] | null;
         };
         /**
          * NarrationAudio
@@ -17546,12 +16926,6 @@ export interface components {
             removed_categories?: ("instruction_scaffold" | "code" | "credential" | "private_material" | "email" | "url")[];
         };
         /**
-         * PatchAction
-         * @description User decision on a single revision patch.
-         * @enum {string}
-         */
-        PatchAction: "accept" | "reject" | "rewrite";
-        /**
          * PersonalExperienceMode
          * @description 第一人称建模：当下判断与亲历分开，亲历必须可绑定来源。
          * @enum {string}
@@ -17599,28 +16973,6 @@ export interface components {
          */
         PlanAdjustmentTrigger: "user_feedback" | "profile_updated" | "profile_withdrawn";
         /**
-         * PlaybackControlRequest
-         * @description 播放控制请求。
-         */
-        PlaybackControlRequest: {
-            /**
-             * Action
-             * @description 控制动作。
-             * @enum {string}
-             */
-            action: "start" | "pause" | "resume" | "seek" | "set_reduced_motion";
-            /**
-             * Position Seconds
-             * @description seek 目标位置，单位秒。
-             */
-            position_seconds?: number | null;
-            /**
-             * Enabled
-             * @description set_reduced_motion 的开关值。
-             */
-            enabled?: boolean | null;
-        };
-        /**
          * PlaybackControls
          * @description 时间内容的播放控制能力声明。
          */
@@ -17655,68 +17007,6 @@ export interface components {
              * @default true
              */
             keyboard_operable: boolean;
-        };
-        /**
-         * PlaybackState
-         * @description 一个无障碍包的播放状态，支持暂停、时间控制和减少动画。
-         */
-        PlaybackState: {
-            /**
-             * State Id
-             * @description 稳定状态标识符。
-             */
-            state_id: string;
-            /**
-             * Bundle Id
-             * @description 关联的无障碍包 ID。
-             */
-            bundle_id: string;
-            /**
-             * Paused
-             * @default false
-             */
-            paused: boolean;
-            /**
-             * Position Seconds
-             * @default 0
-             */
-            position_seconds: number;
-            /**
-             * Duration Seconds
-             * @default 0
-             */
-            duration_seconds: number;
-            /**
-             * Speed
-             * @default 1
-             */
-            speed: number;
-            /**
-             * Reduced Motion Enabled
-             * @default false
-             */
-            reduced_motion_enabled: boolean;
-            /**
-             * Captions Enabled
-             * @default true
-             */
-            captions_enabled: boolean;
-            /**
-             * Active Caption Text
-             * @description 当前时间点的字幕文本。
-             */
-            active_caption_text?: string | null;
-            /**
-             * Active Frame Description
-             * @description 减少动画模式下当前时间点的静态帧描述。
-             */
-            active_frame_description?: string | null;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description 最后更新时间戳。
-             */
-            updated_at: string;
         };
         /**
          * PopularScienceElement
@@ -17802,6 +17092,18 @@ export interface components {
              * @default false
              */
             can_retry: boolean;
+            /**
+             * Extraction Sources
+             * @description 按来源（local_rule/qwen_model）统计的抽取 run 计数；历史 NULL 来源不计数。
+             */
+            extraction_sources?: {
+                [key: string]: number;
+            };
+            /**
+             * Source Explanation
+             * @description 对用户可见的混合策略诚实说明（中文）；不夸大为全模型或全本地。
+             */
+            source_explanation?: string | null;
         };
         /**
          * Project
@@ -18060,71 +17362,6 @@ export interface components {
          * @enum {string}
          */
         ProtectedSpanKind: "quote" | "code" | "formula" | "url" | "citation" | "user_phrase";
-        /**
-         * PublishArtifactRequest
-         * @description Request to publish an expression artifact.
-         */
-        PublishArtifactRequest: {
-            /**
-             * Run Id
-             * @description Workflow run whose success is required for release.
-             */
-            run_id?: string | null;
-        };
-        /**
-         * PublishArtifactResult
-         * @description Result of publishing an expression artifact.
-         */
-        PublishArtifactResult: {
-            /** @description Published event. */
-            event: components["schemas"]["PublishEvent"];
-            /** @description Draft after publication. */
-            draft: components["schemas"]["ExpressionDraft"];
-        };
-        /**
-         * PublishEvent
-         * @description Immutable record that an expression artifact was published.
-         */
-        PublishEvent: {
-            /**
-             * Event Id
-             * @description Stable publish event identifier.
-             */
-            event_id: string;
-            /**
-             * Draft Id
-             * @description Draft that was published.
-             */
-            draft_id: string;
-            /**
-             * Version Id
-             * @description Artifact version id at publish time.
-             */
-            version_id: string;
-            /**
-             * Account Id
-             * @description Account that authorized publication.
-             */
-            account_id: string;
-            /**
-             * Project Id
-             * @description Project scope if any.
-             */
-            project_id?: string | null;
-            /**
-             * Published At
-             * Format: date-time
-             * @description Publication timestamp.
-             */
-            published_at: string;
-            /** @description Release gate result that authorized publication. */
-            release_gate_result: components["schemas"]["ReleaseGateResult"];
-            /**
-             * Human Decision Id
-             * @description Approval decision that authorized publication.
-             */
-            human_decision_id: string;
-        };
         /**
          * PublishGateCheck
          * @description Named checks performed by the publish gate.
@@ -19534,48 +18771,6 @@ export interface components {
             allowed: boolean;
         };
         /**
-         * SandboxResourceLimits
-         * @description 沙箱资源限制。
-         */
-        SandboxResourceLimits: {
-            /**
-             * Max Cpu Seconds
-             * @description 最大 CPU 时间，单位秒。
-             * @default 30
-             */
-            max_cpu_seconds: number;
-            /**
-             * Max Memory Mb
-             * @description 最大内存，单位 MB。
-             * @default 512
-             */
-            max_memory_mb: number;
-            /**
-             * Max Disk Mb
-             * @description 最大磁盘，单位 MB。
-             * @default 100
-             */
-            max_disk_mb: number;
-            /**
-             * Max Processes
-             * @description 最大进程数。
-             * @default 10
-             */
-            max_processes: number;
-            /**
-             * Network Allowed
-             * @description 是否允许网络访问，默认禁止。
-             * @default false
-             */
-            network_allowed: boolean;
-            /**
-             * Keys Allowed
-             * @description 是否允许访问密钥，默认禁止。
-             * @default false
-             */
-            keys_allowed: boolean;
-        };
-        /**
          * SandboxResourceUsage
          * @description 沙箱运行实际资源使用记录。
          */
@@ -19610,40 +18805,6 @@ export interface components {
              * @default true
              */
             keys_blocked: boolean;
-        };
-        /**
-         * SandboxRunRequest
-         * @description 提交沙箱运行的请求。
-         */
-        SandboxRunRequest: {
-            /**
-             * Storyboard Id
-             * @description 关联的分镜 ID。
-             */
-            storyboard_id: string;
-            /**
-             * Source Code
-             * @description 可执行代码（Python/HTML/JS）。
-             */
-            source_code: string;
-            /**
-             * Code Language
-             * @description 代码语言：python, html, javascript。
-             */
-            code_language: string;
-            /**
-             * Repair Budget
-             * @description 有限修复次数上限。
-             * @default 3
-             */
-            repair_budget: number;
-            /**
-             * Fact Lock Ids
-             * @description 禁止触犯的事实锁 ID 列表。
-             */
-            fact_lock_ids?: string[];
-            /** @description 资源限制。 */
-            resource_limits?: components["schemas"]["SandboxResourceLimits"];
         };
         /**
          * SandboxRunResult
@@ -19713,65 +18874,6 @@ export interface components {
          * @enum {string}
          */
         SandboxRunStatus: "pending" | "running" | "completed" | "failed";
-        /**
-         * SceneAccessibility
-         * @description 无障碍描述信息，附加给一个场景。
-         */
-        SceneAccessibility: {
-            /**
-             * Alt Text
-             * @description 场景替代文本。
-             */
-            alt_text: string;
-            /**
-             * Long Description
-             * @description 场景长描述，用于复杂视觉场景。
-             */
-            long_description?: string | null;
-        };
-        /**
-         * SceneSpec
-         * @description 单场景视觉定义，可独立编辑和验证。
-         *
-         *     SceneSpec 定义单个场景的静态视觉设计，包含视觉对象列表、布局、状态、
-         *     数据绑定和无障碍描述。被 MediaStoryboard 中的镜头引用。
-         */
-        SceneSpec: {
-            /**
-             * Scene Spec Id
-             * @description 稳定场景规格标识符。
-             */
-            scene_spec_id: string;
-            /**
-             * Title
-             * @description 场景标题。
-             */
-            title: string;
-            /**
-             * Visual Objects
-             * @description 场景中的视觉对象列表。
-             */
-            visual_objects?: components["schemas"]["VisualObject"][];
-            /**
-             * Layout Description
-             * @description 布局描述。
-             * @default
-             */
-            layout_description: string;
-            /**
-             * State Description
-             * @description 场景状态描述。
-             */
-            state_description?: string | null;
-            /** @description 场景级无障碍描述。 */
-            accessibility?: components["schemas"]["SceneAccessibility"] | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description 创建时间戳。
-             */
-            created_at: string;
-        };
         /**
          * ScientificMediaObject
          * @description A generated scientific media object with editable source and bindings.
@@ -21199,67 +20301,6 @@ export interface components {
             end_time?: number | null;
         };
         /**
-         * SpecValidationResult
-         * @description Result of validating a chart/figure spec against source data and facts.
-         */
-        SpecValidationResult: {
-            /**
-             * Valid
-             * @description Whether the spec passes all checks.
-             */
-            valid: boolean;
-            /** Errors */
-            errors?: string[];
-            /** Warnings */
-            warnings?: string[];
-            /**
-             * Data Consistent
-             * @description Whether values match the source data.
-             * @default true
-             */
-            data_consistent: boolean;
-            /**
-             * Claims Consistent
-             * @description Whether claim bindings are valid.
-             * @default true
-             */
-            claims_consistent: boolean;
-        };
-        /**
-         * StaticCheckResult
-         * @description 代码生成后的静态检查结果。
-         */
-        StaticCheckResult: {
-            /**
-             * Passed
-             * @description 是否通过静态检查。
-             */
-            passed: boolean;
-            /**
-             * Ast Valid
-             * @description AST 解析是否有效。
-             * @default true
-             */
-            ast_valid: boolean;
-            /**
-             * Deps Whitelisted
-             * @description 依赖是否在白名单中。
-             * @default true
-             */
-            deps_whitelisted: boolean;
-            /**
-             * Lint Ok
-             * @description 代码规范检查是否通过。
-             * @default true
-             */
-            lint_ok: boolean;
-            /**
-             * Errors
-             * @description 检查错误列表。
-             */
-            errors?: string[];
-        };
-        /**
          * StoryboardClaimBinding
          * @description 分镜场景中视觉元素到 Claim/FactLock 的绑定。
          */
@@ -21291,39 +20332,6 @@ export interface components {
             fact_lock_id?: string | null;
         };
         /**
-         * StoryboardGenerationRequest
-         * @description 创建结构化分镜的请求。
-         */
-        StoryboardGenerationRequest: {
-            /**
-             * Title
-             * @description 分镜标题。
-             */
-            title: string;
-            /**
-             * Teaching Objectives
-             * @description 教学目标列表。
-             */
-            teaching_objectives?: string[];
-            /**
-             * Media Type
-             * @description 媒体类型。
-             * @enum {string}
-             */
-            media_type: "animation" | "interactive_html";
-            /**
-             * Scenes
-             * @description 预定义的镜头列表。为空时由生成器创建默认分镜。
-             */
-            scenes?: components["schemas"]["StoryboardScene"][];
-            /** Claim Ids */
-            claim_ids?: string[];
-            /** Fact Lock Ids */
-            fact_lock_ids?: string[];
-            /** Project Id */
-            project_id?: string | null;
-        };
-        /**
          * StoryboardNarration
          * @description 分镜中一个镜头的旁白描述。
          */
@@ -21349,21 +20357,6 @@ export interface components {
              * @description 本旁白覆盖的 Claim ID 列表。
              */
             claim_ids?: string[];
-        };
-        /**
-         * StoryboardResult
-         * @description 分镜生成结果。
-         */
-        StoryboardResult: {
-            /** @description 生成的分镜。 */
-            storyboard: components["schemas"]["MediaStoryboard"];
-            /**
-             * Scene Specs
-             * @description 分镜引用的 SceneSpec 字典。
-             */
-            scene_specs?: {
-                [key: string]: components["schemas"]["SceneSpec"];
-            };
         };
         /**
          * StoryboardScene
@@ -21502,34 +20495,6 @@ export interface components {
             passed: boolean;
         };
         /**
-         * StyleDiagnosticRequest
-         * @description Request to run the Chinese expression diagnostic on a draft.
-         */
-        StyleDiagnosticRequest: {
-            /**
-             * Draft Id
-             * @description Draft to diagnose.
-             */
-            draft_id: string;
-            /**
-             * Project Id
-             * @description Project scope if any.
-             */
-            project_id?: string | null;
-        };
-        /**
-         * StyleDiagnosticResult
-         * @description Result of running the Chinese expression diagnostic.
-         */
-        StyleDiagnosticResult: {
-            /** @description Draft with diagnostic report attached. */
-            draft: components["schemas"]["ExpressionDraft"];
-            /** @description Diagnostic report. */
-            report: components["schemas"]["StyleDiagnosticReport"];
-            /** @description Re-evaluated gate result after diagnostic. */
-            gate?: components["schemas"]["ExpressionGateResult"] | null;
-        };
-        /**
          * StyleDiagnosticSeverity
          * @description Severity of a style diagnostic finding.
          * @enum {string}
@@ -21630,38 +20595,6 @@ export interface components {
              * @description Institution memberships for the current account.
              */
             memberships?: components["schemas"]["MembershipContext"][];
-        };
-        /**
-         * SubmitExpressionFeedbackRequest
-         * @description Request to submit user feedback for an expression draft.
-         */
-        SubmitExpressionFeedbackRequest: {
-            /** @description Routing target. */
-            target: components["schemas"]["UserFeedbackTarget"];
-            /**
-             * Message
-             * @description Feedback text.
-             */
-            message: string;
-            /** Referenced Span Id */
-            referenced_span_id?: string | null;
-            /** Referenced Claim Id */
-            referenced_claim_id?: string | null;
-        };
-        /**
-         * SubmitExpressionFeedbackResult
-         * @description Result of submitting user feedback.
-         */
-        SubmitExpressionFeedbackResult: {
-            /**
-             * Feedback Id
-             * @description Feedback identifier.
-             */
-            feedback_id: string;
-            /** @description Draft with feedback logged. */
-            draft: components["schemas"]["ExpressionDraft"];
-            /** @description Confirmed routing target. */
-            routed_to: components["schemas"]["UserFeedbackTarget"];
         };
         /**
          * Surface
@@ -22897,6 +21830,80 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * ValidationReport
+         * @description Report produced by honest-degradation analysis of a claim graph.
+         *
+         *     The report records the evidence state for each claim, detected conflicts,
+         *     missing evidence, fact lock set id, wording strength ceiling, scientific
+         *     quality gate result, and recommended recovery actions. It is the input to
+         *     downstream expression nodes (T025) and to the task stage (T006).
+         */
+        ValidationReport: {
+            /**
+             * Report Id
+             * @description Stable validation report identifier.
+             */
+            report_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph this report analyses.
+             */
+            graph_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /** @description Derived honest-degradation status. */
+            status: components["schemas"]["ClaimTrustStatus"];
+            /** @description Status before this analysis. */
+            previous_status?: components["schemas"]["ClaimTrustStatus"] | null;
+            /**
+             * Evidence States
+             * @description Claim id -> aggregated evidence state.
+             */
+            evidence_states?: {
+                [key: string]: components["schemas"]["EvidenceState"];
+            };
+            /** Conflicts */
+            conflicts?: components["schemas"]["Conflict"][];
+            /** Missing Evidence Claim Ids */
+            missing_evidence_claim_ids?: string[];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /** Fact Lock Set Id */
+            fact_lock_set_id?: string | null;
+            /**
+             * @description Global wording strength ceiling for the graph.
+             * @default unassessable
+             */
+            wording_strength_ceiling: components["schemas"]["WordingStrength"];
+            scientific_gate?: components["schemas"]["ScientificQualityGateResult"] | null;
+            /**
+             * Human Gate Required
+             * @default false
+             */
+            human_gate_required: boolean;
+            /** Human Gate Reason */
+            human_gate_reason?: string | null;
+            /**
+             * Recovery Actions
+             * @description Suggested actions: add_evidence, human_review, revise_claim, block_publish.
+             */
+            recovery_actions?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Report timestamp.
+             */
+            created_at: string;
+        };
+        /**
          * VaultError
          * @description Uniform vault error response.
          */
@@ -23142,71 +22149,6 @@ export interface components {
              */
             grant_purpose: string;
         };
-        /**
-         * VersionComparisonResult
-         * @description Result of comparing two expression artifact versions.
-         */
-        VersionComparisonResult: {
-            /**
-             * Comparison Id
-             * @description Stable comparison identifier.
-             */
-            comparison_id: string;
-            /**
-             * Draft Id A
-             * @description First draft.
-             */
-            draft_id_a: string;
-            /**
-             * Draft Id B
-             * @description Second draft.
-             */
-            draft_id_b: string;
-            /**
-             * Differences
-             * @description Semantic differences between versions.
-             */
-            differences?: components["schemas"]["VersionDifference"][];
-            /** @description Release gate result for the first version. */
-            release_eligibility_a: components["schemas"]["ReleaseGateResult"];
-            /** @description Release gate result for the second version. */
-            release_eligibility_b: components["schemas"]["ReleaseGateResult"];
-            /**
-             * Only B Is Publishable
-             * @description True when version B is eligible and version A is not; used by the upgrade-or-publish seam.
-             * @default false
-             */
-            only_b_is_publishable: boolean;
-        };
-        /**
-         * VersionDifference
-         * @description A single semantic difference between two artifact versions.
-         */
-        VersionDifference: {
-            /** @description What changed. */
-            field: components["schemas"]["VersionDifferenceField"];
-            /**
-             * Before
-             * @description Value in the first version.
-             */
-            before: unknown;
-            /**
-             * After
-             * @description Value in the second version.
-             */
-            after: unknown;
-            /**
-             * Reason
-             * @description Why the difference matters.
-             */
-            reason?: string | null;
-        };
-        /**
-         * VersionDifferenceField
-         * @description Fields that can differ between two expression artifact versions.
-         * @enum {string}
-         */
-        VersionDifferenceField: "fact_lock_set" | "claim_ids" | "citation_ids" | "wording_strength_ceiling" | "argument_plan" | "span_text" | "genre" | "model_run_lock" | "applied_patches" | "artifact_trust_status" | "human_decisions";
         /**
          * VideoAssetProjection
          * @description 视频资产的公开投影：说明文字、模型/供应商快照与对象指针。
@@ -23509,52 +22451,6 @@ export interface components {
          */
         VideoTaskStatus: "queued" | "submitting" | "generating" | "recovery" | "succeeded" | "failed" | "cancelling" | "cancelled";
         /**
-         * VisualObject
-         * @description 分镜场景中的一个视觉对象。
-         */
-        VisualObject: {
-            /**
-             * Object Id
-             * @description 稳定对象标识符。
-             */
-            object_id: string;
-            /**
-             * Label
-             * @description 对象显示标签。
-             */
-            label: string;
-            /**
-             * Role
-             * @description 语义角色，如 axis_label, curve, annotation, particle。
-             */
-            role: string;
-            /**
-             * Initial State
-             * @description 初始状态描述。
-             */
-            initial_state: string;
-            /**
-             * Final State
-             * @description 终态描述。
-             */
-            final_state?: string | null;
-            /**
-             * Lifecycle Stages
-             * @description 动画对象的进入/保持/变换/退出阶段。
-             */
-            lifecycle_stages?: components["schemas"]["LifecycleStage"][];
-            /**
-             * Motion Trajectory
-             * @description 运动轨迹描述，动画关键信息。
-             */
-            motion_trajectory?: string | null;
-            /**
-             * Claim Id
-             * @description 绑定的 Claim ID。
-             */
-            claim_id?: string | null;
-        };
-        /**
          * WebSearchPageClassification
          * @description DuckDuckGo 响应页面的确定性分类。
          * @enum {string}
@@ -23722,6 +22618,27 @@ export interface components {
              */
             provider_version: string;
             /**
+             * Attempt Number
+             * @description 本轮提供方尝试序号。
+             * @default 1
+             */
+            attempt_number: number;
+            /**
+             * Query Hash
+             * @description 本次脱敏查询的不可逆指纹。
+             */
+            query_hash?: string | null;
+            /**
+             * Started At
+             * @description 尝试开始时间。
+             */
+            started_at?: string | null;
+            /**
+             * Ended At
+             * @description 尝试结束时间。
+             */
+            ended_at?: string | null;
+            /**
              * Result Code
              * @description 脱敏结果码，不包含供应商正文。
              */
@@ -23743,6 +22660,12 @@ export interface components {
              * @description HTTP 状态类别。
              */
             http_status_category?: string | null;
+            /**
+             * Retry Planned
+             * @description 该尝试结束时是否计划重试。
+             * @default false
+             */
+            retry_planned: boolean;
             /** @description 页面或结构化响应分类。 */
             page_classification?: components["schemas"]["WebSearchPageClassification"] | null;
         };
@@ -24126,133 +23049,6 @@ export interface components {
          */
         bridges__contracts__learning__HumanDecisionType: "accept" | "reject" | "modify";
         /**
-         * ValidationReport
-         * @description 分镜沙箱运行的完整验证报告。
-         */
-        bridges__contracts__media__ValidationReport: {
-            /**
-             * Report Id
-             * @description 稳定报告标识符。
-             */
-            report_id: string;
-            /**
-             * Run Id
-             * @description 关联的沙箱运行 ID。
-             */
-            run_id: string;
-            /**
-             * Storyboard Id
-             * @description 关联的分镜 ID。
-             */
-            storyboard_id: string;
-            /** @description 静态检查结果。 */
-            static_check?: components["schemas"]["StaticCheckResult"] | null;
-            /** @description 沙箱运行结果。 */
-            sandbox_result?: components["schemas"]["SandboxRunResult"] | null;
-            /**
-             * Science Valid
-             * @description 科学一致性验证是否通过。
-             * @default false
-             */
-            science_valid: boolean;
-            /**
-             * Fact Locks Preserved
-             * @description 事实锁是否完整保持。
-             * @default false
-             */
-            fact_locks_preserved: boolean;
-            /**
-             * Accessibility Checked
-             * @description 是否进行了无障碍检查。
-             * @default false
-             */
-            accessibility_checked: boolean;
-            /** Errors */
-            errors?: string[];
-            /** Warnings */
-            warnings?: string[];
-            /**
-             * Created At
-             * Format: date-time
-             * @description 报告创建时间戳。
-             */
-            created_at: string;
-        };
-        /**
-         * ValidationReport
-         * @description Report produced by honest-degradation analysis of a claim graph.
-         *
-         *     The report records the evidence state for each claim, detected conflicts,
-         *     missing evidence, fact lock set id, wording strength ceiling, scientific
-         *     quality gate result, and recommended recovery actions. It is the input to
-         *     downstream expression nodes (T025) and to the task stage (T006).
-         */
-        bridges__contracts__science__ValidationReport: {
-            /**
-             * Report Id
-             * @description Stable validation report identifier.
-             */
-            report_id: string;
-            /**
-             * Graph Id
-             * @description Claim graph this report analyses.
-             */
-            graph_id: string;
-            /**
-             * Account Id
-             * @description Owning account.
-             */
-            account_id: string;
-            /**
-             * Project Id
-             * @description Project scope if any.
-             */
-            project_id?: string | null;
-            /** @description Derived honest-degradation status. */
-            status: components["schemas"]["ClaimTrustStatus"];
-            /** @description Status before this analysis. */
-            previous_status?: components["schemas"]["ClaimTrustStatus"] | null;
-            /**
-             * Evidence States
-             * @description Claim id -> aggregated evidence state.
-             */
-            evidence_states?: {
-                [key: string]: components["schemas"]["EvidenceState"];
-            };
-            /** Conflicts */
-            conflicts?: components["schemas"]["Conflict"][];
-            /** Missing Evidence Claim Ids */
-            missing_evidence_claim_ids?: string[];
-            /** Blocked Claim Ids */
-            blocked_claim_ids?: string[];
-            /** Fact Lock Set Id */
-            fact_lock_set_id?: string | null;
-            /**
-             * @description Global wording strength ceiling for the graph.
-             * @default unassessable
-             */
-            wording_strength_ceiling: components["schemas"]["WordingStrength"];
-            scientific_gate?: components["schemas"]["ScientificQualityGateResult"] | null;
-            /**
-             * Human Gate Required
-             * @default false
-             */
-            human_gate_required: boolean;
-            /** Human Gate Reason */
-            human_gate_reason?: string | null;
-            /**
-             * Recovery Actions
-             * @description Suggested actions: add_evidence, human_review, revise_claim, block_publish.
-             */
-            recovery_actions?: string[];
-            /**
-             * Created At
-             * Format: date-time
-             * @description Report timestamp.
-             */
-            created_at: string;
-        };
-        /**
          * ArtifactTrustStatus
          * @description Lifecycle status of the scientific artifact produced by a run.
          * @enum {string}
@@ -24307,7 +23103,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24349,7 +23145,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24567,7 +23363,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Content Too Large */
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -24702,7 +23498,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24753,7 +23549,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25271,7 +24067,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25351,7 +24147,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25551,7 +24347,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26053,7 +24849,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26517,7 +25313,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26681,7 +25477,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26727,7 +25523,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -27031,7 +25827,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Content Too Large */
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -27588,7 +26384,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -28179,7 +26975,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30056,7 +28852,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30162,7 +28958,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30297,7 +29093,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30464,7 +29260,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30572,7 +29368,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30667,7 +29463,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30846,7 +29642,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30959,7 +29755,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31021,7 +29817,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31085,7 +29881,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31147,7 +29943,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31601,7 +30397,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31718,7 +30514,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31769,7 +30565,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31946,7 +30742,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32061,7 +30857,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32227,7 +31023,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32342,7 +31138,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32405,7 +31201,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32466,7 +31262,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32608,7 +31404,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32672,7 +31468,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32736,7 +31532,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34032,7 +32828,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34097,7 +32893,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34214,7 +33010,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34280,7 +33076,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34383,7 +33179,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34434,7 +33230,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34501,7 +33297,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34562,7 +33358,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34731,7 +33527,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34828,7 +33624,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34921,7 +33717,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35078,7 +33874,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35238,7 +34034,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35291,7 +34087,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35346,7 +34142,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35441,7 +34237,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35626,7 +34422,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["bridges__contracts__science__ValidationReport"];
+                    "application/json": components["schemas"]["ValidationReport"];
                 };
             };
             /** @description Unauthorized */
@@ -35770,23 +34566,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ExpressionDraftRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionDraftResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -35794,22 +34577,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -35927,23 +34701,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StyleDiagnosticRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StyleDiagnosticResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -35951,22 +34712,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -35983,23 +34735,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApplyRevisionPatchRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApplyRevisionPatchResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36007,22 +34746,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36038,23 +34768,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubmitExpressionFeedbackRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubmitExpressionFeedbackResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36062,22 +34779,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36093,23 +34801,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApproveArtifactRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApproveArtifactResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36117,22 +34812,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36201,23 +34887,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PublishArtifactRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PublishArtifactResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36225,22 +34898,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36254,23 +34918,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CompareVersionsRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VersionComparisonResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36278,22 +34929,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExpressionError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpressionError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36309,23 +34951,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MediaUploadRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaIngestionRunRef"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36333,22 +34962,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36362,23 +34982,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MediaUploadRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaIngestionRunRef"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36386,22 +34993,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36468,23 +35066,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MediaCorrectionRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DerivedAsset"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36492,22 +35077,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36523,23 +35099,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClaimRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClaimGraphResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36547,22 +35110,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36581,27 +35135,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36629,23 +35163,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChartGenerationRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GenerationResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36653,13 +35174,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36673,23 +35194,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FigureGenerationRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GenerationResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36697,13 +35205,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36761,9 +35269,7 @@ export interface operations {
     };
     update_media_object_spec_media_objects__object_id__spec_put: {
         parameters: {
-            query: {
-                spec_json: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 object_id: string;
@@ -36775,16 +35281,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ScientificMediaObject"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36792,31 +35289,20 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
     validate_spec_media_validate_spec_post: {
         parameters: {
-            query: {
-                spec_json: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: {
@@ -36826,21 +35312,21 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SpecValidationResult"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -36854,32 +35340,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StoryboardGenerationRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StoryboardResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36951,9 +35415,7 @@ export interface operations {
     };
     update_storyboard_media_storyboards__storyboard_id__put: {
         parameters: {
-            query?: {
-                title?: string | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 storyboard_id: string;
@@ -36962,32 +35424,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody?: {
-            content: {
-                "application/json": string[] | null;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaStoryboard"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37008,9 +35448,7 @@ export interface operations {
     };
     generate_storyboard_code_media_storyboards__storyboard_id__code_post: {
         parameters: {
-            query?: {
-                code_language?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 storyboard_id: string;
@@ -37022,27 +35460,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37072,23 +35490,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SandboxRunRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SandboxRunResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37096,13 +35501,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -37160,10 +35565,7 @@ export interface operations {
     };
     repair_sandbox_run_media_sandbox_runs__run_id__repair_post: {
         parameters: {
-            query: {
-                patch: string;
-                code_language?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 run_id: string;
@@ -37172,23 +35574,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody?: {
-            content: {
-                "application/json": string[] | null;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SandboxRunResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37196,22 +35585,20 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
     validate_storyboard_media_storyboards__storyboard_id__validate_get: {
         parameters: {
-            query: {
-                run_id: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 storyboard_id: string;
@@ -37223,25 +35610,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["bridges__contracts__media__ValidationReport"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37269,32 +35638,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AccessibilityBundleRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccessibilityBundle"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37426,23 +35773,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlaybackControlRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlaybackState"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37450,22 +35784,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MediaError"];
-                };
-            };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -37479,23 +35804,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CrossMediaClaimEntry"][];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CrossMediaConsistencyResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37523,23 +35835,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MediaPublishRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MultimodalPublishGateResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37611,25 +35910,10 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MediaPublishRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37637,13 +35921,13 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -37767,7 +36051,7 @@ export interface operations {
                     "application/json": components["schemas"]["LearningError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37855,7 +36139,7 @@ export interface operations {
                     "application/json": components["schemas"]["LearningError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -38996,7 +37280,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Content Too Large */
+            /** @description Request Entity Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -39601,7 +37885,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -40055,7 +38339,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -41081,7 +39365,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -41152,7 +39436,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;

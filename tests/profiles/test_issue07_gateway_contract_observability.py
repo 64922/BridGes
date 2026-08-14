@@ -21,10 +21,12 @@ from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     ModelCallStatus,
+    ModelRunLock,
     RetryPolicy,
     StructuredOutputFormat,
 )
 from bridges.contracts.profile_extraction import (
+    PROFILE_HYBRID_EXPLANATION,
     ProfileExtractionOutcome,
     ProfileExtractionOutput,
     ProfileExtractionStatus,
@@ -65,6 +67,33 @@ def _profile_capability(*, retry: RetryPolicy | None = None) -> CapabilityRecord
         output_schema_version="profile-extraction-v1",
         structured_output_format=StructuredOutputFormat.JSON_OBJECT,
         retry_policy=retry or RetryPolicy(max_attempts=1, backoff_seconds=0),
+    )
+
+
+def _fake_lock(
+    lock_id: str,
+    *,
+    status: ModelCallStatus,
+    error_code: str | None = None,
+    run_id: str = "run-1",
+) -> ModelRunLock:
+    """构造与真实网关同形的不可变运行锁（Issue 13 假网关必须带锁）。"""
+
+    return ModelRunLock(
+        lock_id=lock_id,
+        run_id=run_id,
+        account_id="account-1",
+        project_id="conversation-1",
+        capability_name="qwen_profile_extraction",
+        capability_version="1",
+        actual_model_id="qwen3.6-flash",
+        region="cn-beijing",
+        parameters={"temperature": 0, "max_tokens": 512},
+        prompt_version="2026-08-12",
+        input_output_contract="qwen_profile_extraction:profile-message-v1->profile-extraction-v1",
+        status=status,
+        error_code=error_code,
+        created_at=datetime.now(UTC),
     )
 
 
@@ -288,6 +317,11 @@ def test_permanent_profile_failure_does_not_create_retry_task(error_code: str) -
                 output=None,
                 error_code=error_code,
                 error_message="safe upstream detail",
+                lock=_fake_lock(
+                    f"blocked-lock-{self.calls}",
+                    status=ModelCallStatus.BLOCKED,
+                    error_code=error_code,
+                ),
             )
 
     target = FourDimensionProfileService(
@@ -337,6 +371,11 @@ def test_transient_profile_failure_retries_and_recovers() -> None:
                     output=None,
                     error_code="transient",
                     error_message="temporary provider failure",
+                    lock=_fake_lock(
+                        "retry-fail-lock",
+                        status=ModelCallStatus.RETRYABLE_FAIL,
+                        error_code="transient",
+                    ),
                 )
             return SimpleNamespace(
                 status=ModelCallStatus.SUCCESS,
@@ -353,6 +392,10 @@ def test_transient_profile_failure_retries_and_recovers() -> None:
                 },
                 error_code=None,
                 error_message=None,
+                lock=_fake_lock(
+                    "retry-success-lock",
+                    status=ModelCallStatus.SUCCESS,
+                ),
             )
 
     target = FourDimensionProfileService(
@@ -440,4 +483,6 @@ def test_profile_status_api_is_authenticated_and_returns_minimal_projection() ->
         "status": "empty",
         "has_records": False,
         "can_retry": False,
+        "extraction_sources": {},
+        "source_explanation": PROFILE_HYBRID_EXPLANATION,
     }

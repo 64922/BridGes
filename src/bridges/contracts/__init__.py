@@ -120,6 +120,8 @@ from .learning import (
 )
 from .profile_extraction import (
     AutomaticProfileObservation,
+    PROFILE_HYBRID_EXPLANATION,
+    PROFILE_SOURCE_LABELS,
     ProfileCorrectionResult,
     ProfileCorrectionStatus,
     ProfileExtractionAction,
@@ -127,6 +129,7 @@ from .profile_extraction import (
     ProfileExtractionOutput,
     ProfileExtractionRetryTask,
     ProfileExtractionRun,
+    ProfileExtractionSource,
     ProfileExtractionStatus,
     ProfilePreprocessResult,
     ProfilePrivacyNotice,
@@ -193,6 +196,8 @@ __all__ = [
     "ControlledContentAccessStatus",
     "DependencyHealth",
     "AutomaticProfileObservation",
+    "PROFILE_HYBRID_EXPLANATION",
+    "PROFILE_SOURCE_LABELS",
     "ProfileCorrectionResult",
     "ProfileCorrectionStatus",
     "ProfileExtractionAction",
@@ -200,6 +205,7 @@ __all__ = [
     "ProfileExtractionOutput",
     "ProfileExtractionRetryTask",
     "ProfileExtractionRun",
+    "ProfileExtractionSource",
     "ProfileExtractionStatus",
     "ProfilePreprocessResult",
     "ProfilePrivacyNotice",

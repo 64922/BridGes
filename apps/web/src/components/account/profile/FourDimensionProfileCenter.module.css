@@ -163,6 +163,26 @@
   color: var(--color-text-secondary);
 }
 
+.hybridNote {
+  margin-bottom: 24px;
+  border: 1px solid var(--color-accent-primary);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: var(--color-text-secondary);
+  background: var(--color-accent-primary-soft);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.hybridNote p {
+  margin: 0;
+}
+
+.hybridCounts {
+  margin-top: 8px;
+  color: var(--color-text-primary);
+}
+
 .error {
   margin-bottom: 18px;
   border: 1px solid var(--color-status-error);

@@ -1,6 +1,6 @@
 # Issue 13：保留 Profile 混合抽取并诚实标记来源与 Qwen 审计
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -96,3 +96,12 @@ python -m pytest tests/profiles/test_profile_real_smoke.py -q -p no:cacheprovide
 
 - 2026-08-13：用户确认保留“本地规则 + Qwen”混合画像策略，并要求诚实披露；只有真实 Qwen 分支落模型锁。
 - 2026-08-13：凭据继续使用安装级全局 Qwen Key；本 issue 严禁读取或泄露 Key，账户隔离仍是强制验收项。
+- 2026-08-14：实现完成（分支 `worktree-13-profile-hybrid-extraction-audit`）。
+  - 稳定来源枚举 `ProfileExtractionSource`（`local_rule`/`qwen_model`）与中文标签（“本地规则识别，未调用模型”/“Qwen 辅助识别”）；`ProfileExtractionRun`/`AutomaticProfileObservation` 显式携带来源，观察与四维记录的审计版本字符串绑定 `source=`；schema 迁移 46 为两表新增 `source` 列，历史行保持 NULL 不伪造。
+  - 来源决策显式化：`should_process=False` 或 `is_local` 恒为 `local_rule`，网关抽取器 + 非本地歧义信号才进入 `qwen_model`；本地分支调用数与锁数恒为 0。
+  - qwen_model 分支按 Issue 10 的 `ModelRunLockRecorder` 为每次真实 `invoke` 持久化不可变锁（BusinessRef 关联抽取 run、attempt 序号 1..N、失败锁保留、重试追加下一序号、幂等回放不重复）；`main.py` 组合根注入 `SqliteModelRunLockRecorder`。
+  - 来源守卫失败关闭：`profile_local_unexpected_model_call`、`profile_qwen_missing_run_lock`、`profile_source_mismatch`、`profile_lock_persist_failed`（稳定错误码入永久集合，可观测指标 `profile_*_total` 与 `profile_extraction_source_total{source,outcome}`）。
+  - `/profiles/status` 投影新增 `extraction_sources` 计数与 `source_explanation` 混合策略诚实说明；首次自动记录说明文案更新并升版 `profile-privacy-v2`；画像页渲染说明与来源计数（`FourDimensionProfileCenter`）。
+  - 测试：`tests/profiles/test_profile_hybrid_source_projection.py` 新增（锁持久化/重试/重启/跨账户隔离/守卫/API 合同/production-like 组合门禁），扩展 `test_automatic_profile_extraction.py` 参数化来源用例，更新 issue07 假网关带锁与状态投影断言；`openapi.json`/`generated.ts` 重新生成（后者顺带消除此前未同步的陈旧描述）。
+  - 验证：`tests/profiles`+`tests/storage`+`tests/ai` 全绿（除既有 main 上已失败的 `test_chat_correction_uses_latest_record_and_is_idempotent`，pristine main 同样失败）；前端 typecheck 与单元测试通过。
+  - 复查修复（code-review）：来源守卫稳定名提为模块常量（错误码与指标共用同一字面量）；`_persist_attempt_locks` 增加来源不变量——非 qwen_model 的 run 即使被失败关闭路径带入锁也绝不落库（local_rule 0 锁）；守卫测试断言零锁；补 cassette 与模型矩阵漂移的 qwen_profile_extraction 生产门测试。已知保留：run.attempts 在队列重试成功时不递增为既有账本语义（锁序号 1..N 独立正确）；分类器/抽取器版本经锁→run 关联传递（不改 Issue 10 锁协议）。

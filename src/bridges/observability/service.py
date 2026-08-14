@@ -111,9 +111,19 @@ class ObservabilityService:
         )
 
     def record_profile_outcome(
-        self, *, outcome: str, reason: str, exhausted: bool = False
+        self,
+        *,
+        outcome: str,
+        reason: str,
+        exhausted: bool = False,
+        source: str | None = None,
     ) -> None:
-        """记录不带账户、消息或正文的画像聚合指标。"""
+        """记录不带账户、消息或正文的画像聚合指标。
+
+        Issue 13：``source``（local_rule/qwen_model）作为低基数维度进入
+        来源计数指标，供灰度期核对"本地分支 0 调用 0 锁、Qwen 分支每个
+        attempt 1 调用 1 锁"。
+        """
 
         safe_reason = (
             reason
@@ -123,12 +133,35 @@ class ObservabilityService:
         with self._profile_metrics_lock:
             self._increment_profile_metric("profile_extraction_total", outcome)
             self._increment_profile_metric("profile_extraction_reason_total", safe_reason)
+            if source is not None and all(
+                character.isalnum() or character in {"_", ":"} for character in source
+            ):
+                self._increment_profile_metric(
+                    "profile_extraction_source_total", f"{source}:{outcome}"
+                )
             if outcome == "permanent_failure":
                 self._increment_profile_metric("profile_permanent_failure_total", "total")
             if outcome == "pending_retry":
                 self._increment_profile_metric("profile_transient_retry_total", "total")
             if exhausted:
                 self._increment_profile_metric("profile_retry_exhausted_total", "total")
+
+    def record_profile_source_guard(self, guard: str) -> None:
+        """记录来源守卫告警（Issue 13）。
+
+        稳定守卫名：``profile_local_unexpected_model_call``、
+        ``profile_qwen_missing_run_lock``、``profile_source_mismatch``、
+        ``profile_lock_persist_failed``。只计数字符串，不携带账户、消息
+        或画像正文。
+        """
+
+        safe_guard = (
+            guard
+            if guard and all(character.isalnum() or character == "_" for character in guard)
+            else "profile_source_guard_unknown"
+        )
+        with self._profile_metrics_lock:
+            self._increment_profile_metric(f"{safe_guard}_total", "total")
 
     def record_profile_page_status(self, status: str) -> None:
         """记录画像状态接口请求的稳定状态标签。"""

@@ -10,14 +10,21 @@ import pytest
 from pydantic import ValidationError
 
 from bridges.ai import ModelGateway
-from bridges.contracts.ai import ModelCallStatus
+from bridges.ai.ports import ModelRunLockRecorder
+from bridges.contracts.ai import (
+    BusinessRef,
+    ModelCallStatus,
+    ModelRunLock,
+    PersistedModelRunLock,
+)
 from bridges.contracts.profile_extraction import (
     ProfileExtractionOutcome,
     ProfileExtractionOutput,
     ProfileExtractionRun,
+    ProfileExtractionSource,
     ProfileExtractionStatus,
 )
-from bridges.contracts.profiles import FourDimension
+from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
 from bridges.profiles import (
     AutomaticProfileService,
     FourDimensionProfileService,
@@ -144,6 +151,145 @@ class _FailingFourDimensionRepository(InMemoryFourDimensionProfileRepository):
         if self._saves == 2:
             raise RuntimeError("四维提交失败")
         return super().save_record(record)
+
+
+def _fake_lock(
+    lock_id: str,
+    *,
+    status: ModelCallStatus,
+    error_code: str | None = None,
+    run_id: str = "run-1",
+    account_id: str = "account-alice",
+) -> ModelRunLock:
+    """构造与真实网关同形的不可变运行锁（Issue 13）。"""
+
+    return ModelRunLock(
+        lock_id=lock_id,
+        run_id=run_id,
+        account_id=account_id,
+        project_id="conversation-1",
+        capability_name="qwen_profile_extraction",
+        capability_version="1",
+        actual_model_id="qwen3.7-plus-2026-05-26",
+        region="cn-beijing",
+        parameters={"temperature": 0, "max_tokens": 512},
+        prompt_version="2026-08-12",
+        input_output_contract="qwen_profile_extraction:profile-message-v1->profile-extraction-v2",
+        status=status,
+        error_code=error_code,
+        created_at=datetime.now(UTC),
+    )
+
+
+class _LockAwareCountingGateway:
+    """记录调用次数并按调用序号返回真实形制锁的假网关。
+
+    ``fail="transient"`` 时所有调用都失败；``fail_once=True`` 只让第一次
+    调用失败（用于队列重试恢复用例）。
+    """
+
+    def __init__(
+        self,
+        output: dict[str, object] | None = None,
+        *,
+        fail: str | None = None,
+        fail_once: bool = False,
+        with_lock: bool = True,
+    ) -> None:
+        self.calls = 0
+        self._output = output if output is not None else {"items": []}
+        self._fail = fail
+        self._fail_once = fail_once
+        self._with_lock = with_lock
+
+    def invoke(self, *args: object, **kwargs: object) -> SimpleNamespace:
+        del kwargs
+        self.calls += 1
+        failing = self._fail is not None and (
+            not self._fail_once or self.calls == 1
+        )
+        # 真实网关签名：invoke(capability_name, capability_version,
+        # run_context, payload=...)，run_context 是第三个位置参数。
+        run_context = args[2] if len(args) > 2 else None
+        lock = (
+            _fake_lock(
+                f"fake-lock-{self.calls}",
+                status=(
+                    ModelCallStatus.RETRYABLE_FAIL
+                    if failing
+                    else ModelCallStatus.SUCCESS
+                ),
+                error_code=self._fail if failing else None,
+                run_id=(
+                    run_context.run_id
+                    if run_context is not None
+                    else "run-1"
+                ),
+                account_id=(
+                    run_context.account_id
+                    if run_context is not None
+                    else "account-alice"
+                ),
+            )
+            if self._with_lock
+            else None
+        )
+        if failing:
+            return SimpleNamespace(
+                status=ModelCallStatus.RETRYABLE_FAIL,
+                output=None,
+                error_code=self._fail,
+                error_message="temporary provider failure",
+                lock=lock,
+            )
+        return SimpleNamespace(
+            status=ModelCallStatus.SUCCESS,
+            output=self._output,
+            error_code=None,
+            error_message=None,
+            lock=lock,
+        )
+
+
+class _RecordingLockRecorder(ModelRunLockRecorder):
+    """收集 record() 调用的内存替身；只用于断言锁与业务关联。"""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[ModelRunLock, BusinessRef]] = []
+
+    def record(
+        self,
+        lock: ModelRunLock,
+        *,
+        business_ref: BusinessRef,
+    ) -> PersistedModelRunLock:
+        self.records.append((lock, business_ref))
+        return PersistedModelRunLock.model_validate(lock.model_dump())
+
+    def record_many(
+        self, requests: list[Any]
+    ) -> list[PersistedModelRunLock]:
+        for request in requests:
+            self.record(request.lock, business_ref=request.business_ref)
+        return []
+
+    def get_lock(
+        self, lock_id: str, account_id: str
+    ) -> PersistedModelRunLock | None:
+        del lock_id, account_id
+        return None
+
+    def list_locks_by_run(
+        self, account_id: str, run_id: str
+    ) -> list[PersistedModelRunLock]:
+        del account_id, run_id
+        return []
+
+    def list_locks_by_business_ref(
+        self, account_id: str, object_type: str, object_id: str
+    ) -> list[PersistedModelRunLock]:
+        del account_id, object_type, object_id
+        return []
 
 
 def test_explicit_goal_is_committed_before_same_round_slice_is_compiled() -> None:
@@ -728,6 +874,7 @@ def test_gateway_profile_prompt_requires_json_and_preserves_upstream_error_messa
             output={"items": []},
             error_code=None,
             error_message=None,
+            lock=None,
         )
     )
     GatewayAutomaticProfileExtractor(cast(ModelGateway, success_gateway)).extract(
@@ -748,6 +895,7 @@ def test_gateway_profile_prompt_requires_json_and_preserves_upstream_error_messa
             output=None,
             error_code="client_error_400",
             error_message="Qwen client error (400): messages must contain JSON",
+            lock=None,
         )
     )
     with pytest.raises(RuntimeError, match="client_error_400.*messages must contain JSON"):
@@ -1161,3 +1309,285 @@ def test_sqlite_restart_recovers_an_inflight_run_without_a_task(tmp_path) -> Non
     assert recovered.outcome == ProfileExtractionOutcome.PENDING_RETRY
     assert recovered.last_error == "profile_extraction_recovered_after_restart"
     second_database.close()
+
+
+# ---------------------------------------------------------------------------
+# Issue 13：保留混合抽取并诚实标记来源（local_rule / qwen_model）。
+# ---------------------------------------------------------------------------
+
+
+def _hybrid_service(
+    gateway: _LockAwareCountingGateway,
+    *,
+    recorder: _RecordingLockRecorder | None = None,
+) -> tuple[AutomaticProfileService, FourDimensionProfileService]:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
+        lock_recorder=recorder,
+    )
+    return service, target_service
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_outcome"),
+    [
+        ("我的目标是今年通过雅思考试", ProfileExtractionOutcome.SUCCEEDED_WRITTEN),
+        ("想学习Transformer", ProfileExtractionOutcome.SUCCEEDED_WRITTEN),
+        ("找Transformer论文", ProfileExtractionOutcome.SUCCEEDED_OBSERVED),
+        ("我的关注点换成 CNN", ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN),
+    ],
+)
+def test_local_rule_cases_never_call_gateway_and_mark_source(
+    content: str, expected_outcome: ProfileExtractionOutcome
+) -> None:
+    """明确自述、学习目标、清晰观察、更正代表性用例：source=local_rule、
+    网关 0 调用、模型锁 0 条（Issue 13 AC）。"""
+    gateway = _LockAwareCountingGateway()
+    recorder = _RecordingLockRecorder()
+    service, target_service = _hybrid_service(gateway, recorder=recorder)
+    if content == "我的关注点换成 CNN":
+        target_service.upsert_automatic_record(
+            "account-alice",
+            dimension=FourDimension.KNOWLEDGE_INTEREST,
+            content="旧的知识兴趣",
+            action="create",
+            confidence=FourDimensionConfidence.HIGH,
+        )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    assert result.run.outcome == expected_outcome
+    assert result.run.source == ProfileExtractionSource.LOCAL_RULE
+    assert gateway.calls == 0
+    assert recorder.records == []
+    if content in {"找Transformer论文", "我的关注点换成 CNN"}:
+        return
+    records = target_service.list_records("account-alice")
+    assert records
+    assert "source=local_rule" in records[0].migration_version
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_status", "expected_outcome"),
+    [
+        (
+            "把我的阶段目标撤回",
+            ProfileExtractionStatus.SUCCEEDED,
+            ProfileExtractionOutcome.NO_SIGNAL,
+        ),
+        (
+            "不要记录",
+            ProfileExtractionStatus.EXHAUSTED,
+            ProfileExtractionOutcome.NO_SIGNAL,
+        ),
+    ],
+)
+def test_withdraw_and_privacy_blocked_never_call_gateway(
+    content: str,
+    expected_status: ProfileExtractionStatus,
+    expected_outcome: ProfileExtractionOutcome,
+) -> None:
+    """撤回/隐私阻断代表用例同样不调用 Qwen，来源保持 local_rule。"""
+    gateway = _LockAwareCountingGateway()
+    service, _ = _hybrid_service(gateway)
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert gateway.calls == 0
+    assert result.run.source == ProfileExtractionSource.LOCAL_RULE
+    assert result.run.status == expected_status
+    assert result.run.outcome == expected_outcome
+
+
+def test_ambiguous_signal_uses_qwen_branch_with_one_lock() -> None:
+    """歧义信号：source=qwen_model、真实调用 1 次、锁 1 条（Issue 13 AC）。"""
+    gateway = _LockAwareCountingGateway(
+        {
+            "items": [
+                {
+                    "dimension": FourDimension.KNOWLEDGE_INTEREST.value,
+                    "normalized_value": "Transformer",
+                    "evidence_ref": "message-1",
+                    "reliability": 0.9,
+                    "action": "observe",
+                }
+            ]
+        }
+    )
+    recorder = _RecordingLockRecorder()
+    service, _ = _hybrid_service(gateway, recorder=recorder)
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我可能想学习 Transformer",
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    assert result.run.outcome == ProfileExtractionOutcome.SUCCEEDED_OBSERVED
+    assert result.run.source == ProfileExtractionSource.QWEN_MODEL
+    assert gateway.calls == 1
+    assert len(recorder.records) == 1
+    lock, business_ref = recorder.records[0]
+    assert lock.status == ModelCallStatus.SUCCESS
+    assert business_ref.object_type == "profile_extraction_run"
+    assert business_ref.object_id == result.run.extraction_id
+    assert business_ref.attempt_ordinal == 1
+    assert business_ref.is_primary is True
+    observations = service._repository.list_observations(  # type: ignore[attr-defined]
+        "account-alice",
+        FourDimension.KNOWLEDGE_INTEREST,
+        "Transformer",
+        since=datetime.now(UTC) - timedelta(days=1),
+    )
+    assert observations
+    assert observations[0].source == ProfileExtractionSource.QWEN_MODEL
+    assert "source=qwen_model" in observations[0].extractor_version
+
+
+def test_qwen_retry_keeps_first_failed_lock_and_appends_next_ordinal() -> None:
+    """首次失败锁保留，重试真实发生后新增下一序号锁（Issue 13 AC）。"""
+    gateway = _LockAwareCountingGateway(
+        {
+            "items": [
+                {
+                    "dimension": FourDimension.KNOWLEDGE_INTEREST.value,
+                    "normalized_value": "Transformer",
+                    "evidence_ref": "message-1",
+                    "reliability": 0.9,
+                    "action": "observe",
+                }
+            ]
+        },
+        fail="transient",
+        fail_once=True,
+    )
+    recorder = _RecordingLockRecorder()
+    service, _ = _hybrid_service(gateway, recorder=recorder)
+
+    first = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我可能想学习 Transformer",
+        run_id="run-1",
+        mode="companion",
+    )
+    assert first.run.status == ProfileExtractionStatus.PENDING
+    assert first.run.source == ProfileExtractionSource.QWEN_MODEL
+    assert gateway.calls == 1
+    assert len(recorder.records) == 1
+    failed_lock, failed_ref = recorder.records[0]
+    assert failed_lock.status == ModelCallStatus.RETRYABLE_FAIL
+    assert failed_ref.attempt_ordinal == 1
+
+    service.run_retry_tick()
+
+    task = service.list_retry_tasks("account-alice")[0]
+    assert task.status == ProfileExtractionStatus.SUCCEEDED
+    assert gateway.calls == 2
+    assert len(recorder.records) == 2
+    second_lock, second_ref = recorder.records[1]
+    assert second_lock.status == ModelCallStatus.SUCCESS
+    assert second_ref.attempt_ordinal == 2
+    assert second_ref.object_id == first.run.extraction_id
+    assert second_ref.is_primary is False
+    # 来源不被重试改写。
+    run = service._repository.get_run(  # type: ignore[attr-defined]
+        "account-alice",
+        "message-1",
+        first.run.extractor_version,
+        first.run.source_hash,
+    )
+    assert run is not None
+    assert run.source == ProfileExtractionSource.QWEN_MODEL
+
+
+def test_local_branch_with_collected_lock_fails_closed() -> None:
+    """守卫：本地分支出现模型调用必须失败关闭（profile_local_unexpected_model_call）。"""
+
+    class _LockEmittingLocalExtractor:
+        version = "local-leaking-v1"
+
+        def extract(self, **kwargs: object) -> ProfileExtractionOutput:
+            lock_sink = kwargs.get("lock_sink")
+            if lock_sink is not None:
+                lock_sink(
+                    _fake_lock(
+                        "leaked-lock",
+                        status=ModelCallStatus.SUCCESS,
+                    )
+                )
+            return ProfileExtractionOutput(items=[])
+
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    recorder = _RecordingLockRecorder()
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=_LockEmittingLocalExtractor(),
+        lock_recorder=recorder,
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我的目标是今年通过雅思考试",
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.EXHAUSTED
+    assert result.run.last_error == "profile_local_unexpected_model_call"
+    assert result.run.outcome == ProfileExtractionOutcome.PERMANENT_FAILURE
+    # 来源不变量：local_rule 分支即使出现异常锁，也绝不落库（0 锁）。
+    assert recorder.records == []
+    assert target_service.list_records("account-alice") == []
+
+
+def test_qwen_branch_without_lock_fails_closed() -> None:
+    """守卫：Qwen 分支缺少运行锁必须失败关闭（profile_qwen_missing_run_lock）。"""
+    gateway = _LockAwareCountingGateway(with_lock=False)
+    service, _ = _hybrid_service(gateway)
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我可能想学习 Transformer",
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert gateway.calls == 1
+    assert result.run.status == ProfileExtractionStatus.EXHAUSTED
+    assert result.run.last_error == "profile_qwen_missing_run_lock"
+    assert result.run.outcome == ProfileExtractionOutcome.PERMANENT_FAILURE
