@@ -24,7 +24,7 @@ from bridges.web_search.contracts import (
     WebSearchVerification,
 )
 
-CLOSEOUT_FIXTURE_PROVIDER = "duckduckgo"
+CLOSEOUT_FIXTURE_PROVIDER = "tavily"
 CLOSEOUT_FIXTURE_PROVIDER_VERSION = "closeout-web-fixture-v1"
 CLOSEOUT_FIXTURE_ARXIV_VERSION = "closeout-arxiv-fixture-v1"
 CLOSEOUT_FIXTURE_TIME = datetime(2026, 8, 12, 0, 0, tzinfo=UTC)

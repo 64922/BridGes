@@ -6,23 +6,20 @@ import hashlib
 import re
 import time
 from collections.abc import Callable
-from functools import partial
 from concurrent.futures import ALL_COMPLETED, Future, wait
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from inspect import Parameter, signature
 from threading import Event, RLock, Thread
 from typing import Any, Protocol, cast
 
-from bridges.contracts.chat import ChatMode
 from bridges import public_search_budget as search_budget
+from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.observability.service import ObservabilityService
 from bridges.web_search.client import (
     DEFAULT_PROVIDER_COOLDOWN_SECONDS,
-    DUCKDUCKGO_REQUEST_PROFILE_VERSION,
-    DUCKDUCKGO_PROVIDER_VERSION,
-    DuckDuckGoClient,
     WebSearchError,
 )
 from bridges.web_search.contracts import (
@@ -38,18 +35,23 @@ from bridges.web_search.contracts import (
     aggregate_public_search_health,
 )
 from bridges.web_search.health_monitor import WebSearchHealthMonitor
+from bridges.web_search.tavily import (
+    TAVILY_REQUEST_PROFILE_VERSION,
+    TAVILY_SEARCH_PROVIDER_VERSION,
+    TavilySearchClient,
+)
 
 WEB_SEARCH_RULES_VERSION = "web-search-plan-v2"
-DEFAULT_PROVIDER = "duckduckgo"
+DEFAULT_PROVIDER = "tavily"
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 _FRESH_CACHE_TTL_SECONDS = 60 * 60
 _CURRENT_CACHE_TTL_SECONDS = 15 * 60
 
 
 class WebSearchProviderDriftError(ValueError):
-    """出现 DuckDuckGo 之外的通用搜索提供方时的配置漂移错误。
+    """出现 Tavily 之外的通用搜索提供方时的配置漂移错误。
 
-    Issue 04：当前产品唯一通用联网提供方是 DuckDuckGo；备用客户端、备用
+    Issue 04/01：当前产品唯一通用联网提供方是 Tavily；备用客户端、备用
     Key 或其他提供方注册都必须在组合期失败关闭，稳定错误码
     ``unexpected_search_provider``。
     """
@@ -131,7 +133,7 @@ class SearchPlan:
     queries: tuple[str, ...] = ()
     plan_id: str = ""
     provider: str = DEFAULT_PROVIDER
-    provider_version: str = DUCKDUCKGO_PROVIDER_VERSION
+    provider_version: str = TAVILY_SEARCH_PROVIDER_VERSION
     rules_version: str = WEB_SEARCH_RULES_VERSION
     query_hash: str = ""
     original_query_hash: str = ""
@@ -413,7 +415,7 @@ class LocalQueryPlanner:
 
 
 class WebSearchService:
-    """固定 DuckDuckGo 的公网搜索服务。"""
+    """固定 Tavily 的公网搜索服务。"""
 
     def __init__(
         self,
@@ -428,19 +430,28 @@ class WebSearchService:
         cache: WebSearchCache | None = None,
         clock: Callable[[], datetime] | None = None,
         sleeper: Callable[[float], None] | None = None,
-        health_ttl_seconds: int = 30,
-        health_stale_ready_seconds: int = 300,
+        health_ttl_seconds: int = 300,
+        health_stale_ready_seconds: int = 1800,
         health_probe_timeout_seconds: float = 5.0,
         health_auto_refresh: bool = True,
     ) -> None:
-        # Issue 04：出现 DuckDuckGo 之外的备用提供方即配置漂移，组合期
+        # Issue 04/01：出现 Tavily 之外的备用提供方即配置漂移，组合期
         # 失败关闭，绝不静默忽略或继续保留 fallback 结构。
         if fallback_client is not None:
             raise WebSearchProviderDriftError(
                 "检测到备用公网搜索提供方注册（fallback_client）；"
-                "当前产品唯一通用联网提供方是 DuckDuckGo，拒绝启动。"
+                "当前产品唯一通用联网提供方是 Tavily，拒绝启动。"
             )
-        self._client = client or DuckDuckGoClient()
+        self._client = client or TavilySearchClient()
+        self._provider = getattr(self._client, "provider_name", None) or DEFAULT_PROVIDER
+        self._provider_version = (
+            getattr(self._client, "provider_version", None)
+            or TAVILY_SEARCH_PROVIDER_VERSION
+        )
+        self._request_profile_version = (
+            getattr(self._client, "request_profile_version", None)
+            or TAVILY_REQUEST_PROFILE_VERSION
+        )
         self._planner = planner or LocalQueryPlanner()
         self._observability = observability
         self._cache = cache or InMemoryWebSearchCache()
@@ -457,7 +468,7 @@ class WebSearchService:
                 stale_ready_seconds=health_stale_ready_seconds,
                 probe_timeout_seconds=health_probe_timeout_seconds,
                 auto_refresh=health_auto_refresh,
-                provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+                provider_version=self._provider_version,
             )
             if callable(checker)
             else None
@@ -478,7 +489,7 @@ class WebSearchService:
         return self._health_monitor
 
     def health_snapshot(self) -> WebSearchHealthSnapshot | None:
-        """只读当前 DDG 健康快照；客户端无健康检查时为空。"""
+        """只读当前公网搜索健康快照；客户端无健康检查时为空。"""
         monitor = self._health_monitor
         return None if monitor is None else monitor.peek()
 
@@ -488,9 +499,9 @@ class WebSearchService:
         return None if monitor is None else monitor.refresh_now()
 
     def health_check(self) -> WebSearchHealthSummary:
-        """检查已登记来源；Issue 04 后只登记 DuckDuckGo 且漂移失败关闭。"""
+        """检查已登记来源；Issue 01 起只登记 Tavily 且漂移失败关闭。"""
 
-        clients = [(self._client, DEFAULT_PROVIDER, DUCKDUCKGO_PROVIDER_VERSION)]
+        clients = [(self._client, self._provider, self._provider_version)]
         health: list[WebSearchHealth] = []
         for client, provider, provider_version in clients:
             checker = getattr(client, "health_check", None)
@@ -530,7 +541,7 @@ class WebSearchService:
     ) -> WebSearchProjection | None:
         if not plan.should_search:
             return None
-        # Issue 04：DDG 明确非 READY 时，本轮仍按 Issue 03 做受控真实尝试，
+        # Issue 04/01：Tavily 明确非 READY 时，本轮仍按 Issue 03 做受控真实尝试，
         # 但 UI/消息立即显示降级提示，避免把用户查询阶段与探针状态割裂。
         monitor = self._health_monitor
         degraded = False
@@ -614,7 +625,7 @@ class WebSearchService:
                 searched_at=now,
                 error_code="web_search_provider_challenge",
                 error_message=(
-                    "DuckDuckGo 搜索提供方暂时受阻，正在冷却；请稍后显式重试，"
+                    "搜索提供方（Tavily）暂时受阻，正在冷却；请稍后显式重试，"
                     "系统不会在本轮自动重复请求。"
                 ),
                 can_retry=True,
@@ -713,8 +724,8 @@ class WebSearchService:
                 )
 
             attempt = self._provider_attempt(
-                DEFAULT_PROVIDER,
-                DUCKDUCKGO_PROVIDER_VERSION,
+                self._provider,
+                self._provider_version,
                 round_results,
                 error,
                 round_results,
@@ -732,7 +743,7 @@ class WebSearchService:
                 result = self._project_results(
                     plan,
                     self._annotate_results(
-                        round_results, DEFAULT_PROVIDER, DUCKDUCKGO_PROVIDER_VERSION
+                        round_results, self._provider, self._provider_version
                     ),
                     attempts,
                     query_count=len(query_history),
@@ -793,7 +804,7 @@ class WebSearchService:
             ):
                 break
             # 错误重试固定重发原查询；查询改写只用于空结果分支，
-            # 因而本轮最多产生两次 DDG HTTP 请求。
+            # 因而本轮最多产生两次 Tavily HTTP 请求。
             query = plan.query or query
 
         if _user_cancelled(stop_event):
@@ -939,7 +950,7 @@ class WebSearchService:
                     continue
                 try:
                     timed = future.result()
-                except Exception as exc:  # noqa: BLE001 - 单查询失败不拖垮整轮
+                except Exception:  # noqa: BLE001 - 单查询失败不拖垮整轮
                     errors.append(
                         WebSearchError(
                             "web_search_internal",
@@ -1311,7 +1322,10 @@ class WebSearchService:
             classification = error.page_classification or metadata[0]
             status_category = error.http_status_category or metadata[1]
             cooldown_until = None
-            if code == "web_search_provider_challenge":
+            if code in {
+                "web_search_provider_challenge",
+                "web_search_rate_limit",
+            }:
                 cooldown_until = self._activate_provider_cooldown(
                     self._clock(), error.cooldown_seconds or DEFAULT_PROVIDER_COOLDOWN_SECONDS
                 )
@@ -1524,7 +1538,7 @@ class WebSearchService:
                     if result.page_classification is not None
                     else None
                 ),
-                "request_profile_version": DUCKDUCKGO_REQUEST_PROFILE_VERSION,
+                "request_profile_version": self._request_profile_version,
                 "cooldown_active": result.cooldown_until is not None,
                 "stage_duration_ms": duration_ms,
                 "active_sources": [

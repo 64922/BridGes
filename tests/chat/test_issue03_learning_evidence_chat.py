@@ -287,10 +287,10 @@ def test_chat_覆盖裁决审计只记录脱敏计数(tmp_path: Path) -> None:
     assert "Transformer" not in str(details)
 
 
-def test_chat_arxiv_and_ddg_parallel_reloadable_with_single_terminal(
+def test_chat_arxiv_and_web_parallel_reloadable_with_single_terminal(
     tmp_path: Path,
 ) -> None:
-    """AC11：arXiv+DDG 并行场景保持终态可重载，SSE 只发出一个最终搜索终态。"""
+    """AC11：arXiv+Tavily 并行场景保持终态可重载，SSE 只发出一个最终搜索终态。"""
     from bridges.arxiv_mcp.contracts import (
         ArxivPaper,
         ArxivSearchProjection,

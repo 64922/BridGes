@@ -1,4 +1,10 @@
-"""已登记的结构化公开搜索备用提供方。"""
+"""已登记的结构化公开搜索提供方与生产组合根。
+
+Issue 01：生产组合根（:func:`build_web_search_provider`）在通用网页搜索位
+只注册 Tavily；DuckDuckGo 不再被生产注册，任何备用提供方（Brave 等）的
+组合注册仍按 Issue 04 语义视为配置漂移。本模块保留 Brave 客户端的合同
+测试锚点，证明历史能力已冻结且不会复活到生产组合。
+"""
 
 from __future__ import annotations
 
@@ -30,6 +36,7 @@ from bridges.web_search.contracts import (
     WebSearchResult,
     WebSearchVerification,
 )
+from bridges.web_search.tavily import TavilySearchClient
 
 BRAVE_SEARCH_PROVIDER = "brave_search"
 BRAVE_SEARCH_PROVIDER_VERSION = "brave-search-api-v1"
@@ -224,6 +231,22 @@ class BraveSearchClient:
                 "备用公网搜索请求未完成，请重试。",
                 http_status_category=category,
             )
+
+
+def build_web_search_provider(
+    settings: Settings | None,
+    *,
+    http_client: httpx.Client | None = None,
+) -> TavilySearchClient:
+    """生产通用网页搜索组合根：只注册 Tavily（Issue 01）。
+
+    DDG 从生产注册表移除；缺 Key 时构造不失败，联网搜索入口返回
+    「未配置搜索凭据」投影，应用正常启动。Tavily 端点固定、凭据只经
+    ``BRIDGES_TAVILY_API_KEY``（或 ``*_FILE``/安装流程凭据库）进入。
+    ``settings`` 为 None（配置加载失败的健康降级路径）时同样安全。
+    """
+    api_key = settings.tavily_api_key if settings is not None else None
+    return TavilySearchClient(api_key=api_key, http_client=http_client)
 
 
 def build_fallback_provider(

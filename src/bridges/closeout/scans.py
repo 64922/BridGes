@@ -7,7 +7,7 @@
   绕过批准 adapter/recorder（``direct_client_bypass``）；
 - ``scan_model_literals``：生产模块出现受控模型字面量
   （``model_matrix_drift``，Issue 09 单一事实源强制）；
-- ``scan_external_key_isolation``：DDG/arXiv 检索模块读取或继承
+- ``scan_external_key_isolation``：Tavily/arXiv 检索模块读取或继承
   全局 Qwen Key（``direct_client_bypass``，external_non_qwen 不得
   消费 Qwen Key）；
 - ``scan_deterministic_production``：生产接线出现确定性生成器/Stub
@@ -54,7 +54,7 @@ FIXED_MODELS_MODULE = "src/bridges/ai/fixed_models.py"
 #: 生产接线禁止出现的测试替身类名特征。
 DETERMINISTIC_CLASS_MARKERS = ("stub", "deterministic", "closeoutqwen")
 
-#: 外部检索模块：DDG 与 arXiv 检索阶段不得继承/读取全局 Qwen Key。
+#: 外部检索模块：Tavily 与 arXiv 检索阶段不得继承/读取全局 Qwen Key。
 EXTERNAL_MODULES = (
     "src/bridges/web_search",
     "src/bridges/arxiv_mcp",
@@ -207,7 +207,7 @@ def scan_model_literals(root: Path = REPO_ROOT) -> list[ScanViolation]:
 def scan_external_key_isolation(root: Path = REPO_ROOT) -> list[ScanViolation]:
     """扫描外部检索模块：不得读取/继承全局 Qwen Key（``direct_client_bypass``）。
 
-    DDG 与 arXiv 是 ``external_non_qwen`` 能力：检索阶段不读取
+    Tavily 与 arXiv 是 ``external_non_qwen`` 能力：检索阶段不读取
     ``BRIDGES_QWEN_API_KEY``/``_FILE``、不导入 ``QwenApiClient`` 或
     全局凭据判定函数；它们只消费自己的 provider 客户端。命中即失败并
     点名模块与行号，防止外部检索意外转发 Qwen Key。

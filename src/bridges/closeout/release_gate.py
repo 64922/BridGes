@@ -19,11 +19,12 @@ from typing import Any
 import httpx
 
 from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
+from bridges.config import Settings
 from bridges.storage.database import SCHEMA_VERSION
-from bridges.web_search.client import (
-    DUCKDUCKGO_PROVIDER_VERSION,
-    DuckDuckGoClient,
-    WebSearchError,
+from bridges.web_search.client import WebSearchError
+from bridges.web_search.tavily import (
+    TAVILY_SEARCH_PROVIDER_VERSION,
+    TavilySearchClient,
 )
 
 
@@ -70,7 +71,7 @@ class CheckEvidence:
 
 @dataclass(frozen=True)
 class ProviderProbeEvidence:
-    """真实提供方探针的脱敏结果（Issue 04：只登记 duckduckgo 与 arxiv）。"""
+    """真实提供方探针的脱敏结果（Issue 01：只登记 tavily 与 arxiv）。"""
 
     provider: str
     status: str
@@ -206,7 +207,7 @@ def _semantic_arxiv_health(papers: Sequence[Any]) -> str:
 def run_real_provider_probes() -> list[ProviderProbeEvidence]:
     """显式网络探针：调用者必须主动传入 ``--real-probes`` 才会执行。
 
-    Issue 04：真实发布探针只访问 DuckDuckGo 与 arXiv；Brave 等备用提供方
+    Issue 01/04：真实发布探针只访问 Tavily 与 arXiv；Brave 等备用提供方
     不再探测，配置了备用 Key 反而会使发布门失败（配置漂移）。
     """
 
@@ -218,16 +219,31 @@ def run_real_provider_probes() -> list[ProviderProbeEvidence]:
 
 
 def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
-    """真实 DDG 发布探针：可解析结果 + provider/version/错误语义合同校验。
+    """真实 Tavily 发布探针：可解析结果 + provider/version/错误语义合同校验。
 
-    只通过以下条件：固定 DDG 端点返回可解析结果、结果语义与固定探针查询
-    匹配、结果 provider/version 与合同完全一致。网络未授权或外部服务暂时
-    不可达报告 ``inconclusive``；解析/合同漂移报告 ``failed``。mock、
+    只通过以下条件：固定 Tavily 端点返回可解析结果、结果语义与固定探针查询
+    匹配、结果 provider/version 与合同完全一致。缺 Key 或网络未授权、外部
+    服务暂时不可达报告 ``inconclusive``；解析/合同漂移报告 ``failed``。mock、
     fixture、cassette 无法让本探针变绿（每次运行都构造真实客户端）。
     """
     started = time.monotonic()
     checked_at = datetime.now(UTC).isoformat()
-    client = DuckDuckGoClient(
+    api_key = Settings().tavily_api_key
+    if api_key is None or not api_key.get_secret_value().strip():
+        return ProviderProbeEvidence(
+            provider="tavily",
+            status=CheckStatus.INCONCLUSIVE,
+            semantic_health="unavailable",
+            checked_at=checked_at,
+            duration_ms=_duration_ms(started),
+            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
+            result_count=None,
+            error_category="web_search_credentials",
+            failure_class=FailureClass.ENVIRONMENT,
+            worker_cleanup=True,
+        )
+    client = TavilySearchClient(
+        api_key=api_key,
         http_client=http_client,
         timeout=8.0,
         fetch_sources=False,
@@ -244,30 +260,30 @@ def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
     version_set = {getattr(result, "provider_version", None) for result in results}
     contract_ok = (
         semantic == "ready"
-        and provider_set == {"duckduckgo"}
-        and version_set == {DUCKDUCKGO_PROVIDER_VERSION}
+        and provider_set == {"tavily"}
+        and version_set == {TAVILY_SEARCH_PROVIDER_VERSION}
     )
     if not contract_ok:
-        # 解析契约漂移：非空 HTML/HTTP 200 本身不足以判定 READY。
+        # 解析契约漂移：非空 JSON/HTTP 200 本身不足以判定 READY。
         return ProviderProbeEvidence(
-            provider="duckduckgo",
+            provider="tavily",
             status=CheckStatus.FAILED,
             semantic_health=semantic,
             checked_at=checked_at,
             duration_ms=_duration_ms(started),
-            provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
             result_count=result_count,
             error_category="parse_contract_drift",
             failure_class=FailureClass.PRODUCT,
             worker_cleanup=True,
         )
     return ProviderProbeEvidence(
-        provider="duckduckgo",
+        provider="tavily",
         status=CheckStatus.PASSED,
         semantic_health=semantic,
         checked_at=checked_at,
         duration_ms=_duration_ms(started),
-        provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+        provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
         result_count=result_count,
         error_category=None,
         failure_class=None,
@@ -280,11 +296,14 @@ def _web_probe_outcome(
 ) -> ProviderProbeEvidence:
     """把稳定错误码映射到 inconclusive/failed 与责任边界。
 
-    网络未授权（permission）与外部服务暂时不可达（DNS、connect、offline、
-    timeout、rate_limit、5xx upstream、challenge）→ ``inconclusive``；
+    缺 Key/凭据无效（credentials/configuration）、网络未授权（permission）
+    与外部服务暂时不可达（DNS、connect、offline、timeout、rate_limit、
+    5xx upstream、challenge）→ ``inconclusive``；
     解析、重定向、响应过大与请求类错误 → ``failed``。
     """
     inconclusive_codes = {
+        "web_search_credentials",
+        "web_search_configuration",
         "web_search_permission",
         "web_search_dns",
         "web_search_connect",
@@ -296,17 +315,21 @@ def _web_probe_outcome(
     }
     if error_code in inconclusive_codes:
         status = CheckStatus.INCONCLUSIVE
-        failure_class = FailureClass.EXTERNAL
+        failure_class = (
+            FailureClass.ENVIRONMENT
+            if error_code in {"web_search_credentials", "web_search_configuration"}
+            else FailureClass.EXTERNAL
+        )
     else:
         status = CheckStatus.FAILED
         failure_class = FailureClass.PRODUCT
     return ProviderProbeEvidence(
-        provider="duckduckgo",
+        provider="tavily",
         status=status,
         semantic_health="unavailable",
         checked_at=checked_at,
         duration_ms=_duration_ms(started),
-        provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+        provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
         result_count=None,
         error_category=error_code,
         failure_class=failure_class,
@@ -505,6 +528,7 @@ def _diagnostic_category(stdout: str, stderr: str) -> str:
 
 
 #: 被禁止的备用通用搜索提供方配置（Issue 04：出现即配置漂移）。
+#: Issue 01 起 Tavily 是生产主提供方，其 Key/开关不再是漂移。
 _FALLBACK_SEARCH_ENV_KEYS = (
     "BRIDGES_BRAVE_SEARCH_API_KEY",
     "BRIDGES_PUBLIC_SEARCH_FALLBACK_ENABLED",
@@ -515,8 +539,8 @@ _FALLBACK_SEARCH_ENV_KEYS = (
 def _provider_drift_check(environment: dict[str, str]) -> CheckEvidence:
     """检测备用提供方 Key/开关：存在即配置漂移，发布门失败关闭。
 
-    当前产品唯一通用联网提供方是 DuckDuckGo；Brave/Tavily/Bing/Serper/
-    SearXNG 等任何备用源配置（含 Key）都使发布门以稳定错误码
+    当前产品唯一通用联网提供方是 Tavily；Brave/Bing/Serper/SearXNG 等
+    任何备用源配置（含 Key）都使发布门以稳定错误码
     ``unexpected_search_provider`` 失败，且不会自动切换提供方。
     """
     started = time.monotonic()
@@ -524,10 +548,20 @@ def _provider_drift_check(environment: dict[str, str]) -> CheckEvidence:
     for key in _FALLBACK_SEARCH_ENV_KEYS:
         if environment.get(key, "").strip():
             drifted.append(key)
+    allowed_keys = {
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "SCIENCE_COMPANION_TAVILY_API_KEY",
+        "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+        *_FALLBACK_SEARCH_ENV_KEYS,
+    }
     for key, value in environment.items():
-        if value.strip() and key.startswith("BRIDGES_") and (
-            "SEARCH" in key or "BRAVE" in key or "TAVILY" in key
-        ) and key not in _FALLBACK_SEARCH_ENV_KEYS:
+        if (
+            value.strip()
+            and key.startswith("BRIDGES_")
+            and ("SEARCH" in key or "BRAVE" in key or "TAVILY" in key)
+            and key not in allowed_keys
+        ):
             drifted.append(key)
     if drifted:
         return CheckEvidence(
@@ -545,10 +579,11 @@ def _provider_drift_check(environment: dict[str, str]) -> CheckEvidence:
 
 
 def diagnose_web_health() -> int:
-    """运维诊断命令：单次真实 DDG 探针，输出 JSON 与简洁中文摘要。
+    """运维诊断命令：单次真实 Tavily 探针，输出 JSON 与简洁中文摘要。
 
     同一次运行记录探针时间、状态、耗时、provider version、结果数量与
-    稳定错误码；退出码：0=READY，1=失败，2=无法判定（外部不可达/未授权）。
+    稳定错误码；退出码：0=READY，1=失败，2=无法判定（缺 Key/外部不可达/
+    未授权）。
     """
     with httpx.Client(trust_env=False, timeout=10.0) as http_client:
         probe = _probe_web(http_client)
@@ -556,7 +591,7 @@ def diagnose_web_health() -> int:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if probe.status == CheckStatus.PASSED:
         print(
-            "DuckDuckGo 公网搜索可用："
+            "Tavily 公网搜索可用："
             f"{probe.result_count or 0} 条可解析结果，"
             f"耗时 {probe.duration_ms} ms，"
             f"提供方版本 {probe.provider_version or 'unknown'}。"
@@ -564,13 +599,13 @@ def diagnose_web_health() -> int:
         return 0
     if probe.status == CheckStatus.INCONCLUSIVE:
         print(
-            "无法判定：DuckDuckGo 暂时不可达或网络未授权"
+            "无法判定：Tavily 暂时不可达、缺搜索凭据或网络未授权"
             f"（{probe.error_category or 'unknown'}），耗时 {probe.duration_ms} ms；"
-            "请人工复核网络后重试，不能以 fixture/mock 替代真实判定。"
+            "请人工复核网络与凭据配置后重试，不能以 fixture/mock 替代真实判定。"
         )
         return 2
     print(
-        "失败：DuckDuckGo 探针未通过合同校验"
+        "失败：Tavily 探针未通过合同校验"
         f"（{probe.error_category or 'unknown'}），耗时 {probe.duration_ms} ms；"
         "请检查解析契约或提供方配置。"
     )
@@ -746,12 +781,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--real-probes",
         action="store_true",
-        help="显式访问 DDG 与 arXiv 真实探针。",
+        help="显式访问 Tavily 与 arXiv 真实探针。",
     )
     parser.add_argument(
         "--web-health",
         action="store_true",
-        help="运维诊断：只运行一次真实 DDG 探针，输出 JSON 与中文摘要（不运行完整发布门）。",
+        help="运维诊断：只运行一次真实 Tavily 探针，输出 JSON 与中文摘要（不运行完整发布门）。",
     )
     parser.add_argument("--skip-browser", action="store_true", help="跳过真实浏览器收尾门。")
     parser.add_argument(

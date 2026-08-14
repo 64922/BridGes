@@ -25,7 +25,7 @@ class WebSearchStatus(StrEnum):
 
 
 class WebSearchPageClassification(StrEnum):
-    """DuckDuckGo 响应页面的确定性分类。"""
+    """公网搜索响应页面的确定性分类。"""
 
     NORMAL_RESULTS = "normal_results"
     NORMAL_EMPTY = "normal_empty"
@@ -67,13 +67,13 @@ class WebSearchHealth(BaseModel):
     error_code: str | None = None
 
 
-#: 当前生产唯一的通用公网搜索提供方（Issue 04）。出现任何其他通用搜索
-#: 提供方均视为配置漂移，健康摘要与发布门必须以稳定错误码失败。
-PRIMARY_WEB_SEARCH_PROVIDER = "duckduckgo"
+#: 当前生产唯一的通用公网搜索提供方（Issue 01 起为 Tavily）。出现任何
+#: 其他通用搜索提供方均视为配置漂移，健康摘要与发布门必须以稳定错误码失败。
+PRIMARY_WEB_SEARCH_PROVIDER = "tavily"
 
 
 class WebSearchHealthSnapshot(BaseModel):
-    """运行期 DDG 健康快照：脱敏状态、新鲜度与恢复语义。
+    """运行期公网搜索健康快照：脱敏状态、新鲜度与恢复语义。
 
     快照只承载稳定分类与时间戳，绝不包含健康查询正文、响应正文、
     代理 URL、Cookie、Authorization 或任何凭据。
@@ -115,9 +115,9 @@ class WebSearchHealthSnapshot(BaseModel):
 
 
 class WebSearchHealthSummary(BaseModel):
-    """公开搜索整体健康摘要；只登记 DuckDuckGo（Issue 04）。"""
+    """公开搜索整体健康摘要；只登记 Tavily（Issue 01 起）。"""
 
-    available: bool = Field(description="DuckDuckGo 当前是否 READY。")
+    available: bool = Field(description="Tavily 当前是否 READY。")
     status: WebSearchHealthStatus = Field(description="整体健康状态。")
     checked_at: datetime = Field(description="本次整体健康检查时间。")
     providers: list[WebSearchHealth] = Field(
@@ -132,10 +132,10 @@ class WebSearchHealthSummary(BaseModel):
 def aggregate_public_search_health(
     providers: list[WebSearchHealth], *, checked_at: datetime | None = None
 ) -> WebSearchHealthSummary:
-    """聚合公开搜索健康状态；精确等价于“DuckDuckGo READY”。
+    """聚合公开搜索健康状态；精确等价于“Tavily READY”。
 
-    Issue 04：当前产品不使用备用搜索源，“至少一个提供方就绪”不再是容错
-    语义。出现任何非 ``duckduckgo`` 提供方即配置漂移，整体健康以稳定错误码
+    Issue 01/04：当前产品不使用备用搜索源，“至少一个提供方就绪”不再是容错
+    语义。出现任何非 ``tavily`` 提供方即配置漂移，整体健康以稳定错误码
     ``unexpected_search_provider`` 失败关闭。
     """
 
@@ -152,7 +152,7 @@ def aggregate_public_search_health(
             providers=providers,
             error_code="unexpected_search_provider",
         )
-    duckduckgo = next(
+    tavily = next(
         (
             provider
             for provider in providers
@@ -160,7 +160,7 @@ def aggregate_public_search_health(
         ),
         None,
     )
-    if duckduckgo is None:
+    if tavily is None:
         return WebSearchHealthSummary(
             available=False,
             status=WebSearchHealthStatus.UPSTREAM_ERROR,
@@ -169,11 +169,11 @@ def aggregate_public_search_health(
             error_code="web_search_health_check",
         )
     return WebSearchHealthSummary(
-        available=duckduckgo.status == WebSearchHealthStatus.READY,
-        status=duckduckgo.status,
-        checked_at=checked_at or duckduckgo.checked_at,
+        available=tavily.status == WebSearchHealthStatus.READY,
+        status=tavily.status,
+        checked_at=checked_at or tavily.checked_at,
         providers=providers,
-        error_code=duckduckgo.error_code,
+        error_code=tavily.error_code,
     )
 
 
@@ -205,9 +205,9 @@ class WebSearchResult(BaseModel):
         default=None, description="来源页面抓取失败分类码。"
     )
     redirect_count: int = Field(default=0, ge=0, description="本次抓取重定向次数。")
-    provider: str = Field(default="duckduckgo", description="实际返回该来源的提供方。")
+    provider: str = Field(default="tavily", description="实际返回该来源的提供方。")
     provider_version: str = Field(
-        default="duckduckgo-html-v1", description="实际返回该来源的提供方版本。"
+        default="tavily-search-api-v1", description="实际返回该来源的提供方版本。"
     )
 
 
@@ -258,9 +258,9 @@ class WebSearchProjection(BaseModel):
     can_retry: bool = Field(default=False, description="本轮是否可以重试。")
     can_cancel: bool = Field(default=False, description="本轮是否可以取消。")
     plan_id: str | None = Field(default=None, description="持久化联网计划标识。")
-    provider: str = Field(default="duckduckgo", description="最终选用或主用提供方。")
+    provider: str = Field(default="tavily", description="最终选用或主用提供方。")
     provider_version: str = Field(
-        default="duckduckgo-html-v1", description="提供方合同版本。"
+        default="tavily-search-api-v1", description="提供方合同版本。"
     )
     selected_provider: str | None = Field(
         default=None, description="实际采用结果的提供方；全部失败时为空。"

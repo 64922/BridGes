@@ -1549,7 +1549,7 @@ def verify_locks_after_restart(
 
 
 def run_external_provider_probes() -> list[LiveProbeResult]:
-    """真实 DDG/arXiv 提供方探针（复用 Issue 04 发布探针，仅 --real-probes）。
+    """真实 Tavily/arXiv 提供方探针（复用 Issue 04 发布探针，仅 --real-probes）。
 
     检索阶段不读取/不发送 Qwen Key（静态扫描证明）；提供方失败不会
     生成模型成功锁（失败时报告 ``external_provider_failed`` 失败关闭）。
@@ -1826,7 +1826,7 @@ def run_authenticity_gate(
                 "duration_ms": _latency_ms(started),
             }
         )
-        # 8. 外部提供方真实探针（DDG/arXiv）。
+        # 8. 外部提供方真实探针（Tavily/arXiv）。
         external_probes = run_external_provider_probes()
         live_probes.extend(external_probes)
         failed_external = [
@@ -1895,7 +1895,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--real-probes",
         action="store_true",
-        help="显式访问真实 Qwen/DDG/arXiv 执行最小真实探针（需安装级全局 Qwen Key）。",
+        help="显式访问真实 Qwen/Tavily/arXiv 执行最小真实探针（需安装级全局 Qwen Key）。",
     )
     parser.add_argument(
         "--report-dir",

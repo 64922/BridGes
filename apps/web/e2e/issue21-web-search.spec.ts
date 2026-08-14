@@ -63,10 +63,10 @@ function challengeTeaching() {
     check_method: "本轮不推进教学计划。",
     evidence_gate: {
       status: "unavailable",
-      reason: "DuckDuckGo 提供方受阻；本轮不会自动重复请求。",
+      reason: "Tavily 提供方受阻；本轮不会自动重复请求。",
       local_sources: [],
       external_sources: [],
-      required_search: "duckduckgo",
+      required_search: "tavily",
       search_status: "error",
       search_error_code: "web_search_provider_challenge",
       gap: "本轮未联网核实。",
@@ -168,7 +168,7 @@ function installMockChatApi(page: Page) {
           : scenario === "challenge"
             ? webSearch("error", {
                 error_code: "web_search_provider_challenge",
-                error_message: "DuckDuckGo 搜索提供方暂时受阻，请稍后显式重试。",
+                error_message: "Tavily 搜索提供方暂时受阻，请稍后显式重试。",
                 can_retry: true,
               })
           : scenario === "cancel" ? webSearch("loading") : successSearch();
@@ -238,7 +238,7 @@ async function registerAndOpen(page: Page): Promise<void> {
   await expect(page.getByTestId("composer")).toBeVisible();
 }
 
-test.describe("Issue 21 — DuckDuckGo 隐私搜索", () => {
+test.describe("Issue 21 — Tavily 网页搜索", () => {
   test("展示触发原因、真实 URL、站点与访问时间", async ({ page }) => {
     const mock = installMockChatApi(page);
     await mock.install();

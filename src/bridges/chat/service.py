@@ -248,7 +248,7 @@ class ChatService:
         self._attachments = attachment_service
         #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
         self._retrieval = retrieval_service
-        #: 明确联网/时效/核查请求的固定 DuckDuckGo 搜索（Issue 21）。
+        #: 明确联网/时效/核查请求的固定 Tavily 搜索（Issue 01/21）。
         self._web_search = web_search_service
         #: 受限内置 arXiv MCP（Issue 22）；结果失败时不调用模型兜底。
         self._arxiv_search = arxiv_search_service

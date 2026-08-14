@@ -135,7 +135,7 @@ CHAT_CAPABILITY_VERSION = "1"
 _SEARCH_TIMEOUT = object()
 #: 用户取消后未完成来源的占位；不能折叠为超时错误。
 _SEARCH_CANCELLED = object()
-#: DDG provider 截止后、PUBLIC_SEARCH 硬截止前仍未形成可消费投影的占位。
+#: 搜索提供方截止后、PUBLIC_SEARCH 硬截止前仍未形成可消费投影的占位。
 _SEARCH_PROVIDER_TIMEOUT = object()
 _UNVERIFIED_TEACHING_PREFIX = "本轮未联网核实："
 
@@ -496,8 +496,14 @@ _ERROR_MESSAGES: dict[str, str] = {
     "web_search_fallback_not_started": "本轮公网阶段预算不足，未启动备用搜索，请稍后重试。",
     "web_search_all_providers_failed": "主用与备用公网搜索均未完成，请稍后重试。",
     "web_search_provider_challenge": (
-        "DuckDuckGo 搜索提供方暂时受阻，请等待冷却后显式重试；"
+        "搜索提供方（Tavily）暂时受阻，请等待冷却后显式重试；"
         "系统不会在本轮自动重复请求。"
+    ),
+    "web_search_configuration": (
+        "搜索凭据无效（Tavily API Key 未通过校验），请检查凭据配置。"
+    ),
+    "web_search_credentials": (
+        "未配置搜索凭据（Tavily API Key），联网搜索暂不可用。"
     ),
     "web_search_evidence_insufficient": "搜索页面没有可安全引用的公开来源，请稍后重试。",
     "web_search_no_results": "没有找到可核实的公开网页结果，请修改问题后重试。",
@@ -952,7 +958,7 @@ def teaching_web_result_ids(
         for source in teaching.evidence_gate.external_sources
         if source.source_type
         in {
-            TeachingEvidenceSourceType.DUCKDUCKGO,
+            TeachingEvidenceSourceType.TAVILY,
             TeachingEvidenceSourceType.BRAVE_SEARCH,
         }
     }
@@ -1791,7 +1797,7 @@ class TurnOrchestrator:
         self._lifecycle = lifecycle
         #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
         self._retrieval = retrieval_service
-        #: 明确联网/时效/核查请求的固定 DuckDuckGo 搜索（Issue 21）。
+        #: 明确联网/时效/核查请求的固定 Tavily 搜索（Issue 01/21）。
         self._web_search = web_search_service
         #: 受限内置 arXiv MCP（Issue 22）；结果失败时不调用模型兜底。
         self._arxiv_search = arxiv_search_service
@@ -2419,7 +2425,7 @@ class TurnOrchestrator:
                             )
                         )
                     if (
-                        required_search.value in {"duckduckgo", "both"}
+                        required_search.value in {"tavily", "duckduckgo", "both"}
                         and self._web_search is not None
                         and web_search_projection is None
                     ):
@@ -4359,7 +4365,7 @@ class TurnOrchestrator:
         """生涯规划编排（Issue 29）：证据获取 → 过程事件 → 终态收敛。
 
         复用普通生成与 humanizer 编排的证据合同语义：本地检索 → 明确联网/
-        时效触发 DuckDuckGo/arXiv → 最小画像切片编译与披露（发送前关闭时
+        时效触发 Tavily/arXiv → 最小画像切片编译与披露（发送前关闭时
         本轮不编译、不注入、披露 off 态）→ 生涯规划服务生成六类输出 →
         确定性复核 → 结果投影落库。停止/失败绝不悬挂，重试新建尝试沿用
         同一用户消息（意图与输入不丢失）。

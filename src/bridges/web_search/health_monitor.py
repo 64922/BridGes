@@ -1,4 +1,4 @@
-"""运行期 DuckDuckGo 健康快照监视器（Issue 04）。
+"""运行期公网搜索（Tavily）健康快照监视器（Issue 04/01）。
 
 职责边界：
 - 短期缓存：TTL 内并发读取只读内存快照，不访问公网。
@@ -38,13 +38,13 @@ PENDING_ERROR_CODE = "web_search_health_pending"
 #: 旧成功超过上限后的稳定错误码。
 STALE_READY_ERROR_CODE = "web_search_stale_ready"
 
-DEFAULT_HEALTH_TTL_SECONDS = 30
-DEFAULT_STALE_READY_SECONDS = 300
+DEFAULT_HEALTH_TTL_SECONDS = 300
+DEFAULT_STALE_READY_SECONDS = 1800
 DEFAULT_HEALTH_PROBE_TIMEOUT_SECONDS = 5.0
 
 
 class WebSearchHealthMonitor:
-    """带短期缓存与并发合并的 DDG 健康快照监视器。"""
+    """带短期缓存与并发合并的公网搜索健康快照监视器。"""
 
     def __init__(
         self,
