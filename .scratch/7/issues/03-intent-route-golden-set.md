@@ -1,6 +1,6 @@
 # Issue 03：扩展意图路由词表并建立金标契约测试
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -80,3 +80,10 @@ python -m pytest tests/chat/test_natural_language_paper_route.py tests/chat test
 
 - 2026-08-14：本轮冻结决策 #4——只扩确定性词表 + 金标契约测试，不引入模型分类器。
 - 2026-08-14：生产漏路由的另一嫌疑是构建版本滞后；发布负责人应以金标测试在目标构建上全绿作为部署验收依据。
+- 2026-08-14：实现完成（分支 `03-intent-route-golden-set`，worktree `/.worktrees/03-intent-route-golden-set`，conda 环境 `agent`）。
+  - **生涯词表**（`src/bridges/career/intent.py`）：新增 `is_study_planning_request`——规划动作词（规划/安排/排一下/排一个/排个）与学习语境词（学习任务/学习优先级/复习/课程/考研/读研/学业/备考/作业等）同现即触发，否定前缀沿用 `_keyword_hits` 窗口防护，「……学习计划之外/以外」等排除说法不触发；刻意不含「制定/列一个」，保留「帮我制定一个机器学习学习计划」为普通聊天。
+  - **统一路由**（`src/bridges/routing/service.py`）：`_is_career_request` 的学习抑制、`is_career_intent` 细化分支按同一规则收口；学习任务规划不再叠加普通聊天信号（避免误澄清）；人味化冲突信号改用 `REWRITE_ACTION_RE`（唯一动作词表）避免双份词表漂移；`_compile_career_contract` 对学习任务规划输出学习目标而非职业方向文案。
+  - **人味化词表**（`src/bridges/skills/humanizer/contract_compiler.py`）：`REWRITE_ACTION_RE` 扩展「有人味一点/一些/些/点、多点人味、更有人味、人味更足、改得有人味、改得自然、自然一点/一些/些/点、不像(是)?AI|机器|机翻(写|生成|创作)的」；「有人味」必须带程度修饰（纯陈述「这篇文章写得有人味」不触发），「像人写的/不是 AI 写的」等陈述形不作为动作词，否定/咨询防护不变。
+  - **金标契约测试**（`tests/chat/test_golden_intent_routes.py`，48 项）：三类用户点名语句原句 + 近似变体 + 负例；断言发送时持久化快照（skill 载荷/CapabilityRoute 落库记录 + 重载投影一致），生涯语句额外断言流式分支现场重判（`is_career_intent` 二次判定）；含前端建议卡文案「帮我排一下研究生三年的学习优先级」（前端文件与金标共用常量）与冲突/视频/论文降级防护回归。
+  - **验证**：`python -m pytest tests/chat/test_natural_language_paper_route.py tests/chat tests/career tests/humanizer -q -p no:cacheprovider`——848 通过；44 失败与 pristine main 逐项完全一致（既有环境性失败，含 selections/mcp_call/retrieval/profile 切片等），无新增失败；ruff 全绿，mypy 相对 main 无新增错误。
+  - **既有问题备注**：`tests/career/test_career_routing.py` 单独收集会踩中 `bridges.routing ↔ bridges.contracts.chat` 既有导入环（pristine main 同样失败），按 issue 建议命令以 `test_natural_language_paper_route.py` 开头预热导入链即可；金标测试文件以 `import bridges.ai` 预载规避。

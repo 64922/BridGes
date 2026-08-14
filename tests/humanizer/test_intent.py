@@ -25,6 +25,15 @@ from bridges.skills.humanizer.intent import route_humanizer_message
         "文章人味化：量子纠错可以降低噪声影响。",
         "帮我把演讲稿口语化：今天我想介绍这个实验。",
         "请把这篇论文的表达顺一顺：实验结果支持这一假设。",
+        # Issue 03（feature 7）：人味/自然/不像 AI 写的等近似说法
+        "帮我人味化这篇文章",
+        "把这篇文章改得有人味一点",
+        "把这份报告改得有人味一些",
+        "帮我把这篇稿子改得自然一点，别像 AI 写的",
+        "把这段话改得不像机器写的",
+        "帮我改写这篇论文，让它更像人写的",
+        "让这段文字多点人味",
+        "请把这段总结改得更有人味",
     ],
 )
 def test_explicit_natural_language_rewrite_is_routed(content: str) -> None:
@@ -52,6 +61,12 @@ def test_explicit_natural_language_rewrite_is_routed(content: str) -> None:
         "论文的研究结果是什么？",
         "这段文字有点 AI 味。",
         "这篇文章太模板腔了。",
+        # Issue 03（feature 7）：纯陈述/评价/否定不触发
+        "这篇文章写得有人味，我很喜欢",
+        "这篇文章写得自然吗？",
+        "你觉得这篇文章哪里写得不好",
+        "这篇稿子不太像人写的",
+        "不用把这段话改得有人味",
     ],
 )
 def test_similar_but_non_action_messages_are_not_routed(content: str) -> None:

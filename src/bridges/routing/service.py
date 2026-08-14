@@ -9,7 +9,7 @@ from typing import Literal, cast
 from pydantic import ValidationError
 
 from bridges.career.intake import assess_intake
-from bridges.career.intent import is_career_intent
+from bridges.career.intent import is_career_intent, is_study_planning_request
 from bridges.contracts.career import CareerPlanningRouteContract
 from bridges.routing.contracts import (
     CapabilityRoute,
@@ -20,6 +20,7 @@ from bridges.routing.contracts import (
     RouteStatus,
     VideoGenerationPlan,
 )
+from bridges.skills.humanizer.contract_compiler import REWRITE_ACTION_RE
 from bridges.video.constants import (
     VIDEO_DEFAULT_DURATION_SECONDS,
     VIDEO_DEFAULT_SIZE,
@@ -308,9 +309,15 @@ class NaturalLanguageRouter:
         if not self._is_career_request(text):
             return None
         signals: list[MainCapability] = [MainCapability.CAREER]
-        if self._is_learning_request(text):
+        # 学习任务规划（规划/安排/排一下 + 学习语境词）本身即生涯意图，
+        # 不再叠加普通聊天信号（否则「帮我安排一下复习计划」会误澄清）。
+        if self._is_learning_request(text) and not is_study_planning_request(text):
             signals.append(MainCapability.ORDINARY_CHAT)
-        if any(word in text for word in self._HUMANIZER_WORDS):
+        # 人味化信号以 REWRITE_ACTION_RE（人味化路由唯一动作词表）为准，
+        # _HUMANIZER_WORDS 只保留不含动作形状的软信号（简历润色/人味）。
+        if REWRITE_ACTION_RE.search(text) or any(
+            word in text for word in self._HUMANIZER_WORDS
+        ):
             signals.append(MainCapability.HUMANIZER)
         if "论文" in text and any(word in text for word in self._PAPER_ACTION_WORDS):
             signals.append(MainCapability.PAPER_SEARCH)
@@ -346,8 +353,10 @@ class NaturalLanguageRouter:
             return False
         if re.fullmatch(r".{0,20}职业(?:发展|方向)?前景(?:怎么样|如何)[？?。]?", text):
             return False
-        if self._is_learning_request(text) and not any(
-            word in text for word in ("职业", "就业", "求职", "转行", "工作方向")
+        if (
+            self._is_learning_request(text)
+            and not any(word in text for word in ("职业", "就业", "求职", "转行", "工作方向"))
+            and not is_study_planning_request(text)
         ):
             return False
         if is_career_intent(text):
@@ -363,7 +372,10 @@ class NaturalLanguageRouter:
                 return True
             if re.search(r"规划.{0,20}(职业|就业|方向|路径|方案)", text):
                 return True
-            return False
+            # Issue 03（feature 7）：学习任务规划由 intent 检测器放行，
+            # 但既有的动作词/「帮我」式细化分支不覆盖「给我规划一下我的
+            # 学习任务」，此处按同一规则收口，避免被细化分支重新否决。
+            return is_study_planning_request(text)
         return bool(
             ("规划" in text and any(word in text for word in ("方向", "职业", "就业", "工作")))
             or re.search(r"适合.{0,12}(工作|岗位|职业)", text)
@@ -384,6 +396,12 @@ class NaturalLanguageRouter:
             target = "规划考研后的职业方向，并比较继续深造与就业选择"
         elif "科研" in text and "企业" in text:
             target = "比较科研与企业路径，并明确当前阶段的验证行动"
+        elif is_study_planning_request(text) and not any(
+            word in text for word in ("职业", "就业", "求职", "转行", "工作方向")
+        ):
+            # Issue 03（feature 7）：学习任务规划不套职业方向目标，
+            # 否则「帮我排一下学习优先级」会被编排成职业方向建议。
+            target = "规划当前阶段的学习任务与优先级，明确近期验证行动"
 
         time_horizon = "未来 1-3 年（先做近 90 天验证）"
         time_match = re.search(
