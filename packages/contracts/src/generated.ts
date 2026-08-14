@@ -6304,10 +6304,12 @@ export interface components {
         };
         /**
          * ArticleDeliveryStatus
-         * @description 正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。
+         * @description 正文交付状态：成功（含软警告）为 delivered；修订未完成仅交付首稿为
+         *     partial（Issue 06 第七轮：部分交付，附 ``delivery_note``）；硬门失败为
+         *     failed。
          * @enum {string}
          */
-        ArticleDeliveryStatus: "delivered" | "failed";
+        ArticleDeliveryStatus: "delivered" | "partial" | "failed";
         /**
          * ArticleEvidenceItem
          * @description 一条证据风险/变化项（确定性投影自 EvidenceSafeReport）。
@@ -12971,6 +12973,11 @@ export interface components {
             audit_version: string;
             /** @description 正文交付状态。 */
             delivery_status: components["schemas"]["ArticleDeliveryStatus"];
+            /**
+             * Delivery Note
+             * @description 部分交付的用户可见说明（如「已交付首稿，未完成修订」）；仅 ``delivery_status == partial`` 时非空。
+             */
+            delivery_note?: string | null;
             /**
              * @description 材料状态。
              * @default sufficient
@@ -21144,7 +21151,7 @@ export interface components {
          * @description 教学引用的来源层级与公开来源类型。
          * @enum {string}
          */
-        TeachingEvidenceSourceType: "attachment" | "project" | "knowledge_base" | "duckduckgo" | "brave_search" | "arxiv" | "local";
+        TeachingEvidenceSourceType: "attachment" | "project" | "knowledge_base" | "tavily" | "brave_search" | "arxiv" | "local" | "duckduckgo";
         /**
          * TeachingEvidenceStatus
          * @description 教学正式回答使用的证据裁决。
@@ -21562,7 +21569,7 @@ export interface components {
          * @description 证据门需要补充的公开来源。
          * @enum {string}
          */
-        TeachingSearchSource: "none" | "duckduckgo" | "arxiv" | "both";
+        TeachingSearchSource: "none" | "tavily" | "arxiv" | "both" | "duckduckgo";
         /**
          * TeachingStage
          * @description 会话中持久化的教学状态机阶段（Issue 08）。
@@ -22554,7 +22561,7 @@ export interface components {
         VideoTaskStatus: "queued" | "submitting" | "generating" | "recovery" | "succeeded" | "failed" | "cancelling" | "cancelled";
         /**
          * WebSearchPageClassification
-         * @description DuckDuckGo 响应页面的确定性分类。
+         * @description 公网搜索响应页面的确定性分类。
          * @enum {string}
          */
         WebSearchPageClassification: "normal_results" | "normal_empty" | "challenge" | "invalid";
@@ -22629,13 +22636,13 @@ export interface components {
             /**
              * Provider
              * @description 最终选用或主用提供方。
-             * @default duckduckgo
+             * @default tavily
              */
             provider: string;
             /**
              * Provider Version
              * @description 提供方合同版本。
-             * @default duckduckgo-html-v1
+             * @default tavily-search-api-v1
              */
             provider_version: string;
             /**
@@ -22843,13 +22850,13 @@ export interface components {
             /**
              * Provider
              * @description 实际返回该来源的提供方。
-             * @default duckduckgo
+             * @default tavily
              */
             provider: string;
             /**
              * Provider Version
              * @description 实际返回该来源的提供方版本。
-             * @default duckduckgo-html-v1
+             * @default tavily-search-api-v1
              */
             provider_version: string;
         };

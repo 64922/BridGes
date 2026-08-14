@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from bridges.ai.adapters import (
+    REQUEST_TIMEOUT_SECONDS_KEY,
     AdapterError,
     AdapterResult,
     CapabilityAdapter,
@@ -56,7 +57,10 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "max_tokens": payload.get("max_tokens", 1024),
         }
 
-        response_body = self._client.chat_completions(request_body)
+        response_body = self._client.chat_completions(
+            request_body,
+            timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY),
+        )
         choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
@@ -151,7 +155,10 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
             "max_tokens": payload.get("max_tokens", 2048),
         }
 
-        response_body = self._client.chat_completions(request_body)
+        response_body = self._client.chat_completions(
+            request_body,
+            timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY),
+        )
         choice = first_choice(response_body)
         message = choice.get("message")
         contract_error_code = (

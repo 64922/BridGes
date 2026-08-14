@@ -19,12 +19,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from bridges import model_call_budget as _model_call_budget
 from bridges import public_search_budget as _public_search_budget
 
 PUBLIC_SEARCH_STAGE_SECONDS = _public_search_budget.PUBLIC_SEARCH_STAGE_SECONDS
 SEARCH_HANDOFF_RESERVE_SECONDS = _public_search_budget.SEARCH_HANDOFF_RESERVE_SECONDS
 SEARCH_MIN_REQUEST_WINDOW_SECONDS = _public_search_budget.SEARCH_MIN_REQUEST_WINDOW_SECONDS
 SEARCH_RETRY_BACKOFF_SECONDS = _public_search_budget.SEARCH_RETRY_BACKOFF_SECONDS
+
+#: 结构化模型调用预算常量（单一来源：``bridges.model_call_budget``）。
+MODEL_CALL_DEFAULT_TIMEOUT_SECONDS = _model_call_budget.MODEL_CALL_DEFAULT_TIMEOUT_SECONDS
+MODEL_CALL_HANDOFF_RESERVE_SECONDS = _model_call_budget.MODEL_CALL_HANDOFF_RESERVE_SECONDS
+MODEL_CALL_MIN_WINDOW_SECONDS = _model_call_budget.MODEL_CALL_MIN_WINDOW_SECONDS
+MODEL_CALL_MIN_TIMEOUT_SECONDS = _model_call_budget.MODEL_CALL_MIN_TIMEOUT_SECONDS
 
 #: 前台技能 run 硬上限（毫秒）：任一前台 run 必须在预算内进入终态。
 TOTAL_BUDGET_MS = 120_000
@@ -219,9 +226,29 @@ class RunBudget:
         """总预算是否已耗尽（或主动标记耗尽）。"""
         return self._exhausted or self.remaining_ms() <= 0
 
-    def can_retry(self, estimated_ms: int = 5_000) -> bool:
-        """重试门：仅当错误可重试且剩余预算足够估算成本时放行。"""
-        return not self.expired() and self.remaining_ms() >= estimated_ms
+    def model_call_timeout_ms(self) -> int:
+        """按剩余预算截断的单次模型调用超时（毫秒；Issue 06 第七轮）。
+
+        算术与常量集中在 ``bridges.model_call_budget``：默认 60 秒、
+        交接预留 1 秒、正下限 50ms；单次调用不再可能吃光整轮预算。
+        已主动标记耗尽（``mark_exhausted``）时同样只给正下限窗口。
+        """
+        if self.expired():
+            return _model_call_budget.model_call_timeout_ms(0)
+        return _model_call_budget.model_call_timeout_ms(self.remaining_ms())
+
+    def can_retry_model_call(self, backoff_ms: int = 0) -> bool:
+        """模型调用重试门（Issue 06 第七轮）：剩余预算放不下「退避 + 一次
+        最小调用窗口 + 交接预留」时不重试，直接以真实错误终态收尾。
+
+        网关重试循环与生涯/人味化修复门共用同一接缝（去重）；已标记
+        耗尽（``mark_exhausted``）时同样不放行。
+        """
+        if self.expired():
+            return False
+        return _model_call_budget.model_call_can_retry(
+            self.remaining_ms(), backoff_ms=backoff_ms
+        )
 
     # ------------------------------------------------------------------
     # 阶段时钟

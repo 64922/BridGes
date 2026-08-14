@@ -88,6 +88,8 @@ function ArticleResultCard({
   const expandTracked = useRef(false);
 
   const failed = article.delivery_status === "failed";
+  // Issue 06 第七轮：修订未完成仅交付首稿 → 部分交付（成功终态，附说明）。
+  const partial = article.delivery_status === "partial";
   const hasConfirmations = (article.confirmations?.length ?? 0) > 0;
   const hasEvidence = (article.evidence?.length ?? 0) > 0;
   const styleWarnings = article.style_review?.warning_count ?? 0;
@@ -97,18 +99,22 @@ function ArticleResultCard({
 
   const statusLabel = failed
     ? "未交付"
-    : hasConfirmations
-      ? "已交付（含待确认项）"
-      : hasWarnings
-        ? "已交付（含警告）"
-        : "已交付";
+    : partial
+      ? "已交付首稿（未完成修订）"
+      : hasConfirmations
+        ? "已交付（含待确认项）"
+        : hasWarnings
+          ? "已交付（含警告）"
+          : "已交付";
   const statusColor = failed
     ? "var(--color-status-error)"
-    : hasConfirmations
+    : partial
       ? "var(--color-status-warning)"
-      : hasWarnings
+      : hasConfirmations
         ? "var(--color-status-warning)"
-        : "var(--color-status-success)";
+        : hasWarnings
+          ? "var(--color-status-warning)"
+          : "var(--color-status-success)";
 
   const telemetryBase = {
     projection_version: article.projection_version ?? null,
@@ -245,6 +251,28 @@ function ArticleResultCard({
             </div>
           )}
 
+          {/* Issue 06 第七轮：部分交付（已交付首稿，未完成修订）的明确标注 */}
+          {partial && article.delivery_note && (
+            <div
+              role="status"
+              data-testid="humanizer-partial-note"
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "var(--space-2)",
+                padding: "var(--space-3)",
+                borderTop: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-status-wait-bg)",
+                color: "var(--color-status-wait)",
+                fontSize: "var(--text-sm)",
+                overflowWrap: "break-word",
+              }}
+            >
+              <Icon name="alert" size={16} aria-hidden />
+              <span>{article.delivery_note}</span>
+            </div>
+          )}
+
           {article.material_state === "insufficient" && (
             <AuditSection title="材料不足" data-testid="humanizer-material-state" tone="warning">
               {/* Issue 08 AC5：只显示一个最高价值问题，不堆叠通用建议 */}
@@ -301,10 +329,10 @@ function ArticleResultCard({
               tone="warning"
             >
               <p style={sectionBodyStyle}>
-                {article.revision.triggered
+                {article.revision.triggered && !article.revision.skipped_reason
                   ? `已执行一次定向修订${article.revision.trigger_label ? `（触发原因：${article.revision.trigger_label}）` : ""}：解决 ${article.revision.resolved_count} 个问题，仍剩 ${article.revision.remaining_count} 个风险。`
                   : article.revision.skipped_reason
-                    ? `未执行定向修订（${article.revision.skipped_reason}），正文按当前检查状态交付。`
+                    ? `未完成定向修订（${article.revision.skipped_reason}），正文按首稿交付。`
                     : "首稿已通过检查，未触发修订。"}
               </p>
             </AuditSection>

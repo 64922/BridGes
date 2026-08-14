@@ -26472,10 +26472,11 @@
         "type": "string",
         "enum": [
           "delivered",
+          "partial",
           "failed"
         ],
         "title": "ArticleDeliveryStatus",
-        "description": "正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。"
+        "description": "正文交付状态：成功（含软警告）为 delivered；修订未完成仅交付首稿为\npartial（Issue 06 第七轮：部分交付，附 ``delivery_note``）；硬门失败为\nfailed。"
       },
       "ArticleEvidenceItem": {
         "properties": {
@@ -37304,6 +37305,18 @@
           "delivery_status": {
             "$ref": "#/components/schemas/ArticleDeliveryStatus",
             "description": "正文交付状态。"
+          },
+          "delivery_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Note",
+            "description": "部分交付的用户可见说明（如「已交付首稿，未完成修订」）；仅 ``delivery_status == partial`` 时非空。"
           },
           "material_state": {
             "$ref": "#/components/schemas/ArticleMaterialState",
@@ -50454,10 +50467,11 @@
           "attachment",
           "project",
           "knowledge_base",
-          "duckduckgo",
+          "tavily",
           "brave_search",
           "arxiv",
-          "local"
+          "local",
+          "duckduckgo"
         ],
         "title": "TeachingEvidenceSourceType",
         "description": "教学引用的来源层级与公开来源类型。"
@@ -51171,9 +51185,10 @@
         "type": "string",
         "enum": [
           "none",
-          "duckduckgo",
+          "tavily",
           "arxiv",
-          "both"
+          "both",
+          "duckduckgo"
         ],
         "title": "TeachingSearchSource",
         "description": "证据门需要补充的公开来源。"
@@ -52643,7 +52658,7 @@
           "invalid"
         ],
         "title": "WebSearchPageClassification",
-        "description": "DuckDuckGo 响应页面的确定性分类。"
+        "description": "公网搜索响应页面的确定性分类。"
       },
       "WebSearchProjection": {
         "properties": {
@@ -52777,13 +52792,13 @@
             "type": "string",
             "title": "Provider",
             "description": "最终选用或主用提供方。",
-            "default": "duckduckgo"
+            "default": "tavily"
           },
           "provider_version": {
             "type": "string",
             "title": "Provider Version",
             "description": "提供方合同版本。",
-            "default": "duckduckgo-html-v1"
+            "default": "tavily-search-api-v1"
           },
           "selected_provider": {
             "anyOf": [
@@ -53114,13 +53129,13 @@
             "type": "string",
             "title": "Provider",
             "description": "实际返回该来源的提供方。",
-            "default": "duckduckgo"
+            "default": "tavily"
           },
           "provider_version": {
             "type": "string",
             "title": "Provider Version",
             "description": "实际返回该来源的提供方版本。",
-            "default": "duckduckgo-html-v1"
+            "default": "tavily-search-api-v1"
           }
         },
         "type": "object",

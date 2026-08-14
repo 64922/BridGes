@@ -19,7 +19,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from bridges.ai.errors import ModelRunLockConflictError, ModelRunLockError
+from bridges.ai.errors import (
+    ModelRunLockConflictError,
+    ModelRunLockError,
+    user_facing_model_error,
+)
 from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.career.metrics import NOOP_CAREER_LOCK_METRICS, CareerLockMetrics
@@ -546,13 +550,16 @@ class CareerPlannerService:
             assistant_message_id=assistant_message_id,
             stage=_CallStage.generation(),
             lock_refs=lock_refs,
+            budget=budget,
         )
         if failure is None:
             return output
         # 一次有界修复（Issue 09 实施步骤 3）：结构化输出非法/格式错误时
         # 只带修复指令重调一次；剩余预算不足承担第二次调用时在总预算内
         # 失败，绝不做无限重试、不把 transport 断开映射成领域失败。
-        if budget is not None and not budget.can_retry():
+        # Issue 06 第七轮：修复门与网关重试语义对齐（剩余预算必须放得下
+        # 「一次最小调用窗口 + 交接预留」），不再使用旧的估算成本门。
+        if budget is not None and not budget.can_retry_model_call():
             raise CareerError(
                 "career_output_invalid",
                 "规划结果未通过结构校验，且剩余预算不足，无法修复；"
@@ -572,6 +579,7 @@ class CareerPlannerService:
             assistant_message_id=assistant_message_id,
             stage=_CallStage.repair(),
             lock_refs=lock_refs,
+            budget=budget,
         )
         if failure is not None:
             raise CareerError(
@@ -619,6 +627,7 @@ class CareerPlannerService:
         assistant_message_id: str,
         stage: _CallStage,
         lock_refs: list[CareerLockRef] | None = None,
+        budget: RunBudget | None = None,
     ) -> tuple[CareerPlanningOutputContract, str | None]:
         """调用固定结构化模型，返回 (输出, 可修复失败原因)。
 
@@ -630,6 +639,8 @@ class CareerPlannerService:
           作为可修复失败返回（第二次调用带修复指令）；
         - 其余能力类失败（鉴权/区域/限流等）：按现有分类直接抛
           ``CareerError``，不做修复（能力问题修复无意义）。
+        - Issue 06 第七轮：``budget`` 传入网关按剩余预算截断单次调用
+          超时、预算不足不重试（与生涯修复门共用同一接缝）。
         """
         payload = {
             "messages": [
@@ -648,6 +659,7 @@ class CareerPlannerService:
             CAREER_CAPABILITY_VERSION,
             run_context,
             payload,
+            budget=budget,
         )
         duration_ms = max(0, int((time.monotonic() - started) * 1000))
         # 每次真实调用都计入指标（含失败与缺锁，按阶段与模型状态聚合）。
@@ -684,7 +696,13 @@ class CareerPlannerService:
             )
         raise CareerError(
             call_result.error_code or "career_generation_failed",
-            call_result.error_message or "生涯规划生成失败，请重试（输入已保留）。",
+            # Issue 06 第七轮：真实错误码透传 + 中文文案（供应商原始
+            # message 是内部诊断，绝不原样透传给用户）。
+            user_facing_model_error(
+                call_result.error_code,
+                call_result.error_message
+                or "生涯规划生成失败，请重试（输入已保留）。",
+            ),
             retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
         )
 

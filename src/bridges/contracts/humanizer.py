@@ -616,9 +616,12 @@ ARTICLE_AUDIT_VERSION = "1"
 
 
 class ArticleDeliveryStatus(StrEnum):
-    """正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。"""
+    """正文交付状态：成功（含软警告）为 delivered；修订未完成仅交付首稿为
+    partial（Issue 06 第七轮：部分交付，附 ``delivery_note``）；硬门失败为
+    failed。"""
 
     DELIVERED = "delivered"
+    PARTIAL = "partial"
     FAILED = "failed"
 
 
@@ -740,6 +743,13 @@ class HumanizerArticleProjection(BaseModel):
         description="审计版本：本结构内全部稳定 code 的版本标识。"
     )
     delivery_status: ArticleDeliveryStatus = Field(description="正文交付状态。")
+    delivery_note: str | None = Field(
+        default=None,
+        description=(
+            "部分交付的用户可见说明（如「已交付首稿，未完成修订」）；"
+            "仅 ``delivery_status == partial`` 时非空。"
+        ),
+    )
     material_state: ArticleMaterialState = Field(
         default=ArticleMaterialState.SUFFICIENT, description="材料状态。"
     )
