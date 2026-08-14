@@ -22,7 +22,7 @@ def _seed_document(storage, service, *, chunks: int = 1) -> tuple[str, str]:
     """入队并处理一份文档，返回 (account_id, object_id)。"""
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "合同.txt", TEXT.encode("utf-8"))
-    service.enqueue(account_id, object_id, "conversation-1")
+    service.enqueue(account_id, object_id)
     service.process_pending()
     return account_id, object_id
 

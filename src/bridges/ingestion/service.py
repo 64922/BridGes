@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -25,7 +26,12 @@ from bridges.contracts.knowledge_base import KnowledgeBaseMaterialProjection
 from bridges.ingestion.chunker import TextChunk, chunk_document
 from bridges.ingestion.embedding import EmbeddingError, EmbeddingPort
 from bridges.ingestion.index import IndexWriteError, VersionedIndex, build_index_status
-from bridges.ingestion.ocr import OcrError, OcrPort
+from bridges.ingestion.ocr import (
+    OcrError,
+    OcrPageRequest,
+    OcrPageSummary,
+    OcrPort,
+)
 from bridges.ingestion.parsers import (
     DOCX_PARSER_VERSION,
     IMAGE_PARSER_VERSION,
@@ -86,6 +92,24 @@ class _MaterialIndexContext(NamedTuple):
     index_rebuilding: bool
 
 
+class _ParseProvenance(NamedTuple):
+    """一次解析的来源证据与脱敏 OCR 页数汇总（Issue 14）。
+
+    - ``cache_hit``：本次直接复用了账户内解析缓存（未调用 Qwen、
+      未新建模型锁）；
+    - ``ocr_run_id``：产生当前解析文本的摄取 run（缓存命中时引用原始
+      OCR/解析运行证据；非 OCR 解析为 None）；
+    - ``pages_*``：本次 OCR 的脱敏页数汇总（非图片为 0），不含任何
+      文本或内容。
+    """
+
+    cache_hit: bool
+    ocr_run_id: str | None
+    pages_total: int
+    pages_succeeded: int
+    pages_failed: int
+
+
 class IngestionError(Exception):
     """摄取领域错误；message 为面向用户的中文原因。"""
 
@@ -98,6 +122,20 @@ class IngestionError(Exception):
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _ocr_run_id(account_id: str, document_id: str, claim_id: str) -> str:
+    """一次摄取处理（一次领取执行轮）的 OCR 审计 run ID。
+
+    run 绑定账户、文档、领取与当轮随机 token：同一轮处理内多页共享同一
+    run，页级锁按 (run, page, call) 确定性派生、幂等合并。队列在租约
+    恢复/退避重试时复用同一 ``claim_id``，因此必须叠加每轮随机 token——
+    真正重新发起供应商请求（崩溃恢复重跑、worker 重试、缓存失效后重建）
+    都产生新 run 与新调用序号，旧失败锁原样保留，绝不复用
+    ``knowledge-base-ocr-{account_id}`` 或与旧锁发生内容冲突。
+    """
+    round_token = secrets.token_urlsafe(8)
+    return f"ingestion-ocr:{account_id}:{document_id}:{claim_id}:{round_token}"
 
 
 def parser_version_for(media_type: str) -> str:
@@ -331,6 +369,15 @@ class IngestionService:
             retry_count=int(row["retry_count"]),
             index_rebuilding=rebuilding,
             vector_unavailable_reason=vector_reason,
+            parse_cache_hit=bool(int(row["parse_cache_hit"])),
+            ocr_evidence_run_id=(
+                str(row["ocr_evidence_run_id"])
+                if row["ocr_evidence_run_id"] is not None
+                else None
+            ),
+            ocr_pages_total=int(row["ocr_pages_total"]),
+            ocr_pages_succeeded=int(row["ocr_pages_succeeded"]),
+            ocr_pages_failed=int(row["ocr_pages_failed"]),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
         )
@@ -408,6 +455,8 @@ class IngestionService:
                 "UPDATE document_records SET status = 'queued', retry_count = 0,"
                 " title = NULL, page_count = 0, section_count = 0, chunk_count = 0,"
                 " vector_enabled = 0, vector_indexed = 0,"
+                " parse_cache_hit = 0, ocr_evidence_run_id = NULL,"
+                " ocr_pages_total = 0, ocr_pages_succeeded = 0, ocr_pages_failed = 0,"
                 " failure_stage = NULL, failure_reason = NULL,"
                 " claimed_at = NULL, lease_expires_at = NULL,"
                 " rebuild_requested = 1, updated_at = ?"
@@ -624,6 +673,15 @@ class IngestionService:
             retry_count=int(row["retry_count"]),
             vector_enabled=bool(row["vector_enabled"]),
             vector_indexed=bool(row["vector_indexed"]),
+            parse_cache_hit=bool(int(row["parse_cache_hit"])),
+            ocr_evidence_run_id=(
+                str(row["ocr_evidence_run_id"])
+                if row["ocr_evidence_run_id"] is not None
+                else None
+            ),
+            ocr_pages_total=int(row["ocr_pages_total"]),
+            ocr_pages_succeeded=int(row["ocr_pages_succeeded"]),
+            ocr_pages_failed=int(row["ocr_pages_failed"]),
             embedding_available=context.embedding_available,
             vector_unavailable_reason=context.vector_unavailable_reason,
             index_version_id=context.index_version_id,
@@ -701,7 +759,11 @@ class IngestionService:
                     account_id,
                 ),
             )
-        self._process_document(account_id, document_id)
+        self._process_document(
+            account_id,
+            document_id,
+            ocr_run_id=_ocr_run_id(account_id, document_id, claim.claim_id),
+        )
         row = self._database.connection.execute(
             "SELECT status, failure_reason, retry_count FROM document_records"
             " WHERE account_id = ? AND document_id = ?",
@@ -746,8 +808,14 @@ class IngestionService:
                 (_now(), account_id),
             )
 
-    def _process_document(self, account_id: str, document_id: str) -> bool:
-        """处理一份文档：读对象 → 解析（缓存复用）→ 分块 → 向量化 → 索引。"""
+    def _process_document(
+        self, account_id: str, document_id: str, *, ocr_run_id: str
+    ) -> bool:
+        """处理一份文档：读对象 → 解析（缓存复用）→ 分块 → 向量化 → 索引。
+
+        ``ocr_run_id`` 是本次处理的摄取 run：图片 OCR 的页级模型锁按该
+        run 关联（Issue 14），缓存命中则完全不调用 Qwen、不新建锁。
+        """
         row = self._database.connection.execute(
             "SELECT * FROM document_records WHERE document_id = ? AND account_id = ?",
             (document_id, account_id),
@@ -767,8 +835,15 @@ class IngestionService:
         filename, media_type = self._object_meta(account_id, object_id)
         content_hash = str(row["content_hash"])
         try:
-            parsed = self._parse_with_cache(
-                account_id, content_hash, content, filename, media_type
+            parsed, provenance = self._parse_with_cache(
+                account_id,
+                content_hash,
+                content,
+                filename,
+                media_type,
+                document_id=document_id,
+                object_id=object_id,
+                ocr_run_id=ocr_run_id,
             )
         except ParseError as exc:
             # 损坏文件不会因重试变好：标记为永久失败，等用户手动重试。
@@ -776,12 +851,12 @@ class IngestionService:
             return False
 
         if not parsed.text.strip():
-            self._mark_empty(account_id, document_id, parsed)
+            self._mark_empty(account_id, document_id, parsed, provenance)
             return False
 
         chunks = chunk_document(parsed)
         if not chunks:
-            self._mark_empty(account_id, document_id, parsed)
+            self._mark_empty(account_id, document_id, parsed, provenance)
             return False
 
         if not self._write_chunk_rows(account_id, document_id, chunks):
@@ -812,6 +887,7 @@ class IngestionService:
             account_id, document_id, parsed, chunks,
             vector_enabled=vectorized,
             vector_indexed=vectorized,
+            provenance=provenance,
         )
         return True
 
@@ -832,26 +908,62 @@ class IngestionService:
         content: bytes,
         filename: str,
         media_type: str,
-    ) -> ParsedDocument:
-        """账户内同内容复用解析结果；缓存版本过期时重新解析并更新缓存。"""
+        *,
+        document_id: str,
+        object_id: str,
+        ocr_run_id: str,
+    ) -> tuple[ParsedDocument, _ParseProvenance]:
+        """账户内同内容复用解析结果；缓存版本过期时重新解析并更新缓存。
+
+        Issue 14 合同：缓存命中 → 不调用 Qwen、不新建模型锁，来源证据标记
+        ``cache_hit`` 并引用产生缓存文本的原始 run；缓存失效后的重新识别
+        走真实 OCR（新 run → 新页级锁），原锁不被覆盖。
+        """
         version = parser_version_for(media_type)
         cache = self._database.connection.execute(
-            "SELECT parsed_json, parser_version FROM document_parse_cache"
+            "SELECT parsed_json, parser_version, ocr_run_id FROM document_parse_cache"
             " WHERE account_id = ? AND content_hash = ?",
             (account_id, content_hash),
         ).fetchone()
         if cache is not None and str(cache["parser_version"]) == version:
             try:
-                return ParsedDocument.from_json(str(cache["parsed_json"]))
+                parsed = ParsedDocument.from_json(str(cache["parsed_json"]))
             except (ValueError, TypeError, KeyError):
                 pass  # 缓存损坏则重新解析
+            else:
+                cached_run = (
+                    str(cache["ocr_run_id"]) if cache["ocr_run_id"] is not None else None
+                )
+                return parsed, _ParseProvenance(
+                    cache_hit=True,
+                    ocr_run_id=cached_run,
+                    pages_total=0,
+                    pages_succeeded=0,
+                    pages_failed=0,
+                )
+        summary = OcrPageSummary()
         ocr_text: str | None = None
         if media_type.startswith("image/") and self._ocr is not None:
+            summary = OcrPageSummary(pages_total=1)
             try:
-                ocr_text = self._ocr.extract(account_id, content, media_type)
+                ocr_text = self._ocr.extract(
+                    OcrPageRequest(
+                        account_id=account_id,
+                        object_id=object_id,
+                        document_id=document_id,
+                        run_id=ocr_run_id,
+                        page_ordinal=1,
+                        call_ordinal=1,
+                        media_type=media_type,
+                        content_hash=content_hash,
+                        content=content,
+                    )
+                )
+                summary = OcrPageSummary(pages_total=1, pages_succeeded=1)
             except OcrError:
                 # 图片 OCR 失败时保留元数据并由解析器追加诚实标记；OCR
-                # 是可选增强，不得把材料推进 error。
+                # 是可选增强，不得把材料推进 error，也不得标成「已识别」。
+                summary = OcrPageSummary(pages_total=1, pages_failed=1)
                 ocr_text = None
         parsed = parse_document(
             content,
@@ -859,17 +971,35 @@ class IngestionService:
             media_type,
             ocr_text=ocr_text,
         )
+        # 缓存行记录「由哪个摄取 run 产生」，供命中方引用原始 OCR 运行
+        # 证据或解析版本（Issue 14 AC）；非 OCR 解析同样记录产生 run。
         with self._database.transaction():
             self._database.connection.execute(
                 "INSERT INTO document_parse_cache"
-                " (account_id, content_hash, parser_version, parsed_json, created_at)"
-                " VALUES (?, ?, ?, ?, ?)"
+                " (account_id, content_hash, parser_version, parsed_json,"
+                "  ocr_run_id, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(account_id, content_hash) DO UPDATE SET"
                 "  parser_version = excluded.parser_version,"
-                "  parsed_json = excluded.parsed_json",
-                (account_id, content_hash, version, parsed.to_json(), _now()),
+                "  parsed_json = excluded.parsed_json,"
+                "  ocr_run_id = excluded.ocr_run_id",
+                (
+                    account_id,
+                    content_hash,
+                    version,
+                    parsed.to_json(),
+                    ocr_run_id,
+                    _now(),
+                ),
             )
-        return parsed
+        evidence_run = ocr_run_id if summary.pages_total > 0 else None
+        return parsed, _ParseProvenance(
+            cache_hit=False,
+            ocr_run_id=evidence_run,
+            pages_total=summary.pages_total,
+            pages_succeeded=summary.pages_succeeded,
+            pages_failed=summary.pages_failed,
+        )
 
     def _write_chunk_rows(
         self, account_id: str, document_id: str, chunks: list[TextChunk]
@@ -1018,6 +1148,7 @@ class IngestionService:
         *,
         vector_enabled: bool,
         vector_indexed: bool,
+        provenance: _ParseProvenance,
     ) -> None:
         with self._database.transaction():
             self._database.connection.execute(
@@ -1034,6 +1165,8 @@ class IngestionService:
                 "UPDATE document_records SET status = 'ready', title = ?,"
                 " parser_version = ?, page_count = ?, section_count = ?,"
                 " chunk_count = ?, vector_enabled = ?, vector_indexed = ?,"
+                " parse_cache_hit = ?, ocr_evidence_run_id = ?,"
+                " ocr_pages_total = ?, ocr_pages_succeeded = ?, ocr_pages_failed = ?,"
                 " failure_stage = NULL, failure_reason = NULL, updated_at = ?"
                 " WHERE document_id = ? AND account_id = ?",
                 (
@@ -1044,13 +1177,24 @@ class IngestionService:
                     len(chunks),
                     1 if vector_enabled else 0,
                     1 if vector_indexed else 0,
+                    1 if provenance.cache_hit else 0,
+                    provenance.ocr_run_id,
+                    provenance.pages_total,
+                    provenance.pages_succeeded,
+                    provenance.pages_failed,
                     _now(),
                     document_id,
                     account_id,
                 ),
             )
 
-    def _mark_empty(self, account_id: str, document_id: str, parsed: ParsedDocument) -> None:
+    def _mark_empty(
+        self,
+        account_id: str,
+        document_id: str,
+        parsed: ParsedDocument,
+        provenance: _ParseProvenance,
+    ) -> None:
         with self._database.transaction():
             self._database.connection.execute(
                 "DELETE FROM document_chunks WHERE document_id = ? AND account_id = ?",
@@ -1060,6 +1204,8 @@ class IngestionService:
                 "UPDATE document_records SET status = 'empty', title = ?,"
                 " parser_version = ?, page_count = ?, section_count = ?,"
                 " chunk_count = 0, vector_enabled = 0, vector_indexed = 0,"
+                " parse_cache_hit = ?, ocr_evidence_run_id = ?,"
+                " ocr_pages_total = ?, ocr_pages_succeeded = ?, ocr_pages_failed = ?,"
                 " failure_stage = NULL,"
                 " failure_reason = '文档没有可索引的文本内容。', updated_at = ?"
                 " WHERE document_id = ? AND account_id = ?",
@@ -1068,6 +1214,11 @@ class IngestionService:
                     parsed.parser_version,
                     parsed.page_count,
                     parsed.section_count,
+                    1 if provenance.cache_hit else 0,
+                    provenance.ocr_run_id,
+                    provenance.pages_total,
+                    provenance.pages_succeeded,
+                    provenance.pages_failed,
                     _now(),
                     document_id,
                     account_id,

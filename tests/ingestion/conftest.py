@@ -90,10 +90,9 @@ def enqueue_and_process(
     storage: dict[str, Any],
     account_id: str,
     object_id: str,
-    conversation_id: str = "conversation-1",
 ) -> str:
     """入队并执行一轮后台处理，返回中文摘要（断言处理了该文档）。"""
-    service.enqueue(account_id, object_id, conversation_id)
+    service.enqueue(account_id, object_id)
     summary = service.process_pending()
     assert "处理 1 份文档" in summary or "处理 0 份文档" in summary
     return summary

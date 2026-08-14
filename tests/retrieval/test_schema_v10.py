@@ -93,6 +93,17 @@ def _build_v9_database(path: Path) -> None:
             " created_at TEXT NOT NULL,"
             " updated_at TEXT NOT NULL)"
         )
+        # v7 迁移建立的解析缓存表：真实 v9 库必然存在（Issue 14 迁移 46
+        # 的 ALTER TABLE 引用它），骨架须复刻以免升级路径缺表。
+        connection.execute(
+            "CREATE TABLE document_parse_cache ("
+            " account_id TEXT NOT NULL,"
+            " content_hash TEXT NOT NULL,"
+            " parser_version TEXT NOT NULL,"
+            " parsed_json TEXT NOT NULL,"
+            " created_at TEXT NOT NULL,"
+            " PRIMARY KEY (account_id, content_hash))"
+        )
         # v2 迁移建立的模型运行锁表：真实 v9 库必然存在（Issue 10 迁移 45
         # 的 ALTER TABLE 引用它），骨架须复刻以免升级路径缺表。
         connection.execute(

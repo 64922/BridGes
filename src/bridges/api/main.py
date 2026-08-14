@@ -22,6 +22,7 @@ from bridges.ai import (
     StubQwenAdapter,
 )
 from bridges.ai.production import build_production_composition
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.api import (
     auth,
     chat,
@@ -1092,23 +1093,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     else False
                 ),
             )
+            # Issue 14：知识库 OCR 统一走 Issue 09 生产组合的注册能力与
+            # Issue 10 运行记录接缝（网关解析固定模型/区域/重试政策，锁由
+            # recorder 幂等持久化），端口不再自建 client/adapter。
             ocr_port = QwenOcrPort(
-                api_key=(settings.qwen_api_key if settings is not None else None),
-                region=(
-                    settings.qwen_region if settings is not None else "cn-beijing"
-                ),
-                workspace_id=(
-                    settings.qwen_workspace_id if settings is not None else None
-                ),
-                cassette_dir=(
-                    settings.qwen_cassette_dir if settings is not None else None
-                ),
-                record_mode=(
-                    settings.qwen_record_cassettes
-                    and settings.environment.lower() != "production"
-                    if settings is not None
-                    else False
-                ),
+                gateway=model_gateway,
+                recorder=SqliteModelRunLockRecorder(bridges_database),
             )
             app.state.ingestion_service = IngestionService(
                 database=bridges_database,

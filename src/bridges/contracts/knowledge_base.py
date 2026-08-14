@@ -33,6 +33,23 @@ class KnowledgeBaseMaterialProjection(BaseModel):
     )
     failure_reason: str | None = Field(default=None, description="失败的中文原因。")
     retry_count: int = Field(default=0, description="已处理尝试次数。")
+    parse_cache_hit: bool = Field(
+        default=False,
+        description="本次解析直接复用了账户内解析缓存（未调用模型、未新建模型锁）。",
+    )
+    ocr_evidence_run_id: str | None = Field(
+        default=None,
+        description="产生当前解析文本的 OCR/解析摄取 run（缓存命中时引用原始运行证据）。",
+    )
+    ocr_pages_total: int = Field(
+        default=0, description="本轮处理实际发起 OCR 的页/图片总数（脱敏汇总）。"
+    )
+    ocr_pages_succeeded: int = Field(
+        default=0, description="本轮处理 OCR 成功的页/图片数（脱敏汇总）。"
+    )
+    ocr_pages_failed: int = Field(
+        default=0, description="本轮处理 OCR 失败的页/图片数（脱敏汇总）。"
+    )
     vector_enabled: bool = Field(
         default=False, description="处理时向量能力是否可用（按探测结果）。"
     )

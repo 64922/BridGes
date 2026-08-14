@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 45
+SCHEMA_VERSION = 46
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2270,6 +2270,36 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_run_lock_links_lock
         ON model_run_lock_links(account_id, lock_id)
+        """,
+    ],
+    # Issue 14：知识库 OCR 页级审计的证据列。document_records 记录每次
+    # 摄取处理的脱敏 OCR 页数汇总与缓存来源证据；document_parse_cache
+    # 记录产生缓存解析文本的摄取 run，供缓存命中方引用原始运行证据。
+    # 全部为可空/默认列，旧行安全读取；不保存任何文本、bytes 或 Key。
+    46: [
+        """
+        ALTER TABLE document_records
+        ADD COLUMN parse_cache_hit INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE document_records
+        ADD COLUMN ocr_evidence_run_id TEXT
+        """,
+        """
+        ALTER TABLE document_records
+        ADD COLUMN ocr_pages_total INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE document_records
+        ADD COLUMN ocr_pages_succeeded INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE document_records
+        ADD COLUMN ocr_pages_failed INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE document_parse_cache
+        ADD COLUMN ocr_run_id TEXT
         """,
     ],
 }

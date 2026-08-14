@@ -1,6 +1,6 @@
 # Issue 14：统一知识库 OCR 的真实 Qwen 页级调用与持久化锁
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -101,3 +101,12 @@ python -m pytest tests/ingestion/test_ocr_real_smoke.py -q -p no:cacheprovider
 
 - 2026-08-13：已验证知识库 OCR 当前真实直连 Qwen adapter，但绕过模型网关且没有对象/页级持久锁。
 - 2026-08-13：凭据使用安装级全局 Qwen Key；任何实现与测试严禁读取或泄露 Key、原始材料及完整 OCR 文本。
+- 2026-08-14：Issue 14 实现完成（分支 `issue-14-knowledge-ocr-real-qwen-audit`）。
+  - **统一接缝**：`QwenOcrPort` 重写为只依赖 `ModelGateway`（Issue 09 注册的 `qwen_ocr` 能力，模型/区域/版本/重试政策全部来自 `bridges.ai.fixed_models` 单一事实源）与 `ModelRunLockRecorder`（Issue 10 幂等持久化接缝）；删除端口内 `_qwen_ocr_capability` 自建能力快照与直接 `QwenApiClient`/`QwenOcrAdapter` 绕行。API 组合根与后台执行器都用 `build_production_composition` 的网关 + `SqliteModelRunLockRecorder` 装配。
+  - **页级输入合同**：`OcrPageRequest` 携带账户、知识库对象/文档 ID、摄取 run ID、稳定页/图序号、调用序号、媒体类型与内容哈希引用；`run_id = ingestion-ocr:{account}:{document}:{claim}:{round_token}`，每轮处理唯一，绝不复用 `knowledge-base-ocr-{account_id}`。队列重领复用 claim_id，故叠加每轮随机 token，保证"真正重试=新 run+新调用序号，旧失败锁保留"。
+  - **页级锁**：每个真正发往 Qwen 的页面/图片请求恰好一条锁（`lock_id` 由 run/page/call 确定性派生，同 page-call 重放幂等合并）；成功、鉴权、限流、区域、网络、空输出（`ocr_empty_output`）与适配器失败均落准确状态锁；业务关联 `document` + `ocr_page:{n}` + attempt ordinal。锁参数只含 temperature/max_tokens 等脱敏字段，recorder 白名单二次把关（无 base64/prompt/OCR 文本/Key）。
+  - **缓存与投影**：解析缓存命中 → 0 次 Qwen 调用、0 条新锁，投影标记 `parse_cache_hit` 并可引用产生文本的原始 run（`ocr_evidence_run_id`，迁移 46 新增列 + `document_parse_cache.ocr_run_id`）；缓存版本失效后的重新识别产生新 run 新锁，原锁不覆盖；摄取投影给出脱敏页数汇总（`ocr_pages_total/succeeded/failed`）。OCR 失败仍按既有合同诚实降级（"图片内容未做文字识别"），绝不标成已识别；recorder 写失败失败关闭（可重试），不形成"已 OCR"投影。
+  - **其他 OCR 入口调用清单**：science `QwenOcrPDFParser`（扫描 PDF 逐页 OCR）与 media `QwenOcrExtractor`/`QwenVisionExtractor` 均已只经 `ModelGateway.invoke`（无直接 client/adapter 绕行），锁持久化分别属 science/media 后续 issue；架构测试 `tests/architecture/test_knowledge_ocr_entry_points.py` 扫描 ingestion/science/media，禁止直接导入 `QwenApiClient`/`QwenOcrAdapter`、构造生产 `CapabilityRecord` 或 `.call(...)` 直调（embedding 端口属 Issue 15 范围，白名单注明）。
+  - **测试**：`tests/ingestion/test_ocr.py` 重写为网关+recorder 合同（13 条：成功 1 锁、无适配器失败关闭无伪锁、空输出失败锁、5 类失败锁、幂等重放、真重试新序号、recorder 失败关闭、payload 合同）；新增 `tests/ingestion/test_ocr_model_run_locks.py`（8 条：单图 1 锁、多页部分失败各页独立、缓存命中 0 调用 0 锁、版本失效新锁保旧锁、OCR 后崩溃锁留存+恢复新 run、双账户隔离、recorder 失败诚实降级、重启后可查）；`test_ingestion_service.py`/`test_executor.py`/`test_index.py` 顺带修复陈旧 `enqueue(..., "conversation-1")` 调用（legacy 410 退役后一直红）；可选真实 smoke `tests/ingestion/test_ocr_real_smoke.py`（`BRIDGES_OCR_REAL_SMOKE=1` + 全局 Key 时执行，只判断凭据是否配置）。
+  - **验证**：Issue 建议回归命令通过（32 项）；ingestion 68 通过/5 项既有陈旧失败（main 同）；storage 71、architecture 10、ai 100、media 178、science 59、evaluation 80、retrieval 43+5 既有、runtime 43、chat 286 通过（比 main 基线少 1 失败）；迁移 46 幂等；mypy/ruff 对变更文件干净（残余为 main 既有）。全量 `tests` 结果见合并时复核（存在既有 collection 冲突与陈旧失败，与本分支基线一致）。
+  - **用户旅程调用清单（知识库 OCR）**：上传图片 → `IngestionService.enqueue` → worker 领取（claim）→ `_process_document` → `_parse_with_cache`（缓存命中直接复用，0 调用 0 锁）→ `QwenOcrPort.extract`（网关 `qwen_ocr` 真实调用 + recorder 页级锁）→ `parse_document`（OCR 文本或"未做文字识别"诚实标记）→ 分块/向量化/索引 → `_mark_ready` 写投影（cache_hit/证据 run/页数汇总）。
