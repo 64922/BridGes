@@ -147,11 +147,9 @@ from bridges.mcp.runtime import McpRuntime
 from bridges.mcp.service import McpService
 from bridges.media import (
     AccessibilityService,
-    InMemoryAudioStorage,
     MediaGenerationService,
     MediaIngestionService,
     MediaPublishService,
-    QwenTtsNarrationSynthesizer,
     SandboxService,
     StoryboardService,
     build_media_impact_resolver,
@@ -1648,31 +1646,22 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     app.state.media_ingestion_service = media_ingestion_service
 
-    # T033: attach the storyboard and sandbox services for structured storyboard
-    # generation and isolated code execution.
+    # T033: attach the storyboard and sandbox services for historical read
+    # access only. Their deterministic generators/runtimes are no longer
+    # instantiated in production composition because the corresponding write
+    # endpoints are retired (Issue 08 / ADR-0026).
     app.state.storyboard_service = StoryboardService()
     app.state.sandbox_service = SandboxService()
 
-    # T032/T034: attach the media generation service and the accessibility
-    # service that produces narration, captions, transcripts, keyboard paths,
-    # reduced-motion variants and sequential reading views for media targets.
-    # T062: when TTS is available, use QwenTtsNarrationSynthesizer to call
-    # real Qwen TTS and transfer audio to controlled storage.
+    # T032/T034: attach the media generation and accessibility services for
+    # historical read access only. The retired chart/figure/bundle write
+    # endpoints no longer drive deterministic generation or narration synthesis.
     app.state.media_generation_service = MediaGenerationService()
-    narration_synthesizer = None
-    if _has_real_qwen_key(settings):
-        # Issue 41（AC3）：只有真实 TTS 适配器（真实环境密钥）才挂接旁白
-        # 合成，测试环境的 Stub 适配器不驱动合成——无真实密钥时走确定性
-        # 旁白路径。
-        narration_synthesizer = QwenTtsNarrationSynthesizer(
-            model_gateway=model_gateway,
-            audio_storage=InMemoryAudioStorage(),
-        )
     app.state.accessibility_service = AccessibilityService(
         storyboard_service=app.state.storyboard_service,
         generation_service=app.state.media_generation_service,
         media_ingestion_service=media_ingestion_service,
-        narration_synthesizer=narration_synthesizer,
+        narration_synthesizer=None,
     )
 
     # T035: attach the multi-modal publish service for cross-media consistency

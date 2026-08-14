@@ -12,6 +12,18 @@ from fastapi.testclient import TestClient
 
 from bridges.api.main import create_app
 from bridges.config import get_settings
+from bridges.contracts.media import (
+    ChartGenerationRequest,
+    ChartMark,
+    SandboxRunRequest,
+    StoryboardGenerationRequest,
+)
+from bridges.media import MediaGenerationService, SandboxService, StoryboardService
+from bridges.media.generation import DeterministicSpecGenerator
+from bridges.media.storyboard_service import (
+    DeterministicStoryboardGenerator,
+    InMemorySandboxRuntime,
+)
 
 _EMAIL_COUNTER = 0
 
@@ -31,54 +43,67 @@ def _register(client: TestClient, tag: str) -> dict[str, Any]:
     return response.json()
 
 
+def _account_id(client: TestClient) -> str:
+    return client.get("/me").json()["account_id"]
+
+
 def _create_chart(client: TestClient) -> str:
-    response = client.post(
-        "/media/charts",
-        json={
-            "title": "授权测试图表",
-            "mark": "bar",
-            "data": {
-                "columns": [
-                    {"name": "city", "type": "string", "values": ["北京"]},
-                    {"name": "temp", "type": "number", "values": [28]},
-                ]
-            },
-            "x_field": "city",
-            "y_field": "temp",
+    """Create a media object directly in the app's in-memory store."""
+    account_id = _account_id(client)
+    temp_service = MediaGenerationService(spec_generator=DeterministicSpecGenerator())
+    request = ChartGenerationRequest(
+        title="授权测试图表",
+        mark=ChartMark.BAR,
+        data={
+            "columns": [
+                {"name": "city", "data_type": "string"},
+                {"name": "temp", "data_type": "number"},
+            ],
+            "rows": [
+                {"values": {"city": "北京", "temp": 28}},
+            ],
         },
+        x_field="city",
+        y_field="temp",
     )
-    assert response.status_code == 201, response.text
-    return response.json()["media_object"]["media_object_id"]
+    obj = temp_service.generate_chart(request, account_id=account_id).media_object
+    client.app.state.media_generation_service._media_objects[obj.media_object_id] = obj
+    return obj.media_object_id
 
 
 def _create_storyboard(client: TestClient) -> str:
-    response = client.post(
-        "/media/storyboards",
-        json={
-            "title": "授权测试分镜",
-            "teaching_objectives": ["测试目标"],
-            "media_type": "animation",
-            "claim_ids": [],
-            "fact_lock_ids": [],
-            "scenes": [],
-        },
+    """Create a storyboard directly in the app's in-memory store."""
+    account_id = _account_id(client)
+    temp_service = StoryboardService(generator=DeterministicStoryboardGenerator())
+    request = StoryboardGenerationRequest(
+        title="授权测试分镜",
+        teaching_objectives=["测试目标"],
+        media_type="animation",
     )
-    assert response.status_code == 201, response.text
-    return response.json()["storyboard"]["storyboard_id"]
+    storyboard = temp_service.generate_storyboard(
+        request, account_id=account_id
+    ).storyboard
+    client.app.state.storyboard_service._storyboards[storyboard.storyboard_id] = storyboard
+    return storyboard.storyboard_id
 
 
 def _run_sandbox(client: TestClient, storyboard_id: str) -> str:
-    response = client.post(
-        f"/media/storyboards/{storyboard_id}/sandbox",
-        json={
-            "storyboard_id": storyboard_id,
-            "source_code": "import math\nx = 42\nprint(x)\n",
-            "code_language": "python",
-            "resource_limits": {},
-        },
+    """Create a sandbox run directly in the app's in-memory store."""
+    account_id = _account_id(client)
+    temp_service = SandboxService(runtime=InMemorySandboxRuntime())
+    run = temp_service.run(
+        SandboxRunRequest(
+            storyboard_id=storyboard_id,
+            source_code="import math\nx = 42\nprint(x)\n",
+            code_language="python",
+        ),
+        account_id=account_id,
     )
-    assert response.status_code == 201, response.text
-    return response.json()["run_id"]
+    app_service = client.app.state.sandbox_service
+    app_service._runs[run.run_id] = run
+    app_service._run_accounts[run.run_id] = account_id
+    app_service._run_sources[run.run_id] = "import math\nx = 42\nprint(x)\n"
+    return run.run_id
 
 
 def test_media_object_not_readable_by_other_account() -> None:
@@ -96,8 +121,8 @@ def test_media_object_not_readable_by_other_account() -> None:
     assert response.status_code == 200
 
 
-def test_media_object_spec_not_modifiable_by_other_account() -> None:
-    """A 账户的媒体对象规格，B 账户修改必须 404。"""
+def test_media_object_spec_update_is_retired_410() -> None:
+    """对象规格更新入口已退役，任何已认证请求均返回 410。"""
     alice = TestClient(create_app())
     bob = TestClient(alice.app)
     _register(alice, "alice10")
@@ -108,8 +133,8 @@ def test_media_object_spec_not_modifiable_by_other_account() -> None:
         f"/media/objects/{object_id}/spec",
         params={"spec_json": "{}"},
     )
-    # 跨账户必须 404（绝不进入归属后的规格校验路径）
-    assert response.status_code == 404
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "legacy_media_retired"
 
 
 def test_storyboard_not_readable_by_other_account() -> None:
@@ -126,20 +151,21 @@ def test_storyboard_not_readable_by_other_account() -> None:
     assert response.status_code == 200
 
 
-def test_storyboard_validate_not_readable_by_other_account() -> None:
-    """A 账户分镜的验证报告，B 账户读取必须 404（且不泄漏运行状态）。"""
+def test_storyboard_validate_is_retired_410() -> None:
+    """分镜验证入口已退役（原实现会修改分镜状态），任何请求返回 410。"""
     alice = TestClient(create_app())
     bob = TestClient(alice.app)
     _register(alice, "alice12")
     _register(bob, "bob12")
     storyboard_id = _create_storyboard(alice)
-    run_id = _run_sandbox(alice, storyboard_id)
+    _run_sandbox(alice, storyboard_id)
 
     response = bob.get(
         f"/media/storyboards/{storyboard_id}/validate",
-        params={"run_id": run_id},
+        params={"run_id": "run-1"},
     )
-    assert response.status_code == 404
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "legacy_media_retired"
 
 
 def test_sandbox_run_not_readable_by_other_account() -> None:
@@ -157,8 +183,8 @@ def test_sandbox_run_not_readable_by_other_account() -> None:
     assert response.status_code == 200
 
 
-def test_sandbox_repair_not_allowed_by_other_account() -> None:
-    """A 账户的沙箱运行，B 账户修复必须 404。"""
+def test_sandbox_repair_is_retired_410() -> None:
+    """沙箱修复入口已退役，任何已认证请求均返回 410。"""
     alice = TestClient(create_app())
     bob = TestClient(alice.app)
     _register(alice, "alice14")
@@ -170,12 +196,12 @@ def test_sandbox_repair_not_allowed_by_other_account() -> None:
         f"/media/sandbox-runs/{run_id}/repair",
         json={"patch": "x = 1", "code_language": "python"},
     )
-    # 参数校验或账户隔离任一先行拒绝均满足 AC9：绝不执行 B 对 A 的修复
-    assert response.status_code in (404, 422)
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "legacy_media_retired"
 
 
-def test_accessibility_bundle_target_not_readable_by_other_account() -> None:
-    """A 账户分镜的替代方案目标，B 账户生成必须拒绝（目标按账户隔离）。"""
+def test_accessibility_bundle_create_is_retired_410() -> None:
+    """无障碍包生成入口已退役，任何已认证请求均返回 410。"""
     alice = TestClient(create_app())
     bob = TestClient(alice.app)
     _register(alice, "alice15")
@@ -190,8 +216,8 @@ def test_accessibility_bundle_target_not_readable_by_other_account() -> None:
             "media_type": "animation",
         },
     )
-    # 目标不存在或无权访问统一按失败处理，绝不返回 A 的内容
-    assert response.status_code in (404, 422, 403)
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "legacy_media_retired"
 
 
 # ---------------------------------------------------------------------------
@@ -202,10 +228,9 @@ def test_accessibility_bundle_target_not_readable_by_other_account() -> None:
 def test_concurrent_two_account_operations_do_not_cross_contaminate(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
-    """两个账户并发执行注册/建对话/建媒体对象：结果互不串号。
+    """两个账户并发创建媒体对象：结果互不串号。
 
-    对话与媒体对象需要真实数据库（内存模式对话存储 503），使用临时
-    SQLite 复现 E2E 同款拓扑。
+    旧 /media 写入口已退役，本测试直接操作内存服务存储验证读取隔离。
     """
     import threading
 
@@ -229,43 +254,17 @@ def test_concurrent_two_account_operations_do_not_cross_contaminate(
             )
             assert response.status_code == 201, response.text
             account_id = response.json()["account"]["id"]
-            # 各自创建对话（同名对话也不串号）
-            conv = client.post(
-                "/chat/conversations",
-                json={
-                    "title": "并发同名对话",
-                    "mode": "companion",
-                    "project_id": None,
-                    "plugin_selection": [],
-                },
-            )
+            # 对话（现行产品域）与媒体对象（内存域）各自隔离。
+            conv = client.post("/chat/conversations", json={})
             assert conv.status_code == 201, conv.text
             conv_id = conv.json()["conversation_id"]
-            conv_back = client.get(f"/chat/conversations/{conv_id}")
-            assert conv_back.status_code == 200
-            # 媒体对象（内存域）跨账户读取必须 404
-            chart = client.post(
-                "/media/charts",
-                json={
-                    "title": f"并发图表-{tag}",
-                    "mark": "bar",
-                    "data": {
-                        "columns": [
-                            {"name": "city", "type": "string", "values": ["北京"]},
-                            {"name": "temp", "type": "number", "values": [28]},
-                        ]
-                    },
-                    "x_field": "city",
-                    "y_field": "temp",
-                },
-            )
-            assert chart.status_code == 201, chart.text
+            object_id = _create_chart(client)
             results.append(
                 {
                     "tag": tag,
                     "account_id": account_id,
                     "conv_id": conv_id,
-                    "object_id": chart.json()["media_object"]["media_object_id"],
+                    "object_id": object_id,
                 }
             )
         except BaseException as exc:  # noqa: BLE001 - 收集线程异常统一断言
@@ -282,8 +281,6 @@ def test_concurrent_two_account_operations_do_not_cross_contaminate(
 
     assert not errors, errors
     assert len(results) == 2
-    # 线程完成顺序不确定：按 tag 识别账户，不能依赖 results 列表顺序
-    # （否则 50% 概率把「本方对话」误判为「对方对话」导致假失败）。
     alpha_result = next(r for r in results if r["tag"] == "alpha")
     beta_result = next(r for r in results if r["tag"] == "beta")
     first = alpha_result
@@ -302,12 +299,10 @@ def test_concurrent_two_account_operations_do_not_cross_contaminate(
         "/auth/login",
         json={"identifier": "conc-beta", "password": "correct-horse-12"},
     ).status_code == 200
-    # 对方对话 → 404；本方对话 → 200
     assert bob.get(f"/chat/conversations/{first['conv_id']}").status_code == 404
     assert alice.get(f"/chat/conversations/{second['conv_id']}").status_code == 404
     assert alice.get(f"/chat/conversations/{first['conv_id']}").status_code == 200
     assert bob.get(f"/chat/conversations/{second['conv_id']}").status_code == 200
-    # 对方媒体对象 → 404；本方 → 200
     assert bob.get(f"/media/objects/{first['object_id']}").status_code == 404
     assert alice.get(f"/media/objects/{second['object_id']}").status_code == 404
     assert alice.get(f"/media/objects/{first['object_id']}").status_code == 200

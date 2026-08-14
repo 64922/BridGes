@@ -53,6 +53,9 @@ from bridges.media import (
     StoryboardService,
     build_media_publish_impact_resolver,
 )
+from bridges.media.accessibility_service import DeterministicNarrationSynthesizer
+from bridges.media.generation import DeterministicSpecGenerator
+from bridges.media.storyboard_service import DeterministicStoryboardGenerator
 
 ACCOUNT = "user-t035"
 PROJECT = "project-t035"
@@ -167,12 +170,12 @@ def _storyboard_request(claim_ids: list[str] | None = None) -> StoryboardGenerat
 
 @pytest.fixture()
 def generation_service() -> MediaGenerationService:
-    return MediaGenerationService()
+    return MediaGenerationService(spec_generator=DeterministicSpecGenerator())
 
 
 @pytest.fixture()
 def storyboard_service() -> StoryboardService:
-    return StoryboardService()
+    return StoryboardService(generator=DeterministicStoryboardGenerator())
 
 
 @pytest.fixture()
@@ -188,6 +191,7 @@ def accessibility_service(
     return AccessibilityService(
         storyboard_service=storyboard_service,
         generation_service=generation_service,
+        narration_synthesizer=DeterministicNarrationSynthesizer(),
     )
 
 

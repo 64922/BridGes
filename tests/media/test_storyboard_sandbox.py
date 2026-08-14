@@ -57,12 +57,12 @@ from bridges.media.storyboard_service import (
 
 @pytest.fixture
 def storyboard_service() -> StoryboardService:
-    return StoryboardService()
+    return StoryboardService(generator=DeterministicStoryboardGenerator())
 
 
 @pytest.fixture
 def sandbox_service() -> SandboxService:
-    return SandboxService()
+    return SandboxService(runtime=InMemorySandboxRuntime())
 
 
 @pytest.fixture

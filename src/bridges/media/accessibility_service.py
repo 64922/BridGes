@@ -326,9 +326,16 @@ class AccessibilityService:
         self._storyboard_service = storyboard_service
         self._generation_service = generation_service
         self._media_ingestion_service = media_ingestion_service
-        self._synthesizer = narration_synthesizer or DeterministicNarrationSynthesizer()
+        self._synthesizer = narration_synthesizer
         self._bundles: dict[str, AccessibilityBundle] = {}
         self._playback_states: dict[str, PlaybackState] = {}
+
+    def _require_synthesizer(self) -> NarrationSynthesizer:
+        if self._synthesizer is None:
+            raise AccessibilityError(
+                "朗读合成器未配置：生产组合不再实例化确定性旁白合成器。"
+            )
+        return self._synthesizer
 
     # ── Bundle generation ────────────────────────────────────────────
 
@@ -881,7 +888,7 @@ class AccessibilityService:
             project_id=bundle.project_id,
             run_id=f"tts-{bundle.bundle_id}",
         )
-        narration = self._synthesizer.synthesize(bundle.narration, context)
+        narration = self._require_synthesizer().synthesize(bundle.narration, context)
         return bundle.model_copy(
             update={
                 "science_validated": True,

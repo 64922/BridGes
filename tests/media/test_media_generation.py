@@ -41,6 +41,7 @@ from bridges.contracts.media import (
 )
 from bridges.contracts.science import FactLock, FactLockType
 from bridges.media.generation import (
+    DeterministicSpecGenerator,
     MediaGenerationError,
     MediaGenerationService,
 )
@@ -48,7 +49,7 @@ from bridges.media.generation import (
 
 @pytest.fixture
 def service() -> MediaGenerationService:
-    return MediaGenerationService()
+    return MediaGenerationService(spec_generator=DeterministicSpecGenerator())
 
 
 @pytest.fixture
