@@ -1,6 +1,6 @@
 # Issue 11：补齐 Humanizer 真实 Qwen 首稿与修订审计闭环
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -96,3 +96,10 @@ python -m pytest tests/humanizer/test_article_real_smoke.py -q -p no:cacheprovid
 
 - 2026-08-13：已验证首稿和修订均真实走结构化模型网关，但服务层未持久化返回锁；本 issue 不重复实现 Humanizer 生成能力，只闭合真实性与审计证据。
 - 2026-08-13：凭据范围已由用户确认：使用安装级全局 Qwen Key；任何测试、日志和 issue 实施均不得读取或泄露 Key 内容。
+- 2026-08-14：Issue 11 实现完成（分支 `issue-11-humanizer-real-qwen-audit`，commit ae0a4c1 + 复查修复 2c54b8f）。
+  - 接线：`HumanizerService` 新增 `run_lock_recorder: ModelRunLockRecorder | None` 端口注入；全部结构化调用点（首稿 `_invoke_draft_model`、证据安全修订复用同方法、裁决定向修订 `_invoke_revision_model`、旧兼容路径 `_invoke_model` 及其软门修复）在状态判断/输出解析之前经统一接缝 `_record_model_run_lock` 立即持久化网关返回锁。锁同时建立助手消息（主）与会话（辅）业务关联，`record_many` 单事务写入；投影只保存 `run_lock_id`（主要锁引用）与 `model_run_id`（业务 run 引用），完整调用集合由统一锁仓库按 `account_id + run_id` 查询。
+  - 阶段与序号：`humanizer_draft:1`、`humanizer_revision:2`（BusinessRef.operation:attempt_ordinal，与写作调用预算一一对应；同一阶段多次真实调用各自成锁、共享阶段序号，顺序由 attempt_ordinal + created_at 稳定排序——恢复执行发起的新调用以网关新 lock_id 保存新锁，绝不覆盖旧锁）。
+  - 失败关闭：稳定错误码 `humanizer_missing_run_lock`（网关缺锁）、`humanizer_lock_persist_failed`（recorder 写失败）、`humanizer_lock_business_mismatch`（锁账户/run 与业务不符）；修订/证据安全修订/软门修复三个吞错点对锁审计失败重抛，任务整体失败，绝不把无审计证据的模型输出提升为完成态。
+  - 生产接线：`bridges.api.main` 与 `bridges.evaluation.executors` 均注入 `SqliteModelRunLockRecorder`（不留无锁入口）；生产组合门禁沿用 Issue 09（AC9 由 `tests/ai/test_composition_gate.py` 等既有门禁测试覆盖，本 issue 未削弱任何门禁）。
+  - 验证：`tests/humanizer/test_humanizer_model_run_locks.py`（30 用例：单锁/双锁顺序/未触发/停止/预算/首稿失败/修订失败/空输出/降级/结构校验失败/本地复核失败/幂等重放/恢复新锁/重启可查/跨账户隔离/recorder 写失败/缺锁/业务不匹配/脱敏/证据安全修订/旧路径）；`tests/architecture/test_humanizer_lock_seam.py`（全部 `gateway.invoke` 调用点必须经记录接缝 + 常量来源 + 主辅关联 + 稳定错误码，含负向样本）；真实 smoke `test_article_real_smoke.py` 增加重启后锁核对（锁数 == writing_call_count，首条必为首稿，固定模型 ID 来自单一事实源）。Issue 建议命令与 humanizer/architecture/ai/storage/credentials/evaluation/chat humanizer 相关套件全绿；`tests` 全量中 4 个 `test_humanizer_chat.py` 用例为 pristine main 同样失败的环境性既有问题；全量收集的两个同名文件冲突（test_release_gate/test_schema_v33）为既有问题。
+  - 设计取舍（复查记录）：recorder 为可选注入（未配置时跳过持久化，供测试替身合同），生产组合强制注入；`_LockEvidence` 贯穿各编排方法以携带 run/锁引用（不复制正文），新调用点须显式接入接缝（架构测试强制）。
