@@ -17,12 +17,14 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from pydantic import SecretStr
 
 from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
 from bridges.storage.database import SCHEMA_VERSION
-from bridges.web_search.client import DuckDuckGoClient, WebSearchError
-from bridges.web_search.providers import BraveSearchClient
+from bridges.web_search.client import (
+    DUCKDUCKGO_PROVIDER_VERSION,
+    DuckDuckGoClient,
+    WebSearchError,
+)
 
 
 class FailureClass(StrEnum):
@@ -34,11 +36,16 @@ class FailureClass(StrEnum):
 
 
 class CheckStatus(StrEnum):
-    """发布门单项状态。"""
+    """发布门单项状态。
+
+    ``INCONCLUSIVE`` 表示外部服务暂时不可达或网络未授权：不能判定通过，
+    也不能定性为产品缺陷；发布命令必须非零退出等待人工判定。
+    """
 
     PASSED = "passed"
     FAILED = "failed"
     SKIPPED = "skipped"
+    INCONCLUSIVE = "inconclusive"
 
 
 @dataclass(frozen=True)
@@ -63,12 +70,15 @@ class CheckEvidence:
 
 @dataclass(frozen=True)
 class ProviderProbeEvidence:
-    """真实提供方探针的脱敏结果。"""
+    """真实提供方探针的脱敏结果（Issue 04：只登记 duckduckgo 与 arxiv）。"""
 
     provider: str
     status: str
     semantic_health: str
+    checked_at: str = ""
     duration_ms: int = 0
+    provider_version: str | None = None
+    result_count: int | None = None
     error_category: str | None = None
     failure_class: FailureClass | None = None
     worker_cleanup: bool = True
@@ -78,7 +88,10 @@ class ProviderProbeEvidence:
             "provider": self.provider,
             "status": self.status,
             "semantic_health": self.semantic_health,
+            "checked_at": self.checked_at,
             "duration_ms": self.duration_ms,
+            "provider_version": self.provider_version,
+            "result_count": self.result_count,
             "error_category": self.error_category,
             "failure_class": self.failure_class.value if self.failure_class else None,
             "worker_cleanup": self.worker_cleanup,
@@ -102,7 +115,10 @@ class ReleaseGateReport:
     def status(self) -> str:
         if any(check.status == CheckStatus.FAILED for check in self.deterministic_checks):
             return "blocked"
-        if any(probe.status == CheckStatus.FAILED for probe in self.real_probes):
+        if any(
+            probe.status in {CheckStatus.FAILED, CheckStatus.INCONCLUSIVE}
+            for probe in self.real_probes
+        ):
             return "blocked"
         return "passed"
 
@@ -188,18 +204,29 @@ def _semantic_arxiv_health(papers: Sequence[Any]) -> str:
 
 
 def run_real_provider_probes() -> list[ProviderProbeEvidence]:
-    """显式网络探针：调用者必须主动传入 ``--real-probes`` 才会执行。"""
+    """显式网络探针：调用者必须主动传入 ``--real-probes`` 才会执行。
+
+    Issue 04：真实发布探针只访问 DuckDuckGo 与 arXiv；Brave 等备用提供方
+    不再探测，配置了备用 Key 反而会使发布门失败（配置漂移）。
+    """
 
     probes: list[ProviderProbeEvidence] = []
     with httpx.Client(trust_env=False, timeout=10.0) as http_client:
         probes.append(_probe_web(http_client))
-        probes.append(_probe_brave(http_client))
         probes.append(_probe_arxiv(http_client))
     return probes
 
 
 def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
+    """真实 DDG 发布探针：可解析结果 + provider/version/错误语义合同校验。
+
+    只通过以下条件：固定 DDG 端点返回可解析结果、结果语义与固定探针查询
+    匹配、结果 provider/version 与合同完全一致。网络未授权或外部服务暂时
+    不可达报告 ``inconclusive``；解析/合同漂移报告 ``failed``。mock、
+    fixture、cassette 无法让本探针变绿（每次运行都构造真实客户端）。
+    """
     started = time.monotonic()
+    checked_at = datetime.now(UTC).isoformat()
     client = DuckDuckGoClient(
         http_client=http_client,
         timeout=8.0,
@@ -207,58 +234,89 @@ def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
     )
     try:
         results = client.search("Transformer architecture", timeout=8.0)
-        semantic = _semantic_web_health(results)
-        status = CheckStatus.PASSED if semantic == "ready" else CheckStatus.FAILED
+    except WebSearchError as error:
+        return _web_probe_outcome(started, checked_at, _error_category(error))
+    except Exception as error:  # noqa: BLE001 - 探针只输出稳定分类
+        return _web_probe_outcome(started, checked_at, _error_category(error))
+    result_count = len(results)
+    semantic = _semantic_web_health(results)
+    provider_set = {getattr(result, "provider", None) for result in results}
+    version_set = {getattr(result, "provider_version", None) for result in results}
+    contract_ok = (
+        semantic == "ready"
+        and provider_set == {"duckduckgo"}
+        and version_set == {DUCKDUCKGO_PROVIDER_VERSION}
+    )
+    if not contract_ok:
+        # 解析契约漂移：非空 HTML/HTTP 200 本身不足以判定 READY。
         return ProviderProbeEvidence(
             provider="duckduckgo",
-            status=status,
+            status=CheckStatus.FAILED,
             semantic_health=semantic,
+            checked_at=checked_at,
             duration_ms=_duration_ms(started),
-            error_category=None if status == CheckStatus.PASSED else "web_search_semantic_health",
-            failure_class=None if status == CheckStatus.PASSED else FailureClass.EXTERNAL,
+            provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+            result_count=result_count,
+            error_category="parse_contract_drift",
+            failure_class=FailureClass.PRODUCT,
+            worker_cleanup=True,
         )
-    except WebSearchError as error:
-        return _failed_probe("duckduckgo", started, _error_category(error), FailureClass.EXTERNAL)
-    except Exception as error:  # noqa: BLE001 - 探针只输出稳定分类
-        return _failed_probe("duckduckgo", started, _error_category(error), FailureClass.EXTERNAL)
-
-
-def _probe_brave(http_client: httpx.Client) -> ProviderProbeEvidence:
-    started = time.monotonic()
-    key = os.environ.get("BRIDGES_BRAVE_SEARCH_API_KEY", "").strip()
-    enabled = os.environ.get("BRIDGES_PUBLIC_SEARCH_FALLBACK_ENABLED", "").strip().lower()
-    if not key or enabled not in {"1", "true", "yes"}:
-        return _failed_probe(
-            "brave_search",
-            started,
-            "fallback_provider_not_configured",
-            FailureClass.ENVIRONMENT,
-        )
-    client = BraveSearchClient(
-        api_key=SecretStr(key),
-        http_client=http_client,
-        timeout=8.0,
+    return ProviderProbeEvidence(
+        provider="duckduckgo",
+        status=CheckStatus.PASSED,
+        semantic_health=semantic,
+        checked_at=checked_at,
+        duration_ms=_duration_ms(started),
+        provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+        result_count=result_count,
+        error_category=None,
+        failure_class=None,
+        worker_cleanup=True,
     )
-    try:
-        results = client.search("Transformer architecture", timeout=8.0)
-        semantic = _semantic_web_health(results)
-        status = CheckStatus.PASSED if semantic == "ready" else CheckStatus.FAILED
-        return ProviderProbeEvidence(
-            provider="brave_search",
-            status=status,
-            semantic_health=semantic,
-            duration_ms=_duration_ms(started),
-            error_category=None if status == CheckStatus.PASSED else "web_search_semantic_health",
-            failure_class=None if status == CheckStatus.PASSED else FailureClass.EXTERNAL,
-        )
-    except WebSearchError as error:
-        return _failed_probe("brave_search", started, _error_category(error), FailureClass.EXTERNAL)
-    except Exception as error:  # noqa: BLE001 - 探针只输出稳定分类
-        return _failed_probe("brave_search", started, _error_category(error), FailureClass.EXTERNAL)
+
+
+def _web_probe_outcome(
+    started: float, checked_at: str, error_code: str
+) -> ProviderProbeEvidence:
+    """把稳定错误码映射到 inconclusive/failed 与责任边界。
+
+    网络未授权（permission）与外部服务暂时不可达（DNS、connect、offline、
+    timeout、rate_limit、5xx upstream、challenge）→ ``inconclusive``；
+    解析、重定向、响应过大与请求类错误 → ``failed``。
+    """
+    inconclusive_codes = {
+        "web_search_permission",
+        "web_search_dns",
+        "web_search_connect",
+        "web_search_offline",
+        "web_search_timeout",
+        "web_search_rate_limit",
+        "web_search_provider",
+        "web_search_provider_challenge",
+    }
+    if error_code in inconclusive_codes:
+        status = CheckStatus.INCONCLUSIVE
+        failure_class = FailureClass.EXTERNAL
+    else:
+        status = CheckStatus.FAILED
+        failure_class = FailureClass.PRODUCT
+    return ProviderProbeEvidence(
+        provider="duckduckgo",
+        status=status,
+        semantic_health="unavailable",
+        checked_at=checked_at,
+        duration_ms=_duration_ms(started),
+        provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+        result_count=None,
+        error_category=error_code,
+        failure_class=failure_class,
+        worker_cleanup=True,
+    )
 
 
 def _probe_arxiv(http_client: httpx.Client) -> ProviderProbeEvidence:
     started = time.monotonic()
+    checked_at = datetime.now(UTC).isoformat()
     client = ArxivMcpClient(http_client=http_client, timeout=10.0)
     try:
         papers = client.search("Transformer architecture", max_results=1)
@@ -268,15 +326,22 @@ def _probe_arxiv(http_client: httpx.Client) -> ProviderProbeEvidence:
             provider="arxiv",
             status=status,
             semantic_health=semantic,
+            checked_at=checked_at,
             duration_ms=_duration_ms(started),
+            provider_version=getattr(client, "provider_version", None),
+            result_count=len(papers),
             error_category=None if status == CheckStatus.PASSED else "arxiv_semantic_health",
             failure_class=None if status == CheckStatus.PASSED else FailureClass.EXTERNAL,
             worker_cleanup=True,
         )
     except ArxivMcpError as error:
-        return _failed_probe("arxiv", started, _error_category(error), FailureClass.EXTERNAL)
+        return _failed_probe(
+            "arxiv", started, checked_at, _error_category(error), FailureClass.EXTERNAL
+        )
     except Exception as error:  # noqa: BLE001 - 探针只输出稳定分类
-        return _failed_probe("arxiv", started, _error_category(error), FailureClass.EXTERNAL)
+        return _failed_probe(
+            "arxiv", started, checked_at, _error_category(error), FailureClass.EXTERNAL
+        )
     finally:
         client.close()
 
@@ -284,6 +349,7 @@ def _probe_arxiv(http_client: httpx.Client) -> ProviderProbeEvidence:
 def _failed_probe(
     provider: str,
     started: float,
+    checked_at: str,
     error_category: str,
     failure_class: FailureClass,
 ) -> ProviderProbeEvidence:
@@ -291,6 +357,7 @@ def _failed_probe(
         provider=provider,
         status=CheckStatus.FAILED,
         semantic_health="unavailable",
+        checked_at=checked_at,
         duration_ms=_duration_ms(started),
         error_category=error_category,
         failure_class=failure_class,
@@ -327,7 +394,10 @@ def write_report(report: ReleaseGateReport, path: Path) -> None:
         lines.extend(["", "## 真实提供方探针", ""])
         lines.extend(
             f"- `{item['provider']}`：`{item['status']}`，语义健康 `{item['semantic_health']}`，"
-            f"{item['duration_ms']} ms，错误类别 `{item['error_category'] or 'none'}`"
+            f"探针时间 `{item['checked_at'] or 'unknown'}`，{item['duration_ms']} ms，"
+            f"版本 `{item['provider_version'] or 'unknown'}`，"
+            f"结果数 `{item['result_count'] if item['result_count'] is not None else 'n/a'}`，"
+            f"错误类别 `{item['error_category'] or 'none'}`"
             for item in payload["real_probes"]
         )
         lines.extend(["", "## 风险", ""])
@@ -434,6 +504,79 @@ def _diagnostic_category(stdout: str, stderr: str) -> str:
     return next((category for marker, category in markers if marker in text), "check_failed")
 
 
+#: 被禁止的备用通用搜索提供方配置（Issue 04：出现即配置漂移）。
+_FALLBACK_SEARCH_ENV_KEYS = (
+    "BRIDGES_BRAVE_SEARCH_API_KEY",
+    "BRIDGES_PUBLIC_SEARCH_FALLBACK_ENABLED",
+    "BRIDGES_BRAVE_SEARCH_API_KEY_FILE",
+)
+
+
+def _provider_drift_check(environment: dict[str, str]) -> CheckEvidence:
+    """检测备用提供方 Key/开关：存在即配置漂移，发布门失败关闭。
+
+    当前产品唯一通用联网提供方是 DuckDuckGo；Brave/Tavily/Bing/Serper/
+    SearXNG 等任何备用源配置（含 Key）都使发布门以稳定错误码
+    ``unexpected_search_provider`` 失败，且不会自动切换提供方。
+    """
+    started = time.monotonic()
+    drifted: list[str] = []
+    for key in _FALLBACK_SEARCH_ENV_KEYS:
+        if environment.get(key, "").strip():
+            drifted.append(key)
+    for key, value in environment.items():
+        if value.strip() and key.startswith("BRIDGES_") and (
+            "SEARCH" in key or "BRAVE" in key or "TAVILY" in key
+        ) and key not in _FALLBACK_SEARCH_ENV_KEYS:
+            drifted.append(key)
+    if drifted:
+        return CheckEvidence(
+            name="search-provider-drift",
+            status=CheckStatus.FAILED,
+            duration_ms=_duration_ms(started),
+            failure_class=FailureClass.PRODUCT,
+            error_category="unexpected_search_provider",
+        )
+    return CheckEvidence(
+        name="search-provider-drift",
+        status=CheckStatus.PASSED,
+        duration_ms=_duration_ms(started),
+    )
+
+
+def diagnose_web_health() -> int:
+    """运维诊断命令：单次真实 DDG 探针，输出 JSON 与简洁中文摘要。
+
+    同一次运行记录探针时间、状态、耗时、provider version、结果数量与
+    稳定错误码；退出码：0=READY，1=失败，2=无法判定（外部不可达/未授权）。
+    """
+    with httpx.Client(trust_env=False, timeout=10.0) as http_client:
+        probe = _probe_web(http_client)
+    payload = probe.as_dict()
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    if probe.status == CheckStatus.PASSED:
+        print(
+            "DuckDuckGo 公网搜索可用："
+            f"{probe.result_count or 0} 条可解析结果，"
+            f"耗时 {probe.duration_ms} ms，"
+            f"提供方版本 {probe.provider_version or 'unknown'}。"
+        )
+        return 0
+    if probe.status == CheckStatus.INCONCLUSIVE:
+        print(
+            "无法判定：DuckDuckGo 暂时不可达或网络未授权"
+            f"（{probe.error_category or 'unknown'}），耗时 {probe.duration_ms} ms；"
+            "请人工复核网络后重试，不能以 fixture/mock 替代真实判定。"
+        )
+        return 2
+    print(
+        "失败：DuckDuckGo 探针未通过合同校验"
+        f"（{probe.error_category or 'unknown'}），耗时 {probe.duration_ms} ms；"
+        "请检查解析契约或提供方配置。"
+    )
+    return 1
+
+
 def run_gate(
     repo_root: Path | None = None,
     *,
@@ -455,6 +598,7 @@ def run_gate(
         }
     )
     checks: list[CheckEvidence] = []
+    checks.append(_provider_drift_check(environment))
     python_tests = [
         str(root / "tests" / "closeout" / "test_three_journeys.py"),
         str(root / "tests" / "closeout" / "test_release_gate.py"),
@@ -467,6 +611,8 @@ def run_gate(
         str(root / "tests" / "profiles" / "test_profile_v2_safe_replay.py"),
         str(root / "tests" / "web_search" / "test_duckduckgo_service.py"),
         str(root / "tests" / "web_search" / "test_public_search_fallback.py"),
+        str(root / "tests" / "web_search" / "test_health_monitor.py"),
+        str(root / "tests" / "web_search" / "test_health_probe_mapping.py"),
     ]
     # 每次使用新的临时目录，避免不同权限身份的历史 pytest 目录互相阻塞。
     with tempfile.TemporaryDirectory(prefix=".release-gate-", dir=root) as basetemp:
@@ -564,8 +710,13 @@ def run_gate(
         risks.append("web_checks_skipped")
     if skip_browser:
         risks.append("browser_gate_skipped")
-    if any(probe.status == CheckStatus.FAILED for probe in probes):
+    if any(
+        probe.status in {CheckStatus.FAILED, CheckStatus.INCONCLUSIVE}
+        for probe in probes
+    ):
         risks.append("real_provider_probe_failed")
+    if any(probe.status == CheckStatus.INCONCLUSIVE for probe in probes):
+        risks.append("real_provider_probe_inconclusive")
     deterministic_ok = all(
         check.status in {CheckStatus.PASSED, CheckStatus.SKIPPED} for check in checks
     )
@@ -586,7 +737,16 @@ def run_gate(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="运行 BridGes 三条旅程收尾发布门。")
-    parser.add_argument("--real-probes", action="store_true", help="显式访问 DDG、Brave 与 arXiv。")
+    parser.add_argument(
+        "--real-probes",
+        action="store_true",
+        help="显式访问 DDG 与 arXiv 真实探针。",
+    )
+    parser.add_argument(
+        "--web-health",
+        action="store_true",
+        help="运维诊断：只运行一次真实 DDG 探针，输出 JSON 与中文摘要（不运行完整发布门）。",
+    )
     parser.add_argument("--skip-browser", action="store_true", help="跳过真实浏览器收尾门。")
     parser.add_argument(
         "--skip-web", action="store_true", help="跳过 Web 单测与 TypeScript 类型检查。"
@@ -598,6 +758,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="脱敏 JSON/Markdown 证据报告路径。",
     )
     args = parser.parse_args(argv)
+    if args.web_health:
+        return diagnose_web_health()
     report = run_gate(
         real_probes=args.real_probes,
         skip_browser=args.skip_browser,

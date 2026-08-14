@@ -27,21 +27,40 @@ from bridges.web_search.client import (
 )
 from bridges.web_search.contracts import (
     WebSearchHealth,
+    WebSearchHealthSnapshot,
     WebSearchHealthStatus,
     WebSearchHealthSummary,
-    WebSearchProjection,
     WebSearchPageClassification,
+    WebSearchProjection,
     WebSearchProviderAttempt,
     WebSearchResult,
     WebSearchStatus,
     aggregate_public_search_health,
 )
+from bridges.web_search.health_monitor import WebSearchHealthMonitor
 
 WEB_SEARCH_RULES_VERSION = "web-search-plan-v2"
 DEFAULT_PROVIDER = "duckduckgo"
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60
 _FRESH_CACHE_TTL_SECONDS = 60 * 60
 _CURRENT_CACHE_TTL_SECONDS = 15 * 60
+
+
+class WebSearchProviderDriftError(ValueError):
+    """出现 DuckDuckGo 之外的通用搜索提供方时的配置漂移错误。
+
+    Issue 04：当前产品唯一通用联网提供方是 DuckDuckGo；备用客户端、备用
+    Key 或其他提供方注册都必须在组合期失败关闭，稳定错误码
+    ``unexpected_search_provider``。
+    """
+
+    code = "unexpected_search_provider"
+
+    def __init__(self, message: str) -> None:
+        self.code = "unexpected_search_provider"
+        super().__init__(message)
+
+
 class _SearchStopSignal:
     """搜索内部停止信号：不把预算到期误写成用户取消。"""
 
@@ -409,11 +428,19 @@ class WebSearchService:
         cache: WebSearchCache | None = None,
         clock: Callable[[], datetime] | None = None,
         sleeper: Callable[[float], None] | None = None,
+        health_ttl_seconds: int = 30,
+        health_stale_ready_seconds: int = 300,
+        health_probe_timeout_seconds: float = 5.0,
+        health_auto_refresh: bool = True,
     ) -> None:
+        # Issue 04：出现 DuckDuckGo 之外的备用提供方即配置漂移，组合期
+        # 失败关闭，绝不静默忽略或继续保留 fallback 结构。
+        if fallback_client is not None:
+            raise WebSearchProviderDriftError(
+                "检测到备用公网搜索提供方注册（fallback_client）；"
+                "当前产品唯一通用联网提供方是 DuckDuckGo，拒绝启动。"
+            )
         self._client = client or DuckDuckGoClient()
-        # Issue 03：生产组合只使用 DuckDuckGo；保留参数仅为了避免破坏现有
-        # 调用签名，传入的备用客户端不会被使用。
-        self._fallback_client = None
         self._planner = planner or LocalQueryPlanner()
         self._observability = observability
         self._cache = cache or InMemoryWebSearchCache()
@@ -421,6 +448,20 @@ class WebSearchService:
         self._sleeper = sleeper or time.sleep
         self._provider_cooldown_until: datetime | None = None
         self._provider_state_lock = RLock()
+        checker = getattr(self._client, "health_check", None)
+        self._health_monitor: WebSearchHealthMonitor | None = (
+            WebSearchHealthMonitor(
+                checker,
+                clock=self._clock,
+                ttl_seconds=health_ttl_seconds,
+                stale_ready_seconds=health_stale_ready_seconds,
+                probe_timeout_seconds=health_probe_timeout_seconds,
+                auto_refresh=health_auto_refresh,
+                provider_version=DUCKDUCKGO_PROVIDER_VERSION,
+            )
+            if callable(checker)
+            else None
+        )
 
     def plan(
         self,
@@ -431,8 +472,23 @@ class WebSearchService:
     ) -> SearchPlan:
         return self._planner.plan(content, mode, force=force)
 
+    @property
+    def health_monitor(self) -> WebSearchHealthMonitor | None:
+        """运行期健康快照监视器；客户端不支持健康检查时为空。"""
+        return self._health_monitor
+
+    def health_snapshot(self) -> WebSearchHealthSnapshot | None:
+        """只读当前 DDG 健康快照；客户端无健康检查时为空。"""
+        monitor = self._health_monitor
+        return None if monitor is None else monitor.peek()
+
+    def refresh_health(self) -> WebSearchHealthSnapshot | None:
+        """同步执行一次有界真实探测（发布探针/诊断命令使用）。"""
+        monitor = self._health_monitor
+        return None if monitor is None else monitor.refresh_now()
+
     def health_check(self) -> WebSearchHealthSummary:
-        """检查已登记来源；Issue 03 后只登记 DuckDuckGo。"""
+        """检查已登记来源；Issue 04 后只登记 DuckDuckGo 且漂移失败关闭。"""
 
         clients = [(self._client, DEFAULT_PROVIDER, DUCKDUCKGO_PROVIDER_VERSION)]
         health: list[WebSearchHealth] = []
@@ -474,10 +530,30 @@ class WebSearchService:
     ) -> WebSearchProjection | None:
         if not plan.should_search:
             return None
+        # Issue 04：DDG 明确非 READY 时，本轮仍按 Issue 03 做受控真实尝试，
+        # 但 UI/消息立即显示降级提示，避免把用户查询阶段与探针状态割裂。
+        monitor = self._health_monitor
+        degraded = False
+        if monitor is not None:
+            snapshot = monitor.peek()
+            degraded = (
+                snapshot is not None
+                and not snapshot.pending
+                and snapshot.status != WebSearchHealthStatus.READY
+            )
         return self._projection(
             plan,
-            status=WebSearchStatus.RECOVERY if recovery else WebSearchStatus.LOADING,
+            status=(
+                WebSearchStatus.RECOVERY
+                if recovery or degraded
+                else WebSearchStatus.LOADING
+            ),
             can_cancel=True,
+            error_message=(
+                "联网服务异常，正在尝试联网；失败将进入模型知识降级。"
+                if degraded
+                else None
+            ),
         )
 
     def search(

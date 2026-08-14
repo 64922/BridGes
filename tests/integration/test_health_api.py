@@ -2,9 +2,13 @@
 
 The seam under test: a user (or the Web UI) can read the same health projection
 from the API, and the projection carries live/ready/degraded semantics.
+
+Issue 04：readiness 独立暴露 DDG 健康快照（web_search 依赖 + 脱敏
+extensions）；DDG 故障只进入降级，不拖垮基础存活与就绪。
 """
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,12 +16,37 @@ from fastapi.testclient import TestClient
 
 from bridges import __version__
 from bridges.api.main import create_app
+from bridges.closeout.fixtures import CloseoutWebSearchClient
 from bridges.config import get_settings
+from bridges.web_search.contracts import WebSearchHealth, WebSearchHealthStatus
+from bridges.web_search.service import WebSearchService
 
 
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(create_app())
+
+
+def _failing_web_search_service() -> WebSearchService:
+    class _FailingHealthClient(CloseoutWebSearchClient):
+        def health_check(self) -> WebSearchHealth:
+            return WebSearchHealth(
+                provider="duckduckgo",
+                provider_version="duckduckgo-html-v1",
+                status=WebSearchHealthStatus.CONNECT_ERROR,
+                checked_at=datetime.now(UTC),
+                error_code="web_search_connect",
+            )
+
+    return WebSearchService(
+        client=_FailingHealthClient(),
+        health_auto_refresh=False,
+    )
+
+
+def _replace_web_search(app: object, service: WebSearchService) -> None:
+    app.state.web_search_service = service
+    service.refresh_health()
 
 
 def test_health_summary_returns_unified_projection(client: TestClient) -> None:
@@ -168,3 +197,119 @@ def test_health_ready_reports_missing_production_persistence() -> None:
         else:
             os.environ[database_key] = previous_database
         get_settings.cache_clear()
+
+
+def test_health_readiness_exposes_web_search_snapshot_separately() -> None:
+    """Issue 04：readiness 独立暴露 web_search 依赖，不把数据库健康等同 DDG。"""
+    app = create_app()
+    _replace_web_search(app, WebSearchService(
+        client=CloseoutWebSearchClient(),
+        health_auto_refresh=False,
+    ))
+    response = TestClient(app).get("/health/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    web_search = [d for d in body["dependencies"] if d["name"] == "web_search"]
+    assert len(web_search) == 1
+    assert web_search[0]["status"] == "pass"
+    assert web_search[0]["required"] is False
+    assert body["ready"] == "pass"
+    assert body["degraded"] == "pass"
+    assert body["extensions"]["ddg_health_status"] == "ready"
+    assert body["extensions"]["ddg_provider_version"] == "closeout-web-fixture-v1"
+    assert 0 <= body["extensions"]["ddg_snapshot_age_ms"] <= 5000
+    assert body["extensions"]["ddg_refresh_count"] == 1
+    assert body["extensions"]["ddg_error_code"] is None
+    assert body["extensions"]["ddg_stale_ready"] is False
+    assert body["extensions"]["ddg_last_success_at"] is not None
+
+
+def test_health_readiness_degrades_but_stays_alive_when_ddg_unreachable() -> None:
+    """Issue 04：DDG 明确非 READY 时 degraded=fail，但应用仍存活且就绪。"""
+    app = create_app()
+    _replace_web_search(app, _failing_web_search_service())
+    test_client = TestClient(app)
+
+    summary = test_client.get("/health").json()
+    assert summary["ready"] == "pass"
+    assert summary["degraded"] == "fail"
+    web_search = [d for d in summary["dependencies"] if d["name"] == "web_search"]
+    assert web_search[0]["status"] == "fail"
+    assert web_search[0]["required"] is False
+    assert summary["extensions"]["ddg_health_status"] == "connect_error"
+    assert summary["extensions"]["ddg_error_code"] == "web_search_connect"
+
+    ready = test_client.get("/health/ready")
+    assert ready.status_code == 200
+    assert ready.json()["ready"] == "pass"
+    assert ready.json()["degraded"] == "fail"
+
+
+def test_health_liveness_stays_fast_and_offline_when_ddg_down() -> None:
+    """Issue 04：liveness 不访问公网、不带依赖；DDG 故障不拖垮基础存活。"""
+    app = create_app()
+    _replace_web_search(app, _failing_web_search_service())
+    test_client = TestClient(app)
+
+    response = test_client.get("/health/live")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["live"] == "pass"
+    assert body["ready"] == "unknown"
+    assert body["degraded"] == "unknown"
+    assert body["dependencies"] == []
+    assert "web_search" not in body["extensions"]
+
+
+def test_health_pending_probe_reports_unknown_without_network() -> None:
+    """Issue 04：test 环境首次 readiness 返回 pending，不访问公网、不误报失败。"""
+    response = TestClient(create_app()).get("/health/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    web_search = [d for d in body["dependencies"] if d["name"] == "web_search"]
+    assert len(web_search) == 1
+    assert web_search[0]["status"] == "unknown"
+    assert web_search[0]["required"] is False
+    assert body["degraded"] == "pass"
+    assert body["extensions"]["ddg_health_status"] == "upstream_error"
+    assert body["extensions"]["ddg_error_code"] == "web_search_health_pending"
+
+
+def test_health_projection_is_sanitized_of_probe_and_credential_material() -> None:
+    """Issue 04：健康投影不回显健康查询、响应正文、代理或凭据。"""
+    app = create_app()
+    _replace_web_search(app, WebSearchService(
+        client=CloseoutWebSearchClient(),
+        health_auto_refresh=False,
+    ))
+    serialized = TestClient(app).get("/health").text
+    lowered = serialized.casefold()
+
+    assert "bridges-provider-health-check" not in lowered
+    assert "authorization" not in lowered
+    assert "proxy" not in lowered
+    assert "api_key" not in lowered
+    assert "secret" not in lowered
+    assert "cookie" not in lowered
+
+
+def test_health_readiness_is_bounded_and_never_blocks_on_probe() -> None:
+    """Issue 04：readiness 读取快照有延迟上限，不做同步公网访问。"""
+    app = create_app()
+    app.state.web_search_service = WebSearchService(
+        client=CloseoutWebSearchClient(),
+        health_auto_refresh=False,
+    )
+    test_client = TestClient(app)
+    # 从未探测：readiness 必须立刻返回 pending（不等待探测）。
+    started = datetime.now(UTC)
+    response = test_client.get("/health/ready")
+    elapsed_ms = (datetime.now(UTC) - started).total_seconds() * 1000
+
+    assert response.status_code == 200
+    # 若 readiness 同步等待探测，将耗时超过探针超时（默认 5s）；2s 内返回
+    # 即证明只读取快照、不做公网访问。
+    assert elapsed_ms < 2000
+    assert response.json()["extensions"]["ddg_error_code"] == "web_search_health_pending"

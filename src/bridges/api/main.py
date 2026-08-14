@@ -221,6 +221,7 @@ from bridges.vault import (
     VaultService,
 )
 from bridges.video.service import VideoService
+from bridges.web_search.contracts import WebSearchHealthStatus
 from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
@@ -888,6 +889,49 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             )
             if not schema_ready:
                 projection.ready = HealthStatus.FAIL
+        # Issue 04：readiness 独立暴露 DDG 健康快照与新鲜度；DDG 不是必需
+        # 依赖（断网时基础聊天、本地功能仍可用），但明确非 READY 时进入
+        # 降级状态。extensions 只暴露脱敏遥测，绝不返回健康查询/响应正文、
+        # 代理 URL 或任何凭据。
+        web_search_health = getattr(
+            getattr(app.state, "web_search_service", None), "health_monitor", None
+        )
+        if web_search_health is not None:
+            snapshot = web_search_health.snapshot()
+            projection.extensions["ddg_health_status"] = snapshot.status.value
+            projection.extensions["ddg_provider_version"] = snapshot.provider_version
+            projection.extensions["ddg_probe_latency_ms"] = snapshot.latency_ms
+            projection.extensions["ddg_snapshot_age_ms"] = snapshot.age_ms
+            projection.extensions["ddg_last_success_at"] = (
+                snapshot.last_success_at.isoformat()
+                if snapshot.last_success_at is not None
+                else None
+            )
+            projection.extensions["ddg_error_code"] = snapshot.error_code
+            projection.extensions["ddg_stale_ready"] = snapshot.stale_ready
+            projection.extensions["ddg_refresh_count"] = snapshot.refresh_count
+            if snapshot.pending:
+                web_search_status = HealthStatus.UNKNOWN
+                web_search_message = "DDG 健康探测尚未完成首次检查。"
+            elif snapshot.status == WebSearchHealthStatus.READY:
+                web_search_status = HealthStatus.PASS
+                web_search_message = "DuckDuckGo 公网搜索可用。"
+            else:
+                web_search_status = HealthStatus.FAIL
+                web_search_message = (
+                    "DuckDuckGo 公网搜索当前不可用，联网搜索将降级；"
+                    "基础聊天与本地功能不受影响。"
+                )
+                projection.degraded = HealthStatus.FAIL
+            projection.dependencies.append(
+                DependencyHealth(
+                    name="web_search",
+                    status=web_search_status,
+                    required=False,
+                    message=web_search_message,
+                    latency_ms=snapshot.latency_ms,
+                )
+            )
         return projection
 
     # T007: attach the shared scope enforcer. All services, routes and background
@@ -994,11 +1038,17 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     # Issue 03：生产公网搜索只登记 DuckDuckGo；失败交给聊天层的 Qwen
     # 一般知识降级，绝不在本轮切换第二提供方。
+    # Issue 04：test 环境关闭健康快照自动刷新——单元/集成测试不得因此
+    # 访问公网；development/production 由 readiness 轮询驱动合并刷新。
     web_search_database = getattr(app.state, "bridges_database", None)
     use_closeout_fixtures = bool(
         app.state.settings is not None
         and app.state.settings.environment.lower() == "test"
         and app.state.settings.closeout_fixture_mode
+    )
+    web_search_health_auto_refresh = not (
+        app.state.settings is not None
+        and app.state.settings.environment.lower() == "test"
     )
     app.state.web_search_service = WebSearchService(
         client=CloseoutWebSearchClient() if use_closeout_fixtures else None,
@@ -1008,6 +1058,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             if web_search_database is not None
             else None
         ),
+        health_auto_refresh=web_search_health_auto_refresh,
     )
     # Issue 22：固定版本、只读、受限的 arXiv MCP；只接收本地脱敏后的
     # public_query_terms，不继承账户凭据或画像上下文。

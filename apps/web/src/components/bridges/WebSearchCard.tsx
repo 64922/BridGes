@@ -188,6 +188,14 @@ export function WebSearchCard({
         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
           {search.trigger_reason} · 查询概述：{search.query_summary} · 主用提供方：{displayProvider(search.provider)}
         </span>
+        {search.error_message && (
+          <span
+            data-testid="web-search-card-degraded-hint"
+            style={{ fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}
+          >
+            {search.error_message}
+          </span>
+        )}
       </section>
     );
   }

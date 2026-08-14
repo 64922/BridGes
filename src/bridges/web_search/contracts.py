@@ -67,44 +67,113 @@ class WebSearchHealth(BaseModel):
     error_code: str | None = None
 
 
-class WebSearchHealthSummary(BaseModel):
-    """公开搜索整体健康摘要；任一提供方就绪即表示当前有可用来源。"""
+#: 当前生产唯一的通用公网搜索提供方（Issue 04）。出现任何其他通用搜索
+#: 提供方均视为配置漂移，健康摘要与发布门必须以稳定错误码失败。
+PRIMARY_WEB_SEARCH_PROVIDER = "duckduckgo"
 
-    available: bool = Field(description="当前是否至少有一个公开搜索来源可用。")
+
+class WebSearchHealthSnapshot(BaseModel):
+    """运行期 DDG 健康快照：脱敏状态、新鲜度与恢复语义。
+
+    快照只承载稳定分类与时间戳，绝不包含健康查询正文、响应正文、
+    代理 URL、Cookie、Authorization 或任何凭据。
+    """
+
+    provider: str = Field(default=PRIMARY_WEB_SEARCH_PROVIDER, description="唯一提供方。")
+    provider_version: str = Field(
+        default="unknown", description="最近一次探测使用的提供方合同版本。"
+    )
+    status: WebSearchHealthStatus = Field(description="当前健康状态。")
+    checked_at: datetime | None = Field(
+        default=None, description="最近一次实际探测时间；从未探测时为空。"
+    )
+    age_ms: int | None = Field(
+        default=None, description="快照年龄（毫秒），由读取时刻计算。"
+    )
+    latency_ms: int | None = Field(
+        default=None, description="最近一次探测耗时（毫秒）。"
+    )
+    last_success_at: datetime | None = Field(
+        default=None, description="最近一次 READY 时间；失败刷新会保留它。"
+    )
+    error_code: str | None = Field(
+        default=None, description="脱敏稳定错误码；READY 时为空。"
+    )
+    stale_ready: bool = Field(
+        default=False,
+        description=(
+            "当前 READY 是否来自超过缓存有效期的旧成功；旧成功超过上限后"
+            "不再显示 READY（web_search_stale_ready）。"
+        ),
+    )
+    pending: bool = Field(
+        default=False, description="尚未完成首次探测；此时不应宣称 READY。"
+    )
+    refresh_count: int = Field(
+        default=0, ge=0, description="已完成探测次数；并发刷新合并计数。"
+    )
+
+
+class WebSearchHealthSummary(BaseModel):
+    """公开搜索整体健康摘要；只登记 DuckDuckGo（Issue 04）。"""
+
+    available: bool = Field(description="DuckDuckGo 当前是否 READY。")
     status: WebSearchHealthStatus = Field(description="整体健康状态。")
     checked_at: datetime = Field(description="本次整体健康检查时间。")
     providers: list[WebSearchHealth] = Field(
         default_factory=list, description="已登记提供方的逐项健康状态。"
+    )
+    error_code: str | None = Field(
+        default=None,
+        description="脱敏稳定错误码；出现配置漂移时固定为 unexpected_search_provider。",
     )
 
 
 def aggregate_public_search_health(
     providers: list[WebSearchHealth], *, checked_at: datetime | None = None
 ) -> WebSearchHealthSummary:
-    """按“至少一个提供方就绪”聚合公开搜索健康状态。"""
+    """聚合公开搜索健康状态；精确等价于“DuckDuckGo READY”。
 
-    if providers:
-        summary_status = next(
-            (
-                provider.status
-                for provider in providers
-                if provider.status == WebSearchHealthStatus.READY
-            ),
-            providers[0].status,
+    Issue 04：当前产品不使用备用搜索源，“至少一个提供方就绪”不再是容错
+    语义。出现任何非 ``duckduckgo`` 提供方即配置漂移，整体健康以稳定错误码
+    ``unexpected_search_provider`` 失败关闭。
+    """
+
+    unexpected = [
+        provider.provider
+        for provider in providers
+        if provider.provider != PRIMARY_WEB_SEARCH_PROVIDER
+    ]
+    if unexpected:
+        return WebSearchHealthSummary(
+            available=False,
+            status=WebSearchHealthStatus.UPSTREAM_ERROR,
+            checked_at=checked_at or datetime.now(UTC),
+            providers=providers,
+            error_code="unexpected_search_provider",
         )
-        summary_checked_at = checked_at or max(
-            provider.checked_at for provider in providers
-        )
-    else:
-        summary_status = WebSearchHealthStatus.UPSTREAM_ERROR
-        summary_checked_at = checked_at or datetime.now(UTC)
-    return WebSearchHealthSummary(
-        available=any(
-            provider.status == WebSearchHealthStatus.READY for provider in providers
+    duckduckgo = next(
+        (
+            provider
+            for provider in providers
+            if provider.provider == PRIMARY_WEB_SEARCH_PROVIDER
         ),
-        status=summary_status,
-        checked_at=summary_checked_at,
+        None,
+    )
+    if duckduckgo is None:
+        return WebSearchHealthSummary(
+            available=False,
+            status=WebSearchHealthStatus.UPSTREAM_ERROR,
+            checked_at=checked_at or datetime.now(UTC),
+            providers=providers,
+            error_code="web_search_health_check",
+        )
+    return WebSearchHealthSummary(
+        available=duckduckgo.status == WebSearchHealthStatus.READY,
+        status=duckduckgo.status,
+        checked_at=checked_at or duckduckgo.checked_at,
         providers=providers,
+        error_code=duckduckgo.error_code,
     )
 
 

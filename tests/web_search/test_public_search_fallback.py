@@ -1,4 +1,10 @@
-"""Issue 02：公开搜索主用与结构化备用提供方的确定性合同测试。"""
+"""Issue 02/03：公开搜索主用合同的确定性测试；Issue 04 起备用提供方为配置漂移。
+
+Issue 04 之前，备用提供方（Brave 等）允许被“注册但忽略”；现在注册任何
+备用客户端都是配置漂移，组合期失败关闭，稳定错误码
+``unexpected_search_provider``。Brave 客户端本身的合同测试保留，用于证明
+历史能力已冻结且不会复活到生产组合。
+"""
 
 from __future__ import annotations
 
@@ -11,10 +17,8 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from bridges.chat.turn import web_search_context
-from bridges.config import Settings
 from bridges.api.main import create_app
-from bridges.learning.teaching_gate import _web_sources
+from bridges.config import Settings
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import (
     WebSearchHealth,
@@ -22,6 +26,7 @@ from bridges.web_search.contracts import (
     WebSearchPageClassification,
     WebSearchResult,
     WebSearchStatus,
+    aggregate_public_search_health,
 )
 from bridges.web_search.providers import (
     BRAVE_SEARCH_PROVIDER,
@@ -34,6 +39,7 @@ from bridges.web_search.providers import (
 from bridges.web_search.service import (
     InMemoryWebSearchCache,
     SearchPlan,
+    WebSearchProviderDriftError,
     WebSearchService,
 )
 
@@ -85,7 +91,7 @@ class _HealthClient(_FakeClient):
         return self.health
 
 
-def test_overall_health_only_checks_duckduckgo() -> None:
+def test_overall_health_rejects_configured_fallback_as_config_drift() -> None:
     checked_at = datetime.now(UTC)
     primary = _HealthClient(
         [],
@@ -107,17 +113,25 @@ def test_overall_health_only_checks_duckduckgo() -> None:
         ),
     )
 
-    summary = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    ).health_check()
+    # Issue 04：传入备用客户端即配置漂移，组合期失败关闭（稳定错误码）。
+    with pytest.raises(WebSearchProviderDriftError, match="unexpected_search_provider|DuckDuckGo"):
+        WebSearchService(
+            client=primary,
+            fallback_client=fallback,
+            fallback_provider=BRAVE_SEARCH_PROVIDER,
+            fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
+        )
 
-    # Issue 03：即使显式传入备用客户端，健康检查也只登记 DuckDuckGo。
+    # 聚合层纵深防御：即使健康证据里混入其他提供方，也必须以漂移失败。
+    summary = aggregate_public_search_health(
+        [
+            primary.health,
+            fallback.health,
+        ]
+    )
     assert summary.available is False
     assert summary.status == WebSearchHealthStatus.UPSTREAM_ERROR
-    assert [provider.provider for provider in summary.providers] == ["duckduckgo"]
+    assert summary.error_code == "unexpected_search_provider"
 
 
 def test_overall_health_is_unavailable_when_all_registered_providers_fail() -> None:
@@ -148,7 +162,6 @@ def test_fallback_registry_requires_explicit_registration_and_credentials() -> N
             Settings(
                 public_search_fallback_enabled=True,
                 public_search_fallback_provider="arbitrary-endpoint",
-                brave_search_api_key=SecretStr("brave-secret"),
             )
         )
 
@@ -262,15 +275,9 @@ def test_brave_health_check_rejects_missing_credentials() -> None:
     assert health.error_code == "web_search_fallback_credentials"
 
 
-def test_duckduckgo_success_does_not_call_configured_fallback() -> None:
+def test_duckduckgo_success_without_fallback_registration() -> None:
     primary = _FakeClient([_result()])
-    fallback = _FakeClient([_result("fallback-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
 
@@ -279,36 +286,30 @@ def test_duckduckgo_success_does_not_call_configured_fallback() -> None:
     assert projection.provider == "duckduckgo"
     assert projection.selected_provider == "duckduckgo"
     assert projection.provider_attempts[0].provider == "duckduckgo"
-    assert fallback.queries == []
+    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
 
 
-def test_primary_permission_failure_does_not_switch_provider() -> None:
+def test_primary_permission_failure_keeps_permission_status() -> None:
     primary = _FakeClient(
         WebSearchError(
             "web_search_permission",
-            "涓荤敤鎼滅储鏉冮檺澶辫触",
+            "主用搜索权限失败",
             permission=True,
         )
     )
-    fallback = _FakeClient([_result("brave-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search(
-        "acct-1", SearchPlan(True, "鍏綉涓婚", "闇€瑕佷簨瀹炴牳鏌?")
+        "acct-1", SearchPlan(True, "公开主题", "需要事实核查")
     )
 
     assert projection is not None
     assert projection.status == WebSearchStatus.PERMISSION
     assert projection.error_code == "web_search_permission"
-    assert fallback.queries == []
+    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
 
 
-def test_slow_primary_does_not_fall_back_to_second_provider() -> None:
+def test_slow_primary_keeps_timeout_projection() -> None:
     class _SlowClient:
         provider_name = "duckduckgo"
         provider_version = "duckduckgo-html-v1"
@@ -329,14 +330,7 @@ def test_slow_primary_does_not_fall_back_to_second_provider() -> None:
             raise WebSearchError("web_search_timeout", "主用超时")
 
     primary = _SlowClient()
-    fallback = _FakeClient([_result("brave-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-        fallback_reserve_seconds=0.35,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search(
         "acct-1",
@@ -348,15 +342,15 @@ def test_slow_primary_does_not_fall_back_to_second_provider() -> None:
         ),
     )
 
-    # Issue 03：总预算内不会切换备用提供方；保留 DDG 的超时投影。
+    # Issue 03：总预算内只有 DDG 一个提供方；保留真实超时投影。
     assert projection is not None
     assert projection.status == WebSearchStatus.ERROR
     assert projection.error_code == "web_search_timeout"
-    assert fallback.queries == []
     assert projection.provider_attempts[0].result_code == "web_search_timeout"
+    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
 
 
-def test_challenge_does_not_fall_back_to_second_provider() -> None:
+def test_challenge_keeps_cooldown_without_switching_provider() -> None:
     primary = _FakeClient(
         WebSearchError(
             "web_search_provider_challenge",
@@ -364,23 +358,16 @@ def test_challenge_does_not_fall_back_to_second_provider() -> None:
             cooldown_seconds=30,
         )
     )
-    fallback = _FakeClient([_result("brave-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
 
-    # Issue 03：挑战页不触发备用提供方；进入冷却并允许用户显式重试。
+    # Issue 03：挑战页不切换提供方；进入冷却并允许用户显式重试。
     assert projection is not None
     assert projection.status == WebSearchStatus.ERROR
     assert projection.error_code == "web_search_provider_challenge"
     assert projection.cooldown_until is not None
     assert primary.queries == ["公开主题"]
-    assert fallback.queries == []
     assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
     assert projection.provider_attempts[0].result_code == "web_search_provider_challenge"
 
@@ -392,33 +379,26 @@ def test_challenge_does_not_fall_back_to_second_provider() -> None:
         WebSearchPageClassification.INVALID,
     ],
 )
-def test_classified_empty_primary_response_does_not_fall_back(
+def test_classified_empty_primary_response_does_not_switch_provider(
     classification: WebSearchPageClassification,
 ) -> None:
     primary = _FakeClient(
         StructuredSearchResults([], page_classification=classification)
     )
-    fallback = _FakeClient([_result("brave-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search(
         "acct-1", SearchPlan(True, "公开主题", "需要事实核查")
     )
 
-    # Issue 03：分类异常页不切换备用提供方；空结果按 EMPTY 终态返回。
+    # Issue 03：分类异常页不切换提供方；空结果按 EMPTY 终态返回。
     assert projection is not None
     assert projection.status == WebSearchStatus.EMPTY
     assert primary.queries == ["公开主题", "公开主题 基础定义 原理"]
-    assert fallback.queries == []
     assert projection.provider_attempts[0].result_code == "web_search_no_results"
 
 
-def test_cache_key_keeps_fallback_provider_separate_from_primary() -> None:
+def test_cache_key_keeps_provider_separate_from_primary() -> None:
     cache = InMemoryWebSearchCache()
     primary_plan = SearchPlan(True, "公开主题", "需要事实核查")
     fallback_plan = SearchPlan(
@@ -456,61 +436,41 @@ def test_cache_key_keeps_fallback_provider_separate_from_primary() -> None:
     assert cache.get("acct-1", fallback_plan, datetime.now(UTC)) is not None
 
 
-def test_empty_after_one_bounded_rewrite_does_not_fall_back() -> None:
+def test_empty_after_one_bounded_rewrite_keeps_empty_status() -> None:
     def primary_outcome(query: str) -> list[WebSearchResult]:
         return []
 
     primary = _FakeClient(primary_outcome)
-    fallback = _FakeClient([_result("brave-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
 
-    # Issue 03：空结果改写后仍空，不切换备用提供方。
+    # Issue 03：空结果改写后仍空，不切换提供方。
     assert projection is not None
     assert projection.status == WebSearchStatus.EMPTY
     assert projection.page_classification != "challenge"
     assert primary.queries == ["公开主题", "公开主题 基础定义 原理"]
-    assert fallback.queries == []
     assert projection.query_history == primary.queries
+    assert {item.provider for item in projection.provider_attempts} == {"duckduckgo"}
 
 
-def test_configured_fallback_is_ignored_on_failure() -> None:
+def test_configured_fallback_is_config_drift_even_on_failure() -> None:
     primary = _FakeClient(WebSearchError("web_search_timeout", "主用超时"))
     fallback = _FakeClient(WebSearchError("web_search_fallback_timeout", "备用超时"))
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
 
-    projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
-
-    # Issue 03：DDG 失败后不调用备用提供方；保留原始 DDG 超时错误。
-    assert projection is not None
-    assert projection.status == WebSearchStatus.ERROR
-    assert projection.error_code == "web_search_timeout"
-    assert projection.can_retry is True
-    assert projection.selected_provider is None
-    assert fallback.queries == []
-    assert projection.provider_attempts[-1].result_code == "web_search_timeout"
+    # Issue 04：即使 DDG 失败，任何备用客户端注册都是配置漂移，拒绝组合。
+    with pytest.raises(WebSearchProviderDriftError):
+        WebSearchService(
+            client=primary,
+            fallback_client=fallback,
+            fallback_provider=BRAVE_SEARCH_PROVIDER,
+            fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
+        )
 
 
-def test_fallback_is_not_started_when_primary_consumes_reserved_stage_budget() -> None:
+def test_timeout_when_stage_budget_consumed_before_request() -> None:
     primary = _FakeClient(WebSearchError("web_search_timeout", "主用超时"))
-    fallback = _FakeClient([_result("brave-1", provider=BRAVE_SEARCH_PROVIDER)])
-    service = WebSearchService(
-        client=primary,
-        fallback_client=fallback,
-        fallback_provider=BRAVE_SEARCH_PROVIDER,
-        fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
-    )
+    service = WebSearchService(client=primary)
 
     projection = service.search(
         "acct-1",
@@ -519,21 +479,22 @@ def test_fallback_is_not_started_when_primary_consumes_reserved_stage_budget() -
     )
 
     assert projection is not None
-    assert projection.error_code in {
-        "web_search_fallback_not_started",
-        "web_search_timeout",
-    }
-    assert fallback.queries == []
+    assert projection.error_code in {"web_search_timeout", "web_search_no_results"}
+
 
 def test_production_composition_only_registers_duckduckgo() -> None:
-    """Issue 03：生产组合中通用搜索提供方列表只有 DuckDuckGo。"""
+    """Issue 04：生产组合的健康提供方列表只有 DuckDuckGo，并挂载健康监视器。"""
 
     app = create_app()
     web_search_service = app.state.web_search_service
 
     assert web_search_service is not None
-    assert web_search_service._fallback_client is None
     assert web_search_service._client is not None
+    # test 环境不启用自动刷新，readiness 首次读取返回 pending 快照，绝不
+    # 在单测中访问公网。
+    monitor = web_search_service.health_monitor
+    assert monitor is not None
+    assert monitor.snapshot().pending is True
+    assert monitor.peek().pending is True
     # 生产组合不登记备用提供方；任何 fallback client/key 均未注册。
     assert app.state.settings is None or not app.state.settings.public_search_fallback_enabled
-

@@ -52753,6 +52753,51 @@
             "title": "Provider Version",
             "description": "提供方合同版本。"
           },
+          "attempt_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Attempt Number",
+            "description": "本轮提供方尝试序号。",
+            "default": 1
+          },
+          "query_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Hash",
+            "description": "本次脱敏查询的不可逆指纹。"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "尝试开始时间。"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At",
+            "description": "尝试结束时间。"
+          },
           "result_code": {
             "type": "string",
             "title": "Result Code",
@@ -52783,6 +52828,12 @@
             ],
             "title": "Http Status Category",
             "description": "HTTP 状态类别。"
+          },
+          "retry_planned": {
+            "type": "boolean",
+            "title": "Retry Planned",
+            "description": "该尝试结束时是否计划重试。",
+            "default": false
           },
           "page_classification": {
             "anyOf": [
