@@ -51,14 +51,28 @@ OCR_IMAGE_PROMPT = (
 OCR_CAPABILITY_NAME = "qwen_ocr"
 OCR_CAPABILITY_VERSION = "1"
 
+#: Issue 14 Observability 稳定错误码（灰度核对与运维识别用）。
+OCR_ERR_DIRECT_CLIENT_BYPASS = "ocr_direct_client_bypass"
+OCR_ERR_MISSING_PAGE_CONTEXT = "ocr_missing_page_context"
+OCR_ERR_MISSING_RUN_LOCK = "ocr_missing_run_lock"
+OCR_ERR_LOCK_PERSIST_FAILED = "ocr_lock_persist_failed"
+OCR_ERR_PAGE_COUNT_MISMATCH = "ocr_page_count_mismatch"
+OCR_ERR_EMPTY_OUTPUT = "ocr_empty_output"
+
 
 class OcrError(Exception):
-    """图片文字识别失败；message 为面向用户的中文原因。"""
+    """图片文字识别失败；message 为面向用户的中文原因，code 为稳定错误码。"""
 
-    def __init__(self, message: str, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        retryable: bool = False,
+        code: str = "ocr_failed",
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.retryable = retryable
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -126,13 +140,17 @@ class QwenOcrPort:
 
     def extract(self, request: OcrPageRequest) -> str:
         """只把当前图片与固定 prompt 发往注册的 ``qwen_ocr`` 能力。"""
+        self._validate_request(request)
         if not self._gateway.is_adapter_registered(
             OCR_CAPABILITY_NAME, OCR_CAPABILITY_VERSION
         ):
             # 生产门禁语义：缺少真实适配器（未配置全局 Key、Stub/矩阵漂移
-            # 已失败关闭）时 OCR 能力失败关闭，不产生任何伪锁。
+            # 已失败关闭）时 OCR 能力失败关闭——绝不绕过统一接缝直接构造
+            # client 直连（``ocr_direct_client_bypass`` 兜底码），也不产生
+            # 任何伪锁。
             raise OcrError(
-                "图片文字识别未启用：未配置全局百炼运行凭据，请检查启动服务的全局配置。"
+                "图片文字识别未启用：未配置全局百炼运行凭据，请检查启动服务的全局配置。",
+                code=OCR_ERR_DIRECT_CLIENT_BYPASS,
             )
         if not request.content:
             raise OcrError("图片文字识别失败：图片内容为空。")
@@ -159,9 +177,11 @@ class QwenOcrPort:
         )
         lock = result.lock
         if lock is None:
-            # 网关未产生任何尝试锁（理论上不发生）：失败关闭且不落锁。
+            # 网关未产生任何尝试锁：失败关闭且不落锁（``ocr_missing_run_lock``）。
             raise OcrError(
-                "图片文字识别失败：OCR 服务调用未成功。", retryable=True
+                "图片文字识别失败：OCR 服务调用未成功。",
+                retryable=True,
+                code=OCR_ERR_MISSING_RUN_LOCK,
             )
 
         if result.status == ModelCallStatus.SUCCESS:
@@ -169,7 +189,10 @@ class QwenOcrPort:
             text = output.get("content", "")
             if not isinstance(text, str) or not text.strip():
                 self._record(request, self._empty_output_lock(lock))
-                raise OcrError("图片文字识别失败：OCR 未返回可用文字。")
+                raise OcrError(
+                    "图片文字识别失败：OCR 未返回可用文字。",
+                    code=OCR_ERR_EMPTY_OUTPUT,
+                )
             self._record(request, lock)
             return text.strip()
 
@@ -177,11 +200,60 @@ class QwenOcrPort:
         # 合同向上抛出领域错误（上层诚实降级，绝不把失败页标成 OCR 成功）。
         self._record(request, lock)
         retryable = result.status == ModelCallStatus.RETRYABLE_FAIL
-        raise OcrError(self._message_for(result), retryable=retryable)
+        raise OcrError(
+            self._message_for(result),
+            retryable=retryable,
+            code=result.error_code or "ocr_failed",
+        )
+
+    def verify_run_locks(
+        self,
+        account_id: str,
+        run_id: str,
+        expected_pages: int,
+    ) -> None:
+        """核对摄取 run 的页级锁数（Issue 14 灰度合同）。
+
+        实际远端页请求数必须等于新增页级锁数；锁缺失说明审计接缝丢失，
+        以 ``ocr_page_count_mismatch`` 失败关闭，上层不得把该轮结果当作
+        「已 OCR」投影。
+        """
+        locks = self._recorder.list_locks_by_run(account_id, run_id)
+        if len(locks) != expected_pages:
+            raise OcrError(
+                "图片文字识别失败：OCR 页级锁数量与页请求数不一致，"
+                "本轮结果未计入。",
+                retryable=True,
+                code=OCR_ERR_PAGE_COUNT_MISMATCH,
+            )
 
     # ------------------------------------------------------------------
     # 锁持久化
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_request(request: OcrPageRequest) -> None:
+        """输入合同完整性校验：缺页上下文直接失败关闭，不发起调用。
+
+        保证锁与业务关联始终携带账户、知识库对象/文档、摄取 run 与稳定
+        页/调用序号（``ocr_missing_page_context``）。
+        """
+        if not (
+            request.account_id
+            and request.object_id
+            and request.document_id
+            and request.run_id
+            and request.media_type
+        ):
+            raise OcrError(
+                "图片文字识别失败：缺少页级上下文（账户/对象/文档/摄取 run）。",
+                code=OCR_ERR_MISSING_PAGE_CONTEXT,
+            )
+        if request.page_ordinal < 1 or request.call_ordinal < 1:
+            raise OcrError(
+                "图片文字识别失败：页序号与调用序号必须从 1 开始。",
+                code=OCR_ERR_MISSING_PAGE_CONTEXT,
+            )
 
     def _record(self, request: OcrPageRequest, lock: ModelRunLock) -> None:
         """把一次真实请求的锁幂等持久化并关联业务对象。
@@ -209,6 +281,7 @@ class QwenOcrPort:
             raise OcrError(
                 "图片文字识别失败：OCR 审计记录写入失败，本次结果未计入。",
                 retryable=True,
+                code=OCR_ERR_LOCK_PERSIST_FAILED,
             ) from exc
 
     @staticmethod
@@ -217,7 +290,7 @@ class QwenOcrPort:
         return lock.model_copy(
             update={
                 "status": ModelCallStatus.BLOCKED,
-                "error_code": "ocr_empty_output",
+                "error_code": OCR_ERR_EMPTY_OUTPUT,
                 "error_message": "图片文字识别失败：OCR 未返回可用文字。",
                 "degradation_reason": "图片文字识别失败：OCR 未返回可用文字。",
             }

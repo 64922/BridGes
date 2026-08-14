@@ -154,9 +154,62 @@ def test_no_adapter_fails_closed_without_fake_lock(db: BridgesDatabase) -> None:
         port.extract(_request())
 
     assert "未配置全局百炼运行凭据" in str(exc_info.value)
+    assert exc_info.value.code == "ocr_direct_client_bypass"
     assert db.connection.execute(
         "SELECT count(*) AS count FROM model_run_locks", ()
     ).fetchone()["count"] == 0
+
+
+def test_missing_page_context_fails_closed_without_calling_adapter(
+    db: BridgesDatabase,
+) -> None:
+    """缺页级上下文（账户/对象/文档/摄取 run）直接失败关闭，不发起调用。"""
+    port, adapter = _build_port(db, [_success()])
+
+    for missing in (
+        _request(account_id=""),
+        _request(object_id=""),
+        _request(document_id=""),
+        _request(run_id=""),
+        _request(page_ordinal=0),
+        _request(call_ordinal=0),
+    ):
+        with pytest.raises(OcrError) as exc_info:
+            port.extract(missing)
+        assert exc_info.value.code == "ocr_missing_page_context"
+
+    assert adapter.call_count == 0
+    assert db.connection.execute(
+        "SELECT count(*) AS count FROM model_run_locks", ()
+    ).fetchone()["count"] == 0
+
+
+def test_verify_run_locks_reconciles_page_count(db: BridgesDatabase) -> None:
+    """灰度核对合同：页请求数 == 页级锁数时通过；锁缺失时失败关闭。"""
+    port, _adapter = _build_port(db, [_success()])
+    request = _request()
+    port.extract(request)
+
+    port.verify_run_locks(request.account_id, request.run_id, expected_pages=1)
+
+    with pytest.raises(OcrError) as exc_info:
+        port.verify_run_locks(request.account_id, request.run_id, expected_pages=2)
+    assert exc_info.value.code == "ocr_page_count_mismatch"
+    assert exc_info.value.retryable is True
+
+
+def test_port_capability_matches_registered_capability() -> None:
+    """端口的能力名/版本与 Issue 09 注册表一致（防漂移，AC 单一事实源）。"""
+    from bridges.ingestion.ocr import (
+        OCR_CAPABILITY_NAME,
+        OCR_CAPABILITY_VERSION,
+    )
+
+    registry = CapabilityRegistry()
+    register_builtin_capabilities(registry)
+    capability = registry.get(OCR_CAPABILITY_NAME, OCR_CAPABILITY_VERSION)
+    assert capability is not None
+    assert capability.model_id == OCR_MODEL_ID
 
 
 def test_empty_output_records_failure_lock_and_raises(db: BridgesDatabase) -> None:
@@ -166,6 +219,7 @@ def test_empty_output_records_failure_lock_and_raises(db: BridgesDatabase) -> No
         port.extract(_request())
 
     assert "未返回可用文字" in str(exc_info.value)
+    assert exc_info.value.code == "ocr_empty_output"
     assert adapter.call_count == 1
     lock = db.connection.execute(
         "SELECT * FROM model_run_locks", ()
@@ -209,6 +263,7 @@ def test_failure_paths_record_accurate_failure_locks(
 
     assert exc_info.value.retryable is retryable
     assert message_fragment in str(exc_info.value)
+    assert exc_info.value.code == expected_code
     assert adapter.call_count == (3 if retryable else 1)
     lock = db.connection.execute(
         "SELECT * FROM model_run_locks", ()
@@ -289,6 +344,7 @@ def test_recorder_failure_fails_closed_without_ocr_claim(
         port.extract(_request())
 
     assert exc_info.value.retryable is True
+    assert exc_info.value.code == "ocr_lock_persist_failed"
     assert "审计记录写入失败" in str(exc_info.value)
     assert db.connection.execute(
         "SELECT count(*) AS count FROM model_run_locks", ()

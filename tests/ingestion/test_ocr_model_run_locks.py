@@ -412,6 +412,45 @@ def test_recorder_write_failure_fails_closed_without_ocr_projection(
     assert "锁测试可检索文字" not in str(row["content"])
 
 
+def test_page_count_mismatch_fails_closed_at_service_level(
+    storage, monkeypatch
+) -> None:
+    """OCR 成功但页级锁核对失败（审计接缝丢失）→ 诚实降级，不标已识别。"""
+    from bridges.ingestion.ocr import OCR_ERR_PAGE_COUNT_MISMATCH, OcrError
+
+    adapter = _ProgrammableAdapter([_success()])
+    port = _build_port(storage, adapter)
+    service, _ = make_ingestion(storage, ocr=port)
+    account_id = storage["account_a"]
+    object_id = _upload_image(storage, account_id, "题目.png")
+
+    def broken_verify(_account_id: str, _run_id: str, _expected: int) -> None:
+        raise OcrError(
+            "图片文字识别失败：OCR 页级锁数量与页请求数不一致，本轮结果未计入。",
+            retryable=True,
+            code=OCR_ERR_PAGE_COUNT_MISMATCH,
+        )
+
+    monkeypatch.setattr(port, "verify_run_locks", broken_verify)
+    service.enqueue(account_id, object_id)
+    service.process_pending()
+
+    # 供应商调用真实发生且成功，但锁核对失败 → 本轮不得形成「已 OCR」。
+    assert adapter.call_count == 1
+    projection = service.projection(account_id, object_id)
+    assert projection is not None
+    assert projection.status == DocumentIngestionStatus.READY
+    assert projection.ocr_pages_succeeded == 0
+    assert projection.ocr_pages_failed == 1
+    row = storage["database"].connection.execute(
+        "SELECT content FROM document_chunks WHERE document_id = ?",
+        (projection.document_id,),
+    ).fetchone()
+    assert row is not None
+    assert "图片内容未做文字识别" in str(row["content"])
+    assert "锁测试可检索文字" not in str(row["content"])
+
+
 def test_locks_survive_restart_and_remain_queryable(storage) -> None:
     """临时 SQLite：锁跨重启可查（重启后仍能按 run/业务引用定位到页）。"""
     adapter = _ProgrammableAdapter([_success()])

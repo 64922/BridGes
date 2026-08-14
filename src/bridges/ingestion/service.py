@@ -98,7 +98,8 @@ class _ParseProvenance(NamedTuple):
     - ``cache_hit``：本次直接复用了账户内解析缓存（未调用 Qwen、
       未新建模型锁）；
     - ``ocr_run_id``：产生当前解析文本的摄取 run（缓存命中时引用原始
-      OCR/解析运行证据；非 OCR 解析为 None）；
+      run 证据；该 run 的页级锁记录真实的成功/失败状态，供审计核对；
+      非 OCR 解析为 None）；
     - ``pages_*``：本次 OCR 的脱敏页数汇总（非图片为 0），不含任何
       文本或内容。
     """
@@ -108,6 +109,22 @@ class _ParseProvenance(NamedTuple):
     pages_total: int
     pages_succeeded: int
     pages_failed: int
+
+
+def _ocr_columns_from_row(
+    row: sqlite3.Row,
+) -> tuple[bool, str | None, int, int, int]:
+    """从 document_records 行读取 OCR/缓存来源投影列（Issue 14 迁移 46）。
+
+    两个投影面（文档详情/知识库材料）共用同一读取，避免字段漂移。
+    """
+    return (
+        bool(int(row["parse_cache_hit"])),
+        str(row["ocr_evidence_run_id"]) if row["ocr_evidence_run_id"] is not None else None,
+        int(row["ocr_pages_total"]),
+        int(row["ocr_pages_succeeded"]),
+        int(row["ocr_pages_failed"]),
+    )
 
 
 class IngestionError(Exception):
@@ -345,6 +362,13 @@ class IngestionService:
         status = display_ingestion_status(raw_status, lease)
         _, vector_reason = self._embedding_availability()
         rebuilding = self._index_rebuilding(account_id)
+        (
+            parse_cache_hit,
+            ocr_evidence_run_id,
+            ocr_pages_total,
+            ocr_pages_succeeded,
+            ocr_pages_failed,
+        ) = _ocr_columns_from_row(row)
         return DocumentIngestionProjection(
             document_id=str(row["document_id"]),
             object_id=str(row["object_id"]),
@@ -369,15 +393,11 @@ class IngestionService:
             retry_count=int(row["retry_count"]),
             index_rebuilding=rebuilding,
             vector_unavailable_reason=vector_reason,
-            parse_cache_hit=bool(int(row["parse_cache_hit"])),
-            ocr_evidence_run_id=(
-                str(row["ocr_evidence_run_id"])
-                if row["ocr_evidence_run_id"] is not None
-                else None
-            ),
-            ocr_pages_total=int(row["ocr_pages_total"]),
-            ocr_pages_succeeded=int(row["ocr_pages_succeeded"]),
-            ocr_pages_failed=int(row["ocr_pages_failed"]),
+            parse_cache_hit=parse_cache_hit,
+            ocr_evidence_run_id=ocr_evidence_run_id,
+            ocr_pages_total=ocr_pages_total,
+            ocr_pages_succeeded=ocr_pages_succeeded,
+            ocr_pages_failed=ocr_pages_failed,
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
         )
@@ -652,6 +672,13 @@ class IngestionService:
         lease = str(row["lease_expires_at"]) if row["lease_expires_at"] else None
         material_status = display_ingestion_status(str(row["status"]), lease)
         content_hash = str(row["content_hash"])
+        (
+            parse_cache_hit,
+            ocr_evidence_run_id,
+            ocr_pages_total,
+            ocr_pages_succeeded,
+            ocr_pages_failed,
+        ) = _ocr_columns_from_row(row)
         return KnowledgeBaseMaterialProjection(
             document_id=str(row["document_id"]),
             object_id=str(row["object_id"]),
@@ -673,15 +700,11 @@ class IngestionService:
             retry_count=int(row["retry_count"]),
             vector_enabled=bool(row["vector_enabled"]),
             vector_indexed=bool(row["vector_indexed"]),
-            parse_cache_hit=bool(int(row["parse_cache_hit"])),
-            ocr_evidence_run_id=(
-                str(row["ocr_evidence_run_id"])
-                if row["ocr_evidence_run_id"] is not None
-                else None
-            ),
-            ocr_pages_total=int(row["ocr_pages_total"]),
-            ocr_pages_succeeded=int(row["ocr_pages_succeeded"]),
-            ocr_pages_failed=int(row["ocr_pages_failed"]),
+            parse_cache_hit=parse_cache_hit,
+            ocr_evidence_run_id=ocr_evidence_run_id,
+            ocr_pages_total=ocr_pages_total,
+            ocr_pages_succeeded=ocr_pages_succeeded,
+            ocr_pages_failed=ocr_pages_failed,
             embedding_available=context.embedding_available,
             vector_unavailable_reason=context.vector_unavailable_reason,
             index_version_id=context.index_version_id,
@@ -965,6 +988,16 @@ class IngestionService:
                 # 是可选增强，不得把材料推进 error，也不得标成「已识别」。
                 summary = OcrPageSummary(pages_total=1, pages_failed=1)
                 ocr_text = None
+            # Issue 14 灰度核对合同：OCR 成功但页级锁数与页请求数不一致
+            # （审计接缝丢失）→ 失败关闭，绝不把无锁结果当作「已 OCR」。
+            if summary.pages_succeeded > 0:
+                verify = getattr(self._ocr, "verify_run_locks", None)
+                if verify is not None:
+                    try:
+                        verify(account_id, ocr_run_id, summary.pages_total)
+                    except OcrError:
+                        summary = OcrPageSummary(pages_total=1, pages_failed=1)
+                        ocr_text = None
         parsed = parse_document(
             content,
             filename,
