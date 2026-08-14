@@ -1,207 +1,395 @@
-/* 欢迎页样式：除页面专属的视觉扩展（视频遮罩、幽灵按钮、入场动效）外，
-   全部取值引用 globals.css 令牌；深色令牌值见 WelcomePage.tsx 注释。 */
+/**
+ * 欢迎页样式（CSS Modules）。
+ * 版式复刻自 lunasol-ts.webflow.io（原型 .scratch 经设计验收）：
+ * 整屏吸附滚动 + 固定界面（Logo / 字标 / 章节导航）+ 每屏图文排版。
+ * 中文标题用 --font-serif / --font-sans 令牌；英文手写字标由
+ * WelcomePage.tsx 注入 next/font 的 Caveat。
+ */
 
-.root {
+.page {
+  --ink: #1f1e1a;
+  --ink-soft: rgba(31, 30, 26, 0.55);
+  --cream: #f5f2ea;
+
   position: relative;
-  min-height: 100dvh;
+  height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* ===== 全屏分屏容器 ===== */
+.deck {
+  height: 100vh;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  outline: none;
+}
+.screen {
+  position: relative;
+  height: 100vh;
+  scroll-snap-align: start;
   overflow: hidden;
-  background-color: #14130f; /* 视频加载前的暖黑底色 */
-  color: #f5f2ea; /* --color-text-primary（深色主题） */
 }
 
-/* ---------- 背景视频层 ---------- */
-.bgVideo {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover; /* 铺满且不变形 */
-  filter: brightness(1.22); /* 提亮视频（设计验收第二档） */
-  pointer-events: none;
-}
-
-/* 遮罩：顶部压暗保导航可读、文字区椭圆底盘保可读性、四角 vignette 收拢视线 */
-.bgOverlay {
+/* ===== 固定界面（顶栏 + 左侧导航） ===== */
+.chrome {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(120% 90% at 50% 42%, transparent 0%, rgb(10 9 7 / 0.2) 100%),
-    radial-gradient(58% 42% at 50% 47%, rgb(16 15 12 / 0.38) 0%, transparent 100%),
-    linear-gradient(
-      180deg,
-      rgb(16 15 12 / 0.38) 0%,
-      rgb(16 15 12 / 0.18) 34%,
-      rgb(16 15 12 / 0.16) 52%,
-      rgb(16 15 12 / 0.4) 100%
-    );
+  z-index: 50;
+  color: var(--ink);
+  transition: color 0.5s;
 }
-
-/* ---------- 顶部导航（top-nav 64px 令牌） ---------- */
-.topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 10; /* 必须高于 .hero，否则被盖住无法点击 */
-  height: 4rem;
+.logoCorner {
+  position: absolute;
+  top: 22px;
+  left: 28px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-inline: var(--space-8);
-  animation: fade var(--motion-duration-slow) var(--motion-easing) both;
+  pointer-events: auto;
+}
+.logoCorner img {
+  width: 40px;
+  height: 40px;
+  display: block;
+}
+.logoDark {
+  display: none !important;
+}
+.onDark {
+  color: var(--cream);
+}
+.onDark .logoLight {
+  display: none !important;
+}
+.onDark .logoDark {
+  display: block !important;
+}
+.brandWord {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: Georgia, "Times New Roman", "Songti SC", serif;
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  pointer-events: auto;
+  user-select: none;
 }
 
-.brand {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-  opacity: 0.92;
-  transition: opacity var(--motion-duration-fast) var(--motion-easing);
-}
-
-.brand:hover {
-  opacity: 1;
-}
-
-.navActions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.5rem;
-  padding: 0 1.25rem;
-  border-radius: var(--radius-lg);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  line-height: 1;
-  text-decoration: none;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-duration-fast) var(--motion-easing),
-    border-color var(--motion-duration-fast) var(--motion-easing),
-    box-shadow var(--motion-duration-fast) var(--motion-easing),
-    transform var(--motion-duration-fast) var(--motion-easing);
-}
-
-/* 登录：视频上的幽灵按钮（button-secondary-on-dark 的视频场景扩展） */
-.btnGhost {
-  color: #f5f2ea;
-  background: rgb(245 242 234 / 0.08);
-  border: 1px solid rgb(245 242 234 / 0.38);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.btnGhost:hover {
-  color: #f5f2ea;
-  background: rgb(245 242 234 / 0.18);
-  border-color: rgb(245 242 234 / 0.65);
-}
-
-/* 注册：主按钮（深色主题 accent 令牌 #e1936b / #eaa582） */
-.btnPrimary {
-  color: #241207; /* --color-text-on-accent（深色主题） */
-  background: #e1936b;
-  border: 1px solid transparent;
-}
-
-.btnPrimary:hover {
-  color: #241207;
-  background: #eaa582;
-  box-shadow: 0 4px 16px rgb(225 147 107 / 0.35);
-  transform: translateY(-1px);
-}
-
-.btnPrimary:active {
-  transform: translateY(0);
-  box-shadow: none;
-}
-
-.btn:focus-visible,
-.brand:focus-visible {
-  outline: 3px solid rgb(245 242 234 / 0.9);
-  outline-offset: 2px;
-}
-
-/* ---------- 中央品牌区 ---------- */
-.hero {
-  position: relative;
-  z-index: 2;
-  min-height: 100dvh;
+/* 左侧竖排导航：点击跳转 + 当前项高亮 */
+.sideNav {
+  position: absolute;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
+  gap: 34px;
+  pointer-events: auto;
+}
+.sideNav a {
+  display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-decoration: none;
+  color: currentColor;
+  opacity: 0.38;
+  transition: opacity 0.3s;
+  white-space: nowrap;
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.75),
+    0 1px 4px rgba(255, 255, 255, 0.45);
+}
+.onDark .sideNav a {
+  text-shadow:
+    0 0 10px rgba(0, 0, 0, 0.7),
+    0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.sideNav a::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: currentColor;
+  transition: width 0.3s;
+}
+.sideNav a.navActive {
+  opacity: 1;
+  font-weight: 500;
+}
+.sideNav a.navActive::before {
+  width: 34px;
+}
+.sideNav a:hover {
+  opacity: 0.8;
+}
+
+/* ===== 文案排版 ===== */
+.heroText {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   text-align: center;
-  padding: var(--space-16) var(--space-6) var(--space-16);
+  z-index: 5;
+  width: min(720px, 60vw);
 }
-
-.wordmark {
+.script {
+  font-size: clamp(44px, 4.6vw, 68px);
+  font-weight: 500;
+  line-height: 1.1;
+}
+.headline {
   font-family: var(--font-serif);
-  font-size: clamp(4rem, 9vw, 7.5rem); /* 64–120px，桌面窗口内流式缩放 */
-  font-weight: 600;
-  line-height: 1.05;
-  letter-spacing: -0.02em; /* display 负字距规范 */
-  color: #f5f2ea;
-  text-shadow: 0 2px 32px rgb(0 0 0 / 0.35);
-  animation: rise 600ms var(--motion-easing) 100ms both;
+  font-size: clamp(26px, 2.4vw, 40px);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1.45;
+  margin: 18px 0 0;
+}
+.sub {
+  font-size: clamp(12px, 0.85vw, 14px);
+  letter-spacing: 0.22em;
+  line-height: 2;
+  color: var(--ink-soft);
+  margin: 26px 0 0;
+}
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 36px;
+  padding: 14px 34px;
+  background: var(--ink);
+  color: var(--cream);
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  border-radius: 6px;
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s;
+}
+.cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+.cta::after {
+  content: "●";
+  font-size: 8px;
 }
 
-.tagline {
-  margin-top: var(--space-8);
-  max-width: 36em;
-  font-size: var(--text-lg);
-  font-weight: 400;
-  line-height: 2; /* 中文短句的呼吸感 */
-  letter-spacing: 0.04em;
-  color: rgb(245 242 234 / 0.94);
-  text-shadow: 0 1px 20px rgb(0 0 0 / 0.55);
-  animation: rise 600ms var(--motion-easing) 260ms both;
+/* ===== 图片 ===== */
+.ph {
+  position: absolute;
+  object-fit: cover;
+  z-index: 2;
+  box-shadow: 0 18px 50px rgba(31, 30, 26, 0.14);
 }
 
-/* ---------- 入场动效（仅首绘一次；交互动效仍走 150–300ms 令牌） ---------- */
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ===== 第一屏：Connection ===== */
+.sec1 {
+  background: linear-gradient(180deg, #8ca9db 0%, #b8b4de 52%, #e6ddf0 100%);
+}
+.sec1 .imgL {
+  left: 8.5%;
+  bottom: -6%;
+  width: 23%;
+  height: 74%;
+}
+.sec1 .imgR {
+  right: 13%;
+  top: -3%;
+  width: 12.5%;
+  height: 30%;
+}
+.sec1 .heroText {
+  top: 13%;
 }
 
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* ===== 第二屏：Paper Collector ===== */
+.sec2 {
+  background: linear-gradient(180deg, #9fb4df 0%, #c9c2e4 55%, #e9e2f0 100%);
+}
+.sec2 .imgL {
+  left: 19%;
+  top: 8%;
+  width: 14%;
+  height: 58%;
+}
+.sec2 .imgR {
+  right: 0;
+  top: 0;
+  width: 22%;
+  height: 100%;
+  box-shadow: none;
+}
+.sec2 .heroText {
+  top: 31%;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .topbar,
-  .wordmark,
-  .tagline {
-    animation: none;
-  }
-
-  .btn,
-  .brand {
-    transition: none;
-  }
+/* ===== 第三屏：Humanizer ===== */
+.sec3 {
+  background: linear-gradient(180deg, #dec7e2 0%, #edd6e9 55%, #f3e3ee 100%);
+}
+.sec3 .imgL {
+  left: 6.5%;
+  top: 4%;
+  width: 19%;
+  height: 66%;
+}
+.sec3 .imgTr {
+  right: 20.5%;
+  top: 2%;
+  width: 16%;
+  height: 26%;
+}
+.sec3 .imgR {
+  right: 0;
+  top: 24%;
+  width: 15.5%;
+  height: 56%;
+}
+.sec3 .heroText {
+  top: 27%;
+  width: min(600px, 46vw);
 }
 
-/* 仅服务桌面端：窄窗口（如分屏）下适度收敛，不做移动端适配 */
-@media (max-width: 1023px) {
-  .topbar {
-    padding-inline: var(--space-6);
+/* ===== 第四屏：Personalization ===== */
+.sec4 {
+  background: linear-gradient(180deg, #e8c3d2 0%, #f0d9de 55%, #f5e8e4 100%);
+}
+.sec4 .imgTl {
+  left: 10%;
+  top: 5%;
+  width: 12.5%;
+  height: 31%;
+}
+.sec4 .imgL {
+  left: 2.5%;
+  top: 42%;
+  width: 21%;
+  height: 58%;
+  box-shadow: none;
+}
+.sec4 .imgR {
+  right: 5%;
+  top: 32%;
+  width: 20%;
+  height: 56%;
+}
+.sec4 .heroText {
+  top: 13%;
+}
+
+/* ===== 第五屏：Learning ===== */
+.sec5 {
+  background: linear-gradient(180deg, #c3c7e6 0%, #d9c4e0 52%, #ecc9d6 100%);
+}
+.sec5 .imgR {
+  right: 7%;
+  top: 42%;
+  width: 12%;
+  height: 45%;
+}
+.sec5 .heroText {
+  top: 24%;
+  width: min(820px, 66vw);
+}
+
+/* ===== 结束页：welcome ===== */
+.end {
+  background: #070707;
+  color: var(--cream);
+}
+/* 同款视频放大做模糊底色，填补画面外区域 */
+.bgVideo {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+.bgVideo video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(46px) brightness(0.48) saturate(1.05);
+  transform: scale(1.22);
+}
+.end::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 42%, transparent 42%, rgba(0, 0, 0, 0.5) 100%);
+}
+.videoFrame {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: 34%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 3;
+  box-shadow: 0 0 90px rgba(0, 0, 0, 0.65);
+}
+.videoFrame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.end .heroText {
+  top: 23%;
+  z-index: 5;
+}
+.end .script {
+  color: rgba(245, 242, 234, 0.95);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+.end .cta {
+  background: var(--cream);
+  color: var(--ink);
+  margin-top: 54px;
+}
+
+/* ===== 入场动画 ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.9s ease,
+    transform 0.9s ease;
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+.d1 {
+  transition-delay: 0.12s;
+}
+.d2 {
+  transition-delay: 0.24s;
+}
+.d3 {
+  transition-delay: 0.36s;
+}
+
+@media (max-width: 900px) {
+  .brandWord {
+    font-size: 28px;
+  }
+  .sideNav {
+    display: none;
+  }
+  .heroText {
+    width: 86vw;
+  }
+  .videoFrame {
+    width: 78%;
   }
 }
