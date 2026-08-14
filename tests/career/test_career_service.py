@@ -7,15 +7,26 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from bridges.ai import CapabilityRegistry, ModelGateway
-from bridges.ai.adapters import AdapterResult, AuthError, RateLimitError
-from bridges.career.service import CareerPlannerService
+from bridges.ai.adapters import AdapterError, AdapterResult, AuthError, RateLimitError
+from bridges.ai.errors import ModelRunLockPersistError
+from bridges.ai.ports import ModelRunLockRecorder
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
+from bridges.career.service import (
+    CAREER_LOCK_CONVERSATION_OBJECT_TYPE,
+    CAREER_LOCK_OBJECT_TYPE,
+    CAREER_OPERATION_GENERATION,
+    CAREER_OPERATION_REPAIR,
+    CareerPlannerService,
+)
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
+    ModelCallStatus,
     RetryPolicy,
 )
 from bridges.contracts.career import (
@@ -27,6 +38,7 @@ from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning import InMemoryLearningRepository, LearningService
 from bridges.observability.service import ObservabilityService
+from bridges.storage import BridgesDatabase
 from bridges.web_search.contracts import (
     WebSearchProjection,
     WebSearchResult,
@@ -80,16 +92,29 @@ def _structured_capability() -> CapabilityRecord:
 
 
 class _ProgrammableStructuredAdapter:
-    """可编程结构化适配器（生涯规划编排使用）。"""
+    """可编程结构化适配器（生涯规划编排使用）。
+
+    ``outputs`` 非空时按调用顺序依次返回；耗尽后回退 ``output``。
+    ``errors`` 为一次性异常队列（按调用顺序消费，None 表示该次成功）；
+    ``error`` 与 ``error_from_call`` 配合表示从第 N 次调用起每次抛错
+    （覆盖网关内部重试，如修复调用持续限流）。
+    """
 
     def __init__(
         self,
         output: dict[str, Any] | None = None,
         error: Exception | None = None,
+        outputs: list[dict[str, Any]] | None = None,
+        errors: list[Exception | None] | None = None,
+        error_from_call: int | None = None,
     ) -> None:
         self._output = output
         self._error = error
+        self._outputs = list(outputs or [])
+        self._errors = list(errors or [])
+        self._error_from_call = error_from_call
         self.last_payload: dict[str, Any] | None = None
+        self.call_count = 0
 
     def call(
         self,
@@ -98,11 +123,20 @@ class _ProgrammableStructuredAdapter:
         payload: dict[str, Any],
     ) -> AdapterResult:
         self.last_payload = payload
-        if self._error is not None:
+        self.call_count += 1
+        if self._errors:
+            raised = self._errors.pop(0)
+            if raised is not None:
+                raise raised
+        if self._error is not None and (
+            self._error_from_call is None
+            or self.call_count >= self._error_from_call
+        ):
             raise self._error
+        output = self._outputs.pop(0) if self._outputs else self._output
         return AdapterResult(
             actual_model_id=capability.model_id,
-            output=self._output or {},
+            output=output or {},
         )
 
 
@@ -200,6 +234,7 @@ def _run(service: CareerPlannerService, **kwargs: Any) -> list[Any]:
                 "web_search_projection", _web_search_projection()
             ),
             arxiv_search_projection=kwargs.get("arxiv_search_projection"),
+            budget=kwargs.get("budget"),
         )
     )
     return events
@@ -421,3 +456,697 @@ def test_audit_records_summary_without_body() -> None:
     serialized = str(details)
     assert "数据分析" not in serialized
     assert "包就业" not in serialized
+
+
+# ----------------------------------------------------------------------
+# Issue 12：真实 Qwen 生成与修复审计闭环（统一 recorder 接线）
+# ----------------------------------------------------------------------
+
+
+def _service_with_recorder(
+    adapter: _ProgrammableStructuredAdapter,
+    database: BridgesDatabase,
+) -> tuple[CareerPlannerService, ObservabilityService]:
+    """构造注入 Issue 10 统一 recorder 的生涯服务（临时 SQLite）。"""
+    observability = ObservabilityService()
+    learning_repository = InMemoryLearningRepository()
+    learning_service = LearningService(repository=learning_repository)
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=learning_service,
+        observability_service=observability,
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+    )
+    return service, observability
+
+
+def _invalid_output() -> dict[str, Any]:
+    """结构非法输出：final_text 缺失（可触发一次有界修复）。"""
+    invalid = _good_output()
+    invalid["final_text"] = ""
+    return invalid
+
+
+def test_generation_records_exactly_one_lock_with_associations(
+    tmp_path: Path,
+) -> None:
+    """正常一次生成恰好一条 career_generation:1 锁，关联账户/会话/助手
+    消息/业务 run/固定模型/阶段/序号；投影保留轻量引用。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 1, "正常生成必须恰好写入一条锁"
+    lock = locks[0]
+    assert lock.account_id == "account-1"
+    assert lock.run_id == "run-career-1"
+    assert lock.project_id == "project-1"
+    assert lock.capability_name == "qwen_structured_output"
+    assert lock.capability_version == "1"
+    assert lock.actual_model_id == "qwen3.6-flash"
+    assert lock.status == ModelCallStatus.SUCCESS
+    plan_refs = [
+        ref
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE and ref.object_id == "assistant-1"
+    ]
+    assert len(plan_refs) == 1
+    assert plan_refs[0].operation == CAREER_OPERATION_GENERATION
+    assert plan_refs[0].attempt_ordinal == 1
+    assert plan_refs[0].is_primary is True
+    # 会话关联：锁同时链接到 conversation 业务对象
+    conv_refs = [
+        ref
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_CONVERSATION_OBJECT_TYPE and ref.object_id == "conv-1"
+    ]
+    assert len(conv_refs) == 1
+    assert conv_refs[0].operation == CAREER_OPERATION_GENERATION
+
+    # 投影保留主要锁引用与业务 run，可定位同 run 完整集合
+    projection = events[-1].result
+    assert projection.run_id == "run-career-1"
+    assert len(projection.run_lock_refs) == 1
+    ref = projection.run_lock_refs[0]
+    assert ref.lock_id == lock.lock_id
+    assert ref.operation == CAREER_OPERATION_GENERATION
+    assert ref.attempt_ordinal == 1
+
+
+def test_invalid_structure_then_repair_records_two_locks_in_order(
+    tmp_path: Path,
+) -> None:
+    """首次结构无效且修复成功：恰好两条不同锁，顺序 generation → repair；
+    重启后两条均可查，投影可定位完整集合。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+    assert adapter.call_count == 2
+    # 修复调用携带修复要求（第二次用户提示含【修复要求】）
+    assert adapter.last_payload is not None
+    assert "【修复要求】" in str(adapter.last_payload.get("messages", []))
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 2, "首次无效 + 修复成功必须恰好两条锁"
+    first = next(
+        ref
+        for lock in locks
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE and ref.attempt_ordinal == 1
+    )
+    second = next(
+        ref
+        for lock in locks
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE and ref.attempt_ordinal == 2
+    )
+    assert first.operation == CAREER_OPERATION_GENERATION
+    assert first.attempt_ordinal == 1
+    assert second.operation == CAREER_OPERATION_REPAIR
+    assert second.attempt_ordinal == 2
+    assert first.is_primary is True
+    assert second.is_primary is False
+    assert all(lock.status == ModelCallStatus.SUCCESS for lock in locks)
+
+    # 按 run 查询两条锁且按序号排序（重启后同一 recorder 可查）
+    by_run = recorder.list_locks_by_run("account-1", "run-career-1")
+    assert len(by_run) == 2
+    ordinals = [
+        ref.attempt_ordinal
+        for lock in by_run
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
+    ]
+    assert ordinals == [1, 2], "锁集合必须按调用序号稳定排序"
+
+    # 投影引用完整集合（重启后定位依据）
+    projection = events[-1].result
+    assert [ref.attempt_ordinal for ref in projection.run_lock_refs] == [1, 2]
+    assert projection.run_lock_refs[0].operation == CAREER_OPERATION_GENERATION
+    assert projection.run_lock_refs[1].operation == CAREER_OPERATION_REPAIR
+
+
+def test_parse_failure_then_repair_records_two_locks(tmp_path: Path) -> None:
+    """格式类失败（structured_output_parse_failed）触发修复：首次调用锁
+    如实记录 BLOCKED + 错误码，修复成功锁为 SUCCESS。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(
+        errors=[
+            AdapterError(
+                code="structured_output_parse_failed",
+                message="Model output was not valid JSON",
+            ),
+            None,
+        ],
+        output=_good_output(),
+    )
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 2
+    by_ordinal = {
+        ref.attempt_ordinal: lock
+        for lock in locks
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
+    }
+    first = by_ordinal[1]
+    second = by_ordinal[2]
+    assert first.status == ModelCallStatus.BLOCKED
+    assert first.error_code == "structured_output_parse_failed"
+    assert second.status == ModelCallStatus.SUCCESS
+
+
+def test_budget_insufficient_records_only_generation_lock(
+    tmp_path: Path,
+) -> None:
+    """首次结构无效但预算不足：只有一条 generation 锁，不伪造 repair 锁，
+    现有可重试中文错误保持不变。"""
+    from bridges.chat.budget import RunBudget
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    service, _ = _service_with_recorder(adapter, database)
+    budget = RunBudget(run_id="run-career-1")
+    budget.mark_exhausted()
+    events = _run(service, budget=budget)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.ERROR
+    assert projection.error_code == "career_output_invalid"
+    assert "预算不足" in (projection.error_message or "")
+    assert adapter.call_count == 1, "预算不足不得发起修复调用"
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 1
+    refs = [
+        ref
+        for lock in locks
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
+    ]
+    assert refs[0].operation == CAREER_OPERATION_GENERATION
+    assert refs[0].attempt_ordinal == 1
+    assert locks[0].status == ModelCallStatus.SUCCESS, (
+        "模型调用成功但业务结构无效：锁仍如实记录调用成功"
+    )
+
+
+def test_first_call_failure_records_failed_lock(tmp_path: Path) -> None:
+    """首次调用限流失败：每个实际发起的供应商调用都有状态锁（含网关
+    内部重试后的最终结果），业务终态不覆盖模型运行状态。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(error=RateLimitError("slow"))
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.ERROR
+    assert projection.process_state == CareerPlanningProcessState.RECOVERY
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 1
+    assert locks[0].status == ModelCallStatus.RETRYABLE_FAIL
+    assert locks[0].error_code == "rate_limit"
+    refs = [
+        ref
+        for ref in locks[0].business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
+    ]
+    assert refs[0].operation == CAREER_OPERATION_GENERATION
+    assert refs[0].attempt_ordinal == 1
+
+
+def test_repair_failure_records_two_locks_with_statuses(tmp_path: Path) -> None:
+    """首次结构无效 + 修复调用限流失败：两条锁分别如实记录 SUCCESS 与
+    RETRYABLE_FAIL，投影为可重试错误。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output()],
+        output=_good_output(),
+        error=RateLimitError("slow"),
+        error_from_call=2,
+    )
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.ERROR
+    assert projection.error_code == "rate_limit"
+    assert projection.process_state == CareerPlanningProcessState.RECOVERY
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 2
+    by_ordinal = {
+        ref.attempt_ordinal: lock
+        for lock in locks
+        for ref in lock.business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
+    }
+    assert by_ordinal[1].status == ModelCallStatus.SUCCESS
+    assert by_ordinal[1].error_code is None
+    assert by_ordinal[2].status == ModelCallStatus.RETRYABLE_FAIL
+    assert by_ordinal[2].error_code == "rate_limit"
+    # 失败投影仍保留已发生调用的锁引用
+    assert [ref.attempt_ordinal for ref in projection.run_lock_refs] == [1, 2]
+
+
+def test_auth_failure_records_blocked_lock(tmp_path: Path) -> None:
+    """鉴权失败：已经发起的供应商调用有 BLOCKED 状态锁（auth_error），
+    业务终态 permission 不覆盖模型运行状态。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(error=AuthError("密钥无效"))
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.process_state == CareerPlanningProcessState.PERMISSION
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 1
+    assert locks[0].status == ModelCallStatus.BLOCKED
+    assert locks[0].error_code == "auth_error"
+    assert locks[0].retry_count == 0
+    refs = [
+        ref
+        for ref in locks[0].business_refs
+        if ref.object_type == CAREER_LOCK_OBJECT_TYPE
+    ]
+    assert refs[0].operation == CAREER_OPERATION_GENERATION
+    assert refs[0].attempt_ordinal == 1
+
+
+class _FailingRecorder(ModelRunLockRecorder):
+    """持久化必失败的 recorder：验证失败关闭（Issue 10 合同）。"""
+
+    def __init__(self) -> None:
+        self.record_many_calls = 0
+
+    def record(self, lock: Any, *, business_ref: Any) -> Any:
+        raise ModelRunLockPersistError("boom")
+
+    def record_many(self, requests: list[Any]) -> list[Any]:
+        self.record_many_calls += 1
+        raise ModelRunLockPersistError("boom")
+
+    def get_lock(self, lock_id: str, account_id: str) -> Any:
+        return None
+
+    def list_locks_by_run(self, account_id: str, run_id: str) -> list[Any]:
+        return []
+
+    def list_locks_by_business_ref(
+        self, account_id: str, object_type: str, object_id: str
+    ) -> list[Any]:
+        return []
+
+
+def test_recorder_persist_failure_fails_closed(tmp_path: Path) -> None:
+    """注入 recorder 持久化失败：不得把无可持久审计证据的模型结果提升为
+    Career 完成态（career_lock_persist_failed 失败关闭）。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    failing = _FailingRecorder()
+    observability = ObservabilityService()
+    learning_repository = InMemoryLearningRepository()
+    learning_service = LearningService(repository=learning_repository)
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=learning_service,
+        observability_service=observability,
+        run_lock_recorder=failing,
+    )
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.ERROR
+    assert projection.error_code == "career_lock_persist_failed"
+    assert projection.output is None
+    assert projection.run_lock_refs == [], "持久化失败不得产生锁引用"
+    assert failing.record_many_calls == 1
+
+
+class _CountingRecorder(ModelRunLockRecorder):
+    """统计 record/record_many 调用的 spy（验证本地步骤不新增模型锁）。"""
+
+    def __init__(self, inner: SqliteModelRunLockRecorder) -> None:
+        self._inner = inner
+        self.record_calls = 0
+        self.record_many_calls = 0
+
+    def record(self, lock: Any, *, business_ref: Any) -> Any:
+        self.record_calls += 1
+        return self._inner.record(lock, business_ref=business_ref)
+
+    def record_many(self, requests: list[Any]) -> list[Any]:
+        self.record_many_calls += 1
+        return self._inner.record_many(requests)
+
+    def get_lock(self, lock_id: str, account_id: str) -> Any:
+        return self._inner.get_lock(lock_id, account_id)
+
+    def list_locks_by_run(self, account_id: str, run_id: str) -> list[Any]:
+        return list(self._inner.list_locks_by_run(account_id, run_id))
+
+    def list_locks_by_business_ref(
+        self, account_id: str, object_type: str, object_id: str
+    ) -> list[Any]:
+        return list(
+            self._inner.list_locks_by_business_ref(account_id, object_type, object_id)
+        )
+
+
+def test_local_steps_do_not_create_extra_model_locks(tmp_path: Path) -> None:
+    """路由判定、证据组装、宽容解析、本地复核与投影构造不新增模型锁：
+    正常 run 恰好 1 次 record_many（generation），修复 run 恰好 2 次
+    （generation + repair），无任何 record() 单条路径。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+
+    # 正常 run：恰好 1 次锁持久化
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    spy = _CountingRecorder(SqliteModelRunLockRecorder(database))
+    observability = ObservabilityService()
+    learning_service = LearningService(repository=InMemoryLearningRepository())
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=learning_service,
+        observability_service=observability,
+        run_lock_recorder=spy,
+    )
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+    assert adapter.call_count == 1
+    assert spy.record_many_calls == 1
+    assert spy.record_calls == 0
+
+    # 修复 run：恰好 2 次锁持久化
+    adapter2 = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    spy2 = _CountingRecorder(SqliteModelRunLockRecorder(database))
+    service2 = CareerPlannerService(
+        gateway=_gateway_with(adapter2),
+        learning_service=learning_service,
+        observability_service=observability,
+        run_lock_recorder=spy2,
+    )
+    events2 = _run(service2)
+    assert events2[-1].result is not None
+    assert events2[-1].result.status == CareerPlanningStatus.DONE
+    assert adapter2.call_count == 2
+    assert spy2.record_many_calls == 2
+    assert spy2.record_calls == 0
+
+
+def test_boundary_violation_keeps_success_lock(tmp_path: Path) -> None:
+    """供应商返回成功但输出违反承诺词边界：模型锁仍准确记录调用成功，
+    领域审计另行记录 career_boundary_violation，不能篡改模型锁状态。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    violating = _good_output()
+    violating["final_text"] = "选这条路，包就业。"
+    adapter = _ProgrammableStructuredAdapter(output=violating)
+    service, _ = _service_with_recorder(adapter, database)
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.ERROR
+    assert projection.error_code == "career_boundary_violation"
+
+    recorder = SqliteModelRunLockRecorder(database)
+    locks = recorder.list_locks_by_business_ref(
+        "account-1", CAREER_LOCK_OBJECT_TYPE, "assistant-1"
+    )
+    assert len(locks) == 1
+    assert locks[0].status == ModelCallStatus.SUCCESS
+    assert locks[0].error_code is None, "模型锁不得表达业务复核结果"
+
+
+def test_audit_details_include_lock_refs_without_body(tmp_path: Path) -> None:
+    """审计 details 携带 run 与锁引用（ID/阶段/序号），但不含提示词、
+    规划正文或用户内容。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    service, observability = _service_with_recorder(adapter, database)
+    _run(service)
+    events = observability.list_audit_events(
+        account_id="account-1", action=AuditAction.CAREER_PLANNING_GENERATED
+    )
+    assert len(events) == 1
+    details = events[0].details
+    assert details["run_id"] == "run-career-1"
+    lock_refs = details["lock_refs"]
+    assert len(lock_refs) == 1
+    assert lock_refs[0]["operation"] == CAREER_OPERATION_GENERATION
+    assert lock_refs[0]["attempt_ordinal"] == 1
+    assert lock_refs[0]["lock_id"]
+    assert details["repair_triggered"] is False
+    serialized = str(details)
+    assert "数据分析" not in serialized
+    assert "包就业" not in serialized
+    assert "【修复要求】" not in serialized
+
+
+def test_audit_records_repair_triggered_on_successful_repair(
+    tmp_path: Path,
+) -> None:
+    """首次结构无效且修复成功：领域审计显式记录 repair 触发（AC6），
+    终态仍为 SUCCESS 且不含正文。"""
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    service, observability = _service_with_recorder(adapter, database)
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+    audit_events = observability.list_audit_events(
+        account_id="account-1", action=AuditAction.CAREER_PLANNING_GENERATED
+    )
+    assert len(audit_events) == 1
+    details = audit_events[0].details
+    assert details["repair_triggered"] is True
+    assert details["error_code"] is None, "修复成功后业务终态不携带错误码"
+    assert len(details["lock_refs"]) == 2
+    assert "【修复要求】" not in str(details)
+
+
+def test_lock_metrics_aggregate_calls_by_stage_and_status(
+    tmp_path: Path,
+) -> None:
+    """Observability：按阶段/模型状态聚合调用数与延迟/usage；
+    缺锁、持久化失败与序号异常有独立稳定计数。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    metrics = InMemoryCareerLockMetrics()
+    adapter = _ProgrammableStructuredAdapter(
+        outputs=[_invalid_output(), _good_output()]
+    )
+    observability = ObservabilityService()
+    learning_service = LearningService(repository=InMemoryLearningRepository())
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=learning_service,
+        observability_service=observability,
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+        lock_metrics=metrics,
+    )
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.status == CareerPlanningStatus.DONE
+
+    snapshot = metrics.snapshot()
+    assert snapshot.get(
+        "career_lock_call_total:career_generation:success"
+    ) == 1, "首次生成调用按阶段+状态聚合"
+    assert snapshot.get(
+        "career_lock_call_total:career_repair:success"
+    ) == 1, "真实修复调用单独成档"
+    assert metrics.call_count() == 2
+    assert metrics.last_duration_ms() is not None
+    assert metrics.last_usage() is None or isinstance(metrics.last_usage(), dict)
+    # 缺锁/持久化失败/序号异常计数在正常路径为零
+    assert "career_lock_missing_total" not in snapshot
+    assert "career_lock_persist_failed_total" not in snapshot
+    assert "career_call_sequence_mismatch_total" not in snapshot
+
+
+def test_lock_metrics_count_failure_paths(tmp_path: Path) -> None:
+    """持久化失败与鉴权失败分别产生稳定计数与状态聚合。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+    from bridges.storage import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+
+    # 持久化失败 → career_lock_persist_failed_total
+    metrics_persist = InMemoryCareerLockMetrics()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=ObservabilityService(),
+        run_lock_recorder=_FailingRecorder(),
+        lock_metrics=metrics_persist,
+    )
+    events = _run(service)
+    assert events[-1].result is not None
+    assert events[-1].result.error_code == "career_lock_persist_failed"
+    assert metrics_persist.snapshot().get(
+        "career_lock_persist_failed_total"
+    ) == 1
+    assert metrics_persist.snapshot().get(
+        "career_lock_call_total:career_generation:success"
+    ) == 1, "调用已真实发生，即使持久化失败也计入调用数"
+
+    # 鉴权失败 → 按 blocked 状态聚合
+    metrics_auth = InMemoryCareerLockMetrics()
+    adapter2 = _ProgrammableStructuredAdapter(error=AuthError("密钥无效"))
+    service2 = CareerPlannerService(
+        gateway=_gateway_with(adapter2),
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=ObservabilityService(),
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+        lock_metrics=metrics_auth,
+    )
+    events2 = _run(service2)
+    assert events2[-1].result is not None
+    assert events2[-1].result.process_state == CareerPlanningProcessState.PERMISSION
+    snapshot2 = metrics_auth.snapshot()
+    assert snapshot2.get(
+        "career_lock_call_total:career_generation:blocked"
+    ) == 1
+
+
+def test_lock_metrics_count_missing_recorder(tmp_path: Path) -> None:
+    """未注入 recorder 的组合（评估/替身）：调用发生后标记
+    career_lock_recorder_missing，投影仍携带锁引用（不丢弃）。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+
+    metrics = InMemoryCareerLockMetrics()
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    observability = ObservabilityService()
+    service = CareerPlannerService(
+        gateway=_gateway_with(adapter),
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=observability,
+        run_lock_recorder=None,
+        lock_metrics=metrics,
+    )
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.status == CareerPlanningStatus.DONE
+    assert len(projection.run_lock_refs) == 1, "无 recorder 时引用仍保留"
+    snapshot = metrics.snapshot()
+    assert snapshot.get("career_lock_recorder_missing_total") == 1
+
+
+def test_lock_metrics_count_missing_lock(tmp_path: Path) -> None:
+    """网关缺锁（防御路径）：career_lock_missing_total 计数且失败关闭。"""
+    from bridges.career.metrics import InMemoryCareerLockMetrics
+    from bridges.contracts.ai import ModelCallResult
+    from bridges.storage import BridgesDatabase
+
+    class _NoLockGateway:
+        """网关契约的缺锁替身：返回无锁结果（防御路径测试）。"""
+
+        def invoke(self, *args: Any, **kwargs: Any) -> ModelCallResult:
+            return ModelCallResult(
+                status=ModelCallStatus.SUCCESS,
+                lock=None,
+                output={},
+            )
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    metrics = InMemoryCareerLockMetrics()
+    service = CareerPlannerService(
+        gateway=_NoLockGateway(),  # type: ignore[arg-type]
+        learning_service=LearningService(repository=InMemoryLearningRepository()),
+        observability_service=ObservabilityService(),
+        run_lock_recorder=SqliteModelRunLockRecorder(database),
+        lock_metrics=metrics,
+    )
+    events = _run(service)
+    projection = events[-1].result
+    assert projection is not None
+    assert projection.error_code == "career_missing_run_lock"
+    snapshot = metrics.snapshot()
+    assert snapshot.get("career_lock_missing_total") == 1
+    assert snapshot.get(
+        "career_lock_call_total:career_generation:success"
+    ) == 1, "调用本身已发起，仍计入调用数"

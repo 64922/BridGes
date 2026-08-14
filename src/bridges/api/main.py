@@ -22,6 +22,7 @@ from bridges.ai import (
     StubQwenAdapter,
 )
 from bridges.ai.production import build_production_composition
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.api import (
     auth,
     chat,
@@ -1209,12 +1210,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             observability_service=app.state.observability_service,
         )
         # Issue 29：生涯规划编排服务（复用画像切片编译、学习记录、检索与
-        # 联网证据合同；六类输出由结构化模型生成并确定性复核）。
+        # 联网证据合同；六类输出由结构化模型生成并确定性复核）。Issue 12：
+        # 注入 Issue 10 统一运行锁 recorder，每次结构化调用立即幂等持久化，
+        # 缺审计证据或持久化失败时由服务失败关闭，不提升为完成态。
         app.state.career_planner_service = CareerPlannerService(
             gateway=model_gateway,
             profile_service=getattr(app.state, "profile_service", None),
             learning_service=app.state.learning_service,
             observability_service=app.state.observability_service,
+            run_lock_recorder=SqliteModelRunLockRecorder(bridges_database),
         )
         # Issue 36：对话级插件选择域（校验/失效清洗/工具上下文编译）。
         # 可用集合来自插件中心（SKILL 已安装且启用）与 MCP 服务器（已
