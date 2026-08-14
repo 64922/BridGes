@@ -400,6 +400,30 @@ def api(
     _require_global_qwen_key(settings)
     # GQ-07 升级清理门：与 GQ-01 同序执行，幂等清退历史账户 Qwen 秘密。
     _retire_legacy_account_qwen_keys(settings)
+    # Issue 09 阶段 1：production-like 启动门。production 环境在启动 API
+    # 前强制校验生产组合（批准矩阵一致、真实 adapter 绑定、拒绝
+    # Stub/cassette/deterministic、拒绝缺 Key），违规以稳定错误码失败
+    # 关闭；vision/OCR 真实兼容证据由发布门强制（正式生产启动门为
+    # 阶段 2，不提供环境变量可绕过的警告模式）。
+    if settings.environment.lower() == "production":
+        from bridges.ai.composition import (
+            ProductionCompositionError,
+            enforce_production_composition,
+        )
+        from bridges.ai.production import build_production_composition
+
+        composition = build_production_composition(settings)
+        try:
+            enforce_production_composition(
+                composition.registry,
+                composition.gateway,
+                global_key_configured=composition.global_key_configured,
+                cassette_enabled=composition.cassette_enabled,
+                vision_ocr_compatibility_required=False,
+            )
+        except ProductionCompositionError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from exc
     uvicorn.run(
         "bridges.api.main:create_app",
         host=host or settings.api_host,

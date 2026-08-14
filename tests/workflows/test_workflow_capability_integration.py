@@ -85,7 +85,9 @@ def _order(workflow_name: str = "cap_task") -> WorkOrder:
 
 
 def test_capability_node_records_model_run_lock() -> None:
-    svc = _service_with_capability(adapter=_FixedAdapter("actual-model"))
+    # Issue 09：adapter 返回的实际模型必须与批准 ID 一致（actual_model_
+    # mismatch 失败关闭），固定适配器如实上报 capability 的批准模型。
+    svc = _service_with_capability(adapter=_FixedAdapter("test-model"))
     svc.register_workflow(
         name="cap_task",
         version="1",
@@ -110,7 +112,7 @@ def test_capability_node_records_model_run_lock() -> None:
     assert len(advanced.model_run_locks) == 1
     lock = advanced.model_run_locks[0]
     assert lock.capability_name == "test_cap"
-    assert lock.actual_model_id == "actual-model"
+    assert lock.actual_model_id == "test-model"
     assert lock.status == ModelCallStatus.SUCCESS
     assert advanced.nodes[0].status == NodeStatus.COMPLETED
     assert advanced.nodes[0].output_ref == lock.lock_id

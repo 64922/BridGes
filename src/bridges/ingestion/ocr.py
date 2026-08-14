@@ -21,6 +21,7 @@ from bridges.ai.adapters import (
     RegionError,
     TransientError,
 )
+from bridges.ai.fixed_models import OCR_MODEL_ID
 from bridges.ai.qwen_client import CassetteStore, QwenApiClient
 from bridges.ai.qwen_vision_adapters import QwenOcrAdapter
 from bridges.contracts.ai import (
@@ -63,7 +64,7 @@ def _qwen_ocr_capability(region: str) -> CapabilityRecord:
         kind=CapabilityKind.MODEL,
         vendor="qwen",
         region=region,
-        model_id="qwen-vl-ocr",
+        model_id=OCR_MODEL_ID,
         input_schema_version="image-ocr-v1",
         output_schema_version="ocr-text-v1",
         supported_modalities=["text", "image"],

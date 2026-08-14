@@ -19,6 +19,13 @@ from __future__ import annotations
 
 import hashlib
 
+from bridges.ai.fixed_models import (
+    ASR_MODEL_ID,
+    CHAT_MODEL_ID,
+    IMAGE_MODEL_ID,
+    TTS_MODEL_ID,
+    VIDEO_MODEL_ID,
+)
 from bridges.contracts.evaluation_suite import (
     AutoAssertion,
     DataCard,
@@ -1578,32 +1585,32 @@ PINS: list[ModelSkillPin] = [
     ModelSkillPin(
         capability_name="qwen_text_chat",
         capability_version="1",
-        model_id="qwen3.7-plus-2026-05-26",
+        model_id=CHAT_MODEL_ID,
         prompt_version="1",
         license_ref="license-scientific-facts",
     ),
     ModelSkillPin(
         capability_name="qwen_asr_short",
         capability_version="1",
-        model_id="qwen3-asr-flash",
+        model_id=ASR_MODEL_ID,
         prompt_version="1",
     ),
     ModelSkillPin(
         capability_name="qwen_tts_short",
         capability_version="1",
-        model_id="qwen3-tts-flash-2025-11-27",
+        model_id=TTS_MODEL_ID,
         prompt_version="1",
     ),
     ModelSkillPin(
         capability_name="qwen_image",
         capability_version="1",
-        model_id="qwen-image-2.0-pro-2026-06-22",
+        model_id=IMAGE_MODEL_ID,
         prompt_version="1",
     ),
     ModelSkillPin(
         capability_name="qwen_video",
         capability_version="1",
-        model_id="wan2.7-t2v-2026-06-12",
+        model_id=VIDEO_MODEL_ID,
         prompt_version="1",
     ),
     ModelSkillPin(

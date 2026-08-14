@@ -22,6 +22,11 @@ from bridges.ai import (
     QwenWanAdapter,
     StubQwenAdapter,
 )
+from bridges.ai.fixed_models import (
+    ASR_MODEL_ID,
+    CHAT_MODEL_ID,
+    TTS_MODEL_ID,
+)
 from bridges.api.main import create_app
 from bridges.config import get_settings
 
@@ -123,15 +128,16 @@ def test_fixed_matrix_model_ids_are_pinned_in_registry(monkeypatch) -> None:
     client = _app(monkeypatch, "test")
     registry = client.app.state.capability_registry  # type: ignore[attr-defined]
 
-    # ADR-0009 固定绑定：唯一模型快照，无备用模型。
+    # ADR-0009 固定绑定：唯一模型快照，无备用模型。断言值来自单一事实源
+    # （bridges.ai.fixed_models），测试合同不另写模型字面量（Issue 09）。
     chat = registry.get("qwen_text_chat", "1")
-    assert chat.model_id == "qwen3.7-plus-2026-05-26"
+    assert chat.model_id == CHAT_MODEL_ID
     assert not chat.fallback_policy.fallback_capability_name
     tts = registry.get("qwen_tts", "1")
-    assert tts.model_id == "qwen3-tts-flash-2025-11-27"
+    assert tts.model_id == TTS_MODEL_ID
     assert not tts.fallback_policy.fallback_capability_name
     asr = registry.get("qwen_asr_short", "1")
-    assert asr.model_id == "qwen3-asr-flash"
+    assert asr.model_id == ASR_MODEL_ID
 
     # 备用模型能力已从注册表移除。
     from bridges.ai.capability_registry import CapabilityRegistryError
@@ -139,3 +145,67 @@ def test_fixed_matrix_model_ids_are_pinned_in_registry(monkeypatch) -> None:
     for name in ("qwen_text_chat_fallback", "qwen_tts_instruct"):
         with pytest.raises(CapabilityRegistryError):
             registry.get(name, "1")
+
+
+def test_every_active_capability_matches_approved_matrix(monkeypatch) -> None:
+    """Issue 09 AC：逐项断言活跃 capability → 固定模型映射与批准矩阵一致。
+
+    注册表暴露的实际 ID 与 ``bridges.ai.fixed_models.MODEL_BY_CAPABILITY``
+    完全一致；结构化输出/画像与核心对话复用同一快照；vision/OCR 与核心
+    对话对齐同一快照；不存在矩阵之外的模型字面量。
+    """
+    from bridges.ai.fixed_models import (
+        ASR_LONG_MODEL_ID,
+        CHAT_MODEL_ID,
+        IMAGE_MODEL_ID,
+        MODEL_BY_CAPABILITY,
+        OCR_MODEL_ID,
+        VIDEO_MODEL_ID,
+        VISION_MODEL_ID,
+    )
+    from bridges.contracts.ai import CapabilityKind
+
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "")
+    client = _app(monkeypatch, "test")
+    registry = client.app.state.capability_registry  # type: ignore[attr-defined]
+
+    # 只枚举 MODEL 能力（TOOL 能力的 "deterministic" model_id 是领域包
+    # 校验器标记，不属于批准矩阵）。
+    active = [
+        c
+        for c in registry.list_active()
+        if c.kind == CapabilityKind.MODEL and c.model_id
+    ]
+    assert {c.name for c in active} == set(MODEL_BY_CAPABILITY)
+    for capability in active:
+        assert capability.model_id == MODEL_BY_CAPABILITY[capability.name], capability.name
+        assert capability.vendor in {"qwen", "wan"}, capability.name
+        assert capability.region == "cn-beijing", capability.name
+        assert not capability.fallback_policy.fallback_capability_name, capability.name
+
+    # 关键绑定的显式断言（与确认矩阵逐项一致）。
+    structured = registry.get("qwen_structured_output", "1")
+    profile = registry.get("qwen_profile_extraction", "1")
+    assert structured.model_id == CHAT_MODEL_ID
+    assert profile.model_id == CHAT_MODEL_ID
+    vision = registry.get("qwen_vision", "1")
+    ocr = registry.get("qwen_ocr", "1")
+    assert vision.model_id == VISION_MODEL_ID == CHAT_MODEL_ID
+    assert ocr.model_id == OCR_MODEL_ID == CHAT_MODEL_ID
+    assert registry.get("qwen_asr_long", "1").model_id == ASR_LONG_MODEL_ID
+    assert registry.get("qwen_image", "1").model_id == IMAGE_MODEL_ID
+    assert registry.get("qwen_wan", "1").model_id == VIDEO_MODEL_ID
+
+
+def test_retired_expression_capability_is_not_registered(monkeypatch) -> None:
+    """Issue 09 AC：已退役 expression_draft_generation 不在生产注册表。"""
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "")
+    client = _app(monkeypatch, "test")
+    registry = client.app.state.capability_registry  # type: ignore[attr-defined]
+    from bridges.ai.capability_registry import CapabilityRegistryError
+
+    with pytest.raises(CapabilityRegistryError):
+        registry.get("expression_draft_generation", "1")
+    assert "expression_draft_generation" not in {
+        c.name for c in registry.list_active()
+    }

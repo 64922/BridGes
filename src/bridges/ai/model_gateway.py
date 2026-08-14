@@ -67,6 +67,16 @@ class ModelGateway:
         """Return whether an adapter has already been bound to a capability."""
         return (capability_name, capability_version) in self._adapters
 
+    def get_adapter(
+        self, capability_name: str, capability_version: str
+    ) -> CapabilityAdapter | None:
+        """Return the adapter bound to a capability, or None when unbound.
+
+        Issue 09：生产组合校验器经此只读访问器检查每个活跃 capability 的
+        真实适配器绑定，不直接触碰内部存储。
+        """
+        return self._adapters.get((capability_name, capability_version))
+
     def invoke(
         self,
         capability_name: str,
@@ -319,7 +329,27 @@ class ModelGateway:
                     )
                     return
                 elif chunk.kind == "done":
-                    actual_model_id = chunk.actual_model_id or primary.model_id
+                    reported = chunk.actual_model_id
+                    # Issue 09：流式结束块上报的实际模型与批准 ID 不一致时
+                    # 同样失败关闭（``actual_model_mismatch``），运行锁如实
+                    # 记录漂移值。
+                    if reported is not None and reported != primary.model_id:
+                        lock = self._build_mismatch_lock(
+                            run_context,
+                            primary,
+                            reported,
+                            [f"{primary.name}@{primary.version}"],
+                            retry_count=0,
+                            payload=payload,
+                        )
+                        yield StreamEvent(
+                            kind="error",
+                            error_code="actual_model_mismatch",
+                            error_message=lock.error_message,
+                            lock=lock,
+                        )
+                        return
+                    actual_model_id = reported or primary.model_id
                     usage = chunk.usage
         except (RateLimitError, TransientError, RegionError, AuthError, AdapterError) as exc:
             lock = self._build_lock(
@@ -483,13 +513,37 @@ class ModelGateway:
                     lock,
                 )
 
+            # Issue 09：实际返回模型与批准 ID 不一致时调用失败关闭，绝不
+            # 只记录警告后继续——运行锁如实记录漂移的实际模型，作为门禁
+            # ``actual_model_mismatch`` 的可复核证据。
+            actual_model_id = adapter_result.actual_model_id
+            if actual_model_id is not None and actual_model_id != capability.model_id:
+                lock = self._build_mismatch_lock(
+                    run_context,
+                    capability,
+                    actual_model_id,
+                    attempted,
+                    retry_count=attempt - 1,
+                    payload=payload,
+                )
+                return (
+                    ModelCallResult(
+                        status=ModelCallStatus.BLOCKED,
+                        lock=lock,
+                        error_code="actual_model_mismatch",
+                        error_message=lock.error_message,
+                        degradation_reason=lock.degradation_reason,
+                    ),
+                    lock,
+                )
+
             lock = self._build_lock(
                 run_context,
                 capability,
                 ModelCallStatus.SUCCESS,
                 attempted,
                 retry_count=attempt - 1,
-                actual_model_id=adapter_result.actual_model_id,
+                actual_model_id=actual_model_id,
                 usage=adapter_result.usage,
                 payload=payload,
             )
@@ -522,6 +576,38 @@ class ModelGateway:
                 error_message="Unexpected empty invocation path.",
             ),
             lock,
+        )
+
+    def _build_mismatch_lock(
+        self,
+        run_context: RunContextEnvelope,
+        capability: CapabilityRecord,
+        actual_model_id: str,
+        fallback_path: list[str],
+        retry_count: int,
+        payload: dict[str, Any] | None = None,
+    ) -> ModelRunLock:
+        """构造 ``actual_model_mismatch`` 失败锁（Issue 09 invoke/stream 共用）。
+
+        运行锁如实记录漂移的实际模型 ID，作为门禁报告的可复核证据。
+        """
+        return self._build_lock(
+            run_context,
+            capability,
+            ModelCallStatus.BLOCKED,
+            fallback_path,
+            retry_count=retry_count,
+            degradation_reason=(
+                f"实际返回模型 {actual_model_id} 与批准模型 "
+                f"{capability.model_id} 不一致。"
+            ),
+            actual_model_id=actual_model_id,
+            error_code="actual_model_mismatch",
+            error_message=(
+                f"实际返回模型 {actual_model_id} 与批准模型 "
+                f"{capability.model_id} 不一致，调用失败关闭。"
+            ),
+            payload=payload,
         )
 
     def _build_lock(

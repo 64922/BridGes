@@ -18,6 +18,7 @@ import json
 import time
 from typing import Any
 
+from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.evaluation_suite import (
     CaseRunStatus,
@@ -180,14 +181,14 @@ def _plain_chat_outcome(
             "citations": [],
             "profile_used": False,
             "tool_calls": [],
-            "model_id": "qwen3.7-plus-2026-05-26",
+            "model_id": CHAT_MODEL_ID,
         },
         tool_records=[
             ToolCallRecord(
                 call_id="plain-chat",
                 capability_name="qwen_text_chat",
                 capability_version="1",
-                actual_model_id="qwen3.7-plus-2026-05-26",
+                actual_model_id=CHAT_MODEL_ID,
                 prompt_version="1",
                 input_output_contract="chat-messages-v1",
                 status="success",

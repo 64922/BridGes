@@ -106,16 +106,17 @@ class QwenOcrPDFParser(ParserPort):
     def _ocr_pdf(self, content: bytes) -> str:
         """Render PDF pages to images via PyMuPDF, then OCR each page.
 
-        This approach is required because ``qwen-vl-ocr`` accepts images
-        (PNG/JPEG) through the Chat Completions ``image_url`` content type;
-        it does not accept raw PDF bytes.  Each page is rendered at 300 DPI
-        and sent as a separate OCR call; results are concatenated with page
-        markers so the extraction layer can attribute text to the correct page.
+        This approach is required because the OCR capability (Issue 09 起
+        aligned to the fixed Qwen chat snapshot) accepts images (PNG/JPEG)
+        through the Chat Completions ``image_url`` content type; it does not
+        accept raw PDF bytes.  Each page is rendered at 300 DPI and sent as a
+        separate OCR call; results are concatenated with page markers so the
+        extraction layer can attribute text to the correct page.
         """
         try:
             import fitz  # type: ignore[import-untyped]  # PyMuPDF
-        except ImportError:
-            raise ParserError("PyMuPDF (fitz) is required to OCR scanned PDFs.")
+        except ImportError as exc:
+            raise ParserError("PyMuPDF (fitz) is required to OCR scanned PDFs.") from exc
 
         pages_text: list[str] = []
         doc = fitz.open(stream=content, filetype="pdf")

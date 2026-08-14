@@ -1,6 +1,6 @@
 # Issue 09：固化生产 Qwen 模型矩阵与真实 adapter 启动门禁
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -102,3 +102,11 @@ python scripts/release_gate.py --real-probes --vision-ocr-compatibility
 
 - 2026-08-13：用户确认 chat/structured/profile 统一使用 `qwen3.7-plus-2026-05-26`；Vision/OCR 先做真实兼容 smoke，能工作则对齐，不能工作则必须先更新 ADR 才允许例外。
 - 2026-08-13：用户确认 embedding/ASR/TTS/image/video 依既有固定矩阵；所有 ID 采用单一事实源，任何静默 fallback 均不可接受。
+- 2026-08-14：Issue 09 实现完成（分支 `issue-09-freeze-production-model-matrix`，commit 16c00ee + 复查修复）。
+  - `bridges.ai.fixed_models` 建立完整 `MODEL_BY_CAPABILITY` 矩阵（10 个活跃 MODEL capability）；新增 `ASR_LONG_MODEL_ID`（qwen_asr_long 长音频/文件转写变体，与 `ASR_MODEL_ID` 同族，属既有 ASR 矩阵；如用户认为该 ID 需单独 ADR 批准请提出）、`VISION_MODEL_ID`/`OCR_MODEL_ID`（对齐 `CHAT_MODEL_ID`，门禁未证实前失败关闭）；VIDEO_* 常量迁入单一事实源，`bridges/video/constants.py` 改为再导出 shim。
+  - 删除生产代码模型字面量：capability 注册与组合根收敛到 `bridges.ai.production`（API 组合根、CLI 启动门、发布门复用同一接线）；ocr/运行时视觉/media/evaluation（executors/case_executors/suite_data）全部改从 fixed_models 取值；静态架构测试 `tests/architecture/test_model_literal_scan.py` 扫描生产路径，批准 ID 只允许出现在 fixed_models.py（AST 精确匹配），未批准历史 ID（qwen3.6-flash/qwen-vl-ocr/qwen3-vl-plus）任何文本出现即失败。
+  - 生产组合校验器 `bridges.ai.composition`：稳定错误码 `missing_global_qwen_key`/`unapproved_model_id`/`model_matrix_drift`/`missing_adapter`/`production_test_adapter`/`actual_model_mismatch`/`vision_ocr_compatibility_unproven`，扩展 `unknown_capability`/`duplicate_binding`/`model_fallback_configured`；CLI `BridGes api` 的 production 路径（阶段 1 production-like 启动门）与发布门强制执行；vision/OCR 真实兼容证据由发布门强制（阶段 2 正式生产启动门留待后续，无环境变量警告模式）。
+  - 网关对 adapter 返回的实际模型与批准 ID 不一致失败关闭（`actual_model_mismatch`，invoke 与 stream 共用 `_build_mismatch_lock`），运行锁如实记录漂移值；重试始终针对同一 capability/model（测试证明限流/超时/无权限路径无 silent fallback）。
+  - vision/OCR 真实兼容 smoke：`bridges.ai.matrix_probe`（PyMuPDF 生成含已知文字 `BRIDGES-QWEN-2026` 的最小图像，检查真实响应 model、非空输出、状态与运行锁 ID）；发布门 `scripts/model_matrix_gate.py --real-probes` 显式 opt-in 执行并保存脱敏报告。本机无安装级全局 Qwen Key → 结果为 `inconclusive`，发布门以 `vision_ocr_compatibility_unproven` + `missing_global_qwen_key` 失败关闭（符合"不兼容/未证实则失败关闭"）；需在配置真实全局 Key 的环境执行 `python scripts/model_matrix_gate.py --real-probes` 完成最终兼容验收。
+  - 附带修复：speech 服务持久化失败锁时把供应商原文折叠为面向用户的中文提示（修复 Issue 10 录制器安全扫描对 "authorization" 等词的拒绝——main 上 2 个 speech 测试原本已红）。
+  - 验证：Issue 建议命令 203 通过；全量 `tests` 套件 3128 通过 / 212 失败，其中失败为既有环境性失败（plugins/retirement/retrieval 等，pristine main 相同文件集同样失败；`tests` 全量收集的两个同名文件冲突为既有问题，两文件单独通过；`test_runtime_smoke.py`/`test_runtime_contract.py` 在 main 与分支上都会因本机 OS keyring 保存的全局 Key 导致 `BridGes start` 常驻挂起，为既有环境问题）。workflows 一个用例因新契约（mismatch 失败关闭）更新 fixture 后通过。
