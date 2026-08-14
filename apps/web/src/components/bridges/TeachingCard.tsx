@@ -40,16 +40,20 @@ const sourceLabel: Record<string, string> = {
   project: "历史材料",
   knowledge_base: "已授权知识库",
   local: "本地材料",
-  duckduckgo: "DuckDuckGo 网页搜索",
+  tavily: "Tavily 网页搜索",
+  // 兼容 Issue 01 之前的历史消息投影；新记录不再出现。
+  duckduckgo: "公开网页搜索（历史记录）",
   brave_search: "Brave Search 结构化搜索",
   arxiv: "arXiv",
 };
 
 const searchSourceLabel: Record<string, string> = {
   none: "无需联网",
-  duckduckgo: "DuckDuckGo 网页搜索",
+  tavily: "Tavily 网页搜索",
   arxiv: "arXiv",
-  both: "DuckDuckGo 网页搜索 + arXiv",
+  both: "Tavily 网页搜索 + arXiv",
+  // 兼容 Issue 01 之前的历史消息投影；新记录不再出现。
+  duckduckgo: "公开网页搜索（历史记录）",
 };
 
 const evaluationLabel: Record<string, string> = {

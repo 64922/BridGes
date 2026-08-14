@@ -13,16 +13,21 @@ from bridges.runtime.bootstrap import BootstrapError, LocalRuntimeBootstrap
 
 
 class _MemoryCredentialStore:
+    """按 credential id 隔离的替身，验证 Qwen 与 Tavily 凭据独立存取。"""
+
     def __init__(self) -> None:
-        self.value: SecretStr | None = None
+        self.values: dict[str, SecretStr] = {}
+        self.fail_ids: set[str] = set()
 
     def get(self, account_id: str) -> SecretStr | None:
-        del account_id
-        return self.value
+        if account_id in self.fail_ids:
+            raise OSError("simulated credential store failure")
+        return self.values.get(account_id)
 
     def save(self, account_id: str, secret: SecretStr) -> None:
-        del account_id
-        self.value = secret
+        if account_id in self.fail_ids:
+            raise OSError("simulated credential store failure")
+        self.values[account_id] = secret
 
 
 class _WebCommandRunner:
@@ -106,6 +111,8 @@ def test_web_build_uses_configured_api_port(
         "BRIDGES_ENVIRONMENT",
         "BRIDGES_QWEN_API_KEY",
         "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
         "BRIDGES_DATABASE_URL",
         "BRIDGES_SECRET_KEY",
         "BRIDGES_SECRET_KEY_FILE",
@@ -134,6 +141,8 @@ def test_second_prepare_reuses_runtime_and_skips_prompt_and_build(
         "BRIDGES_ENVIRONMENT",
         "BRIDGES_QWEN_API_KEY",
         "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
         "BRIDGES_DATABASE_URL",
         "BRIDGES_SECRET_KEY",
         "BRIDGES_SECRET_KEY_FILE",
@@ -172,6 +181,8 @@ def test_missing_key_in_noninteractive_start_fails_without_secret_in_error(
         "BRIDGES_ENVIRONMENT",
         "BRIDGES_QWEN_API_KEY",
         "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
         "BRIDGES_DATABASE_URL",
         "BRIDGES_SECRET_KEY",
         "BRIDGES_SECRET_KEY_FILE",
@@ -202,6 +213,8 @@ def test_empty_file_references_do_not_override_direct_values(
         "BRIDGES_ENVIRONMENT",
         "BRIDGES_QWEN_API_KEY",
         "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
         "BRIDGES_DATABASE_URL",
         "BRIDGES_DATABASE_URL_FILE",
         "BRIDGES_SECRET_KEY",
@@ -237,6 +250,8 @@ def test_file_references_are_resolved_without_persisting_secret_values(
         "BRIDGES_ENVIRONMENT",
         "BRIDGES_QWEN_API_KEY",
         "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
         "BRIDGES_DATABASE_URL",
         "BRIDGES_DATABASE_URL_FILE",
         "BRIDGES_SECRET_KEY",
@@ -278,3 +293,269 @@ def test_file_references_are_resolved_without_persisting_secret_values(
     assert "sk-file-key" not in config_text
     assert "external-secret-key" not in config_text
     assert "database-url.txt" not in config_text
+
+
+# ---------------------------------------------------------------------------
+# Issue 01：Tavily Key 安装流程（文件/环境变量/凭据库/prompt，独立凭据库 id）
+# ---------------------------------------------------------------------------
+
+
+def test_interactive_prepare_prompts_qwen_then_tavily_and_saves_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+    credentials = _MemoryCredentialStore()
+    prompts: list[str] = []
+
+    def prompt(question: str) -> str:
+        prompts.append(question)
+        return "sk-qwen-key" if len(prompts) == 1 else "tvly-install-key"
+
+    prepared = LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=tmp_path / "app-home",
+        command_runner=_WebCommandRunner(),
+        credential_store=credentials,
+        prompt=prompt,
+    ).prepare(interactive=True)
+
+    assert prompts == [
+        "请输入百炼 API Key（输入内容不会显示）：",
+        "请输入 Tavily API Key（输入内容不会显示）：",
+    ]
+    assert prepared.settings.qwen_api_key == SecretStr("sk-qwen-key")
+    assert prepared.settings.tavily_api_key == SecretStr("tvly-install-key")
+    # 两者以独立 credential id 进入系统凭据库。
+    assert credentials.values["global-qwen-api-key"] == SecretStr("sk-qwen-key")
+    assert credentials.values["global-tavily-api-key"] == SecretStr("tvly-install-key")
+    assert prepared.api_env["BRIDGES_QWEN_API_KEY"] == "sk-qwen-key"
+    assert prepared.api_env["BRIDGES_TAVILY_API_KEY"] == "tvly-install-key"
+    config_text = (tmp_path / "app-home" / "config.json").read_text(encoding="utf-8")
+    assert "tvly-install-key" not in config_text
+    assert "sk-qwen-key" not in config_text
+
+
+def test_second_prepare_reuses_stored_tavily_key_without_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+    app_home = tmp_path / "app-home"
+    credentials = _MemoryCredentialStore()
+    LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=app_home,
+        command_runner=_WebCommandRunner(),
+        credential_store=credentials,
+        prompt=lambda _: "tvly-first-key",
+    ).prepare(interactive=True)
+
+    prepared = LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=app_home,
+        command_runner=_WebCommandRunner(),
+        credential_store=credentials,
+        prompt=lambda _: pytest.fail("再次启动不得重复 prompt 任何 Key"),
+    ).prepare(interactive=True)
+
+    assert prepared.settings.qwen_api_key == SecretStr("tvly-first-key")
+    assert prepared.settings.tavily_api_key == SecretStr("tvly-first-key")
+    assert prepared.api_env["BRIDGES_TAVILY_API_KEY"] == "tvly-first-key"
+
+
+def test_tavily_direct_environment_injects_key_and_cleans_old_variables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_DATABASE_URL_FILE",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+        "SCIENCE_COMPANION_TAVILY_API_KEY",
+        "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "sk-qwen")
+    monkeypatch.setenv("BRIDGES_TAVILY_API_KEY", "tvly-direct-key")
+    # 同名旧环境变量应被清理，避免双源歧义（指向不存在的路径会让
+    # Settings 加载失败，因此旧 FILE 变量只保留未设置状态）。
+    monkeypatch.setenv("SCIENCE_COMPANION_TAVILY_API_KEY", "legacy-tavily")
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+
+    prepared = LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=tmp_path / "app-home",
+        command_runner=_WebCommandRunner(),
+        credential_store=_MemoryCredentialStore(),
+    ).prepare(interactive=False)
+
+    assert prepared.settings.tavily_api_key == SecretStr("tvly-direct-key")
+    assert prepared.api_env["BRIDGES_TAVILY_API_KEY"] == "tvly-direct-key"
+    assert "BRIDGES_TAVILY_API_KEY_FILE" not in prepared.api_env
+    assert "SCIENCE_COMPANION_TAVILY_API_KEY" not in prepared.api_env
+    assert "SCIENCE_COMPANION_TAVILY_API_KEY_FILE" not in prepared.api_env
+
+
+def test_tavily_file_reference_wins_and_cleanup_direct_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_DATABASE_URL_FILE",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    tavily_file = tmp_path / "tavily.key"
+    tavily_file.write_text("tvly-file-key", encoding="utf-8")
+    monkeypatch.setenv("BRIDGES_TAVILY_API_KEY_FILE", str(tavily_file))
+    monkeypatch.setenv("BRIDGES_TAVILY_API_KEY", "tvly-wrong-direct")
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "sk-qwen")
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+
+    prepared = LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=tmp_path / "app-home",
+        command_runner=_WebCommandRunner(),
+        credential_store=_MemoryCredentialStore(),
+    ).prepare(interactive=False)
+
+    assert prepared.settings.tavily_api_key == SecretStr("tvly-file-key")
+    assert prepared.api_env["BRIDGES_TAVILY_API_KEY_FILE"] == str(tavily_file)
+    assert "BRIDGES_TAVILY_API_KEY" not in prepared.api_env
+
+
+def test_noninteractive_prepare_without_tavily_key_starts_normally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_DATABASE_URL_FILE",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "sk-qwen")
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+
+    prepared = LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=tmp_path / "app-home",
+        command_runner=_WebCommandRunner(),
+        credential_store=_MemoryCredentialStore(),
+    ).prepare(interactive=False)
+
+    # Issue 01：缺 Tavily Key 不阻塞启动；搜索入口返回「未配置搜索凭据」。
+    assert prepared.settings.tavily_api_key is None
+    for name in (
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "SCIENCE_COMPANION_TAVILY_API_KEY",
+        "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+    ):
+        assert name not in prepared.api_env
+
+
+def test_empty_tavily_prompt_cancels_start_with_chinese_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+    calls = 0
+
+    def prompt(question: str) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "sk-qwen-key"
+        return ""
+
+    with pytest.raises(BootstrapError, match="Tavily API Key 不能为空"):
+        LocalRuntimeBootstrap(
+            repo_root=repo_root,
+            app_home=tmp_path / "app-home",
+            command_runner=_WebCommandRunner(),
+            credential_store=_MemoryCredentialStore(),
+            prompt=prompt,
+        ).prepare(interactive=True)
+
+
+def test_tavily_credential_store_failure_gives_accurate_chinese_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+    credentials = _MemoryCredentialStore()
+    credentials.fail_ids.add("global-tavily-api-key")
+
+    with pytest.raises(BootstrapError, match="凭据管理器"):
+        LocalRuntimeBootstrap(
+            repo_root=repo_root,
+            app_home=tmp_path / "app-home",
+            command_runner=_WebCommandRunner(),
+            credential_store=credentials,
+            prompt=lambda _: "tvly-key",
+        ).prepare(interactive=True)

@@ -223,7 +223,7 @@ def test_consecutive_failures_keep_last_error_and_unverified_fallback(
     assert final.web_search is not None
     assert final.web_search.status == WebSearchStatus.ERROR
     assert final.web_search.error_code == "web_search_connect"
-    assert client.calls == 2, "连续失败最多两次 DDG 请求"
+    assert client.calls == 2, "连续失败最多两次 Tavily 请求"
     assert final.web_search.attempt_count == 2
     assert len(final.web_search.provider_attempts) == 2
     assert [a.attempt_number for a in final.web_search.provider_attempts] == [1, 2]
@@ -269,10 +269,62 @@ def test_unexpected_exception_degrades_to_internal_error_and_model_knowledge(
     assert events[-1].kind == "done"
 
 
-def test_retry_after_failure_reruns_ddg_and_distinguishes_attempts(
+def test_configuration_error_is_terminal_permission_state_without_retry(
     tmp_path: Path,
 ) -> None:
-    """失败后用户重试：重新执行 DDG，新旧尝试记录可区分且终态成功。"""
+    """Issue 01：401/403 配置错误在聊天终态可区分、不重试、不暗示稍后重试。"""
+
+    class _ConfigClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def search(self, query: str) -> list[WebSearchResult]:
+            self.calls += 1
+            raise WebSearchError(
+                "web_search_configuration",
+                "搜索凭据无效（Tavily API Key 未通过校验），请检查 Tavily API Key 配置。",
+                permission=True,
+                retryable=False,
+            )
+
+    adapter = _CapturingAdapter()
+    client = _ConfigClient()
+    service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
+    conversation = service.create_conversation("alice")
+    user, assistant = service.start_generation(
+        "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
+    )
+
+    events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            _context(),
+            until_user_message_id=user.message_id,
+        )
+    )
+    final = service.message_projection("alice", assistant.message_id)
+
+    assert final is not None
+    assert final.status.value == "done"
+    assert final.web_search is not None
+    assert final.web_search.status == WebSearchStatus.PERMISSION
+    assert final.web_search.error_code == "web_search_configuration"
+    assert final.web_search.can_retry is False
+    assert client.calls == 1, "配置错误不得自动重试"
+    assert "Tavily API Key" in (final.web_search.error_message or "")
+    assert "重试" not in (final.web_search.error_message or "")
+    model_context = str(adapter.payloads[0])
+    assert "本轮未联网核实" in model_context
+    assert "https://" not in model_context
+    assert events[-1].kind == "done"
+
+
+def test_retry_after_failure_reruns_search_and_distinguishes_attempts(
+    tmp_path: Path,
+) -> None:
+    """失败后用户重试：重新执行搜索，新旧尝试记录可区分且终态成功。"""
 
     class _FailOnceClient:
         def __init__(self) -> None:

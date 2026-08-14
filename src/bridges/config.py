@@ -94,6 +94,13 @@ class Settings(BaseSettings):
     qwen_api_key: SecretStr | None = Field(
         default=None, validation_alias=_env_aliases("QWEN_API_KEY")
     )
+    # Issue 01：Tavily 取代 DuckDuckGo 成为唯一通用公网搜索提供方。凭据只
+    # 从部署配置、其 *_FILE 引用或安装流程系统凭据库进入，不进入消息、
+    # 投影、审计或前端。缺 Key 时应用正常启动，联网搜索返回「未配置搜索
+    # 凭据」投影。
+    tavily_api_key: SecretStr | None = Field(
+        default=None, validation_alias=_env_aliases("TAVILY_API_KEY")
+    )
 
     # Issue 02：结构化公开搜索备用源默认关闭；启用时只允许注册表中的
     # 固定提供方，不接受任意 URL。Brave Search 凭据只从部署配置或其
@@ -189,6 +196,7 @@ class Settings(BaseSettings):
             "redis_url",
             "object_storage_url",
             "qwen_api_key",
+            "tavily_api_key",
             "brave_search_api_key",
         }
     )

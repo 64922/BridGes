@@ -185,7 +185,7 @@ def _web_sources(
             source_type=(
                 TeachingEvidenceSourceType.BRAVE_SEARCH
                 if result.provider == "brave_search"
-                else TeachingEvidenceSourceType.DUCKDUCKGO
+                else TeachingEvidenceSourceType.TAVILY
             ),
             source_id=result.result_id,
             title=result.title,
@@ -228,7 +228,7 @@ def _external_sources(
     """只把本轮证据门实际要求且成功返回的公开来源纳入证据。"""
 
     sources: list[TeachingEvidenceSource] = []
-    if required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}:
+    if required in {TeachingSearchSource.TAVILY, TeachingSearchSource.BOTH}:
         sources.extend(
             _web_sources(web_search, accepted_result_ids=accepted_web_result_ids)
         )
@@ -271,7 +271,7 @@ class TeachingEvidenceGateService:
         web_coverage = (
             adjudicate_web_sources(coverage_query, web_search.results, goal=goal)
             if (
-                required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}
+                required in {TeachingSearchSource.TAVILY, TeachingSearchSource.BOTH}
                 and web_search is not None
             )
             else None
@@ -405,7 +405,7 @@ class TeachingEvidenceGateService:
             )
         if search_status in {TeachingCardStatus.ERROR, TeachingCardStatus.PERMISSION}:
             blocked_notice = (
-                "DuckDuckGo 提供方受阻，已进入冷却；本轮不会自动重复请求。"
+                "Tavily 提供方受阻，已进入冷却；本轮不会自动重复请求。"
                 if provider_challenge
                 else ""
             )
@@ -546,7 +546,7 @@ class TeachingEvidenceGateService:
         return (
             TeachingSearchSource.ARXIV
             if has_paper
-            else TeachingSearchSource.DUCKDUCKGO
+            else TeachingSearchSource.TAVILY
         )
 
     @staticmethod
@@ -558,7 +558,7 @@ class TeachingEvidenceGateService:
         web_coverage: WebEvidenceCoverage | None = None,
     ) -> TeachingCardStatus | None:
         projections: list[TeachingCardStatus] = []
-        if required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}:
+        if required in {TeachingSearchSource.TAVILY, TeachingSearchSource.BOTH}:
             if web_search is None:
                 return None
             web_status = _web_status(web_search.status)
@@ -589,7 +589,7 @@ class TeachingEvidenceGateService:
         required: TeachingSearchSource,
     ) -> str | None:
         if (
-            required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}
+            required in {TeachingSearchSource.TAVILY, TeachingSearchSource.BOTH}
             and web_search is not None
             and web_search.error_code is not None
         ):

@@ -48,7 +48,7 @@ RESULT_FAILED = "failed"
 
 @dataclass(frozen=True, slots=True)
 class PublicSearchDeadlines:
-    """一次 PUBLIC_SEARCH 阶段的阶段与 DDG 子预算。"""
+    """一次 PUBLIC_SEARCH 阶段的阶段与搜索提供方子预算。"""
 
     stage_deadline: float
     provider_deadline: float
@@ -184,9 +184,9 @@ class RunBudget:
     def public_search_deadlines(
         self, active_sources: Iterable[str], *, scale: float = 1.0
     ) -> PublicSearchDeadlines:
-        """返回 PUBLIC_SEARCH 阶段截止及 DDG provider 子截止。
+        """返回 PUBLIC_SEARCH 阶段截止及搜索提供方子截止。
 
-        包含 DuckDuckGo 时，阶段预算统一为 8 秒；arXiv 单独运行时继续
+        包含 Tavily 时，阶段预算统一为 8 秒；arXiv 单独运行时继续
         使用原有来源预算，以免把未参与的 web 约束施加到论文路径。
         """
 

@@ -3,8 +3,8 @@
 The seam under test: a user (or the Web UI) can read the same health projection
 from the API, and the projection carries live/ready/degraded semantics.
 
-Issue 04：readiness 独立暴露 DDG 健康快照（web_search 依赖 + 脱敏
-extensions）；DDG 故障只进入降级，不拖垮基础存活与就绪。
+Issue 04/01：readiness 独立暴露 Tavily 健康快照（web_search 依赖 + 脱敏
+extensions）；搜索故障只进入降级，不拖垮基础存活与就绪。
 """
 
 import os
@@ -20,6 +20,10 @@ from bridges.closeout.fixtures import CloseoutWebSearchClient
 from bridges.config import get_settings
 from bridges.web_search.contracts import WebSearchHealth, WebSearchHealthStatus
 from bridges.web_search.service import WebSearchService
+from bridges.web_search.tavily import (
+    TAVILY_SEARCH_PROVIDER,
+    TAVILY_SEARCH_PROVIDER_VERSION,
+)
 
 
 @pytest.fixture
@@ -31,8 +35,8 @@ def _failing_web_search_service() -> WebSearchService:
     class _FailingHealthClient(CloseoutWebSearchClient):
         def health_check(self) -> WebSearchHealth:
             return WebSearchHealth(
-                provider="duckduckgo",
-                provider_version="duckduckgo-html-v1",
+                provider=TAVILY_SEARCH_PROVIDER,
+                provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
                 status=WebSearchHealthStatus.CONNECT_ERROR,
                 checked_at=datetime.now(UTC),
                 error_code="web_search_connect",
@@ -200,7 +204,7 @@ def test_health_ready_reports_missing_production_persistence() -> None:
 
 
 def test_health_readiness_exposes_web_search_snapshot_separately() -> None:
-    """Issue 04：readiness 独立暴露 web_search 依赖，不把数据库健康等同 DDG。"""
+    """Issue 04/01：readiness 独立暴露 web_search 依赖，不把数据库健康等同搜索。"""
     app = create_app()
     _replace_web_search(app, WebSearchService(
         client=CloseoutWebSearchClient(),
@@ -216,17 +220,17 @@ def test_health_readiness_exposes_web_search_snapshot_separately() -> None:
     assert web_search[0]["required"] is False
     assert body["ready"] == "pass"
     assert body["degraded"] == "pass"
-    assert body["extensions"]["ddg_health_status"] == "ready"
-    assert body["extensions"]["ddg_provider_version"] == "closeout-web-fixture-v1"
-    assert 0 <= body["extensions"]["ddg_snapshot_age_ms"] <= 5000
-    assert body["extensions"]["ddg_refresh_count"] == 1
-    assert body["extensions"]["ddg_error_code"] is None
-    assert body["extensions"]["ddg_stale_ready"] is False
-    assert body["extensions"]["ddg_last_success_at"] is not None
+    assert body["extensions"]["tavily_health_status"] == "ready"
+    assert body["extensions"]["tavily_provider_version"] == "closeout-web-fixture-v1"
+    assert 0 <= body["extensions"]["tavily_snapshot_age_ms"] <= 5000
+    assert body["extensions"]["tavily_refresh_count"] == 1
+    assert body["extensions"]["tavily_error_code"] is None
+    assert body["extensions"]["tavily_stale_ready"] is False
+    assert body["extensions"]["tavily_last_success_at"] is not None
 
 
-def test_health_readiness_degrades_but_stays_alive_when_ddg_unreachable() -> None:
-    """Issue 04：DDG 明确非 READY 时 degraded=fail，但应用仍存活且就绪。"""
+def test_health_readiness_degrades_but_stays_alive_when_search_unreachable() -> None:
+    """Issue 04/01：搜索明确非 READY 时 degraded=fail，但应用仍存活且就绪。"""
     app = create_app()
     _replace_web_search(app, _failing_web_search_service())
     test_client = TestClient(app)
@@ -237,8 +241,8 @@ def test_health_readiness_degrades_but_stays_alive_when_ddg_unreachable() -> Non
     web_search = [d for d in summary["dependencies"] if d["name"] == "web_search"]
     assert web_search[0]["status"] == "fail"
     assert web_search[0]["required"] is False
-    assert summary["extensions"]["ddg_health_status"] == "connect_error"
-    assert summary["extensions"]["ddg_error_code"] == "web_search_connect"
+    assert summary["extensions"]["tavily_health_status"] == "connect_error"
+    assert summary["extensions"]["tavily_error_code"] == "web_search_connect"
 
     ready = test_client.get("/health/ready")
     assert ready.status_code == 200
@@ -246,8 +250,8 @@ def test_health_readiness_degrades_but_stays_alive_when_ddg_unreachable() -> Non
     assert ready.json()["degraded"] == "fail"
 
 
-def test_health_liveness_stays_fast_and_offline_when_ddg_down() -> None:
-    """Issue 04：liveness 不访问公网、不带依赖；DDG 故障不拖垮基础存活。"""
+def test_health_liveness_stays_fast_and_offline_when_search_down() -> None:
+    """Issue 04/01：liveness 不访问公网、不带依赖；搜索故障不拖垮基础存活。"""
     app = create_app()
     _replace_web_search(app, _failing_web_search_service())
     test_client = TestClient(app)
@@ -263,7 +267,7 @@ def test_health_liveness_stays_fast_and_offline_when_ddg_down() -> None:
 
 
 def test_health_pending_probe_reports_unknown_without_network() -> None:
-    """Issue 04：test 环境首次 readiness 返回 pending，不访问公网、不误报失败。"""
+    """Issue 04/01：test 环境首次 readiness 返回 pending，不访问公网、不误报失败。"""
     response = TestClient(create_app()).get("/health/ready")
 
     assert response.status_code == 200
@@ -273,8 +277,8 @@ def test_health_pending_probe_reports_unknown_without_network() -> None:
     assert web_search[0]["status"] == "unknown"
     assert web_search[0]["required"] is False
     assert body["degraded"] == "pass"
-    assert body["extensions"]["ddg_health_status"] == "upstream_error"
-    assert body["extensions"]["ddg_error_code"] == "web_search_health_pending"
+    assert body["extensions"]["tavily_health_status"] == "upstream_error"
+    assert body["extensions"]["tavily_error_code"] == "web_search_health_pending"
 
 
 def test_health_projection_is_sanitized_of_probe_and_credential_material() -> None:
@@ -312,4 +316,4 @@ def test_health_readiness_is_bounded_and_never_blocks_on_probe() -> None:
     # 若 readiness 同步等待探测，将耗时超过探针超时（默认 5s）；2s 内返回
     # 即证明只读取快照、不做公网访问。
     assert elapsed_ms < 2000
-    assert response.json()["extensions"]["ddg_error_code"] == "web_search_health_pending"
+    assert response.json()["extensions"]["tavily_error_code"] == "web_search_health_pending"

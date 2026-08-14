@@ -66,7 +66,7 @@ def test_planner_persists_deterministic_rules_and_learning_force_metadata() -> N
     assert len(plan.original_query_hash) == 64
     assert plan.original_query_hash != plan.query_hash
     assert plan.rules_version
-    assert plan.provider == "duckduckgo"
+    assert plan.provider == "tavily"
     assert plan.freshness_window_seconds < 24 * 60 * 60
     assert "identity" in plan.deleted_categories
 
@@ -668,7 +668,7 @@ def test_service_retries_a_transient_provider_error_without_a_third_request() ->
     assert projection.searched_at is not None
     assert [attempt.attempt_number for attempt in projection.provider_attempts] == [1, 2]
     assert all(
-        attempt.provider == "duckduckgo" and attempt.query_hash
+        attempt.provider == "tavily" and attempt.query_hash
         for attempt in projection.provider_attempts
     )
     assert projection.provider_attempts[0].retry_planned is True

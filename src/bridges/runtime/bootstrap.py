@@ -30,6 +30,7 @@ from bridges.persistence import PersistenceError, resolve_database_path
 
 CONFIG_SCHEMA_VERSION = 1
 RUNTIME_QWEN_CREDENTIAL_ID = "global-qwen-api-key"
+RUNTIME_TAVILY_CREDENTIAL_ID = "global-tavily-api-key"
 _SECRET_ENV_FIELDS = (
     "BRIDGES_SECRET_KEY",
     "BRIDGES_SECRET_KEY_FILE",
@@ -37,12 +38,16 @@ _SECRET_ENV_FIELDS = (
     "BRIDGES_DATABASE_URL_FILE",
     "BRIDGES_QWEN_API_KEY",
     "BRIDGES_QWEN_API_KEY_FILE",
+    "BRIDGES_TAVILY_API_KEY",
+    "BRIDGES_TAVILY_API_KEY_FILE",
     "SCIENCE_COMPANION_SECRET_KEY",
     "SCIENCE_COMPANION_SECRET_KEY_FILE",
     "SCIENCE_COMPANION_DATABASE_URL",
     "SCIENCE_COMPANION_DATABASE_URL_FILE",
     "SCIENCE_COMPANION_QWEN_API_KEY",
     "SCIENCE_COMPANION_QWEN_API_KEY_FILE",
+    "SCIENCE_COMPANION_TAVILY_API_KEY",
+    "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
 )
 
 
@@ -121,8 +126,15 @@ class LocalRuntimeBootstrap:
         # “先准备 Web，再询问 Qwen Key”的用户流程执行。
         qwen_key: SecretStr | None = None
         qwen_source = ""
+        tavily_key: SecretStr | None = None
+        tavily_source = ""
         if not interactive:
             qwen_key, qwen_source = self._resolve_qwen_key(
+                external_settings, interactive=False
+            )
+            # Issue 01：Tavily Key 与 Qwen 同构解析，但缺 Key 不阻塞启动——
+            # 应用可以正常启动，联网搜索入口返回「未配置搜索凭据」投影。
+            tavily_key, tavily_source = self._resolve_tavily_key(
                 external_settings, interactive=False
             )
 
@@ -169,6 +181,10 @@ class LocalRuntimeBootstrap:
             qwen_key, qwen_source = self._resolve_qwen_key(
                 external_settings, interactive=True
             )
+            # Issue 01：交互式首次安装依次 prompt Qwen Key 与 Tavily Key。
+            tavily_key, tavily_source = self._resolve_tavily_key(
+                external_settings, interactive=True
+            )
 
         try:
             settings = Settings(
@@ -176,6 +192,7 @@ class LocalRuntimeBootstrap:
                 database_url=SecretStr(database_url),
                 secret_key=SecretStr(secret_key) if secret_key else None,
                 qwen_api_key=qwen_key,
+                tavily_api_key=tavily_key,
             )
         except (ValidationError, ValueError) as exc:
             raise BootstrapError(f"本机托管配置无法加载：{exc}") from exc
@@ -186,6 +203,8 @@ class LocalRuntimeBootstrap:
             secret_key_file=secret_key_file,
             qwen_key=qwen_key,
             qwen_source=qwen_source,
+            tavily_key=tavily_key,
+            tavily_source=tavily_source,
         )
         scheduler_env = dict(api_env)
         for name in (
@@ -193,6 +212,10 @@ class LocalRuntimeBootstrap:
             "BRIDGES_QWEN_API_KEY_FILE",
             "SCIENCE_COMPANION_QWEN_API_KEY",
             "SCIENCE_COMPANION_QWEN_API_KEY_FILE",
+            "BRIDGES_TAVILY_API_KEY",
+            "BRIDGES_TAVILY_API_KEY_FILE",
+            "SCIENCE_COMPANION_TAVILY_API_KEY",
+            "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
         ):
             scheduler_env.pop(name, None)
         worker_env = dict(api_env)
@@ -341,6 +364,56 @@ class LocalRuntimeBootstrap:
             ) from exc
         return secret, "credential-store"
 
+    def _resolve_tavily_key(
+        self, external_settings: Settings, *, interactive: bool
+    ) -> tuple[SecretStr | None, str]:
+        """与 Qwen Key 同构的 Tavily Key 解析（Issue 01）。
+
+        解析链：文件引用 → 环境变量 → 系统凭据库（独立 credential id）→
+        交互 prompt「请输入 Tavily API Key」。已保存凭据的再次启动不重复
+        prompt；凭据读取失败给出准确中文错误。与 Qwen 的差异：非交互调用
+        缺 Key 时不阻塞启动——联网搜索入口返回「未配置搜索凭据」投影。
+        """
+        file_ref = secret_file_reference("TAVILY_API_KEY")
+        if file_ref and file_ref[0]:
+            file_path, env_name = file_ref
+            value = _secret_value(external_settings.tavily_api_key)
+            return (
+                SecretStr(value or _read_secret_file(Path(file_path), env_name)),
+                "file",
+            )
+        direct = _secret_value(external_settings.tavily_api_key)
+        if direct:
+            return SecretStr(direct), "environment"
+
+        if external_settings.environment.lower() == "test":
+            return None, "test"
+
+        try:
+            stored = self.credential_store.get(RUNTIME_TAVILY_CREDENTIAL_ID)
+        except (CredentialStoreError, OSError) as exc:
+            raise BootstrapError(
+                "无法读取系统凭据库中的搜索凭据，请检查当前用户的凭据管理器。"
+            ) from exc
+        if stored is not None and stored.get_secret_value().strip():
+            return stored, "credential-store"
+
+        if not interactive:
+            return None, "none"
+
+        value = self.prompt("请输入 Tavily API Key（输入内容不会显示）：").strip()
+        if not value:
+            raise BootstrapError("Tavily API Key 不能为空，启动已取消。")
+        secret = SecretStr(value)
+        try:
+            self.credential_store.save(RUNTIME_TAVILY_CREDENTIAL_ID, secret)
+        except (CredentialStoreError, OSError) as exc:
+            raise BootstrapError(
+                "无法安全保存 Tavily API Key，请检查系统凭据管理器；"
+                "也可以改用 BRIDGES_TAVILY_API_KEY_FILE。"
+            ) from exc
+        return secret, "credential-store"
+
     def _write_config(
         self,
         *,
@@ -419,6 +492,8 @@ class LocalRuntimeBootstrap:
         secret_key_file: Path | None,
         qwen_key: SecretStr | None,
         qwen_source: str,
+        tavily_key: SecretStr | None,
+        tavily_source: str,
     ) -> dict[str, str]:
         env = dict(os.environ)
         env["BRIDGES_ENVIRONMENT"] = _environment_name()
@@ -463,6 +538,35 @@ class LocalRuntimeBootstrap:
                     "SCIENCE_COMPANION_QWEN_API_KEY_FILE",
                 ):
                     env.pop(name, None)
+        if tavily_key is not None and tavily_source in {
+            "environment",
+            "credential-store",
+        }:
+            env["BRIDGES_TAVILY_API_KEY"] = tavily_key.get_secret_value()
+            for name in (
+                "BRIDGES_TAVILY_API_KEY_FILE",
+                "SCIENCE_COMPANION_TAVILY_API_KEY",
+                "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+            ):
+                env.pop(name, None)
+        elif tavily_key is not None and tavily_source == "file":
+            file_ref = secret_file_reference("TAVILY_API_KEY")
+            if file_ref and file_ref[0]:
+                env["BRIDGES_TAVILY_API_KEY_FILE"] = file_ref[0]
+                for name in (
+                    "BRIDGES_TAVILY_API_KEY",
+                    "SCIENCE_COMPANION_TAVILY_API_KEY",
+                    "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+                ):
+                    env.pop(name, None)
+        elif tavily_key is None:
+            for name in (
+                "BRIDGES_TAVILY_API_KEY",
+                "BRIDGES_TAVILY_API_KEY_FILE",
+                "SCIENCE_COMPANION_TAVILY_API_KEY",
+                "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+            ):
+                env.pop(name, None)
         return env
 
 

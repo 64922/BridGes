@@ -2,8 +2,8 @@
 
 Issue 04 之前，备用提供方（Brave 等）允许被“注册但忽略”；现在注册任何
 备用客户端都是配置漂移，组合期失败关闭，稳定错误码
-``unexpected_search_provider``。Brave 客户端本身的合同测试保留，用于证明
-历史能力已冻结且不会复活到生产组合。
+``unexpected_search_provider``。Issue 01 起主用提供方为 Tavily；Brave
+客户端本身的合同测试保留，用于证明历史能力已冻结且不会复活到生产组合。
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pytest
 from pydantic import SecretStr
 
 from bridges.api.main import create_app
+from bridges.closeout.fixtures import CloseoutWebSearchClient
 from bridges.config import Settings
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import (
@@ -42,14 +43,19 @@ from bridges.web_search.service import (
     WebSearchProviderDriftError,
     WebSearchService,
 )
+from bridges.web_search.tavily import (
+    TAVILY_SEARCH_PROVIDER,
+    TAVILY_SEARCH_PROVIDER_VERSION,
+    TavilySearchClient,
+)
 
 
 def _result(
     result_id: str = "result-1",
     *,
     title: str = "公开来源",
-    provider: str = "duckduckgo",
-    provider_version: str = "duckduckgo-html-v1",
+    provider: str = TAVILY_SEARCH_PROVIDER,
+    provider_version: str = TAVILY_SEARCH_PROVIDER_VERSION,
 ) -> WebSearchResult:
     return WebSearchResult(
         result_id=result_id,
@@ -64,8 +70,8 @@ def _result(
 
 
 class _FakeClient:
-    provider_name = "duckduckgo"
-    provider_version = "duckduckgo-html-v1"
+    provider_name = TAVILY_SEARCH_PROVIDER
+    provider_version = TAVILY_SEARCH_PROVIDER_VERSION
 
     def __init__(self, outcome: object) -> None:
         self.outcome = outcome
@@ -96,8 +102,8 @@ def test_overall_health_rejects_configured_fallback_as_config_drift() -> None:
     primary = _HealthClient(
         [],
         WebSearchHealth(
-            provider="duckduckgo",
-            provider_version="duckduckgo-html-v1",
+            provider=TAVILY_SEARCH_PROVIDER,
+            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
             status=WebSearchHealthStatus.UPSTREAM_ERROR,
             checked_at=checked_at,
             error_code="web_search_provider_challenge",
@@ -114,7 +120,7 @@ def test_overall_health_rejects_configured_fallback_as_config_drift() -> None:
     )
 
     # Issue 04：传入备用客户端即配置漂移，组合期失败关闭（稳定错误码）。
-    with pytest.raises(WebSearchProviderDriftError, match="unexpected_search_provider|DuckDuckGo"):
+    with pytest.raises(WebSearchProviderDriftError, match="unexpected_search_provider|Tavily"):
         WebSearchService(
             client=primary,
             fallback_client=fallback,
@@ -139,8 +145,8 @@ def test_overall_health_is_unavailable_when_all_registered_providers_fail() -> N
     failed = _HealthClient(
         [],
         WebSearchHealth(
-            provider="duckduckgo",
-            provider_version="duckduckgo-html-v1",
+            provider=TAVILY_SEARCH_PROVIDER,
+            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
             status=WebSearchHealthStatus.RATE_LIMITED,
             checked_at=checked_at,
             error_code="web_search_rate_limit",
@@ -151,7 +157,7 @@ def test_overall_health_is_unavailable_when_all_registered_providers_fail() -> N
 
     assert summary.available is False
     assert summary.status == WebSearchHealthStatus.RATE_LIMITED
-    assert summary.providers[0].provider_version == "duckduckgo-html-v1"
+    assert summary.providers[0].provider_version == TAVILY_SEARCH_PROVIDER_VERSION
 
 
 def test_fallback_registry_requires_explicit_registration_and_credentials() -> None:
@@ -275,7 +281,7 @@ def test_brave_health_check_rejects_missing_credentials() -> None:
     assert health.error_code == "web_search_fallback_credentials"
 
 
-def test_duckduckgo_success_without_fallback_registration() -> None:
+def test_primary_success_without_fallback_registration() -> None:
     primary = _FakeClient([_result()])
     service = WebSearchService(client=primary)
 
@@ -283,10 +289,10 @@ def test_duckduckgo_success_without_fallback_registration() -> None:
 
     assert projection is not None
     assert projection.status == WebSearchStatus.SUCCESS
-    assert projection.provider == "duckduckgo"
-    assert projection.selected_provider == "duckduckgo"
-    assert projection.provider_attempts[0].provider == "duckduckgo"
-    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
+    assert projection.provider == "tavily"
+    assert projection.selected_provider == "tavily"
+    assert projection.provider_attempts[0].provider == "tavily"
+    assert [item.provider for item in projection.provider_attempts] == ["tavily"]
 
 
 def test_primary_permission_failure_keeps_permission_status() -> None:
@@ -306,13 +312,13 @@ def test_primary_permission_failure_keeps_permission_status() -> None:
     assert projection is not None
     assert projection.status == WebSearchStatus.PERMISSION
     assert projection.error_code == "web_search_permission"
-    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
+    assert [item.provider for item in projection.provider_attempts] == ["tavily"]
 
 
 def test_slow_primary_keeps_timeout_projection() -> None:
     class _SlowClient:
-        provider_name = "duckduckgo"
-        provider_version = "duckduckgo-html-v1"
+        provider_name = TAVILY_SEARCH_PROVIDER
+        provider_version = TAVILY_SEARCH_PROVIDER_VERSION
 
         def __init__(self) -> None:
             self.queries: list[str] = []
@@ -342,12 +348,12 @@ def test_slow_primary_keeps_timeout_projection() -> None:
         ),
     )
 
-    # Issue 03：总预算内只有 DDG 一个提供方；保留真实超时投影。
+    # Issue 03：总预算内只有 Tavily 一个提供方；保留真实超时投影。
     assert projection is not None
     assert projection.status == WebSearchStatus.ERROR
     assert projection.error_code == "web_search_timeout"
     assert projection.provider_attempts[0].result_code == "web_search_timeout"
-    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
+    assert [item.provider for item in projection.provider_attempts] == ["tavily"]
 
 
 def test_challenge_keeps_cooldown_without_switching_provider() -> None:
@@ -368,7 +374,7 @@ def test_challenge_keeps_cooldown_without_switching_provider() -> None:
     assert projection.error_code == "web_search_provider_challenge"
     assert projection.cooldown_until is not None
     assert primary.queries == ["公开主题"]
-    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
+    assert [item.provider for item in projection.provider_attempts] == ["tavily"]
     assert projection.provider_attempts[0].result_code == "web_search_provider_challenge"
 
 
@@ -451,14 +457,14 @@ def test_empty_after_one_bounded_rewrite_keeps_empty_status() -> None:
     assert projection.page_classification != "challenge"
     assert primary.queries == ["公开主题", "公开主题 基础定义 原理"]
     assert projection.query_history == primary.queries
-    assert {item.provider for item in projection.provider_attempts} == {"duckduckgo"}
+    assert {item.provider for item in projection.provider_attempts} == {"tavily"}
 
 
 def test_configured_fallback_is_config_drift_even_on_failure() -> None:
     primary = _FakeClient(WebSearchError("web_search_timeout", "主用超时"))
     fallback = _FakeClient(WebSearchError("web_search_fallback_timeout", "备用超时"))
 
-    # Issue 04：即使 DDG 失败，任何备用客户端注册都是配置漂移，拒绝组合。
+    # Issue 04：即使 Tavily 失败，任何备用客户端注册都是配置漂移，拒绝组合。
     with pytest.raises(WebSearchProviderDriftError):
         WebSearchService(
             client=primary,
@@ -482,14 +488,22 @@ def test_timeout_when_stage_budget_consumed_before_request() -> None:
     assert projection.error_code in {"web_search_timeout", "web_search_no_results"}
 
 
-def test_production_composition_only_registers_duckduckgo() -> None:
-    """Issue 04：生产组合的健康提供方列表只有 DuckDuckGo，并挂载健康监视器。"""
+def test_production_composition_only_registers_tavily() -> None:
+    """Issue 01/04：生产组合的健康提供方列表只有 Tavily，并挂载健康监视器。
+
+    closeout fixture 模式（test 环境显式开启）使用协议 fixture 客户端，
+    但提供方标识仍必须是 ``tavily``，不得回退到任何 DDG 形态。
+    """
 
     app = create_app()
     web_search_service = app.state.web_search_service
 
     assert web_search_service is not None
     assert web_search_service._client is not None
+    assert isinstance(
+        web_search_service._client, (TavilySearchClient, CloseoutWebSearchClient)
+    )
+    assert web_search_service._client.provider_name == TAVILY_SEARCH_PROVIDER
     # test 环境不启用自动刷新，readiness 首次读取返回 pending 快照，绝不
     # 在单测中访问公网。
     monitor = web_search_service.health_monitor

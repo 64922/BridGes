@@ -55,7 +55,7 @@ class CareerEvidenceKind(StrEnum):
     PROFILE_SLICE = "profile_slice"      # 画像切片（最小必要记录）
     LEARNING_RECORD = "learning_record"  # 学习记录（使命/知识状态/学习证据）
     RETRIEVAL = "retrieval"              # 本地分层检索引用（附件/项目/知识库）
-    WEB_SEARCH = "web_search"            # DuckDuckGo 公开来源
+    WEB_SEARCH = "web_search"            # Tavily 公开来源
     ARXIV = "arxiv"                      # arXiv 论文来源
     USER_STATEMENT = "user_statement"    # 用户陈述（本轮消息或会话内可见片段）
 

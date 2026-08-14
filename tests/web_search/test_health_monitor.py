@@ -314,7 +314,7 @@ def _plan() -> SearchPlan:
     return SearchPlan(True, "公开主题", "需要事实核查")
 
 
-def test_initial_projection_shows_degraded_hint_when_ddg_not_ready() -> None:
+def test_initial_projection_shows_degraded_hint_when_search_not_ready() -> None:
     service = WebSearchService(
         client=_HealthFakeClient(_connect_error()),
         health_auto_refresh=False,

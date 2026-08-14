@@ -187,7 +187,7 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
         model_capability="qwen_text_chat",
         chat_actions=("learning_mode",),
         truth_contract=(
-            "学习模式最终正文经真实文本模型探针；联网失败时 DDG 失败投影"
+            "学习模式最终正文经真实文本模型探针；联网失败时 Tavily 失败投影"
             "与后续 Qwen 降级分别记录。"
         ),
     ),
@@ -329,11 +329,11 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
     ),
     # ── external_non_qwen：不消费 Qwen Key 的外部能力 ────────────────────
     CapabilityManifestEntry(
-        id="ddg_web_search",
-        journey="DuckDuckGo 通用网页搜索",
+        id="tavily_web_search",
+        journey="Tavily 通用网页搜索",
         category=CapabilityCategory.EXTERNAL_NON_QWEN,
         chat_actions=("web_search",),
-        truth_contract="只访问 DDG；失败后才允许另起真实聊天模型降级调用。",
+        truth_contract="只访问 Tavily；失败后才允许另起真实聊天模型降级调用。",
     ),
     CapabilityManifestEntry(
         id="arxiv_search",

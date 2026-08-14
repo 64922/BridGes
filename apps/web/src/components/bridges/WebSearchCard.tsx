@@ -15,9 +15,13 @@ const providerChallengeLabel =
   `公网搜索提供方暂时受阻，请稍后显式重试${unverifiedSearchSuffix}`;
 
 const providerLabel: Record<string, string> = {
-  duckduckgo: "DuckDuckGo",
+  tavily: "Tavily",
+  // 兼容 Issue 01 之前的历史消息投影；新记录不再出现。
+  duckduckgo: "公开网页搜索（历史）",
   brave_search: "Brave Search",
 };
+
+const configurationErrorLabel = `搜索凭据未配置或无效${unverifiedSearchSuffix}`;
 
 function displayProvider(provider: string | null | undefined): string {
   if (!provider) return "未选定提供方";
@@ -233,7 +237,10 @@ export function WebSearchCard({
           <strong>
             {search.error_code === "web_search_provider_challenge"
               ? providerChallengeLabel
-              : failureStatusLabel[search.status] ?? "联网搜索未完成"}
+              : search.error_code === "web_search_configuration" ||
+                  search.error_code === "web_search_credentials"
+                ? configurationErrorLabel
+                : failureStatusLabel[search.status] ?? "联网搜索未完成"}
           </strong>
           {search.can_retry && <span style={{ marginLeft: "auto" }}><RetryButton onRetry={onRetry} /></span>}
         </div>

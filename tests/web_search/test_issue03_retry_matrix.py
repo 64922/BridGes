@@ -7,7 +7,7 @@
 - challenge/429/permission/响应过大/不安全 URL/不可接受重定向/不可重试
   4xx/解析契约错误只调用 1 次（AC5）；
 - 固定 200ms 退避可被用户取消打断；剩余预算不足时不再启动第二次（AC6）；
-- 每次已启动尝试都保存 provider=duckduckgo、尝试序号、耗时、结果码与
+- 每次已启动尝试都保存 provider=tavily、尝试序号、耗时、结果码与
   脱敏状态类别；终态 attempts 与实际 HTTP 调用数一致（AC7）。
 """
 
@@ -23,12 +23,10 @@ import pytest
 from bridges import public_search_budget as search_budget
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import (
-    WebSearchPageClassification,
     WebSearchResult,
     WebSearchStatus,
 )
 from bridges.web_search.service import SearchPlan, WebSearchService
-
 from tests.web_search.test_duckduckgo_service import _FakeSearchClient
 
 
@@ -220,7 +218,7 @@ def test_transient_errors_retry_once_then_preserve_last_error(
     assert client.calls == 2
     assert projection.attempt_count == 2
     assert [a.attempt_number for a in projection.provider_attempts] == [1, 2]
-    assert all(a.provider == "duckduckgo" for a in projection.provider_attempts)
+    assert all(a.provider == "tavily" for a in projection.provider_attempts)
     assert projection.provider_attempts[0].retry_planned is True
 
 
@@ -433,7 +431,7 @@ def test_attempts_match_actual_http_calls_on_consecutive_failures() -> None:
     assert projection.searched_at is not None
     assert len(projection.provider_attempts) == 2
     for attempt in projection.provider_attempts:
-        assert attempt.provider == "duckduckgo"
+        assert attempt.provider == "tavily"
         assert attempt.result_code == "web_search_connect"
         assert attempt.duration_ms >= 0
         assert attempt.query_hash
@@ -506,4 +504,4 @@ def test_fake_search_client_still_works_for_service_search() -> None:
     assert projection.status == WebSearchStatus.SUCCESS
     assert projection.results[0].url == "https://example.com/source"
     assert projection.attempt_count == 1
-    assert projection.provider_attempts[0].provider == "duckduckgo"
+    assert projection.provider_attempts[0].provider == "tavily"

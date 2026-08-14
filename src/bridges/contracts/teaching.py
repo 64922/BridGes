@@ -74,9 +74,11 @@ class TeachingSearchSource(StrEnum):
     """证据门需要补充的公开来源。"""
 
     NONE = "none"
-    DUCKDUCKGO = "duckduckgo"
+    TAVILY = "tavily"
     ARXIV = "arxiv"
     BOTH = "both"
+    #: 兼容 Issue 01 之前持久化的历史投影；新记录不得使用。
+    DUCKDUCKGO = "duckduckgo"
 
 
 class TeachingEvidenceSourceType(StrEnum):
@@ -85,11 +87,13 @@ class TeachingEvidenceSourceType(StrEnum):
     ATTACHMENT = "attachment"
     PROJECT = "project"
     KNOWLEDGE_BASE = "knowledge_base"
-    DUCKDUCKGO = "duckduckgo"
+    TAVILY = "tavily"
     BRAVE_SEARCH = "brave_search"
     ARXIV = "arxiv"
     #: 兼容早期未区分本地层级的历史投影；新记录不得使用。
     LEGACY_LOCAL = "local"
+    #: 兼容 Issue 01 之前持久化的历史投影；新记录不得使用。
+    DUCKDUCKGO = "duckduckgo"
 
 
 class TeachingKnowledgeState(StrEnum):

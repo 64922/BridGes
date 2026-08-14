@@ -78,7 +78,7 @@ def _web(status: WebSearchStatus) -> WebSearchProjection:
     )
 
 
-def test_no_local_material_automatically_requires_duckduckgo_and_exposes_gap() -> None:
+def test_no_local_material_automatically_requires_tavily_and_exposes_gap() -> None:
     turn = TeachingTurnService().prepare(
         "解释量子纠缠",
         retrieval=None,
@@ -86,7 +86,7 @@ def test_no_local_material_automatically_requires_duckduckgo_and_exposes_gap() -
     )
 
     assert turn.evidence_gate.status == TeachingEvidenceStatus.INSUFFICIENT
-    assert turn.evidence_gate.required_search.value == "duckduckgo"
+    assert turn.evidence_gate.required_search.value == "tavily"
     assert turn.status == TeachingCardStatus.EMPTY
     assert turn.can_answer_reliably is False
     assert turn.evidence_gate.allow_model_knowledge is True
@@ -99,7 +99,7 @@ def test_missing_external_provider_still_exposes_an_explicit_gap() -> None:
         retrieval=None,
     )
 
-    assert turn.evidence_gate.required_search.value == "duckduckgo"
+    assert turn.evidence_gate.required_search.value == "tavily"
     assert turn.evidence_gate.gap
     assert turn.can_answer_reliably is False
     assert turn.status == TeachingCardStatus.EMPTY
@@ -208,7 +208,7 @@ def test_stale_local_material_requires_public_search() -> None:
     assert turn.can_answer_reliably is False
 
 
-def test_public_paper_query_can_combine_duckduckgo_and_arxiv() -> None:
+def test_public_paper_query_can_combine_tavily_and_arxiv() -> None:
     service = TeachingTurnService()
     assert service.required_search("最新公开论文研究综述", None).value == "both"
 

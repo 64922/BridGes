@@ -715,7 +715,7 @@ class _SmtpError(Exception):
 
 
 class _FakeSearchClient:
-    """确定性 DuckDuckGo 替身：记录查询并返回固定结果（用于教学强制联网）。"""
+    """确定性 Tavily 替身：记录查询并返回固定结果（用于教学强制联网）。"""
 
     def __init__(self) -> None:
         self.queries: list[str] = []
