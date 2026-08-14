@@ -19,7 +19,10 @@ from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
 from bridges.storage.database import BridgesDatabase
-from bridges.web_search.contracts import WebSearchResult
+from bridges.web_search.contracts import (
+    WebSearchResult,
+    WebSearchStatus,
+)
 from bridges.web_search.service import WebSearchService
 
 
@@ -282,3 +285,103 @@ def test_chat_覆盖裁决审计只记录脱敏计数(tmp_path: Path) -> None:
     assert details["rejection_counts"] == {"topic_mismatch": 1}
     assert details["topic_aliases_version"] == "learning-evidence-topic-aliases-v1"
     assert "Transformer" not in str(details)
+
+
+def test_chat_arxiv_and_ddg_parallel_reloadable_with_single_terminal(
+    tmp_path: Path,
+) -> None:
+    """AC11：arXiv+DDG 并行场景保持终态可重载，SSE 只发出一个最终搜索终态。"""
+    from bridges.arxiv_mcp.contracts import (
+        ArxivPaper,
+        ArxivSearchProjection,
+        ArxivSearchStatus,
+    )
+    from bridges.arxiv_mcp.service import ArxivSearchPlan, ArxivSearchService
+
+    class _PaperClient:
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+
+        def search(
+            self, query: str, *, max_results: int = 5, stop_event: Any | None = None
+        ) -> list[ArxivPaper]:
+            self.queries.append(query)
+            return [
+                ArxivPaper(
+                    arxiv_id="2401.12345v2",
+                    title="Transformer 架构研究综述",
+                    authors=["Ada"],
+                    published_at=datetime(2024, 1, 18, tzinfo=UTC),
+                    abs_url="https://arxiv.org/abs/2401.12345v2",
+                    pdf_url="https://arxiv.org/pdf/2401.12345v2",
+                    abstract=(
+                        "学习最新公开Transformer架构研究综述并理解其核心机制，"
+                        "使用自注意力机制处理序列。"
+                    ),
+                )
+            ][:max_results]
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    adapter = _Adapter()
+    registry = CapabilityRegistry()
+    registry.register(_capability())
+    gateway = ModelGateway(registry)
+    gateway.register_adapter("qwen_text_chat", "1", adapter)
+    web_results = [
+        _result(
+            "web-ai",
+            "AI Transformer 架构与自注意力",
+            "Transformer 架构使用自注意力机制处理序列。",
+            "Transformer 是人工智能模型的神经网络架构，由编码器、解码器和自注意力机制组成。",
+        )
+    ]
+    service = ChatService(
+        repository=ConversationRepository(database),
+        gateway=gateway,
+        web_search_service=WebSearchService(client=_SearchClient(web_results)),
+        arxiv_search_service=ArxivSearchService(client=_PaperClient()),
+    )
+    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    user, assistant = service.start_generation(
+        "alice",
+        conversation.conversation_id,
+        "我想学习最新公开的Transformer架构论文研究综述",
+    )
+
+    events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            RunContextEnvelope(
+                run_id="run-both",
+                account_id="alice",
+                project_id="conversation-both",
+                workflow_name="chat",
+                workflow_version="1",
+                object_domain=ObjectDomain.PERSONAL_VAULT,
+                submitted_at=NOW,
+            ),
+            until_user_message_id=user.message_id,
+        )
+    )
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert final.status == ChatMessageStatus.DONE
+    assert final.web_search is not None
+    assert final.web_search.status == WebSearchStatus.SUCCESS
+    assert final.arxiv_search is not None
+    assert final.arxiv_search.status == ArxivSearchStatus.SUCCESS
+    assert final.arxiv_search.papers[0].arxiv_id == "2401.12345v2"
+    # SSE 只发出一个最终搜索终态：done 是最后一个事件，且没有重复终态。
+    terminal = [event for event in events if event.kind in {"done", "error", "stopped"}]
+    assert len(terminal) == 1
+    assert terminal[0].kind == "done"
+    assert events[-1].kind == "done"
+    # 终态可重载：再次读取同一投影仍是同一终态。
+    reloaded = service.message_projection("alice", assistant.message_id)
+    assert reloaded is not None
+    assert reloaded.status == ChatMessageStatus.DONE
+    assert reloaded.web_search.status == WebSearchStatus.SUCCESS
+    assert reloaded.arxiv_search.status == ArxivSearchStatus.SUCCESS

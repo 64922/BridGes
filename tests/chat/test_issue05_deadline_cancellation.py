@@ -12,7 +12,12 @@ import pytest
 from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchPlan, ArxivSearchService
 from bridges.chat import budget as budget_module
-from bridges.chat.budget import source_aware_search_budget_seconds
+from bridges.chat.budget import (
+    SEARCH_HANDOFF_RESERVE_SECONDS,
+    PUBLIC_SEARCH_STAGE_SECONDS,
+    public_search_deadlines,
+    source_aware_search_budget_seconds,
+)
 from bridges.web_search.contracts import WebSearchResult, WebSearchStatus
 from bridges.web_search.service import SearchPlan, WebSearchService
 from tests.chat.test_arxiv_search_chat import _CapturingAdapter, _context, _service
@@ -37,6 +42,21 @@ def test_source_aware_search_budget_uses_only_active_sources(
         source_aware_search_budget_seconds(active_sources, remaining_ms=remaining_ms)
         == expected_seconds
     )
+
+
+def test_public_search_deadlines_share_stage_budget_and_scaled_handoff() -> None:
+    deadlines = public_search_deadlines(100.0)
+
+    assert deadlines.stage_deadline == 100.0 + PUBLIC_SEARCH_STAGE_SECONDS
+    assert deadlines.provider_deadline == (
+        deadlines.stage_deadline - SEARCH_HANDOFF_RESERVE_SECONDS
+    )
+    assert deadlines.handoff_reserve_seconds == SEARCH_HANDOFF_RESERVE_SECONDS
+
+    scaled = public_search_deadlines(100.0, scale=0.1)
+    assert scaled.stage_deadline == 100.8
+    assert scaled.provider_deadline == 100.725
+    assert scaled.handoff_reserve_seconds == pytest.approx(0.075)
 
 
 class _DelayedArxivClient:

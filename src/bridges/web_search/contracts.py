@@ -147,10 +147,17 @@ class WebSearchProviderAttempt(BaseModel):
 
     provider: str = Field(description="提供方注册标识。")
     provider_version: str = Field(description="提供方合同版本。")
+    attempt_number: int = Field(default=1, ge=1, description="本轮提供方尝试序号。")
+    query_hash: str | None = Field(
+        default=None, description="本次脱敏查询的不可逆指纹。"
+    )
+    started_at: datetime | None = Field(default=None, description="尝试开始时间。")
+    ended_at: datetime | None = Field(default=None, description="尝试结束时间。")
     result_code: str = Field(description="脱敏结果码，不包含供应商正文。")
     result_count: int = Field(default=0, ge=0, description="该次尝试返回的安全结果数。")
     duration_ms: int = Field(default=0, ge=0, description="该次尝试耗时。")
     http_status_category: str | None = Field(default=None, description="HTTP 状态类别。")
+    retry_planned: bool = Field(default=False, description="该尝试结束时是否计划重试。")
     page_classification: WebSearchPageClassification | None = Field(
         default=None, description="页面或结构化响应分类。"
     )

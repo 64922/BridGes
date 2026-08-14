@@ -13,6 +13,7 @@ from pydantic import SecretStr
 
 from bridges.chat.turn import web_search_context
 from bridges.config import Settings
+from bridges.api.main import create_app
 from bridges.learning.teaching_gate import _web_sources
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import (
@@ -84,7 +85,7 @@ class _HealthClient(_FakeClient):
         return self.health
 
 
-def test_overall_health_is_ready_when_any_registered_provider_is_ready() -> None:
+def test_overall_health_only_checks_duckduckgo() -> None:
     checked_at = datetime.now(UTC)
     primary = _HealthClient(
         [],
@@ -113,12 +114,10 @@ def test_overall_health_is_ready_when_any_registered_provider_is_ready() -> None
         fallback_provider_version=BRAVE_SEARCH_PROVIDER_VERSION,
     ).health_check()
 
-    assert summary.available is True
-    assert summary.status == WebSearchHealthStatus.READY
-    assert [provider.provider for provider in summary.providers] == [
-        "duckduckgo",
-        BRAVE_SEARCH_PROVIDER,
-    ]
+    # Issue 03：即使显式传入备用客户端，健康检查也只登记 DuckDuckGo。
+    assert summary.available is False
+    assert summary.status == WebSearchHealthStatus.UPSTREAM_ERROR
+    assert [provider.provider for provider in summary.providers] == ["duckduckgo"]
 
 
 def test_overall_health_is_unavailable_when_all_registered_providers_fail() -> None:
@@ -309,7 +308,7 @@ def test_primary_permission_failure_does_not_switch_provider() -> None:
     assert fallback.queries == []
 
 
-def test_slow_primary_is_cancelled_at_reserved_window_before_fallback() -> None:
+def test_slow_primary_does_not_fall_back_to_second_provider() -> None:
     class _SlowClient:
         provider_name = "duckduckgo"
         provider_version = "duckduckgo-html-v1"
@@ -349,13 +348,15 @@ def test_slow_primary_is_cancelled_at_reserved_window_before_fallback() -> None:
         ),
     )
 
+    # Issue 03：总预算内不会切换备用提供方；保留 DDG 的超时投影。
     assert projection is not None
-    assert projection.status == WebSearchStatus.SUCCESS
-    assert fallback.queries == ["公开主题"]
+    assert projection.status == WebSearchStatus.ERROR
+    assert projection.error_code == "web_search_timeout"
+    assert fallback.queries == []
     assert projection.provider_attempts[0].result_code == "web_search_timeout"
 
 
-def test_challenge_falls_back_with_same_scrubbed_query_and_discloses_provider() -> None:
+def test_challenge_does_not_fall_back_to_second_provider() -> None:
     primary = _FakeClient(
         WebSearchError(
             "web_search_provider_challenge",
@@ -373,26 +374,15 @@ def test_challenge_falls_back_with_same_scrubbed_query_and_discloses_provider() 
 
     projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
 
+    # Issue 03：挑战页不触发备用提供方；进入冷却并允许用户显式重试。
     assert projection is not None
-    assert projection.status == WebSearchStatus.SUCCESS
-    assert projection.provider == BRAVE_SEARCH_PROVIDER
-    assert projection.provider_version == BRAVE_SEARCH_PROVIDER_VERSION
-    assert projection.selected_provider == BRAVE_SEARCH_PROVIDER
-    assert projection.results[0].provider == BRAVE_SEARCH_PROVIDER
+    assert projection.status == WebSearchStatus.ERROR
+    assert projection.error_code == "web_search_provider_challenge"
+    assert projection.cooldown_until is not None
     assert primary.queries == ["公开主题"]
-    assert fallback.queries == ["公开主题"]
-    assert [item.provider for item in projection.provider_attempts] == [
-        "duckduckgo",
-        BRAVE_SEARCH_PROVIDER,
-    ]
+    assert fallback.queries == []
+    assert [item.provider for item in projection.provider_attempts] == ["duckduckgo"]
     assert projection.provider_attempts[0].result_code == "web_search_provider_challenge"
-    assert projection.provider_attempts[1].result_code == "success"
-
-    context = web_search_context(projection)
-    assert "提供方：brave_search" in context
-    assert "https://example.com/brave-1" in context
-    sources = _web_sources(projection)
-    assert sources[0].source_type.value == BRAVE_SEARCH_PROVIDER
 
 
 @pytest.mark.parametrize(
@@ -402,7 +392,7 @@ def test_challenge_falls_back_with_same_scrubbed_query_and_discloses_provider() 
         WebSearchPageClassification.INVALID,
     ],
 )
-def test_classified_empty_primary_response_falls_back_without_rewrite(
+def test_classified_empty_primary_response_does_not_fall_back(
     classification: WebSearchPageClassification,
 ) -> None:
     primary = _FakeClient(
@@ -420,14 +410,12 @@ def test_classified_empty_primary_response_falls_back_without_rewrite(
         "acct-1", SearchPlan(True, "公开主题", "需要事实核查")
     )
 
+    # Issue 03：分类异常页不切换备用提供方；空结果按 EMPTY 终态返回。
     assert projection is not None
-    assert projection.status == WebSearchStatus.SUCCESS
-    assert primary.queries == ["公开主题"]
-    assert fallback.queries == ["公开主题"]
-    assert projection.provider_attempts[0].result_code in {
-        "web_search_provider_challenge",
-        "web_search_parse",
-    }
+    assert projection.status == WebSearchStatus.EMPTY
+    assert primary.queries == ["公开主题", "公开主题 基础定义 原理"]
+    assert fallback.queries == []
+    assert projection.provider_attempts[0].result_code == "web_search_no_results"
 
 
 def test_cache_key_keeps_fallback_provider_separate_from_primary() -> None:
@@ -468,7 +456,7 @@ def test_cache_key_keeps_fallback_provider_separate_from_primary() -> None:
     assert cache.get("acct-1", fallback_plan, datetime.now(UTC)) is not None
 
 
-def test_empty_after_one_bounded_rewrite_falls_back_without_challenge_semantics() -> None:
+def test_empty_after_one_bounded_rewrite_does_not_fall_back() -> None:
     def primary_outcome(query: str) -> list[WebSearchResult]:
         return []
 
@@ -483,15 +471,16 @@ def test_empty_after_one_bounded_rewrite_falls_back_without_challenge_semantics(
 
     projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
 
+    # Issue 03：空结果改写后仍空，不切换备用提供方。
     assert projection is not None
-    assert projection.status == WebSearchStatus.SUCCESS
+    assert projection.status == WebSearchStatus.EMPTY
     assert projection.page_classification != "challenge"
     assert primary.queries == ["公开主题", "公开主题 基础定义 原理"]
-    assert fallback.queries == ["公开主题"]
-    assert projection.query_history == primary.queries + fallback.queries
+    assert fallback.queries == []
+    assert projection.query_history == primary.queries
 
 
-def test_both_providers_failed_return_structured_retryable_failure() -> None:
+def test_configured_fallback_is_ignored_on_failure() -> None:
     primary = _FakeClient(WebSearchError("web_search_timeout", "主用超时"))
     fallback = _FakeClient(WebSearchError("web_search_fallback_timeout", "备用超时"))
     service = WebSearchService(
@@ -503,12 +492,14 @@ def test_both_providers_failed_return_structured_retryable_failure() -> None:
 
     projection = service.search("acct-1", SearchPlan(True, "公开主题", "需要事实核查"))
 
+    # Issue 03：DDG 失败后不调用备用提供方；保留原始 DDG 超时错误。
     assert projection is not None
     assert projection.status == WebSearchStatus.ERROR
-    assert projection.error_code == "web_search_all_providers_failed"
+    assert projection.error_code == "web_search_timeout"
     assert projection.can_retry is True
     assert projection.selected_provider is None
-    assert projection.provider_attempts[-1].result_code == "web_search_fallback_timeout"
+    assert fallback.queries == []
+    assert projection.provider_attempts[-1].result_code == "web_search_timeout"
 
 
 def test_fallback_is_not_started_when_primary_consumes_reserved_stage_budget() -> None:
@@ -533,3 +524,16 @@ def test_fallback_is_not_started_when_primary_consumes_reserved_stage_budget() -
         "web_search_timeout",
     }
     assert fallback.queries == []
+
+def test_production_composition_only_registers_duckduckgo() -> None:
+    """Issue 03：生产组合中通用搜索提供方列表只有 DuckDuckGo。"""
+
+    app = create_app()
+    web_search_service = app.state.web_search_service
+
+    assert web_search_service is not None
+    assert web_search_service._fallback_client is None
+    assert web_search_service._client is not None
+    # 生产组合不登记备用提供方；任何 fallback client/key 均未注册。
+    assert app.state.settings is None or not app.state.settings.public_search_fallback_enabled
+

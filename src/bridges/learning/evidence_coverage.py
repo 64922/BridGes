@@ -232,7 +232,11 @@ def _decide_source(
         if legacy
         else ACCEPTED_WEB_VERIFICATIONS
     )
-    verification = result.verification if legacy else result.verification.value
+    verification = (
+        result.verification
+        if legacy
+        else getattr(result.verification, "value", result.verification)
+    )
     if verification not in accepted_verifications:
         return SourceCoverageDecision(result, False, "not_safe_to_cite")
     # 结构化备用源的有界摘要就是其已登记的可引用载荷，不要求它伪造页面抓取时间；
