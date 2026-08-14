@@ -234,10 +234,10 @@ def write_probe_report(
     code_version: str,
     generated_at: str | None = None,
 ) -> Path:
-    """把脱敏探针结果与运行锁写入报告目录，返回 JSON 报告路径。
+    """把脱敏探针结果写入报告目录，返回 JSON 报告路径。
 
-    运行锁由探针经网关生成（``ModelRunLock`` 已按 Issue 10 脱敏设计），
-    逐 capability 落盘到 ``locks/`` 子目录，供复核与审计。
+    报告记录每次探针的锁 ID（Issue 10 不可变运行锁由网关生成，完整
+    运行锁由运行期录制器在配置数据库时持久化；本报告不复制锁正文）。
     """
     report_dir.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {

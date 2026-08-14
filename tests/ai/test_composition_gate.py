@@ -284,6 +284,31 @@ def test_vision_ocr_unproven_fails_closed() -> None:
     assert VISION_OCR_COMPATIBILITY_UNPROVEN not in _codes(proven)
 
 
+def test_startup_gate_can_defer_vision_ocr_evidence_to_release_gate() -> None:
+    """阶段 1 production-like 启动门：组合完整性仍强制，vision/OCR 证据
+    由发布门强制（``vision_ocr_compatibility_required=False``）。"""
+    registry, gateway = _composition()
+    startup = validate_production_composition(
+        registry,
+        gateway,
+        global_key_configured=True,
+        vision_ocr_compatibility_proven=False,
+        vision_ocr_compatibility_required=False,
+    )
+    assert VISION_OCR_COMPATIBILITY_UNPROVEN not in _codes(startup)
+    # 启动门不豁免其他完整性检查：漂移仍失败关闭。
+    drifted = registry.get("qwen_text_chat", "1")
+    drifted.model_id = "qwen3.6-flash"
+    startup_with_drift = validate_production_composition(
+        registry,
+        gateway,
+        global_key_configured=True,
+        vision_ocr_compatibility_proven=False,
+        vision_ocr_compatibility_required=False,
+    )
+    assert MODEL_MATRIX_DRIFT in _codes(startup_with_drift)
+
+
 def test_enforce_raises_with_stable_error_codes() -> None:
     registry = CapabilityRegistry()
     register_builtin_capabilities(registry)

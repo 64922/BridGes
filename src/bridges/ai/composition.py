@@ -104,9 +104,18 @@ def validate_production_composition(
     global_key_configured: bool,
     cassette_enabled: bool = False,
     vision_ocr_compatibility_proven: bool = False,
+    vision_ocr_compatibility_required: bool = True,
     approved_matrix: Mapping[str, str] | None = None,
 ) -> list[CompositionViolation]:
-    """枚举生产组合的全部门禁违规；无违规返回空列表。"""
+    """枚举生产组合的全部门禁违规；无违规返回空列表。
+
+    ``vision_ocr_compatibility_required=False`` 用于阶段 1 的 production-
+    like 启动门（Issue 09 Observability：先在 production-like 启动与
+    release gate 强制执行，再进入正式生产启动）：启动门检查组合完整性
+    （矩阵漂移/Stub/cassette/missing adapter/缺 Key），vision/OCR 真实
+    兼容证据由发布门（``scripts/model_matrix_gate.py --real-probes``）
+    强制要求，不提供任何可被普通环境变量绕过的警告模式。
+    """
     matrix = dict(approved_matrix) if approved_matrix is not None else dict(MODEL_BY_CAPABILITY)
     violations: list[CompositionViolation] = []
 
@@ -220,7 +229,11 @@ def validate_production_composition(
         )
 
     active_names_set = set(active_names)
-    if not vision_ocr_compatibility_proven and VISION_OCR_CAPABILITIES & active_names_set:
+    if (
+        vision_ocr_compatibility_required
+        and not vision_ocr_compatibility_proven
+        and VISION_OCR_CAPABILITIES & active_names_set
+    ):
         violations.append(
             CompositionViolation(
                 VISION_OCR_COMPATIBILITY_UNPROVEN,
@@ -238,6 +251,7 @@ def enforce_production_composition(
     global_key_configured: bool,
     cassette_enabled: bool = False,
     vision_ocr_compatibility_proven: bool = False,
+    vision_ocr_compatibility_required: bool = True,
     approved_matrix: Mapping[str, str] | None = None,
 ) -> None:
     """校验并失败关闭：存在任何违规时抛出 ``ProductionCompositionError``。"""
@@ -247,6 +261,7 @@ def enforce_production_composition(
         global_key_configured=global_key_configured,
         cassette_enabled=cassette_enabled,
         vision_ocr_compatibility_proven=vision_ocr_compatibility_proven,
+        vision_ocr_compatibility_required=vision_ocr_compatibility_required,
         approved_matrix=approved_matrix,
     )
     if violations:
