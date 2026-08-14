@@ -8,20 +8,28 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import Any
 
 import pytest
 
+from bridges.ai.adapters import AuthError
+from bridges.ai.ports import EmbeddingContext
+from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.retrieval import (
     CitationAccessStatus,
     RetrievalLayerStatus,
     RetrievalSourceLayer,
     RetrievalSufficiency,
 )
-from bridges.ingestion.embedding import EmbeddingError
+from bridges.ingestion.embedding import (
+    DeterministicEmbeddingPort,
+    EmbeddingError,
+)
 from bridges.ingestion.index import VersionedIndex
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 from bridges.storage.database import BridgesDatabase
+from tests.embedding_audit_support import FakeQwenClient
 from tests.retrieval.conftest import (
     add_material,
     add_user_message,
@@ -37,7 +45,13 @@ class _KeywordOnlyEmbeddingPort:
     不伪装向量就绪。
     """
 
-    def embed(self, account_id: str, texts: list[str]) -> list[list[float]]:
+    def embed(
+        self,
+        account_id: str,
+        texts: list[str],
+        *,
+        context: EmbeddingContext | None = None,
+    ) -> list[list[float]]:
         raise EmbeddingError(
             "向量化失败：全局百炼凭据无效或没有该模型权限，"
             "请检查启动服务的全局百炼配置与权限。",
@@ -564,3 +578,190 @@ def test_citation_detail_cross_message_404(env: dict[str, Any]) -> None:
         env["retrieval"].citation_detail(
             account, conversation_id, "other-message", round_.citations[0].citation_id
         )
+
+
+# ---------------------------------------------------------------------------
+# Issue 15：检索查询向量审计锁（真实接缝 + 假客户端，锁与轮次一一对应）
+# ---------------------------------------------------------------------------
+
+
+def _audited_port(storage: dict[str, Any], client: FakeQwenClient):
+    """真实接缝：注册矩阵 + QwenEmbeddingAdapter + 统一 recorder。"""
+    from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
+    from tests.embedding_audit_support import make_embedding_seam
+
+    port, recorder = make_embedding_seam(
+        storage["database"], client, recorder=SqliteModelRunLockRecorder(storage["database"])
+    )
+    return port, recorder
+
+
+def _audited_env(tmp_path) -> dict[str, Any]:
+    """真实接缝驱动的摄取 + 检索环境（与 conftest.make_retrieval_env 同构）。"""
+    import secrets as _secrets
+
+    from bridges.chat.repository import ConversationRepository
+    from bridges.ingestion.index import VersionedIndex
+    from bridges.ingestion.service import IngestionService
+    from tests.retrieval.conftest import make_storage
+
+    storage = make_storage(tmp_path)
+    client = FakeQwenClient()
+    port, recorder = _audited_port(storage, client)
+    ingestion = IngestionService(
+        database=storage["database"],
+        object_repository=storage["repository"],
+        embedding=port,
+        index=VersionedIndex(storage["database"], port),
+    )
+    retrieval = LayeredRetrievalService(
+        database=storage["database"],
+        embedding=port,
+        object_repository=storage["repository"],
+    )
+    return {
+        **storage,
+        "embedding": port,
+        "recorder": recorder,
+        "client": client,
+        "ingestion": ingestion,
+        "retrieval": retrieval,
+        "conversations": ConversationRepository(storage["database"]),
+        "_secrets": _secrets,
+    }
+
+
+def test_query_vector_success_records_one_retrieval_query_lock(tmp_path) -> None:
+    env = _audited_env(tmp_path)
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(
+        env, account, "材料.txt", "量子计算中的叠加态与纠缠。", layer="knowledge_base"
+    )
+    assistant_message_id = f"assistant-{env['_secrets'].token_urlsafe(8)}"
+
+    round_ = _run(
+        env, account, conversation_id, assistant_message_id, "量子计算"
+    )
+    assert round_ is not None
+
+    # 单轮成功向量化恰好一条 retrieval_query 锁，关联到本轮 round_id
+    locks = env["recorder"].list_locks_by_run(account, round_.round_id)
+    assert len(locks) == 1
+    lock = locks[0]
+    assert lock.status == ModelCallStatus.SUCCESS
+    assert lock.business_refs[0].operation == "retrieval_query"
+    assert lock.business_refs[0].object_type == "retrieval_round"
+    assert lock.business_refs[0].object_id == round_.round_id
+    assert lock.parameters["batch_size"] == 1
+    assert lock.parameters["dimensions"] == 1024
+    # 摄取向量化与查询向量化各一次真实调用；最后一次是查询向量
+    assert len(env["client"].calls) == 2
+    assert env["client"].calls[-1]["input"] == ["量子计算"]
+
+
+def test_query_vector_failure_keeps_keyword_results_and_failure_lock(tmp_path) -> None:
+    """查询向量化失败：关键词结果仍可用，失败锁保留并给出诚实说明。"""
+    from bridges.chat.repository import ConversationRepository
+    from bridges.ingestion.index import VersionedIndex
+    from bridges.ingestion.service import IngestionService
+    from tests.retrieval.conftest import make_storage
+
+    storage = make_storage(tmp_path)
+    # 摄取用确定性端口完成索引；检索用真实接缝（客户端必然失败）
+    deterministic = DeterministicEmbeddingPort()
+    ingestion = IngestionService(
+        database=storage["database"],
+        object_repository=storage["repository"],
+        embedding=deterministic,
+        index=VersionedIndex(storage["database"], deterministic),
+    )
+    env = {
+        **storage,
+        "ingestion": ingestion,
+        "conversations": ConversationRepository(storage["database"]),
+    }
+    account = storage["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(
+        env, account, "材料.txt", "量子计算中的叠加态与纠缠。", layer="knowledge_base"
+    )
+
+    client = FakeQwenClient(fail_with=AuthError("bad key"))
+    port, recorder = _audited_port(storage, client)
+    retrieval = LayeredRetrievalService(
+        database=storage["database"],
+        embedding=port,
+        object_repository=storage["repository"],
+    )
+    round_ = retrieval.run_round(
+        account,
+        conversation_id,
+        f"assistant-{secrets.token_urlsafe(8)}",
+        None,
+        "量子计算",
+        use_knowledge_base=True,
+    )
+    assert round_ is not None
+    # 关键词结果仍可用（诚实降级），说明呈现向量不可用
+    assert round_.citations
+    assert "向量检索暂不可用" in (round_.note or "")
+    # 失败锁保留：状态 blocked、稳定错误码 auth_error
+    locks = recorder.list_locks_by_run(account, round_.round_id)
+    assert len(locks) == 1
+    assert locks[0].status == ModelCallStatus.BLOCKED
+    assert locks[0].error_code == "auth_error"
+    assert locks[0].business_refs[0].operation == "retrieval_query"
+
+
+def test_no_embedding_port_no_calls_no_locks(env: dict[str, Any]) -> None:
+    """完全不配置 Embedding：无远端调用、无锁，检索给出诚实说明。"""
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(
+        env, account, "材料.txt", "热力学第二定律内容。", layer="knowledge_base"
+    )
+
+    retrieval = LayeredRetrievalService(
+        database=env["database"],
+        embedding=None,
+        object_repository=env["repository"],
+    )
+    round_ = retrieval.run_round(
+        account,
+        conversation_id,
+        f"assistant-{secrets.token_urlsafe(8)}",
+        None,
+        "热力学",
+        use_knowledge_base=True,
+    )
+    assert round_ is not None
+    assert round_.citations  # 关键词路径独立可用
+    assert "向量检索暂不可用" in (round_.note or "")
+    rows = env["database"].connection.execute(
+        "SELECT count(*) AS count FROM model_run_locks"
+    ).fetchone()
+    assert int(rows["count"]) == 0  # 纯本地步骤不建模型锁
+
+
+def test_empty_cleaned_query_does_not_embed(tmp_path) -> None:
+    """清理后为空的查询（纯标点）不向量化：不发远端请求、不建伪锁。"""
+    env = _audited_env(tmp_path)
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(
+        env, account, "材料.txt", "热力学内容。", layer="knowledge_base"
+    )
+    calls_before = len(env["client"].calls)
+
+    round_ = _run(
+        env,
+        account,
+        conversation_id,
+        f"assistant-{secrets.token_urlsafe(8)}",
+        "。。。！？",
+    )
+    assert round_ is not None
+    assert len(env["client"].calls) == calls_before  # 无新增远端调用
+    # 本轮没有向量化调用 → 没有该 round 的查询锁（摄取锁与查询锁互不影响）
+    assert env["recorder"].list_locks_by_run(account, round_.round_id) == []

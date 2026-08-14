@@ -23,7 +23,6 @@ from bridges.ai import (
 )
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.production import build_production_composition
-from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.api import (
     auth,
     chat,
@@ -1081,25 +1080,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             # Issue 17: 文档摄取服务（API 进程只做入队/重试/投影，处理在后台
             # 执行器进程）。GQ-05：查询向量与 worker 摄取/重建共用同一全局
             # Embedding 端口；可用性由构造与调用结果决定，不再依赖账户探测。
+            # Issue 15：生产 Embedding 经同一 ModelGateway（Issue 09 固定矩阵
+            # + 真实 adapter）调用，并用统一 recorder 逐批次持久化运行锁。
             embedding_port = QwenEmbeddingPort(
                 api_key=(settings.qwen_api_key if settings is not None else None),
-                region=(
-                    settings.qwen_region if settings is not None else "cn-beijing"
-                ),
-                workspace_id=(
-                    settings.qwen_workspace_id if settings is not None else None
-                ),
-                cassette_dir=(
-                    settings.qwen_cassette_dir if settings is not None else None
-                ),
-                # Issue 39 AC5 / GQ-04：生产环境强制禁止录制（与 QwenApiClient
-                # 一致），API 与 worker 同一 cassette 策略。
-                record_mode=(
-                    settings.qwen_record_cassettes
-                    and settings.environment.lower() != "production"
-                    if settings is not None
-                    else False
-                ),
+                gateway=model_gateway,
+                recorder=SqliteModelRunLockRecorder(bridges_database),
             )
             # Issue 14：知识库 OCR 统一走 Issue 09 生产组合的注册能力与
             # Issue 10 运行记录接缝（网关解析固定模型/区域/重试政策，锁由

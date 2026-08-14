@@ -13,6 +13,7 @@ from bridges.ai.adapters import (
     TransientError,
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
+from bridges.ai.embedding_adapter import QwenEmbeddingAdapter
 from bridges.ai.model_gateway import ModelGateway, ModelGatewayError
 from bridges.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
 from bridges.ai.qwen_asr_adapter import QwenAsrAdapter
@@ -34,6 +35,7 @@ __all__ = [
     "ModelGatewayError",
     "QwenApiClient",
     "QwenAsrAdapter",
+    "QwenEmbeddingAdapter",
     "QwenImageAdapter",
     "QwenOcrAdapter",
     "QwenStructuredOutputAdapter",
