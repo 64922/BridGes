@@ -1250,7 +1250,8 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
         (
             "你正在执行学习模式的一轮教学。证据门未通过，但本轮允许使用模型一般知识"
             "给出谨慎背景回答；回答开头必须明确说明本轮未联网核实，事实性结论使用"
-            "‘通常’、‘可能’等降调表达，不得伪造来源或引用。"
+            "‘通常’、‘可能’等降调表达；引用只能使用下方列出的本地来源编号，"
+            "不得编造来源、编号或 URL，不得声称已联网核实或已查到网络来源。"
             if gate.allow_model_knowledge
             else (
                 "你正在执行学习模式的一轮教学。只能使用下列证据门允许的来源，"
@@ -1285,10 +1286,16 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
     return "\n".join(lines)
 
 
-def ensure_unverified_teaching_prefix(content: str) -> str:
-    """保证未联网核实的教学回答在正文开头有确定性标注。"""
+def ensure_unverified_teaching_prefix(content: str, *, local_source_count: int = 0) -> str:
+    """保证未联网核实的教学回答在正文开头有确定性标注。
 
-    content = strip_unverified_teaching_references(content)
+    ``local_source_count`` 为真实本地来源数：降级回答以本地命中材料为锚时
+    保留编号不越界的 ``[reference:N]``，联网/论文引用与 URL 一律剥离。
+    """
+
+    content = strip_unverified_teaching_references(
+        content, local_source_count=local_source_count
+    )
     content = re.sub(
         rf"(?:{re.escape(_UNVERIFIED_TEACHING_PREFIX)}\s*)+",
         "",
@@ -1299,21 +1306,30 @@ def ensure_unverified_teaching_prefix(content: str) -> str:
     return f"{_UNVERIFIED_TEACHING_PREFIX}\n{content}"
 
 
-def ensure_unverified_search_prefix(content: str) -> str:
-    """为搜索失败后继续生成的普通回答加上不可误解的核实缺口。"""
+def strip_unverified_teaching_references(
+    content: str, *, local_source_count: int = 0
+) -> str:
+    """移除无本轮来源可绑定的联网引用和链接。
 
-    return ensure_unverified_teaching_prefix(content)
+    降级回答以真实本地材料为锚时（``local_source_count > 0``），只保留
+    编号落在真实本地来源范围内的 ``[reference:N]``；网络引用、论文引用
+    与 URL 一律剥离，杜绝伪 URL 与「已联网/已查到」式表述落地。
+    """
 
-
-def strip_unverified_teaching_references(content: str) -> str:
-    """移除无本轮来源可绑定的联网引用和链接。"""
-
-    return _WEB_URL_RE.sub(
+    stripped = _WEB_URL_RE.sub(
         "",
-        _TEACHING_CITATION_RE.sub(
-            "", _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content))
-        ),
+        _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content)),
     )
+    if local_source_count > 0:
+
+        def _keep(match: re.Match[str]) -> str:
+            number = int(match.group(1))
+            return match.group(0) if 1 <= number <= local_source_count else ""
+
+        replacement: str | Callable[[re.Match[str]], str] = _keep
+    else:
+        replacement = ""
+    return _TEACHING_CITATION_RE.sub(replacement, stripped)
 
 
 # ---------------------------------------------------------------------------
@@ -1902,6 +1918,10 @@ class TurnOrchestrator:
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
         allow_model_knowledge_fallback = False
+        #: Issue 02：降级回答可保留的真实本地来源数（0 表示无本地锚点）。
+        degraded_local_count = 0
+        #: Issue 02：降级轮网络引用不变量告警只记一次（防逐 token 刷屏）。
+        degraded_invariant_fired = False
         #: 模型阶段标记：try 前初始化，finally 统一关闭计时（异常路径安全）
         generation_entered = False
         first_token_ms: int | None = None
@@ -2266,6 +2286,14 @@ class TurnOrchestrator:
             retrieval_round: RetrievalRoundProjection | None = None
             learning_turn_requested = False
             stored_learning_progress = None
+            # Issue 02：画像前移 —— 学习模式在证据门短路判定之前编译最小
+            # 画像切片，拒绝/降级路径都能披露「本次上下文说明」；拒绝路径
+            # 只披露不注入（无模型调用），降级路径在共用编译点复用结果。
+            context_note: ContextNoteProjection | None = None
+            profile_context: str | None = None
+            profile_items: list[ProfileSliceItem] = []
+            profile_slice_id: str | None = None
+            study_profile_compiled = False
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
                 if current.teaching is not None and mode == ChatMode.STUDY
@@ -2628,6 +2656,49 @@ class TurnOrchestrator:
                     goal=learning_goal,
                     learning_progress=progress_for_turn,
                 )
+                # Issue 02：画像前移 —— 在证据门短路判定之前编译最小画像
+                # 切片，拒绝/降级分支都披露「本次上下文说明」；降级分支在
+                # 下方共用本次编译结果注入模型，拒绝分支只披露不注入。
+                context_note, profile_context, profile_items, profile_slice_id = (
+                    self._compile_profile_slice(
+                        account_id,
+                        conversation_id,
+                        assistant_message_id,
+                        mode,
+                        use_profile=use_profile,
+                        retrieval_round=retrieval_round,
+                        web_search_projection=web_search_projection,
+                        arxiv_search_projection=arxiv_search_projection,
+                    )
+                )
+                study_profile_compiled = True
+                if context_note is not None:
+                    thinking = context_note_thinking(thinking, context_note)
+                # 「当前水平假设」在画像可用时以画像为准；缺失时保留既有
+                # 「暂按初学者处理」兜底文案（不构成阻塞）。只作用于带标注
+                # 降级轮；拒绝轮（CONFLICT 等）只披露画像、不注入生成。
+                if (
+                    teaching_projection is not None
+                    and teaching_projection.evidence_gate.allow_model_knowledge
+                ):
+                    academic = next(
+                        (
+                            item
+                            for item in profile_items
+                            if item.dimension
+                            == FourDimension.ACADEMIC_STATUS.value
+                        ),
+                        None,
+                    )
+                    if academic is not None:
+                        teaching_projection = teaching_projection.model_copy(
+                            update={
+                                "level_assumption": (
+                                    f"按画像中的学业情况（{academic.value_or_rule}）"
+                                    "调整讲解深度；你的回答会继续随反馈调整。"
+                                )
+                            }
+                        )
                 self._repo.update_message_teaching(
                     account_id,
                     assistant_message_id,
@@ -2638,6 +2709,12 @@ class TurnOrchestrator:
                     account_id,
                     assistant_message_id,
                     teaching_projection,
+                    local_sufficiency=(
+                        retrieval_round.sufficiency.value
+                        if retrieval_round is not None
+                        else None
+                    ),
+                    profile_item_count=len(profile_items),
                 )
                 thinking = teaching_thinking(thinking, teaching_projection)
                 allow_model_knowledge_fallback = (
@@ -3056,8 +3133,8 @@ class TurnOrchestrator:
             # 只把当前模式相关、已授权、仍有效且未撤回/冻结的记录注入模型；
             # 用户发送前关闭画像时本轮不编译、不注入，披露与审计都不含
             # 画像内容。编译/披露失败一律静默降级（回答照常，披露 error
-            # 态可解释），绝不阻断生成。
-            profile_items: list[ProfileSliceItem]
+            # 态可解释），绝不阻断生成。Issue 02：学习模式已在证据门短路
+            # 判定之前编译（拒绝/降级分支共用），此处只为其余模式编译。
             if paper_route:
                 # 论文搜索的模型上下文只允许公开 arXiv 结果，不注入账户画像。
                 context_note, profile_context, profile_items, profile_slice_id = (
@@ -3066,7 +3143,7 @@ class TurnOrchestrator:
                     [],
                     None,
                 )
-            else:
+            elif not study_profile_compiled:
                 context_note, profile_context, profile_items, profile_slice_id = (
                     self._compile_profile_slice(
                         account_id,
@@ -3079,8 +3156,8 @@ class TurnOrchestrator:
                         arxiv_search_projection=arxiv_search_projection,
                     )
                 )
-            if context_note is not None:
-                thinking = context_note_thinking(thinking, context_note)
+                if context_note is not None:
+                    thinking = context_note_thinking(thinking, context_note)
             writing_policy = self._compile_writing_policy(
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
@@ -3189,7 +3266,16 @@ class TurnOrchestrator:
                     )
                 return
             if allow_model_knowledge_fallback:
-                content = ensure_unverified_search_prefix(content)
+                # Issue 02：降级回答以真实本地命中为锚——保留编号不越界的
+                # 本地引用，剥离网络/论文引用与 URL。
+                degraded_local_count = (
+                    len(teaching_projection.evidence_gate.local_sources)
+                    if teaching_projection is not None
+                    else 0
+                )
+                content = ensure_unverified_teaching_prefix(
+                    content, local_source_count=degraded_local_count
+                )
                 self._repo.update_message_content(
                     account_id, assistant_message_id, content, datetime.now(UTC)
                 )
@@ -3235,8 +3321,29 @@ class TurnOrchestrator:
                         )
                     candidate_content = content + event.delta
                     if allow_model_knowledge_fallback:
-                        candidate_content = ensure_unverified_search_prefix(
-                            candidate_content
+                        # Issue 02 不变量告警：降级轮模型输出携带网络来源
+                        # 引用时记 BLOCKED 审计（随后确定性剥离，正文不落地）。
+                        if (
+                            not degraded_invariant_fired
+                            and self._observability is not None
+                            and (
+                                _WEB_CITATION_RE.search(candidate_content)
+                                or _ARXIV_CITATION_RE.search(candidate_content)
+                                or _WEB_URL_RE.search(candidate_content)
+                            )
+                        ):
+                            degraded_invariant_fired = True
+                            self._observability.log_audit(
+                                actor_account_id=account_id,
+                                action=AuditAction.LEARNING_INVARIANT,
+                                result=AuditResult.BLOCKED,
+                                object_refs=[assistant_message_id],
+                                reason="降级轮出现网络来源引用，违反学习模式不变量。",
+                                details={"invariant": "degraded_network_reference"},
+                            )
+                        candidate_content = ensure_unverified_teaching_prefix(
+                            candidate_content,
+                            local_source_count=degraded_local_count,
                         )
                     protected_content = restore_protected_regions(
                         protected_owner_query,
@@ -3285,7 +3392,10 @@ class TurnOrchestrator:
                     return
                 elif event.kind == "done":
                     if allow_model_knowledge_fallback:
-                        content = ensure_unverified_search_prefix(content)
+                        content = ensure_unverified_teaching_prefix(
+                            content,
+                            local_source_count=degraded_local_count,
+                        )
                     protected_content = restore_protected_regions(
                         protected_owner_query,
                         content,
@@ -5926,13 +6036,52 @@ class TurnOrchestrator:
         account_id: str,
         assistant_message_id: str,
         teaching: TeachingTurnProjection,
+        *,
+        local_sufficiency: str | None = None,
+        profile_item_count: int | None = None,
     ) -> None:
-        """记录公开来源裁决计数，不复制学习目标或页面正文。"""
+        """记录公开来源裁决计数，不复制学习目标或页面正文。
 
-        if self._observability is None or teaching.evidence_gate.coverage is None:
+        Issue 02：同时记录本地充足性信号、画像注入条数（不含内容）与
+        三种学习终态（可靠回答 / 带标注降级 / 拒绝）；未执行公开检索时
+        （``coverage is None``）仍记录终态与本地信号，不静默丢失审计。
+        """
+
+        if self._observability is None:
             return
         coverage = teaching.evidence_gate.coverage
         search_status = teaching.evidence_gate.search_status
+        terminal_state = (
+            "reliable"
+            if teaching.can_answer_reliably
+            else (
+                "degraded"
+                if teaching.evidence_gate.allow_model_knowledge
+                else "rejected"
+            )
+        )
+        details: dict[str, Any] = {
+            "evidence_status": teaching.evidence_gate.status.value,
+            "search_status": search_status.value if search_status else None,
+            "card_status": teaching.status.value,
+            "can_answer_reliably": teaching.can_answer_reliably,
+            "terminal_state": terminal_state,
+            "local_sufficiency": local_sufficiency,
+            "profile_item_count": profile_item_count,
+        }
+        if coverage is not None:
+            details.update(
+                {
+                    "rules_version": coverage.rules_version,
+                    "topic_aliases_version": coverage.topic_aliases_version,
+                    "candidate_count": coverage.candidate_count,
+                    "fetched_count": coverage.fetched_count,
+                    "accepted_count": coverage.accepted_count,
+                    "rejection_counts": dict(coverage.rejection_counts),
+                    "conflict_count": coverage.conflict_count,
+                    "adjudication_duration_ms": coverage.adjudication_duration_ms,
+                }
+            )
         self._observability.log_audit(
             actor_account_id=account_id,
             action=AuditAction.TEACHING_EVIDENCE_ADJUDICATION,
@@ -5943,20 +6092,7 @@ class TurnOrchestrator:
             ),
             object_refs=[assistant_message_id],
             reason="学习公开来源覆盖裁决。",
-            details={
-                "rules_version": coverage.rules_version,
-                "topic_aliases_version": coverage.topic_aliases_version,
-                "candidate_count": coverage.candidate_count,
-                "fetched_count": coverage.fetched_count,
-                "accepted_count": coverage.accepted_count,
-                "rejection_counts": dict(coverage.rejection_counts),
-                "conflict_count": coverage.conflict_count,
-                "adjudication_duration_ms": coverage.adjudication_duration_ms,
-                "evidence_status": teaching.evidence_gate.status.value,
-                "search_status": search_status.value if search_status else None,
-                "card_status": teaching.status.value,
-                "can_answer_reliably": teaching.can_answer_reliably,
-            },
+            details=details,
         )
 
     # ------------------------------------------------------------------
