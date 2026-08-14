@@ -28,6 +28,7 @@ from bridges.contracts.ingestion import DocumentIngestionStatus
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.ingestion.ocr import OcrError, QwenOcrPort
 from bridges.storage import BridgesDatabase
+from bridges.storage.database import SCHEMA_VERSION
 
 IMAGE_CONTENT = (
     b"\x89PNG\r\n\x1a\n"
@@ -467,7 +468,9 @@ def test_locks_survive_restart_and_remain_queryable(storage) -> None:
 
     storage["database"].close()
     reopened = BridgesDatabase(storage["path"] / "bridges.db")
-    assert reopened.initialize() == 47
+    # 重启后初始化到当前 schema 版本（Issue 16 合入后为 48；用常量断言
+    # 避免后续迁移再次硬编码失效）。
+    assert reopened.initialize() == SCHEMA_VERSION
     recorder = SqliteModelRunLockRecorder(reopened)
     locks = recorder.list_locks_by_run(account_id, run_id)
     assert len(locks) == 1

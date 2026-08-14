@@ -101,3 +101,11 @@ python -m pytest tests/image/test_media_edge_real_smoke.py -q -p no:cacheprovide
 
 - 2026-08-13：已验证图片/视频主生成链会保存锁；缺口仅为图片视觉替代文本和图片/视频真实供应商取消动作。
 - 2026-08-13：用户确认使用安装级全局 Qwen Key；实现与测试严禁读取或泄露 Key、提示词、替代文本或媒体内容。
+- 2026-08-14：实现完成（分支 `worktree-16-media-edge-model-run-locks`）：
+  - 替代文本：`_generate_alt_text` 拆出统一接缝 `_invoke_alt_text`（qwen_vision invoke + recorder 落锁），每次真实调用恰好一条锁，业务关联图片任务（主）+ 既有来源资产（追加）；模型失败/空输出/锁落库失败一律 fallback 且不冒充模型来源；手动修改不调用模型、不建锁。
+  - 取消：图片/视频统一接缝 `_invoke_image_cancel`/`_invoke_video_cancel`（invoke + 落锁），用户调用与 worker 收敛/重试按 `cancel_attempt` 序号区分（迁移 46 新增 `image_tasks.cancel_attempt`/`video_tasks.cancel_attempt`）；无 cloud task、终态幂等、纯本地路径零调用零锁；供应商失败保留失败锁、本地取消权威与迟到结果抑制不变，审计以 `media_cancel_provider_unconfirmed` 明确"云端通知未确认"。
+  - 稳定错误码：`media_edge_missing_run_lock`、`media_edge_lock_persist_failed`、`media_cancel_provider_unconfirmed`、`media_edge_call_count_mismatch`（`bridges.contracts.observability`），写入取消/替代文本审计 details；新增审计动作 `image_alt_text_generate`。
+  - 脱敏：供应商原文若携带凭据形态关键词（如鉴权失败消息中的 "authorization"），接缝落库前经 `bridges.ai.lock_scrub.scrub_lock_text` 替换为只含稳定错误码的中文说明（Issue 10 录制器会拒绝含关键词的自由文本，不脱敏则失败锁无法持久化）。
+  - 测试：`tests/image/test_media_edge_model_run_locks.py`（替代文本/取消矩阵、崩溃注入、recorder 幂等/顺序/重启/隔离、脱敏）、`tests/architecture/test_media_edge_run_lock_scan.py`（gateway.invoke 与 kind=cancel 调用点必须经接缝、禁止 suppress 包裹 invoke、非空洞白名单校验）、`tests/image/test_media_edge_real_smoke.py`（`BRIDGES_MEDIA_EDGE_REAL_SMOKE=1` 显式 opt-in 真实 smoke，无 Key/门禁失败/无可取消任务时明确 skip）。
+  - 验证：`tests/image tests/video tests/architecture tests/storage tests/ai` 全绿（含建议回归命令）；tests/chat 的 44 个失败与 pristine main 完全一致（既有环境性失败）；mypy/ruff 相对 main 无新增告警。
+  - 复查（code-review 双轴）：Standards 轴修复已提交——脱敏关键词清单改从 `sqlite_recorder` 导出常量引用（单一事实源）、`media_cancel_provider_unconfirmed` 常量并入 `MEDIA_EDGE_*` 命名族（值不变）、替代文本/取消接缝改显式 `ModelCallResult` 类型；Spec 轴逐条核对 11 条验收标准与测试计划全部满足（含"主链调用数与锁数不变""零调用零锁路径""崩溃后锁仍存在""跨账户隔离""无 Key/正文泄露"）。

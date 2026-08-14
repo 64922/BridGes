@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 47
+SCHEMA_VERSION = 48
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2315,6 +2315,21 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         ALTER TABLE document_parse_cache
         ADD COLUMN ocr_run_id TEXT
+        """,
+    ],
+    # Issue 16：图片/视频供应商取消动作的独立序号（model_run_lock 业务
+    # 关联 attempt_ordinal 的稳定来源）。每次真实发往供应商的 cancel
+    # 请求对应一次递增，用户调用与 worker 收敛重试据此区分；无云端任务
+    # 或终态幂等返回不递增。旧行回填 0（从未发生过供应商取消）。
+    # （迁移 46/47 已由 Issue 13/14 占用，合并时重编号为 48。）
+    48: [
+        """
+        ALTER TABLE image_tasks
+        ADD COLUMN cancel_attempt INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE video_tasks
+        ADD COLUMN cancel_attempt INTEGER NOT NULL DEFAULT 0
         """,
     ],
 }

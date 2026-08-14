@@ -28,10 +28,11 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from bridges.ai.lock_scrub import scrub_lock_text
 from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.qwen_image_adapter import DEFAULT_IMAGE_SIZE, image_data_url
 from bridges.chat.repository import ConversationRepository
-from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.ai import ModelCallResult, ModelCallStatus
 from bridges.contracts.image import (
     ImageAltTextSource,
     ImageAssetProjection,
@@ -42,7 +43,14 @@ from bridges.contracts.image import (
     ImageTaskStatus,
     ImageVersionProjection,
 )
-from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.observability import (
+    MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED,
+    MEDIA_EDGE_CALL_COUNT_MISMATCH,
+    MEDIA_EDGE_LOCK_PERSIST_FAILED,
+    MEDIA_EDGE_MISSING_RUN_LOCK,
+    AuditAction,
+    AuditResult,
+)
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
@@ -107,6 +115,19 @@ def _user_facing_error(
 
 #: 云端任务取消端点（尽力而为；本地取消是权威，迟到结果由条件更新隔离）。
 _CLOUD_CANCEL_PATH = "/api/v1/tasks/{task_id}?action=cancel"
+
+
+def _provider_cancel_confirmed(result: ModelCallResult) -> bool:
+    """供应商取消是否确认：网关成功且适配器返回 ``cancelled=True``。
+
+    供应商失败、超时、鉴权、限流及未知任务一律不算确认——本地取消是
+    权威，但领域审计必须如实区分"本地已取消"与"云端通知已确认"，
+    不能把外部失败记录成供应商取消成功。
+    """
+    return (
+        result.status == ModelCallStatus.SUCCESS
+        and bool((result.output or {}).get("cancelled"))
+    )
 
 
 class _CancelledRaceError(Exception):
@@ -465,22 +486,69 @@ class ImageService:
 
         cloud_task_id = str(row["cloud_task_id"]) if row["cloud_task_id"] else None
         if cloud_task_id:
-            # 尽力通知云端取消；失败静默——本地取消是权威。
-            with contextlib.suppress(Exception):
-                self._gateway.invoke(
-                    "qwen_image",
-                    "1",
-                    self._run_context(account_id, conversation_id, "image_cancel"),
-                    {"kind": "cancel", "cloud_task_id": cloud_task_id},
+            # 尽力通知云端取消（本地取消是权威）；每次真实发往供应商的
+            # 取消请求都经统一接缝保存独立运行锁（关联账户/会话/任务、
+            # 阶段 image_cancel 与取消序号），失败不吞锁。
+            attempt = int(row["cancel_attempt"]) + 1
+            result = self._invoke_image_cancel(
+                account_id,
+                conversation_id,
+                task_id,
+                cloud_task_id,
+                attempt,
+            )
+            provider_confirmed = result is not None and _provider_cancel_confirmed(
+                result
+            )
+            # 取消序号在真实请求完成后递增：序号对应"已实际发出的请求"，
+            # 崩溃在递增前只产生序号复用，不会产生没有请求的假序号。
+            # 不动 updated_at：取消投影时间以标记事务为准。
+            with self._db.transaction():
+                self._db.scoped(account_id).execute(
+                    "UPDATE image_tasks SET cancel_attempt = cancel_attempt + 1"
+                    " WHERE task_id = ? AND account_id = ?",
+                    (task_id, account_id),
                 )
-        self._audit(
-            account_id,
-            task_id,
-            AuditAction.IMAGE_TASK_CANCEL,
-            AuditResult.SUCCESS,
-            "图片任务已取消。",
-            {"kind": str(row["kind"])},
-        )
+            if provider_confirmed:
+                audit_result: AuditResult = AuditResult.SUCCESS
+                reason = "图片任务已取消，云端取消已确认。"
+            else:
+                audit_result = AuditResult.DEGRADED
+                reason = "本地已取消；云端通知未确认。"
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_TASK_CANCEL,
+                audit_result,
+                reason,
+                {
+                    "kind": str(row["kind"]),
+                    "attempt": attempt,
+                    "provider_cancel_confirmed": provider_confirmed,
+                    "provider_error_code": (
+                        result.error_code if result is not None else None
+                    ),
+                    "edge_code": (
+                        None
+                        if provider_confirmed
+                        else MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
+                    ),
+                },
+            )
+        else:
+            # 没有云端任务：纯本地取消，不调用供应商、不建模型锁。
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_TASK_CANCEL,
+                AuditResult.SUCCESS,
+                "图片任务已取消（无云端任务）。",
+                {
+                    "kind": str(row["kind"]),
+                    "attempt": 0,
+                    "provider_cancel_confirmed": None,
+                },
+            )
         return self.get_task(account_id, conversation_id, task_id)
 
     def retry(
@@ -1004,6 +1072,9 @@ class ImageService:
         kind = ImageTaskKind(str(row["kind"]))
         prompt = str(row["prompt"])
         asset_id = str(row["asset_id"]) if row["asset_id"] else secrets.token_urlsafe(16)
+        # 替代文本锁关联的资产：编辑时来源资产已存在才追加关联（生成时
+        # 资产在本事务之后才建立，锁只关联任务）。
+        alt_text_asset_id = str(row["asset_id"]) if row["asset_id"] else None
         version_id = secrets.token_urlsafe(16)
         now = datetime.now(UTC)
         now_text = _now()
@@ -1017,6 +1088,8 @@ class ImageService:
             image_bytes,
             media_type,
             prompt,
+            task_id=task_id,
+            asset_id=alt_text_asset_id,
         )
         message_id = str(row["message_id"]) if row["message_id"] else None
         try:
@@ -1299,11 +1372,104 @@ class ImageService:
         image_bytes: bytes,
         media_type: str,
         prompt: str,
+        *,
+        task_id: str,
+        asset_id: str | None,
     ) -> tuple[str, ImageAltTextSource]:
         """生成替代文本：优先核心视觉模型，失败确定性降级。
 
-        降级文本明确说明来源（提示词摘要），不冒充模型理解；用户之后
-        可随时手动修改。
+        每次真实 ``qwen_vision`` 调用经统一接缝持久化运行锁（关联账户、
+        会话、图片任务，资产/对象存在时追加关联）；模型失败、空输出或
+        锁持久化失败时不得标成模型来源，继续使用明确的 fallback 文本
+        （提示词摘要，不冒充模型理解）。降级不阻断生成完成；用户之后
+        可随时手动修改（手动修改不调用模型、不建锁）。
+        """
+        result, lock_persisted = self._invoke_alt_text(
+            account_id,
+            conversation_id,
+            image_bytes,
+            media_type,
+            task_id,
+            asset_id,
+        )
+        model_ok = (
+            lock_persisted
+            and result.status == ModelCallStatus.SUCCESS
+            and result.output is not None
+            and isinstance(result.output.get("content"), str)
+            and result.output["content"].strip()
+        )
+        if model_ok:
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_ALT_TEXT_GENERATE,
+                AuditResult.SUCCESS,
+                "替代文本由视觉模型生成。",
+                {
+                    "source": ImageAltTextSource.MODEL.value,
+                    "lock_id": result.lock.lock_id if result.lock else None,
+                    "lock_persisted": True,
+                },
+            )
+            return result.output["content"].strip(), ImageAltTextSource.MODEL
+        summary = prompt[:_ALT_TEXT_PROMPT_SUMMARY]
+        if len(prompt) > _ALT_TEXT_PROMPT_SUMMARY:
+            summary += "…"
+        edge_code = self._alt_text_failure_code(result, lock_persisted)
+        self._audit(
+            account_id,
+            task_id,
+            AuditAction.IMAGE_ALT_TEXT_GENERATE,
+            AuditResult.DEGRADED,
+            "替代文本使用确定性降级。",
+            {
+                "source": ImageAltTextSource.FALLBACK.value,
+                "lock_id": result.lock.lock_id if result.lock else None,
+                "lock_persisted": lock_persisted,
+                "error_code": result.error_code,
+                "edge_code": edge_code,
+            },
+        )
+        if edge_code in (MEDIA_EDGE_MISSING_RUN_LOCK, MEDIA_EDGE_LOCK_PERSIST_FAILED):
+            # 真实视觉请求发生但缺少对应锁：远端请求数与锁数不一致，
+            # 以独立稳定码审计，供运维按码统计缺口。
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_ALT_TEXT_GENERATE,
+                AuditResult.DEGRADED,
+                "视觉替代文本请求计数与运行锁数不一致。",
+                {"code": MEDIA_EDGE_CALL_COUNT_MISMATCH},
+            )
+        return f"由提示词「{summary}」生成的图片", ImageAltTextSource.FALLBACK
+
+    @staticmethod
+    def _alt_text_failure_code(
+        result: ModelCallResult, lock_persisted: bool
+    ) -> str | None:
+        """降级路径的稳定原因码：锁缺/落库失败优先于模型失败。"""
+        if result.lock is None:
+            return MEDIA_EDGE_MISSING_RUN_LOCK
+        if not lock_persisted:
+            return MEDIA_EDGE_LOCK_PERSIST_FAILED
+        return None
+
+    def _invoke_alt_text(
+        self,
+        account_id: str,
+        conversation_id: str,
+        image_bytes: bytes,
+        media_type: str,
+        task_id: str,
+        asset_id: str | None,
+    ) -> tuple[ModelCallResult, bool]:
+        """统一图片替代文本接缝：qwen_vision invoke + 持久化运行锁。
+
+        返回 ``(result, lock_persisted)``：锁行未持久化时调用方不得把
+        降级文本冒充为模型来源。业务关联以图片任务为主（is_primary），
+        资产/对象存在时追加同一锁的幂等关联；追加失败只影响关联，不
+        撤销已持久化的锁行。网关异常一律降级，不阻断生成完成。
         """
         try:
             result = self._gateway.invoke(
@@ -1320,19 +1486,143 @@ class ImageService:
                     "max_tokens": 120,
                 },
             )
-            if (
-                result.status == ModelCallStatus.SUCCESS
-                and result.output is not None
-                and isinstance(result.output.get("content"), str)
-                and result.output["content"].strip()
-            ):
-                return result.output["content"].strip(), ImageAltTextSource.MODEL
+        except Exception:  # noqa: BLE001 - 网关异常降级，不阻断生成完成
+            return (
+                ModelCallResult(
+                    status=ModelCallStatus.BLOCKED,
+                    lock=None,
+                    error_code="edge_invoke_failed",
+                    error_message="视觉替代文本调用异常，已使用确定性降级。",
+                ),
+                False,
+            )
+        lock = result.lock
+        if lock is None or self._repo is None:
+            return result, False
+        try:
+            # 供应商原文可能携带凭据形态关键词（如鉴权失败消息），落库前
+            # 脱敏：稳定错误码保留，正文不进入审计库。
+            self._repo.insert_run_lock(
+                account_id,
+                scrub_lock_text(lock),
+                object_type="image_task",
+                object_id=task_id,
+                operation="image_alt_text",
+                attempt_ordinal=1,
+                is_primary=True,
+            )
         except Exception:  # noqa: BLE001 - 降级不阻断生成完成
-            pass
-        summary = prompt[:_ALT_TEXT_PROMPT_SUMMARY]
-        if len(prompt) > _ALT_TEXT_PROMPT_SUMMARY:
-            summary += "…"
-        return f"由提示词「{summary}」生成的图片", ImageAltTextSource.FALLBACK
+            return result, False
+        if asset_id:
+            with contextlib.suppress(Exception):
+                self._repo.insert_run_lock(
+                    account_id,
+                    scrub_lock_text(lock),
+                    object_type="image_asset",
+                    object_id=asset_id,
+                    operation="image_alt_text",
+                    attempt_ordinal=1,
+                    is_primary=False,
+                )
+        return result, True
+
+    def _invoke_image_cancel(
+        self,
+        account_id: str,
+        conversation_id: str,
+        task_id: str,
+        cloud_task_id: str,
+        attempt: int,
+    ) -> ModelCallResult | None:
+        """统一图片供应商取消接缝：每次真实请求 invoke + 独立运行锁。
+
+        本地取消是权威：网关异常与锁落库失败都不抛出（保持既有取消
+        语义）；但缺锁/落库失败以稳定错误码审计暴露，不吞锁、不冒充
+        供应商成功。网关异常时返回 None（无锁可存）。
+        """
+        try:
+            result = self._gateway.invoke(
+                "qwen_image",
+                "1",
+                self._run_context(account_id, conversation_id, "image_cancel"),
+                {"kind": "cancel", "cloud_task_id": cloud_task_id},
+            )
+        except Exception:  # noqa: BLE001 - 本地取消是权威，不抛出
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_TASK_CANCEL,
+                AuditResult.DEGRADED,
+                "本地已取消；供应商取消请求未产生运行锁。",
+                {"code": MEDIA_EDGE_MISSING_RUN_LOCK, "attempt": attempt},
+            )
+            self._audit_call_count_mismatch(account_id, task_id, attempt)
+            return None
+        self._persist_cancel_lock(account_id, task_id, result, attempt)
+        return result
+
+    def _persist_cancel_lock(
+        self,
+        account_id: str,
+        task_id: str,
+        result: ModelCallResult,
+        attempt: int,
+    ) -> bool:
+        """持久化一次真实供应商取消请求的运行锁；失败以稳定码审计。
+
+        返回锁行是否已持久化。``result.lock`` 为 None 或落库失败都会
+        触发 ``media_edge_missing_run_lock`` / ``media_edge_lock_persist_failed``
+        及计数不一致审计，但绝不回退本地取消状态。
+        """
+        lock = result.lock
+        if lock is None:
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_TASK_CANCEL,
+                AuditResult.DEGRADED,
+                "本地已取消；供应商取消请求未产生运行锁。",
+                {"code": MEDIA_EDGE_MISSING_RUN_LOCK, "attempt": attempt},
+            )
+            self._audit_call_count_mismatch(account_id, task_id, attempt)
+            return False
+        if self._repo is None:
+            return False
+        try:
+            self._repo.insert_run_lock(
+                account_id,
+                scrub_lock_text(lock),
+                object_type="image_task",
+                object_id=task_id,
+                operation="image_cancel",
+                attempt_ordinal=attempt,
+                is_primary=False,
+            )
+        except Exception:  # noqa: BLE001 - 锁落库失败不阻断本地取消
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.IMAGE_TASK_CANCEL,
+                AuditResult.DEGRADED,
+                "本地已取消；供应商取消运行锁持久化失败。",
+                {"code": MEDIA_EDGE_LOCK_PERSIST_FAILED, "attempt": attempt},
+            )
+            self._audit_call_count_mismatch(account_id, task_id, attempt)
+            return False
+        return True
+
+    def _audit_call_count_mismatch(
+        self, account_id: str, task_id: str, attempt: int
+    ) -> None:
+        """真实远端请求发生但缺少对应锁：以稳定码独立审计。"""
+        self._audit(
+            account_id,
+            task_id,
+            AuditAction.IMAGE_TASK_CANCEL,
+            AuditResult.DEGRADED,
+            "供应商取消请求计数与运行锁数不一致。",
+            {"code": MEDIA_EDGE_CALL_COUNT_MISMATCH, "attempt": attempt},
+        )
 
     def _invoke_image(
         self,

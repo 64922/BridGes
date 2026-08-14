@@ -30,10 +30,18 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from bridges.ai.lock_scrub import scrub_lock_text
 from bridges.ai.model_gateway import ModelGateway
 from bridges.chat.repository import ConversationRepository
-from bridges.contracts.ai import ModelCallStatus
-from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.ai import ModelCallResult, ModelCallStatus
+from bridges.contracts.observability import (
+    MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED,
+    MEDIA_EDGE_CALL_COUNT_MISMATCH,
+    MEDIA_EDGE_LOCK_PERSIST_FAILED,
+    MEDIA_EDGE_MISSING_RUN_LOCK,
+    AuditAction,
+    AuditResult,
+)
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.video import (
     VideoAssetProjection,
@@ -114,6 +122,19 @@ def _user_facing_error(
 
 class _CancelledRaceError(Exception):
     """任务在 worker 处理期间被取消；用于回滚本次未发布的结果。"""
+
+
+def _provider_cancel_confirmed(result: ModelCallResult) -> bool:
+    """供应商取消是否确认：网关成功且适配器返回 ``cancelled=True``。
+
+    供应商失败、超时、鉴权、限流及未知任务一律不算确认——本地取消是
+    权威，但领域审计必须如实区分"本地已取消"与"云端通知已确认"，
+    不能把外部失败记录成供应商取消成功。
+    """
+    return (
+        result.status == ModelCallStatus.SUCCESS
+        and bool((result.output or {}).get("cancelled"))
+    )
 
 
 def _now() -> str:
@@ -371,23 +392,64 @@ class VideoService:
 
         cloud_task_id = str(row["cloud_task_id"]) if row["cloud_task_id"] else None
         if cloud_task_id:
-            # 尽力通知云端取消；失败静默——本地取消是权威，worker 收敛时
-            # 会再尝试一次。
-            with contextlib.suppress(Exception):
-                self._gateway.invoke(
-                    "qwen_wan",
-                    "1",
-                    self._run_context(account_id, conversation_id, "video_cancel"),
-                    {"kind": "cancel", "cloud_task_id": cloud_task_id},
+            # 尽力通知云端取消（本地取消是权威）；每次真实发往供应商的
+            # 取消请求都经统一接缝保存独立运行锁（关联账户/会话/任务、
+            # 阶段 video_cancel 与取消序号），失败不吞锁。
+            attempt = int(row["cancel_attempt"]) + 1
+            result = self._invoke_video_cancel(
+                account_id,
+                conversation_id,
+                task_id,
+                cloud_task_id,
+                attempt,
+            )
+            provider_confirmed = result is not None and _provider_cancel_confirmed(
+                result
+            )
+            # 取消序号在真实请求完成后递增：序号对应"已实际发出的请求"，
+            # 崩溃在递增前只产生序号复用，不会产生没有请求的假序号。
+            # 不动 updated_at：取消投影时间以标记事务为准。
+            with self._db.transaction():
+                self._db.scoped(account_id).execute(
+                    "UPDATE video_tasks SET cancel_attempt = cancel_attempt + 1"
+                    " WHERE task_id = ? AND account_id = ?",
+                    (task_id, account_id),
                 )
-        self._audit(
-            account_id,
-            task_id,
-            AuditAction.VIDEO_TASK_CANCEL,
-            AuditResult.SUCCESS,
-            "视频任务取消已受理。",
-            {},
-        )
+            if provider_confirmed:
+                audit_result: AuditResult = AuditResult.SUCCESS
+                reason = "视频任务取消已受理，云端取消已确认。"
+            else:
+                audit_result = AuditResult.DEGRADED
+                reason = "本地已取消；云端通知未确认。"
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.VIDEO_TASK_CANCEL,
+                audit_result,
+                reason,
+                {
+                    "attempt": attempt,
+                    "provider_cancel_confirmed": provider_confirmed,
+                    "provider_error_code": result.error_code if result else None,
+                    "edge_code": (
+                        None if provider_confirmed else MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
+                    ),
+                },
+            )
+        else:
+            # 没有云端任务：纯本地标记取消中，不调用供应商、不建模型锁；
+            # 取消收敛由 worker 完成。
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.VIDEO_TASK_CANCEL,
+                AuditResult.SUCCESS,
+                "视频任务取消已受理（无云端任务，等待收敛）。",
+                {
+                    "attempt": 0,
+                    "provider_cancel_confirmed": None,
+                },
+            )
         return self.get_task(account_id, conversation_id, task_id)
 
     def retry(
@@ -717,19 +779,30 @@ class VideoService:
         """收敛取消：尽力通知云端（本地取消是权威）后标记已取消。
 
         取消任务即使云端已生成也不发布：本轮不再轮询，状态直接收敛为
-        已取消；已建对象（发布竞态回滚路径）不会到达这里。
+        已取消；已建对象（发布竞态回滚路径）不会到达这里。每次真实
+        发往供应商的取消请求都经统一接缝保存独立运行锁（用户调用与
+        worker 收敛/重试按取消序号区分），失败不吞锁。
         """
         cloud_task_id = str(row["cloud_task_id"]) if row["cloud_task_id"] else None
+        provider_confirmed: bool | None = None
+        attempt = 0
+        result: ModelCallResult | None = None
         if cloud_task_id:
             # 尽力取消云端任务；失败静默——本地取消是权威，云端任务
-            # 即使继续生成，结果也不会被本地发布。
-            with contextlib.suppress(Exception):
-                self._gateway.invoke(
-                    "qwen_wan",
-                    "1",
-                    self._run_context(account_id, str(row["conversation_id"]), "video_cancel"),
-                    {"kind": "cancel", "cloud_task_id": cloud_task_id},
-                )
+            # 即使继续生成，结果也不会被本地发布。序号取自当前行：
+            # 收敛事务成功前递增未提交，崩溃重跑会复用序号但每次真实
+            # 请求都是独立新锁（不覆盖历史失败锁）。
+            attempt = int(row["cancel_attempt"]) + 1
+            result = self._invoke_video_cancel(
+                account_id,
+                str(row["conversation_id"]),
+                task_id,
+                cloud_task_id,
+                attempt,
+            )
+            provider_confirmed = result is not None and _provider_cancel_confirmed(
+                result
+            )
         now = datetime.now(UTC)
         now_text = _now()
         try:
@@ -737,7 +810,8 @@ class VideoService:
                 scoped = self._db.scoped(account_id)
                 cursor = scoped.execute(
                     "UPDATE video_tasks SET status = 'cancelled', cancelled_at = ?,"
-                    " updated_at = ? WHERE task_id = ? AND account_id = ?"
+                    " cancel_attempt = cancel_attempt + 1, updated_at = ?"
+                    " WHERE task_id = ? AND account_id = ?"
                     " AND status = 'cancelling'",
                     (now_text, now_text, task_id, account_id),
                 )
@@ -769,7 +843,134 @@ class VideoService:
                     )
         except (StorageError, sqlite3.Error):
             return True  # 失败不阻断循环，下轮重领时再试
+
+        if provider_confirmed:
+            audit_result: AuditResult = AuditResult.SUCCESS
+            reason = "视频任务已取消，云端取消已确认。"
+        elif provider_confirmed is False:
+            audit_result = AuditResult.DEGRADED
+            reason = "本地已取消；云端通知未确认。"
+        else:
+            audit_result = AuditResult.SUCCESS
+            reason = "视频任务已取消（无云端任务）。"
+        self._audit(
+            account_id,
+            task_id,
+            AuditAction.VIDEO_TASK_CANCEL,
+            audit_result,
+            reason,
+            {
+                "attempt": attempt if cloud_task_id else 0,
+                "provider_cancel_confirmed": provider_confirmed,
+                "provider_error_code": (
+                    result.error_code if cloud_task_id and result else None
+                ),
+                "edge_code": (
+                    None
+                    if provider_confirmed is not False
+                    else MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
+                ),
+            },
+        )
         return True
+
+    def _invoke_video_cancel(
+        self,
+        account_id: str,
+        conversation_id: str,
+        task_id: str,
+        cloud_task_id: str,
+        attempt: int,
+    ) -> ModelCallResult | None:
+        """统一视频供应商取消接缝：每次真实请求 invoke + 独立运行锁。
+
+        本地取消是权威：网关异常与锁落库失败都不抛出（保持既有取消
+        语义）；但缺锁/落库失败以稳定错误码审计暴露，不吞锁、不冒充
+        供应商成功。网关异常时返回 None（无锁可存）。
+        """
+        try:
+            result = self._gateway.invoke(
+                "qwen_wan",
+                "1",
+                self._run_context(account_id, conversation_id, "video_cancel"),
+                {"kind": "cancel", "cloud_task_id": cloud_task_id},
+            )
+        except Exception:  # noqa: BLE001 - 本地取消是权威，不抛出
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.VIDEO_TASK_CANCEL,
+                AuditResult.DEGRADED,
+                "本地已取消；供应商取消请求未产生运行锁。",
+                {"code": MEDIA_EDGE_MISSING_RUN_LOCK, "attempt": attempt},
+            )
+            self._audit_call_count_mismatch(account_id, task_id, attempt)
+            return None
+        self._persist_cancel_lock(account_id, task_id, result, attempt)
+        return result
+
+    def _persist_cancel_lock(
+        self,
+        account_id: str,
+        task_id: str,
+        result: ModelCallResult,
+        attempt: int,
+    ) -> bool:
+        """持久化一次真实供应商取消请求的运行锁；失败以稳定码审计。
+
+        返回锁行是否已持久化。``result.lock`` 为 None 或落库失败都会
+        触发 ``media_edge_missing_run_lock`` / ``media_edge_lock_persist_failed``
+        及计数不一致审计，但绝不回退本地取消状态。
+        """
+        lock = result.lock
+        if lock is None:
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.VIDEO_TASK_CANCEL,
+                AuditResult.DEGRADED,
+                "本地已取消；供应商取消请求未产生运行锁。",
+                {"code": MEDIA_EDGE_MISSING_RUN_LOCK, "attempt": attempt},
+            )
+            self._audit_call_count_mismatch(account_id, task_id, attempt)
+            return False
+        if self._repo is None:
+            return False
+        try:
+            self._repo.insert_run_lock(
+                account_id,
+                scrub_lock_text(lock),
+                object_type="video_task",
+                object_id=task_id,
+                operation="video_cancel",
+                attempt_ordinal=attempt,
+                is_primary=False,
+            )
+        except Exception:  # noqa: BLE001 - 锁落库失败不阻断本地取消
+            self._audit(
+                account_id,
+                task_id,
+                AuditAction.VIDEO_TASK_CANCEL,
+                AuditResult.DEGRADED,
+                "本地已取消；供应商取消运行锁持久化失败。",
+                {"code": MEDIA_EDGE_LOCK_PERSIST_FAILED, "attempt": attempt},
+            )
+            self._audit_call_count_mismatch(account_id, task_id, attempt)
+            return False
+        return True
+
+    def _audit_call_count_mismatch(
+        self, account_id: str, task_id: str, attempt: int
+    ) -> None:
+        """真实远端请求发生但缺少对应锁：以稳定码独立审计。"""
+        self._audit(
+            account_id,
+            task_id,
+            AuditAction.VIDEO_TASK_CANCEL,
+            AuditResult.DEGRADED,
+            "供应商取消请求计数与运行锁数不一致。",
+            {"code": MEDIA_EDGE_CALL_COUNT_MISMATCH, "attempt": attempt},
+        )
 
     def _submit_step(self, account_id: str, task_id: str, row: Any) -> bool:
         result = self._invoke_video(
