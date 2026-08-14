@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from httpx import USE_CLIENT_DEFAULT
 from pydantic import SecretStr
 
 from bridges.ai.adapters import (
@@ -23,6 +24,7 @@ from bridges.ai.adapters import (
     RegionError,
     TransientError,
 )
+from bridges.model_call_budget import MODEL_CALL_DEFAULT_TIMEOUT_SECONDS
 from bridges.observability.scrubber import scrub_value
 
 
@@ -143,7 +145,10 @@ class QwenApiClient:
         region: str,
         cassette_store: CassetteStore | None = None,
         record_mode: bool = False,
-        timeout: float = 60.0,
+        #: 默认请求超时（秒）；单一常量来源为
+        #: ``bridges.model_call_budget.MODEL_CALL_DEFAULT_TIMEOUT_SECONDS``。
+        #: 网关按剩余预算截断后经 ``chat_completions(timeout=...)`` 覆盖。
+        timeout: float = MODEL_CALL_DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._api_key = api_key
         self._workspace_id = workspace_id
@@ -178,12 +183,19 @@ class QwenApiClient:
             "/services/aigc/multimodal-generation/generation"
         )
 
-    def chat_completions(self, request_body: dict[str, Any]) -> dict[str, Any]:
+    def chat_completions(
+        self,
+        request_body: dict[str, Any],
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         """POST /chat/completions and return the parsed response body.
 
+        ``timeout`` 覆盖客户端默认超时（秒）：网关按剩余预算截断后经
+        适配器传入；None 使用客户端默认值。
         Raises AdapterError subclasses so the gateway can classify the failure.
         """
-        return self._post_openai("/chat/completions", request_body, "Qwen")
+        return self._post_openai("/chat/completions", request_body, "Qwen", timeout=timeout)
 
     def chat_completions_stream(self, request_body: dict[str, Any]) -> Iterator[dict[str, Any]]:
         """流式 POST /chat/completions，逐条产出解析后的 SSE 数据对象。
@@ -380,8 +392,14 @@ class QwenApiClient:
         path: str,
         request_body: dict[str, Any],
         noun: str,
+        *,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
-        """POST to an OpenAI-compatible endpoint with cassette and error taxonomy."""
+        """POST to an OpenAI-compatible endpoint with cassette and error taxonomy.
+
+        ``timeout`` 覆盖客户端默认请求超时（秒）；None 表示使用客户端
+        默认超时（httpx 的 ``timeout=None`` 会禁用超时，绝不能透传）。
+        """
         if self._cassette_store is not None and not self._record_mode:
             recorded = self._cassette_store.load(request_body)
             if recorded is not None:
@@ -404,7 +422,12 @@ class QwenApiClient:
             headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
 
         try:
-            response = self._client.post(url, json=request_body, headers=headers)
+            response = self._client.post(
+                url,
+                json=request_body,
+                headers=headers,
+                timeout=timeout if timeout is not None else USE_CLIENT_DEFAULT,
+            )
         except httpx.TimeoutException as exc:
             raise TransientError(f"{noun} request timeout: {exc}") from exc
         except httpx.ConnectError as exc:

@@ -17,9 +17,10 @@ import secrets
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bridges.ai.adapters import (
+    REQUEST_TIMEOUT_SECONDS_KEY,
     AdapterError,
     AuthError,
     CapabilityAdapter,
@@ -38,6 +39,9 @@ from bridges.contracts.ai import (
     ModelRunLock,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+
+if TYPE_CHECKING:
+    from bridges.chat.budget import RunBudget
 
 
 class ModelGatewayError(Exception):
@@ -83,12 +87,19 @@ class ModelGateway:
         capability_version: str,
         run_context: RunContextEnvelope,
         payload: dict[str, Any] | None = None,
+        budget: RunBudget | None = None,
     ) -> ModelCallResult:
         """Invoke a capability and return a result with an immutable run lock.
 
         The gateway never silently crosses regions or swaps to an unverified
         model. All attempted capabilities are recorded in the lock's fallback
         path.
+
+        ``budget``（Issue 06 第七轮）：传入 RunBudget 时每次尝试的超时按
+        「剩余预算 − 交接预留」截断（单一预算常量来源），重试前检查剩余
+        预算放不放得下「退避 + 最小调用窗口 + 交接预留」——放不下直接以
+        真实错误终态收尾，不再等待退避或发起重试。未传入时保持既有
+        行为（适配器默认超时，重试只受 RetryPolicy 约束）。
         """
         payload = payload or {}
         try:
@@ -146,6 +157,7 @@ class ModelGateway:
             run_context,
             payload,
             attempted,
+            budget=budget,
         )
         if primary_result.status in {ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED}:
             return primary_result
@@ -185,12 +197,19 @@ class ModelGateway:
                 attempted=attempted,
             )
 
+        # Issue 06 第七轮：备选调用同样受预算重试门约束——剩余预算放不下
+        # 「一次最小调用窗口 + 交接预留」时不再发起备选调用，以主能力的
+        # 真实错误终态收尾（绝不带着真实错误再吃一次调用窗口）。
+        if budget is not None and not budget.can_retry_model_call():
+            return primary_result
+
         fallback_result, _ = self._invoke_capability(
             fallback,
             fallback_adapter,
             run_context,
             payload,
             attempted,
+            budget=budget,
         )
         return fallback_result
 
@@ -429,21 +448,56 @@ class ModelGateway:
         run_context: RunContextEnvelope,
         payload: dict[str, Any],
         attempted: list[str],
+        budget: RunBudget | None = None,
     ) -> tuple[ModelCallResult, ModelRunLock]:
         attempted.append(f"{capability.name}@{capability.version}")
         retry_policy = capability.retry_policy
         retry_count = 0
 
         for attempt in range(1, retry_policy.max_attempts + 1):
+            # Issue 06 第七轮：按剩余预算截断单次调用超时（单一预算常量
+            # 来源），经保留载荷键透传给适配器的 HTTP 客户端；未传入预算
+            # 时不注入（适配器使用默认超时）。
+            call_payload = payload
+            if budget is not None:
+                timeout_seconds = budget.model_call_timeout_ms() / 1000
+                call_payload = {**payload, REQUEST_TIMEOUT_SECONDS_KEY: timeout_seconds}
             try:
-                adapter_result = adapter.call(capability, run_context, payload)
+                adapter_result = adapter.call(capability, run_context, call_payload)
             except (RateLimitError, TransientError) as exc:
                 retry_count = attempt - 1
                 if attempt < retry_policy.max_attempts:
-                    if retry_policy.backoff_seconds > 0:
-                        backoff = retry_policy.backoff_seconds * (2 ** (attempt - 1))
-                        if retry_policy.jitter:
-                            backoff *= random.uniform(0.5, 1.5)
+                    backoff = retry_policy.backoff_seconds * (2 ** (attempt - 1))
+                    if retry_policy.jitter:
+                        backoff *= random.uniform(0.5, 1.5)
+                    # Issue 06 第七轮：预算放不下「退避 + 一次最小调用窗口 +
+                    # 交接预留」时不重试——以真实错误终态收尾（重试次数如实
+                    # 记为已发生次数），绝不再等退避、再吃一次调用窗口。
+                    if budget is not None and not budget.can_retry_model_call(
+                        backoff_ms=int(backoff * 1000)
+                    ):
+                        lock = self._build_lock(
+                            run_context,
+                            capability,
+                            ModelCallStatus.RETRYABLE_FAIL,
+                            attempted,
+                            retry_count,
+                            degradation_reason=str(exc),
+                            error_code=exc.code,
+                            error_message=exc.message,
+                            payload=call_payload,
+                        )
+                        return (
+                            ModelCallResult(
+                                status=ModelCallStatus.RETRYABLE_FAIL,
+                                lock=lock,
+                                error_code=exc.code,
+                                error_message=exc.message,
+                                degradation_reason=str(exc),
+                            ),
+                            lock,
+                        )
+                    if backoff > 0:
                         time.sleep(backoff)
                     continue
                 # Exhausted retries on this capability.
@@ -456,7 +510,7 @@ class ModelGateway:
                     degradation_reason=str(exc),
                     error_code=exc.code,
                     error_message=exc.message,
-                    payload=payload,
+                    payload=call_payload,
                 )
                 return (
                     ModelCallResult(
@@ -545,7 +599,7 @@ class ModelGateway:
                 retry_count=attempt - 1,
                 actual_model_id=actual_model_id,
                 usage=adapter_result.usage,
-                payload=payload,
+                payload=call_payload,
             )
             return (
                 ModelCallResult(
@@ -658,6 +712,10 @@ class ModelGateway:
         for key in ("temperature", "max_tokens", "top_p"):
             if payload and key in payload:
                 params[key] = payload[key]
+        # Issue 06 第七轮：记录按剩余预算截断后的单次调用超时（秒）——
+        # 结构化技能审计可据此区分「完整调用窗口」与「被预算截断的调用」。
+        if payload and REQUEST_TIMEOUT_SECONDS_KEY in payload:
+            params[REQUEST_TIMEOUT_SECONDS_KEY] = payload[REQUEST_TIMEOUT_SECONDS_KEY]
         # TTS-specific parameters (T062). These are captured when present so
         # the run lock records the voice, language and format used.
         for key in ("voice", "language_type", "format", "sample_rate"):

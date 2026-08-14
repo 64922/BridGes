@@ -20,6 +20,7 @@ from enum import StrEnum
 from time import perf_counter
 from typing import Any
 
+from bridges.ai.errors import user_facing_model_error
 from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
@@ -484,6 +485,7 @@ class HumanizerService:
                 references,
                 run_context,
                 lock_evidence=lock_evidence,
+                budget=budget,
             )
             writing_call_count += 1
             progress.append("按体裁规则生成")
@@ -727,6 +729,7 @@ class HumanizerService:
                     draft.system_prompt,
                     source_text,
                     lock_evidence=lock_evidence,
+                    budget=budget,
                 )
                 writing_call_count += 1
             progress.append("起草正文")
@@ -968,13 +971,15 @@ class HumanizerService:
         lock_evidence: _LockEvidence | None = None,
         operation: str = HUMANIZER_STAGE_DRAFT,
         attempt_ordinal: int = DRAFT_CALL_ORDINAL,
+        budget: RunBudget | None = None,
     ) -> tuple[str, int]:
         """一次正文生成调用：输出合同只有候选正文（不要求模型生产审计元数据）。
 
         返回（正文, 首稿延迟毫秒）供观测记录，不记录正文内容。Issue 11：
         网关返回的运行锁在任何状态判断/输出解析之前立即持久化——成功、
         降级、可重试失败、永久失败、空输出与本地复核失败都保留真实调用
-        证据；证据安全修订复用本方法并显式传修订阶段标识。
+        证据；证据安全修订复用本方法并显式传修订阶段标识。Issue 06 第七
+        轮：``budget`` 传入网关按剩余预算截断单次调用超时、预算不足不重试。
         """
         payload = {
             "messages": [
@@ -991,6 +996,7 @@ class HumanizerService:
             HUMANIZER_CAPABILITY_VERSION,
             run_context,
             payload,
+            budget=budget,
         )
         latency_ms = int((perf_counter() - started) * 1000)
         self._record_model_run_lock(
@@ -1004,9 +1010,14 @@ class HumanizerService:
             lock_evidence=lock_evidence,
         )
         if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
+            # Issue 06 第七轮：真实错误码透传 + 中文文案（供应商原始
+            # message 是内部诊断，绝不原样透传给用户）。
             raise HumanizerError(
                 call_result.error_code or "humanizer_generation_failed",
-                call_result.error_message or "人味化生成失败，请重试。",
+                user_facing_model_error(
+                    call_result.error_code,
+                    call_result.error_message or "人味化生成失败，请重试。",
+                ),
                 retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
             )
         raw = call_result.output or {}
@@ -1176,6 +1187,7 @@ class HumanizerService:
                 prompt.system_prompt,
                 source_text,
                 lock_evidence=lock_evidence,
+                budget=budget,
             )
         except HumanizerError as exc:
             # Issue 11：锁审计失败关闭——缺锁/持久化失败/业务关联不符必须
@@ -1239,12 +1251,14 @@ class HumanizerService:
         system_prompt: str,
         source_text: str,
         lock_evidence: _LockEvidence | None = None,
+        budget: RunBudget | None = None,
     ) -> tuple[str, int | None, int]:
         """一次定向修订调用：输出合同只有完整候选正文（Issue 05）。
 
         返回（正文, 额外 token, 修订延迟毫秒）。token 来自调用 usage
         （缺失为 None），正文与载荷不进普通日志。Issue 11：网关返回的
         运行锁在状态判断之前立即持久化，修订调用失败时同样保留失败锁。
+        Issue 06 第七轮：``budget`` 传入网关按剩余预算截断单次调用超时。
         """
         payload = {
             "messages": [
@@ -1265,6 +1279,7 @@ class HumanizerService:
             HUMANIZER_CAPABILITY_VERSION,
             run_context,
             payload,
+            budget=budget,
         )
         latency_ms = int((perf_counter() - started) * 1000)
         self._record_model_run_lock(
@@ -1278,9 +1293,14 @@ class HumanizerService:
             lock_evidence=lock_evidence,
         )
         if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
+            # Issue 06 第七轮：真实错误码透传 + 中文文案（供应商原始
+            # message 是内部诊断，绝不原样透传给用户）。
             raise HumanizerError(
                 call_result.error_code or "humanizer_revision_failed",
-                call_result.error_message or "定向修订失败，请重试。",
+                user_facing_model_error(
+                    call_result.error_code,
+                    call_result.error_message or "定向修订失败，请重试。",
+                ),
                 retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
             )
         raw = call_result.output or {}
@@ -1465,6 +1485,8 @@ class HumanizerService:
         contract_check: FactLockCheckResult | None = None,
         fact_lock_check: FactLockCheckResult | None = None,
         ledger: SourceLedger | None = None,
+        partial_delivery: bool = False,
+        delivery_note: str | None = None,
     ) -> HumanizerArticleProjection:
         """确定性组装版本化文章结果投影（Issue 08）。
 
@@ -1653,10 +1675,15 @@ class HumanizerService:
             projection_version=ARTICLE_PROJECTION_VERSION,
             audit_version=ARTICLE_AUDIT_VERSION,
             delivery_status=(
-                ArticleDeliveryStatus.DELIVERED
-                if delivered
-                else ArticleDeliveryStatus.FAILED
+                ArticleDeliveryStatus.PARTIAL
+                if partial_delivery
+                else (
+                    ArticleDeliveryStatus.DELIVERED
+                    if delivered
+                    else ArticleDeliveryStatus.FAILED
+                )
             ),
+            delivery_note=delivery_note if partial_delivery else None,
             material_state=material_state,
             one_question=one_question,
             final_text=final_text,
@@ -1791,6 +1818,28 @@ class HumanizerService:
                     "stop_delivery" if fidelity_blocking else "deliver_revised"
                 )
 
+        # Issue 06 第七轮：首稿完成但修订所需预算不足、或修订调用失败/
+        # 修订后复核未完成时，交付带明确标注的首稿（成功部分终态），不再
+        # 以 budget_exceeded 抹掉已完成工作；投影与审计如实标记部分交付。
+        # 说明文案复用修订跳过原因的中文映射（单一 code→文案来源）。
+        partial_delivery = False
+        delivery_note: str | None = None
+        if (
+            status == HumanizerResultStatus.DONE
+            and revision_audit is not None
+            and revision_audit.triggered
+            and revision_audit.skipped_reason is not None
+        ):
+            reason = revision_audit.skipped_reason
+            if reason in {
+                "budget_insufficient",
+                "recheck_failed",
+            } or reason.startswith("model_error:"):
+                partial_delivery = True
+                delivery_note = (
+                    f"已交付首稿，未完成修订（{_revision_skip_label(reason)}）。"
+                )
+
         result = HumanizerResultProjection(
             task_id=assistant_message_id,
             skill_id=skill_input.skill_id,
@@ -1830,6 +1879,8 @@ class HumanizerService:
                 revision_audit=revision_audit,
                 contract_check=contract_check,
                 ledger=ledger,
+                partial_delivery=partial_delivery,
+                delivery_note=delivery_note,
             ),
             created_at=datetime.now(UTC),
             # Issue 11：投影只保存主要锁引用与业务 run 引用；完整调用集合
@@ -1857,6 +1908,9 @@ class HumanizerService:
             evidence_safe=evidence_report,
             projection_version=(
                 result.article.projection_version if result.article else None
+            ),
+            delivery_status=(
+                result.article.delivery_status.value if result.article else None
             ),
             lock_evidence=lock_evidence,
         )
@@ -2257,6 +2311,7 @@ class HumanizerService:
         lock_evidence: _LockEvidence | None = None,
         operation: str = HUMANIZER_STAGE_DRAFT,
         attempt_ordinal: int = DRAFT_CALL_ORDINAL,
+        budget: RunBudget | None = None,
     ) -> Any:
         contract = skill_input.contract
         genre_set = genre_rule_set(contract.genre)
@@ -2287,6 +2342,7 @@ class HumanizerService:
             HUMANIZER_CAPABILITY_VERSION,
             run_context,
             payload,
+            budget=budget,
         )
         # Issue 11：兼容路径与首稿/修订走同一记录接缝——旧显式 SKILL 的
         # 首稿与软门定向修复都不能留下无锁入口。
@@ -2301,9 +2357,14 @@ class HumanizerService:
             lock_evidence=lock_evidence,
         )
         if call_result.status not in (ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED):
+            # Issue 06 第七轮：真实错误码透传 + 中文文案（供应商原始
+            # message 是内部诊断，绝不原样透传给用户）。
             raise HumanizerError(
                 call_result.error_code or "humanizer_generation_failed",
-                call_result.error_message or "人味化生成失败，请重试。",
+                user_facing_model_error(
+                    call_result.error_code,
+                    call_result.error_message or "人味化生成失败，请重试。",
+                ),
                 retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
             )
         return call_result
@@ -2583,7 +2644,9 @@ class HumanizerService:
         ]
         if not failed_rules:
             return 0, writing_call_count, checkpoint
-        if budget is None or not budget.can_retry():
+        # Issue 06 第七轮：修复门与网关重试语义对齐（剩余预算必须放得下
+        # 「一次最小调用窗口 + 交接预留」），不再使用旧的估算成本门。
+        if budget is None or not budget.can_retry_model_call():
             return 0, writing_call_count, checkpoint
         if writing_call_count >= WRITING_CALL_LIMIT:
             # 额度用尽：修复调用未发生，attempts 记 0（与预算不足语义一致）
@@ -2607,6 +2670,7 @@ class HumanizerService:
                 lock_evidence=lock_evidence,
                 operation=HUMANIZER_STAGE_REVISION,
                 attempt_ordinal=REVISION_CALL_ORDINAL,
+                budget=budget,
             )
             if entered:
                 budget.exit(
@@ -3024,6 +3088,7 @@ class HumanizerService:
         writing_call_count: int | None = None,
         evidence_safe: EvidenceSafeReport | None = None,
         projection_version: str | None = None,
+        delivery_status: str | None = None,
         lock_evidence: _LockEvidence | None = None,
     ) -> None:
         if self._observability is None:
@@ -3256,6 +3321,9 @@ class HumanizerService:
                     ),
                     # Issue 08：结果投影版本（前端据此渲染正文优先交付界面）
                     "projection_version": projection_version,
+                    # Issue 06 第七轮：投影交付状态（delivered/partial/failed）
+                    # ——审计可直接区分完整交付、部分交付与失败，无需推断。
+                    "delivery_status": delivery_status,
                     # Issue 11：模型运行锁审计证据——只记录 run 标识与锁 ID
                     # 这类不可逆安全标识，绝不记录 prompt/正文/完整响应。
                     "model_run_id": (

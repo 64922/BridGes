@@ -488,10 +488,16 @@ def test_slow_model_completes_durably_across_conversation_switch(
     assert adapter.calls == 1, "运行只调用一次模型"
 
 
-def test_model_over_budget_degrades_explicitly(
+def test_model_over_budget_with_real_result_delivers_plan(
     sqlite_app: Any, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """模型调用超过总预算：明确超时/降级失败，不悬挂、不写中断。"""
+    """预算到期但真实结果已形成：先消费真实结果——交付规划而非 budget_exceeded。
+
+    Issue 06 第七轮语义：只有「预算耗尽且无任何草稿/真实错误可交付」时
+    才使用 ``budget_exceeded``。替身适配器不可中断（忽略截断超时）但
+    最终返回了完整规划；真实 HTTP 客户端路径由网关截断保证单次调用最迟
+    在「剩余预算 − 交接预留」处超时并透传真实错误。
+    """
     from bridges.chat import budget as budget_module
 
     monkeypatch.setattr(budget_module, "TOTAL_BUDGET_MS", 50)
@@ -509,8 +515,10 @@ def test_model_over_budget_degrades_explicitly(
     _drive(sqlite_app)
     final = _message(client, conversation_id, payload["assistant_message"]["message_id"])
 
-    assert final["status"] == "error"
-    assert final.get("error_code") == "budget_exceeded", "到预算后明确降级"
+    assert final["status"] == "done", "真实结果优先消费：交付规划而非 budget_exceeded"
+    assert final.get("error_code") is None
+    career = final.get("career_planning") or {}
+    assert career.get("output") is not None, "已完成规划照常交付"
     assert final.get("error_code") != "stream_interrupted"
 
 

@@ -226,6 +226,40 @@ describe("HumanizerResultCard（Issue 08 正文优先交付界面）", () => {
     expect(screen.queryByRole("button", { name: "复制最终正文" })).toBeNull();
   });
 
+  it("部分交付（修订未完成）标注「已交付首稿」并展示说明", () => {
+    const partial: HumanizerResultProjection = {
+      ...cleanResult(),
+      article: {
+        ...cleanResult().article!,
+        delivery_status: "partial",
+        delivery_note: "已交付首稿，未完成修订（剩余预算不足）。",
+        revision: {
+          triggered: true,
+          trigger_label: null,
+          problem_count: 2,
+          resolved_count: 0,
+          remaining_count: 2,
+          skipped_reason: "预算不足",
+        },
+      },
+    };
+    render(createElement(HumanizerResultCard, { result: partial }));
+    // 头部状态明确「已交付首稿（未完成修订）」，成功终态而非错误
+    expect(
+      screen.getByRole("button", { name: /已交付首稿（未完成修订）/ })
+    ).toBeTruthy();
+    // 首稿正文可复制（部分交付仍是成功交付）
+    expect(screen.getByRole("button", { name: "复制最终正文" })).toBeTruthy();
+    // 展开后展示部分交付说明与修订跳过原因
+    fireEvent.click(screen.getByRole("button", { name: /已交付首稿/ }));
+    expect(screen.getByTestId("humanizer-partial-note").textContent).toContain(
+      "已交付首稿，未完成修订"
+    );
+    expect(screen.getByTestId("humanizer-revision").textContent).toContain(
+      "预算不足"
+    );
+  });
+
   it("灰度开关开启时新投影也按旧版结果展示", () => {
     window.localStorage.setItem("bridges:article-projection:legacy", "1");
     render(createElement(HumanizerResultCard, { result: cleanResult() }));

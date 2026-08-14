@@ -6304,10 +6304,12 @@ export interface components {
         };
         /**
          * ArticleDeliveryStatus
-         * @description 正文交付状态：成功（含软警告）为 delivered；硬门失败为 failed。
+         * @description 正文交付状态：成功（含软警告）为 delivered；修订未完成仅交付首稿为
+         *     partial（Issue 06 第七轮：部分交付，附 ``delivery_note``）；硬门失败为
+         *     failed。
          * @enum {string}
          */
-        ArticleDeliveryStatus: "delivered" | "failed";
+        ArticleDeliveryStatus: "delivered" | "partial" | "failed";
         /**
          * ArticleEvidenceItem
          * @description 一条证据风险/变化项（确定性投影自 EvidenceSafeReport）。
@@ -12971,6 +12973,11 @@ export interface components {
             audit_version: string;
             /** @description 正文交付状态。 */
             delivery_status: components["schemas"]["ArticleDeliveryStatus"];
+            /**
+             * Delivery Note
+             * @description 部分交付的用户可见说明（如「已交付首稿，未完成修订」）；仅 ``delivery_status == partial`` 时非空。
+             */
+            delivery_note?: string | null;
             /**
              * @description 材料状态。
              * @default sufficient

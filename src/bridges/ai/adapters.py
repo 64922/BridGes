@@ -22,6 +22,12 @@ from bridges.contracts.chat import (
 )
 from bridges.contracts.workflows import RunContextEnvelope
 
+#: 网关→适配器通道的保留载荷键：网关按剩余预算截断后的单次调用超时
+#: （秒）。只在调用方传入预算（RunBudget）时注入；支持该键的适配器把
+#: 它透传给底层 HTTP 客户端覆盖默认超时，其余适配器忽略未知键。
+#: 该键不在运行锁参数白名单之外泄漏任何正文/密钥。
+REQUEST_TIMEOUT_SECONDS_KEY = "request_timeout_seconds"
+
 
 class AdapterError(Exception):
     """Base class for adapter failures.

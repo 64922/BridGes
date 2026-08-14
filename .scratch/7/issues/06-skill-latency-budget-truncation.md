@@ -1,6 +1,6 @@
 # Issue 06：结构化技能调用的预算截断、部分交付与错误透传
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -73,3 +73,32 @@ python -m pytest tests/chat/test_issue06_latency_budget.py tests/chat/test_issue
 
 - 2026-08-14：本轮冻结决策 #6 全包范围即本 issue 的 What to build 1-4。
 - 2026-08-14：非流式架构保持不变；若未来要把人味化/生涯改成流式，另行立项。
+- 2026-08-14：Issue 06 实现完成（分支 `06-skill-latency-budget-truncation`）。
+  - 预算截断算术与常量集中在新增 `bridges/model_call_budget.py`（默认 60s、
+    交接预留 1s、最小调用窗口 5s、正下限 50ms；与 `public_search_budget` 同一
+    免循环依赖约定），`RunBudget` 新增 `model_call_timeout_ms()` /
+    `can_retry_model_call()` 接缝；网关 `invoke(budget=...)` 每次尝试经保留
+    载荷键 `request_timeout_seconds` 注入截断后超时（Qwen 客户端
+    `chat_completions(timeout=...)` 覆盖，None 显式映射为 `USE_CLIENT_DEFAULT`
+    避免 httpx 语义上禁用超时），重试前检查「退避 + 最小窗口 + 预留」、
+    放不下即以真实错误终态收尾（重试次数如实记 0），备选调用同样受该门约束；
+    截断后超时值进入运行锁参数白名单（审计可区分完整窗口与被截断调用）。
+  - 人味化部分交付：首稿完成但修订预算不足/修订调用失败/修订后复核未完成时
+    交付带标注首稿（成功终态），投影 `delivery_status=partial` + `delivery_note`
+    （复用修订跳过原因中文映射），审计新增 `delivery_status` 字段；
+    生涯修复门与人味化软门修复门与网关共用 `can_retry_model_call()` 去重。
+  - 真实错误透传：人味化/生涯的网关失败统一映射为稳定错误码 + 中文文案
+    （`bridges.ai.errors.user_facing_model_error`，供应商原始 message 不再
+    透传）；`turn.py` 两处事件循环先消费真实结果再判定预算，`budget_exceeded`
+    降级为循环结束后的纯安全网（预算耗尽且无任何草稿/真实错误可交付时）。
+    停止检查保持结果之前（仅预算/结果相对顺序变更，无额外行为扩张）。
+  - 验收与回归：新增 `tests/chat/test_issue06_budget_truncation.py`（22 例：
+    截断算术、网关注入/重试门/锁记录、部分交付、真实错误透传、缩放预算下
+    整轮墙钟）；`test_issue09_career_resilience.py` 超预算用例更新为新语义
+    （真实结果优先交付）；openapi.json / generated.ts 重新生成；前端
+    `HumanizerResultCard` 增加部分交付状态与说明（含单测）；ADR-0025 追加
+    第七轮修订说明。类型检查与既有预算/生涯/人味化套件全绿；全量套件与
+    pristine main 基线失败集一致（189 项既有环境性失败，无新增回归）。
+  - 已知边界（如实披露）：截断的墙钟保证依赖真实 HTTP 客户端执行注入的
+    超时（适配器/测试替身忽略该键时不成立）；预算耗尽时仍以正下限 50ms
+    真实发起一次最小调用（让上游超时如实透传，而非网关伪造 budget_exceeded）。

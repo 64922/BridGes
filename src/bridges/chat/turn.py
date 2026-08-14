@@ -41,9 +41,9 @@ from bridges.chat.budget import (
     RESULT_FAILED,
     RESULT_OK,
     RESULT_TIMEOUT,
+    SEARCH_HANDOFF_RESERVE_SECONDS,
     RunBudget,
     RunStage,
-    SEARCH_HANDOFF_RESERVE_SECONDS,
 )
 from bridges.chat.global_writing_policy import (
     GlobalWritingPolicyCompiler,
@@ -4178,35 +4178,6 @@ class TurnOrchestrator:
                             updated_at=datetime.now(UTC),
                         )
                     continue
-                if budget.expired():
-                    # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
-                    budget.mark_exhausted()
-                    if quality_entered:
-                        budget.exit(
-                            RunStage.QUALITY_CHECK,
-                            result=RESULT_FAILED,
-                            category="qwen_structured_output",
-                        )
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code="budget_exceeded",
-                        error_message=user_facing_error("budget_exceeded"),
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=failed_thinking(thinking, "budget_exceeded"),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code="budget_exceeded",
-                        error_message=user_facing_error("budget_exceeded"),
-                    )
-                    return
                 if stop_event.is_set():
                     finalize_message(
                         self._repo,
@@ -4223,6 +4194,82 @@ class TurnOrchestrator:
                         thinking=stopped_thinking(thinking),
                     )
                     return
+                result = run_event.result
+                if result is not None:
+                    # Issue 06 第七轮：先消费真实结果再判定预算——已完成的首稿
+                    # （部分交付）与真实上游错误绝不被 budget_exceeded 文案
+                    # 抹掉；只有「预算耗尽且无任何草稿/真实错误可交付」时才
+                    # 使用 budget_exceeded。
+                    now = datetime.now(UTC)
+                    self._repo.update_message_humanizer(
+                        account_id,
+                        assistant_message_id,
+                        result.model_dump(mode="json"),
+                        now,
+                    )
+                    if result.status == HumanizerResultStatus.ERROR:
+                        finalize_message(
+                            self._repo,
+                            account_id,
+                            assistant_message_id,
+                            status=ChatMessageStatus.ERROR,
+                            error_code=result.error_code,
+                            error_message=result.error_message,
+                            duration_ms=None,
+                            model_id=None,
+                            run_lock_id=None,
+                            started=started,
+                            now=now,
+                            thinking=failed_thinking(thinking, result.error_code),
+                        )
+                        yield StreamEvent(
+                            kind="error",
+                            error_code=result.error_code or "humanizer_failed",
+                            error_message=result.error_message
+                            or "人味化任务未完成，请重试。",
+                        )
+                        return
+                    final_text = result.output.final_text if result.output else ""
+                    self._repo.update_message_content(
+                        account_id,
+                        assistant_message_id,
+                        final_text,
+                        now,
+                    )
+                    if quality_entered:
+                        budget.exit(
+                            RunStage.QUALITY_CHECK,
+                            category="qwen_structured_output",
+                            count=1,
+                        )
+                        yield self._stage_event(
+                            assistant_message_id,
+                            RunStage.QUALITY_CHECK,
+                            "done",
+                            duration_ms=budget.metrics()[-1].duration_ms,
+                        )
+                    # 收尾阶段（Issue 06）：结果落库与终态提交
+                    if budget.enter(RunStage.FINALIZING):
+                        yield self._stage_event(
+                            assistant_message_id, RunStage.FINALIZING, "active"
+                        )
+                    budget.exit(RunStage.FINALIZING)
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=now,
+                        thinking=done_thinking(thinking),
+                    )
+                    yield StreamEvent(kind="done")
+                    return
                 if run_event.kind == "process":
                     if run_event.state is None:
                         continue
@@ -4238,78 +4285,38 @@ class TurnOrchestrator:
                         ),
                     )
                     continue
-                result = run_event.result
-                if result is None:
-                    continue
-                now = datetime.now(UTC)
-                self._repo.update_message_humanizer(
-                    account_id,
-                    assistant_message_id,
-                    result.model_dump(mode="json"),
-                    now,
-                )
-                if result.status == HumanizerResultStatus.ERROR:
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code=result.error_code,
-                        error_message=result.error_message,
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=now,
-                        thinking=failed_thinking(thinking, result.error_code),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code=result.error_code or "humanizer_failed",
-                        error_message=result.error_message
-                        or "人味化任务未完成，请重试。",
-                    )
-                    return
-                final_text = result.output.final_text if result.output else ""
-                self._repo.update_message_content(
-                    account_id,
-                    assistant_message_id,
-                    final_text,
-                    now,
-                )
+            # Issue 06 第七轮：预算检查点后置为纯安全网——循环内真实结果
+            # 已优先消费，进行中的真实结果绝不被预算文案抹掉；走到这里
+            # 说明循环结束仍无任何草稿/真实错误可交付，此时预算耗尽才
+            # 使用 budget_exceeded（正常路径由网关截断保证终态在预算内
+            # 形成——单次调用最迟在「剩余预算 − 交接预留」处被截断）。
+            if budget.expired():
+                budget.mark_exhausted()
                 if quality_entered:
                     budget.exit(
                         RunStage.QUALITY_CHECK,
+                        result=RESULT_FAILED,
                         category="qwen_structured_output",
-                        count=1,
                     )
-                    yield self._stage_event(
-                        assistant_message_id,
-                        RunStage.QUALITY_CHECK,
-                        "done",
-                        duration_ms=budget.metrics()[-1].duration_ms,
-                    )
-                # 收尾阶段（Issue 06）：结果落库与终态提交
-                if budget.enter(RunStage.FINALIZING):
-                    yield self._stage_event(
-                        assistant_message_id, RunStage.FINALIZING, "active"
-                    )
-                budget.exit(RunStage.FINALIZING)
                 finalize_message(
                     self._repo,
                     account_id,
                     assistant_message_id,
-                    status=ChatMessageStatus.DONE,
-                    error_code=None,
-                    error_message=None,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
                     duration_ms=None,
                     model_id=None,
                     run_lock_id=None,
                     started=started,
-                    now=now,
-                    thinking=done_thinking(thinking),
+                    now=datetime.now(UTC),
+                    thinking=failed_thinking(thinking, "budget_exceeded"),
                 )
-                yield StreamEvent(kind="done")
+                yield StreamEvent(
+                    kind="error",
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
+                )
                 return
         except Exception:  # noqa: BLE001 - 编排意外异常收敛为可重试错误
             finalize_message(
@@ -4720,35 +4727,6 @@ class TurnOrchestrator:
                     **career_run_kwargs,
                 )
             for run_event in career_events:
-                if budget.expired():
-                    # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
-                    budget.mark_exhausted()
-                    if quality_entered:
-                        budget.exit(
-                            RunStage.QUALITY_CHECK,
-                            result=RESULT_FAILED,
-                            category="qwen_structured_output",
-                        )
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code="budget_exceeded",
-                        error_message=user_facing_error("budget_exceeded"),
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=failed_thinking(thinking, "budget_exceeded"),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code="budget_exceeded",
-                        error_message=user_facing_error("budget_exceeded"),
-                    )
-                    return
                 if stop_event.is_set():
                     finalize_message(
                         self._repo,
@@ -4765,6 +4743,78 @@ class TurnOrchestrator:
                         thinking=stopped_thinking(thinking),
                     )
                     return
+                result = run_event.result
+                if result is not None:
+                    # Issue 06 第七轮：先消费真实结果再判定预算——已完成规划
+                    # 与真实上游错误绝不被 budget_exceeded 文案抹掉；只有
+                    # 「预算耗尽且无任何结果可交付」时才使用 budget_exceeded。
+                    now = datetime.now(UTC)
+                    self._repo.update_message_career_planning(
+                        account_id,
+                        assistant_message_id,
+                        result.model_dump(mode="json"),
+                        now,
+                    )
+                    if result.status == CareerPlanningStatus.ERROR:
+                        finalize_message(
+                            self._repo,
+                            account_id,
+                            assistant_message_id,
+                            status=ChatMessageStatus.ERROR,
+                            error_code=result.error_code,
+                            error_message=result.error_message,
+                            duration_ms=None,
+                            model_id=None,
+                            run_lock_id=None,
+                            started=started,
+                            now=now,
+                            thinking=failed_thinking(thinking, result.error_code),
+                        )
+                        yield StreamEvent(
+                            kind="error",
+                            error_code=result.error_code or "career_failed",
+                            error_message=result.error_message
+                            or "生涯规划未完成，请重试。",
+                        )
+                        return
+                    final_text = result.output.final_text if result.output else ""
+                    self._repo.update_message_content(
+                        account_id, assistant_message_id, final_text, now
+                    )
+                    if quality_entered:
+                        budget.exit(
+                            RunStage.QUALITY_CHECK,
+                            category="qwen_structured_output",
+                            count=1,
+                        )
+                        yield self._stage_event(
+                            assistant_message_id,
+                            RunStage.QUALITY_CHECK,
+                            "done",
+                            duration_ms=budget.metrics()[-1].duration_ms,
+                        )
+                    # 收尾阶段（Issue 06）：结果落库与终态提交
+                    if budget.enter(RunStage.FINALIZING):
+                        yield self._stage_event(
+                            assistant_message_id, RunStage.FINALIZING, "active"
+                        )
+                    budget.exit(RunStage.FINALIZING)
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=now,
+                        thinking=done_thinking(thinking),
+                    )
+                    yield StreamEvent(kind="done")
+                    return
                 if run_event.kind == "process":
                     if run_event.state is None:
                         continue
@@ -4780,75 +4830,37 @@ class TurnOrchestrator:
                         ),
                     )
                     continue
-                result = run_event.result
-                if result is None:
-                    continue
-                now = datetime.now(UTC)
-                self._repo.update_message_career_planning(
-                    account_id,
-                    assistant_message_id,
-                    result.model_dump(mode="json"),
-                    now,
-                )
-                if result.status == CareerPlanningStatus.ERROR:
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code=result.error_code,
-                        error_message=result.error_message,
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=now,
-                        thinking=failed_thinking(thinking, result.error_code),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code=result.error_code or "career_failed",
-                        error_message=result.error_message
-                        or "生涯规划未完成，请重试。",
-                    )
-                    return
-                final_text = result.output.final_text if result.output else ""
-                self._repo.update_message_content(
-                    account_id, assistant_message_id, final_text, now
-                )
+            # Issue 06 第七轮：预算检查点后置为纯安全网——循环内真实结果
+            # 已优先消费，进行中的真实结果绝不被预算文案抹掉；走到这里
+            # 说明循环结束仍无任何结果可交付，此时预算耗尽才使用
+            # budget_exceeded（正常路径由网关截断保证终态在预算内形成）。
+            if budget.expired():
+                budget.mark_exhausted()
                 if quality_entered:
                     budget.exit(
                         RunStage.QUALITY_CHECK,
+                        result=RESULT_FAILED,
                         category="qwen_structured_output",
-                        count=1,
                     )
-                    yield self._stage_event(
-                        assistant_message_id,
-                        RunStage.QUALITY_CHECK,
-                        "done",
-                        duration_ms=budget.metrics()[-1].duration_ms,
-                    )
-                # 收尾阶段（Issue 06）：结果落库与终态提交
-                if budget.enter(RunStage.FINALIZING):
-                    yield self._stage_event(
-                        assistant_message_id, RunStage.FINALIZING, "active"
-                    )
-                budget.exit(RunStage.FINALIZING)
                 finalize_message(
                     self._repo,
                     account_id,
                     assistant_message_id,
-                    status=ChatMessageStatus.DONE,
-                    error_code=None,
-                    error_message=None,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
                     duration_ms=None,
                     model_id=None,
                     run_lock_id=None,
                     started=started,
-                    now=now,
-                    thinking=done_thinking(thinking),
+                    now=datetime.now(UTC),
+                    thinking=failed_thinking(thinking, "budget_exceeded"),
                 )
-                yield StreamEvent(kind="done")
+                yield StreamEvent(
+                    kind="error",
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
+                )
                 return
         except Exception:  # noqa: BLE001 - 编排意外异常收敛为可重试错误
             finalize_message(
