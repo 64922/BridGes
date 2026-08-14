@@ -16,6 +16,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai import CapabilityRegistryError
+from bridges.contracts.ai import (
+    CapabilityKind,
+    CapabilityRecord,
+    CapabilityStatus,
+)
 from bridges.contracts.workflows import WorkflowRunStatus, WorkOrder
 
 _RETIRED_ENDPOINTS: list[tuple[str, str, str, dict[str, str]]] = [
@@ -299,3 +304,37 @@ class TestExpressionCapabilityRetirement:
         assert len(projection.model_run_locks) == 1
         lock = projection.model_run_locks[0]
         assert lock.error_code == "unregistered_capability"
+
+    def test_startup_guard_fails_closed_when_capability_reregistered(
+        self, authenticated_client: TestClient
+    ) -> None:
+        """已退役能力被重新注册时：就绪检查 FAIL、数据请求 503（失败关闭）。"""
+        app = authenticated_client.app
+        app.state.capability_registry.register(
+            CapabilityRecord(
+                name="expression_draft_generation",
+                version="1",
+                kind=CapabilityKind.MODEL,
+                vendor="qwen",
+                region="cn-beijing",
+                model_id="qwen3.6-flash",
+                input_schema_version="expression-draft-v1",
+                output_schema_version="expression-draft-v1",
+                status=CapabilityStatus.VERIFIED,
+            )
+        )
+
+        ready = authenticated_client.get("/health/ready")
+        assert ready.status_code == 200
+        body = ready.json()
+        assert body["ready"] == "fail"
+        names = {d["name"] for d in body["dependencies"]}
+        assert "retired_capability_guard" in names
+
+        retired = authenticated_client.post("/expression/drafts", json={})
+        assert retired.status_code == 503
+        assert "expression_draft_generation" in retired.text
+
+        # 健康探针本身保持可用，便于观测实例的失败关闭状态。
+        live = authenticated_client.get("/health/live")
+        assert live.status_code == 200
