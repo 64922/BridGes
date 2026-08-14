@@ -66,3 +66,13 @@ class ArxivSearchProjection(BaseModel):
     )
     can_retry: bool = Field(default=False, description="本轮是否可以重试。")
     can_cancel: bool = Field(default=False, description="本轮是否可以取消。")
+    cache_hit: bool = Field(
+        default=False, description="是否复用了未过期的进程内结果缓存。"
+    )
+    retry_after_seconds: int | None = Field(
+        default=None,
+        description="上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。",
+    )
+    attempt_count: int = Field(
+        default=0, ge=0, description="本次搜索实际上游请求调用次数（缓存命中与冷却拒绝为 0）。"
+    )

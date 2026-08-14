@@ -9,6 +9,7 @@ from typing import Any
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.repository import ConversationRepository
@@ -192,3 +193,82 @@ def test_arxiv_answer_without_citation_is_rejected(tmp_path: Path) -> None:
     assert final.arxiv_search is not None
     assert final.arxiv_search.status == ArxivSearchStatus.ERROR
     assert events[-1].kind == "error"
+
+
+class _RateLimitArxivClient(_FakeArxivClient):
+    """始终返回 429 分类错误的上游替身（记录查询与调用次数）。"""
+
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        stop_event: Any | None = None,
+    ) -> list[ArxivPaper]:
+        self.queries.append(query)
+        raise ArxivMcpError(
+            "arxiv_rate_limit",
+            "arXiv 请求过于频繁，请稍后重试。",
+            upstream_status="http_429",
+        )
+
+
+def test_retry_during_cooldown_returns_accurate_error_without_upstream_call(
+    tmp_path: Path,
+) -> None:
+    """Issue 05：429 终态后冷却期内的手动重试不打上游。
+
+    第一次生成得到 429 错误投影；随即手动重试（新尝试）在冷却期内被
+    服务层直接拒绝，SSE 终态携带 ``arxiv_rate_limit`` 与
+    ``retry_after_seconds``，上游查询数保持 1 次。
+    """
+    client = _RateLimitArxivClient()
+    adapter = _CapturingAdapter()
+    service = _service(tmp_path, ArxivSearchService(client=client), adapter)
+    conversation = service.create_conversation("alice")
+    user, first = service.start_generation(
+        "alice", conversation.conversation_id, "搜索量子纠错论文"
+    )
+
+    first_events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            first.message_id,
+            _context(),
+            until_user_message_id=user.message_id,
+        )
+    )
+    first_final = service.message_projection("alice", first.message_id)
+    assert first_final is not None and first_final.status.value == "error"
+    assert first_final.error_code == "arxiv_rate_limit"
+    assert first_final.arxiv_search is not None
+    assert first_final.arxiv_search.attempt_count == 1
+    assert first_events[-1].kind == "error"
+    assert len(client.queries) == 1
+
+    _, retry = service.retry_generation(
+        "alice", conversation.conversation_id, first.message_id
+    )
+    retry_events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            retry.message_id,
+            _context(),
+            until_user_message_id=user.message_id,
+        )
+    )
+    retry_final = service.message_projection("alice", retry.message_id)
+
+    assert retry_final is not None and retry_final.status.value == "error"
+    assert retry_final.error_code == "arxiv_rate_limit"
+    assert retry_final.arxiv_search is not None
+    assert retry_final.arxiv_search.status == ArxivSearchStatus.ERROR
+    assert retry_final.arxiv_search.attempt_count == 0
+    assert (
+        retry_final.arxiv_search.retry_after_seconds is not None
+        and retry_final.arxiv_search.retry_after_seconds > 0
+    )
+    assert len(client.queries) == 1  # 冷却期内的重试没有发起上游请求
+    assert retry_events[-1].kind == "error"

@@ -6625,6 +6625,23 @@ export interface components {
              * @default false
              */
             can_cancel: boolean;
+            /**
+             * Cache Hit
+             * @description 是否复用了未过期的进程内结果缓存。
+             * @default false
+             */
+            cache_hit: boolean;
+            /**
+             * Retry After Seconds
+             * @description 上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。
+             */
+            retry_after_seconds?: number | null;
+            /**
+             * Attempt Count
+             * @description 本次搜索实际上游请求调用次数（缓存命中与冷却拒绝为 0）。
+             * @default 0
+             */
+            attempt_count: number;
         };
         /**
          * ArxivSearchStatus

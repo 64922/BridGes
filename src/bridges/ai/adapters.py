@@ -9,18 +9,24 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from bridges.contracts.ai import CapabilityRecord, ModelRunLock
-from bridges.contracts.chat import (
-    ChatStreamCareerData,
-    ChatStreamHumanizerData,
-    ChatStreamImageData,
-    ChatStreamMcpData,
-    ChatStreamStageData,
-    ChatStreamVideoData,
-)
 from bridges.contracts.workflows import RunContextEnvelope
+
+if TYPE_CHECKING:
+    # 仅作 dataclass 字段注解（``from __future__ import annotations`` 下
+    # 不会在运行期解析）；延迟导入以切断 contracts.chat → routing →
+    # ai.adapters → contracts.chat 的既有循环，否则单独收集
+    # tests/arxiv_mcp/test_client_and_service.py 会 ImportError。
+    from bridges.contracts.chat import (
+        ChatStreamCareerData,
+        ChatStreamHumanizerData,
+        ChatStreamImageData,
+        ChatStreamMcpData,
+        ChatStreamStageData,
+        ChatStreamVideoData,
+    )
 
 
 class AdapterError(Exception):

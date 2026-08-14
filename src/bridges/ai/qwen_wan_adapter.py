@@ -31,15 +31,15 @@ from bridges.ai.adapters import (
     AdapterResult,
     CapabilityAdapter,
 )
-from bridges.ai.qwen_client import QwenApiClient
-from bridges.contracts.ai import CapabilityRecord
-from bridges.contracts.workflows import RunContextEnvelope
-from bridges.video.constants import (
+from bridges.ai.fixed_models import (
     VIDEO_DEFAULT_DURATION_SECONDS,
     VIDEO_DEFAULT_SIZE,
     VIDEO_SUPPORTED_DURATIONS_SECONDS,
     VIDEO_SUPPORTED_SIZES,
 )
+from bridges.ai.qwen_client import QwenApiClient
+from bridges.contracts.ai import CapabilityRecord
+from bridges.contracts.workflows import RunContextEnvelope
 
 #: 固定生成尺寸（与能力矩阵探测参数一致，用户不可选）。
 DEFAULT_VIDEO_SIZE = VIDEO_DEFAULT_SIZE

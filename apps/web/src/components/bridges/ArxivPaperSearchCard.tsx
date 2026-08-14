@@ -1,11 +1,80 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { Icon } from "@/components/design-system/Icon";
 import type { ArxivPaperProjection, ArxivSearchProjection } from "@/lib/api";
 
 function dateOf(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "发布日期未知" : date.toLocaleDateString("zh-CN");
+}
+
+/** Issue 05：冷却期内的重试按钮——本地倒计时，到期自动恢复可点。
+ *
+ * ``retry_after_seconds`` 是服务端投影时的剩余冷却秒数快照；组件按
+ * 本地时钟推进倒计时（不引入轮询），倒计时归零即恢复按钮。历史消息
+ * 重载时按投影快照重新起算，下一次真实重试由服务端冷却状态机兜底。
+ */
+function RetryCountdownButton({
+  search,
+  onRetry,
+}: {
+  search: ArxivSearchProjection;
+  onRetry: () => void;
+}) {
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    const retryAfter = search.retry_after_seconds;
+    if (retryAfter == null || retryAfter <= 0) {
+      setRemaining(null);
+      return;
+    }
+    const deadline = Date.now() + retryAfter * 1000;
+    let timer: number | undefined;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setRemaining(left);
+      if (left <= 0 && timer != null) {
+        window.clearInterval(timer);
+      }
+    };
+    tick();
+    timer = window.setInterval(tick, 1000);
+    return () => {
+      if (timer != null) {
+        window.clearInterval(timer);
+      }
+    };
+  }, [search.retry_after_seconds]);
+
+  const disabled = remaining !== null && remaining > 0;
+  return (
+    <button
+      type="button"
+      onClick={onRetry}
+      disabled={disabled}
+      data-testid="arxiv-search-retry"
+      aria-disabled={disabled}
+      style={{
+        marginLeft: "auto",
+        minHeight: "var(--target-size)",
+        padding: "var(--space-1) var(--space-2)",
+        border: "1px solid var(--color-status-error)",
+        borderRadius: "var(--radius-md)",
+        backgroundColor: "transparent",
+        color: "var(--color-status-error)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        font: "inherit",
+        fontWeight: 600,
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      <Icon name="retry" size={14} aria-hidden />
+      {disabled ? `重试论文搜索（${remaining} 秒后可用）` : "重试论文搜索"}
+    </button>
+  );
 }
 
 function PaperCitation({ paper }: { paper: ArxivPaperProjection }) {
@@ -169,14 +238,7 @@ export function ArxivPaperSearchCard({
                 : "arXiv 论文搜索未完成"}
           </strong>
           {search.can_retry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              data-testid="arxiv-search-retry"
-              style={{ marginLeft: "auto", minHeight: "var(--target-size)", padding: "var(--space-1) var(--space-2)", border: "1px solid var(--color-status-error)", borderRadius: "var(--radius-md)", backgroundColor: "transparent", color: "var(--color-status-error)", cursor: "pointer", font: "inherit", fontWeight: 600 }}
-            >
-              <Icon name="retry" size={14} aria-hidden />重试论文搜索
-            </button>
+            <RetryCountdownButton search={search} onRetry={onRetry} />
           )}
         </div>
         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>

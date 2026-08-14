@@ -32,7 +32,9 @@ TOTAL_BUDGET_MS = 120_000
 #: 统一阶段预算。
 EXTERNAL_TIMEOUT_SECONDS: dict[str, float] = {
     "web_search": PUBLIC_SEARCH_STAGE_SECONDS,
-    "arxiv_search": 10.0,
+    # Issue 05：Windows 上 worker spawn + httpx 导入消耗数秒，HTTP 超时被
+    # 压成剩余预算；10s→15s 后节流等待与真实请求都能落在阶段预算内。
+    "arxiv_search": 15.0,
 }
 #: 来源名到预算常量的映射；只把本轮实际启动的来源纳入计算。
 _SEARCH_SOURCE_TIMEOUT_KEYS: dict[str, str] = {
