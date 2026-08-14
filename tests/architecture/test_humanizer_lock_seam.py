@@ -73,14 +73,6 @@ def _collect(tree: ast.AST) -> tuple[list[ast.Call], dict[ast.Call, ast.Function
     return sites, enclosing
 
 
-def _assignment_target(call: ast.Call) -> str | None:
-    """``result = self._gateway.invoke(...)`` 中的结果变量名。"""
-    for parent in ast.walk(call):
-        pass
-    # 直接父级赋值：用文本级定位替代——找包含该 Call 的最小 Assign
-    return None
-
-
 def _result_variable(module: ast.Module, call: ast.Call) -> str | None:
     """在模块树里找把该 Call 作为右值的 Assign，返回左值变量名。"""
     for node in ast.walk(module):

@@ -408,6 +408,73 @@ def test_empty_output_keeps_lock_with_success_status(
     assert locks[0].status == ModelCallStatus.SUCCESS
 
 
+class _DegradedGateway:
+    """网关替身：把成功结果改写为 DEGRADED（锁与输出保留）。"""
+
+    def __init__(self, inner: ModelGateway) -> None:
+        self._inner = inner
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        result = self._inner.invoke(*args, **kwargs)
+        if result.status != ModelCallStatus.SUCCESS:
+            return result
+        degraded_lock = result.lock.model_copy(
+            update={"status": ModelCallStatus.DEGRADED}
+        )
+        return result.model_copy(
+            update={"status": ModelCallStatus.DEGRADED, "lock": degraded_lock}
+        )
+
+
+def test_degraded_draft_keeps_degraded_lock(
+    recorder: SqliteModelRunLockRecorder,
+) -> None:
+    """降级成功同样保留锁：锁状态如实为 degraded，业务按既有语义交付。"""
+    adapter = _SequencedAdapter([_draft(_FIXED)])
+    gateway = _DegradedGateway(_gateway_with(adapter))
+    service = HumanizerService(
+        registry=create_builtin_registry(),
+        gateway=gateway,
+        run_lock_recorder=recorder,
+    )
+    _, result = _run(service, _expression_input())
+    assert result.status == HumanizerResultStatus.DONE
+    locks = recorder.list_locks_by_run("acc-test", "run-test")
+    assert len(locks) == 1
+    assert locks[0].status == ModelCallStatus.DEGRADED
+    assert locks[0].business_refs[0].operation == HUMANIZER_STAGE_DRAFT
+
+
+def test_parse_failure_keeps_lock_of_real_call(
+    recorder: SqliteModelRunLockRecorder,
+) -> None:
+    """结构校验失败（输出合同不完整）：已发生的供应商调用仍有对应锁。
+
+    网关只接受 dict 输出（合同边界），服务层的解析失败形态是结构校验
+    不通过——legacy 路径下 malformed edits 被收窄为空清单，输出合同
+    完整性门以 output_contract_incomplete 拒绝，但锁在解析前已落库。
+    """
+    adapter = _SequencedAdapter(
+        [
+            {
+                "final_text": "时间管理的关键是先列清单，再排优先级。",
+                "edits": "not-a-list",
+                "fact_check": [],
+                "open_questions": [],
+            }
+        ]
+    )
+    _, result = _run(_make_service(adapter, recorder), _legacy_generate_input())
+    assert adapter.calls == 1
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "output_contract_incomplete"
+    locks = recorder.list_locks_by_run("acc-test", "run-test")
+    assert len(locks) == 1
+    # 供应商调用真实发生（网关 SUCCESS），业务层结构校验失败不抹除锁
+    assert locks[0].status == ModelCallStatus.SUCCESS
+    assert locks[0].business_refs[0].operation == HUMANIZER_STAGE_DRAFT
+
+
 def test_local_review_failure_keeps_locks_distinct_from_business_terminal(
     recorder: SqliteModelRunLockRecorder,
 ) -> None:
