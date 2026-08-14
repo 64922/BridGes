@@ -228,11 +228,14 @@ def compile_draft_prompt(
     source_text: str = "",
     source_label: str = "",
     ledger: SourceLedger | None = None,
+    profile_context: str | None = None,
 ) -> DraftPromptResult:
     """编译一次首稿提示：只含当前 profile 的 6—10 条正向规则与任务边界。
 
     调用方负责在模型调用前完成契约版本校验与账本编译；本函数只做确定性
-    文本编译，不访问模型、账户或知识库。
+    文本编译，不访问模型、账户或知识库。``profile_context``（Issue 04）
+    是最小画像切片的编译文本，只以「风格与背景偏好」用途引用——明确标注
+    不作为事实来源，不改变材料边界与证据合同。
     """
     profile = _PROFILES[contract.rewrite_intensity]
     rules = [_RULES[rule_id] for rule_id in profile.rule_ids]
@@ -247,6 +250,12 @@ def compile_draft_prompt(
         "【材料】" + (source_label or "原文") + "：\n" + source_text
         if source_text.strip()
         else "【材料】（无用户材料：正文只能做通用性说明，具体事实与案例留占位）"
+    )
+    profile_block = (
+        "\n【风格与背景偏好】（仅用于把握表达风格与背景偏好；不作为事实"
+        "来源，不改变材料边界与证据合同）\n" + profile_context
+        if profile_context
+        else ""
     )
 
     system_prompt = f"""你是 BridGes 文章表达助手，以作者身份起草文章正文
@@ -263,7 +272,7 @@ def compile_draft_prompt(
 
 【权限】
 {permission}
-
+{profile_block}
 【体裁任务】
 {_genre_block(genre)}
 

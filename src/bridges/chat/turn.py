@@ -612,6 +612,12 @@ class HumanizerOrchestrator(Protocol):
         writing_call_count: int = 0,
         recovered_draft: str | None = None,
         stop_event: Any | None = None,
+        # Issue 04：人味化轮次的最小画像切片（编译与披露由聊天层完成，
+        # 服务只按「风格与背景偏好」用途注入首稿/修订 prompt，绝不进入
+        # 证据与来源合同、运行锁、日志或语料产物）。
+        profile_used: bool = False,
+        profile_items: list[ProfileSliceItem] | None = None,
+        profile_context: str | None = None,
     ) -> Iterator[HumanizerRunEvent]: ...
 
 
@@ -2069,6 +2075,7 @@ class TurnOrchestrator:
                     until_user_message_id,
                     use_knowledge_base,
                     budget,
+                    use_profile=use_profile,
                 )
                 return
             # Issue 31：用户消息携带图片生成/编辑载荷（前端图片对话框提交）
@@ -3876,6 +3883,7 @@ class TurnOrchestrator:
         until_user_message_id: str | None,
         use_knowledge_base: bool,
         budget: RunBudget,
+        use_profile: bool = True,
     ) -> Iterator[StreamEvent]:
         """SKILL 编排：证据合同检索 → 过程事件 → 终态收敛（done/error）。
 
@@ -3892,9 +3900,8 @@ class TurnOrchestrator:
             else self._lifecycle.register(assistant_message_id)
         )
         conversation = self._repo.get_conversation(account_id, conversation_id)
-        thinking = initial_thinking(
-            ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-        )
+        mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+        thinking = initial_thinking(mode)
         retrieval_round: RetrievalRoundProjection | None = None
         messages = self._repo.list_messages(account_id, conversation_id)
         owner = owner_user_message(messages, assistant_message_id)
@@ -3969,9 +3976,7 @@ class TurnOrchestrator:
             messages = self._repo.list_messages(account_id, conversation_id)
             owner = owner_user_message(messages, assistant_message_id)
             round_query = owner.content if owner is not None else ""
-            mode_for_plan = (
-                ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-            )
+            mode_for_plan = mode
             # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
             # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
             calls: list[tuple[str, Callable[[], object] | None]] = []
@@ -4112,6 +4117,29 @@ class TurnOrchestrator:
                 ),
             )
             return
+        # Issue 04：人味化轮次编译最小画像切片并如实披露（与普通/生涯
+        # 路径同一编译接缝与裁剪规则）。切片上下文只以「风格与背景偏好」
+        # 用途经 run_task 传入技能执行，绝不进入证据合同/运行锁/日志；
+        # use_profile=False 时不编译不披露，画像服务异常时准确降级，
+        # 均不阻塞人味化主流程。
+        context_note, profile_context, profile_items, _profile_slice_id = (
+            self._compile_profile_slice(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                mode,
+                use_profile=use_profile,
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+            )
+        )
+        if context_note is not None:
+            thinking = context_note_thinking(thinking, context_note)
+        profile_used = (
+            context_note is not None
+            and context_note.state == ContextNoteState.READY
+        )
         try:
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
             if generation_entered:
@@ -4159,6 +4187,11 @@ class TurnOrchestrator:
                 writing_call_count=writing_call_count,
                 recovered_draft=recovered_draft,
                 stop_event=stop_event,
+                # Issue 04：画像切片只作「风格与背景偏好」用途注入，不改变
+                # 人味化的证据与来源合同（服务内部不再接触画像服务）。
+                profile_used=profile_used,
+                profile_items=profile_items,
+                profile_context=profile_context,
             ):
                 # Issue 05 审查修复：草稿事件先于预算/停止检查持久化——模型
                 # 已产出的正文与写作调用计数绝不因预算到期/用户停止而丢失；
