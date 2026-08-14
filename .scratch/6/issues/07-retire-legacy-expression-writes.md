@@ -1,6 +1,6 @@
 # Issue 07：退役旧 Expression 写入口，停止确定性草稿伪装为 Qwen 成功
 
-Status: ready-for-agent
+Status: resolved
 
 Type: task
 
@@ -85,3 +85,14 @@ python -m pytest `
 
 - 2026-08-13：用户确认旧 `/expression` 写 API 退役，不要求为其接入真实 Qwen；现代聊天产品中的 Humanizer 才是继续支持的生成入口。
 - 2026-08-13：本 issue 采用 tracer bullet：先关闭可产生“伪模型成功”的完整旧纵向入口，再由 Issue 09、11 和 17验证生产模型真实性。
+- 2026-08-14：实现完成。提交 `1737a88`（退役七个写路由、移除 `expression_draft_generation` 注册与 model_gateway 接线、新增退役集成测试）与 `9d88f32`（防复活失败关闭检查 + openapi.json 重新生成）。
+
+## Answer
+
+- 已在 `issue07-retire-legacy-expression-writes` worktree 完成退役：`src/bridges/api/expression.py` 中七个旧写入口（drafts、style-diagnostic、patches/{patch_id}/apply、feedback、approve、publish、compare）统一返回 `410 Gone`，错误码 `legacy_expression_retired`，中文说明与 `/chat` 替代路径；handler 不注入 `ExpressionService`、不声明旧请求体、不读请求流，畸形/空正文与未知对象 ID 均得到同一 410 合同；未认证请求仍按统一认证边界返回 401。
+- `expression_draft_generation` 已从生产 capability 注册表移除，`ExpressionService` 不再接收 `model_gateway`、不再产生 `model_run_lock`；新增防复活失败关闭检查（健康依赖 `retired_capability_guard`）：能力被重新注册时 `/health/ready` 返回 FAIL、数据请求 503，运行时与启动时刻同样生效。
+- 兼容观测复用 `bridges.retirement.raise_retired_capability`：按稳定 endpoint ID 聚合 real/probe 两类计数，只记录 endpoint ID、服务版本、流量类别与状态码，不记录账户、对象 ID、正文或 Key。
+- 测试：`tests/integration/test_expression_retirement.py`（参数化七个入口 × 正常/畸形 JSON、空正文、未知对象 ID、幂等、service/gateway spy 零调用、`model_run_locks` 无副作用、registry 合同与工作流不可解析、启动失败关闭、探针/真实流量分开计数）；旧集成测试改写为退役契约测试；`tests/expression` 50 项、退休相关集成 53 项、Humanizer 主链 345 项通过。
+- openapi.json 已按当前 API 重新生成：七个写路由仅暴露 410 合同（无 requestBody），旧写请求/响应 schema 移出 spec；`tests/contracts/test_openapi_sync.py` 通过。
+- 全量回归与 main 基线逐目录对比：所有失败集合与 main 一致（含 `test_humanizer_chat.py` 4 项既有失败、chat 附件 410 契约失败、mcp/learning_projects/ingestion 等既有失败），唯一差异 `test_closeout_stress_switch.py::test_50_random_switch_refresh_during_generation_no_stream_interrupted` 为时序性 flaky，单独重跑两分支均通过；Humanizer 源码不引用 `/expression/*`。
+- 环境备注：DSH 沙箱下 pytest basetemp 目录需预授权 ACL 才能完成 session 清理；全树收集存在两个既有同名测试模块冲突（`test_release_gate.py`、`test_schema_v33.py`，main 同样存在），分目录运行即可规避。

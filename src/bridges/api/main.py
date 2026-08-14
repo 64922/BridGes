@@ -2,7 +2,7 @@
 
 import os
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -214,8 +214,8 @@ from bridges.vault import (
     VaultService,
 )
 from bridges.video.service import VideoService
-from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.providers import build_fallback_provider
+from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
 
@@ -304,23 +304,6 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             supported_modalities=["text", "image"],
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
-        )
-    )
-    # T025: expression draft generation capability; deterministic generator owns
-    # fact-lock binding, but the capability records an immutable run lock.
-    registry.register(
-        CapabilityRecord(
-            name="expression_draft_generation",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3.6-flash",
-            input_schema_version="expression-brief-v1",
-            output_schema_version="draft-spans-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
         )
     )
@@ -515,6 +498,35 @@ def _has_real_qwen_key(settings: Settings | None) -> bool:
     return settings is not None and is_global_qwen_key_configured(settings)
 
 
+# Issue 07：旧表达写入口随兼容期退役，`expression_draft_generation` 已从
+# 生产注册表移除。若该能力再次出现在注册表中，即视为回归——健康检查与
+# 请求中间件必须失败关闭，绝不恢复旧的"伪模型成功"。
+RETIRED_EXPRESSION_CAPABILITY = "expression_draft_generation"
+RETIRED_EXPRESSION_CAPABILITY_VERSION = "1"
+_RETIRED_CAPABILITY_REGRESSION_MESSAGE = (
+    "已退役能力 expression_draft_generation 被重新注册，实例拒绝提供服务。"
+)
+
+
+def retired_capability_regression(app: FastAPI) -> str | None:
+    """已退役表达能力防复活判定：注册表再次出现该能力时返回错误说明。
+
+    返回 ``None`` 表示注册表干净；否则返回供健康检查与 503 响应使用的
+    中文说明。判定是活的（每次请求/健康检查都查询注册表），因此运行时
+    重新注册同样失败关闭，不限于启动时刻。
+    """
+    registry = getattr(app.state, "capability_registry", None)
+    if registry is None:
+        return None
+    try:
+        registry.get(
+            RETIRED_EXPRESSION_CAPABILITY, RETIRED_EXPRESSION_CAPABILITY_VERSION
+        )
+    except CapabilityRegistryError:
+        return None
+    return _RETIRED_CAPABILITY_REGRESSION_MESSAGE
+
+
 def _register_domain_pack_capabilities(capability_registry: CapabilityRegistry) -> None:
     """Register the deterministic TOOL capabilities declared by built-in packs.
 
@@ -674,11 +686,19 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def reject_unpersisted_requests(request: Request, call_next: Any) -> Any:
-        """持久化不可用时只保留健康检查，阻止私人数据进入内存。"""
+        """持久化不可用或退役能力回归时只保留健康检查，阻止数据请求。"""
         if app.state.persistence_error and not request.url.path.startswith("/health"):
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 content={"detail": "持久化不可用，当前实例拒绝数据读写。"},
+            )
+        # Issue 07：已退役表达能力防复活——注册表再次出现旧能力时失败关闭，
+        # 不恢复任何旧写入口的"伪模型成功"。
+        retired_error = retired_capability_regression(app)
+        if retired_error is not None and not request.url.path.startswith("/health"):
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": retired_error},
             )
         return await call_next(request)
 
@@ -710,6 +730,19 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 )
             )
             projection.ready = HealthStatus.FAIL
+        # Issue 07：已退役表达能力被重新注册时就绪检查 FAIL（失败关闭），
+        # 与 CLI 启动硬门联动，阻止带回归的实例进入服务状态。
+        retired_error = retired_capability_regression(app)
+        if retired_error:
+            projection.dependencies.append(
+                DependencyHealth(
+                    name="retired_capability_guard",
+                    status=HealthStatus.FAIL,
+                    required=True,
+                    message=retired_error,
+                )
+            )
+            projection.ready = HealthStatus.FAIL
         settings = getattr(app.state, "settings", None)
         if settings is None or settings.environment.lower() != "test":
             profile_capability_error = getattr(
@@ -732,7 +765,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     if profile_capability.status != CapabilityStatus.VERIFIED:
                         profile_capability_error = profile_capability_error or "not_verified"
                     elif not profile_capability.validation_probe_version:
-                        profile_capability_error = profile_capability_error or "canary_not_configured"
+                        profile_capability_error = (
+                            profile_capability_error or "canary_not_configured"
+                        )
                     elif not model_gateway.is_adapter_registered(
                         "qwen_profile_extraction", "1"
                     ):
@@ -1680,12 +1715,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     # T025/T029: attach the expression service. It consumes claim graphs and fact
-    # locks from T016, memory slices from T019, records model run locks from T009,
-    # and uses the workflow service and invalidation service for release gating.
+    # locks from T016, memory slices from T019, and uses the workflow service and
+    # invalidation service for release gating. Legacy write routes are retired;
+    # the service no longer records model run locks for draft generation.
     expression_service = ExpressionService(
         claim_service=claim_evidence_service,
         profile_service=app.state.profile_service,
-        model_gateway=model_gateway,
         invalidation_service=invalidation_service,
         workflow_service=workflow_service,
     )

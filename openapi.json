@@ -17462,7 +17462,7 @@
           "expression"
         ],
         "summary": "Create Expression Draft",
-        "description": "Generate a fact-lock-bound expression draft from a brief and claim graph.",
+        "description": "Create a new expression draft. Retired; returns 410 during compatibility window.",
         "operationId": "create_expression_draft_expression_drafts_post",
         "parameters": [
           {
@@ -17482,56 +17482,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExpressionDraftRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionDraftResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -17700,7 +17670,7 @@
           "expression"
         ],
         "summary": "Run Style Diagnostic",
-        "description": "Run or re-run the Chinese human-flavor diagnostic on a draft.",
+        "description": "Run style diagnostic on a draft. Retired; returns 410.",
         "operationId": "run_style_diagnostic_expression_drafts__draft_id__style_diagnostic_post",
         "parameters": [
           {
@@ -17729,56 +17699,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StyleDiagnosticRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StyleDiagnosticResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -17789,7 +17729,7 @@
           "expression"
         ],
         "summary": "Apply Revision Patch",
-        "description": "Accept, reject or rewrite a single revision patch.",
+        "description": "Apply a revision patch. Retired; returns 410.",
         "operationId": "apply_revision_patch_expression_drafts__draft_id__patches__patch_id__apply_post",
         "parameters": [
           {
@@ -17827,56 +17767,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApplyRevisionPatchRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApplyRevisionPatchResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -17887,7 +17797,7 @@
           "expression"
         ],
         "summary": "Submit Expression Feedback",
-        "description": "Submit user feedback for an expression draft.\n\nFeedback is routed to the current version, a candidate preference, a learning\nrecord, or a fact review according to its content.",
+        "description": "Submit feedback for a draft. Retired; returns 410.",
         "operationId": "submit_expression_feedback_expression_drafts__draft_id__feedback_post",
         "parameters": [
           {
@@ -17916,56 +17826,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubmitExpressionFeedbackRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SubmitExpressionFeedbackResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -17976,7 +17856,7 @@
           "expression"
         ],
         "summary": "Approve Expression Artifact",
-        "description": "Approve, reject or request changes for an expression artifact.\n\nApproval separates workflow success from scientific trust status and is\nrequired before publication.",
+        "description": "Approve a draft artifact. Retired; returns 410.",
         "operationId": "approve_expression_artifact_expression_drafts__draft_id__approve_post",
         "parameters": [
           {
@@ -18005,56 +17885,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApproveArtifactRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApproveArtifactResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -18160,7 +18010,7 @@
           "expression"
         ],
         "summary": "Publish Expression Artifact",
-        "description": "Publish an expression artifact when it passes the release gate.\n\nThe publish event is bound to the exact draft version, the authorizing\naccount, the release gate result and the approval decision.",
+        "description": "Publish an expression artifact. Retired; returns 410.",
         "operationId": "publish_expression_artifact_expression_drafts__draft_id__publish_post",
         "parameters": [
           {
@@ -18189,56 +18039,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PublishArtifactRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublishArtifactResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -18249,7 +18069,7 @@
           "expression"
         ],
         "summary": "Compare Expression Versions",
-        "description": "Compare two expression drafts and report semantic differences.\n\nThe comparison highlights changes to fact locks, claims, citations, wording\nstrength, argument structure, span text, model locks, applied patches and\nartifact trust status, plus the release eligibility of each version.",
+        "description": "Compare expression draft versions. Retired; returns 410.",
         "operationId": "compare_expression_versions_expression_drafts_compare_post",
         "parameters": [
           {
@@ -18269,56 +18089,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CompareVersionsRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VersionComparisonResult"
+                  "$ref": "#/components/schemas/ExpressionError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExpressionError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -26537,97 +26327,6 @@
         "title": "AnswerFeedbackRequest",
         "description": "提交一条对某条助手消息的反馈。\n\n``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、\n``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时\n``assertion_id`` 定位到使用的画像记录（来自上下文说明）。\n``career_item_ref`` 可把反馈定位到生涯规划结果的具体条目\n（如 ``fact:1``/``assumption:2``/``suggestion:3``，来自生涯规划结果卡）。\n同一账户对同一消息的相同反馈（kind + assertion_id + career_item_ref +\n文本）幂等去重，失败重试不会产生重复记录。"
       },
-      "ApplyRevisionPatchRequest": {
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/PatchAction",
-            "description": "User action."
-          },
-          "rewrite_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rewrite Text",
-            "description": "User rewrite when action is REWRITE."
-          }
-        },
-        "type": "object",
-        "required": [
-          "action"
-        ],
-        "title": "ApplyRevisionPatchRequest",
-        "description": "Request to accept, reject or rewrite a revision patch."
-      },
-      "ApplyRevisionPatchResult": {
-        "properties": {
-          "patch_id": {
-            "type": "string",
-            "title": "Patch Id",
-            "description": "Patch identifier."
-          },
-          "draft": {
-            "$ref": "#/components/schemas/ExpressionDraft",
-            "description": "Draft after the action."
-          },
-          "invariance": {
-            "$ref": "#/components/schemas/FactLockInvariance",
-            "description": "Invariance evidence."
-          }
-        },
-        "type": "object",
-        "required": [
-          "patch_id",
-          "draft",
-          "invariance"
-        ],
-        "title": "ApplyRevisionPatchResult",
-        "description": "Result of applying a revision patch."
-      },
-      "ApproveArtifactRequest": {
-        "properties": {
-          "decision": {
-            "$ref": "#/components/schemas/bridges__contracts__expression__HumanDecisionType",
-            "default": "approve"
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Reason",
-            "description": "Human-readable rationale."
-          }
-        },
-        "type": "object",
-        "required": [
-          "reason"
-        ],
-        "title": "ApproveArtifactRequest",
-        "description": "Request to approve, reject or request changes for an expression artifact."
-      },
-      "ApproveArtifactResult": {
-        "properties": {
-          "decision_id": {
-            "type": "string",
-            "title": "Decision Id",
-            "description": "Decision identifier."
-          },
-          "draft": {
-            "$ref": "#/components/schemas/ExpressionDraft",
-            "description": "Draft after the decision."
-          }
-        },
-        "type": "object",
-        "required": [
-          "decision_id",
-          "draft"
-        ],
-        "title": "ApproveArtifactResult",
-        "description": "Result of recording a human decision on an expression artifact."
-      },
       "ArgumentNode": {
         "properties": {
           "argument_node_id": {
@@ -31929,27 +31628,6 @@
         "title": "CloudProjectionStatus",
         "description": "Lifecycle status of a cloud control projection."
       },
-      "CompareVersionsRequest": {
-        "properties": {
-          "draft_id_a": {
-            "type": "string",
-            "title": "Draft Id A",
-            "description": "First draft identifier."
-          },
-          "draft_id_b": {
-            "type": "string",
-            "title": "Draft Id B",
-            "description": "Second draft identifier."
-          }
-        },
-        "type": "object",
-        "required": [
-          "draft_id_a",
-          "draft_id_b"
-        ],
-        "title": "CompareVersionsRequest",
-        "description": "Request to compare two expression artifact versions."
-      },
       "Conflict": {
         "properties": {
           "conflict_id": {
@@ -32730,7 +32408,7 @@
       "DecideKnowledgeStateProposalRequest": {
         "properties": {
           "decision": {
-            "$ref": "#/components/schemas/bridges__contracts__learning__HumanDecisionType",
+            "$ref": "#/components/schemas/HumanDecisionType-Input",
             "description": "Decision type."
           },
           "reason": {
@@ -35980,92 +35658,6 @@
         "title": "ExpressionDraft",
         "description": "A fact-lock-bound expression draft."
       },
-      "ExpressionDraftRequest": {
-        "properties": {
-          "brief": {
-            "$ref": "#/components/schemas/ExpressionBrief",
-            "description": "Expression task brief."
-          },
-          "graph_id": {
-            "type": "string",
-            "title": "Graph Id",
-            "description": "Claim graph to base the draft on."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope."
-          },
-          "memory_slice_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Memory Slice Id",
-            "description": "Optional memory slice for personalization."
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id",
-            "description": "Optional workflow run this artifact belongs to."
-          }
-        },
-        "type": "object",
-        "required": [
-          "brief",
-          "graph_id"
-        ],
-        "title": "ExpressionDraftRequest",
-        "description": "Request to generate a fact-lock-bound expression draft."
-      },
-      "ExpressionDraftResult": {
-        "properties": {
-          "draft": {
-            "$ref": "#/components/schemas/ExpressionDraft",
-            "description": "Generated draft."
-          },
-          "gate": {
-            "$ref": "#/components/schemas/ExpressionGateResult",
-            "description": "Expression quality gate result."
-          },
-          "model_run_lock": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ModelRunLock"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Model run lock for the generator."
-          }
-        },
-        "type": "object",
-        "required": [
-          "draft",
-          "gate"
-        ],
-        "title": "ExpressionDraftResult",
-        "description": "Result of generating an expression draft."
-      },
       "ExpressionDraftStatus": {
         "type": "string",
         "enum": [
@@ -36102,85 +35694,6 @@
         ],
         "title": "ExpressionError",
         "description": "Uniform expression error response."
-      },
-      "ExpressionGateCheck": {
-        "type": "string",
-        "enum": [
-          "brief_complete",
-          "required_claims_present",
-          "key_claims_fact_locked",
-          "memory_slice_usable",
-          "genre_duty_known",
-          "source_evidence_present",
-          "risk_tier_human_review",
-          "strength_escalation_human_review",
-          "popular_science_elements_present",
-          "lecture_script_elements_present",
-          "research_report_elements_present",
-          "paper_assist_elements_present",
-          "author_responsibility_present",
-          "paper_assist_author_confirmation_required",
-          "style_diagnostic_complete",
-          "ai_detector_not_gate"
-        ],
-        "title": "ExpressionGateCheck",
-        "description": "Named checks performed by the expression quality gate."
-      },
-      "ExpressionGateResult": {
-        "properties": {
-          "passed": {
-            "type": "boolean",
-            "title": "Passed",
-            "description": "Whether the draft may proceed."
-          },
-          "draft_status": {
-            "$ref": "#/components/schemas/ExpressionDraftStatus",
-            "description": "Derived draft status."
-          },
-          "checks": {
-            "additionalProperties": {
-              "type": "boolean"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/ExpressionGateCheck"
-            },
-            "type": "object",
-            "title": "Checks"
-          },
-          "failed_checks": {
-            "items": {
-              "$ref": "#/components/schemas/ExpressionGateCheck"
-            },
-            "type": "array",
-            "title": "Failed Checks"
-          },
-          "blocked_claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Blocked Claim Ids"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason",
-            "description": "Human-readable gate summary."
-          }
-        },
-        "type": "object",
-        "required": [
-          "passed",
-          "draft_status"
-        ],
-        "title": "ExpressionGateResult",
-        "description": "Result of running the expression quality gate over a draft."
       },
       "ExpressionTaskContract": {
         "properties": {
@@ -37607,6 +37120,16 @@
         ],
         "title": "HealthStatus",
         "description": "Top-level health verdict."
+      },
+      "HumanDecisionType-Input": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "reject",
+          "modify"
+        ],
+        "title": "HumanDecisionType",
+        "description": "Named human decision on a proposed knowledge-state or path change."
       },
       "HumanTodoItem": {
         "properties": {
@@ -44040,16 +43563,6 @@
         "title": "PaperSearchPlan",
         "description": "已规范化、可重放的论文搜索计划。"
       },
-      "PatchAction": {
-        "type": "string",
-        "enum": [
-          "accept",
-          "reject",
-          "rewrite"
-        ],
-        "title": "PatchAction",
-        "description": "User decision on a single revision patch."
-      },
       "PersonalExperienceMode": {
         "type": "string",
         "enum": [
@@ -44737,107 +44250,6 @@
         ],
         "title": "ProtectedSpanKind",
         "description": "保护区域类别：后续表达审稿只检查作者新增正文，不改写这些区域。"
-      },
-      "PublishArtifactRequest": {
-        "properties": {
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id",
-            "description": "Workflow run whose success is required for release."
-          }
-        },
-        "type": "object",
-        "title": "PublishArtifactRequest",
-        "description": "Request to publish an expression artifact."
-      },
-      "PublishArtifactResult": {
-        "properties": {
-          "event": {
-            "$ref": "#/components/schemas/PublishEvent",
-            "description": "Published event."
-          },
-          "draft": {
-            "$ref": "#/components/schemas/ExpressionDraft",
-            "description": "Draft after publication."
-          }
-        },
-        "type": "object",
-        "required": [
-          "event",
-          "draft"
-        ],
-        "title": "PublishArtifactResult",
-        "description": "Result of publishing an expression artifact."
-      },
-      "PublishEvent": {
-        "properties": {
-          "event_id": {
-            "type": "string",
-            "title": "Event Id",
-            "description": "Stable publish event identifier."
-          },
-          "draft_id": {
-            "type": "string",
-            "title": "Draft Id",
-            "description": "Draft that was published."
-          },
-          "version_id": {
-            "type": "string",
-            "title": "Version Id",
-            "description": "Artifact version id at publish time."
-          },
-          "account_id": {
-            "type": "string",
-            "title": "Account Id",
-            "description": "Account that authorized publication."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope if any."
-          },
-          "published_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Published At",
-            "description": "Publication timestamp."
-          },
-          "release_gate_result": {
-            "$ref": "#/components/schemas/ReleaseGateResult",
-            "description": "Release gate result that authorized publication."
-          },
-          "human_decision_id": {
-            "type": "string",
-            "title": "Human Decision Id",
-            "description": "Approval decision that authorized publication."
-          }
-        },
-        "type": "object",
-        "required": [
-          "event_id",
-          "draft_id",
-          "version_id",
-          "account_id",
-          "published_at",
-          "release_gate_result",
-          "human_decision_id"
-        ],
-        "title": "PublishEvent",
-        "description": "Immutable record that an expression artifact was published."
       },
       "PublishGateCheck": {
         "type": "string",
@@ -50015,63 +49427,6 @@
         "title": "StyleDiagnosticReport",
         "description": "Report from the Chinese human-flavor diagnostic engine (T028).\n\nThe report lists concrete text fragments, issue types and reasons. It never\nuses an AI-detector score as a pass/fail gate."
       },
-      "StyleDiagnosticRequest": {
-        "properties": {
-          "draft_id": {
-            "type": "string",
-            "title": "Draft Id",
-            "description": "Draft to diagnose."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope if any."
-          }
-        },
-        "type": "object",
-        "required": [
-          "draft_id"
-        ],
-        "title": "StyleDiagnosticRequest",
-        "description": "Request to run the Chinese expression diagnostic on a draft."
-      },
-      "StyleDiagnosticResult": {
-        "properties": {
-          "draft": {
-            "$ref": "#/components/schemas/ExpressionDraft",
-            "description": "Draft with diagnostic report attached."
-          },
-          "report": {
-            "$ref": "#/components/schemas/StyleDiagnosticReport",
-            "description": "Diagnostic report."
-          },
-          "gate": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExpressionGateResult"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Re-evaluated gate result after diagnostic."
-          }
-        },
-        "type": "object",
-        "required": [
-          "draft",
-          "report"
-        ],
-        "title": "StyleDiagnosticResult",
-        "description": "Result of running the Chinese expression diagnostic."
-      },
       "StyleDiagnosticSeverity": {
         "type": "string",
         "enum": [
@@ -50239,73 +49594,6 @@
         ],
         "title": "SubjectContext",
         "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret. Memberships are populated by\nthe API layer from the institution service so downstream services can\nevaluate institution-scoped access without re-querying identity."
-      },
-      "SubmitExpressionFeedbackRequest": {
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/UserFeedbackTarget",
-            "description": "Routing target."
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "Feedback text."
-          },
-          "referenced_span_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Referenced Span Id"
-          },
-          "referenced_claim_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Referenced Claim Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "target",
-          "message"
-        ],
-        "title": "SubmitExpressionFeedbackRequest",
-        "description": "Request to submit user feedback for an expression draft."
-      },
-      "SubmitExpressionFeedbackResult": {
-        "properties": {
-          "feedback_id": {
-            "type": "string",
-            "title": "Feedback Id",
-            "description": "Feedback identifier."
-          },
-          "draft": {
-            "$ref": "#/components/schemas/ExpressionDraft",
-            "description": "Draft with feedback logged."
-          },
-          "routed_to": {
-            "$ref": "#/components/schemas/UserFeedbackTarget",
-            "description": "Confirmed routing target."
-          }
-        },
-        "type": "object",
-        "required": [
-          "feedback_id",
-          "draft",
-          "routed_to"
-        ],
-        "title": "SubmitExpressionFeedbackResult",
-        "description": "Result of submitting user feedback."
       },
       "Surface": {
         "type": "string",
@@ -52772,111 +52060,6 @@
         ],
         "title": "VaultShareRequest",
         "description": "Request to share a personal vault object as a minimized project copy."
-      },
-      "VersionComparisonResult": {
-        "properties": {
-          "comparison_id": {
-            "type": "string",
-            "title": "Comparison Id",
-            "description": "Stable comparison identifier."
-          },
-          "draft_id_a": {
-            "type": "string",
-            "title": "Draft Id A",
-            "description": "First draft."
-          },
-          "draft_id_b": {
-            "type": "string",
-            "title": "Draft Id B",
-            "description": "Second draft."
-          },
-          "differences": {
-            "items": {
-              "$ref": "#/components/schemas/VersionDifference"
-            },
-            "type": "array",
-            "title": "Differences",
-            "description": "Semantic differences between versions."
-          },
-          "release_eligibility_a": {
-            "$ref": "#/components/schemas/ReleaseGateResult",
-            "description": "Release gate result for the first version."
-          },
-          "release_eligibility_b": {
-            "$ref": "#/components/schemas/ReleaseGateResult",
-            "description": "Release gate result for the second version."
-          },
-          "only_b_is_publishable": {
-            "type": "boolean",
-            "title": "Only B Is Publishable",
-            "description": "True when version B is eligible and version A is not; used by the upgrade-or-publish seam.",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "comparison_id",
-          "draft_id_a",
-          "draft_id_b",
-          "release_eligibility_a",
-          "release_eligibility_b"
-        ],
-        "title": "VersionComparisonResult",
-        "description": "Result of comparing two expression artifact versions."
-      },
-      "VersionDifference": {
-        "properties": {
-          "field": {
-            "$ref": "#/components/schemas/VersionDifferenceField",
-            "description": "What changed."
-          },
-          "before": {
-            "title": "Before",
-            "description": "Value in the first version."
-          },
-          "after": {
-            "title": "After",
-            "description": "Value in the second version."
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason",
-            "description": "Why the difference matters."
-          }
-        },
-        "type": "object",
-        "required": [
-          "field",
-          "before",
-          "after"
-        ],
-        "title": "VersionDifference",
-        "description": "A single semantic difference between two artifact versions."
-      },
-      "VersionDifferenceField": {
-        "type": "string",
-        "enum": [
-          "fact_lock_set",
-          "claim_ids",
-          "citation_ids",
-          "wording_strength_ceiling",
-          "argument_plan",
-          "span_text",
-          "genre",
-          "model_run_lock",
-          "applied_patches",
-          "artifact_trust_status",
-          "human_decisions"
-        ],
-        "title": "VersionDifferenceField",
-        "description": "Fields that can differ between two expression artifact versions."
       },
       "VideoAssetProjection": {
         "properties": {
