@@ -209,24 +209,27 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
         """Reject secrets or private body before they reach the database.
 
         ``parameters`` keys are blacklisted (prompt/messages/content/credentials
-        must never appear); ``usage`` and ``cost_estimate`` instead enforce
-        numeric-only values, because legitimate usage metadata legitimately
-        contains keys such as ``prompt_tokens``/``completion_tokens`` while any
-        secret payload would arrive as a string value.
+        must never appear) and string values are scanned for credential shapes;
+        ``usage`` and ``cost_estimate`` instead enforce numeric-only values,
+        because legitimate usage metadata legitimately contains keys such as
+        ``prompt_tokens``/``completion_tokens`` while any secret payload would
+        arrive as a string value.
         """
         self._assert_no_secrets(lock.parameters, path="parameters")
         self._assert_numeric_only(lock.usage, path="usage")
         self._assert_numeric_only(lock.cost_estimate, path="cost_estimate")
-        if lock.error_message:
-            # Error messages are human-readable and must not carry keys. Reject
-            # obvious secret-bearing patterns rather than trying to redact.
-            lowered = lock.error_message.lower()
-            if any(
-                keyword in lowered
+        for field_name, text in (
+            ("error_message", lock.error_message),
+            ("error_code", lock.error_code),
+            ("degradation_reason", lock.degradation_reason),
+        ):
+            # 自由文本字段不得携带凭据：拒绝明显形态而非尝试脱敏。
+            if text and any(
+                keyword in text.lower()
                 for keyword in ("api_key", "authorization", "secret", "token")
             ):
                 raise ModelRunLockSecurityError(
-                    "运行锁错误消息包含疑似凭据，禁止持久化。"
+                    f"运行锁 {field_name} 包含疑似凭据，禁止持久化。"
                 )
 
     def _assert_no_secrets(self, value: Any, path: str) -> None:

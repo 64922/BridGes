@@ -773,11 +773,22 @@ class ConversationRepository:
             effective_run_lock_id = lock.lock_id
         with self._db.transaction():
             if lock is not None:
+                # 调用序号取消息的 attempt_number：同一 run 的重试按尝试顺序
+                # 稳定编号，投影/发布门可按 attempt ordinal 排序全部锁。
+                attempt_row = self._db.scoped(account_id).execute(
+                    "SELECT attempt_number FROM messages"
+                    " WHERE message_id = ? AND account_id = ?",
+                    (message_id, account_id),
+                ).fetchone()
                 business_ref = BusinessRef(
                     object_type="message",
                     object_id=message_id,
                     operation="generate",
-                    attempt_ordinal=1,
+                    attempt_ordinal=(
+                        int(attempt_row["attempt_number"])
+                        if attempt_row is not None
+                        else 1
+                    ),
                     is_primary=True,
                 )
                 self._run_lock_recorder.record(lock, business_ref=business_ref)

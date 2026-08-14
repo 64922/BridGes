@@ -19,7 +19,7 @@ from bridges.ai.adapters import RateLimitError, StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService
-from bridges.contracts.ai import CapabilityKind, CapabilityRecord
+from bridges.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
@@ -358,3 +358,73 @@ def test_retry_attempts_produce_distinct_locks(
     assert len(by_run) == 2
     assert first_attempt[0].status.value in {"error", "retryable_fail"}
     assert second_attempt[0].status.value == "success"
+    # 重试尝试按消息 attempt_number 稳定编号，run 级查询按调用序号排序。
+    assert first_attempt[0].business_refs[0].attempt_ordinal == 1
+    assert second_attempt[0].business_refs[0].attempt_ordinal == 2
+    run_ordered = recorder.list_locks_by_run("alice", "run-first") + recorder.list_locks_by_run(
+        "alice", "run-second"
+    )
+    assert [lock.business_refs[0].attempt_ordinal for lock in run_ordered] == [1, 2]
+
+
+def test_blocked_capability_persists_lock_with_blocked_status(
+    app: tuple[ChatService, ConversationRepository, BridgesDatabase],
+) -> None:
+    """能力未验证（blocked）也是真实模型动作：锁以 blocked 状态经 recorder 落库。"""
+    service, _, database = app
+    registry = CapabilityRegistry()
+    unverified = _chat_capability().model_copy(
+        update={"status": CapabilityStatus.DEPRECATED}
+    )
+    registry.register(unverified)
+    gateway = ModelGateway(registry)
+    service._gateway = gateway
+
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id)
+    events = list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context("run-blocked")
+        )
+    )
+    error_event = next(event for event in events if event.kind == "error")
+    assert error_event.lock is not None
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert final.status == ChatMessageStatus.ERROR
+    assert final.run_lock_id == error_event.lock.lock_id
+
+    locks = _lock_rows(database)
+    assert len(locks) == 1
+    assert locks[0]["status"] == "blocked"
+    assert locks[0]["error_code"] == "capability_not_verified"
+    assert locks[0]["run_id"] == "run-blocked"
+
+
+def test_interrupted_stream_converges_without_orphan_lock(
+    app: tuple[ChatService, ConversationRepository, BridgesDatabase],
+) -> None:
+    """模型流中断（timeout/断连语义）：消息收敛为明确错误，无孤儿锁。"""
+    service, _, database = app
+    service._gateway = _with_chunks(
+        service,
+        [StreamChunk(kind="delta", delta="部分内容") for _ in range(200)],
+    )
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id)
+    gen = service.stream_generation(
+        "alice", created.conversation_id, assistant.message_id, _context("run-interrupted")
+    )
+    for event in gen:
+        if event.kind == "delta":
+            break
+    gen.close()  # 模拟客户端断开/超时中止
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert final.status == ChatMessageStatus.ERROR
+    assert final.error_code == "stream_interrupted"
+    # 无终态模型事件 → 无锁行、无关联行、无孤儿数据。
+    assert _lock_rows(database) == []
+    assert _link_rows(database) == []
