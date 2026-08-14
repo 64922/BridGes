@@ -17,6 +17,16 @@ from pydantic import BaseModel, Field
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.scope import ScopeEnvelope
 
+#: 媒体边缘动作（图片替代文本 / 图片/视频供应商取消）的稳定错误码
+#: （Issue 16 Observability 合同）。这些动作必须与主生成链一样为每次
+#: 真实供应商调用持久化模型运行锁；以下码用于审计 details，说明"本地
+#: 已取消但云端通知未确认"或"远端调用发生但锁缺失/落库失败"，绝不冒充
+#: 供应商成功。
+MEDIA_EDGE_MISSING_RUN_LOCK = "media_edge_missing_run_lock"
+MEDIA_EDGE_LOCK_PERSIST_FAILED = "media_edge_lock_persist_failed"
+MEDIA_CANCEL_PROVIDER_UNCONFIRMED = "media_cancel_provider_unconfirmed"
+MEDIA_EDGE_CALL_COUNT_MISMATCH = "media_edge_call_count_mismatch"
+
 
 class AuditAction(str, Enum):
     """Actions that can produce an audit event."""
@@ -63,6 +73,9 @@ class AuditAction(str, Enum):
     IMAGE_TASK_CANCEL = "image_task_cancel"
     IMAGE_ASSET_DELETE = "image_asset_delete"
     IMAGE_ALT_TEXT_UPDATE = "image_alt_text_update"
+    # Issue 16：图片替代文本的自动生成（核心视觉模型调用；details 只含
+    # 来源/锁/稳定错误码，不含替代文本正文与图片内容）。
+    IMAGE_ALT_TEXT_GENERATE = "image_alt_text_generate"
     VIDEO_TASK_SUBMIT = "video_task_submit"
     VIDEO_TASK_COMPLETE = "video_task_complete"
     VIDEO_TASK_CANCEL = "video_task_cancel"
