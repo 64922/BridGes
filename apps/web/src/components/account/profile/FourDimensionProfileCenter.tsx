@@ -61,6 +61,12 @@ const PROFILE_STATUS_COPY: Record<ProfileStatusProjection["status"], string> = {
   failed: "画像整理暂时不可用，聊天仍可继续。",
 };
 
+/** Issue 13：与后端 ProfileExtractionSource 枚举同步的稳定中文来源标签。 */
+const SOURCE_LABELS: Record<string, string> = {
+  local_rule: "本地规则识别，未调用模型",
+  qwen_model: "Qwen 辅助识别",
+};
+
 export function FourDimensionProfileCenter() {
   const [records, setRecords] = useState<FourDimensionProfileRecord[] | null>(null);
   const [profileStatus, setProfileStatus] = useState<ProfileStatusProjection | null>(null);
@@ -180,6 +186,27 @@ export function FourDimensionProfileCenter() {
           {PROFILE_STATUS_COPY[profileStatus.status]}
           {profileStatus.can_retry ? "稍后可以重试。" : ""}
         </div>
+      ) : null}
+
+      {profileStatus?.source_explanation ? (
+        <section
+          className={styles.hybridNote}
+          data-testid="profile-hybrid-note"
+          aria-label="画像整理方式说明"
+        >
+          <p>{profileStatus.source_explanation}</p>
+          {Object.entries(profileStatus.extraction_sources ?? {}).length > 0 ? (
+            <p className={styles.hybridCounts}>
+              {Object.entries(profileStatus.extraction_sources ?? {})
+                .filter(([source]) => source in SOURCE_LABELS)
+                .map(
+                  ([source, count]) =>
+                    `${SOURCE_LABELS[source]}：${count} 条`
+                )
+                .join(" · ")}
+            </p>
+          ) : null}
+        </section>
       ) : null}
 
       {records === null && !error ? <p className={styles.state}>正在加载信息…</p> : null}

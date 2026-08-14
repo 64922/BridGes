@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 45
+SCHEMA_VERSION = 46
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2270,6 +2270,20 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_run_lock_links_lock
         ON model_run_lock_links(account_id, lock_id)
+        """,
+    ],
+    # Issue 13：保留 Profile 混合抽取并诚实标记来源。每个抽取 run 与内部
+    # 观察显式标记 local_rule/qwen_model 来源；历史行保持 NULL（来源未知，
+    # 投影不伪造），新写入必须显式赋值。模型运行锁已由 Issue 10 的
+    # model_run_locks/model_run_lock_links 承载，本迁移只补来源字段。
+    46: [
+        """
+        ALTER TABLE profile_extraction_runs
+        ADD COLUMN source TEXT
+        """,
+        """
+        ALTER TABLE profile_extraction_observations
+        ADD COLUMN source TEXT
         """,
     ],
 }

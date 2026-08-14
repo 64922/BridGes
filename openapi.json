@@ -43816,6 +43816,26 @@
             "type": "boolean",
             "title": "Can Retry",
             "default": false
+          },
+          "extraction_sources": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Extraction Sources",
+            "description": "按来源（local_rule/qwen_model）统计的抽取 run 计数；历史 NULL 来源不计数。"
+          },
+          "source_explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Explanation",
+            "description": "对用户可见的混合策略诚实说明（中文）；不夸大为全模型或全本地。"
           }
         },
         "type": "object",

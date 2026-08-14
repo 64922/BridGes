@@ -17,6 +17,31 @@ from pydantic import (
 from bridges.contracts.profiles import FourDimension
 
 
+class ProfileExtractionSource(StrEnum):
+    """一次自动画像处理的稳定来源枚举（Issue 13）。
+
+    每个自动画像 run 都必须且只能标记其中一种来源；本地规则分支绝不
+    调用模型，模型分支的每次真实调用都产生独立运行锁。
+    """
+
+    LOCAL_RULE = "local_rule"
+    QWEN_MODEL = "qwen_model"
+
+
+PROFILE_SOURCE_LABELS: dict[ProfileExtractionSource, str] = {
+    ProfileExtractionSource.LOCAL_RULE: "本地规则识别，未调用模型",
+    ProfileExtractionSource.QWEN_MODEL: "Qwen 辅助识别",
+}
+
+#: 画像页面/首次说明使用的诚实混合策略说明；禁止夸大为"全部由 Qwen
+#: 生成"或"完全不使用模型"。
+PROFILE_HYBRID_EXPLANATION = (
+    "自动画像采用混合整理：明确的自我描述、学习目标、行为观察与更正由本机"
+    "规则识别，不会调用模型；含义不够明确的表述可能使用全局配置的 Qwen "
+    "辅助识别。你可以随时查看、修改、撤回或关闭自动记录。"
+)
+
+
 class ProfileExtractionStatus(StrEnum):
     """一条用户消息的画像预处理状态。"""
 
@@ -143,6 +168,13 @@ class ProfileExtractionRun(BaseModel):
     committed_record_ids: list[str] = Field(default_factory=list)
     observed_count: int = Field(default=0, ge=0)
     last_error: str | None = None
+    source: ProfileExtractionSource | None = Field(
+        default=None,
+        description=(
+            "抽取来源（local_rule/qwen_model）。新 run 必须显式标记；"
+            "NULL 仅用于迁移前的历史行，投影不得将其伪装成任一来源。"
+        ),
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -173,6 +205,10 @@ class AutomaticProfileObservation(BaseModel):
     normalized_value: str = Field(min_length=1, max_length=200)
     evidence_ref: str
     reliability: float = Field(ge=0, le=1)
+    source: ProfileExtractionSource | None = Field(
+        default=None,
+        description="产生该观察的抽取来源；新观察必须显式标记。",
+    )
     created_at: datetime
 
 
@@ -200,3 +236,11 @@ class ProfileStatusProjection(BaseModel):
     status: ProfilePageStatus
     has_records: bool
     can_retry: bool = False
+    extraction_sources: dict[str, int] = Field(
+        default_factory=dict,
+        description="按来源（local_rule/qwen_model）统计的抽取 run 计数；历史 NULL 来源不计数。",
+    )
+    source_explanation: str | None = Field(
+        default=None,
+        description="对用户可见的混合策略诚实说明（中文）；不夸大为全模型或全本地。",
+    )

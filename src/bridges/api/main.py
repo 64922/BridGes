@@ -22,6 +22,7 @@ from bridges.ai import (
     StubQwenAdapter,
 )
 from bridges.ai.production import build_production_composition
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.api import (
     auth,
     chat,
@@ -1024,6 +1025,8 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     # Issue 15：消息持久化后、生成前执行默认画像预处理；测试环境使用确定性抽取器，
     # 其他环境使用固定版本的结构化画像能力，失败时由同一执行器驱动持久重试。
+    # Issue 13：qwen_model 分支经 Issue 10 的 ModelRunLockRecorder 为每次真实
+    # 调用持久化不可变运行锁；本地规则分支不产生任何锁。
     automatic_profile_repository = (
         SqliteAutomaticProfileRepository(profile_database)
         if profile_database is not None
@@ -1047,6 +1050,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             else None
         ),
         observability_service=app.state.observability_service,
+        lock_recorder=(
+            SqliteModelRunLockRecorder(profile_database)
+            if profile_database is not None
+            else None
+        ),
     )
 
     # Issue 11: 持久化流式聊天纵向切片。对话/消息/运行锁写入 bridges.db；

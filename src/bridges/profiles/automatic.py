@@ -15,15 +15,22 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from bridges.ai import ModelGateway
-from bridges.contracts.ai import ModelCallStatus
+from bridges.ai.ports import ModelRunLockRecorder
+from bridges.contracts.ai import (
+    BusinessRef,
+    ModelCallStatus,
+    ModelRunLock,
+)
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import (
+    PROFILE_HYBRID_EXPLANATION,
     AutomaticProfileObservation,
     ProfileExtractionAction,
     ProfileExtractionOutcome,
     ProfileExtractionOutput,
     ProfileExtractionRetryTask,
     ProfileExtractionRun,
+    ProfileExtractionSource,
     ProfileExtractionStatus,
     ProfilePageStatus,
     ProfileCorrectionResult,
@@ -60,16 +67,29 @@ from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
 AUTOMATIC_EXTRACTOR_VERSION = "profile-auto-v2"
-AUTOMATIC_PRIVACY_NOTICE_VERSION = "profile-privacy-v1"
+AUTOMATIC_PRIVACY_NOTICE_VERSION = "profile-privacy-v2"
+#: 首次自动记录说明：诚实披露混合策略（Issue 13）。明确自述、学习目标、
+#: 行为观察与更正由本机规则处理；含义不够明确的表述可能使用全局配置的
+#: Qwen 辅助识别。禁止用模糊的"AI 自动提取"覆盖两种来源。
 AUTOMATIC_PRIVACY_NOTICE_TEXT = (
     "BridGes 会默认从你明确介绍自己的稳定信息中整理四维画像，"
-    "仅用于后续相关回答；第三方、假设、敏感信息和一次性情绪不会写入。"
+    "仅用于后续相关回答。整理采用混合策略：明确的自我描述、学习目标、"
+    "行为观察和更正由本机规则识别，不会调用模型；含义不够明确的表述"
+    "可能使用全局配置的 Qwen 辅助识别。第三方、假设、敏感信息和一次性"
+    "情绪不会写入。你可以随时查看、修改、撤回或关闭自动记录。"
 )
 PROFILE_EXTRACTION_QUEUE = "profile-extraction"
 PROFILE_REPLAY_QUEUE = "profile-replay-v2"
 PROFILE_REPLAY_SOURCE_HASH_PREFIX = ":replay-v1:"
 PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
+
+# Issue 13 来源守卫稳定名：错误码与观测指标共用同一字面量，改名必须
+# 同步两处，否则"错误码 ↔ 指标"的审计关联会静默漂移。
+PROFILE_GUARD_LOCAL_UNEXPECTED_MODEL_CALL = "profile_local_unexpected_model_call"
+PROFILE_GUARD_QWEN_MISSING_RUN_LOCK = "profile_qwen_missing_run_lock"
+PROFILE_GUARD_SOURCE_MISMATCH = "profile_source_mismatch"
+PROFILE_GUARD_LOCK_PERSIST_FAILED = "profile_lock_persist_failed"
 _TRANSIENT_PROFILE_ERROR_CODES = frozenset(
     {
         "network_error",
@@ -103,6 +123,12 @@ _PERMANENT_PROFILE_ERROR_CODES = frozenset(
         "invalid_response_format",
         "unregistered_capability",
         "unsupported_structured_output_format",
+        # Issue 13 来源守卫：本地分支出现模型调用、Qwen 分支缺锁、
+        # 来源与锁证据漂移、锁持久化失败均失败关闭（不可重试）。
+        PROFILE_GUARD_LOCAL_UNEXPECTED_MODEL_CALL,
+        PROFILE_GUARD_QWEN_MISSING_RUN_LOCK,
+        PROFILE_GUARD_SOURCE_MISMATCH,
+        PROFILE_GUARD_LOCK_PERSIST_FAILED,
     }
 )
 _KNOWLEDGE_PROMOTION_WINDOW = timedelta(days=90)
@@ -164,6 +190,7 @@ class AutomaticProfileExtractor(Protocol):
         content: str,
         run_id: str,
         signal_classification: ProfileSignalClassification | None = None,
+        lock_sink: Callable[[ModelRunLock], None] | None = None,
     ) -> ProfileExtractionOutput: ...
 
 
@@ -259,14 +286,34 @@ def _stable_id(prefix: str, *parts: str) -> str:
 
 
 def _signal_audit_version(
-    pipeline_version: str, classification: ProfileSignalClassification
+    pipeline_version: str,
+    classification: ProfileSignalClassification,
+    source: ProfileExtractionSource,
 ) -> str:
-    """把受控分类元数据绑定到每条自动画像写入的版本字段。"""
+    """把受控分类元数据与稳定来源绑定到每条自动画像写入的版本字段。"""
 
     return (
         f"{pipeline_version}|category={classification.category.value}"
         f"|reason={classification.reason_code}"
+        f"|source={source.value}"
     )
+
+
+class _AttemptLockCollector:
+    """收集一次抽取尝试中网关产生的全部模型运行锁。
+
+    真实 ``ModelGateway.invoke`` 在成功与失败路径都会返回不可变
+    ``ModelRunLock``；服务在提交业务写的同时按 attempt 序号持久化这些
+    锁（Issue 13）。本地规则分支永不调用网关，收集器必须保持为空。
+    """
+
+    __slots__ = ("locks",)
+
+    def __init__(self) -> None:
+        self.locks: list[ModelRunLock] = []
+
+    def __call__(self, lock: ModelRunLock) -> None:
+        self.locks.append(lock)
 
 
 def _normalize(value: str) -> str:
@@ -381,7 +428,11 @@ def _is_hobby_value(value: str) -> bool:
 
 
 class RuleBasedAutomaticProfileExtractor:
-    """高置信自述的本地抽取器；生产可替换为网关抽取器。"""
+    """高置信自述的本地抽取器；生产可替换为网关抽取器。
+
+    Issue 13：本地规则分支绝不产生模型运行锁；``lock_sink`` 仅为满足
+    公共抽取器接缝而接受，但永远不会被调用。
+    """
 
     version = AUTOMATIC_EXTRACTOR_VERSION
 
@@ -397,8 +448,9 @@ class RuleBasedAutomaticProfileExtractor:
         content: str,
         run_id: str,
         signal_classification: ProfileSignalClassification | None = None,
+        lock_sink: Callable[[ModelRunLock], None] | None = None,
     ) -> ProfileExtractionOutput:
-        del account_id, conversation_id, run_id
+        del account_id, conversation_id, run_id, lock_sink
         text = content.strip()
         classification = signal_classification or self._classifier.classify(text)
         if not classification.should_process:
@@ -489,7 +541,12 @@ class RuleBasedAutomaticProfileExtractor:
 
 
 class GatewayAutomaticProfileExtractor:
-    """经固定结构化能力执行一次画像抽取。"""
+    """经固定结构化能力执行一次画像抽取。
+
+    Issue 13：每次真实 ``ModelGateway.invoke`` 返回的不可变运行锁通过
+    ``lock_sink`` 交给调用方持久化——成功与失败路径都产生锁，绝不丢弃
+    供应商调用证据。
+    """
 
     version = AUTOMATIC_EXTRACTOR_VERSION
 
@@ -510,6 +567,7 @@ class GatewayAutomaticProfileExtractor:
         content: str,
         run_id: str,
         signal_classification: ProfileSignalClassification | None = None,
+        lock_sink: Callable[[ModelRunLock], None] | None = None,
     ) -> ProfileExtractionOutput:
         classification = signal_classification or self._classifier.classify(content)
         if not classification.should_process:
@@ -547,6 +605,9 @@ class GatewayAutomaticProfileExtractor:
                 "max_tokens": 512,
             },
         )
+        # 每次真实调用（无论成败）的不可变锁都必须交给调用方持久化。
+        if result.lock is not None and lock_sink is not None:
+            lock_sink(result.lock)
         if result.status == ModelCallStatus.RETRYABLE_FAIL:
             error_code = result.error_code or "profile_extraction_transient_failure"
             raise AutomaticProfileError(
@@ -778,6 +839,11 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             committed_record_ids=json.loads(str(row["record_ids_json"])),
             observed_count=int(row["observed_count"]),
             last_error=row["last_error"],
+            source=(
+                ProfileExtractionSource(str(row["source"]))
+                if row["source"] is not None
+                else None
+            ),
             created_at=SqliteAutomaticProfileRepository._dt(str(row["created_at"])),
             updated_at=SqliteAutomaticProfileRepository._dt(str(row["updated_at"])),
         )
@@ -815,8 +881,9 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             "INSERT INTO profile_extraction_runs ("
             "extraction_id, account_id, message_id, extractor_version, "
             "source_hash, source_snapshot, status, outcome, attempts, "
-            "record_ids_json, observed_count, last_error, created_at, updated_at"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "record_ids_json, observed_count, last_error, source, "
+            "created_at, updated_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(extraction_id) DO UPDATE SET "
             "status=excluded.status, outcome=excluded.outcome, "
             "attempts=excluded.attempts, record_ids_json=excluded.record_ids_json, "
@@ -835,6 +902,7 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
                 json.dumps(run.committed_record_ids),
                 run.observed_count,
                 run.last_error,
+                run.source.value if run.source is not None else None,
                 self._iso(run.created_at),
                 self._iso(run.updated_at),
             ),
@@ -908,7 +976,7 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
 
     def save_observation(self, observation: AutomaticProfileObservation) -> None:
         self.database.scoped(observation.account_id).execute(
-            "INSERT INTO profile_extraction_observations (observation_id, account_id, message_id, extractor_version, dimension, normalized_value, evidence_ref, reliability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, message_id, extractor_version, dimension, normalized_value) DO NOTHING",
+            "INSERT INTO profile_extraction_observations (observation_id, account_id, message_id, extractor_version, dimension, normalized_value, evidence_ref, reliability, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, message_id, extractor_version, dimension, normalized_value) DO NOTHING",
             (
                 observation.observation_id,
                 observation.account_id,
@@ -918,6 +986,11 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
                 observation.normalized_value,
                 observation.evidence_ref,
                 observation.reliability,
+                (
+                    observation.source.value
+                    if observation.source is not None
+                    else None
+                ),
                 self._iso(observation.created_at),
             ),
         )
@@ -948,6 +1021,11 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
                 normalized_value=str(row["normalized_value"]),
                 evidence_ref=str(row["evidence_ref"]),
                 reliability=float(row["reliability"]),
+                source=(
+                    ProfileExtractionSource(str(row["source"]))
+                    if row["source"] is not None
+                    else None
+                ),
                 created_at=self._dt(str(row["created_at"])),
             )
             for row in rows
@@ -1050,6 +1128,7 @@ class AutomaticProfileService:
         classifier: ProfileSignalClassifier | None = None,
         observability_service: ObservabilityService | None = None,
         queue_name: str = PROFILE_EXTRACTION_QUEUE,
+        lock_recorder: ModelRunLockRecorder | None = None,
     ) -> None:
         self._four_dimensions = four_dimension_service
         self._repository = repository
@@ -1059,6 +1138,9 @@ class AutomaticProfileService:
         self._message_reader = message_reader
         self._observability = observability_service
         self._queue_name = queue_name
+        # Issue 13：仅 qwen_model 分支持久化模型运行锁；缺 recorder 的
+        # 组合（内存测试/无审计存储）不伪造锁，也不产生假调用证据。
+        self._lock_recorder = lock_recorder
         self._capability_degraded_reason: str | None = None
         self._queue = (
             TaskQueue(repository.database, default_lease_seconds=60)
@@ -1126,6 +1208,7 @@ class AutomaticProfileService:
             outcome=run.outcome.value,
             reason=reason or run.outcome.value,
             exhausted=run.status == ProfileExtractionStatus.EXHAUSTED,
+            source=run.source.value if run.source is not None else None,
         )
         self._observability.record_profile_queue_depth(
             sum(
@@ -1146,6 +1229,7 @@ class AutomaticProfileService:
                 "attempts": run.attempts,
                 "observed_count": run.observed_count,
                 "committed_record_count": len(run.committed_record_ids),
+                "source": run.source.value if run.source is not None else None,
             },
         )
 
@@ -1160,6 +1244,7 @@ class AutomaticProfileService:
             outcome=run.outcome.value,
             reason=f"{PROFILE_CORRECTION_RULES_VERSION}_{status.value}",
             exhausted=run.status == ProfileExtractionStatus.EXHAUSTED,
+            source=run.source.value if run.source is not None else None,
         )
         self._observability.record_profile_queue_depth(
             sum(
@@ -1235,12 +1320,116 @@ class AutomaticProfileService:
             return ProfileExtractionOutcome.SUCCEEDED_OBSERVED
         return ProfileExtractionOutcome.SUCCEEDED_EMPTY
 
+    def _decide_source(
+        self, signal_classification: ProfileSignalClassification
+    ) -> ProfileExtractionSource:
+        """把分类结果映射为稳定抽取来源（Issue 13）。
+
+        - ``should_process=False``（no_signal/forbidden）与 ``is_local``
+          高置信信号永远走本地规则，绝不调用网关；
+        - 只有网关抽取器 + 非本地（歧义）信号才进入 ``qwen_model``。
+        """
+
+        if not signal_classification.should_process:
+            return ProfileExtractionSource.LOCAL_RULE
+        if (
+            isinstance(self._extractor, GatewayAutomaticProfileExtractor)
+            and not signal_classification.is_local
+        ):
+            return ProfileExtractionSource.QWEN_MODEL
+        return ProfileExtractionSource.LOCAL_RULE
+
     def _gateway_attempted(
         self, signal_classification: ProfileSignalClassification
     ) -> bool:
-        return isinstance(self._extractor, GatewayAutomaticProfileExtractor) and not (
-            signal_classification.is_local
+        return self._decide_source(signal_classification) == (
+            ProfileExtractionSource.QWEN_MODEL
         )
+
+    def _record_source_guard(self, guard: str) -> None:
+        """记录来源守卫告警指标（不携带账户、消息或正文）。"""
+
+        if self._observability is None:
+            return
+        self._observability.record_profile_source_guard(guard)
+
+    def _enforce_source_evidence(
+        self,
+        *,
+        source: ProfileExtractionSource,
+        attempt_locks: list[ModelRunLock],
+    ) -> None:
+        """来源守卫：本地分支出现模型调用或 Qwen 分支缺锁即失败关闭。
+
+        ``local_rule`` 分支的调用数与锁数都必须为 0；``qwen_model``
+        分支每次真实尝试必须至少一条运行锁。守卫失败抛出不可重试的
+        稳定错误码，由既有状态机把对应 run 置为 EXHAUSTED。
+        """
+
+        if source == ProfileExtractionSource.LOCAL_RULE:
+            if attempt_locks:
+                self._record_source_guard(PROFILE_GUARD_LOCAL_UNEXPECTED_MODEL_CALL)
+                self._record_source_guard(PROFILE_GUARD_SOURCE_MISMATCH)
+                raise AutomaticProfileError(
+                    PROFILE_GUARD_LOCAL_UNEXPECTED_MODEL_CALL,
+                    "本地规则分支不应产生模型调用",
+                    retryable=False,
+                )
+            return
+        if not attempt_locks:
+            self._record_source_guard(PROFILE_GUARD_QWEN_MISSING_RUN_LOCK)
+            self._record_source_guard(PROFILE_GUARD_SOURCE_MISMATCH)
+            raise AutomaticProfileError(
+                PROFILE_GUARD_QWEN_MISSING_RUN_LOCK,
+                "Qwen 分支缺少模型运行锁",
+                retryable=False,
+            )
+
+    def _persist_attempt_locks(
+        self,
+        attempt_locks: list[ModelRunLock],
+        *,
+        run: ProfileExtractionRun,
+        attempt_ordinal: int,
+        strict: bool = True,
+    ) -> None:
+        """把一次 qwen_model 尝试的全部运行锁按序号持久化（Issue 10/13）。
+
+        调用方必须持有事务（成功路径与业务写同事务提交；失败/重试路径与
+        run/task 状态同事务提交），保证"声称调用已完成则锁必然存在"。
+        ``strict=True``（成功路径）时锁持久化失败抛出稳定错误码并失败
+        关闭；``strict=False``（失败/重试路径）时只记录告警，保留既有
+        可恢复状态，避免把证据存储故障扩散成整条消息的不可恢复失败。
+        """
+
+        if self._lock_recorder is None or not attempt_locks:
+            return
+        # 来源不变量：local_rule 分支的锁绝不落库（0 调用 0 锁）。即使
+        # 上游守卫失败关闭路径把收集到的锁带到这里，也不得写入审计库。
+        if run.source != ProfileExtractionSource.QWEN_MODEL:
+            self._record_source_guard(PROFILE_GUARD_SOURCE_MISMATCH)
+            return
+        for lock in attempt_locks:
+            try:
+                self._lock_recorder.record(
+                    lock,
+                    business_ref=BusinessRef(
+                        object_type="profile_extraction_run",
+                        object_id=run.extraction_id,
+                        operation="extract",
+                        attempt_ordinal=attempt_ordinal,
+                        is_primary=attempt_ordinal == 1,
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - 锁证据写入失败须显式处理
+                self._record_source_guard(PROFILE_GUARD_LOCK_PERSIST_FAILED)
+                if not strict:
+                    return
+                raise AutomaticProfileError(
+                    PROFILE_GUARD_LOCK_PERSIST_FAILED,
+                    f"画像模型运行锁持久化失败：{self._safe_error_code(exc)}",
+                    retryable=False,
+                ) from exc
 
     def preprocess_message(
         self,
@@ -1255,6 +1444,9 @@ class AutomaticProfileService:
         now = _now()
         source_hash = _source_hash(account_id, message_id, content)
         signal_classification = self._classifier.classify(content)
+        # Issue 13：来源决策是分类结果的显式、可观测投影；新 run 一律
+        # 携带稳定来源，历史行保持 NULL 不做伪造。
+        source = self._decide_source(signal_classification)
         directive = _privacy_directive(content)
         if directive is not None:
             scope, normalized_value = directive
@@ -1307,6 +1499,7 @@ class AutomaticProfileService:
                     outcome=ProfileExtractionOutcome.NO_SIGNAL,
                     attempts=0,
                     last_error="原消息已撤回或被墓碑阻止",
+                    source=ProfileExtractionSource.LOCAL_RULE,
                     created_at=now,
                     updated_at=now,
                 )
@@ -1355,6 +1548,7 @@ class AutomaticProfileService:
             status=ProfileExtractionStatus.RUNNING,
             outcome=ProfileExtractionOutcome.PENDING_RETRY,
             attempts=0,
+            source=source,
             created_at=now,
             updated_at=now,
         )
@@ -1378,6 +1572,10 @@ class AutomaticProfileService:
             )
 
         self._repository.save_run(run)
+        # Issue 13：一次尝试的锁证据收集器；本地分支必须为空，Qwen 分支
+        # 每次真实调用至少一条锁，并在同一事务内按 attempt 序号持久化。
+        collector = _AttemptLockCollector()
+        attempt_ordinal = run.attempts + 1
         try:
             with self._commit_transaction():
                 output = self._extract_once(
@@ -1385,9 +1583,20 @@ class AutomaticProfileService:
                     conversation_id=conversation_id,
                     message_id=message_id,
                     content=content,
-                    run_id=run_id,
+                    run_id=run.extraction_id,
                     signal_classification=signal_classification,
+                    lock_sink=collector,
                 )
+                self._enforce_source_evidence(
+                    source=source, attempt_locks=collector.locks
+                )
+                if source == ProfileExtractionSource.QWEN_MODEL:
+                    self._persist_attempt_locks(
+                        collector.locks,
+                        run=run,
+                        attempt_ordinal=attempt_ordinal,
+                        strict=True,
+                    )
                 record_ids, observed_count = self._commit_output(
                     account_id,
                     conversation_id=conversation_id,
@@ -1397,6 +1606,7 @@ class AutomaticProfileService:
                     output=output,
                     now=now,
                     signal_classification=signal_classification,
+                    source=source,
                 )
                 run.status = ProfileExtractionStatus.SUCCEEDED
                 run.attempts += 1
@@ -1407,7 +1617,13 @@ class AutomaticProfileService:
                 run.updated_at = _now()
                 self._repository.save_run(run)
         except Exception as exc:  # noqa: BLE001 - 抽取是聊天辅助路径
-            return self._schedule_retry(run, notice, exc)
+            return self._schedule_retry(
+                run,
+                notice,
+                exc,
+                attempt_locks=collector.locks,
+                attempt_ordinal=attempt_ordinal,
+            )
 
         if self._gateway_attempted(signal_classification):
             self._capability_degraded_reason = None
@@ -1571,6 +1787,8 @@ class AutomaticProfileService:
                 outcome=ProfileExtractionOutcome.NO_SIGNAL,
                 attempts=0,
                 last_error=reason,
+                # 隐私阻断是本地决策：不调用模型，来源恒为 local_rule。
+                source=ProfileExtractionSource.LOCAL_RULE,
                 created_at=now,
                 updated_at=now,
             )
@@ -1578,6 +1796,8 @@ class AutomaticProfileService:
             run.status = ProfileExtractionStatus.EXHAUSTED
             run.outcome = ProfileExtractionOutcome.NO_SIGNAL
             run.last_error = reason
+            if run.source is None:
+                run.source = ProfileExtractionSource.LOCAL_RULE
             run.updated_at = now
         self._repository.save_run(run)
         self._audit_outcome(run, result=AuditResult.SUCCESS, reason="privacy_blocked")
@@ -1591,6 +1811,7 @@ class AutomaticProfileService:
         self,
         *,
         signal_classification: ProfileSignalClassification,
+        lock_sink: Callable[[ModelRunLock], None] | None = None,
         **kwargs: Any,
     ) -> ProfileExtractionOutput:
         extractor = self._extractor
@@ -1602,6 +1823,7 @@ class AutomaticProfileService:
         try:
             output = extractor.extract(
                 signal_classification=signal_classification,
+                lock_sink=lock_sink,
                 **kwargs,
             )
             if not isinstance(output, ProfileExtractionOutput):
@@ -1622,6 +1844,8 @@ class AutomaticProfileService:
         notice: ProfilePrivacyNotice | None,
         error: BaseException | str,
         correction: ProfileCorrectionResult | None = None,
+        attempt_locks: list[ModelRunLock] | None = None,
+        attempt_ordinal: int = 1,
     ) -> ProfilePreprocessResult:
         now = _now()
         error_code = self._safe_error_code(error)
@@ -1637,7 +1861,15 @@ class AutomaticProfileService:
             run.attempts += 1
             run.last_error = error_code
             run.updated_at = now
-            self._repository.save_run(run)
+            # 永久失败同样保留本次真实调用的锁证据（失败锁不覆盖、不丢失）。
+            with self._repository.transaction():
+                self._persist_attempt_locks(
+                    attempt_locks or [],
+                    run=run,
+                    attempt_ordinal=attempt_ordinal,
+                    strict=False,
+                )
+                self._repository.save_run(run)
             if correction is not None:
                 self._audit_correction_outcome(run, correction.status)
             else:
@@ -1680,6 +1912,14 @@ class AutomaticProfileService:
         task.last_error = error_code
         task.updated_at = now
         with self._repository.transaction():
+            # 首次失败锁与 run/task 状态同一事务提交，重试后新增下一序号
+            # 锁，绝不覆盖前次证据。
+            self._persist_attempt_locks(
+                attempt_locks or [],
+                run=run,
+                attempt_ordinal=attempt_ordinal,
+                strict=False,
+            )
             self._repository.save_run(run)
             self._repository.save_task(task)
             if self._queue is not None:
@@ -1811,8 +2051,14 @@ class AutomaticProfileService:
         run.attempts = attempt
         run.updated_at = _now()
         self._repository.save_run(run)
+        # Issue 13：本次尝试的锁序号 = run.attempts + 1（首次预处理为 1，
+        # 其后每次真实重试依次递增），保证锁证据按 attempt 严格排序。
+        attempt_ordinal = run.attempts + 1
         signal_classification: ProfileSignalClassification | None = None
         correction: ProfileCorrectionResult | None = None
+        # Issue 13：重试同样收集本次尝试的锁；来源以 run 既有值为准，
+        # 重试绝不改写来源（历史 NULL 行按本次实际路径回填）。
+        collector = _AttemptLockCollector()
         try:
             with self._commit_transaction():
                 content = self._message_content(
@@ -1869,6 +2115,13 @@ class AutomaticProfileService:
                             run.outcome = (
                                 ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
                             )
+                    source = (
+                        run.source
+                        if run.source is not None
+                        else self._decide_source(signal_classification)
+                    )
+                    if run.source is None:
+                        run.source = source
                 else:
                     output = self._extract_once(
                         account_id=task.account_id,
@@ -1877,7 +2130,25 @@ class AutomaticProfileService:
                         content=content,
                         run_id=run.extraction_id,
                         signal_classification=signal_classification,
+                        lock_sink=collector,
                     )
+                    source = (
+                        run.source
+                        if run.source is not None
+                        else self._decide_source(signal_classification)
+                    )
+                    if run.source is None:
+                        run.source = source
+                    self._enforce_source_evidence(
+                        source=source, attempt_locks=collector.locks
+                    )
+                    if source == ProfileExtractionSource.QWEN_MODEL:
+                        self._persist_attempt_locks(
+                            collector.locks,
+                            run=run,
+                            attempt_ordinal=attempt_ordinal,
+                            strict=True,
+                        )
                     record_ids, observed_count = self._commit_output(
                         task.account_id,
                         conversation_id="retry",
@@ -1887,6 +2158,7 @@ class AutomaticProfileService:
                         output=output,
                         now=_now(),
                         signal_classification=signal_classification,
+                        source=source,
                     )
                 task.status = ProfileExtractionStatus.SUCCEEDED
                 task.last_error = None
@@ -1904,24 +2176,34 @@ class AutomaticProfileService:
             error_code = self._safe_error_code(exc)
             if self._is_permanent_code(error_code) or error_code in _TRANSIENT_PROFILE_ERROR_CODES:
                 self._capability_degraded_reason = error_code
-            if not self._is_retryable_error(exc) or attempt >= PROFILE_EXTRACTION_MAX_RETRIES:
-                return self._exhaust_task(task, run, error_code)
-            task.status = ProfileExtractionStatus.PENDING
-            task.last_error = error_code
-            task.updated_at = _now()
-            run.status = ProfileExtractionStatus.PENDING
-            run.outcome = (
-                ProfileExtractionOutcome.CORRECTION_FAILED
-                if (
-                    signal_classification is not None
-                    and signal_classification.category == ProfileSignalCategory.CORRECTION
+            with self._repository.transaction():
+                # 本次真实尝试的锁与 run/task 状态同事务落库；即使重试
+                # 耗尽，失败锁也保留为不可覆盖的审计证据。
+                self._persist_attempt_locks(
+                    collector.locks,
+                    run=run,
+                    attempt_ordinal=attempt_ordinal,
+                    strict=False,
                 )
-                else ProfileExtractionOutcome.PENDING_RETRY
-            )
-            run.last_error = task.last_error
-            run.updated_at = task.updated_at
-            self._repository.save_task(task)
-            self._repository.save_run(run)
+                if not self._is_retryable_error(exc) or attempt >= PROFILE_EXTRACTION_MAX_RETRIES:
+                    return self._exhaust_task(task, run, error_code)
+                task.status = ProfileExtractionStatus.PENDING
+                task.last_error = error_code
+                task.updated_at = _now()
+                run.status = ProfileExtractionStatus.PENDING
+                run.outcome = (
+                    ProfileExtractionOutcome.CORRECTION_FAILED
+                    if (
+                        signal_classification is not None
+                        and signal_classification.category
+                        == ProfileSignalCategory.CORRECTION
+                    )
+                    else ProfileExtractionOutcome.PENDING_RETRY
+                )
+                run.last_error = task.last_error
+                run.updated_at = task.updated_at
+                self._repository.save_task(task)
+                self._repository.save_run(run)
             return task.status
         if signal_classification is not None and self._gateway_attempted(
             signal_classification
@@ -2002,11 +2284,12 @@ class AutomaticProfileService:
         output: ProfileExtractionOutput,
         now: datetime,
         signal_classification: ProfileSignalClassification,
+        source: ProfileExtractionSource,
     ) -> tuple[list[str], int]:
         record_ids: list[str] = []
         observed_count = 0
         audit_version = _signal_audit_version(
-            self.extractor_version, signal_classification
+            self.extractor_version, signal_classification, source
         )
         for item in output.items:
             if self._repository.is_message_tombstoned(account_id, message_id):
@@ -2044,6 +2327,7 @@ class AutomaticProfileService:
                     if item.action == ProfileExtractionAction.OBSERVE
                     else item.reliability
                 ),
+                source=source,
                 created_at=now,
             )
             self._repository.save_observation(observation)
@@ -2290,7 +2574,7 @@ class AutomaticProfileService:
         return self._four_dimensions.get_record(account_id, record_id)
 
     def profile_status(self, account_id: str) -> ProfileStatusProjection:
-        """仅投影当前账户的画像就绪状态。"""
+        """仅投影当前账户的画像就绪状态与混合来源说明。"""
 
         records = self._four_dimensions.list_records(account_id)
         runs = self._repository.list_runs(account_id)
@@ -2331,10 +2615,18 @@ class AutomaticProfileService:
                 for run in failed_runs
             )
         )
+        # Issue 13：按稳定来源统计抽取 run；历史 NULL 来源不计数也不伪造。
+        source_counts: dict[str, int] = {}
+        for run in runs:
+            if run.source is None:
+                continue
+            source_counts[run.source.value] = source_counts.get(run.source.value, 0) + 1
         return ProfileStatusProjection(
             status=status,
             has_records=bool(records),
             can_retry=can_retry,
+            extraction_sources=dict(sorted(source_counts.items())),
+            source_explanation=PROFILE_HYBRID_EXPLANATION,
         )
 
     def mark_message_tombstone(self, account_id: str, message_id: str) -> None:
