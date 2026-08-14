@@ -93,6 +93,22 @@ def _build_v9_database(path: Path) -> None:
             " created_at TEXT NOT NULL,"
             " updated_at TEXT NOT NULL)"
         )
+        # v2 迁移建立的模型运行锁表：真实 v9 库必然存在（Issue 10 迁移 45
+        # 的 ALTER TABLE 引用它），骨架须复刻以免升级路径缺表。
+        connection.execute(
+            "CREATE TABLE model_run_locks ("
+            " lock_id TEXT PRIMARY KEY,"
+            " account_id TEXT NOT NULL,"
+            " capability_name TEXT NOT NULL,"
+            " capability_version TEXT NOT NULL,"
+            " actual_model_id TEXT,"
+            " region TEXT NOT NULL,"
+            " status TEXT NOT NULL,"
+            " error_code TEXT,"
+            " error_message TEXT,"
+            " usage TEXT,"
+            " created_at TEXT NOT NULL)"
+        )
         connection.execute(
             "INSERT INTO conversations"
             " (conversation_id, account_id, title, mode, created_at, updated_at)"

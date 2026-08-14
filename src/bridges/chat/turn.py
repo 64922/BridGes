@@ -1583,7 +1583,8 @@ def finalize_message(
     error_message: str | None,
     duration_ms: int | None,
     model_id: str | None,
-    run_lock_id: str | None,
+    run_lock_id: str | None = None,
+    lock: ModelRunLock | None = None,
     started: float,
     now: datetime,
     thinking: ChatThinkingSummary | dict[str, list[str]] | None = None,
@@ -1596,6 +1597,8 @@ def finalize_message(
 
     思考摘要接受类型化记录或既有 JSON dict，统一在此转为落库格式——
     所有终态路径（生成/停止/陈旧收敛）共用这一处。
+
+    Issue 10：传入 ``lock`` 时，运行锁与消息终态在同一事务内持久化。
     """
     measured = max(1, int((time.monotonic() - started) * 1000))
     repo.finalize_message(
@@ -1607,6 +1610,7 @@ def finalize_message(
         duration_ms=duration_ms or measured,
         model_id=model_id,
         run_lock_id=run_lock_id,
+        lock=lock,
         updated_at=now,
         thinking=(
             thinking.model_dump(mode="json")
@@ -3167,7 +3171,6 @@ class TurnOrchestrator:
                         budget.mark_exhausted()
                         break
                 elif event.kind == "error":
-                    self._persist_lock(account_id, event.lock)
                     finalize_message(
                         self._repo,
                         account_id,
@@ -3179,7 +3182,7 @@ class TurnOrchestrator:
                         ),
                         duration_ms=None,
                         model_id=self._lock_model_id(event.lock),
-                        run_lock_id=self._lock_id(event.lock),
+                        lock=event.lock,
                         started=started,
                         now=datetime.now(UTC),
                         thinking=failed_thinking(thinking, event.error_code),
@@ -3193,7 +3196,6 @@ class TurnOrchestrator:
                     yield event
                     return
                 elif event.kind == "done":
-                    self._persist_lock(account_id, event.lock)
                     if allow_model_knowledge_fallback:
                         content = ensure_unverified_teaching_prefix(content)
                     protected_content = restore_protected_regions(
@@ -3261,7 +3263,7 @@ class TurnOrchestrator:
                                 error_message=citation_error,
                                 duration_ms=None,
                                 model_id=self._lock_model_id(event.lock),
-                                run_lock_id=self._lock_id(event.lock),
+                                lock=event.lock,
                                 started=started,
                                 now=datetime.now(UTC),
                                 thinking=failed_thinking(
@@ -3325,7 +3327,7 @@ class TurnOrchestrator:
                                 error_message=citation_error,
                                 duration_ms=None,
                                 model_id=self._lock_model_id(event.lock),
-                                run_lock_id=self._lock_id(event.lock),
+                                lock=event.lock,
                                 started=started,
                                 now=datetime.now(UTC),
                                 thinking=failed_thinking(
@@ -3389,7 +3391,7 @@ class TurnOrchestrator:
                                 error_message=citation_error,
                                 duration_ms=None,
                                 model_id=self._lock_model_id(event.lock),
-                                run_lock_id=self._lock_id(event.lock),
+                                lock=event.lock,
                                 started=started,
                                 now=datetime.now(UTC),
                                 thinking=failed_thinking(
@@ -3472,7 +3474,7 @@ class TurnOrchestrator:
                         error_message=None,
                         duration_ms=None,
                         model_id=self._lock_model_id(event.lock),
-                        run_lock_id=self._lock_id(event.lock),
+                        lock=event.lock,
                         started=started,
                         now=datetime.now(UTC),
                         thinking=done_thinking(thinking),
@@ -5796,15 +5798,6 @@ class TurnOrchestrator:
                 history.append({"role": "assistant", "content": latest_done.content})
         return history
 
-    def _persist_lock(self, account_id: str, lock: ModelRunLock | None) -> None:
-        if lock is None:
-            return
-        self._repo.insert_run_lock(account_id, lock)
-
     @staticmethod
     def _lock_model_id(lock: ModelRunLock | None) -> str | None:
         return lock.actual_model_id if lock is not None else None
-
-    @staticmethod
-    def _lock_id(lock: ModelRunLock | None) -> str | None:
-        return lock.lock_id if lock is not None else None
