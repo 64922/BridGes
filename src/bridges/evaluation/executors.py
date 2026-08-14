@@ -37,6 +37,7 @@ from bridges.ai.fixed_models import (
     VIDEO_MODEL_ID,
 )
 from bridges.ai.model_gateway import ModelGateway
+from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
 from bridges.chat.repository import ConversationRepository
@@ -530,6 +531,9 @@ class EvalEnvironment:
         self.humanizer = HumanizerService(
             registry=self.skill_registry,
             gateway=self.gateway,
+            # Issue 11：评测执行器同样注入统一锁仓库——真实结构化调用
+            # （首稿/修订/修复）的锁落评测库，不留下无锁入口。
+            run_lock_recorder=SqliteModelRunLockRecorder(self.database),
             retrieval_service=self.retrieval,
             observability_service=self.observability,
         )

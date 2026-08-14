@@ -10687,6 +10687,35 @@ export interface components {
              */
             retry_count: number;
             /**
+             * Parse Cache Hit
+             * @description 本次解析直接复用了账户内解析缓存（未调用模型、未新建模型锁）。
+             * @default false
+             */
+            parse_cache_hit: boolean;
+            /**
+             * Ocr Evidence Run Id
+             * @description 产生当前解析文本的 OCR/解析摄取 run（缓存命中时引用原始运行证据）。
+             */
+            ocr_evidence_run_id?: string | null;
+            /**
+             * Ocr Pages Total
+             * @description 本轮处理实际发起 OCR 的页/图片总数（脱敏汇总）。
+             * @default 0
+             */
+            ocr_pages_total: number;
+            /**
+             * Ocr Pages Succeeded
+             * @description 本轮处理 OCR 成功的页/图片数（脱敏汇总）。
+             * @default 0
+             */
+            ocr_pages_succeeded: number;
+            /**
+             * Ocr Pages Failed
+             * @description 本轮处理 OCR 失败的页/图片数（脱敏汇总）。
+             * @default 0
+             */
+            ocr_pages_failed: number;
+            /**
              * Index Rebuilding
              * @description 当前账户索引版本正在重建（旧版继续服务）。
              * @default false
@@ -13278,6 +13307,16 @@ export interface components {
             /** @description 版本化文章结果投影（Issue 08）：新任务终态生成，前端据此渲染正文优先交付界面；旧任务为 None，按 legacy 投影展示，不伪造新来源硬门或新审稿通过状态。 */
             article?: components["schemas"]["HumanizerArticleProjection"] | null;
             /**
+             * Run Lock Id
+             * @description 本次执行记录的主要模型运行锁（首稿锁）引用（Issue 11）；完整调用集合由统一锁仓库按 account_id + model_run_id 查询，投影不复制 prompt、正文或模型完整响应。
+             */
+            run_lock_id?: string | null;
+            /**
+             * Model Run Id
+             * @description 本次执行所属业务 run 标识（与模型运行锁 run_id 同一标识空间，Issue 11）；完整调用集合由统一锁仓库按 account_id + model_run_id 查询，跨账户隔离由仓库保证。
+             */
+            model_run_id?: string | null;
+            /**
              * Created At
              * Format: date-time
              * @description 创建时间。
@@ -14613,6 +14652,35 @@ export interface components {
              * @default 0
              */
             retry_count: number;
+            /**
+             * Parse Cache Hit
+             * @description 本次解析直接复用了账户内解析缓存（未调用模型、未新建模型锁）。
+             * @default false
+             */
+            parse_cache_hit: boolean;
+            /**
+             * Ocr Evidence Run Id
+             * @description 产生当前解析文本的 OCR/解析摄取 run（缓存命中时引用原始运行证据）。
+             */
+            ocr_evidence_run_id?: string | null;
+            /**
+             * Ocr Pages Total
+             * @description 本轮处理实际发起 OCR 的页/图片总数（脱敏汇总）。
+             * @default 0
+             */
+            ocr_pages_total: number;
+            /**
+             * Ocr Pages Succeeded
+             * @description 本轮处理 OCR 成功的页/图片数（脱敏汇总）。
+             * @default 0
+             */
+            ocr_pages_succeeded: number;
+            /**
+             * Ocr Pages Failed
+             * @description 本轮处理 OCR 失败的页/图片数（脱敏汇总）。
+             * @default 0
+             */
+            ocr_pages_failed: number;
             /**
              * Vector Enabled
              * @description 处理时向量能力是否可用（按探测结果）。

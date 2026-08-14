@@ -844,6 +844,22 @@ class HumanizerResultProjection(BaseModel):
             "新来源硬门或新审稿通过状态。"
         ),
     )
+    run_lock_id: str | None = Field(
+        default=None,
+        description=(
+            "本次执行记录的主要模型运行锁（首稿锁）引用（Issue 11）；完整"
+            "调用集合由统一锁仓库按 account_id + model_run_id 查询，投影"
+            "不复制 prompt、正文或模型完整响应。"
+        ),
+    )
+    model_run_id: str | None = Field(
+        default=None,
+        description=(
+            "本次执行所属业务 run 标识（与模型运行锁 run_id 同一标识空间，"
+            "Issue 11）；完整调用集合由统一锁仓库按 account_id + model_run_id "
+            "查询，跨账户隔离由仓库保证。"
+        ),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC), description="创建时间。"
     )
