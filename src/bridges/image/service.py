@@ -44,7 +44,7 @@ from bridges.contracts.image import (
     ImageVersionProjection,
 )
 from bridges.contracts.observability import (
-    MEDIA_CANCEL_PROVIDER_UNCONFIRMED,
+    MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED,
     MEDIA_EDGE_CALL_COUNT_MISMATCH,
     MEDIA_EDGE_LOCK_PERSIST_FAILED,
     MEDIA_EDGE_MISSING_RUN_LOCK,
@@ -117,7 +117,7 @@ def _user_facing_error(
 _CLOUD_CANCEL_PATH = "/api/v1/tasks/{task_id}?action=cancel"
 
 
-def _provider_cancel_confirmed(result: Any) -> bool:
+def _provider_cancel_confirmed(result: ModelCallResult) -> bool:
     """供应商取消是否确认：网关成功且适配器返回 ``cancelled=True``。
 
     供应商失败、超时、鉴权、限流及未知任务一律不算确认——本地取消是
@@ -531,7 +531,7 @@ class ImageService:
                     "edge_code": (
                         None
                         if provider_confirmed
-                        else MEDIA_CANCEL_PROVIDER_UNCONFIRMED
+                        else MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
                     ),
                 },
             )
@@ -1445,7 +1445,9 @@ class ImageService:
         return f"由提示词「{summary}」生成的图片", ImageAltTextSource.FALLBACK
 
     @staticmethod
-    def _alt_text_failure_code(result: Any, lock_persisted: bool) -> str | None:
+    def _alt_text_failure_code(
+        result: ModelCallResult, lock_persisted: bool
+    ) -> str | None:
         """降级路径的稳定原因码：锁缺/落库失败优先于模型失败。"""
         if result.lock is None:
             return MEDIA_EDGE_MISSING_RUN_LOCK
@@ -1461,7 +1463,7 @@ class ImageService:
         media_type: str,
         task_id: str,
         asset_id: str | None,
-    ) -> tuple[Any, bool]:
+    ) -> tuple[ModelCallResult, bool]:
         """统一图片替代文本接缝：qwen_vision invoke + 持久化运行锁。
 
         返回 ``(result, lock_persisted)``：锁行未持久化时调用方不得把
@@ -1531,7 +1533,7 @@ class ImageService:
         task_id: str,
         cloud_task_id: str,
         attempt: int,
-    ) -> Any:
+    ) -> ModelCallResult | None:
         """统一图片供应商取消接缝：每次真实请求 invoke + 独立运行锁。
 
         本地取消是权威：网关异常与锁落库失败都不抛出（保持既有取消
@@ -1563,7 +1565,7 @@ class ImageService:
         self,
         account_id: str,
         task_id: str,
-        result: Any,
+        result: ModelCallResult,
         attempt: int,
     ) -> bool:
         """持久化一次真实供应商取消请求的运行锁；失败以稳定码审计。

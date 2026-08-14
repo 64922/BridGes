@@ -24,7 +24,7 @@ from bridges.contracts.scope import ScopeEnvelope
 #: 供应商成功。
 MEDIA_EDGE_MISSING_RUN_LOCK = "media_edge_missing_run_lock"
 MEDIA_EDGE_LOCK_PERSIST_FAILED = "media_edge_lock_persist_failed"
-MEDIA_CANCEL_PROVIDER_UNCONFIRMED = "media_cancel_provider_unconfirmed"
+MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED = "media_cancel_provider_unconfirmed"
 MEDIA_EDGE_CALL_COUNT_MISMATCH = "media_edge_call_count_mismatch"
 
 

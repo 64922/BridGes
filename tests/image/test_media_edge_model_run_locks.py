@@ -49,7 +49,7 @@ from bridges.contracts.ai import (
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
 from bridges.contracts.image import ImageAltTextSource, ImageTaskStatus
 from bridges.contracts.observability import (
-    MEDIA_CANCEL_PROVIDER_UNCONFIRMED,
+    MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED,
     MEDIA_EDGE_CALL_COUNT_MISMATCH,
     MEDIA_EDGE_LOCK_PERSIST_FAILED,
 )
@@ -734,7 +734,7 @@ def test_image_cancel_provider_failure_keeps_local_authority_and_failure_lock(
     last = cancel_audits[-1]
     assert last["result"] == "degraded"
     assert last["details"]["provider_cancel_confirmed"] is False
-    assert last["details"]["edge_code"] == MEDIA_CANCEL_PROVIDER_UNCONFIRMED
+    assert last["details"]["edge_code"] == MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
     assert last["details"]["provider_error_code"] == "auth_error"
 
     # 迟到结果仍被抑制：云端之后才完成，不发布资产。
@@ -962,7 +962,7 @@ def test_video_cancel_provider_failure_keeps_local_cancelled_with_failure_locks(
         e for e in h.audit.events if e.get("action") == "video_task_cancel"
     ]
     assert all(
-        e["details"].get("edge_code") == MEDIA_CANCEL_PROVIDER_UNCONFIRMED
+        e["details"].get("edge_code") == MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
         for e in cancel_audits
         if e["details"].get("provider_cancel_confirmed") is False
     )

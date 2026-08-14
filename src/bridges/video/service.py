@@ -33,9 +33,9 @@ from typing import Any, cast
 from bridges.ai.lock_scrub import scrub_lock_text
 from bridges.ai.model_gateway import ModelGateway
 from bridges.chat.repository import ConversationRepository
-from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.ai import ModelCallResult, ModelCallStatus
 from bridges.contracts.observability import (
-    MEDIA_CANCEL_PROVIDER_UNCONFIRMED,
+    MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED,
     MEDIA_EDGE_CALL_COUNT_MISMATCH,
     MEDIA_EDGE_LOCK_PERSIST_FAILED,
     MEDIA_EDGE_MISSING_RUN_LOCK,
@@ -124,7 +124,7 @@ class _CancelledRaceError(Exception):
     """任务在 worker 处理期间被取消；用于回滚本次未发布的结果。"""
 
 
-def _provider_cancel_confirmed(result: Any) -> bool:
+def _provider_cancel_confirmed(result: ModelCallResult) -> bool:
     """供应商取消是否确认：网关成功且适配器返回 ``cancelled=True``。
 
     供应商失败、超时、鉴权、限流及未知任务一律不算确认——本地取消是
@@ -432,7 +432,7 @@ class VideoService:
                     "provider_cancel_confirmed": provider_confirmed,
                     "provider_error_code": result.error_code if result else None,
                     "edge_code": (
-                        None if provider_confirmed else MEDIA_CANCEL_PROVIDER_UNCONFIRMED
+                        None if provider_confirmed else MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
                     ),
                 },
             )
@@ -786,7 +786,7 @@ class VideoService:
         cloud_task_id = str(row["cloud_task_id"]) if row["cloud_task_id"] else None
         provider_confirmed: bool | None = None
         attempt = 0
-        result: Any = None
+        result: ModelCallResult | None = None
         if cloud_task_id:
             # 尽力取消云端任务；失败静默——本地取消是权威，云端任务
             # 即使继续生成，结果也不会被本地发布。序号取自当前行：
@@ -868,7 +868,7 @@ class VideoService:
                 "edge_code": (
                     None
                     if provider_confirmed is not False
-                    else MEDIA_CANCEL_PROVIDER_UNCONFIRMED
+                    else MEDIA_EDGE_CANCEL_PROVIDER_UNCONFIRMED
                 ),
             },
         )
@@ -881,7 +881,7 @@ class VideoService:
         task_id: str,
         cloud_task_id: str,
         attempt: int,
-    ) -> Any:
+    ) -> ModelCallResult | None:
         """统一视频供应商取消接缝：每次真实请求 invoke + 独立运行锁。
 
         本地取消是权威：网关异常与锁落库失败都不抛出（保持既有取消
@@ -913,7 +913,7 @@ class VideoService:
         self,
         account_id: str,
         task_id: str,
-        result: Any,
+        result: ModelCallResult,
         attempt: int,
     ) -> bool:
         """持久化一次真实供应商取消请求的运行锁；失败以稳定码审计。

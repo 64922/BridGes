@@ -70,6 +70,16 @@ _SECRET_VALUE_RE = re.compile(
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})",
 )
 
+#: 自由文本字段（error_code/error_message/degradation_reason）的凭据形态
+#: 关键词：命中即拒绝持久化。媒体边缘接缝（Issue 16）落库前据此脱敏
+#: 供应商原文（``bridges.ai.lock_scrub``），必须与本常量保持单一事实源。
+FREE_TEXT_FORBIDDEN_KEYWORDS: tuple[str, ...] = (
+    "api_key",
+    "authorization",
+    "secret",
+    "token",
+)
+
 
 def _iso(now: datetime) -> str:
     return now.isoformat()
@@ -226,7 +236,7 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
             # 自由文本字段不得携带凭据：拒绝明显形态而非尝试脱敏。
             if text and any(
                 keyword in text.lower()
-                for keyword in ("api_key", "authorization", "secret", "token")
+                for keyword in FREE_TEXT_FORBIDDEN_KEYWORDS
             ):
                 raise ModelRunLockSecurityError(
                     f"运行锁 {field_name} 包含疑似凭据，禁止持久化。"
