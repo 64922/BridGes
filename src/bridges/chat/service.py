@@ -1720,20 +1720,17 @@ class ChatService:
         # 写作调用计数（单轮内 2 次上限不变；开关可回滚），重试后不再直接
         # 撞 writing_call_limit_reached。
         humanizer_recovery: tuple[int, str | None] = (0, None)
-        if RETRY_RESETS_WRITING_BUDGET:
+        if not RETRY_RESETS_WRITING_BUDGET:
             for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
-                # 只重置计数与正文：新一轮预算从 0 开始，草稿重新生成
-                if humanizer_recovery_state(previous_attempt)[0] >= 1:
-                    humanizer_recovery = (0, None)
-                    break
-        else:
-            for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
-                recovered_count, recovered_text = humanizer_recovery_state(previous_attempt)
-                if recovered_count >= 1:
-                    if not recovered_text and previous_attempt.content:
-                        recovered_text = previous_attempt.content
-                    humanizer_recovery = (recovered_count, recovered_text)
-                    break
+                recovered_count, recovered_text = humanizer_recovery_state(
+                    previous_attempt
+                )
+                if recovered_count < 1:
+                    continue
+                if not recovered_text and previous_attempt.content:
+                    recovered_text = previous_attempt.content
+                humanizer_recovery = (recovered_count, recovered_text)
+                break
         mode = ChatMode(record.mode)
         route = capability_route_from(owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None

@@ -205,9 +205,19 @@ def test_year_number_whitespace_variants_do_not_misjudge(
     )
 
 
-def test_user_scenario_year_number_with_assumption_passes() -> None:
-    """生产场景：原文含「2017 年」，授权假设后合规候选应通过硬门。"""
-    original = "Transformer 2017 年谷歌团队提出的注意力机制成为基础架构。"
+@pytest.mark.parametrize(
+    "original",
+    [
+        # 生产场景：原文含「2017 年」，用户授权假设后合规候选应通过硬门。
+        # 空格变体在修复前即通过（基线不误判），紧邻字母/全角变体是修复
+        # 前真实误判 UNATTRIBUTED_CLAIM 的复现输入（Issue 01 缺陷 c）。
+        "Transformer 2017 年谷歌团队提出的注意力机制成为基础架构。",
+        "Transformer2017年谷歌团队提出的注意力机制成为基础架构。",
+        "Transformer２０１７年谷歌团队提出的注意力机制成为基础架构。",
+    ],
+)
+def test_user_scenario_year_number_with_assumption_passes(original: str) -> None:
+    """原文含「2017 年」类数字，授权假设后合规候选应通过硬门。"""
     ledger = compile_source_ledger(original, primary_label="聊天内原文")
     candidate = (
         original
@@ -217,6 +227,10 @@ def test_user_scenario_year_number_with_assumption_passes() -> None:
     assert result.passed, [
         (f.code, f.note) for f in result.blocking_failures
     ]
+    assert not any(
+        f.code in (FidelityFailureCode.UNATTRIBUTED_CLAIM, FidelityFailureCode.NUMBER_CHANGED)
+        for f in result.blocking_failures
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -250,21 +250,20 @@ def _scan_items(text: str) -> list[_Item]:
     plain = _mask(normalized, protected_matches)
 
     # 数字/单位
-    for match in _NUMBER_UNIT_RE.finditer(plain):
+    def add_number_unit(match: re.Match[str]) -> None:
         number, unit = match.group(1), match.group(2)
         unit = (unit + (match.group(3) or "")).strip()
         surface = f"{number} {unit}".strip()
         add("number", surface, match.start(), match.end(),
             key=_canonical_number(number) + "|" + _canonical_unit(unit))
+
+    for match in _NUMBER_UNIT_RE.finditer(plain):
+        add_number_unit(match)
     plain = _mask(plain, _NUMBER_UNIT_RE.finditer(plain))
     # Issue 01 缺陷 c：数字+单位紧邻汉字/字母（如「Transformer2017年」）时
     # 严格正则漏配，补充宽松扫描使「2017 年/2017年/２０１７年」键一致。
     for match in _LOOSE_NUMBER_UNIT_RE.finditer(plain):
-        number, unit = match.group(1), match.group(2)
-        unit = (unit + (match.group(3) or "")).strip()
-        surface = f"{number} {unit}".strip()
-        add("number", surface, match.start(), match.end(),
-            key=_canonical_number(number) + "|" + _canonical_unit(unit))
+        add_number_unit(match)
     plain = _mask(plain, _LOOSE_NUMBER_UNIT_RE.finditer(plain))
     for match in re.finditer(r"(?<![A-Za-z0-9一-鿿])\d+(?:\.\d+)?", plain):
         add("number", match.group(0), match.start(), match.end(),

@@ -895,6 +895,61 @@ def test_retry_after_quota_exhausted_toggle_off_keeps_old_semantics(
     assert adapter2.calls == 0
     assert retry_events[-1][0] == "error"
     assert retry_events[-1][1]["error"]["code"] == "writing_call_limit_reached"
+    # 新尝试的结果投影记录了明确错误（无第三次写作调用）
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    retry_assistant = next(
+        m
+        for m in history["messages"]
+        if m["role"] == "assistant"
+        and m["message_id"] == retried["assistant_message"]["message_id"]
+    )
+    assert retry_assistant["humanizer"]["error_code"] == "writing_call_limit_reached"
+    assert retry_assistant["humanizer"]["writing_call_count"] == 2
+
+
+def test_retry_fresh_round_still_capped_at_two_calls(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """Issue 01 缺陷 b：重试获得新预算，但新一轮单轮 2 次上限仍生效。"""
+    _register(client, tag="4")
+    violating = {"final_text": "番茄工作法把时间切成 35 分钟的工作块和 5 分钟的休息块。"}
+    adapter = _ProgrammableStructuredAdapter(sequence=[violating, violating])
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    created = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": (
+                "请帮我润色这篇科普文章：番茄工作法把时间切成 25 分钟的"
+                "工作块和 5 分钟的休息块。四个工作块后休息 15 分钟。"
+            )
+        },
+    ).json()
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "error"
+    failed_message_id = events[-1][1]["message_id"]
+
+    # 重试获得新预算：新一轮内首稿 + 修订仍恰好 2 次调用，之后保真失败停止
+    adapter2 = _ProgrammableStructuredAdapter(sequence=[violating, violating])
+    _swap_gateways(sqlite_app, adapter2)
+    retry = client.post(
+        f"/chat/conversations/{conversation_id}/messages/{failed_message_id}/retry",
+        json={},
+    )
+    assert retry.status_code == 200, retry.text
+    retried = retry.json()
+    generation_helpers["drive"](sqlite_app)
+    retry_events = generation_helpers["subscribe"](
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
+    assert adapter2.calls == 2  # 新一轮内仍至多 2 次写作调用
+    assert retry_events[-1][0] == "error"
+    # 新一轮用尽后是保真失败（不是立即的 writing_call_limit_reached）
+    assert retry_events[-1][1]["error"]["code"] == "fidelity_gate_conflict"
 
 
 def test_retry_starts_fresh_round_after_revision_failure(
