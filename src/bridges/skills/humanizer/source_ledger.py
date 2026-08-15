@@ -942,7 +942,8 @@ def _attribution_check(
                 in_assumption[index] = True
                 break
 
-    # 契约不允许假设时：候选新增的假设标注片段（非原文已有）即失败
+    # 契约不允许假设时：候选新增的假设标注片段（非原文已有）即失败。
+    # Issue 02：携带片段位置（归一化文本偏移），供确定性句子级剔除定位。
     if not allow_assumptions:
         for start, end in assumption_spans:
             segment = _canonical_text_key(normalized_candidate[start:end])
@@ -953,6 +954,7 @@ def _attribution_check(
                 FidelitySeverity.BLOCKING,
                 "显式假设", "assumption",
                 "候选使用了「比如/假设/设想」标注的假设内容，但任务契约不允许。",
+                SpanLocation(start=start, end=end),
             ))
 
     attributed = 0

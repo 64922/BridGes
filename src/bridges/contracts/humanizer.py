@@ -593,12 +593,25 @@ class HumanizerRevisionAudit(BaseModel):
     )
     final_state: str = Field(
         default="pending",
-        description="终态：pending/deliver_revised/deliver_draft/stop_delivery。",
+        description=(
+            "终态：pending/deliver_revised/deliver_draft/stop_delivery/"
+            "excised_delivery（Issue 02：机械违规确定性剔除后交付成品）。"
+        ),
     )
     skipped_reason: str | None = Field(
         default=None,
         description="未执行修订的原因（capability_disabled/call_limit_reached/"
         "user_stopped/budget_insufficient/model_error:<code>/recheck_failed）。",
+    )
+    #: Issue 02：确定性句子级剔除的脱敏审计（不含正文）。
+    excision_attempted: bool = Field(
+        default=False, description="是否尝试过确定性句子级剔除。"
+    )
+    excision_removed_count: int | None = Field(
+        default=None, description="剔除交付移除的违规条目数（未剔除为 None）。"
+    )
+    excision_removed_sentences: int | None = Field(
+        default=None, description="剔除交付移除的句子数（未剔除为 None）。"
     )
 
 
@@ -727,6 +740,28 @@ class ArticleConfirmationItem(BaseModel):
     detail: str = Field(description="中文说明（用户可见）。")
 
 
+class ArticleExcisionItem(BaseModel):
+    """一条被剔除的违规条目（确定性投影自 FidelityFailure，不含正文）。"""
+
+    code: str = Field(description="稳定失败码（审计用）。")
+    category: str = Field(description="中文类别说明。")
+    note: str = Field(description="中文说明（用户可见）。")
+
+
+class ArticleExcisionSummary(BaseModel):
+    """确定性句子级剔除摘要（Issue 02）：移除条数与条目类别，如实披露。
+
+    只投影脱敏计数与失败码/类别，不包含被剔除的正文片段。
+    """
+
+    removed_count: int = Field(description="移除的违规条目数。")
+    removed_sentence_count: int = Field(description="剔除的句子数。")
+    sentence_ratio: float = Field(description="剔除句数占原文句数比例（0-1）。")
+    items: list[ArticleExcisionItem] = Field(
+        default_factory=list, description="被剔除的违规条目清单。"
+    )
+
+
 class HumanizerArticleProjection(BaseModel):
     """版本化文章结果投影（Issue 08）。
 
@@ -746,8 +781,9 @@ class HumanizerArticleProjection(BaseModel):
     delivery_note: str | None = Field(
         default=None,
         description=(
-            "部分交付的用户可见说明（如「已交付首稿，未完成修订」）；"
-            "仅 ``delivery_status == partial`` 时非空。"
+            "用户可见交付说明：部分交付（``delivery_status == partial``）为"
+            "「已交付首稿，未完成修订」；已剔除交付（``excision`` 非空）为"
+            "「已移除 N 处无来源/未授权内容」。"
         ),
     )
     material_state: ArticleMaterialState = Field(
@@ -771,6 +807,9 @@ class HumanizerArticleProjection(BaseModel):
     )
     revision: ArticleRevisionSummary | None = Field(
         default=None, description="定向修订摘要（未修订为 None）。"
+    )
+    excision: ArticleExcisionSummary | None = Field(
+        default=None, description="确定性剔除摘要（未剔除为 None；Issue 02）。"
     )
     evidence: list[ArticleEvidenceItem] = Field(
         default_factory=list, description="证据风险/变化项。"

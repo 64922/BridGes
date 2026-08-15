@@ -682,7 +682,12 @@ def test_natural_language_assumption_permission_passes_fidelity_gate(
 def test_natural_language_without_assumption_permission_still_blocks(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """Issue 01 缺陷 a：未授权假设时拦截语义不变（ASSUMPTION_NOT_ALLOWED）。"""
+    """Issue 01 缺陷 a：未授权假设时拦截语义不变（ASSUMPTION_NOT_ALLOWED）。
+
+    第八次改进 Issue 02：该两句话稿中违规假设句占 1/2（50%）超过剔除
+    句数占比阈值（默认 40%）→ 维持停止交付，不交付残稿；安全护栏在
+    短稿上优先于剔除交付。
+    """
     _register(client)
     source = "光合作用是植物把光能转化为化学能的过程。"
     violating = (

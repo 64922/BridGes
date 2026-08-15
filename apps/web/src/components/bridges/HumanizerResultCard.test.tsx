@@ -260,6 +260,64 @@ describe("HumanizerResultCard（Issue 08 正文优先交付界面）", () => {
     );
   });
 
+  it("已剔除交付：标注移除条数、如实展示移除清单，复制正常可用", async () => {
+    const excised: HumanizerResultProjection = {
+      ...cleanResult(),
+      article: {
+        ...cleanResult().article!,
+        final_text: "光合作用是植物把光能转化为化学能的过程。",
+        delivery_note: "已移除 2 处无来源/未授权内容（剔除 1 句）。",
+        excision: {
+          removed_count: 2,
+          removed_sentence_count: 1,
+          sentence_ratio: 0.25,
+          items: [
+            {
+              code: "unattributed_claim",
+              category: "无来源新增 claim",
+              note: "候选新增「90%」没有账本来源。",
+            },
+            {
+              code: "assumption_not_allowed",
+              category: "显式假设",
+              note: "候选使用了假设内容，但任务契约不允许。",
+            },
+          ],
+        },
+        revision: {
+          triggered: true,
+          trigger_label: null,
+          problem_count: 2,
+          resolved_count: 1,
+          remaining_count: 0,
+          skipped_reason: null,
+        },
+      },
+    };
+    render(createElement(HumanizerResultCard, { result: excised }));
+    // 头部状态明确「已交付（已剔除 2 处无来源内容）」，成功终态
+    expect(
+      screen.getByRole("button", { name: /已交付（已剔除 2 处无来源内容）/ })
+    ).toBeTruthy();
+    // 折叠状态头部 pill 如实显示移除条数
+    expect(screen.getByRole("status").textContent).toContain("已剔除 2 处");
+    // 剔除交付仍是成功交付：最终正文可复制（只复制正文，不混入说明）
+    fireEvent.click(screen.getByRole("button", { name: "复制最终正文" }));
+    await vi.waitFor(() => {
+      expect(clipMock).toHaveBeenCalledWith(
+        "光合作用是植物把光能转化为化学能的过程。"
+      );
+    });
+    // 展开后展示移除说明分区与条目类别（无来源/假设）
+    fireEvent.click(screen.getByRole("button", { name: /已交付（已剔除/ }));
+    const excisionSection = screen.getByTestId("humanizer-excision");
+    expect(excisionSection.textContent).toContain("已移除 2 处无来源/未授权内容");
+    expect(excisionSection.textContent).toContain("无来源新增 claim");
+    expect(excisionSection.textContent).toContain("显式假设");
+    // 未交付态展示不变：无 error 详情
+    expect(screen.queryByTestId("humanizer-error-detail")).toBeNull();
+  });
+
   it("灰度开关开启时新投影也按旧版结果展示", () => {
     window.localStorage.setItem("bridges:article-projection:legacy", "1");
     render(createElement(HumanizerResultCard, { result: cleanResult() }));

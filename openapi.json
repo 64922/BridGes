@@ -26553,6 +26553,68 @@
         "title": "ArticleEvidenceItem",
         "description": "一条证据风险/变化项（确定性投影自 EvidenceSafeReport）。\n\nkind 区分：risk=默认模式风险项（正文保持原结论）；change=证据安全\n修订的实质变化；hold=材料不足/无法判定，保持原文待用户确认。"
       },
+      "ArticleExcisionItem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "稳定失败码（审计用）。"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "中文类别说明。"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "中文说明（用户可见）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "category",
+          "note"
+        ],
+        "title": "ArticleExcisionItem",
+        "description": "一条被剔除的违规条目（确定性投影自 FidelityFailure，不含正文）。"
+      },
+      "ArticleExcisionSummary": {
+        "properties": {
+          "removed_count": {
+            "type": "integer",
+            "title": "Removed Count",
+            "description": "移除的违规条目数。"
+          },
+          "removed_sentence_count": {
+            "type": "integer",
+            "title": "Removed Sentence Count",
+            "description": "剔除的句子数。"
+          },
+          "sentence_ratio": {
+            "type": "number",
+            "title": "Sentence Ratio",
+            "description": "剔除句数占原文句数比例（0-1）。"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleExcisionItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "被剔除的违规条目清单。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "removed_count",
+          "removed_sentence_count",
+          "sentence_ratio"
+        ],
+        "title": "ArticleExcisionSummary",
+        "description": "确定性句子级剔除摘要（Issue 02）：移除条数与条目类别，如实披露。\n\n只投影脱敏计数与失败码/类别，不包含被剔除的正文片段。"
+      },
       "ArticleFidelityItem": {
         "properties": {
           "code": {
@@ -37341,7 +37403,7 @@
               }
             ],
             "title": "Delivery Note",
-            "description": "部分交付的用户可见说明（如「已交付首稿，未完成修订」）；仅 ``delivery_status == partial`` 时非空。"
+            "description": "用户可见交付说明：部分交付（``delivery_status == partial``）为「已交付首稿，未完成修订」；已剔除交付（``excision`` 非空）为「已移除 N 处无来源/未授权内容」。"
           },
           "material_state": {
             "$ref": "#/components/schemas/ArticleMaterialState",
@@ -37404,6 +37466,17 @@
               }
             ],
             "description": "定向修订摘要（未修订为 None）。"
+          },
+          "excision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleExcisionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "确定性剔除摘要（未剔除为 None；Issue 02）。"
           },
           "evidence": {
             "items": {
@@ -38106,7 +38179,7 @@
           "final_state": {
             "type": "string",
             "title": "Final State",
-            "description": "终态：pending/deliver_revised/deliver_draft/stop_delivery。",
+            "description": "终态：pending/deliver_revised/deliver_draft/stop_delivery/excised_delivery（Issue 02：机械违规确定性剔除后交付成品）。",
             "default": "pending"
           },
           "skipped_reason": {
@@ -38120,6 +38193,36 @@
             ],
             "title": "Skipped Reason",
             "description": "未执行修订的原因（capability_disabled/call_limit_reached/user_stopped/budget_insufficient/model_error:<code>/recheck_failed）。"
+          },
+          "excision_attempted": {
+            "type": "boolean",
+            "title": "Excision Attempted",
+            "description": "是否尝试过确定性句子级剔除。",
+            "default": false
+          },
+          "excision_removed_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excision Removed Count",
+            "description": "剔除交付移除的违规条目数（未剔除为 None）。"
+          },
+          "excision_removed_sentences": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excision Removed Sentences",
+            "description": "剔除交付移除的句子数（未剔除为 None）。"
           }
         },
         "additionalProperties": false,
