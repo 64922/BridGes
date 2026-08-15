@@ -34,6 +34,7 @@ from pydantic import ValidationError
 
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
+from bridges.ai.errors import user_facing_model_error
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intake import assess_intake
@@ -463,18 +464,17 @@ def _contract(mode: ChatMode) -> ModeContract:
 STREAM_INTERRUPTED_MESSAGE = "连接中断，已保留已接收内容，可点击重试。"
 
 #: 稳定错误码 → 可操作中文提示（绝不输出供应商原文或调试字段）。
+#: Issue 03：模型调用类稳定码（rate_limit/transient/region_*/auth_error/
+#: provider_rejected/empty_response/... 与 client_error_<status> 形态）
+#: 以 ``bridges.ai.errors.MODEL_CALL_ERROR_MESSAGES_ZH`` 为唯一来源，
+#: 本表只保留聊天链路领域码。
 _ERROR_MESSAGES: dict[str, str] = {
-    "rate_limit": "请求过于频繁（已触发限流），请稍后重试。",
-    "transient": "连接中断或服务暂时不可用，请检查网络后重试。",
     # Issue 02：后台执行器失联且无恢复预算时的明确可重试终态。
     "generation_worker_lost": "生成进程意外退出，已保留已接收内容，可点击重试。",
-    "region_error": "无法连接 Qwen 服务，请检查网络后重试。",
-    "auth_error": "Qwen API Key 无效或已失效，请检查启动服务的全局百炼配置与权限。",
     "stream_interrupted": STREAM_INTERRUPTED_MESSAGE,
     "unregistered_capability": "核心对话能力未就绪，请稍后重试。",
     "capability_not_verified": "核心对话能力未通过验证，请检查启动服务的全局百炼配置与权限。",
     "no_adapter": "核心对话能力未就绪（缺少适配器），请检查服务配置。",
-    "provider_rejected": "供应商拒绝了本次请求，请稍后重试。",
     "internal_error": "生成过程出现内部错误，请重试。",
     "web_search_timeout": "联网搜索超时，请重试。",
     "web_search_rate_limit": "公网搜索请求过于频繁，请稍后重试。",
@@ -533,11 +533,16 @@ _ERROR_MESSAGES: dict[str, str] = {
 }
 
 #: 用户点击重试后有望成功的错误码（限流/瞬时故障/断流/内部错误）。
+#: Issue 03：region_dns/region_proxy/region_tls 与 region_error 同为
+#: 建连类失败，用户重试可能自愈（如 DNS/代理临时抖动）。
 _RETRYABLE_CODES = frozenset(
     {
         "rate_limit",
         "transient",
         "region_error",
+        "region_dns",
+        "region_proxy",
+        "region_tls",
         "stream_interrupted",
         # Issue 02：执行器失联收尸为可重试错误（用户点击重试创建新运行）。
         "generation_worker_lost",
@@ -586,10 +591,18 @@ _RETRYABLE_CODES = frozenset(
 
 
 def user_facing_error(error_code: str | None, fallback: str | None = None) -> str:
-    """稳定错误码 → 可操作中文提示；未知码用回退文案，绝不输出原文。"""
+    """稳定错误码 → 可操作中文提示；未知码用回退文案，绝不输出原文。
+
+    Issue 03：模型调用类稳定码（含 ``region_dns``/``region_proxy``/
+    ``region_tls`` 子码与 ``client_error_<status>`` 形态）统一委托
+    ``bridges.ai.errors.user_facing_model_error``——聊天与 image/video/
+    speech 使用同一映射源；供应商英文内部消息只在完全未映射时作为
+    回退保留，``client_error_*`` 不再漏英文。
+    """
     if error_code in _ERROR_MESSAGES:
         return _ERROR_MESSAGES[error_code]
-    return fallback or "生成过程出现内部错误，请重试。"
+    default = fallback or "生成过程出现内部错误，请重试。"
+    return user_facing_model_error(error_code, default)
 
 
 def error_is_retryable(error_code: str | None) -> bool:

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import socket
+import ssl
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from httpx import USE_CLIENT_DEFAULT
@@ -56,6 +58,63 @@ def _client_error_message(noun: str, response: httpx.Response) -> str:
 def _with_upstream_error(message: str, response: httpx.Response) -> str:
     upstream = _upstream_error_message(response)
     return f"{message} {upstream}" if upstream else message
+
+
+def classify_connect_error(exc: httpx.ConnectError) -> Literal["dns", "proxy", "tls"] | None:
+    """把 ``httpx.ConnectError`` 细分为 ``dns``/``proxy``/``tls``；无法判定返回 None。
+
+    Issue 03：按异常因果链（``__cause__``/``__context__``）与消息特征判定，
+    覆盖 DNS 解析失败（``socket.gaierror``/getaddrinfo）、代理不可达/被拒
+    （``httpx.ProxyError``/代理字样）、TLS 证书校验失败（``ssl`` 错误）；
+    其余（连接被拒/重置等）返回 None，由调用方回落 ``region_error``。
+    返回值与 ``adapters.REGION_ERROR_SUB_CODES`` 白名单一致。
+    """
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    for cause in chain:
+        if isinstance(cause, httpx.ProxyError):
+            return "proxy"
+        if isinstance(cause, ssl.SSLCertVerificationError):
+            return "tls"
+        if isinstance(cause, ssl.SSLError):
+            return "tls"
+        if isinstance(cause, socket.gaierror):
+            return "dns"
+    # 消息特征回退：普通 OSError（非 gaierror）等平台差异靠整条因果链的
+    # 消息文本判定（如 "Temporary failure in name resolution"）。
+    text = " ".join(str(cause) for cause in chain).lower()
+    if "proxy" in text or "407" in text or "tunnel" in text:
+        return "proxy"
+    if (
+        "getaddrinfo" in text
+        or "name or service not known" in text
+        or "nodename nor servname" in text
+        or "temporary failure in name resolution" in text
+        or "errno -2" in text
+        or "errno 11001" in text
+        or "failed to resolve" in text
+        or ("dns" in text and ("failed" in text or "error" in text))
+    ):
+        return "dns"
+    if "certificate" in text or "ssl" in text or "tls" in text:
+        return "tls"
+    return None
+
+
+def qwen_base_url_host(workspace_id: str | None, region: str) -> str:
+    """区域 OpenAI-compatible Base URL 的主机名（单一来源）。
+
+    Issue 03：启动连通性自检（``bridges.ai.startup_check``）复用同一
+    主机名计算做 DNS 预检，避免两处形态规则漂移。
+    """
+    if workspace_id:
+        return f"{workspace_id}.{region}.maas.aliyuncs.com"
+    return "dashscope.aliyuncs.com"
 
 
 def first_choice(response_body: dict[str, Any]) -> dict[str, Any]:
@@ -163,13 +222,9 @@ class QwenApiClient:
 
         If a workspace id is configured, use the business-space regional endpoint.
         Otherwise fall back to the public DashScope compatible endpoint.
+        主机名形态与启动自检共享同一计算（``qwen_base_url_host``）。
         """
-        if self._workspace_id:
-            return (
-                f"https://{self._workspace_id}.{self._region}.maas.aliyuncs.com"
-                "/compatible-mode/v1"
-            )
-        return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        return f"https://{qwen_base_url_host(self._workspace_id, self._region)}/compatible-mode/v1"
 
     @property
     def tts_base_url(self) -> str:
@@ -251,8 +306,15 @@ class QwenApiClient:
                         ) from exc
         except httpx.TimeoutException as exc:
             raise TransientError(f"Qwen stream timeout: {exc}") from exc
+        except httpx.ProxyError as exc:
+            raise RegionError(
+                f"Qwen stream proxy unreachable: {exc}", sub_code="proxy"
+            ) from exc
         except httpx.ConnectError as exc:
-            raise RegionError(f"Qwen stream regional endpoint unreachable: {exc}") from exc
+            raise RegionError(
+                f"Qwen stream regional endpoint unreachable: {exc}",
+                sub_code=classify_connect_error(exc),
+            ) from exc
         except httpx.NetworkError as exc:
             raise TransientError(f"Qwen stream network error: {exc}") from exc
         except httpx.HTTPError as exc:
@@ -352,8 +414,15 @@ class QwenApiClient:
             response = self._client.get(url, headers=headers)
         except httpx.TimeoutException as exc:
             raise TransientError(f"{noun} request timeout: {exc}") from exc
+        except httpx.ProxyError as exc:
+            raise RegionError(
+                f"{noun} proxy unreachable: {exc}", sub_code="proxy"
+            ) from exc
         except httpx.ConnectError as exc:
-            raise RegionError(f"{noun} endpoint unreachable: {exc}") from exc
+            raise RegionError(
+                f"{noun} endpoint unreachable: {exc}",
+                sub_code=classify_connect_error(exc),
+            ) from exc
         except httpx.NetworkError as exc:
             raise TransientError(f"{noun} network error: {exc}") from exc
         except httpx.HTTPError as exc:
@@ -430,8 +499,15 @@ class QwenApiClient:
             )
         except httpx.TimeoutException as exc:
             raise TransientError(f"{noun} request timeout: {exc}") from exc
+        except httpx.ProxyError as exc:
+            raise RegionError(
+                f"{noun} proxy unreachable: {exc}", sub_code="proxy"
+            ) from exc
         except httpx.ConnectError as exc:
-            raise RegionError(f"{noun} regional endpoint unreachable: {exc}") from exc
+            raise RegionError(
+                f"{noun} regional endpoint unreachable: {exc}",
+                sub_code=classify_connect_error(exc),
+            ) from exc
         except httpx.NetworkError as exc:
             raise TransientError(f"{noun} network error: {exc}") from exc
         except httpx.HTTPError as exc:
@@ -519,8 +595,15 @@ class QwenApiClient:
             )
         except httpx.TimeoutException as exc:
             raise TransientError(f"{noun} request timeout: {exc}") from exc
+        except httpx.ProxyError as exc:
+            raise RegionError(
+                f"{noun} proxy unreachable: {exc}", sub_code="proxy"
+            ) from exc
         except httpx.ConnectError as exc:
-            raise RegionError(f"{noun} endpoint unreachable: {exc}") from exc
+            raise RegionError(
+                f"{noun} endpoint unreachable: {exc}",
+                sub_code=classify_connect_error(exc),
+            ) from exc
         except httpx.NetworkError as exc:
             raise TransientError(f"{noun} network error: {exc}") from exc
         except httpx.HTTPError as exc:

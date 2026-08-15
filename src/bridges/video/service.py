@@ -31,6 +31,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from bridges.ai.lock_scrub import scrub_lock_text
+from bridges.ai.errors import user_facing_model_error
 from bridges.ai.model_gateway import ModelGateway
 from bridges.chat.repository import ConversationRepository
 from bridges.contracts.ai import ModelCallResult, ModelCallStatus
@@ -93,15 +94,11 @@ _DESCRIPTION_PROMPT_SUMMARY = 80
 #: 投影与前端据此隐藏重试入口。
 _PERMANENT_FAILURE_CODES = {"empty_result"}
 
-#: 稳定错误码 → 可操作中文提示（GQ-04：与主对话/语音/图片同源，指向
-#: 服务运行配置或稍后重试；只收录视频链路实际可能产生的供应商错误分类，
-#: 未命中的错误码回退网关原始消息，与 chat/turn.py 的 user_facing_error
-#: 语义一致，不伪造分类）。
+#: 稳定错误码 → 可操作中文提示（GQ-04：与主对话/语音/图片同源；模型
+#: 调用类稳定码以 ``bridges.ai.errors.MODEL_CALL_ERROR_MESSAGES_ZH`` 为
+#: 唯一来源，本表只保留视频链路特有码；未命中的错误码回退网关原始消息，
+#: 与 chat/turn.py 的 user_facing_error 语义一致，不伪造分类）。
 _USER_FACING_ERRORS: dict[str, str] = {
-    "rate_limit": "请求过于频繁（已触发限流），请稍后重试。",
-    "transient": "连接中断或服务暂时不可用，请检查网络后重试。",
-    "region_error": "无法连接 Qwen 服务，请检查网络后重试。",
-    "auth_error": "Qwen API Key 无效或已失效，请检查启动服务的全局百炼配置与权限。",
     "capability_not_verified": "视频能力未通过验证，请检查启动服务的全局百炼配置与权限。",
 }
 
@@ -111,13 +108,15 @@ def _user_facing_error(
 ) -> str:
     """把网关错误码折叠为面向用户的中文说明。
 
-    ``fallback_message`` 是网关返回的原始消息（可能为供应商英文原文），
-    只在映射未命中时保留，保证分类错误仍给出可读中文。
+    先查视频链路特有码，再委托共享映射（``region_*`` 子码与
+    ``client_error_<status>`` 均在此命中）；``fallback_message`` 是网关
+    返回的原始消息（可能为供应商英文原文），只在全部映射未命中时保留，
+    保证分类错误仍给出可读中文。
     """
     mapped = _USER_FACING_ERRORS.get(error_code or "")
     if mapped is not None:
         return mapped
-    return fallback_message or default_message
+    return user_facing_model_error(error_code, fallback_message or default_message)
 
 
 class _CancelledRaceError(Exception):

@@ -65,11 +65,27 @@ class TransientError(AdapterError):
         super().__init__(code="transient", message=message, retryable=True)
 
 
-class RegionError(AdapterError):
-    """Region misconfiguration or regional unavailability."""
+#: RegionError 支持的连接失败子类（Issue 03；由
+#: ``qwen_client.classify_connect_error`` 产出，``RegionError`` 构造时
+#: 归一化——白名单外的值回落 ``region_error``，code 与 sub_code 恒一致）。
+REGION_ERROR_SUB_CODES: frozenset[str] = frozenset({"dns", "proxy", "tls"})
 
-    def __init__(self, message: str = "Region error.") -> None:
-        super().__init__(code="region_error", message=message, retryable=False)
+
+class RegionError(AdapterError):
+    """Region misconfiguration or regional unavailability.
+
+    Issue 03：``sub_code`` 细分连接失败原因（``dns``/``proxy``/``tls``），
+    code 相应为 ``region_dns``/``region_proxy``/``region_tls``；无法判定
+    时 ``sub_code=None`` 且 code 回落 ``region_error``。网关对全部
+    ``region_*`` 码语义不变：立即 BLOCKED、不 fallback（未命中可重试集
+    即 BLOCKED，见 ``ModelGateway._lock_status_for_code``）。
+    """
+
+    def __init__(self, message: str = "Region error.", *, sub_code: str | None = None) -> None:
+        sub_code = sub_code if sub_code in REGION_ERROR_SUB_CODES else None
+        code = f"region_{sub_code}" if sub_code is not None else "region_error"
+        super().__init__(code=code, message=message, retryable=False)
+        self.sub_code = sub_code
 
 
 class AuthError(AdapterError):
