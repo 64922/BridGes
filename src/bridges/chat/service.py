@@ -140,6 +140,11 @@ from bridges.web_search.service import WebSearchService
 #: 由首条用户消息推导对话标题的最大长度。
 _TITLE_MAX = 24
 
+#: Issue 01 缺陷 b：用户手动重试（任务输入已保留）视为新一轮写作预算——
+#: 重置持久化的写作调用计数；单轮内 2 次上限不变。关闭该开关恢复旧语义
+#: （重试沿用计数，用尽时稳定拒绝），供灰度回滚。
+RETRY_RESETS_WRITING_BUDGET = True
+
 
 def _started_event_payload(
     *,
@@ -1711,14 +1716,24 @@ class ChatService:
         # Issue 05：重试沿用旧尝试的写作调用计数与已产出正文（持久运行状态
         # 原子记录；服务重启不能重新获得修订额度）。旧尝试正文缺失时退回
         # 该尝试消息的 content 列（草稿已按 Issue 07 语义持久化）。
-        humanizer_recovery = (0, None)
-        for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
-            recovered_count, recovered_text = humanizer_recovery_state(previous_attempt)
-            if recovered_count >= 1:
-                if not recovered_text and previous_attempt.content:
-                    recovered_text = previous_attempt.content
-                humanizer_recovery = (recovered_count, recovered_text)
-                break
+        # Issue 01 缺陷 b：用户手动重试视为新一轮写作预算——重置持久化的
+        # 写作调用计数（单轮内 2 次上限不变；开关可回滚），重试后不再直接
+        # 撞 writing_call_limit_reached。
+        humanizer_recovery: tuple[int, str | None] = (0, None)
+        if RETRY_RESETS_WRITING_BUDGET:
+            for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
+                # 只重置计数与正文：新一轮预算从 0 开始，草稿重新生成
+                if humanizer_recovery_state(previous_attempt)[0] >= 1:
+                    humanizer_recovery = (0, None)
+                    break
+        else:
+            for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
+                recovered_count, recovered_text = humanizer_recovery_state(previous_attempt)
+                if recovered_count >= 1:
+                    if not recovered_text and previous_attempt.content:
+                        recovered_text = previous_attempt.content
+                    humanizer_recovery = (recovered_count, recovered_text)
+                    break
         mode = ChatMode(record.mode)
         route = capability_route_from(owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None

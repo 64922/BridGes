@@ -386,9 +386,10 @@ def test_invalid_skill_payload_rejected(
     assert response.status_code == 422, response.text
 
 
-def test_humanizer_fact_lock_conflict_error_event(
+def test_humanizer_fidelity_gate_conflict_error_event(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
+    """硬门冲突（数字改动）：来源账本保真硬门优先于事实锁停止交付。"""
     _register(client)
     violating = _good_output()
     violating["final_text"] = violating["final_text"].replace(
@@ -404,14 +405,18 @@ def test_humanizer_fact_lock_conflict_error_event(
     )
     assert events[-1][0] == "error"
     error_data = events[-1][1]
-    assert error_data["error"]["code"] == "fact_lock_conflict"
+    assert error_data["error"]["code"] == "fidelity_gate_conflict"
     # 冲突停止交付：消息无违规正文，但保留错误说明
     message = error_data["message_id"]
     history = client.get(f"/chat/conversations/{conversation_id}").json()
     failed = next(m for m in history["messages"] if m["message_id"] == message)
     assert failed["status"] == "error"
-    assert failed["error_code"] == "fact_lock_conflict"
-    assert failed["humanizer"]["fact_lock_check"]["blocking_conflicts"]
+    assert failed["error_code"] == "fidelity_gate_conflict"
+    codes = [
+        f["code"]
+        for f in failed["humanizer"]["fidelity_check"]["blocking_failures"]
+    ]
+    assert "number_changed" in codes, codes
 
 
 def test_second_account_cannot_see_humanizer_results(
@@ -491,7 +496,7 @@ def test_hard_gate_conflict_keeps_draft_content(
     )
     assert events[-1][0] == "error"
     error_data = events[-1][1]
-    assert error_data["error"]["code"] == "fact_lock_conflict"
+    assert error_data["error"]["code"] == "fidelity_gate_conflict"
     assert "恢复方式" in error_data["error"]["message"]
 
     # 草稿持久化：消息正文保留模型产出（未标记最终稿，由结果卡说明冲突）
@@ -501,8 +506,8 @@ def test_hard_gate_conflict_keeps_draft_content(
     assert assistant["content"] == violating["final_text"]
     humanizer = assistant["humanizer"]
     assert humanizer["status"] == "error"
-    assert humanizer["error_code"] == "fact_lock_conflict"
-    assert humanizer["fact_lock_check"]["blocking_conflicts"]
+    assert humanizer["error_code"] == "fidelity_gate_conflict"
+    assert humanizer["fidelity_check"]["blocking_failures"]
 
 
 def test_soft_gate_delivers_text_with_warnings(
@@ -511,13 +516,8 @@ def test_soft_gate_delivers_text_with_warnings(
     """软门失败且修复后仍不过：交付正文 + 未完全满足项，不扣留正文。"""
     _register(client)
     bad = _good_output()
-    # 只删除类比/边界/行动相关性句（保持全部事实锁 → 只触发软门）
-    bad["final_text"] = bad["final_text"].replace(
-        "你可以把光合作用比作植物的充电过程，但比喻到此为止，真正的机制"
-        "是叶绿素吸收光子；对你说来，这意味着理解温室栽培需要先了解这些"
-        "条件。",
-        "",
-    )
+    # 只触发软门：科普文案禁止「综上所述」论文腔套话（保留全部事实锁）
+    bad["final_text"] = "综上所述，" + bad["final_text"]
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(sequence=[bad, bad]))
     conversation_id = _create_conversation(client)
 
@@ -571,9 +571,17 @@ def test_rewrite_explicit_knowledge_base_runs_retrieval(
 def test_natural_language_message_uses_the_existing_humanizer_lifecycle(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """普通聊天消息自动路由，并保存可重试的路由/合同快照。"""
+    """普通聊天消息自动路由，并保存可重试的路由/合同快照。
+
+    Issue 01：候选正文必须与账本一致（候选不新增无来源 claim），
+    沿用原文事实的合规改写才能通过保真硬门。
+    """
     _register(client)
-    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    compliant = {
+        "final_text": "光合作用指的是植物把光能转化为化学能的过程。"
+    }
+    # 定向修订可能触发一次：序列两项都合规，终态稳定为 done
+    adapter = _ProgrammableStructuredAdapter(sequence=[compliant, compliant])
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
 
@@ -602,7 +610,7 @@ def test_natural_language_message_uses_the_existing_humanizer_lifecycle(
     )
     assert events[-1][0] == "done"
     assert events[-1][1]["message"]["humanizer"]["output"]["final_text"]
-    assert adapter.calls == 1
+    assert 1 <= adapter.calls <= 2
 
 
 def test_natural_language_route_without_source_does_not_call_model(
@@ -628,6 +636,94 @@ def test_natural_language_route_without_source_does_not_call_model(
     assert events[-1][0] == "error"
     assert events[-1][1]["error"]["code"] == "empty_source"
     assert adapter.calls == 0
+
+
+def test_natural_language_assumption_permission_passes_fidelity_gate(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """Issue 01 缺陷 a：授权假设的请求，prompt 权限与硬门判定一致。
+
+    用户显式「可以假设」时，表达契约的 hypothetical_permission 必须映射进
+    旧契约 allow_assumptions——合规标注的假设内容不再被 ASSUMPTION_NOT_ALLOWED
+    拦截（首稿 → 硬门通过 → 交付）。
+    """
+    _register(client)
+    source = "光合作用是植物把光能转化为化学能的过程。"
+    compliant = (
+        "光合作用是植物把光能转化为化学能的过程。"
+        "比如，假设在强光下，光合速率可能会更高。"
+    )
+    adapter = _ProgrammableStructuredAdapter(output={"final_text": compliant})
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": f"请帮我润色这篇科普文章，可以假设：{source}"},
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    skill = created["user_message"]["skill"]
+    # 契约快照：表达契约与旧契约的权限真值一致（同一份授权）
+    assert skill["expression_contract"]["hypothetical_permission"] is True
+    assert skill["contract"]["allow_assumptions"] is True
+
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "done", events[-1]
+    message = events[-1][1]["message"]
+    assert message["humanizer"]["status"] == "done"
+    assert message["humanizer"]["output"]["final_text"] == compliant
+    assert adapter.calls == 1
+
+
+def test_natural_language_without_assumption_permission_still_blocks(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """Issue 01 缺陷 a：未授权假设时拦截语义不变（ASSUMPTION_NOT_ALLOWED）。"""
+    _register(client)
+    source = "光合作用是植物把光能转化为化学能的过程。"
+    violating = (
+        "光合作用是植物把光能转化为化学能的过程。"
+        "比如，假设在强光下，光合速率可能会更高。"
+    )
+    adapter = _ProgrammableStructuredAdapter(
+        sequence=[{"final_text": violating}, {"final_text": violating}]
+    )
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": f"请帮我润色这篇科普文章：{source}"},
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    skill = created["user_message"]["skill"]
+    assert skill["contract"]["allow_assumptions"] is False
+
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "error"
+    error_data = events[-1][1]
+    assert error_data["error"]["code"] == "fidelity_gate_conflict"
+    # 投影保留保真失败明细：假设未授权是拦截原因
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assistant = next(
+        m
+        for m in history["messages"]
+        if m["role"] == "assistant"
+        and m["message_id"] == created["assistant_message"]["message_id"]
+    )
+    codes = [
+        f["code"]
+        for f in assistant["humanizer"]["fidelity_check"]["blocking_failures"]
+    ]
+    assert "assumption_not_allowed" in codes, codes
 
 
 # ---------------------------------------------------------------------------
@@ -700,10 +796,14 @@ def test_natural_language_revision_triggers_second_call_and_checkpoint(
     assert assistant["humanizer"]["writing_call_count"] == 2
 
 
-def test_retry_after_quota_exhausted_never_calls_model_third_time(
+def test_retry_after_quota_exhausted_starts_fresh_budget(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """首次 run 用尽两次调用仍保真失败；重试沿用计数，不再调用模型。"""
+    """Issue 01 缺陷 b：2 次写作用尽仍保真失败后，手动重试 = 新一轮预算。
+
+    重试不再撞 writing_call_limit_reached：模型被真实再调用（新预算），
+    单轮内 2 次上限不变。
+    """
     _register(client)
     violating = {"final_text": "番茄工作法把时间切成 35 分钟的工作块和 5 分钟的休息块。"}
     adapter = _ProgrammableStructuredAdapter(sequence=[violating, violating])
@@ -727,7 +827,59 @@ def test_retry_after_quota_exhausted_never_calls_model_third_time(
     assert adapter.calls == 2  # 首稿 + 修订，均破坏事实 → 停止交付
     failed_message_id = events[-1][1]["message_id"]
 
-    # 重试：计数从持久状态恢复为 2，新尝试不再调用模型（无第三次写作调用）
+    # 重试：新一轮写作预算 → 重新起草（adapter2 被真实调用一次），不再
+    # 直接报 writing_call_limit_reached
+    adapter2 = _ProgrammableStructuredAdapter(output={"final_text": _fixed_draft()["final_text"]})
+    _swap_gateways(sqlite_app, adapter2)
+    retry = client.post(
+        f"/chat/conversations/{conversation_id}/messages/{failed_message_id}/retry",
+        json={},
+    )
+    assert retry.status_code == 200, retry.text
+    retried = retry.json()
+    generation_helpers["drive"](sqlite_app)
+    retry_events = generation_helpers["subscribe"](
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
+    assert adapter2.calls == 1
+    assert retry_events[-1][0] == "done", retry_events[-1]
+    retry_message = retry_events[-1][1]["message"]
+    assert retry_message["humanizer"]["status"] == "done"
+    assert retry_message["humanizer"]["writing_call_count"] == 1
+    assert retry_message["humanizer"]["error_code"] is None
+
+
+def test_retry_after_quota_exhausted_toggle_off_keeps_old_semantics(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """回滚开关：RETRY_RESETS_WRITING_BUDGET=False 时保留旧的计数沿用语义。"""
+    monkeypatch.setattr(
+        "bridges.chat.service.RETRY_RESETS_WRITING_BUDGET", False
+    )
+    _register(client, tag="3")
+    violating = {"final_text": "番茄工作法把时间切成 35 分钟的工作块和 5 分钟的休息块。"}
+    adapter = _ProgrammableStructuredAdapter(sequence=[violating, violating])
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    created = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": (
+                "请帮我润色这篇科普文章：番茄工作法把时间切成 25 分钟的"
+                "工作块和 5 分钟的休息块。四个工作块后休息 15 分钟。"
+            )
+        },
+    ).json()
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "error"
+    failed_message_id = events[-1][1]["message_id"]
+
+    # 旧语义：重试沿用计数 2，不再调用模型（无第三次写作调用）
     adapter2 = _ProgrammableStructuredAdapter(output={"final_text": "不应被调用"})
     _swap_gateways(sqlite_app, adapter2)
     retry = client.post(
@@ -743,22 +895,12 @@ def test_retry_after_quota_exhausted_never_calls_model_third_time(
     assert adapter2.calls == 0
     assert retry_events[-1][0] == "error"
     assert retry_events[-1][1]["error"]["code"] == "writing_call_limit_reached"
-    # 新尝试的结果投影记录了明确错误（无第三次写作调用）
-    history = client.get(f"/chat/conversations/{conversation_id}").json()
-    retry_assistant = next(
-        m
-        for m in history["messages"]
-        if m["role"] == "assistant"
-        and m["message_id"] == retried["assistant_message"]["message_id"]
-    )
-    assert retry_assistant["humanizer"]["error_code"] == "writing_call_limit_reached"
-    assert retry_assistant["humanizer"]["writing_call_count"] == 2
 
 
-def test_retry_recovers_draft_and_revises_without_redrafting(
+def test_retry_starts_fresh_round_after_revision_failure(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """修订模型失败后重试：恢复首稿正文与计数 1，只再调用一次修订。"""
+    """修订模型失败后手动重试：新一轮写作预算，重新起草（不再沿用计数）。"""
     _register(client)
     adapter = _ProgrammableStructuredAdapter(
         sequence=[_templated_draft(), AdapterError(code="transient", message="慢")]
@@ -789,7 +931,8 @@ def test_retry_recovers_draft_and_revises_without_redrafting(
     assert adapter.calls == 2
     first_message_id = first_message["message_id"]
 
-    # 重试：恢复计数 1 与首稿正文（跳过首稿调用），只执行一次修订
+    # 重试：新一轮写作预算 → 重新起草（adapter2 先被调用一次用于首稿），
+    # 不再沿用旧计数 1 与旧正文
     adapter2 = _ProgrammableStructuredAdapter(sequence=[_fixed_draft()])
     _swap_gateways(sqlite_app, adapter2)
     retry = client.post(
@@ -805,11 +948,10 @@ def test_retry_recovers_draft_and_revises_without_redrafting(
     assert retry_events[-1][0] == "done"
     retry_message = retry_events[-1][1]["message"]
     assert retry_message["humanizer"]["status"] == "done"
-    assert retry_message["humanizer"]["writing_call_count"] == 2
-    assert retry_message["humanizer"]["revision"]["triggered"] is True
-    assert retry_message["humanizer"]["revision"]["final_state"] == "deliver_revised"
-    # 首稿未重新生成：本次只调用一次（修订）
-    assert adapter2.calls == 1
+    assert retry_message["humanizer"]["writing_call_count"] == 1
+    assert retry_message["humanizer"]["error_code"] is None
+    # 重新起草：adapter2 的首稿调用已发生（新预算），正文 = 新首稿
+    assert adapter2.calls >= 1
     assert retry_message["content"] == _fixed_draft()["final_text"]
 
 

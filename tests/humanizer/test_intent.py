@@ -101,6 +101,49 @@ def test_missing_source_stays_on_humanizer_route_without_generation_input() -> N
     assert decision.skill_input.contract.audience == "普通读者"
 
 
+# ---------------------------------------------------------------------------
+# Issue 01 缺陷 a：表达契约权限必须映射进旧契约（prompt 与硬门读同一份真值）
+# ---------------------------------------------------------------------------
+
+
+def test_route_maps_hypothetical_permission_into_legacy_contract() -> None:
+    """用户授权假设时，旧契约 allow_assumptions 必须同步为 True。"""
+    decision = route_humanizer_message(
+        "请帮我润色这篇文章，可以假设：原文是：光合作用是植物把光能转成化学能。"
+    )
+
+    assert decision is not None
+    assert decision.skill_input.expression_contract is not None
+    assert decision.skill_input.expression_contract.hypothetical_permission is True
+    assert decision.skill_input.contract.allow_assumptions is True
+
+
+def test_route_maps_first_person_permission_into_legacy_contract() -> None:
+    """用户授权第一人称时，旧契约 allow_first_person 必须同步为 True。"""
+    decision = route_humanizer_message(
+        "请帮我润色这篇文章，可以用我的口吻：原文是：光合作用是植物把光能转成化学能。"
+    )
+
+    assert decision is not None
+    assert decision.skill_input.expression_contract is not None
+    assert decision.skill_input.expression_contract.first_person_permission is True
+    assert decision.skill_input.contract.allow_first_person is True
+
+
+def test_route_keeps_permissions_off_without_explicit_grant() -> None:
+    """未授权时新旧契约权限字段都保持 False（语义不变）。"""
+    decision = route_humanizer_message(
+        "请帮我润色这篇文章：原文是：光合作用是植物把光能转成化学能。"
+    )
+
+    assert decision is not None
+    assert decision.skill_input.expression_contract is not None
+    assert decision.skill_input.expression_contract.hypothetical_permission is False
+    assert decision.skill_input.expression_contract.first_person_permission is False
+    assert decision.skill_input.contract.allow_assumptions is False
+    assert decision.skill_input.contract.allow_first_person is False
+
+
 def test_explicit_knowledge_base_reference_enables_only_exact_evidence_path() -> None:
     decision = route_humanizer_message(
         "请用当前账户知识库文档「实验报告.md」帮我润色这篇报告。"

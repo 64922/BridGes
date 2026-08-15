@@ -42,11 +42,13 @@ from bridges.contracts.humanizer import (
 from bridges.skills.humanizer.factlock import (
     _CITATION_RE,
     _FORMULA_RE,
+    _NUMBER_CORE,
     _NUMBER_UNIT_RE,
     _QUALIFIER_RE,
     _RELATION_OPPOSITES,
     _RELATION_RE,
     _STRENGTH_RE,
+    _UNIT_TOKENS,
     _canonical_formula,
     _canonical_number,
     _canonical_text_key,
@@ -67,6 +69,16 @@ def _sha256(value: str) -> str:
 # ---------------------------------------------------------------------------
 # 提取正则（统一在 _normalize_text 之后运行）
 # ---------------------------------------------------------------------------
+
+#: Issue 01 缺陷 c：数字+单位紧邻汉字/字母（如「Transformer2017年」「团队2017年」）
+#: 时，factlock 的严格 ``_NUMBER_UNIT_RE`` 因左侧 lookbehind 拒绝匹配，导致
+#: 「2017 年/2017年」空白变体提取不一致；宽松变体去掉左侧 lookbehind（只拒绝
+#: 数字紧邻，避免截断更长数字），仍保留单位与右侧边界，保证规范化键对空白
+#: 与全半角变体稳定。
+_LOOSE_NUMBER_UNIT_RE = re.compile(
+    r"(?<![0-9])(" + _NUMBER_CORE + r")\s*(" + _UNIT_TOKENS + r")"
+    r"([A-Za-zμΩ°℃℉%0-9\-()/·（）\s]+)?(?![A-Za-z0-9])"
+)
 
 _URL_RE = re.compile(r"https?://[^\s，。；：、！？）)】」』“”\"']+")
 _CODE_BLOCK_RE = re.compile(r"```.+?```", re.DOTALL)
@@ -245,6 +257,15 @@ def _scan_items(text: str) -> list[_Item]:
         add("number", surface, match.start(), match.end(),
             key=_canonical_number(number) + "|" + _canonical_unit(unit))
     plain = _mask(plain, _NUMBER_UNIT_RE.finditer(plain))
+    # Issue 01 缺陷 c：数字+单位紧邻汉字/字母（如「Transformer2017年」）时
+    # 严格正则漏配，补充宽松扫描使「2017 年/2017年/２０１７年」键一致。
+    for match in _LOOSE_NUMBER_UNIT_RE.finditer(plain):
+        number, unit = match.group(1), match.group(2)
+        unit = (unit + (match.group(3) or "")).strip()
+        surface = f"{number} {unit}".strip()
+        add("number", surface, match.start(), match.end(),
+            key=_canonical_number(number) + "|" + _canonical_unit(unit))
+    plain = _mask(plain, _LOOSE_NUMBER_UNIT_RE.finditer(plain))
     for match in re.finditer(r"(?<![A-Za-z0-9一-鿿])\d+(?:\.\d+)?", plain):
         add("number", match.group(0), match.start(), match.end(),
             key=_canonical_number(match.group(0)))
