@@ -140,6 +140,100 @@ def test_compile_extracts_numbers_dates_and_units() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Issue 01 缺陷 c：数字+单位的规范化键对空白/全半角/紧邻变体稳定
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "original_variant",
+    [
+        "Transformer2017年谷歌团队提出注意力机制。",      # 紧邻字母（无空格）
+        "Transformer 2017年谷歌团队提出注意力机制。",     # 数字后紧邻单位
+        "Transformer2017 年谷歌团队提出注意力机制。",     # 数字前紧邻字母
+        "Transformer 2017 年谷歌团队提出注意力机制。",    # 标准空格变体
+        "Transformer２０１７年谷歌团队提出注意力机制。",   # 全角数字
+        "Transformer ２０１７ 年谷歌团队提出注意力机制。", # 全角 + 空格
+    ],
+)
+def test_year_number_ledger_keys_stable_across_whitespace_variants(
+    original_variant: str,
+) -> None:
+    """「2017 年/2017年/２０１７年」必须提取同一规范化键（2017|年）。"""
+    ledger = compile_source_ledger(original_variant)
+    entry = ledger.entries[0]
+    assert "2017|年" in entry.numbers, entry.numbers
+    assert "2017" in entry.dates, entry.dates
+
+
+@pytest.mark.parametrize(
+    ("original", "candidate"),
+    [
+        # 原文紧邻无空格，候选带空格（模型常见输出）：不得误判新增无来源
+        (
+            "Transformer2017年谷歌团队提出注意力机制。",
+            "Transformer 2017 年谷歌团队提出注意力机制。",
+        ),
+        # 原文带空格，候选紧邻无空格：不得误判数字被改动
+        (
+            "Transformer 2017 年谷歌团队提出注意力机制。",
+            "Transformer2017年谷歌团队提出注意力机制。",
+        ),
+        # 原文全角，候选半角空格
+        (
+            "Transformer２０１７年谷歌团队提出注意力机制。",
+            "Transformer 2017 年谷歌团队提出注意力机制。",
+        ),
+        # 原文半角，候选全角空格
+        (
+            "Transformer 2017 年谷歌团队提出注意力机制。",
+            "Transformer２０１７年谷歌团队提出注意力机制。",
+        ),
+    ],
+)
+def test_year_number_whitespace_variants_do_not_misjudge(
+    original: str, candidate: str
+) -> None:
+    """空白/全半角变体下，沿用原文年份不再误判 UNATTRIBUTED_CLAIM/NUMBER_CHANGED。"""
+    ledger = compile_source_ledger(original)
+    result = run_fidelity_check(ledger, candidate)
+    assert result.passed, [
+        (f.code, f.note) for f in result.blocking_failures
+    ]
+    assert not any(
+        f.code in (FidelityFailureCode.UNATTRIBUTED_CLAIM, FidelityFailureCode.NUMBER_CHANGED)
+        for f in result.blocking_failures
+    )
+
+
+@pytest.mark.parametrize(
+    "original",
+    [
+        # 生产场景：原文含「2017 年」，用户授权假设后合规候选应通过硬门。
+        # 空格变体在修复前即通过（基线不误判），紧邻字母/全角变体是修复
+        # 前真实误判 UNATTRIBUTED_CLAIM 的复现输入（Issue 01 缺陷 c）。
+        "Transformer 2017 年谷歌团队提出的注意力机制成为基础架构。",
+        "Transformer2017年谷歌团队提出的注意力机制成为基础架构。",
+        "Transformer２０１７年谷歌团队提出的注意力机制成为基础架构。",
+    ],
+)
+def test_user_scenario_year_number_with_assumption_passes(original: str) -> None:
+    """原文含「2017 年」类数字，授权假设后合规候选应通过硬门。"""
+    ledger = compile_source_ledger(original, primary_label="聊天内原文")
+    candidate = (
+        original
+        + "比如，假设这一机制继续演进，模型可能更高效。"
+    )
+    result = run_fidelity_check(ledger, candidate, allow_assumptions=True)
+    assert result.passed, [
+        (f.code, f.note) for f in result.blocking_failures
+    ]
+    assert not any(
+        f.code in (FidelityFailureCode.UNATTRIBUTED_CLAIM, FidelityFailureCode.NUMBER_CHANGED)
+        for f in result.blocking_failures
+    )
+
+
+# ---------------------------------------------------------------------------
 # 3. 保留检查：关键项破坏 → 硬门失败
 # ---------------------------------------------------------------------------
 

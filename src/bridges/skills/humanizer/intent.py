@@ -102,6 +102,12 @@ def route_humanizer_message(content: str) -> HumanizerRouteResult | None:
             else None
         ),
         knowledge_base_reference=knowledge_base_reference,
+        # Issue 01：表达契约的权限必须映射进旧契约——prompt 权限行读表达
+        # 契约（draft_compiler/revision_prompt），保真硬门读旧契约
+        # （service 的 allow_assumptions/allow_first_person），两份真值
+        # 不一致时用户授权会被硬门误拦（ASSUMPTION_NOT_ALLOWED）。
+        allow_assumptions=expression_contract.hypothetical_permission,
+        allow_first_person=expression_contract.first_person_permission,
     )
     route = HumanizerRouteDecision(
         source=HumanizerRouteSource.NATURAL_LANGUAGE,
