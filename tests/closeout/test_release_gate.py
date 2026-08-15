@@ -91,6 +91,12 @@ def _install_fake_probe(
     fake = _FakeTavilyClient(outcome)
     monkeypatch.setenv("BRIDGES_TAVILY_API_KEY", "tvly-probe-test-key")
     monkeypatch.setattr("bridges.closeout.release_gate.TavilySearchClient", fake)
+    # Issue 07：正文获取是真实探针的一部分；单元测试保持离线，替身默认
+    # 通过（真实正文获取路径由 MockTransport 测试单独覆盖）。
+    monkeypatch.setattr(
+        "bridges.closeout.release_gate._probe_web_body_fetch",
+        lambda _http, _key, _url: ("passed", None),
+    )
     return fake
 
 
@@ -236,6 +242,7 @@ def test_web_probe_passes_only_with_contract_matching_results(
     assert probe.checked_at
     assert probe.error_category is None
     assert probe.failure_class is None
+    assert probe.body_fetch == "passed"
     assert fake.constructed == [(8.0, False)]
 
 

@@ -2,6 +2,7 @@
 
 扫描测试日志、失败产物与验收报告，确认不含：
 - 高置信度秘密（sk-/AKIA/LTAI/PEM/键名关联赋值）；
+- Tavily Key（``tvly-`` 前缀，Issue 07 密钥泄漏硬门，ADR-0029）；
 - 用户消息正文与附件正文（按 e2e/closeout 确定性替身文案特征标记）。
 
 只输出命中位置（文件 + 行号 + 类型），绝不回显命中值本身。
@@ -10,7 +11,8 @@
 用法：
     .venv/Scripts/python.exe scripts/artifact_secret_scan.py [目标目录 ...]
 默认目标：.tmp/closeout-rounds/、test-results/、apps/web/test-results/
-与 .scratch/收尾/closeout-acceptance-report.md。
+与 .scratch/收尾/closeout-acceptance-report.md，以及发布门报告目录
+（.tmp/release-gate/、.tmp/authenticity-gate/）。
 """
 
 from __future__ import annotations
@@ -35,6 +37,10 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"""\s*[=:]\s*['"][^'"]{12,}['"]"""
         ),
     ),
+    # Issue 07：Tavily Key 形态（tvly- 前缀 + 至少 16 位字母数字）。
+    # 测试夹具中的假值（tvly-test-*、tvly-probe-test-key 等）含白名单标记
+    # 或连字符/短值，不会命中；真实 Key 为连续字母数字串。
+    ("tavily_key", re.compile(r"\btvly-[A-Za-z0-9]{16,}\b")),
 ]
 
 #: 白名单标记：值中含这些标记视为测试夹具或文档示例。
@@ -65,6 +71,9 @@ DEFAULT_TARGETS = [
     REPO_ROOT / "test-results",
     REPO_ROOT / "apps" / "web" / "test-results",
     REPO_ROOT / ".scratch" / "收尾" / "closeout-acceptance-report.md",
+    # Issue 07：发布门报告（真实 smoke 归档等脱敏证据）也纳入扫描。
+    REPO_ROOT / ".tmp" / "release-gate",
+    REPO_ROOT / ".tmp" / "authenticity-gate",
 ]
 
 

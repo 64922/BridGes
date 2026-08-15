@@ -65,15 +65,26 @@ BridGes start
 首次交互式启动的顺序是：使用已安装的 Python/Node/npm → 创建或读取本机配置 → 在
 `apps/web` 中按 `package-lock.json` 执行 `npm ci`（需要时）→ 执行
 `npm run build` 生成 `.next/standalone/server.js`（需要时）→ 隐藏询问一次
-Qwen API Key → 将 Key 保存到操作系统凭据库 → 获取数据目录单实例锁、执行
-数据库迁移并启动 **Web、API 与后台执行器**。Key 不写入仓库、`config.json`
-或 `.env`；后续启动会复用凭据库中的 Key，不再询问。
+Qwen API Key → 将 Key 保存到操作系统凭据库 → **再隐藏询问一次 Tavily API
+Key（通用网页搜索提供方，见 ADR-0029）** → 将 Key 保存到操作系统凭据库 →
+获取数据目录单实例锁、执行数据库迁移并启动 **Web、API 与后台执行器**。
+两类 Key 都不写入仓库、`config.json` 或 `.env`；后续启动会复用凭据库中的
+Key，不再询问。
 
 本机托管模式会把生成的 `BRIDGES_DATABASE_URL`、状态密钥文件路径等运行时
-配置注入 API/worker/scheduler 子进程；Web 构建和 Web 服务不会继承 Qwen Key。
-如果终端不是交互式 TTY，系统不会等待输入；只有在操作系统凭据库中也没有
-已保存 Key 时，才要求预先提供 `BRIDGES_QWEN_API_KEY` 或
-`BRIDGES_QWEN_API_KEY_FILE`。
+配置注入 API/worker/scheduler 子进程；Web 构建和 Web 服务不会继承 Qwen Key
+与 Tavily Key。如果终端不是交互式 TTY，系统不会等待输入；只有在操作系统
+凭据库中也没有已保存 Key 时，才要求预先提供 `BRIDGES_QWEN_API_KEY`（或
+`BRIDGES_QWEN_API_KEY_FILE`）与 `BRIDGES_TAVILY_API_KEY`（或
+`BRIDGES_TAVILY_API_KEY_FILE`）。
+
+Tavily Key 只用于通用网页搜索（学习模式联网、日常按需联网与健康探针）。
+**运行时缺 Tavily Key 不影响启动**：应用正常启动，联网搜索入口如实标注
+「未配置搜索凭据」，不伪装成功、不静默回退到其他提供方；缺 Qwen Key 才会
+启动失败关闭。（首次交互式安装的 Tavily 提示要求输入，留空会取消本次
+启动；已保存凭据或已配置环境变量的后续启动不再询问。）搜索限流（429）
+会进入冷却后重试，凭据无效（401/403）会给出检查 Tavily API Key 的中文
+提示；两类错误都不会在日志或界面中回显 Key 值。
 
 `BridGes start` 随后会：获取数据目录单实例锁 → 执行数据库迁移 → 启动 **Web、API 与后台执行器** →
 等待健康检查 → 输出本地电脑端访问地址。同一数据目录不能启动第二个实例
@@ -90,7 +101,9 @@ BridGes start --profile development
 ```
 
 显式 `production`/`development` 不执行本机托管初始化，也不会询问 Key；请在
-启动前设置 `BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE`，并在使用
+启动前设置 `BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE`，通用网页
+搜索提供方（Tavily）需要时另设 `BRIDGES_TAVILY_API_KEY` 或
+`BRIDGES_TAVILY_API_KEY_FILE`（缺 Tavily Key 不阻断启动），并在使用
 持久化数据库时设置 `BRIDGES_DATABASE_URL` 与 `BRIDGES_SECRET_KEY`（或对应
 文件引用）。容器继续使用显式生产配置。
 

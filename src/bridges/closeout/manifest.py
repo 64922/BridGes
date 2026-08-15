@@ -27,7 +27,10 @@ from typing import Any
 from bridges.ai.fixed_models import MODEL_BY_CAPABILITY
 
 #: 清单版本：任何分类、类别或覆盖范围的变更都必须受控递增。
-CAPABILITY_MANIFEST_VERSION = 1
+#: v2（Issue 07）：通用网页搜索收口——``tavily_web_search`` 唯一分类为
+#: ``external_non_qwen`` 且自带凭据（ADR-0029），发布门断言生产提供方
+#: 清单恰好只有 tavily。
+CAPABILITY_MANIFEST_VERSION = 2
 
 #: 稳定门禁错误码（Issue 17 Observability 合同）。
 UNCLASSIFIED_CAPABILITY = "unclassified_capability"
@@ -333,7 +336,11 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
         journey="Tavily 通用网页搜索",
         category=CapabilityCategory.EXTERNAL_NON_QWEN,
         chat_actions=("web_search",),
-        truth_contract="只访问 Tavily；失败后才允许另起真实聊天模型降级调用。",
+        truth_contract=(
+            "只访问 Tavily（ADR-0029）；自带凭据（tvly-，安装期收集），"
+            "不读取/不继承/不发送 Qwen Key；失败后才允许另起真实聊天模型"
+            "降级调用；缺 Key 时入口如实标注不可用，不静默回退其他提供方。"
+        ),
     ),
     CapabilityManifestEntry(
         id="arxiv_search",

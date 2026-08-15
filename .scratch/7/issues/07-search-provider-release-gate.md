@@ -1,6 +1,6 @@
 # Issue 07：搜索引擎切换收口与发布门
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Type: task
 
@@ -71,3 +71,13 @@ python -m pytest tests/closeout tests/contracts -q -p no:cacheprovider --basetem
 
 - 2026-08-14：本 issue 是本轮唯一发布门；波次 B 在 01–06 全部完成后执行。
 - 2026-08-14：DDG-only 冻结（第 6 轮决策 #2）由本轮决策 #1 正式取代，以此 issue 的 ADR 为准。
+- 2026-08-15：实现完成（分支 `07-search-provider-release-gate`，worktree `.tmp/issue07-search-provider-worktree`，conda 环境 `agent`）。要点：
+  - **ADR-0029 新增**：正式记录「通用网页搜索唯一生产提供方 = Tavily（自带 Key，安装期凭据库收集，运行合同 `BRIDGES_TAVILY_API_KEY(_FILE)`）」，废止 DDG-only 决策并注明取代关系与日期；DDG 代码**保留为测试夹具**（理由：`client.py` 承载共享检索工具仍被生产 Tavily 路径使用；DDG 合同测试作为冻结契约锚点防止复活；生产注册表永不注册、无静默 fallback）。ADR-0026/0028 加取代注记。
+  - **文档同步**：README 安装流程（Qwen Key → Tavily Key 依次询问、缺 Key 行为、限流/401 处置）、CONTEXT.md 新增「Tavily 搜索凭据」术语、three-journey runbook 更新为 Tavily 流程、新增 `docs/runbooks/search-provider-release-gate.md`。
+  - **清单与分类收口**：`CAPABILITY_MANIFEST_VERSION` 1→2；`tavily_web_search` 恰好一次且为 `external_non_qwen`（自带凭据、不继承 Qwen Key）；发布门新增 `production-search-provider` 断言（组合根构造 `TavilySearchClient`、主提供方常量 = tavily、默认配置无备用提供方、DDG 不登记）。
+  - **密钥泄漏硬门**：`artifact_secret_scan.py` 增加 `tvly-` 形态（`\btvly-[A-Za-z0-9]{16,}\b`）并纳入 `.tmp/release-gate`、`.tmp/authenticity-gate` 报告目录；发布门新增 `artifact-secret-scan`（子进程扫产物）与 `release-report-secret-scan`（进程内复核当前报告）两项硬门；`tests/security/test_secret_scan.py` 同步模式并排除 `.tmp`；顺带修复 main 基线既有问题（`authenticity_gate.py` 探针变量名 `token`→`marker_text`，避免仓库级扫描误报）。
+  - **真实 smoke（opt-in）**：`_probe_web` 搜索通过后追加最小成本真实正文获取（Tavily Extract 单 URL），`ProviderProbeEvidence.body_fetch` 三态归档；缺 Key/网络不可达 = `inconclusive` 不伪通过；`tests/web_search/test_tavily_smoke.py` 同步（搜索 + 正文获取都通过才计 passed）。
+  - **发布门总装**：`RELEASE_GATE_PYTHON_TESTS` 纳入金标路由（`test_golden_intent_routes.py`，Issue 03）与降级语义（`test_teaching_gate.py`、`test_issue03_learning_evidence_chat.py`，Issue 02——后者含「降级不写入学习进度」零进度断言）作为门禁组成部分执行；单命令 `python scripts/release_gate.py --real-probes --qwen-authenticity` 任一硬门失败非零退出，报告只含脱敏字段。
+  - **存储级密钥扫描**（代码审查后补充）：真实性门新增 `store-secret-scan`——对探针数据库的运行锁/消息/SSE 记录落库表（`model_run_locks`/`messages`/`mode_events`/`conversations`/`learning_progress`）做 Key 形态扫描，命中即 `secret_leak_in_store` 失败关闭。
+  - **docs/agents 同步说明**：`docs/agents/`（issue-tracker/triage-labels/domain）不包含搜索提供方描述，无内容可同步（domain.md 仅规定 CONTEXT.md/ADR 读取规则）；搜索相关描述已在 CONTEXT.md、README 与 runbooks 同步。
+  - **回归**：`tests/closeout`、`tests/web_search`、`tests/security`、`tests/learning/test_teaching_gate.py`、`tests/chat/test_golden_intent_routes.py` 等通过（79 项定向 + 发布门测试集 288 passed / 1 skipped）；全量测试套件相对 main 基线无新增失败（基线既有：2 个同名测试文件收集冲突、3 个退役邮件路由测试失败、runtime smoke 需 node_modules）。ruff 全绿；mypy 相对 main 基线无新增错误（worktree 环境下 104 项为 main 基线既有问题，baseline worktree 同输出，与本次改动无关）。

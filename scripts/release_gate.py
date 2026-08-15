@@ -1,13 +1,19 @@
-"""运行 Issue 09 三条旅程收尾发布门与 Issue 17 全功能 Qwen 真实性门。
+"""运行 Issue 09 三条旅程收尾发布门、Issue 07 搜索提供方发布门与
+Issue 17 全功能 Qwen 真实性门。
 
 用法：
 
 ```powershell
 python scripts/release_gate.py                          # 离线收尾门
-python scripts/release_gate.py --real-probes            # 收尾门 + 真实 DDG/arXiv 探针
+python scripts/release_gate.py --real-probes            # 收尾门 + 真实 Tavily/arXiv 探针
 python scripts/release_gate.py --real-probes --qwen-authenticity
     # 追加 Issue 17 真实性门（能力清单/静态扫描/组合/live suite/重启锁复查）
 ```
+
+Issue 07（ADR-0029）组成项随收尾门始终运行：生产提供方清单断言（恰好
+只有 tavily）、金标路由（Issue 03）与降级语义（Issue 02）测试、产物
+密钥扫描（``tvly-``/Qwen Key 形态）与发布报告进程内复核；``--real-probes``
+下的 Tavily 探针包含最小成本真实搜索 + 正文获取的三态 smoke。
 
 Issue 17 门禁只在该标志显式给出时运行；任一子门失败都以非零退出。
 """
