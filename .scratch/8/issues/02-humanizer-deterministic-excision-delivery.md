@@ -1,6 +1,6 @@
 # Issue 02：人味化确定性剔除交付——机械违规剔除后交付成品
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Type: task
 
@@ -82,3 +82,10 @@ python -m pytest tests/humanizer tests/chat/test_humanizer_chat.py tests/chat/te
 ## Comments
 
 - 2026-08-15：决策来自本轮 grilling #1（确定性剔除后交付成品）。设计要点：剔除粒度整句、零模型调用、破坏事实类永不剔除。
+- 2026-08-15：已实现并提交（分支 `08-humanizer-deterministic-excision-delivery`）。
+  - 确定性剔除模块 `src/bridges/skills/humanizer/excision.py`：按 finding 位置（归一化偏移映射回原文）定位违规条目所在句子并整句剔除，输出剔除稿与移除清单；`EXCISABLE_CODES` 四码 + `EXCISION_SENTENCE_RATIO_LIMIT=0.4` 阈值 + 空稿护栏 + `can_excise` 前提把关；零模型调用。
+  - 终态流程：表达契约路径修订后仍 blocking 且全部为机械可剔除类 → `_excise_candidate` 剔除 → 重跑同一版本全套检查 → 通过以 `excised_delivery` 终态交付（`delivery_note` 如实写明「已移除 N 处无来源/未授权内容」）；重检不通过/超阈值/空稿维持停止交付；旧显式 SKILL 路径语义一致。`EXCISION_DELIVERY_ENABLED` 开关回滚；审计新增 `excision_attempted`/`excision_removed_count`/`excision_removed_sentences` 与遥测 `excision_blocked`（剔除后仍拦截计数）。span 级 `ASSUMPTION_NOT_ALLOWED` 补充 location（不改规则与错误码）。
+  - 前端 `HumanizerResultCard`：已剔除交付显示「已交付（已剔除 N 处无来源内容）」状态、头部 pill 与「确定性剔除」分区（移除条数与条目类别），复制正常可用；未交付态展示不变。
+  - 文档：ADR-0027 追加 addendum（终态语义、护栏、回滚、新旧路径一致性与旧路径审计说明）。
+  - 测试：`tests/humanizer/test_excision.py`（15 条单测）、`tests/humanizer/test_article_excision_service.py`（9 条服务接线，含混合码/重检失败/阈值/开关/旧路径）、前端已剔除交付展示测试；既有语义更新 2 条（生成路径无来源数字 → 剔除交付；聊天未授权假设短稿因 50% 超阈值仍拦截）。回归：issue 建议命令 450 passed、2 skipped；`tests/chat` 全量无新增失败；web 单测 55 passed；ruff 无新增告警；mypy 相对基线无新增错误类别；openapi/generated.ts 已重新生成且 sync 测试通过。
+  - 已知取舍：剔除是终态前的确定性救援，与修订是否执行/跳过原因无关（含用户停止/预算不足），ADR addendum 已明确；旧显式 SKILL 路径无修订审计（`revision` 恒为 None），剔除交付经投影 `article.excision` 与遥测审计记录，语义一致。
