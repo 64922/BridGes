@@ -1,6 +1,6 @@
 # Issue 04：arXiv 搜索可靠性组合包——有界重试、陈旧缓存兜底与 worker 预热
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Type: task
 
@@ -76,3 +76,12 @@ python -m pytest tests/arxiv_mcp tests/chat/test_arxiv_search_chat.py tests/chat
 ## Comments
 
 - 2026-08-15：第 7 轮 Issue 05 的「轮内不自动重试」非目标经本轮 grilling #2 决策推翻，以有界（预算阈值门控）单重试为限，避免重回「超时→链式 429」形态——重试受节流间隔与冷却约束。
+- 2026-08-15（实现）：分支 `04-arxiv-retry-stale-cache-warmup` 经 worktree 实现并提交，验收自检全绿（见下）。实现要点：
+  - 重试在服务层围绕 HTTP 调用实现（`service.py` 有界尝试循环）：剩余预算 ≥ `ARXIV_RETRY_MIN_BUDGET_SECONDS`（5s）才重发；错误码集合 `{arxiv_timeout, arxiv_offline}`（超时/网络/5xx 瞬时类）；429/4xx/parse 不重试；重发前再次经 `ArxivThrottle.wait_for_request_slot`（不绕过节流最小间隔）；`attempt_count` 如实反映真实上游调用数。
+  - stale 兜底：`cache.py` 条目保留 `ARXIV_STALE_RETENTION_SECONDS`（24h）过期窗口，`get_stale` 只在条目已过期且未超保留窗口时返回；服务层仅在最终失败错误码 ∈ `{arxiv_timeout, arxiv_rate_limit, arxiv_offline}` 时查询；投影 `stale: true` 并计入审计与 `metrics_snapshot()`；失败/空结果仍不写缓存；账户隔离不变；冷却 20s 语义不变（失败后仍进入冷却）。
+  - 预热：`ArxivMcpProcessClient.warmup()`（spawn + 握手，含 httpx 导入）失败仅记日志、进程句柄清理、懒启动兜底不变；`main.py` 装配点仅对非 test 环境、非 closeout 替身模式调用 `ArxivSearchService.warmup()`（test 环境的应用装配不产生子进程）。
+  - 预算：`EXTERNAL_TIMEOUT_SECONDS["arxiv_search"]` 15s→20s，ADR-0025 注记与 `test_issue05_deadline_cancellation.py` 同步；120s 整轮预算不变。
+  - 开关：`ARXIV_RETRY_ENABLED` / `ARXIV_STALE_FALLBACK_ENABLED` / `ARXIV_WARMUP_ENABLED` 独立可关（`limits.py`）。
+  - 判定说明：`arxiv_offline` 同时覆盖 network 与 http_5xx，二者都进入重试与 stale 集合（5xx 属「上游持续故障」，与 US-04 对齐）；冷却拒绝路径（未打上游）不触发 stale 兜底，严格按「仅本次上游调用失败」执行。
+  - 验证：`tests/arxiv_mcp/test_retry_stale_warmup.py`（重试阈值/错误码选择/attempt_count/节流间隔/stale 窗口与隔离/三开关）、`test_process.py` 与 `tests/closeout/test_arxiv_worker_reliability.py`（真实 worker 预热与失败兜底）、`tests/api/test_arxiv_warmup_wiring.py`（装配点）、`tests/chat/test_arxiv_retry_stale_chat.py`（SSE 终态投影）、`ArxivPaperSearchCard.test.tsx`（stale 标注）；回归命令 135 passed / 1 skipped，mypy 与 ruff 干净，前端 tsc + vitest 全绿。
+- 2026-08-15（code-review 修复轮）：双轴审查（standards + spec）后收口——错误码策略收敛为单一 `_UPSTREAM_ERROR_POLICY` 映射（重试/stale/冷却共用，消除三处重复分类）；取消投影+审计抽为 `_finish_cancelled` 共用；预热开关单一来源（`process.py` 直接读 `ARXIV_WARMUP_ENABLED`，删除重复构造参数），且预热期任意异常都计入失败计数；预算阈值门控测试改用真实截止时间（4s 不重试 / 8s 重试，真正钉住 5s 阈值）；`retry_successes` 明确只统计 SUCCESS 终态（EMPTY 对用户可见，不计入「无感知重试成功」）。已知边界：`attempt_count` 反映服务层上游调用次数，worker 进程级崩溃重启内的重发不并入（属既有 issue 05 机制，日志已有 restarts 计数）。全量 `pytest tests` 在本机受两个既有问题阻断（重复 basename 收集冲突、`test_runtime_smoke.py` 因本机凭据库存有全局 Qwen Key 使 `start` 长驻挂起——未改动 main 同样复现），排除这两个文件后全量套件通过。

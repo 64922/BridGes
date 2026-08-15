@@ -255,6 +255,22 @@ export function ArxivPaperSearchCard({
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
         <Icon name="paperSearch" size={17} aria-hidden />
         <strong>arXiv 论文搜索</strong>
+        {search.stale && (
+          <span
+            data-testid="arxiv-search-stale"
+            role="status"
+            style={{
+              padding: "2px var(--space-2)",
+              borderRadius: "var(--radius-full)",
+              color: "var(--color-status-wait)",
+              backgroundColor: "var(--color-status-wait-bg)",
+              fontSize: "var(--text-xs)",
+              fontWeight: 600,
+            }}
+          >
+            结果可能不是最新
+          </span>
+        )}
         <span role="status" style={{ marginLeft: "auto", padding: "2px var(--space-2)", borderRadius: "var(--radius-full)", color: "var(--color-status-success)", backgroundColor: "var(--color-status-success-bg)", fontSize: "var(--text-xs)", fontWeight: 600 }}>
           已返回 {papers.length} 篇真实论文
         </span>

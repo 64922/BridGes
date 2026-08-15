@@ -26929,6 +26929,12 @@
             "description": "是否复用了未过期的进程内结果缓存。",
             "default": false
           },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "description": "本次上游调用失败后是否回退到过期缓存结果（结果可能不是最新）。",
+            "default": false
+          },
           "retry_after_seconds": {
             "anyOf": [
               {

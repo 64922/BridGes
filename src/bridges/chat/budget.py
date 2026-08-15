@@ -41,7 +41,9 @@ EXTERNAL_TIMEOUT_SECONDS: dict[str, float] = {
     "web_search": PUBLIC_SEARCH_STAGE_SECONDS,
     # Issue 05：Windows 上 worker spawn + httpx 导入消耗数秒，HTTP 超时被
     # 压成剩余预算；10s→15s 后节流等待与真实请求都能落在阶段预算内。
-    "arxiv_search": 15.0,
+    # Issue 04：预算内自动重试 + 节流重试等待需要余量，15s→20s；整轮
+    # 120s 预算不变（ADR-0025 注记同步）。
+    "arxiv_search": 20.0,
 }
 #: 来源名到预算常量的映射；只把本轮实际启动的来源纳入计算。
 _SEARCH_SOURCE_TIMEOUT_KEYS: dict[str, str] = {

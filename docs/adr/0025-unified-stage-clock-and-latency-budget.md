@@ -1,6 +1,6 @@
 # 一次前台生成运行建立统一阶段时钟与有界时延预算
 
-一次前台生成运行（普通对话、人味化、生涯规划等技能路径）建立统一阶段时钟与预算控制器：所有技能共用同一套阶段事件（`queued/local_retrieval/public_search/model_generation/quality_check/repair/finalizing`）、截止时间、取消信号与脱敏指标。`RunBudget` 持有本次 run 的总预算（前台硬上限 120 秒）与阶段墙钟；每个阶段进入时检查剩余预算，超预算即停止后续阶段并按既有终态策略降级——有可安全交付草稿时带警告交付（`budget_warning_thinking`），无可交付内容时提交 `budget_exceeded` 可重试失败，绝不保持永久 running。公开搜索的阶段墙钟由 `EXTERNAL_TIMEOUT_SECONDS` 集中管理（与既有客户端默认一致：DuckDuckGo 8s、arXiv worker 往返 15s——第 7 轮 Issue 05 从 10s 上调，为结果缓存、3 秒节流等待与真实请求让出阶段预算），其余外部调用由各自客户端超时承担。
+一次前台生成运行（普通对话、人味化、生涯规划等技能路径）建立统一阶段时钟与预算控制器：所有技能共用同一套阶段事件（`queued/local_retrieval/public_search/model_generation/quality_check/repair/finalizing`）、截止时间、取消信号与脱敏指标。`RunBudget` 持有本次 run 的总预算（前台硬上限 120 秒）与阶段墙钟；每个阶段进入时检查剩余预算，超预算即停止后续阶段并按既有终态策略降级——有可安全交付草稿时带警告交付（`budget_warning_thinking`），无可交付内容时提交 `budget_exceeded` 可重试失败，绝不保持永久 running。公开搜索的阶段墙钟由 `EXTERNAL_TIMEOUT_SECONDS` 集中管理（与既有客户端默认一致：DuckDuckGo 8s、arXiv worker 往返 20s——第 7 轮 Issue 05 从 10s 上调至 15s，第 8 轮 Issue 04 再上调至 20s，为预算内自动重试、3 秒节流等待与真实请求让出阶段预算），其余外部调用由各自客户端超时承担。
 
 阶段事件经 `generation_events` 游标事件流持久化（与 started/delta/done 同一真相源），前端按 `STAGE_LABEL` 渲染真实阶段行（检索本地资料/搜索公开来源/生成回答中/核验引用与质量/整理收尾），替代笼统"思考中"；创建响应即显示"排队中"，首个真实阶段事件到达后覆盖。指标只记录 ID、阶段、毫秒、结果码、模型/工具类别与计数，绝不记录消息、文档、搜索结果或密钥正文；本地性能摘要（`performance_summary`：p50/p95 首 token 与终态耗时、超时率、阶段占比、重试次数）只聚合脱敏指标，不建立任何遥测外传。
 

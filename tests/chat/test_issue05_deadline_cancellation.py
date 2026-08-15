@@ -28,8 +28,8 @@ from tests.chat.test_arxiv_search_chat import _CapturingAdapter, _context, _serv
     [
         (set(), None, 0.0),
         ({"web"}, None, 8.0),
-        ({"arxiv"}, None, 15.0),
-        ({"arxiv", "web"}, None, 15.0),
+        ({"arxiv"}, None, 20.0),
+        ({"arxiv", "web"}, None, 20.0),
         ({"arxiv", "web"}, 7_500, 7.5),
         ({"arxiv"}, 500, 0.5),
         ({"web"}, 0, 0.0),

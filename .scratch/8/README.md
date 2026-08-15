@@ -56,7 +56,7 @@ Last updated: 2026-08-15
 | 01 | [人味化保真缺陷修复——权限映射、数字账本匹配与重试死胡同](issues/01-humanizer-permission-mapping-retry-defects.md) | P0 | ready-for-agent | None |
 | 02 | [人味化确定性剔除交付——机械违规剔除后交付成品](issues/02-humanizer-deterministic-excision-delivery.md) | P0 | ready-for-agent | 01 |
 | 03 | [Qwen 连接失败修复——流式重试、错误细分与启动诊断](issues/03-qwen-connect-retry-error-taxonomy.md) | P0 | ready-for-agent | None |
-| 04 | [arXiv 搜索可靠性组合包——有界重试、陈旧缓存兜底与 worker 预热](issues/04-arxiv-retry-stale-cache-warmup.md) | P1 | ready-for-agent | None |
+| 04 | [arXiv 搜索可靠性组合包——有界重试、陈旧缓存兜底与 worker 预热](issues/04-arxiv-retry-stale-cache-warmup.md) | P1 | ready-for-human | None |
 
 ### 推荐执行波次
 

@@ -882,6 +882,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         client=CloseoutArxivClient() if use_closeout_fixtures else None,
         observability=app.state.observability_service
     )
+    # Issue 04：应用启动时预热常驻 worker（spawn + 握手，含 httpx 导入），
+    # 首次搜索不再付冷启动；预热失败只记日志并保留懒启动兜底。test 环境
+    # 的应用装配不应产生子进程，closeout 替身（无真实 worker）同样跳过。
+    arxiv_settings_at_warmup = app.state.settings
+    if (
+        not use_closeout_fixtures
+        and arxiv_settings_at_warmup is not None
+        and arxiv_settings_at_warmup.environment.lower() != "test"
+    ):
+        app.state.arxiv_search_service.warmup()
     app.router.add_event_handler("shutdown", app.state.arxiv_search_service.close)
 
     def _shutdown_mcp_servers() -> None:

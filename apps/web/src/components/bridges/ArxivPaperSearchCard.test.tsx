@@ -22,6 +22,7 @@ const baseError: ArxivSearchProjection = {
   can_retry: true,
   can_cancel: false,
   cache_hit: false,
+  stale: false,
   retry_after_seconds: 5,
   attempt_count: 0,
 };
@@ -81,5 +82,63 @@ describe("ArxivPaperSearchCard retry countdown", () => {
 
     fireEvent.click(button);
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ArxivPaperSearchCard stale annotation", () => {
+  const successSearch: ArxivSearchProjection = {
+    status: "success",
+    trigger_reason: "用户明确要求搜索论文",
+    query_summary: "Transformer",
+    papers: [
+      {
+        citation_id: "arxiv-1",
+        arxiv_id: "2401.12345v2",
+        title: "Attention Is All You Need",
+        authors: ["Vaswani"],
+        published_at: "2017-06-12T00:00:00Z",
+        abs_url: "https://arxiv.org/abs/2401.12345v2",
+        pdf_url: "https://arxiv.org/pdf/2401.12345v2",
+        abstract: "We propose the Transformer.",
+        summary_zh: "论文摘要：…",
+        relevance_basis: "与确认查询「Transformer」的相关依据…",
+        learning_advice_zh: "建议先阅读摘要…",
+      },
+    ],
+    searched_at: "2026-08-15T00:00:00Z",
+    error_code: null,
+    error_message: null,
+    upstream_status: null,
+    can_retry: false,
+    can_cancel: false,
+    cache_hit: false,
+    stale: false,
+    retry_after_seconds: null,
+    attempt_count: 2,
+  };
+
+  it("marks stale results with the not-fresh badge", () => {
+    render(
+      <ArxivPaperSearchCard
+        search={{ ...successSearch, stale: true }}
+        streaming={false}
+        onRetry={() => {}}
+      />
+    );
+
+    const badge = screen.getByTestId("arxiv-search-stale");
+    expect(badge.textContent).toContain("结果可能不是最新");
+  });
+
+  it("hides the badge for fresh results", () => {
+    render(
+      <ArxivPaperSearchCard
+        search={{ ...successSearch, stale: false }}
+        streaming={false}
+        onRetry={() => {}}
+      />
+    );
+
+    expect(screen.queryByTestId("arxiv-search-stale")).toBeNull();
   });
 });

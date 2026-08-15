@@ -18,3 +18,20 @@ ARXIV_COOLDOWN_SECONDS = 20
 ARXIV_CACHE_ENABLED = True
 ARXIV_THROTTLE_ENABLED = True
 ARXIV_COOLDOWN_ENABLED = True
+
+#: Issue 04（第八轮）可靠性组合包：HTTP 层有界重试、陈旧缓存兜底与
+#: worker 预热各自独立开关，关闭即回到上一轮行为。
+ARXIV_RETRY_ENABLED = True
+ARXIV_STALE_FALLBACK_ENABLED = True
+ARXIV_WARMUP_ENABLED = True
+
+#: 自动重试的最小剩余预算阈值（秒）：剩余阶段预算低于该值时不再重发，
+#: 避免重试把整轮预算吃光（单一常量，默认 5 秒）。
+ARXIV_RETRY_MIN_BUDGET_SECONDS = 5.0
+
+#: 单次搜索的实际上游请求次数上限（首次 + 至多 1 次自动重发）。
+ARXIV_MAX_UPSTREAM_ATTEMPTS = 2
+
+#: stale 保留窗口（秒）：缓存条目过期后仍保留 24 小时，仅当本次上游
+#: 调用失败（超时/429/网络类）且存在同键条目时作为陈旧结果兜底。
+ARXIV_STALE_RETENTION_SECONDS = 24 * 60 * 60

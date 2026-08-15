@@ -409,6 +409,46 @@ def test_worker_crash_restarts_once_and_recovers(venv_python, tmp_path) -> None:
     assert _spawn_count(spawn_marker) == 2  # 首次崩溃后自动重启一次并恢复
 
 
+def test_warmup_pre_spawns_worker_and_first_search_has_no_cold_start(
+    venv_python, tmp_path
+) -> None:
+    """Issue 04：预热完成 spawn + 握手后，首次搜索复用同一进程。
+
+    握手（含 httpx 导入）在启动期完成，首次搜索不再付冷启动；预热
+    失败（此处用永不输出 ready 的替身）只记日志，懒启动兜底正常。
+    """
+    client, spawn_marker, _ = _client(
+        venv_python,
+        tmp_path,
+        "warmup-good",
+        _GOOD_BODY,
+        client_assignment="_client_module.ArxivMcpClient = _FixedClient",
+    )
+    try:
+        assert client.warmup() is True
+        assert client.warmup_successes == 1
+        assert _spawn_count(spawn_marker) == 1
+        papers = client.search("量子 纠错", max_results=1)
+        assert "🚀" in papers[0].title
+        assert _spawn_count(spawn_marker) == 1  # 首次搜索复用预热进程
+    finally:
+        client.close()
+
+    failing_client, failing_marker, _ = _client(
+        venv_python,
+        tmp_path,
+        "warmup-fail",
+        _DEVNULL_BODY,
+        handshake_timeout=1.5,  # 须显著大于 worker 冷启动（与握手超时用例一致）
+    )
+    try:
+        assert failing_client.warmup() is False
+        assert failing_client.warmup_failures == 1
+        assert _spawn_count(failing_marker) == 1  # 预热只尝试一次
+    finally:
+        failing_client.close()
+
+
 def test_response_timeout_maps_to_arxiv_timeout(venv_python, tmp_path) -> None:
     client, spawn_marker, _ = _client(
         venv_python,

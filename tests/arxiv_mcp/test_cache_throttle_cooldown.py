@@ -373,18 +373,22 @@ def test_timeout_enters_cooldown_and_expiry_restores_real_request() -> None:
     first = service.search("acct-1", _plan())
     assert first is not None and first.error_code == "arxiv_timeout"
     assert first.upstream_status == "timeout"
+    # Issue 04：预算允许时自动重试一次——持续超时如实记录 2 次上游调用。
+    assert first.attempt_count == 2
+    assert len(client.calls) == 2
 
     clock.advance(1.0)
     rejected = service.search("acct-1", _plan())
     assert rejected is not None
     assert rejected.error_code == "arxiv_timeout"
     assert rejected.retry_after_seconds is not None and rejected.retry_after_seconds > 0
-    assert len(client.calls) == 1
+    assert len(client.calls) == 2
 
     clock.advance(30.0)
     recovered = service.search("acct-1", _plan())
     assert recovered is not None and recovered.error_code == "arxiv_timeout"
-    assert len(client.calls) == 2
+    assert recovered.attempt_count == 2
+    assert len(client.calls) == 4
 
 
 def test_cooldown_rejection_reports_exact_remaining_seconds() -> None:
@@ -502,9 +506,10 @@ def test_mock_transport_timeout_then_cooldown_then_recovery_to_success() -> None
     import time
 
     plan = _plan("quantum error correction")
+    # Issue 04：超时触发自动重试——第一次搜索耗尽 2 次预算内尝试后终态。
     first = service.search("acct-1", plan)
     assert first is not None and first.error_code == "arxiv_timeout"
-    assert first.attempt_count == 1
+    assert first.attempt_count == 2
 
     rejected = service.search("acct-1", plan)
     assert rejected is not None
@@ -514,15 +519,9 @@ def test_mock_transport_timeout_then_cooldown_then_recovery_to_success() -> None
 
     time.sleep(0.1)  # 冷却到期
     second = service.search("acct-1", plan)
-    assert second is not None and second.error_code == "arxiv_timeout"
-    assert second.attempt_count == 1
-
-    time.sleep(0.1)  # 第二次冷却到期
-    recovered = service.search("acct-1", plan)
-    assert recovered is not None
-    assert recovered.status == ArxivSearchStatus.SUCCESS
-    assert recovered.attempt_count == 1
-    assert recovered.cache_hit is False
+    assert second is not None and second.status == ArxivSearchStatus.SUCCESS
+    assert second.attempt_count == 1  # 首次即成功，无需重试
+    assert second.cache_hit is False
 
     cached = service.search("acct-1", plan)  # 成功后命中缓存
     assert cached is not None and cached.cache_hit is True and cached.attempt_count == 0
