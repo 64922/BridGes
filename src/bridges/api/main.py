@@ -23,6 +23,7 @@ from bridges.ai import (
 )
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.production import build_production_composition
+from bridges.ai.startup_check import log_qwen_startup_connectivity_warnings
 from bridges.api import (
     auth,
     chat,
@@ -1008,6 +1009,22 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     production_composition = build_production_composition(settings)
     capability_registry = production_composition.registry
     model_gateway = production_composition.gateway
+
+    # Issue 03：启动连通性自检（非阻塞、仅告警）。test 环境（确定性
+    # 适配器驱动）与未配置全局 Qwen Key 时不执行；其余环境在后台线程
+    # 做 DNS 预检、代理环境变量可用性与 workspace 形态校验——异常只
+    # 输出可操作警告日志，绝不阻断启动、不记录 Key 等敏感信息。
+    if (
+        settings is not None
+        and settings.environment.lower() != "test"
+        and production_composition.global_key_configured
+    ):
+        threading.Thread(
+            target=log_qwen_startup_connectivity_warnings,
+            args=(settings,),
+            name="qwen-startup-connectivity-check",
+            daemon=True,
+        ).start()
 
     # Issue 41（AC3）：StubQwenAdapter 只注册在显式 test 环境（本地与 CI
     # 测试确定性，与 /_test/* 端点同一门控）——development/production

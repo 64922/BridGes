@@ -1,6 +1,6 @@
 # Issue 03：Qwen 连接失败修复——流式重试、错误细分与启动诊断
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Type: task
 
@@ -73,3 +73,9 @@ python -m pytest tests/ai tests/chat tests/integration/test_qwen_capability_gate
 ## Comments
 
 - 2026-08-15：用户环境主因需结合子码遥测与启动自检日志确认（失效代理环境变量与 workspace 主机名为两大嫌疑）；本 issue 先把"报得准、抖动能自愈、启动能预警"落地。
+- 2026-08-16：实现完成（分支 `03-qwen-connect-retry-error-taxonomy`，worktree `try5-worktrees/03-qwen-connect-retry-error-taxonomy`，conda 环境 `agent`）。要点：
+  - **ConnectError 细分**：`qwen_client.classify_connect_error` 按异常因果链（`__cause__`/`__context__`）与消息特征判定 `dns`/`proxy`/`tls`，无法判定回落 `region_error`；`RegionError` 新增 `sub_code`（与 `REGION_ERROR_SUB_CODES` 白名单归一化，code 与 sub_code 恒一致），code 相应为 `region_dns`/`region_proxy`/`region_tls`，网关 BLOCKED/不 fallback 语义不变（未命中可重试集即 BLOCKED）。4 个客户端抛出点（流式 / `_get_dashscope` / `_post_openai` / `_post_dashscope`）全部应用；另修正既有分类缺陷：httpx 0.28 的 `ProxyError` 不是 `ConnectError` 子类，此前代理失败落入 `TransientError`（可重试 3 次后 RETRYABLE_FAIL），现显式捕获为 `region_proxy`（立即 BLOCKED）——这是 L34「代理不可达/被拒 → region_proxy」的必然结果，属预期行为变更（RetryPolicy 对象本身未动）。
+  - **流式建连重试**：`ModelGateway.stream` 对「尚未下发任何 delta」的 `RegionError` 自动重试 1 次（短退避 1s，常量 `STREAM_CONNECT_RETRY_ENABLED`/`_MAX_RETRIES`/`_BACKOFF_SECONDS` 可回滚）；delta 已下发后的中断不重试（语义同 `stream_interrupted`）；重试次数计入运行锁 `retry_count`（成功与失败路径均如实记录）。遥测口径：流式重试次数/成功率与 `region_*` 子码分布均从持久化运行锁（`model_run_locks.retry_count` / `.error_code`）统计得出——网关延续既有「运行锁即模型调用遥测」模式，不新增独立计数器。
+  - **文案统一**：`MODEL_CALL_ERROR_MESSAGES_ZH` 成为模型调用类文案唯一来源；`turn.py:user_facing_error` 委托 `user_facing_model_error`（补齐 `client_error_<status>` 中文通用分支，英文内部消息不再漏给用户），`_ERROR_MESSAGES` 删除 5 个重复码；image/video/speech 三服务同样先查本地特有码再委托共享映射；`_RETRYABLE_CODES` 纳入三个 region 子码；`ingestion/ocr.py` 由精确 `== "region_error"` 改为 `startswith("region_")` 前缀折叠（避免子码导致 OCR 文案退化）。
+  - **启动自检**：新增 `bridges.ai.startup_check`（DNS 预检 / 代理环境变量协议与形态 / `BRIDGES_QWEN_WORKSPACE_ID` DNS 标签形态），任何异常折叠为可操作 warning、绝不抛出；`base_url` 主机名计算收敛为 `qwen_client.qwen_base_url_host` 单一来源；`api/main.py` 装配处非 test 环境且配置全局 Key 时以 daemon 线程执行，不阻断启动、不记录 Key。
+  - **回归**：`tests/ai` 全绿（含新增 40 项：分类矩阵、流式重试、文案映射、启动自检）；`tests/integration/test_qwen_capability_gateway.py` 全绿；`tests/chat` 与 main 基线失败集逐项对比零差异（44 项为基线既有：SKILL 扩展退役 410 等，与本次改动无关）。ruff 新文件全绿、改动文件无新增问题；mypy 相对 main 基线无新增错误（6 项存量基线问题与本次无关）。

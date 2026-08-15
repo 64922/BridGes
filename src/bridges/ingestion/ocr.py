@@ -305,7 +305,9 @@ class QwenOcrPort:
                 "图片文字识别失败：全局百炼凭据无效或没有 OCR 模型权限，"
                 "请检查启动服务的全局配置与权限。"
             )
-        if code == "region_error":
+        # Issue 03：region_dns/region_proxy/region_tls 与 region_error 同为
+        # 建连类失败，统一折叠为同一可操作说明（细分原因已在网关锁内）。
+        if code.startswith("region_"):
             return "图片文字识别失败：区域接入点不可达，请检查网络。"
         if code == "rate_limit":
             return "图片文字识别失败：请求过于频繁（限流），稍后重试即可。"

@@ -44,6 +44,16 @@ if TYPE_CHECKING:
     from bridges.chat.budget import RunBudget
 
 
+#: Issue 03：流式建连阶段自动重试开关（可回滚；关闭后等价旧行为——建连
+#: 失败立即以 error 事件结束）。只对「尚未下发任何 delta」的建连失败
+#: 生效；已开始输出后的中断不重试（语义同 ``stream_interrupted``）。
+STREAM_CONNECT_RETRY_ENABLED = True
+#: 流式建连阶段最多自动重试次数（短退避；总尝试次数 = 重试次数 + 1）。
+STREAM_CONNECT_RETRY_MAX_RETRIES = 1
+#: 流式建连重试的短退避（秒）。
+STREAM_CONNECT_RETRY_BACKOFF_SECONDS = 1.0
+
+
 class ModelGatewayError(Exception):
     """Domain error for gateway-level failures."""
 
@@ -224,7 +234,9 @@ class ModelGateway:
 
         与 ``invoke`` 的差异：真正的流式适配器路径不做网关级自动重试与
         降级——聊天以"新建助手尝试"作为用户级重试机制（Issue 11）。
-        连接阶段失败（尚未产出任何增量）直接以 error 事件结束；已开始
+        Issue 03 例外：建连阶段（尚未下发任何 delta）的 ``RegionError``
+        自动重试一次（短退避约 1 秒，重试次数计入运行锁遥测）；已开始
+        输出后的中断不重试。连接阶段失败直接以 error 事件结束；已开始
         输出后的失败同样以 error 事件结束并保留已接收正文。无
         ``stream_call`` 的适配器（如测试替身）降级为一次性 ``invoke``，
         复用其重试/降级语义。能力未注册/未验证/未绑定适配器时产出带
@@ -323,85 +335,133 @@ class ModelGateway:
 
         actual_model_id: str | None = primary.model_id
         usage: dict[str, Any] | None = None
-        try:
-            for chunk in stream_call(primary, run_context, payload):
-                if chunk.kind == "delta":
-                    yield StreamEvent(kind="delta", delta=chunk.delta)
-                elif chunk.kind == "error":
-                    lock = self._build_lock(
-                        run_context,
-                        primary,
-                        self._lock_status_for_code(chunk.error_code or "unknown"),
-                        [f"{primary.name}@{primary.version}"],
-                        retry_count=0,
-                        degradation_reason=chunk.error_message,
-                        actual_model_id=primary.model_id,
-                        error_code=chunk.error_code,
-                        error_message=chunk.error_message,
-                        payload=payload,
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code=chunk.error_code,
-                        error_message=chunk.error_message,
-                        lock=lock,
-                    )
-                    return
-                elif chunk.kind == "done":
-                    reported = chunk.actual_model_id
-                    # Issue 09：流式结束块上报的实际模型与批准 ID 不一致时
-                    # 同样失败关闭（``actual_model_mismatch``），运行锁如实
-                    # 记录漂移值。
-                    if reported is not None and reported != primary.model_id:
-                        lock = self._build_mismatch_lock(
+        # Issue 03：流式建连阶段自动重试（尚未下发任何 delta 的 RegionError
+        # 重试一次，短退避；重试次数计入运行锁遥测）。已下发 delta 后的
+        # 中断不重试——语义同 ``stream_interrupted``，以 error 事件收尾。
+        connect_retry_count = 0
+        delivered_any_chunk = False
+        while True:
+            try:
+                for chunk in stream_call(primary, run_context, payload):
+                    delivered_any_chunk = True
+                    if chunk.kind == "delta":
+                        yield StreamEvent(kind="delta", delta=chunk.delta)
+                    elif chunk.kind == "error":
+                        lock, event = self._stream_error_event(
                             run_context,
                             primary,
-                            reported,
-                            [f"{primary.name}@{primary.version}"],
-                            retry_count=0,
+                            error_code=chunk.error_code,
+                            error_message=chunk.error_message,
+                            degradation_reason=chunk.error_message,
+                            retry_count=connect_retry_count,
                             payload=payload,
                         )
-                        yield StreamEvent(
-                            kind="error",
-                            error_code="actual_model_mismatch",
-                            error_message=lock.error_message,
-                            lock=lock,
-                        )
+                        yield event
                         return
-                    actual_model_id = reported or primary.model_id
-                    usage = chunk.usage
-        except (RateLimitError, TransientError, RegionError, AuthError, AdapterError) as exc:
-            lock = self._build_lock(
-                run_context,
-                primary,
-                self._lock_status_for_code(exc.code),
-                [f"{primary.name}@{primary.version}"],
-                retry_count=0,
-                degradation_reason=str(exc),
-                actual_model_id=primary.model_id,
-                error_code=exc.code,
-                error_message=exc.message,
-                payload=payload,
-            )
-            yield StreamEvent(
-                kind="error",
-                error_code=exc.code,
-                error_message=exc.message,
-                lock=lock,
-            )
-            return
+                    elif chunk.kind == "done":
+                        reported = chunk.actual_model_id
+                        # Issue 09：流式结束块上报的实际模型与批准 ID 不一致时
+                        # 同样失败关闭（``actual_model_mismatch``），运行锁如实
+                        # 记录漂移值。
+                        if reported is not None and reported != primary.model_id:
+                            lock = self._build_mismatch_lock(
+                                run_context,
+                                primary,
+                                reported,
+                                [f"{primary.name}@{primary.version}"],
+                                retry_count=connect_retry_count,
+                                payload=payload,
+                            )
+                            yield StreamEvent(
+                                kind="error",
+                                error_code="actual_model_mismatch",
+                                error_message=lock.error_message,
+                                lock=lock,
+                            )
+                            return
+                        actual_model_id = reported or primary.model_id
+                        usage = chunk.usage
+                break
+            except RegionError as exc:
+                if (
+                    not delivered_any_chunk
+                    and STREAM_CONNECT_RETRY_ENABLED
+                    and connect_retry_count < STREAM_CONNECT_RETRY_MAX_RETRIES
+                ):
+                    connect_retry_count += 1
+                    time.sleep(STREAM_CONNECT_RETRY_BACKOFF_SECONDS)
+                    continue
+                lock, event = self._stream_error_event(
+                    run_context,
+                    primary,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    degradation_reason=str(exc),
+                    retry_count=connect_retry_count,
+                    payload=payload,
+                )
+                yield event
+                return
+            except (RateLimitError, TransientError, AuthError, AdapterError) as exc:
+                lock, event = self._stream_error_event(
+                    run_context,
+                    primary,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    degradation_reason=str(exc),
+                    retry_count=connect_retry_count,
+                    payload=payload,
+                )
+                yield event
+                return
 
         lock = self._build_lock(
             run_context,
             primary,
             ModelCallStatus.SUCCESS,
             [f"{primary.name}@{primary.version}"],
-            retry_count=0,
+            retry_count=connect_retry_count,
             actual_model_id=actual_model_id,
             usage=usage,
             payload=payload,
         )
         yield StreamEvent(kind="done", lock=lock, usage=usage)
+
+    def _stream_error_event(
+        self,
+        run_context: RunContextEnvelope,
+        capability: CapabilityRecord,
+        *,
+        error_code: str | None,
+        error_message: str | None,
+        degradation_reason: str | None,
+        retry_count: int,
+        payload: dict[str, Any] | None,
+    ) -> tuple[ModelRunLock, StreamEvent]:
+        """构造流式失败锁与 error 事件（Issue 03：三条错误路径共用）。
+
+        锁状态按稳定错误码折叠（region_* 子码 → BLOCKED），重试次数
+        如实计入运行锁遥测。
+        """
+        lock = self._build_lock(
+            run_context,
+            capability,
+            self._lock_status_for_code(error_code or "unknown"),
+            [f"{capability.name}@{capability.version}"],
+            retry_count=retry_count,
+            degradation_reason=degradation_reason,
+            actual_model_id=capability.model_id,
+            error_code=error_code,
+            error_message=error_message,
+            payload=payload,
+        )
+        event = StreamEvent(
+            kind="error",
+            error_code=error_code,
+            error_message=error_message,
+            lock=lock,
+        )
+        return lock, event
 
     @staticmethod
     def _lock_status_for_code(error_code: str) -> ModelCallStatus:
