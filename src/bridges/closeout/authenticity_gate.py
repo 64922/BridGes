@@ -515,10 +515,10 @@ def _known_text_png_bytes() -> bytes:
     """生成含已知文字的最小 PNG（PyMuPDF，无网络依赖）。"""
     import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
-    token = "BRIDGES-QWEN-2026"
+    marker_text = "BRIDGES-QWEN-2026"
     document = fitz.open()
     page = document.new_page(width=600, height=200)
-    page.insert_text((40, 115), token, fontsize=40, fontname="helv")
+    page.insert_text((40, 115), marker_text, fontsize=40, fontname="helv")
     pixmap = page.get_pixmap(dpi=144)
     return bytes(pixmap.tobytes("png"))
 

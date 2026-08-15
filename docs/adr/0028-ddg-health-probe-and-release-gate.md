@@ -1,5 +1,12 @@
 # DDG 健康证据闭环：唯一提供方、分层探针与发布门
 
+> 已废止（2026-08-15）：本 ADR 的“唯一提供方是 DuckDuckGo”决策已被
+> [ADR-0029](0029-tavily-web-search-provider-and-release-gate.md) 取代——
+> 唯一生产提供方改为 **Tavily**（自带凭据、安装期收集）。本文件只保留
+> 历史审计含义；分层探针、快照缓存与脱敏边界的结构语义由 Tavily 实现
+> 延续（`TavilySearchClient.health_check()`、`WebSearchHealthMonitor`），
+> 提供方标识、错误码与发布探针合同以 ADR-0029 与代码为准。
+
 Issue 04 起，公网搜索健康证据形成闭环：`DuckDuckGoClient.health_check()` 的
 真实探测结果经运行期快照监视器（`WebSearchHealthMonitor`）缓存、过期、合并
 刷新后，进入应用级 readiness/degraded 投影、聊天降级提示与真实发布门。本

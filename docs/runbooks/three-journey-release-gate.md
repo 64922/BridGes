@@ -24,15 +24,20 @@
 
 ## 2. 显式真实 provider 探针
 
-只有需要验证当前外部 provider 时才运行网络探针：
+只有需要验证当前外部 provider 时才运行网络探针。通用网页搜索的唯一生产
+提供方是 Tavily（ADR-0029）：凭据经安装流程或 `BRIDGES_TAVILY_API_KEY`
+（或 `_FILE`）注入，**不需要也不允许配置任何备用提供方 Key/开关**（出现
+即配置漂移，发布门失败关闭）：
 
 ```powershell
-$env:BRIDGES_PUBLIC_SEARCH_FALLBACK_ENABLED = "true"
-$env:BRIDGES_BRAVE_SEARCH_API_KEY = "<从密钥管理系统注入>"
+# Tavily Key 已配置（安装流程/环境变量）后：
 .venv\Scripts\python.exe scripts\release_gate.py --real-probes --report .tmp\release-gate\real-report.json
 ```
 
-探针固定记录 provider、语义健康、耗时、脱敏错误类别和 worker 清理结果。命令行输出和报告都不保存响应正文、用户原始问题、profile 正文或 secret。未配置 Brave 时会明确记录 `environment_misconfigured`；这不是把未验证状态伪装成成功。
+探针固定记录 provider、语义健康、耗时、脱敏错误类别和 worker 清理结果。
+命令行输出和报告都不保存响应正文、用户原始问题、profile 正文或 secret。
+未配置 Tavily Key 时会明确记录 `environment_misconfigured`（状态
+`inconclusive`）；这不是把未验证状态伪装成成功。
 
 失败责任边界只有三类：
 
@@ -41,6 +46,34 @@ $env:BRIDGES_BRAVE_SEARCH_API_KEY = "<从密钥管理系统注入>"
 - `environment_misconfigured`：浏览器、命令、依赖或真实 provider 配置缺失，先修环境再宣称发布门通过。
 
 离线门不含真实探针时会带有 `real_provider_probes_not_run` 风险；这表示“离线回归通过”，不是“外部 provider 已验证”。
+
+## 2.1 第 7 轮发布门总装（Issue 07）
+
+第 7 轮收口后，发布门单命令组合为：
+
+```powershell
+.venv\Scripts\python.exe scripts\release_gate.py --real-probes --qwen-authenticity --report .tmp\release-gate\report.json
+```
+
+其中 `--qwen-authenticity` 追加 Issue 17 真实性门（能力清单完整性、静态
+扫描、生产组合、live suite 与重启锁复查），Issue 07 的组成项包括：
+
+- 能力清单：通用网页搜索恰好分类一次且为 `external_non_qwen`
+  （`tavily_web_search`）；
+- 生产组合断言：通用网页搜索提供方清单**恰好只有 `tavily`**；
+- 金标路由（Issue 03）与降级语义（Issue 02：本地不足 + 搜索失败 → 带
+  「本轮未联网核实」标注的降级且零进度推进）作为门禁组成部分被执行；
+- 密钥泄漏硬门：`scripts\artifact_secret_scan.py` 覆盖 `tvly-` 与 Qwen
+  Key 形态，日志、运行锁、消息投影、SSE 记录与发布报告零泄漏，泄漏即
+  失败关闭；
+- 真实 Tavily smoke（搜索 + 正文获取）输出 `passed`/`failed`/
+  `inconclusive`，缺 Key/无网络为 `inconclusive` 且不计入通过，结果以
+  脱敏字段归档进报告。
+
+任一硬门失败都以非零退出；报告字段只含 build、capability、类别、
+provider、状态、延迟与脱敏错误类别，不含任何 Key 与用户内容。运维诊断
+单次探针用 `python scripts\release_gate.py --web-health`。详见
+[search-provider-release-gate 运行手册](search-provider-release-gate.md)。
 
 ## 3. 缺陷簇处置
 

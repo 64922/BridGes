@@ -15,7 +15,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: 排除目录：依赖、构建产物、版本控制与历史封存区（旧 Wayfinder 规划与
-#: 旧数据库只读保留，不在扫描范围）。
+#: 旧数据库只读保留，不在扫描范围；.tmp 为 gitignore 的临时根目录，含
+#: pytest basetemp、历史 worktree 与发布门产物，不属于提交内容）。
 EXCLUDED_DIRS = {
     ".git",
     ".venv",
@@ -27,6 +28,7 @@ EXCLUDED_DIRS = {
     ".ruff_cache",
     "build",
     "dist",
+    ".tmp",
     ".scratch/science-companion-plan",
 }
 
@@ -57,6 +59,9 @@ TEXT_SUFFIXES = {
 #:   - 键名关联的高熵秘密（SMTP 授权码、密码、令牌等赋值形式）；
 #:     键名前缀用 (?<![A-Za-z0-9_.]) 排除 errors.password 这类 UI 字段
 #:     与 BRIDGES_ 环境变量声明
+#:   - Tavily Key（Issue 07，ADR-0029）：tvly- 前缀 + 至少 16 位连续字母数字；
+#:     测试假值（tvly-test-key-123、tvly-probe-test-key 等）含白名单标记
+#:     或连字符/短值，不会命中
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("api_key", re.compile(r"\bsk-[A-Za-z0-9]{32,}\b")),
     ("aws_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
@@ -71,6 +76,7 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"""\s*[=:]\s*['"][^'"]{12,}['"]"""
         ),
     ),
+    ("tavily_key", re.compile(r"\btvly-[A-Za-z0-9]{16,}\b")),
 ]
 
 #: 键名关联模式豁免目录：测试夹具使用假密码/假令牌做断言是合法用法
