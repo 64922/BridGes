@@ -1,6 +1,6 @@
 # Issue 01：人味化保真缺陷修复——权限映射、数字账本匹配与重试死胡同
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Type: task
 
@@ -68,3 +68,9 @@ python -m pytest tests/humanizer tests/chat/test_humanizer_chat.py tests/chat/te
 ## Comments
 
 - 2026-08-15：根因来自代码只读探查（explore 子代理报告），缺陷 (a)(b) 为确定性证据，(c) 为强疑似（用户原文含「2017 年」），实现时先写复现测试。
+- 2026-08-15：已实现并提交（分支 `08-humanizer-permission-mapping-retry-defects`，提交 4e92f44 + 4d7d622）。
+  - 缺陷 (a)：`route_humanizer_message()` 将表达契约 `hypothetical_permission`/`first_person_permission` 映射进旧契约 `allow_assumptions`/`allow_first_person`；新增授权矩阵单测（`tests/humanizer/test_intent.py`）与授权假设端到端（`tests/chat/test_humanizer_chat.py`），未授权拦截语义不变。
+  - 缺陷 (c)：复现定位为空白/紧邻/全半角变体下数字+单位提取不一致——原文 `Transformer2017年`（紧邻字母）时 `_NUMBER_UNIT_RE` 左侧 lookbehind 拒绝匹配，年份只进日期账本；候选 `2017 年`（带空格）按数字扫描键 `2017|年` 无法绑定 → 误判 `UNATTRIBUTED_CLAIM`。修复：`source_ledger._scan_items` 补充宽松数字+单位扫描 `_LOOSE_NUMBER_UNIT_RE`（只拒绝数字紧邻），空白/全半角/紧邻变体提取同一规范化键；6 组键稳定性 + 4 组交叉变体 + 3 组用户场景测试（`tests/humanizer/test_source_ledger.py`）。
+  - 缺陷 (b)：`ChatService.retry_generation` 在 `RETRY_RESETS_WRITING_BUDGET=True`（默认）时手动重试不再沿用旧尝试的写作调用计数，视为新一轮预算（单轮 2 次上限不变，开关可回滚）；新增新预算再生成、新轮上限仍生效、开关关闭旧语义三条测试。
+  - 回归：issue 建议命令 `tests/humanizer tests/chat/test_humanizer_chat.py tests/chat/test_humanizer_projection_events.py` 全绿（426 passed, 2 skipped）；`tests/chat` 全量相对分支点 9045c4a 无新增失败（44→40，修复的 4 条为第 7 轮保真硬门合并后遗留的陈旧测试对齐：`fidelity_gate_conflict` 错误码与软门触发文案）。mypy 相对基线 −1 错误，ruff 无新增告警。
+  - 文档：ADR-0027 增补「Issue 01 第八轮：用户手动重试视为新一轮写作预算」，明确单轮 2 次上限不变、仅消息级手动重试重置计数、开关可回滚。
