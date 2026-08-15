@@ -90,31 +90,41 @@ function ArticleResultCard({
   const failed = article.delivery_status === "failed";
   // Issue 06 第七轮：修订未完成仅交付首稿 → 部分交付（成功终态，附说明）。
   const partial = article.delivery_status === "partial";
+  // Issue 02 第八次改进：机械违规已确定性剔除后交付成品（成功终态，如实披露）。
+  const excised = article.excision != null;
   const hasConfirmations = (article.confirmations?.length ?? 0) > 0;
   const hasEvidence = (article.evidence?.length ?? 0) > 0;
   const styleWarnings = article.style_review?.warning_count ?? 0;
   const revisionRemaining = article.revision?.remaining_count ?? 0;
   const hasWarnings =
-    styleWarnings > 0 || revisionRemaining > 0 || hasEvidence || hasConfirmations;
+    styleWarnings > 0 ||
+    revisionRemaining > 0 ||
+    excised ||
+    hasEvidence ||
+    hasConfirmations;
 
   const statusLabel = failed
     ? "未交付"
     : partial
       ? "已交付首稿（未完成修订）"
-      : hasConfirmations
-        ? "已交付（含待确认项）"
-        : hasWarnings
-          ? "已交付（含警告）"
-          : "已交付";
+      : excised
+        ? `已交付（已剔除 ${article.excision!.removed_count} 处无来源内容）`
+        : hasConfirmations
+          ? "已交付（含待确认项）"
+          : hasWarnings
+            ? "已交付（含警告）"
+            : "已交付";
   const statusColor = failed
     ? "var(--color-status-error)"
     : partial
       ? "var(--color-status-warning)"
-      : hasConfirmations
+      : excised
         ? "var(--color-status-warning)"
-        : hasWarnings
+        : hasConfirmations
           ? "var(--color-status-warning)"
-          : "var(--color-status-success)";
+          : hasWarnings
+            ? "var(--color-status-warning)"
+            : "var(--color-status-success)";
 
   const telemetryBase = {
     projection_version: article.projection_version ?? null,
@@ -273,6 +283,28 @@ function ArticleResultCard({
             </div>
           )}
 
+          {/* Issue 02 第八次改进：已剔除交付的如实披露（移除条数与条目类别） */}
+          {excised && article.excision && (
+            <AuditSection
+              title={`确定性剔除（移除 ${article.excision.removed_count} 处无来源/未授权内容，剔除 ${article.excision.removed_sentence_count} 句）`}
+              data-testid="humanizer-excision"
+              tone="warning"
+            >
+              {article.delivery_note && (
+                <p style={sectionBodyStyle}>{article.delivery_note}</p>
+              )}
+              {(article.excision.items?.length ?? 0) > 0 && (
+                <ul role="list" style={listStyle}>
+                  {article.excision.items!.map((item, index) => (
+                    <li key={`${item.code}-${index}`}>
+                      <strong>{item.category}</strong>：{item.note}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AuditSection>
+          )}
+
           {article.material_state === "insufficient" && (
             <AuditSection title="材料不足" data-testid="humanizer-material-state" tone="warning">
               {/* Issue 08 AC5：只显示一个最高价值问题，不堆叠通用建议 */}
@@ -428,6 +460,13 @@ function AuditSummary({ article }: { article: NonNullable<HumanizerResultProject
   }
   if (article.revision?.triggered) {
     pills.push({ label: "已定向修订", color: "var(--color-status-warning)" });
+  }
+  // Issue 02 第八次改进：已剔除交付在折叠状态也如实显示移除条数。
+  if (article.excision) {
+    pills.push({
+      label: `已剔除 ${article.excision.removed_count} 处`,
+      color: "var(--color-status-warning)",
+    });
   }
   if ((article.evidence?.length ?? 0) > 0) {
     pills.push({ label: `证据风险 ${article.evidence?.length ?? 0} 项`, color: "var(--color-status-warning)" });

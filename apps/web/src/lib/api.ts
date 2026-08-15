@@ -47,6 +47,9 @@ export type ArticleMaterialState = components["schemas"]["ArticleMaterialState"]
 export type ArticleFidelitySummary = components["schemas"]["ArticleFidelitySummary"];
 export type ArticleStyleReviewSummary = components["schemas"]["ArticleStyleReviewSummary"];
 export type ArticleRevisionSummary = components["schemas"]["ArticleRevisionSummary"];
+// Issue 02 第八次改进：确定性剔除摘要（已剔除交付的如实披露）。
+export type ArticleExcisionSummary = components["schemas"]["ArticleExcisionSummary"];
+export type ArticleExcisionItem = components["schemas"]["ArticleExcisionItem"];
 export type ArticleEvidenceItem = components["schemas"]["ArticleEvidenceItem"];
 export type ArticleConfirmationItem = components["schemas"]["ArticleConfirmationItem"];
 // Issue 31：图片生成与编辑契约（生成类型来自 openapi.json）。

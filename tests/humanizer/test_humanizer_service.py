@@ -22,6 +22,7 @@ from bridges.contracts.ai import (
 )
 from bridges.contracts.expression import Genre
 from bridges.contracts.humanizer import (
+    ArticleDeliveryStatus,
     HumanizerPath,
     HumanizerProcessState,
     HumanizerQualityStatus,
@@ -347,12 +348,26 @@ def test_generate_path_collects_and_reviews() -> None:
     )
     _, result = _run(service, skill_input)
     # Issue 02：生成路径候选中的数字（14 小时/7-8 小时等）无账本来源 →
-    # 保真硬门拦截（新增可核查信息必须有授权来源），不再以 needs_human 交付
-    assert result.status == HumanizerResultStatus.ERROR
-    assert result.error_code == "fidelity_gate_conflict"
-    assert result.output is None
+    # 保真硬门拦截；第八次改进 Issue 02：修订后仍仅含机械可剔除类 blocking
+    # （unattributed_claim）→ 确定性剔除违规句子后交付成品，如实标注移除
+    # 清单，不再给用户拦截警告。
+    assert result.status in (
+        HumanizerResultStatus.DONE,
+        HumanizerResultStatus.NEEDS_HUMAN,
+    )
+    assert result.error_code is None
+    assert result.output is not None
+    assert result.article is not None
+    assert result.article.delivery_status == ArticleDeliveryStatus.DELIVERED
+    assert result.article.excision is not None
+    assert result.article.excision.removed_count == 3
+    assert result.article.excision.removed_sentence_count == 1
+    # 剔除句（含全部无来源数字的句子）不再出现在交付正文
+    assert "14 小时" not in result.output.final_text
+    assert "7-8 小时" not in result.output.final_text
+    assert "已移除 3 处无来源/未授权内容" in (result.article.delivery_note or "")
     assert result.fidelity_check is not None
-    assert result.fidelity_check.blocking_failures
+    assert not result.fidelity_check.blocking_failures
     assert result.fact_lock_check is not None and result.fact_lock_check.passed
 
 

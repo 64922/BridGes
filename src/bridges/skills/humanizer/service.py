@@ -13,7 +13,7 @@ from __future__ import annotations
 import contextlib
 import re
 import secrets
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -43,6 +43,8 @@ from bridges.contracts.humanizer import (
     ArticleConfirmationItem,
     ArticleDeliveryStatus,
     ArticleEvidenceItem,
+    ArticleExcisionItem,
+    ArticleExcisionSummary,
     ArticleFidelityItem,
     ArticleFidelitySummary,
     ArticleMaterialState,
@@ -54,6 +56,7 @@ from bridges.contracts.humanizer import (
     FactLockSeverity,
     FactLockStatus,
     FidelityCheckResult,
+    FidelityFailure,
     FidelityFailureCode,
     HumanizerArticleProjection,
     HumanizerEdit,
@@ -88,6 +91,11 @@ from bridges.skills.humanizer.evidence_safety import (
     build_revision_prompt,
     compare_claim_changes,
     run_evidence_safety,
+)
+from bridges.skills.humanizer.excision import (
+    ExcisionRecord,
+    can_excise,
+    excise_blocking_content,
 )
 from bridges.skills.humanizer.expression_review import run_expression_review
 from bridges.skills.humanizer.factlock import _KIND_LABEL_CN as _KIND_CN
@@ -148,6 +156,12 @@ REVISION_CALL_ORDINAL = 2
 #: Issue 02 能力开关：关闭时新任务恢复旧流程（无来源账本与保真检查），
 #: 投影不携带保真字段，不得把旧流程标记为新硬门通过（灰度与回滚用）。
 FIDELITY_GATE_ENABLED = True
+
+#: Issue 02 第八次改进能力开关：关闭时确定性句子级剔除不可用，修订后
+#: 仍 blocking 恢复 ADR-0027 原终态（fidelity_gate_conflict 停止交付，
+#: 不交付残稿）。开关只控制剔除交付这一确定性救援，不改变硬门规则与
+#: 错误码定义（灰度与回滚用）。
+EXCISION_DELIVERY_ENABLED = True
 
 #: 每篇文章任务的写作模型调用上限（首稿 + 一次定向修订；Issue 05 ADR-0027）。
 WRITING_CALL_LIMIT = 2
@@ -569,6 +583,46 @@ class HumanizerService:
                         lock_evidence=lock_evidence,
                         profile_context=profile_context,
                     )
+            # Issue 02：旧显式 SKILL 路径的确定性句子级剔除——保真硬门
+            # blocking 且全部为机械可剔除类违规、事实锁无冲突时，零模型
+            # 调用剔除违规句子并对剔除稿重跑同一版本复核；通过则以
+            # 「已剔除交付」终态交付（与新表达契约路径语义一致）。
+            excision: ArticleExcisionSummary | None = None
+            excision_attempted = False
+            if (
+                EXCISION_DELIVERY_ENABLED
+                and checkpoint.fidelity_check is not None
+                and checkpoint.fidelity_check.blocking_failures
+                and not checkpoint.fact_lock_check.blocking_conflicts
+                and can_excise(checkpoint.fidelity_check.blocking_failures)
+            ):
+                excision_attempted = True
+                yield process(
+                    HumanizerProcessState.LOADING, "正在剔除无来源内容…"
+                )
+                progress.append("确定性剔除")
+                rechecked, excision_record = self._excise_candidate(
+                    checkpoint.output.final_text,
+                    checkpoint.fidelity_check.blocking_failures,
+                    recheck=lambda text: self._review_checks(
+                        contract,
+                        checkpoint.output.model_copy(
+                            update={"final_text": text}
+                        ),
+                        source_text,
+                        fact_lock_source,
+                        references,
+                        ledger=ledger,
+                    ),
+                    recheck_ok=lambda candidate_checkpoint: (
+                        candidate_checkpoint.fidelity_check is not None
+                        and not candidate_checkpoint.fidelity_check.blocking_failures
+                        and not candidate_checkpoint.fact_lock_check.blocking_conflicts
+                    ),
+                )
+                if rechecked is not None and excision_record is not None:
+                    checkpoint = rechecked
+                    excision = self._article_excision_summary(excision_record)
             final_result = self._finalize_result(
                 account_id,
                 conversation_id,
@@ -580,6 +634,8 @@ class HumanizerService:
                 lock_evidence=lock_evidence,
                 profile_used=profile_used,
                 profile_item_count=profile_item_count,
+                excision=excision,
+                excision_attempted=excision_attempted,
             )
             final_result = final_result.model_copy(
                 update={"writing_call_count": writing_call_count}
@@ -916,6 +972,51 @@ class HumanizerService:
             )
             writing_call_count = outcome.writing_call_count
 
+            # 步骤 8.5：确定性句子级剔除（Issue 02 第八次改进）——修订后
+            # 重跑检查仍 blocking 且全部为机械可剔除类违规时，零模型调用
+            # 剔除违规句子，对剔除稿重跑同一版本全套检查；通过则以
+            # 「已剔除交付」终态交付成品并如实标注移除清单，不占用写作
+            # 调用额度。契约硬约束仍冲突时不尝试（契约遗漏不可剔除）。
+            checks = outcome.checks
+            excision_record: ExcisionRecord | None = None
+            if (
+                EXCISION_DELIVERY_ENABLED
+                and checks.fidelity_check is not None
+                and checks.fidelity_check.blocking_failures
+                and not checks.contract_check.blocking_conflicts
+                and can_excise(checks.fidelity_check.blocking_failures)
+            ):
+                outcome.audit.excision_attempted = True
+                yield process(
+                    HumanizerProcessState.LOADING, "正在剔除无来源内容…"
+                )
+                progress.append("确定性剔除")
+                excised_checks, excision_record = self._excise_candidate(
+                    checks.final_text,
+                    checks.fidelity_check.blocking_failures,
+                    recheck=lambda text: self._expression_checks(
+                        contract,
+                        expression_contract,
+                        text,
+                        source_text,
+                        ledger,
+                        source_knowledge_base_object_ids,
+                    ),
+                    recheck_ok=lambda candidate_checks: (
+                        candidate_checks.fidelity_check is not None
+                        and not candidate_checks.fidelity_check.blocking_failures
+                        and not candidate_checks.contract_check.blocking_conflicts
+                    ),
+                )
+                if excised_checks is not None and excision_record is not None:
+                    checks = excised_checks
+                    outcome.audit.excision_removed_count = (
+                        excision_record.removed_count
+                    )
+                    outcome.audit.excision_removed_sentences = (
+                        excision_record.removed_sentence_count
+                    )
+
             # 步骤 9：终态判定与结果投影（旧投影字段保持兼容）
             yield process(HumanizerProcessState.LOADING, "正在完成交付…")
             final_result = self._expression_finalize(
@@ -926,21 +1027,26 @@ class HumanizerService:
                 skill_version,
                 contract,
                 expression_contract,
-                outcome.checks.final_text,
-                outcome.checks.output,
-                outcome.checks.fidelity_check,
-                outcome.checks.review,
+                checks.final_text,
+                checks.output,
+                checks.fidelity_check,
+                checks.review,
                 references,
                 progress,
                 ledger,
                 metrics,
                 writing_call_count=writing_call_count,
                 revision_audit=outcome.audit,
-                contract_check=outcome.checks.contract_check,
+                contract_check=checks.contract_check,
                 evidence_report=evidence_report,
                 lock_evidence=lock_evidence,
                 profile_used=profile_used,
                 profile_item_count=profile_item_count,
+                excision=(
+                    self._article_excision_summary(excision_record)
+                    if excision_record is not None
+                    else None
+                ),
             )
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.RESULT,
@@ -1514,6 +1620,54 @@ class HumanizerService:
     )
 
     @staticmethod
+    def _article_excision_summary(
+        record: ExcisionRecord,
+    ) -> ArticleExcisionSummary:
+        """确定性剔除记录 → 文章投影摘要（脱敏，不含被剔除正文）。"""
+        return ArticleExcisionSummary(
+            removed_count=record.removed_count,
+            removed_sentence_count=record.removed_sentence_count,
+            sentence_ratio=record.sentence_ratio,
+            items=[
+                ArticleExcisionItem(
+                    code=item.code,
+                    category=item.category,
+                    note=item.note,
+                )
+                for item in record.items
+            ],
+        )
+
+    def _excise_candidate(
+        self,
+        final_text: str,
+        findings: Sequence[FidelityFailure],
+        *,
+        recheck: Callable[[str], Any],
+        recheck_ok: Callable[[Any], bool],
+    ) -> tuple[Any | None, ExcisionRecord | None]:
+        """对最终候选执行确定性剔除并重跑同一版本检查（新旧路径共用）。
+
+        返回 ``(剔除稿检查, 剔除记录)``；任一护栏失败（剔除模块护栏/剔除
+        稿检查异常/重检仍不通过）返回 ``(None, None)``，调用方维持停止
+        交付、不交付残稿。调用方须先以 ``can_excise(findings)`` 把关
+        （审计标记与过程事件只对可剔除场景发出）。
+        """
+        record = excise_blocking_content(final_text, findings)
+        if record is None:
+            return None, None
+        try:
+            rechecked = recheck(record.text)
+        except (HumanizerError, TypeError, ValueError):
+            # 剔除稿检查异常：维持停止交付，不交付残稿
+            return None, None
+        if not recheck_ok(rechecked):
+            # 剔除稿重检仍不通过（破坏事实/硬约束未满足/事实锁冲突）：
+            # 维持原候选的停止交付，不交付残稿
+            return None, None
+        return rechecked, record
+
+    @staticmethod
     def _build_article_projection(
         *,
         status: HumanizerResultStatus,
@@ -1530,6 +1684,7 @@ class HumanizerService:
         ledger: SourceLedger | None = None,
         partial_delivery: bool = False,
         delivery_note: str | None = None,
+        excision: ArticleExcisionSummary | None = None,
     ) -> HumanizerArticleProjection:
         """确定性组装版本化文章结果投影（Issue 08）。
 
@@ -1541,6 +1696,8 @@ class HumanizerService:
         路径（material_sufficiency 为 ask_one_question/shorten/
         use_placeholders）都投影为 INSUFFICIENT，界面只展示一个最高价值
         问题（``one_question`` 或错误消息），不堆叠通用建议。
+        Issue 02：``excision`` 非空时 delivery_note 为「已移除 N 处无来源/
+        未授权内容」的已剔除交付说明（成功终态，非部分交付）。
         """
         delivered = status in (
             HumanizerResultStatus.DONE,
@@ -1607,27 +1764,32 @@ class HumanizerService:
         # 定向修订摘要：为何触发、解决哪些问题、仍有哪些风险。
         revision: ArticleRevisionSummary | None = None
         if revision_audit is not None:
-            revised = revision_audit.skipped_reason is None and (
-                revision_audit.triggered
-            )
-            if revised:
-                remaining_count = sum(
-                    max(0, value or 0)
-                    for value in (
-                        revision_audit.revised_fidelity_blocking,
-                        revision_audit.revised_contract_omissions,
-                        revision_audit.revised_warning_count,
-                    )
-                )
+            # Issue 02：已剔除交付的成品重检通过——「仍剩风险」如实为 0，
+            # 审计的 revised_* 计数仍保留修订稿自身的真实检查结果。
+            if revision_audit.final_state == "excised_delivery":
+                remaining_count = 0
             else:
-                remaining_count = sum(
-                    max(0, value)
-                    for value in (
-                        revision_audit.draft_fidelity_blocking,
-                        revision_audit.draft_contract_omissions,
-                        revision_audit.draft_warning_count,
-                    )
+                revised = revision_audit.skipped_reason is None and (
+                    revision_audit.triggered
                 )
+                if revised:
+                    remaining_count = sum(
+                        max(0, value or 0)
+                        for value in (
+                            revision_audit.revised_fidelity_blocking,
+                            revision_audit.revised_contract_omissions,
+                            revision_audit.revised_warning_count,
+                        )
+                    )
+                else:
+                    remaining_count = sum(
+                        max(0, value)
+                        for value in (
+                            revision_audit.draft_fidelity_blocking,
+                            revision_audit.draft_contract_omissions,
+                            revision_audit.draft_warning_count,
+                        )
+                    )
             trigger_code = revision_audit.trigger_code or ""
             trigger_label = (
                 _revision_trigger_label(trigger_code)
@@ -1726,13 +1888,18 @@ class HumanizerService:
                     else ArticleDeliveryStatus.FAILED
                 )
             ),
-            delivery_note=delivery_note if partial_delivery else None,
+            delivery_note=(
+                delivery_note
+                if (partial_delivery or excision is not None)
+                else None
+            ),
             material_state=material_state,
             one_question=one_question,
             final_text=final_text,
             fidelity=fidelity,
             style_review=style_review,
             revision=revision,
+            excision=excision,
             evidence=evidence,
             confirmations=confirmations,
         )
@@ -1761,6 +1928,7 @@ class HumanizerService:
         lock_evidence: _LockEvidence | None = None,
         profile_used: bool | None = None,
         profile_item_count: int | None = None,
+        excision: ArticleExcisionSummary | None = None,
     ) -> HumanizerResultProjection:
         """终态判定与投影：保真硬门阻止交付，风格发现只警告照常交付。
 
@@ -1768,6 +1936,9 @@ class HumanizerService:
         修订后仍有关键保真失败时停止交付，只有非关键风格警告按 WARN 交付
         并展示具体风险（契约遗漏同样展示，不静默隐藏）。Issue 06：证据
         安全风险与修订状态同样展示（保持/已应用/待用户确认）。
+        Issue 02：``excision`` 非空表示机械可剔除类违规已确定性剔除并重检
+        通过——以「已剔除交付」终态交付成品，``revision_audit.final_state``
+        记为 ``excised_delivery``，``delivery_note`` 如实写明移除条数。
         """
         genre_check = check_genre(final_text, contract.genre)
         fidelity_blocking = (
@@ -1851,8 +2022,11 @@ class HumanizerService:
         # Issue 05 终态标注：修订实际执行后仍保真失败 → 停止交付；修订
         # 执行且通过 → 交付修订稿；未触发或被跳过（预算/停止/开关/模型
         # 失败）→ 交付首稿的真实检查状态（首稿本身保真失败时同样停止交付）。
+        # Issue 02：机械可剔除类违规已确定性剔除并重检通过 → excised_delivery。
         if revision_audit is not None:
-            if not revision_audit.triggered:
+            if excision is not None:
+                revision_audit.final_state = "excised_delivery"
+            elif not revision_audit.triggered:
                 revision_audit.final_state = "deliver_draft"
             elif revision_audit.skipped_reason is not None:
                 revision_audit.final_state = (
@@ -1867,9 +2041,15 @@ class HumanizerService:
         # 修订后复核未完成时，交付带明确标注的首稿（成功部分终态），不再
         # 以 budget_exceeded 抹掉已完成工作；投影与审计如实标记部分交付。
         # 说明文案复用修订跳过原因的中文映射（单一 code→文案来源）。
+        # Issue 02：已剔除交付不是部分交付——delivery_note 写移除条数。
         partial_delivery = False
         delivery_note: str | None = None
-        if (
+        if excision is not None:
+            delivery_note = (
+                f"已移除 {excision.removed_count} 处无来源/未授权内容"
+                f"（剔除 {excision.removed_sentence_count} 句）。"
+            )
+        elif (
             status == HumanizerResultStatus.DONE
             and revision_audit is not None
             and revision_audit.triggered
@@ -1926,6 +2106,7 @@ class HumanizerService:
                 ledger=ledger,
                 partial_delivery=partial_delivery,
                 delivery_note=delivery_note,
+                excision=excision,
             ),
             created_at=datetime.now(UTC),
             # Issue 11：投影只保存主要锁引用与业务 run 引用；完整调用集合
@@ -1960,6 +2141,16 @@ class HumanizerService:
             lock_evidence=lock_evidence,
             profile_used=profile_used,
             profile_item_count=profile_item_count,
+            excision=excision,
+            excision_attempted=(
+                revision_audit.excision_attempted
+                if revision_audit is not None
+                else False
+            ),
+            excision_blocked=(
+                (revision_audit.excision_attempted if revision_audit is not None else False)
+                and excision is None
+            ),
         )
         return result
 
@@ -2781,12 +2972,17 @@ class HumanizerService:
         lock_evidence: _LockEvidence | None = None,
         profile_used: bool | None = None,
         profile_item_count: int | None = None,
+        excision: ArticleExcisionSummary | None = None,
+        excision_attempted: bool = False,
     ) -> HumanizerResultProjection:
         """终态判定与结果投影：硬门停止交付；软门交付正文与具体警告。
 
         Issue 07：任何成功/软失败结果都包含正文；只有硬门（事实锁冲突
         等）或无正文的模型错误可以没有 final text。硬门投影附冲突项与
         可操作的恢复方式，不泄漏内部 prompt。
+        Issue 02：``excision`` 非空表示机械可剔除类违规已确定性剔除并
+        重检通过——以成功终态交付剔除稿，``delivery_note`` 如实写明移除
+        条数（旧显式 SKILL 路径与新表达契约路径语义一致）。
         """
         contract = skill_input.contract
         fact_lock_check = checkpoint.fact_lock_check
@@ -2870,6 +3066,15 @@ class HumanizerService:
             status = HumanizerResultStatus.DONE
             state = HumanizerProcessState.DONE
 
+        # Issue 02：已剔除交付的交付说明（成功终态，非部分交付；剔除稿
+        # 已重检通过，硬门分支不会同时命中）。
+        delivery_note = (
+            f"已移除 {excision.removed_count} 处无来源/未授权内容"
+            f"（剔除 {excision.removed_sentence_count} 句）。"
+            if excision is not None
+            else None
+        )
+
         result = HumanizerResultProjection(
             task_id=assistant_message_id,
             skill_id=skill_input.skill_id,
@@ -2896,6 +3101,9 @@ class HumanizerService:
                 error_code=error_code,
                 fidelity_check=fidelity_check,
                 fact_lock_check=fact_lock_check,
+                partial_delivery=False,
+                delivery_note=delivery_note,
+                excision=excision,
             ),
             # Issue 11：投影只保存主要锁引用与业务 run 引用；完整调用集合
             # 由统一锁仓库按 account_id + model_run_id 查询，不复制正文。
@@ -2923,6 +3131,9 @@ class HumanizerService:
             lock_evidence=lock_evidence,
             profile_used=profile_used,
             profile_item_count=profile_item_count,
+            excision=excision,
+            excision_attempted=excision_attempted,
+            excision_blocked=(excision_attempted and excision is None),
         )
         return result
 
@@ -3158,6 +3369,9 @@ class HumanizerService:
         lock_evidence: _LockEvidence | None = None,
         profile_used: bool | None = None,
         profile_item_count: int | None = None,
+        excision: ArticleExcisionSummary | None = None,
+        excision_attempted: bool = False,
+        excision_blocked: bool = False,
     ) -> None:
         if self._observability is None:
             return
@@ -3349,6 +3563,23 @@ class HumanizerService:
                         revision_audit.skipped_reason
                         if revision_audit is not None
                         else None
+                    ),
+                    # Issue 02 第八次改进：确定性剔除观测——是否尝试/移除
+                    # 条数/剔除句数/句数占比/剔除后仍拦截（脱敏计数，不
+                    # 含正文）。剔除交付次数由 excised_delivery 终态或
+                    # excision_removed_count 分布统计。
+                    "excision_attempted": excision_attempted,
+                    "excision_blocked": excision_blocked,
+                    "excision_removed_count": (
+                        excision.removed_count if excision is not None else None
+                    ),
+                    "excision_removed_sentences": (
+                        excision.removed_sentence_count
+                        if excision is not None
+                        else None
+                    ),
+                    "excision_sentence_ratio": (
+                        excision.sentence_ratio if excision is not None else None
                     ),
                     "writing_call_count": writing_call_count,
                     # Issue 06 证据安全：只记录模式/风险/修订/保持计数，不记录正文
