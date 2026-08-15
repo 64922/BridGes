@@ -121,3 +121,85 @@ def test_process_preserves_worker_error_category_and_retryability(monkeypatch) -
     assert exc_info.value.code == "arxiv_offline"
     assert exc_info.value.upstream_status == "http_5xx"
     assert exc_info.value.retryable is True
+
+
+def test_warmup_spawns_and_handshakes_resident_worker_once(monkeypatch) -> None:
+    """Issue 04：预热完成 spawn + 握手，首次搜索复用同一进程不再冷启动。"""
+    process = _FakeProcess()
+    spawns: list[list[str]] = []
+    monkeypatch.setattr(
+        "bridges.arxiv_mcp.process.subprocess.Popen",
+        lambda command, **kwargs: (spawns.append(command), process)[1],
+    )
+    client = ArxivMcpProcessClient(python_executable="fixed-python")
+
+    assert client.warmup() is True
+    assert len(spawns) == 1  # 预热只 spawn 一次
+    assert client.warmup_successes == 1
+    assert client.warmup_failures == 0
+    assert client.warmup() is True  # 已预热完成：幂等，不重复 spawn
+    assert len(spawns) == 1
+
+    papers = client.search("量子 纠错", max_results=1)
+    assert papers[0].abs_url == "https://arxiv.org/abs/2401.12345v2"
+    assert len(spawns) == 1  # 首次搜索复用预热好的进程
+    client.close()
+
+
+def test_warmup_failure_logs_and_counts_without_breaking_lazy_start(
+    monkeypatch,
+) -> None:
+    """预热失败只记日志并返回 False；后续搜索仍走懒启动兜底。"""
+    broken = _FakeProcess()
+    broken.stdout = io.StringIO("")  # 永不输出 ready → 握手 EOF
+    healthy = _FakeProcess()
+    spawns: list[list[str]] = []
+    monkeypatch.setattr(
+        "bridges.arxiv_mcp.process.subprocess.Popen",
+        lambda command, **kwargs: (
+            spawns.append(command),
+            broken if len(spawns) == 1 else healthy,
+        )[1],
+    )
+    client = ArxivMcpProcessClient(python_executable="fixed-python")
+
+    assert client.warmup() is False
+    assert client.warmup_failures == 1
+    assert client.warmup_successes == 0
+
+    papers = client.search("量子 纠错", max_results=1)  # 懒启动兜底
+    assert papers[0].abs_url == "https://arxiv.org/abs/2401.12345v2"
+    assert len(spawns) == 2
+    client.close()
+
+
+def test_warmup_disabled_returns_false_without_spawn(monkeypatch) -> None:
+    """Issue 04：预热开关（limits 单一来源）关闭时不 spawn 任何进程。"""
+    from bridges.arxiv_mcp import limits as arxiv_limits
+
+    monkeypatch.setattr(arxiv_limits, "ARXIV_WARMUP_ENABLED", False)
+    spawns: list[list[str]] = []
+    monkeypatch.setattr(
+        "bridges.arxiv_mcp.process.subprocess.Popen",
+        lambda command, **kwargs: (spawns.append(command), _FakeProcess())[1],
+    )
+    client = ArxivMcpProcessClient(python_executable="fixed-python")
+
+    assert client.warmup() is False
+    assert spawns == []
+
+
+def test_warmup_unexpected_exception_counts_failure(monkeypatch) -> None:
+    """Issue 04：预热期的任意异常都计入失败计数，只记日志不阻断启动。"""
+
+    def _explode() -> None:
+        raise RuntimeError("sidecar warmup explosion")
+
+    monkeypatch.setattr(
+        "bridges.arxiv_mcp.process.ArxivMcpProcessClient._ensure_process", _explode
+    )
+    client = ArxivMcpProcessClient(python_executable="fixed-python")
+
+    assert client.warmup() is False
+    assert client.warmup_failures == 1
+    assert client.warmup_successes == 0

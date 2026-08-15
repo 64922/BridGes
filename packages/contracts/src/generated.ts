@@ -6634,6 +6634,12 @@ export interface components {
              */
             cache_hit: boolean;
             /**
+             * Stale
+             * @description 本次上游调用失败后是否回退到过期缓存结果（结果可能不是最新）。
+             * @default false
+             */
+            stale: boolean;
+            /**
              * Retry After Seconds
              * @description 上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。
              */

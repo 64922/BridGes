@@ -1,10 +1,15 @@
-"""arXiv 结果的进程内结果缓存（规范化查询键 + TTL）。
+"""arXiv 结果的进程内结果缓存（规范化查询键 + TTL + stale 保留窗口）。
 
 缓存只存放成功投影（失败与空结果不缓存），以规范化查询为键：大小写、
 空白与词序归一，引号短语保持原子（避免把 ``ti:"A B"`` 与 ``ti:"B A"``
 误判为同一查询）。TTL 与开关来自 :mod:`bridges.arxiv_mcp.limits`。
 缓存不落敏感信息：键只来自本地脱敏后的公开查询词组，值只含 arXiv
 返回的公开论文元数据。
+
+Issue 04：条目在 TTL 过期后仍保留 ``stale_retention_seconds``（默认
+24 小时）供失败兜底——仅当本次上游调用失败且存在同键 stale 条目时，
+服务层经 :meth:`get_stale` 取回并标记 ``stale``；正常路径仍只读未过期
+缓存，不改变缓存命中语义。
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import time
 from typing import Any
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
-from bridges.arxiv_mcp.limits import ARXIV_CACHE_TTL_SECONDS
+from bridges.arxiv_mcp.limits import ARXIV_CACHE_TTL_SECONDS, ARXIV_STALE_RETENTION_SECONDS
 
 _QUOTED_SEGMENT = re.compile(r'"(?:[^"]*)"|\'(?:[^\']*)\'|“[^”]*”|‘[^’]*’')
 
@@ -51,15 +56,17 @@ class ArxivResultCache:
         self,
         *,
         ttl_seconds: float = ARXIV_CACHE_TTL_SECONDS,
+        stale_retention_seconds: float = ARXIV_STALE_RETENTION_SECONDS,
         enabled: bool = True,
         clock: Any = None,
     ) -> None:
         self._ttl_seconds = max(0.0, ttl_seconds)
+        self._stale_retention_seconds = max(0.0, stale_retention_seconds)
         self._enabled = enabled
         self._clock = clock or time.monotonic
-        #: 键 → (到期单调时刻, 投影)
+        #: 键 → (到期单调时刻, stale 到期单调时刻, 投影)
         self._entries: dict[
-            tuple[str, str, int, str], tuple[float, ArxivSearchProjection]
+            tuple[str, str, int, str], tuple[float, float, ArxivSearchProjection]
         ] = {}
         self._lock = threading.RLock()
 
@@ -70,7 +77,11 @@ class ArxivResultCache:
         max_results: int,
         route_version: str,
     ) -> ArxivSearchProjection | None:
-        """命中未过期缓存时返回标记 ``cache_hit`` 的投影副本，否则 None。"""
+        """命中未过期缓存时返回标记 ``cache_hit`` 的投影副本，否则 None。
+
+        已过期条目不在这里删除：仍处于保留窗口内时留给
+        :meth:`get_stale` 作失败兜底，超过保留窗口才清理。
+        """
         if not self._enabled:
             return None
         key = self._key(account_id, query, max_results, route_version)
@@ -79,11 +90,42 @@ class ArxivResultCache:
             entry = self._entries.get(key)
             if entry is None:
                 return None
-            expires_at, projection = entry
+            expires_at, stale_until, projection = entry
             if expires_at <= now:
-                self._entries.pop(key, None)
+                if stale_until <= now:
+                    self._entries.pop(key, None)
                 return None
             return projection.model_copy(update={"cache_hit": True})
+
+    def get_stale(
+        self,
+        account_id: str,
+        query: str,
+        max_results: int,
+        route_version: str,
+    ) -> ArxivSearchProjection | None:
+        """仅当条目已过期但仍在保留窗口内时返回标记 ``stale`` 的副本。
+
+        未过期条目走正常缓存（此处不返回）；超过保留窗口的条目被清理。
+        调用方只在本次上游调用失败（超时/429/网络类）后查询此方法。
+        """
+        if not self._enabled:
+            return None
+        key = self._key(account_id, query, max_results, route_version)
+        now = self._clock()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return None
+            expires_at, stale_until, projection = entry
+            if expires_at > now:
+                return None
+            if stale_until <= now:
+                self._entries.pop(key, None)
+                return None
+            return projection.model_copy(
+                update={"stale": True, "cache_hit": False}
+            )
 
     def put(
         self,
@@ -97,10 +139,12 @@ class ArxivResultCache:
         if not self._enabled:
             return
         key = self._key(account_id, query, max_results, route_version)
-        expires_at = self._clock() + self._ttl_seconds
+        now = self._clock()
+        expires_at = now + self._ttl_seconds
+        stale_until = expires_at + self._stale_retention_seconds
         stored = projection.model_copy(update={"cache_hit": False})
         with self._lock:
-            self._entries[key] = (expires_at, stored)
+            self._entries[key] = (expires_at, stale_until, stored)
 
     @staticmethod
     def _key(

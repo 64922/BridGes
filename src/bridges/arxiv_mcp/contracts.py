@@ -69,6 +69,10 @@ class ArxivSearchProjection(BaseModel):
     cache_hit: bool = Field(
         default=False, description="是否复用了未过期的进程内结果缓存。"
     )
+    stale: bool = Field(
+        default=False,
+        description="本次上游调用失败后是否回退到过期缓存结果（结果可能不是最新）。",
+    )
     retry_after_seconds: int | None = Field(
         default=None,
         description="上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。",

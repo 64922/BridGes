@@ -29,6 +29,7 @@ from contextlib import suppress
 from datetime import datetime
 from typing import Any
 
+from bridges.arxiv_mcp import limits as arxiv_limits
 from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
 from bridges.arxiv_mcp.worker import HANDSHAKE_VERSION
@@ -141,6 +142,63 @@ class ArxivMcpProcessClient:
         )
         self._children_lock = threading.Lock()
         self._children: set[ArxivMcpProcessClient] = set()
+        #: 预热互斥：应用启动期只预热一次常驻 worker，避免并发重复 spawn。
+        self._warmup_lock = threading.Lock()
+        self._warmup_counters_lock = threading.Lock()
+        self._warmup_successes = 0
+        self._warmup_failures = 0
+
+    @property
+    def warmup_successes(self) -> int:
+        """启动期预热成功次数（脱敏计数，供 metrics_snapshot 聚合）。"""
+        with self._warmup_counters_lock:
+            return self._warmup_successes
+
+    @property
+    def warmup_failures(self) -> int:
+        """启动期预热失败次数（脱敏计数，供 metrics_snapshot 聚合）。"""
+        with self._warmup_counters_lock:
+            return self._warmup_failures
+
+    def warmup(self) -> bool:
+        """启动期预热：spawn 常驻 worker 并完成握手（含 httpx 导入）。
+
+        预热失败只记日志并返回 False：进程句柄已清理，首次搜索仍走
+        懒启动兜底（``_ensure_process`` + ``_ensure_handshake``），不改变
+        任何搜索语义。开关（``ARXIV_WARMUP_ENABLED``，单一来源
+        :mod:`bridges.arxiv_mcp.limits`）关闭或已预热完成时直接返回
+        对应状态。
+        """
+        if not arxiv_limits.ARXIV_WARMUP_ENABLED:
+            return False
+        with self._warmup_lock:
+            process = self._process
+            if self._ready and process is not None and process.poll() is None:
+                return True
+            try:
+                process = self._ensure_process()
+                self._stage = "handshake"
+                # 截止比握手超时略宽，使超时按 handshake 阶段分类
+                # （与搜索路径的握手失败分类一致），而不是折叠成 timeout。
+                self._ensure_handshake(
+                    process,
+                    stop_event=None,
+                    deadline=time.monotonic() + self._handshake_timeout + 0.5,
+                )
+            except Exception as exc:  # noqa: BLE001 - 预热失败绝不阻断应用启动
+                code = getattr(exc, "code", exc.__class__.__name__)
+                logger.warning(
+                    "arxiv worker 预热失败 code=%s stderr=%s",
+                    code,
+                    self._stderr_tail[-512:] or "（无）",
+                )
+                with self._warmup_counters_lock:
+                    self._warmup_failures += 1
+                return False
+            with self._warmup_counters_lock:
+                self._warmup_successes += 1
+            logger.info("arxiv worker 预热完成 pid=%s", process.pid)
+            return True
 
     def search(
         self,

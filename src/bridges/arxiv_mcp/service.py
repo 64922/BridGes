@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -34,7 +35,20 @@ from bridges.routing import (
 )
 from bridges.routing.contracts import PAPER_QUERY_VERSION, RemovedQueryCategory
 
+logger = logging.getLogger("bridges.arxiv_mcp.service")
+
 ARXIV_RELEVANCE_VERSION = "2026.08.12"
+
+#: Issue 04：上游错误码 → 可靠性策略位（重试/stale/冷却的单一分类来源）。
+#: - ``retry``：剩余预算允许时自动重发一次（超时/网络/5xx 瞬时类）；
+#: - ``stale``：本次上游调用失败后允许同键过期缓存兜底；
+#: - ``cooldown``：终态后激活 20s 上游冷却。
+#: 429 只进 stale/cooldown（不重试，维持冷却语义）；4xx/parse 全不进。
+_UPSTREAM_ERROR_POLICY: dict[str, frozenset[str]] = {
+    "arxiv_timeout": frozenset({"retry", "stale", "cooldown"}),
+    "arxiv_offline": frozenset({"retry", "stale"}),
+    "arxiv_rate_limit": frozenset({"stale", "cooldown"}),
+}
 
 
 @dataclass(frozen=True)
@@ -134,6 +148,9 @@ class ArxivSearchService:
     Issue 05：服务层单例持有结果缓存、进程级节流与上游冷却三件套——
     覆盖主 worker 与全部临时并发 worker 的上游请求；缓存命中、冷却
     拒绝与节流等待都在投影与审计中如实标记。
+    Issue 04：有界自动重试（预算阈值门控、重试不绕过节流）、过期缓存
+    stale 兜底（仅失败后返回并标注）与启动期 worker 预热三件套，各自
+    独立回滚开关见 :mod:`bridges.arxiv_mcp.limits`。
     """
 
     def __init__(
@@ -167,6 +184,9 @@ class ArxivSearchService:
         self._cache_hits = 0
         self._cache_misses = 0
         self._throttle_wait_ms_total = 0
+        self._retry_attempts = 0
+        self._retry_successes = 0
+        self._stale_serves = 0
 
     def plan(
         self,
@@ -185,6 +205,24 @@ class ArxivSearchService:
         close = getattr(self._client, "close", None)
         if callable(close):
             close()
+
+    def warmup(self) -> bool:
+        """应用启动期预热：预 spawn 常驻 worker 并完成握手（含 httpx 导入）。
+
+        预热失败只记日志并返回 False，首次搜索仍走懒启动兜底；开关
+        ``ARXIV_WARMUP_ENABLED`` 关闭或客户端不支持预热时直接返回 False，
+        不阻断应用启动。
+        """
+        if not arxiv_limits.ARXIV_WARMUP_ENABLED:
+            return False
+        warmup = getattr(self._client, "warmup", None)
+        if not callable(warmup):
+            return False
+        try:
+            return bool(warmup())
+        except Exception:  # noqa: BLE001 - 预热失败绝不能阻断应用启动
+            logger.warning("arXiv worker 预热异常", exc_info=True)
+            return False
 
     def initial_projection(
         self, plan: ArxivSearchPlan, *, recovery: bool = False
@@ -287,47 +325,127 @@ class ArxivSearchService:
                 throttle_wait_ms=throttle_wait_ms,
             )
             return result
-        try:
+        # Issue 04：有界自动重试 —— 超时/网络类瞬时错误在剩余预算 ≥
+        # 阈值（默认 5s）时自动重发 1 次；429/4xx/解析错误不重试；重发前
+        # 再次等待节流槽位（不绕过节流最小间隔），等待计入阶段预算；
+        # attempt_count 如实反映真实上游调用数。
+        attempts = 0
+        final_error: ArxivMcpError | None = None
+        papers: list[ArxivPaper] | None = None
+        while papers is None:
+            if _user_cancelled(stop_event):
+                return self._finish_cancelled(
+                    account_id,
+                    plan,
+                    started=started,
+                    attempt_count=attempts,
+                    deadline=deadline,
+                    throttle_wait_ms=throttle_wait_ms,
+                )
+            attempts += 1
             with self._metrics_lock:
                 self._upstream_calls += 1
-            papers = _invoke_arxiv_client(
-                self._client,
-                plan.query,
-                max_results=plan.max_results,
-                stop_event=stop_event,
-                deadline=deadline,
-            )
-        except ArxivMcpError as exc:
-            if exc.code == "arxiv_cancelled":
+            try:
+                papers = _invoke_arxiv_client(
+                    self._client,
+                    plan.query,
+                    max_results=plan.max_results,
+                    stop_event=stop_event,
+                    deadline=deadline,
+                )
+            except ArxivMcpError as exc:
+                final_error = exc
+                policy = _UPSTREAM_ERROR_POLICY.get(exc.code, frozenset())
+                if (
+                    attempts >= arxiv_limits.ARXIV_MAX_UPSTREAM_ATTEMPTS
+                    or "retry" not in policy
+                    or not arxiv_limits.ARXIV_RETRY_ENABLED
+                ):
+                    break
+                remaining_budget = (
+                    float("inf")
+                    if deadline is None
+                    else deadline - time.monotonic()
+                )
+                if remaining_budget < arxiv_limits.ARXIV_RETRY_MIN_BUDGET_SECONDS:
+                    break
+                retry_wait = self._throttle.wait_for_request_slot(
+                    deadline=deadline, stop_event=stop_event
+                )
+                if retry_wait is None:
+                    break
+                # 等待期间用户取消：回到循环顶部投影为 cancelled
+                # （attempt_count 如实保留已发生的调用数）。
+                if _user_cancelled(stop_event):
+                    continue
+                with self._metrics_lock:
+                    self._throttle_wait_ms_total += max(0, int(retry_wait * 1000))
+                    self._retry_attempts += 1
+                continue
+        if papers is None and final_error is not None:
+            error = final_error
+            if error.code == "arxiv_cancelled":
                 # 搜索期间用户取消：投影为 cancelled，而不是折叠成启动失败
                 result = self._cancelled_projection(
                     plan,
                     with_timestamp=True,
-                    error_code=exc.code,
-                    error_message=exc.message,
-                    upstream_status=exc.upstream_status,
-                    attempt_count=1,
+                    error_code=error.code,
+                    error_message=error.message,
+                    upstream_status=error.upstream_status,
+                    attempt_count=attempts,
                 )
             else:
+                error_policy = _UPSTREAM_ERROR_POLICY.get(error.code, frozenset())
+                if "cooldown" in error_policy:
+                    self._cooldown.activate(
+                        error.code, error.message, error.upstream_status
+                    )
+                # Issue 04：陈旧缓存兜底 —— 仅当本次上游调用失败（超时/
+                # 429/网络类）且存在同键 stale 条目时返回并标注；无 stale
+                # 条目时维持原错误投影；失败/空结果仍不写入缓存。
+                stale_projection = None
+                if (
+                    "stale" in error_policy
+                    and arxiv_limits.ARXIV_STALE_FALLBACK_ENABLED
+                ):
+                    stale_projection = self._cache.get_stale(
+                        account_id,
+                        plan.query,
+                        plan.max_results,
+                        plan.route_version,
+                    )
+                if stale_projection is not None:
+                    result = stale_projection.model_copy(
+                        update={"attempt_count": attempts}
+                    )
+                    with self._metrics_lock:
+                        self._stale_serves += 1
+                    self._audit(
+                        account_id,
+                        plan,
+                        result,
+                        candidate_count=len(result.papers),
+                        deadline=deadline,
+                        elapsed_ms=_elapsed_ms(started),
+                        throttle_wait_ms=throttle_wait_ms,
+                        stale=True,
+                    )
+                    return result
                 result = ArxivSearchProjection(
                     status=(
                         ArxivSearchStatus.PERMISSION
-                        if exc.permission
+                        if error.permission
                         else ArxivSearchStatus.ERROR
                     ),
                     trigger_reason=plan.reason,
                     query_summary=plan.query,
                     searched_at=datetime.now(UTC),
-                    error_code=exc.code,
-                    error_message=exc.message,
-                    upstream_status=exc.upstream_status,
-                    can_retry=exc.retryable,
-                    attempt_count=1,
+                    error_code=error.code,
+                    error_message=error.message,
+                    upstream_status=error.upstream_status,
+                    can_retry=error.retryable,
+                    attempt_count=attempts,
                 )
-                if exc.code in {"arxiv_rate_limit", "arxiv_timeout"}:
-                    self._cooldown.activate(
-                        exc.code, exc.message, exc.upstream_status
-                    )
             self._audit(
                 account_id,
                 plan,
@@ -338,20 +456,16 @@ class ArxivSearchService:
             )
             return result
         if _user_cancelled(stop_event):
-            result = self._cancelled_projection(
-                plan, with_timestamp=True, upstream_status="cancelled", attempt_count=1
-            )
-            self._audit(
+            return self._finish_cancelled(
                 account_id,
                 plan,
-                result,
+                started=started,
+                attempt_count=attempts,
                 deadline=deadline,
-                elapsed_ms=_elapsed_ms(started),
                 throttle_wait_ms=throttle_wait_ms,
             )
-            return result
         if deadline is not None and time.monotonic() >= deadline:
-            result = self._timeout_projection(plan, attempt_count=1)
+            result = self._timeout_projection(plan, attempt_count=attempts)
             self._cooldown.activate("arxiv_timeout", result.error_message or "", "timeout")
             self._audit(
                 account_id,
@@ -362,6 +476,7 @@ class ArxivSearchService:
                 throttle_wait_ms=throttle_wait_ms,
             )
             return result
+        assert papers is not None  # 循环以成功路径退出时必有真实结果
         candidates = _deduplicate_papers(papers)
         relevant_papers = [
             paper for paper in candidates if _paper_matches_plan(paper, plan)
@@ -388,7 +503,7 @@ class ArxivSearchService:
             error_code=error_code,
             error_message=error_message,
             can_retry=not bool(projection),
-            attempt_count=1,
+            attempt_count=attempts,
         )
         if result.status == ArxivSearchStatus.SUCCESS:
             # 只缓存成功投影；失败与空结果不缓存（同一查询 TTL 内重试
@@ -396,6 +511,11 @@ class ArxivSearchService:
             self._cache.put(
                 account_id, plan.query, plan.max_results, plan.route_version, result
             )
+            if attempts > 1:
+                # 重试成功计数只统计交付结果的 SUCCESS 终态；EMPTY（无
+                # 相关论文）对用户仍可见，不计入「用户无感知的重试成功」。
+                with self._metrics_lock:
+                    self._retry_successes += 1
         self._audit(
             account_id,
             plan,
@@ -446,6 +566,36 @@ class ArxivSearchService:
             attempt_count=attempt_count,
         )
 
+    def _finish_cancelled(
+        self,
+        account_id: str,
+        plan: ArxivSearchPlan,
+        *,
+        started: float,
+        attempt_count: int,
+        deadline: float | None,
+        throttle_wait_ms: int,
+    ) -> ArxivSearchProjection:
+        """取消终态投影 + 审计（尝试循环顶部与成功后的后置检查共用）。
+
+        ``attempt_count`` 如实保留已发生的上游调用数。
+        """
+        result = self._cancelled_projection(
+            plan,
+            with_timestamp=True,
+            upstream_status="cancelled",
+            attempt_count=attempt_count,
+        )
+        self._audit(
+            account_id,
+            plan,
+            result,
+            deadline=deadline,
+            elapsed_ms=_elapsed_ms(started),
+            throttle_wait_ms=throttle_wait_ms,
+        )
+        return result
+
     def _audit(
         self,
         account_id: str,
@@ -458,6 +608,7 @@ class ArxivSearchService:
         cache_hit: bool = False,
         cooldown_rejection: bool = False,
         throttle_wait_ms: int = 0,
+        stale: bool = False,
     ) -> None:
         if self._observability is None:
             return
@@ -496,6 +647,7 @@ class ArxivSearchService:
                 "budget_source": "arxiv_search",
                 "elapsed_ms": elapsed_ms,
                 "cache_hit": cache_hit or result.cache_hit,
+                "stale": stale or result.stale,
                 "attempt_count": result.attempt_count,
                 "throttle_wait_ms": throttle_wait_ms,
                 "cooldown_rejection": cooldown_rejection,
@@ -511,12 +663,15 @@ class ArxivSearchService:
     def metrics_snapshot(self) -> dict[str, object]:
         """脱敏的 arXiv 上游可靠性指标快照（不含查询原文与响应正文）。
 
-        缓存命中/未命中、节流等待总毫秒、冷却拒绝次数与实际上游调用数
-        均可在此查询；逐次搜索明细见审计事件（``cache_hit``、
-        ``attempt_count``、``throttle_wait_ms``、``cooldown_rejection``）。
+        缓存命中/未命中、节流等待总毫秒、冷却拒绝次数、重试/重试成功/
+        stale 兜底次数与实际上游调用数均可在此查询；逐次搜索明细见审计
+        事件（``cache_hit``、``stale``、``attempt_count``、
+        ``throttle_wait_ms``、``cooldown_rejection``）。
         """
         with self._metrics_lock:
             total = self._cache_hits + self._cache_misses
+            warmup_successes = getattr(self._client, "warmup_successes", 0)
+            warmup_failures = getattr(self._client, "warmup_failures", 0)
             return {
                 "arxiv_upstream_calls": self._upstream_calls,
                 "cache_hits": self._cache_hits,
@@ -524,6 +679,11 @@ class ArxivSearchService:
                 "cache_hit_ratio": round(self._cache_hits / total, 4) if total else 0.0,
                 "throttle_wait_ms_total": self._throttle_wait_ms_total,
                 "cooldown_rejections": self._cooldown.rejections,
+                "arxiv_retry_attempts": self._retry_attempts,
+                "arxiv_retry_successes": self._retry_successes,
+                "arxiv_stale_serves": self._stale_serves,
+                "warmup_successes": int(warmup_successes or 0),
+                "warmup_failures": int(warmup_failures or 0),
             }
 
     @staticmethod
