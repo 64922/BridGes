@@ -174,6 +174,63 @@ def test_report_scan_passes_on_clean_report(tmp_path: Path) -> None:
     assert evidence.error_category is None
 
 
+def test_store_secret_scan_fails_closed_on_leaked_lock(tmp_path: Path) -> None:
+    """运行锁/消息投影/SSE 记录落库表含 Key 形态即失败关闭（Issue 07）。"""
+    from bridges.closeout.authenticity_gate import (
+        SECRET_LEAK_IN_STORE,
+        verify_store_secret_scan,
+    )
+    from bridges.storage.database import BridgesDatabase
+
+    leaked = "tvly-" + "abcdefghijklmnop1234567890"
+    database_path = tmp_path / "probe.db"
+    database = BridgesDatabase(database_path)
+    database.initialize()
+    try:
+        database.connection.execute(
+            "INSERT INTO model_run_locks ("
+            "lock_id, account_id, capability_name, capability_version, "
+            "actual_model_id, region, status, error_code, error_message, "
+            "usage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "lock-1",
+                "release-gate-probe",
+                "qwen_text_chat",
+                "1",
+                "qwen-model",
+                "cn",
+                "success",
+                None,
+                leaked,
+                None,
+                "2026-08-15T00:00:00+00:00",
+            ),
+        )
+        database.connection.commit()
+    finally:
+        database.close()
+
+    violations = verify_store_secret_scan(database_path)
+
+    assert any(
+        violation.code == SECRET_LEAK_IN_STORE
+        and violation.target == "model_run_locks"
+        for violation in violations
+    )
+
+
+def test_store_secret_scan_passes_on_clean_store(tmp_path: Path) -> None:
+    from bridges.closeout.authenticity_gate import verify_store_secret_scan
+    from bridges.storage.database import BridgesDatabase
+
+    database_path = tmp_path / "probe.db"
+    database = BridgesDatabase(database_path)
+    database.initialize()
+    database.close()
+
+    assert verify_store_secret_scan(database_path) == []
+
+
 # ---------------------------------------------------------------------------
 # 4. 三态 smoke：真实正文获取判定
 # ---------------------------------------------------------------------------
@@ -327,6 +384,12 @@ def test_web_probe_without_key_marks_body_fetch_not_run(
 
 
 def test_release_gate_includes_golden_routes_and_degradation_semantics() -> None:
+    """金标路由（Issue 03）与降级语义（Issue 02）作为门禁组成部分被执行。
+
+    降级语义的「零进度推进」由 ``test_issue03_learning_evidence_chat.py``
+    的 ``test_chat_搜索成功但无覆盖时不伪造引用也不写入学习进度`` 断言
+    （``teaching.learning_progress is None``），该文件同样在门禁清单中。
+    """
     tests = set(RELEASE_GATE_PYTHON_TESTS)
     assert "tests/chat/test_golden_intent_routes.py" in tests, (
         "Issue 03 金标路由必须作为发布门组成部分被执行"

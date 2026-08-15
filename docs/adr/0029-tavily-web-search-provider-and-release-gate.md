@@ -63,7 +63,8 @@ Key。实测该网络环境下 `html.duckduckgo.com` 与 `duckduckgo.com` 均连
    - 能力清单中通用网页搜索恰好分类一次且为 `external_non_qwen`；
    - 生产组合通用网页搜索提供方清单**恰好只有 `tavily`**；
    - 产物扫描覆盖 Tavily Key 形态（`tvly-` 前缀）与 Qwen Key 形态，
-     日志/运行锁/消息投影/SSE 记录/发布报告零泄漏；
+     日志/运行锁/消息投影/SSE 记录/发布报告零泄漏，并对持久化落库表
+     （运行锁、消息、SSE 记录投影）做存储级 Key 形态扫描；
    - opt-in 真实 smoke（搜索 + 正文获取）输出 `passed`/`failed`/
      `inconclusive`，缺 Key/无网络为 `inconclusive`，不伪通过；
    - 金标路由（Issue 03）与降级语义（Issue 02）抽查作为门禁组成部分

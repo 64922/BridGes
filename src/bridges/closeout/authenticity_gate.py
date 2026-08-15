@@ -31,6 +31,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import io
+import json
 import math
 import os
 import struct
@@ -89,6 +90,18 @@ LOCK_VERIFICATION_FAILED = "lock_verification_failed"
 RETIRED_CONTRACT_FAILED = "retired_contract_failed"
 LOCAL_JOURNEY_MODEL_CALL = "local_journey_model_call"
 EXTERNAL_PROVIDER_FAILED = "external_provider_failed"
+#: Issue 07：持久化投影（运行锁/消息/SSE 记录落库表）出现 Key 形态。
+SECRET_LEAK_IN_STORE = "secret_leak_in_store"
+
+#: Issue 07：存储级密钥扫描覆盖的持久化投影表（运行锁、消息投影与
+#: SSE 记录落库表；不存在的表在迁移期自动跳过）。
+STORE_SCAN_TABLES = (
+    "model_run_locks",
+    "messages",
+    "mode_events",
+    "conversations",
+    "learning_progress",
+)
 
 #: 退役契约探针：每条 retired 路由模式的代表请求（方法, 路径）。
 #: 路径中的 ``*`` 由门禁替换为示例参数；全部返回 410 + 稳定错误码。
@@ -1548,6 +1561,81 @@ def verify_locks_after_restart(
     return violations
 
 
+def verify_store_secret_scan(database_path: Path) -> list[GateViolation]:
+    """存储级密钥扫描：持久化投影（运行锁/消息/SSE 记录落库表）零泄漏。
+
+    Issue 07 密钥泄漏硬门：以只读方式打开同一 SQLite 文件，对
+    ``STORE_SCAN_TABLES`` 的全部行做 JSON 序列化文本扫描，复用
+    ``scripts/artifact_secret_scan`` 的 Key 形态模式（含 ``tvly-`` 与
+    Qwen Key 形态，白名单标记豁免测试夹具）。任一表任一行命中即以
+    ``secret_leak_in_store`` 失败关闭；只报告表名，绝不回显命中值。
+    表不存在（迁移期）自动跳过。
+    """
+    from bridges.closeout.release_gate import _load_artifact_scan
+
+    scanner = _load_artifact_scan()
+    if scanner is None:
+        return [
+            GateViolation(
+                SECRET_LEAK_IN_STORE,
+                "store-scan",
+                "密钥扫描器不可用，存储级密钥检查失败关闭。",
+            )
+        ]
+    violations: list[GateViolation] = []
+    try:
+        reopened = BridgesDatabase(database_path)
+        reopened.initialize()
+    except Exception as exc:  # noqa: BLE001 - 探针只输出稳定分类
+        return [
+            GateViolation(
+                SECRET_LEAK_IN_STORE,
+                "store-scan",
+                f"存储级密钥扫描无法打开数据库（{exc.__class__.__name__.lower()}）。",
+            )
+        ]
+    try:
+        for table in STORE_SCAN_TABLES:
+            try:
+                rows = reopened.connection.execute(
+                    f"SELECT * FROM {table}"
+                ).fetchall()
+            except Exception:  # noqa: BLE001 - 迁移期表不存在即跳过
+                continue
+            for row in rows:
+                text = json.dumps(
+                    dict(row) if hasattr(row, "keys") else row,
+                    ensure_ascii=False,
+                    default=str,
+                )
+                if _store_row_has_key_shape(scanner, text):
+                    violations.append(
+                        GateViolation(
+                            SECRET_LEAK_IN_STORE,
+                            table,
+                            "持久化投影含疑似 Tavily/Qwen Key 形态，密钥泄漏硬门失败关闭。",
+                        )
+                    )
+                    break
+    finally:
+        reopened.close()
+    return violations
+
+
+def _store_row_has_key_shape(scanner: Any, text: str) -> bool:
+    """行文本命中任一秘密形态且不含白名单标记即视为泄漏。"""
+    for line in text.splitlines():
+        for _kind, pattern in scanner.SECRET_PATTERNS:
+            match = pattern.search(line)
+            if match is None:
+                continue
+            matched = match.group(0)
+            if any(marker in matched.lower() for marker in scanner._FAKE_MARKERS):
+                continue
+            return True
+    return False
+
+
 def run_external_provider_probes() -> list[LiveProbeResult]:
     """真实 Tavily/arXiv 提供方探针（复用 Issue 04 发布探针，仅 --real-probes）。
 
@@ -1826,6 +1914,18 @@ def run_authenticity_gate(
                 "duration_ms": _latency_ms(started),
             }
         )
+        # 7.5 Issue 07：存储级密钥扫描——运行锁/消息投影/SSE 记录落库表
+        # 不含 Tavily/Qwen Key 形态（复用 artifact_secret_scan 模式）。
+        started = time.monotonic()
+        store_violations = verify_store_secret_scan(restart_path)
+        violations.extend(store_violations)
+        deterministic_checks.append(
+            {
+                "name": "store-secret-scan",
+                "status": "passed" if not store_violations else "failed",
+                "duration_ms": _latency_ms(started),
+            }
+        )
         # 8. 外部提供方真实探针（Tavily/arXiv）。
         external_probes = run_external_provider_probes()
         live_probes.extend(external_probes)
@@ -1934,6 +2034,8 @@ __all__ = [
     "PROBE_ACCOUNT_ID",
     "RETIRED_CONTRACT_FAILED",
     "RETIRED_PROBE_SAMPLES",
+    "SECRET_LEAK_IN_STORE",
+    "STORE_SCAN_TABLES",
     "check_manifest",
     "check_production_composition",
     "check_retired_contract",
@@ -1944,4 +2046,5 @@ __all__ = [
     "run_live_suite",
     "run_local_journey_spy_probes",
     "verify_locks_after_restart",
+    "verify_store_secret_scan",
 ]

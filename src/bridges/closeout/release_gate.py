@@ -102,7 +102,7 @@ class ProviderProbeEvidence:
     error_category: str | None = None
     failure_class: FailureClass | None = None
     worker_cleanup: bool = True
-    body_fetch: str | None = None
+    body_fetch: str = "not_run"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -256,17 +256,14 @@ def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
     checked_at = datetime.now(UTC).isoformat()
     api_key = Settings().tavily_api_key
     if api_key is None or not api_key.get_secret_value().strip():
-        return ProviderProbeEvidence(
-            provider="tavily",
+        return _tavily_probe(
             status=CheckStatus.INCONCLUSIVE,
             semantic_health="unavailable",
             checked_at=checked_at,
-            duration_ms=_duration_ms(started),
-            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
+            started=started,
             result_count=None,
             error_category="web_search_credentials",
             failure_class=FailureClass.ENVIRONMENT,
-            worker_cleanup=True,
             body_fetch="not_run",
         )
     client = TavilySearchClient(
@@ -292,44 +289,36 @@ def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
     )
     if not contract_ok:
         # 解析契约漂移：非空 JSON/HTTP 200 本身不足以判定 READY。
-        return ProviderProbeEvidence(
-            provider="tavily",
+        return _tavily_probe(
             status=CheckStatus.FAILED,
             semantic_health=semantic,
             checked_at=checked_at,
-            duration_ms=_duration_ms(started),
-            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
+            started=started,
             result_count=result_count,
             error_category="parse_contract_drift",
             failure_class=FailureClass.PRODUCT,
-            worker_cleanup=True,
             body_fetch="not_run",
         )
     body_status, body_error = "not_run", None
     if results:
         body_status, body_error = _probe_web_body_fetch(http_client, api_key, results[0].url)
     if body_status == CheckStatus.FAILED:
-        return ProviderProbeEvidence(
-            provider="tavily",
+        return _tavily_probe(
             status=CheckStatus.FAILED,
             semantic_health=semantic,
             checked_at=checked_at,
-            duration_ms=_duration_ms(started),
-            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
+            started=started,
             result_count=result_count,
             error_category=body_error or "web_search_body_fetch_failed",
             failure_class=FailureClass.PRODUCT,
-            worker_cleanup=True,
             body_fetch=body_status,
         )
     if body_status == CheckStatus.INCONCLUSIVE:
-        return ProviderProbeEvidence(
-            provider="tavily",
+        return _tavily_probe(
             status=CheckStatus.INCONCLUSIVE,
             semantic_health=semantic,
             checked_at=checked_at,
-            duration_ms=_duration_ms(started),
-            provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
+            started=started,
             result_count=result_count,
             error_category=body_error or "web_search_body_fetch_inconclusive",
             failure_class=(
@@ -337,21 +326,44 @@ def _probe_web(http_client: httpx.Client) -> ProviderProbeEvidence:
                 if body_error in {"web_search_credentials", "web_search_configuration"}
                 else FailureClass.EXTERNAL
             ),
-            worker_cleanup=True,
             body_fetch=body_status,
         )
-    return ProviderProbeEvidence(
-        provider="tavily",
+    return _tavily_probe(
         status=CheckStatus.PASSED,
         semantic_health=semantic,
+        checked_at=checked_at,
+        started=started,
+        result_count=result_count,
+        error_category=None,
+        failure_class=None,
+        body_fetch=body_status,
+    )
+
+
+def _tavily_probe(
+    *,
+    status: str,
+    semantic_health: str,
+    checked_at: str,
+    started: float,
+    result_count: int | None,
+    error_category: str | None,
+    failure_class: FailureClass | None,
+    body_fetch: str,
+) -> ProviderProbeEvidence:
+    """构造 Tavily 探针证据：provider/version/耗时等公共字段集中在此。"""
+    return ProviderProbeEvidence(
+        provider="tavily",
+        status=status,
+        semantic_health=semantic_health,
         checked_at=checked_at,
         duration_ms=_duration_ms(started),
         provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
         result_count=result_count,
-        error_category=None,
-        failure_class=None,
+        error_category=error_category,
+        failure_class=failure_class,
         worker_cleanup=True,
-        body_fetch=body_status,
+        body_fetch=body_fetch,
     )
 
 
@@ -366,6 +378,10 @@ def _probe_web_body_fetch(
     ``raw_content``。凭据无效（401/403）、限流（429）、网络不可达与上游
     暂时故障 → ``inconclusive``（不伪通过）；解析/契约漂移与请求类错误 →
     ``failed``。任何路径都不回显 Key、URL 正文与响应正文。
+
+    状态映射与 ``TavilySearchClient._validate_response`` 语义一致，但由
+    门禁**独立实现**：发布门断言的是合同本身，不复用被测实现的方法，
+    避免门禁与被测代码共享同一缺陷（两处各自有测试覆盖）。
     """
     headers = {
         "Accept": "application/json",
@@ -373,12 +389,12 @@ def _probe_web_body_fetch(
         "Accept-Encoding": "gzip",
         "Authorization": f"Bearer {api_key.get_secret_value()}",
     }
-    payload = {"urls": [url], "extract_depth": "basic"}
+    request_payload = {"urls": [url], "extract_depth": "basic"}
     try:
         with http_client.stream(
             "POST",
             TAVILY_EXTRACT_ENDPOINT,
-            json=payload,
+            json=request_payload,
             headers=headers,
             follow_redirects=False,
             timeout=8.0,
@@ -400,8 +416,8 @@ def _probe_web_body_fetch(
     except httpx.HTTPError:
         return CheckStatus.INCONCLUSIVE, "web_search_offline"
     try:
-        payload = json.loads(body.decode("utf-8"))
-        raw = payload.get("results") if isinstance(payload, dict) else None
+        data = json.loads(body.decode("utf-8"))
+        raw = data.get("results") if isinstance(data, dict) else None
         ok = isinstance(raw, list) and any(
             isinstance(item, dict)
             and isinstance(item.get("raw_content"), str)
@@ -544,7 +560,7 @@ def write_report(report: ReleaseGateReport, path: Path) -> None:
             f"探针时间 `{item['checked_at'] or 'unknown'}`，{item['duration_ms']} ms，"
             f"版本 `{item['provider_version'] or 'unknown'}`，"
             f"结果数 `{item['result_count'] if item['result_count'] is not None else 'n/a'}`，"
-            f"正文获取 `{item.get('body_fetch') or 'n/a'}`，"
+            f"正文获取 `{item['body_fetch']}`，"
             f"错误类别 `{item['error_category'] or 'none'}`"
             for item in payload["real_probes"]
         )
@@ -864,7 +880,7 @@ def diagnose_web_health() -> int:
         print(
             "Tavily 公网搜索可用："
             f"{probe.result_count or 0} 条可解析结果，"
-            f"正文获取 {probe.body_fetch or 'n/a'}，"
+            f"正文获取 {probe.body_fetch}，"
             f"耗时 {probe.duration_ms} ms，"
             f"提供方版本 {probe.provider_version or 'unknown'}。"
         )

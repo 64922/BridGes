@@ -65,7 +65,8 @@
   「本轮未联网核实」标注的降级且零进度推进）作为门禁组成部分被执行；
 - 密钥泄漏硬门：`scripts\artifact_secret_scan.py` 覆盖 `tvly-` 与 Qwen
   Key 形态，日志、运行锁、消息投影、SSE 记录与发布报告零泄漏，泄漏即
-  失败关闭；
+  失败关闭；真实性门对探针数据库落库表（运行锁/消息投影/SSE 记录）
+  另做存储级 Key 形态扫描（`secret_leak_in_store`）；
 - 真实 Tavily smoke（搜索 + 正文获取）输出 `passed`/`failed`/
   `inconclusive`，缺 Key/无网络为 `inconclusive` 且不计入通过，结果以
   脱敏字段归档进报告。

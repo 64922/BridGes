@@ -27,10 +27,12 @@ $env:BRIDGES_TAVILY_API_KEY_FILE = "C:\secure\tavily-key.txt"
 **缺 Key 行为**：
 
 - 缺 Qwen Key：启动硬门失败关闭；
-- 缺 Tavily Key：应用正常启动，联网搜索入口返回「未配置搜索凭据」投影，
-  前端如实标注，不伪装成功、不静默回退 DDG 或其他提供方；学习模式联网
-  失败走 Issue 02 降级语义（带「本轮未联网核实」标注的模型知识回答，
-  本地材料冲突时保持拒绝）。
+- 缺 Tavily Key（运行时）：应用正常启动，联网搜索入口返回「未配置搜索
+  凭据」投影，前端如实标注，不伪装成功、不静默回退 DDG 或其他提供方；
+  学习模式联网失败走 Issue 02 降级语义（带「本轮未联网核实」标注的模型
+  知识回答，本地材料冲突时保持拒绝）。
+- 注意：首次交互式安装的 Tavily 提示要求输入，留空会取消本次启动；
+  已保存凭据或已配置环境变量的后续启动不再询问。
 
 ## 2. 限流 / 401 故障处理
 
@@ -73,7 +75,8 @@ $env:BRIDGES_TAVILY_API_KEY_FILE = "C:\secure\tavily-key.txt"
    标注的降级回答且零进度推进。
 5. **密钥零泄漏**：`scripts\artifact_secret_scan.py`（含 `tvly-` 形态）
    扫描日志、运行锁、消息投影、SSE 记录与发布报告产物；发布报告本身也
-   经进程内扫描复核。
+   经进程内扫描复核；真实性门另对探针数据库的落库表（运行锁/消息/SSE
+   记录投影）做存储级 Key 形态扫描（`secret_leak_in_store` 失败关闭）。
 6. **真实 Tavily smoke（opt-in）**：`--real-probes` 下执行最小成本真实
    搜索 + 正文获取，输出 `passed`/`failed`/`inconclusive`；缺 Key/无网络
    为 `inconclusive` 且不计入通过，不得伪通过；结果以脱敏字段归档进
