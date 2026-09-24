@@ -314,11 +314,11 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     await expect(note).toBeInViewport();
   });
 
-  test("两种模式首轮请求只携带自然语言合同字段", async ({ page }) => {
+  test("首轮仅以日常模式发送普通消息合同字段", async ({ page }) => {
     await registerAndEnterHome(page);
     const mock = await installMockChatApi(page);
     const mode = page.getByTestId("mode-toggle");
-    await mode.getByRole("button", { name: "学习模式" }).click();
+    await expect(mode.getByRole("button", { name: "学习模式" })).toBeDisabled();
     await page.getByLabel("输入消息").fill("找几篇 Transformer 论文");
     await page.getByRole("button", { name: "发送消息" }).click();
     await page.waitForURL(/\/chat\/mock-1/);
@@ -326,7 +326,7 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     expect(mock.firstTurnBodies).toHaveLength(1);
     const body = mock.firstTurnBodies[0];
     expect(body.content).toBe("找几篇 Transformer 论文");
-    expect(body.mode).toBe("study");
+    expect(body.mode).toBe("companion");
     expect(typeof body.idempotency_key).toBe("string");
     for (const retiredField of [
       "conversation_id",
@@ -342,6 +342,15 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     ]) {
       expect(body).not.toHaveProperty(retiredField);
     }
+    expect(mock.conversationPostCount()).toBe(0);
+  });
+
+  test("首条消息之前不创建会话，听写也不会预建空会话", async ({ page }) => {
+    await registerAndEnterHome(page);
+    const mock = await installMockChatApi(page);
+
+    await expect(page.getByTestId("composer").getByRole("button", { name: "开始听写" })).toBeDisabled();
+    await expect(page.getByTestId("composer").getByText("发送首条消息后可使用听写")).toBeVisible();
     expect(mock.conversationPostCount()).toBe(0);
   });
 
@@ -361,12 +370,12 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
       "润色这段文章",
       "生成一张小猫图片",
     ]);
+    expect(mock.firstTurnBodies.every((body) => body.mode === "companion")).toBe(true);
   });
 
-  test("发送失败保留输入与模式，重试后才导航", async ({ page }) => {
+  test("发送失败保留输入与日常模式，重试后才导航", async ({ page }) => {
     await registerAndEnterHome(page);
     const mock = await installMockChatApi(page, { failOnce: true });
-    await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).click();
     const input = page.getByLabel("输入消息");
     const note = getBlankStateNote(page);
     const noteBeforeSend = await note.boundingBox();
@@ -382,7 +391,8 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
       noteBeforeSend!.y + noteBeforeSend!.height,
       0
     );
-    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "日常陪伴" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toBeDisabled();
     await expect(page).toHaveURL(/\/$/);
     await input.press("Enter");
     await page.waitForURL(/\/chat\/mock-1/);
@@ -410,20 +420,19 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     await installMockChatApi(page, { delayMs: 700 });
     await page.getByLabel("输入消息").fill("你好");
     await page.getByRole("button", { name: "发送消息" }).click();
-    await expect(page.getByTestId("composer-sending-status")).toBeVisible();
+    await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
     await expect(page.getByRole("button", { name: "发送消息" })).toHaveCount(0);
     await expect(page.getByTestId("mode-toggle").getByRole("button").nth(0)).toBeDisabled();
     await expect(page.getByTestId("mode-toggle").getByRole("button").nth(1)).toBeDisabled();
     await page.waitForURL(/\/chat\/mock-1/);
   });
 
-  test("纯键盘可切换模式、换行并发送，桌面视口无水平溢出", async ({ page }) => {
+  test("键盘发送与换行正常，学习模式保持关闭且桌面视口无水平溢出", async ({ page }) => {
     await registerAndEnterHome(page);
     const mock = await installMockChatApi(page);
     const study = page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" });
-    await study.focus();
-    await page.keyboard.press("Enter");
-    await expect(study).toHaveAttribute("aria-pressed", "true");
+    await expect(study).toBeDisabled();
+    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "日常陪伴" })).toHaveAttribute("aria-pressed", "true");
 
     const input = page.getByLabel("输入消息");
     await input.focus();
@@ -441,6 +450,7 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
       { width: 1920, height: 1080 },
     ]) {
       await page.goto("/");
+      await expect(page.getByTestId("new-chat-home")).toBeVisible();
       await page.setViewportSize(viewport);
       const overflowX = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth

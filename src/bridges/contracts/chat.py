@@ -358,6 +358,8 @@ class ChatCreateRequest(BaseModel):
     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话）。
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = Field(default=None, max_length=120, description="可选标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话初始模式。")
     project_id: str | None = Field(default=None, max_length=200, description="可选学习项目标识。")

@@ -260,6 +260,111 @@ def test_first_turn_failure_leaves_no_draft(client: TestClient) -> None:
     assert after == before, "失败不得留下空草稿或部分会话"
 
 
+def test_daily_first_turn_rejects_study_mode_and_unrecognized_modules(
+    client: TestClient,
+) -> None:
+    """尚未验收的学习模式与未知模块不能绕过普通日常首轮入口。"""
+    _register(client)
+    before = client.get("/chat/conversations").json()["conversations"]
+
+    study_status, study_body = _first_turn(
+        client,
+        {
+            "content": "开始学习",
+            "idempotency_key": "daily-gate-study-001",
+            "mode": "study",
+        },
+    )
+    assert study_status == 409
+    assert study_body["detail"]["error"] == "study_mode_unavailable"
+
+    module_status, _ = _first_turn(
+        client,
+        {
+            "content": "找几篇论文",
+            "idempotency_key": "daily-gate-module-002",
+            "module_id": "unrecognized",
+        },
+    )
+    assert module_status == 422
+    assert client.get("/chat/conversations").json()["conversations"] == before
+
+    create_study = client.post(
+        "/chat/conversations", json={"title": "学习草稿", "mode": "study"}
+    )
+    assert create_study.status_code == 409
+    create_module = client.post(
+        "/chat/conversations", json={"title": "普通会话", "module_id": "unrecognized"}
+    )
+    assert create_module.status_code == 422
+    assert client.get("/chat/conversations").json()["conversations"] == before
+
+
+def test_message_request_rejects_mode_tampering_and_invalid_module(
+    client: TestClient,
+) -> None:
+    """后续消息不能通过正文接口篡改固定模式或注入未知模块值。"""
+    _register(client)
+    status, body = _first_turn(
+        client,
+        {"content": "你好", "idempotency_key": "daily-lock-first-003"},
+    )
+    assert status == 201, body
+    conversation_id = body["conversation"]["conversation_id"]
+    before = client.get(f"/chat/conversations/{conversation_id}").json()
+    assert before["mode"] == "companion"
+    assert before["mode_locked"] is True
+
+    tampered = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "切换到学习模式", "mode": "study"},
+    )
+    invalid_module = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "搜索论文", "module_id": "unrecognized"},
+    )
+    assert tampered.status_code == 422
+    assert invalid_module.status_code == 422
+    after = client.get(f"/chat/conversations/{conversation_id}").json()
+    assert after["mode"] == before["mode"]
+    user_messages_before = [
+        (message["message_id"], message["content"])
+        for message in before["messages"]
+        if message["role"] == "user"
+    ]
+    user_messages_after = [
+        (message["message_id"], message["content"])
+        for message in after["messages"]
+        if message["role"] == "user"
+    ]
+    assert user_messages_after == user_messages_before
+
+
+def test_ordinary_text_persists_without_auto_selecting_legacy_modules(
+    client: TestClient,
+) -> None:
+    """未选模块的普通文字只保存为普通日常消息，不按正文启动旧能力。"""
+    _register(client)
+    prompts = [
+        "找几篇 Transformer 论文",
+        "润色这段文章，让它更自然",
+        "生成一张小猫图片",
+        "帮我规划职业方向",
+    ]
+    for index, prompt in enumerate(prompts):
+        status, body = _first_turn(
+            client,
+            {"content": prompt, "idempotency_key": f"ordinary-route-{index:03d}"},
+        )
+        assert status == 201, body
+        user_message = body["user_message"]
+        assert user_message["route"]["status"] == "ordinary"
+        assert user_message["route"]["main_capability"] == "ordinary_chat"
+        assert user_message["skill"] is None
+        assert user_message["image"] is None
+        assert body["assistant_message"]["arxiv_search"] is None
+
+
 def test_first_turn_reuses_existing_empty_conversation(client: TestClient) -> None:
     """预建空会话（附件路径）被首轮复用；非空会话拒绝。"""
     _register(client)

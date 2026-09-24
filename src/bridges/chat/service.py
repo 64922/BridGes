@@ -37,7 +37,6 @@ from bridges.chat.repository import (
     MessageRecord,
     ModeEventRecord,
 )
-from bridges.chat.routing import NaturalLanguageImageRouter, image_request_from_decision
 from bridges.chat.selections import (
     ChatSelectionsService,
     SelectionResolution,
@@ -113,7 +112,7 @@ from bridges.contracts.profile_extraction import (
     ProfilePreprocessResult,
 )
 from bridges.contracts.profiles import ProfileNotification
-from bridges.contracts.routing import RouteDecision, RouteOperation
+from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.teaching_progress import (
@@ -133,7 +132,6 @@ from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
-from bridges.skills.humanizer.intent import route_humanizer_message
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
@@ -245,7 +243,6 @@ class ChatService:
         video_service: VideoOrchestrator | None = None,
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
-        natural_language_router: NaturalLanguageImageRouter | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
     ) -> None:
         self._repo = repository
@@ -290,9 +287,6 @@ class ChatService:
         self._writing_policy = writing_policy_compiler or GlobalWritingPolicyCompiler()
         #: 新聊天自然语言主能力路由；结果在消息上持久化后才允许外部调用。
         self._router = NaturalLanguageRouter()
-        #: 普通自然语言图片路由（Issue 08）；路由快照随用户消息落库，
-        #: 未挂载时保留既有显式能力载荷兼容路径。
-        self._natural_language_router = natural_language_router
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
         #: 回合编排深模块（Issue 42）：生成管线（模式路由/检索/切片编译/
@@ -350,7 +344,7 @@ class ChatService:
         project_id: str | None = None,
         plugin_selection: list[ChatPluginSelectionItem] | None = None,
     ) -> ChatConversationProjection:
-        """新建对话；普通新聊天默认日常陪伴，学习项目传入 ``study``。
+        """新建未锁定的日常对话草稿。
 
         ``plugin_selection`` 为新对话的初始插件选择（新聊天首页先选
         插件再建对话）；调用方负责逐项校验可用性，这里原样持久化。
@@ -393,6 +387,15 @@ class ChatService:
             messages=[],
             mode_events=[],
         )
+
+    @staticmethod
+    def _require_daily_mode(mode: ChatMode) -> None:
+        if mode != ChatMode.COMPANION:
+            raise ChatDomainError(
+                "study_mode_unavailable",
+                "学习模式尚未开放；历史学习对话目前仅支持查看。",
+                409,
+            )
 
     def set_conversation_mode(
         self,
@@ -746,29 +749,9 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
-        skill_id, skill_input, use_knowledge_base = (
-            self._apply_natural_language_humanizer_route(
-                content,
-                skill_id=skill_id,
-                skill_input=skill_input,
-                image=image,
-                video=video,
-                mcp_call=mcp_call,
-                attachment_ids=attachment_ids,
-                use_knowledge_base=use_knowledge_base,
-            )
-        )
-        image_route = self._route_natural_language(
-            account_id,
-            content,
-            explicit_payload=any(
-                value is not None for value in (skill_id, image, video, mcp_call)
-            ),
-        )
-        routed_image = image_request_from_decision(image_route) if image_route else None
         skill_payload, image_payload, video_payload, mcp_call_payload = (
             self._validate_turn_payloads(
-                skill_id, skill_input, image or routed_image, video, mcp_call
+                skill_id, skill_input, image, video, mcp_call
             )
         )
         record = self._repo.get_conversation(account_id, conversation_id)
@@ -792,7 +775,6 @@ class ChatService:
         attachment_ids = None
         mode = ChatMode(record.mode)
         capability_route = self._route_for_turn(
-            content,
             skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
@@ -813,7 +795,6 @@ class ChatService:
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
             route=capability_route,
-            image_route=image_route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -867,48 +848,6 @@ class ChatService:
             self._project_message(assistant_message, run_view),
         )
 
-    def _apply_natural_language_humanizer_route(
-        self,
-        content: str,
-        *,
-        skill_id: str | None,
-        skill_input: dict[str, Any] | None,
-        image: dict[str, Any] | None,
-        video: dict[str, Any] | None,
-        mcp_call: dict[str, Any] | None,
-        attachment_ids: list[str] | None,
-        use_knowledge_base: bool,
-    ) -> tuple[str | None, dict[str, Any] | None, bool]:
-        """把普通消息编译为既有人味化 SKILL 载荷。
-
-        只有未携带旧载荷或其他能力载荷时才尝试路由；显式 SKILL 仍按
-        兼容合同校验。自然语言路由不接受聊天附件，避免把历史附件或
-        未经知识库迁移的文件偷偷重新送入模型。
-        """
-        if any(
-            payload is not None
-            for payload in (skill_id, skill_input, image, video, mcp_call)
-        ):
-            return skill_id, skill_input, use_knowledge_base
-        routed = route_humanizer_message(content)
-        if routed is None:
-            return skill_id, skill_input, use_knowledge_base
-        # 统一主能力路由优先识别复合任务；否则人味化快捷路由会先把
-        # 「规划职业方向并润色简历」拆成单一 SKILL，绕过澄清合同。
-        if self._router.classify(content).status == RouteStatus.CLARIFY:
-            return skill_id, skill_input, use_knowledge_base
-        if attachment_ids:
-            raise ChatDomainError(
-                "humanizer_attachment_not_supported",
-                "自然语言人味化不接收聊天附件，请先把原文件上传到当前账户知识库后再引用。",
-                422,
-            )
-        return (
-            routed.skill_input.skill_id,
-            routed.skill_input.model_dump(mode="json"),
-            routed.use_knowledge_base,
-        )
-
     def _validate_skill_attachment_consistency(
         self,
         skill_payload: dict[str, Any] | None,
@@ -930,31 +869,6 @@ class ChatService:
             raise ChatDomainError(
                 "attachment_contract_mismatch",
                 "任务引用的附件与消息附加的附件不一致，请重新选择文件后重试。",
-                422,
-            )
-
-    def _route_natural_language(
-        self, account_id: str, content: str, *, explicit_payload: bool
-    ) -> RouteDecision | None:
-        """只对无显式能力载荷的普通消息做一次本地路由。"""
-
-        if explicit_payload or self._natural_language_router is None:
-            return None
-        return self._natural_language_router.route(account_id, content)
-
-    @staticmethod
-    def _reject_natural_image_attachments(
-        route: RouteDecision | None, attachment_ids: list[str]
-    ) -> None:
-        if (
-            route is not None
-            and route.capability.value == "image"
-            and route.operation in {RouteOperation.GENERATE, RouteOperation.EDIT}
-            and attachment_ids
-        ):
-            raise ChatDomainError(
-                "image_source_not_allowed",
-                "自然语言图片编辑只允许使用当前账户知识库中的图片，不能使用聊天附件。",
                 422,
             )
 
@@ -993,14 +907,13 @@ class ChatService:
 
     def _route_for_turn(
         self,
-        content: str,
         *,
         skill_payload: dict[str, Any] | None,
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
     ) -> CapabilityRoute:
-        """让显式能力载荷优先于文本中的相邻意图。"""
+        """显式结构化载荷可选专用处理；普通文本始终走日常对话。"""
         explicit_capability = None
         reason = None
         if skill_payload is not None:
@@ -1026,7 +939,13 @@ class ChatService:
                 web_search_allowed=False,
             )
         if explicit_capability is None:
-            return self._router.classify(content)
+            return CapabilityRoute(
+                status=RouteStatus.ORDINARY,
+                main_capability=MainCapability.ORDINARY_CHAT,
+                confidence=1.0,
+                reason="未选择专用模块，按日常对话处理。",
+                web_search_allowed=False,
+            )
         return CapabilityRoute(
             status=RouteStatus.MATCHED,
             main_capability=explicit_capability,
@@ -1048,7 +967,6 @@ class ChatService:
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
         route: CapabilityRoute,
-        image_route: RouteDecision | None = None,
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
@@ -1108,11 +1026,7 @@ class ChatService:
             image=image_payload,
             video=video_payload,
             mcp_call=mcp_call_payload,
-            route=(
-                image_route.model_dump(mode="json")
-                if image_route is not None
-                else route.model_dump(mode="json")
-            ),
+            route=route.model_dump(mode="json"),
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -1326,29 +1240,10 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
-        skill_id, skill_input, use_knowledge_base = (
-            self._apply_natural_language_humanizer_route(
-                content,
-                skill_id=skill_id,
-                skill_input=skill_input,
-                image=image,
-                video=video,
-                mcp_call=mcp_call,
-                attachment_ids=attachment_ids,
-                use_knowledge_base=use_knowledge_base,
-            )
-        )
-        image_route = self._route_natural_language(
-            account_id,
-            content,
-            explicit_payload=any(
-                value is not None for value in (skill_id, image, video, mcp_call)
-            ),
-        )
-        routed_image = image_request_from_decision(image_route) if image_route else None
+        self._require_daily_mode(mode)
         skill_payload, image_payload, video_payload, mcp_call_payload = (
             self._validate_turn_payloads(
-                skill_id, skill_input, image or routed_image, video, mcp_call
+                skill_id, skill_input, image, video, mcp_call
             )
         )
         # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
@@ -1363,7 +1258,7 @@ class ChatService:
                 raise ChatDomainError(
                     "conversation_not_found", "对话不存在或没有访问权限。", 404
                 )
-            if record.mode_locked and record.mode != mode.value:
+            if record.mode != mode.value:
                 raise ChatDomainError(
                     "conversation_mode_locked",
                     "该会话模式已锁定，请新建另一个会话以使用其他模式。",
@@ -1376,7 +1271,6 @@ class ChatService:
                 410,
             )
         capability_route = self._route_for_turn(
-            content,
             skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
@@ -1400,7 +1294,6 @@ class ChatService:
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
             route=capability_route,
-            image_route=image_route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,

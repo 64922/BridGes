@@ -36,6 +36,7 @@ from bridges.contracts.chat import (
     ChatFirstTurnResponse,
     ChatMessageCreateRequest,
     ChatMessageProjection,
+    ChatMode,
     ChatModeSwitchRequest,
     ChatRunStartedResponse,
     ChatRunStatus,
@@ -284,6 +285,7 @@ def list_conversations(
     status_code=status.HTTP_201_CREATED,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
     },
@@ -311,6 +313,12 @@ def create_conversation(
         plugin_selection=body.plugin_selection,
     )
     try:
+        if body.mode != ChatMode.COMPANION:
+            raise _error(
+                status.HTTP_409_CONFLICT,
+                "study_mode_unavailable",
+                "学习模式尚未开放；历史学习对话目前仅支持查看。",
+            )
         if body.plugin_selection:
             if selections_service is None:
                 raise _error(

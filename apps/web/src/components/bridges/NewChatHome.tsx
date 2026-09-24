@@ -9,7 +9,7 @@ import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
-import { ApiError, createChatConversation, startFirstTurn } from "@/lib/api";
+import { ApiError, startFirstTurn } from "@/lib/api";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -17,40 +17,17 @@ import styles from "@/components/bridges/chat/chat.module.css";
 /**
  * 登录后的新聊天首页。
  *
- * 首页只负责收集自然语言首轮和会话模式；论文、改写、图片、视频等能力
- * 由服务端根据正文路由。听写仍保留，但只有用户真正点击听写时才预建
- * 一个带模式的空会话，普通打开、输入和发送都直接走原子首轮命令。
+ * 首页只收集日常首轮消息。服务端按普通对话处理未显式选择模块的正文；
+ * 学习模式会在对应学习切片验收后开放。首条消息通过原子首轮命令创建会话。
  */
 export function NewChatHome() {
   const router = useRouter();
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [mode, setMode] = useState<ChatMode>("companion");
-  const [modeLocked, setModeLocked] = useState(false);
-  const preparedConversationRef = useRef<string | undefined>();
   const firstTurnInFlightRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
-
-  /** 只在听写需要会话归属时调用；普通首轮不会走这个预建分支。 */
-  const ensureConversation = async (): Promise<string | undefined> => {
-    if (preparedConversationRef.current) return preparedConversationRef.current;
-    try {
-      const conversation = await createChatConversation(undefined, mode);
-      preparedConversationRef.current = conversation.conversation_id;
-      setModeLocked(true);
-      return conversation.conversation_id;
-    } catch (error) {
-      setSendError({
-        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-      });
-      return undefined;
-    }
-  };
-
-  const submitFirstTurn = async (
-    content: string,
-    conversationId?: string
-  ): Promise<boolean> => {
+  const submitFirstTurn = async (content: string): Promise<boolean> => {
     if (firstTurnInFlightRef.current) return false;
     firstTurnInFlightRef.current = true;
     if (idempotencyKeyRef.current === null) {
@@ -63,7 +40,6 @@ export function NewChatHome() {
       const result = await startFirstTurn({
         content,
         idempotencyKey: idempotencyKeyRef.current,
-        conversationId,
         mode,
       });
       idempotencyKeyRef.current = null;
@@ -98,7 +74,12 @@ export function NewChatHome() {
         >
           <h1 className="sc-visually-hidden">新聊天</h1>
           <div className={styles.newChatMode}>
-            <ModeToggle value={mode} onChange={setMode} disabled={sending || modeLocked} />
+            <ModeToggle
+              value={mode}
+              onChange={setMode}
+              disabled={sending}
+              studyUnavailable
+            />
           </div>
           <div className={styles.blankState} data-testid="new-chat-home">
             <div className={styles.blankStateInner}>
@@ -106,10 +87,7 @@ export function NewChatHome() {
               {sendError && <ChatSendErrorBanner message={sendError.message} align="center" />}
               <Composer
                 variant="new-chat"
-                onSend={(text, preparedConversationId) =>
-                  submitFirstTurn(text, preparedConversationId)
-                }
-                ensureConversation={ensureConversation}
+                onSend={submitFirstTurn}
                 generating={sending}
               />
             </div>

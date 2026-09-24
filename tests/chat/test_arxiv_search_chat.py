@@ -10,12 +10,11 @@ from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.arxiv_mcp.client import ArxivMcpError
-from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
+from bridges.arxiv_mcp.contracts import ArxivPaper
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
-from bridges.contracts.chat import ChatMode
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
@@ -104,19 +103,20 @@ def _service(
     )
 
 
-def test_arxiv_search_is_persisted_and_only_public_results_reach_model(tmp_path: Path) -> None:
+def test_paper_prompt_without_module_stays_ordinary(tmp_path: Path) -> None:
     client = _FakeArxivClient()
     adapter = _CapturingAdapter()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
-    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    conversation = service.create_conversation("alice")
     user, assistant = service.start_generation(
         "alice",
         conversation.conversation_id,
         "请找近三年量子纠错论文。私人文档：内部代号蓝鲸，密码=secret-123。",
     )
 
-    assert assistant.arxiv_search is not None
-    assert assistant.arxiv_search.status == ArxivSearchStatus.LOADING
+    assert assistant.route is not None
+    assert assistant.route.main_capability.value == "ordinary_chat"
+    assert assistant.arxiv_search is None
     events = list(
         service.stream_generation(
             "alice",
@@ -129,22 +129,16 @@ def test_arxiv_search_is_persisted_and_only_public_results_reach_model(tmp_path:
     final = service.message_projection("alice", assistant.message_id)
 
     assert final is not None and final.status.value == "done"
-    assert final.arxiv_search is not None
-    assert final.arxiv_search.status == ArxivSearchStatus.SUCCESS
-    assert final.arxiv_search.papers[0].abs_url == "https://arxiv.org/abs/2401.12345v2"
-    assert client.queries and "内部代号蓝鲸" not in client.queries[0]
-    assert "secret-123" not in client.queries[0]
-    assert "内部代号蓝鲸" not in final.arxiv_search.query_summary
-    assert "secret-123" not in final.arxiv_search.query_summary
-    assert "内部代号蓝鲸" not in str(adapter.payloads[0])
-    assert "secret-123" not in str(adapter.payloads[0])
-    assert "https://arxiv.org/abs/2401.12345v2" in str(adapter.payloads[0])
+    assert final.arxiv_search is None
+    assert client.queries == []
+    assert adapter.payloads
     assert any(event.kind == "done" for event in events)
 
 
-def test_arxiv_empty_result_is_fail_closed_and_does_not_call_model(tmp_path: Path) -> None:
+def test_empty_arxiv_results_do_not_affect_unselected_ordinary_chat(tmp_path: Path) -> None:
     adapter = _CapturingAdapter()
-    service = _service(tmp_path, ArxivSearchService(client=_FakeArxivClient([])), adapter)
+    client = _FakeArxivClient([])
+    service = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
     user, assistant = service.start_generation(
         "alice", conversation.conversation_id, "帮我找不存在领域的 arXiv 论文"
@@ -161,17 +155,17 @@ def test_arxiv_empty_result_is_fail_closed_and_does_not_call_model(tmp_path: Pat
     )
     final = service.message_projection("alice", assistant.message_id)
 
-    assert final is not None and final.status.value == "error"
-    assert final.error_code == "arxiv_no_results"
-    assert final.arxiv_search is not None
-    assert final.arxiv_search.status == ArxivSearchStatus.EMPTY
-    assert adapter.payloads == []
-    assert events[-1].kind == "error"
+    assert final is not None and final.status.value == "done"
+    assert final.arxiv_search is None
+    assert client.queries == []
+    assert adapter.payloads
+    assert events[-1].kind == "done"
 
 
-def test_arxiv_answer_without_citation_is_rejected(tmp_path: Path) -> None:
+def test_ordinary_answer_does_not_require_arxiv_citations(tmp_path: Path) -> None:
     adapter = _CapturingAdapter(answer="没有明确 arXiv 来源的回答。")
-    service = _service(tmp_path, ArxivSearchService(client=_FakeArxivClient()), adapter)
+    client = _FakeArxivClient()
+    service = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
     user, assistant = service.start_generation(
         "alice", conversation.conversation_id, "搜索量子纠错论文"
@@ -188,11 +182,10 @@ def test_arxiv_answer_without_citation_is_rejected(tmp_path: Path) -> None:
     )
     final = service.message_projection("alice", assistant.message_id)
 
-    assert final is not None and final.status.value == "error"
-    assert final.error_code == "arxiv_citation_invalid"
-    assert final.arxiv_search is not None
-    assert final.arxiv_search.status == ArxivSearchStatus.ERROR
-    assert events[-1].kind == "error"
+    assert final is not None and final.status.value == "done"
+    assert final.arxiv_search is None
+    assert client.queries == []
+    assert events[-1].kind == "done"
 
 
 class _RateLimitArxivClient(_FakeArxivClient):
@@ -213,15 +206,10 @@ class _RateLimitArxivClient(_FakeArxivClient):
         )
 
 
-def test_retry_during_cooldown_returns_accurate_error_without_upstream_call(
+def test_unselected_paper_prompt_retries_as_ordinary_chat(
     tmp_path: Path,
 ) -> None:
-    """Issue 05：429 终态后冷却期内的手动重试不打上游。
-
-    第一次生成得到 429 错误投影；随即手动重试（新尝试）在冷却期内被
-    服务层直接拒绝，SSE 终态携带 ``arxiv_rate_limit`` 与
-    ``retry_after_seconds``，上游查询数保持 1 次。
-    """
+    """未选择论文模块时，重试普通消息也不会触发 arXiv。"""
     client = _RateLimitArxivClient()
     adapter = _CapturingAdapter()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
@@ -240,12 +228,10 @@ def test_retry_during_cooldown_returns_accurate_error_without_upstream_call(
         )
     )
     first_final = service.message_projection("alice", first.message_id)
-    assert first_final is not None and first_final.status.value == "error"
-    assert first_final.error_code == "arxiv_rate_limit"
-    assert first_final.arxiv_search is not None
-    assert first_final.arxiv_search.attempt_count == 1
-    assert first_events[-1].kind == "error"
-    assert len(client.queries) == 1
+    assert first_final is not None and first_final.status.value == "done"
+    assert first_final.arxiv_search is None
+    assert first_events[-1].kind == "done"
+    assert client.queries == []
 
     _, retry = service.retry_generation(
         "alice", conversation.conversation_id, first.message_id
@@ -261,14 +247,7 @@ def test_retry_during_cooldown_returns_accurate_error_without_upstream_call(
     )
     retry_final = service.message_projection("alice", retry.message_id)
 
-    assert retry_final is not None and retry_final.status.value == "error"
-    assert retry_final.error_code == "arxiv_rate_limit"
-    assert retry_final.arxiv_search is not None
-    assert retry_final.arxiv_search.status == ArxivSearchStatus.ERROR
-    assert retry_final.arxiv_search.attempt_count == 0
-    assert (
-        retry_final.arxiv_search.retry_after_seconds is not None
-        and retry_final.arxiv_search.retry_after_seconds > 0
-    )
-    assert len(client.queries) == 1  # 冷却期内的重试没有发起上游请求
-    assert retry_events[-1].kind == "error"
+    assert retry_final is not None and retry_final.status.value == "done"
+    assert retry_final.arxiv_search is None
+    assert client.queries == []
+    assert retry_events[-1].kind == "done"

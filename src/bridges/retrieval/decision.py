@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -128,7 +127,7 @@ def infer_capability_route(
     has_video: bool = False,
     has_mcp: bool = False,
 ) -> str:
-    """把已完成的能力载荷与少量专用意图归一为审计用路由名。"""
+    """把明确提交的能力载荷归一为审计用路由名。"""
 
     if has_humanizer:
         return "humanizer"
@@ -138,8 +137,6 @@ def infer_capability_route(
         return "video"
     if has_mcp:
         return "mcp"
-    if re.search(r"(?:arxiv|arXiv|论文|文献|论文搜索)", query):
-        return "arxiv"
     return "companion"
 
 

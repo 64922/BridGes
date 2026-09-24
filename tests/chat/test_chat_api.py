@@ -217,7 +217,7 @@ def _start_executor_thread(sqlite_app: Any) -> tuple[threading.Event, threading.
 # ---------------------------------------------------------------------------
 
 
-def test_create_conversation_defaults_companion_and_supports_study(
+def test_create_conversation_defaults_companion_and_rejects_unreleased_study(
     client: TestClient, sqlite_app: Any
 ) -> None:
     _register(client)
@@ -228,13 +228,12 @@ def test_create_conversation_defaults_companion_and_supports_study(
     assert default.json()["mode_events"] == []
 
     study = client.post("/chat/conversations", json={"title": "学习对话", "mode": "study"})
-    assert study.status_code == 201
-    assert study.json()["mode"] == "study"
-    assert study.json()["mode_locked"] is False
+    assert study.status_code == 409
+    assert study.json()["detail"]["error"] == "study_mode_unavailable"
 
     listing = client.get("/chat/conversations").json()["conversations"]
     modes = {item["mode"] for item in listing}
-    assert modes == {"companion", "study"}
+    assert modes == {"companion"}
 
 
 def test_conversation_lifecycle_api_is_persistent_and_account_scoped(
@@ -243,7 +242,7 @@ def test_conversation_lifecycle_api_is_persistent_and_account_scoped(
     alice = _register(client, "31")
     created = client.post(
         "/chat/conversations",
-        json={"title": "原始标题", "mode": "study"},
+        json={"title": "原始标题"},
     )
     assert created.status_code == 201, created.text
     conversation_id = created.json()["conversation_id"]
@@ -255,7 +254,7 @@ def test_conversation_lifecycle_api_is_persistent_and_account_scoped(
     assert updated.status_code == 200, updated.text
     assert updated.json()["title"] == "新的标题"
     assert updated.json()["pinned"] is True
-    assert updated.json()["mode"] == "study"
+    assert updated.json()["mode"] == "companion"
 
     listed = client.get("/chat/conversations")
     assert listed.status_code == 200
@@ -286,14 +285,14 @@ def test_first_turn_locks_mode_atomically_and_replays_same_idempotency_key(
         "/chat/first-turn",
         json={
             "conversation_id": conversation_id,
-            "content": "首轮学习问题",
+            "content": "首轮日常问题",
             "idempotency_key": "issue05-first-turn-1",
-            "mode": "study",
+            "mode": "companion",
         },
     )
     assert first.status_code == 201, first.text
     body = first.json()
-    assert body["conversation"]["mode"] == "study"
+    assert body["conversation"]["mode"] == "companion"
     assert body["conversation"]["mode_locked"] is True
     assert body["conversation"]["mode_events"] == []
     assert len(body["conversation"]["messages"]) == 2
@@ -302,9 +301,9 @@ def test_first_turn_locks_mode_atomically_and_replays_same_idempotency_key(
         "/chat/first-turn",
         json={
             "conversation_id": conversation_id,
-            "content": "首轮学习问题",
+            "content": "首轮日常问题",
             "idempotency_key": "issue05-first-turn-1",
-            "mode": "study",
+            "mode": "companion",
         },
     )
     assert replay.status_code == 200, replay.text
@@ -316,16 +315,16 @@ def test_first_turn_locks_mode_atomically_and_replays_same_idempotency_key(
         "/chat/first-turn",
         json={
             "conversation_id": conversation_id,
-            "content": "不能切换到陪伴",
+            "content": "不能切换到学习",
             "idempotency_key": "issue05-first-turn-2",
-            "mode": "companion",
+            "mode": "study",
         },
     )
     assert conflict.status_code == 409
-    assert conflict.json()["detail"]["error"] == "conversation_mode_locked"
+    assert conflict.json()["detail"]["error"] == "study_mode_unavailable"
 
     history = client.get(f"/chat/conversations/{conversation_id}").json()
-    assert history["mode"] == "study"
+    assert history["mode"] == "companion"
     assert history["mode_locked"] is True
     assert history["mode_events"] == []
 
@@ -337,9 +336,9 @@ def test_locked_mode_is_account_scoped(client: TestClient, sqlite_app: Any) -> N
         "/chat/first-turn",
         json={
             "conversation_id": conversation_id,
-            "content": "账户隔离学习问题",
+            "content": "账户隔离日常问题",
             "idempotency_key": "issue05-account-scope-1",
-            "mode": "study",
+            "mode": "companion",
         },
     )
     assert first.status_code == 201
