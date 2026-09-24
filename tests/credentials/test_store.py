@@ -84,6 +84,23 @@ def test_encrypted_volume_roundtrip_and_delete(tmp_path: pytest.TempPathFactory)
     assert store.get("alice") is None
 
 
+def test_encrypted_volume_failed_atomic_replace_keeps_old_credential(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = EncryptedVolumeCredentialStore(tmp_path)
+    store.save("alice", SecretStr("sk-alice-old-0000"))
+
+    def fail_replace(source: object, destination: object) -> None:
+        raise OSError("simulated atomic replacement failure")
+
+    monkeypatch.setattr("bridges.credentials.store.os.replace", fail_replace)
+
+    with pytest.raises(CredentialStoreError):
+        store.save("alice", SecretStr("sk-alice-new-1111"))
+
+    assert store.get("alice") == SecretStr("sk-alice-old-0000")  # type: ignore[operator]
+
+
 def test_encrypted_volume_rejects_corrupted_master_key(
     tmp_path: pytest.TempPathFactory,
 ) -> None:

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
+from bridges.credentials.ids import SETTINGS_TAVILY_CREDENTIAL_ID
 from bridges.runtime.bootstrap import BootstrapError, LocalRuntimeBootstrap
 
 
@@ -384,6 +385,32 @@ def test_second_prepare_reuses_stored_tavily_key_without_prompt(
     assert prepared.settings.qwen_api_key == SecretStr("tvly-first-key")
     assert prepared.settings.tavily_api_key == SecretStr("tvly-first-key")
     assert prepared.api_env["BRIDGES_TAVILY_API_KEY"] == "tvly-first-key"
+
+
+def test_settings_page_tavily_key_wins_over_environment_and_install_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BRIDGES_ENVIRONMENT", raising=False)
+    monkeypatch.setenv("BRIDGES_TAVILY_API_KEY", "tvly-environment-old")
+    monkeypatch.delenv("BRIDGES_TAVILY_API_KEY_FILE", raising=False)
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "sk-qwen")
+    repo_root = tmp_path / "repo"
+    _web_fixture(repo_root)
+    credentials = _MemoryCredentialStore()
+    credentials.values["global-tavily-api-key"] = SecretStr("tvly-install-old")
+    credentials.values[SETTINGS_TAVILY_CREDENTIAL_ID] = SecretStr("tvly-settings-new")
+
+    prepared = LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=tmp_path / "app-home",
+        command_runner=_WebCommandRunner(),
+        credential_store=credentials,
+        prompt=lambda _: pytest.fail("已在设置页保存凭据时不应再次询问"),
+    ).prepare(interactive=True)
+
+    assert prepared.settings.tavily_api_key == SecretStr("tvly-settings-new")
+    assert prepared.api_env["BRIDGES_TAVILY_API_KEY"] == "tvly-settings-new"
+    assert credentials.values["global-tavily-api-key"] == SecretStr("tvly-install-old")
 
 
 def test_tavily_direct_environment_injects_key_and_cleans_old_variables(

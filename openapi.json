@@ -1318,6 +1318,232 @@
         }
       }
     },
+    "/settings/credentials": {
+      "get": {
+        "tags": [
+          "凭据设置"
+        ],
+        "summary": "Get Credential Settings",
+        "operationId": "get_credential_settings_settings_credentials_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/credentials/tavily": {
+      "put": {
+        "tags": [
+          "凭据设置"
+        ],
+        "summary": "Replace Tavily Credential",
+        "operationId": "replace_tavily_credential_settings_credentials_tavily_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretCandidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/credentials/amap/web-service": {
+      "put": {
+        "tags": [
+          "凭据设置"
+        ],
+        "summary": "Replace Amap Web Service Credential",
+        "operationId": "replace_amap_web_service_credential_settings_credentials_amap_web_service_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretCandidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/credentials/amap/browser-map": {
+      "put": {
+        "tags": [
+          "凭据设置"
+        ],
+        "summary": "Replace Amap Browser Map Credential",
+        "operationId": "replace_amap_browser_map_credential_settings_credentials_amap_browser_map_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AMapBrowserCandidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compatibility/pages/{endpoint_id}": {
       "post": {
         "tags": [
@@ -25678,6 +25904,44 @@
   },
   "components": {
     "schemas": {
+      "AMapBrowserCandidate": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "format": "password",
+            "title": "Api Key",
+            "writeOnly": true
+          },
+          "security_js_code": {
+            "type": "string",
+            "format": "password",
+            "title": "Security Js Code",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key",
+          "security_js_code"
+        ],
+        "title": "AMapBrowserCandidate"
+      },
+      "AMapCredentialStatus": {
+        "properties": {
+          "web_service": {
+            "$ref": "#/components/schemas/CredentialStatus"
+          },
+          "browser_map": {
+            "$ref": "#/components/schemas/CredentialStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "web_service",
+          "browser_map"
+        ],
+        "title": "AMapCredentialStatus"
+      },
       "AccessibilityAlternative": {
         "properties": {
           "alt_text": {
@@ -32484,6 +32748,58 @@
         ],
         "title": "CoverageGap",
         "description": "A coverage or recall gap reported to the caller."
+      },
+      "CredentialSettingsResponse": {
+        "properties": {
+          "tavily": {
+            "$ref": "#/components/schemas/CredentialStatus"
+          },
+          "amap": {
+            "$ref": "#/components/schemas/AMapCredentialStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tavily",
+          "amap"
+        ],
+        "title": "CredentialSettingsResponse"
+      },
+      "CredentialStatus": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "last_validated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Validated At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured"
+        ],
+        "title": "CredentialStatus"
       },
       "DataBinding": {
         "properties": {
@@ -47713,6 +48029,21 @@
         "type": "object",
         "title": "SeatPolicy",
         "description": "Seat and usage policy for an institution."
+      },
+      "SecretCandidate": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "format": "password",
+            "title": "Api Key",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key"
+        ],
+        "title": "SecretCandidate"
       },
       "SemanticDiff": {
         "properties": {

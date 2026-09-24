@@ -106,6 +106,10 @@ class TavilySearchClient:
         self._max_response_bytes = max_response_bytes
         self._should_fetch_sources = fetch_sources
 
+    def replace_api_key(self, api_key: SecretStr) -> None:
+        """原子切换当前客户端使用的凭据。"""
+        self._api_key = api_key
+
     def search(
         self,
         query: str,
