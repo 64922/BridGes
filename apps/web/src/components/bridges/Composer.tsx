@@ -18,7 +18,7 @@ interface ComposerProps {
   prefill?: { text: string; nonce: number } | null;
   /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   asr?: CapabilityAvailability;
-  /** 新聊天首页保留原子首轮的预建会话兼容路径。 */
+  /** 新聊天首页使用原子首轮，并在会话创建前禁用听写入口。 */
   variant?: "conversation" | "new-chat";
 }
 
