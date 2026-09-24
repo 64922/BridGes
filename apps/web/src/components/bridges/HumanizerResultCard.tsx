@@ -35,14 +35,7 @@ function forceLegacyDisplay(): boolean {
   }
 }
 
-export function HumanizerResultCard({
-  result,
-  onRetry,
-}: {
-  result: HumanizerResultProjection;
-  /** Issue 28：失败（停止交付）后从原任务重试（输入保留）。 */
-  onRetry?: () => void;
-}) {
+export function HumanizerResultCard({ result }: { result: HumanizerResultProjection }) {
   // Issue 08：legacy 读取遥测只在挂载后上报（避免渲染期副作用）。
   const legacyTracked = useRef(false);
   useEffect(() => {
@@ -61,25 +54,19 @@ export function HumanizerResultCard({
   }, [result]);
   if (result.article != null && !forceLegacyDisplay()) {
     return (
-      <ArticleResultCard
-        result={result}
-        article={result.article}
-        onRetry={onRetry}
-      />
+      <ArticleResultCard result={result} article={result.article} />
     );
   }
-  return <LegacyHumanizerResultCard result={result} onRetry={onRetry} />;
+  return <LegacyHumanizerResultCard result={result} />;
 }
 
 /** 审计分区折叠区（Issue 08：正文优先，审计按需展开）。 */
 function ArticleResultCard({
   result,
   article,
-  onRetry,
 }: {
   result: HumanizerResultProjection;
   article: NonNullable<HumanizerResultProjection["article"]>;
-  onRetry?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">(
@@ -157,27 +144,6 @@ function ArticleResultCard({
     window.setTimeout(() => setCopyStatus("idle"), 2000);
   }
 
-  const retryButton = result.status === "error" && onRetry && (
-    <button
-      type="button"
-      data-testid="humanizer-result-retry"
-      onClick={onRetry}
-      style={{
-        marginLeft: "var(--space-2)",
-        padding: "var(--space-1) var(--space-3)",
-        border: "1px solid var(--color-border-strong)",
-        borderRadius: "var(--radius-md)",
-        background: "transparent",
-        color: "var(--color-text-primary)",
-        cursor: "pointer",
-        fontSize: "var(--text-sm)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      重试（原任务输入已保留）
-    </button>
-  );
-
   return (
     <section data-testid="humanizer-result-card" style={{ marginTop: "var(--space-2)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", backgroundColor: "var(--color-surface)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-2) var(--space-3)" }}>
@@ -235,7 +201,6 @@ function ArticleResultCard({
             {copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制正文"}
           </button>
         )}
-        {retryButton}
       </div>
 
       {expanded && (
@@ -548,14 +513,7 @@ const listStyle: React.CSSProperties = {
 };
 
 /** 旧版结果卡（Issue 08 AC 10：旧字段以明确 legacy 投影展示）。 */
-function LegacyHumanizerResultCard({
-  result,
-  onRetry,
-}: {
-  result: HumanizerResultProjection;
-  /** Issue 28：失败（停止交付）后从原任务重试（输入保留）。 */
-  onRetry?: () => void;
-}) {
+function LegacyHumanizerResultCard({ result }: { result: HumanizerResultProjection }) {
   const [expanded, setExpanded] = useState(false);
 
   // Issue 07：软门未完全满足时正文照常交付——状态标签明确「已交付」，
@@ -607,26 +565,6 @@ function LegacyHumanizerResultCard({
     fontWeight: 600,
   };
 
-  const retryButton = result.status === "error" && onRetry && (
-    <button
-      type="button"
-      data-testid="humanizer-result-retry"
-      onClick={onRetry}
-      style={{
-        marginLeft: "var(--space-2)",
-        padding: "var(--space-1) var(--space-3)",
-        border: "1px solid var(--color-border-strong)",
-        borderRadius: "var(--radius-md)",
-        background: "transparent",
-        color: "var(--color-text-primary)",
-        cursor: "pointer",
-        fontSize: "var(--text-sm)",
-      }}
-    >
-      重试（原任务输入已保留）
-    </button>
-  );
-
   return (
     <section data-testid="humanizer-result-card" style={cardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
@@ -659,7 +597,6 @@ function LegacyHumanizerResultCard({
             <Icon name="chevronDown" size={16} aria-hidden />
           </span>
         </button>
-        {retryButton}
       </div>
 
       {expanded && (

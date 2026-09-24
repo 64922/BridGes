@@ -187,12 +187,24 @@ def _reject_retired_extension_fields(
     skill_input: object = None,
     mcp_call: object = None,
 ) -> None:
-    """在任何会话或消息写入前拦截旧扩展载荷。"""
+    """在任何会话或消息写入前拦截旧扩展载荷与人味化任务入口。
+
+    V2 issue 04：文章人味化专用入口退出——``bridges-humanizer`` 载荷
+    不再创建任务或触发生成；历史结果仍可查看与导出。其余用户 SKILL/
+    插件/MCP 维持既有退役语义。
+    """
+    if skill_id == "bridges-humanizer":
+        if request is not None:
+            record_compatibility_observation(request, endpoint)
+        raise _error(
+            status.HTTP_410_GONE,
+            "humanizer_capability_retired",
+            "文章人味化能力已退役，历史结果仍可查看与导出；正文表达已并入自然对话。",
+        )
     uses_plugin_selection = "plugin_selection" in fields or bool(plugin_selection)
     uses_mcp = "mcp_call" in fields or mcp_call is not None
-    uses_unknown_skill = skill_id not in {None, "bridges-humanizer"}
-    uses_skill_input_without_builtin = skill_input is not None and skill_id != "bridges-humanizer"
-    if uses_plugin_selection or uses_mcp or uses_unknown_skill or uses_skill_input_without_builtin:
+    uses_unknown_skill = skill_id is not None or skill_input is not None
+    if uses_plugin_selection or uses_mcp or uses_unknown_skill:
         if request is not None:
             record_compatibility_observation(request, endpoint)
         raise _error(

@@ -549,15 +549,11 @@ def test_first_turn_plain_turn_completes_via_executor(
     assert assistant["status"] == "done"
 
 
-def test_first_turn_skill_intent_lands_and_completes(
-    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+def test_first_turn_skill_payload_is_retired(
+    sqlite_app: Any, client: TestClient
 ) -> None:
-    """技能意图（人味化）经原子入口落库并可由执行器完成。"""
+    """V2 issue 04：首轮携带人味化载荷 → 410，任何数据都不创建。"""
     account = _register(client)
-    release = threading.Event()
-    release.set()
-    adapter = _GatedSlowAdapter([release])
-    sqlite_app.state.chat_service._gateway = _gateway_with(adapter)
 
     status, body = _first_turn(
         client,
@@ -578,29 +574,12 @@ def test_first_turn_skill_intent_lands_and_completes(
             },
         },
     )
-    assert status == 201, body
-    assert body["conversation"]["mode"] == "companion"
+    assert status == 410, body
+    assert body["detail"]["error"] == "humanizer_capability_retired"
+    # 入口在任何写入之前拒绝：不产生会话、消息或运行。
+    listing = client.get("/chat/conversations").json()
+    assert listing["conversations"] == []
 
-    conversation_id = body["conversation"]["conversation_id"]
-    projection = client.get(f"/chat/conversations/{conversation_id}").json()
-    user_message = [m for m in projection["messages"] if m["role"] == "user"][0]
-    assert user_message["skill"] is not None
-    assert user_message["skill"]["skill_id"] == "bridges-humanizer"
-
-    stop_exec, exec_thread = generation_helpers["executor_thread"](sqlite_app)
-    generation_helpers["subscribe"](
-        client, conversation_id, body["assistant_message"]["message_id"]
-    )
-    stop_exec.set()
-    exec_thread.join(timeout=5)
-    # 技能 run 走与普通消息同一执行器领取路径（humanizer 编排走结构化
-    # 输出而非 stream_call，替身输出以领域错误收敛）；终态非 queued 即
-    # 证明 run 已被执行器领取执行，不残留排队。
-    run_state = sqlite_app.state.chat_service.generation_run(
-        account["id"], body["run_id"]
-    )
-    assert run_state is not None
-    assert run_state.status != "queued", "run 必须被领取执行"
 
 
 def test_first_turn_attachment_bound_in_same_transaction(

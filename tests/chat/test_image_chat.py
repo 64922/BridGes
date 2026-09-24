@@ -364,8 +364,9 @@ def test_image_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient)
             "image": _image_payload(),
         },
     )
-    assert response.status_code == 422
-    assert response.json()["detail"]["error"] == "conflicting_payload"
+    # V2 issue 04：人味化入口退役——410 优先于载荷互斥校验。
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "humanizer_capability_retired"
 
 
 def test_image_edit_without_source_rejected(sqlite_app: Any, client: TestClient) -> None:

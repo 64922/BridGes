@@ -219,7 +219,16 @@ function AssistantActions({
           {copyStatus === "success" ? "已复制" : "复制失败，请检查浏览器权限"}
         </span>
       )}
-      <MessageAction icon="retry" label="重试" onClick={() => onRetry?.(message.id)} />
+      {/* V2 issue 04：人味化写路径退役，历史人味化消息不再提供重试。 */}
+      {message.humanizer == null &&
+        message.humanizerProcess == null &&
+        message.skill == null && (
+          <MessageAction
+            icon="retry"
+            label="重试"
+            onClick={() => onRetry?.(message.id)}
+          />
+        )}
       <MessageAction
         icon="feedbackGood"
         label="回答有帮助"
@@ -548,24 +557,21 @@ export function MessageList({
                   />
                 )}
 
-                {/* Issue 28：文章人味化过程卡（五态中文）——流式中渲染过程
-                    事件；终态由结果卡接管。 */}
+                {/* Issue 28/V2 issue 04：文章人味化过程卡（五态中文）——
+                    流式中渲染过程事件；终态由结果卡接管。写路径已退役，
+                    过程卡不再提供重试入口。 */}
                 {conversationId && (message.humanizerProcess != null || (message.humanizer == null && message.status === "streaming" && message.skill != null)) && (
                   <HumanizerProcessCard
                     data={message.humanizerProcess ?? null}
                     streaming={message.status === "streaming"}
-                    onRetry={() => onRetry?.(message.id)}
                   />
                 )}
 
-                {/* Issue 28：文章人味化结果卡（输出合同五要素 + 事实锁/引用/
-                    体裁复核），终态后随历史加载稳定呈现；失败态在卡内提供
-                    从原任务重试（输入保留）。 */}
+                {/* Issue 28/V2 issue 04：文章人味化结果卡（输出合同五要素 +
+                    事实锁/引用/体裁复核），终态后随历史加载稳定呈现；仅可
+                    查看与复制，不再提供重试。 */}
                 {conversationId && message.humanizer != null && (
-                  <HumanizerResultCard
-                    result={message.humanizer}
-                    onRetry={() => onRetry?.(message.id)}
-                  />
+                  <HumanizerResultCard result={message.humanizer} />
                 )}
 
                 {/* Issue 29：生涯规划过程卡（五态中文）——流式中渲染过程

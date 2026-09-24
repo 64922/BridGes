@@ -296,7 +296,7 @@ def test_compile_consumes_expression_contract() -> None:
 
 
 def test_compile_rejects_article_contract() -> None:
-    with pytest.raises(ValueError, match="文章"):
+    with pytest.raises(ValueError, match="非聊天表面契约"):
         GlobalWritingPolicyCompiler().compile(
             ChatMode.COMPANION,
             user_text="帮我润色这段",
@@ -384,8 +384,23 @@ def test_compile_system_block_declares_protected_regions() -> None:
         ChatMode.COMPANION, user_text="帮我运行这段代码"
     )
 
-    assert "代码、公式、JSON、引用、链接" in snapshot.system_block
+    assert "引用、数值、代码、公式、链接" in snapshot.system_block
     assert "不得改写证据" in snapshot.system_block
+
+
+def test_policy_yields_to_user_tone_length_and_task_contract() -> None:
+    """V2 issue 04：表达规则优先级低于用户语气、篇幅与任务合同。"""
+    for mode in (ChatMode.COMPANION, ChatMode.STUDY):
+        snapshot = GlobalWritingPolicyCompiler().compile(
+            mode, user_text="用轻松的语气两句话讲清楚"
+        )
+        assert "优先级低于用户本轮明确表达的语气与篇幅要求" in snapshot.system_block
+        assert "任务合同" in snapshot.system_block
+
+    baseline = GlobalWritingPolicyCompiler(resource=None).compile(
+        ChatMode.COMPANION, user_text="随意聊聊"
+    )
+    assert "优先级低于用户本轮明确表达的语气与篇幅要求" in baseline.system_block
 
 
 def test_restore_protected_regions_keeps_contract_verbatim() -> None:
@@ -415,7 +430,7 @@ def test_compile_fallback_when_resource_missing() -> None:
     assert snapshot.version == SAFE_BASELINE_POLICY_VERSION
     assert snapshot.fallback_reason == "policy_resource_unavailable"
     assert snapshot.profile_items == ()
-    assert "代码、公式、JSON、引用、链接" in snapshot.system_block
+    assert "引用、数值、代码、公式、链接" in snapshot.system_block
 
 
 # ---------------------------------------------------------------------------

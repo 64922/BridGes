@@ -280,7 +280,7 @@ def test_ordinary_generation_uses_one_global_policy_snapshot(
     _, assistant = _start(service, created.conversation_id, "解释一下这个概念")
     queued = service.run_view_of("alice", assistant.message_id)
     assert queued is not None
-    assert queued.global_writing_policy_version == "global-chat-lightweight-v1"
+    assert queued.global_writing_policy_version == "global-chat-lightweight-v2"
     list(
         service.stream_generation(
             "alice", created.conversation_id, assistant.message_id, _context()
@@ -290,7 +290,7 @@ def test_ordinary_generation_uses_one_global_policy_snapshot(
     assert len(adapter.payloads) == 1
     payload = adapter.payloads[0]
     metadata = payload["global_writing_policy"]
-    assert metadata["version"] == "global-chat-lightweight-v1"
+    assert metadata["version"] == "global-chat-lightweight-v2"
     assert metadata["form"] == "explanation"
     assert any(
         message["role"] == "system"

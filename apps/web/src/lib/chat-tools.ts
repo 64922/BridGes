@@ -15,14 +15,10 @@ export interface ChatToolIntent {
 
 export const CHAT_TOOL_INTENTS: readonly ChatToolIntent[] = [
   { label: "论文搜索", icon: "paperSearch", prefix: "论文搜索：" },
-  { label: "文章人味化", icon: "humanize", prefix: "文章人味化：" },
   { label: "生涯规划助手", icon: "career", prefix: "生涯规划助手：" },
   { label: "图片生成", icon: "imagePicture", prefix: "图片生成：" },
   { label: "视频生成", icon: "videoClapper", prefix: "视频生成：" },
 ] as const;
-
-/** Issue 28：「文章人味化」入口已接入真实任务对话框（不再预填前缀）。 */
-export const HUMANIZER_TOOL_LABEL = "文章人味化" as const;
 
 /** Issue 29：「生涯规划助手」入口已接入真实任务对话框（不再预填前缀）。 */
 export const CAREER_TOOL_LABEL = "生涯规划助手" as const;

@@ -11,26 +11,19 @@ export interface SuggestionCard {
   prefill: string;
 }
 
-/** 三张建议卡的补充描述；点击后都作为自然语言正文预填。 */
-const CARD_DESCRIPTIONS: readonly string[] = [
-  "描述研究主题，先聊清需求再检索",
-  "改写或生成科学内容，保持事实锁与引用",
-  "说明你的阶段与目标，一起排优先级",
-] as const;
+/** V2 issue 04：文章人味化入口退役，空白态保留论文搜索与生涯规划两张建议卡。 */
+const SUGGESTION_DESCRIPTIONS: Record<string, string> = {
+  "论文搜索": "描述研究主题，先聊清需求再检索",
+  "生涯规划助手": "说明你的阶段与目标，一起排优先级",
+};
 
-/**
- * 空白态恰好三张建议卡（Issue 13/36）：论文搜索、文章人味化、生涯规划
- * 助手。图标均为 Issue 04 的 BridGes 原创图标（语义一致：paperSearch /
- * humanize / career）；点击后预填自然语言意图，进入正常消息流，不跳过
- * 授权、审计与对话保存（Issue 36 AC8：不新增清单之外的建议卡）。
- */
 export const SUGGESTION_CARDS: readonly SuggestionCard[] = CHAT_TOOL_INTENTS.filter(
   (tool) =>
     tool.label !== IMAGE_TOOL_LABEL && tool.label !== VIDEO_TOOL_LABEL
-).map((tool, index) => ({
+).map((tool) => ({
   icon: tool.icon,
   label: tool.label,
-  description: CARD_DESCRIPTIONS[index],
+  description: SUGGESTION_DESCRIPTIONS[tool.label] ?? "",
   prefill: tool.prefix,
 }));
 

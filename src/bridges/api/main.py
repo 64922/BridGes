@@ -199,7 +199,6 @@ from bridges.scope import ScopeEnforcer
 from bridges.search import SearchService
 from bridges.sharing import SharingService
 from bridges.skills import create_builtin_registry
-from bridges.skills.humanizer.service import HumanizerService
 from bridges.speech.service import SpeechService
 from bridges.storage import (
     SCHEMA_INTEGRITY_ERROR_CODE,
@@ -1291,21 +1290,6 @@ def create_app(
             app.state.mcp_service = mcp_service
         # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
         app.state.search_service = SearchService(bridges_database)
-        # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
-        # SKILL 随应用发布、版本固定、只读来源；编排复用同一模型网关与
-        # 附件/检索/联网证据合同，不依赖用户手工上传或 `.env`。
-        # Issue 11：生产组合注入统一模型运行锁 recorder——每次真实 Qwen
-        # 调用（首稿/修订/修复）的锁与业务状态在同一存储原子持久化。
-        app.state.humanizer_service = HumanizerService(
-            registry=skill_registry,
-            gateway=model_gateway,
-            run_lock_recorder=SqliteModelRunLockRecorder(bridges_database),
-            attachment_service=getattr(app.state, "chat_attachment_service", None),
-            knowledge_base_service=getattr(app.state, "knowledge_base_service", None),
-            retrieval_service=getattr(app.state, "retrieval_service", None),
-            web_search_service=getattr(app.state, "web_search_service", None),
-            observability_service=app.state.observability_service,
-        )
         # Issue 29：生涯规划编排服务（复用画像切片编译、学习记录、检索与
         # 联网证据合同；六类输出由结构化模型生成并确定性复核）。Issue 12：
         # 注入 Issue 10 统一运行锁 recorder，每次结构化调用立即幂等持久化，
@@ -1341,7 +1325,6 @@ def create_app(
                 app.state, "four_dimension_profile_service", None
             ),
             observability_service=app.state.observability_service,
-            humanizer_service=app.state.humanizer_service,
             career_planner_service=app.state.career_planner_service,
             image_service=app.state.image_service,
             video_service=app.state.video_service,

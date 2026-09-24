@@ -21,7 +21,7 @@ def test_builtin_registry_registers_humanizer_read_only() -> None:
     assert manifest.license  # 许可证声明存在
     assert manifest.source  # 来源说明存在
     assert manifest.capabilities  # 能力清单存在
-    assert any("global-chat-lightweight-v1" in item for item in manifest.capabilities)
+    assert any("global-chat-lightweight-v2" in item for item in manifest.capabilities)
 
 
 def test_builtin_registry_lists_sorted() -> None:

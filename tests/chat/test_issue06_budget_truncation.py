@@ -626,80 +626,11 @@ def _create_conversation(client: TestClient) -> str:
     return response.json()["conversation_id"]
 
 
-def _humanizer_payload() -> dict[str, Any]:
-    corpus = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "bridges"
-        / "skills"
-        / "humanizer"
-        / "skill"
-        / "fixtures"
-        / "rewrite_corpus.md"
-    ).read_text(encoding="utf-8")
-    source = corpus.split("## 原文")[1].split("## 事实锁清单")[0].strip()
-    return {
-        "content": "文章人味化：改写光合作用科普段落",
-        "skill_id": "bridges-humanizer",
-        "skill_input": {
-            "skill_id": "bridges-humanizer",
-            "contract": {
-                "path": "rewrite",
-                "genre": "popular_science",
-                "source_text": source,
-                "audience": "普通读者",
-                "channel": "公众号",
-                "length_target": "800 字",
-            },
-        },
-    }
-
-
-def _swap_humanizer_gateways(sqlite_app: Any, adapter: Any) -> None:
-    gateway = _gateway_with(adapter)
-    sqlite_app.state.chat_service._gateway = gateway  # noqa: SLF001
-    sqlite_app.state.humanizer_service._gateway = gateway  # noqa: SLF001
-
-
 def _swap_career_gateways(sqlite_app: Any, adapter: Any) -> None:
     gateway = _gateway_with(adapter, max_attempts=2, backoff=0.01)
     sqlite_app.state.chat_service._gateway = gateway  # noqa: SLF001
     sqlite_app.state.career_planner_service._gateway = gateway  # noqa: SLF001
 
-
-def test_humanizer_slow_call_terminates_within_scaled_budget(
-    sqlite_app: Any,
-    client: TestClient,
-    generation_helpers: dict[str, Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """注入式慢结构化适配器：单次调用被截断超时终止，整轮墙钟不超过
-    （缩放后）预算 + 测量容差，终态为真实超时错误而非 budget_exceeded。
-
-    生产等价场景：120 秒总预算、60 秒默认超时被截断到「剩余 − 交接预留」。
-    """
-    monkeypatch.setattr("bridges.chat.budget.TOTAL_BUDGET_MS", 3_000)
-    _register(client)
-    adapter = _RecordingAdapter(
-        errors=[TransientError("Qwen request timeout: draft")],
-        honor_timeout=True,
-    )
-    _swap_humanizer_gateways(sqlite_app, adapter)
-    conversation_id = _create_conversation(client)
-    created = generation_helpers["send"](client, conversation_id, **_humanizer_payload())
-    message_id = created["assistant_message"]["message_id"]
-
-    started = time.monotonic()
-    generation_helpers["drive"](sqlite_app, timeout=12.0)
-    events = generation_helpers["subscribe"](
-        client, conversation_id, message_id, timeout=12.0
-    )
-    elapsed = time.monotonic() - started
-    assert elapsed < 3.0 + 0.8, f"整轮墙钟 {elapsed:.2f}s 应不超过缩放预算+容差"
-    assert adapter.calls == 1, "单次调用被截断后预算不足，不重试"
-    assert events[-1][0] == "error"
-    code = events[-1][1]["error"]["code"]
-    assert code == "transient", f"真实错误码透传而非 budget_exceeded（实际 {code}）"
 
 
 def test_career_slow_call_terminates_within_scaled_budget(

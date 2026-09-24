@@ -46,7 +46,6 @@ from bridges.chat.turn import (
     CHAT_MODE,
     STREAM_INTERRUPTED_MESSAGE,
     CareerPlannerOrchestrator,
-    HumanizerOrchestrator,
     ImageOrchestrator,
     TurnOrchestrator,
     VideoOrchestrator,
@@ -59,7 +58,6 @@ from bridges.chat.turn import (
     error_is_retryable,  # noqa: F401 - re-export
     failed_thinking,
     finalize_message,
-    humanizer_recovery_state,
     initial_thinking,
     owner_user_message,
     result_summary,
@@ -101,7 +99,6 @@ from bridges.contracts.feedback import (
 from bridges.contracts.humanizer import (
     HUMANIZER_CHECKPOINT_KEY,
     HumanizerResultProjection,
-    HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpError
@@ -137,11 +134,6 @@ from bridges.web_search.service import WebSearchService
 
 #: 由首条用户消息推导对话标题的最大长度。
 _TITLE_MAX = 24
-
-#: Issue 01 缺陷 b：用户手动重试（任务输入已保留）视为新一轮写作预算——
-#: 重置持久化的写作调用计数；单轮内 2 次上限不变。关闭该开关恢复旧语义
-#: （重试沿用计数，用尽时稳定拒绝），供灰度回滚。
-RETRY_RESETS_WRITING_BUDGET = True
 
 
 def _started_event_payload(
@@ -237,7 +229,6 @@ class ChatService:
         automatic_profile_service: AutomaticProfileService | None = None,
         four_dimension_profile_service: FourDimensionProfileService | None = None,
         observability_service: ObservabilityService | None = None,
-        humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
         image_service: ImageOrchestrator | None = None,
         video_service: VideoOrchestrator | None = None,
@@ -266,9 +257,6 @@ class ChatService:
         self._four_dimension_profiles = four_dimension_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
-        #: 内置 bridges-humanizer SKILL 编排（Issue 28）；未挂载时携带
-        #: SKILL 载荷的消息按普通消息处理（测试/内存环境）。
-        self._humanizer = humanizer_service
         #: 生涯规划编排（Issue 29）；未挂载时规划意图按普通消息处理。
         self._career_planner = career_planner_service
         #: 图片生成与编辑编排（Issue 31）；未挂载时携带 image 载荷的
@@ -303,7 +291,6 @@ class ChatService:
             automatic_profile_service=self._automatic_profiles,
             four_dimension_profile_service=self._four_dimension_profiles,
             observability_service=self._observability,
-            humanizer_service=self._humanizer,
             career_planner_service=self._career_planner,
             image_service=self._image,
             video_service=self._video,
@@ -320,11 +307,18 @@ class ChatService:
         skill_input: dict[str, Any] | None = None,
         mcp_call: dict[str, Any] | None = None,
     ) -> None:
+        if skill_id == "bridges-humanizer":
+            # V2 issue 04：文章人味化专用入口退出；历史结果仍可查看与导出。
+            raise ChatDomainError(
+                "humanizer_capability_retired",
+                "文章人味化能力已退役，历史结果仍可查看与导出；正文表达已并入自然对话。",
+                410,
+            )
         if (
             plugin_selection
             or mcp_call is not None
-            or skill_id not in {None, "bridges-humanizer"}
-            or (skill_input is not None and skill_id != "bridges-humanizer")
+            or skill_id is not None
+            or skill_input is not None
         ):
             raise ChatDomainError(
                 "user_extensions_retired",
@@ -749,10 +743,8 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
-        skill_payload, image_payload, video_payload, mcp_call_payload = (
-            self._validate_turn_payloads(
-                skill_id, skill_input, image, video, mcp_call
-            )
+        image_payload, video_payload, mcp_call_payload = self._validate_turn_payloads(
+            image, video, mcp_call
         )
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
@@ -775,7 +767,6 @@ class ChatService:
         attachment_ids = None
         mode = ChatMode(record.mode)
         capability_route = self._route_for_turn(
-            skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
@@ -790,7 +781,6 @@ class ChatService:
             conversation_id=conversation_id,
             content=content,
             mode=mode,
-            skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
@@ -822,7 +812,6 @@ class ChatService:
             query=content,
             mode=mode,
             use_knowledge_base=use_knowledge_base,
-            skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
@@ -848,78 +837,43 @@ class ChatService:
             self._project_message(assistant_message, run_view),
         )
 
-    def _validate_skill_attachment_consistency(
-        self,
-        skill_payload: dict[str, Any] | None,
-        attachment_ids: list[str],
-    ) -> None:
-        """Issue 04：技能任务契约引用的附件必须与消息绑定集合一致。
-
-        前端把附件 ID 同时放在请求顶层（绑定）与任务契约（技能读取），
-        两者必须逐一对齐；不一致说明提交链路丢字段（历史缺陷：首页
-        包装回调丢弃 ``attachmentIds``），直接返回可理解错误而非静默
-        继续——绝不出现「消息投影无附件但任务读取了文件」或反之。
-        """
-        if skill_payload is None:
-            return
-        contract_ids = list(
-            (skill_payload.get("contract") or {}).get("knowledge_base_object_ids") or []
-        )
-        if set(contract_ids) != set(attachment_ids):
-            raise ChatDomainError(
-                "attachment_contract_mismatch",
-                "任务引用的附件与消息附加的附件不一致，请重新选择文件后重试。",
-                422,
-            )
-
     def _validate_turn_payloads(
         self,
-        skill_id: str | None,
-        skill_input: dict[str, Any] | None,
         image: dict[str, Any] | None,
         video: dict[str, Any] | None,
         mcp_call: dict[str, Any] | None,
-    ) -> tuple[
-        dict[str, Any] | None,
-        dict[str, Any] | None,
-        dict[str, Any] | None,
-        dict[str, Any] | None,
-    ]:
-        """校验一轮载荷：SKILL 注册、图片/视频/MCP 结构与四类互斥。
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+        """校验一轮载荷：图片/视频/MCP 结构与互斥。
 
         供续轮（``start_generation``）与原子首轮（``start_first_turn``）
         共用，失败按 422 拒绝而不是静默丢弃（失败不伪装成功）。
+        SKILL 载荷在 ``_ensure_extension_payload_allowed`` 一律拒绝
+        （V2 issue 04：文章人味化入口退役），不再进入本校验。
         """
-        skill_payload = self._validate_skill_payload(skill_id, skill_input)
-        # Issue 31/32/36：SKILL / 图片 / 视频 / MCP 调用四类载荷互斥——
-        # 同一轮只允许一种载荷驱动生成，并发携带按 422 拒绝而不是静默
-        # 丢弃（失败不伪装成功，契约单一来源）。
-        has_skill = skill_payload is not None
-        image_payload = _validate_image_payload(image, has_skill)
+        image_payload = _validate_image_payload(image, False)
         video_payload = _validate_video_payload(
-            video, has_skill or image_payload is not None
+            video, image_payload is not None
         )
         mcp_call_payload = _validate_mcp_call_payload(
             mcp_call,
-            has_skill or image_payload is not None or video_payload is not None,
+            image_payload is not None or video_payload is not None,
         )
-        return skill_payload, image_payload, video_payload, mcp_call_payload
+        return image_payload, video_payload, mcp_call_payload
 
     def _route_for_turn(
         self,
         *,
-        skill_payload: dict[str, Any] | None,
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
     ) -> CapabilityRoute:
-        """显式结构化载荷可选专用处理；普通文本始终走日常对话。"""
+        """显式结构化载荷可选专用处理；普通文本始终走日常对话。
+
+        V2 issue 04：SKILL 载荷在扩展载荷门一律拒绝，不再有人味化路由。
+        """
         explicit_capability = None
         reason = None
-        if skill_payload is not None:
-            explicit_capability = MainCapability.HUMANIZER
-            reason = "已选择 Humanizer 能力"
-        elif image_payload is not None:
+        if image_payload is not None:
             explicit_capability = MainCapability.IMAGE
             reason = "已提交图片能力载荷"
         elif video_payload is not None:
@@ -962,7 +916,6 @@ class ChatService:
         conversation_id: str,
         content: str,
         mode: ChatMode,
-        skill_payload: dict[str, Any] | None,
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
@@ -978,12 +931,9 @@ class ChatService:
         读取收敛不会误伤（判定源为运行表）。
         """
         thinking = initial_thinking(mode).model_dump(mode="json")
-        # Issue 28：SKILL 任务不需要搜索/教学初始计划（其证据合同由
-        # 人味化编排按需执行），避免把任务摘要误当搜索查询。
         web_search = (
             self._web_search.initial_projection(self._web_search.plan(content, mode))
             if self._web_search is not None
-            and skill_payload is None
             and not route.is_paper_search
             and route.status not in {RouteStatus.CLARIFY, RouteStatus.REJECTED}
             else None
@@ -993,7 +943,6 @@ class ChatService:
                 self._arxiv_search.plan_from_route(route)
             )
             if self._arxiv_search is not None
-            and skill_payload is None
             and route.is_paper_search
             else None
         )
@@ -1001,7 +950,6 @@ class ChatService:
             self._teaching.initial(content)
             if (
                 mode == ChatMode.STUDY
-                and skill_payload is None
                 and not route.is_paper_search
             )
             else None
@@ -1022,7 +970,6 @@ class ChatService:
             run_lock_id=None,
             created_at=now,
             updated_at=now,
-            skill=skill_payload,
             image=image_payload,
             video=video_payload,
             mcp_call=mcp_call_payload,
@@ -1056,8 +1003,7 @@ class ChatService:
             "use_profile": use_profile,
         }
         if (
-            skill_payload is None
-            and image_payload is None
+            image_payload is None
             and video_payload is None
             and mcp_call_payload is None
         ):
@@ -1241,10 +1187,8 @@ class ChatService:
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
         self._require_daily_mode(mode)
-        skill_payload, image_payload, video_payload, mcp_call_payload = (
-            self._validate_turn_payloads(
-                skill_id, skill_input, image, video, mcp_call
-            )
+        image_payload, video_payload, mcp_call_payload = self._validate_turn_payloads(
+            image, video, mcp_call
         )
         # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
         # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
@@ -1271,7 +1215,6 @@ class ChatService:
                 410,
             )
         capability_route = self._route_for_turn(
-            skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
@@ -1289,7 +1232,6 @@ class ChatService:
             conversation_id=target_conversation_id,
             content=content,
             mode=mode,
-            skill_payload=skill_payload,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
@@ -1592,38 +1534,18 @@ class ChatService:
                         409,
                     )
         if owner.skill:
-            legacy_attachment_ids = (owner.skill.get("contract") or {}).get(
-                "attachment_ids"
+            # V2 issue 04：人味化任务的重试写路径退出——新尝试不再沿用旧
+            # 任务契约做二次全文改写；历史输入与结果保持只读。
+            raise ChatDomainError(
+                "humanizer_retry_retired",
+                "文章人味化任务已退役，历史结果仍可查看与导出，不能重试。",
+                410,
             )
-            if legacy_attachment_ids:
-                raise ChatDomainError(
-                    "historical_attachment_not_retryable",
-                    "历史聊天附件不能作为人味化重试输入，请先把原文件上传到当前账户知识库后再重试。",
-                    422,
-                )
         max_attempt = max(
             (m.attempt_number for m in attempt_group(existing, owner.message_id)),
             default=0,
         )
         now = datetime.now(UTC)
-        # Issue 05：重试沿用旧尝试的写作调用计数与已产出正文（持久运行状态
-        # 原子记录；服务重启不能重新获得修订额度）。旧尝试正文缺失时退回
-        # 该尝试消息的 content 列（草稿已按 Issue 07 语义持久化）。
-        # Issue 01 缺陷 b：用户手动重试视为新一轮写作预算——重置持久化的
-        # 写作调用计数（单轮内 2 次上限不变；开关可回滚），重试后不再直接
-        # 撞 writing_call_limit_reached。
-        humanizer_recovery: tuple[int, str | None] = (0, None)
-        if not RETRY_RESETS_WRITING_BUDGET:
-            for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
-                recovered_count, recovered_text = humanizer_recovery_state(
-                    previous_attempt
-                )
-                if recovered_count < 1:
-                    continue
-                if not recovered_text and previous_attempt.content:
-                    recovered_text = previous_attempt.content
-                humanizer_recovery = (recovered_count, recovered_text)
-                break
         mode = ChatMode(record.mode)
         route = capability_route_from(owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None
@@ -1698,18 +1620,6 @@ class ChatService:
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
             route=(route.model_dump(mode="json") if route is not None else owner.route),
-            # Issue 05：新尝试以初始检查点携带旧尝试的写作调用计数与已产出
-            # 正文——重试沿用计数，恢复尝试跳过首稿调用，直接检查与修订。
-            skill=(
-                {
-                    HUMANIZER_CHECKPOINT_KEY: {
-                        "writing_call_count": humanizer_recovery[0],
-                        "recovered_text": humanizer_recovery[1] or "",
-                    }
-                }
-                if humanizer_recovery[0] >= 1
-                else None
-            ),
         )
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
@@ -1774,7 +1684,6 @@ class ChatService:
             query=owner.content,
             mode=mode,
             use_knowledge_base=use_knowledge_base,
-            skill_payload=owner.skill,
             image_payload=owner.image,
             video_payload=owner.video,
             mcp_call_payload=owner.mcp_call,
@@ -1795,7 +1704,6 @@ class ChatService:
         query: str,
         mode: ChatMode,
         use_knowledge_base: bool,
-        skill_payload: dict[str, Any] | None,
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
@@ -1805,7 +1713,7 @@ class ChatService:
             return
         route = capability_route_for_request(
             mode=mode.value,
-            has_humanizer=skill_payload is not None,
+            has_humanizer=False,
             has_image=image_payload is not None,
             image_edit=(
                 image_payload is not None
@@ -1824,50 +1732,6 @@ class ChatService:
             capability_route=route,
             use_knowledge_base=use_knowledge_base,
         )
-
-    # ------------------------------------------------------------------
-    # Issue 28：SKILL 载荷发送校验（编排路径见 chat/turn.py）
-    # ------------------------------------------------------------------
-
-    def _validate_skill_payload(
-        self,
-        skill_id: str | None,
-        skill_input: dict[str, Any] | None,
-    ) -> dict[str, Any] | None:
-        """校验发送请求的 SKILL 载荷；通过后返回落库 JSON（用户消息快照）。"""
-        if skill_id is None and skill_input is None:
-            return None
-        if skill_id is None or skill_input is None:
-            raise ChatDomainError(
-                "invalid_skill_payload",
-                "SKILL 请求必须同时提供标识与任务载荷。",
-                422,
-            )
-        if self._humanizer is None:
-            raise ChatDomainError(
-                "skill_unavailable", "SKILL 能力暂不可用，请稍后重试。", 503
-            )
-        try:
-            parsed = HumanizerSkillInput.model_validate(
-                {**skill_input, "skill_id": skill_id}
-            )
-        except ValidationError:
-            raise ChatDomainError(
-                "invalid_skill_payload", "SKILL 任务载荷不合法，请重新填写。", 422
-            ) from None
-        # 注册校验：标识必须内置、版本固定（resolve_skill 内部校验）。
-        # 未注册标识拒绝发送，绝不当作普通消息静默处理。
-        try:
-            self._humanizer.resolve_skill(parsed)
-        except Exception as exc:  # noqa: BLE001 - 注册表错误统一映射为可操作失败
-            code = getattr(exc, "code", "skill_unavailable")
-            raise ChatDomainError(
-                code,
-                getattr(exc, "message", "SKILL 能力暂不可用，请稍后重试。"),
-                404 if code == "skill_not_found" else 422,
-            ) from exc
-        return parsed.model_dump(mode="json")
-
 
     def approve_mcp_confirmation(
         self, account_id: str, conversation_id: str, message_id: str, confirmation_id: str
