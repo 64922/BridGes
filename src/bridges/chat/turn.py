@@ -1979,7 +1979,6 @@ class TurnOrchestrator:
             owner_video_for_decision = video_payload_from(owner_message_for_decision)
             owner_mcp_for_decision = mcp_call_payload_from(owner_message_for_decision)
             capability_route = capability_route_for_request(
-                owner_query,
                 mode=mode.value,
                 has_humanizer=owner_skill_for_decision is not None,
                 has_image=owner_image_for_decision is not None,

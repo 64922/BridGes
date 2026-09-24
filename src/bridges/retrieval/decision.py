@@ -119,7 +119,6 @@ def query_fingerprint(query: str) -> str:
 
 
 def infer_capability_route(
-    query: str,
     *,
     has_humanizer: bool = False,
     has_image: bool = False,
@@ -141,7 +140,6 @@ def infer_capability_route(
 
 
 def capability_route_for_request(
-    query: str,
     *,
     mode: str,
     has_humanizer: bool = False,
@@ -152,7 +150,6 @@ def capability_route_for_request(
 ) -> str:
     """根据已解析的能力载荷形成回合级路由快照。"""
     route = infer_capability_route(
-        query,
         has_humanizer=has_humanizer,
         has_image=has_image,
         image_edit=image_edit,

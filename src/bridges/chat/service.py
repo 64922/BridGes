@@ -1804,7 +1804,6 @@ class ChatService:
         if self._retrieval is None:
             return
         route = capability_route_for_request(
-            query,
             mode=mode.value,
             has_humanizer=skill_payload is not None,
             has_image=image_payload is not None,
