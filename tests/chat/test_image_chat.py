@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.api.auth import SESSION_COOKIE_NAME
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterResult
 from bridges.contracts.ai import (
@@ -139,9 +140,11 @@ def _swap_image_gateway(sqlite_app: Any) -> None:
 
 
 def _create_conversation(client: TestClient) -> str:
-    response = client.post("/chat/conversations", json={})
-    assert response.status_code == 201, response.text
-    return response.json()["conversation_id"]
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    subject = client.app.state.identity_service.resolve_session(session_token).subject
+    conversation = client.app.state.chat_service.create_conversation(subject.account_id)
+    return conversation.conversation_id
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:

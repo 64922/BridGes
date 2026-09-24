@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import AdapterError, RateLimitError, StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.api.auth import SESSION_COOKIE_NAME
 from bridges.api.main import create_app
 from bridges.config import get_settings
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
@@ -136,9 +137,11 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _create_conversation(client: TestClient) -> str:
-    response = client.post("/chat/conversations", json={})
-    assert response.status_code == 201, response.text
-    return response.json()["conversation_id"]
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    subject = client.app.state.identity_service.resolve_session(session_token).subject
+    conversation = client.app.state.chat_service.create_conversation(subject.account_id)
+    return conversation.conversation_id
 
 
 def _send(
@@ -222,30 +225,22 @@ def test_create_conversation_defaults_companion_and_rejects_unreleased_study(
 ) -> None:
     _register(client)
     default = client.post("/chat/conversations", json={"title": "日常对话"})
-    assert default.status_code == 201
-    assert default.json()["mode"] == "companion"
-    assert default.json()["mode_locked"] is False
-    assert default.json()["mode_events"] == []
+    assert default.status_code == 409
+    assert default.json()["detail"]["error"] == "first_turn_required"
 
     study = client.post("/chat/conversations", json={"title": "学习对话", "mode": "study"})
     assert study.status_code == 409
     assert study.json()["detail"]["error"] == "study_mode_unavailable"
 
     listing = client.get("/chat/conversations").json()["conversations"]
-    modes = {item["mode"] for item in listing}
-    assert modes == {"companion"}
+    assert listing == []
 
 
 def test_conversation_lifecycle_api_is_persistent_and_account_scoped(
     client: TestClient, sqlite_app: Any
 ) -> None:
     alice = _register(client, "31")
-    created = client.post(
-        "/chat/conversations",
-        json={"title": "原始标题"},
-    )
-    assert created.status_code == 201, created.text
-    conversation_id = created.json()["conversation_id"]
+    conversation_id = _create_conversation(client)
 
     updated = client.patch(
         f"/chat/conversations/{conversation_id}",
