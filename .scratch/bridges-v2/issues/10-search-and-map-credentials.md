@@ -16,3 +16,5 @@
 ## Comments
 
 设置页、已认证凭据 API、加密存储与 Tavily／高德只读探针已实现，旧凭据在候选探测失败时保留。浏览器地图目前只探测 JS API 加载器，安全码与 Key 的配对要等受保护的地图代理请求才能实测；当前代码没有通勤模块分发点，因此本票尚未实现通勤缺配置提示。设置页明确披露了第一项限制，普通聊天未接入高德配置。
+
+高德[官方安全方案](https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode)要求浏览器通过 `serviceHost` 请求 `/_AMapService`，由服务端代理向上游追加 `jscode`；[官方错误码说明](https://lbs.amap.com/api/javascript-api-v2/guide/abc/errorcode)将 `INVALID_USER_SCODE` 定义为安全码与 Key 不匹配。因此加载器连通性探测不能作为安全码配对已验证的依据。
