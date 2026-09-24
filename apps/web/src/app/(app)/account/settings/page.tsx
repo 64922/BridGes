@@ -70,6 +70,21 @@ export default function SettingsPage() {
               </ButtonLink>
             </div>
           </section>
+
+          <section className="sc-card" aria-labelledby="credential-settings-title">
+            <Icon name="search" size={28} aria-hidden />
+            <h2 id="credential-settings-title" className="sc-section-title" style={{ marginTop: "var(--space-4)" }}>
+              搜索与地图凭据
+            </h2>
+            <p style={{ color: "var(--color-text-secondary)", minHeight: "3rem" }}>
+              查看和验证 Tavily、高德服务端路线及浏览器地图的凭据状态。
+            </p>
+            <div style={{ marginTop: "var(--space-5)" }}>
+              <ButtonLink href="/account/settings/credentials" ariaLabel="打开搜索与地图凭据设置">
+                管理搜索与地图凭据
+              </ButtonLink>
+            </div>
+          </section>
         </div>
       </div>
     </MainContent>

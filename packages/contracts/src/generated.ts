@@ -342,6 +342,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Credential Settings */
+        get: operations["get_credential_settings_settings_credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/credentials/tavily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Tavily Credential */
+        put: operations["replace_tavily_credential_settings_credentials_tavily_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/credentials/amap/web-service": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Amap Web Service Credential */
+        put: operations["replace_amap_web_service_credential_settings_credentials_amap_web_service_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/credentials/amap/browser-map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Amap Browser Map Credential */
+        put: operations["replace_amap_browser_map_credential_settings_credentials_amap_browser_map_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/compatibility/pages/{endpoint_id}": {
         parameters: {
             query?: never;
@@ -5802,6 +5870,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AMapBrowserCandidate */
+        AMapBrowserCandidate: {
+            /**
+             * Api Key
+             * Format: password
+             */
+            api_key: string;
+            /**
+             * Security Js Code
+             * Format: password
+             */
+            security_js_code: string;
+        };
+        /** AMapCredentialStatus */
+        AMapCredentialStatus: {
+            web_service: components["schemas"]["CredentialStatus"];
+            browser_map: components["schemas"]["CredentialStatus"];
+        };
         /**
          * AccessibilityAlternative
          * @description Accessibility alternative for a visual media object.
@@ -9893,6 +9979,20 @@ export interface components {
             reason: string;
             /** Detail */
             detail?: string | null;
+        };
+        /** CredentialSettingsResponse */
+        CredentialSettingsResponse: {
+            tavily: components["schemas"]["CredentialStatus"];
+            amap: components["schemas"]["AMapCredentialStatus"];
+        };
+        /** CredentialStatus */
+        CredentialStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Last Validated At */
+            last_validated_at?: string | null;
+            /** Error */
+            error?: string | null;
         };
         /**
          * DataBinding
@@ -19482,6 +19582,14 @@ export interface components {
              */
             allow_guest_invites: boolean;
         };
+        /** SecretCandidate */
+        SecretCandidate: {
+            /**
+             * Api Key
+             * Format: password
+             */
+            api_key: string;
+        };
         /**
          * SemanticDiff
          * @description 两个包版本之间的判定差异；原始 YAML Diff 不能替代它。
@@ -24142,6 +24250,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_credential_settings_settings_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_tavily_credential_settings_credentials_tavily_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_amap_web_service_credential_settings_credentials_amap_web_service_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_amap_browser_map_credential_settings_credentials_amap_browser_map_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AMapBrowserCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialStatus"];
                 };
             };
             /** @description Validation Error */

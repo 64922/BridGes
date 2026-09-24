@@ -11,6 +11,8 @@ export type SessionResponse = components["schemas"]["SessionResponse"];
 export type AuthError = components["schemas"]["AuthError"];
 export type AvatarChoice = components["schemas"]["AvatarChoice"];
 export type AccountProfileUpdate = components["schemas"]["AccountProfileUpdate"];
+export type CredentialStatus = components["schemas"]["CredentialStatus"];
+export type CredentialSettings = components["schemas"]["CredentialSettingsResponse"];
 export type DeviceAccountProjection = components["schemas"]["DeviceAccountProjection"];
 export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsResponse"];
 export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
@@ -250,6 +252,57 @@ export async function fetchSession(): Promise<SessionResponse> {
   if (!res.ok) {
     throw await parseApiError(res);
   }
+  return res.json();
+}
+
+/** 查询当前安装的搜索与地图凭据状态，不返回任何密钥正文。 */
+export async function fetchCredentialSettings(): Promise<CredentialSettings> {
+  const res = await fetch(`${API_BASE}/settings/credentials`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 验证并保存 Tavily API Key；成功后清空输入框，不返回密钥。 */
+export async function replaceTavilyCredential(apiKey: string): Promise<CredentialStatus> {
+  const res = await fetch(`${API_BASE}/settings/credentials/tavily`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 验证并保存高德 Web Service Key；成功后清空输入框，不返回密钥。 */
+export async function replaceAmapWebServiceCredential(
+  apiKey: string
+): Promise<CredentialStatus> {
+  const res = await fetch(`${API_BASE}/settings/credentials/amap/web-service`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 验证 JS API Key 后与安全码作为一个服务端凭据原子保存。 */
+export async function replaceAmapBrowserMapCredential(
+  apiKey: string,
+  securityJsCode: string
+): Promise<CredentialStatus> {
+  const res = await fetch(`${API_BASE}/settings/credentials/amap/browser-map`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ api_key: apiKey, security_js_code: securityJsCode }),
+  });
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 

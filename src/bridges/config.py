@@ -101,6 +101,15 @@ class Settings(BaseSettings):
     tavily_api_key: SecretStr | None = Field(
         default=None, validation_alias=_env_aliases("TAVILY_API_KEY")
     )
+    amap_web_service_key: SecretStr | None = Field(
+        default=None, validation_alias=_env_aliases("AMAP_WEB_SERVICE_KEY")
+    )
+    amap_js_api_key: SecretStr | None = Field(
+        default=None, validation_alias=_env_aliases("AMAP_JS_API_KEY")
+    )
+    amap_security_js_code: SecretStr | None = Field(
+        default=None, validation_alias=_env_aliases("AMAP_SECURITY_JS_CODE")
+    )
 
     # Issue 02：结构化公开搜索备用源默认关闭；启用时只允许注册表中的
     # 固定提供方，不接受任意 URL。Brave Search 凭据只从部署配置或其
@@ -197,6 +206,9 @@ class Settings(BaseSettings):
             "object_storage_url",
             "qwen_api_key",
             "tavily_api_key",
+            "amap_web_service_key",
+            "amap_js_api_key",
+            "amap_security_js_code",
             "brave_search_api_key",
         }
     )

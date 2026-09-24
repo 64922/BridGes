@@ -1,6 +1,7 @@
 """FastAPI application for the BridGes API."""
 
 import hashlib
+import json
 import logging
 import os
 import threading
@@ -9,11 +10,13 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any, cast
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError as PydanticValidationError
+from pydantic import SecretStr, ValidationError as PydanticValidationError
 
 from bridges import __version__
 from bridges.ai import (
@@ -28,6 +31,7 @@ from bridges.api import (
     auth,
     chat,
     compatibility,
+    credentials,
     domain_packs,
     evaluation,
     expression,
@@ -71,7 +75,7 @@ from bridges.closeout.fixtures import (
     CloseoutQwenAdapter,
     CloseoutWebSearchClient,
 )
-from bridges.config import Settings, get_settings
+from bridges.config import Settings, get_settings, secret_file_reference
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -89,7 +93,13 @@ from bridges.credentials.global_credential import (
     GLOBAL_QWEN_KEY_GUIDANCE,
     is_global_qwen_key_configured,
 )
+from bridges.credentials.ids import (
+    AMAP_BROWSER_MAP_CREDENTIAL_ID,
+    AMAP_WEB_SERVICE_CREDENTIAL_ID,
+    SETTINGS_TAVILY_CREDENTIAL_ID,
+)
 from bridges.credentials.store import (
+    CredentialStoreError,
     CredentialStorePort,
     EncryptedVolumeCredentialStore,
     InMemoryCredentialStore,
@@ -405,13 +415,37 @@ def _register_builtin_domain_packs(registry: DomainPackRegistry) -> None:
         registry.register(factory())
 
 
-def create_app(state_store: StateStore | None = None) -> FastAPI:
+def _credential_store_for_namespace(
+    settings: Settings | None, data_dir: Path | None, namespace: str
+) -> CredentialStorePort:
+    """按运行载体为指定命名空间创建凭据存储。"""
+    if settings is None or data_dir is None:
+        return InMemoryCredentialStore(namespace=namespace)
+    if settings.credential_backend == "encrypted-volume":
+        return EncryptedVolumeCredentialStore(data_dir, namespace=namespace)
+    return OsCredentialStore(data_dir=data_dir, namespace=namespace)
+
+
+def create_app(
+    state_store: StateStore | None = None,
+    *,
+    runtime_credential_store: CredentialStorePort | None = None,
+    credential_probe_http_client: httpx.Client | None = None,
+) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="BridGes API",
         version=__version__,
         description="长期科学学习与表达伙伴 API",
     )
+    owns_credential_probe_client = credential_probe_http_client is None
+    app.state.credential_probe_http_client = (
+        credential_probe_http_client or httpx.Client(timeout=8.0)
+    )
+    if owns_credential_probe_client:
+        app.router.add_event_handler(
+            "shutdown", app.state.credential_probe_http_client.close
+        )
 
     # T008: load the unified runtime configuration. All carriers (manual,
     # unified CLI, Docker, Podman) resolve the same schema and secret rules.
@@ -449,6 +483,64 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         if state_store is not None
         else "memory"
     )
+    settings_at_credential = app.state.settings
+    data_dir: Path | None = None
+    if isinstance(state_store, SqliteStateStore) and state_store.path != ":memory:":
+        data_dir = Path(state_store.path).parent
+    app.state.runtime_credential_store = (
+        runtime_credential_store
+        if runtime_credential_store is not None
+        else _credential_store_for_namespace(
+            settings_at_credential, data_dir, namespace="runtime"
+        )
+    )
+    app.state.runtime_credential_store_error = False
+    if settings_at_credential is not None:
+        credential_updates: dict[str, Any] = {}
+        try:
+            if settings_at_credential.tavily_api_key is None:
+                settings_tavily_key = app.state.runtime_credential_store.get(
+                    SETTINGS_TAVILY_CREDENTIAL_ID
+                )
+                if settings_tavily_key is not None:
+                    credential_updates["tavily_api_key"] = settings_tavily_key
+            web_service_file_ref = secret_file_reference("AMAP_WEB_SERVICE_KEY")
+            if not (web_service_file_ref and web_service_file_ref[0]):
+                amap_web_service_key = app.state.runtime_credential_store.get(
+                    AMAP_WEB_SERVICE_CREDENTIAL_ID
+                )
+                if amap_web_service_key is not None:
+                    credential_updates["amap_web_service_key"] = amap_web_service_key
+            js_key_file_ref = secret_file_reference("AMAP_JS_API_KEY")
+            security_code_file_ref = secret_file_reference("AMAP_SECURITY_JS_CODE")
+            has_browser_map_file_pair = (
+                js_key_file_ref
+                and js_key_file_ref[0]
+                and security_code_file_ref
+                and security_code_file_ref[0]
+            )
+            if not has_browser_map_file_pair:
+                browser_map_pair = app.state.runtime_credential_store.get(
+                    AMAP_BROWSER_MAP_CREDENTIAL_ID
+                )
+                if browser_map_pair is not None:
+                    pair = json.loads(browser_map_pair.get_secret_value())
+                    if (
+                        isinstance(pair, dict)
+                        and isinstance(pair.get("api_key"), str)
+                        and isinstance(pair.get("security_js_code"), str)
+                    ):
+                        credential_updates["amap_js_api_key"] = SecretStr(pair["api_key"])
+                        credential_updates["amap_security_js_code"] = SecretStr(
+                            pair["security_js_code"]
+                        )
+        except (CredentialStoreError, OSError, ValueError):
+            app.state.runtime_credential_store_error = True
+        else:
+            if credential_updates:
+                app.state.settings = settings_at_credential.model_copy(
+                    update=credential_updates
+                )
 
     # GQ-01：全局百炼运行凭据是正式运行的必需配置。development/production
     # 缺少 Key 时设置不含秘密的错误标记，就绪检查报告 FAIL——即使绕过
@@ -907,22 +999,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # Windows 兜底 DPAPI）；容器环境使用自动生成主密钥保护的加密凭据卷
     # （数据目录 credentials/ 子目录）。未配置数据库（内存模式，测试/E2E）
     # 时使用进程内替身，保证测试确定性。
-    settings_at_credential = app.state.settings
-    data_dir: Path | None = None
-    if isinstance(state_store, SqliteStateStore) and state_store.path != ":memory:":
-        data_dir = Path(state_store.path).parent
-    smtp_credential_store: CredentialStorePort = InMemoryCredentialStore(
-        namespace="smtp"
+    smtp_credential_store = _credential_store_for_namespace(
+        settings_at_credential, data_dir, namespace="smtp"
     )
-    if settings_at_credential is not None and data_dir is not None:
-        if settings_at_credential.credential_backend == "encrypted-volume":
-            smtp_credential_store = EncryptedVolumeCredentialStore(
-                data_dir, namespace="smtp"
-            )
-        else:
-            smtp_credential_store = OsCredentialStore(
-                data_dir=data_dir, namespace="smtp"
-            )
     app.state.smtp_credential_store = smtp_credential_store
 
     # Issue 03：退役前先按账户幂等停止遗留提醒、结束 SMTP 验证并清除
@@ -1663,6 +1742,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(credentials.router)
     app.include_router(compatibility.router)
     app.include_router(chat.router)
     app.include_router(ingestion.router)

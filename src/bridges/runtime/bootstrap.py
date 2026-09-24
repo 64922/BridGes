@@ -25,12 +25,15 @@ from typing import Protocol
 from pydantic import SecretStr, ValidationError
 
 from bridges.config import Settings, secret_file_reference
+from bridges.credentials.ids import (
+    RUNTIME_TAVILY_CREDENTIAL_ID,
+    SETTINGS_TAVILY_CREDENTIAL_ID,
+)
 from bridges.credentials.store import CredentialStoreError, OsCredentialStore
 from bridges.persistence import PersistenceError, resolve_database_path
 
 CONFIG_SCHEMA_VERSION = 1
 RUNTIME_QWEN_CREDENTIAL_ID = "global-qwen-api-key"
-RUNTIME_TAVILY_CREDENTIAL_ID = "global-tavily-api-key"
 _SECRET_ENV_FIELDS = (
     "BRIDGES_SECRET_KEY",
     "BRIDGES_SECRET_KEY_FILE",
@@ -40,6 +43,12 @@ _SECRET_ENV_FIELDS = (
     "BRIDGES_QWEN_API_KEY_FILE",
     "BRIDGES_TAVILY_API_KEY",
     "BRIDGES_TAVILY_API_KEY_FILE",
+    "BRIDGES_AMAP_WEB_SERVICE_KEY",
+    "BRIDGES_AMAP_JS_API_KEY",
+    "BRIDGES_AMAP_SECURITY_JS_CODE",
+    "BRIDGES_AMAP_WEB_SERVICE_KEY_FILE",
+    "BRIDGES_AMAP_JS_API_KEY_FILE",
+    "BRIDGES_AMAP_SECURITY_JS_CODE_FILE",
     "SCIENCE_COMPANION_SECRET_KEY",
     "SCIENCE_COMPANION_SECRET_KEY_FILE",
     "SCIENCE_COMPANION_DATABASE_URL",
@@ -48,6 +57,12 @@ _SECRET_ENV_FIELDS = (
     "SCIENCE_COMPANION_QWEN_API_KEY_FILE",
     "SCIENCE_COMPANION_TAVILY_API_KEY",
     "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+    "SCIENCE_COMPANION_AMAP_WEB_SERVICE_KEY",
+    "SCIENCE_COMPANION_AMAP_JS_API_KEY",
+    "SCIENCE_COMPANION_AMAP_SECURITY_JS_CODE",
+    "SCIENCE_COMPANION_AMAP_WEB_SERVICE_KEY_FILE",
+    "SCIENCE_COMPANION_AMAP_JS_API_KEY_FILE",
+    "SCIENCE_COMPANION_AMAP_SECURITY_JS_CODE_FILE",
 )
 
 
@@ -216,6 +231,18 @@ class LocalRuntimeBootstrap:
             "BRIDGES_TAVILY_API_KEY_FILE",
             "SCIENCE_COMPANION_TAVILY_API_KEY",
             "SCIENCE_COMPANION_TAVILY_API_KEY_FILE",
+            "BRIDGES_AMAP_WEB_SERVICE_KEY",
+            "BRIDGES_AMAP_JS_API_KEY",
+            "BRIDGES_AMAP_SECURITY_JS_CODE",
+            "BRIDGES_AMAP_WEB_SERVICE_KEY_FILE",
+            "BRIDGES_AMAP_JS_API_KEY_FILE",
+            "BRIDGES_AMAP_SECURITY_JS_CODE_FILE",
+            "SCIENCE_COMPANION_AMAP_WEB_SERVICE_KEY",
+            "SCIENCE_COMPANION_AMAP_JS_API_KEY",
+            "SCIENCE_COMPANION_AMAP_SECURITY_JS_CODE",
+            "SCIENCE_COMPANION_AMAP_WEB_SERVICE_KEY_FILE",
+            "SCIENCE_COMPANION_AMAP_JS_API_KEY_FILE",
+            "SCIENCE_COMPANION_AMAP_SECURITY_JS_CODE_FILE",
         ):
             scheduler_env.pop(name, None)
         worker_env = dict(api_env)
@@ -369,7 +396,7 @@ class LocalRuntimeBootstrap:
     ) -> tuple[SecretStr | None, str]:
         """与 Qwen Key 同构的 Tavily Key 解析（Issue 01）。
 
-        解析链：文件引用 → 环境变量 → 系统凭据库（独立 credential id）→
+        解析链：文件引用 → 设置页凭据 → 环境变量 → 安装凭据库（独立 credential id）→
         交互 prompt「请输入 Tavily API Key」。已保存凭据的再次启动不重复
         prompt；凭据读取失败给出准确中文错误。与 Qwen 的差异：非交互调用
         缺 Key 时不阻塞启动——联网搜索入口返回「未配置搜索凭据」投影。
@@ -382,12 +409,24 @@ class LocalRuntimeBootstrap:
                 SecretStr(value or _read_secret_file(Path(file_path), env_name)),
                 "file",
             )
+        if external_settings.environment.lower() == "test":
+            direct = _secret_value(external_settings.tavily_api_key)
+            if direct:
+                return SecretStr(direct), "environment"
+            return None, "test"
+
+        try:
+            settings_key = self.credential_store.get(SETTINGS_TAVILY_CREDENTIAL_ID)
+        except (CredentialStoreError, OSError) as exc:
+            raise BootstrapError(
+                "无法读取设置中保存的搜索凭据，请检查当前用户的凭据管理器。"
+            ) from exc
+        if settings_key is not None and settings_key.get_secret_value().strip():
+            return settings_key, "settings-store"
+
         direct = _secret_value(external_settings.tavily_api_key)
         if direct:
             return SecretStr(direct), "environment"
-
-        if external_settings.environment.lower() == "test":
-            return None, "test"
 
         try:
             stored = self.credential_store.get(RUNTIME_TAVILY_CREDENTIAL_ID)
@@ -541,6 +580,7 @@ class LocalRuntimeBootstrap:
         if tavily_key is not None and tavily_source in {
             "environment",
             "credential-store",
+            "settings-store",
         }:
             env["BRIDGES_TAVILY_API_KEY"] = tavily_key.get_secret_value()
             for name in (

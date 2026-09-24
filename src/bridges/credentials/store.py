@@ -23,6 +23,7 @@ import ctypes
 import hashlib
 import json
 import os
+import tempfile
 import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -56,6 +57,22 @@ class CredentialStoreError(Exception):
 
     消息面向运维与用户，说明存储不可用的中文原因，不包含任何秘密正文。
     """
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    """Replace one encrypted credential blob without truncating the old value."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as temporary:
+            temporary.write(content)
+        os.replace(temporary_path, path)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            temporary_path.unlink()
 
 
 def has_credential_backend(data_dir: Path | None = None) -> bool:
@@ -279,8 +296,7 @@ class OsCredentialStore(CredentialStorePort):
 
     def _write_dpapi_blob(self, account_id: str, ciphertext: bytes) -> None:
         path = self._blob_path(account_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(ciphertext)
+        _atomic_write_bytes(path, ciphertext)
 
     def _read_dpapi_blob(self, account_id: str) -> bytes | None:
         path = self._blob_path(account_id)
@@ -340,7 +356,7 @@ class EncryptedVolumeCredentialStore(CredentialStorePort):
                         {"key": secret.get_secret_value()}
                     ).encode("utf-8")
                 )
-                self._blob_path(account_id).write_bytes(ciphertext)
+                _atomic_write_bytes(self._blob_path(account_id), ciphertext)
             except CredentialStoreError:
                 raise
             except Exception as exc:

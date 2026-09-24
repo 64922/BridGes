@@ -14,6 +14,8 @@ from inspect import Parameter, signature
 from threading import Event, RLock, Thread
 from typing import Any, Protocol, cast
 
+from pydantic import SecretStr
+
 from bridges import public_search_budget as search_budget
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
@@ -473,6 +475,11 @@ class WebSearchService:
             if callable(checker)
             else None
         )
+
+    def replace_tavily_api_key(self, api_key: SecretStr) -> None:
+        """候选 Key 验证通过后切换当前 Tavily 适配器。"""
+        if isinstance(self._client, TavilySearchClient):
+            self._client.replace_api_key(api_key)
 
     def plan(
         self,
