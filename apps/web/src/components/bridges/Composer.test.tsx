@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Composer } from "./Composer";
 
-const PLACEHOLDER = "和 BridGes 一起学习，可以搜论文、人味化你的文章、生涯规划或者生成图片或视频";
+const PLACEHOLDER = "输入消息，开始日常对话";
 
 afterEach(() => {
   cleanup();
@@ -11,7 +11,7 @@ afterEach(() => {
 
 describe("Composer 输入框", () => {
   it.each(["conversation", "new-chat"] as const)(
-    "%s 变体显示统一的能力提示占位文案",
+    "%s 变体显示日常对话占位文案",
     (variant) => {
       render(<Composer variant={variant} onSend={vi.fn()} />);
 

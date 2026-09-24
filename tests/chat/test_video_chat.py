@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.api.auth import SESSION_COOKIE_NAME
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterResult
 from bridges.contracts.ai import (
@@ -144,9 +145,11 @@ def _swap_wan_gateway(sqlite_app: Any) -> None:
 
 
 def _create_conversation(client: TestClient) -> str:
-    response = client.post("/chat/conversations", json={})
-    assert response.status_code == 201, response.text
-    return response.json()["conversation_id"]
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    subject = client.app.state.identity_service.resolve_session(session_token).subject
+    conversation = client.app.state.chat_service.create_conversation(subject.account_id)
+    return conversation.conversation_id
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -270,7 +273,7 @@ def test_video_message_flows_through_real_stream_and_worker(
     assert again.json()["removed_objects"] == 0
 
 
-def test_natural_language_video_routes_to_one_existing_video_task(
+def test_unselected_natural_language_video_request_stays_ordinary(
     sqlite_app: Any, client: TestClient
 ) -> None:
     _register(client, tag="2")
@@ -286,28 +289,16 @@ def test_natural_language_video_routes_to_one_existing_video_task(
     assert response.status_code == 200, response.text
     created = response.json()
     route = created["assistant_message"]["route"]
-    assert route["main_capability"] == "video"
-    assert route["video"]["duration_seconds"] == 10
-    assert route["video"]["aspect_ratio"] == "9:16"
-    assert route["video"]["account_object_domain"] == "account"
+    assert route["main_capability"] == "ordinary_chat"
+    assert created["assistant_message"]["video"] is None
 
     sqlite_app.state.generation_executor.run_tick()
     messages = client.get(f"/chat/conversations/{conversation_id}").json()["messages"]
     assistant = next(message for message in messages if message["role"] == "assistant")
-    assert assistant["video"]["status"] == "queued"
-    assert assistant["content"] == "已提交视频生成请求，正在处理…"
-
-    sqlite_app.state.video_service.process_pending()
-    sqlite_app.state.video_service.process_pending()
-    sqlite_app.state.video_service.process_pending()
-
-    final_messages = client.get(
-        f"/chat/conversations/{conversation_id}"
-    ).json()["messages"]
-    final = next(message for message in final_messages if message["role"] == "assistant")
-    assert final["video"]["status"] == "succeeded"
-    assert len([call for call in adapter.calls if call.get("kind") == "submit"]) == 1
-    assert final["route"] == route
+    assert assistant["video"] is None
+    assert assistant["route"] == route
+    assert assistant["status"] == "done"
+    assert not [call for call in adapter.calls if call.get("kind") == "submit"]
 
 
 def test_video_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient) -> None:

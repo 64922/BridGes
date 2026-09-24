@@ -36,6 +36,7 @@ from bridges.contracts.chat import (
     ChatFirstTurnResponse,
     ChatMessageCreateRequest,
     ChatMessageProjection,
+    ChatMode,
     ChatModeSwitchRequest,
     ChatRunStartedResponse,
     ChatRunStatus,
@@ -280,27 +281,19 @@ def list_conversations(
 
 @router.post(
     "/conversations",
-    response_model=ChatConversationProjection,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_409_CONFLICT,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
     },
 )
 def create_conversation(
     request: Request,
     body: ChatCreateRequest,
-    service: ChatServiceDep,
-    subject: SubjectDep,
-    selections_service: SelectionsServiceDep,
-) -> ChatConversationProjection:
-    """新建对话；标题可选，缺省由首条消息自动推导。
-
-    ``mode`` 缺省为日常陪伴；历史学习项目会话仅通过读取接口兼容。
-    ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
-    逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
-    """
+    _subject: SubjectDep,
+) -> None:
+    """拒绝空会话；新会话必须由首条消息在同一事务中创建。"""
     _reject_retired_file_fields(
         request, body.model_fields_set, endpoint="legacy.chat.conversations.create"
     )
@@ -310,31 +303,17 @@ def create_conversation(
         endpoint="legacy.chat.conversations.create",
         plugin_selection=body.plugin_selection,
     )
-    try:
-        if body.plugin_selection:
-            if selections_service is None:
-                raise _error(
-                    status.HTTP_503_SERVICE_UNAVAILABLE,
-                    "selections_unavailable",
-                    "插件选择服务未启用，请稍后重试。",
-                )
-            result = selections_service.validate_items(
-                subject.account_id, body.plugin_selection or []
-            )
-            if result.removed:
-                reasons = "；".join(
-                    f"「{entry.name}」{entry.reason}" for entry in result.removed
-                )
-                raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "plugin_not_available", reasons)
-        return service.create_conversation(
-            subject.account_id,
-            title=body.title,
-            mode=body.mode,
-            project_id=None,
-            plugin_selection=body.plugin_selection,
+    if body.mode != ChatMode.COMPANION:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "study_mode_unavailable",
+            "学习模式尚未开放；历史学习对话目前仅支持查看。",
         )
-    except ChatDomainError as exc:
-        raise _handle_domain_error(exc) from exc
+    raise _error(
+        status.HTTP_409_CONFLICT,
+        "first_turn_required",
+        "请发送首条消息以创建会话。",
+    )
 
 
 @router.post(

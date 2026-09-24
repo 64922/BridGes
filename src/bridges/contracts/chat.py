@@ -352,11 +352,13 @@ class ChatConversationProjection(BaseModel):
 
 
 class ChatCreateRequest(BaseModel):
-    """新建对话请求；标题可选，缺省由首条消息自动推导。
+    """已退役的空会话创建请求结构。
 
-    ``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。
-    ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话）。
+    保留字段以便旧请求得到明确拒绝；新会话必须通过首条消息原子创建。
+    学习模式与用户插件选择未开放。
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     title: str | None = Field(default=None, max_length=120, description="可选标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话初始模式。")

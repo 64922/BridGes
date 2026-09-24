@@ -195,7 +195,7 @@ def test_study_mode_does_not_force_retrieval_for_unrelated_requests(env):
 
 
 def test_image_edit_is_a_specialized_route_without_semantic_retrieval():
-    assert infer_capability_route("编辑这张图", has_image=True, image_edit=True) == "image_edit"
+    assert infer_capability_route(has_image=True, image_edit=True) == "image_edit"
     decision = decide_retrieval(
         "请根据我的知识库图片编辑背景",
         mode="companion",

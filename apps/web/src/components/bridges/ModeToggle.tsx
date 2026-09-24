@@ -12,6 +12,7 @@ interface ModeToggleProps {
   onChange?: (mode: ChatMode) => void;
   locked?: boolean;
   disabled?: boolean;
+  studyUnavailable?: boolean;
 }
 
 /**
@@ -19,7 +20,13 @@ interface ModeToggleProps {
  *
  * 空白会话允许首轮前选择；首条消息提交后只展示持久化模式，不再提供按钮。
  */
-export function ModeToggle({ value, onChange, locked = false, disabled = false }: ModeToggleProps) {
+export function ModeToggle({
+  value,
+  onChange,
+  locked = false,
+  disabled = false,
+  studyUnavailable = false,
+}: ModeToggleProps) {
   const selectedLabel = MODES.find((mode) => mode.key === value)?.label ?? value;
   return (
     <div
@@ -52,34 +59,40 @@ export function ModeToggle({ value, onChange, locked = false, disabled = false }
         >
           当前模式：{selectedLabel}
         </span>
-      ) : MODES.map((mode) => (
-        <button
-          key={mode.key}
-          type="button"
-          aria-pressed={value === mode.key}
-          data-mode={mode.key}
-          disabled={disabled}
-          onClick={() => onChange?.(mode.key)}
-          style={{
-            minHeight: "var(--target-size)",
-            padding: "0.25rem 0.75rem",
-            border: "none",
-            borderRadius: "var(--radius-sm)",
-            fontSize: "var(--text-sm)",
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.65 : 1,
-            backgroundColor: value === mode.key ? "var(--color-surface)" : "transparent",
-            color:
-              value === mode.key
-                ? "var(--color-accent-primary)"
-                : "var(--color-text-secondary)",
-            fontWeight: value === mode.key ? 600 : 400,
-            boxShadow: value === mode.key ? "var(--shadow-sm)" : "none",
-          }}
-        >
-          {mode.label}
-        </button>
-      ))}
+      ) : (
+        MODES.map((mode) => {
+          const unavailable = mode.key === "study" && studyUnavailable;
+          return (
+            <button
+              key={mode.key}
+              type="button"
+              aria-pressed={value === mode.key}
+              data-mode={mode.key}
+              disabled={disabled || unavailable}
+              title={unavailable ? "学习模式将在对应学习切片验收后开放。" : undefined}
+              onClick={() => onChange?.(mode.key)}
+              style={{
+                minHeight: "var(--target-size)",
+                padding: "0.25rem 0.75rem",
+                border: "none",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "var(--text-sm)",
+                cursor: disabled || unavailable ? "not-allowed" : "pointer",
+                opacity: disabled || unavailable ? 0.65 : 1,
+                backgroundColor: value === mode.key ? "var(--color-surface)" : "transparent",
+                color:
+                  value === mode.key
+                    ? "var(--color-accent-primary)"
+                    : "var(--color-text-secondary)",
+                fontWeight: value === mode.key ? 600 : 400,
+                boxShadow: value === mode.key ? "var(--shadow-sm)" : "none",
+              }}
+            >
+              {mode.label}
+            </button>
+          );
+        })
+      )}
     </div>
   );
 }

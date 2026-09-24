@@ -38,7 +38,6 @@ from bridges.ai.errors import user_facing_model_error
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intake import assess_intake
-from bridges.career.intent import is_career_intent
 from bridges.chat.budget import (
     RESULT_FAILED,
     RESULT_OK,
@@ -1980,7 +1979,6 @@ class TurnOrchestrator:
             owner_video_for_decision = video_payload_from(owner_message_for_decision)
             owner_mcp_for_decision = mcp_call_payload_from(owner_message_for_decision)
             capability_route = capability_route_for_request(
-                owner_query,
                 mode=mode.value,
                 has_humanizer=owner_skill_for_decision is not None,
                 has_image=owner_image_for_decision is not None,
@@ -2251,7 +2249,6 @@ class TurnOrchestrator:
             )
             career_intent = owner_message is not None and (
                 career_route is not None
-                or is_career_intent(owner_message.content)
                 or self._has_pending_career_clarification(
                     account_id, conversation_id, until_user_message_id
                 )
@@ -2843,6 +2840,8 @@ class TurnOrchestrator:
                             )
                     if (
                         self._web_search is not None
+                        and route is not None
+                        and route.web_search_allowed
                         and not paper_route
                         and web_search_projection is None
                     ):

@@ -28,7 +28,6 @@ import bridges.ai  # noqa: F401 - 预载以打破既有导入环
 from bridges.career.intent import is_career_intent
 from bridges.routing import MainCapability, NaturalLanguageRouter, RouteStatus
 from bridges.skills.humanizer.intent import route_humanizer_message
-from bridges.skills.registry import SkillRegistryError
 from tests.chat.test_arxiv_search_chat import _CapturingAdapter, _context
 
 #: 前端建议卡「生涯规划助手」文案原句（chat-template.tsx），金标要求
@@ -137,25 +136,13 @@ def test_golden_study_planning_contract_target_is_study_scoped() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _FakeHumanizerOrchestrator:
-    """人味化编排替身：只做注册校验（resolve_skill），不执行生成。"""
-
-    def resolve_skill(self, skill_input: Any) -> Any:
-        if skill_input.skill_id != "bridges-humanizer":
-            raise SkillRegistryError(
-                "skill_not_found", f"未注册的 SKILL 标识：{skill_input.skill_id}"
-            )
-        return skill_input
-
-
 def _chat_service(tmp_path: Path):
     from bridges.ai import ModelGateway
     from bridges.ai.capability_registry import CapabilityRegistry
-    from bridges.arxiv_mcp.service import ArxivSearchService
     from bridges.chat.repository import ConversationRepository
     from bridges.chat.service import ChatService
     from bridges.storage.database import BridgesDatabase
-    from tests.chat.test_arxiv_search_chat import _capability, _FakeArxivClient
+    from tests.chat.test_arxiv_search_chat import _capability
 
     database = BridgesDatabase(tmp_path / "bridges.db")
     database.initialize()
@@ -167,8 +154,6 @@ def _chat_service(tmp_path: Path):
     return ChatService(
         repository=repository,
         gateway=gateway,
-        arxiv_search_service=ArxivSearchService(client=_FakeArxivClient()),
-        humanizer_service=_FakeHumanizerOrchestrator(),
     )
 
 
@@ -183,8 +168,23 @@ def _assert_persisted_route_snapshot(service: Any, assistant: Any) -> None:
     )
 
 
-@pytest.mark.parametrize("content", GOLDEN_HUMANIZER)
-def test_golden_humanizer_persists_skill_snapshot(tmp_path: Path, content: str) -> None:
+SPECIALTY_REQUESTS_WITHOUT_SELECTION: tuple[str, ...] = (
+    *GOLDEN_HUMANIZER,
+    *GOLDEN_CAREER,
+    *GOLDEN_PAPER,
+    "帮我规划职业方向，顺便润色一下简历",
+    "帮我规划职业方向，顺便把这篇稿子改得自然一点",
+    "生成一个关于春天的短视频",
+    "帮我改写这篇论文",
+    "生成一张小猫图片",
+)
+
+
+@pytest.mark.parametrize("content", SPECIALTY_REQUESTS_WITHOUT_SELECTION)
+def test_unselected_specialty_requests_stay_ordinary(
+    tmp_path: Path, content: str
+) -> None:
+    """正文表达专用能力意图时，未显式选择模块仍走日常对话。"""
     service = _chat_service(tmp_path)
     conversation = service.create_conversation("alice")
 
@@ -192,47 +192,23 @@ def test_golden_humanizer_persists_skill_snapshot(tmp_path: Path, content: str) 
         "alice", conversation.conversation_id, content
     )
 
-    assert user.skill is not None
-    assert user.skill["skill_id"] == "bridges-humanizer"
-    assert user.skill["route"]["source"] == "natural_language"
-    assert assistant.route is not None
-    assert assistant.route.main_capability == MainCapability.HUMANIZER
-    # 发送即持久化：重载后一致（快照来自落库记录，而非内存返回值）。
-    persisted_user = service._repo.get_message("alice", user.message_id)  # noqa: SLF001
-    assert persisted_user is not None and persisted_user.skill == user.skill
-    _assert_persisted_route_snapshot(service, assistant)
-
-
-@pytest.mark.parametrize("content", GOLDEN_CAREER)
-def test_golden_career_persists_route_snapshot(tmp_path: Path, content: str) -> None:
-    service = _chat_service(tmp_path)
-    conversation = service.create_conversation("alice")
-
-    user, assistant = service.start_generation(
-        "alice", conversation.conversation_id, content
-    )
-
-    assert assistant.route is not None
-    assert assistant.route.is_career
-    assert assistant.route.career_contract is not None
+    assert user.skill is None
     assert user.route == assistant.route
-    _assert_persisted_route_snapshot(service, assistant)
-
-
-@pytest.mark.parametrize("content", GOLDEN_PAPER)
-def test_golden_paper_persists_route_snapshot(tmp_path: Path, content: str) -> None:
-    service = _chat_service(tmp_path)
-    conversation = service.create_conversation("alice")
-
-    user, assistant = service.start_generation(
-        "alice", conversation.conversation_id, content
-    )
-
     assert assistant.route is not None
-    assert assistant.route.is_paper_search
-    assert assistant.arxiv_search is not None
-    assert user.route == assistant.route
+    assert assistant.route.main_capability == MainCapability.ORDINARY_CHAT
+    assert assistant.route.status == RouteStatus.ORDINARY
+    assert assistant.arxiv_search is None
     _assert_persisted_route_snapshot(service, assistant)
+    events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            _context(),
+            until_user_message_id=user.message_id,
+        )
+    )
+    assert events[-1].kind == "done"
 
 
 @pytest.mark.parametrize("content", GOLDEN_ORDINARY)
@@ -253,37 +229,8 @@ def test_golden_ordinary_persists_ordinary_snapshot(
     _assert_persisted_route_snapshot(service, assistant)
 
 
-@pytest.mark.parametrize("content", GOLDEN_CAREER)
-def test_golden_career_streaming_rejudges_intent(tmp_path: Path, content: str) -> None:
-    """生涯流式分支现场重判：未挂载规划器时以 career_unavailable 收敛。
-
-    金标语句在流式阶段被 ``turn.py`` 的 ``is_career_intent`` 二次判定为
-    生涯意图（而非退化为普通聊天回答）；若词表回归，这条消息会走普通
-    生成并正常 done，本测试即红。
-    """
-    service = _chat_service(tmp_path)
-    conversation = service.create_conversation("alice")
-
-    user, assistant = service.start_generation(
-        "alice", conversation.conversation_id, content
-    )
-    events = list(
-        service.stream_generation(
-            "alice",
-            conversation.conversation_id,
-            assistant.message_id,
-            _context(),
-            until_user_message_id=user.message_id,
-        )
-    )
-
-    errors = [event for event in events if event.kind == "error"]
-    assert errors, "生涯金标语句必须进入生涯编排分支（现场重判）"
-    assert errors[-1].error_code == "career_unavailable"
-
-
 # ---------------------------------------------------------------------------
-# 防护回归：冲突 / 优先级 / 降级语义
+# 分类器仍可供显式模块入口使用；普通聊天发送不调用该分类器。
 # ---------------------------------------------------------------------------
 
 
@@ -303,39 +250,8 @@ def test_golden_conflict_clarifies_instead_of_side_effect(content: str) -> None:
     assert decision.clarification_question
 
 
-def test_golden_video_priority_survives_new_vocabulary(tmp_path: Path) -> None:
-    """视频生成优先级不因新词项回归。"""
-    service = _chat_service(tmp_path)
-    conversation = service.create_conversation("alice")
-
-    _, assistant = service.start_generation(
-        "alice", conversation.conversation_id, "生成一个关于春天的短视频"
-    )
-
-    assert assistant.route is not None
-    assert assistant.route.main_capability == MainCapability.VIDEO
-    assert assistant.route.status == RouteStatus.MATCHED
-
-
-def test_golden_paper_rewrite_downgrade_stays_ordinary(tmp_path: Path) -> None:
-    """论文改写降级：论文搜索侧退让（不触发 arXiv 副作用），人味化载荷生效。"""
-    service = _chat_service(tmp_path)
-    conversation = service.create_conversation("alice")
-
-    user, assistant = service.start_generation(
-        "alice", conversation.conversation_id, "帮我改写这篇论文"
-    )
-
-    assert assistant.route is not None
-    assert not assistant.route.is_paper_search
-    assert assistant.route.main_capability == MainCapability.HUMANIZER
-    assert assistant.arxiv_search is None
-    assert user.skill is not None
-    assert user.skill["skill_id"] == "bridges-humanizer"
-
-
 def test_golden_frontend_suggestion_copy_stays_reachable() -> None:
-    """前端建议卡文案对应语句纳入金标：产品自述能力真实可达。"""
+    """旧建议文案仍被保留，供后续显式模块入口替换。"""
     template = (
         Path(__file__).resolve().parents[2]
         / "apps"

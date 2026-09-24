@@ -950,23 +950,6 @@ export async function listChatConversations(): Promise<ChatConversationListProje
   return res.json();
 }
 
-export async function createChatConversation(
-  title?: string,
-  mode: ChatMode = "companion"
-): Promise<ChatConversationProjection> {
-  const res = await fetch(`${API_BASE}/chat/conversations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({
-      title: title ?? null,
-      mode,
-    }),
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
 export async function updateChatConversation(
   conversationId: string,
   update: { title?: string; pinned?: boolean }

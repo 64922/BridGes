@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -120,7 +119,6 @@ def query_fingerprint(query: str) -> str:
 
 
 def infer_capability_route(
-    query: str,
     *,
     has_humanizer: bool = False,
     has_image: bool = False,
@@ -128,7 +126,7 @@ def infer_capability_route(
     has_video: bool = False,
     has_mcp: bool = False,
 ) -> str:
-    """把已完成的能力载荷与少量专用意图归一为审计用路由名。"""
+    """把明确提交的能力载荷归一为审计用路由名。"""
 
     if has_humanizer:
         return "humanizer"
@@ -138,13 +136,10 @@ def infer_capability_route(
         return "video"
     if has_mcp:
         return "mcp"
-    if re.search(r"(?:arxiv|arXiv|论文|文献|论文搜索)", query):
-        return "arxiv"
     return "companion"
 
 
 def capability_route_for_request(
-    query: str,
     *,
     mode: str,
     has_humanizer: bool = False,
@@ -155,7 +150,6 @@ def capability_route_for_request(
 ) -> str:
     """根据已解析的能力载荷形成回合级路由快照。"""
     route = infer_capability_route(
-        query,
         has_humanizer=has_humanizer,
         has_image=has_image,
         image_edit=image_edit,

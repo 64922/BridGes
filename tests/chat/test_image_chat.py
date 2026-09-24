@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.api.auth import SESSION_COOKIE_NAME
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterResult
 from bridges.contracts.ai import (
@@ -139,9 +140,11 @@ def _swap_image_gateway(sqlite_app: Any) -> None:
 
 
 def _create_conversation(client: TestClient) -> str:
-    response = client.post("/chat/conversations", json={})
-    assert response.status_code == 201, response.text
-    return response.json()["conversation_id"]
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    subject = client.app.state.identity_service.resolve_session(session_token).subject
+    conversation = client.app.state.chat_service.create_conversation(subject.account_id)
+    return conversation.conversation_id
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -280,10 +283,10 @@ def test_image_message_flows_through_real_stream_and_worker(
     assert assistant_after["image"]["deleted"] is True
 
 
-def test_natural_language_image_request_uses_route_snapshot(
+def test_unselected_natural_language_image_request_stays_ordinary(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    """普通消息自动进入图片任务，且路由快照在重连后仍可回放。"""
+    """图片请求正文不会在未选择模块时启动图片任务。"""
     _register(client, "2")
     _swap_image_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
@@ -295,8 +298,7 @@ def test_natural_language_image_request_uses_route_snapshot(
     assert response.status_code == 200, response.text
     created = response.json()
     user = created["user_message"]
-    assert user["route"]["operation"] == "generate"
-    assert user["route"]["contract"]["source_object_id"] is None
+    assert user["route"]["main_capability"] == "ordinary_chat"
     assert created["assistant_message"]["active_run"] is not None
 
     sqlite_app.state.generation_executor.run_tick()
@@ -308,9 +310,12 @@ def test_natural_language_image_request_uses_route_snapshot(
     ) as stream:
         events = _parse_sse("\n".join(stream.iter_lines()))
     names = [name for name, _ in events]
-    assert "image" in names
     assert "done" in names
-    assert "text" not in names
+    assert "image" not in names
+    messages = client.get(f"/chat/conversations/{conversation_id}").json()["messages"]
+    assistant = next(message for message in messages if message["role"] == "assistant")
+    assert assistant["status"] == "done"
+    assert assistant["image"] is None
 
 
 def test_natural_language_ambiguous_edit_asks_once_without_model_call(
@@ -326,7 +331,7 @@ def test_natural_language_ambiguous_edit_asks_once_without_model_call(
     )
     assert response.status_code == 200, response.text
     created = response.json()
-    assert created["user_message"]["route"]["operation"] == "clarify"
+    assert created["user_message"]["route"]["main_capability"] == "ordinary_chat"
 
     sqlite_app.state.generation_executor.run_tick()
     messages = client.get(
@@ -334,7 +339,6 @@ def test_natural_language_ambiguous_edit_asks_once_without_model_call(
     ).json()["messages"]
     assistant = next(message for message in messages if message["role"] == "assistant")
     assert assistant["status"] == "done"
-    assert "指明" in assistant["content"]
     assert assistant["image"] is None
 
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bridges.arxiv_mcp.contracts import ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.service import ChatService
 from bridges.web_search.service import SearchPlan
@@ -33,7 +32,7 @@ class _UnexpectedWebSearch:
         raise AssertionError("paper route must not call web search")
 
 
-def test_paper_route_is_persisted_before_search_and_suppresses_web(tmp_path: Path) -> None:
+def test_unselected_paper_request_stays_ordinary_without_search(tmp_path: Path) -> None:
     client = _FakeArxivClient()
     service = _service(tmp_path, ArxivSearchService(client=client), _CapturingAdapter())
     unexpected_web = _UnexpectedWebSearch()
@@ -48,8 +47,9 @@ def test_paper_route_is_persisted_before_search_and_suppresses_web(tmp_path: Pat
 
     assert user.route is not None
     assert assistant.route == user.route
-    assert assistant.route.main_capability.value == "paper_search"
-    assert assistant.arxiv_search is not None
+    assert assistant.route.main_capability.value == "ordinary_chat"
+    assert assistant.route.status.value == "ordinary"
+    assert assistant.arxiv_search is None
     assert assistant.web_search is None
     persisted = service._repo.get_message("alice", assistant.message_id)  # noqa: SLF001
     assert (
@@ -69,8 +69,7 @@ def test_paper_route_is_persisted_before_search_and_suppresses_web(tmp_path: Pat
     )
 
     assert any(event.kind == "done" for event in events)
-    assert len(client.queries) == 1
-    assert unexpected_web.plan_calls == 0
+    assert client.queries == []
     assert unexpected_web.search_calls == 0
 
 
@@ -95,10 +94,10 @@ def test_ambiguous_paper_request_asks_before_any_side_effect(tmp_path: Path) -> 
 
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None and final.content
-    assert final.route is not None and final.route.status.value == "clarify"
+    assert final.route is not None and final.route.status.value == "ordinary"
     assert final.arxiv_search is None
     assert client.queries == []
-    assert adapter.payloads == []
+    assert adapter.payloads
     assert events[-1].kind == "done"
 
 
@@ -123,14 +122,14 @@ def test_empty_chinese_paper_topic_clarifies_without_arxiv_call(tmp_path: Path) 
 
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None
-    assert final.route is not None and final.route.status.value == "clarify"
+    assert final.route is not None and final.route.status.value == "ordinary"
     assert final.arxiv_search is None
     assert client.queries == []
-    assert adapter.payloads == []
+    assert adapter.payloads
     assert events[-1].kind == "done"
 
 
-def test_retry_reuses_successful_paper_snapshot_without_requery(tmp_path: Path) -> None:
+def test_retry_keeps_unselected_paper_request_ordinary(tmp_path: Path) -> None:
     client = _FakeArxivClient()
     service = _service(tmp_path, ArxivSearchService(client=client), _CapturingAdapter())
     conversation = service.create_conversation("alice")
@@ -147,11 +146,13 @@ def test_retry_reuses_successful_paper_snapshot_without_requery(tmp_path: Path) 
             until_user_message_id=user.message_id,
         )
     )
-    assert client.queries == ["quantum error correction"]
+    assert first.route is not None
+    assert first.route.status.value == "ordinary"
+    assert client.queries == []
 
     _, retry = service.retry_generation("alice", conversation.conversation_id, first.message_id)
-    assert retry.arxiv_search is not None
-    assert retry.arxiv_search.status == ArxivSearchStatus.SUCCESS
+    assert retry.route is not None
+    assert retry.route.status.value == "ordinary"
     list(
         service.stream_generation(
             "alice",
@@ -163,6 +164,5 @@ def test_retry_reuses_successful_paper_snapshot_without_requery(tmp_path: Path) 
     )
 
     final = service.message_projection("alice", retry.message_id)
-    assert final is not None and final.arxiv_search is not None
-    assert final.arxiv_search.status == ArxivSearchStatus.SUCCESS
-    assert client.queries == ["quantum error correction"]
+    assert final is not None and final.arxiv_search is None
+    assert client.queries == []

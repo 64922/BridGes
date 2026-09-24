@@ -9,29 +9,23 @@ import type { CapabilityAvailability } from "./chat/ReadAloudControls";
 import styles from "./chat/chat.module.css";
 
 interface ComposerProps {
-  onSend: (
-    text: string,
-    preparedConversationId?: string
-  ) => Promise<boolean> | boolean | void;
+  onSend: (text: string) => Promise<boolean> | boolean | void;
   /** 已存在的真实对话；用于发送消息与听写。 */
   conversationId?: string;
-  /** 新聊天页提供的延迟创建钩子；听写或任务发送前预建空对话。 */
-  ensureConversation?: () => Promise<string | undefined>;
   generating?: boolean;
   onStop?: () => void;
   /** 外部预填请求（建议卡等）：nonce 变化时把 text 作为结构化意图填入并聚焦 */
   prefill?: { text: string; nonce: number } | null;
   /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   asr?: CapabilityAvailability;
-  /** 新聊天首页保留原子首轮的预建会话兼容路径。 */
+  /** 新聊天首页使用原子首轮，并在会话创建前禁用听写入口。 */
   variant?: "conversation" | "new-chat";
 }
 
-/** 对话输入区：发送自然语言消息与听写结果。能力由服务端自动路由。 */
+/** 对话输入区：发送普通消息与听写结果。 */
 export function Composer({
   onSend,
   conversationId,
-  ensureConversation,
   generating = false,
   onStop,
   prefill = null,
@@ -56,7 +50,6 @@ export function Composer({
   const dictationSecondsRef = useRef(0);
   const dictationAbortRef = useRef<AbortController | null>(null);
   const pendingAudioRef = useRef<Blob | null>(null);
-  const preparedConversationRef = useRef<string | undefined>(conversationId);
   const canSend = text.trim().length > 0 && dictationPhase === "idle";
 
   // Issue 30：录音硬上限（服务端 ASR 同款 300 秒限制，客户端提前自动停止）。
@@ -75,24 +68,10 @@ export function Composer({
     element.style.height = `${Math.min(element.scrollHeight, 12 * 16)}px`;
   };
 
-  const resolveConversation = async (): Promise<string> => {
-    if (conversationId) return conversationId;
-    if (preparedConversationRef.current) return preparedConversationRef.current;
-    const created = await ensureConversation?.();
-    if (!created) throw new Error("无法创建对话，请稍后重试。");
-    preparedConversationRef.current = created;
-    return created;
-  };
-
   const send = async () => {
     if (!canSend || generating) return;
     try {
-      const accepted = await onSend(
-        text.trim(),
-        variant === "new-chat"
-          ? preparedConversationRef.current
-          : conversationId ?? preparedConversationRef.current
-      );
+      const accepted = await onSend(text.trim());
       if (accepted === false) return;
       setText("");
       cancelRecording();
@@ -172,25 +151,18 @@ export function Composer({
       setDictationPhase("error");
       return;
     }
+    if (!conversationId) {
+      setDictationError("发送首条消息后可使用听写。");
+      setDictationPhase("error");
+      return;
+    }
     setDictationPhase("transcribing");
     setDictationError("");
     const controller = new AbortController();
     dictationAbortRef.current = controller;
-    let targetConversationId: string | null = null;
-    try {
-      targetConversationId = await resolveConversation();
-    } catch {
-      targetConversationId = null;
-    }
-    if (!targetConversationId) {
-      dictationAbortRef.current = null;
-      setDictationError("无法获取当前对话，请稍后重试。");
-      setDictationPhase("error");
-      return;
-    }
     try {
       const projection = await transcribeDictation(
-        targetConversationId,
+        conversationId,
         audio,
         dictationSecondsRef.current,
         controller.signal
@@ -258,6 +230,11 @@ export function Composer({
   /** 开始录音：申请麦克风权限（拒绝/无设备/被占用分别给出中文原因）。 */
   const startRecording = async () => {
     if (dictationPhase === "recording" || dictationPhase === "transcribing") return;
+    if (variant === "new-chat" && !conversationId) {
+      setDictationError("发送首条消息后可使用听写。");
+      setDictationPhase("error");
+      return;
+    }
     if (!asr.available) {
       // GQ-03：听写由全局运行凭据驱动，入口恒可用；该分支仅防御未来
       // 调用方传入不可用状态，不再引导前往密钥设置页。
@@ -392,7 +369,7 @@ export function Composer({
             void send();
           }
         }}
-        placeholder="和 BridGes 一起学习，可以搜论文、人味化你的文章、生涯规划或者生成图片或视频"
+        placeholder="输入消息，开始日常对话"
         style={{
           width: "100%",
           border: "none",
@@ -408,6 +385,12 @@ export function Composer({
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
         <span style={{ flex: 1 }} />
+
+        {variant === "new-chat" && !conversationId && (
+          <span className={styles.composerDictationText} role="note">
+            发送首条消息后可使用听写
+          </span>
+        )}
 
         {dictationPhase === "recording" && (
           <span className={styles.composerDictationRow} role="status" aria-live="polite">
@@ -514,8 +497,14 @@ export function Composer({
           type="button"
           aria-label="开始听写"
           aria-pressed={dictationPhase === "recording"}
-          disabled={!asr.available}
-          title={asr.available ? undefined : asr.reason}
+          disabled={!asr.available || (variant === "new-chat" && !conversationId)}
+          title={
+            variant === "new-chat" && !conversationId
+              ? "发送首条消息后可使用听写。"
+              : asr.available
+                ? undefined
+                : asr.reason
+          }
           onClick={() => void startRecording()}
           style={{
             ...iconButtonStyle,
@@ -523,8 +512,11 @@ export function Composer({
               dictationPhase === "recording"
                 ? "var(--color-status-error)"
                 : "var(--color-text-secondary)",
-            opacity: asr.available ? 1 : 0.45,
-            cursor: asr.available ? "pointer" : "not-allowed",
+            opacity: asr.available && !(variant === "new-chat" && !conversationId) ? 1 : 0.45,
+            cursor:
+              asr.available && !(variant === "new-chat" && !conversationId)
+                ? "pointer"
+                : "not-allowed",
           }}
         >
           <Icon name="dictation" size={20} aria-hidden />
