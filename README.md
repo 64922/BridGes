@@ -16,6 +16,8 @@
 
 产品合同与迁移顺序详见 [`ADR-0026`](docs/adr/0026-frozen-product-contracts-and-migration-gates.md)。
 
+面向华东交通大学学生的 [V2 设计文档](docs/v2/README.md)及[桌面交互原型](apps/web/prototypes/v2-desktop/README.md)已获认可，生产功能仍按后续 tickets 实施；本页「产品特性」描述当前版本。
+
 ## 快速开始
 
 需要 **Python 3.11+** 与 **Node.js 20+**。支持 Windows、Linux、macOS 桌面浏览器。

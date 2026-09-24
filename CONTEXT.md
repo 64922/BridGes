@@ -2,7 +2,7 @@
 
 BridGes 是面向长期科学学习、科学表达与成长陪伴的聊天优先应用，目标是在持续互动中同时提升用户的科学理解、表达质量与事实可靠性。
 
-> 当前产品合同：以 [ADR-0026](docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 和 [.scratch/final/PRD.md](.scratch/final/PRD.md) 为准。旧 ADR、根级计划和历史任务只用于审计；若与本处或 ADR-0026 冲突，不得作为当前实现依据。
+> 当前已实现代码的产品合同：以 [ADR-0026](docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 和 [.scratch/final/PRD.md](.scratch/final/PRD.md) 为准。用户已认可 [V2 产品与桌面交互方案](docs/adr/0030-v2-campus-assistant-and-approved-desktop-interaction.md)，实施状态和任务拆分见 [V2 文档](docs/v2/README.md)；V2 不能被误认为当前已上线能力。
 
 ## Language
 
