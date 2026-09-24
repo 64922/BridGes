@@ -286,7 +286,6 @@ def list_conversations(
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_409_CONFLICT: {"model": ChatError},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
     },
 )
 def create_conversation(
@@ -304,20 +303,17 @@ def create_conversation(
         endpoint="legacy.chat.conversations.create",
         plugin_selection=body.plugin_selection,
     )
-    try:
-        if body.mode != ChatMode.COMPANION:
-            raise _error(
-                status.HTTP_409_CONFLICT,
-                "study_mode_unavailable",
-                "学习模式尚未开放；历史学习对话目前仅支持查看。",
-            )
+    if body.mode != ChatMode.COMPANION:
         raise _error(
             status.HTTP_409_CONFLICT,
-            "first_turn_required",
-            "请发送首条消息以创建会话。",
+            "study_mode_unavailable",
+            "学习模式尚未开放；历史学习对话目前仅支持查看。",
         )
-    except ChatDomainError as exc:
-        raise _handle_domain_error(exc) from exc
+    raise _error(
+        status.HTTP_409_CONFLICT,
+        "first_turn_required",
+        "请发送首条消息以创建会话。",
+    )
 
 
 @router.post(
