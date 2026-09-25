@@ -107,6 +107,9 @@ class AuditAction(str, Enum):
     # Issue 02：学习模式不变量告警（降级轮出现网络来源引用等）。
     LEARNING_INVARIANT = "learning_invariant"
     ARXIV_SEARCH = "arxiv_search"
+    # V2 Issue 11：论文模块的学术元数据补充（Crossref／OpenAlex）外发记录。
+    # details 只含来源、标题指纹与长度、状态码与耗时，不含标题正文。
+    ACADEMIC_METADATA_LOOKUP = "academic_metadata_lookup"
     PLUGIN_INSTALL = "plugin_install"
     PLUGIN_UNINSTALL = "plugin_uninstall"
     PLUGIN_ENABLE = "plugin_enable"

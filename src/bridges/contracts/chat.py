@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.paper.contracts import PaperSearchProjection
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
@@ -70,6 +71,10 @@ class ChatModuleId(StrEnum):
     TIEBA = "tieba"
     CAREER = "career"
     GITHUB = "github"
+
+
+#: 允许的模块 ID 取值集合（校验只此一处，新增模块不必逐个改判断）。
+CHAT_MODULE_VALUES: frozenset[str] = frozenset(item.value for item in ChatModuleId)
 
 
 class ChatThinkingSummary(BaseModel):
@@ -199,6 +204,22 @@ class ContextNoteProjection(BaseModel):
     note: str = Field(description="面向用户的中文说明（含各状态的合法文案）。")
 
 
+class ModuleSuggestionProjection(BaseModel):
+    """普通聊天里的显式模块建议（V2 Issue 11）。
+
+    只提示可以一键以原文启动某个模块；点击动作由用户发起，服务端不因此
+    自动检索任何外部来源。
+    """
+
+    module_id: ChatModuleId = Field(description="建议启动的模块 ID。")
+    label: str = Field(description="按钮中文标签，例如「使用论文搜索」。")
+    reason: str = Field(description="中文说明：为什么给出该建议。")
+    text: str = Field(description="建议沿用的用户原文（点击后以该原文启动）。")
+    needs_disambiguation: bool = Field(
+        default=False, description="术语是否需要先消歧（提示用户模块会先问一项）。"
+    )
+
+
 class ChatMessageProjection(BaseModel):
     """单条消息的公开投影。
 
@@ -288,6 +309,16 @@ class ChatMessageProjection(BaseModel):
     # 与读取投影共用同一来源，绝不重复创建用户消息或模型调用。
     active_run: ChatRunView | None = Field(
         default=None, description="关联的持久化生成运行视图（未运行过为 None）。"
+    )
+    # V2 Issue 11：逐消息的显式模块标识（用户消息）与论文模块状态/建议。
+    module_id: ChatModuleId | None = Field(
+        default=None, description="该条用户消息的显式模块选择；普通消息或助手消息为 None。"
+    )
+    paper_search: PaperSearchProjection | None = Field(
+        default=None, description="本条助手消息的论文模块状态（查询词/来源/等待/失败）。"
+    )
+    module_suggestion: ModuleSuggestionProjection | None = Field(
+        default=None, description="普通聊天中的一键模块建议（只建议，不检索）。"
     )
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近更新时间。")
@@ -799,6 +830,13 @@ class ChatRetryRequest(BaseModel):
         min_length=8,
         max_length=128,
         description="客户端生成的一次性幂等键；同一会话同键重试复用同一运行。",
+    )
+    module_id: ChatModuleId | None = Field(
+        default=None,
+        description=(
+            "点击模块建议时显式启动的模块 ID（V2 Issue 11）：复用同一条用户"
+            "消息原文派发到该模块，只在该轮没有模块时生效，绝不改写历史标识。"
+        ),
     )
 
 

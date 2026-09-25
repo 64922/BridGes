@@ -17,6 +17,7 @@ from bridges.arxiv_mcp.manifest import assert_registered_arxiv_url
 
 ARXIV_API_ENDPOINT = "https://export.arxiv.org/api/query"
 _ATOM_NS = "http://www.w3.org/2005/Atom"
+_ARXIV_NS = "http://arxiv.org/schemas/atom"
 _ALLOWED_HOSTS = {"arxiv.org", "export.arxiv.org"}
 _ARXIV_ID = re.compile(r"^[^\s?#]+$")
 _QUERY_ARXIV_ID = re.compile(
@@ -408,9 +409,19 @@ def _parse_atom(body: str) -> list[ArxivPaper]:
                 abs_url=abs_url,
                 pdf_url=pdf_url,
                 abstract=abstract,
+                primary_category=_primary_category(entry),
             )
         )
     return papers
+
+
+def _primary_category(entry: ElementTree.Element) -> str | None:
+    """arXiv 主类别（``arxiv:primary_category@term``）；缺失时返回 None。"""
+    element = entry.find(f"{{{_ARXIV_NS}}}primary_category")
+    if element is None:
+        return None
+    term = (element.attrib.get("term") or "").strip()
+    return term or None
 
 
 def _required_text(entry: ElementTree.Element, name: str) -> str:

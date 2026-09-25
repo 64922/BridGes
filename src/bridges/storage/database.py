@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 51
+SCHEMA_VERSION = 52
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2492,6 +2492,21 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX IF NOT EXISTS idx_profile_item_migrations_account
             ON profile_item_migrations(account_id, created_at, run_id)
+        """,
+    ],
+    # Issue 11（V2 论文搜索）：messages 增加两个显式模块列的 JSON 投影。
+    # paper_search 保存论文模块的真实状态（查询词、来源、全文可得性、澄清
+    # 等待状态、失败与停止），module_suggestion 保存普通聊天中「一键以原文
+    # 启动论文模块」的建议（只建议，绝不暗中检索）。旧行通过 DEFAULT NULL
+    # 自然兼容；旧 arXiv 自动路由投影（arxiv_search）保持原样只读。
+    # 编号 52：51 已被 Issue 08 的原子画像迁移占用，两个分支各自都曾声明 51，
+    # 合并时按「已在 main 上线者保留」原则让位，避免 v51 库跳过本迁移。
+    52: [
+        """
+        ALTER TABLE messages ADD COLUMN paper_search TEXT
+        """,
+        """
+        ALTER TABLE messages ADD COLUMN module_suggestion TEXT
         """,
     ],
 }

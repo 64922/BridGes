@@ -1239,6 +1239,11 @@ async def retry_message(
             message_id,
             use_knowledge_base=use_knowledge_base,
             idempotency_key=body.idempotency_key if body is not None else None,
+            module_id=(
+                body.module_id.value
+                if body is not None and body.module_id is not None
+                else None
+            ),
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc

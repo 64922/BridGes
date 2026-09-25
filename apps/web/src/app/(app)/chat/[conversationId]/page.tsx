@@ -25,12 +25,17 @@ import {
   type ChatConversationProjection,
   type ChatAttachmentProjection,
   type ChatMessageProjection,
+  type ChatModuleId,
   type ChatStreamEvent,
   type ArxivSearchProjection,
   type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
 import { readAloudSession } from "@/lib/read-aloud";
+import {
+  hasPendingPaperClarification,
+  type ChatModuleSelectionId,
+} from "@/lib/chat-modules";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import type {
@@ -144,18 +149,29 @@ export default function ChatConversationPage() {
   } | null>(null);
   const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
+  // V2 Issue 11：输入区的显式模块选择（随每条消息保存，不回溯改写历史）。
+  const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
+  // V2 Issue 11：等待状态的输入区恢复只在本对话首次加载时判定一次，
+  // 之后用户移除模块标签的选择必须被尊重（刷新历史不得自动选回）。
+  const resumeModuleCheckedRef = useRef(false);
   const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
   const firstTurnRetryRef = useRef(false);
   // V2 Issue 02：发送/重试幂等键（同文本/同消息的失败重发复用，成功后清除）。
   // Issue 05：幂等身份含照片集合——同文字换照片必须换新键。
+  // V2 Issue 11：重试幂等身份含模块覆盖——点建议启动模块与普通重试是两次
+  // 不同的派发，绝不能复用同键把带模块的运行重放成普通重试。
   const sendIdempotencyRef = useRef<{
     text: string;
     attachments: string[];
     key: string;
   } | null>(null);
-  const retryIdempotencyRef = useRef<{ messageId: string; key: string } | null>(null);
+  const retryIdempotencyRef = useRef<{
+    messageId: string;
+    moduleId: string | null;
+    key: string;
+  } | null>(null);
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
     // 不闪 loading，避免遮蔽 error 态的思考摘要。
@@ -165,6 +181,14 @@ export default function ChatConversationPage() {
       const projection = await getChatConversation(conversationId);
       setConversation(projection);
       setLoadState("ready");
+      // V2 Issue 11：重开对话时若最后一条论文消息仍在等澄清，恢复输入区的
+      // 模块选择（只在本对话首次加载时判定一次），下一条回复从该处继续。
+      if (!resumeModuleCheckedRef.current) {
+        resumeModuleCheckedRef.current = true;
+        if (hasPendingPaperClarification(projection.messages ?? [])) {
+          setModuleId("paper");
+        }
+      }
     } catch (error) {
       setLoadState("error");
       setLoadError(error instanceof Error ? error.message : "对话加载失败。");
@@ -178,10 +202,12 @@ export default function ChatConversationPage() {
   useEffect(() => {
     firstTurnIdempotencyKeyRef.current = null;
     firstTurnRetryRef.current = false;
+    resumeModuleCheckedRef.current = false;
     setConversation(null);
     setActiveRun(null);
     setPendingUser(null);
     setSendError(null);
+    setModuleId(null);
     void load();
   }, [load]);
 
@@ -462,7 +488,11 @@ export default function ChatConversationPage() {
   );
 
   const sendMessage = useCallback(
-    async (text: string, attachmentIds: string[] = []): Promise<boolean> => {
+    async (
+      text: string,
+      attachmentIds: string[] = [],
+      module: ChatModuleSelectionId | null = null
+    ): Promise<boolean> => {
       setSendError(null);
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
@@ -493,6 +523,7 @@ export default function ChatConversationPage() {
             conversationId,
             mode: conversation?.mode ?? "companion",
             attachmentIds,
+            moduleId: module ?? undefined,
           });
           setConversation(firstTurn.conversation);
           userMessage = firstTurn.user_message;
@@ -504,7 +535,8 @@ export default function ChatConversationPage() {
             conversationId,
             text,
             sendIdempotencyKey,
-            attachmentIds
+            attachmentIds,
+            module ?? undefined
           );
           userMessage = run.user_message;
           assistantMessage = run.assistant_message;
@@ -584,22 +616,29 @@ export default function ChatConversationPage() {
   }, [conversationId, load]);
 
   const retry = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, moduleOverride?: ChatModuleId) => {
       setSendError(null);
       setAnnouncement("正在重试生成");
       const controller = new AbortController();
       abortRef.current = controller;
-      // V2 Issue 02：重试幂等键——同一消息的重试失败后再点重试复用同一键
-      // （服务端复用同一运行）；换消息重试自动换新键。
+      // V2 Issue 02：重试幂等键——同一消息的同一次派发失败后再点重试复用
+      // 同一键（服务端复用同一运行）；换消息或换模块自动换新键。
+      const override = moduleOverride ?? null;
       const keyEntry = retryIdempotencyRef.current;
       const retryIdempotencyKey =
-        keyEntry && keyEntry.messageId === messageId
+        keyEntry && keyEntry.messageId === messageId && keyEntry.moduleId === override
           ? keyEntry.key
           : crypto.randomUUID();
-      retryIdempotencyRef.current = { messageId, key: retryIdempotencyKey };
+      retryIdempotencyRef.current = { messageId, moduleId: override, key: retryIdempotencyKey };
       try {
         // Issue 02：重试创建新尝试与 queued 运行，随后订阅持久化事件
-        const run = await retryChatRun(conversationId, messageId, retryIdempotencyKey);
+        // V2 Issue 11：带模块时以该轮用户消息原文显式派发到该模块。
+        const run = await retryChatRun(
+          conversationId,
+          messageId,
+          retryIdempotencyKey,
+          moduleOverride
+        );
         retryIdempotencyRef.current = null;
         const runState = activeRunFromAssistant(run.assistant_message, "retry");
         activeRunRef.current = runState;
@@ -749,6 +788,9 @@ export default function ChatConversationPage() {
                 onStop={() => void stop()}
                 onTeachingSkip={() => skipTeachingQuestion()}
                 onTeachingBeginnerStart={() => beginnerStartTeaching()}
+                onUseModuleSuggestion={(messageId, suggestionModuleId) =>
+                  void retry(messageId, suggestionModuleId)
+                }
                 conversationId={conversationId}
                 tts={MEDIA_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
@@ -763,11 +805,15 @@ export default function ChatConversationPage() {
                     {conversation?.mode === "study" ? "学习模式" : "日常陪伴"}
                   </p>
                   <Composer
-                    onSend={(text, attachmentIds) => sendMessage(text, attachmentIds)}
+                    onSend={(text, attachmentIds) =>
+                      sendMessage(text, attachmentIds, moduleId)
+                    }
                     conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}
                     asr={MEDIA_ALWAYS_AVAILABLE}
+                    moduleId={moduleId}
+                    onModuleChange={setModuleId}
                   />
                 </div>
               </div>

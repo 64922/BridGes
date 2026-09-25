@@ -45,18 +45,25 @@ from bridges.chat.turn import (
     stopped_thinking,
 )
 from bridges.contracts.chat import (
+    CHAT_MODULE_VALUES,
     ChatMessageStatus,
     ChatMode,
-    ChatModuleId,
     ChatStreamNodeData,
 )
+from bridges.paper.service import (
+    PAPER_MODULE_ID,
+    PAPER_NODE_LABELS,
+    PaperModuleError,
+)
+from bridges.paper.suggestion import detect_paper_suggestion
 
 if TYPE_CHECKING:
     from bridges.chat.repository import GenerationRunRecord
     from bridges.chat.service import ChatService
 
 #: 日常父图名称/版本（运行状态关联字段；节点集变化时递增）。
-DAILY_GRAPH_VERSION = "daily-parent-v1"
+#: v2：论文子图接入 invoke_subgraph_or_chat（首个显式模块，Issue 11）。
+DAILY_GRAPH_VERSION = "daily-parent-v2"
 
 NODE_VALIDATE_TURN = "validate_turn"
 NODE_COMPILE_CONTEXT = "compile_context"
@@ -75,6 +82,9 @@ DAILY_GRAPH_NODES: tuple[str, ...] = (
     NODE_PERSIST_RESULT,
 )
 
+#: 运行配置中的显式模块覆盖键（仅服务端在「点击建议启动」时写入）。
+RUN_CONFIG_MODULE_ID = "module_id"
+
 #: 节点的用户可读名称（失败信息标注位置用）。
 NODE_LABELS: dict[str, str] = {
     NODE_VALIDATE_TURN: "校验回合",
@@ -83,6 +93,8 @@ NODE_LABELS: dict[str, str] = {
     NODE_INVOKE_SUBGRAPH_OR_CHAT: "生成回答",
     NODE_VERIFY_OUTPUT: "核验输出",
     NODE_PERSIST_RESULT: "保存结果",
+    # 子图节点：失败信息按真实失败的子图步骤标注位置（Issue 11 起）。
+    **PAPER_NODE_LABELS,
 }
 
 
@@ -350,7 +362,12 @@ def _node_validate_turn(
             retryable=False,
         )
     module_id = user_message.module_id
-    if module_id is not None and module_id not in {item.value for item in ChatModuleId}:
+    if module_id is None:
+        # 用户点击建议启动（服务端在重试路径写入显式模块覆盖）：仍按枚举
+        # 校验，且只在逐消息没有模块时生效——历史消息标识不被改写。
+        override = (run.config or {}).get(RUN_CONFIG_MODULE_ID)
+        module_id = str(override) if override is not None else None
+    if module_id is not None and module_id not in CHAT_MODULE_VALUES:
         raise DailyTurnError(
             NODE_VALIDATE_TURN,
             "module_not_allowed",
@@ -385,9 +402,9 @@ def _node_select_explicit_module(
     """显式模块派发：只读服务端校验并随消息持久化的 module_id。"""
     deps: _GraphDeps = config["configurable"]["deps"]
     module_id = state.get("module_id")
-    if module_id is not None:
-        # 模块子图自 Issue 11 起接入；此前显式拒绝，绝不悄悄降级为普通
-        # 对话（派发只读持久化值，模型无法从正文改写模块选择）。
+    if module_id is not None and module_id != PAPER_MODULE_ID:
+        # 其余五个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
+        # （派发只读持久化值，模型无法从正文改写模块选择）。
         raise DailyTurnError(
             NODE_SELECT_EXPLICIT_MODULE,
             "module_not_available",
@@ -395,14 +412,16 @@ def _node_select_explicit_module(
             retryable=False,
         )
     del deps
-    return {"module_dispatch": "chat"}
+    return {"module_dispatch": module_id or "chat"}
 
 
 def _node_invoke_subgraph_or_chat(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
-    """普通对话执行体：现有回合编排管线，事件实时透传给订阅端。"""
+    """按显式派发调用子图；无模块时走普通对话（事件实时透传给订阅端）。"""
     deps: _GraphDeps = config["configurable"]["deps"]
+    if state.get("module_dispatch") == PAPER_MODULE_ID:
+        return _invoke_paper_module(deps, state)
     run = deps.run
     stream = deps.service.stream_generation(
         run.account_id,
@@ -420,6 +439,48 @@ def _node_invoke_subgraph_or_chat(
     )
     for event in stream:
         deps.emit(event)
+    return {}
+
+
+def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
+    """论文子图执行体：节点进度经同一 ``node`` 事件与 current_node 透传。
+
+    子图内的失败按真实失败的子图步骤标注位置（``paper.search`` 等），
+    并把等待原因写入运行表（持久化等待状态，跨轮次恢复的依据）。
+    """
+    run = deps.run
+    service = getattr(deps.service, "paper_search_service", None)
+    if service is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT,
+            "module_not_available",
+            "论文搜索模块当前不可用，请稍后重试。",
+            retryable=True,
+        )
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(state["assistant_message_id"], node, status, duration_ms=duration_ms)
+
+    try:
+        outcome = service.run(
+            repo=deps.repo,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            user_message_id=run.user_message_id,
+            assistant_message_id=run.assistant_message_id,
+            run_context=chat_run_context(run.account_id, run.conversation_id, run.run_id),
+            run_model_id=state.get("run_model_id"),
+            emit_node=emit_node,
+            stop_event=deps.stop_event,
+        )
+    except PaperModuleError as error:
+        raise DailyTurnError(
+            error.node, error.code, error.message, retryable=error.retryable
+        ) from error
+    if outcome.wait_reason is not None:
+        deps.repo.update_generation_progress(
+            run.account_id, run.run_id, wait_reason=outcome.wait_reason
+        )
     return {}
 
 
@@ -453,10 +514,25 @@ def _node_verify_output(
 def _node_persist_result(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
-    """结果收尾：运行状态关联模型运行锁（消息正文/引用已由编排落库）。"""
-    del state
+    """结果收尾：运行状态关联模型运行锁，并落普通聊天的模块建议。
+
+    V2 Issue 11：普通聊天（无模块）中明显的论文请求只**建议**一键启动
+    论文模块，不在此处发起任何外部检索；建议随助手消息持久化，重开
+    历史仍可见，点击后由服务端以原文显式派发。
+    """
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
+    if state.get("module_dispatch") == "chat":
+        user_message = deps.repo.get_message(run.account_id, run.user_message_id)
+        if user_message is not None:
+            suggestion = detect_paper_suggestion(user_message.content)
+            if suggestion is not None:
+                deps.repo.update_message_module_suggestion(
+                    run.account_id,
+                    run.assistant_message_id,
+                    suggestion,
+                    datetime.now(UTC),
+                )
     message = deps.repo.get_message(run.account_id, run.assistant_message_id)
     if message is not None and message.run_lock_id:
         deps.repo.update_generation_progress(

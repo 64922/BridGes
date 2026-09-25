@@ -118,6 +118,14 @@ export type ChatThinkingSummary = components["schemas"]["ChatThinkingSummary"];
 export type ArxivSearchProjection = components["schemas"]["ArxivSearchProjection"];
 export type ArxivPaperProjection = components["schemas"]["ArxivPaperProjection"];
 export type ArxivSearchStatus = components["schemas"]["ArxivSearchStatus"];
+// V2 Issue 11：日常显式模块（逐消息持久化）与论文模块投影。
+export type ChatModuleId = components["schemas"]["ChatModuleId"];
+export type ModuleSuggestionProjection = components["schemas"]["ModuleSuggestionProjection"];
+export type ModuleQueryRecord = components["schemas"]["ModuleQueryRecord"];
+export type ModuleQueryStatus = components["schemas"]["ModuleQueryStatus"];
+export type PaperSearchProjection = components["schemas"]["PaperSearchProjection"];
+export type PaperSearchStatus = components["schemas"]["PaperSearchStatus"];
+export type PaperRecommendation = components["schemas"]["PaperRecommendation"];
 export type WebSearchProjection = components["schemas"]["WebSearchProjection"];
 export type WebSearchResult = components["schemas"]["WebSearchResult"];
 export type WebSearchStatus = components["schemas"]["WebSearchStatus"];
@@ -1134,7 +1142,8 @@ export async function createChatRun(
   conversationId: string,
   content: string,
   idempotencyKey?: string,
-  attachmentIds: string[] = []
+  attachmentIds: string[] = [],
+  moduleId?: ChatModuleId
 ): Promise<ChatRunStartedResponse> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -1142,10 +1151,12 @@ export async function createChatRun(
     credentials: "same-origin",
     // V2 Issue 02：携带幂等键——网络重试复用同一运行，不重复写消息。
     // Issue 05：照片草稿与文字同请求原子绑定（服务端保持顺序）。
+    // V2 Issue 11：显式模块随消息持久化；未选择时不提交该字段。
     body: JSON.stringify({
       content,
       ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
       ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+      ...(moduleId ? { module_id: moduleId } : {}),
     }),
   });
   if (!res.ok) throw await parseApiError(res);
@@ -1170,6 +1181,8 @@ export interface ChatFirstTurnInput {
   mode?: ChatMode;
   // Issue 05：新聊天页直发照片（账户域草稿，首轮事务内原子绑定）。
   attachmentIds?: string[];
+  // V2 Issue 11：首轮显式模块（选中 chip 时随首条用户消息持久化）。
+  moduleId?: ChatModuleId;
 }
 
 export async function startFirstTurn(
@@ -1183,6 +1196,7 @@ export async function startFirstTurn(
       ? { conversation_id: input.conversationId }
       : {}),
     ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+    ...(input.moduleId ? { module_id: input.moduleId } : {}),
     mode: input.mode ?? "companion",
   };
   const res = await fetch(`${API_BASE}/chat/first-turn`, {
@@ -1343,11 +1357,17 @@ export async function resolveAnswerFeedback(
   return res.json();
 }
 
-/** 重试失败的助手消息：创建新尝试与 queued 运行（与发送同一外壳）。 */
+/**
+ * 重试失败的助手消息：创建新尝试与 queued 运行（与发送同一外壳）。
+ *
+ * V2 Issue 11：``moduleId`` 用于「点击建议一键以原文启动模块」——服务端
+ * 只在该轮用户消息本身没有模块时生效，绝不改写历史的逐消息标识。
+ */
 export async function retryChatRun(
   conversationId: string,
   messageId: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  moduleId?: ChatModuleId
 ): Promise<ChatRunStartedResponse> {
   const res = await fetch(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/retry`,
@@ -1356,9 +1376,10 @@ export async function retryChatRun(
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       // V2 Issue 02：携带幂等键——网络重试复用同一运行，不重复创建尝试。
-      body: JSON.stringify(
-        idempotencyKey ? { idempotency_key: idempotencyKey } : {}
-      ),
+      body: JSON.stringify({
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+        ...(moduleId ? { module_id: moduleId } : {}),
+      }),
     }
   );
   if (!res.ok) throw await parseApiError(res);

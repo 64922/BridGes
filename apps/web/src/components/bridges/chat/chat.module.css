@@ -444,3 +444,38 @@
   border-color: var(--color-accent-primary);
   color: var(--color-accent-primary);
 }
+
+/* ---- V2 Issue 11：Composer 显式模块 chip（可移除，输入文字不受影响） ---- */
+.composerChip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border: 1px solid var(--color-accent-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-primary-soft);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.composerChip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.composerChip button:hover {
+  background: var(--color-border);
+}

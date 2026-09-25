@@ -6924,6 +6924,11 @@ export interface components {
              */
             abstract: string;
             /**
+             * Primary Category
+             * @description arXiv 返回的主类别（V2 Issue 11 来源核对用）；未返回为 None。
+             */
+            primary_category?: string | null;
+            /**
              * Summary Zh
              * @description 基于标题和摘要的中文简介。
              */
@@ -8745,6 +8750,12 @@ export interface components {
             run_lock_id?: string | null;
             /** @description 关联的持久化生成运行视图（未运行过为 None）。 */
             active_run?: components["schemas"]["ChatRunView"] | null;
+            /** @description 该条用户消息的显式模块选择；普通消息或助手消息为 None。 */
+            module_id?: components["schemas"]["ChatModuleId"] | null;
+            /** @description 本条助手消息的论文模块状态（查询词/来源/等待/失败）。 */
+            paper_search?: components["schemas"]["PaperSearchProjection"] | null;
+            /** @description 普通聊天中的一键模块建议（只建议，不检索）。 */
+            module_suggestion?: components["schemas"]["ModuleSuggestionProjection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -8863,6 +8874,8 @@ export interface components {
              * @description 客户端生成的一次性幂等键；同一会话同键重试复用同一运行。
              */
             idempotency_key?: string | null;
+            /** @description 点击模块建议时显式启动的模块 ID（V2 Issue 11）：复用同一条用户消息原文派发到该模块，只在该轮没有模块时生效，绝不改写历史标识。 */
+            module_id?: components["schemas"]["ChatModuleId"] | null;
         };
         /**
          * ChatRunStartedResponse
@@ -17321,6 +17334,141 @@ export interface components {
             message?: string | null;
         };
         /**
+         * ModuleQueryRecord
+         * @description 一次外部工具调用的统一记录：查询、证据、时间、错误。
+         *
+         *     ``evidence_count`` 是本次调用真实取得的证据条数（0 表示确实没有取得，
+         *     绝不表示"未查询"）；``error_message`` 必须是可操作的中文说明，且不得
+         *     携带用户私有材料或上游原始正文。
+         */
+        ModuleQueryRecord: {
+            /**
+             * Source
+             * @description 来源标识，例如 arxiv、crossref、openalex。
+             */
+            source: string;
+            /**
+             * Query
+             * @description 实际发送给该来源的最小查询词（不含私有上下文）。
+             */
+            query: string;
+            /** @description 本次调用结果分类。 */
+            status: components["schemas"]["ModuleQueryStatus"];
+            /**
+             * Evidence Count
+             * @description 真实取得的证据条数。
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Retrieved At
+             * @description 取得证据的时间。
+             */
+            retrieved_at?: string | null;
+            /**
+             * Error Code
+             * @description 稳定错误分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 同一查询是否值得重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Detail
+             * @description 脱敏补充说明（例如缓存命中、陈旧回退、分页上限）。
+             */
+            detail?: string | null;
+        };
+        /**
+         * ModuleQueryStatus
+         * @description 一次外部工具调用的结果分类（各来源共用，不隐藏失败）。
+         * @enum {string}
+         */
+        ModuleQueryStatus: "success" | "empty" | "skipped" | "timeout" | "cancelled" | "rate_limited" | "error";
+        /**
+         * ModuleSuggestionProjection
+         * @description 普通聊天里的显式模块建议（V2 Issue 11）。
+         *
+         *     只提示可以一键以原文启动某个模块；点击动作由用户发起，服务端不因此
+         *     自动检索任何外部来源。
+         */
+        ModuleSuggestionProjection: {
+            /** @description 建议启动的模块 ID。 */
+            module_id: components["schemas"]["ChatModuleId"];
+            /**
+             * Label
+             * @description 按钮中文标签，例如「使用论文搜索」。
+             */
+            label: string;
+            /**
+             * Reason
+             * @description 中文说明：为什么给出该建议。
+             */
+            reason: string;
+            /**
+             * Text
+             * @description 建议沿用的用户原文（点击后以该原文启动）。
+             */
+            text: string;
+            /**
+             * Needs Disambiguation
+             * @description 术语是否需要先消歧（提示用户模块会先问一项）。
+             * @default false
+             */
+            needs_disambiguation: boolean;
+        };
+        /**
+         * ModuleWaitState
+         * @description 跨轮次的持久化等待状态：澄清问题与恢复载荷。
+         *
+         *     ``context`` 只存该模块自己的可序列化恢复数据（不存服务、协程或私有材
+         *     料原文的副本）；``origin_message_id`` 指向提问的助手消息，恢复时据此
+         *     在会话内定位"等待中的那一轮"。
+         */
+        ModuleWaitState: {
+            /**
+             * Module Id
+             * @description 等待所属模块（六个显式模块 ID 之一）。
+             */
+            module_id: string;
+            /**
+             * Kind
+             * @description 等待类型，例如 clarification。
+             */
+            kind: string;
+            /**
+             * Question
+             * @description 已向用户提出的那一个问题（中文）。
+             */
+            question: string;
+            /**
+             * Origin Message Id
+             * @description 提出该问题的助手消息标识。
+             */
+            origin_message_id: string;
+            /**
+             * Context
+             * @description 模块自己的恢复载荷（JSON 可序列化）。
+             */
+            context?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description 进入等待状态的时间。
+             */
+            created_at: string;
+        };
+        /**
          * NarrationAudio
          * @description 科学媒体对象的朗读替代。
          *
@@ -17835,6 +17983,88 @@ export interface components {
             requires_author_confirm: boolean;
         };
         /**
+         * PaperRecommendation
+         * @description 一篇经主题与来源核对后的推荐（阅读顺序见 ``order``）。
+         */
+        PaperRecommendation: {
+            /**
+             * Order
+             * @description 入门阅读顺序（从 1 开始）。
+             */
+            order: number;
+            /**
+             * Arxiv Id
+             * @description arXiv 标识符；非 arXiv 来源为 None。
+             */
+            arxiv_id?: string | null;
+            /**
+             * Title
+             * @description 来源返回的原始标题。
+             */
+            title: string;
+            /**
+             * Authors
+             * @description 来源返回的作者列表。
+             */
+            authors?: string[];
+            /**
+             * Published Year
+             * @description 来源返回的发表年份。
+             */
+            published_year?: number | null;
+            /**
+             * Source
+             * @description 元数据来源（arxiv / crossref / openalex）。
+             */
+            source: string;
+            /**
+             * Abs Url
+             * @description 可点开的来源链接（摘要页）。
+             */
+            abs_url: string;
+            /**
+             * Pdf Url
+             * @description 全文 PDF 链接；未取得为 None。
+             */
+            pdf_url?: string | null;
+            /**
+             * Primary Category
+             * @description 来源返回的主类别。
+             */
+            primary_category?: string | null;
+            /**
+             * Full Text Available
+             * @description 是否确认取得全文（仅摘要时为 False）。
+             * @default false
+             */
+            full_text_available: boolean;
+            /**
+             * Role
+             * @description 在阅读顺序中的角色：survey / foundation / recent / tutorial。
+             */
+            role: string;
+            /**
+             * Reason Zh
+             * @description 中文选择理由（含搭配与顺序依据）。
+             */
+            reason_zh: string;
+            /**
+             * Match Basis
+             * @description 主题与来源核对依据（命中哪些词、来源核对了什么）。
+             */
+            match_basis: string;
+            /**
+             * Summary Zh
+             * @description 基于来源摘要的中文概述；未生成时为 None（不虚构）。
+             */
+            summary_zh?: string | null;
+            /**
+             * Unverified
+             * @description 本篇未核实项（例如未通读全文、缺发表信息）。
+             */
+            unverified?: string[];
+        };
+        /**
          * PaperSearchConstraints
          * @description 仅允许发送给论文适配器的结构化筛选约束。
          */
@@ -17873,6 +18103,98 @@ export interface components {
             /** Removed Categories */
             removed_categories?: ("instruction_scaffold" | "code" | "credential" | "private_material" | "email" | "url")[];
         };
+        /**
+         * PaperSearchProjection
+         * @description 论文模块随助手消息持久化的完整投影。
+         */
+        PaperSearchProjection: {
+            /** @description 本轮模块状态。 */
+            status: components["schemas"]["PaperSearchStatus"];
+            /**
+             * Original Phrase
+             * @description 保留的原始术语。
+             * @default
+             */
+            original_phrase: string;
+            /**
+             * Normalized Term
+             * @description 规范化值。
+             * @default
+             */
+            normalized_term: string;
+            /**
+             * Expansions
+             * @description 本轮使用的扩展词。
+             */
+            expansions?: string[];
+            /**
+             * Confidence
+             * @description 解析置信度。
+             * @default 0
+             */
+            confidence: number;
+            /**
+             * Context Label
+             * @description 消歧后的语境说明。
+             */
+            context_label?: string | null;
+            /**
+             * Queries
+             * @description 本轮全部外部调用的统一记录（查询/证据/时间/错误）。
+             */
+            queries?: components["schemas"]["ModuleQueryRecord"][];
+            /**
+             * Final Query
+             * @description 实际用于检索的最终查询词。
+             * @default
+             */
+            final_query: string;
+            /**
+             * Papers
+             * @description 按阅读顺序排列的真实论文结果。
+             */
+            papers?: components["schemas"]["PaperRecommendation"][];
+            /**
+             * Requested Count
+             * @description 本轮目标篇数（3–5）。
+             * @default 0
+             */
+            requested_count: number;
+            /**
+             * Evidence Notes
+             * @description 证据边界说明（实际数量、来源不足、未取全文等）。
+             */
+            evidence_notes?: string[];
+            /** @description 跨轮次等待状态（澄清问题）；无等待为 None。 */
+            pending?: components["schemas"]["ModuleWaitState"] | null;
+            /**
+             * Searched At
+             * @description 检索完成时间。
+             */
+            searched_at?: string | null;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 本轮失败是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+        };
+        /**
+         * PaperSearchStatus
+         * @description 论文模块的用户可见状态（同一消息内如实显示）。
+         * @enum {string}
+         */
+        PaperSearchStatus: "clarification" | "searching" | "success" | "empty" | "error" | "stopped";
         /**
          * PersonalExperienceMode
          * @description 第一人称建模：当下判断与亲历分开，亲历必须可绑定来源。

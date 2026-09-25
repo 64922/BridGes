@@ -9,7 +9,10 @@ import { chatAttachmentContentUrl } from "@/lib/api";
 import type {
   ArxivSearchProjection,
   ChatAttachmentProjection,
+  ChatModuleId,
   ContextNoteProjection,
+  ModuleSuggestionProjection,
+  PaperSearchProjection,
   RetrievalRoundProjection,
   TeachingTurnProjection,
   WebSearchProjection,
@@ -28,6 +31,8 @@ import type {
 import { ImageTaskCard } from "./chat/ImageTaskCard";
 import { VideoTaskCard } from "./chat/VideoTaskCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
+import { ModuleSuggestionCard } from "./chat/ModuleSuggestionCard";
+import { PaperSearchCard } from "./chat/PaperSearchCard";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { BrandLogo } from "./BrandLogo";
 import { CareerPlanningProcessCard } from "./CareerPlanningProcessCard";
@@ -38,6 +43,7 @@ import { HumanizerResultCard } from "@/components/bridges/HumanizerResultCard";
 import { RetrievalCard } from "./RetrievalCard";
 import { TeachingCard } from "./TeachingCard";
 import { WebSearchCard } from "./WebSearchCard";
+import { chatModuleIcon, chatModuleLabel } from "@/lib/chat-modules";
 
 /** 会话消息只渲染服务端历史与当前自然语言结果卡。 */
 export interface ChatThinking {
@@ -71,6 +77,13 @@ export const NODE_LABEL: Record<string, string> = {
   invoke_subgraph_or_chat: "生成回答",
   verify_output: "核验输出",
   persist_result: "保存结果",
+  // V2 Issue 11：论文子图节点（显式派发后逐步显示真实进度）。
+  "paper.parse": "理解论文请求",
+  "paper.plan": "规划论文检索",
+  "paper.search": "检索 arXiv",
+  "paper.enrich": "核对论文来源",
+  "paper.rank": "筛选与排序论文",
+  "paper.present": "整理论文结果",
 };
 
 export interface ChatMessage {
@@ -114,6 +127,12 @@ export interface ChatMessage {
   video?: VideoTaskProjection | null;
   /** Issue 05：本轮用户消息绑定的照片附件（按页序）；纯文字消息为空 */
   attachments?: ChatAttachmentProjection[] | null;
+  /** V2 Issue 11：用户消息的逐条显式模块标识（重开后不随新选择改变） */
+  moduleId?: string | null;
+  /** V2 Issue 11：本条助手消息的论文模块状态（查询/来源/等待/失败/停止） */
+  paperSearch?: PaperSearchProjection | null;
+  /** V2 Issue 11：普通聊天中的一键模块建议（只建议，未检索） */
+  moduleSuggestion?: ModuleSuggestionProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -128,6 +147,8 @@ interface MessageListProps {
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;
   onTeachingBeginnerStart?: (messageId: string) => void;
+  /** V2 Issue 11：点击模块建议——以该轮用户消息原文显式启动模块 */
+  onUseModuleSuggestion?: (messageId: string, moduleId: ChatModuleId) => void;
   conversationId?: string;
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表（正文/投影同步） */
   onRefreshMessages?: () => void;
@@ -439,6 +460,7 @@ export function MessageList({
   onStop,
   onTeachingSkip,
   onTeachingBeginnerStart,
+  onUseModuleSuggestion,
   tts,
   onRefreshMessages,
 }: MessageListProps) {
@@ -465,6 +487,28 @@ export function MessageList({
                   overflowWrap: "break-word",
                 }}
               >
+                {/* V2 Issue 11：本轮显式选择的模块标识（只读消息记录——
+                    重开后历史标识不随输入区的新选择改变）。 */}
+                {chatModuleLabel(message.moduleId) && (
+                  <span
+                    data-testid="user-module-label"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "var(--space-1)",
+                      marginBottom: "var(--space-1)",
+                      padding: "2px var(--space-2)",
+                      border: "1px solid var(--color-accent-primary)",
+                      borderRadius: "var(--radius-full)",
+                      fontSize: "var(--text-xs)",
+                      fontWeight: 600,
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    <Icon name={chatModuleIcon(message.moduleId)} size={12} aria-hidden />
+                    {chatModuleLabel(message.moduleId)}
+                  </span>
+                )}
                 {message.attachments && message.attachments.length > 0 && (
                   <div
                     role="list"
@@ -588,6 +632,27 @@ export function MessageList({
                     streaming={message.status === "streaming"}
                     onRetry={() => onRetry?.(message.id)}
                     onCancel={onStop}
+                  />
+                )}
+
+                {/* V2 Issue 11：论文模块结果卡（状态/查询词/来源记录/
+                    阅读顺序与链接/证据边界/失败与重试）。 */}
+                {conversationId && (
+                  <PaperSearchCard
+                    search={message.paperSearch ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* V2 Issue 11：普通聊天中的一键模块建议（此处没有任何检索，
+                    点击后才以原文显式派发子图）。 */}
+                {conversationId && message.status !== "streaming" && (
+                  <ModuleSuggestionCard
+                    suggestion={message.moduleSuggestion ?? null}
+                    onUse={(suggestion) =>
+                      onUseModuleSuggestion?.(message.id, suggestion.module_id)
+                    }
                   />
                 )}
 

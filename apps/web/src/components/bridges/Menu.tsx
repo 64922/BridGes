@@ -8,6 +8,8 @@ import { Icon, type IconName } from "@/components/design-system/Icon";
 export interface MenuItem {
   label: string;
   icon?: IconName;
+  /** 可选的中文补充说明（第二行小字；仍属菜单项名称的一部分）。 */
+  description?: string;
   onSelect?: () => void;
   danger?: boolean;
   returnFocus?: boolean;
@@ -290,7 +292,22 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
                 }}
               >
                 {item.icon && <Icon name={item.icon} size={18} aria-hidden />}
-                {item.label}
+                {item.description ? (
+                  <span style={{ display: "grid", gap: "0.0625rem" }}>
+                    <span>{item.label}</span>
+                    <small
+                      style={{
+                        color: "var(--color-text-tertiary)",
+                        fontSize: "var(--text-xs)",
+                        fontWeight: 400,
+                      }}
+                    >
+                      {item.description}
+                    </small>
+                  </span>
+                ) : (
+                  item.label
+                )}
               </button>
             ))}
           </div>,

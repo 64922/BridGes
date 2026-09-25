@@ -709,6 +709,7 @@ class ArxivSearchService:
             abs_url=paper.abs_url,
             pdf_url=paper.pdf_url,
             abstract=paper.abstract,
+            primary_category=paper.primary_category,
             summary_zh=(
                 f"论文摘要：这篇论文围绕《{paper.title}》展开研究。"
                 f"以下原始摘要由 arXiv 返回，未补造摘要之外的结论：{paper.abstract}"

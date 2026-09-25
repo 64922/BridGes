@@ -32,6 +32,9 @@ class ArxivPaper:
     abs_url: str
     pdf_url: str
     abstract: str
+    #: V2 Issue 11：arXiv 返回的主类别（例如 cs.LG），用于来源与主题核对；
+    #: 旧响应缺少该字段时为 None，绝不猜测。
+    primary_category: str | None = None
 
 
 class ArxivPaperProjection(BaseModel):
@@ -45,6 +48,10 @@ class ArxivPaperProjection(BaseModel):
     abs_url: str = Field(description="与 arXiv 标识符一致的摘要页链接。")
     pdf_url: str = Field(description="与 arXiv 标识符一致的 PDF 链接。")
     abstract: str = Field(description="arXiv 返回的原始摘要，供核对。")
+    primary_category: str | None = Field(
+        default=None,
+        description="arXiv 返回的主类别（V2 Issue 11 来源核对用）；未返回为 None。",
+    )
     summary_zh: str = Field(description="基于标题和摘要的中文简介。")
     relevance_basis: str = Field(description="与确认查询的相关依据。")
     learning_advice_zh: str = Field(description="面向当前学习目标的后续阅读建议。")
