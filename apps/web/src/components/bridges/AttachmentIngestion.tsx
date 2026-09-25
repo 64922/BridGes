@@ -359,10 +359,13 @@ export function AttachmentIngestionInfo({
   conversationId,
   attachment,
   onRetryIngestion,
+  labels,
 }: {
   conversationId: string;
   attachment: ChatAttachmentProjection;
   onRetryIngestion?: (objectId: string) => void;
+  /** V2 Issue 06：调用方语境的状态用词（聊天里「已解析，可引用」比「已可检索」更准确）。 */
+  labels?: Record<string, string>;
 }) {
   // 附件投影随对话刷新变化：状态以服务端最新投影为准，不保留陈旧状态
   const [status, setStatus] = useState(attachment.ingestion_status || "none");
@@ -386,6 +389,7 @@ export function AttachmentIngestionInfo({
     >
       <IngestionStatusChip
         status={status}
+        label={labels?.[status]}
         error={error}
         onRetry={onRetryIngestion ? () => onRetryIngestion(attachment.object_id) : undefined}
       />
