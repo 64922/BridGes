@@ -108,6 +108,91 @@
   font-size: var(--text-sm);
 }
 
+/* 操作顺序提示（密钥未配置 / 不匹配时紧贴字段显示）。 */
+.guidance {
+  padding: var(--space-3);
+  border-left: 3px solid var(--color-accent-primary);
+  background: var(--color-accent-primary-soft);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+/* 主模型卡片：运行配置事实表与能力清单。 */
+.facts {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.factRow {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.factTerm {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.factValue {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.capabilityList {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.capabilityRow,
+.checkRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.capabilityLabel {
+  min-width: 4.5rem;
+}
+
+.capabilityOk {
+  color: var(--color-status-success);
+}
+
+.capabilityMissing {
+  color: var(--color-status-error);
+}
+
+.report {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+}
+
+.reportTitle {
+  font-weight: 600;
+}
+
+.checkList {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.checkSource {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 36rem) {
   .cardHeader {
     flex-direction: column;
@@ -115,5 +200,10 @@
 
   .actions :global(button) {
     width: 100%;
+  }
+
+  .factRow {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
   }
 }

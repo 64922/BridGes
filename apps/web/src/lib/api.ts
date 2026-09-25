@@ -13,6 +13,10 @@ export type AvatarChoice = components["schemas"]["AvatarChoice"];
 export type AccountProfileUpdate = components["schemas"]["AccountProfileUpdate"];
 export type CredentialStatus = components["schemas"]["CredentialStatus"];
 export type CredentialSettings = components["schemas"]["CredentialSettingsResponse"];
+export type ModelSettings = components["schemas"]["ModelSettingsResponse"];
+export type ModelCapabilities = components["schemas"]["ModelCapabilities"];
+export type ModelCapabilityCheck = components["schemas"]["ModelCapabilityCheck"];
+export type ModelValidationReport = components["schemas"]["ModelValidationReport"];
 export type DeviceAccountProjection = components["schemas"]["DeviceAccountProjection"];
 export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsResponse"];
 export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
@@ -303,6 +307,40 @@ export async function replaceAmapBrowserMapCredential(
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     body: JSON.stringify({ api_key: apiKey, security_js_code: securityJsCode }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 验证并保存全局 Qwen API Key；成功后清空输入框，不返回密钥。 */
+export async function replaceQwenCredential(apiKey: string): Promise<CredentialStatus> {
+  const res = await fetch(`${API_BASE}/settings/credentials/qwen`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 读取当前生效的主模型运行配置与最近一次验证结论（不含任何密钥）。 */
+export async function fetchModelSettings(): Promise<ModelSettings> {
+  const res = await fetch(`${API_BASE}/settings/models`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 验证并原子激活手填的主模型 ID；失败保留原配置。 */
+export async function replaceModelConfiguration(modelId: string): Promise<ModelSettings> {
+  const res = await fetch(`${API_BASE}/settings/models`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ model_id: modelId }),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();

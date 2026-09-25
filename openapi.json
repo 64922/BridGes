@@ -1367,6 +1367,66 @@
         }
       }
     },
+    "/settings/credentials/qwen": {
+      "put": {
+        "tags": [
+          "凭据设置"
+        ],
+        "summary": "Replace Qwen Credential",
+        "description": "验证并替换全局 Qwen 凭据；失败保留旧凭据（V2 Issue 09）。\n\n验证对象是当前生效的主模型 ID：先查百炼模型元数据（密钥可用且能看到该\n模型），再用候选密钥做一次最小真实调用（密钥能实际调用推理服务）。任一\n不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型\n调用即使用新凭据。\n\n凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。",
+        "operationId": "replace_qwen_credential_settings_credentials_qwen_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretCandidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/credentials/tavily": {
       "put": {
         "tags": [
@@ -1527,6 +1587,114 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CredentialStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/models": {
+      "get": {
+        "tags": [
+          "模型设置"
+        ],
+        "summary": "Get Model Settings",
+        "description": "报告实际模型 ID、能力、上下文长度与最近验证结论（不含任何密钥）。",
+        "operationId": "get_model_settings_settings_models_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "模型设置"
+        ],
+        "summary": "Replace Model Configuration",
+        "description": "验证并原子激活手填的主模型 ID；失败保留原配置。",
+        "operationId": "replace_model_configuration_settings_models_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelCandidate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettingsResponse"
                 }
               }
             }
@@ -32938,6 +33106,9 @@
       },
       "CredentialSettingsResponse": {
         "properties": {
+          "qwen": {
+            "$ref": "#/components/schemas/CredentialStatus"
+          },
           "tavily": {
             "$ref": "#/components/schemas/CredentialStatus"
           },
@@ -32947,6 +33118,7 @@
         },
         "type": "object",
         "required": [
+          "qwen",
           "tavily",
           "amap"
         ],
@@ -43100,6 +43272,91 @@
         "title": "ModelCallStatus",
         "description": "Outcome of a single model-gateway invocation."
       },
+      "ModelCandidate": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id"
+        ],
+        "title": "ModelCandidate"
+      },
+      "ModelCapabilities": {
+        "properties": {
+          "text": {
+            "type": "boolean",
+            "title": "Text",
+            "description": "是否支持文本输入与文本输出。",
+            "default": false
+          },
+          "image": {
+            "type": "boolean",
+            "title": "Image",
+            "description": "是否支持图片输入（视觉理解）。",
+            "default": false
+          },
+          "tool_calling": {
+            "type": "boolean",
+            "title": "Tool Calling",
+            "description": "是否支持工具调用（function calling）。",
+            "default": false
+          },
+          "structured_output": {
+            "type": "boolean",
+            "title": "Structured Output",
+            "description": "是否支持结构化输出（JSON object/schema）。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ModelCapabilities",
+        "description": "主模型能力档案（V2 Issue 09）。\n\n字段是「元数据核对」与「真实能力探测」两种证据的共同结论：百炼模型信息\n给出声明值，真实调用给出实测值；两者都通过才会被激活为运行配置。任一\n字段为 False 都表示该能力不可用，不能保存为 BridGes 主模型。"
+      },
+      "ModelCapabilityCheck": {
+        "properties": {
+          "capability": {
+            "type": "string",
+            "title": "Capability"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "metadata（百炼声明）或 probe（真实调用）。"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "capability",
+          "label",
+          "source",
+          "ok"
+        ],
+        "title": "ModelCapabilityCheck",
+        "description": "一条能力证据：元数据声明或真实探测。"
+      },
       "ModelRunLock": {
         "properties": {
           "lock_id": {
@@ -43268,6 +43525,162 @@
         ],
         "title": "ModelRunLock",
         "description": "Immutable snapshot of one model invocation.\n\nThe lock records the exact capability, model, region, parameters, prompt\nversion and contract that were used, so the call can be replayed and audited."
+      },
+      "ModelSettingsResponse": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ModelCapabilities"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "max_input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Input Tokens"
+          },
+          "metadata_version": {
+            "type": "string",
+            "title": "Metadata Version"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated At"
+          },
+          "credential_configured": {
+            "type": "boolean",
+            "title": "Credential Configured"
+          },
+          "last_validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelValidationReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id",
+          "source",
+          "capabilities",
+          "metadata_version",
+          "revision",
+          "credential_configured"
+        ],
+        "title": "ModelSettingsResponse",
+        "description": "当前生效的运行配置与最近一次验证结论。"
+      },
+      "ModelValidationReport": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ModelCapabilities"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "max_input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Input Tokens"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCapabilityCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id",
+          "passed",
+          "capabilities"
+        ],
+        "title": "ModelValidationReport",
+        "description": "一次主模型验证的完整结论（成功与失败都保留）。"
       },
       "NarrationAudio": {
         "properties": {

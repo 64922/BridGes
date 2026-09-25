@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 from bridges import __version__
 from bridges.ai import ModelGateway
+from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
@@ -238,9 +239,13 @@ class ChatService:
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
+        model_config_provider: RunModelConfigProvider | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
+        #: V2 Issue 09：主模型运行配置（手填并验证通过的主模型 ID）。运行创建
+        #: 时解析一次并随运行配置持久化，进行中的轮次不因换配置而切换模型。
+        self._model_config_provider = model_config_provider
         self._attachments = attachment_service
         #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
         self._retrieval = retrieval_service
@@ -1054,6 +1059,9 @@ class ChatService:
             "use_knowledge_base": use_knowledge_base,
             "use_profile": use_profile,
         }
+        run_model_id = self._run_model_id()
+        if run_model_id is not None:
+            run_config["run_model_id"] = run_model_id
         if (
             image_payload is None
             and video_payload is None
@@ -1385,6 +1393,17 @@ class ChatService:
             idempotent_replay=False,
         )
 
+    def _run_model_id(self) -> str | None:
+        """本轮启动时锁定的主模型 ID（V2 Issue 09）。
+
+        运行创建即本轮启动：此处解析一次并写入运行配置，之后换运行配置只影响
+        新创建的轮次；进行中的轮次（含租约恢复的续跑）沿用同一模型，历史
+        消息的模型记录不被改写。未装配提供者时返回 None（沿用出厂矩阵）。
+        """
+        if self._model_config_provider is None:
+            return None
+        return self._model_config_provider.snapshot().model_id
+
     def stream_generation(
         self,
         account_id: str,
@@ -1394,6 +1413,7 @@ class ChatService:
         until_user_message_id: str | None = None,
         use_knowledge_base: bool = True,
         use_profile: bool = True,
+        model_id: str | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成（委托给回合编排深模块，接口与语义不变）。
 
@@ -1412,6 +1432,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             gateway=self._gateway,
+            model_override=model_id,
         )
 
     def stop_generation(
@@ -1706,6 +1727,9 @@ class ChatService:
             "use_knowledge_base": use_knowledge_base,
             "use_profile": use_profile,
         }
+        run_model_id = self._run_model_id()
+        if run_model_id is not None:
+            run_config["run_model_id"] = run_model_id
         if policy_snapshot is not None:
             run_config["global_writing_policy"] = policy_snapshot
         profile_correction = (previous_config or {}).get("profile_correction")

@@ -45,6 +45,7 @@ from bridges.ai.fixed_models import (
     VIDEO_MODEL_ID,
     VISION_MODEL_ID,
 )
+from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.config import Settings
 from bridges.contracts.ai import (
     CapabilityKind,
@@ -265,9 +266,16 @@ class ProductionComposition:
     gateway: ModelGateway
     cassette_enabled: bool
     global_key_configured: bool
+    #: 组合内共享的 Qwen HTTP 客户端（V2 Issue 09：设置页更换密钥时就地轮换；
+    #: 未配置全局 Key 时为 None）。
+    qwen_client: QwenApiClient | None = None
 
 
-def build_production_composition(settings: Settings | None) -> ProductionComposition:
+def build_production_composition(
+    settings: Settings | None,
+    *,
+    model_config_provider: RunModelConfigProvider | None = None,
+) -> ProductionComposition:
     """装配生产组合：注册批准矩阵 + 真实适配器接线。
 
     - 缺少全局 Key 时只注册矩阵、不绑定适配器（门禁报
@@ -275,11 +283,13 @@ def build_production_composition(settings: Settings | None) -> ProductionComposi
       如何失败关闭）；
     - 配置了 cassette 目录时挂载回放存储并置 ``cassette_enabled``，
       生产组合门禁据此拒绝（``production_test_adapter``）；
-    - 绝不注册 Stub/确定性适配器；测试环境由 API 组合根另行补齐。
+    - 绝不注册 Stub/确定性适配器；测试环境由 API 组合根另行补齐；
+    - ``model_config_provider``（V2 Issue 09）：网关据运行配置解析主对话／
+      视觉／OCR 的实际模型；注册表与生产组合门禁仍以出厂批准矩阵为准。
     """
     registry = CapabilityRegistry()
     register_builtin_capabilities(registry)
-    gateway = ModelGateway(registry)
+    gateway = ModelGateway(registry, model_config_provider=model_config_provider)
     cassette_enabled = False
     global_key_configured = settings is not None and is_global_qwen_key_configured(
         settings
@@ -333,4 +343,5 @@ def build_production_composition(settings: Settings | None) -> ProductionComposi
         gateway=gateway,
         cassette_enabled=cassette_enabled,
         global_key_configured=True,
+        qwen_client=qwen_client,
     )
