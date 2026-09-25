@@ -37,7 +37,8 @@ _EXPLICIT_KNOWLEDGE_BASE_TERMS = (
 )
 #: 用户点名「我的材料」的请求词表（V2 首版材料：讲义、笔记、简历、教材
 #: 章节）。这是请求词表而非学科词表：它判断用户是否在问自己的材料，
-#: 不判断问题属于哪个学科。
+#: 不判断问题属于哪个学科。材料名只在词表出现一次——学习/日常模式共用
+#: 这一判定（``_STUDY_TERMS`` 不再重复登记「教材」，避免遮蔽与漂移）。
 _UPLOADED_MATERIAL_TERMS = (
     "上传的材料",
     "上传材料",
@@ -65,7 +66,6 @@ _STUDY_TERMS = (
     "证明",
     "推导",
     "题目",
-    "教材",
     "知识点",
 )
 _SPECIALIZED_ROUTES = frozenset({"arxiv", "humanizer", "image", "image_edit", "video", "mcp"})
@@ -168,12 +168,13 @@ def decide_retrieval(
     判定顺序（先到先得）：
 
     1. 用户本轮关闭知识库 → ``user_disabled``；
-    2. 图像编辑等专用能力 → ``specialized_capability``；
+    2. 图像编辑 → ``specialized_capability``（编辑任务不做本地检索）；
     3. 用户点名知识库 → ``explicit_knowledge_base``；
     4. 用户点名自己的材料类型（讲义/笔记/简历/教材等）→ ``uploaded_material``；
-    5. 学习模式的教学请求（解释/原理/推导等）→ ``study_explanation``；
-    6. 日常模式的知识型问句 → ``knowledge_base_required``；
-    7. 其余（寒暄、创作、无请求形态的主题名词）→ 不检索。
+    5. 其余专用能力（humanizer/arxiv/image/video/mcp）→ ``specialized_capability``；
+    6. 学习模式的教学请求（解释/原理/推导等）→ ``study_explanation``；
+    7. 日常模式的知识型问句 → ``knowledge_base_required``；
+    8. 其余（寒暄、创作、无请求形态的主题名词）→ 不检索。
 
     只看请求形态与模式/路由，不做学科判定：同一专业名词在任何学科下
     结论一致（Issue 07 删除了学科名词白名单）。
