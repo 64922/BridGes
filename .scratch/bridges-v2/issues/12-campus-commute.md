@@ -151,3 +151,23 @@ route.present`，五个节点各自上报 `started/completed` 进度，前端 `M
   脚手架结构相近；按「只做必要改动」未合并抽象。
 - `src/bridges/api/main.py` 的 E402 属该文件既有模式，本次沿用 Issue 11 的放置位置，
   没有顺手重排 import。
+
+### 附带发现：本机桌面共享库的版本记录与实际 schema 不一致（已修复并留备份）
+
+排查上面那些「非本票引入」的环境性失败时定位到根因：本机桌面库
+`%LOCALAPPDATA%\BridGes\data\bridges.db` 的 `schema_meta.version` 记的是 **51**，
+但 `messages.paper_search` 与 `messages.module_suggestion` 两列**已在库中**
+（Issue 11 的迁移在其编号还是 51 时执行过，之后在合并中改号为 52）。于是任何
+`SCHEMA_VERSION ≥ 52` 的构建一启动就会执行 `ALTER TABLE messages ADD COLUMN
+paper_search`，得到 `OperationalError: duplicate column name: paper_search`，
+再被 `initialize()` 统一包装成「数据库文件已损坏或不是有效的 SQLite 数据库」。
+这也解释了 `tests/integration/test_runtime_smoke.py` 的三个 `start_fails_*` 用例
+在本机报「数据库文件已损坏」而不是预期的缺密钥提示（该套件会起真实 CLI 子进程）。
+
+已在副本上复现（报错原文即上面那条）并验证修法：把版本记录改成与实际 schema 一致的
+**52**，再 `initialize()` 即顺序应用 53（`study_states`）与 54（`commute_route`），
+得到 v54。随后对真库执行同一修法：先 `sqlite3.backup()` 做一致性备份
+（`bridges.db.backup-before-v54-20260926`，5.4 MB），再改版本记录并 `initialize()`；
+现库为 v54，`pragma integrity_check = ok`，`paper_search`/`module_suggestion`/
+`commute_route` 三列俱在。这不是本票引入的代码缺陷，而是共享库版本记录与 schema 的
+既存不一致；后续票若本机再看到「数据库文件已损坏」，请先核对版本记录与列的实际状态。
