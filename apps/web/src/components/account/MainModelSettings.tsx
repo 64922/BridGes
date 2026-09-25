@@ -10,6 +10,7 @@ import type { ModelCapabilities, ModelSettings, ModelValidationReport } from "@/
 import { fetchModelSettings, replaceModelConfiguration } from "@/lib/api";
 
 import styles from "./KeyAndModelSettings.module.css";
+import { QWEN_CREDENTIAL_FIRST_GUIDANCE, formatValidationTime } from "./qwen-settings-copy";
 
 /** 能力展示顺序（与后端核对的能力集合一致）。 */
 const CAPABILITY_FIELDS: { key: keyof ModelCapabilities; label: string }[] = [
@@ -19,18 +20,9 @@ const CAPABILITY_FIELDS: { key: keyof ModelCapabilities; label: string }[] = [
   { key: "structured_output", label: "结构化输出" },
 ];
 
-/** 密钥未配置时字段附近的操作顺序说明（与后端返回的指引同一句口径）。 */
-const CREDENTIAL_FIRST_GUIDANCE =
-  "当前没有可用的 Qwen 密钥：请先在上方「Qwen 凭据」中输入密钥并验证保存，再填写并验证主模型 ID。";
-
 function formatTokenCount(value: number | null | undefined): string {
   if (typeof value !== "number" || value <= 0) return "未提供";
   return `${value.toLocaleString("zh-CN")} tokens`;
-}
-
-function formatValidationTime(value: string | null | undefined): string {
-  if (!value) return "尚无验证记录";
-  return `最近验证：${new Date(value).toLocaleString("zh-CN")}`;
 }
 
 function CapabilityList({
@@ -242,7 +234,7 @@ export function MainModelSettings({ reloadKey = 0 }: { reloadKey?: number }) {
         />
         {!credentialConfigured && (
           <p className={styles.guidance} data-testid="model-credential-guidance">
-            {CREDENTIAL_FIRST_GUIDANCE}
+            {QWEN_CREDENTIAL_FIRST_GUIDANCE}
           </p>
         )}
         {error && <ErrorSummary title="主模型验证失败" errors={[error]} />}

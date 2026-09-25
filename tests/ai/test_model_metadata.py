@@ -71,6 +71,7 @@ def test_fuzzy_or_missing_identifiers_are_not_accepted() -> None:
         _model_entry(capabilities=None, inference_metadata=None),
         _model_entry(features=None),
         _model_entry(model_info={"max_input_tokens": 1000}),
+        _model_entry(model_info={"context_window": 131_072}),
         _model_entry(model_info=None),
     ],
 )

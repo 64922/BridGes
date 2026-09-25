@@ -11,7 +11,9 @@
   ``inference_metadata.request_modality`` 给出模态；
 - ``features``（``function-calling`` / ``structured-outputs``）给出工具调用与
   结构化输出；
-- ``model_info`` 给出 ``context_window`` 与 ``max_input_tokens``；
+- ``model_info`` 给出 ``context_window`` 与 ``max_input_tokens``；两者都是
+  必核项，缺任何一个都按元数据缺失拒绝保存（架构 §7 要求核对上下文窗口与
+  实际输入额度）；
 - 元数据缺失（字段不存在）与模型不存在是两种不同的失败：缺失无法核对能力，
   模型不存在无法激活，两者都给出明确中文原因；
 - 只读、无副作用；Authorization 头只发送候选/当前密钥，绝不写入日志与错误
@@ -154,6 +156,14 @@ def parse_model_metadata(model_id: str, payload: Mapping[str, Any]) -> ModelMeta
             "百炼未返回该模型的上下文长度（model_info.context_window），"
             "无法核对上下文额度。",
         )
+    # 实际输入额度与上下文窗口同属必核项：缺任何一个都无法核对容量承诺。
+    max_input_tokens = _positive_int(info.get("max_input_tokens"))
+    if max_input_tokens is None:
+        raise ModelMetadataError(
+            MODEL_METADATA_ERR_INCOMPLETE,
+            "百炼未返回该模型的最大输入额度（model_info.max_input_tokens），"
+            "无法核对实际输入额度。",
+        )
 
     return ModelMetadata(
         model_id=model_id,
@@ -164,7 +174,7 @@ def parse_model_metadata(model_id: str, payload: Mapping[str, Any]) -> ModelMeta
             structured_output=_FEATURE_STRUCTURED_OUTPUT in features,
         ),
         context_window=context_window,
-        max_input_tokens=_positive_int(info.get("max_input_tokens")),
+        max_input_tokens=max_input_tokens,
     )
 
 

@@ -16,7 +16,9 @@ import httpx
 from fastapi import Request
 from pydantic import SecretStr
 
+from bridges.ai.model_gateway import ModelGateway
 from bridges.ai.model_metadata import BailianModelMetadataSource
+from bridges.ai.production import build_production_composition
 from bridges.ai.qwen_client import QwenApiClient
 from bridges.ai.run_model_config import (
     RunModelConfigProvider,
@@ -99,7 +101,10 @@ def apply_qwen_key(request: Request, key: SecretStr) -> None:
     """把已验证的新密钥就地应用到运行期（V2 Issue 09）。
 
     - 更新进程内 ``Settings``（后续读取同一入口的调用方立即看到新值）；
-    - 轮换生产组合共享的 Qwen 客户端与知识库向量化端口的密钥引用；
+    - 已有 Qwen 客户端就地轮换密钥；服务在没有全局凭据的情况下启动（非规范
+      入口：只注册矩阵、不绑定适配器）时补齐真实适配器绑定，避免"验证通过
+      但调用仍报未绑定适配器"；
+    - 轮换知识库向量化端口的密钥引用（向量模型本身仍独立固定）；
     - 清除未配置全局凭据的健康门标记。
 
     后台执行器是独立进程，其凭据在下次启动时由启动流程从凭据库解析到新值
@@ -107,17 +112,42 @@ def apply_qwen_key(request: Request, key: SecretStr) -> None:
     """
     settings = runtime_settings(request)
     if settings is not None:
-        request.app.state.settings = settings.model_copy(
+        settings = settings.model_copy(
             update={"qwen_api_key": SecretStr(key.get_secret_value())}
         )
-    client = getattr(request.app.state, "qwen_client", None)
-    if client is not None and hasattr(client, "replace_api_key"):
-        client.replace_api_key(key)
-    for port_name in ("embedding_port",):
-        port = getattr(request.app.state, port_name, None)
-        if port is not None and hasattr(port, "replace_api_key"):
-            port.replace_api_key(key)
+        request.app.state.settings = settings
+    _apply_runtime_qwen_credentials(request, key, settings)
+    port = getattr(request.app.state, "embedding_port", None)
+    if port is not None and hasattr(port, "replace_api_key"):
+        port.replace_api_key(key)
     request.app.state.qwen_key_error = None
+
+
+def _apply_runtime_qwen_credentials(
+    request: Request, key: SecretStr, settings: Any
+) -> None:
+    """就地把新凭据应用到模型调用链（轮换已有客户端 / 补齐缺失适配器）。"""
+    client = getattr(request.app.state, "qwen_client", None)
+    if isinstance(client, QwenApiClient):
+        client.replace_api_key(key)
+        return
+    gateway = getattr(request.app.state, "model_gateway", None)
+    if settings is None or not isinstance(gateway, ModelGateway):
+        return
+    # 只补齐当前未绑定的能力：测试环境的确定性适配器绑定不被覆盖。
+    composition = build_production_composition(
+        settings,
+        model_config_provider=getattr(
+            request.app.state, "run_model_config_provider", None
+        ),
+    )
+    for capability in composition.registry.list_active():
+        if gateway.is_adapter_registered(capability.name, capability.version):
+            continue
+        adapter = composition.gateway.get_adapter(capability.name, capability.version)
+        if adapter is not None:
+            gateway.register_adapter(capability.name, capability.version, adapter)
+    request.app.state.qwen_client = composition.qwen_client
 
 
 def validation_state(request: Request) -> dict[str, Any]:

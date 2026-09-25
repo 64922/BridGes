@@ -75,7 +75,7 @@ describe("MainModelSettings", () => {
 
     const input = await screen.findByLabelText(/Qwen 主模型 ID/);
     expect(screen.getByTestId("model-credential-guidance").textContent).toContain(
-      "请先在上方「Qwen 凭据」中输入密钥并验证保存"
+      "请先在本页「Qwen 凭据」中输入密钥并验证保存"
     );
 
     fireEvent.change(input, { target: { value: "qwen-candidate" } });

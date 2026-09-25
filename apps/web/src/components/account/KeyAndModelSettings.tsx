@@ -16,17 +16,9 @@ import {
 
 import styles from "./KeyAndModelSettings.module.css";
 import { MainModelSettings } from "./MainModelSettings";
+import { QWEN_CREDENTIAL_FIRST_GUIDANCE, formatValidationTime } from "./qwen-settings-copy";
 
 type CredentialGroup = "qwen" | "tavily" | "amap_web_service" | "amap_browser_map";
-
-/** 密钥未配置时字段附近的操作顺序说明（与后端指引同一句口径）。 */
-const QWEN_CREDENTIAL_FIRST_GUIDANCE =
-  "尚未配置 Qwen 密钥：请先在这里输入密钥并验证保存，再到下方「Qwen 主模型 ID」验证并保存模型。";
-
-function formatValidationTime(value: string | null): string {
-  if (!value) return "尚无验证记录";
-  return `最近验证：${new Date(value).toLocaleString("zh-CN")}`;
-}
 
 function CredentialState({ status }: { status?: CredentialStatus }) {
   if (!status) return <span className={styles.status}>读取中</span>;

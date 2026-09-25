@@ -141,13 +141,14 @@ def test_configured_model_id_covers_the_aligned_capabilities_only() -> None:
         update={"model_id": "qwen-user-model"}
     )
 
-    assert CONFIGURABLE_CAPABILITIES == {
+    expected = {
         "qwen_text_chat",
         "qwen_structured_output",
         "qwen_profile_extraction",
         "qwen_vision",
         "qwen_ocr",
     }
+    assert set(CONFIGURABLE_CAPABILITIES) == expected
     for capability in CONFIGURABLE_CAPABILITIES:
         assert configured_model_id(capability, config) == "qwen-user-model"
     # 知识库向量化独立固定：绝不随主模型改变（ADR-0008/0009）。

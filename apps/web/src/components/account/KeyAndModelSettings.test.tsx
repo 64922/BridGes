@@ -128,7 +128,7 @@ describe("KeyAndModelSettings", () => {
 
     const qwenInput = await screen.findByLabelText(/Qwen API Key/);
     // 未配置时字段附近说明操作顺序。
-    expect(await screen.findByText(/请先在这里输入密钥并验证保存/)).toBeTruthy();
+    expect(await screen.findByText(/请先在本页「Qwen 凭据」中输入密钥并验证保存/)).toBeTruthy();
     fireEvent.change(qwenInput, { target: { value: "sk-rejected" } });
     fireEvent.submit(formOf(qwenInput));
 

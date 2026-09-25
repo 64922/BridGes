@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import httpx
@@ -175,6 +174,41 @@ def test_empty_candidate_is_rejected_without_touching_the_store(
         app.state.runtime_credential_store.get(GLOBAL_QWEN_CREDENTIAL_ID)
         == SecretStr(_OLD_KEY)
     )
+    provider.close()
+
+
+def test_first_key_binds_the_real_adapters_without_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """服务在无全局凭据时启动（未绑定适配器）：设置页保存密钥后立即补齐绑定。
+
+    非规范入口（绕过 ``BridGes start`` 直接启动 API）时生产组合只注册矩阵，
+    不绑定适配器；此时保存一个已通过验证的密钥必须在同一进程内补齐真实
+    适配器，否则界面提示"已验证并保存"而模型调用仍报未绑定适配器。
+    """
+    provider = _provider_client(candidate_key=_NEW_KEY)
+    monkeypatch.delenv("BRIDGES_QWEN_API_KEY", raising=False)
+    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "development")
+    monkeypatch.setenv("BRIDGES_SECRET_KEY", "qwen-settings-test-secret-key")
+    get_settings.cache_clear()
+    app = create_app(
+        runtime_credential_store=InMemoryCredentialStore(namespace="runtime"),
+        credential_probe_http_client=provider,
+    )
+    client = TestClient(app)
+    _register(client)
+    gateway = app.state.model_gateway
+    assert gateway.is_adapter_registered("qwen_text_chat", "1") is False
+    assert app.state.qwen_client is None
+
+    response = client.put("/settings/credentials/qwen", json={"api_key": _NEW_KEY})
+
+    assert response.status_code == 200, response.text
+    assert gateway.is_adapter_registered("qwen_text_chat", "1") is True
+    assert gateway.is_adapter_registered("qwen_vision", "1") is True
+    assert gateway.is_adapter_registered("qwen_embedding", "1") is True
+    assert app.state.qwen_client is not None
+    assert app.state.settings.qwen_api_key == SecretStr(_NEW_KEY)
     provider.close()
 
 

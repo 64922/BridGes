@@ -42,7 +42,10 @@ def _metadata_payload(
         model_info["context_window"] = context_window
     if max_input_tokens is not None:
         model_info["max_input_tokens"] = max_input_tokens
-    entry: dict[str, Any] = {"model": model_id, "inference_metadata": {"request_modality": list(modalities)}}
+    entry: dict[str, Any] = {
+        "model": model_id,
+        "inference_metadata": {"request_modality": list(modalities)},
+    }
     if capabilities is not None:
         entry["capabilities"] = list(capabilities)
     if features is not None:

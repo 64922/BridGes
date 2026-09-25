@@ -30,7 +30,12 @@ from bridges.ai.adapters import (
     TransientError,
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
-from bridges.ai.run_model_config import RunModelConfigProvider, configured_model_id
+from bridges.ai.run_model_config import (
+    RunModelConfigProvider,
+    RunModelConfigSnapshot,
+    configured_model_id,
+    is_configurable_capability,
+)
 from bridges.contracts.ai import (
     CapabilityRecord,
     CapabilityStatus,
@@ -107,24 +112,24 @@ class ModelGateway:
         的模型）高于**运行配置**（用户在设置中验证保存的主模型，每次调用
         读取，新旧会话的下一轮即生效），两者都没有时保持出厂矩阵绑定。
 
-        仅覆盖运行配置声明的主对话/结构化/画像/视觉/OCR 能力；向量化等其余
-        能力永远取注册表绑定（``configured_model_id`` 返回 None）。返回的
-        记录同时携带该模型的输入额度，漂移守卫与运行锁都以实际模型为准。
+        只有可运行配置的能力（主对话/结构化/画像/视觉/OCR）接受覆盖；向量化
+        等固定项即使收到锁定值也取注册表绑定。生效模型与运行配置一致时，返回
+        的记录同时携带该配置的输入额度，漂移守卫与运行锁都以实际模型为准。
         """
+        if not is_configurable_capability(capability.name):
+            return capability
         model_id = model_override
-        if model_id is None and self._model_config_provider is not None:
+        config: RunModelConfigSnapshot | None = None
+        if self._model_config_provider is not None:
             config = self._model_config_provider.snapshot()
-            model_id = configured_model_id(capability.name, config)
-            if model_id is not None and model_id != capability.model_id:
-                return capability.model_copy(
-                    update={
-                        "model_id": model_id,
-                        "max_input_tokens": config.max_input_tokens,
-                    }
-                )
+            if model_id is None:
+                model_id = configured_model_id(capability.name, config)
         if not model_id or model_id == capability.model_id:
             return capability
-        return capability.model_copy(update={"model_id": model_id})
+        update: dict[str, Any] = {"model_id": model_id}
+        if config is not None and model_id == config.model_id:
+            update["max_input_tokens"] = config.max_input_tokens
+        return capability.model_copy(update=update)
 
     def invoke(
         self,

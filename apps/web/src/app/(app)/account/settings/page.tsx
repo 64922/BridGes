@@ -71,9 +71,9 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          <section className="sc-card" aria-labelledby="credential-settings-title">
+          <section className="sc-card" aria-labelledby="key-model-settings-title">
             <Icon name="search" size={28} aria-hidden />
-            <h2 id="credential-settings-title" className="sc-section-title" style={{ marginTop: "var(--space-4)" }}>
+            <h2 id="key-model-settings-title" className="sc-section-title" style={{ marginTop: "var(--space-4)" }}>
               密钥与模型管理
             </h2>
             <p style={{ color: "var(--color-text-secondary)", minHeight: "3rem" }}>

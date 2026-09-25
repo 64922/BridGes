@@ -1,6 +1,6 @@
 # 正式运行使用唯一的全局百炼运行凭据
 
-> 适用边界：全局 Qwen 凭据决策保留；本文件原先关于 SMTP 命名空间“不受影响”的表述已由 [ADR-0026](0026-frozen-product-contracts-and-migration-gates.md) 取代，历史提醒凭据按 ADR-0026 迁移清除。
+> 适用边界：全局 Qwen 凭据决策保留；本文件原先关于 SMTP 命名空间“不受影响”的表述已由 [ADR-0026](0026-frozen-product-contracts-and-migration-gates.md) 取代，历史提醒凭据按 ADR-0026 迁移清除。原先「全局 Key 轮换后必须重启相关服务，首轮整改不引入运行期热更新」对桌面设置页的适用性已由 [ADR-0031](0031-runtime-qwen-credential-and-main-model-activation.md) 取代：设置页可在运行期用候选密钥验证后替换该凭据；后台执行器仍在下次启动读取新值。
 
 BridGes 正式运行的唯一 Qwen 认证来源是全局百炼运行凭据。对于普通桌面用户，默认 `BridGes start` 的 `desktop` profile 在交互式首次启动时隐藏读取 Key，并将其保存到操作系统凭据库的 `runtime` 命名空间；Key 不写入仓库、生成的 `config.json`、日志或 `.env`。非交互启动、`development`/`production` 显式 profile、容器和长期运维仍通过 `BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE` 注入，两种方式解析为同一 Secret 配置，文件引用优先用于容器或长期部署。desktop 凭据来源的优先级为文件/环境变量、已保存的凭据库、交互式输入；非交互且没有可读取凭据时立即失败。
 

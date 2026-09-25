@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 from datetime import datetime
 from enum import StrEnum
@@ -54,9 +55,10 @@ CONFIGURABLE_CAPABILITIES: frozenset[str] = frozenset(
     }
 )
 
-#: 出厂矩阵中必须被运行配置覆盖的 capability（防止 CONFIGURABLE 漏项）。
+#: 出厂矩阵中绑定到主对话快照的 capability（由矩阵派生，避免清单漂移）。
+#: 它们必须全部可手填，否则会留下隐藏的固定主模型调用。
 _ALIGNED_FACTORY_CAPABILITIES: frozenset[str] = frozenset(
-    {"qwen_text_chat", "qwen_structured_output", "qwen_profile_extraction"}
+    name for name, model in MODEL_BY_CAPABILITY.items() if model == CHAT_MODEL_ID
 )
 
 
@@ -119,6 +121,15 @@ def configured_model_id(capability_name: str, config: RunModelConfigSnapshot) ->
     return config.model_id
 
 
+def is_configurable_capability(capability_name: str) -> bool:
+    """某 capability 是否允许被运行配置（或运行级锁定）覆盖模型绑定。
+
+    非可配置能力（向量化、语音、图片、视频等）永远取出厂矩阵绑定：运行级
+    锁定也必须经此判定，避免一个锁定值把向量化等固定项带走。
+    """
+    return capability_name in CONFIGURABLE_CAPABILITIES
+
+
 class RunModelConfigProvider:
     """运行配置的唯一读取/激活入口（进程内缓存 + 共享持久化真相源）。"""
 
@@ -147,7 +158,7 @@ class RunModelConfigProvider:
         with self._lock:
             try:
                 payload = self._state_port.load(MODEL_CONFIG_NAMESPACE)
-            except (ValueError, OSError, RuntimeError) as exc:
+            except (ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
                 self._load_error = (
                     f"读取主模型运行配置失败（{exc.__class__.__name__}），"
                     "继续使用上一次生效的配置。"
