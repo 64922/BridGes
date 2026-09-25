@@ -38,6 +38,7 @@ from bridges.contracts.chat import (
     ChatMessageProjection,
     ChatMode,
     ChatModeSwitchRequest,
+    ChatRetryRequest,
     ChatRunStartedResponse,
     ChatRunStatus,
     ChatStopResponse,
@@ -403,6 +404,7 @@ def create_first_turn(
                 else None
             ),
             use_knowledge_base=body.use_knowledge_base,
+            module_id=body.module_id.value if body.module_id else None,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -750,7 +752,7 @@ async def send_message(
         mcp_call=body.mcp_call,
     )
     try:
-        user_message, assistant_message = service.start_generation(
+        user_message, assistant_message, idempotent_replay = service.start_generation(
             subject.account_id,
             conversation_id,
             body.content,
@@ -771,6 +773,8 @@ async def send_message(
                 else None
             ),
             use_knowledge_base=body.use_knowledge_base,
+            module_id=body.module_id.value if body.module_id else None,
+            idempotency_key=body.idempotency_key,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -786,6 +790,7 @@ async def send_message(
         cursor=run_view.cursor,
         user_message=user_message,
         assistant_message=assistant_message,
+        idempotent_replay=idempotent_replay,
     )
 
 
@@ -1000,12 +1005,15 @@ async def retry_message(
     service: ChatServiceDep,
     subject: SubjectDep,
     retrieval_service: RetrievalServiceDep,
+    body: ChatRetryRequest | None = None,
 ) -> ChatRunStartedResponse:
     """重试失败的助手消息：创建新的助手尝试与 queued 运行，立即返回。
 
     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留；运行经后台
     执行器领取执行（与发送同一外壳）。检索作用域沿用被重试尝试轮次的
     设置（含知识库开关），不重复用户消息。重试与发送同源（GQ-02）。
+    V2 Issue 02：``idempotency_key`` 抵御网络重放——同会话同键重试复用
+    同一运行（``idempotent_replay=True``），不创建重复尝试。
     """
     # Issue 31：图片任务消息不走消息级重试——任务卡内提供同输入重试
     # （POST /image-tasks/{id}/retry），避免创建重复任务。
@@ -1038,11 +1046,12 @@ async def retry_message(
     # 的关闭选择不因重试被静默改变；无快照时回退默认开启。
     previous_message = service.message_projection(subject.account_id, message_id)
     try:
-        user_message, assistant_message = service.retry_generation(
+        user_message, assistant_message, idempotent_replay = service.retry_generation(
             subject.account_id,
             conversation_id,
             message_id,
             use_knowledge_base=use_knowledge_base,
+            idempotency_key=body.idempotency_key if body is not None else None,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -1058,6 +1067,7 @@ async def retry_message(
         cursor=run_view.cursor,
         user_message=user_message,
         assistant_message=assistant_message,
+        idempotent_replay=idempotent_replay,
     )
 
 

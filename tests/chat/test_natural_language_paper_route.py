@@ -39,7 +39,7 @@ def test_unselected_paper_request_stays_ordinary_without_search(tmp_path: Path) 
     service._turn._web_search = unexpected_web  # noqa: SLF001 - explicit routing seam
     conversation = service.create_conversation("alice")
 
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice",
         conversation.conversation_id,
         "Find at most 3 papers about quantum error correction.",
@@ -79,7 +79,7 @@ def test_ambiguous_paper_request_asks_before_any_side_effect(tmp_path: Path) -> 
     service: ChatService = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
 
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "Please help me find papers"
     )
     events = list(
@@ -107,7 +107,7 @@ def test_empty_chinese_paper_topic_clarifies_without_arxiv_call(tmp_path: Path) 
     service: ChatService = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
 
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "给我找几篇论文"
     )
     events = list(
@@ -133,7 +133,7 @@ def test_retry_keeps_unselected_paper_request_ordinary(tmp_path: Path) -> None:
     client = _FakeArxivClient()
     service = _service(tmp_path, ArxivSearchService(client=client), _CapturingAdapter())
     conversation = service.create_conversation("alice")
-    user, first = service.start_generation(
+    user, first, _ = service.start_generation(
         "alice", conversation.conversation_id, "Find papers about quantum error correction."
     )
 
@@ -150,7 +150,7 @@ def test_retry_keeps_unselected_paper_request_ordinary(tmp_path: Path) -> None:
     assert first.route.status.value == "ordinary"
     assert client.queries == []
 
-    _, retry = service.retry_generation("alice", conversation.conversation_id, first.message_id)
+    _, retry, _ = service.retry_generation("alice", conversation.conversation_id, first.message_id)
     assert retry.route is not None
     assert retry.route.status.value == "ordinary"
     list(

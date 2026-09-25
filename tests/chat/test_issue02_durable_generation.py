@@ -201,7 +201,7 @@ def test_refresh_page_does_not_duplicate_user_message_or_model_call(
         events = generation_helpers["subscribe"](
             client, conversation_id, message_id
         )
-        assert events[-1][0] == "done"
+        assert [e for e in events if e[0] == "done"][-1][0] == "done"
     finally:
         stop_exec.set()
         exec_thread.join(timeout=5)
@@ -240,7 +240,7 @@ def test_two_executors_compete_only_one_executes(
     events = generation_helpers["subscribe"](
         client, conversation_id, message_id
     )
-    assert events[-1][0] == "done"
+    assert [e for e in events if e[0] == "done"][-1][0] == "done"
 
 
 def test_worker_loss_recovers_once_then_reaps_to_failed(

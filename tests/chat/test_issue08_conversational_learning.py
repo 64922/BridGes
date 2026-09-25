@@ -123,7 +123,7 @@ def _send(
     account_id: str = "alice",
     run_id: str = "run-issue08",
 ) -> tuple[Any, Any, list[Any]]:
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         account_id, conversation_id, content
     )
     events = list(

@@ -108,7 +108,7 @@ def test_paper_prompt_without_module_stays_ordinary(tmp_path: Path) -> None:
     adapter = _CapturingAdapter()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice",
         conversation.conversation_id,
         "请找近三年量子纠错论文。私人文档：内部代号蓝鲸，密码=secret-123。",
@@ -140,7 +140,7 @@ def test_empty_arxiv_results_do_not_affect_unselected_ordinary_chat(tmp_path: Pa
     client = _FakeArxivClient([])
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "帮我找不存在领域的 arXiv 论文"
     )
 
@@ -167,7 +167,7 @@ def test_ordinary_answer_does_not_require_arxiv_citations(tmp_path: Path) -> Non
     client = _FakeArxivClient()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "搜索量子纠错论文"
     )
 
@@ -214,7 +214,7 @@ def test_unselected_paper_prompt_retries_as_ordinary_chat(
     adapter = _CapturingAdapter()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, first = service.start_generation(
+    user, first, _ = service.start_generation(
         "alice", conversation.conversation_id, "搜索量子纠错论文"
     )
 
@@ -233,7 +233,7 @@ def test_unselected_paper_prompt_retries_as_ordinary_chat(
     assert first_events[-1].kind == "done"
     assert client.queries == []
 
-    _, retry = service.retry_generation(
+    _, retry, _ = service.retry_generation(
         "alice", conversation.conversation_id, first.message_id
     )
     retry_events = list(

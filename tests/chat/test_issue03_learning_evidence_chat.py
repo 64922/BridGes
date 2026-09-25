@@ -107,7 +107,7 @@ def _service(
 
 
 def _send(service: ChatService, conversation_id: str, content: str) -> Any:
-    _, assistant = service.start_generation("alice", conversation_id, content)
+    _, assistant, _ = service.start_generation("alice", conversation_id, content)
     list(
         service.stream_generation(
             "alice",
@@ -343,7 +343,7 @@ def test_chat_arxiv_and_web_parallel_reloadable_with_single_terminal(
         arxiv_search_service=ArxivSearchService(client=_PaperClient()),
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice",
         conversation.conversation_id,
         "我想学习最新公开的Transformer架构论文研究综述",

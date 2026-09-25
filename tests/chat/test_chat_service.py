@@ -114,7 +114,9 @@ def service(tmp_path: Path) -> ChatService:
 
 
 def _start(service: ChatService, conversation_id: str, content: str = "你好"):
-    return service.start_generation("alice", conversation_id, content)
+    # V2 Issue 02 起 start_generation 返回 (用户消息, 助手消息, 幂等重放标记)
+    user_msg, assistant_msg, _ = service.start_generation("alice", conversation_id, content)
+    return user_msg, assistant_msg
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +447,7 @@ def test_retry_creates_new_attempt_and_preserves_failed_history(
 
     # 重试成功
     service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="成功回答")])
-    user_msg, retried = service.retry_generation(
+    user_msg, retried, _ = service.retry_generation(
         "alice", created.conversation_id, failed.message_id
     )
     assert retried.attempt_number == 2
@@ -565,7 +567,7 @@ def test_restarted_streaming_message_with_active_run_survives_read(tmp_path: Pat
 
     first = _build()
     created = first.create_conversation("alice")
-    _, assistant = first.start_generation("alice", created.conversation_id, "你好")
+    _, assistant, _ = first.start_generation("alice", created.conversation_id, "你好")
 
     # 模拟进程重启：重建服务（内存注册表清空），DB 里仍是 streaming + queued 运行
     restarted = _build()
@@ -689,7 +691,7 @@ def test_model_history_excludes_failed_and_stopped_attempts(service: ChatService
         )
     )
     service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="正确答案")])
-    _, retried = service.retry_generation(
+    _, retried, _ = service.retry_generation(
         "alice", created.conversation_id, failed.message_id
     )
     list(
@@ -739,7 +741,7 @@ def test_retry_of_older_turn_keeps_turn_position_and_truncates_context(
     service._gateway = _with_chunks(
         service, [StreamChunk(kind="delta", delta="回答一重试")]
     )
-    owner, retried = service.retry_generation(
+    owner, retried, _ = service.retry_generation(
         "alice", created.conversation_id, failed.message_id
     )
     assert retried.attempt_number == 2
@@ -807,7 +809,7 @@ def test_restart_recovery_via_same_database_file(tmp_path: Path) -> None:
     first = _build()
     created = first.create_conversation("alice", title="我的对话")
     first._gateway = _with_chunks(first, [StreamChunk(kind="delta", delta="重启前回答")])
-    _, assistant = first.start_generation("alice", created.conversation_id, "在吗")
+    _, assistant, _ = first.start_generation("alice", created.conversation_id, "在吗")
     list(
         first.stream_generation(
             "alice", created.conversation_id, assistant.message_id, _context()

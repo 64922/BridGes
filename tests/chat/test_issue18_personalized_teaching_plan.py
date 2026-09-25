@@ -114,7 +114,7 @@ def _service(
 
 
 def _send(service: ChatService, conversation_id: str, content: str, run_id: str):
-    user, assistant = service.start_generation("alice", conversation_id, content)
+    user, assistant, _ = service.start_generation("alice", conversation_id, content)
     events = list(
         service.stream_generation(
             "alice",

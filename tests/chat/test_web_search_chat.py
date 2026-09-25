@@ -119,7 +119,7 @@ def test_explicit_search_is_persisted_and_only_public_results_reach_model(
     adapter = _CapturingAdapter()
     service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice",
         conversation.conversation_id,
         "请联网核实量子计算最新进展。私人文档：内部代号蓝鲸，密码=secret-123。",
@@ -158,7 +158,7 @@ def test_search_failure_continues_with_unverified_model_knowledge(tmp_path: Path
     adapter = _CapturingAdapter()
     service, _ = _service(tmp_path, WebSearchService(client=_FailingClient()), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实这个说法是否属实"
     )
 
@@ -203,7 +203,7 @@ def test_consecutive_failures_keep_last_error_and_unverified_fallback(
     client = _AlwaysFailingClient()
     service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -243,7 +243,7 @@ def test_unexpected_exception_degrades_to_internal_error_and_model_knowledge(
     adapter = _CapturingAdapter()
     service, _ = _service(tmp_path, WebSearchService(client=_BoomClient()), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -291,7 +291,7 @@ def test_configuration_error_is_terminal_permission_state_without_retry(
     client = _ConfigClient()
     service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -349,7 +349,7 @@ def test_retry_after_failure_reruns_search_and_distinguishes_attempts(
     client = _FailOnceClient()
     service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -392,7 +392,7 @@ def test_profile_ready_coexists_with_search_failure(tmp_path: Path) -> None:
     assert profile is not None
     _seed_profile(profile)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实这个说法是否属实"
     )
 
@@ -433,7 +433,7 @@ def test_profile_count_excludes_successful_web_sources(tmp_path: Path) -> None:
     assert profile is not None
     _seed_profile(profile)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -465,7 +465,7 @@ def test_successful_web_source_coexists_with_profile_off(tmp_path: Path) -> None
     assert profile is not None
     _seed_profile(profile)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -505,7 +505,7 @@ def test_search_answer_without_valid_citation_is_rejected(tmp_path: Path) -> Non
     adapter = _UncitedAdapter()
     service, _ = _service(tmp_path, WebSearchService(client=_FakeSearchClient()), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 
@@ -533,7 +533,7 @@ def test_non_search_message_does_not_call_provider(tmp_path: Path) -> None:
     adapter = _CapturingAdapter()
     service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "陪我聊聊我的心情"
     )
 
@@ -557,7 +557,7 @@ def test_stop_persists_cancelled_search_state(tmp_path: Path) -> None:
     adapter = _CapturingAdapter()
     service, _ = _service(tmp_path, WebSearchService(client=client), adapter)
     conversation = service.create_conversation("alice")
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "请联网核实量子计算最新进展"
     )
 

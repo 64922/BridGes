@@ -245,7 +245,7 @@ def _send(
 ) -> tuple[Any, Any]:
     """发送消息并消费流事件，返回 (用户消息投影, 助手消息投影)。"""
     chat: ChatService = env["chat"]
-    user, assistant = chat.start_generation(
+    user, assistant, _ = chat.start_generation(
         env["account"], conversation_id, content
     )
     list(
@@ -477,7 +477,7 @@ def test_broken_profile_service_does_not_block_generation(
         profile_service=_BrokenProfileService(SqliteProfileRepository(database)),
     )
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "你好"
     )
     events = list(

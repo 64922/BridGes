@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 48
+SCHEMA_VERSION = 49
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2330,6 +2330,83 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         ALTER TABLE video_tasks
         ADD COLUMN cancel_attempt INTEGER NOT NULL DEFAULT 0
+        """,
+    ],
+    # V2 Issue 02：可恢复的对话运行（LangGraph 日常父图）。
+    # - generation_runs 增加图编排状态：graph_version（图名称/版本）、
+    #   current_node（当前执行/最后到达的图节点）、wait_reason（持久等待
+    #   原因；澄清与逐题等待由后续切片写入，本切片恒为 NULL）、
+    #   model_lock_id（本轮模型运行锁）、idempotency_key（同一请求重试
+    #   幂等键；唯一索引限定 (account_id, conversation_id) 作用域，NULL
+    #   不参与唯一约束——历史运行与未携带键的请求不受影响）。
+    # - messages 增加 module_id：逐消息显式模块选择随消息持久化（服务端
+    #   校验，模型不得从正文改写；普通聊天为 NULL，历史消息不迁移）。
+    # - graph_checkpoints / graph_checkpoint_writes：LangGraph 检查点
+    #   适配器表，以 (account_id, conversation_id, run_id) 关联现有运行、
+    #   消息与 SSE 事件；thread_id 固定映射会话 ID，checkpoint_ns 映射
+    #   运行 ID；账户隔离由 scoped 连接强制，恢复请求跨账户不可见。
+    49: [
+        """
+        ALTER TABLE generation_runs ADD COLUMN graph_version TEXT
+        """,
+        """
+        ALTER TABLE generation_runs ADD COLUMN current_node TEXT
+        """,
+        """
+        ALTER TABLE generation_runs ADD COLUMN wait_reason TEXT
+        """,
+        """
+        ALTER TABLE generation_runs ADD COLUMN model_lock_id TEXT
+        """,
+        """
+        ALTER TABLE generation_runs ADD COLUMN idempotency_key TEXT
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_generation_runs_idempotency
+            ON generation_runs(account_id, conversation_id, idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+        """,
+        """
+        ALTER TABLE messages ADD COLUMN module_id TEXT
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS graph_checkpoints (
+            thread_id TEXT NOT NULL,
+            checkpoint_ns TEXT NOT NULL DEFAULT '',
+            checkpoint_id TEXT NOT NULL,
+            parent_checkpoint_id TEXT,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            checkpoint BLOB NOT NULL,
+            metadata BLOB,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_graph_checkpoints_run
+            ON graph_checkpoints(account_id, conversation_id, run_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS graph_checkpoint_writes (
+            thread_id TEXT NOT NULL,
+            checkpoint_ns TEXT NOT NULL DEFAULT '',
+            checkpoint_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            task_path TEXT NOT NULL DEFAULT '',
+            idx INTEGER NOT NULL,
+            channel TEXT NOT NULL,
+            type TEXT NOT NULL,
+            value BLOB,
+            account_id TEXT NOT NULL,
+            PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_graph_checkpoint_writes_run
+            ON graph_checkpoint_writes(account_id, thread_id, checkpoint_ns)
         """,
     ],
 }

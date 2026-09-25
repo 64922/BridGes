@@ -31,6 +31,8 @@ export type ChatFirstTurnResponse = components["schemas"]["ChatFirstTurnResponse
 export type ChatRunView = components["schemas"]["ChatRunView"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
 export type ChatStreamStageData = components["schemas"]["ChatStreamStageData"];
+// V2 Issue 02：日常父图节点进度事件（只映射真实开始/完成的节点）。
+export type ChatStreamNodeData = components["schemas"]["ChatStreamNodeData"];
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
 export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
 // Issue 28：内置 bridges-humanizer SKILL 契约（生成类型来自 openapi.json）。
@@ -1083,13 +1085,17 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
  */
 export async function createChatRun(
   conversationId: string,
-  content: string
+  content: string,
+  idempotencyKey?: string
 ): Promise<ChatRunStartedResponse> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ content }),
+    // V2 Issue 02：携带幂等键——网络重试复用同一运行，不重复写消息。
+    body: JSON.stringify(
+      idempotencyKey ? { content, idempotency_key: idempotencyKey } : { content }
+    ),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
@@ -1221,11 +1227,20 @@ export async function resolveAnswerFeedback(
 /** 重试失败的助手消息：创建新尝试与 queued 运行（与发送同一外壳）。 */
 export async function retryChatRun(
   conversationId: string,
-  messageId: string
+  messageId: string,
+  idempotencyKey?: string
 ): Promise<ChatRunStartedResponse> {
   const res = await fetch(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/retry`,
-    { method: "POST", credentials: "same-origin" }
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      // V2 Issue 02：携带幂等键——网络重试复用同一运行，不重复创建尝试。
+      body: JSON.stringify(
+        idempotencyKey ? { idempotency_key: idempotencyKey } : {}
+      ),
+    }
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();

@@ -77,6 +77,16 @@ class GenerationRunRecord:
     duration_ms: int | None
     created_at: datetime
     updated_at: datetime
+    #: V2 Issue 02：编排图名称/版本（旧运行/旧测试构造缺省 None）。
+    graph_version: str | None = None
+    #: 当前执行/最后到达的图节点（失败定位依据）。
+    current_node: str | None = None
+    #: 持久等待原因（澄清/逐题等待由后续切片写入）。
+    wait_reason: str | None = None
+    #: 本轮模型运行锁标识。
+    model_lock_id: str | None = None
+    #: 同一请求重试幂等键（(account_id, conversation_id) 作用域唯一）。
+    idempotency_key: str | None = None
 
 
 @dataclass
@@ -118,6 +128,8 @@ class MessageRecord:
     video: dict[str, Any] | None = None
     mcp_call: dict[str, Any] | None = None
     route: dict[str, Any] | None = None
+    #: V2 Issue 02：随消息持久化的显式模块选择（服务端校验；普通聊天 None）。
+    module_id: str | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -507,7 +519,7 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route"
+            " mcp_call, route, module_id"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -521,7 +533,7 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route"
+            " mcp_call, route, module_id"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -1106,9 +1118,9 @@ class ConversationRepository:
                 " status, content, thinking, error_code, error_message,"
                 " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                 " web_search, arxiv_search, teaching, context_note, skill,"
-                " career_planning, image, video, mcp_call, route)"
+                " career_planning, image, video, mcp_call, route, module_id)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     record.message_id,
                     record.conversation_id,
@@ -1141,6 +1153,7 @@ class ConversationRepository:
                     _json_dumps(record.video) if record.video else None,
                     _json_dumps(record.mcp_call) if record.mcp_call else None,
                     _json_dumps(record.route) if record.route else None,
+                    record.module_id,
                 ),
             )
             self._persist_message_route(record)
@@ -1354,9 +1367,9 @@ class ConversationRepository:
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                     " web_search, arxiv_search, teaching, context_note, skill,"
-                    " career_planning, image, video, mcp_call, route)"
+                    " career_planning, image, video, mcp_call, route, module_id)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         assistant_record.message_id,
                         assistant_record.conversation_id,
@@ -1417,6 +1430,7 @@ class ConversationRepository:
                         _json_dumps(assistant_record.route)
                         if assistant_record.route
                         else None,
+                        assistant_record.module_id,
                     ),
                 )
                 self._persist_message_route(assistant_record)
@@ -1461,8 +1475,10 @@ class ConversationRepository:
             " assistant_message_id, attempt_number, status, stage,"
             " config_json, lease_owner, lease_expires_at, attempt_count,"
             " stop_requested, error_code, error_message, duration_ms,"
-            " created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " created_at, updated_at, graph_version, current_node,"
+            " wait_reason, model_lock_id, idempotency_key)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " ?, ?, ?, ?, ?)",
             (
                 record.run_id,
                 record.account_id,
@@ -1482,6 +1498,11 @@ class ConversationRepository:
                 record.duration_ms,
                 _iso(record.created_at),
                 _iso(record.updated_at),
+                record.graph_version,
+                record.current_node,
+                record.wait_reason,
+                record.model_lock_id,
+                record.idempotency_key,
             ),
         )
 
@@ -1560,7 +1581,8 @@ class ConversationRepository:
             " assistant_message_id, attempt_number, status, stage,"
             " config_json, lease_owner, lease_expires_at, attempt_count,"
             " stop_requested, error_code, error_message, duration_ms,"
-            " created_at, updated_at"
+            " created_at, updated_at, graph_version, current_node,"
+            " wait_reason, model_lock_id, idempotency_key"
             " FROM generation_runs WHERE run_id = ? AND account_id = ?",
             (run_id, account_id),
         ).fetchone()
@@ -1577,7 +1599,8 @@ class ConversationRepository:
             " assistant_message_id, attempt_number, status, stage,"
             " config_json, lease_owner, lease_expires_at, attempt_count,"
             " stop_requested, error_code, error_message, duration_ms,"
-            " created_at, updated_at"
+            " created_at, updated_at, graph_version, current_node,"
+            " wait_reason, model_lock_id, idempotency_key"
             " FROM generation_runs WHERE assistant_message_id = ?"
             " AND account_id = ? ORDER BY created_at DESC, run_id LIMIT 1",
             (message_id, account_id),
@@ -1595,7 +1618,8 @@ class ConversationRepository:
             " assistant_message_id, attempt_number, status, stage,"
             " config_json, lease_owner, lease_expires_at, attempt_count,"
             " stop_requested, error_code, error_message, duration_ms,"
-            " created_at, updated_at"
+            " created_at, updated_at, graph_version, current_node,"
+            " wait_reason, model_lock_id, idempotency_key"
             " FROM generation_runs WHERE conversation_id = ? AND account_id = ?"
             " AND status IN ('queued', 'running')"
             " ORDER BY created_at, run_id",
@@ -1699,6 +1723,53 @@ class ConversationRepository:
                 (stage, _iso(datetime.now(UTC)), run_id, account_id),
             )
             return cursor.rowcount
+
+    def update_generation_progress(
+        self,
+        account_id: str,
+        run_id: str,
+        *,
+        current_node: str | None = None,
+        wait_reason: str | None = None,
+        model_lock_id: str | None = None,
+    ) -> int:
+        """更新运行图编排状态（V2 Issue 02：当前节点/等待原因/模型锁）。
+
+        日常父图每个节点进入时写 ``current_node``，verify_output 通过后
+        由 persist_result 节点补写 ``model_lock_id``；仅 running 状态生效，
+        终态运行不再改写。``wait_reason`` 由澄清/逐题等待切片写入。
+        """
+        assignments = ["updated_at = ?"]
+        params: list[Any] = [_iso(datetime.now(UTC))]
+        if current_node is not None:
+            assignments.append("current_node = ?")
+            params.append(current_node)
+        if wait_reason is not None:
+            assignments.append("wait_reason = ?")
+            params.append(wait_reason)
+        if model_lock_id is not None:
+            assignments.append("model_lock_id = ?")
+            params.append(model_lock_id)
+        params.extend([run_id, account_id])
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET " + ", ".join(assignments)
+                + " WHERE run_id = ? AND account_id = ? AND status = 'running'",
+                params,
+            )
+            return cursor.rowcount
+
+    def get_run_by_idempotency_key(
+        self, account_id: str, conversation_id: str, idempotency_key: str
+    ) -> GenerationRunRecord | None:
+        """按幂等键查找本会话既有运行（同一请求重试复用，账户隔离）。"""
+        row = self._db.scoped(account_id).execute(
+            "SELECT * FROM generation_runs"
+            " WHERE account_id = ? AND conversation_id = ? AND idempotency_key = ?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (account_id, conversation_id, idempotency_key),
+        ).fetchone()
+        return self._run_from_row(row) if row is not None else None
 
     def update_generation_config(
         self, account_id: str, run_id: str, config: dict[str, Any]
@@ -1880,7 +1951,8 @@ class ConversationRepository:
                 " assistant_message_id, attempt_number, status, stage,"
                 " config_json, lease_owner, lease_expires_at, attempt_count,"
                 " stop_requested, error_code, error_message, duration_ms,"
-                " created_at, updated_at FROM generation_runs"
+                " created_at, updated_at, graph_version, current_node,"
+                " wait_reason, model_lock_id, idempotency_key FROM generation_runs"
                 " WHERE status = 'running' AND lease_expires_at IS NOT NULL"
                 " AND lease_expires_at < ? AND attempt_count >= ?",
                 (_iso(now), max_attempts),
@@ -1945,6 +2017,23 @@ class ConversationRepository:
             ),
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
+            graph_version=(
+                str(row["graph_version"]) if row["graph_version"] is not None else None
+            ),
+            current_node=(
+                str(row["current_node"]) if row["current_node"] is not None else None
+            ),
+            wait_reason=(
+                str(row["wait_reason"]) if row["wait_reason"] is not None else None
+            ),
+            model_lock_id=(
+                str(row["model_lock_id"]) if row["model_lock_id"] is not None else None
+            ),
+            idempotency_key=(
+                str(row["idempotency_key"])
+                if row["idempotency_key"] is not None
+                else None
+            ),
         )
 
     # -- helpers -----------------------------------------------------------
@@ -1984,6 +2073,9 @@ class ConversationRepository:
             video=_json_loads_any(row["video"]),
             mcp_call=_json_loads_any(row["mcp_call"]),
             route=_json_loads_any(row["route"]),
+            module_id=(
+                str(row["module_id"]) if row["module_id"] is not None else None
+            ),
         )
 
 

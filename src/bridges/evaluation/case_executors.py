@@ -270,7 +270,7 @@ def _chat_outcome(
 
     for turn_index, turn in enumerate(case.turns):
         run_context = env.run_context(case, seed, execution_index, turn_index)
-        _, assistant = env.chat.start_generation(
+        _, assistant, _ = env.chat.start_generation(
             env.account_id, conversation.conversation_id, turn.content
         )
         list(
@@ -438,7 +438,7 @@ def _humanization_outcome(
         skill_input = HumanizerSkillInput(
             skill_id="bridges-humanizer", contract=contract
         )
-        _, assistant = env.chat.start_generation(
+        _, assistant, _ = env.chat.start_generation(
             env.account_id,
             conversation.conversation_id,
             content,
@@ -457,7 +457,7 @@ def _humanization_outcome(
         )
     else:
         # 消融（移除 humanizer）：按普通消息生成，模型返回脚本默认回答。
-        _, assistant = env.chat.start_generation(
+        _, assistant, _ = env.chat.start_generation(
             env.account_id, conversation.conversation_id, content
         )
         list(
@@ -552,7 +552,7 @@ def _multimodal_outcome(
         }
     elif case.case_id == "mm-tts":
         run_context = env.run_context(case, seed, execution_index, 0)
-        _, assistant = env.chat.start_generation(
+        _, assistant, _ = env.chat.start_generation(
             env.account_id, conversation_id, "请朗读你刚才的回答"
         )
         list(
@@ -622,7 +622,7 @@ def _image_or_video_outcome(
         if kind == "image"
         else {"prompt": prompt}
     )
-    _, assistant = env.chat.start_generation(
+    _, assistant, _ = env.chat.start_generation(
         env.account_id, conversation_id, prompt, image=payload if kind == "image" else None,
             video=payload if kind == "video" else None
     )

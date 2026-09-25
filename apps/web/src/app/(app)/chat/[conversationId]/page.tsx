@@ -36,6 +36,7 @@ import type {
   ChatStreamCareerData,
   ChatStreamHumanizerData,
   ChatStreamImageData,
+  ChatStreamNodeData,
   ChatStreamStageData,
   ChatStreamVideoData,
 } from "@/lib/api";
@@ -63,6 +64,8 @@ interface ActiveRun {
   teaching: TeachingTurnProjection | null;
   /** Issue 06：流式中的统一阶段状态（检索/生成/检查/收尾，脱敏）。 */
   stage: ChatStreamStageData | null;
+  /** V2 Issue 02：流式中的父图节点进度（started 时显示节点标签）。 */
+  node: ChatStreamNodeData | null;
   /** Issue 28：流式中的文章人味化过程卡状态（五态中文）。 */
   humanizerProcess: ChatStreamHumanizerData | null;
   /** Issue 29：流式中的生涯规划过程卡状态（五态中文）。 */
@@ -109,6 +112,7 @@ function activeRunFromAssistant(
     teaching: assistant.teaching ?? null,
     // Issue 06：创建即入队——首个真实阶段事件到达前显示"排队中"
     stage: { kind: "stage", message_id: assistant.message_id, stage: "queued", status: "active" },
+    node: null,
     humanizerProcess: null,
     careerProcess: null,
     imageProcess: null,
@@ -138,6 +142,9 @@ export default function ChatConversationPage() {
   const sendingRef = useRef(false);
   const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
   const firstTurnRetryRef = useRef(false);
+  // V2 Issue 02：发送/重试幂等键（同文本/同消息的失败重发复用，成功后清除）。
+  const sendIdempotencyRef = useRef<{ text: string; key: string } | null>(null);
+  const retryIdempotencyRef = useRef<{ messageId: string; key: string } | null>(null);
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
     // 不闪 loading，避免遮蔽 error 态的思考摘要。
@@ -245,6 +252,7 @@ export default function ChatConversationPage() {
               stage: "queued",
               status: "active",
             },
+            node: null,
             humanizerProcess: null,
             careerProcess: null,
             imageProcess: null,
@@ -256,15 +264,40 @@ export default function ChatConversationPage() {
           }
           setActiveRun(run);
           setAnnouncement("正在生成回答");
+        } else if (isChatStreamEventOf(event, "node")) {
+          // V2 Issue 02：父图节点进度（只映射真实开始/完成的节点）。
+          // started 显示节点中文标签；completed 清空节点与阶段——显示权
+          // 交给下一节点 started 或 invoke 内更细的 stage 事件。
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            const node = event.data.status === "started" ? event.data : null;
+            activeRunRef.current = {
+              ...activeRunRef.current,
+              node,
+              ...(node === null ? { stage: null } : {}),
+            };
+            setActiveRun((run) =>
+              run
+                ? {
+                    ...run,
+                    node,
+                    ...(node === null ? { stage: null } : {}),
+                  }
+                : run
+            );
+          }
         } else if (isChatStreamEventOf(event, "stage")) {
           // Issue 06：统一阶段事件（脱敏：仅阶段枚举/状态/耗时）；阶段行
           // 在流式期间即时呈现，终态由 done 后权威历史的消息投影接管。
+          // 阶段事件比节点更细：到达后接管进度显示（清空节点行）。
           if (activeRunRef.current?.messageId === event.data.message_id) {
             activeRunRef.current = {
               ...activeRunRef.current,
               stage: event.data,
+              node: null,
             };
-            setActiveRun((run) => (run ? { ...run, stage: event.data } : run));
+            setActiveRun((run) =>
+              run ? { ...run, stage: event.data, node: null } : run
+            );
           }
         } else if (
           isChatStreamEventOf(event, "delta") &&
@@ -338,6 +371,7 @@ export default function ChatConversationPage() {
               arxivSearch: event.data.arxiv_search ?? current?.arxivSearch ?? null,
               teaching: event.data.teaching ?? current?.teaching ?? null,
               stage: current?.stage ?? null,
+              node: current?.node ?? null,
               humanizerProcess: current?.humanizerProcess ?? null,
               careerProcess: current?.careerProcess ?? null,
               imageProcess: current?.imageProcess ?? null,
@@ -418,6 +452,12 @@ export default function ChatConversationPage() {
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
       abortRef.current = controller;
+      // V2 Issue 02：发送幂等键——同文本的失败重发复用同一键（服务端复用
+      // 同一运行，不重复写消息）；文本变化则换新键（绝不重放旧请求）。
+      const keyEntry = sendIdempotencyRef.current;
+      const sendIdempotencyKey =
+        keyEntry && keyEntry.text === text ? keyEntry.key : crypto.randomUUID();
+      sendIdempotencyRef.current = { text, key: sendIdempotencyKey };
       const isFirstTurn =
         firstTurnRetryRef.current ||
         (conversation !== null && (conversation.messages?.length ?? 0) === 0);
@@ -442,11 +482,13 @@ export default function ChatConversationPage() {
           cursor = firstTurn.cursor;
           firstTurnRetryRef.current = true;
         } else {
-          const run = await createChatRun(conversationId, text);
+          const run = await createChatRun(conversationId, text, sendIdempotencyKey);
           userMessage = run.user_message;
           assistantMessage = run.assistant_message;
           cursor = run.cursor;
         }
+        // 创建成功：幂等键使命完成——后续发送（同文本也一样）必须换新键
+        sendIdempotencyRef.current = null;
         const runState = activeRunFromAssistant(assistantMessage, "send");
         activeRunRef.current = runState;
         setPendingUser({ id: userMessage.message_id, text });
@@ -520,9 +562,18 @@ export default function ChatConversationPage() {
       setAnnouncement("正在重试生成");
       const controller = new AbortController();
       abortRef.current = controller;
+      // V2 Issue 02：重试幂等键——同一消息的重试失败后再点重试复用同一键
+      // （服务端复用同一运行）；换消息重试自动换新键。
+      const keyEntry = retryIdempotencyRef.current;
+      const retryIdempotencyKey =
+        keyEntry && keyEntry.messageId === messageId
+          ? keyEntry.key
+          : crypto.randomUUID();
+      retryIdempotencyRef.current = { messageId, key: retryIdempotencyKey };
       try {
         // Issue 02：重试创建新尝试与 queued 运行，随后订阅持久化事件
-        const run = await retryChatRun(conversationId, messageId);
+        const run = await retryChatRun(conversationId, messageId, retryIdempotencyKey);
+        retryIdempotencyRef.current = null;
         const runState = activeRunFromAssistant(run.assistant_message, "retry");
         activeRunRef.current = runState;
         setActiveRun(runState);
@@ -607,6 +658,7 @@ export default function ChatConversationPage() {
       arxivSearch: activeRun.arxivSearch,
       teaching: activeRun.teaching,
       stage: activeRun.stage,
+      node: activeRun.node,
       humanizerProcess: activeRun.humanizerProcess,
       careerProcess: activeRun.careerProcess,
       image: activeRun.imageProcess?.task ?? undefined,

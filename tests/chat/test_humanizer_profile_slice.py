@@ -360,7 +360,7 @@ def test_humanizer_use_profile_false_skips_compile_and_disclosure(
     # 服务层直驱（API 载荷不暴露 use_profile，开关经服务层传递）：
     # 关闭画像后本轮不编译、不注入、不披露任何画像内容。
     chat = sqlite_app.state.chat_service
-    _, assistant = chat.start_generation(
+    _, assistant, _ = chat.start_generation(
         account["id"],
         conversation_id,
         "文章人味化：改写光合作用科普段落",

@@ -123,7 +123,7 @@ def test_explicit_remember_creates_assertion_and_notification(
     chat_service: ChatService,
 ) -> None:
     conversation = chat_service.create_conversation("alice")
-    user_message, assistant = chat_service.start_generation(
+    user_message, assistant, _ = chat_service.start_generation(
         "alice", conversation.conversation_id, "记住我的目标是今年通过雅思考试"
     )
     _run_generation(
@@ -156,7 +156,7 @@ def test_permissioned_auto_write_notification_recallable(
         ),
     )
     conversation = chat_service.create_conversation("alice")
-    user_message, assistant = chat_service.start_generation(
+    user_message, assistant, _ = chat_service.start_generation(
         "alice", conversation.conversation_id, "我喜欢蓝色"
     )
     _run_generation(
@@ -174,7 +174,7 @@ def test_transient_emotion_does_not_block_chat(
     chat_service: ChatService,
 ) -> None:
     conversation = chat_service.create_conversation("alice")
-    user_message, assistant = chat_service.start_generation(
+    user_message, assistant, _ = chat_service.start_generation(
         "alice", conversation.conversation_id, "我今天有点焦虑"
     )
     _run_generation(
@@ -207,7 +207,7 @@ def test_profile_failure_never_blocks_chat(tmp_path: Path) -> None:
         profile_service=_BrokenProfileService(repository=InMemoryProfileRepository()),
     )
     conversation = broken.create_conversation("alice")
-    _, assistant = broken.start_generation(
+    _, assistant, _ = broken.start_generation(
         "alice", conversation.conversation_id, "记住我的目标是过雅思"
     )
     _run_generation(
@@ -221,7 +221,7 @@ def test_profile_failure_never_blocks_chat(tmp_path: Path) -> None:
 
 def test_retry_round_emits_same_notifications(chat_service: ChatService) -> None:
     conversation = chat_service.create_conversation("alice")
-    user_message, assistant = chat_service.start_generation(
+    user_message, assistant, _ = chat_service.start_generation(
         "alice", conversation.conversation_id, "记住我的目标是今年通过雅思考试"
     )
     first = chat_service.profile_notifications_for_message(

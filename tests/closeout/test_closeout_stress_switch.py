@@ -157,7 +157,7 @@ def test_50_random_switch_refresh_during_generation_no_stream_interrupted(
                 client, conversation_id, message_id
             )
             kinds = [name for name, _ in events]
-            assert kinds[-1] == "done", f"轮次 {round_no} 未收敛 done: {kinds}"
+            assert [k for k in kinds if k != "node"][-1] == "done", f"轮次 {round_no} 未收敛 done: {kinds}"
             errors = [
                 payload["error"]["code"]
                 for name, payload in events

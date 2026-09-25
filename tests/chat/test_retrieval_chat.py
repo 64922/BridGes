@@ -109,7 +109,7 @@ def _send(chat_env: dict[str, Any], conversation_id: str, content: str, *,
           use_knowledge_base: bool = True,
           attachment_ids: list[str] | None = None) -> tuple[Any, Any, list[Any]]:
     """发送一条消息并消费全部流事件，返回 (用户消息, 助手消息, 事件列表)。"""
-    user, assistant = chat_env["chat"].start_generation(
+    user, assistant, _ = chat_env["chat"].start_generation(
         chat_env["account_a"], conversation_id, content,
         attachment_ids=attachment_ids or [],
         use_knowledge_base=use_knowledge_base,
@@ -178,7 +178,7 @@ def test_retry_reuses_retrieval_round_and_citations(chat_env: dict[str, Any]) ->
     first_round_id = first.retrieval.round_id
 
     # 重试：新助手尝试 + 新检索轮次，历史尝试与轮次原样保留
-    _, retried = chat_env["chat"].retry_generation(
+    _, retried, _ = chat_env["chat"].retry_generation(
         account, conversation_id, first.message_id
     )
     assert retried.message_id != first.message_id
