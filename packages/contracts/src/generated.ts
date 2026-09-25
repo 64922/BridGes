@@ -8205,7 +8205,8 @@ export interface components {
          * @description 聊天附件草稿的安全公开投影（V2 Issue 05）。
          *
          *     草稿是发送前隔离的临时域：只归属账户，不归属会话；发送成功后随
-         *     消息原子绑定会话，或被用户移除、被过期清理回收。
+         *     消息原子绑定会话，或被用户移除、被过期清理回收。V2 Issue 06 起
+         *     文件草稿在发送前就开始解析，解析状态与失败原因随投影呈现。
          */
         ChatAttachmentDraftProjection: {
             /**
@@ -8233,6 +8234,17 @@ export interface components {
              * @description 内容 SHA-256 摘要。
              */
             content_hash: string;
+            /**
+             * Ingestion Status
+             * @description 文件解析状态：queued/processing/ready/empty/error/recovery/none（none 表示照片等无需解析的类型，或尚无解析记录）。
+             * @default none
+             */
+            ingestion_status: string;
+            /**
+             * Ingestion Error
+             * @description 解析失败的中文原因（无失败时为 None）。
+             */
+            ingestion_error?: string | null;
             /**
              * Created At
              * Format: date-time

@@ -76,6 +76,9 @@ SUPPORTED_MEDIA_TYPES = {
     "image/gif",
     "image/webp",
 }
+#: 允许主动入队的摄取来源：全局知识库与聊天附件是两个数据域，聊天附件
+#: 记录为 ``chat_attachment`` 后不会出现在知识库材料列表中（V2 Issue 06）。
+INGESTION_SOURCES = frozenset({"knowledge_base", "chat_attachment"})
 #: document_records.source 的中文呈现（知识库材料投影使用）。
 _SOURCE_DISPLAY = {
     "chat_attachment": "聊天附件",
@@ -246,17 +249,26 @@ class IngestionService:
         object_id: str,
         conversation_id: str | None = None,
         project_id: str | None = None,
+        *,
+        source: str = "knowledge_base",
     ) -> None:
-        """为全局知识库对象创建摄取记录（幂等；不支持的媒体类型不入队）。
+        """为账户内对象创建摄取记录（幂等；不支持的媒体类型不入队）。
 
-        两个历史参数保留用于读模型迁移，但不能再写入聊天附件或项目
-        文件来源；旧 API 应在进入本服务前返回 410。
+        ``source`` 决定记录进入哪个数据域：``knowledge_base``（侧栏主动
+        上传，出现在知识库材料列表）或 ``chat_attachment``（V2 Issue 06
+        聊天附件，只随所属会话可引用，不进知识库列表）。两个历史参数保留
+        用于读模型迁移，但不能再写入聊天附件或项目文件来源；旧 API 应在
+        进入本服务前返回 410。
         """
         if conversation_id is not None or project_id is not None:
             raise IngestionError(
                 "legacy_file_source_retired",
                 "聊天附件和项目文件已退役，请改用全局知识库。",
                 410,
+            )
+        if source not in INGESTION_SOURCES:
+            raise IngestionError(
+                "invalid_ingestion_source", "摄取来源无效，无法解析该文件。"
             )
         object_row = self._database.scoped(account_id).execute(
             "SELECT content_hash, media_type, original_filename FROM objects"
@@ -270,7 +282,6 @@ class IngestionService:
         if str(object_row["media_type"]) not in SUPPORTED_MEDIA_TYPES:
             return
         now = _now()
-        source = "knowledge_base"
         try:
             with self._database.transaction():
                 self._database.scoped(account_id).execute(

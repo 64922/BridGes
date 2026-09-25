@@ -3,7 +3,9 @@
 bridges.db 是单机权威数据库（ADR-0013），本文件回答一个问题：**「这张表谁说了算？」**
 ——schema 变更先找属主模块，跨域读取经属主 repository 的小接口，不新增直连。
 
-> 退役边界：`learning_projects`、聊天附件、用户扩展/MCP、提醒和旧画像治理表是 ADR-0026 规定的迁移兼容面。它们的属主只负责历史读取、停用、导出和清理；不得为退役能力新增写路径或用户入口。新文件与本地检索只归 `knowledge_base`/摄取与检索域所有。
+> 退役边界：`learning_projects`、用户扩展/MCP、提醒和旧画像治理表是 ADR-0026 规定的迁移兼容面。它们的属主只负责历史读取、停用、导出和清理；不得为退役能力新增写路径或用户入口。新文件与本地检索默认只归 `knowledge_base`/摄取与检索域所有。
+>
+> 例外（ADR-0030 取代 ADR-0026 的对应条款）：V2 的聊天附件是独立于知识库的会话级能力——发送前为账户级草稿、发送后随消息绑定会话，写路径只在 `chat/` 的草稿与附件仓库；知识库仍是唯一按账户归集的材料来源，聊天附件不进入其材料列表。
 
 ## 纪律
 
@@ -20,7 +22,8 @@ bridges.db 是单机权威数据库（ADR-0013），本文件回答一个问题�
 | 表 | 属主 module | 属主仓库 / 说明 |
 |---|---|---|
 | `conversations` / `messages` / `mode_events` / `answer_feedback` / `model_run_locks` | `chat/` | `ConversationRepository`（`src/bridges/chat/repository.py`） |
-| `chat_attachments` / `chat_attachment_cancellations` | `chat/`（退役兼容） | `AttachmentRepository`（仅历史读取、原子清理与迁移；不接受新聊天附件） |
+| `chat_attachments` / `chat_attachment_cancellations` | `chat/`（历史兼容 + V2 会话附件） | `AttachmentRepository`（V2 起接受草稿绑定后写入；历史行只读、原子清理与迁移） |
+| `chat_attachment_drafts` | `chat/`（V2 会话附件） | `AttachmentDraftRepository`（发送前账户级草稿；上传、幂等重放、过期清理与发送时绑定） |
 | `retrieval_rounds` / `message_citations` | `retrieval/` | `RetrievalRepository` |
 | `index_active` / `index_versions` / `index_vectors` / `document_chunks`（含 `*_backup`） | `retrieval/`（读）＋ `ingestion/`（写） | 索引版本由摄取状态机写入，检索域经 `RetrievalRepository` 读取 |
 | `document_records` | `ingestion/`（写）＋ `retrieval/`（读） | 写路径在摄取状态机；检索域经 `RetrievalRepository` 的只读方法（就绪/重建/引用校验） |
