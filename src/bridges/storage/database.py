@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 49
+SCHEMA_VERSION = 50
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2407,6 +2407,35 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX IF NOT EXISTS idx_graph_checkpoint_writes_run
             ON graph_checkpoint_writes(account_id, thread_id, checkpoint_ns)
+        """,
+    ],
+    # V2 Issue 05：聊天照片附件（账户级草稿 + 绑定页序）。
+    # - chat_attachment_drafts：发送前隔离的临时草稿域。上传草稿只校验
+    #   类型、体积与账户（不归属会话——V2 新会话必须由首条消息原子创建，
+    #   新聊天页还没有会话 ID）；发送成功后在消息同一事务内原子绑定会话
+    #   与消息，失败或过期由草稿清理兜底。跨账户以 account_id 隔离。
+    # - chat_attachments.ordinal：消息到附件的页序（1 起）；识别顺序以
+    #   发送时页序为准，历史行（V1）为 NULL，按创建时间稳定排序。
+    50: [
+        """
+        CREATE TABLE IF NOT EXISTS chat_attachment_drafts (
+            object_id TEXT PRIMARY KEY REFERENCES objects(object_id),
+            account_id TEXT NOT NULL,
+            upload_id TEXT NOT NULL UNIQUE,
+            original_filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            content_length INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_chat_attachment_drafts_account
+            ON chat_attachment_drafts(account_id, created_at, object_id)
+        """,
+        """
+        ALTER TABLE chat_attachments ADD COLUMN ordinal INTEGER
         """,
     ],
 }

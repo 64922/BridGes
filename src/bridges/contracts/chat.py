@@ -126,6 +126,11 @@ class ChatAttachmentProjection(BaseModel):
     conversation_id: str = Field(description="所属对话标识。")
     message_id: str | None = Field(default=None, description="绑定的用户消息标识。")
     status: str = Field(description="uploaded 或 bound。")
+    ordinal: int | None = Field(
+        default=None,
+        ge=1,
+        description="消息到附件的页序（1 起，V2 Issue 05）；历史行为 None。",
+    )
     ingestion_status: str = Field(
         default="none",
         description=(
@@ -136,6 +141,22 @@ class ChatAttachmentProjection(BaseModel):
     ingestion_error: str | None = Field(
         default=None, description="摄取失败的中文原因（无失败时为 None）。"
     )
+    created_at: datetime = Field(description="上传时间。")
+    updated_at: datetime = Field(description="最近更新时间。")
+
+
+class ChatAttachmentDraftProjection(BaseModel):
+    """聊天附件草稿的安全公开投影（V2 Issue 05）。
+
+    草稿是发送前隔离的临时域：只归属账户，不归属会话；发送成功后随
+    消息原子绑定会话，或被用户移除、被过期清理回收。
+    """
+
+    object_id: str = Field(description="稳定对象标识。")
+    original_filename: str = Field(description="用户选择时的显示文件名。")
+    media_type: str = Field(description="服务端内容嗅探得到的安全媒体类型。")
+    content_length: int = Field(description="文件大小（字节）。")
+    content_hash: str = Field(description="内容 SHA-256 摘要。")
     created_at: datetime = Field(description="上传时间。")
     updated_at: datetime = Field(description="最近更新时间。")
 
@@ -486,7 +507,22 @@ class ChatMessageCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(min_length=1, max_length=4000, description="用户消息正文。")
+    content: str = Field(
+        default="",
+        max_length=4000,
+        description=(
+            "用户消息正文；纯附件消息可为空（V2 Issue 05），"
+            "此时必须至少携带一个附件 ID。"
+        ),
+    )
+    attachment_ids: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description=(
+            "按页序排列的会话附件草稿 ID（V2 Issue 05）；发送成功后随"
+            "消息原子绑定会话，失败保留草稿供重试。"
+        ),
+    )
     use_knowledge_base: bool = Field(
         default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
     )
@@ -540,7 +576,19 @@ class ChatFirstTurnRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(min_length=1, max_length=4000, description="首条用户消息正文。")
+    content: str = Field(
+        default="",
+        max_length=4000,
+        description=(
+            "首条用户消息正文；纯附件消息可为空（V2 Issue 05），"
+            "此时必须至少携带一个附件 ID。"
+        ),
+    )
+    attachment_ids: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description="按页序排列的附件草稿 ID（V2 Issue 05）；随首轮消息原子绑定新会话。",
+    )
     idempotency_key: str = Field(
         min_length=8,
         max_length=128,

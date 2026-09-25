@@ -1108,33 +1108,44 @@ class ConversationRepository:
             user_record.account_id, run_record, events
         )
         if attachment_ids:
+            # V2 Issue 05：附件来自账户级草稿域——在消息同一事务内按请求
+            # 页序迁移为绑定行（写入 conversation_id/message_id/ordinal），
+            # 任何草稿缺失（跨账户/已绑定/已移除）即整体回滚。
             placeholders = ",".join("?" for _ in attachment_ids)
             rows = self._db.scoped(user_record.account_id).execute(
-                "SELECT object_id FROM chat_attachments"
-                " WHERE account_id = ? AND conversation_id = ?"
-                " AND message_id IS NULL AND status = 'uploaded'"
+                "SELECT object_id, upload_id, media_type, created_at"
+                " FROM chat_attachment_drafts"
+                " WHERE account_id = ?"
                 f" AND object_id IN ({placeholders})",
-                (
-                    user_record.account_id,
-                    user_record.conversation_id,
-                    *attachment_ids,
-                ),
+                (user_record.account_id, *attachment_ids),
             ).fetchall()
             if {str(row["object_id"]) for row in rows} != set(attachment_ids):
                 raise StorageError("附件不存在或没有访问权限。")
+            drafts = {str(row["object_id"]): row for row in rows}
             now = _iso(user_record.updated_at)
-            for object_id in attachment_ids:
+            for ordinal, object_id in enumerate(attachment_ids, start=1):
+                draft = drafts[object_id]
                 self._db.scoped(user_record.account_id).execute(
-                    "UPDATE chat_attachments SET message_id = ?, status = 'bound',"
-                    " updated_at = ? WHERE object_id = ? AND account_id = ?"
-                    " AND conversation_id = ? AND message_id IS NULL",
+                    "INSERT INTO chat_attachments"
+                    " (object_id, account_id, conversation_id, message_id,"
+                    "  upload_id, media_type, status, ordinal, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, 'bound', ?, ?, ?)",
                     (
-                        user_record.message_id,
-                        now,
                         object_id,
                         user_record.account_id,
                         user_record.conversation_id,
+                        user_record.message_id,
+                        str(draft["upload_id"]),
+                        str(draft["media_type"]),
+                        ordinal,
+                        str(draft["created_at"]),
+                        now,
                     ),
+                )
+                self._db.scoped(user_record.account_id).execute(
+                    "DELETE FROM chat_attachment_drafts"
+                    " WHERE account_id = ? AND object_id = ?",
+                    (user_record.account_id, object_id),
                 )
 
     def insert_generation_turn(
