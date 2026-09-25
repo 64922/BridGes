@@ -1230,16 +1230,6 @@ def create_app(
         app.state.skill_registry = skill_registry
         object_repository = getattr(app.state, "object_repository", None)
         if object_repository is not None:
-            # Issue 45：附件服务经 chat 域仓库访问数据库（chat_attachments
-            # / chat_attachment_cancellations 属主 AttachmentRepository，
-            # conversations 属主 ConversationRepository，objects 属主
-            # BridgesObjectRepository）。
-            app.state.chat_attachment_service = ChatAttachmentService(
-                bridges_database,
-                object_repository,
-                attachment_repository=AttachmentRepository(bridges_database),
-                conversation_repository=ConversationRepository(bridges_database),
-            )
             # Issue 17: 文档摄取服务（API 进程只做入队/重试/投影，处理在后台
             # 执行器进程）。GQ-05：查询向量与 worker 摄取/重建共用同一全局
             # Embedding 端口；可用性由构造与调用结果决定，不再依赖账户探测。
@@ -1265,6 +1255,19 @@ def create_app(
                 object_repository=object_repository,
                 embedding=embedding_port,
                 ocr=ocr_port,
+            )
+            # Issue 45：附件服务经 chat 域仓库访问数据库（chat_attachments
+            # / chat_attachment_cancellations 属主 AttachmentRepository，
+            # conversations 属主 ConversationRepository，objects 属主
+            # BridgesObjectRepository）。V2 Issue 06：文件草稿上传即入队
+            # 解析（解析/分块/索引由后台执行器完成），因此注入同一摄取
+            # 服务实例；照片草稿不入队，仍以多模态图片直读。
+            app.state.chat_attachment_service = ChatAttachmentService(
+                bridges_database,
+                object_repository,
+                attachment_repository=AttachmentRepository(bridges_database),
+                conversation_repository=ConversationRepository(bridges_database),
+                ingestion_service=app.state.ingestion_service,
             )
             app.state.learning_project_migration_service = ProjectMigrationService(
                 database=bridges_database,

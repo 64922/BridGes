@@ -39,6 +39,7 @@ import {
 } from "@/lib/chat-modules";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
 import { buildThreadMessages } from "@/lib/chat-thread";
+import { isIngestionSettled, isPhotoAttachment } from "@/lib/chat-attachments";
 import type {
   ChatStreamCareerData,
   ChatStreamHumanizerData,
@@ -213,6 +214,27 @@ export default function ChatConversationPage() {
 
   // 切换对话/离开页面/切换账户时安全停止朗读播放会话。
   useEffect(() => () => readAloudSession.stop(), [conversationId]);
+
+  // V2 Issue 06：已发送文件附件的解析在后台继续，卡片状态要刷新才会从
+  // 「排队解析中」走到「已解析，可引用／解析失败／无法识别正文」。只要还有
+  // 非终态的文件附件就轮流刷新对话，全部终态即停（有界兜底 2 分钟）；照片
+  // 不参与解析，纯文字消息不触发任何轮询。
+  const pendingFileParse = (conversation?.messages ?? []).some((message) =>
+    (message.attachments ?? []).some(
+      (attachment) =>
+        !isPhotoAttachment(attachment.media_type) &&
+        !isIngestionSettled(attachment.ingestion_status)
+    )
+  );
+  useEffect(() => {
+    if (!pendingFileParse) return;
+    const poll = window.setInterval(() => void load(), 3000);
+    const stop = window.setTimeout(() => window.clearInterval(poll), 120_000);
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(stop);
+    };
+  }, [pendingFileParse, load]);
 
   // Issue 02：组件卸载（切换账户导致 AppShell 重挂载/离开页面）只中断
   // 本地订阅（移除订阅者），绝不调用停止接口——生成由后台执行器持有，

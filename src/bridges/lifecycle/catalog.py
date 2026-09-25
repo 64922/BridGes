@@ -78,6 +78,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_item_migrations",
     "messages",
     "conversations",
+    # 关联行有 lock_id 外键指向 model_run_locks，必须先删。
+    "model_run_lock_links",
     "model_run_locks",
     "learning_projects",
     "objects",

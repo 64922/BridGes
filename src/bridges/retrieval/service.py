@@ -75,6 +75,9 @@ _INDEX_UNAVAILABLE_NOTE = "本地索引不可用，暂无法检索本地材料�
 _VECTOR_UNAVAILABLE_NOTE = "向量检索暂不可用，本轮仅使用关键词检索。"
 #: 第一阶段最多允许进入片段检索的全局知识库文件数。
 KNOWLEDGE_BASE_CANDIDATE_LIMIT = 8
+#: 附件层一次纳入检索的最大附件数（V2 Issue 06：按绑定时间取最近若干份，
+#: 与一条消息的附件数上限同量级，避免长会话无限扩张检索作用域）。
+ATTACHMENT_SCOPE_LIMIT = 10
 
 
 class RetrievalError(Exception):
@@ -213,12 +216,6 @@ class LayeredRetrievalService:
         if decision is not None:
             # 新聊天回合的决策控制整个检索副作用；历史直接调用仍走下方兼容路径。
             # 重试不得用新的请求开关改写已持久化的决策。
-            if (
-                decision.action != RetrievalDecisionAction.RETRIEVE
-                and decision.reason != RetrievalDecisionReason.USER_DISABLED
-            ):
-                return None
-            use_knowledge_base = decision.action == RetrievalDecisionAction.RETRIEVE
             if user_message_id is not None:
                 existing = self._repository.round_row_for_user_message(
                     account_id, user_message_id
@@ -244,9 +241,21 @@ class LayeredRetrievalService:
         if conversation is None:
             return None
         project_id = conversation.project_id
-        attachment_ids = self._attachment_ids(
-            account_id, conversation_id, user_message_id
-        )
+        # V2 Issue 06：会话附件是本轮显式交给助手的材料，作用域独立于全局
+        # 知识库决策——用户关掉知识库或本轮请求形态不触发知识库检索时，
+        # 附件内容仍须可被引用（决定只控制知识库层）。
+        attachment_ids = self._attachment_ids(account_id, conversation_id)
+        if decision is not None:
+            if (
+                decision.action != RetrievalDecisionAction.RETRIEVE
+                and decision.reason != RetrievalDecisionReason.USER_DISABLED
+                and not attachment_ids
+            ):
+                return None
+            use_knowledge_base = decision.action == RetrievalDecisionAction.RETRIEVE
+            # 附件存在时不被「跳过」决策短路：即使决策不检索知识库，本轮也要
+            # 为附件跑检索。是否落库仍取决于有没有已就绪材料——无材料且决策
+            # 为跳过时不落库，本轮的文件可读性由聊天上下文的如实说明块承担。
         layers = self._resolve_layers(
             account_id,
             attachment_ids=attachment_ids,
@@ -502,13 +511,16 @@ class LayeredRetrievalService:
     # ------------------------------------------------------------------
 
     def _attachment_ids(
-        self, account_id: str, conversation_id: str, user_message_id: str | None
+        self, account_id: str, conversation_id: str
     ) -> list[str]:
-        """本轮明确附加的文件（绑定到所属用户消息，本轮授权）。"""
-        if user_message_id is None:
-            return []
-        return self._attachments.object_ids_for_message(
-            account_id, conversation_id, user_message_id
+        """本会话已绑定附件（V2 Issue 06：随会话可引用，不跨会话/账户）。
+
+        按绑定时间从新到旧取有界窗口：刚发送的附件必然在内，同一会话里
+        稍后追问同一份文件也仍在范围内。未绑定（已上传未发送）的附件不
+        属于任何消息，不进入检索。
+        """
+        return self._attachments.bound_object_ids_for_conversation(
+            account_id, conversation_id, limit=ATTACHMENT_SCOPE_LIMIT
         )
 
     def _resolve_layers(
@@ -544,9 +556,24 @@ class LayeredRetrievalService:
                 "stale": False,
             },
         }
-        # 聊天附件和学习项目文件只保留历史读模型，不能进入新检索轮次。
-        # Issue 12 明确不恢复附件上传或自动把历史附件加入知识库。
-        layers[RetrievalSourceLayer.ATTACHMENT]["note"] = "聊天附件来源已退役。"
+        # 聊天附件（V2 Issue 06）：解析成功的附件进入本轮检索；仍在解析、
+        # 解析失败或无可读正文的附件没有可检索材料，如实呈现为该层注记。
+        # 学习项目文件只保留历史读模型，不能进入新检索轮次（Issue 12）。
+        if attachment_ids:
+            layers[RetrievalSourceLayer.ATTACHMENT].update(
+                status=RetrievalLayerStatus.NO_MATERIAL,
+                note="附件仍在处理中或暂无可检索内容。",
+                ready_document_ids=self._ready_documents(
+                    account_id,
+                    source="chat_attachment",
+                    object_ids=attachment_ids,
+                ),
+                stale=self._has_stale_documents(
+                    account_id,
+                    source="chat_attachment",
+                    object_ids=attachment_ids,
+                ),
+            )
         layers[RetrievalSourceLayer.PROJECT]["note"] = "学习项目文件来源已退役。"
         if use_knowledge_base:
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
@@ -880,19 +907,12 @@ class LayeredRetrievalService:
             )
         layer = RetrievalSourceLayer(str(row["source_layer"]))
         if layer == RetrievalSourceLayer.ATTACHMENT:
-            # 附件绑定的是所属用户消息（引用本身是助手消息）：经轮次记录
-            # 取回本轮用户消息再校验绑定，杜绝"消息 ID 错位"导致的误判。
-            user_message_id = self._repository.round_user_message_id(
-                account_id, str(row["round_id"])
-            )
-            bound = (
-                self._attachments.bound_exists(
-                    account_id, object_id, conversation_id, user_message_id
-                )
-                if user_message_id is not None
-                else False
-            )
-            if not bound:
+            # V2 Issue 06：附件随会话可引用（不限于引用所在的那一轮），
+            # 授权范围以「仍绑定在本会话某条消息上」为准；解绑/换会话即
+            # 视为授权已变，绝不跨会话打开原文。
+            if not self._attachments.bound_in_conversation(
+                account_id, conversation_id, object_id
+            ):
                 return (
                     CitationAccessStatus.PERMISSION_CHANGED,
                     "附件已从消息中移除或授权已变化，无法打开原文。",

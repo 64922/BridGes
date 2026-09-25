@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,21 +20,35 @@ vi.mock("@/lib/api", () => ({
   chatAttachmentDraftContentUrl: (objectId: string) => `/api/chat/attachment-drafts/${objectId}/content`,
 }));
 
-function draftProjection(objectId: string, filename: string, mediaType = "image/png") {
+function draftProjection(
+  objectId: string,
+  filename: string,
+  mediaType = "image/png",
+  ingestionStatus = "none",
+  ingestionError: string | null = null
+) {
   return {
     object_id: objectId,
     original_filename: filename,
     media_type: mediaType,
     content_length: 1024,
     content_hash: "hash",
+    ingestion_status: ingestionStatus,
+    ingestion_error: ingestionError,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   };
 }
 
+const PDF_MEDIA_TYPE = "application/pdf";
+
 function pngFile(name = "截图.png", size = 100): File {
   const file = new File([new Uint8Array(size)], name, { type: "image/png" });
   return file;
+}
+
+function pdfFile(name = "讲义.pdf", size = 100): File {
+  return new File([new Uint8Array(size)], name, { type: "application/pdf" });
 }
 
 function renderComposer(onSend = vi.fn().mockResolvedValue(true)) {
@@ -161,9 +175,11 @@ describe("Composer 照片附件（Issue 05）", () => {
     pickFiles([pngFile("第一张.png")]);
     await waitForThumb("第一张.png");
 
-    pickFiles([new File([new Uint8Array(10)], "说明.pdf", { type: "application/pdf" })]);
+    pickFiles([new File([new Uint8Array(10)], "成绩单.csv", { type: "text/csv" })]);
 
     await waitFor(() => screen.getByText(/暂不支持该文件类型/));
+    // 中文原因说明当前支持的类型，用户知道该换什么。
+    expect(screen.getByText(/PDF、DOCX、TXT、Markdown/)).toBeTruthy();
     expect(screen.getAllByText("第一张.png").length).toBeGreaterThan(0);
     // 被拒绝的文件不会创建草稿。
     expect(uploadChatAttachmentDraft).toHaveBeenCalledTimes(1);
@@ -208,7 +224,7 @@ describe("Composer 照片附件（Issue 05）", () => {
     pickFiles([pngFile("要删的.png")]);
     await waitForThumb("要删的.png");
 
-    fireEvent.click(screen.getByRole("button", { name: "移除图片 要删的.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "移除附件 要删的.png" }));
 
     await waitFor(() => expect(screen.queryByText("要删的.png")).toBeNull());
     expect(removeChatAttachmentDraft).toHaveBeenCalledWith("obj-要删的.png");
@@ -268,6 +284,115 @@ describe("Composer 照片附件（Issue 05）", () => {
 
     await waitFor(() => expect(screen.queryByText("成功.png")).toBeNull());
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+  });
+});
+
+describe("Composer 文件附件（V2 Issue 06）", () => {
+  beforeEach(() => {
+    vi.mocked(uploadChatAttachmentDraft).mockImplementation(
+      async (file: Blob, filename: string) => {
+        const name = (file as File).name ?? filename;
+        return name.endsWith(".pdf")
+          ? draftProjection(`obj-${name}`, name, PDF_MEDIA_TYPE, "queued")
+          : draftProjection(`obj-${name}`, name);
+      }
+    );
+  });
+
+  it("选择 PDF 后上传为文档卡片草稿，显示类型、大小与解析状态", async () => {
+    renderComposer();
+
+    pickFiles([pdfFile("统计讲义.pdf")]);
+    await waitForThumb("统计讲义.pdf");
+
+    // 文件不是图片：不出缩略图，出文档卡片。
+    expect(screen.getByTestId("composer-file-card").textContent).toContain("PDF");
+    expect(screen.getByTestId("composer-file-card").textContent).toContain("1 KB");
+    expect(screen.queryByAltText("照片预览：统计讲义.pdf")).toBeNull();
+    // 解析在发送前就开始了：状态可见（排队解析中）。
+    expect(screen.getByTestId("ingestion-status-queued").textContent).toContain("排队解析中");
+    expect(uploadChatAttachmentDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("解析失败时草稿旁给出中文原因，且不清空其他草稿", async () => {
+    vi.mocked(uploadChatAttachmentDraft).mockImplementation(
+      async (file: Blob, filename: string) => {
+        const name = (file as File).name ?? filename;
+        return name === "坏文件.pdf"
+          ? draftProjection(
+              `obj-${name}`,
+              name,
+              PDF_MEDIA_TYPE,
+              "error",
+              "PDF 解析失败：文件已损坏，无法读取正文。"
+            )
+          : draftProjection(`obj-${name}`, name);
+      }
+    );
+
+    renderComposer();
+
+    pickFiles([pngFile("好照片.png"), pdfFile("坏文件.pdf")]);
+    await waitForThumb("坏文件.pdf");
+
+    expect(screen.getByTestId("ingestion-status-error").textContent).toContain("解析失败");
+    expect(screen.getByText(/PDF 解析失败：文件已损坏/)).toBeTruthy();
+    // 失败只影响该文件：照片草稿与正文都保留，仍可发送。
+    expect(screen.getAllByText("好照片.png").length).toBeGreaterThan(0);
+    expect(
+      (screen.getByRole("button", { name: "发送消息" }) as HTMLButtonElement).disabled
+    ).toBe(false);
+  });
+
+  it("解析未完成时轮询刷新草稿状态（排队 → 已解析）", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(listChatAttachmentDrafts).mockResolvedValue([
+        draftProjection("obj-poll", "轮询.pdf", PDF_MEDIA_TYPE, "processing"),
+      ]);
+
+      render(<Composer onSend={vi.fn()} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId("ingestion-status-processing").textContent).toContain("解析中");
+
+      vi.mocked(listChatAttachmentDrafts).mockResolvedValue([
+        draftProjection("obj-poll", "轮询.pdf", PDF_MEDIA_TYPE, "ready"),
+      ]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+
+      expect(screen.getByTestId("ingestion-status-ready").textContent).toContain(
+        "已解析，可引用"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("照片与文件混合按选择顺序发送", async () => {
+    const onSend = renderComposer();
+
+    pickFiles([pngFile("照片.png")]);
+    await waitForThumb("照片.png");
+    pickFiles([pdfFile("讲义.pdf")]);
+    await waitForThumb("讲义.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend).toHaveBeenCalledWith("", ["obj-照片.png", "obj-讲义.pdf"]);
+  });
+
+  it("超过 10MB 的文件显示中文原因且不上传", async () => {
+    renderComposer();
+
+    pickFiles([pdfFile("超大.pdf", 11 * 1024 * 1024)]);
+
+    await waitFor(() => screen.getByText(/超过 10 MB/));
+    expect(uploadChatAttachmentDraft).not.toHaveBeenCalled();
   });
 });
 
