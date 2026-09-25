@@ -69,6 +69,7 @@ interface ComposerProps {
   moduleId?: ChatModuleSelectionId | null;
   /** 模块选择变化（选中菜单项传模块 ID，移除 chip 传 null）。 */
   onModuleChange?: (moduleId: ChatModuleSelectionId | null) => void;
+  mode?: "companion" | "study";
 }
 
 /** 对话输入区：发送普通消息与听写结果。 */
@@ -82,6 +83,7 @@ export function Composer({
   variant = "conversation",
   moduleId = null,
   onModuleChange,
+  mode = "companion",
 }: ComposerProps) {
   const [text, setText] = useState("");
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
@@ -112,7 +114,9 @@ export function Composer({
   const draftErrorSeqRef = useRef(0);
   // 有文字或已有附件即可发送；上传未完成的批次禁止提前发送。
   const canSend =
-    (text.trim().length > 0 || drafts.length > 0) &&
+    (mode === "study" && variant === "new-chat"
+      ? drafts.length > 0
+      : text.trim().length > 0 || drafts.length > 0) &&
     dictationPhase === "idle" &&
     uploadingCount === 0;
 
@@ -556,7 +560,8 @@ export function Composer({
   // V2 Issue 11：显式模块 chip（菜单选择后在输入区可见、可移除）。
   // 移除只取消本轮之后的模块选择，不改写已发送消息的逐条模块标识，
   // 也不触碰已输入文字。
-  const selectedModule = CHAT_MODULES.find((item) => item.id === moduleId) ?? null;
+  const selectedModule =
+    mode === "companion" ? CHAT_MODULES.find((item) => item.id === moduleId) ?? null : null;
   const clearModule = () => {
     onModuleChange?.(null);
     textareaRef.current?.focus();
@@ -625,7 +630,7 @@ export function Composer({
             event.preventDefault();
             addFiles(files);
           }}
-          placeholder="输入消息，开始日常对话"
+          placeholder={mode === "study" ? "上传本节书页照片开始预习" : "输入消息，开始日常对话"}
           style={{
             width: "100%",
             flex: 1,
@@ -1000,7 +1005,7 @@ export function Composer({
               returnFocus: false,
               onSelect: () => fileInputRef.current?.click(),
             },
-            ...CHAT_MODULES.map((module) => ({
+            ...(mode === "companion" ? CHAT_MODULES : []).map((module) => ({
               label: module.label,
               description: module.description,
               icon: module.icon,
@@ -1052,7 +1057,7 @@ export function Composer({
             onClick={() => void send()}
             disabled={!canSend}
             aria-label="发送消息"
-            title={canSend ? "发送" : "输入内容后才能发送"}
+            title={canSend ? "发送" : mode === "study" && variant === "new-chat" ? "请先上传本节书页照片" : "输入内容后才能发送"}
           >
             <Icon name="send" size={16} aria-hidden />发送
           </Button>

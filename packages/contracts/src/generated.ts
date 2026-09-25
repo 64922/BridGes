@@ -8321,6 +8321,8 @@ export interface components {
              * @default companion
              */
             mode: components["schemas"]["ChatMode"];
+            /** @description 学习小节的持久化阶段、页级证据和预习问题。 */
+            study?: components["schemas"]["StudyState"] | null;
             /**
              * Mode Locked
              * @description 首条用户消息提交后是否已锁定当前模式。
@@ -21700,6 +21702,90 @@ export interface components {
          * @enum {string}
          */
         StoryboardStatus: "draft" | "designing" | "source_generated" | "static_validated" | "sandbox_rendering" | "completed" | "repairable" | "repair_exhausted" | "quarantined" | "failed";
+        /** StudyFragment */
+        StudyFragment: {
+            /** Fragment Id */
+            fragment_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "formula" | "chart";
+            /** Position */
+            position: string;
+            /** Text */
+            text: string;
+            /** Confidence */
+            confidence: number;
+            /**
+             * Source
+             * @default photo
+             * @enum {string}
+             */
+            source: "photo" | "user";
+        };
+        /** StudyPage */
+        StudyPage: {
+            /** Object Id */
+            object_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Model Id */
+            model_id: string;
+            /** Replaced Object Ids */
+            replaced_object_ids?: string[];
+            /** Fragments */
+            fragments: components["schemas"]["StudyFragment"][];
+            /** Unclear */
+            unclear?: components["schemas"]["StudyUnclear"][];
+        };
+        /** StudyQuestion */
+        StudyQuestion: {
+            /** Question */
+            question: string;
+            /** Unit Titles */
+            unit_titles: string[];
+        };
+        /** StudyState */
+        StudyState: {
+            /** Subsection Id */
+            subsection_id: string;
+            /**
+             * Stage
+             * @default awaiting_pages
+             * @enum {string}
+             */
+            stage: "awaiting_pages" | "recognizing" | "preview" | "tutoring";
+            /** Wait Reason */
+            wait_reason?: string | null;
+            /** Pages */
+            pages?: components["schemas"]["StudyPage"][];
+            /** Units */
+            units?: components["schemas"]["StudyUnit"][];
+            /** Questions */
+            questions?: components["schemas"]["StudyQuestion"][];
+        };
+        /** StudyUnclear */
+        StudyUnclear: {
+            /** Position */
+            position: string;
+            /** Reason */
+            reason: string;
+        };
+        /** StudyUnit */
+        StudyUnit: {
+            /** Title */
+            title: string;
+            /** Fragment Ids */
+            fragment_ids: string[];
+            /**
+             * Core
+             * @default true
+             */
+            core: boolean;
+        };
         /**
          * StyleDiagnosticFinding
          * @description A single Chinese expression issue with a suggested local patch.

@@ -261,10 +261,10 @@ def test_first_turn_failure_leaves_no_draft(client: TestClient) -> None:
     assert after == before, "失败不得留下空草稿或部分会话"
 
 
-def test_daily_first_turn_rejects_study_mode_and_unrecognized_modules(
+def test_study_first_turn_needs_photo_and_daily_rejects_unrecognized_modules(
     client: TestClient,
 ) -> None:
-    """尚未验收的学习模式与未知模块不能绕过普通日常首轮入口。"""
+    """学习模式不能纯文字启动；未知日常模块不能绕过首轮入口。"""
     _register(client)
     before = client.get("/chat/conversations").json()["conversations"]
 
@@ -276,8 +276,8 @@ def test_daily_first_turn_rejects_study_mode_and_unrecognized_modules(
             "mode": "study",
         },
     )
-    assert study_status == 409
-    assert study_body["detail"]["error"] == "study_mode_unavailable"
+    assert study_status == 422
+    assert study_body["detail"]["error"] == "study_pages_required"
 
     module_status, _ = _first_turn(
         client,
