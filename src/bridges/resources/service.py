@@ -19,7 +19,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypeVar
 
@@ -42,6 +42,9 @@ from bridges.resources.presenting import (
 )
 from bridges.resources.ranking import RankOutcome, cover_original_phrase, rank_resources
 from bridges.resources.sources import (
+    BILIBILI_SOURCE,
+    BOOK_CATALOG_SOURCE,
+    TAVILY_SOURCE,
     BilibiliVideoDiscoverer,
     BilibiliVideoVerifier,
     BookCandidate,
@@ -113,7 +116,6 @@ class ResourcesRunOutcome:
 
     status: ResourcesStatus
     wait_reason: str | None = None
-    queries: list[ModuleQueryRecord] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -190,6 +192,7 @@ class LearningResourcesService:
             account_id=account_id,
             assistant_message_id=assistant_message_id,
             analysis=parsed,
+            plan=plan,
             stop_event=stop_event,
         )
         if stopped is not None:
@@ -200,6 +203,7 @@ class LearningResourcesService:
             account_id=account_id,
             assistant_message_id=assistant_message_id,
             analysis=parsed,
+            plan=plan,
             queries=books.records,
             stop_event=stop_event,
         )
@@ -217,6 +221,7 @@ class LearningResourcesService:
             account_id=account_id,
             assistant_message_id=assistant_message_id,
             analysis=parsed,
+            plan=plan,
             queries=all_queries,
             stop_event=stop_event,
         )
@@ -281,14 +286,18 @@ class LearningResourcesService:
                 message="推荐结果未覆盖你的原始说法，已停止生成。",
                 retryable=False,
             )
-        return self._persist_result(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            analysis=parsed,
-            plan=plan,
-            ranked=ranked,
-            queries=all_queries,
+        # 编排合同的最后一步同样是一个真实节点：整理清单的耗时与完成事件可见。
+        return run.node(
+            NODE_PRESENT,
+            lambda: self._persist_result(
+                repo,
+                account_id=account_id,
+                assistant_message_id=assistant_message_id,
+                analysis=parsed,
+                plan=plan,
+                ranked=ranked,
+                queries=all_queries,
+            ),
         )
 
     # -- 两条检索 --------------------------------------------------------
@@ -309,7 +318,7 @@ class LearningResourcesService:
         if not self._books:
             records.append(
                 ModuleQueryRecord(
-                    source="book_catalog",
+                    source=BOOK_CATALOG_SOURCE,
                     query=plan.book_query,
                     status=ModuleQueryStatus.SKIPPED,
                     detail="本轮没有装配图书书目来源，未发送任何书目请求。",
@@ -331,7 +340,7 @@ class LearningResourcesService:
             return VideoVerifyOutcome(
                 records=[
                     ModuleQueryRecord(
-                        source="tavily",
+                        source=TAVILY_SOURCE,
                         query=plan.video_query,
                         status=ModuleQueryStatus.SKIPPED,
                         detail="公网搜索服务未装配，本轮没有发送任何发现请求。",
@@ -351,7 +360,7 @@ class LearningResourcesService:
         if self._verifier is None:
             records.append(
                 ModuleQueryRecord(
-                    source="bilibili",
+                    source=BILIBILI_SOURCE,
                     query=plan.video_query,
                     status=ModuleQueryStatus.SKIPPED,
                     detail="视频核对客户端未装配，发现的直达页未核对。",
@@ -416,8 +425,9 @@ class LearningResourcesService:
         assistant_message_id: str,
         analysis: ResourcesTermAnalysis,
     ) -> ResourcesRunOutcome:
+        # 调用点保证：只有解析出澄清（缺层次或缺主题）时才会走到这里。
         clarification = analysis.clarification
-        question = clarification.question if clarification is not None else ""
+        assert clarification is not None
         now = datetime.now(UTC)
         projection = LearningResourcesProjection(
             status=ResourcesStatus.CLARIFICATION,
@@ -431,11 +441,9 @@ class LearningResourcesService:
             pending=ModuleWaitState(
                 module_id=RESOURCES_MODULE_ID,
                 kind=WAIT_KIND_CLARIFICATION,
-                question=question,
+                question=clarification.question,
                 origin_message_id=assistant_message_id,
-                context=pending_payload(
-                    analysis, missing=clarification.missing if clarification else "level"
-                ),
+                context=pending_payload(analysis, missing=clarification.missing),
                 created_at=now,
             ),
         )
@@ -445,7 +453,7 @@ class LearningResourcesService:
             assistant_message_id=assistant_message_id,
             status=ChatMessageStatus.DONE,
             projection=projection,
-            content=render_clarification_content(analysis) or question,
+            content=render_clarification_content(analysis),
             now=now,
         )
         return ResourcesRunOutcome(
@@ -494,7 +502,7 @@ class LearningResourcesService:
             content=content,
             now=now,
         )
-        return ResourcesRunOutcome(status=ResourcesStatus.EMPTY, queries=list(queries))
+        return ResourcesRunOutcome(status=ResourcesStatus.EMPTY)
 
     def _persist_result(
         self,
@@ -534,7 +542,7 @@ class LearningResourcesService:
             content=render_result_content(analysis, plan, projection),
             now=now,
         )
-        return ResourcesRunOutcome(status=ResourcesStatus.SUCCESS, queries=list(queries))
+        return ResourcesRunOutcome(status=ResourcesStatus.SUCCESS)
 
     def _persist_stopped(
         self,
@@ -543,6 +551,7 @@ class LearningResourcesService:
         account_id: str,
         assistant_message_id: str,
         analysis: ResourcesTermAnalysis,
+        plan: ResourcesQueryPlan,
         queries: Sequence[ModuleQueryRecord] = (),
     ) -> ResourcesRunOutcome:
         now = datetime.now(UTC)
@@ -556,7 +565,7 @@ class LearningResourcesService:
             level_label=level_label(analysis.level),
             level_basis=analysis.level_basis,
             queries=list(queries),
-            final_query=analysis.final_query,
+            final_query=plan.book_query,
             evidence_notes=["用户停止了本轮检索，未生成的步骤不会补做。"],
             searched_at=now,
         )
@@ -566,10 +575,10 @@ class LearningResourcesService:
             assistant_message_id=assistant_message_id,
             status=ChatMessageStatus.STOPPED,
             projection=projection,
-            content=render_stopped_content(analysis, None),
+            content=render_stopped_content(plan),
             now=now,
         )
-        return ResourcesRunOutcome(status=ResourcesStatus.STOPPED, queries=list(queries))
+        return ResourcesRunOutcome(status=ResourcesStatus.STOPPED)
 
     def _fail(
         self,
@@ -629,6 +638,7 @@ class LearningResourcesService:
         account_id: str,
         assistant_message_id: str,
         analysis: ResourcesTermAnalysis,
+        plan: ResourcesQueryPlan,
         stop_event: threading.Event | None,
         queries: Sequence[ModuleQueryRecord] = (),
     ) -> ResourcesRunOutcome | None:
@@ -640,6 +650,7 @@ class LearningResourcesService:
             account_id=account_id,
             assistant_message_id=assistant_message_id,
             analysis=analysis,
+            plan=plan,
             queries=queries,
         )
 
@@ -726,13 +737,11 @@ def _empty_notes(books: BookSearchOutcomes, videos: VideoVerifyOutcome) -> list[
         notes.append("图书书目来源没有返回与本主题相符的书目。")
     if not videos.candidates:
         notes.append("没有可以核对的哔哩哔哩视频直达页（或核对全部未通过）。")
+    # 只呈现来源与可操作的中文说明；``detail`` 里的缓存命中、上游请求次数
+    # 属于检索内部日志（docs/v2/interaction.md §4），留在证据记录里不当正文。
     notes.extend(
         f"{record.source} 本轮状态：{record.status.value}。"
-        + (
-            f"（{record.error_message}）"
-            if record.error_message
-            else (f"（{record.detail}）" if record.detail else "")
-        )
+        + (f"（{record.error_message}）" if record.error_message else "")
         for record in [*books.records, *videos.records]
         if record.status is not ModuleQueryStatus.SUCCESS
     )

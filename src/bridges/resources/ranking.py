@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 
 from bridges.resources.contracts import (
+    LEVEL_LABELS,
     STAGE_ADVANCED,
     STAGE_BEGINNER,
     STAGE_FOUNDATION,
@@ -29,7 +30,13 @@ from bridges.resources.contracts import (
     format_duration,
 )
 from bridges.resources.lexicon import ADVANCED_MARKERS, BEGINNER_MARKERS
-from bridges.resources.sources import BookCandidate, VideoCandidate
+from bridges.resources.sources import (
+    BILIBILI_SOURCE,
+    OPENALEX_SOURCE,
+    OPENLIBRARY_SOURCE,
+    BookCandidate,
+    VideoCandidate,
+)
 
 #: 视频时长门槛（秒）：标记相同时按「先短后长、长讲解更靠后」判定阶段。
 SHORT_VIDEO_SECONDS = 600
@@ -42,7 +49,14 @@ POPULAR_LIKE_THRESHOLD = 100
 _KIND_ORDER: dict[str, int] = {ResourceKind.BOOK: 0, ResourceKind.VIDEO: 1}
 
 #: 书目来源优先级（同一书目重复出现时保留书目信息更完整的那条）。
-_SOURCE_ORDER: dict[str, int] = {"openlibrary": 0, "openalex": 1}
+_SOURCE_ORDER: dict[str, int] = {OPENLIBRARY_SOURCE: 0, OPENALEX_SOURCE: 1}
+
+#: 来源 → 中文名（正文与证据说明共用一份；未列出的来源原样显示）。
+SOURCE_LABELS: dict[str, str] = {
+    OPENLIBRARY_SOURCE: "Open Library 书目",
+    OPENALEX_SOURCE: "OpenAlex 图书记录",
+    BILIBILI_SOURCE: "哔哩哔哩公开视频页",
+}
 
 
 @dataclass(frozen=True)
@@ -198,7 +212,7 @@ def _scored_book(candidate: BookCandidate, analysis: ResourcesTermAnalysis) -> _
         score += 2
     if candidate.publisher:
         score += 1
-    if candidate.source == "openlibrary":
+    if candidate.source == OPENLIBRARY_SOURCE:
         score += 1
     score += _level_fit(analysis.level, stage)
     return _Scored(
@@ -242,9 +256,7 @@ def _book_reason(
 
 def _book_match_basis(candidate: BookCandidate, terms: tuple[str, ...]) -> str:
     hits = [term for term in terms if term and _covers(candidate.title, (term,))]
-    source_label = {"openlibrary": "Open Library 书目", "openalex": "OpenAlex 图书记录"}.get(
-        candidate.source, candidate.source
-    )
+    source_label = SOURCE_LABELS.get(candidate.source, candidate.source)
     return f"命中「{'、'.join(hits)}」；来源：{source_label}。"
 
 
@@ -265,6 +277,11 @@ def _book_unverified(candidate: BookCandidate) -> list[str]:
 def _match_videos(
     videos: list[VideoCandidate], terms: tuple[str, ...]
 ) -> tuple[list[VideoCandidate], int]:
+    """主题门 + 同一视频去重（与图书同一条规则：**标题**必须覆盖主题词）。
+
+    简介同样来自公开接口，但它不能替代标题：清单里每条视频都要能凭标题
+    看出与本轮主题的关系（否则终态门与排序门会互相矛盾）。
+    """
     kept: list[VideoCandidate] = []
     excluded = 0
     seen: set[str] = set()
@@ -272,8 +289,7 @@ def _match_videos(
         if candidate.video_id in seen:
             excluded += 1
             continue
-        text = f"{candidate.title} {candidate.description}"
-        if not _covers(text, terms):
+        if not _covers(candidate.title, terms):
             excluded += 1
             continue
         seen.add(candidate.video_id)
@@ -282,14 +298,13 @@ def _match_videos(
 
 
 def _scored_video(candidate: VideoCandidate, analysis: ResourcesTermAnalysis) -> _Scored:
-    text = f"{candidate.title} {candidate.description}"
     stage = _stage_from_markers(
         candidate.title, video_seconds=candidate.duration_seconds
     )
     score = 0
-    if analysis.original_phrase and _covers(text, (analysis.original_phrase,)):
+    if analysis.original_phrase and _covers(candidate.title, (analysis.original_phrase,)):
         score += 3
-    elif analysis.expansions and _covers(text, tuple(analysis.expansions)):
+    elif analysis.expansions and _covers(candidate.title, tuple(analysis.expansions)):
         score += 2
     if candidate.uploader:
         score += 1
@@ -358,11 +373,10 @@ def _count_text(value: int) -> str:
 
 
 def _video_match_basis(candidate: VideoCandidate, analysis: ResourcesTermAnalysis) -> str:
-    text = f"{candidate.title} {candidate.description}"
-    hits = [term for term in _match_terms(analysis) if term and _covers(text, (term,))]
+    hits = [term for term in _match_terms(analysis) if term and _covers(candidate.title, (term,))]
     return (
-        f"命中「{'、'.join(hits)}」；来源：哔哩哔哩公开视频页"
-        f"（已用公开接口核对标题、作者、发布时间与时长）。"
+        f"标题命中「{'、'.join(hits)}」；来源：{SOURCE_LABELS[BILIBILI_SOURCE]}"
+        f"（已用公开接口核对标题、作者、发布时间、时长与公开计数）。"
     )
 
 
@@ -459,9 +473,8 @@ def _exclusion_notes(
 
 def _source_notes(sources: dict[str, int]) -> list[str]:
     """逐来源如实说明取到多少条（未命中的来源也说明，不用其他来源冒充）。"""
-    labels = {"openlibrary": "Open Library 书目", "openalex": "OpenAlex 图书记录"}
     return [
-        f"{labels.get(source, source)} 返回 {count} 条候选。"
+        f"{SOURCE_LABELS.get(source, source)} 返回 {count} 条候选。"
         for source, count in sources.items()
     ]
 
@@ -476,7 +489,7 @@ def _level_conflict_notes(
     conflicting = [item for item in items if _conflicts(level, item.stage)]
     if not conflicting:
         return []
-    label = {"beginner": "零基础入门", "advanced": "进阶提高"}.get(level.value, "当前层次")
+    label = LEVEL_LABELS.get(level, "当前层次")
     stages = "、".join(sorted({item.stage for item in conflicting}))
     return [
         f"其中 {len(conflicting)} 条（{stages}）与你的层次（{label}）不完全匹配："

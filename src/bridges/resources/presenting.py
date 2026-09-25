@@ -91,15 +91,12 @@ def render_mismatch_content(
     return "\n".join(lines)
 
 
-def render_stopped_content(
-    analysis: ResourcesTermAnalysis, plan: ResourcesQueryPlan | None
-) -> str:
-    query = (
-        plan.book_query
-        if plan is not None
-        else (analysis.final_query or analysis.original_phrase)
+def render_stopped_content(plan: ResourcesQueryPlan) -> str:
+    """停止正文：如实写明停止时已经确定的图书查询词，不补做未生成的步骤。"""
+    return (
+        f"学习资料检索已停止，图书查询词：{plan.book_query}。"
+        "已完成的步骤保留在本条消息内。"
     )
-    return f"学习资料检索已停止，图书查询词：{query}。已完成的步骤保留在本条消息内。"
 
 
 def _item_heading(item: ResourceItem) -> str:

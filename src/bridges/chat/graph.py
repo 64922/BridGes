@@ -411,7 +411,7 @@ def _node_select_explicit_module(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
     """显式模块派发：只读服务端校验并随消息持久化的 module_id。"""
-    del config
+    deps: _GraphDeps = config["configurable"]["deps"]
     module_id = state.get("module_id")
     if module_id is not None and module_id not in CONNECTED_MODULE_IDS:
         # 其余四个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
@@ -422,6 +422,7 @@ def _node_select_explicit_module(
             "该模块尚未开放，请使用普通对话。",
             retryable=False,
         )
+    del deps
     return {"module_dispatch": module_id or "chat"}
 
 

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from datetime import UTC, datetime
 
 from bridges.contracts.modules import ModuleWaitState
 from bridges.resources.contracts import (
@@ -76,7 +75,6 @@ def parse_resources_request(
     *,
     prior_context: Sequence[str] = (),
     pending: ModuleWaitState | None = None,
-    now: datetime | None = None,
 ) -> ResourcesTermAnalysis:
     """解析一轮资料请求；缺少层次且它影响推荐时返回唯一的一个澄清问题。
 
@@ -84,11 +82,10 @@ def parse_resources_request(
     从等待处恢复（原词与目的沿用等待状态里的记录），而不是把回答当成一个
     全新的资料请求。
     """
-    current = now or datetime.now(UTC)
     text = content.strip()
     if pending is not None and pending.kind == "clarification":
         return _resume_from_clarification(text, pending, prior_context=prior_context)
-    return _parse_fresh(text, prior_context=prior_context, now=current)
+    return _parse_fresh(text, prior_context=prior_context)
 
 
 def pending_payload(analysis: ResourcesTermAnalysis, *, missing: str) -> dict[str, object]:
@@ -105,10 +102,7 @@ def pending_payload(analysis: ResourcesTermAnalysis, *, missing: str) -> dict[st
 # ---------------------------------------------------------------------------
 
 
-def _parse_fresh(
-    text: str, *, prior_context: Sequence[str], now: datetime
-) -> ResourcesTermAnalysis:
-    del now
+def _parse_fresh(text: str, *, prior_context: Sequence[str]) -> ResourcesTermAnalysis:
     goal = detect_goal(text)
     term = extract_topic_phrase(text)
     if term is None:
@@ -216,7 +210,7 @@ def _resume_from_clarification(
     goal = str(raw_goal) if raw_goal else None
     if not original_phrase:
         # 等待状态没有可用的恢复载荷：按全新请求解析回答本身。
-        return _parse_fresh(answer, prior_context=prior_context, now=datetime.now(UTC))
+        return _parse_fresh(answer, prior_context=prior_context)
     # 回答里也可能补充学习目的（「有点基础，主要是想应付期末」）：一并采纳。
     goal = detect_goal(answer) or goal
     from_answer = _level_from_text(answer)

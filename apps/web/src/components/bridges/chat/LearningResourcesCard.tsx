@@ -1,11 +1,9 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
-import type {
-  LearningResourcesProjection,
-  ModuleQueryRecord,
-  ResourceItem,
-} from "@/lib/api";
+import type { LearningResourcesProjection, ResourceItem } from "@/lib/api";
+
+import { QueryRecordList } from "./QueryRecordList";
 
 /** V2 Issue 13：资料模块状态的中文标题（每条助手消息内如实显示）。 */
 const STATUS_TITLES: Record<string, string> = {
@@ -22,16 +20,6 @@ const KIND_LABELS: Record<string, string> = {
   video: "视频",
 };
 
-const QUERY_STATUS_LABELS: Record<string, string> = {
-  success: "成功",
-  empty: "无结果",
-  skipped: "未执行",
-  timeout: "超时",
-  cancelled: "已取消",
-  rate_limited: "被上游限流",
-  error: "失败",
-};
-
 const SOURCE_LABELS: Record<string, string> = {
   openlibrary: "Open Library 书目",
   openalex: "OpenAlex 图书记录",
@@ -40,36 +28,12 @@ const SOURCE_LABELS: Record<string, string> = {
   book_catalog: "图书书目来源",
 };
 
-function formatTime(value: string | null | undefined): string {
-  if (!value) return "时间未知";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
-}
-
 function formatDuration(seconds: number | null | undefined): string | null {
   if (!seconds || seconds <= 0) return null;
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   if (minutes === 0) return `${rest} 秒`;
   return rest === 0 ? `${minutes} 分钟` : `${minutes} 分 ${rest} 秒`;
-}
-
-/** 一次外部调用的真实记录：来源、实际查询词、结果分类、取得时间与错误。 */
-function QueryRecordRow({ record }: { record: ModuleQueryRecord }) {
-  const failed = record.status === "error" || record.status === "timeout";
-  return (
-    <li style={{ color: failed ? "var(--color-status-error)" : "var(--color-text-secondary)" }}>
-      <strong>{SOURCE_LABELS[record.source] ?? record.source}</strong>
-      {" · 查询「"}
-      {record.query}
-      {"」 · "}
-      {QUERY_STATUS_LABELS[record.status] ?? record.status}
-      {`（${record.evidence_count} 条）`}
-      {" · "}
-      {formatTime(record.retrieved_at)}
-      {record.error_message ? `：${record.error_message}` : ""}
-    </li>
-  );
 }
 
 function formatCount(value: number | null | undefined): string | null {
@@ -260,29 +224,11 @@ export function LearningResourcesCard({
         </p>
       )}
 
-      {queries.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            本次外部调用记录
-          </p>
-          <ul
-            data-testid="resources-queries"
-            style={{
-              margin: 0,
-              paddingLeft: "var(--space-5)",
-              listStyle: "disc",
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-1)",
-              fontSize: "var(--text-xs)",
-            }}
-          >
-            {queries.map((record, index) => (
-              <QueryRecordRow key={`${record.source}-${record.query}-${index}`} record={record} />
-            ))}
-          </ul>
-        </div>
-      )}
+      <QueryRecordList
+        records={queries}
+        testId="resources-queries"
+        sourceLabels={SOURCE_LABELS}
+      />
 
       {items.length > 0 && (
         <ol

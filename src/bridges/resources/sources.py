@@ -40,7 +40,11 @@ from bridges.web_search.service import SearchPlan, WebSearchService
 
 OPENLIBRARY_SOURCE = "openlibrary"
 OPENALEX_SOURCE = "openalex"
+#: 视频发现用的公网搜索来源（复用既有受限 web_search 服务，来源名与之一致）。
+TAVILY_SOURCE = "tavily"
 BILIBILI_SOURCE = "bilibili"
+#: 未装配任何书目来源时的占位来源名（如实标注「本轮没有发送书目请求」）。
+BOOK_CATALOG_SOURCE = "book_catalog"
 
 OPENLIBRARY_ENDPOINT = "https://openlibrary.org/search.json"
 OPENALEX_ENDPOINT = "https://api.openalex.org/works"
@@ -53,6 +57,9 @@ BOOK_SEARCH_LIMIT = 8
 #: 视频核对：单次请求超时与逐轮核对上限（每个直达页只查一次）。
 VIDEO_TIMEOUT_SECONDS = 8.0
 VIDEO_VERIFY_LIMIT = 8
+
+#: 视频发现（公网搜索）逐轮结果上限。
+VIDEO_DISCOVERY_LIMIT = 8
 
 #: 哔哩哔哩直达页的规范形式（核对通过后用 verifier 取到的 id 重新拼）。
 BILIBILI_WATCH_TEMPLATE = "https://www.bilibili.com/video/{video_id}"
@@ -94,6 +101,8 @@ class VideoCandidate:
     duration_seconds: int | None
     published_at: datetime | None
     url: str
+    #: 公开简介：属于核对过、可取得的元数据（用作「已核对简介」的依据），
+    #: 但不参与主题门——清单里的每一条都要凭标题就能看出与本轮主题的关系。
     description: str
     #: 公开计数（平台统计，只作弱证据；接口未给为 None）。
     view_count: int | None = None
@@ -338,7 +347,7 @@ class BilibiliVideoDiscoverer:
                 query=query,
                 direct_pages=[],
                 record=ModuleQueryRecord(
-                    source="tavily",
+                    source=TAVILY_SOURCE,
                     query=query,
                     status=ModuleQueryStatus.SKIPPED,
                     detail="公网搜索服务未装配，本轮没有发送任何发现请求。",
@@ -350,7 +359,7 @@ class BilibiliVideoDiscoverer:
             reason="V2 学习资料推荐：发现哔哩哔哩公开讲解视频",
             queries=(query,),
             max_queries=1,
-            max_results=max(1, min(limit, BOOK_SEARCH_LIMIT)),
+            max_results=max(1, min(limit, VIDEO_DISCOVERY_LIMIT)),
         )
         projection = self._service.search(
             account_id, plan, stop_event=stop_event, deadline=deadline
@@ -360,7 +369,7 @@ class BilibiliVideoDiscoverer:
                 query=query,
                 direct_pages=[],
                 record=ModuleQueryRecord(
-                    source="tavily",
+                    source=TAVILY_SOURCE,
                     query=query,
                     status=ModuleQueryStatus.SKIPPED,
                     detail="本轮没有可发送的发现查询。",
@@ -599,7 +608,7 @@ def _discovery_record(
 ) -> ModuleQueryRecord:
     status = _discovery_status(projection, page_count)
     return ModuleQueryRecord(
-        source="tavily",
+        source=TAVILY_SOURCE,
         query=projection.query_summary or query,
         status=status,
         evidence_count=page_count,
@@ -653,7 +662,10 @@ def _verify_record(
         retrieved_at=datetime.now(UTC),
         error_code=failure,
         error_message=_verify_message(failure) if failure is not None else None,
-        retryable=bool(failure) and failure.endswith(("_timeout", "_offline", "_rate_limit")),
+        retryable=(
+            failure is not None
+            and failure.endswith(("_timeout", "_offline", "_rate_limit"))
+        ),
     )
 
 
