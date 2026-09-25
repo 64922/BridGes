@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.commute.contracts import CommuteRouteProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.contracts.career import (
     CareerPlanningProcessState,
@@ -320,6 +321,10 @@ class ChatMessageProjection(BaseModel):
     )
     module_suggestion: ModuleSuggestionProjection | None = Field(
         default=None, description="普通聊天中的一键模块建议（只建议，不检索）。"
+    )
+    # V2 Issue 12：校园通勤模块状态（起终点 POI/方式/距离/耗时/路径点/课间缓冲）。
+    commute_route: CommuteRouteProjection | None = Field(
+        default=None, description="本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。"
     )
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近更新时间。")

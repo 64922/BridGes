@@ -126,6 +126,17 @@ export type ModuleQueryStatus = components["schemas"]["ModuleQueryStatus"];
 export type PaperSearchProjection = components["schemas"]["PaperSearchProjection"];
 export type PaperSearchStatus = components["schemas"]["PaperSearchStatus"];
 export type PaperRecommendation = components["schemas"]["PaperRecommendation"];
+// V2 Issue 12：校园通勤投影（起终点 POI、方式、路径点与文字路段、课间缓冲）
+// 与浏览器地图运行时配置（只含 JS API Key 与同源代理路径，不含安全密钥）。
+export type CommuteRouteProjection = components["schemas"]["CommuteRouteProjection"];
+export type CommuteRouteStatus = components["schemas"]["CommuteRouteStatus"];
+export type CommuteMode = components["schemas"]["CommuteMode"];
+export type CommutePlace = components["schemas"]["CommutePlace"];
+export type CommutePlaceCandidate = components["schemas"]["CommutePlaceCandidate"];
+export type CommutePlaceRole = components["schemas"]["CommutePlaceRole"];
+export type CommuteRouteStep = components["schemas"]["CommuteRouteStep"];
+export type CommuteBreakBuffer = components["schemas"]["CommuteBreakBuffer"];
+export type CommuteMapConfig = components["schemas"]["MapConfigResponse"];
 export type WebSearchProjection = components["schemas"]["WebSearchProjection"];
 export type WebSearchResult = components["schemas"]["WebSearchResult"];
 export type WebSearchStatus = components["schemas"]["WebSearchStatus"];
@@ -281,6 +292,19 @@ export async function fetchSession(): Promise<SessionResponse> {
 /** 查询当前安装的搜索与地图凭据状态，不返回任何密钥正文。 */
 export async function fetchCredentialSettings(): Promise<CredentialSettings> {
   const res = await fetch(`${API_BASE}/settings/credentials`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 浏览器地图运行时配置（V2 Issue 12）：只含 JS API Key 与同源代理路径。
+ * 安全密钥永不下发，地图数据服务请求由后端代理追加。
+ */
+export async function fetchCommuteMapConfig(): Promise<CommuteMapConfig> {
+  const res = await fetch(`${API_BASE}/commute/map-config`, {
     credentials: "same-origin",
     cache: "no-store",
   });

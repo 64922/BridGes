@@ -28,6 +28,8 @@ from bridges.ai.adapters import StreamEvent
 from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.commute.contracts import CommuteRouteProjection
+from bridges.commute.service import CommuteService
 from bridges.paper.service import PaperSearchService
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.chat.attachments import (
@@ -256,6 +258,7 @@ class ChatService:
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
         model_config_provider: RunModelConfigProvider | None = None,
         paper_search_service: PaperSearchService | None = None,
+        commute_service: CommuteService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -272,6 +275,9 @@ class ChatService:
         #: V2 Issue 11：论文搜索模块子图（显式 module_id=paper 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._paper_search = paper_search_service
+        #: V2 Issue 12：校园通勤模块子图（显式 module_id=commute 时派发；
+        #: 未装配或未配置高德凭据时如实降级，绝不改走普通对话或编造路线）。
+        self._commute = commute_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -2021,6 +2027,11 @@ class ChatService:
         """论文模块子图服务（V2 Issue 11）；未装配时为 None。"""
         return self._paper_search
 
+    @property
+    def commute_service(self) -> CommuteService | None:
+        """校园通勤模块子图服务（V2 Issue 12）；未装配时为 None。"""
+        return self._commute
+
     def run_graph_turn(
         self,
         run: GenerationRunRecord,
@@ -2523,6 +2534,12 @@ class ChatService:
             module_suggestion=(
                 ModuleSuggestionProjection.model_validate(message.module_suggestion)
                 if message.module_suggestion is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            commute_route=(
+                CommuteRouteProjection.model_validate(message.commute_route)
+                if message.commute_route is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
