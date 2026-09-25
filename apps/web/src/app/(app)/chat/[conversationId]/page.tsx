@@ -7,6 +7,7 @@ import { StateBlock } from "@/components/bridges/StateBlock";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
+import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import {
   type ChatMessage as ChatMessageLike,
   type ChatThinking,
@@ -782,6 +783,9 @@ export default function ChatConversationPage() {
             />
           ) : (
             <>
+              {conversation?.mode === "study" && (
+                <StudyProgress study={conversation.study} />
+              )}
               <ChatThread
                 messages={threadMessages}
                 onRetry={(messageId) => void retry(messageId)}
@@ -814,6 +818,7 @@ export default function ChatConversationPage() {
                     asr={MEDIA_ALWAYS_AVAILABLE}
                     moduleId={moduleId}
                     onModuleChange={setModuleId}
+                    mode={conversation?.mode ?? "companion"}
                   />
                 </div>
               </div>

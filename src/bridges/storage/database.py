@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 52
+SCHEMA_VERSION = 53
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2509,6 +2509,19 @@ MIGRATIONS: dict[int, list[str]] = {
         ALTER TABLE messages ADD COLUMN module_suggestion TEXT
         """,
     ],
+    53: [
+        """
+        CREATE TABLE study_states (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, conversation_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -2517,6 +2530,7 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "accounts",
     "objects",
     "conversations",
+    "study_states",
     "learning_project_migration_conversations",
     "schema_meta",
 })

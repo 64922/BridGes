@@ -393,6 +393,9 @@ class ChatConversationProjection(BaseModel):
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
+    study: dict[str, Any] | None = Field(
+        default=None, description="学习小节的持久化阶段、页级证据和预习问题。"
+    )
     mode_locked: bool = Field(
         default=False,
         description="首条用户消息提交后是否已锁定当前模式。",

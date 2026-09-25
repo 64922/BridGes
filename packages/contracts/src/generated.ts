@@ -8310,6 +8310,13 @@ export interface components {
              */
             mode: components["schemas"]["ChatMode"];
             /**
+             * Study
+             * @description 学习小节的持久化阶段、页级证据和预习问题。
+             */
+            study?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Mode Locked
              * @description 首条用户消息提交后是否已锁定当前模式。
              * @default false

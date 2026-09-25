@@ -30444,6 +30444,19 @@
             "description": "对话当前模式。",
             "default": "companion"
           },
+          "study": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Study",
+            "description": "学习小节的持久化阶段、页级证据和预习问题。"
+          },
           "mode_locked": {
             "type": "boolean",
             "title": "Mode Locked",

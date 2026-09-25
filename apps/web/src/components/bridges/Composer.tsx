@@ -64,6 +64,7 @@ interface ComposerProps {
   moduleId?: ChatModuleSelectionId | null;
   /** 模块选择变化（选中菜单项传模块 ID，移除 chip 传 null）。 */
   onModuleChange?: (moduleId: ChatModuleSelectionId | null) => void;
+  mode?: "companion" | "study";
 }
 
 /** 对话输入区：发送普通消息与听写结果。 */
@@ -77,6 +78,7 @@ export function Composer({
   variant = "conversation",
   moduleId = null,
   onModuleChange,
+  mode = "companion",
 }: ComposerProps) {
   const [text, setText] = useState("");
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
@@ -524,7 +526,8 @@ export function Composer({
   // V2 Issue 11：显式模块 chip（菜单选择后在输入区可见、可移除）。
   // 移除只取消本轮之后的模块选择，不改写已发送消息的逐条模块标识，
   // 也不触碰已输入文字。
-  const selectedModule = CHAT_MODULES.find((item) => item.id === moduleId) ?? null;
+  const selectedModule =
+    mode === "companion" ? CHAT_MODULES.find((item) => item.id === moduleId) ?? null : null;
   const clearModule = () => {
     onModuleChange?.(null);
     textareaRef.current?.focus();
@@ -918,7 +921,7 @@ export function Composer({
               returnFocus: false,
               onSelect: () => fileInputRef.current?.click(),
             },
-            ...CHAT_MODULES.map((module) => ({
+            ...(mode === "companion" ? CHAT_MODULES : []).map((module) => ({
               label: module.label,
               description: module.description,
               icon: module.icon,

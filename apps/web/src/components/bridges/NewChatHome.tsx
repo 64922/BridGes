@@ -18,8 +18,7 @@ import styles from "@/components/bridges/chat/chat.module.css";
 /**
  * 登录后的新聊天首页。
  *
- * 首页只收集日常首轮消息。服务端按普通对话处理未显式选择模块的正文；
- * 学习模式会在对应学习切片验收后开放。首条消息通过原子首轮命令创建会话。
+ * 首条消息通过原子首轮命令创建并锁定会话模式。
  */
 export function NewChatHome() {
   const router = useRouter();
@@ -47,7 +46,7 @@ export function NewChatHome() {
         // Issue 05：新聊天页直发照片——账户域草稿随首轮原子绑定。
         attachmentIds,
         // V2 Issue 11：显式模块随首轮消息保存（未选择时不提交）。
-        moduleId: moduleId ?? undefined,
+        moduleId: mode === "companion" ? moduleId ?? undefined : undefined,
       });
       idempotencyKeyRef.current = null;
       window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
@@ -83,9 +82,11 @@ export function NewChatHome() {
           <div className={styles.newChatMode}>
             <ModeToggle
               value={mode}
-              onChange={setMode}
+              onChange={(nextMode) => {
+                setMode(nextMode);
+                if (nextMode === "study") setModuleId(null);
+              }}
               disabled={sending}
-              studyUnavailable
             />
           </div>
           <div className={styles.blankState} data-testid="new-chat-home">
@@ -98,6 +99,7 @@ export function NewChatHome() {
                 generating={sending}
                 moduleId={moduleId}
                 onModuleChange={setModuleId}
+                mode={mode}
               />
             </div>
             <p className={styles.blankStateNote}>

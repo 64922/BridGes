@@ -350,12 +350,6 @@ def create_conversation(
         endpoint="legacy.chat.conversations.create",
         plugin_selection=body.plugin_selection,
     )
-    if body.mode != ChatMode.COMPANION:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "study_mode_unavailable",
-            "学习模式尚未开放；历史学习对话目前仅支持查看。",
-        )
     raise _error(
         status.HTTP_409_CONFLICT,
         "first_turn_required",

@@ -38,6 +38,7 @@ from bridges.chat.attachments import (
 from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
+from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository, StudyWorkflow
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
     ConversationModeLockConflict,
@@ -827,6 +828,22 @@ class ChatService:
         if attachment_ids:
             self._validate_draft_attachments(account_id, attachment_ids)
         mode = ChatMode(record.mode)
+        if mode == ChatMode.STUDY:
+            if module_id is not None:
+                raise ChatDomainError(
+                    "study_module_forbidden", "学习模式不能选择日常模块。", 422
+                )
+            if any(item is not None for item in (image_payload, video_payload, mcp_call_payload)):
+                raise ChatDomainError(
+                    "study_payload_forbidden", "学习模式只接受本节书页照片和文字。", 422
+                )
+            study = StudyRepository(self._repo.database).get(account_id, conversation_id)
+            if not attachment_ids and (study is None or study.stage != "awaiting_pages"):
+                raise ChatDomainError(
+                    "study_pages_required",
+                    "当前阶段请上传本节书页；辅导问答将在后续学习切片开放。",
+                    422,
+                )
         capability_route = self._route_for_turn(
             image_payload=image_payload,
             video_payload=video_payload,
@@ -1046,14 +1063,7 @@ class ChatService:
             and route.is_paper_search
             else None
         )
-        teaching = (
-            self._teaching.initial(content)
-            if (
-                mode == ChatMode.STUDY
-                and not route.is_paper_search
-            )
-            else None
-        )
+        teaching = None
         user_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -1133,7 +1143,9 @@ class ChatService:
             duration_ms=None,
             created_at=now,
             updated_at=now,
-            graph_version=DAILY_GRAPH_VERSION,
+            graph_version=(
+                STUDY_GRAPH_VERSION if mode == ChatMode.STUDY else DAILY_GRAPH_VERSION
+            ),
             idempotency_key=idempotency_key,
         )
         started_payload = _started_event_payload(
@@ -1314,10 +1326,24 @@ class ChatService:
         attachment_ids = [oid for oid in (attachment_ids or []) if oid]
         if not content and not attachment_ids:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
-        self._require_daily_mode(mode)
+        if mode == ChatMode.STUDY:
+            if module_id is not None:
+                raise ChatDomainError(
+                    "study_module_forbidden", "学习模式不能选择日常模块。", 422
+                )
+            if not attachment_ids:
+                raise ChatDomainError(
+                    "study_pages_required", "请至少上传一张本节书页照片开始学习。", 422
+                )
         image_payload, video_payload, mcp_call_payload = self._validate_turn_payloads(
             image, video, mcp_call
         )
+        if mode == ChatMode.STUDY and any(
+            item is not None for item in (image_payload, video_payload, mcp_call_payload)
+        ):
+            raise ChatDomainError(
+                "study_payload_forbidden", "学习模式只接受本节书页照片和文字。", 422
+            )
         # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
         # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
         # 同键重放（含预建会话路径）必须 200 返回既有数据，不能被 409
@@ -1852,7 +1878,9 @@ class ChatService:
             duration_ms=None,
             created_at=now,
             updated_at=now,
-            graph_version=DAILY_GRAPH_VERSION,
+            graph_version=(
+                STUDY_GRAPH_VERSION if mode == ChatMode.STUDY else DAILY_GRAPH_VERSION
+            ),
             idempotency_key=idempotency_key,
         )
         started_payload = _started_event_payload(
@@ -2014,6 +2042,10 @@ class ChatService:
         执行器把 ``on_event`` 接到游标事件持久化上；停止信号与终态收敛
         语义见 :mod:`bridges.chat.graph`。
         """
+        if run.graph_version == STUDY_GRAPH_VERSION:
+            return StudyWorkflow(self).run(
+                run, on_event=on_event, stop_event=stop_event
+            )
         return run_daily_turn(
             self,
             run,
@@ -2036,7 +2068,7 @@ class ChatService:
         mcp_call_payload: dict[str, Any] | None,
     ) -> None:
         """在入队前保存决策，使首个响应即可恢复跳过/触发状态。"""
-        if self._retrieval is None:
+        if self._retrieval is None or mode == ChatMode.STUDY:
             return
         route = capability_route_for_request(
             mode=mode.value,
@@ -2599,6 +2631,14 @@ class ChatService:
             conversation_id=conversation_id,
             title=title,
             mode=mode,
+            study=(
+                state.model_dump(mode="json")
+                if mode == ChatMode.STUDY
+                and (state := StudyRepository(self._repo.database).get(
+                    account_id, conversation_id
+                )) is not None
+                else None
+            ),
             mode_locked=mode_locked,
             pinned=pinned,
             project_id=project_id,

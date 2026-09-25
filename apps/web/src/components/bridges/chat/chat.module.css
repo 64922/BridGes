@@ -479,3 +479,29 @@
 .composerChip button:hover {
   background: var(--color-border);
 }
+
+.studyProgress {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.studyStages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.studyStageCurrent {
+  color: var(--color-accent-primary);
+  font-weight: 600;
+}
+
+.studyPages {
+  max-height: 12rem;
+  overflow: auto;
+}
