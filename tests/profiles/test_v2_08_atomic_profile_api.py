@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from bridges.api.main import create_app
 from bridges.config import get_settings
 from bridges.contracts.chat import ChatMode
+from bridges.contracts.profiles import FourDimension
 
 
 @pytest.fixture
@@ -206,3 +207,63 @@ def test_sqlite_composition_extracts_mirrors_and_deletes_in_one_pass(
     assert client.get("/profiles/four-dimensions").json() == []
     status = client.get("/profiles/status").json()
     assert status["has_records"] is False
+
+
+def test_migration_routes_reconcile_and_roll_back(sqlite_app: Any) -> None:
+    """旧四类记录可经入口迁成原子列表，并按批次对账与回滚。"""
+
+    client = TestClient(sqlite_app)
+    account_id = _register(client, "issue08-migration", "080009@qq.com")
+    four_dimensions = sqlite_app.state.four_dimension_profile_service
+    four_dimensions.upsert_automatic_record(
+        account_id,
+        dimension=FourDimension.KNOWLEDGE_INTEREST,
+        content="我在准备雅思考试",
+        action="create",
+        evidence_message_id="message-1",
+        migration_version="profile-auto-v2",
+    )
+
+    migrated = client.post("/profiles/items/migration")
+
+    assert migrated.status_code == 200, migrated.text
+    report = migrated.json()
+    assert report["status"] == "completed"
+    assert (report["migrated"], report["duplicated"], report["skipped"]) == (1, 0, 0)
+    # 对账口径：报告覆盖来源记录，摘要非空且不含正文。
+    assert len(report["source_record_ids"]) == 1
+    assert report["reconciliation_digest"]
+    assert "我在准备雅思考试" not in migrated.text
+    assert [item["text"] for item in client.get("/profiles/items").json()] == [
+        "我在准备雅思考试"
+    ]
+
+    # 重复执行不会重复写入条目。
+    again = client.post("/profiles/items/migration").json()
+    assert (again["migrated"], again["duplicated"]) == (0, 1)
+    assert len(client.get("/profiles/items").json()) == 1
+
+    latest = client.get("/profiles/items/migration")
+    assert latest.status_code == 200, latest.text
+    assert latest.json()["run_id"] == again["run_id"]
+
+    rolled_back = client.post(
+        f"/profiles/items/migration/{report['run_id']}/rollback"
+    )
+
+    assert rolled_back.status_code == 200, rolled_back.text
+    assert rolled_back.json()["status"] == "undone"
+    assert client.get("/profiles/items").json() == []
+    # 回滚只删本批次新建的条目，旧四维记录保持可用。
+    assert len(client.get("/profiles/four-dimensions").json()) == 1
+
+
+def test_migration_routes_are_account_scoped_and_report_absence() -> None:
+    client = TestClient(create_app())
+    _register(client, "issue08-migration-empty", "080010@qq.com")
+
+    missing = client.get("/profiles/items/migration")
+
+    assert missing.status_code == 404, missing.text
+    assert missing.json()["detail"]["error"] == "atomic_profile_migration_not_found"
+    assert client.post("/profiles/items/migration/unknown-run/rollback").status_code == 404

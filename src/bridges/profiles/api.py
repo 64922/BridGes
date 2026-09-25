@@ -11,6 +11,7 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileItemDeleteRequest,
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
+    AtomicProfileMigrationReport,
 )
 from bridges.contracts.profile_extraction import ProfileStatusProjection
 from bridges.contracts.profiles import (
@@ -270,6 +271,75 @@ async def delete_atomic_profile_item(
     except AtomicProfileError as exc:
         raise _atomic_error(exc, "atomic_profile_delete_failed") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# 旧四类数据的原子化迁移：迁移是账户级、可重复执行且只读旧记录的操作，
+# 因此入口保持显式（由运维或后续管理界面触发），不在读列表时隐式写入。
+
+
+@router.post(
+    "/items/migration",
+    response_model=AtomicProfileMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def run_atomic_profile_migration(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+) -> AtomicProfileMigrationReport:
+    """把当前账户的旧四类记录迁成原子列表，并返回可对账报告。
+
+    重复执行是安全的：已迁移的旧记录只计入重复，不重复写入条目。
+    """
+    try:
+        return service.migrate_account(subject.account_id)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_migration_failed") from exc
+
+
+@router.get(
+    "/items/migration",
+    response_model=AtomicProfileMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def latest_atomic_profile_migration(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+) -> AtomicProfileMigrationReport:
+    """返回当前账户最近一次原子化迁移报告；从未迁移过时如实返回不存在。"""
+    report = service.latest_migration_report(subject.account_id)
+    if report is None:
+        raise _profile_error(
+            status.HTTP_404_NOT_FOUND,
+            "atomic_profile_migration_not_found",
+            "没有可对账的迁移记录。",
+        )
+    return report
+
+
+@router.post(
+    "/items/migration/{run_id}/rollback",
+    response_model=AtomicProfileMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def rollback_atomic_profile_migration(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    run_id: str,
+) -> AtomicProfileMigrationReport:
+    """回滚指定迁移批次：只删除该批次新建的条目，旧四类记录保持不动。"""
+    try:
+        return service.rollback_migration(subject.account_id, run_id)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_migration_rollback_failed") from exc
 
 
 __all__ = ["router"]

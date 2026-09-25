@@ -268,23 +268,25 @@ def test_automatic_extraction_mirrors_into_the_atomic_list(env: _Env) -> None:
     """普通消息的自动抽取镜像成无类别条目，来源指向本轮用户消息。"""
 
     user, assistant = env.start(GOAL_MESSAGE)
-    env.run(assistant)
 
     projection = env.atomic.projections(ACCOUNT)[0]
     assert projection.text == GOAL_ITEM
     assert projection.source_message_ids == [user.message_id]
     assert projection.write_origin.value == "automatic"
-    # 本条消息自己陈述的目标与本轮任务相关，本轮就可以用。
-    assert GOAL_ITEM in env.system_blocks(_SLICE_MARKER)[0]
+    # 设计口径：普通异步提取下一轮生效，本轮不把它塞进上下文。
+    final = env.run(assistant)
+    assert env.system_blocks(_SLICE_MARKER) == []
+    assert final.context_note is not None
+    assert final.context_note.state == ContextNoteState.EMPTY
 
-    # 换个话题：与本轮任务无关的条目不会被塞进上下文。
+    # 换个话题：与本轮任务无关的条目同样不会被塞进上下文。
     _, unrelated = env.start("你好，今天先随便聊聊")
     unrelated_final = env.run(unrelated)
     assert env.system_blocks(_SLICE_MARKER) == []
     assert unrelated_final.context_note is not None
     assert unrelated_final.context_note.state == ContextNoteState.EMPTY
 
-    # 再回到相关提问：只带这一条，且无类别标签。
+    # 再回到相关提问：这时才带这一条，且无类别标签。
     _, question = env.start("帮我安排雅思考试的复习计划")
     env.run(question)
     blocks = env.system_blocks(_SLICE_MARKER)

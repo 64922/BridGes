@@ -35,6 +35,13 @@ function formatUpdatedTime(value: string): string {
   }).format(new Date(value));
 }
 
+/** 来源标注：自动整理的条目必须说明它来自几条对话记录。 */
+function sourceLabel(item: AtomicProfileItemProjection): string | null {
+  const count = item.source_message_ids?.length ?? 0;
+  if (count === 0) return null;
+  return `来自 ${count} 条对话记录`;
+}
+
 /**
  * V2 Issue 08：无固定类别的原子长期信息列表。
  *
@@ -170,6 +177,7 @@ export function AtomicProfileCenter() {
         <ul className={styles.items}>
           {items.map((item) => {
             const editing = editingId === item.profile_item_id;
+            const source = sourceLabel(item);
             return (
               <li
                 className={styles.item}
@@ -209,6 +217,7 @@ export function AtomicProfileCenter() {
                     <p className={styles.text}>{item.text}</p>
                     <p className={styles.meta}>
                       {ORIGIN_LABELS[item.write_origin]}
+                      {source ? ` · ${source}` : ""}
                       {item.user_edited_at ? " · 已由你修改" : ""} · 最近更新于{" "}
                       {formatUpdatedTime(item.updated_at)}
                     </p>

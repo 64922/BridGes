@@ -328,6 +328,43 @@ def test_modify_item_sets_user_authority_and_protects_from_automation(
     assert [item_.text for item_ in service.list_items(ALICE)] == ["喜欢看天体物理科普"]
 
 
+def test_modify_item_suppresses_the_old_text_from_later_extraction(
+    service: AtomicProfileService,
+    four_dimensions: FourDimensionProfileService,
+    repository: InMemoryAtomicProfileRepository,
+) -> None:
+    """用户改掉的值不会因旧消息或旧记录再次被抽取而作为新条目回来。"""
+
+    item = service.remember(ALICE, "我养了一只猫", source_message_id="msg-1")
+    version = item.version
+    service.modify_item(
+        ALICE,
+        item.profile_item_id,
+        AtomicProfileItemModifyRequest(text="我养了两只猫", version=version),
+    )
+
+    record = _record(
+        four_dimensions, ALICE, "我养了一只猫", evidence_message_id="msg-2"
+    )
+    service.mirror_record(ALICE, record, evidence_message_id="msg-2")
+
+    assert [item_.text for item_ in service.list_items(ALICE)] == ["我养了两只猫"]
+    # 抑制键只留键、不留正文：对账输出里不能出现被改掉的旧值。
+    tombstones = repository.list_items(ALICE, include_withdrawn=True)
+    assert [(item_.status, item_.text) for item_ in tombstones] == [
+        (AtomicProfileItemStatus.WITHDRAWN, ""),
+        (AtomicProfileItemStatus.ACTIVE, "我养了两只猫"),
+    ]
+
+    # 用户再次明确「记住」旧正文：指令优先于抑制键，可以恢复。
+    revived = service.remember(ALICE, "我养了一只猫")
+    assert revived.status == AtomicProfileItemStatus.ACTIVE
+    assert {item_.text for item_ in service.list_items(ALICE)} == {
+        "我养了两只猫",
+        "我养了一只猫",
+    }
+
+
 def test_modify_item_rejects_stale_version_and_duplicates(
     service: AtomicProfileService,
 ) -> None:
@@ -464,6 +501,47 @@ def test_slice_includes_only_task_relevant_items(service: AtomicProfileService) 
 
     no_question = service.compile_chat_slice(ALICE, run_id="assistant-2")
     assert len(no_question.included_items) == 3
+
+
+def test_same_turn_extraction_enters_context_from_the_next_turn(
+    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+) -> None:
+    """普通异步提取下一轮生效；用户「记住」的条目本轮就能用。"""
+
+    record = _record(four_dimensions, ALICE, "今年通过雅思考试")
+    service.mirror_record(ALICE, record, evidence_message_id="message-1")
+
+    this_turn = service.compile_chat_slice(
+        ALICE,
+        run_id="assistant-1",
+        current_question="帮我安排雅思考试的复习计划",
+        current_user_message_id="message-1",
+    )
+
+    assert this_turn.included_items == []
+    assert [
+        item.exclusion_reason for item in this_turn.unused_items
+    ] == ["本轮刚整理，下一轮才使用"]
+
+    next_turn = service.compile_chat_slice(
+        ALICE,
+        run_id="assistant-2",
+        current_question="帮我安排雅思考试的复习计划",
+        current_user_message_id="message-2",
+    )
+    assert [item.value_or_rule for item in next_turn.included_items] == ["今年通过雅思考试"]
+
+    # 用户明确要求记住的条目在同一轮就必须可用。
+    service.remember(ALICE, "我在准备雅思考试", source_message_id="message-2")
+    same_turn = service.compile_chat_slice(
+        ALICE,
+        run_id="assistant-3",
+        current_question="帮我安排雅思考试的复习计划",
+        current_user_message_id="message-2",
+    )
+    assert "我在准备雅思考试" in [
+        item.value_or_rule for item in same_turn.included_items
+    ]
 
 
 def test_slice_caps_minimal_budget(service: AtomicProfileService) -> None:

@@ -1418,6 +1418,11 @@ def _remaining_input_tokens(context_budget: dict[str, Any] | None) -> int | None
     return max(0, budget - used)
 
 
+# 每条画像条目的固定渲染开销（列表符号、分隔与说明标签）按 8 tokens 估算：
+# 裁剪口径是「正文估算 + 固定开销」，避免长条目按零成本挤占预算。
+_PROFILE_ITEM_RENDER_TOKENS = 8
+
+
 def profile_block_within_budget(
     profile_slice: ProfileSlice,
     *,
@@ -1445,7 +1450,7 @@ def profile_block_within_budget(
             adopted: list[ProfileSliceItem] = []
             used = 0
             for item in items:
-                cost = estimate_tokens(item.value_or_rule) + 8
+                cost = estimate_tokens(item.value_or_rule) + _PROFILE_ITEM_RENDER_TOKENS
                 if adopted and used + cost > remaining_tokens:
                     break
                 adopted.append(item)
@@ -5363,6 +5368,12 @@ class TurnOrchestrator:
                     project_id=conversation_id,
                     current_question=(
                         current_user_message.content
+                        if current_user_message is not None
+                        else None
+                    ),
+                    # 本轮刚自动整理出的条目下一轮才生效（V2 Issue 08）。
+                    current_user_message_id=(
+                        current_user_message.message_id
                         if current_user_message is not None
                         else None
                     ),

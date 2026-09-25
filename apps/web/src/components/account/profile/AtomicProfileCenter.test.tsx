@@ -41,7 +41,12 @@ describe("AtomicProfileCenter", () => {
   it("renders a flat list with per-row edit and delete, and no category grouping", async () => {
     api.listAtomicProfileItems.mockResolvedValue([
       item(),
-      item({ profile_item_id: "item-2", text: "我喜欢看天体物理科普", version: 3 }),
+      item({
+        profile_item_id: "item-2",
+        text: "我喜欢看天体物理科普",
+        version: 3,
+        source_message_ids: ["message-2", "message-3"],
+      }),
     ]);
 
     render(<AtomicProfileCenter />);
@@ -49,6 +54,9 @@ describe("AtomicProfileCenter", () => {
     const rows = await screen.findAllByTestId("atomic-item");
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toContain("我在准备雅思考试");
+    // 每条自动整理的条目说明来源条数（验收「记录来源」在页面上可见）。
+    expect(rows[0].textContent).toContain("来自 1 条对话记录");
+    expect(rows[1].textContent).toContain("来自 2 条对话记录");
     // 无类别：页面不出现任何旧四维标签。
     for (const label of ["学业情况", "感兴趣的知识", "兴趣爱好", "阶段目标"]) {
       expect(screen.queryByText(label)).toBeNull();

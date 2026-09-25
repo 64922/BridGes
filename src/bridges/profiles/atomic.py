@@ -233,6 +233,18 @@ def _sensitivity_for(item: AtomicProfileItem) -> ProfileSensitivityClass:
     return ProfileSensitivityClass.PREFERENCE
 
 
+def _is_same_turn_extraction(
+    item: AtomicProfileItem, current_user_message_id: str | None
+) -> bool:
+    """本条是否由本轮消息自动整理出来（下一轮才允许进入上下文）。"""
+
+    if current_user_message_id is None:
+        return False
+    if item.write_origin != AtomicProfileWriteOrigin.AUTOMATIC:
+        return False
+    return current_user_message_id in item.source_message_ids
+
+
 def _item_from_record(
     account_id: str,
     record: FourDimensionProfileRecord,
@@ -738,7 +750,8 @@ class AtomicProfileService:
             if request.version != item.version:
                 raise AtomicProfileError("版本冲突，请刷新后重试。")
             key = identity_key(account_id, text)
-            if key != item.identity_key:
+            previous_key = item.identity_key
+            if key != previous_key:
                 duplicate = self._repository.find_item_by_identity(account_id, key)
                 if duplicate is not None and duplicate.profile_item_id != item_id:
                     raise AtomicProfileError(
@@ -750,7 +763,13 @@ class AtomicProfileService:
             item.updated_at = _now()
             item.user_edited_at = item.updated_at
             item.write_origin = AtomicProfileWriteOrigin.USER
-            return self._repository.save_item(item)
+            saved = self._repository.save_item(item)
+            if key != previous_key:
+                # 旧正文转为抑制键：用户改掉的值不会因为旧消息或旧记录再次
+                # 被抽取而作为新条目回来（用户编辑优先于自动提取）。必须在
+                # 条目换键之后再写，否则抑制键会被本条自己的旧键占住。
+                self._write_suppression(account_id, previous_key)
+            return saved
 
     def delete_item(self, account_id: str, item_id: str, version: int) -> None:
         """删除条目：条目先转墓碑，再撤回底层记录。
@@ -949,12 +968,23 @@ class AtomicProfileService:
         run_id: str,
         current_question: str | None = None,
         project_id: str | None = None,
+        current_user_message_id: str | None = None,
     ) -> ProfileSlice:
-        """只把当前任务必要的少量条目编译成本轮切片。"""
+        """只把当前任务必要的少量条目编译成本轮切片。
+
+        ``current_user_message_id`` 是本轮用户消息：本轮刚由普通消息自动整理
+        出的条目下一轮才生效（设计口径「普通异步提取从下一轮生效」），因此带
+        着本轮证据的自动条目这一轮先排除；用户明确「记住」的条目不受影响，
+        必须本轮就能用。
+        """
 
         related: list[AtomicProfileItem] = []
         unrelated: list[AtomicProfileItem] = []
+        same_turn: list[AtomicProfileItem] = []
         for item in self.list_items(account_id):
+            if _is_same_turn_extraction(item, current_user_message_id):
+                same_turn.append(item)
+                continue
             (
                 related
                 if _item_matches_question(item.text, current_question)
@@ -993,6 +1023,15 @@ class AtomicProfileService:
                 exclusion_reason="超出本轮最小切片预算",
             )
             for item in related[MAX_SLICE_ITEMS:]
+        )
+        unused.extend(
+            UnusedSliceItem(
+                assertion_id=item.profile_item_id,
+                dimension="",
+                value_or_rule=item.text[:80],
+                exclusion_reason="本轮刚整理，下一轮才使用",
+            )
+            for item in same_turn
         )
         return ProfileSlice(
             slice_id=_stable_id("slice", account_id, run_id),
@@ -1144,6 +1183,35 @@ class AtomicProfileService:
                     "updated_at": now,
                     "user_edited_at": now,
                 }
+            )
+        )
+
+    def _write_suppression(self, account_id: str, identity_key_value: str) -> None:
+        """为用户改掉或删掉的正文留下抑制键（墓碑），只保留键、不留正文。"""
+
+        duplicate = self._repository.find_item_by_identity(
+            account_id, identity_key_value
+        )
+        if duplicate is not None:
+            return
+        now = _now()
+        self._repository.save_item(
+            AtomicProfileItem(
+                profile_item_id=_new_item_id(),
+                owner_account_id=account_id,
+                text="",
+                identity_key=identity_key_value,
+                source_record_id=None,
+                source_message_ids=[],
+                topic_hint=None,
+                status=AtomicProfileItemStatus.WITHDRAWN,
+                write_origin=AtomicProfileWriteOrigin.USER,
+                confidence=FourDimensionConfidence.HIGH,
+                version=1,
+                created_at=now,
+                updated_at=now,
+                user_edited_at=now,
+                migration_run_id=None,
             )
         )
 
