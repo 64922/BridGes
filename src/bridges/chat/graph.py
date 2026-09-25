@@ -56,6 +56,12 @@ from bridges.paper.service import (
     PaperModuleError,
 )
 from bridges.paper.suggestion import detect_paper_suggestion
+from bridges.tieba.service import (
+    TIEBA_MODULE_ID,
+    TIEBA_NODE_LABELS,
+    TiebaModuleError,
+)
+from bridges.tieba.suggestion import detect_tieba_suggestion
 
 if TYPE_CHECKING:
     from bridges.chat.repository import GenerationRunRecord
@@ -85,6 +91,9 @@ DAILY_GRAPH_NODES: tuple[str, ...] = (
 #: 运行配置中的显式模块覆盖键（仅服务端在「点击建议启动」时写入）。
 RUN_CONFIG_MODULE_ID = "module_id"
 
+#: 已经接入父图的显式模块（其余模块显式拒绝，绝不降级为普通对话）。
+AVAILABLE_MODULE_IDS: frozenset[str] = frozenset({PAPER_MODULE_ID, TIEBA_MODULE_ID})
+
 #: 节点的用户可读名称（失败信息标注位置用）。
 NODE_LABELS: dict[str, str] = {
     NODE_VALIDATE_TURN: "校验回合",
@@ -95,6 +104,7 @@ NODE_LABELS: dict[str, str] = {
     NODE_PERSIST_RESULT: "保存结果",
     # 子图节点：失败信息按真实失败的子图步骤标注位置（Issue 11 起）。
     **PAPER_NODE_LABELS,
+    **TIEBA_NODE_LABELS,
 }
 
 
@@ -402,8 +412,8 @@ def _node_select_explicit_module(
     """显式模块派发：只读服务端校验并随消息持久化的 module_id。"""
     deps: _GraphDeps = config["configurable"]["deps"]
     module_id = state.get("module_id")
-    if module_id is not None and module_id != PAPER_MODULE_ID:
-        # 其余五个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
+    if module_id is not None and module_id not in AVAILABLE_MODULE_IDS:
+        # 其余四个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
         # （派发只读持久化值，模型无法从正文改写模块选择）。
         raise DailyTurnError(
             NODE_SELECT_EXPLICIT_MODULE,
@@ -422,6 +432,8 @@ def _node_invoke_subgraph_or_chat(
     deps: _GraphDeps = config["configurable"]["deps"]
     if state.get("module_dispatch") == PAPER_MODULE_ID:
         return _invoke_paper_module(deps, state)
+    if state.get("module_dispatch") == TIEBA_MODULE_ID:
+        return _invoke_tieba_module(deps, state)
     run = deps.run
     stream = deps.service.stream_generation(
         run.account_id,
@@ -484,6 +496,46 @@ def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
     return {}
 
 
+def _invoke_tieba_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
+    """贴吧子图执行体：节点进度经同一 ``node`` 事件与 current_node 透传。
+
+    子图内的失败按真实失败的子图步骤标注位置（``tieba.search`` 等），
+    并把等待原因写入运行表（持久化等待状态，跨轮次恢复的依据）。
+    """
+    run = deps.run
+    service = getattr(deps.service, "tieba_research_service", None)
+    if service is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT,
+            "module_not_available",
+            "贴吧信息搜集模块当前不可用，请稍后重试。",
+            retryable=True,
+        )
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(state["assistant_message_id"], node, status, duration_ms=duration_ms)
+
+    try:
+        outcome = service.run(
+            repo=deps.repo,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            user_message_id=run.user_message_id,
+            assistant_message_id=run.assistant_message_id,
+            emit_node=emit_node,
+            stop_event=deps.stop_event,
+        )
+    except TiebaModuleError as error:
+        raise DailyTurnError(
+            error.node, error.code, error.message, retryable=error.retryable
+        ) from error
+    if outcome.wait_reason is not None:
+        deps.repo.update_generation_progress(
+            run.account_id, run.run_id, wait_reason=outcome.wait_reason
+        )
+    return {}
+
+
 def _node_verify_output(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
@@ -525,7 +577,9 @@ def _node_persist_result(
     if state.get("module_dispatch") == "chat":
         user_message = deps.repo.get_message(run.account_id, run.user_message_id)
         if user_message is not None:
-            suggestion = detect_paper_suggestion(user_message.content)
+            suggestion = detect_paper_suggestion(
+                user_message.content
+            ) or detect_tieba_suggestion(user_message.content)
             if suggestion is not None:
                 deps.repo.update_message_module_suggestion(
                     run.account_id,

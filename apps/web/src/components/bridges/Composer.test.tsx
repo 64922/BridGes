@@ -341,4 +341,24 @@ describe("Composer 显式模块菜单（V2 Issue 11）", () => {
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("menu")).toBeNull();
   });
+
+  // V2 Issue 14：贴吧信息搜集与其他模块共用同一套菜单/chip 机制。
+  it("`+` 菜单可选择贴吧信息搜集，chip 可移除且文字不丢失", () => {
+    render(<ModuleHarness />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "华东交通大学吧里最近的宿舍条件怎么样" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加功能或文件" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /贴吧信息搜集/ }));
+
+    expect(screen.getByTestId("composer-module-chip").textContent).toContain("贴吧信息搜集");
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "华东交通大学吧里最近的宿舍条件怎么样"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "移除贴吧信息搜集模块" }));
+
+    expect(screen.queryByTestId("composer-module-chip")).toBeNull();
+  });
 });

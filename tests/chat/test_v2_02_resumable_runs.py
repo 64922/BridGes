@@ -143,15 +143,16 @@ def test_module_dispatch_failure_marks_location_and_retry(
 ) -> None:
     """验收 1：模块派发失败标出节点位置与重试办法，不悄悄降级为普通对话。
 
-    V2 Issue 11 起论文模块已接入真实子图，这条失败路径改用仍未接入的贴吧
-    模块验证（同一 ``select_explicit_module`` 拒绝逻辑）。
+    V2 Issue 11 起论文模块已接入真实子图，V2 Issue 14 起贴吧模块也已接入，
+    这条失败路径改用仍未接入的 ``resources`` 模块验证（同一
+    ``select_explicit_module`` 拒绝逻辑）。
     """
     account = _register(client)
     adapter = _GatedSlowAdapter([])
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="搜一下贴吧", module_id="tieba"
+        client, conversation_id, content="搜一下资料", module_id="resources"
     )
     message_id = created["assistant_message"]["message_id"]
 
@@ -405,15 +406,15 @@ def test_retry_idempotency_reuses_run(
 ) -> None:
     """验收 2：重试请求同幂等键复用运行，不重复创建尝试。
 
-    用仍未接入的贴吧模块保证终态确定（派发失败诚实收敛），
-    与是否为论文模块无关（V2 Issue 11 起论文模块已接入）。
+    用仍未接入的 resources 模块保证终态确定（派发失败诚实收敛），
+    与是否为论文/贴吧模块无关（两者已接入真实子图）。
     """
     account = _register(client)
     adapter = _GatedSlowAdapter([])
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="搜一下贴吧", module_id="tieba"
+        client, conversation_id, content="搜一下资料", module_id="resources"
     )
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)

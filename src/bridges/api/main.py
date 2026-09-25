@@ -64,6 +64,10 @@ from bridges.api.video import router as video_router
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.paper.presenting import PaperSummaryGenerator
 from bridges.paper.service import PaperSearchService
+from bridges.tieba.official import HttpOfficialSiteReader
+from bridges.tieba.reading import HttpTiebaThreadReader
+from bridges.tieba.searching import WebSearchServiceAdapter
+from bridges.tieba.service import TiebaResearchService
 from bridges.paper.sources import (
     ENRICH_TIMEOUT_SECONDS,
     ArxivPaperSource,
@@ -1379,6 +1383,17 @@ def create_app(
             summarizer=PaperSummaryGenerator(model_gateway),
         )
         app.router.add_event_handler("shutdown", app.state.paper_search_service.close)
+        # V2 Issue 14：贴吧信息搜集模块子图——检索复用唯一通用公网搜索服务
+        # （审计/缓存/预算同一路径），帖子页面按公开 GET 有界读取，访问受限
+        # 时如实降级为「仅帖链」；官方核验只取学校官方域名页面。
+        app.state.tieba_research_service = TiebaResearchService(
+            search=WebSearchServiceAdapter(app.state.web_search_service),
+            reader=HttpTiebaThreadReader(),
+            official_reader=HttpOfficialSiteReader(),
+        )
+        app.router.add_event_handler(
+            "shutdown", app.state.tieba_research_service.close
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1388,6 +1403,9 @@ def create_app(
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             paper_search_service=getattr(app.state, "paper_search_service", None),
+            tieba_research_service=getattr(
+                app.state, "tieba_research_service", None
+            ),
             profile_service=getattr(app.state, "profile_service", None),
             teaching_progress_service=getattr(
                 app.state, "teaching_progress_service", None

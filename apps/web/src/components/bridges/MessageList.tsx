@@ -15,6 +15,7 @@ import type {
   PaperSearchProjection,
   RetrievalRoundProjection,
   TeachingTurnProjection,
+  TiebaResearchProjection,
   WebSearchProjection,
 } from "@/lib/api";
 import type {
@@ -33,6 +34,7 @@ import { VideoTaskCard } from "./chat/VideoTaskCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ModuleSuggestionCard } from "./chat/ModuleSuggestionCard";
 import { PaperSearchCard } from "./chat/PaperSearchCard";
+import { TiebaResearchCard } from "./chat/TiebaResearchCard";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { BrandLogo } from "./BrandLogo";
 import { CareerPlanningProcessCard } from "./CareerPlanningProcessCard";
@@ -84,6 +86,12 @@ export const NODE_LABEL: Record<string, string> = {
   "paper.enrich": "核对论文来源",
   "paper.rank": "筛选与排序论文",
   "paper.present": "整理论文结果",
+  // V2 Issue 14：贴吧子图节点（真实节点名，不做美化猜测）。
+  "tieba.parse": "理解贴吧问题",
+  "tieba.search": "检索贴吧帖子",
+  "tieba.read": "读取帖子页面",
+  "tieba.summarize": "整理吧友说法",
+  "tieba.verify_official": "核对学校官方页面",
 };
 
 export interface ChatMessage {
@@ -131,6 +139,8 @@ export interface ChatMessage {
   moduleId?: string | null;
   /** V2 Issue 11：本条助手消息的论文模块状态（查询/来源/等待/失败/停止） */
   paperSearch?: PaperSearchProjection | null;
+  /** V2 Issue 14：本条助手消息的贴吧信息搜集状态（已读帖子/帖链降级/官方核验） */
+  tiebaResearch?: TiebaResearchProjection | null;
   /** V2 Issue 11：普通聊天中的一键模块建议（只建议，未检索） */
   moduleSuggestion?: ModuleSuggestionProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
@@ -640,6 +650,16 @@ export function MessageList({
                 {conversationId && (
                   <PaperSearchCard
                     search={message.paperSearch ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* V2 Issue 14：贴吧信息搜集结果卡（已读帖子与楼层时间/
+                    帖链降级/官方核验分区/证据边界/失败与重试）。 */}
+                {conversationId && (
+                  <TiebaResearchCard
+                    research={message.tiebaResearch ?? null}
                     streaming={message.status === "streaming"}
                     onRetry={() => onRetry?.(message.id)}
                   />

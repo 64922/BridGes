@@ -31372,6 +31372,17 @@
             ],
             "description": "普通聊天中的一键模块建议（只建议，不检索）。"
           },
+          "tieba_research": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TiebaResearchProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -47495,6 +47506,21 @@
         "title": "ReadAloudState",
         "description": "单条回答朗读的持久化状态。\n\n- ``not_generated``：尚未生成朗读（可发起生成）；\n- ``ready``：音频已生成并转存到账户对象库，可请求播放；\n- ``failed``：生成失败，error_message 说明原因，可重试。"
       },
+      "ReadStatus": {
+        "type": "string",
+        "enum": [
+          "read",
+          "partial",
+          "access_restricted",
+          "unrecognized",
+          "not_found",
+          "timeout",
+          "error",
+          "cancelled"
+        ],
+        "title": "ReadStatus",
+        "description": "单个帖子的真实读取结果分类。"
+      },
       "RealityMode": {
         "type": "string",
         "enum": [
@@ -54471,6 +54497,568 @@
         ],
         "title": "TemporaryTaskCapsule",
         "description": "Encrypted minimal context for a single task run.\n\nA temporary task capsule binds subject, purpose, objects, run, authorization\nversion, key epoch, and TTL. It is the only long-information carrier that may\nbe sent to cloud workers or model gateways."
+      },
+      "TiebaCandidateLink": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "搜索服务给出的标题（未核实页面）。"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "检索来源标识。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "title",
+          "source"
+        ],
+        "title": "TiebaCandidateLink",
+        "description": "仅有搜索摘要时的帖链降级（归属未确认，不含任何回复内容）。"
+      },
+      "TiebaOfficialCheck": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "官方页面标题。"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "官方页面链接。"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "页面主机名。"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At",
+            "description": "实际取得该页面的时间。"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "verified（已定位相关段落）／excerpt_not_found（未定位相关段落）／fetch_failed（未能取得页面）。"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt",
+            "description": "官方页面中命中原词的真实文本窗口；未命中为 None。"
+          },
+          "matched_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Terms",
+            "description": "在该页面文本中真实命中的原始名词。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "未取得页面时的失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "未取得页面时的中文说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "url",
+          "host",
+          "fetched_at",
+          "status"
+        ],
+        "title": "TiebaOfficialCheck",
+        "description": "学校官方页面核验结果（与吧友经历分开展示）。"
+      },
+      "TiebaPostProjection": {
+        "properties": {
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id",
+            "description": "帖子 ID。"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "帖子直达链接。"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "页面上的帖子标题。"
+          },
+          "affiliation_evidence": {
+            "type": "string",
+            "title": "Affiliation Evidence",
+            "description": "归属确认依据的中文说明。"
+          },
+          "read_status": {
+            "$ref": "#/components/schemas/ReadStatus",
+            "description": "读取结果分类。"
+          },
+          "pages_read": {
+            "type": "integer",
+            "title": "Pages Read",
+            "description": "实际读取页数。",
+            "default": 0
+          },
+          "pages_limit": {
+            "type": "integer",
+            "title": "Pages Limit",
+            "description": "本轮页数上限。",
+            "default": 0
+          },
+          "total_pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Pages",
+            "description": "页面声明的总页数。"
+          },
+          "floor_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor Min",
+            "description": "实际读到的最小楼层。"
+          },
+          "floor_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor Max",
+            "description": "实际读到的最大楼层。"
+          },
+          "replies_obtained": {
+            "type": "boolean",
+            "title": "Replies Obtained",
+            "description": "是否真的取得了回复文本。"
+          },
+          "replies": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaReply"
+            },
+            "type": "array",
+            "title": "Replies",
+            "description": "真实读到的楼层。"
+          },
+          "read_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Error Code",
+            "description": "未取得内容时的分类码。"
+          },
+          "read_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Error Message",
+            "description": "未取得内容时的中文原因说明。"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Retrieved At",
+            "description": "读取时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "affiliation_evidence",
+          "read_status",
+          "replies_obtained",
+          "retrieved_at"
+        ],
+        "title": "TiebaPostProjection",
+        "description": "一个真实读到并确认属于目标贴吧的帖子。"
+      },
+      "TiebaRejectedCandidate": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence",
+            "description": "剔除依据的中文说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "title",
+          "evidence"
+        ],
+        "title": "TiebaRejectedCandidate",
+        "description": "被剔除的候选与剔除理由（他吧同名帖必须留下痕迹，不静默丢弃）。"
+      },
+      "TiebaReply": {
+        "properties": {
+          "floor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor",
+            "description": "楼层号；页面未给出为 None。"
+          },
+          "posted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted At",
+            "description": "页面上的发帖时间原文。"
+          },
+          "is_original_poster": {
+            "type": "boolean",
+            "title": "Is Original Poster",
+            "description": "是否楼主本人发言。",
+            "default": false
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "楼层正文（页面原文，已去标签）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "TiebaReply",
+        "description": "真实读到的楼层；时间与楼层按页面原文记录。"
+      },
+      "TiebaResearchProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TiebaResearchStatus"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "description": "本轮实际检索的主题词（中文拼接）。"
+          },
+          "original_question": {
+            "type": "string",
+            "title": "Original Question",
+            "description": "用户原始问题，逐字保留。"
+          },
+          "topic_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topic Terms",
+            "description": "检索用原始名词。"
+          },
+          "place_or_event": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Place Or Event",
+            "description": "事件／地点原始名词。"
+          },
+          "time_filter": {
+            "$ref": "#/components/schemas/TiebaTimeFilter",
+            "description": "时间条件的执行状态。"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleQueryRecord"
+            },
+            "type": "array",
+            "title": "Queries",
+            "description": "每次外部调用的统一记录（查询词/条数/时间/错误）。"
+          },
+          "forum": {
+            "type": "string",
+            "title": "Forum",
+            "description": "目标贴吧名称。",
+            "default": "华东交通大学吧"
+          },
+          "confirmed_posts": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaPostProjection"
+            },
+            "type": "array",
+            "title": "Confirmed Posts",
+            "description": "确认属于目标贴吧的公开帖子。"
+          },
+          "candidate_links": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaCandidateLink"
+            },
+            "type": "array",
+            "title": "Candidate Links",
+            "description": "仅有搜索摘要时的帖链（明确标注归属未确认）。"
+          },
+          "rejected_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaRejectedCandidate"
+            },
+            "type": "array",
+            "title": "Rejected Candidates",
+            "description": "被剔除的他吧同名帖与剔除依据。"
+          },
+          "official_check_requested": {
+            "type": "boolean",
+            "title": "Official Check Requested",
+            "description": "本轮问题是否要求追加官方核验。",
+            "default": false
+          },
+          "official_checks": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaOfficialCheck"
+            },
+            "type": "array",
+            "title": "Official Checks",
+            "description": "实际取得的学校官方页面核验结果。"
+          },
+          "sections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sections",
+            "description": "只由已读文本分出的段落（可核验的个人经历／不同看法／不确定点）。"
+          },
+          "evidence_boundary": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Boundary",
+            "description": "本轮证据边界与缺口的中文说明。"
+          },
+          "empty_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Reason",
+            "description": "没有结果时的中文原因。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "失败是否可重试。",
+            "default": false
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "本轮收敛时间。"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleWaitState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "等待用户回答的澄清状态；无等待为 None。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "topic",
+          "original_question",
+          "time_filter"
+        ],
+        "title": "TiebaResearchProjection",
+        "description": "贴吧模块对外的完整投影。"
+      },
+      "TiebaResearchStatus": {
+        "type": "string",
+        "enum": [
+          "clarification",
+          "searching",
+          "success",
+          "links_only",
+          "empty",
+          "error",
+          "stopped"
+        ],
+        "title": "TiebaResearchStatus",
+        "description": "一轮贴吧信息搜集的终态。\n\n``SUCCESS`` 只表示真的读到了确认属于目标贴吧的帖子；只拿到候选帖链时\n是 ``LINKS_ONLY``（如实标注归属未确认、未取得回复内容），检索完全没有\n可用候选才是 ``EMPTY``。"
+      },
+      "TiebaTimeFilter": {
+        "properties": {
+          "requirement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement",
+            "description": "时间条件原话。"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year",
+            "description": "绝对年份；相对说法为 None。"
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied",
+            "description": "是否真的按帖子时间过滤过。",
+            "default": false
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "面向用户的中文说明（含未执行时的原因）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "title": "TiebaTimeFilter",
+        "description": "时间条件的真实执行状态：解析到了什么、有没有真的用上。"
       },
       "Tombstone": {
         "properties": {
