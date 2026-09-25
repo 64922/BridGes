@@ -62,6 +62,13 @@ from bridges.api.reminder import router as reminder_router
 from bridges.api.speech import router as speech_router
 from bridges.api.video import router as video_router
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.paper.presenting import PaperSummaryGenerator
+from bridges.paper.service import PaperSearchService
+from bridges.paper.sources import (
+    ENRICH_TIMEOUT_SECONDS,
+    ArxivPaperSource,
+    MetadataEnricher,
+)
 from bridges.career.service import CareerPlannerService
 from bridges.chat import (
     AttachmentRepository,
@@ -425,6 +432,11 @@ def _credential_store_for_namespace(
     if settings.credential_backend == "encrypted-volume":
         return EncryptedVolumeCredentialStore(data_dir, namespace=namespace)
     return OsCredentialStore(data_dir=data_dir, namespace=namespace)
+
+
+def _paper_metadata_client() -> httpx.Client:
+    """论文元数据补充的共享客户端（独立短超时；不承载账户凭据）。"""
+    return httpx.Client(timeout=ENRICH_TIMEOUT_SECONDS)
 
 
 def create_app(
@@ -1333,6 +1345,23 @@ def create_app(
             plugin_service=getattr(app.state, "plugin_service", None),
             mcp_service=getattr(app.state, "mcp_service", None),
         )
+        # V2 Issue 11：论文搜索模块子图——arXiv 主来源复用既有受限服务，
+        # Crossref／OpenAlex 只作有限补充（不装配时对应步骤如实标注缺口），
+        # 中文概述经同一模型网关生成并受证据门控。
+        paper_enricher = (
+            None
+            if use_closeout_fixtures
+            else MetadataEnricher(
+                client=_paper_metadata_client(),
+                observability=app.state.observability_service,
+            )
+        )
+        app.state.paper_search_service = PaperSearchService(
+            source=ArxivPaperSource(app.state.arxiv_search_service),
+            enricher=paper_enricher,
+            summarizer=PaperSummaryGenerator(model_gateway),
+        )
+        app.router.add_event_handler("shutdown", app.state.paper_search_service.close)
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1341,6 +1370,7 @@ def create_app(
             retrieval_service=getattr(app.state, "retrieval_service", None),
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
+            paper_search_service=getattr(app.state, "paper_search_service", None),
             profile_service=getattr(app.state, "profile_service", None),
             teaching_progress_service=getattr(
                 app.state, "teaching_progress_service", None

@@ -28,6 +28,8 @@ from bridges.ai.adapters import StreamEvent
 from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.paper.service import PaperSearchService
+from bridges.paper.contracts import PaperSearchProjection
 from bridges.chat.attachments import (
     PHOTO_MEDIA_TYPES,
     ChatAttachmentError,
@@ -76,11 +78,13 @@ from bridges.chat.turn import (
 )
 from bridges.contracts.career import CareerPlanningProjection
 from bridges.contracts.chat import (
+    CHAT_MODULE_VALUES,
     ChatConversationListProjection,
     ChatConversationProjection,
     ChatConversationSummary,
     ChatFirstTurnResponse,
     ChatMessageProjection,
+    ChatModuleId,
     ChatMessageRole,
     ChatMessageStatus,
     ChatMode,
@@ -96,6 +100,7 @@ from bridges.contracts.chat import (
     McpCallMessageProjection,
     McpCallRequestPayload,
     McpCallStatus,
+    ModuleSuggestionProjection,
     RemovedPluginSelection,
     VideoRequestPayload,
 )
@@ -246,6 +251,7 @@ class ChatService:
         mcp_service: McpService | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
         model_config_provider: RunModelConfigProvider | None = None,
+        paper_search_service: PaperSearchService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -259,6 +265,9 @@ class ChatService:
         self._web_search = web_search_service
         #: 受限内置 arXiv MCP（Issue 22）；结果失败时不调用模型兜底。
         self._arxiv_search = arxiv_search_service
+        #: V2 Issue 11：论文搜索模块子图（显式 module_id=paper 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._paper_search = paper_search_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -1595,6 +1604,7 @@ class ChatService:
         use_knowledge_base: bool = True,
         use_profile: bool = True,
         idempotency_key: str | None = None,
+        module_id: str | None = None,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection, bool]:
         """为已终态（失败/停止/完成）的助手消息创建新的助手尝试。
 
@@ -1606,6 +1616,10 @@ class ChatService:
 
         V2 Issue 02：``idempotency_key`` 使同会话同键重试复用同一运行
         （返回既有投影，不创建新尝试）；返回第三个元素表示幂等重放。
+
+        V2 Issue 11：``module_id`` 是「点击建议一键启动模块」的显式覆盖——
+        仅当该轮用户消息本身没有模块时生效（普通聊天里的论文请求以原文
+        重新派发到论文模块），绝不改写历史消息的模块标识。
         """
         message = self._repo.get_message(account_id, message_id)
         if message is None or message.conversation_id != conversation_id:
@@ -1750,6 +1764,21 @@ class ChatService:
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
         run_id = secrets.token_urlsafe(16)
         previous_run = self._repo.get_run_by_message(account_id, message_id)
+        module_override: str | None = None
+        if module_id is not None:
+            # V2 Issue 11：点击建议一键启动论文模块——只在逐消息无模块时
+            # 生效，且不与历史模块标识冲突（历史不被改写）。
+            if module_id not in CHAT_MODULE_VALUES:
+                raise ChatDomainError(
+                    "module_not_allowed", "模块选择不合法。", 400
+                )
+            if owner.module_id is not None and owner.module_id != module_id:
+                raise ChatDomainError(
+                    "module_already_selected",
+                    "该轮已经选择了模块，不能叠加另一个模块。",
+                    409,
+                )
+            module_override = module_id
         previous_config = previous_run.config if previous_run is not None else None
         policy_snapshot = (previous_config or {}).get("global_writing_policy")
         if (
@@ -1764,6 +1793,8 @@ class ChatService:
             "use_knowledge_base": use_knowledge_base,
             "use_profile": use_profile,
         }
+        if module_override is not None:
+            run_config["module_id"] = module_override
         run_model_id = self._run_model_id()
         if run_model_id is not None:
             run_config["run_model_id"] = run_model_id
@@ -1933,6 +1964,11 @@ class ChatService:
                 details=compiled.to_record(),
             )
         return compiled.model_messages()
+
+    @property
+    def paper_search_service(self) -> PaperSearchService | None:
+        """论文模块子图服务（V2 Issue 11）；未装配时为 None。"""
+        return self._paper_search
 
     def run_graph_turn(
         self,
@@ -2414,6 +2450,24 @@ class ChatService:
             arxiv_search=(
                 ArxivSearchProjection(**message.arxiv_search)
                 if message.arxiv_search is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            module_id=(
+                ChatModuleId(message.module_id)
+                if message.module_id is not None
+                and message.role == ChatMessageRole.USER
+                else None
+            ),
+            paper_search=(
+                PaperSearchProjection.model_validate(message.paper_search)
+                if message.paper_search is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            module_suggestion=(
+                ModuleSuggestionProjection.model_validate(message.module_suggestion)
+                if message.module_suggestion is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

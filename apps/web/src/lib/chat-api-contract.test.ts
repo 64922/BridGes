@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createChatRun, startFirstTurn } from "@/lib/api";
+import { createChatRun, retryChatRun, startFirstTurn } from "@/lib/api";
 
 describe("聊天写入请求合同", () => {
   afterEach(() => {
@@ -36,6 +36,35 @@ describe("聊天写入请求合同", () => {
       idempotency_key: "idempotency-key-1",
       conversation_id: "conversation-1",
       mode: "study",
+    });
+  });
+
+  it("显式选择模块时逐条提交模块 ID，未选择时不提交该字段", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 })
+    );
+
+    await createChatRun("conversation-1", "关于 Transformer 的论文", undefined, [], "paper");
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      content: "关于 Transformer 的论文",
+      module_id: "paper",
+    });
+  });
+
+  it("点击建议一键启动模块时，重试请求带模块 ID 与幂等键", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 })
+    );
+
+    await retryChatRun("conversation-1", "assistant-1", "idempotency-key-2", "paper");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/chat/conversations/conversation-1/messages/assistant-1/retry"
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      idempotency_key: "idempotency-key-2",
+      module_id: "paper",
     });
   });
 });

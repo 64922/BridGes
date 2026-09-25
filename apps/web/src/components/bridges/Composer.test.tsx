@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Composer } from "./Composer";
+import type { ChatModuleSelectionId } from "@/lib/chat-modules";
 import {
   listChatAttachmentDrafts,
   removeChatAttachmentDraft,
@@ -50,6 +52,18 @@ function pickFiles(files: File[]) {
 
 async function waitForThumb(filename: string) {
   return await waitFor(() => screen.getAllByText(filename)[0]);
+}
+
+/** V2 Issue 11：模块选择是受控的，用宿主状态组件验证选择→chip→移除。 */
+function ModuleHarness({
+  onSend = vi.fn(),
+}: {
+  onSend?: (text: string, attachmentIds: string[]) => Promise<boolean> | boolean | void;
+}) {
+  const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
+  return (
+    <Composer onSend={onSend} moduleId={moduleId} onModuleChange={setModuleId} />
+  );
 }
 
 afterEach(() => {
@@ -234,5 +248,77 @@ describe("Composer 照片附件（Issue 05）", () => {
 
     await waitFor(() => expect(screen.queryByText("成功.png")).toBeNull());
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+  });
+});
+
+describe("Composer 显式模块菜单（V2 Issue 11）", () => {
+  it("`+` 菜单有中文可访问名称、aria-expanded 状态与中文菜单项", () => {
+    render(<Composer onSend={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: "添加功能或文件" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(trigger);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("menu", { name: "添加功能或文件" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /添加照片和文件/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /论文搜索/ })).toBeTruthy();
+  });
+
+  it("选择论文搜索后显示可移除 chip，移除后回到普通聊天且文字不丢失", () => {
+    render(<ModuleHarness />);
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "量子纠错综述" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加功能或文件" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /论文搜索/ }));
+
+    const chip = screen.getByTestId("composer-module-chip");
+    expect(chip.textContent).toContain("论文搜索");
+    // 已输入文字不因选择/移除模块而丢失
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("量子纠错综述");
+
+    fireEvent.click(screen.getByRole("button", { name: "移除论文搜索模块" }));
+
+    expect(screen.queryByTestId("composer-module-chip")).toBeNull();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("量子纠错综述");
+  });
+
+  it("键盘可完成打开、移动与激活，Esc 关闭后焦点回到 `+`", async () => {
+    render(<ModuleHarness />);
+    const trigger = screen.getByRole("button", { name: "添加功能或文件" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const items = screen.getAllByRole("menuitem");
+    expect(document.activeElement).toBe(items[0]);
+
+    fireEvent.keyDown(items[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+
+    // 聚焦的菜单项是原生 button：浏览器把 Enter/Space 转成 click，
+    // 这里直接触发同一激活路径。
+    fireEvent.click(items[1]);
+    expect(screen.getByTestId("composer-module-chip").textContent).toContain("论文搜索");
+
+    // 重新打开后 Esc：菜单关闭且焦点归还触发按钮（归还发生在下一帧）。
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getAllByRole("menuitem")[0], { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("Tab 与点击菜单外都关闭菜单", () => {
+    render(<ModuleHarness />);
+    const trigger = screen.getByRole("button", { name: "添加功能或文件" });
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getAllByRole("menuitem")[0], { key: "Tab" });
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });

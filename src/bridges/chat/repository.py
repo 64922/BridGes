@@ -129,6 +129,10 @@ class MessageRecord:
     route: dict[str, Any] | None = None
     #: V2 Issue 02：随消息持久化的显式模块选择（服务端校验；普通聊天 None）。
     module_id: str | None = None
+    #: V2 Issue 11：论文模块状态投影（查询词/来源/全文可得性/等待/失败）。
+    paper_search: dict[str, Any] | None = None
+    #: V2 Issue 11：普通聊天中的「一键以原文启动论文模块」建议（只建议）。
+    module_suggestion: dict[str, Any] | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -518,7 +522,7 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route, module_id"
+            " mcp_call, route, module_id, paper_search, module_suggestion"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -532,7 +536,7 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route, module_id"
+            " mcp_call, route, module_id, paper_search, module_suggestion"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -581,6 +585,42 @@ class ConversationRepository:
                 "UPDATE messages SET web_search = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(web_search), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_paper_search(
+        self,
+        account_id: str,
+        message_id: str,
+        paper_search: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """写入论文模块状态投影（V2 Issue 11）。
+
+        与 ``arxiv_search`` 同形：失败/停止路径在消息终态收敛之前先落投影，
+        保证用户在同一消息里看到真实查询词与失败分类，而不是空白。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET paper_search = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(paper_search), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_module_suggestion(
+        self,
+        account_id: str,
+        message_id: str,
+        suggestion: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """写入普通聊天中的模块建议（V2 Issue 11；只建议，不启动检索）。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET module_suggestion = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(suggestion), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -719,6 +759,8 @@ class ConversationRepository:
         arxiv_search: dict[str, Any] | None = None,
         teaching: dict[str, Any] | None = None,
         persist_learning: Callable[[], None] | None = None,
+        paper_search: dict[str, Any] | None = None,
+        module_suggestion: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -751,7 +793,11 @@ class ConversationRepository:
                     is_primary=True,
                 )
                 self._run_lock_recorder.record(lock, business_ref=business_ref)
-            if arxiv_search is not None:
+            if (
+                arxiv_search is not None
+                or paper_search is not None
+                or module_suggestion is not None
+            ):
                 assignments = [
                     "status = ?",
                     "error_code = ?",
@@ -776,8 +822,15 @@ class ConversationRepository:
                 if web_search is not None:
                     assignments.append("web_search = ?")
                     values.append(_json_dumps(web_search))
-                assignments.append("arxiv_search = ?")
-                values.append(_json_dumps(arxiv_search))
+                if arxiv_search is not None:
+                    assignments.append("arxiv_search = ?")
+                    values.append(_json_dumps(arxiv_search))
+                if paper_search is not None:
+                    assignments.append("paper_search = ?")
+                    values.append(_json_dumps(paper_search))
+                if module_suggestion is not None:
+                    assignments.append("module_suggestion = ?")
+                    values.append(_json_dumps(module_suggestion))
                 values.extend([message_id, account_id])
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET "
@@ -2034,6 +2087,8 @@ class ConversationRepository:
             module_id=(
                 str(row["module_id"]) if row["module_id"] is not None else None
             ),
+            paper_search=_json_loads_any(row["paper_search"]),
+            module_suggestion=_json_loads_any(row["module_suggestion"]),
         )
 
 

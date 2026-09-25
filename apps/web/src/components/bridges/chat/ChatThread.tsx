@@ -6,6 +6,7 @@ import {
   MessageList,
   type ChatMessage,
 } from "@/components/bridges/MessageList";
+import type { ChatModuleId } from "@/lib/api";
 
 import styles from "./chat.module.css";
 
@@ -15,6 +16,8 @@ interface ChatThreadProps {
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;
   onTeachingBeginnerStart?: (messageId: string) => void;
+  /** V2 Issue 11：点击模块建议（以该轮原文显式启动模块） */
+  onUseModuleSuggestion?: (messageId: string, moduleId: ChatModuleId) => void;
   conversationId?: string;
   /** Issue 30：TTS 能力可用性（账户级探测快照） */
   tts?: { available: boolean; reason?: string };
@@ -36,6 +39,7 @@ export function ChatThread({
   onStop,
   onTeachingSkip,
   onTeachingBeginnerStart,
+  onUseModuleSuggestion,
   conversationId,
   tts,
   onRefreshMessages,
@@ -66,6 +70,7 @@ export function ChatThread({
           onStop={onStop}
           onTeachingSkip={onTeachingSkip}
           onTeachingBeginnerStart={onTeachingBeginnerStart}
+          onUseModuleSuggestion={onUseModuleSuggestion}
           conversationId={conversationId}
           tts={tts}
           onRefreshMessages={onRefreshMessages}

@@ -10,6 +10,7 @@ import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { ApiError, startFirstTurn } from "@/lib/api";
+import { type ChatModuleSelectionId } from "@/lib/chat-modules";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -25,6 +26,8 @@ export function NewChatHome() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [mode, setMode] = useState<ChatMode>("companion");
+  // V2 Issue 11：首页也可显式选择模块（随首条用户消息持久化）。
+  const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
   const firstTurnInFlightRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
   const submitFirstTurn = async (content: string, attachmentIds: string[] = []): Promise<boolean> => {
@@ -43,6 +46,8 @@ export function NewChatHome() {
         mode,
         // Issue 05：新聊天页直发照片——账户域草稿随首轮原子绑定。
         attachmentIds,
+        // V2 Issue 11：显式模块随首轮消息保存（未选择时不提交）。
+        moduleId: moduleId ?? undefined,
       });
       idempotencyKeyRef.current = null;
       window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
@@ -91,6 +96,8 @@ export function NewChatHome() {
                 variant="new-chat"
                 onSend={submitFirstTurn}
                 generating={sending}
+                moduleId={moduleId}
+                onModuleChange={setModuleId}
               />
             </div>
             <p className={styles.blankStateNote}>

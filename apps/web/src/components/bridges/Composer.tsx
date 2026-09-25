@@ -12,7 +12,9 @@ import {
   uploadChatAttachmentDraft,
 } from "@/lib/api";
 import type { ChatAttachmentDraftProjection } from "@/lib/api";
+import { CHAT_MODULES, type ChatModuleSelectionId } from "@/lib/chat-modules";
 import type { CapabilityAvailability } from "./chat/ReadAloudControls";
+import { Menu } from "./Menu";
 import styles from "./chat/chat.module.css";
 
 // Issue 05：照片附件客户端约束（与服务端同款限制，提前拦截减少无效上传）。
@@ -55,6 +57,13 @@ interface ComposerProps {
   asr?: CapabilityAvailability;
   /** 新聊天首页使用原子首轮，并在会话创建前禁用听写入口。 */
   variant?: "conversation" | "new-chat";
+  /**
+   * V2 Issue 11：当前显式模块选择（受控）。``null`` 为普通聊天；选择后
+   * 输入区显示可移除 chip，发送时随该条消息保存模块 ID。
+   */
+  moduleId?: ChatModuleSelectionId | null;
+  /** 模块选择变化（选中菜单项传模块 ID，移除 chip 传 null）。 */
+  onModuleChange?: (moduleId: ChatModuleSelectionId | null) => void;
 }
 
 /** 对话输入区：发送普通消息与听写结果。 */
@@ -66,6 +75,8 @@ export function Composer({
   prefill = null,
   asr = { available: true },
   variant = "conversation",
+  moduleId = null,
+  onModuleChange,
 }: ComposerProps) {
   const [text, setText] = useState("");
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
@@ -510,6 +521,15 @@ export function Composer({
     cursor: "pointer",
   };
 
+  // V2 Issue 11：显式模块 chip（菜单选择后在输入区可见、可移除）。
+  // 移除只取消本轮之后的模块选择，不改写已发送消息的逐条模块标识，
+  // 也不触碰已输入文字。
+  const selectedModule = CHAT_MODULES.find((item) => item.id === moduleId) ?? null;
+  const clearModule = () => {
+    onModuleChange?.(null);
+    textareaRef.current?.focus();
+  };
+
   return (
     <div
       data-testid="composer"
@@ -539,40 +559,56 @@ export function Composer({
       }}
     >
       <label htmlFor="composer-input" className="sc-visually-hidden">输入消息</label>
-      <textarea
-        ref={textareaRef}
-        id="composer-input"
-        rows={2}
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value);
-          autoGrow();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
+        {selectedModule && (
+          <span className={styles.composerChip} data-testid="composer-module-chip">
+            {selectedModule.label}
+            <button
+              type="button"
+              aria-label={`移除${selectedModule.label}模块`}
+              onClick={clearModule}
+            >
+              <Icon name="close" size={12} aria-hidden />
+            </button>
+          </span>
+        )}
+        <textarea
+          ref={textareaRef}
+          id="composer-input"
+          rows={2}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            autoGrow();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void send();
+            }
+          }}
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData?.files ?? []);
+            if (files.length === 0) return;
             event.preventDefault();
-            void send();
-          }
-        }}
-        onPaste={(event) => {
-          const files = Array.from(event.clipboardData?.files ?? []);
-          if (files.length === 0) return;
-          event.preventDefault();
-          addFiles(files);
-        }}
-        placeholder="输入消息，开始日常对话"
-        style={{
-          width: "100%",
-          border: "none",
-          outline: "none",
-          resize: "none",
-          backgroundColor: "transparent",
-          color: "var(--color-text-primary)",
-          fontSize: "var(--text-base)",
-          lineHeight: "var(--line-height-normal)",
-          maxHeight: "12rem",
-        }}
-      />
+            addFiles(files);
+          }}
+          placeholder="输入消息，开始日常对话"
+          style={{
+            width: "100%",
+            flex: 1,
+            minWidth: 0,
+            border: "none",
+            outline: "none",
+            resize: "none",
+            backgroundColor: "transparent",
+            color: "var(--color-text-primary)",
+            fontSize: "var(--text-base)",
+            lineHeight: "var(--line-height-normal)",
+            maxHeight: "12rem",
+          }}
+        />
+      </div>
 
       {draftErrors.length > 0 && (
         <ul
@@ -854,15 +890,42 @@ export function Composer({
           onChange={onFileInputChange}
           style={{ display: "none" }}
         />
-        <button
-          type="button"
-          aria-label="添加图片"
-          title="添加图片（PNG、JPEG、GIF、WebP，10MB 以内）"
-          onClick={() => fileInputRef.current?.click()}
-          style={iconButtonStyle}
-        >
-          <Icon name="imagePicture" size={20} aria-hidden />
-        </button>
+        {/* V2 Issue 11：`+` 上拉菜单（添加照片和文件 + 显式模块选择）。
+            菜单键位与焦点归还由无障碍 Menu 组件统一承担：方向键/Home/End
+            移动、Enter 激活、Tab/点击外部关闭、Esc 关闭并把焦点还给 `+`；
+            选择模块只切换到「显式派发」，不在此处发起任何检索。 */}
+        <Menu
+          ariaLabel="添加功能或文件"
+          openUp
+          trigger={<Icon name="plus" size={20} aria-hidden />}
+          triggerStyle={{
+            width: "auto",
+            minWidth: "var(--target-size)",
+            minHeight: "var(--target-size)",
+            padding: "0 var(--space-2)",
+            justifyContent: "center",
+            border: "none",
+            backgroundColor: "transparent",
+            color: "var(--color-text-secondary)",
+          }}
+          items={[
+            {
+              label: "添加照片和文件",
+              description: "从电脑选择图片，也可拖入或粘贴",
+              icon: "imagePicture",
+              // 随后打开系统文件选择框：焦点先回到触发按钮，关闭对话框
+              // 时归还目标不会是已卸载的菜单项。
+              returnFocus: false,
+              onSelect: () => fileInputRef.current?.click(),
+            },
+            ...CHAT_MODULES.map((module) => ({
+              label: module.label,
+              description: module.description,
+              icon: module.icon,
+              onSelect: () => onModuleChange?.(module.id),
+            })),
+          ]}
+        />
         {uploadingCount > 0 && (
           <span role="status" className={styles.composerDictationText}>
             正在添加图片…

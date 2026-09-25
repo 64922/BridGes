@@ -88,7 +88,7 @@ def test_normal_chat_walks_parent_graph_with_real_node_progress(
             and run_view["status"] == "running"
             and run_view["current_node"] in EXPECTED_NODES
         ), "运行应进入 running 且节点边界实时写入 current_node"
-        assert run_view["graph_version"] == "daily-parent-v1"
+        assert run_view["graph_version"] == "daily-parent-v2"
         assert run_view["current_node"] in EXPECTED_NODES
         assert run_view["wait_reason"] is None
         assert run_view["cursor"] > 0
@@ -124,7 +124,7 @@ def test_normal_chat_walks_parent_graph_with_real_node_progress(
     # 运行状态关联：图版本、当前节点、模型锁、SSE 游标
     run = sqlite_app.state.chat_service.generation_run(account["id"], created["run_id"])
     assert run is not None
-    assert run.graph_version == "daily-parent-v1"
+    assert run.graph_version == "daily-parent-v2"
     assert run.current_node == "persist_result"
     assert run.wait_reason is None
 
@@ -141,13 +141,17 @@ def test_normal_chat_walks_parent_graph_with_real_node_progress(
 def test_module_dispatch_failure_marks_location_and_retry(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """验收 1：模块派发失败标出节点位置与重试办法，不悄悄降级为普通对话。"""
+    """验收 1：模块派发失败标出节点位置与重试办法，不悄悄降级为普通对话。
+
+    V2 Issue 11 起论文模块已接入真实子图，这条失败路径改用仍未接入的贴吧
+    模块验证（同一 ``select_explicit_module`` 拒绝逻辑）。
+    """
     account = _register(client)
     adapter = _GatedSlowAdapter([])
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="搜论文", module_id="paper"
+        client, conversation_id, content="搜一下贴吧", module_id="tieba"
     )
     message_id = created["assistant_message"]["message_id"]
 
@@ -399,13 +403,17 @@ def test_module_id_rejected_before_dispatch_when_unknown(
 def test_retry_idempotency_reuses_run(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """验收 2：重试请求同幂等键复用运行，不重复创建尝试。"""
+    """验收 2：重试请求同幂等键复用运行，不重复创建尝试。
+
+    用仍未接入的贴吧模块保证终态确定（派发失败诚实收敛），
+    与是否为论文模块无关（V2 Issue 11 起论文模块已接入）。
+    """
     account = _register(client)
     adapter = _GatedSlowAdapter([])
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="搜论文", module_id="paper"
+        client, conversation_id, content="搜一下贴吧", module_id="tieba"
     )
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)

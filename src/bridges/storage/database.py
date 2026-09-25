@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 50
+SCHEMA_VERSION = 51
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2436,6 +2436,19 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         ALTER TABLE chat_attachments ADD COLUMN ordinal INTEGER
+        """,
+    ],
+    # Issue 11（V2 论文搜索）：messages 增加两个显式模块列的 JSON 投影。
+    # paper_search 保存论文模块的真实状态（查询词、来源、全文可得性、澄清
+    # 等待状态、失败与停止），module_suggestion 保存普通聊天中「一键以原文
+    # 启动论文模块」的建议（只建议，绝不暗中检索）。旧行通过 DEFAULT NULL
+    # 自然兼容；旧 arXiv 自动路由投影（arxiv_search）保持原样只读。
+    51: [
+        """
+        ALTER TABLE messages ADD COLUMN paper_search TEXT
+        """,
+        """
+        ALTER TABLE messages ADD COLUMN module_suggestion TEXT
         """,
     ],
 }

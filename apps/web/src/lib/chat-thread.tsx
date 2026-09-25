@@ -26,6 +26,8 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
         skill: message.skill ?? null,
         // Issue 05：本轮绑定的照片附件（按页序渲染缩略图）
         attachments: message.attachments ?? null,
+        // V2 Issue 11：本轮显式选择的模块（逐条持久化，重开不随新选择改变）
+        moduleId: message.module_id ?? null,
         content: <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{message.content}</p>,
       });
       continue;
@@ -54,6 +56,9 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       retrieval: latest.retrieval ?? null,
       webSearch: latest.web_search ?? null,
       arxivSearch: latest.arxiv_search ?? null,
+      // V2 Issue 11：论文模块投影与普通聊天里的模块建议
+      paperSearch: latest.paper_search ?? null,
+      moduleSuggestion: latest.module_suggestion ?? null,
       teaching: latest.teaching ?? null,
       // Issue 27：本次上下文说明披露；无披露为 null
       contextNote: latest.context_note ?? null,

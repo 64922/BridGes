@@ -717,6 +717,7 @@ def _paper_from_payload(payload: Any) -> ArxivPaper:
     if not isinstance(payload, dict):
         raise TypeError("paper payload must be an object")
     published_at = datetime.fromisoformat(str(payload["published_at"]))
+    category = payload.get("primary_category")
     return ArxivPaper(
         arxiv_id=str(payload["arxiv_id"]),
         title=str(payload["title"]),
@@ -725,6 +726,7 @@ def _paper_from_payload(payload: Any) -> ArxivPaper:
         abs_url=str(payload["abs_url"]),
         pdf_url=str(payload["pdf_url"]),
         abstract=str(payload["abstract"]),
+        primary_category=str(category) if category else None,
     )
 
 
