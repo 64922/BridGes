@@ -181,17 +181,22 @@ def test_draft_upload_is_idempotent_and_conflicts(tmp_path: Path, monkeypatch: A
 def test_draft_rejects_unsupported_type_with_chinese_reason(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """文本/PDF 等非照片类型被拒；原因中文且说明支持的类型。"""
+    """无解析能力的表格类型被拒；原因中文且说明支持的类型（V2 Issue 06 起
+    文本与 PDF 已受支持，改用表格类型验证拒绝路径）。"""
     app = _app(tmp_path, monkeypatch)
     with TestClient(app) as client:
         _register(client, "type")
         response = _upload_draft(
-            client, filename="notes.txt", upload_id="u-txt", content=TEXT_BYTES
+            client,
+            filename="scores.csv",
+            upload_id="u-csv",
+            content="姓名,分数\n甲,90\n".encode(),
         )
         assert response.status_code == 400, response.text
         detail = response.json()["detail"]
         assert detail["error"] == "invalid_file_type"
         assert "PNG" in detail["message"]
+        assert "PDF" in detail["message"]
 
 
 def test_draft_rejects_oversize_and_mismatch_and_empty(

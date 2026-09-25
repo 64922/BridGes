@@ -8,6 +8,7 @@ Embedding 使用全局确定性端口（GQ-05：不再播种账户探测状态�
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
@@ -133,32 +134,53 @@ def add_material(
 
     layer 取 ``attachment`` / ``project`` / ``knowledge_base``；附件层需要
     ``conversation_id`` 与 ``user_message_id`` 以写入 chat_attachments 绑定。
+    V2 Issue 06：聊天附件发送前是账户级草稿，上传即入队解析（不带
+    conversation_id），作用域由发送时的消息绑定决定。
     """
     stored = env["repository"].create_object(
         account_id, filename, content.encode("utf-8"), media_type="text/plain"
     )
     if layer == "attachment":
-        env["ingestion"].enqueue(account_id, stored.object_id, conversation_id)
+        # V2 Issue 06：聊天附件发送前是账户级草稿，上传即入队解析（不带
+        # conversation_id），作用域由发送时的消息绑定决定。
+        env["ingestion"].enqueue(account_id, stored.object_id, source="chat_attachment")
         assert conversation_id is not None
         now = datetime.now(UTC).isoformat(timespec="seconds")
-        # 镜像真实上传流程：先建 uploaded 未绑定行（供发送时校验绑定），
-        # 传入 user_message_id 时直接绑定为 bound。
-        env["database"].connection.execute(
-            "INSERT INTO chat_attachments"
-            " (object_id, account_id, conversation_id, message_id, upload_id,"
-            "  media_type, status, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, 'text/plain', ?, ?, ?)",
-            (
-                stored.object_id,
-                account_id,
-                conversation_id,
-                user_message_id,
-                f"upload-{secrets.token_urlsafe(6)}",
-                "bound" if user_message_id is not None else "uploaded",
-                now,
-                now,
-            ),
-        )
+        if user_message_id is None:
+            # 尚未发送：镜像真实草稿行（发送时由聊天流程迁移并绑定消息）。
+            env["database"].connection.execute(
+                "INSERT INTO chat_attachment_drafts"
+                " (object_id, account_id, upload_id, original_filename, media_type,"
+                "  content_length, content_hash, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, 'text/plain', ?, ?, ?, ?)",
+                (
+                    stored.object_id,
+                    account_id,
+                    f"upload-{secrets.token_urlsafe(6)}",
+                    filename,
+                    len(content.encode("utf-8")),
+                    hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                    now,
+                    now,
+                ),
+            )
+        else:
+            # 已绑定到消息（直接调用检索服务的用例不经聊天发送流程）。
+            env["database"].connection.execute(
+                "INSERT INTO chat_attachments"
+                " (object_id, account_id, conversation_id, message_id, upload_id,"
+                "  media_type, status, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, 'text/plain', 'bound', ?, ?)",
+                (
+                    stored.object_id,
+                    account_id,
+                    conversation_id,
+                    user_message_id,
+                    f"upload-{secrets.token_urlsafe(6)}",
+                    now,
+                    now,
+                ),
+            )
     elif layer == "project":
         env["ingestion"].enqueue(account_id, stored.object_id, project_id=project_id)
     else:

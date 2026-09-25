@@ -140,30 +140,31 @@ class AttachmentRepository:
         ).fetchall()
         return list(rows)
 
-    def object_ids_for_message(
-        self, account_id: str, conversation_id: str, message_id: str
+    def bound_object_ids_for_conversation(
+        self, account_id: str, conversation_id: str, *, limit: int
     ) -> list[str]:
-        """返回消息绑定的对象标识（检索层确定本轮附件作用域用）。"""
+        """返回会话内已绑定附件对象标识（V2 Issue 06 附件检索作用域）。
+
+        按绑定时间从新到旧截断：刚发送的附件必然在范围内，长会话中更早的
+        附件仍在有界窗口内可继续追问。跨账户或不存在返回空集。
+        """
         rows = self._database.scoped(account_id).execute(
             "SELECT object_id FROM chat_attachments"
-            " WHERE account_id = ? AND conversation_id = ? AND message_id = ?",
-            (account_id, conversation_id, message_id),
+            " WHERE account_id = ? AND conversation_id = ? AND message_id IS NOT NULL"
+            " ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (account_id, conversation_id, limit),
         ).fetchall()
         return [str(row["object_id"]) for row in rows]
 
-    def bound_exists(
-        self,
-        account_id: str,
-        object_id: str,
-        conversation_id: str,
-        message_id: str,
+    def bound_in_conversation(
+        self, account_id: str, conversation_id: str, object_id: str
     ) -> bool:
-        """附件是否仍绑定在指定用户消息上（引用打开时实时校验用）。"""
+        """附件是否仍绑定在本会话的某条消息上（引用可访问性实时校验）。"""
         row = self._database.scoped(account_id).execute(
             "SELECT 1 FROM chat_attachments WHERE account_id = ?"
-            " AND object_id = ? AND conversation_id = ? AND message_id = ?"
+            " AND conversation_id = ? AND object_id = ? AND message_id IS NOT NULL"
             " LIMIT 1",
-            (account_id, object_id, conversation_id, message_id),
+            (account_id, conversation_id, object_id),
         ).fetchone()
         return row is not None
 
@@ -314,9 +315,12 @@ class AttachmentDraftRepository:
 
     _DRAFT_SELECT = (
         "SELECT d.object_id, d.account_id, d.upload_id, d.original_filename,"
-        " d.media_type, d.content_length, d.content_hash, d.created_at, d.updated_at"
+        " d.media_type, d.content_length, d.content_hash, d.created_at, d.updated_at,"
+        " r.status AS ingestion_raw_status, r.lease_expires_at, r.failure_reason"
         " FROM chat_attachment_drafts d"
         " JOIN objects o ON o.object_id = d.object_id"
+        " LEFT JOIN document_records r ON r.object_id = d.object_id"
+        " AND r.account_id = d.account_id"
     )
 
     def get_row(self, account_id: str, object_id: str) -> sqlite3.Row | None:
