@@ -111,10 +111,12 @@ class QwenTextChatAdapter(CapabilityAdapter):
             ),
         )
 
-    def _build_messages(self, payload: dict[str, Any]) -> list[dict[str, str]]:
+    def _build_messages(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         if "messages" in payload:
+            # content 原样透传：多模态轮次携带 OpenAI 兼容的内容部件列表
+            # （image_url/text，V2 Issue 05），纯文本轮次仍是字符串。
             return [
-                {"role": str(m["role"]), "content": str(m["content"])}
+                {"role": str(m["role"]), "content": m["content"]}
                 for m in payload["messages"]
             ]
         user_content = str(payload.get("prompt") or payload.get("node_id") or "")

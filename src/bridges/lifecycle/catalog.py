@@ -41,6 +41,7 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "message_citations",
     "retrieval_rounds",
     "chat_attachment_cancellations",
+    "chat_attachment_drafts",
     "chat_attachments",
     "mode_events",
     "answer_feedback",
@@ -103,7 +104,12 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("messages", "消息", ("messages",), 1024),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
-    ExportCategory("chat_attachments", "对话附件", ("chat_attachments",), 256),
+    ExportCategory(
+        "chat_attachments",
+        "对话附件",
+        ("chat_attachments", "chat_attachment_drafts"),
+        256,
+    ),
     ExportCategory("answer_feedback", "回答反馈", ("answer_feedback",), 512),
     ExportCategory(
         "teaching_progress",
