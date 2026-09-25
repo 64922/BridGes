@@ -338,6 +338,15 @@ class ChatService:
             )
         return self._attachments
 
+    def _validate_draft_attachments(self, account_id: str, attachment_ids: list[str]) -> None:
+        """V2 Issue 05：校验账户级照片草稿并统一转成会话域错误。"""
+        try:
+            self._require_attachment_service().validate_draft_ids(
+                account_id, attachment_ids
+            )
+        except ChatAttachmentError as exc:
+            raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+
     # ------------------------------------------------------------------
     # 对话
     # ------------------------------------------------------------------
@@ -790,12 +799,7 @@ class ChatService:
         # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
         # 校验失败（数量/重复/跨账户）在此拒绝，草稿保留供用户调整重试。
         if attachment_ids:
-            try:
-                self._require_attachment_service().validate_draft_ids(
-                    account_id, attachment_ids
-                )
-            except ChatAttachmentError as exc:
-                raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+            self._validate_draft_attachments(account_id, attachment_ids)
         mode = ChatMode(record.mode)
         capability_route = self._route_for_turn(
             image_payload=image_payload,
@@ -862,12 +866,13 @@ class ChatService:
 
         if not record.title:
             # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
+            # （空正文必带附件——纯空消息已被 empty_message 拒绝。）
             if content:
                 title = (
                     content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
                 )
             else:
-                title = "照片消息" if attachment_ids else "新对话"
+                title = "照片消息"
             self._repo.set_conversation_title(account_id, conversation_id, title, now)
 
         self._process_profile_effects(
@@ -1284,12 +1289,7 @@ class ChatService:
                 )
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
-            try:
-                self._require_attachment_service().validate_draft_ids(
-                    account_id, attachment_ids
-                )
-            except ChatAttachmentError as exc:
-                raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+            self._validate_draft_attachments(account_id, attachment_ids)
         capability_route = self._route_for_turn(
             image_payload=image_payload,
             video_payload=video_payload,

@@ -190,6 +190,21 @@ describe("Composer 照片附件（Issue 05）", () => {
     await waitForThumb("旧照片.png");
   });
 
+  it("预览读取失败时在附件旁显示中文原因", async () => {
+    vi.mocked(listChatAttachmentDrafts).mockResolvedValue([
+      draftProjection("obj-broken", "坏图.png"),
+    ]);
+
+    renderComposer();
+    await waitForThumb("坏图.png");
+
+    // 同源 /content 请求失败（503）：img 触发 onError，附件旁出现中文原因。
+    fireEvent.error(screen.getByAltText("照片预览：坏图.png"));
+
+    await waitFor(() => screen.getByText(/照片内容当前无法读取/));
+    expect(screen.getAllByText("坏图.png").length).toBeGreaterThan(0);
+  });
+
   it("发送失败时保留文字与附件等待重试", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("发送失败"));
 

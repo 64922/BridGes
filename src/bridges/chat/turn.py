@@ -5583,6 +5583,13 @@ class TurnOrchestrator:
                 else "（用户发送了照片，但照片内容当前无法读取。请如实告知"
                 "用户暂时无法查看照片，请用户稍后重试。）"
             )
+        elif unread_count and not image_parts:
+            # 有文字但本轮照片全部不可读：仍须告知照片存在且不可读，
+            # 防止模型对「这张照片里是什么」凭空作答。
+            content += (
+                "（用户还发送了照片，但照片内容当前无法读取。请如实告知"
+                "用户暂时无法查看照片，不要猜测照片内容。）"
+            )
         if unread_count and image_parts:
             content += f"（另有 {unread_count} 张照片内容当前无法读取。）"
         if not image_parts and not message.content:

@@ -560,6 +560,50 @@ def test_pure_attachment_message_asks_purpose_and_is_not_recognized(
         assert assistant[-1]["content"]
 
 
+def test_text_with_unreadable_photos_tells_model_honestly(
+    tmp_path: Path, monkeypatch: Any, generation_helpers: Any
+) -> None:
+    """有文字但照片全部不可读：模型仍被告知照片存在且不可读，不凭空作答。"""
+    from bridges.storage.errors import StorageError
+
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        _register(client, "honest")
+        adapter = _CapturingAdapter()
+        app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
+        draft = _upload_draft(client, upload_id="u-honest").json()
+        conversation_id = _start_conversation(client, app)
+
+        response = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={
+                "content": "这张照片里是什么？",
+                "attachment_ids": [draft["object_id"]],
+            },
+        )
+        assert response.status_code == 200, response.text
+        # 模拟对象存储损坏：内容读取抛错 → 附件列出但全部不可读。
+        attachment_service = app.state.chat_attachment_service
+
+        def broken_get_content(account_id: str, object_id: str) -> bytes:
+            raise StorageError("对象内容缺失。")
+
+        attachment_service._objects.get_content = broken_get_content  # noqa: SLF001
+        generation_helpers["drive"](app)
+
+        assert adapter.payloads, "模型未被调用"
+        current = adapter.payloads[-1]["messages"][-1]
+        assert current["role"] == "user"
+        text = (
+            current["content"]
+            if isinstance(current["content"], str)
+            else current["content"][-1]["text"]
+        )
+        assert "这张照片里是什么？" in text
+        assert "照片内容当前无法读取" in text
+        assert "不要猜测照片内容" in text
+
+
 # ---------------------------------------------------------------------------
 # 知识库隔离、删除与过期清理（AC5）
 # ---------------------------------------------------------------------------

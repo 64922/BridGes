@@ -90,6 +90,8 @@ export function Composer({
   const [draftErrors, setDraftErrors] = useState<DraftError[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [dragOver, setDragOver] = useState(false);
+  // 预览加载失败的草稿：在其缩略图位置显示中文原因（AC2「读取失败」）。
+  const [brokenPreviews, setBrokenPreviews] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftErrorSeqRef = useRef(0);
   // 有文字或已有照片即可发送；上传未完成的批次禁止提前发送。
@@ -222,6 +224,16 @@ export function Composer({
     setDrafts((current) => current.filter((draft) => draft.object_id !== objectId));
     void removeChatAttachmentDraft(objectId).catch(() => {
       // 删除请求失败不回滚本地列表：服务端草稿由过期清理兜底。
+    });
+  };
+
+  /** 预览 /content 读取失败：在对应附件旁显示中文原因（不静默破图）。 */
+  const markPreviewBroken = (objectId: string) => {
+    setBrokenPreviews((current) => {
+      if (current.has(objectId)) return current;
+      const next = new Set(current);
+      next.add(objectId);
+      return next;
     });
   };
 
@@ -628,18 +640,40 @@ export function Composer({
                   gap: "var(--space-1)",
                 }}
               >
-                {/* 同源预览：经账户授权返回；读取失败由浏览器 alt 文案兜底。 */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={chatAttachmentDraftContentUrl(draft.object_id)}
-                  alt={`照片预览：${filename}`}
-                  style={{
-                    width: "100%",
-                    height: 64,
-                    objectFit: "cover",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                />
+                {/* 同源预览：经账户授权返回；读取失败在附件旁显示中文原因。 */}
+                {brokenPreviews.has(draft.object_id) ? (
+                  <div
+                    role="note"
+                    style={{
+                      width: "100%",
+                      height: 64,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "1px dashed var(--color-border)",
+                      borderRadius: "var(--radius-sm)",
+                      color: "var(--color-status-error)",
+                      fontSize: "var(--text-sm)",
+                      textAlign: "center",
+                      padding: "0 var(--space-1)",
+                    }}
+                  >
+                    照片内容当前无法读取，请移除后重新添加。
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={chatAttachmentDraftContentUrl(draft.object_id)}
+                    alt={`照片预览：${filename}`}
+                    onError={() => markPreviewBroken(draft.object_id)}
+                    style={{
+                      width: "100%",
+                      height: 64,
+                      objectFit: "cover",
+                      borderRadius: "var(--radius-sm)",
+                    }}
+                  />
+                )}
                 <span
                   title={filename}
                   style={{
