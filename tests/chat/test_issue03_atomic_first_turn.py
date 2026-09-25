@@ -81,17 +81,18 @@ def _first_turn(
 
 def _upload(
     client: TestClient,
-    conversation_id: str,
+    conversation_id: str = "",
     *,
-    filename: str = "课程资料.pdf",
+    filename: str = "photo.png",
     content: bytes | None = None,
     upload_id: str = "upload-1",
 ) -> dict[str, Any]:
+    """V2 Issue 05：上传账户级照片草稿（发送前不归属会话）。"""
+    del conversation_id
     response = client.post(
-        f"/chat/conversations/{conversation_id}/attachments",
-        content=content or b"%PDF-1.7\nminimal test document",
+        "/chat/attachment-drafts",
+        content=content or b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR-first-turn",
         headers={
-            "Content-Type": "application/pdf",
             "X-Bridges-Filename": quote(filename, safe=""),
             "X-Bridges-Upload-Id": upload_id,
         },
