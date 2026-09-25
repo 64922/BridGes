@@ -492,6 +492,7 @@ class ChatAttachmentService:
                     account_id=account_id,
                     object_id=stored.object_id,
                     upload_id=upload_key,
+                    original_filename=filename,
                     media_type=media_type,
                     content_length=len(content),
                     content_hash=content_hash,

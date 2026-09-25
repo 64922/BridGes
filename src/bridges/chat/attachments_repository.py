@@ -313,9 +313,8 @@ class AttachmentDraftRepository:
     # -- 读取 --------------------------------------------------------------
 
     _DRAFT_SELECT = (
-        "SELECT d.object_id, d.account_id, d.upload_id, d.media_type,"
-        " d.content_length, d.content_hash, d.created_at, d.updated_at,"
-        " o.original_filename"
+        "SELECT d.object_id, d.account_id, d.upload_id, d.original_filename,"
+        " d.media_type, d.content_length, d.content_hash, d.created_at, d.updated_at"
         " FROM chat_attachment_drafts d"
         " JOIN objects o ON o.object_id = d.object_id"
     )
@@ -391,21 +390,23 @@ class AttachmentDraftRepository:
         account_id: str,
         object_id: str,
         upload_id: str,
+        original_filename: str,
         media_type: str,
         content_length: int,
         content_hash: str,
         created_at: str,
     ) -> None:
-        """写入一条草稿行（original_filename 随 objects 行，写失败由调用方回收对象）。"""
+        """写入一条草稿行（自包含文件名/大小/摘要；写失败由调用方回收对象）。"""
         self._database.scoped(account_id).execute(
             "INSERT INTO chat_attachment_drafts"
-            "(object_id, account_id, upload_id, media_type, content_length,"
-            " content_hash, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(object_id, account_id, upload_id, original_filename, media_type,"
+            " content_length, content_hash, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 object_id,
                 account_id,
                 upload_id,
+                original_filename,
                 media_type,
                 content_length,
                 content_hash,

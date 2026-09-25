@@ -517,7 +517,7 @@ class ChatMessageCreateRequest(BaseModel):
     )
     attachment_ids: list[str] = Field(
         default_factory=list,
-        max_length=10,
+        max_length=50,
         description=(
             "按页序排列的会话附件草稿 ID（V2 Issue 05）；发送成功后随"
             "消息原子绑定会话，失败保留草稿供重试。"
@@ -586,7 +586,7 @@ class ChatFirstTurnRequest(BaseModel):
     )
     attachment_ids: list[str] = Field(
         default_factory=list,
-        max_length=10,
+        max_length=50,
         description="按页序排列的附件草稿 ID（V2 Issue 05）；随首轮消息原子绑定新会话。",
     )
     idempotency_key: str = Field(
