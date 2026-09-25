@@ -88,8 +88,17 @@ MODEL_BY_CAPABILITY: dict[str, str] = {
     "qwen_embedding": EMBEDDING_MODEL_ID,
 }
 
+#: 已验证上下文窗口登记表（token；模型字面量唯一来源豁免于本模块）。
+#: V2 Issue 03 上下文编译的**回退**窗口来源：生产路径优先采用运行配置
+#: 快照（``RunModelConfigSnapshot.context_window``，百炼已验证值）；仅在
+#: 未装配提供者或快照与运行锁定模型不一致时按本表/缺省值回退。
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    CHAT_MODEL_ID: FACTORY_MAIN_MODEL_CONTEXT_WINDOW,
+}
+
 __all__ = [
     "ASR_LONG_MODEL_ID",
+    "MODEL_CONTEXT_WINDOWS",
     "ASR_MODEL_ID",
     "CHAT_MODEL_ID",
     "EMBEDDING_MODEL_ID",

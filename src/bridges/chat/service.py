@@ -25,9 +25,11 @@ from bridges import __version__
 from bridges.ai import ModelGateway
 from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.adapters import StreamEvent
+from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentService
+from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
 from bridges.chat.lifecycle import GenerationLifecycle
@@ -1413,6 +1415,7 @@ class ChatService:
         until_user_message_id: str | None = None,
         use_knowledge_base: bool = True,
         use_profile: bool = True,
+        compiled_messages: list[dict[str, str]] | None = None,
         model_id: str | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成（委托给回合编排深模块，接口与语义不变）。
@@ -1422,6 +1425,9 @@ class ChatService:
         执行（Issue 42 架构加深）；事件经此处原样透传给 API 层。停止
         信号与终态收敛语义不变：用户停止/切换账户导致的客户端断开都会
         把消息收敛到明确终态，绝不留 streaming 僵尸。
+
+        ``compiled_messages``（V2 Issue 03）为日常父图编译的模型就绪
+        上下文；传入时模型历史以它为准，未传入回退既有组装。
         """
         yield from self._turn.stream_turn(
             account_id,
@@ -1432,6 +1438,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             gateway=self._gateway,
+            compiled_messages=compiled_messages,
             model_override=model_id,
         )
 
@@ -1821,6 +1828,67 @@ class ChatService:
             video_payload=user_message.video,
             mcp_call_payload=user_message.mcp_call,
         )
+
+    def compile_turn_context(self, run: GenerationRunRecord) -> list[dict[str, str]]:
+        """编译本轮模型输入上下文（V2 Issue 03）。
+
+        由日常父图 ``compile_context`` 节点调用：以原始消息为权威源，在
+        锁定模型的已验证窗口内产出「当前请求 + 近期原文 + 较早摘要 + 按需
+        补回的原文」（详见 ``context_compiler``），并落一条不含任何正文的
+        编译审计记录（模型 ID、预算/摘要/估算版本、采用的原文消息 ID）。
+        返回模型就绪消息列表（进图状态，检查点可序列化）。
+        """
+        user_message = self._repo.get_message(run.account_id, run.user_message_id)
+        if user_message is None:
+            raise ChatDomainError(
+                "message_not_found", "消息不存在或没有访问权限。", 404
+            )
+        conversation = self._repo.get_conversation(
+            run.account_id, run.conversation_id
+        )
+        mode = (
+            ChatMode(conversation.mode)
+            if conversation is not None
+            else CHAT_MODE
+        )
+        # 本轮启动时锁定的主模型（V2 Issue 09 运行级模型锁）：预算按锁定
+        # 模型的已验证窗口计算——运行配置快照带该模型的已验证窗口与最大
+        # 输入额度时取两者较小值（architecture.md §4 取上界合同）；快照已
+        # 切换（罕见的中途换配置）或未装配提供者时回退登记表与保守缺省
+        # 窗口，绝不虚大可用预算。
+        model_id = (run.config or {}).get("run_model_id") or CHAT_MODEL_ID
+        context_window: int | None = None
+        if self._model_config_provider is not None:
+            snapshot = self._model_config_provider.snapshot()
+            if snapshot.model_id == model_id:
+                if (
+                    snapshot.context_window is not None
+                    and snapshot.max_input_tokens is not None
+                ):
+                    context_window = min(
+                        snapshot.context_window, snapshot.max_input_tokens
+                    )
+                else:
+                    context_window = snapshot.context_window
+        compiled = _compile_turn_context(
+            messages=self._repo.list_messages(
+                run.account_id, run.conversation_id
+            ),
+            current_user_message_id=run.user_message_id,
+            model_id=model_id,
+            mode=mode,
+            context_window=context_window,
+        )
+        if self._observability is not None:
+            self._observability.log_audit(
+                actor_account_id=run.account_id,
+                action=AuditAction.CONTEXT_COMPILED,
+                result=AuditResult.SUCCESS,
+                object_refs=[run.assistant_message_id],
+                reason="本轮上下文编译记录。",
+                details=compiled.to_record(),
+            )
+        return compiled.model_messages()
 
     def run_graph_turn(
         self,

@@ -129,6 +129,9 @@ class DailyTurnState(TypedDict, total=False):
     #: 本轮启动时锁定的主模型 ID（V2 Issue 09；None 表示沿用出厂矩阵）。
     run_model_id: str | None
     model_lock_id: str | None
+    #: V2 Issue 03：compile_context 产出的模型就绪上下文（近期原文 +
+    #: 较早摘要 + 补回原文；纯字符串/数字，检查点可序列化）。
+    compiled_messages: list[dict[str, str]]
 
 
 class _GraphDeps:
@@ -356,11 +359,18 @@ def _node_validate_turn(
 def _node_compile_context(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
-    """编译本轮上下文基础（检索决策；Issue 03 扩展为完整上下文编译器）。"""
+    """编译本轮上下文：检索决策（幂等）+ 模型输入上下文编译（Issue 03）。
+
+    编译以原始消息为权威源，在锁定模型已验证窗口内产出「当前请求 +
+    近期原文 + 较早摘要 + 按需补回的原文」并落编译审计记录；产物进图
+    状态（租约恢复时随检查点复用，不重复编译、不重复落审计）。
+    """
     del state
     deps: _GraphDeps = config["configurable"]["deps"]
     deps.service.ensure_turn_context(deps.run)
-    return {}
+    return {
+        "compiled_messages": deps.service.compile_turn_context(deps.run),
+    }
 
 
 def _node_select_explicit_module(
@@ -396,6 +406,7 @@ def _node_invoke_subgraph_or_chat(
         until_user_message_id=run.user_message_id,
         use_knowledge_base=state.get("use_knowledge_base", True),
         use_profile=state.get("use_profile", True),
+        compiled_messages=state.get("compiled_messages"),
         # 运行级模型锁定（V2 Issue 09）：换运行配置不中途切换本轮模型。
         model_id=state.get("run_model_id"),
     )
