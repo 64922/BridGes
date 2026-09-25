@@ -21,7 +21,7 @@ from bridges.storage.database import BridgesDatabase
 #: 投影，写路径仍归属主仓库（BridgesObjectRepository / ingestion）。
 _ATTACHMENT_SELECT = (
     "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
-    " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
+    " a.upload_id, a.media_type, a.status, a.ordinal, a.created_at, a.updated_at,"
     " o.original_filename, o.content_length, o.content_hash,"
     " r.status AS ingestion_raw_status, r.lease_expires_at, r.failure_reason"
     " FROM chat_attachments a"
@@ -53,11 +53,12 @@ class AttachmentRepository:
     def rows_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[sqlite3.Row]:
-        """返回消息绑定的附件投影行（按创建时间与对象标识稳定排序）。"""
+        """返回消息绑定的附件投影行（V2 页序优先，历史行按创建时间随后）。"""
         rows = self._database.scoped(account_id).execute(
             _ATTACHMENT_SELECT
             + " WHERE a.account_id = ? AND a.conversation_id = ? AND a.message_id = ?"
-            " AND o.status = 'active' ORDER BY a.created_at, a.object_id",
+            " AND o.status = 'active'"
+            " ORDER BY a.ordinal IS NULL, a.ordinal, a.created_at, a.object_id",
             (account_id, conversation_id, message_id),
         ).fetchall()
         return list(rows)
@@ -295,4 +296,137 @@ class AttachmentRepository:
             "DELETE FROM chat_attachment_cancellations"
             " WHERE account_id = ? AND conversation_id = ?",
             (account_id, conversation_id),
+        )
+
+
+class AttachmentDraftRepository:
+    """``chat_attachment_drafts`` 的账户作用域读写（V2 Issue 05）。
+
+    草稿是发送前隔离的临时域：只按账户隔离，不归属会话；发送成功后在
+    消息同一事务内迁移为 ``chat_attachments`` 绑定行。写方法不开事务，
+    由调用方在 ``database.transaction()`` 内调用。
+    """
+
+    def __init__(self, database: BridgesDatabase) -> None:
+        self._database = database
+
+    # -- 读取 --------------------------------------------------------------
+
+    _DRAFT_SELECT = (
+        "SELECT d.object_id, d.account_id, d.upload_id, d.original_filename,"
+        " d.media_type, d.content_length, d.content_hash, d.created_at, d.updated_at"
+        " FROM chat_attachment_drafts d"
+        " JOIN objects o ON o.object_id = d.object_id"
+    )
+
+    def get_row(self, account_id: str, object_id: str) -> sqlite3.Row | None:
+        """返回单条草稿投影行；跨账户或不存在返回 None（不泄漏存在性）。"""
+        row = self._database.scoped(account_id).execute(
+            self._DRAFT_SELECT
+            + " WHERE d.object_id = ? AND d.account_id = ? AND o.status = 'active'",
+            (object_id, account_id),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def row_by_upload_id(self, account_id: str, upload_id: str) -> sqlite3.Row | None:
+        """按客户端幂等标识返回草稿行；越权或不存在返回 None。"""
+        row = self._database.scoped(account_id).execute(
+            self._DRAFT_SELECT
+            + " WHERE d.upload_id = ? AND d.account_id = ? AND o.status = 'active'",
+            (upload_id, account_id),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def rows_for_account(self, account_id: str) -> list[sqlite3.Row]:
+        """返回账户全部未发送草稿（按创建时间与对象标识稳定排序）。"""
+        rows = self._database.scoped(account_id).execute(
+            self._DRAFT_SELECT
+            + " WHERE d.account_id = ? AND o.status = 'active'"
+            " ORDER BY d.created_at, d.object_id",
+            (account_id,),
+        ).fetchall()
+        return list(rows)
+
+    def duplicate_row(
+        self, account_id: str, filename: str, content_hash: str
+    ) -> sqlite3.Row | None:
+        """返回同名同内容的既有草稿（内容去重，取最早一条）。"""
+        row = self._database.scoped(account_id).execute(
+            self._DRAFT_SELECT
+            + " WHERE d.account_id = ? AND o.original_filename = ?"
+            " AND o.content_hash = ? AND o.status = 'active'"
+            " ORDER BY d.created_at LIMIT 1",
+            (account_id, filename, content_hash),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def existing_object_ids(self, account_id: str, object_ids: list[str]) -> set[str]:
+        """返回指定标识中仍存在的草稿对象集合（发送前授权校验）。"""
+        if not object_ids:
+            return set()
+        placeholders = ",".join("?" for _ in object_ids)
+        rows = self._database.scoped(account_id).execute(
+            "SELECT object_id FROM chat_attachment_drafts"
+            " WHERE account_id = ?"
+            f" AND object_id IN ({placeholders})",
+            (account_id, *object_ids),
+        ).fetchall()
+        return {str(row["object_id"]) for row in rows}
+
+    def older_than(self, cutoff_iso: str) -> list[sqlite3.Row]:
+        """返回超过安全期限的草稿行（跨账户扫描，后台清理用）。"""
+        rows = self._database.connection.execute(
+            "SELECT account_id, object_id FROM chat_attachment_drafts"
+            " WHERE updated_at < ? ORDER BY updated_at",
+            (cutoff_iso,),
+        ).fetchall()
+        return list(rows)
+
+    # -- 写入（调用方须在 database.transaction() 内） ----------------------
+
+    def insert_uploaded(
+        self,
+        *,
+        account_id: str,
+        object_id: str,
+        upload_id: str,
+        original_filename: str,
+        media_type: str,
+        content_length: int,
+        content_hash: str,
+        created_at: str,
+    ) -> None:
+        """写入一条草稿行（自包含文件名/大小/摘要；写失败由调用方回收对象）。"""
+        self._database.scoped(account_id).execute(
+            "INSERT INTO chat_attachment_drafts"
+            "(object_id, account_id, upload_id, original_filename, media_type,"
+            " content_length, content_hash, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                object_id,
+                account_id,
+                upload_id,
+                original_filename,
+                media_type,
+                content_length,
+                content_hash,
+                created_at,
+                created_at,
+            ),
+        )
+
+    def delete_one(self, account_id: str, object_id: str) -> None:
+        """删除一条草稿行（发送绑定迁移或用户移除草稿）。"""
+        self._database.scoped(account_id).execute(
+            "DELETE FROM chat_attachment_drafts"
+            " WHERE account_id = ? AND object_id = ?",
+            (account_id, object_id),
+        )
+
+    def delete_by_upload_id(self, account_id: str, upload_id: str) -> None:
+        """按客户端幂等标识删除草稿行（幂等；未知标识为 no-op）。"""
+        self._database.scoped(account_id).execute(
+            "DELETE FROM chat_attachment_drafts"
+            " WHERE account_id = ? AND upload_id = ?",
+            (account_id, upload_id),
         )

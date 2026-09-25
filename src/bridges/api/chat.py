@@ -13,20 +13,25 @@ import json
 import time
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from bridges.api.auth import SubjectDep
-from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
+from bridges.chat.attachments import (
+    MAX_ATTACHMENT_BYTES,
+    ChatAttachmentError,
+    ChatAttachmentService,
+)
 from bridges.chat.selections import ChatSelectionsService
 from bridges.chat.service import (
     ChatDomainError,
     ChatService,
 )
 from bridges.contracts.chat import (
+    ChatAttachmentDraftProjection,
     ChatConversationListProjection,
     ChatConversationProjection,
     ChatConversationUpdateRequest,
@@ -49,16 +54,16 @@ from bridges.contracts.feedback import (
     AnswerFeedbackRequest,
     FeedbackResolveRequest,
 )
-from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
 )
 from bridges.ingestion.service import IngestionService
 from bridges.observability.service import ObservabilityService
+from bridges.retirement import raise_retired_file_source, record_compatibility_observation
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
-from bridges.retirement import record_compatibility_observation, raise_retired_file_source
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -122,6 +127,35 @@ def _get_attachment_service(request: Request) -> ChatAttachmentService:
 
 
 AttachmentServiceDep = Annotated[ChatAttachmentService, Depends(_get_attachment_service)]
+
+
+async def _read_upload_body(request: Request) -> bytes:
+    """流式读取上传正文并强制 10 MB 上限（与知识库上传同一约定）。"""
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            if int(declared_length) > MAX_ATTACHMENT_BYTES:
+                raise _error(
+                    status.HTTP_413_CONTENT_TOO_LARGE,
+                    "file_too_large",
+                    "文件超过 10 MB 大小限制，请压缩后重试。",
+                )
+        except ValueError as exc:
+            raise _error(
+                status.HTTP_400_BAD_REQUEST, "invalid_request", "上传请求大小无效。"
+            ) from exc
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_ATTACHMENT_BYTES:
+            raise _error(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "file_too_large",
+                "文件超过 10 MB 大小限制，请压缩后重试。",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _get_ingestion_service(request: Request) -> IngestionService:
@@ -399,7 +433,7 @@ def create_first_turn(
             mode=body.mode,
             project_id=None,
             plugin_selection=body.plugin_selection,
-            attachment_ids=None,
+            attachment_ids=body.attachment_ids,
             skill_id=body.skill_id,
             skill_input=(
                 body.skill_input.model_dump(mode="json") if body.skill_input else None
@@ -722,6 +756,147 @@ def cancel_attachment(
     raise_retired_file_source(request, endpoint="legacy.chat.attachments.cancel")
 
 
+# ---------------------------------------------------------------------------
+# 附件草稿域（V2 Issue 05）：发送前隔离的账户级照片附件
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/attachment-drafts",
+    responses={
+        status.HTTP_200_OK: {
+            "model": ChatAttachmentDraftProjection,
+            "description": "幂等重放：同一上传标识与同一内容，返回既有草稿",
+        },
+        status.HTTP_201_CREATED: {"model": ChatAttachmentDraftProjection},
+        status.HTTP_400_BAD_REQUEST: {"model": ChatError},
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+async def upload_attachment_draft(
+    request: Request,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """接收原始图片字节，创建发送前草稿（只校验类型、体积与账户）。
+
+    与知识库上传同一头约定（``X-Bridges-Filename``/``X-Bridges-Upload-Id``）。
+    草稿不归属会话——V2 新会话必须由首条消息原子创建，新聊天页还没有
+    会话 ID；发送成功后随消息在同一事务内绑定会话。同名同内容去重，
+    客户端安全重试绝不产生重复草稿。
+    """
+    content = await _read_upload_body(request)
+    filename_header = request.headers.get("x-bridges-filename")
+    if not filename_header:
+        raise _error(
+            status.HTTP_400_BAD_REQUEST, "invalid_filename", "缺少文件名，无法上传。"
+        )
+    upload_id_header = request.headers.get("x-bridges-upload-id") or None
+    try:
+        record, created = service.upload_draft(
+            subject.account_id,
+            unquote(filename_header),
+            content,
+            upload_id=upload_id_header,
+        )
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        content=record.projection().model_dump(mode="json"),
+    )
+
+
+@router.get(
+    "/attachment-drafts",
+    response_model=list[ChatAttachmentDraftProjection],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def list_attachment_drafts(
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> list[ChatAttachmentDraftProjection]:
+    """返回当前账户全部未发送草稿（页面重开后恢复草稿列表）。"""
+    return [record.projection() for record in service.list_drafts(subject.account_id)]
+
+
+@router.get(
+    "/attachment-drafts/{object_id}/content",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def download_attachment_draft(
+    object_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """按账户授权读取草稿内容（发送前缩略图预览；跨账户 404 不泄漏）。"""
+    try:
+        record, content = service.download_draft(subject.account_id, object_id)
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    safe_filename = quote(record.original_filename, safe="")
+    return Response(
+        content=content,
+        media_type=record.media_type,
+        headers={
+            "Content-Disposition": (
+                f'inline; filename="attachment"; filename*=UTF-8\'\'{safe_filename}'
+            ),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.delete(
+    "/attachment-drafts/by-upload/{upload_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def remove_attachment_draft_by_upload(
+    upload_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """按客户端幂等标识移除草稿；未知标识幂等成功（可安全重试）。"""
+    service.delete_draft_by_upload_id(subject.account_id, upload_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/attachment-drafts/{object_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def remove_attachment_draft(
+    object_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """移除一条草稿；跨账户或不存在返回 404，不泄漏存在性。"""
+    try:
+        service.delete_draft(subject.account_id, object_id)
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=ChatRunStartedResponse,
@@ -768,7 +943,7 @@ async def send_message(
             subject.account_id,
             conversation_id,
             body.content,
-            None,
+            body.attachment_ids,
             skill_id=body.skill_id,
             skill_input=(
                 body.skill_input.model_dump(mode="json") if body.skill_input else None

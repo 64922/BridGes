@@ -1,9 +1,10 @@
-"""Issue 04 反馈环：消息与附件绑定的原子性故障注入。
+"""消息与附件绑定的原子性故障注入（V2 Issue 05 草稿域更新）。
 
 真实 HTTP + 真实 SQLite（同一请求内完成创建与绑定）。在绑定前（消息
 INSERT 失败）与绑定后（COMMIT 失败）注入故障，断言消息、运行与附件
-绑定要么同时提交、要么同时回滚——绝不出现「消息提交成功但附件仍未
-绑定」或「绑定成功但消息缺失」的中间成功态。
+绑定要么同时提交、要么同时回滚——草稿要么整体留在草稿域，要么整体
+迁移为绑定行，绝不出现「消息提交成功但附件仍未绑定」或「绑定成功但
+消息缺失」的中间成功态。
 """
 
 from __future__ import annotations
@@ -12,11 +13,14 @@ import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi.testclient import TestClient
 
 from bridges.api.main import create_app
 from bridges.config import get_settings
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR-binding-test"
 
 
 def _app(tmp_path: Path, monkeypatch: Any) -> Any:
@@ -32,7 +36,7 @@ def _register(client: TestClient, tag: str) -> dict[str, Any]:
         "/auth/register",
         json={
             "username": f"{tag}_user",
-            "qq_email": f"987654{len(tag):02d}@qq.com",
+            "qq_email": f"987654{sum(bytearray(tag.encode('utf-8'))) % 10 ** 8:08d}@qq.com",
             "password": "Passw0rd123!",
         },
     )
@@ -40,23 +44,30 @@ def _register(client: TestClient, tag: str) -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _create_conversation(client: TestClient) -> str:
-    response = client.post("/chat/conversations", json={})
-    assert response.status_code == 201, response.text
-    return response.json()["conversation_id"]
-
-
-def _upload(client: TestClient, conversation_id: str) -> str:
+def _upload_draft(client: TestClient) -> str:
     response = client.post(
-        f"/chat/conversations/{conversation_id}/attachments",
+        "/chat/attachment-drafts",
         headers={
-            "X-Bridges-Filename": "issue04-notes.txt",
-            "X-Bridges-Upload-Id": "issue04-upload-1",
+            "X-Bridges-Filename": quote("binding.png"),
+            "X-Bridges-Upload-Id": "binding-upload-1",
         },
-        content="Issue 04 原子绑定测试正文（仅测试内容）。".encode(),
+        content=PNG_BYTES,
     )
     assert response.status_code == 201, response.text
     return response.json()["object_id"]
+
+
+def _start_conversation(client: TestClient, app: Any) -> str:
+    response = client.post(
+        "/chat/first-turn",
+        json={
+            "content": "先聊两句",
+            "idempotency_key": f"first-binding-{id(client) % 10 ** 8}",
+        },
+    )
+    assert response.status_code == 201, response.text
+    app.state.generation_executor.run_tick()
+    return response.json()["conversation"]["conversation_id"]
 
 
 def _send(client: TestClient, conversation_id: str, object_id: str) -> Any:
@@ -109,13 +120,18 @@ def _row_counts(database: Any, conversation_id: str) -> dict[str, int]:
     }
 
 
-def _attachment_state(database: Any, object_id: str) -> tuple[str | None, str]:
-    row = database.connection.execute(
-        "SELECT message_id, status FROM chat_attachments WHERE object_id = ?",
+def _assert_draft_intact(database: Any, object_id: str) -> None:
+    """草稿仍在草稿域、没有任何绑定行（故障回滚后的安全态）。"""
+    draft = database.connection.execute(
+        "SELECT COUNT(*) AS n FROM chat_attachment_drafts WHERE object_id = ?",
         (object_id,),
-    ).fetchone()
-    assert row is not None, "附件绑定行必须存在（上传已成功）"
-    return row["message_id"], row["status"]
+    ).fetchone()["n"]
+    assert draft == 1, "回滚后草稿必须完整保留在草稿域"
+    bound = database.connection.execute(
+        "SELECT COUNT(*) AS n FROM chat_attachments WHERE object_id = ?",
+        (object_id,),
+    ).fetchone()["n"]
+    assert bound == 0, "回滚后不得残留绑定行"
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +146,8 @@ def test_failure_before_binding_rolls_back_message_run_and_attachment(
     # 客户端视角收到 500 响应。
     with TestClient(app, raise_server_exceptions=False) as client:
         _register(client, "pre")
-        conversation_id = _create_conversation(client)
-        object_id = _upload(client, conversation_id)
+        object_id = _upload_draft(client)
+        conversation_id = _start_conversation(client, app)
         database, _ = _install_fault(
             app,
             lambda sql: sql.lstrip().startswith("INSERT INTO messages"),
@@ -140,11 +156,9 @@ def test_failure_before_binding_rolls_back_message_run_and_attachment(
         response = _send(client, conversation_id, object_id)
         assert response.status_code == 500, response.text
 
-        # 事务整体回滚：没有消息、没有运行，附件仍保持「已上传未绑定」。
-        assert _row_counts(database, conversation_id) == {"messages": 0, "runs": 0}
-        message_id, status = _attachment_state(database, object_id)
-        assert message_id is None
-        assert status == "uploaded"
+        # 事务整体回滚：没有新消息、没有新运行，草稿保持未绑定。
+        assert _row_counts(database, conversation_id) == {"messages": 2, "runs": 1}
+        _assert_draft_intact(database, object_id)
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +171,8 @@ def test_failure_after_binding_rolls_back_message_and_binding(
     app = _app(tmp_path, monkeypatch)
     with TestClient(app, raise_server_exceptions=False) as client:
         _register(client, "post")
-        conversation_id = _create_conversation(client)
-        object_id = _upload(client, conversation_id)
+        object_id = _upload_draft(client)
+        conversation_id = _start_conversation(client, app)
         database, proxy = _install_fault(
             app, lambda sql: sql.strip().upper() == "COMMIT"
         )
@@ -166,17 +180,15 @@ def test_failure_after_binding_rolls_back_message_and_binding(
         response = _send(client, conversation_id, object_id)
         assert response.status_code == 500, response.text
         # 故障使事务保持打开（COMMIT 未执行）：显式回滚后事务内全部语句
-        # （含已执行的绑定 UPDATE）一并撤销，不留半状态。
+        # （含已执行的绑定 INSERT/DELETE）一并撤销，不留半状态。
         proxy._real.execute("ROLLBACK")  # noqa: SLF001
 
-        assert _row_counts(database, conversation_id) == {"messages": 0, "runs": 0}
-        message_id, status = _attachment_state(database, object_id)
-        assert message_id is None
-        assert status == "uploaded"
+        assert _row_counts(database, conversation_id) == {"messages": 2, "runs": 1}
+        _assert_draft_intact(database, object_id)
 
 
 # ---------------------------------------------------------------------------
-# 绑定语句本身失败：绑定 UPDATE 抛错 → 消息、运行与绑定全部回滚
+# 绑定语句本身失败：绑定 INSERT 抛错 → 消息、运行与绑定全部回滚
 # ---------------------------------------------------------------------------
 
 def test_failure_at_binding_statement_rolls_back_message_and_attachment(
@@ -185,20 +197,18 @@ def test_failure_at_binding_statement_rolls_back_message_and_attachment(
     app = _app(tmp_path, monkeypatch)
     with TestClient(app, raise_server_exceptions=False) as client:
         _register(client, "bind")
-        conversation_id = _create_conversation(client)
-        object_id = _upload(client, conversation_id)
+        object_id = _upload_draft(client)
+        conversation_id = _start_conversation(client, app)
         database, _ = _install_fault(
             app,
-            lambda sql: sql.lstrip().startswith("UPDATE chat_attachments"),
+            lambda sql: sql.lstrip().startswith("INSERT INTO chat_attachments"),
         )
 
         response = _send(client, conversation_id, object_id)
         assert response.status_code == 500, response.text
 
-        assert _row_counts(database, conversation_id) == {"messages": 0, "runs": 0}
-        message_id, status = _attachment_state(database, object_id)
-        assert message_id is None
-        assert status == "uploaded"
+        assert _row_counts(database, conversation_id) == {"messages": 2, "runs": 1}
+        _assert_draft_intact(database, object_id)
 
 
 # ---------------------------------------------------------------------------
@@ -209,14 +219,24 @@ def test_binding_commits_together_with_message(tmp_path: Path, monkeypatch: Any)
     app = _app(tmp_path, monkeypatch)
     with TestClient(app) as client:
         _register(client, "ok")
-        conversation_id = _create_conversation(client)
-        object_id = _upload(client, conversation_id)
+        object_id = _upload_draft(client)
+        conversation_id = _start_conversation(client, app)
 
         response = _send(client, conversation_id, object_id)
         assert response.status_code == 200, response.text
 
         database = app.state.bridges_database
-        assert _row_counts(database, conversation_id)["messages"] == 2  # 用户+助手占位
-        message_id, status = _attachment_state(database, object_id)
-        assert message_id is not None
-        assert status == "bound"
+        assert _row_counts(database, conversation_id)["messages"] == 4  # 首轮 2 + 本轮 2
+        bound = database.connection.execute(
+            "SELECT message_id, status, ordinal FROM chat_attachments"
+            " WHERE object_id = ?",
+            (object_id,),
+        ).fetchone()
+        assert bound is not None
+        assert bound["status"] == "bound"
+        assert bound["message_id"] is not None
+        assert bound["ordinal"] == 1
+        assert database.connection.execute(
+            "SELECT COUNT(*) AS n FROM chat_attachment_drafts WHERE object_id = ?",
+            (object_id,),
+        ).fetchone()["n"] == 0

@@ -2956,6 +2956,429 @@
         }
       }
     },
+    "/chat/attachment-drafts": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Upload Attachment Draft",
+        "description": "接收原始图片字节，创建发送前草稿（只校验类型、体积与账户）。\n\n与知识库上传同一头约定（``X-Bridges-Filename``/``X-Bridges-Upload-Id``）。\n草稿不归属会话——V2 新会话必须由首条消息原子创建，新聊天页还没有\n会话 ID；发送成功后随消息在同一事务内绑定会话。同名同内容去重，\n客户端安全重试绝不产生重复草稿。",
+        "operationId": "upload_attachment_draft_chat_attachment_drafts_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "幂等重放：同一上传标识与同一内容，返回既有草稿",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAttachmentDraftProjection"
+                }
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAttachmentDraftProjection"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Attachment Drafts",
+        "description": "返回当前账户全部未发送草稿（页面重开后恢复草稿列表）。",
+        "operationId": "list_attachment_drafts_chat_attachment_drafts_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatAttachmentDraftProjection"
+                  },
+                  "title": "Response List Attachment Drafts Chat Attachment Drafts Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/attachment-drafts/{object_id}/content": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Download Attachment Draft",
+        "description": "按账户授权读取草稿内容（发送前缩略图预览；跨账户 404 不泄漏）。",
+        "operationId": "download_attachment_draft_chat_attachment_drafts__object_id__content_get",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/attachment-drafts/by-upload/{upload_id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Remove Attachment Draft By Upload",
+        "description": "按客户端幂等标识移除草稿；未知标识幂等成功（可安全重试）。",
+        "operationId": "remove_attachment_draft_by_upload_chat_attachment_drafts_by_upload__upload_id__delete",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Upload Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/attachment-drafts/{object_id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Remove Attachment Draft",
+        "description": "移除一条草稿；跨账户或不存在返回 404，不泄漏存在性。",
+        "operationId": "remove_attachment_draft_chat_attachment_drafts__object_id__delete",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat/conversations/{conversation_id}/messages": {
       "post": {
         "tags": [
@@ -29118,6 +29541,59 @@
         "title": "ChartDataTable",
         "description": "Structured source data for a chart."
       },
+      "ChatAttachmentDraftProjection": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "稳定对象标识。"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename",
+            "description": "用户选择时的显示文件名。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "服务端内容嗅探得到的安全媒体类型。"
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "文件大小（字节）。"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "内容 SHA-256 摘要。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "上传时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "original_filename",
+          "media_type",
+          "content_length",
+          "content_hash",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatAttachmentDraftProjection",
+        "description": "聊天附件草稿的安全公开投影（V2 Issue 05）。\n\n草稿是发送前隔离的临时域：只归属账户，不归属会话；发送成功后随\n消息原子绑定会话，或被用户移除、被过期清理回收。"
+      },
       "ChatAttachmentProjection": {
         "properties": {
           "object_id": {
@@ -29166,6 +29642,19 @@
             "type": "string",
             "title": "Status",
             "description": "uploaded 或 bound。"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal",
+            "description": "消息到附件的页序（1 起，V2 Issue 05）；历史行为 None。"
           },
           "ingestion_status": {
             "type": "string",
@@ -29552,9 +30041,18 @@
           "content": {
             "type": "string",
             "maxLength": 4000,
-            "minLength": 1,
             "title": "Content",
-            "description": "首条用户消息正文。"
+            "description": "首条用户消息正文；纯附件消息可为空（V2 Issue 05），此时必须至少携带一个附件 ID。",
+            "default": ""
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Attachment Ids",
+            "description": "按页序排列的附件草稿 ID（V2 Issue 05）；随首轮消息原子绑定新会话。"
           },
           "idempotency_key": {
             "type": "string",
@@ -29680,7 +30178,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "content",
           "idempotency_key"
         ],
         "title": "ChatFirstTurnRequest",
@@ -29733,9 +30230,18 @@
           "content": {
             "type": "string",
             "maxLength": 4000,
-            "minLength": 1,
             "title": "Content",
-            "description": "用户消息正文。"
+            "description": "用户消息正文；纯附件消息可为空（V2 Issue 05），此时必须至少携带一个附件 ID。",
+            "default": ""
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Attachment Ids",
+            "description": "按页序排列的会话附件草稿 ID（V2 Issue 05）；发送成功后随消息原子绑定会话，失败保留草稿供重试。"
           },
           "use_knowledge_base": {
             "type": "boolean",
@@ -29827,9 +30333,6 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "content"
-        ],
         "title": "ChatMessageCreateRequest",
         "description": "发送一条用户消息。\n\n``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用\n均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。"
       },

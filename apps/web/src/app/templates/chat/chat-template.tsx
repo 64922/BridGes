@@ -357,7 +357,10 @@ export function ChatTemplate() {
     [],
   );
 
-  const handleSend = (text: string) => {
+  // Issue 05：签名对齐 Composer（照片草稿仅在真实后端会话中承载；
+  // 本地开发模板不消费附件，attachmentIds 恒为空数组）。
+  const handleSend = (text: string, attachmentIds: string[] = []) => {
+    void attachmentIds;
     const userMessage: ChatMessage = {
       id: `u-${Date.now()}`,
       role: "user",

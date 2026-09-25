@@ -526,6 +526,17 @@ class BackgroundExecutor:
                     summaries.append(f"worker: 清理 {swept} 个过期未绑定附件。")
             except Exception as exc:  # noqa: BLE001 - 清理失败记录但不退出循环
                 summaries.append(f"worker: 附件清理出错：{exc}")
+            # V2 Issue 05：账户级附件草稿按同一安全期限清理（已绑定附件
+            # 不在草稿域，绝不误删）。
+            try:
+                swept = attachment_cleanup.sweep_drafts(
+                    datetime.now(UTC)
+                    - timedelta(hours=self._settings.unbound_attachment_ttl_hours)
+                )
+                if swept:
+                    summaries.append(f"worker: 清理 {swept} 个过期附件草稿。")
+            except Exception as exc:  # noqa: BLE001 - 清理失败记录但不退出循环
+                summaries.append(f"worker: 草稿清理出错：{exc}")
         return " ".join(summaries)
 
     def run_loop(

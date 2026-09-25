@@ -28,7 +28,11 @@ from bridges.ai.adapters import StreamEvent
 from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
-from bridges.chat.attachments import ChatAttachmentService
+from bridges.chat.attachments import (
+    PHOTO_MEDIA_TYPES,
+    ChatAttachmentError,
+    ChatAttachmentService,
+)
 from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
@@ -129,8 +133,8 @@ from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
-from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
 from bridges.profiles.service import ProfileService
+from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
@@ -307,6 +311,7 @@ class ChatService:
             selections_service=self._selections,
             mcp_service=self._mcp,
             writing_policy_compiler=self._writing_policy,
+            attachment_service=self._attachments,
         )
 
     def _ensure_extension_payload_allowed(
@@ -335,6 +340,23 @@ class ChatService:
                 "用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
                 410,
             )
+
+    def _require_attachment_service(self) -> ChatAttachmentService:
+        """返回附件服务；未挂载时拒绝附件请求（装配缺失按配置错误处理）。"""
+        if self._attachments is None:
+            raise ChatDomainError(
+                "attachment_unavailable", "附件功能暂不可用，请稍后重试。", 503
+            )
+        return self._attachments
+
+    def _validate_draft_attachments(self, account_id: str, attachment_ids: list[str]) -> None:
+        """V2 Issue 05：校验账户级照片草稿并统一转成会话域错误。"""
+        try:
+            self._require_attachment_service().validate_draft_ids(
+                account_id, attachment_ids
+            )
+        except ChatAttachmentError as exc:
+            raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
 
     # ------------------------------------------------------------------
     # 对话
@@ -759,7 +781,8 @@ class ChatService:
         )
         now = datetime.now(UTC)
         content = content.strip()
-        if not content:
+        attachment_ids = [oid for oid in (attachment_ids or []) if oid]
+        if not content and not attachment_ids:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
         image_payload, video_payload, mcp_call_payload = self._validate_turn_payloads(
             image, video, mcp_call
@@ -784,13 +807,10 @@ class ChatService:
                 "上一轮回答仍在生成中，请先停止或等待完成。",
                 409,
             )
+        # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
+        # 校验失败（数量/重复/跨账户）在此拒绝，草稿保留供用户调整重试。
         if attachment_ids:
-            raise ChatDomainError(
-                "legacy_file_source_retired",
-                "聊天附件已退役，请先将材料加入全局知识库。",
-                410,
-            )
-        attachment_ids = None
+            self._validate_draft_attachments(account_id, attachment_ids)
         mode = ChatMode(record.mode)
         capability_route = self._route_for_turn(
             image_payload=image_payload,
@@ -856,7 +876,14 @@ class ChatService:
         self._repo.touch_conversation(account_id, conversation_id, now)
 
         if not record.title:
-            title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
+            # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
+            # （空正文必带附件——纯空消息已被 empty_message 拒绝。）
+            if content:
+                title = (
+                    content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
+                )
+            else:
+                title = "照片消息"
             self._repo.set_conversation_title(account_id, conversation_id, title, now)
 
         self._process_profile_effects(
@@ -1249,7 +1276,8 @@ class ChatService:
         project_id = None
         now = datetime.now(UTC)
         content = content.strip()
-        if not content:
+        attachment_ids = [oid for oid in (attachment_ids or []) if oid]
+        if not content and not attachment_ids:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
         self._require_daily_mode(mode)
         image_payload, video_payload, mcp_call_payload = self._validate_turn_payloads(
@@ -1273,19 +1301,21 @@ class ChatService:
                     "该会话模式已锁定，请新建另一个会话以使用其他模式。",
                     409,
                 )
+        # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
-            raise ChatDomainError(
-                "legacy_file_source_retired",
-                "聊天附件已退役，请先将材料加入全局知识库。",
-                410,
-            )
+            self._validate_draft_attachments(account_id, attachment_ids)
         capability_route = self._route_for_turn(
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
         )
-        attachment_ids = None
-        title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
+        # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
+        if content:
+            title = (
+                content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
+            )
+        else:
+            title = "照片消息"
         target_conversation_id = conversation_id or secrets.token_urlsafe(16)
         (
             user_message,
@@ -1829,7 +1859,9 @@ class ChatService:
             mcp_call_payload=user_message.mcp_call,
         )
 
-    def compile_turn_context(self, run: GenerationRunRecord) -> list[dict[str, str]]:
+    def compile_turn_context(
+        self, run: GenerationRunRecord
+    ) -> list[dict[str, str]] | None:
         """编译本轮模型输入上下文（V2 Issue 03）。
 
         由日常父图 ``compile_context`` 节点调用：以原始消息为权威源，在
@@ -1837,12 +1869,24 @@ class ChatService:
         补回的原文」（详见 ``context_compiler``），并落一条不含任何正文的
         编译审计记录（模型 ID、预算/摘要/估算版本、采用的原文消息 ID）。
         返回模型就绪消息列表（进图状态，检查点可序列化）。
+
+        V2 Issue 05：当前轮绑定照片附件时返回 ``None``——图片部件无法
+        进入纯文本摘要编译，生成回退到 ``_model_history`` 的多模态组装；
+        照片轮正文短，绕过编译不损失窗口预算语义。
         """
         user_message = self._repo.get_message(run.account_id, run.user_message_id)
         if user_message is None:
             raise ChatDomainError(
                 "message_not_found", "消息不存在或没有访问权限。", 404
             )
+        if self._attachments is not None:
+            bound = self._attachments.list_for_message(
+                run.account_id, run.conversation_id, run.user_message_id
+            )
+            if any(
+                attachment.media_type in PHOTO_MEDIA_TYPES for attachment in bound
+            ):
+                return None
         conversation = self._repo.get_conversation(
             run.account_id, run.conversation_id
         )

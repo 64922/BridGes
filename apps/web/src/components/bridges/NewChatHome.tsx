@@ -27,7 +27,7 @@ export function NewChatHome() {
   const [mode, setMode] = useState<ChatMode>("companion");
   const firstTurnInFlightRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
-  const submitFirstTurn = async (content: string): Promise<boolean> => {
+  const submitFirstTurn = async (content: string, attachmentIds: string[] = []): Promise<boolean> => {
     if (firstTurnInFlightRef.current) return false;
     firstTurnInFlightRef.current = true;
     if (idempotencyKeyRef.current === null) {
@@ -41,6 +41,8 @@ export function NewChatHome() {
         content,
         idempotencyKey: idempotencyKeyRef.current,
         mode,
+        // Issue 05：新聊天页直发照片——账户域草稿随首轮原子绑定。
+        attachmentIds,
       });
       idempotencyKeyRef.current = null;
       window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));

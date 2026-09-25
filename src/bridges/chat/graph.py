@@ -131,7 +131,8 @@ class DailyTurnState(TypedDict, total=False):
     model_lock_id: str | None
     #: V2 Issue 03：compile_context 产出的模型就绪上下文（近期原文 +
     #: 较早摘要 + 补回原文；纯字符串/数字，检查点可序列化）。
-    compiled_messages: list[dict[str, str]]
+    #: V2 Issue 05：None 表示照片轮跳过编译，生成回退多模态组装。
+    compiled_messages: list[dict[str, str]] | None
 
 
 class _GraphDeps:

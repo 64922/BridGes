@@ -3,6 +3,7 @@
 Issue 45 收编后只经 chat 域仓库访问数据库：``chat_attachments`` /
 ``chat_attachment_cancellations`` 走 ``AttachmentRepository``，``conversations``
 走 ``ConversationRepository``，``objects`` 走属主 ``BridgesObjectRepository``。
+V2 Issue 05 起，发送前的账户级草稿走 ``AttachmentDraftRepository``。
 """
 
 from __future__ import annotations
@@ -19,9 +20,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import unquote
 
-from bridges.chat.attachments_repository import AttachmentRepository
+from bridges.chat.attachments_repository import (
+    AttachmentDraftRepository,
+    AttachmentRepository,
+)
 from bridges.chat.repository import ConversationRepository
-from bridges.contracts.chat import ChatAttachmentProjection
+from bridges.contracts.chat import (
+    ChatAttachmentDraftProjection,
+    ChatAttachmentProjection,
+)
 from bridges.ingestion.service import display_ingestion_status
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
@@ -29,6 +36,11 @@ from bridges.storage.repository import BridgesObjectRepository
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENT_COUNT = 10
+
+#: V2 Issue 05：聊天照片附件本轮仅接受图片类型；文件类型自 Issue 06 接入。
+PHOTO_MEDIA_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp"}
+)
 
 _EXTENSION_TYPES = {
     ".csv": "text/csv",
@@ -77,6 +89,8 @@ class ChatAttachmentRecord:
     status: str
     created_at: datetime
     updated_at: datetime
+    #: 消息到附件的页序（1 起，V2 Issue 05）；历史行为 None。
+    ordinal: int | None = None
     #: 摄取原始状态（LEFT JOIN 缺记录为 None）与失败中文原因（Issue 17）。
     ingestion_raw_status: str | None = None
     ingestion_lease_expires_at: str | None = None
@@ -92,10 +106,37 @@ class ChatAttachmentRecord:
             conversation_id=self.conversation_id,
             message_id=self.message_id,
             status=self.status,
+            ordinal=self.ordinal,
             ingestion_status=display_ingestion_status(
                 self.ingestion_raw_status, self.ingestion_lease_expires_at
             ).value,
             ingestion_error=self.ingestion_error,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+
+
+@dataclass(frozen=True)
+class ChatAttachmentDraftRecord:
+    """发送前隔离的附件草稿（只归属账户，不归属会话）。"""
+
+    object_id: str
+    account_id: str
+    upload_id: str
+    original_filename: str
+    media_type: str
+    content_length: int
+    content_hash: str
+    created_at: datetime
+    updated_at: datetime
+
+    def projection(self) -> ChatAttachmentDraftProjection:
+        return ChatAttachmentDraftProjection(
+            object_id=self.object_id,
+            original_filename=self.original_filename,
+            media_type=self.media_type,
+            content_length=self.content_length,
+            content_hash=self.content_hash,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
@@ -111,11 +152,13 @@ class ChatAttachmentService:
         *,
         attachment_repository: AttachmentRepository | None = None,
         conversation_repository: ConversationRepository | None = None,
+        draft_repository: AttachmentDraftRepository | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
         self._attachments = attachment_repository or AttachmentRepository(database)
         self._conversations = conversation_repository or ConversationRepository(database)
+        self._drafts = draft_repository or AttachmentDraftRepository(database)
 
     def conversation_project_id(
         self, account_id: str, conversation_id: str
@@ -386,6 +429,189 @@ class ChatAttachmentService:
             ) from exc
         return record, content
 
+    # ------------------------------------------------------------------
+    # 草稿域（V2 Issue 05）：发送前隔离的账户级附件
+    # ------------------------------------------------------------------
+
+    def upload_draft(
+        self,
+        account_id: str,
+        original_filename: str,
+        content: bytes,
+        *,
+        upload_id: str | None = None,
+    ) -> tuple[ChatAttachmentDraftRecord, bool]:
+        """上传一个附件草稿；返回投影与是否为新建记录。
+
+        只校验类型、体积与账户（V2 新会话必须由首条消息原子创建，新
+        聊天页还没有会话 ID，草稿不归属会话）；本轮仅接受照片类型。
+        同一 ``upload_id`` 幂等重放，同名同内容去重复用既有草稿。
+        """
+        filename = validate_filename(original_filename)
+        if not content:
+            raise ChatAttachmentError("empty_file", "文件为空，无法上传。")
+        if len(content) > MAX_ATTACHMENT_BYTES:
+            raise ChatAttachmentError(
+                "file_too_large", "文件超过 10 MB 大小限制，请压缩后重试。", 413
+            )
+        media_type = sniff_media_type(filename, content)
+        if media_type not in PHOTO_MEDIA_TYPES:
+            raise ChatAttachmentError(
+                "invalid_file_type",
+                "暂不支持该文件类型，聊天附件目前仅支持"
+                " PNG、JPEG、GIF、WebP 图片。",
+            )
+        upload_key = upload_id or secrets.token_urlsafe(18)
+        if len(upload_key) > 120 or not re.fullmatch(r"[A-Za-z0-9._~-]+", upload_key):
+            raise ChatAttachmentError("invalid_upload_id", "上传标识无效，请重新选择文件。")
+
+        content_hash = hashlib.sha256(content).hexdigest()
+        existing = self._drafts.row_by_upload_id(account_id, upload_key)
+        if existing is not None:
+            if str(existing["content_hash"]) != content_hash:
+                raise ChatAttachmentError(
+                    "upload_id_conflict", "上传标识已用于其他文件，请重新选择。", 409
+                )
+            return self._row_to_draft_record(existing), False
+        duplicate = self._drafts.duplicate_row(account_id, filename, content_hash)
+        if duplicate is not None:
+            return self._row_to_draft_record(duplicate), False
+
+        try:
+            stored = self._objects.create_object(
+                account_id, filename, content, media_type=media_type
+            )
+        except StorageError as exc:
+            raise ChatAttachmentError(
+                "attachment_save_failed", "附件保存失败，请稍后重试。", 503
+            ) from exc
+        now = datetime.now(UTC).isoformat()
+        try:
+            with self._database.transaction():
+                self._drafts.insert_uploaded(
+                    account_id=account_id,
+                    object_id=stored.object_id,
+                    upload_id=upload_key,
+                    original_filename=filename,
+                    media_type=media_type,
+                    content_length=len(content),
+                    content_hash=content_hash,
+                    created_at=now,
+                )
+        except (StorageError, sqlite3.Error) as exc:
+            with suppress(StorageError):
+                self._objects.delete_object(account_id, stored.object_id)
+            raise ChatAttachmentError(
+                "attachment_save_failed", "附件保存失败，请稍后重试。", 503
+            ) from exc
+        record = self.get_draft(account_id, stored.object_id)
+        assert record is not None
+        return record, True
+
+    def get_draft(
+        self, account_id: str, object_id: str
+    ) -> ChatAttachmentDraftRecord | None:
+        row = self._drafts.get_row(account_id, object_id)
+        return self._row_to_draft_record(row) if row is not None else None
+
+    def list_drafts(self, account_id: str) -> list[ChatAttachmentDraftRecord]:
+        """返回账户全部未发送草稿（页面重开后恢复草稿列表；跨账户返回空集）。"""
+        rows = self._drafts.rows_for_account(account_id)
+        return [self._row_to_draft_record(row) for row in rows]
+
+    def download_draft(
+        self, account_id: str, object_id: str
+    ) -> tuple[ChatAttachmentDraftRecord, bytes]:
+        """按账户授权读取草稿内容（发送前缩略图预览；跨账户 404 不泄漏）。"""
+        record = self.get_draft(account_id, object_id)
+        if record is None:
+            raise ChatAttachmentError("attachment_not_found", "附件不存在或没有访问权限。", 404)
+        try:
+            content = self._objects.get_content(account_id, object_id)
+        except StorageError as exc:
+            raise ChatAttachmentError(
+                "attachment_unavailable", "附件内容当前不可读取，请稍后重试。", 503
+            ) from exc
+        return record, content
+
+    def delete_draft(self, account_id: str, object_id: str) -> None:
+        """移除一条草稿；跨账户或不存在返回 404，对象标记待清理。"""
+        with self._database.transaction():
+            if self.get_draft(account_id, object_id) is None:
+                raise ChatAttachmentError(
+                    "attachment_not_found", "附件不存在或没有访问权限。", 404
+                )
+            self._drafts.delete_one(account_id, object_id)
+            self._objects.mark_pending_cleanup(
+                account_id, object_id, updated_at=datetime.now(UTC).isoformat()
+            )
+        self._objects.run_pending_cleanups()
+
+    def delete_draft_by_upload_id(self, account_id: str, upload_id: str) -> None:
+        """按客户端幂等标识移除草稿；未知标识幂等成功（可安全重试）。"""
+        with self._database.transaction():
+            row = self._drafts.row_by_upload_id(account_id, upload_id)
+            self._drafts.delete_by_upload_id(account_id, upload_id)
+            if row is not None:
+                self._objects.mark_pending_cleanup(
+                    account_id,
+                    str(row["object_id"]),
+                    updated_at=datetime.now(UTC).isoformat(),
+                )
+        self._objects.run_pending_cleanups()
+
+    def validate_draft_ids(self, account_id: str, object_ids: list[str]) -> None:
+        """发送前校验附件集合：数量、重复与草稿存在性（账户内授权）。"""
+        if len(object_ids) > MAX_ATTACHMENT_COUNT:
+            raise ChatAttachmentError(
+                "too_many_attachments", "一条消息最多添加 10 个附件。"
+            )
+        unique_ids = list(dict.fromkeys(object_ids))
+        if len(unique_ids) != len(object_ids):
+            raise ChatAttachmentError("duplicate_attachment", "同一附件不能重复添加。")
+        if not unique_ids:
+            return
+        found = self._drafts.existing_object_ids(account_id, unique_ids)
+        if found != set(unique_ids):
+            raise ChatAttachmentError(
+                "attachment_not_found", "附件不存在或没有访问权限。", 404
+            )
+
+    def sweep_drafts(self, older_than: datetime) -> int:
+        """清理超过安全期限仍未发送的草稿（已绑定附件绝不进入本路径）。
+
+        与 ``sweep_unbound`` 一样由执行器定时调用；删除草稿行后把对象
+        标记待清理，由对象仓库兜底回收。返回清理条数。
+        """
+        rows = self._drafts.older_than(older_than.isoformat())
+        removed = 0
+        with self._database.transaction():
+            for row in rows:
+                account_id = str(row["account_id"])
+                object_id = str(row["object_id"])
+                self._drafts.delete_one(account_id, object_id)
+                self._objects.mark_pending_cleanup(
+                    account_id, object_id, updated_at=datetime.now(UTC).isoformat()
+                )
+                removed += 1
+        if removed:
+            self._objects.run_pending_cleanups()
+        return removed
+
+    @staticmethod
+    def _row_to_draft_record(row: sqlite3.Row) -> ChatAttachmentDraftRecord:
+        return ChatAttachmentDraftRecord(
+            object_id=str(row["object_id"]),
+            account_id=str(row["account_id"]),
+            upload_id=str(row["upload_id"]),
+            original_filename=str(row["original_filename"]),
+            media_type=str(row["media_type"]),
+            content_length=int(row["content_length"]),
+            content_hash=str(row["content_hash"]),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+            updated_at=datetime.fromisoformat(str(row["updated_at"])),
+        )
+
     def _require_conversation(self, account_id: str, conversation_id: str) -> None:
         if (
             self._conversations.get_conversation(account_id, conversation_id)
@@ -420,6 +646,9 @@ class ChatAttachmentService:
             content_length=int(row["content_length"]),
             content_hash=str(row["content_hash"]),
             status=str(row["status"]),
+            ordinal=(
+                int(row["ordinal"]) if row["ordinal"] is not None else None
+            ),
             # 摄取状态（Issue 17）：LEFT JOIN 缺记录时呈现 none（未索引），
             # 失败原因随状态一起呈现，不以空列表掩盖失败。
             ingestion_raw_status=(

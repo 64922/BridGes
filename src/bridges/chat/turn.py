@@ -16,6 +16,7 @@ interface 之后——``TurnOrchestrator.stream_turn`` 只回答「驱动一次�
 
 from __future__ import annotations
 
+import base64
 import re
 import threading
 import time
@@ -34,6 +35,11 @@ from bridges.ai.errors import user_facing_model_error
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intake import assess_intake
+from bridges.chat.attachments import (
+    PHOTO_MEDIA_TYPES,
+    ChatAttachmentError,
+    ChatAttachmentService,
+)
 from bridges.chat.budget import (
     RESULT_FAILED,
     RESULT_OK,
@@ -1089,8 +1095,8 @@ def arxiv_search_thinking(
 
 
 def paper_search_history(
-    history: list[dict[str, str]], route: CapabilityRoute
-) -> list[dict[str, str]]:
+    history: list[dict[str, Any]], route: CapabilityRoute
+) -> list[dict[str, Any]]:
     """为论文回答建立只含最小公开查询的模型历史。"""
     if route.paper_search is None or not history:
         return history
@@ -1818,6 +1824,7 @@ class TurnOrchestrator:
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
+        attachment_service: ChatAttachmentService | None = None,
     ) -> None:
         self._repo = repository
         self._lifecycle = lifecycle
@@ -1852,6 +1859,8 @@ class TurnOrchestrator:
         #: Issue 17/V2 issue 04：两种模式与各模块共用的最终生成链
         #: 表达策略编译器（轻量规则，优先级低于用户与任务合同）。
         self._writing_policy = writing_policy_compiler or GlobalWritingPolicyCompiler()
+        #: V2 Issue 05：聊天附件服务——当前轮照片经此进入多模态回答。
+        self._attachments = attachment_service
 
     # ------------------------------------------------------------------
     # 回合入口（对外唯一 interface）
@@ -5559,32 +5568,117 @@ class TurnOrchestrator:
         account_id: str,
         conversation_id: str,
         until_user_message_id: str | None = None,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, Any]]:
         """组装发送给模型的会话历史。
 
         首条为当前对话模式的系统角色合同（companion/study，Issue 14）；
         配对语义（用户原文总是纳入、助手只取最近一条已完成、按
         ``until_user_message_id`` 截断）由 :func:`history_items` 统一实现
         （V2 Issue 03 起与上下文编译器共用，避免语义漂移）。
+
+        V2 Issue 05：当前轮用户消息携带绑定的照片附件时，以 OpenAI 兼容
+        的图片内容部件注入本轮多模态回答（页序即绑定 ordinal）；历史轮
+        的图片不重复注入。图片读取失败时如实降级为中文说明，绝不把读
+        不出的照片当作已看到。照片轮由 :meth:`compile_turn_context` 跳过
+        摘要编译回退至此组装（摘要编译不承载多模态部件）。
         """
         messages = self._repo.list_messages(account_id, conversation_id)
         record = self._repo.get_conversation(account_id, conversation_id)
         mode = ChatMode(record.mode) if record is not None else CHAT_MODE
-        history: list[dict[str, str]] = [
+        history: list[dict[str, Any]] = [
             {"role": "system", "content": mode_system_contract(mode).system_prompt}
         ]
-        history.extend(
-            {
-                "role": (
-                    "user" if item.role == ChatMessageRole.USER else "assistant"
-                ),
-                "content": item.content,
-            }
-            for item in history_items(
-                messages, until_user_message_id=until_user_message_id
+        records = {message.message_id: message for message in messages}
+        for item in history_items(
+            messages, until_user_message_id=until_user_message_id
+        ):
+            current_record = records.get(item.message_id)
+            if (
+                item.role == ChatMessageRole.USER
+                and current_record is not None
+                and until_user_message_id is not None
+                and item.message_id == until_user_message_id
+            ):
+                # V2 Issue 05：当前轮转多模态内容部件；无附件/未装配附件
+                # 服务时该方法内部原样返回纯文本，语义与下方映射一致。
+                history.append(
+                    self._user_history_entry(
+                        account_id, conversation_id, current_record,
+                        until_user_message_id,
+                    )
+                )
+                continue
+            history.append(
+                {
+                    "role": (
+                        "user" if item.role == ChatMessageRole.USER else "assistant"
+                    ),
+                    "content": item.content,
+                }
             )
-        )
         return history
+
+    def _user_history_entry(
+        self,
+        account_id: str,
+        conversation_id: str,
+        message: MessageRecord,
+        until_user_message_id: str | None,
+    ) -> dict[str, Any]:
+        """构造用户消息的模型历史条目；当前轮照片附件转多模态内容部件。"""
+        if (
+            until_user_message_id is None
+            or message.message_id != until_user_message_id
+            or self._attachments is None
+        ):
+            return {"role": "user", "content": message.content}
+        image_parts: list[dict[str, Any]] = []
+        unread_count = 0
+        for attachment in self._attachments.list_for_message(
+            account_id, conversation_id, message.message_id
+        ):
+            if attachment.media_type not in PHOTO_MEDIA_TYPES:
+                continue
+            try:
+                _, image = self._attachments.download(
+                    account_id, conversation_id, attachment.object_id
+                )
+            except ChatAttachmentError:
+                unread_count += 1
+                continue
+            encoded = base64.b64encode(image).decode("ascii")
+            image_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{attachment.media_type};base64,{encoded}"},
+                }
+            )
+        content = message.content
+        if not content:
+            # 纯附件消息：模型收到的是本轮真实可读的照片；一张都读不出
+            # 时如实告知，绝不伪装已识别。
+            content = (
+                "（用户只发送了照片，没有写文字。请简要确认你看到了这些照片，"
+                "并询问用户想对它们做什么。）"
+                if image_parts
+                else "（用户发送了照片，但照片内容当前无法读取。请如实告知"
+                "用户暂时无法查看照片，请用户稍后重试。）"
+            )
+        elif unread_count and not image_parts:
+            # 有文字但本轮照片全部不可读：仍须告知照片存在且不可读，
+            # 防止模型对「这张照片里是什么」凭空作答。
+            content += (
+                "（用户还发送了照片，但照片内容当前无法读取。请如实告知"
+                "用户暂时无法查看照片，不要猜测照片内容。）"
+            )
+        if unread_count and image_parts:
+            content += f"（另有 {unread_count} 张照片内容当前无法读取。）"
+        if not image_parts and not message.content:
+            return {"role": "user", "content": content}
+        return {
+            "role": "user",
+            "content": [*image_parts, {"type": "text", "text": content}],
+        }
 
     @staticmethod
     def _lock_model_id(lock: ModelRunLock | None) -> str | None:
