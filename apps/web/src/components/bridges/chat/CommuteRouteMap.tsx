@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { fetchCommuteMapConfig } from "@/lib/api";
+import { commuteMapServiceHost, fetchCommuteMapConfig } from "@/lib/api";
 
 /**
  * 高德 JavaScript API 2.0 的最小运行面：本组件只用底图、折线与起终点标注。
@@ -133,7 +133,7 @@ export function CommuteRouteMap({
           return;
         }
         window._AMapSecurityConfig = {
-          serviceHost: `${window.location.origin}${config.service_host_path}`,
+          serviceHost: commuteMapServiceHost(config.service_host_path),
         };
         await loadAmapScript(config.js_api_key);
         if (disposed) return;

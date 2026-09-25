@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from datetime import UTC, datetime
 
 from bridges.commute.contracts import (
     MISSING_DESTINATION,
@@ -53,6 +52,9 @@ PENDING_ORIGIN_PLACE = "origin_place"
 PENDING_DESTINATION_PLACE = "destination_place"
 PENDING_ORIGIN_CANDIDATES = "origin_candidates"
 PENDING_DESTINATION_CANDIDATES = "destination_candidates"
+#: 产生该侧候选时真正发送的检索词（用户沿用候选时据此如实标注地点来源）。
+PENDING_ORIGIN_CANDIDATE_QUERY = "origin_candidate_query"
+PENDING_DESTINATION_CANDIDATE_QUERY = "destination_candidate_query"
 
 #: 参与上下文补全的最近用户消息条数上限（够用即止，不把整段历史塞进解析）。
 CONTEXT_LOOKBACK_MESSAGES = 6
@@ -81,21 +83,18 @@ def parse_commute_request(
     *,
     prior_context: Sequence[str] = (),
     pending: ModuleWaitState | None = None,
-    now: datetime | None = None,
 ) -> CommuteRequestAnalysis:
     """解析一轮通勤请求；缺失或含糊时返回单一澄清问题。
 
-    ``pending`` 非空表示上一轮已提问、本轮 ``content`` 是该问题的回答：解析
-    从等待处恢复（已确认的起点／终点／方式沿用等待状态里的记录），而不是把
-    回答当成全新请求重新解析。
+    ``pending`` 非空表示上一轮已提问、本轮 ``content`` 可能是该问题的回答：
+    解析从等待处恢复，等待状态只补空缺——用户在回答里重新写出的起点、终点或
+    方式一律以新话为准。若这一句本身就是一次完整的出行请求（起终点与方式俱全），
+    则按全新请求解析，旧等待随之作废。
     """
-    current = now or datetime.now(UTC)
     text = content.strip()
     if pending is not None and pending.kind == "clarification":
-        return _resume_from_clarification(
-            text, pending, prior_context=prior_context, now=current
-        )
-    return _parse_fresh(text, prior_context=prior_context, now=current)
+        return _resume_from_clarification(text, pending, prior_context=prior_context)
+    return _parse_fresh(text, prior_context=prior_context)
 
 
 # ---------------------------------------------------------------------------
@@ -103,14 +102,12 @@ def parse_commute_request(
 # ---------------------------------------------------------------------------
 
 
-def _parse_fresh(
-    text: str, *, prior_context: Sequence[str], now: datetime
-) -> CommuteRequestAnalysis:
+def _parse_fresh(text: str, *, prior_context: Sequence[str]) -> CommuteRequestAnalysis:
     mode, mode_phrase, mode_candidates, without_mode = detect_mode(text)
     origin_phrase, destination_phrase = extract_places(without_mode)
     if origin_phrase is None and destination_phrase is None:
         # 本轮没写成对的地点：用已确认前文补齐缺失的一项（仍不足以补全就问）。
-        filled = _for_backfill(prior_context, now=now)
+        filled = _for_backfill(prior_context)
         origin_phrase = filled.origin_phrase
         destination_phrase = filled.destination_phrase
     return _analysis(
@@ -120,15 +117,11 @@ def _parse_fresh(
         mode_candidates=mode_candidates,
         origin_phrase=origin_phrase,
         destination_phrase=destination_phrase,
-        now=now,
     )
 
 
-def _for_backfill(
-    prior_context: Sequence[str], *, now: datetime
-) -> CommuteRequestAnalysis:
+def _for_backfill(prior_context: Sequence[str]) -> CommuteRequestAnalysis:
     """从最近的前文里找一条能补齐地点的用户消息（只取最近一条，够用即止）。"""
-    del now
     for message in reversed(list(prior_context)[-CONTEXT_LOOKBACK_MESSAGES:]):
         mode, mode_phrase, mode_candidates, without_mode = detect_mode(message)
         origin, destination = extract_places(without_mode)
@@ -155,7 +148,6 @@ def _resume_from_clarification(
     pending: ModuleWaitState,
     *,
     prior_context: Sequence[str],
-    now: datetime,
 ) -> CommuteRequestAnalysis:
     """把用户回答并回等待中的解析状态；仍缺项时再问一项。"""
     payload = pending.context
@@ -170,7 +162,23 @@ def _resume_from_clarification(
     )
     mode_candidates: list[CommuteMode] = []
 
-    fresh = _parse_fresh(answer, prior_context=prior_context, now=now)
+    fresh = _parse_fresh(answer, prior_context=prior_context)
+
+    # 等待状态只补空缺：用户在这一句里重新写出的起点、终点或方式一律以新话为准。
+    # 否则「改口」会被上一轮的载荷静默覆盖，用户看到的起终点不是自己刚写的。
+    if fresh.origin_phrase is not None:
+        origin_phrase, origin_place = fresh.origin_phrase, None
+    if fresh.destination_phrase is not None:
+        destination_phrase, destination_place = fresh.destination_phrase, None
+    if fresh.mode is not None:
+        mode, mode_phrase = fresh.mode, fresh.mode_phrase
+    if (
+        fresh.origin_phrase is not None
+        and fresh.destination_phrase is not None
+        and (fresh.mode is not None or len(fresh.mode_candidates) > 1)
+    ):
+        # 完整的重新表述：这一句本身就是一次出行请求，旧等待随之作废。
+        return fresh
 
     if awaiting in {MISSING_ORIGIN_CHOICE, MISSING_DESTINATION_CHOICE}:
         role = (
@@ -186,7 +194,17 @@ def _resume_from_clarification(
         )
         chosen = match_candidate(answer, candidates)
         if chosen is not None:
-            place = place_from_candidate(role, chosen, original_phrase=answer)
+            place = place_from_candidate(
+                role,
+                chosen,
+                original_phrase=answer,
+                query=_payload_text(
+                    payload,
+                    PENDING_ORIGIN_CANDIDATE_QUERY
+                    if role is CommutePlaceRole.ORIGIN
+                    else PENDING_DESTINATION_CANDIDATE_QUERY,
+                ),
+            )
             if role is CommutePlaceRole.ORIGIN:
                 origin_place = place
                 origin_phrase = chosen.name
@@ -201,19 +219,19 @@ def _resume_from_clarification(
             else:
                 destination_phrase, destination_place = phrase, None
     elif awaiting in {MISSING_ORIGIN, MISSING_ORIGIN_UNLOCATABLE}:
-        origin_phrase, origin_place = _answer_for_side(
-            answer, fresh.origin_phrase, fresh.destination_phrase
-        )
+        if fresh.origin_phrase is None:
+            origin_phrase, origin_place = _answer_for_side(
+                answer, fresh.origin_phrase, fresh.destination_phrase
+            )
     elif awaiting in {MISSING_DESTINATION, MISSING_DESTINATION_UNLOCATABLE}:
-        destination_phrase, destination_place = _answer_for_side(
-            answer, fresh.destination_phrase, fresh.origin_phrase
-        )
+        if fresh.destination_phrase is None:
+            destination_phrase, destination_place = _answer_for_side(
+                answer, fresh.destination_phrase, fresh.origin_phrase
+            )
     elif awaiting == MISSING_MODE:
-        if fresh.mode is not None:
-            mode, mode_phrase = fresh.mode, fresh.mode_phrase
-        elif len(fresh.mode_candidates) == 1:
+        if mode is None and len(fresh.mode_candidates) == 1:
             mode, mode_phrase = fresh.mode_candidates[0], fresh.mode_phrase
-        elif len(fresh.mode_candidates) > 1:
+        elif mode is None and len(fresh.mode_candidates) > 1:
             mode_candidates = fresh.mode_candidates
         # 回答里没有可识别的方式：保持缺失，下面再问一次（仍只问一项）。
     else:
@@ -229,7 +247,6 @@ def _resume_from_clarification(
         destination_phrase=destination_phrase,
         origin_place=origin_place,
         destination_place=destination_place,
-        now=now,
     )
 
 
@@ -361,11 +378,9 @@ def _analysis(
     mode_candidates: list[CommuteMode],
     origin_phrase: str | None,
     destination_phrase: str | None,
-    now: datetime,
     origin_place: CommutePlace | None = None,
     destination_place: CommutePlace | None = None,
 ) -> CommuteRequestAnalysis:
-    del now
     origin_unlocatable = origin_phrase is not None and _is_unlocatable(origin_phrase)
     destination_unlocatable = destination_phrase is not None and _is_unlocatable(
         destination_phrase
@@ -483,6 +498,8 @@ def pending_payload(
     awaiting: str,
     origin_candidates: Sequence[CommutePlaceCandidate] = (),
     destination_candidates: Sequence[CommutePlaceCandidate] = (),
+    origin_candidate_query: str | None = None,
+    destination_candidate_query: str | None = None,
 ) -> dict[str, object]:
     """澄清等待状态的恢复载荷（全部为可序列化值，不含服务或私有材料副本）。"""
     return {
@@ -507,6 +524,8 @@ def pending_payload(
         PENDING_DESTINATION_CANDIDATES: [
             item.model_dump(mode="json") for item in destination_candidates
         ],
+        PENDING_ORIGIN_CANDIDATE_QUERY: origin_candidate_query,
+        PENDING_DESTINATION_CANDIDATE_QUERY: destination_candidate_query,
     }
 
 
@@ -539,12 +558,13 @@ def place_from_candidate(
     candidate: CommutePlaceCandidate,
     *,
     original_phrase: str,
+    query: str | None = None,
 ) -> CommutePlace:
     """把用户选定的候选固化为已解析地点（坐标沿用该候选的高德返回值）。"""
     return CommutePlace(
         role=role,
         original_phrase=original_phrase,
-        query=candidate.name,
+        query=query or candidate.name,
         name=candidate.name,
         location=candidate.location or "",
         address=candidate.address,
@@ -583,7 +603,7 @@ def _payload_place(
         place = CommutePlace.model_validate(value)
     except ValueError:
         return None
-    return place if place.role is role else place
+    return place if place.role is role else None
 
 
 def _payload_candidates(

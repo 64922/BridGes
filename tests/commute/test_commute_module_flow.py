@@ -197,8 +197,7 @@ class _FakeAmap:
                 address="双港东大街808号",
                 poi_id=f"B{len(self._locations):03d}",
                 district="青山湖区",
-                city="南昌市",
-            )
+                            )
         ]
 
 
@@ -393,16 +392,14 @@ def test_multiple_campus_pois_wait_for_user_choice_and_reuse_it(
             address="双港东大街808号",
             poi_id="B001",
             district="青山湖区",
-            city="南昌市",
-        ),
+                    ),
         AmapPoi(
             name="华东交通大学南区图书馆",
             location="115.871000,28.750500",
             address="双港东大街808号南区",
             poi_id="B002",
             district="青山湖区",
-            city="南昌市",
-        ),
+                    ),
     ]
     fake = _install_commute(
         sqlite_app, _FakeAmap(places={"华东交通大学图书馆": candidates})
@@ -538,10 +535,82 @@ def test_route_failure_is_recorded_and_retryable_then_succeeds(
     assert attempt["commute_route"]["status"] == "success"
 
 
+def test_new_complete_request_supersedes_an_older_wait(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """等待状态下重新写完整的出行请求：以新话为准，不被旧载荷改写。"""
+    _register(client)
+    _install_commute(sqlite_app, _FakeAmap())
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "从南区到图书馆怎么走", module_id="commute")
+    first = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert first["commute_route"]["pending"]["context"]["awaiting"] == "mode"
+
+    _send(client, conversation_id, "从宿舍骑车到食堂怎么走", module_id="commute")
+    second = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    route = second["commute_route"]
+    assert route["status"] == "success"
+    assert route["origin"]["name"] == "华东交通大学宿舍"
+    assert route["destination"]["name"] == "华东交通大学食堂"
+    assert route["mode"] == CommuteMode.BICYCLING.value
+
+
+def test_older_wait_is_not_resurrected_after_a_failed_turn(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """失败轮之后不再翻出更早的等待：新消息按全新请求解析，只问真正缺的一项。"""
+    _register(client)
+    _install_commute(
+        sqlite_app, _FakeAmap(route_failure=ModuleQueryStatus.TIMEOUT)
+    )
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "从南区到图书馆怎么走", module_id="commute")
+    first = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert first["commute_route"]["pending"]["context"]["awaiting"] == "mode"
+
+    _send(client, conversation_id, "步行", module_id="commute")
+    second = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert second["commute_route"]["status"] == "error"
+    assert second["commute_route"]["pending"] is None
+
+    _send(client, conversation_id, "去北门怎么走", module_id="commute")
+    third = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    route = third["commute_route"]
+    assert route["status"] == "clarification"
+    # 缺的是起点：不能被两轮前的「等方式」载荷接管
+    assert route["pending"]["context"]["awaiting"] == "origin"
+
+
+def test_evidence_notes_quote_only_queries_actually_sent(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """证据边界里的检索词必须是真正发出去的词，不是重新推导出来的候选词。"""
+    _register(client)
+    fake = _install_commute(sqlite_app, _FakeAmap())
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "从南区步行到图书馆", module_id="commute")
+    assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    route = assistant["commute_route"]
+    assert route["status"] == "success"
+    assert route["origin"]["query"] in fake.place_calls
+    assert route["destination"]["query"] in fake.place_calls
+    evidence = " ".join(route["evidence_notes"])
+    assert route["origin"]["query"] in evidence
+    assert route["destination"]["query"] in evidence
+    sent = {item["query"] for item in route["queries"] if item["source"] == "amap_place"}
+    assert {route["origin"]["query"], route["destination"]["query"]} <= sent
+
+
 def test_stop_during_route_converges_to_stopped(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """停止在节点边界生效：如实显示已停止，不写成失败或「没有结果」。"""
+    """用户停止：如实显示已停止，不写成失败或「没有结果」。"""
     _register(client)
     _install_commute(sqlite_app, _FakeAmap(stop_on_route=True))
     conversation_id = _create_conversation(client)

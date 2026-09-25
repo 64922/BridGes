@@ -77,7 +77,6 @@ class AmapPoi:
     address: str | None
     poi_id: str | None
     district: str | None
-    city: str | None
 
 
 @dataclass(frozen=True)
@@ -367,8 +366,9 @@ class AmapRouteClient:
         started = time.monotonic()
         url = f"{AMAP_REST_BASE}{path}"
         attempts = 0
-        transport_error: httpx.HTTPError | None = None
-        while attempts < MAX_ATTEMPTS:
+        # 循环内所有分支都以 return 结束（重试预算在 except 分支内判断），
+        # 因此不设循环条件，也不留不可达的兜底返回。
+        while True:
             if stop_event is not None and stop_event.is_set():
                 return {}, _record(
                     source,
@@ -395,7 +395,6 @@ class AmapRouteClient:
                     )
                 payload = response.json()
             except httpx.TimeoutException:
-                transport_error = None
                 self._audit(account_id, source, keywords, started, attempts, "timeout")
                 return {}, _record(
                     source,
@@ -406,9 +405,8 @@ class AmapRouteClient:
                     retryable=True,
                     detail=f"上游请求 {attempts} 次。",
                 )
-            except (httpx.HTTPError, ValueError) as exc:
-                transport_error = exc if isinstance(exc, httpx.HTTPError) else None
-                if transport_error is not None and attempts < MAX_ATTEMPTS:
+            except httpx.HTTPError:
+                if attempts < MAX_ATTEMPTS:
                     self._sleep(0.5)
                     continue
                 self._audit(account_id, source, keywords, started, attempts, "transport_error")
@@ -420,6 +418,18 @@ class AmapRouteClient:
                     error_message="无法连接高德服务，请检查网络后重试。",
                     retryable=True,
                     detail=f"上游请求 {attempts} 次。",
+                )
+            except ValueError:
+                # 响应体不是 JSON：与「返回了非对象 JSON」同一分类，如实说明，
+                # 不能报成连不上服务。
+                self._audit(account_id, source, keywords, started, attempts, "bad_payload")
+                return {}, _record(
+                    source,
+                    query,
+                    ModuleQueryStatus.ERROR,
+                    error_code="amap_bad_response",
+                    error_message="高德返回了无法解析的内容，本轮不展示不可核验的结果。",
+                    retryable=True,
                 )
             if not isinstance(payload, dict):
                 self._audit(account_id, source, keywords, started, attempts, "bad_payload")
@@ -451,16 +461,6 @@ class AmapRouteClient:
                 retryable=retryable,
                 detail=f"infocode={infocode or '未知'}",
             )
-        del transport_error
-        return {}, _record(
-            source,
-            query,
-            ModuleQueryStatus.ERROR,
-            error_code="amap_transport_error",
-            error_message="无法连接高德服务，请检查网络后重试。",
-            retryable=True,
-        )
-
     def _timeout_for(self, timeout: float, deadline: float | None) -> float:
         if deadline is None:
             return timeout
@@ -580,7 +580,6 @@ def _pois_from_payload(payload: dict[str, object]) -> list[AmapPoi]:
                 address=_text(item.get("address")),
                 poi_id=_text(item.get("id")),
                 district=_text(item.get("adname")),
-                city=_text(item.get("cityname")),
             )
         )
     return pois
@@ -601,7 +600,7 @@ def _path_from_payload(
         distance_m=distance,
         duration_seconds=duration,
         steps=tuple(steps),
-        polyline=tuple(_polyline_from_path(path, steps)),
+        polyline=tuple(_polyline_from_path(path)),
         snapped_origin=_text(route_block.get("origin")),
         snapped_destination=_text(route_block.get("destination")),
         plan_count=plan_count,
@@ -629,7 +628,7 @@ def _steps_from_path(path: dict[str, object]) -> list[AmapStep]:
     return steps
 
 
-def _polyline_from_path(path: dict[str, object], steps: list[AmapStep]) -> list[str]:
+def _polyline_from_path(path: dict[str, object]) -> list[str]:
     """路径点：优先逐段取（高德按 ``show_fields=polyline`` 返回），否则取整条。"""
     points: list[str] = []
     raw_steps = path.get("steps")
@@ -640,7 +639,6 @@ def _polyline_from_path(path: dict[str, object], steps: list[AmapStep]) -> list[
             points.extend(_split_polyline(item.get("polyline")))
     if points:
         return points
-    del steps
     return _split_polyline(path.get("polyline"))
 
 

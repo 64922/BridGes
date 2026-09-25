@@ -14,7 +14,6 @@ from __future__ import annotations
 from bridges.commute.contracts import (
     MODE_LABELS,
     PLACE_ROLE_LABELS,
-    CommuteClarification,
     CommuteMode,
     CommutePlace,
     CommuteRouteProjection,
@@ -40,11 +39,6 @@ def format_duration(seconds: int | None) -> str:
         return f"{total_minutes} 分钟"
     hours, rest = divmod(total_minutes, 60)
     return f"{hours} 小时 {rest} 分钟" if rest else f"{hours} 小时"
-
-
-def render_clarification_content(clarification: CommuteClarification) -> str:
-    """澄清正文：只写那一句话，卡片负责把候选列成可选项。"""
-    return clarification.question
 
 
 def render_result_content(projection: CommuteRouteProjection) -> str:

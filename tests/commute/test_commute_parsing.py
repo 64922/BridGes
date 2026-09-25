@@ -46,7 +46,7 @@ def _pending(
 
 
 def test_full_request_parses_three_items_without_clarification() -> None:
-    analysis = parse_commute_request("从南区骑车到图书馆要多久", now=NOW)
+    analysis = parse_commute_request("从南区骑车到图书馆要多久")
 
     assert analysis.mode is CommuteMode.BICYCLING
     assert analysis.mode_phrase == "骑车"
@@ -57,7 +57,7 @@ def test_full_request_parses_three_items_without_clarification() -> None:
 
 
 def test_missing_origin_asks_only_origin() -> None:
-    analysis = parse_commute_request("去图书馆怎么走", now=NOW)
+    analysis = parse_commute_request("去图书馆怎么走")
 
     assert analysis.destination_phrase == "图书馆"
     assert analysis.origin_phrase is None
@@ -69,7 +69,7 @@ def test_missing_origin_asks_only_origin() -> None:
 
 def test_missing_mode_asks_only_mode_and_bare_walk_verb_is_not_a_mode() -> None:
     """「怎么走」里的「走」不是方式选择：缺方式时仍然追问，不默认步行。"""
-    analysis = parse_commute_request("从南区到北区怎么走", now=NOW)
+    analysis = parse_commute_request("从南区到北区怎么走")
 
     assert analysis.mode is None
     assert analysis.origin_phrase == "南区"
@@ -79,7 +79,7 @@ def test_missing_mode_asks_only_mode_and_bare_walk_verb_is_not_a_mode() -> None:
 
 
 def test_missing_destination_asks_only_destination() -> None:
-    analysis = parse_commute_request("从图书馆出发", now=NOW)
+    analysis = parse_commute_request("从图书馆出发")
 
     assert analysis.origin_phrase == "图书馆"
     assert analysis.destination_phrase is None
@@ -88,7 +88,7 @@ def test_missing_destination_asks_only_destination() -> None:
 
 
 def test_unlocatable_origin_asks_for_a_concrete_place_without_guessing() -> None:
-    analysis = parse_commute_request("从我这里到北门怎么走", now=NOW)
+    analysis = parse_commute_request("从我这里到北门怎么走")
 
     assert analysis.origin_unlocatable is True
     assert analysis.clarification is not None
@@ -98,7 +98,7 @@ def test_unlocatable_origin_asks_for_a_concrete_place_without_guessing() -> None
 
 
 def test_two_modes_in_one_sentence_ask_which_one() -> None:
-    analysis = parse_commute_request("走路还是骑车去图书馆", now=NOW)
+    analysis = parse_commute_request("走路还是骑车去图书馆")
 
     assert analysis.mode is None
     assert analysis.mode_candidates == [CommuteMode.WALKING, CommuteMode.BICYCLING]
@@ -110,7 +110,7 @@ def test_two_modes_in_one_sentence_ask_which_one() -> None:
 
 def test_missing_places_are_backfilled_from_prior_context() -> None:
     analysis = parse_commute_request(
-        "骑车怎么走", prior_context=["从图书馆到食堂怎么走"], now=NOW
+        "骑车怎么走", prior_context=["从图书馆到食堂怎么走"]
     )
 
     assert analysis.origin_phrase == "图书馆"
@@ -120,11 +120,11 @@ def test_missing_places_are_backfilled_from_prior_context() -> None:
 
 
 def test_resume_fills_awaited_origin_then_asks_mode() -> None:
-    first = parse_commute_request("去图书馆怎么走", now=NOW)
+    first = parse_commute_request("去图书馆怎么走")
     assert first.clarification is not None
     pending = _pending(pending_payload(first, awaiting=first.clarification.missing))
 
-    second = parse_commute_request("南区", pending=pending, now=NOW)
+    second = parse_commute_request("南区", pending=pending)
 
     assert second.origin_phrase == "南区"
     assert second.destination_phrase == "图书馆"
@@ -134,11 +134,11 @@ def test_resume_fills_awaited_origin_then_asks_mode() -> None:
 
 
 def test_resume_fills_awaited_mode() -> None:
-    first = parse_commute_request("从南区到北区怎么走", now=NOW)
+    first = parse_commute_request("从南区到北区怎么走")
     assert first.clarification is not None
     pending = _pending(pending_payload(first, awaiting=first.clarification.missing))
 
-    second = parse_commute_request("骑电动车", pending=pending, now=NOW)
+    second = parse_commute_request("骑电动车", pending=pending)
 
     assert second.mode is CommuteMode.ELECTROBIKE
     assert second.origin_phrase == "南区"
@@ -170,7 +170,7 @@ def test_resume_with_candidate_index_pins_the_chosen_poi() -> None:
         }
     )
 
-    resumed = parse_commute_request("2", pending=pending, now=NOW)
+    resumed = parse_commute_request("2", pending=pending)
 
     assert resumed.origin_place is not None
     assert resumed.origin_place.name == "华东交通大学南区图书馆"
@@ -192,7 +192,7 @@ def test_resume_with_candidate_name_matches_by_name() -> None:
         }
     )
 
-    resumed = parse_commute_request("北门", pending=pending, now=NOW)
+    resumed = parse_commute_request("北门", pending=pending)
 
     assert resumed.origin_place is not None
     assert resumed.origin_place.name == "华东交通大学北门"
@@ -211,7 +211,7 @@ def test_resume_with_unmatched_answer_reparses_that_side() -> None:
         }
     )
 
-    resumed = parse_commute_request("不是这个，是体育场", pending=pending, now=NOW)
+    resumed = parse_commute_request("不是这个，是体育场", pending=pending)
 
     assert resumed.destination_place is None
     assert resumed.destination_phrase is not None
@@ -230,3 +230,53 @@ def test_match_candidate_supports_index_and_name() -> None:
     assert match_candidate("南区食堂", candidates) is candidates[1]
     assert match_candidate("无关内容", candidates) is None
     assert match_candidate("1", []) is None
+
+
+def test_resume_lets_the_new_wording_override_stored_places() -> None:
+    """等待状态只补空缺：用户在回答里写出新地点时以新话为准。"""
+    first = parse_commute_request("从南区到图书馆怎么走")
+    assert first.clarification is not None
+    pending = _pending(pending_payload(first, awaiting=first.clarification.missing))
+
+    second = parse_commute_request("从宿舍到食堂", pending=pending)
+
+    assert second.origin_phrase == "宿舍"
+    assert second.destination_phrase == "食堂"
+    # 方式仍然缺失：只问方式，不沿用上一轮的起终点
+    assert second.clarification is not None
+    assert second.clarification.missing == MISSING_MODE
+
+
+def test_resume_treats_a_complete_restatement_as_a_new_request() -> None:
+    """完整的重新表述按全新请求解析，旧等待随之作废。"""
+    first = parse_commute_request("从南区到图书馆怎么走")
+    assert first.clarification is not None
+    pending = _pending(pending_payload(first, awaiting=first.clarification.missing))
+
+    second = parse_commute_request("从宿舍骑车到食堂怎么走", pending=pending)
+
+    assert second.origin_phrase == "宿舍"
+    assert second.destination_phrase == "食堂"
+    assert second.mode is CommuteMode.BICYCLING
+    assert second.clarification is None
+
+
+def test_candidate_choice_keeps_the_query_that_produced_it() -> None:
+    """沿用候选时保留当时真正发送的检索词，证据里不出现没发过的词。"""
+    candidates = [
+        CommutePlaceCandidate(name="华东交通大学图书馆", location="115.87,28.75", campus=True),
+        CommutePlaceCandidate(name="华东交通大学南区图书馆", location="115.88,28.76", campus=True),
+    ]
+    pending = _pending(
+        {
+            "awaiting": MISSING_ORIGIN_CHOICE,
+            "destination_phrase": "北门",
+            "origin_candidates": [item.model_dump(mode="json") for item in candidates],
+            "origin_candidate_query": "华东交通大学图书馆",
+        }
+    )
+
+    resumed = parse_commute_request("1", pending=pending)
+
+    assert resumed.origin_place is not None
+    assert resumed.origin_place.query == "华东交通大学图书馆"

@@ -102,7 +102,9 @@ class CommutePlace(BaseModel):
 
     role: CommutePlaceRole = Field(description="起点或终点。")
     original_phrase: str = Field(description="用户原话中的地点写法（逐字保留）。")
-    query: str = Field(description="实际发送给高德的最小检索词。")
+    query: str = Field(
+        description="实际发送给高德的最小检索词；沿用上一轮候选时为产生该候选的检索词。"
+    )
     name: str = Field(description="高德返回的 POI 名称。")
     location: str = Field(description="高德返回的坐标串 lng,lat（绝不臆造）。")
     address: str | None = Field(default=None, description="高德返回的地址。")
@@ -127,12 +129,12 @@ class CommuteRouteStep(BaseModel):
 
 
 class CommuteBreakBuffer(BaseModel):
-    """课间规则缓冲：抵达时刻是否落在八个课间点前后十分钟内。
+    """课间规则缓冲：当前时刻是否落在八个课间点前后十分钟内。
 
     这是**规则估计**，不是实时人流数据；``rule_note`` 每次都必须随结果展示。
     """
 
-    in_window: bool = Field(description="是否命中课间前后十分钟窗口。")
+    in_window: bool = Field(description="当前时刻是否命中课间前后十分钟窗口。")
     matched_break_time: str | None = Field(
         default=None, description="命中的课间时间点 HH:MM；未命中为 None。"
     )

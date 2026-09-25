@@ -81,6 +81,8 @@ class PlaceResolution:
     failure: ModuleQueryRecord | None = None
     #: 外部调用被用户停止：由调用方收敛为「已停止」，不当作失败或空结果。
     cancelled: bool = False
+    #: 真正命中的检索词（澄清候选与已解析地点都据此如实标注来源）。
+    used_query: str | None = None
 
 
 def resolve_place(
@@ -97,6 +99,7 @@ def resolve_place(
     last_pois: list[AmapPoi] = []
     campus: list[AmapPoi] = []
     failure: ModuleQueryRecord | None = None
+    used_query: str | None = None
     for query in search_queries(phrase):
         outcome = resolver.search_place(
             account_id, query, deadline=deadline, stop_event=stop_event
@@ -113,6 +116,7 @@ def resolve_place(
         last_pois = list(outcome.pois)
         campus = [poi for poi in last_pois if is_campus_poi(poi)]
         if campus:
+            used_query = query
             break
     if failure is not None:
         return PlaceResolution(records=records, failure=failure)
@@ -127,10 +131,12 @@ def resolve_place(
             records=records,
             candidates=candidates,
             clarification=_choice_clarification(role, phrase, candidates),
+            used_query=used_query,
         )
     return PlaceResolution(
-        place=_place_from_candidate(role, candidates[0], phrase=phrase),
+        place=_place_from_candidate(role, candidates[0], phrase=phrase, query=used_query),
         records=records,
+        used_query=used_query,
     )
 
 
@@ -185,13 +191,17 @@ def _candidate_from_poi(poi: AmapPoi) -> CommutePlaceCandidate:
 
 
 def _place_from_candidate(
-    role: CommutePlaceRole, candidate: CommutePlaceCandidate, *, phrase: str
+    role: CommutePlaceRole,
+    candidate: CommutePlaceCandidate,
+    *,
+    phrase: str,
+    query: str | None,
 ) -> CommutePlace:
     address = candidate.address or "高德未返回详细地址"
     return CommutePlace(
         role=role,
         original_phrase=phrase,
-        query=candidate.name,
+        query=query or candidate.name,
         name=candidate.name,
         location=candidate.location or "",
         address=candidate.address,

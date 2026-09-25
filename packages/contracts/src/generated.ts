@@ -10115,14 +10115,14 @@ export interface components {
         CloudProjectionStatus: "active" | "pending_device" | "revoked" | "expired";
         /**
          * CommuteBreakBuffer
-         * @description 课间规则缓冲：抵达时刻是否落在八个课间点前后十分钟内。
+         * @description 课间规则缓冲：当前时刻是否落在八个课间点前后十分钟内。
          *
          *     这是**规则估计**，不是实时人流数据；``rule_note`` 每次都必须随结果展示。
          */
         CommuteBreakBuffer: {
             /**
              * In Window
-             * @description 是否命中课间前后十分钟窗口。
+             * @description 当前时刻是否命中课间前后十分钟窗口。
              */
             in_window: boolean;
             /**
@@ -10178,7 +10178,7 @@ export interface components {
             original_phrase: string;
             /**
              * Query
-             * @description 实际发送给高德的最小检索词。
+             * @description 实际发送给高德的最小检索词；沿用上一轮候选时为产生该候选的检索词。
              */
             query: string;
             /**
@@ -17007,7 +17007,10 @@ export interface components {
             configured: boolean;
             /** Js Api Key */
             js_api_key?: string | null;
-            /** Service Host Path */
+            /**
+             * Service Host Path
+             * @description 代理路径（相对 API 基地址；前端据此拼出绝对地址）。
+             */
             service_host_path?: string | null;
             /**
              * Security Code Configured

@@ -11,7 +11,12 @@
 from __future__ import annotations
 
 from bridges.commute.contracts import MODE_LABELS, CommuteMode
-from bridges.commute.lexicon import CAMPUS_HINTS, COMMUTE_INTENT_HINTS, VAGUE_SIGNALS
+from bridges.commute.lexicon import (
+    CAMPUS_HINTS,
+    COMMUTE_INTENT_HINTS,
+    MODE_ALIAS_ORDER,
+    VAGUE_SIGNALS,
+)
 from bridges.commute.parsing import extract_places
 
 #: 建议按钮文案（与论文模块同一形式：以原文启动，不重复输入）。
@@ -22,19 +27,8 @@ COMMUTE_SUGGESTION_REASON = (
     "这看起来是一次校内出行，校园通勤可以按高德真实路线给出距离、耗时与课间缓冲。"
 )
 
-#: 方式词 → 中文（理由里说明会按哪种方式规划；未提及时不猜）。
-_MODE_HINTS: tuple[tuple[str, CommuteMode], ...] = (
-    ("电动车", CommuteMode.ELECTROBIKE),
-    ("电瓶车", CommuteMode.ELECTROBIKE),
-    ("电驴", CommuteMode.ELECTROBIKE),
-    ("自行车", CommuteMode.BICYCLING),
-    ("单车", CommuteMode.BICYCLING),
-    ("骑车", CommuteMode.BICYCLING),
-    ("骑行", CommuteMode.BICYCLING),
-    ("步行", CommuteMode.WALKING),
-    ("走路", CommuteMode.WALKING),
-    ("徒步", CommuteMode.WALKING),
-)
+#: 方式词表直接复用解析用词表（长别名优先），避免建议与解析两处各写一份。
+_MODE_HINTS: tuple[tuple[str, CommuteMode], ...] = MODE_ALIAS_ORDER
 
 
 def detect_commute_suggestion(content: str) -> dict[str, object] | None:

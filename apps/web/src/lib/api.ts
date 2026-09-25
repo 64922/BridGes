@@ -312,6 +312,18 @@ export async function fetchCommuteMapConfig(): Promise<CommuteMapConfig> {
   return res.json();
 }
 
+/**
+ * 把后端下发的代理路径拼成高德 JS API 的 ``serviceHost``（绝对地址）。
+ *
+ * 后端只知道自己在 API 前缀下的位置，浏览器侧要按当前 API 基地址解析：
+ * 默认同源 ``/api`` 时结果是当前源；``NEXT_PUBLIC_API_BASE_URL`` 为绝对地址
+ * （另一端口/域名的 API）时也要指向那一侧，否则地图数据请求会打到网页源。
+ */
+export function commuteMapServiceHost(serviceHostPath: string): string {
+  const base = new URL(`${API_BASE}/`, window.location.origin);
+  return new URL(serviceHostPath.replace(/^\/+/, ""), base).toString().replace(/\/$/, "");
+}
+
 /** 验证并保存 Tavily API Key；成功后清空输入框，不返回密钥。 */
 export async function replaceTavilyCredential(apiKey: string): Promise<CredentialStatus> {
   const res = await fetch(`${API_BASE}/settings/credentials/tavily`, {

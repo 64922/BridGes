@@ -19,19 +19,20 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from bridges.api.auth import SubjectDep
+from bridges.commute.sources import AMAP_REST_BASE
 from bridges.credentials.store import CredentialStoreError
 
 router = APIRouter(prefix="/commute", tags=["校园通勤"])
 
-#: 上游高德数据服务地址与允许代理的路径前缀（只放行数据服务）。
-AMAP_UPSTREAM_BASE = "https://restapi.amap.com"
+#: 允许代理的路径前缀（只放行高德数据服务；地址与模块共用同一常量）。
 AMAP_PROXY_PATH_PREFIXES = ("v3/", "v5/")
 
-#: 前端据此拼出同源绝对地址作为 JS API 的 ``serviceHost``。
-AMAP_PROXY_PATH = "/api/commute/amap-proxy"
+#: 前端据此拼出绝对地址作为 JS API 的 ``serviceHost``；**相对 API 基地址**
+#: （前端默认基地址为 ``/api``，Next 重写会剥掉该前缀），因此这里不带 ``/api``。
+AMAP_PROXY_PATH = "/commute/amap-proxy"
 
 PROXY_TIMEOUT_SECONDS = 10.0
 MAX_PROXY_RESPONSE_BYTES = 262_144
@@ -55,7 +56,9 @@ class MapConfigResponse(BaseModel):
 
     configured: bool
     js_api_key: str | None = None
-    service_host_path: str | None = None
+    service_host_path: str | None = Field(
+        default=None, description="代理路径（相对 API 基地址；前端据此拼出绝对地址）。"
+    )
     security_code_configured: bool = False
     notice: str | None = None
 
@@ -111,14 +114,14 @@ def amap_proxy(path: str, request: Request, subject: SubjectDep) -> Response:
     try:
         if client is not None:
             upstream = client.get(
-                f"{AMAP_UPSTREAM_BASE}/{path}",
+                f"{AMAP_REST_BASE}/{path}",
                 params=params,
                 timeout=PROXY_TIMEOUT_SECONDS,
                 follow_redirects=False,
             )
         else:  # pragma: no cover - 组合根总会挂载探测客户端
             upstream = httpx.get(
-                f"{AMAP_UPSTREAM_BASE}/{path}",
+                f"{AMAP_REST_BASE}/{path}",
                 params=params,
                 timeout=PROXY_TIMEOUT_SECONDS,
                 follow_redirects=False,
@@ -146,9 +149,12 @@ def amap_proxy(path: str, request: Request, subject: SubjectDep) -> Response:
     )
 
 
-def _secret(request: Request, field: str) -> str | None:
-    """读取当前生效的凭据字段；凭据库不可读时按未配置处理（不升级为请求失败）。"""
-    settings = getattr(request.app.state, "settings", None)
+def secret_setting(settings: object, field: str) -> str | None:
+    """读取当前生效的凭据字段；凭据库不可读时按未配置处理（不升级为请求失败）。
+
+    组合根（加载高德路线 Key 的客户端）与本路由共用同一实现，避免两处各写
+    一份读取规则而在异常处理上走样。
+    """
     if settings is None:
         return None
     try:
@@ -159,3 +165,7 @@ def _secret(request: Request, field: str) -> str | None:
         return None
     secret = value.get_secret_value().strip()
     return secret or None
+
+
+def _secret(request: Request, field: str) -> str | None:
+    return secret_setting(getattr(request.app.state, "settings", None), field)

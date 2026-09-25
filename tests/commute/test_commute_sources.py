@@ -369,6 +369,29 @@ def test_transport_error_is_retried_at_most_twice() -> None:
     assert "上游请求 2 次" in (outcome.record.detail or "")
 
 
+def test_non_json_body_is_reported_as_unparseable_not_unreachable() -> None:
+    """响应体不是 JSON：按「返回内容无法解析」分类，不报成连不上高德。"""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, text="<html>gateway error</html>")
+
+    client = AmapRouteClient(
+        key_provider=lambda: "test-key",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleeper=lambda _seconds: None,
+    )
+
+    outcome = client.search_place("account-1", "华东交通大学图书馆")
+
+    assert outcome.pois == []
+    assert outcome.record is not None
+    assert outcome.record.error_code == "amap_bad_response"
+    assert "无法解析" in (outcome.record.error_message or "")
+    assert calls == ["/v3/place/text"], "内容无法解析不是网络问题，不重试"
+
+
 def test_stop_request_cancels_before_any_request() -> None:
     recorder = _Recorder({"/v5/direction/walking": _route_payload(900, 700)})
     stop_event = threading.Event()

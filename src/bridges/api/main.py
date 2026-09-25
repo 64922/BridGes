@@ -442,14 +442,9 @@ def _credential_store_for_namespace(
 
 def _amap_web_service_key(app: Any) -> str | None:
     """读取当前生效的高德路线 Web 服务 Key；未配置时返回 None（模块据此降级）。"""
-    settings = getattr(app.state, "settings", None)
-    if settings is None:
-        return None
-    value = getattr(settings, "amap_web_service_key", None)
-    if not isinstance(value, SecretStr):
-        return None
-    key = value.get_secret_value().strip()
-    return key or None
+    return commute_api.secret_setting(
+        getattr(app.state, "settings", None), "amap_web_service_key"
+    )
 
 
 def _paper_metadata_client() -> httpx.Client:

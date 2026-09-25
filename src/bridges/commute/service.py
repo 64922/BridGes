@@ -7,7 +7,8 @@
 2. **等待合同**：缺失或含糊只问一项，提问随助手消息落库（``ModuleWaitState``），
    下一轮从该处恢复并读取权威记录与实际回复，不靠内存协程跨请求存活；
 3. **失败与停止合同**：查询有超时、有限重试与取消；失败保留实际检索词与真实
-   分类、可重试；停止在节点边界生效并把状态写回同一条消息。
+   分类、可重试；用户停止在正在进行的路线请求处生效，未开始的步骤不再执行，
+   终态（含已发出的查询）写回同一条消息。
 
 与论文模块的差异只有一个：通勤**不调用模型**，正文完全由高德返回的证据渲染，
 因此不存在用模型记忆补路线的路径（``run_model_id`` 仅保持调用签名一致）。
@@ -38,7 +39,7 @@ from bridges.commute.contracts import (
 )
 from bridges.commute.parsing import parse_commute_request, pending_payload
 from bridges.commute.presenting import status_content
-from bridges.commute.resolving import PlaceResolution, resolve_place, search_queries
+from bridges.commute.resolving import PlaceResolution, resolve_place
 from bridges.commute.sources import (
     SNAP_LIMIT_METERS,
     CommuteAmapPort,
@@ -214,6 +215,7 @@ class CommuteService:
                 analysis=analysis,
                 clarification=origin_resolution.clarification,
                 queries=records,
+                origin_candidate_query=origin_resolution.used_query,
             )
         origin = origin_resolution.place
         destination = analysis.destination_place
@@ -228,6 +230,7 @@ class CommuteService:
                     clarification=destination_resolution.clarification,
                     origin=origin,
                     queries=records,
+                    destination_candidate_query=destination_resolution.used_query,
                 )
             destination = destination_resolution.place
         mode = analysis.mode
@@ -415,8 +418,8 @@ class CommuteService:
         """证据边界：方式隔离、吸附距离、候选沿用的来源与实测缺口。"""
         notes = [
             f"距离与耗时来自高德{MODE_LABELS[mode]}路线接口，不与其他方式混用。",
-            f"地点坐标来自高德 POI 检索（起点检索词：{'、'.join(search_queries(origin.query))}"
-            f"；终点检索词：{'、'.join(search_queries(destination.query))}）。",
+            f"地点坐标来自高德 POI 检索（起点实际检索词：{origin.query}；"
+            f"终点实际检索词：{destination.query}）。",
             f"路线方案数 {path.plan_count}，采用高德返回的第 1 条。",
             FIELD_TEST_LIMITATION,
         ]
@@ -449,7 +452,12 @@ class CommuteService:
     def _pending_wait(
         self, repo: ConversationRepository, account_id: str, conversation_id: str
     ) -> ModuleWaitState | None:
-        """读取本会话最近一次尚未被后续结果取代的澄清等待状态。"""
+        """本会话最近一条通勤消息的等待状态（唯一权威来源）。
+
+        只有最后一条带通勤投影的消息能代表当前等待：它若已经完成、未验证、失败
+        或停止，上一轮的澄清问题就已被这轮结果取代——下一条消息按全新请求解析，
+        不再从更早的历史里翻出旧等待（否则用户的新请求会被静默改写）。
+        """
         for message in reversed(repo.list_messages(account_id, conversation_id)):
             projection = message.commute_route
             if not isinstance(projection, dict):
@@ -458,14 +466,7 @@ class CommuteService:
                 stored = CommuteRouteProjection.model_validate(projection)
             except ValueError:
                 continue
-            if stored.pending is not None:
-                return stored.pending
-            if stored.status in {
-                CommuteRouteStatus.SUCCESS,
-                CommuteRouteStatus.UNVERIFIED,
-            }:
-                # 更晚的完成结果已经取代等待状态：不再恢复。
-                return None
+            return stored.pending
         return None
 
     def _prior_user_messages(
@@ -497,6 +498,8 @@ class CommuteService:
         origin: CommutePlace | None = None,
         destination: CommutePlace | None = None,
         queries: Sequence[ModuleQueryRecord] = (),
+        origin_candidate_query: str | None = None,
+        destination_candidate_query: str | None = None,
     ) -> CommuteRunOutcome:
         now = datetime.now(UTC)
         origin_candidates = (
@@ -529,6 +532,8 @@ class CommuteService:
                     awaiting=clarification.missing,
                     origin_candidates=origin_candidates,
                     destination_candidates=destination_candidates,
+                    origin_candidate_query=origin_candidate_query,
+                    destination_candidate_query=destination_candidate_query,
                 ),
                 created_at=now,
             ),

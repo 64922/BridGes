@@ -74,7 +74,8 @@ function stubMapConfig(config: Record<string, unknown>): void {
 const CONFIGURED_MAP = {
   configured: true,
   js_api_key: "js-key",
-  service_host_path: "/api/commute/amap-proxy",
+  // 后端下发的是相对 API 基地址的路径（默认基地址为 /api）
+  service_host_path: "/commute/amap-proxy",
   security_code_configured: true,
   notice: null,
 };
@@ -228,6 +229,18 @@ describe("CommuteRouteCard（V2 Issue 12）", () => {
       "没有拿其他方式的耗时替代"
     );
     expect(card.getAttribute("role")).toBe("status");
+  });
+
+  it("把安全密钥交给后端代理：浏览器只拿到同源代理地址", async () => {
+    installFakeAmap();
+    render(<CommuteRouteCard route={projection()} streaming={false} />);
+    await waitFor(() => expect(screen.getByTestId("commute-route-map-ready")).toBeTruthy());
+
+    // 高德官方代理方案：serviceHost 指向本应用的代理路由，安全密钥不经浏览器
+    expect(window._AMapSecurityConfig?.serviceHost).toBe(
+      `${window.location.origin}/api/commute/amap-proxy`
+    );
+    expect(window._AMapSecurityConfig).not.toHaveProperty("securityJsCode");
   });
 
   it("地图可缩放：放大与缩小按钮驱动地图对象", async () => {
