@@ -1,4 +1,4 @@
-"""搜索和地图凭据的已认证设置路由。"""
+"""搜索、地图与主模型凭据的已认证设置路由。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,25 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, SecretStr
 
+from bridges.ai.model_metadata import (
+    MODEL_METADATA_ERR_MODEL_NOT_FOUND,
+    MODEL_METADATA_ERR_UNAVAILABLE,
+    ModelMetadataError,
+)
+from bridges.ai.model_probe import ModelCapabilityProbe
 from bridges.api.auth import SubjectDep
+from bridges.api.qwen_settings import (
+    active_qwen_key,
+    active_run_model_config,
+    apply_qwen_key,
+    build_metadata_source,
+    build_probe_client,
+)
+from bridges.contracts.ai import ModelCapabilities
 from bridges.credentials.ids import (
     AMAP_BROWSER_MAP_CREDENTIAL_ID,
     AMAP_WEB_SERVICE_CREDENTIAL_ID,
+    GLOBAL_QWEN_CREDENTIAL_ID,
     RUNTIME_TAVILY_CREDENTIAL_ID,
     SETTINGS_TAVILY_CREDENTIAL_ID,
 )
@@ -31,6 +46,10 @@ _AMAP_JS_AUTH_ERRORS = (
     "INVALID_USER_DOMAIN",
     "USERKEY_PLAT_NOMATCH",
 )
+#: Qwen 密钥候选被拒绝的原因分类（前端据此在字段附近给出操作顺序提示）。
+_REASON_KEY_REJECTED = "key_rejected"
+_REASON_MODEL_NOT_MATCHING = "model_not_matching_key"
+_REASON_PROBE_FAILED = "probe_failed"
 
 
 class CredentialStatus(BaseModel):
@@ -45,6 +64,7 @@ class AMapCredentialStatus(BaseModel):
 
 
 class CredentialSettingsResponse(BaseModel):
+    qwen: CredentialStatus
     tavily: CredentialStatus
     amap: AMapCredentialStatus
 
@@ -139,10 +159,26 @@ def _record_validation(
     return checked_at
 
 
-def _invalid_candidate(name: str, message: str) -> HTTPException:
+def _invalid_candidate(
+    name: str, message: str, *, reason: str | None = None
+) -> HTTPException:
+    detail: dict[str, Any] = {
+        "error": "credential_invalid",
+        "credential": name,
+        "message": message,
+    }
+    if reason is not None:
+        detail["reason"] = reason
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        detail={"error": "credential_invalid", "credential": name, "message": message},
+        detail=detail,
+    )
+
+
+def _probe_unavailable(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={"error": "credential_probe_unavailable", "message": message},
     )
 
 
@@ -205,6 +241,9 @@ def get_credential_settings(
     del subject
     response.headers["Cache-Control"] = "no-store"
     return CredentialSettingsResponse(
+        qwen=_status(
+            request, "qwen", configured=active_qwen_key(request) is not None
+        ),
         tavily=_status(
             request,
             "tavily",
@@ -230,6 +269,72 @@ def get_credential_settings(
             ),
         ),
     )
+
+
+@router.put("/qwen", response_model=CredentialStatus)
+def replace_qwen_credential(
+    candidate: SecretCandidate, request: Request, subject: SubjectDep
+) -> CredentialStatus:
+    """验证并替换全局 Qwen 凭据；失败保留旧凭据（V2 Issue 09）。
+
+    验证对象是当前生效的主模型 ID：先查百炼模型元数据（密钥可用且能看到该
+    模型），再用候选密钥做一次最小真实调用（密钥能实际调用推理服务）。任一
+    不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型
+    调用即使用新凭据。
+
+    凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。
+    """
+    del subject
+    key = _candidate_value(candidate.api_key)
+    if not key:
+        message = "Qwen API Key 不能为空。"
+        _record_validation(request, "qwen", error=message)
+        raise _invalid_candidate("qwen", message, reason=_REASON_KEY_REJECTED)
+
+    secret = SecretStr(key)
+    config = active_run_model_config(request)
+    try:
+        build_metadata_source(request, secret).query(config.model_id)
+    except ModelMetadataError as exc:
+        _record_validation(request, "qwen", error=exc.message)
+        if exc.code == MODEL_METADATA_ERR_UNAVAILABLE:
+            raise _probe_unavailable(exc.message) from exc
+        if exc.code == MODEL_METADATA_ERR_MODEL_NOT_FOUND:
+            message = (
+                f"该密钥看不到当前主模型 ID（{config.model_id}）。"
+                "请先更换为可访问该模型的密钥，或在下方「Qwen 主模型 ID」中改填"
+                "该密钥可用的模型，再回来验证密钥。"
+            )
+            raise _invalid_candidate(
+                "qwen", message, reason=_REASON_MODEL_NOT_MATCHING
+            ) from exc
+        raise _invalid_candidate(
+            "qwen", exc.message, reason=_REASON_KEY_REJECTED
+        ) from exc
+
+    outcomes = ModelCapabilityProbe(build_probe_client(request, secret)).run(
+        model_id=config.model_id, capabilities=ModelCapabilities(text=True)
+    )
+    failed = [outcome for outcome in outcomes if not outcome.ok]
+    if failed:
+        message = failed[0].message or "Qwen 密钥验证失败，请检查密钥后重试。"
+        _record_validation(request, "qwen", error=message)
+        raise _invalid_candidate("qwen", message, reason=_REASON_PROBE_FAILED)
+
+    try:
+        _store(request).save(GLOBAL_QWEN_CREDENTIAL_ID, secret)
+    except (CredentialStoreError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "credential_store_unavailable",
+                "message": "凭据无法安全保存，请检查凭据存储。",
+            },
+        ) from exc
+
+    apply_qwen_key(request, secret)
+    checked_at = _record_validation(request, "qwen")
+    return CredentialStatus(configured=True, last_validated_at=checked_at)
 
 
 @router.put("/tavily", response_model=CredentialStatus)

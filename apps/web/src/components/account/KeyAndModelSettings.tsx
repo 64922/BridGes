@@ -10,17 +10,15 @@ import {
   fetchCredentialSettings,
   replaceAmapBrowserMapCredential,
   replaceAmapWebServiceCredential,
+  replaceQwenCredential,
   replaceTavilyCredential,
 } from "@/lib/api";
 
-import styles from "./CredentialSettings.module.css";
+import styles from "./KeyAndModelSettings.module.css";
+import { MainModelSettings } from "./MainModelSettings";
+import { QWEN_CREDENTIAL_FIRST_GUIDANCE, formatValidationTime } from "./qwen-settings-copy";
 
-type CredentialGroup = "tavily" | "amap_web_service" | "amap_browser_map";
-
-function formatValidationTime(value: string | null): string {
-  if (!value) return "尚无验证记录";
-  return `最近验证：${new Date(value).toLocaleString("zh-CN")}`;
-}
+type CredentialGroup = "qwen" | "tavily" | "amap_web_service" | "amap_browser_map";
 
 function CredentialState({ status }: { status?: CredentialStatus }) {
   if (!status) return <span className={styles.status}>读取中</span>;
@@ -34,14 +32,22 @@ function CredentialState({ status }: { status?: CredentialStatus }) {
   );
 }
 
-export function CredentialSettings() {
+export function KeyAndModelSettings() {
   const [settings, setSettings] = useState<CredentialSettingsValue | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [keys, setKeys] = useState({ tavily: "", amapWebService: "", amapJs: "", amapSecurity: "" });
+  const [keys, setKeys] = useState({
+    qwen: "",
+    tavily: "",
+    amapWebService: "",
+    amapJs: "",
+    amapSecurity: "",
+  });
   const [saving, setSaving] = useState<CredentialGroup | null>(null);
   const [errors, setErrors] = useState<Partial<Record<CredentialGroup, string>>>({});
   const [saved, setSaved] = useState<Partial<Record<CredentialGroup, boolean>>>({});
+  // 密钥更新成功后主模型卡片要重新读取「密钥是否可用」。
+  const [modelReloadKey, setModelReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -67,6 +73,7 @@ export function CredentialSettings() {
   const setCredentialStatus = (group: CredentialGroup, status: CredentialStatus) => {
     setSettings((current) => {
       if (!current) return current;
+      if (group === "qwen") return { ...current, qwen: status };
       if (group === "tavily") return { ...current, tavily: status };
       if (group === "amap_web_service") {
         return { ...current, amap: { ...current.amap, web_service: status } };
@@ -90,6 +97,7 @@ export function CredentialSettings() {
       setCredentialStatus(group, result);
       clear();
       setSaved((current) => ({ ...current, [group]: true }));
+      if (group === "qwen") setModelReloadKey((current) => current + 1);
     } catch (cause) {
       setErrors((current) => ({
         ...current,
@@ -102,6 +110,7 @@ export function CredentialSettings() {
 
   const isSaving = (group: CredentialGroup) => saving === group;
   const statusFor = (group: CredentialGroup) => {
+    if (group === "qwen") return settings?.qwen;
     if (group === "tavily") return settings?.tavily;
     if (group === "amap_web_service") return settings?.amap.web_service;
     return settings?.amap.browser_map;
@@ -111,10 +120,11 @@ export function CredentialSettings() {
     <div className={styles.page}>
       <div className={styles.inner}>
         <header>
-          <p className={styles.eyebrow}>账户设置 · 搜索与地图</p>
-          <h1 className={styles.title}>搜索与地图凭据</h1>
+          <p className={styles.eyebrow}>账户设置 · 密钥与模型</p>
+          <h1 className={styles.title}>密钥与模型管理</h1>
           <p className={styles.lead}>
             新密钥会先经过只读验证，验证成功后才替换当前凭据。已有密钥不会回显；每次更换请重新输入。
+            Qwen 凭据与主模型按「先密钥、后模型」的顺序分别验证保存，失败时原设置保持有效。
           </p>
         </header>
 
@@ -122,6 +132,55 @@ export function CredentialSettings() {
         {loadError && <ErrorSummary title="凭据状态暂不可用" errors={[loadError]} />}
 
         <div className={styles.stack}>
+          <section className={styles.card} aria-labelledby="qwen-credential-title">
+            <div className={styles.cardHeader}>
+              <div>
+                <h2 id="qwen-credential-title" className={styles.cardTitle}>Qwen 凭据</h2>
+                <p className={styles.description}>
+                  主对话、视觉识别与 OCR 的全局运行密钥。验证会先查该密钥可见的模型信息，再做一次最小真实调用。
+                  知识库向量模型与索引版本单独固定，不随此处更换。
+                </p>
+              </div>
+              <CredentialState status={statusFor("qwen")} />
+            </div>
+            <p className={styles.validationTime}>{formatValidationTime(statusFor("qwen")?.last_validated_at ?? null)}</p>
+            {statusFor("qwen")?.error && <p className={styles.errorText}>{statusFor("qwen")?.error}</p>}
+            <form
+              className={styles.form}
+              onSubmit={(event) =>
+                submit(
+                  event,
+                  "qwen",
+                  () => replaceQwenCredential(keys.qwen),
+                  () => setKeys((current) => ({ ...current, qwen: "" }))
+                )
+              }
+            >
+              <FormField
+                id="qwen-api-key"
+                label="Qwen API Key"
+                type="password"
+                value={keys.qwen}
+                onChange={(value) => setKeys((current) => ({ ...current, qwen: value }))}
+                placeholder="输入新密钥"
+                autoComplete="new-password"
+                required
+              />
+              {statusFor("qwen")?.configured === false && !errors.qwen && (
+                <p className={styles.guidance}>{QWEN_CREDENTIAL_FIRST_GUIDANCE}</p>
+              )}
+              {errors.qwen && <ErrorSummary title="Qwen 密钥验证失败" errors={[errors.qwen]} />}
+              {saved.qwen && <p className={styles.success} role="status">Qwen 凭据已验证并保存。</p>}
+              <div className={styles.actions}>
+                <Button type="submit" isLoading={isSaving("qwen")} disabled={loading}>
+                  {isSaving("qwen") ? "正在验证并保存…" : "验证并保存"}
+                </Button>
+              </div>
+            </form>
+          </section>
+
+          <MainModelSettings reloadKey={modelReloadKey} />
+
           <section className={styles.card} aria-labelledby="tavily-title">
             <div className={styles.cardHeader}>
               <div>

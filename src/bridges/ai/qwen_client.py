@@ -194,6 +194,9 @@ class QwenApiClient:
     When ``api_key`` is None, the client operates in playback-only mode and never
     makes a real network call. When ``record_mode`` is True and a cassette store
     is configured, real calls are made and their responses are recorded.
+
+    ``api_key`` 在每次请求构造鉴权头时读取：V2 Issue 09 的设置页更换密钥
+    经 :meth:`replace_api_key` 就地轮换，正在运行的进程无需重建适配器接线。
     """
 
     def __init__(
@@ -208,13 +211,20 @@ class QwenApiClient:
         #: ``bridges.model_call_budget.MODEL_CALL_DEFAULT_TIMEOUT_SECONDS``。
         #: 网关按剩余预算截断后经 ``chat_completions(timeout=...)`` 覆盖。
         timeout: float = MODEL_CALL_DEFAULT_TIMEOUT_SECONDS,
+        #: 可注入的 HTTP 客户端（探测/测试共用注入的 transport）；None 时
+        #: 自建带默认超时的客户端。
+        http_client: httpx.Client | None = None,
     ) -> None:
         self._api_key = api_key
         self._workspace_id = workspace_id
         self._region = region
         self._cassette_store = cassette_store
         self._record_mode = record_mode
-        self._client = httpx.Client(timeout=timeout)
+        self._client = http_client if http_client is not None else httpx.Client(timeout=timeout)
+
+    def replace_api_key(self, api_key: SecretStr | None) -> None:
+        """就地轮换凭据（V2 Issue 09）：后续请求立即使用新密钥。"""
+        self._api_key = api_key
 
     @property
     def base_url(self) -> str:

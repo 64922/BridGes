@@ -9,9 +9,17 @@ BridGes 为每个逻辑能力类别固定一个经评测的具体模型快照，
 本模块由 ``credentials/matrix.py`` 迁移而来（GQ-07）：原矩阵中"逐账户
 真实能力探测"语义随账户百炼密钥一并清退，模型快照本身保留为架构资产。
 变更任何常量都必须作为受控变更执行合同测试与质量评测。
+
+V2 Issue 09 起，主对话／视觉／OCR 的实际绑定由用户在设置中手填并经
+「百炼元数据核对 + 真实能力探测」验证的运行配置给出（ADR-0031）；本
+矩阵仍是**出厂批准快照与生产组合门禁**的事实源：未激活用户配置时运行
+配置即 :data:`CHAT_MODEL_ID`，注册表与组合校验器始终以矩阵为准，
+向量化（``EMBEDDING_MODEL_ID``）不随主模型改变。
 """
 
 from __future__ import annotations
+
+from bridges.contracts.ai import ModelCapabilities
 
 #: 核心对话/推理/视觉理解/工具调用固定模型快照（qwen3.7-plus 评测版，
 #: ADR-0009 唯一绑定；结构化输出与画像提取复用同一快照）。
@@ -37,6 +45,21 @@ VIDEO_MODEL_ID = "wan2.7-t2v-2026-06-12"
 VISION_MODEL_ID = CHAT_MODEL_ID
 #: OCR 固定模型快照（Issue 09：与视觉理解同一对齐/门禁语义）。
 OCR_MODEL_ID = CHAT_MODEL_ID
+
+#: 出厂批准快照的能力档案（V2 Issue 09）：用户手填主模型 ID 并通过验证前，
+#: 运行配置即此档案；设置页展示的「实际能力」与上下文长度同源。四项能力
+#: 与 ``CHAT_MODEL_ID`` 批准绑定的声明值一致（ADR-0009 多模态核心快照）。
+FACTORY_MAIN_MODEL_CAPABILITIES = ModelCapabilities(
+    text=True,
+    image=True,
+    tool_calling=True,
+    structured_output=True,
+)
+#: 出厂批准快照记录的上下文窗口（token）。用户激活的模型以百炼元数据返回
+#: 的真实值为准，此常量只描述出厂快照。
+FACTORY_MAIN_MODEL_CONTEXT_WINDOW = 1_000_000
+#: 出厂批准快照记录的最大输入额度（token）。
+FACTORY_MAIN_MODEL_MAX_INPUT_TOKENS = 999_000
 
 #: 文生视频固定尺寸（与能力矩阵探测一致的默认值，1280*720 16:9）。
 VIDEO_DEFAULT_SIZE = "1280*720"
@@ -70,6 +93,9 @@ __all__ = [
     "ASR_MODEL_ID",
     "CHAT_MODEL_ID",
     "EMBEDDING_MODEL_ID",
+    "FACTORY_MAIN_MODEL_CAPABILITIES",
+    "FACTORY_MAIN_MODEL_CONTEXT_WINDOW",
+    "FACTORY_MAIN_MODEL_MAX_INPUT_TOKENS",
     "IMAGE_MODEL_ID",
     "MODEL_BY_CAPABILITY",
     "OCR_MODEL_ID",
