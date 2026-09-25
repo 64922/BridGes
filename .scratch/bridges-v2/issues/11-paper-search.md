@@ -56,7 +56,8 @@
 - `presenting.py`：正文由真实证据渲染（原词、实际查询词、篇数、每篇链接/
   理由/未核实项、证据边界），不依赖模型即零虚构；可选中文概述经严格门控
   （只接受本轮候选的 arXiv 标识 + 长度上限，越界丢弃），模型不可用时如实说明。
-- 落库（迁移 v51）：`messages.paper_search`、`messages.module_suggestion`；
+- 落库（迁移 v52，原拟 v51，合并时因 Issue 08 占用 51 而让位）：
+  `messages.paper_search`、`messages.module_suggestion`；
   终态与投影同事务收敛（`finalize_message`）。
 - `suggestion.py`：普通聊天里出现论文请求词且有可检索主题时才给「使用论文
   搜索」建议（随消息持久化）；歧义过大不给建议；建议本身不产生任何外部调用。
@@ -94,38 +95,56 @@
 ### 全量回归与基线比对（2026-09-25）
 
 - pytest 全量（两侧同 flags：`--ignore=tests/humanize_eval`、deselect 三个
-  `start` 冒烟用例、`-p no:randomly`、`--basetemp` 各自独立）：
-  - main（基线提交 `557b418`）：**237 失败 / 3648 通过 / 39 跳过 / 2 错误**。
-    该数字两次独立全量复跑逐字一致，可作稳定基线。
-  - 分支：**219 失败 / 3706 通过 / 41 跳过 / 0 错误**（该次为让子进程能导入
-    `bridges` 而带 `PYTHONPATH=<worktree>/src`，见下条原因）。
-- 失败用例名集合差集（219 vs 237 个名字）：**仅分支独有 1 个，仅 main 独有 19 个**。
-  19 + 1 恰好解释两侧失败数之差（237 − 19 + 1 = 219），无未归因项：
-  - 「仅 main 独有」19 项中 **18 项**是 `test_cli_contract.py`、`test_runtime_contract.py`、
-    `test_runtime_smoke.py` 里会 `python -m bridges.cli...` 起子进程的用例。本机
-    conda `agent` 环境当前**没有可用的 `bridges` 安装**：在 main 仓库目录下
-    `python -c "import bridges"` 同样报 `ModuleNotFoundError`（pytest 进程内能导入
-    是靠仓库 ini 的 `pythonpath = src`，不传递给子进程）。所以这 18 项在 main 上
-    失败、在分支带上 `PYTHONPATH` 后通过，是执行方式差异而非代码差异。已实证：
-    分支**去掉** `PYTHONPATH` 跑 `tests/integration/test_runtime_smoke.py`，得到与
-    main 逐字相同的 `10 failed, 2 errors`。
-  - 「仅 main 独有」余下 1 项 `tests/contracts/test_openapi_sync.py::test_committed_openapi_matches_current_api`
-    在 main 上自身即失败（其 HEAD 已前进到 `0d67f6a`，本票基线为 `557b418`）；
-    本分支一侧契约文件是重新生成过的。
-  - 「仅分支独有」1 项 `tests/closeout/test_arxiv_worker_reliability.py::test_handshake_timeout_maps_to_arxiv_handshake`
-    起真实 worker 子进程，断言握手超时 1.5s 与墙钟 < 8s，其源码注释即写明
-    「并行负载下更长，否则超时与启动竞态、断言失真」。单独复跑 3/3 通过、整文件
-    14/14 通过、6 路并发复跑 18/18 通过，且此前两侧所有全量产物中从未出现，
-    判为负载抖动而非回归。
-- 上一轮（`557b418` 基线上另一份带 `PYTHONPATH` 的全量）曾出现 240 失败，
-  多出的 3 项已定位为契约变更：`tests/chat/test_v2_02_resumable_runs.py` 中
-  图版本号与「未实现模块」用例（该文件原以 `paper` 作为未实现模块样例，
-  本票实现后改为 `tieba`），已同步更新，现该文件 10/10 通过。
-- mypy：两侧均 **115 处 / 23 文件**（含本票新增的 `src/bridges/paper/`，零新增）。
-- ruff `src/`：main 311 → 分支 314，唯一差量是 `api/main.py` 新增 3 处 E402
-  （该文件已有 85 处同类，为保持模块级装配惯例）。
+  `start` 冒烟用例、`-p no:randomly`、`--basetemp` 各自独立；两侧都**不**设
+  `PYTHONPATH`，使子进程导入问题对两边同等生效）：
+  - main（`027d709`，合并 Issue 07/08 后；跑前跑后哈希一致）：**236 失败 /
+    3713 通过 / 40 跳过 / 2 错误**。
+  - 分支（合并 main 后的 `2bd5f19`）：**238 失败 / 3751 通过 / 40 跳过 / 2 错误**。
+- 失败用例名集合差集（238 vs 236 个名字）：**仅分支独有 2 个，仅 main 独有 0 个**。
+  - 「仅分支独有」的 2 项是 `tests/closeout/test_api_boot.py` 的两个用例，属工作树
+    环境产物：worktree 里没有仓库 `.venv`，收尾夹具回退到 conda Python，而本机
+    conda `agent` 环境**当前没有可用的 `bridges` 安装**（在 main 仓库目录下
+    `python -c "import bridges"` 同样报 `ModuleNotFoundError`；pytest 进程内能导入
+    是靠仓库 ini 的 `pythonpath = src`，该设置不会传给子进程）。已实证：分支上带
+    `PYTHONPATH=src` 跑 `tests/closeout/test_api_boot.py` 得 **2 passed**。同款产物
+    Issue 08 工单已记录，非本票引入。
+  - 「仅 main 独有」为 0：main 上没有任何一项在本分支通过，即不存在被掩盖的回归。
+- 通过数对账：3751 − 3713 = **+38**，恰等于本票新增 40 个 pytest 用例减去上述
+  2 个工作树产物用例（40 − 2 = 38），无未归因增量。
+- 更早一轮（基线 `557b418`，分支额外带 `PYTHONPATH`）测得分支 219 失败；与当时
+  main 的 237 个名字比对时「仅 main 独有 18 项」全部是 `python -m bridges.cli...`
+  子进程用例，正是同一子进程导入问题的另一面（带上 `PYTHONPATH` 后它们由失败转
+  通过），不是代码差异。同轮另有 1 项
+  `tests/closeout/test_arxiv_worker_reliability.py::test_handshake_timeout_maps_to_arxiv_handshake`
+  单独出现：该用例起真实 worker 子进程并断言握手 1.5s 超时与墙钟 < 8s，源码注释
+  即写明「并行负载下更长，否则超时与启动竞态、断言失真」；单独复跑 3/3、整文件
+  14/14、6 路并发复跑 18/18 全通过，且此后所有全量产物中未再出现，判为负载抖动。
+- 还有两例（`test_openapi_sync.py::test_committed_openapi_matches_current_api`
+  与 `test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent`）
+  曾在两侧间来回漂移：单独复跑两侧均通过，属用例收集顺序敏感（本票新增
+  `tests/paper/` 会改变收集顺序），在最终这次全量里两侧都已通过，不计入差集。
+- mypy：两侧均 **115 处 / 23 文件**，且错误集合双向 `comm` 差集为空（仅行号位移）；
+  本分支检查 380 个源文件、main 369 个，差额即本票新增的 11 个源文件。
+- ruff `src/`：main 311 → 分支 314，findings 集合双向差集只剩 `api/main.py` 新增
+  3 处 E402（该文件已有 85 处同类，为保持模块级装配惯例），其余逐条一致。
 - 前端：`tsc --noEmit` 干净、`next lint`（改动文件）零告警、vitest 分支
-  **96/96（15 文件）**，main 侧同命令为 77/77（12 文件），即本票净增 19 例 / 3 文件。
+  **101/101（16 文件）**，main 侧同命令为 82/82（13 文件），即本票净增 19 例 / 3 文件。
+- 合并 main 两次：Issue 08（原子画像）冲突于 `database.py`——两侧都声明迁移 51，
+  按「已在 main 上线者保留」把本票迁移改为 52 并同步 `SCHEMA_VERSION = 52`；
+  已实证 v51 库（即 main 当前状态）可升到 52 且补上两列（见下）；Issue 07
+  （知识库检索）无冲突、未新增迁移，本票迁移仍为 52。契约文件两次都在合并后按
+  合并源码重新生成，未采信文本自动合并。
+
+### 迁移编号让位实测
+
+两侧都曾声明迁移 51，若直接合并，一个已经由 main（Issue 08）升到 v51 的库会把
+本票迁移视作「已完成」而**静默跳过** `paper_search` / `module_suggestion` 两列。
+改为 52 后实测（`.tmp/migrate_probe.py`）：
+
+- 全新库：`SCHEMA_VERSION = 52`，迁移键连续 `1..52`，`messages` 两列齐备，
+  `profile_items` / `profile_item_migrations` 两张画像表齐备。
+- 模拟 main 当前状态的 v51 库（回退版本号并移除两列后再 `initialize()`）：
+  版本升到 **52**，两列**被补回**；即从 v51 升上来的真实桌面库不会漏列。
 
 ### 真实可得性验证（AC5/AC7）
 
