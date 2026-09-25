@@ -220,7 +220,7 @@ def _start_executor_thread(sqlite_app: Any) -> tuple[threading.Event, threading.
 # ---------------------------------------------------------------------------
 
 
-def test_create_conversation_defaults_companion_and_rejects_unreleased_study(
+def test_create_conversation_requires_first_turn_for_both_modes(
     client: TestClient, sqlite_app: Any
 ) -> None:
     _register(client)
@@ -230,7 +230,7 @@ def test_create_conversation_defaults_companion_and_rejects_unreleased_study(
 
     study = client.post("/chat/conversations", json={"title": "学习对话", "mode": "study"})
     assert study.status_code == 409
-    assert study.json()["detail"]["error"] == "study_mode_unavailable"
+    assert study.json()["detail"]["error"] == "first_turn_required"
 
     listing = client.get("/chat/conversations").json()["conversations"]
     assert listing == []
@@ -316,7 +316,7 @@ def test_first_turn_locks_mode_atomically_and_replays_same_idempotency_key(
         },
     )
     assert conflict.status_code == 409
-    assert conflict.json()["detail"]["error"] == "study_mode_unavailable"
+    assert conflict.json()["detail"]["error"] == "conversation_mode_locked"
 
     history = client.get(f"/chat/conversations/{conversation_id}").json()
     assert history["mode"] == "companion"
