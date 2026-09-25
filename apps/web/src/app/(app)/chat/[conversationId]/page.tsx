@@ -23,6 +23,7 @@ import {
   subscribeChatRunEvents,
   startFirstTurn,
   type ChatConversationProjection,
+  type ChatAttachmentProjection,
   type ChatMessageProjection,
   type ChatStreamEvent,
   type ArxivSearchProjection,
@@ -135,7 +136,12 @@ export default function ChatConversationPage() {
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
-  const [pendingUser, setPendingUser] = useState<{ id: string; text: string } | null>(null);
+  // Issue 05：pendingUser 携带本轮照片附件（发送成功后立刻渲染缩略图）。
+  const [pendingUser, setPendingUser] = useState<{
+    id: string;
+    text: string;
+    attachments?: ChatAttachmentProjection[];
+  } | null>(null);
   const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -143,7 +149,12 @@ export default function ChatConversationPage() {
   const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
   const firstTurnRetryRef = useRef(false);
   // V2 Issue 02：发送/重试幂等键（同文本/同消息的失败重发复用，成功后清除）。
-  const sendIdempotencyRef = useRef<{ text: string; key: string } | null>(null);
+  // Issue 05：幂等身份含照片集合——同文字换照片必须换新键。
+  const sendIdempotencyRef = useRef<{
+    text: string;
+    attachments: string[];
+    key: string;
+  } | null>(null);
   const retryIdempotencyRef = useRef<{ messageId: string; key: string } | null>(null);
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
@@ -260,7 +271,11 @@ export default function ChatConversationPage() {
           };
           activeRunRef.current = run;
           if (kind === "send") {
-            setPendingUser({ id: event.data.user_message_id, text });
+            setPendingUser((current) => ({
+              id: event.data.user_message_id,
+              text,
+              attachments: current?.attachments ?? [],
+            }));
           }
           setActiveRun(run);
           setAnnouncement("正在生成回答");
@@ -447,7 +462,7 @@ export default function ChatConversationPage() {
   );
 
   const sendMessage = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, attachmentIds: string[] = []): Promise<boolean> => {
       setSendError(null);
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
@@ -455,9 +470,11 @@ export default function ChatConversationPage() {
       // V2 Issue 02：发送幂等键——同文本的失败重发复用同一键（服务端复用
       // 同一运行，不重复写消息）；文本变化则换新键（绝不重放旧请求）。
       const keyEntry = sendIdempotencyRef.current;
+      const samePayload =
+        keyEntry && keyEntry.text === text && keyEntry.attachments.join(",") === attachmentIds.join(",");
       const sendIdempotencyKey =
-        keyEntry && keyEntry.text === text ? keyEntry.key : crypto.randomUUID();
-      sendIdempotencyRef.current = { text, key: sendIdempotencyKey };
+        samePayload ? keyEntry.key : crypto.randomUUID();
+      sendIdempotencyRef.current = { text, attachments: attachmentIds, key: sendIdempotencyKey };
       const isFirstTurn =
         firstTurnRetryRef.current ||
         (conversation !== null && (conversation.messages?.length ?? 0) === 0);
@@ -475,6 +492,7 @@ export default function ChatConversationPage() {
             idempotencyKey,
             conversationId,
             mode: conversation?.mode ?? "companion",
+            attachmentIds,
           });
           setConversation(firstTurn.conversation);
           userMessage = firstTurn.user_message;
@@ -482,7 +500,12 @@ export default function ChatConversationPage() {
           cursor = firstTurn.cursor;
           firstTurnRetryRef.current = true;
         } else {
-          const run = await createChatRun(conversationId, text, sendIdempotencyKey);
+          const run = await createChatRun(
+            conversationId,
+            text,
+            sendIdempotencyKey,
+            attachmentIds
+          );
           userMessage = run.user_message;
           assistantMessage = run.assistant_message;
           cursor = run.cursor;
@@ -491,7 +514,11 @@ export default function ChatConversationPage() {
         sendIdempotencyRef.current = null;
         const runState = activeRunFromAssistant(assistantMessage, "send");
         activeRunRef.current = runState;
-        setPendingUser({ id: userMessage.message_id, text });
+        setPendingUser({
+          id: userMessage.message_id,
+          text,
+          attachments: userMessage.attachments ?? [],
+        });
         setActiveRun(runState);
         await subscribeWithRetry(
           conversationId,
@@ -680,6 +707,7 @@ export default function ChatConversationPage() {
         id: pendingUser.id,
         role: "user",
         plainText: pendingUser.text,
+        attachments: pendingUser.attachments ?? [],
         content: (
           <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{pendingUser.text}</p>
         ),
@@ -735,7 +763,7 @@ export default function ChatConversationPage() {
                     {conversation?.mode === "study" ? "学习模式" : "日常陪伴"}
                   </p>
                   <Composer
-                    onSend={(text) => sendMessage(text)}
+                    onSend={(text, attachmentIds) => sendMessage(text, attachmentIds)}
                     conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}

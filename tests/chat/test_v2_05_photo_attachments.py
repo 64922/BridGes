@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai import ModelGateway

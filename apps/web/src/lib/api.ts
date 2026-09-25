@@ -18,6 +18,8 @@ export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsRespon
 export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
 export type ChatMessageProjection = components["schemas"]["ChatMessageProjection"];
 export type ChatAttachmentProjection = components["schemas"]["ChatAttachmentProjection"];
+// Issue 05：聊天照片草稿（账户域，发送时原子绑定到消息）。
+export type ChatAttachmentDraftProjection = components["schemas"]["ChatAttachmentDraftProjection"];
 export type ChatMessageRole = components["schemas"]["ChatMessageRole"];
 export type ChatMessageStatus = components["schemas"]["ChatMessageStatus"];
 export type ChatConversationProjection = components["schemas"]["ChatConversationProjection"];
@@ -1086,16 +1088,20 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
 export async function createChatRun(
   conversationId: string,
   content: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  attachmentIds: string[] = []
 ): Promise<ChatRunStartedResponse> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
     // V2 Issue 02：携带幂等键——网络重试复用同一运行，不重复写消息。
-    body: JSON.stringify(
-      idempotencyKey ? { content, idempotency_key: idempotencyKey } : { content }
-    ),
+    // Issue 05：照片草稿与文字同请求原子绑定（服务端保持顺序）。
+    body: JSON.stringify({
+      content,
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+      ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+    }),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
@@ -1117,17 +1123,21 @@ export interface ChatFirstTurnInput {
   idempotencyKey: string;
   conversationId?: string;
   mode?: ChatMode;
+  // Issue 05：新聊天页直发照片（账户域草稿，首轮事务内原子绑定）。
+  attachmentIds?: string[];
 }
 
 export async function startFirstTurn(
   input: ChatFirstTurnInput
 ): Promise<ChatFirstTurnResponse> {
+  const attachmentIds = input.attachmentIds ?? [];
   const body = {
     content: input.content,
     idempotency_key: input.idempotencyKey,
     ...(input.conversationId !== undefined
       ? { conversation_id: input.conversationId }
       : {}),
+    ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
     mode: input.mode ?? "companion",
   };
   const res = await fetch(`${API_BASE}/chat/first-turn`, {
@@ -1138,6 +1148,70 @@ export async function startFirstTurn(
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Issue 05：聊天照片附件草稿（账户域，发送时随消息原子绑定）
+// ---------------------------------------------------------------------------
+
+/**
+ * 上传一张照片草稿（幂等：同 upload_id 重放返回既有草稿）。
+ *
+ * 原始字节直传，文件名经 ``X-Bridges-Filename`` 头传递（URL 编码，
+ * 服务端解码）；类型与体积由服务端嗅探校验，中文原因在 ``detail.message``。
+ */
+export async function uploadChatAttachmentDraft(
+  content: Blob,
+  filename: string,
+  uploadId: string,
+  signal?: AbortSignal
+): Promise<ChatAttachmentDraftProjection> {
+  const res = await fetch(`${API_BASE}/chat/attachment-drafts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": content.type || "application/octet-stream",
+      "X-Bridges-Filename": encodeURIComponent(filename),
+      "X-Bridges-Upload-Id": uploadId,
+    },
+    credentials: "same-origin",
+    body: content,
+    signal,
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 列出当前账户全部未发送照片草稿（刷新/重开后恢复草稿列表）。 */
+export async function listChatAttachmentDrafts(): Promise<
+  ChatAttachmentDraftProjection[]
+> {
+  const res = await fetch(`${API_BASE}/chat/attachment-drafts`, {
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 草稿图片的同源预览地址（经账户授权后返回；跨账户 404 不泄漏）。 */
+export function chatAttachmentDraftContentUrl(objectId: string): string {
+  return `${API_BASE}/chat/attachment-drafts/${encodeURIComponent(objectId)}/content`;
+}
+
+/** 已绑定附件的同源下载地址（经账户与会话授权；用于消息内缩略图）。 */
+export function chatAttachmentContentUrl(
+  conversationId: string,
+  objectId: string
+): string {
+  return `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/download`;
+}
+
+/** 移除一条草稿（幂等删除；发送成功后草稿随绑定自动消失）。 */
+export async function removeChatAttachmentDraft(objectId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/attachment-drafts/${encodeURIComponent(objectId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
 }
 
 /**

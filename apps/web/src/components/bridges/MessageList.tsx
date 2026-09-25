@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
+import { chatAttachmentContentUrl } from "@/lib/api";
 import type {
   ArxivSearchProjection,
+  ChatAttachmentProjection,
   ContextNoteProjection,
   RetrievalRoundProjection,
   TeachingTurnProjection,
@@ -110,6 +112,8 @@ export interface ChatMessage {
   /** Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡） */
   image?: ImageTaskProjection | null;
   video?: VideoTaskProjection | null;
+  /** Issue 05：本轮用户消息绑定的照片附件（按页序）；纯文字消息为空 */
+  attachments?: ChatAttachmentProjection[] | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -461,6 +465,40 @@ export function MessageList({
                   overflowWrap: "break-word",
                 }}
               >
+                {message.attachments && message.attachments.length > 0 && (
+                  <div
+                    role="list"
+                    aria-label="消息中的照片"
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "var(--space-2)",
+                      marginBottom:
+                        message.content || message.plainText ? "var(--space-2)" : 0,
+                    }}
+                  >
+                    {message.attachments.map((attachment) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={attachment.object_id}
+                        role="listitem"
+                        src={
+                          conversationId
+                            ? chatAttachmentContentUrl(conversationId, attachment.object_id)
+                            : undefined
+                        }
+                        alt={`用户发送的照片：${attachment.original_filename}`}
+                        style={{
+                          width: 96,
+                          height: 96,
+                          objectFit: "cover",
+                          borderRadius: "var(--radius-md)",
+                          border: "1px solid var(--color-border)",
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
                 {message.content}
               </div>
             </div>

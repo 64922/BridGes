@@ -24,6 +24,8 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
         plainText: message.content,
         // Issue 28：用户消息的 SKILL 载荷快照（人味化任务标识）
         skill: message.skill ?? null,
+        // Issue 05：本轮绑定的照片附件（按页序渲染缩略图）
+        attachments: message.attachments ?? null,
         content: <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{message.content}</p>,
       });
       continue;
