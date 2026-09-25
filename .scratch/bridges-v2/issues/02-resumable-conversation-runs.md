@@ -21,3 +21,4 @@
 - 契约：`ChatStreamEventKind.NODE` 节点进度事件（started/completed + 节点名与耗时）；`ChatRunView` 增加 `graph_version/current_node/wait_reason/model_lock_id`；发送/重试支持 `idempotency_key`（generation_runs 部分唯一索引兜底幂等重放）；逐消息 `module_id` 由服务端校验，未知值在 `select_explicit_module` 节点以 `module_not_available` 失败并标出节点位置。
 - 测试：`tests/chat/test_v2_02_checkpoints.py`（4 用例）与 `tests/chat/test_v2_02_resumable_runs.py`（9 用例）覆盖四项验收；前端展示节点进度中文标签并在发送/重试时携带幂等键。
 - 数据库：迁移 49（generation_runs 新列与幂等索引、messages.module_id、graph_checkpoints 与 graph_checkpoint_writes 表）。
+- Code review（两轴）结论与修复：检查点恢复已接线——`run_daily_turn` 在运行谱系已有检查点时以 `invoke(None)` 从上次提交的节点边界续跑（已完成节点不重跑、不重复调模型、游标事件不重复；中断节点重跑为 at-least-once，由消息事务与终态守卫收敛），新增 `test_lease_recovery_resumes_from_checkpoint_lineage` 覆盖；修正 `emit_error` 死参数。已知边界：`DailyTurnState` 的 `mode`/`module_dispatch` 为 Issue 03/11 预留写入位；测试侧 issue06_latency_budget 三个用例（stage 顺序/并行搜索/性能摘要）为 main 基线既有失败（fake 搜索注入与正文英文不匹配），与本票无关。

@@ -435,3 +435,71 @@ def test_retry_idempotency_reuses_run(
         account["id"], first_body["run_id"]
     )
     assert run is not None and run.status == "failed"
+
+
+def test_lease_recovery_resumes_from_checkpoint_lineage(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """租约恢复从检查点谱系续跑：已完成节点不重跑、不重复调模型。
+
+    第一次尝试在 invoke 节点内被闸门卡住（模拟进程死亡：不收敛、消息
+    留 streaming、无终态事件）；第二次尝试应从上次提交的节点边界续跑，
+    只发出剩余节点（invoke/verify/persist）的进度事件。
+    """
+    service = sqlite_app.state.chat_service
+    account = _register(client)
+    # 第一次尝试：闸门不放行，运行卡在 invoke 节点内的模型流上
+    blocked = threading.Event()
+    service._gateway = _gateway_with(_GatedSlowAdapter([blocked]))  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+    created = generation_helpers["send"](client, conversation_id, content="恢复续跑")
+    message_id = created["assistant_message"]["message_id"]
+    run_id = created["run_id"]
+
+    stop_exec, exec_thread = generation_helpers["executor_thread"](sqlite_app)
+    try:
+        deadline = time.monotonic() + 10
+        run = None
+        while time.monotonic() < deadline:
+            run = service.generation_run(account["id"], run_id)
+            if run is not None and run.current_node == "invoke_subgraph_or_chat":
+                break
+            time.sleep(0.05)
+        assert run is not None and run.current_node == "invoke_subgraph_or_chat"
+    finally:
+        # 模拟进程死亡：放弃执行线程（闸门 15 秒超时后 daemon 自灭），
+        # 消息保持 streaming，检查点谱系已提交到 select_explicit_module 完成。
+        stop_exec.set()
+
+    # 第二次尝试：换立即完成的模型适配器，直接驱动图执行面（不经执行器，
+    # 避开"运行已被领取且租约未过期"的跳过守卫）。
+    preset = threading.Event()
+    preset.set()
+    service._gateway = _gateway_with(_GatedSlowAdapter([preset]))  # noqa: SLF001
+    run_record = service.generation_run(account["id"], run_id)
+    assert run_record is not None
+    emitted: list[Any] = []
+    last_kind = service.run_graph_turn(
+        run_record,
+        on_event=emitted.append,
+        stop_event=None,
+    )
+    assert last_kind == "done"
+    node_progress = [
+        (event.node.node, event.node.status)
+        for event in emitted
+        if event.node is not None
+    ]
+    # 续跑只执行剩余节点：不再有 validate/compile/select 的进度事件
+    assert node_progress == [
+        ("invoke_subgraph_or_chat", "started"),
+        ("invoke_subgraph_or_chat", "completed"),
+        ("verify_output", "started"),
+        ("verify_output", "completed"),
+        ("persist_result", "started"),
+        ("persist_result", "completed"),
+    ], node_progress
+    assert [e.kind for e in emitted if e.kind == "delta"], "续跑应产出正文增量"
+
+    message = service.message_projection(account["id"], message_id)
+    assert message is not None and message.status == "done"

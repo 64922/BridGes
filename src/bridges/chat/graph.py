@@ -180,11 +180,10 @@ class _GraphDeps:
             )
         )
 
-    def emit_error(
-        self, message_id: str, *, code: str, message: str, retryable: bool
-    ) -> None:
+    def emit_error(self, *, code: str, message: str) -> None:
         # error 事件与回合编排同形：code/message 走 StreamEvent 的
-        # error_code/error_message 字段，执行器统一构造脱敏载荷。
+        # error_code/error_message 字段，执行器统一构造脱敏载荷（含
+        # retryable 判定），图内不再重复携带。
         self.emit(
             StreamEvent(
                 kind="error",
@@ -273,12 +272,7 @@ class _GraphDeps:
             now=datetime.now(UTC),
             thinking=failed_thinking(initial_thinking(self._conversation_mode()), error.code),
         )
-        self.emit_error(
-            self.run.assistant_message_id,
-            code=error.code,
-            message=node_message,
-            retryable=error.retryable,
-        )
+        self.emit_error(code=error.code, message=node_message)
 
 
 NodeBody = Callable[[DailyTurnState, RunnableConfig], dict[str, Any] | None]
@@ -490,6 +484,10 @@ def run_daily_turn(
       行器持久化为游标事件（SSE 订阅回放的唯一真相源不变）；
     - 用户停止（``DailyGraphStop``）在可取消节点边界终止：消息收敛为
       stopped，运行由执行器按消息终态收敛；
+    - 同一运行的检查点谱系已存在（租约恢复：上一尝试进程死亡）时以
+      ``invoke(None)`` 从上次提交的节点边界续跑——已完成节点不重跑、
+      不重复调模型、游标事件不重复；中断节点的重跑是 at-least-once，
+      由消息事务与终态守卫保证收敛一致。
     - 节点失败（``DailyTurnError`` 或未知异常）把失败位置留在运行
       current_node，消息收敛为带节点位置与重试办法的可重试错误。
     """
@@ -513,8 +511,20 @@ def run_daily_turn(
         "use_profile": bool(config.get("use_profile", True)),
     }
     graph = build_daily_graph(saver)
+    # 保存器按构造绑定 (thread_id=会话, checkpoint_ns=运行) 定位谱系，
+    # LangGraph 组装的 config 只需携带 thread_id 满足图入口校验。
+    graph_config: RunnableConfig = {
+        "configurable": {
+            "thread_id": run.conversation_id,
+            "checkpoint_ns": run.run_id,
+            "deps": deps,
+        }
+    }
     try:
-        graph.invoke(state, {"configurable": {"deps": deps}})
+        if saver.get_tuple(saver.run_config()) is not None:
+            graph.invoke(None, graph_config)
+        else:
+            graph.invoke(state, graph_config)
     except DailyGraphStop:
         deps.converge_stopped()
     except DailyTurnError as error:
