@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 53
+SCHEMA_VERSION = 54
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2520,6 +2520,15 @@ MIGRATIONS: dict[int, list[str]] = {
             FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
                 ON DELETE CASCADE
         )
+        """,
+    ],
+    # Issue 13（V2 学习资料推荐）：messages 增加资料模块列的 JSON 投影。
+    # learning_resources 保存本模块的真实状态（原词与学习层次、每次外部调用的
+    # 查询记录、图书与视频清单、澄清等待状态、失败与停止）。旧行通过
+    # DEFAULT NULL 自然兼容；论文模块投影（paper_search）保持原样只读。
+    54: [
+        """
+        ALTER TABLE messages ADD COLUMN learning_resources TEXT
         """,
     ],
 }

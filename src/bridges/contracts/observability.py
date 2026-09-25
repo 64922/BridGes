@@ -110,6 +110,10 @@ class AuditAction(str, Enum):
     # V2 Issue 11：论文模块的学术元数据补充（Crossref／OpenAlex）外发记录。
     # details 只含来源、标题指纹与长度、状态码与耗时，不含标题正文。
     ACADEMIC_METADATA_LOOKUP = "academic_metadata_lookup"
+    # V2 Issue 13：学习资料推荐模块的书目／视频元数据外发记录（Open Library、
+    # OpenAlex 图书记录、哔哩哔哩公开视频接口）。details 与上一项同构：只有
+    # 来源、查询指纹与长度、终止状态与耗时，不含查询正文。
+    LEARNING_RESOURCE_LOOKUP = "learning_resource_lookup"
     PLUGIN_INSTALL = "plugin_install"
     PLUGIN_UNINSTALL = "plugin_uninstall"
     PLUGIN_ENABLE = "plugin_enable"

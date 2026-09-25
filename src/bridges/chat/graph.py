@@ -56,6 +56,15 @@ from bridges.paper.service import (
     PaperModuleError,
 )
 from bridges.paper.suggestion import detect_paper_suggestion
+from bridges.resources.service import (
+    RESOURCES_MODULE_ID,
+    RESOURCES_NODE_LABELS,
+    ResourcesModuleError,
+)
+from bridges.resources.suggestion import detect_resources_suggestion
+
+#: 已接入日常父图的显式模块（其余枚举值仍如实拒绝，绝不降级为普通对话）。
+CONNECTED_MODULE_IDS: frozenset[str] = frozenset({PAPER_MODULE_ID, RESOURCES_MODULE_ID})
 
 if TYPE_CHECKING:
     from bridges.chat.repository import GenerationRunRecord
@@ -63,6 +72,7 @@ if TYPE_CHECKING:
 
 #: 日常父图名称/版本（运行状态关联字段；节点集变化时递增）。
 #: v2：论文子图接入 invoke_subgraph_or_chat（首个显式模块，Issue 11）。
+#: v2 不变：资料子图（Issue 13）复用同一派发节点，节点集没有变化。
 DAILY_GRAPH_VERSION = "daily-parent-v2"
 
 NODE_VALIDATE_TURN = "validate_turn"
@@ -95,6 +105,7 @@ NODE_LABELS: dict[str, str] = {
     NODE_PERSIST_RESULT: "保存结果",
     # 子图节点：失败信息按真实失败的子图步骤标注位置（Issue 11 起）。
     **PAPER_NODE_LABELS,
+    **RESOURCES_NODE_LABELS,
 }
 
 
@@ -400,10 +411,10 @@ def _node_select_explicit_module(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
     """显式模块派发：只读服务端校验并随消息持久化的 module_id。"""
-    deps: _GraphDeps = config["configurable"]["deps"]
+    del config
     module_id = state.get("module_id")
-    if module_id is not None and module_id != PAPER_MODULE_ID:
-        # 其余五个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
+    if module_id is not None and module_id not in CONNECTED_MODULE_IDS:
+        # 其余四个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
         # （派发只读持久化值，模型无法从正文改写模块选择）。
         raise DailyTurnError(
             NODE_SELECT_EXPLICIT_MODULE,
@@ -411,7 +422,6 @@ def _node_select_explicit_module(
             "该模块尚未开放，请使用普通对话。",
             retryable=False,
         )
-    del deps
     return {"module_dispatch": module_id or "chat"}
 
 
@@ -420,8 +430,11 @@ def _node_invoke_subgraph_or_chat(
 ) -> dict[str, Any]:
     """按显式派发调用子图；无模块时走普通对话（事件实时透传给订阅端）。"""
     deps: _GraphDeps = config["configurable"]["deps"]
-    if state.get("module_dispatch") == PAPER_MODULE_ID:
+    dispatch = state.get("module_dispatch")
+    if dispatch == PAPER_MODULE_ID:
         return _invoke_paper_module(deps, state)
+    if dispatch == RESOURCES_MODULE_ID:
+        return _invoke_resources_module(deps, state)
     run = deps.run
     stream = deps.service.stream_generation(
         run.account_id,
@@ -484,6 +497,46 @@ def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
     return {}
 
 
+def _invoke_resources_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
+    """资料子图执行体：节点进度经同一 ``node`` 事件与 current_node 透传。
+
+    与论文子图共用同一套事件、等待与失败合同；本模块的正文完全由真实证据
+    渲染，不调用模型（因此不传运行上下文与模型 ID）。
+    """
+    run = deps.run
+    service = getattr(deps.service, "learning_resources_service", None)
+    if service is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT,
+            "module_not_available",
+            "学习资料推荐模块当前不可用，请稍后重试。",
+            retryable=True,
+        )
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(state["assistant_message_id"], node, status, duration_ms=duration_ms)
+
+    try:
+        outcome = service.run(
+            repo=deps.repo,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            user_message_id=run.user_message_id,
+            assistant_message_id=run.assistant_message_id,
+            emit_node=emit_node,
+            stop_event=deps.stop_event,
+        )
+    except ResourcesModuleError as error:
+        raise DailyTurnError(
+            error.node, error.code, error.message, retryable=error.retryable
+        ) from error
+    if outcome.wait_reason is not None:
+        deps.repo.update_generation_progress(
+            run.account_id, run.run_id, wait_reason=outcome.wait_reason
+        )
+    return {}
+
+
 def _node_verify_output(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
@@ -519,13 +572,18 @@ def _node_persist_result(
     V2 Issue 11：普通聊天（无模块）中明显的论文请求只**建议**一键启动
     论文模块，不在此处发起任何外部检索；建议随助手消息持久化，重开
     历史仍可见，点击后由服务端以原文显式派发。
+
+    V2 Issue 13：论文建议优先（论文请求更具体），没有论文建议时才看
+    资料请求。建议字段每轮只有一个，因此两个模块不会互相覆盖。
     """
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
     if state.get("module_dispatch") == "chat":
         user_message = deps.repo.get_message(run.account_id, run.user_message_id)
         if user_message is not None:
-            suggestion = detect_paper_suggestion(user_message.content)
+            suggestion = detect_paper_suggestion(
+                user_message.content
+            ) or detect_resources_suggestion(user_message.content)
             if suggestion is not None:
                 deps.repo.update_message_module_suggestion(
                     run.account_id,

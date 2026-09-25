@@ -133,6 +133,8 @@ class MessageRecord:
     paper_search: dict[str, Any] | None = None
     #: V2 Issue 11：普通聊天中的「一键以原文启动论文模块」建议（只建议）。
     module_suggestion: dict[str, Any] | None = None
+    #: V2 Issue 13：学习资料推荐模块状态投影（原词/层次/清单/等待/失败）。
+    learning_resources: dict[str, Any] | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -522,7 +524,8 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route, module_id, paper_search, module_suggestion"
+            " mcp_call, route, module_id, paper_search, module_suggestion,"
+            " learning_resources"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -536,7 +539,8 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route, module_id, paper_search, module_suggestion"
+            " mcp_call, route, module_id, paper_search, module_suggestion,"
+            " learning_resources"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -621,6 +625,26 @@ class ConversationRepository:
                 "UPDATE messages SET module_suggestion = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ?",
                 (_json_dumps(suggestion), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_learning_resources(
+        self,
+        account_id: str,
+        message_id: str,
+        learning_resources: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """写入学习资料推荐模块状态投影（V2 Issue 13）。
+
+        与 ``paper_search`` 同形：失败/停止路径在消息终态收敛之前先落投影，
+        保证用户在同一消息里看到真实查询词与失败分类，而不是空白。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET learning_resources = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(learning_resources), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -761,6 +785,7 @@ class ConversationRepository:
         persist_learning: Callable[[], None] | None = None,
         paper_search: dict[str, Any] | None = None,
         module_suggestion: dict[str, Any] | None = None,
+        learning_resources: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -797,6 +822,7 @@ class ConversationRepository:
                 arxiv_search is not None
                 or paper_search is not None
                 or module_suggestion is not None
+                or learning_resources is not None
             ):
                 assignments = [
                     "status = ?",
@@ -831,6 +857,9 @@ class ConversationRepository:
                 if module_suggestion is not None:
                     assignments.append("module_suggestion = ?")
                     values.append(_json_dumps(module_suggestion))
+                if learning_resources is not None:
+                    assignments.append("learning_resources = ?")
+                    values.append(_json_dumps(learning_resources))
                 values.extend([message_id, account_id])
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET "
@@ -2089,6 +2118,7 @@ class ConversationRepository:
             ),
             paper_search=_json_loads_any(row["paper_search"]),
             module_suggestion=_json_loads_any(row["module_suggestion"]),
+            learning_resources=_json_loads_any(row["learning_resources"]),
         )
 
 

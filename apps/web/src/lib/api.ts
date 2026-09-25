@@ -126,6 +126,11 @@ export type ModuleQueryStatus = components["schemas"]["ModuleQueryStatus"];
 export type PaperSearchProjection = components["schemas"]["PaperSearchProjection"];
 export type PaperSearchStatus = components["schemas"]["PaperSearchStatus"];
 export type PaperRecommendation = components["schemas"]["PaperRecommendation"];
+// V2 Issue 13：学习资料推荐模块投影（图书与哔哩哔哩视频清单）。
+export type LearningResourcesProjection = components["schemas"]["LearningResourcesProjection"];
+export type ResourcesStatus = components["schemas"]["ResourcesStatus"];
+export type ResourceItem = components["schemas"]["ResourceItem"];
+export type ResourceKind = components["schemas"]["ResourceKind"];
 export type WebSearchProjection = components["schemas"]["WebSearchProjection"];
 export type WebSearchResult = components["schemas"]["WebSearchResult"];
 export type WebSearchStatus = components["schemas"]["WebSearchStatus"];

@@ -69,6 +69,14 @@ from bridges.paper.sources import (
     ArxivPaperSource,
     MetadataEnricher,
 )
+from bridges.resources.service import LearningResourcesService
+from bridges.resources.sources import (
+    BOOK_TIMEOUT_SECONDS,
+    BilibiliVideoDiscoverer,
+    BilibiliVideoVerifier,
+    OpenAlexBookSource,
+    OpenLibraryBookSource,
+)
 from bridges.career.service import CareerPlannerService
 from bridges.chat import (
     AttachmentRepository,
@@ -440,6 +448,11 @@ def _credential_store_for_namespace(
 def _paper_metadata_client() -> httpx.Client:
     """论文元数据补充的共享客户端（独立短超时；不承载账户凭据）。"""
     return httpx.Client(timeout=ENRICH_TIMEOUT_SECONDS)
+
+
+def _resource_metadata_client() -> httpx.Client:
+    """资料模块的书目／视频元数据客户端（独立短超时；不承载账户凭据）。"""
+    return httpx.Client(timeout=BOOK_TIMEOUT_SECONDS)
 
 
 def create_app(
@@ -1379,6 +1392,34 @@ def create_app(
             summarizer=PaperSummaryGenerator(model_gateway),
         )
         app.router.add_event_handler("shutdown", app.state.paper_search_service.close)
+        # V2 Issue 13：学习资料推荐模块子图——图书书目（Open Library 为主、
+        # OpenAlex 有限补充）与哔哩哔哩视频（公网搜索发现后逐条核对公开元数据）。
+        # 收尾夹具模式不装配外部来源，两条检索如实标注缺口。
+        if use_closeout_fixtures:
+            app.state.learning_resources_service = LearningResourcesService()
+        else:
+            app.state.learning_resources_service = LearningResourcesService(
+                books=[
+                    OpenLibraryBookSource(
+                        client=_resource_metadata_client(),
+                        observability=app.state.observability_service,
+                    ),
+                    OpenAlexBookSource(
+                        client=_resource_metadata_client(),
+                        observability=app.state.observability_service,
+                    ),
+                ],
+                discoverer=BilibiliVideoDiscoverer(
+                    getattr(app.state, "web_search_service", None)
+                ),
+                verifier=BilibiliVideoVerifier(
+                    client=_resource_metadata_client(),
+                    observability=app.state.observability_service,
+                ),
+            )
+        app.router.add_event_handler(
+            "shutdown", app.state.learning_resources_service.close
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1388,6 +1429,9 @@ def create_app(
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             paper_search_service=getattr(app.state, "paper_search_service", None),
+            learning_resources_service=getattr(
+                app.state, "learning_resources_service", None
+            ),
             profile_service=getattr(app.state, "profile_service", None),
             teaching_progress_service=getattr(
                 app.state, "teaching_progress_service", None

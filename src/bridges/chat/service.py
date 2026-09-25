@@ -30,6 +30,8 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.paper.service import PaperSearchService
 from bridges.paper.contracts import PaperSearchProjection
+from bridges.resources.contracts import LearningResourcesProjection
+from bridges.resources.service import LearningResourcesService
 from bridges.chat.attachments import (
     PHOTO_MEDIA_TYPES,
     ChatAttachmentError,
@@ -256,6 +258,7 @@ class ChatService:
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
         model_config_provider: RunModelConfigProvider | None = None,
         paper_search_service: PaperSearchService | None = None,
+        learning_resources_service: LearningResourcesService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -272,6 +275,9 @@ class ChatService:
         #: V2 Issue 11：论文搜索模块子图（显式 module_id=paper 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._paper_search = paper_search_service
+        #: V2 Issue 13：学习资料推荐模块子图（显式 module_id=resources 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._learning_resources = learning_resources_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -2021,6 +2027,11 @@ class ChatService:
         """论文模块子图服务（V2 Issue 11）；未装配时为 None。"""
         return self._paper_search
 
+    @property
+    def learning_resources_service(self) -> LearningResourcesService | None:
+        """学习资料推荐模块子图服务（V2 Issue 13）；未装配时为 None。"""
+        return self._learning_resources
+
     def run_graph_turn(
         self,
         run: GenerationRunRecord,
@@ -2523,6 +2534,12 @@ class ChatService:
             module_suggestion=(
                 ModuleSuggestionProjection.model_validate(message.module_suggestion)
                 if message.module_suggestion is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            learning_resources=(
+                LearningResourcesProjection.model_validate(message.learning_resources)
+                if message.learning_resources is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

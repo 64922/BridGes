@@ -31372,6 +31372,17 @@
             ],
             "description": "普通聊天中的一键模块建议（只建议，不检索）。"
           },
+          "learning_resources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningResourcesProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的学习资料推荐状态（图书与视频清单）。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -43557,6 +43568,182 @@
         "title": "LearningRecordType",
         "description": "Kind of observable learning evidence that may update a knowledge state.\n\nBrowsing and completion-only activities are deliberately excluded; they are\nstored as ``LearningActivity`` and never promoted to learning records."
       },
+      "LearningResourcesProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ResourcesStatus",
+            "description": "本轮模块状态。"
+          },
+          "original_phrase": {
+            "type": "string",
+            "title": "Original Phrase",
+            "description": "保留的原始专业名词。",
+            "default": ""
+          },
+          "normalized_term": {
+            "type": "string",
+            "title": "Normalized Term",
+            "description": "规范化值。",
+            "default": ""
+          },
+          "expansions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expansions",
+            "description": "本轮使用的扩展词。"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "解析置信度。",
+            "default": 0.0
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal",
+            "description": "本轮学习目的（备考/项目等）。"
+          },
+          "level_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Label",
+            "description": "本轮学习层次的中文标签。"
+          },
+          "level_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Basis",
+            "description": "层次判定依据。"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleQueryRecord"
+            },
+            "type": "array",
+            "title": "Queries",
+            "description": "本轮全部外部调用的统一记录（查询/证据/时间/错误）。"
+          },
+          "final_query": {
+            "type": "string",
+            "title": "Final Query",
+            "description": "实际用于检索的最终查询词。",
+            "default": ""
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "按由浅入深顺序排列的真实资料条目。"
+          },
+          "requested_books": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requested Books",
+            "description": "本轮目标图书数量。",
+            "default": 0
+          },
+          "requested_videos": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requested Videos",
+            "description": "本轮目标视频数量。",
+            "default": 0
+          },
+          "evidence_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Notes",
+            "description": "证据边界说明（实际数量、来源不足、未观看等）。"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleWaitState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "跨轮次等待状态（学习层次澄清）；无等待为 None。"
+          },
+          "searched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Searched At",
+            "description": "检索完成时间。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "本轮失败是否可重试。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "LearningResourcesProjection",
+        "description": "资料模块随助手消息持久化的完整投影。"
+      },
       "LectureScriptElement": {
         "properties": {
           "element_id": {
@@ -47911,6 +48098,166 @@
         ],
         "title": "ResearchReportElement",
         "description": "A structural element required by the research-report genre contract (T027).\n\nResearch reports must keep observation, analysis, interpretation, limitation\nand next-step distinct so peers can judge the boundary between data and\ninference."
+      },
+      "ResourceItem": {
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Order",
+            "description": "由浅入深的学习顺序（从 1 开始）。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ResourceKind",
+            "description": "条目类型：book（图书）或 video（视频）。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "来源返回的原始标题。"
+          },
+          "creator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creator",
+            "description": "图书作者或视频作者（UP 主）名称；来源未给为 None。"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year",
+            "description": "图书出版年份或视频发布年份。"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "元数据来源（openlibrary / openalex / bilibili）。"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "可点开的直达链接（书目页 / 视频页）。"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "适用阶段（入门 / 打基础 / 进阶）。"
+          },
+          "reason_zh": {
+            "type": "string",
+            "title": "Reason Zh",
+            "description": "中文选择理由（含阶段判定与搭配依据）。"
+          },
+          "match_basis": {
+            "type": "string",
+            "title": "Match Basis",
+            "description": "主题与来源核对依据（命中哪些词、核对了什么元数据）。"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher",
+            "description": "图书出版社；来源未给或视频条目为 None。"
+          },
+          "isbn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isbn",
+            "description": "图书 ISBN；来源未给或视频条目为 None。"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds",
+            "description": "视频时长（秒）；图书条目或来源未给为 None。"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At",
+            "description": "来源声明的发布时间；未给为 None。"
+          },
+          "unverified": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unverified",
+            "description": "本条未核实项（例如未观看视频、缺 ISBN）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "kind",
+          "title",
+          "source",
+          "url",
+          "stage",
+          "reason_zh",
+          "match_basis"
+        ],
+        "title": "ResourceItem",
+        "description": "一份经来源核对的推荐条目（图书或视频，阅读顺序见 ``order``）。"
+      },
+      "ResourceKind": {
+        "type": "string",
+        "enum": [
+          "book",
+          "video"
+        ],
+        "title": "ResourceKind",
+        "description": "清单条目的类型（图书 / 视频）。"
+      },
+      "ResourcesStatus": {
+        "type": "string",
+        "enum": [
+          "clarification",
+          "searching",
+          "success",
+          "empty",
+          "error",
+          "stopped"
+        ],
+        "title": "ResourcesStatus",
+        "description": "资料模块的用户可见状态（同一消息内如实显示）。"
       },
       "RestorePreview": {
         "properties": {

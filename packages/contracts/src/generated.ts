@@ -8758,6 +8758,8 @@ export interface components {
             paper_search?: components["schemas"]["PaperSearchProjection"] | null;
             /** @description 普通聊天中的一键模块建议（只建议，不检索）。 */
             module_suggestion?: components["schemas"]["ModuleSuggestionProjection"] | null;
+            /** @description 本条助手消息的学习资料推荐状态（图书与视频清单）。 */
+            learning_resources?: components["schemas"]["LearningResourcesProjection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -16485,6 +16487,108 @@ export interface components {
          */
         LearningRecordType: "exercise_attempt" | "misconception_correction" | "prerequisite_evidence" | "delayed_retrieval" | "transfer_task";
         /**
+         * LearningResourcesProjection
+         * @description 资料模块随助手消息持久化的完整投影。
+         */
+        LearningResourcesProjection: {
+            /** @description 本轮模块状态。 */
+            status: components["schemas"]["ResourcesStatus"];
+            /**
+             * Original Phrase
+             * @description 保留的原始专业名词。
+             * @default
+             */
+            original_phrase: string;
+            /**
+             * Normalized Term
+             * @description 规范化值。
+             * @default
+             */
+            normalized_term: string;
+            /**
+             * Expansions
+             * @description 本轮使用的扩展词。
+             */
+            expansions?: string[];
+            /**
+             * Confidence
+             * @description 解析置信度。
+             * @default 0
+             */
+            confidence: number;
+            /**
+             * Goal
+             * @description 本轮学习目的（备考/项目等）。
+             */
+            goal?: string | null;
+            /**
+             * Level Label
+             * @description 本轮学习层次的中文标签。
+             */
+            level_label?: string | null;
+            /**
+             * Level Basis
+             * @description 层次判定依据。
+             */
+            level_basis?: string | null;
+            /**
+             * Queries
+             * @description 本轮全部外部调用的统一记录（查询/证据/时间/错误）。
+             */
+            queries?: components["schemas"]["ModuleQueryRecord"][];
+            /**
+             * Final Query
+             * @description 实际用于检索的最终查询词。
+             * @default
+             */
+            final_query: string;
+            /**
+             * Items
+             * @description 按由浅入深顺序排列的真实资料条目。
+             */
+            items?: components["schemas"]["ResourceItem"][];
+            /**
+             * Requested Books
+             * @description 本轮目标图书数量。
+             * @default 0
+             */
+            requested_books: number;
+            /**
+             * Requested Videos
+             * @description 本轮目标视频数量。
+             * @default 0
+             */
+            requested_videos: number;
+            /**
+             * Evidence Notes
+             * @description 证据边界说明（实际数量、来源不足、未观看等）。
+             */
+            evidence_notes?: string[];
+            /** @description 跨轮次等待状态（学习层次澄清）；无等待为 None。 */
+            pending?: components["schemas"]["ModuleWaitState"] | null;
+            /**
+             * Searched At
+             * @description 检索完成时间。
+             */
+            searched_at?: string | null;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 本轮失败是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+        };
+        /**
          * LectureScriptElement
          * @description A structural element required by the lecture-script genre contract.
          *
@@ -19020,6 +19124,96 @@ export interface components {
              */
             next_step_action?: string | null;
         };
+        /**
+         * ResourceItem
+         * @description 一份经来源核对的推荐条目（图书或视频，阅读顺序见 ``order``）。
+         */
+        ResourceItem: {
+            /**
+             * Order
+             * @description 由浅入深的学习顺序（从 1 开始）。
+             */
+            order: number;
+            /** @description 条目类型：book（图书）或 video（视频）。 */
+            kind: components["schemas"]["ResourceKind"];
+            /**
+             * Title
+             * @description 来源返回的原始标题。
+             */
+            title: string;
+            /**
+             * Creator
+             * @description 图书作者或视频作者（UP 主）名称；来源未给为 None。
+             */
+            creator?: string | null;
+            /**
+             * Year
+             * @description 图书出版年份或视频发布年份。
+             */
+            year?: number | null;
+            /**
+             * Source
+             * @description 元数据来源（openlibrary / openalex / bilibili）。
+             */
+            source: string;
+            /**
+             * Url
+             * @description 可点开的直达链接（书目页 / 视频页）。
+             */
+            url: string;
+            /**
+             * Stage
+             * @description 适用阶段（入门 / 打基础 / 进阶）。
+             */
+            stage: string;
+            /**
+             * Reason Zh
+             * @description 中文选择理由（含阶段判定与搭配依据）。
+             */
+            reason_zh: string;
+            /**
+             * Match Basis
+             * @description 主题与来源核对依据（命中哪些词、核对了什么元数据）。
+             */
+            match_basis: string;
+            /**
+             * Publisher
+             * @description 图书出版社；来源未给或视频条目为 None。
+             */
+            publisher?: string | null;
+            /**
+             * Isbn
+             * @description 图书 ISBN；来源未给或视频条目为 None。
+             */
+            isbn?: string | null;
+            /**
+             * Duration Seconds
+             * @description 视频时长（秒）；图书条目或来源未给为 None。
+             */
+            duration_seconds?: number | null;
+            /**
+             * Published At
+             * @description 来源声明的发布时间；未给为 None。
+             */
+            published_at?: string | null;
+            /**
+             * Unverified
+             * @description 本条未核实项（例如未观看视频、缺 ISBN）。
+             */
+            unverified?: string[];
+        };
+        /**
+         * ResourceKind
+         * @description 清单条目的类型（图书 / 视频）。
+         * @enum {string}
+         */
+        ResourceKind: "book" | "video";
+        /**
+         * ResourcesStatus
+         * @description 资料模块的用户可见状态（同一消息内如实显示）。
+         * @enum {string}
+         */
+        ResourcesStatus: "clarification" | "searching" | "success" | "empty" | "error" | "stopped";
         /**
          * RestorePreview
          * @description 恢复预检结果：备份内容摘要与目标状态检查（供确认与失败原因）。
