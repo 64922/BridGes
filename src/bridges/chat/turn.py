@@ -113,6 +113,7 @@ from bridges.learning.progress import TeachingProgressService
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
+from bridges.profiles.atomic import AtomicProfileService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
@@ -1394,13 +1395,69 @@ def profile_slice_context(
         )
     used = 0
     for index, item in enumerate(profile_slice.included_items, start=1):
-        label = dimension_label(item.dimension)
-        line = f"[{index}]（类别：{label}）{item.value_or_rule}。用途：{item.inclusion_reason}"
+        # 原子画像条目不携带类别（Issue 08）：只有仍带维度的切片才标注类别。
+        label = dimension_label(item.dimension) if item.dimension else ""
+        prefix = f"（类别：{label}）" if label else ""
+        line = f"[{index}]{prefix}{item.value_or_rule}。用途：{item.inclusion_reason}"
         if used + len(line) > _CONTEXT_MAX_CHARS:
             break
         used += len(line)
         lines.append(line)
     return "\n".join(lines)
+
+
+def _remaining_input_tokens(context_budget: dict[str, Any] | None) -> int | None:
+    """从编译记录取本轮剩余输入预算；缺失时返回 ``None``（不裁剪）。"""
+
+    if not context_budget:
+        return None
+    budget = context_budget.get("input_budget_tokens")
+    used = context_budget.get("input_token_estimate")
+    if not isinstance(budget, int) or not isinstance(used, int):
+        return None
+    return max(0, budget - used)
+
+
+def profile_block_within_budget(
+    profile_slice: ProfileSlice,
+    *,
+    requires_confirmation: bool = False,
+    remaining_tokens: int | None = None,
+) -> tuple[str | None, list[ProfileSliceItem]]:
+    """渲染本轮画像上下文块，并按剩余输入预算裁剪采用的条目。
+
+    V2 Issue 08：画像材料与上下文编译器共用同一预算口径——编译器留下的
+    输入余量就是画像块可用的空间。超限时先裁画像材料（低相关材料优先），
+    宁可本轮少用几条，也不挤掉当前请求与已取得的证据。余量很小但为正时
+    至少采用最相关的第一条：丢掉它等于本轮完全不用画像。``None`` 表示未
+    走编译器（没有预算信息），此时不裁剪。
+    """
+
+    # 延后导入：``context_compiler`` 在模块层导入本模块的配对与模式合同，
+    # 顶层反向导入会成环。
+    from bridges.chat.context_compiler import estimate_tokens
+
+    items = list(profile_slice.included_items)
+    if remaining_tokens is not None:
+        if remaining_tokens <= 0:
+            items = []
+        else:
+            adopted: list[ProfileSliceItem] = []
+            used = 0
+            for item in items:
+                cost = estimate_tokens(item.value_or_rule) + 8
+                if adopted and used + cost > remaining_tokens:
+                    break
+                adopted.append(item)
+                used += cost
+            items = adopted
+    if not items and not requires_confirmation:
+        return None, []
+    rendered = profile_slice_context(
+        profile_slice.model_copy(update={"included_items": items}),
+        requires_confirmation=requires_confirmation,
+    )
+    return rendered, items
 
 
 def profile_correction_context(metadata: dict[str, Any] | None) -> str | None:
@@ -1431,6 +1488,44 @@ def profile_correction_context(metadata: dict[str, Any] | None) -> str | None:
     )
 
 
+_MEMORY_RESULT_COPY: dict[tuple[str, str], str] = {
+    ("remember", "remembered"): (
+        "本轮用户明确要求记住一条信息，已真实写入用户画像列表。可以确认已记住，"
+        "但只能依据本轮用户消息说明内容；不得补充未提供的信息。"
+    ),
+    ("forget", "forgotten"): (
+        "本轮用户明确要求忘掉，已从用户画像中删除匹配的条目。可以确认已删除；"
+        "不得声称还记得相关内容，也不得再引用被删除的内容。"
+    ),
+    ("forget", "unresolved"): (
+        "本轮用户要求忘掉，但没有匹配到用户画像中的条目。不得声称已删除；"
+        "可以说没有找到对应信息，并建议到用户画像页查看现有条目。"
+    ),
+}
+
+
+def profile_memory_context(metadata: dict[str, Any] | None) -> str | None:
+    """把本轮「记住／忘掉」结果编译为只含结果状态的模型上下文。
+
+    V2 Issue 08：删除与写入都已在本轮生成前生效，模型只能据此如实回应；
+    上下文不携带被记住或被删除的正文，正文另有当前用户消息作为唯一来源。
+    """
+
+    if not metadata:
+        return None
+    kind = str(metadata.get("memory_kind") or "")
+    status = str(metadata.get("status") or "")
+    copy = _MEMORY_RESULT_COPY.get((kind, status))
+    if copy is None:
+        return None
+    matched = metadata.get("matched_count")
+    lines = ["【本轮记忆操作结果】"]
+    if kind == "forget" and isinstance(matched, int) and status == "forgotten":
+        lines.append(f"命中并删除的条目数：{matched}")
+    lines.append(f"回复约束：{copy}")
+    return "\n".join(lines)
+
+
 def dimension_label(dimension: str) -> str:
     """画像维度中文标签；未知维度直接回退原始值，不抛错。"""
     try:
@@ -1447,9 +1542,15 @@ _PROFILE_CONTEXT_LABEL = "你已授权的用户背景信息"
 
 def context_note_ready_text(items: list[ProfileSliceItem]) -> str:
     """披露卡的中文一句话说明（ready 态）。"""
-    categories = "、".join(dict.fromkeys(dimension_label(item.dimension) for item in items))
+
+    categories = "、".join(
+        dict.fromkeys(
+            dimension_label(item.dimension) for item in items if item.dimension
+        )
+    )
+    suffix = f"（{categories}）" if categories else ""
     return (
-        f"本轮回答参考了 {len(items)} 条{_PROFILE_CONTEXT_LABEL}（{categories}），"
+        f"本轮回答参考了 {len(items)} 条{_PROFILE_CONTEXT_LABEL}{suffix}，"
         "仅用于当前任务；只保留与当前任务相关的少量内容。"
     )
 
@@ -1685,6 +1786,7 @@ def assemble_payload(
     teaching_projection: TeachingTurnProjection | None = None,
     profile_context: str | None = None,
     profile_correction_context: str | None = None,
+    profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
 ) -> dict[str, Any]:
     """提示词组装单点：上下文按固定顺序以独立 system 块注入。
@@ -1724,6 +1826,7 @@ def assemble_payload(
         ),
         profile_context,
         profile_correction_context,
+        profile_memory_context,
     ]
     for block in blocks:
         if block:
@@ -1817,6 +1920,7 @@ class TurnOrchestrator:
         profile_service: ProfileService | None = None,
         automatic_profile_service: AutomaticProfileService | None = None,
         four_dimension_profile_service: FourDimensionProfileService | None = None,
+        atomic_profile_service: AtomicProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
         image_service: ImageOrchestrator | None = None,
@@ -1844,6 +1948,8 @@ class TurnOrchestrator:
         #: Issue 15：新写入的四维画像通过独立服务编译；旧服务只作兼容。
         self._automatic_profiles = automatic_profile_service
         self._four_dimension_profiles = four_dimension_profile_service
+        #: V2 Issue 08：无类别的原子画像列表；挂载后切片以它为准。
+        self._atomic_profiles = atomic_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 生涯规划编排（Issue 29）。
@@ -1879,6 +1985,7 @@ class TurnOrchestrator:
         gateway: ModelGateway,
         compiled_messages: list[dict[str, str]] | None = None,
         model_override: str | None = None,
+        context_budget: dict[str, Any] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
@@ -1891,6 +1998,11 @@ class TurnOrchestrator:
         节点产出的模型就绪上下文；传入时模型历史以它为准（近期原文 +
         较早摘要 + 补回原文，详见 ``context_compiler``），未传入时回退到
         既有 ``_model_history`` 组装（旧编排路径/直连生成）。
+
+        ``context_budget`` 是同一编译记录的预算快照（Issue 03 的
+        ``CompiledTurnContext.to_record``）；传入时本轮画像块按剩余输入预算
+        裁剪（V2 Issue 08：真实材料与编译器共用同一预算口径），未传入时不
+        做预算裁剪。
 
         生成前执行一轮分层本地检索（Issue 20）：按「当前附件 → 当前项目
         文件 → 已授权全局知识库」确定候选作用域，把最终引用固化为消息的
@@ -2294,6 +2406,7 @@ class TurnOrchestrator:
                     route_contract=(
                         career_route.career_contract if career_route is not None else None
                     ),
+                    context_budget=context_budget,
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
@@ -2682,6 +2795,7 @@ class TurnOrchestrator:
                         retrieval_round=retrieval_round,
                         web_search_projection=web_search_projection,
                         arxiv_search_projection=arxiv_search_projection,
+                        context_budget=context_budget,
                     )
                 )
                 study_profile_compiled = True
@@ -3169,6 +3283,7 @@ class TurnOrchestrator:
                         retrieval_round=retrieval_round,
                         web_search_projection=web_search_projection,
                         arxiv_search_projection=arxiv_search_projection,
+                        context_budget=context_budget,
                     )
                 )
                 if context_note is not None:
@@ -3193,6 +3308,9 @@ class TurnOrchestrator:
             correction_context = self._profile_correction_context(
                 account_id, assistant_message_id
             )
+            memory_context = self._profile_memory_context(
+                account_id, assistant_message_id
+            )
             payload = assemble_payload(
                 history,
                 tools_context=tools_context,
@@ -3202,6 +3320,7 @@ class TurnOrchestrator:
                 teaching_projection=teaching_projection,
                 profile_context=profile_context,
                 profile_correction_context=correction_context,
+                profile_memory_context=memory_context,
                 writing_policy=writing_policy,
             )
             protected_web_results = (
@@ -4027,6 +4146,7 @@ class TurnOrchestrator:
         budget: RunBudget,
         *,
         route_contract: CareerPlanningRouteContract | None = None,
+        context_budget: dict[str, Any] | None = None,
     ) -> Iterator[StreamEvent]:
         """生涯规划编排（Issue 29）：证据获取 → 过程事件 → 终态收敛。
 
@@ -4292,6 +4412,7 @@ class TurnOrchestrator:
                 retrieval_round=retrieval_round,
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
+                context_budget=context_budget,
             )
         )
         if context_note is not None:
@@ -5166,6 +5287,7 @@ class TurnOrchestrator:
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
+        context_budget: dict[str, Any] | None = None,
     ) -> tuple[
         ContextNoteProjection | None,
         str | None,
@@ -5176,10 +5298,14 @@ class TurnOrchestrator:
 
         关闭画像（``use_profile=False``）时：不编译、不注入，披露为 off
         态并审计记录 disabled，保证模型请求与审计均不含画像内容。启用时
-        只注入当前模式相关、已授权、仍有效的最小记录；编译或披露失败
-        一律降级为 error 态（回答照常，不向模型注入未经验证的内容）。
-        注入模型的上下文以字符串形式返回（提示词组装由
-        ``assemble_payload`` 统一完成，本方法不再改动 payload）。
+        只注入与当前任务相关的少量条目；编译或披露失败一律降级为 error
+        态（回答照常，不向模型注入未经验证的内容）。注入模型的上下文以
+        字符串形式返回（提示词组装由 ``assemble_payload`` 统一完成，本方法
+        不改动 payload）。
+
+        V2 Issue 08：挂载原子画像时以无类别的原子列表为准（四维记录只作为
+        迁移与冲突消解的内部来源），并按 ``context_budget`` 的剩余输入预算
+        裁剪本轮画像块——画像材料与编译器共用同一预算口径，超限时先裁它。
         """
         now = datetime.now(UTC)
         material_categories = self._material_categories(
@@ -5188,7 +5314,8 @@ class TurnOrchestrator:
         # 画像服务未挂载（退化环境）时无画像能力：不披露、不审计，聊天
         # 行为与旧版一致（thinking 不追加画像说明）。
         profile_service = (
-            self._four_dimension_profiles
+            self._atomic_profiles
+            or self._four_dimension_profiles
             or self._automatic_profiles
             or self._profiles
         )
@@ -5225,7 +5352,22 @@ class TurnOrchestrator:
                 None,
             )
         try:
-            if self._four_dimension_profiles is not None:
+            if self._atomic_profiles is not None:
+                current_messages = self._repo.list_messages(account_id, conversation_id)
+                current_user_message = owner_user_message(
+                    current_messages, assistant_message_id
+                )
+                profile_slice = self._atomic_profiles.compile_chat_slice(
+                    account_id,
+                    run_id=assistant_message_id,
+                    project_id=conversation_id,
+                    current_question=(
+                        current_user_message.content
+                        if current_user_message is not None
+                        else None
+                    ),
+                )
+            elif self._four_dimension_profiles is not None:
                 profile_slice = self._four_dimension_profiles.compile_chat_slice(
                     account_id,
                     mode=mode.value,
@@ -5313,26 +5455,25 @@ class TurnOrchestrator:
                 [],
                 None,
             )
-        profile_items = list(profile_slice.included_items)
         requires_confirmation = any(
             item.exclusion_reason == "可靠程度不足，暂不用于当前回答"
             for item in profile_slice.unused_items
         )
-        profile_context = (
-            profile_slice_context(
-                profile_slice, requires_confirmation=requires_confirmation
-            )
-            if profile_items or requires_confirmation
-            else None
+        profile_context, profile_items = profile_block_within_budget(
+            profile_slice,
+            requires_confirmation=requires_confirmation,
+            remaining_tokens=_remaining_input_tokens(context_budget),
         )
+        dropped_for_budget = len(profile_slice.included_items) - len(profile_items)
         self._audit_slice_usage(
             account_id,
             mode=mode.value,
             enabled=True,
             slice_id=profile_slice.slice_id,
-            item_count=len(profile_slice.included_items),
+            item_count=len(profile_items),
             excluded_count=len(profile_slice.unused_items)
-            + len(profile_slice.rejected_items),
+            + len(profile_slice.rejected_items)
+            + dropped_for_budget,
             material_categories=material_categories,
         )
         context_note = ContextNoteProjection(
@@ -5418,6 +5559,15 @@ class TurnOrchestrator:
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
         metadata = (run.config or {}).get("profile_correction") if run is not None else None
         return profile_correction_context(metadata if isinstance(metadata, dict) else None)
+
+    def _profile_memory_context(
+        self, account_id: str, assistant_message_id: str
+    ) -> str | None:
+        """本轮「记住／忘掉」结果（Issue 08）；没有指令时为 None。"""
+
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        metadata = (run.config or {}).get("profile_memory") if run is not None else None
+        return profile_memory_context(metadata if isinstance(metadata, dict) else None)
 
     def _persist_context_note(
         self,

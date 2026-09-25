@@ -52,6 +52,16 @@ from bridges.contracts.profiles import (
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
+from bridges.contracts.atomic_profile import (
+    AtomicProfileMemoryKind,
+    AtomicProfileMemoryResult,
+    AtomicProfileMemoryStatus,
+)
+from bridges.profiles.atomic import (
+    AtomicProfileService,
+    MemoryDirective,
+    parse_memory_directive,
+)
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -1129,8 +1139,12 @@ class AutomaticProfileService:
         observability_service: ObservabilityService | None = None,
         queue_name: str = PROFILE_EXTRACTION_QUEUE,
         lock_recorder: ModelRunLockRecorder | None = None,
+        atomic_profile_service: AtomicProfileService | None = None,
     ) -> None:
         self._four_dimensions = four_dimension_service
+        # V2 Issue 08：原子条目是用户可见的长期信息列表；挂载后自动抽取
+        # 在写四维记录的同时镜像成无类别条目，并处理本轮「记住／忘掉」。
+        self._atomic_profiles = atomic_profile_service
         self._repository = repository
         self._classifier = classifier or ProfileSignalClassifier()
         self._extractor = extractor or RuleBasedAutomaticProfileExtractor(self._classifier)
@@ -1518,6 +1532,18 @@ class AutomaticProfileService:
                 committed_record_ids=existing.committed_record_ids,
                 observed_count=existing.observed_count,
             )
+        if self._atomic_profiles is not None:
+            memory_directive = parse_memory_directive(content)
+            if memory_directive is not None:
+                return self._memory_directive_result(
+                    account_id=account_id,
+                    message_id=message_id,
+                    content=content,
+                    source_hash=source_hash,
+                    now=now,
+                    directive=memory_directive,
+                    existing=existing,
+                )
         if existing is not None and existing.status in {
             ProfileExtractionStatus.SUCCEEDED,
             ProfileExtractionStatus.EXHAUSTED,
@@ -1684,6 +1710,8 @@ class AutomaticProfileService:
                         record_id=record.record_id,
                     )
                 else:
+                    if self._atomic_profiles is not None:
+                        self._atomic_profiles.mirror_record(account_id, record)
                     record_ids.append(record.record_id)
                     run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
                     correction = ProfileCorrectionResult(
@@ -1806,6 +1834,68 @@ class AutomaticProfileService:
             committed_record_ids=[],
             observed_count=0,
         )
+
+    def _memory_directive_result(
+        self,
+        *,
+        account_id: str,
+        message_id: str,
+        content: str,
+        source_hash: str,
+        now: datetime,
+        directive: MemoryDirective,
+        existing: ProfileExtractionRun | None,
+    ) -> ProfilePreprocessResult:
+        """同步处理本轮「记住／忘掉」，并终结该消息的抽取记账。
+
+        Issue 08：显式记忆指令在本轮回答生成前生效（``preprocess_message``
+        由请求路径调用），因此本轮切片立即包含或排除对应条目。指令消息不再
+        进入自动抽取，避免同一轮既按用户原话写入又按规则推断。
+        """
+
+        atomic = self._atomic_profiles
+        assert atomic is not None
+        if directive.kind == AtomicProfileMemoryKind.REMEMBER:
+            atomic.remember(
+                account_id, directive.target, source_message_id=message_id
+            )
+            memory = AtomicProfileMemoryResult(
+                kind=AtomicProfileMemoryKind.REMEMBER,
+                status=AtomicProfileMemoryStatus.REMEMBERED,
+                matched_count=1,
+            )
+        else:
+            memory = atomic.forget(account_id, directive.target)
+        run = existing or ProfileExtractionRun(
+            extraction_id=_stable_id(
+                "profile-extract",
+                account_id,
+                message_id,
+                self.extractor_version,
+                source_hash,
+            ),
+            account_id=account_id,
+            message_id=message_id,
+            extractor_version=self.extractor_version,
+            source_hash=source_hash,
+            source_snapshot=content,
+            status=ProfileExtractionStatus.SUCCEEDED,
+            outcome=ProfileExtractionOutcome.SUCCEEDED_MEMORY_DIRECTIVE,
+            attempts=1,
+            source=ProfileExtractionSource.LOCAL_RULE,
+            created_at=now,
+            updated_at=now,
+        )
+        run.status = ProfileExtractionStatus.SUCCEEDED
+        run.outcome = ProfileExtractionOutcome.SUCCEEDED_MEMORY_DIRECTIVE
+        run.attempts = max(1, run.attempts)
+        run.last_error = None
+        if run.source is None:
+            run.source = ProfileExtractionSource.LOCAL_RULE
+        run.updated_at = now
+        self._repository.save_run(run)
+        self._audit_outcome(run, result=AuditResult.SUCCESS, reason="memory_directive")
+        return ProfilePreprocessResult(run=run, memory=memory)
 
     def _extract_once(
         self,
@@ -2400,6 +2490,12 @@ class AutomaticProfileService:
                 ),
                 migration_version=audit_version,
             )
+            if self._atomic_profiles is not None:
+                # V2 Issue 08：同一条事实镜像成无类别的原子条目；已被用户
+                # 删除（墓碑）或已被用户编辑成别的正文时镜像保持原样。
+                self._atomic_profiles.mirror_record(
+                    account_id, record, evidence_message_id=message_id
+                )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids)), observed_count
 
@@ -2600,11 +2696,16 @@ class AutomaticProfileService:
                 and run.last_error is not None
             )
         ]
+        # V2 Issue 08：挂载原子条目后，「有没有信息」以用户可见的无类别
+        # 列表为准（用户单独记住的条目没有对应的四维记录）。
+        has_records = bool(records)
+        if self._atomic_profiles is not None:
+            has_records = bool(self._atomic_profiles.list_items(account_id))
         if pending:
             status = ProfilePageStatus.PENDING
         elif failed_runs:
             status = ProfilePageStatus.FAILED
-        elif records:
+        elif has_records:
             status = ProfilePageStatus.READY
         else:
             status = ProfilePageStatus.EMPTY
@@ -2623,7 +2724,7 @@ class AutomaticProfileService:
             source_counts[run.source.value] = source_counts.get(run.source.value, 0) + 1
         return ProfileStatusProjection(
             status=status,
-            has_records=bool(records),
+            has_records=has_records,
             can_retry=can_retry,
             extraction_sources=dict(sorted(source_counts.items())),
             source_explanation=PROFILE_HYBRID_EXPLANATION,

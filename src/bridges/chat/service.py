@@ -75,6 +75,7 @@ from bridges.chat.turn import (
     user_facing_error,  # noqa: F401 - re-export
 )
 from bridges.contracts.career import CareerPlanningProjection
+from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
 from bridges.contracts.chat import (
     ChatConversationListProjection,
     ChatConversationProjection,
@@ -132,6 +133,7 @@ from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
+from bridges.profiles.atomic import AtomicProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
@@ -238,6 +240,7 @@ class ChatService:
         profile_service: ProfileService | None = None,
         automatic_profile_service: AutomaticProfileService | None = None,
         four_dimension_profile_service: FourDimensionProfileService | None = None,
+        atomic_profile_service: AtomicProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
         image_service: ImageOrchestrator | None = None,
@@ -269,6 +272,8 @@ class ChatService:
         #: Issue 15：默认自动抽取；启用后不再走旧的画像写入通知路径。
         self._automatic_profiles = automatic_profile_service
         self._four_dimension_profiles = four_dimension_profile_service
+        #: V2 Issue 08：用户可见的无类别原子画像列表。
+        self._atomic_profiles = atomic_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 生涯规划编排（Issue 29）；未挂载时规划意图按普通消息处理。
@@ -304,6 +309,7 @@ class ChatService:
             profile_service=self._profiles,
             automatic_profile_service=self._automatic_profiles,
             four_dimension_profile_service=self._four_dimension_profiles,
+            atomic_profile_service=self._atomic_profiles,
             observability_service=self._observability,
             career_planner_service=self._career_planner,
             image_service=self._image,
@@ -1162,6 +1168,10 @@ class ChatService:
                     self._persist_profile_correction_result(
                         account_id, run_id, result.correction
                     )
+                if result.memory is not None:
+                    self._persist_profile_memory_result(
+                        account_id, run_id, result.memory
+                    )
                 return result
             except Exception as exc:  # noqa: BLE001 - 聊天主流程对画像提取保持 fail-open
                 correction: ProfileCorrectionResult | None = None
@@ -1217,6 +1227,22 @@ class ChatService:
         config = dict(run.config or {})
         config["profile_correction"] = correction.context_metadata()
         self._repo.update_generation_config(account_id, run_id, config)
+
+    def _persist_profile_memory_result(
+        self,
+        account_id: str,
+        run_id: str,
+        memory: AtomicProfileMemoryResult,
+    ) -> None:
+        """记录本轮记忆指令结果：重试轮次沿用同一结果，不重复声明成功。"""
+
+        run = self._repo.get_generation_run(account_id, run_id)
+        if run is None:
+            return
+        config = dict(run.config or {})
+        config["profile_memory"] = memory.context_metadata()
+        self._repo.update_generation_config(account_id, run_id, config)
+
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -1447,6 +1473,7 @@ class ChatService:
         use_profile: bool = True,
         compiled_messages: list[dict[str, str]] | None = None,
         model_id: str | None = None,
+        context_budget: dict[str, object] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成（委托给回合编排深模块，接口与语义不变）。
 
@@ -1458,6 +1485,8 @@ class ChatService:
 
         ``compiled_messages``（V2 Issue 03）为日常父图编译的模型就绪
         上下文；传入时模型历史以它为准，未传入回退既有组装。
+        ``context_budget`` 是同一编译记录的预算快照（V2 Issue 08）：传入时
+        本轮画像块按剩余输入预算裁剪，与编译器共用同一预算口径。
         """
         yield from self._turn.stream_turn(
             account_id,
@@ -1470,6 +1499,7 @@ class ChatService:
             gateway=self._gateway,
             compiled_messages=compiled_messages,
             model_override=model_id,
+            context_budget=context_budget,
         )
 
     def stop_generation(
@@ -1861,14 +1891,16 @@ class ChatService:
 
     def compile_turn_context(
         self, run: GenerationRunRecord
-    ) -> list[dict[str, str]] | None:
+    ) -> tuple[list[dict[str, str]] | None, dict[str, object] | None]:
         """编译本轮模型输入上下文（V2 Issue 03）。
 
         由日常父图 ``compile_context`` 节点调用：以原始消息为权威源，在
         锁定模型的已验证窗口内产出「当前请求 + 近期原文 + 较早摘要 + 按需
         补回的原文」（详见 ``context_compiler``），并落一条不含任何正文的
         编译审计记录（模型 ID、预算/摘要/估算版本、采用的原文消息 ID）。
-        返回模型就绪消息列表（进图状态，检查点可序列化）。
+        返回 ``(模型就绪消息列表, 编译记录)``：消息进图状态（检查点可序列化），
+        编译记录只含 ID、版本与计数，供后续材料（V2 Issue 08 的画像块）按同一
+        份预算裁剪剩余输入空间。
 
         V2 Issue 05：当前轮绑定照片附件时返回 ``None``——图片部件无法
         进入纯文本摘要编译，生成回退到 ``_model_history`` 的多模态组装；
@@ -1886,7 +1918,7 @@ class ChatService:
             if any(
                 attachment.media_type in PHOTO_MEDIA_TYPES for attachment in bound
             ):
-                return None
+                return None, None
         conversation = self._repo.get_conversation(
             run.account_id, run.conversation_id
         )
@@ -1932,7 +1964,7 @@ class ChatService:
                 reason="本轮上下文编译记录。",
                 details=compiled.to_record(),
             )
-        return compiled.model_messages()
+        return compiled.model_messages(), compiled.to_record()
 
     def run_graph_turn(
         self,

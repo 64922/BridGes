@@ -13550,6 +13550,259 @@
         }
       }
     },
+    "/profiles/items": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Atomic Profile Items",
+        "description": "列出当前账户的全部原子画像条目（无类别、无分组）。",
+        "operationId": "list_atomic_profile_items_profiles_items_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AtomicProfileItemProjection"
+                  },
+                  "title": "Response List Atomic Profile Items Profiles Items Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/items/{item_id}": {
+      "patch": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Modify Atomic Profile Item",
+        "description": "行内编辑一条条目；用户正文优先于自动提取。",
+        "operationId": "modify_atomic_profile_item_profiles_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtomicProfileItemModifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtomicProfileItemProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Delete Atomic Profile Item",
+        "description": "删除一条条目；写入墓碑，旧消息重放不会让它复活。",
+        "operationId": "delete_atomic_profile_item_profiles_items__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtomicProfileItemDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/profiles/observations": {
       "post": {
         "tags": [
@@ -27949,6 +28202,119 @@
         ],
         "title": "AssignRoleRequest",
         "description": "分配独立复核者或平台发行者。"
+      },
+      "AtomicProfileItemDeleteRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "用户读到的版本号。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "AtomicProfileItemDeleteRequest",
+        "description": "删除确认的乐观锁请求。"
+      },
+      "AtomicProfileItemModifyRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Text",
+            "description": "替换后的正文。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "用户读到的版本号。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "version"
+        ],
+        "title": "AtomicProfileItemModifyRequest",
+        "description": "行内编辑的乐观锁请求。"
+      },
+      "AtomicProfileItemProjection": {
+        "properties": {
+          "profile_item_id": {
+            "type": "string",
+            "title": "Profile Item Id",
+            "description": "稳定的原子条目标识。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "条目正文。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "修改/删除使用的乐观锁版本号。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近一次变化时间。"
+          },
+          "user_edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Edited At",
+            "description": "用户最近一次编辑时间，可为空。"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Message Ids",
+            "description": "证据来源消息标识。"
+          },
+          "write_origin": {
+            "$ref": "#/components/schemas/AtomicProfileWriteOrigin",
+            "description": "最近一次写入来源，用于区分「你修改过」和自动整理。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_item_id",
+          "text",
+          "version",
+          "updated_at",
+          "write_origin"
+        ],
+        "title": "AtomicProfileItemProjection",
+        "description": "原子画像页面投影：无类别、无分组、无内部哈希。"
+      },
+      "AtomicProfileWriteOrigin": {
+        "type": "string",
+        "enum": [
+          "automatic",
+          "user",
+          "migration"
+        ],
+        "title": "AtomicProfileWriteOrigin",
+        "description": "条目写入来源（内部字段，页面只用于诚实标注最近变化）。"
       },
       "AttestationConclusion": {
         "type": "string",

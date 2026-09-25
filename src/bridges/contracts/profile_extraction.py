@@ -14,6 +14,7 @@ from pydantic import (
     field_validator,
 )
 
+from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
 from bridges.contracts.profiles import FourDimension
 
 
@@ -62,6 +63,7 @@ class ProfileExtractionOutcome(StrEnum):
     SUCCEEDED_CORRECTION_PROTECTED = "succeeded_correction_protected"
     SUCCEEDED_CORRECTION_UNRESOLVED = "succeeded_correction_unresolved"
     SUCCEEDED_CORRECTION_NO_ACTIVE = "succeeded_correction_no_active"
+    SUCCEEDED_MEMORY_DIRECTIVE = "succeeded_memory_directive"
     CORRECTION_FAILED = "correction_failed"
     PENDING_RETRY = "pending_retry"
     PERMANENT_FAILURE = "permanent_failure"
@@ -228,6 +230,10 @@ class ProfilePreprocessResult(BaseModel):
     committed_record_ids: list[str] = Field(default_factory=list)
     observed_count: int = Field(default=0, ge=0)
     correction: ProfileCorrectionResult | None = None
+    memory: AtomicProfileMemoryResult | None = Field(
+        default=None,
+        description="本轮同步处理的「记住／忘掉」结果；没有指令时为空。",
+    )
 
 
 class ProfileStatusProjection(BaseModel):

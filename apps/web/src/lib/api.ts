@@ -177,6 +177,13 @@ export type FourDimensionProfileModifyRequest =
   components["schemas"]["FourDimensionProfileModifyRequest"];
 export type FourDimensionProfileDeleteRequest =
   components["schemas"]["FourDimensionProfileDeleteRequest"];
+// V2 Issue 08：无固定类别的原子长期信息列表；投影不含类别、去重键与账户字段。
+export type AtomicProfileItemProjection =
+  components["schemas"]["AtomicProfileItemProjection"];
+export type AtomicProfileItemModifyRequest =
+  components["schemas"]["AtomicProfileItemModifyRequest"];
+export type AtomicProfileWriteOrigin =
+  components["schemas"]["AtomicProfileWriteOrigin"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -1600,6 +1607,52 @@ export async function deleteFourDimensionProfileRecord(
 ): Promise<void> {
   const res = await fetch(
     `${API_BASE}/profiles/four-dimensions/${encodeURIComponent(recordId)}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ version }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+}
+
+// ---------- 原子长期信息列表（V2 Issue 08） ----------
+
+export async function listAtomicProfileItems(): Promise<
+  AtomicProfileItemProjection[]
+> {
+  const res = await fetch(`${API_BASE}/profiles/items`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function modifyAtomicProfileItem(
+  itemId: string,
+  request: AtomicProfileItemModifyRequest
+): Promise<AtomicProfileItemProjection> {
+  const res = await fetch(
+    `${API_BASE}/profiles/items/${encodeURIComponent(itemId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function deleteAtomicProfileItem(
+  itemId: string,
+  version: number
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/profiles/items/${encodeURIComponent(itemId)}`,
     {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
