@@ -110,4 +110,5 @@ def test_global_chat_policy_is_lightweight_and_free_of_method_rules() -> None:
     # 自定义 instruction 仍追加在渲染结果之后。
     assert "只使用自定义表达说明。" in custom.system_block
     assert "先直接回答当前问题" in snapshot.system_block
-    assert "文章人味化任务的最终文章不经过本策略二次改写" in snapshot.system_block
+    assert "优先级低于用户本轮明确表达的语气与篇幅要求" in snapshot.system_block
+    assert "保持准确" in snapshot.system_block

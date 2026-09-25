@@ -589,7 +589,6 @@ class EvalEnvironment:
             arxiv_search_service=self.arxiv_search,
             profile_service=self.profiles,
             observability_service=self.observability,
-            humanizer_service=self.humanizer,
             career_planner_service=self.career,
             image_service=self.image,
             video_service=self.video,

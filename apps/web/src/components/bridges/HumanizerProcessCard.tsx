@@ -8,24 +8,21 @@ import type { ChatStreamHumanizerData } from "@/lib/api";
  *
  * loading —— 正在执行编排步骤（解析任务契约/提取事实锁/按体裁规则生成/
  * 确定性复核），展示步骤轨迹；empty —— 没有可改写的原文或主题；error ——
- * 失败说明（可重试）；permission —— 能力不可用；recovery —— 失败后可
- * 从原任务重试（输入保留）。终态由 done/error 事件携带结果投影接管。
+ * 失败说明；permission —— 能力不可用；recovery —— 任务已停止（能力已
+ * 退役，仅可查看，不再重试）。终态由 done/error 事件携带结果投影接管。
  */
 export function HumanizerProcessCard({
   data,
   streaming,
-  onRetry,
 }: {
   data: ChatStreamHumanizerData | null;
   streaming: boolean;
-  onRetry?: () => void;
 }) {
   // 流式进行中且尚无任何过程数据：loading 初始态
   const state = data?.state ?? (streaming ? "loading" : "error");
   const steps = data?.progress_steps ?? [];
   const stepLabel = data?.step_label ?? "正在准备人味化任务…";
   const detail = data?.detail ?? null;
-  const retryable = data?.retryable ?? false;
 
   const style: React.CSSProperties = {
     display: "flex",
@@ -78,27 +75,8 @@ export function HumanizerProcessCard({
             {detail ??
               (permission
                 ? "核心对话能力当前不可用，请检查启动服务的全局百炼配置与权限。"
-                : "生成失败，请重试。")}
+                : "任务未完成。文章人味化能力已退役，历史输入与结果仍可查看。")}
           </p>
-          {retryable && onRetry && (
-            <button
-              type="button"
-              data-testid="humanizer-process-retry"
-              onClick={onRetry}
-              style={{
-                marginTop: "var(--space-2)",
-                padding: "var(--space-1) var(--space-3)",
-                border: "1px solid var(--color-border-strong)",
-                borderRadius: "var(--radius-md)",
-                background: "transparent",
-                color: "var(--color-text-primary)",
-                cursor: "pointer",
-                fontSize: "var(--text-sm)",
-              }}
-            >
-              重试（原任务输入已保留）
-            </button>
-          )}
         </div>
       </section>
     );
@@ -111,29 +89,10 @@ export function HumanizerProcessCard({
           <Icon name="retry" size={18} aria-hidden />
         </span>
         <div>
-          <strong>任务失败，可从原任务重试</strong>
+          <strong>任务已停止</strong>
           <p style={{ margin: "var(--space-1) 0 0", color: "var(--color-text-secondary)" }}>
-            {detail ?? "生成失败，您的输入与任务契约已保留。"}
+            {detail ?? "文章人味化能力已退役，历史输入与结果仍可查看。"}
           </p>
-          {onRetry && (
-            <button
-              type="button"
-              data-testid="humanizer-process-recovery-retry"
-              onClick={onRetry}
-              style={{
-                marginTop: "var(--space-2)",
-                padding: "var(--space-1) var(--space-3)",
-                border: "1px solid var(--color-border-strong)",
-                borderRadius: "var(--radius-md)",
-                background: "transparent",
-                color: "var(--color-text-primary)",
-                cursor: "pointer",
-                fontSize: "var(--text-sm)",
-              }}
-            >
-              重试
-            </button>
-          )}
         </div>
       </section>
     );

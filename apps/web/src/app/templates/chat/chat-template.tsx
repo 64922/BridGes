@@ -278,10 +278,9 @@ const DEMO_MESSAGES: ChatMessage[] = [
 /* 名言数据与轮换组件共享自 Issue 13 的真实空白态实现
    （components/bridges/RotatingQuote，含减少动态效果支持）。 */
 
-/** 对话框下方的功能推荐（内容对应 1.txt：论文搜索 / 文章人味化 / 生涯规划助手） */
+/** 对话框下方的功能推荐（内容对应 1.txt：论文搜索 / 生涯规划助手；文章人味化入口已退役） */
 const SUGGESTIONS: { icon: IconName; label: string; prompt: string }[] = [
   { icon: "paperSearch", label: "论文搜索", prompt: "帮我在 arXiv 上找近一年量子纠错的综述论文" },
-  { icon: "humanize", label: "文章人味化", prompt: "帮我把这段课程论文摘要改得更自然" },
   { icon: "career", label: "生涯规划助手", prompt: "帮我排一下研究生三年的学习优先级" },
 ];
 

@@ -323,8 +323,9 @@ def test_video_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient)
             },
         },
     )
-    assert response.status_code == 422
-    assert response.json()["detail"]["error"] == "conflicting_payload"
+    # V2 issue 04：人味化入口退役——410 优先于载荷互斥校验。
+    assert response.status_code == 410
+    assert response.json()["detail"]["error"] == "humanizer_capability_retired"
 
 
 def test_video_message_retry_rejected_via_card(sqlite_app: Any, client: TestClient) -> None:

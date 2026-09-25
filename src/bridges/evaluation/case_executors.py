@@ -42,6 +42,7 @@ from bridges.evaluation.executors import (
 )
 from bridges.evaluation.reference_method import ReferenceMethod, reference_tool_record
 from bridges.evaluation.sut import SUTSpec
+from bridges.skills.humanizer.service import HumanizerRunKind
 
 #: 教学目标任务（学习模式）。
 _STUDY_TASKS = frozenset({"task-science", "task-teaching"})
@@ -426,6 +427,9 @@ def _humanization_outcome(
     source_text = str(case.initial_state.get("source_text", "") or content)
     run_context = env.run_context(case, seed, execution_index, 0)
     if sut.features.humanizer_skill:
+        # V2 issue 04：聊天链路的人味化写路径已退役，评测直接驱动
+        # SKILL 编排本身（与收尾探针同一接缝），不再经 ChatService
+        # 创建人味化运行。
         path, genre = _GENRE_BY_CASE.get(
             case.case_id, (HumanizerPath.REWRITE, Genre.POPULAR_SCIENCE)
         )
@@ -438,38 +442,50 @@ def _humanization_outcome(
         skill_input = HumanizerSkillInput(
             skill_id="bridges-humanizer", contract=contract
         )
-        _, assistant = env.chat.start_generation(
+        result = None
+        for event in env.humanizer.run_task(
             env.account_id,
             conversation.conversation_id,
-            content,
-            skill_id="bridges-humanizer",
-            skill_input=skill_input.model_dump(mode="json"),
+            f"eval-{case.case_id}-{execution_index}",
+            skill_input,
+            run_context,
+        ):
+            if event.kind == HumanizerRunKind.RESULT and event.result is not None:
+                result = event.result
+        if result is None:
+            raise CaseExecutionError("no_answer", "人味化任务没有产出结果。")
+        projection_dict = result.model_dump(mode="json")
+        output_dict = projection_dict.get("output", {})
+        outputs = {
+            "final_text": (result.output.final_text if result.output else ""),
+            "edits": output_dict.get("edits", []),
+            "fact_check": output_dict.get("fact_check", []),
+            "open_questions": output_dict.get("open_questions", []),
+            "fact_lock_check": projection_dict.get("fact_lock_check"),
+            "skill_status": projection_dict.get("status", "error"),
+            "tool_calls": [],
+        }
+        return CaseOutcome(
+            outputs=outputs,
+            tool_records=_tool_records(env, trajectory=["done"], started=started),
+            trajectory=["done"],
+            model_locks=_observed_locks(env),
+            latency_ms=_latency(started),
         )
-        list(
-            env.chat.stream_generation(
-                env.account_id,
-                conversation.conversation_id,
-                assistant.message_id,
-                run_context,
-                use_knowledge_base=sut.features.evidence_retrieval,
-                use_profile=sut.features.profile_slices,
-            )
+    # 消融（移除 humanizer）：按普通消息生成，模型返回脚本默认回答。
+    _, assistant = env.chat.start_generation(
+        env.account_id, conversation.conversation_id, content
+    )
+    list(
+        env.chat.stream_generation(
+            env.account_id,
+            conversation.conversation_id,
+            assistant.message_id,
+            run_context,
+            use_knowledge_base=sut.features.evidence_retrieval,
+            use_profile=sut.features.profile_slices,
         )
-    else:
-        # 消融（移除 humanizer）：按普通消息生成，模型返回脚本默认回答。
-        _, assistant = env.chat.start_generation(
-            env.account_id, conversation.conversation_id, content
-        )
-        list(
-            env.chat.stream_generation(
-                env.account_id,
-                conversation.conversation_id,
-                assistant.message_id,
-                run_context,
-                use_knowledge_base=sut.features.evidence_retrieval,
-                use_profile=sut.features.profile_slices,
-            )
-        )
+    )
 
     records = env.conversations.list_messages(env.account_id, conversation.conversation_id)
     final = next(

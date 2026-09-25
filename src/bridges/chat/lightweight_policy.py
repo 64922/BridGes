@@ -35,9 +35,9 @@ from bridges.skills.humanizer.contract_compiler import (
     compile_task_contract,
 )
 
-#: 新轻量策略版本；与旧 ``global-humanized-writing-v2`` 并行，重试回传
-#: 旧快照时版本保持旧值（快照优先，不重编译）。
-GLOBAL_CHAT_LIGHTWEIGHT_VERSION = "global-chat-lightweight-v1"
+#: 当前轻量策略版本（V2 issue 04：加入优先级声明并把数值列入受保护区）。
+#: 重试回传旧快照时版本保持旧值（快照优先，不重编译）。
+GLOBAL_CHAT_LIGHTWEIGHT_VERSION = "global-chat-lightweight-v2"
 #: 安全基线版本（资源缺失或画像不可用时使用，值保持不变以兼容旧快照）。
 SAFE_BASELINE_POLICY_VERSION = "global-humanized-writing-safe-baseline-v1"
 GLOBAL_CHAT_LIGHTWEIGHT_SOURCE = (
@@ -60,9 +60,16 @@ _MAX_PROFILE_ITEMS = 6
 
 #: 受保护区固定句（渲染与安全基线共用，避免字面漂移）。
 _PROTECTED_REGIONS_STATEMENT = (
-    "代码、公式、JSON、引用、链接、结构化工具结果、确定性错误提示、"
-    "加载/停止状态和协议字段属于受保护区，必须原样保留。工具结果外可以"
-    "加简短说明，但不得改写证据。"
+    "引用、数值、代码、公式、链接、JSON、结构化工具结果、确定性错误提示、"
+    "加载/停止状态和协议字段属于受保护区，必须原样保留，保持准确。工具结果"
+    "外可以加简短说明，但不得改写证据。"
+)
+
+#: 优先级固定句（渲染与安全基线共用）：表达规则让位于用户与任务合同。
+_PRIORITY_STATEMENT = (
+    "以上规则的优先级低于用户本轮明确表达的语气与篇幅要求，也低于本轮任务"
+    "合同（如教学模式合同或模块任务要求）；与两者冲突时先满足用户要求与"
+    "任务合同。"
 )
 
 
@@ -335,9 +342,7 @@ def _to_conversation_mode(mode: ChatMode | str) -> ConversationMode:
 def _validate_contract(contract: ExpressionTaskContract) -> None:
     """校验聊天消费的契约：必须是聊天表面且快照自洽。"""
     if contract.surface != Surface.CHAT:
-        raise ValueError(
-            "文章任务契约不进入普通聊天轻量策略；文章任务走完整人味化流程。"
-        )
+        raise ValueError("非聊天表面契约不进入普通聊天轻量策略。")
     if contract.compute_version_hash() != contract.version_hash:
         raise ValueError("表达任务契约快照哈希不一致，拒绝编译轻量策略。")
 
@@ -488,6 +493,7 @@ class ChatLightweightPolicyCompiler:
                 "数字、限定条件、代码、公式、JSON、引用、链接、错误码、工具"
                 "结果和协议字段不变；不规避 AI 检测、不冒充真人或名人、不伪造"
                 "经历、来源或引用。\n"
+                f"{_PRIORITY_STATEMENT}\n"
                 "本轮没有可用画像信息，不得自行推断用户经历、身份、人格或偏好。\n"
                 + _PROTECTED_REGIONS_STATEMENT
             ),
@@ -513,10 +519,10 @@ class ChatLightweightPolicyCompiler:
             f"策略版本：{self._version}｜"
             f"对话模式：{mode}｜回答形态：{FORM_LABELS[form]}\n"
             f"{rule_lines}\n"
+            f"{_PRIORITY_STATEMENT}\n"
             "只作用于模型生成的自然语言正文；"
             + _PROTECTED_REGIONS_STATEMENT
-            + "文章人味化任务的最终文章不经过本策略二次改写。"
-            f"{profile}"
+            + f"{profile}"
         )
 
 

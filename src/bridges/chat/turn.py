@@ -16,7 +16,6 @@ interface 之后——``TurnOrchestrator.stream_turn`` 只回答「驱动一次�
 
 from __future__ import annotations
 
-import json
 import re
 import threading
 import time
@@ -25,10 +24,7 @@ from concurrent.futures import ALL_COMPLETED, Future, wait
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, Literal, Protocol
-
-if TYPE_CHECKING:
-    from bridges.skills.humanizer.service import HumanizerRunEvent
+from typing import Any, Literal, Protocol
 
 from pydantic import ValidationError
 
@@ -67,7 +63,6 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatMode,
     ChatStreamCareerData,
-    ChatStreamHumanizerData,
     ChatStreamImageData,
     ChatStreamMcpData,
     ChatStreamStageData,
@@ -81,14 +76,7 @@ from bridges.contracts.chat import (
     McpCallStatus,
     VideoRequestPayload,
 )
-from bridges.contracts.humanizer import (
-    HUMANIZER_CHECKPOINT_KEY,
-    HumanizerProfileSlice,
-    HumanizerResultProjection,
-    HumanizerResultStatus,
-    HumanizerRouteSource,
-    HumanizerSkillInput,
-)
+from bridges.contracts.humanizer import HumanizerSkillInput
 from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
@@ -608,35 +596,6 @@ def error_is_retryable(error_code: str | None) -> bool:
     """该错误码是否值得用户点击重试（幂等，不产生副作用）。"""
     return error_code in _RETRYABLE_CODES
 
-
-class HumanizerOrchestrator(Protocol):
-    """内置 SKILL（bridges-humanizer）编排接缝（Issue 28，运行时由
-    ``skills.humanizer.service`` 实现）。聊天分支只负责载荷校验与事件
-    收敛；证据合同检索、改写/生成、事实门复核都在编排服务内部完成。
-    """
-
-    def resolve_skill(self, skill_input: HumanizerSkillInput) -> str: ...
-
-    def run_task(
-        self,
-        account_id: str,
-        conversation_id: str,
-        assistant_message_id: str,
-        skill_input: HumanizerSkillInput,
-        run_context: RunContextEnvelope,
-        *,
-        retrieval_round: RetrievalRoundProjection | None,
-        web_search_projection: WebSearchProjection | None,
-        arxiv_search_projection: ArxivSearchProjection | None,
-        budget: RunBudget | None = None,
-        writing_call_count: int = 0,
-        recovered_draft: str | None = None,
-        stop_event: Any | None = None,
-        # Issue 04：人味化轮次的最小画像切片输入（编译与披露由聊天层完成，
-        # 服务只按「风格与背景偏好」用途注入首稿/修订 prompt，绝不进入
-        # 证据与来源合同、运行锁、日志或语料产物）。
-        profile_slice: HumanizerProfileSlice | None = None,
-    ) -> Iterator[HumanizerRunEvent]: ...
 
 
 class CareerPlannerOrchestrator(Protocol):
@@ -1487,32 +1446,6 @@ def skill_input_from(owner: MessageRecord | None) -> HumanizerSkillInput | None:
         return None
 
 
-def humanizer_recovery_state(message: MessageRecord | None) -> tuple[int, str | None]:
-    """从消息的持久化 skill 列恢复写作调用计数与可复用正文（Issue 05）。
-
-    计数在持久运行状态中原子记录（检查点或完整结果投影），重试与恢复
-    沿用计数，服务重启不能重新获得修订额度；``recovered_text`` 是上次
-    已产出的正文（检查点显式携带，或完整投影的 output），供恢复尝试跳过
-    首稿调用直接检查与修订。
-    """
-    if message is None or not message.skill:
-        return 0, None
-    raw = message.skill
-    checkpoint = raw.get(HUMANIZER_CHECKPOINT_KEY) if isinstance(raw, dict) else None
-    if isinstance(checkpoint, dict):
-        count = int(checkpoint.get("writing_call_count") or 0)
-        recovered = checkpoint.get("recovered_text")
-        return count, (str(recovered) if recovered else None)
-    try:
-        projection = HumanizerResultProjection.model_validate(raw)
-    except ValidationError:
-        return 0, None
-    count = projection.writing_call_count
-    if count < 1:
-        return 0, None
-    text = projection.output.final_text if projection.output is not None else None
-    return count, text
-
 
 def image_payload_from(owner: MessageRecord | None) -> ImageRequestPayload | None:
     """从用户消息的 image 列还原图片请求载荷（重试沿用同一份输入）。
@@ -1824,7 +1757,6 @@ class TurnOrchestrator:
         automatic_profile_service: AutomaticProfileService | None = None,
         four_dimension_profile_service: FourDimensionProfileService | None = None,
         observability_service: ObservabilityService | None = None,
-        humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
         image_service: ImageOrchestrator | None = None,
         video_service: VideoOrchestrator | None = None,
@@ -1852,8 +1784,6 @@ class TurnOrchestrator:
         self._four_dimension_profiles = four_dimension_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
-        #: 内置 bridges-humanizer SKILL 编排（Issue 28）。
-        self._humanizer = humanizer_service
         #: 生涯规划编排（Issue 29）。
         self._career_planner = career_planner_service
         #: 图片生成与编辑编排（Issue 31）。
@@ -1864,8 +1794,8 @@ class TurnOrchestrator:
         self._selections = selections_service
         #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用。
         self._mcp = mcp_service
-        #: Issue 17：普通自然语言正文的一次性表达策略编译器；文章任务
-        #: 在更早的 humanizer 分支返回，不经过此策略。
+        #: Issue 17/V2 issue 04：两种模式与各模块共用的最终生成链
+        #: 表达策略编译器（轻量规则，优先级低于用户与任务合同）。
         self._writing_policy = writing_policy_compiler or GlobalWritingPolicyCompiler()
 
     # ------------------------------------------------------------------
@@ -2056,9 +1986,9 @@ class TurnOrchestrator:
                         error_message=feedback,
                     )
                 return
-            # Issue 28：用户消息携带 SKILL 载荷（bridges-humanizer）时走
-            # 内置 SKILL 编排路径——同一真实消息流程（持久化/重试/审计），
-            # 过程卡五态经 humanizer SSE 事件下发，终态 done/error 收敛。
+            # V2 issue 04：文章人味化写路径退出。历史遗留的 queued/中断
+            # 人味化运行（崩溃恢复、租约续跑）在此确定性收敛为退役错误，
+            # 绝不继续二次全文改写；历史输入与结果保持只读可查看。
             owner_skill = skill_input_from(
                 owner_user_message(
                     self._repo.list_messages(account_id, conversation_id),
@@ -2087,37 +2017,29 @@ class TurnOrchestrator:
                         error_message="用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
                     )
                     return
-                if self._humanizer is None:
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code="skill_unavailable",
-                        error_message="SKILL 能力暂不可用，请稍后重试。",
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=failed_thinking(thinking, "skill_unavailable"),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code="skill_unavailable",
-                        error_message="SKILL 能力暂不可用，请稍后重试。",
-                    )
-                    return
-                yield from self._stream_humanizer(
+                retired_message = (
+                    "文章人味化能力已退役，历史结果仍可查看与导出；正文表达已并入自然对话。"
+                )
+                finalize_message(
+                    self._repo,
                     account_id,
-                    conversation_id,
                     assistant_message_id,
-                    owner_skill,
-                    run_context,
-                    until_user_message_id,
-                    use_knowledge_base,
-                    budget,
-                    use_profile=use_profile,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="humanizer_capability_retired",
+                    error_message=retired_message,
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=datetime.now(UTC),
+                    thinking=failed_thinking(
+                        thinking, "humanizer_capability_retired"
+                    ),
+                )
+                yield StreamEvent(
+                    kind="error",
+                    error_code="humanizer_capability_retired",
+                    error_message=retired_message,
                 )
                 return
             # Issue 31：用户消息携带图片生成/编辑载荷（前端图片对话框提交）
@@ -4003,523 +3925,6 @@ class TurnOrchestrator:
         return retrieval_thinking(thinking, retrieval_round), retrieval_round
 
     # ------------------------------------------------------------------
-    # Issue 28：内置 SKILL 编排路径（bridges-humanizer）
-    # ------------------------------------------------------------------
-
-    def _stream_humanizer(
-        self,
-        account_id: str,
-        conversation_id: str,
-        assistant_message_id: str,
-        skill_input: HumanizerSkillInput,
-        run_context: RunContextEnvelope,
-        until_user_message_id: str | None,
-        use_knowledge_base: bool,
-        budget: RunBudget,
-        use_profile: bool = True,
-    ) -> Iterator[StreamEvent]:
-        """SKILL 编排：证据合同检索 → 过程事件 → 终态收敛（done/error）。
-
-        与普通生成共用停止信号与终态收敛语义：停止/失败绝不悬挂，重试
-        新建尝试沿用原用户消息上的任务契约（输入不丢失）。
-        """
-        started = time.monotonic()
-        if self._humanizer is None:
-            return
-        entry = self._lifecycle.signal_and_started(assistant_message_id)
-        stop_event = (
-            entry[0]
-            if entry is not None
-            else self._lifecycle.register(assistant_message_id)
-        )
-        conversation = self._repo.get_conversation(account_id, conversation_id)
-        mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-        thinking = initial_thinking(mode)
-        retrieval_round: RetrievalRoundProjection | None = None
-        messages = self._repo.list_messages(account_id, conversation_id)
-        owner = owner_user_message(messages, assistant_message_id)
-        round_query = owner.content if owner is not None else ""
-        # Issue 05：从持久运行状态恢复写作调用计数与可复用正文（重试/恢复
-        # 沿用计数，服务重启不得重新获得修订额度）。
-        current = next(
-            (m for m in messages if m.message_id == assistant_message_id), None
-        )
-        writing_call_count, recovered_draft = humanizer_recovery_state(current)
-        # Issue 07：改写路径只以用户粘贴/附件为原文，默认不检索全局知识库
-        # （知识库中不相关图片等材料绝不进入证据合同）；用户显式开启「补充
-        # 检索全局知识库」时检索轮次进入改写证据合同（仅作补充，不替代原文）。
-        # 注意：改写默认关闭知识库由调用方传 use_knowledge_base=False
-        # （retrieval 层只关知识库来源），检索轮次本身仍须存在——附件层
-        # 披露是 Issue 04 的绑定契约，跳过整个阶段会使消息投影丢失检索
-        # 披露（retrieval=null）。
-        if budget.enter(RunStage.LOCAL_RETRIEVAL):
-            yield self._stage_event(
-                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
-            )
-            thinking, retrieval_round = self._run_retrieval(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                until_user_message_id
-                or (owner.message_id if owner is not None else None),
-                round_query,
-                # 改写路径默认不检索全局知识库（issue 07 意图）由调用方
-                # 传值保证（改写默认 false、显式开启才 true），此处原样传递。
-                use_knowledge_base=use_knowledge_base,
-                thinking=thinking,
-                stop_event=stop_event,
-            )
-            budget.exit(
-                RunStage.LOCAL_RETRIEVAL,
-                category="layered_retrieval",
-                count=1 if retrieval_round is not None else 0,
-            )
-            yield self._stage_event(
-                assistant_message_id,
-                RunStage.LOCAL_RETRIEVAL,
-                "done",
-                duration_ms=budget.metrics()[-1].duration_ms,
-            )
-        else:
-            budget.exit(RunStage.LOCAL_RETRIEVAL)
-            yield self._stage_event(
-                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
-            )
-        # Spec AC8：可引用来源经本地/联网证据合同呈现。自然语言人味化
-        # 默认不进入公网或 arXiv planner，只有用户明确要求补充/核验
-        # 外部事实时才复用既有触发器；结果投影只可引用清单内材料。
-        web_search_projection: WebSearchProjection | None = None
-        arxiv_search_projection: ArxivSearchProjection | None = None
-        public_search_entered = False
-        route = skill_input.route
-        allow_public_search = (
-            route is None
-            or route.source != HumanizerRouteSource.NATURAL_LANGUAGE
-            or route.external_evidence_requested
-        )
-        if (
-            allow_public_search
-            and not stop_event.is_set()
-            and budget.enter(RunStage.PUBLIC_SEARCH)
-        ):
-            public_search_entered = True
-            yield self._stage_event(
-                assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
-            )
-            messages = self._repo.list_messages(account_id, conversation_id)
-            owner = owner_user_message(messages, assistant_message_id)
-            round_query = owner.content if owner is not None else ""
-            mode_for_plan = mode
-            # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
-            # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
-            calls: list[tuple[str, Callable[[], object] | None]] = []
-            search_stop_event = _SearchStopEvent(stop_event)
-            search_deadline = budget.absolute_deadline()
-            search_stage_deadline = budget.absolute_deadline()
-            search_plan = None
-            arxiv_plan = None
-            if self._web_search is not None:
-                humanizer_web_planned = self._web_search.plan(round_query, mode_for_plan)
-                if humanizer_web_planned.should_search:
-                    search_plan = humanizer_web_planned
-                    calls.append(
-                        (
-                            "web",
-                            _make_search_call(
-                                self._web_search,
-                                account_id,
-                                humanizer_web_planned,
-                                stop_event=search_stop_event,
-                                deadline=lambda: search_deadline,
-                                stage_deadline=lambda: search_stage_deadline,
-                            ),
-                        )
-                    )
-            if self._arxiv_search is not None:
-                humanizer_arxiv_planned = self._arxiv_search.plan(round_query, mode_for_plan)
-                if humanizer_arxiv_planned.should_search:
-                    arxiv_plan = humanizer_arxiv_planned
-                    calls.append(
-                        (
-                            "arxiv",
-                            _make_search_call(
-                                self._arxiv_search,
-                                account_id,
-                                humanizer_arxiv_planned,
-                                stop_event=search_stop_event,
-                                deadline=lambda: search_stage_deadline,
-                                stage_deadline=lambda: search_stage_deadline,
-                            ),
-                        )
-                    )
-            search_deadlines = budget.public_search_deadlines(
-                {name for name, call in calls if call is not None}
-            )
-            search_deadline = search_deadlines.provider_deadline
-            search_stage_deadline = search_deadlines.stage_deadline
-            search_results = self._parallel_search(
-                calls,
-                deadline=search_deadline,
-                stage_deadline=search_stage_deadline,
-                stop_event=stop_event,
-                search_stop_event=search_stop_event,
-            )
-            web_result = search_results.get("web")
-            if search_plan is not None:
-                web_search_projection = _web_search_projection_from_result(
-                    search_plan,
-                    web_result,
-                    loading=_initial_web_search_projection(self._web_search, search_plan),
-                )
-            arxiv_result = search_results.get("arxiv")
-            if (
-                arxiv_plan is not None
-                and arxiv_result is not _SEARCH_TIMEOUT
-                and arxiv_result is not _SEARCH_CANCELLED
-                and not isinstance(arxiv_result, Exception)
-            ):
-                arxiv_search_projection = arxiv_result
-            elif arxiv_plan is not None and arxiv_result is _SEARCH_CANCELLED:
-                arxiv_search_projection = ArxivSearchProjection(
-                    status=ArxivSearchStatus.CANCELLED,
-                    trigger_reason=arxiv_plan.reason,
-                    query_summary=arxiv_plan.query,
-                    error_code="arxiv_cancelled",
-                    error_message="已取消本轮论文搜索。",
-                    upstream_status="cancelled",
-                    can_retry=False,
-                )
-            if web_search_projection is not None:
-                self._repo.update_message_web_search(
-                    account_id,
-                    assistant_message_id,
-                    web_search_projection.model_dump(mode="json"),
-                    datetime.now(UTC),
-                )
-                thinking = web_search_thinking(thinking, web_search_projection)
-            if arxiv_search_projection is not None:
-                self._repo.update_message_arxiv_search(
-                    account_id,
-                    assistant_message_id,
-                    arxiv_search_projection.model_dump(mode="json"),
-                    datetime.now(UTC),
-                )
-                thinking = arxiv_search_thinking(thinking, arxiv_search_projection)
-        if public_search_entered:
-            budget.exit(
-                RunStage.PUBLIC_SEARCH,
-                category="web_search",
-                count=sum(
-                    1
-                    for projection in (
-                        web_search_projection,
-                        arxiv_search_projection,
-                    )
-                    if projection is not None
-                ),
-            )
-            yield self._stage_event(
-                assistant_message_id,
-                RunStage.PUBLIC_SEARCH,
-                "done",
-                duration_ms=budget.metrics()[-1].duration_ms,
-            )
-        if stop_event.is_set():
-            finalize_message(
-                self._repo,
-                account_id,
-                assistant_message_id,
-                status=ChatMessageStatus.STOPPED,
-                error_code=None,
-                error_message=None,
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=started,
-                now=datetime.now(UTC),
-                thinking=stopped_thinking(thinking),
-                web_search=(
-                    web_search_projection.model_dump(mode="json")
-                    if web_search_projection is not None
-                    else None
-                ),
-                arxiv_search=(
-                    arxiv_search_projection.model_dump(mode="json")
-                    if arxiv_search_projection is not None
-                    else None
-                ),
-            )
-            return
-        # Issue 04：人味化轮次编译最小画像切片并如实披露（与普通/生涯
-        # 路径同一编译接缝与裁剪规则）。切片上下文只以「风格与背景偏好」
-        # 用途经 run_task 传入技能执行，绝不进入证据合同/运行锁/日志；
-        # use_profile=False 时不编译不披露，画像服务异常时准确降级，
-        # 均不阻塞人味化主流程。
-        context_note, profile_context, profile_items, _profile_slice_id = (
-            self._compile_profile_slice(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                mode,
-                use_profile=use_profile,
-                retrieval_round=retrieval_round,
-                web_search_projection=web_search_projection,
-                arxiv_search_projection=arxiv_search_projection,
-            )
-        )
-        if context_note is not None:
-            thinking = context_note_thinking(thinking, context_note)
-        profile_used = profile_used_from_note(context_note)
-        profile_slice = HumanizerProfileSlice(
-            used=profile_used,
-            item_count=len(profile_items),
-            context=profile_context,
-        )
-        try:
-            generation_entered = budget.enter(RunStage.MODEL_GENERATION)
-            if generation_entered:
-                yield self._stage_event(
-                    assistant_message_id, RunStage.MODEL_GENERATION, "active"
-                )
-            else:
-                # 预算耗尽：结构化技能无可交付草稿，直接失败并允许重试
-                finalize_message(
-                    self._repo,
-                    account_id,
-                    assistant_message_id,
-                    status=ChatMessageStatus.ERROR,
-                    error_code="budget_exceeded",
-                    error_message=user_facing_error("budget_exceeded"),
-                    duration_ms=None,
-                    model_id=None,
-                    run_lock_id=None,
-                    started=started,
-                    now=datetime.now(UTC),
-                    thinking=failed_thinking(thinking, "budget_exceeded"),
-                )
-                yield StreamEvent(
-                    kind="error",
-                    error_code="budget_exceeded",
-                    error_message=user_facing_error("budget_exceeded"),
-                )
-                return
-            # 质量检查阶段（Issue 06）：技能编排内含生成与确定性复核
-            quality_entered = budget.enter(RunStage.QUALITY_CHECK)
-            if quality_entered:
-                yield self._stage_event(
-                    assistant_message_id, RunStage.QUALITY_CHECK, "active"
-                )
-            for run_event in self._humanizer.run_task(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                skill_input,
-                run_context,
-                retrieval_round=retrieval_round,
-                web_search_projection=web_search_projection,
-                arxiv_search_projection=arxiv_search_projection,
-                budget=budget,
-                writing_call_count=writing_call_count,
-                recovered_draft=recovered_draft,
-                stop_event=stop_event,
-                # Issue 04：画像切片只作「风格与背景偏好」用途注入，不改变
-                # 人味化的证据与来源合同（服务内部不再接触画像服务）。
-                profile_slice=profile_slice,
-            ):
-                # Issue 05 审查修复：草稿事件先于预算/停止检查持久化——模型
-                # 已产出的正文与写作调用计数绝不因预算到期/用户停止而丢失；
-                # 随后再按预算/停止语义终态，重试沿用已落库的计数。
-                if run_event.kind == "draft" and run_event.draft_text:
-                    self._repo.update_message_content(
-                        account_id,
-                        assistant_message_id,
-                        run_event.draft_text,
-                        datetime.now(UTC),
-                    )
-                    if run_event.writing_call_count is not None:
-                        self._repo.update_message_humanizer_checkpoint(
-                            account_id,
-                            assistant_message_id,
-                            writing_call_count=run_event.writing_call_count,
-                            updated_at=datetime.now(UTC),
-                        )
-                    continue
-                if stop_event.is_set():
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.STOPPED,
-                        error_code=None,
-                        error_message=None,
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=stopped_thinking(thinking),
-                    )
-                    return
-                result = run_event.result
-                if result is not None:
-                    # Issue 06 第七轮：先消费真实结果再判定预算——已完成的首稿
-                    # （部分交付）与真实上游错误绝不被 budget_exceeded 文案
-                    # 抹掉；只有「预算耗尽且无任何草稿/真实错误可交付」时才
-                    # 使用 budget_exceeded。
-                    now = datetime.now(UTC)
-                    self._repo.update_message_humanizer(
-                        account_id,
-                        assistant_message_id,
-                        result.model_dump(mode="json"),
-                        now,
-                    )
-                    if result.status == HumanizerResultStatus.ERROR:
-                        finalize_message(
-                            self._repo,
-                            account_id,
-                            assistant_message_id,
-                            status=ChatMessageStatus.ERROR,
-                            error_code=result.error_code,
-                            error_message=result.error_message,
-                            duration_ms=None,
-                            model_id=None,
-                            run_lock_id=None,
-                            started=started,
-                            now=now,
-                            thinking=failed_thinking(thinking, result.error_code),
-                        )
-                        yield StreamEvent(
-                            kind="error",
-                            error_code=result.error_code or "humanizer_failed",
-                            error_message=result.error_message
-                            or "人味化任务未完成，请重试。",
-                        )
-                        return
-                    final_text = result.output.final_text if result.output else ""
-                    self._repo.update_message_content(
-                        account_id,
-                        assistant_message_id,
-                        final_text,
-                        now,
-                    )
-                    # Issue 04 不变量告警：画像原文不得进入人味化产物。产物
-                    # （投影 JSON + 正文）中出现任一画像原文即记审计（只记
-                    # 命中条数，不复制画像原文），供告警消费；不阻断交付。
-                    self._audit_humanizer_profile_leak(
-                        account_id,
-                        assistant_message_id,
-                        profile_items,
-                        result,
-                    )
-                    if quality_entered:
-                        budget.exit(
-                            RunStage.QUALITY_CHECK,
-                            category="qwen_structured_output",
-                            count=1,
-                        )
-                        yield self._stage_event(
-                            assistant_message_id,
-                            RunStage.QUALITY_CHECK,
-                            "done",
-                            duration_ms=budget.metrics()[-1].duration_ms,
-                        )
-                    # 收尾阶段（Issue 06）：结果落库与终态提交
-                    if budget.enter(RunStage.FINALIZING):
-                        yield self._stage_event(
-                            assistant_message_id, RunStage.FINALIZING, "active"
-                        )
-                    budget.exit(RunStage.FINALIZING)
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.DONE,
-                        error_code=None,
-                        error_message=None,
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=now,
-                        thinking=done_thinking(thinking),
-                    )
-                    yield StreamEvent(kind="done")
-                    return
-                if run_event.kind == "process":
-                    if run_event.state is None:
-                        continue
-                    yield StreamEvent(
-                        kind="humanizer",
-                        humanizer=ChatStreamHumanizerData(
-                            message_id=assistant_message_id,
-                            state=run_event.state,
-                            step_label=run_event.step_label,
-                            detail=run_event.detail,
-                            retryable=run_event.retryable,
-                            progress_steps=run_event.progress_steps,
-                        ),
-                    )
-                    continue
-            # Issue 06 第七轮：预算检查点后置为纯安全网——循环内真实结果
-            # 已优先消费，进行中的真实结果绝不被预算文案抹掉；走到这里
-            # 说明循环结束仍无任何草稿/真实错误可交付，此时预算耗尽才
-            # 使用 budget_exceeded（正常路径由网关截断保证终态在预算内
-            # 形成——单次调用最迟在「剩余预算 − 交接预留」处被截断）。
-            if budget.expired():
-                budget.mark_exhausted()
-                if quality_entered:
-                    budget.exit(
-                        RunStage.QUALITY_CHECK,
-                        result=RESULT_FAILED,
-                        category="qwen_structured_output",
-                    )
-                finalize_message(
-                    self._repo,
-                    account_id,
-                    assistant_message_id,
-                    status=ChatMessageStatus.ERROR,
-                    error_code="budget_exceeded",
-                    error_message=user_facing_error("budget_exceeded"),
-                    duration_ms=None,
-                    model_id=None,
-                    run_lock_id=None,
-                    started=started,
-                    now=datetime.now(UTC),
-                    thinking=failed_thinking(thinking, "budget_exceeded"),
-                )
-                yield StreamEvent(
-                    kind="error",
-                    error_code="budget_exceeded",
-                    error_message=user_facing_error("budget_exceeded"),
-                )
-                return
-        except Exception:  # noqa: BLE001 - 编排意外异常收敛为可重试错误
-            finalize_message(
-                self._repo,
-                account_id,
-                assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code="humanizer_failed",
-                error_message="人味化任务执行异常，请重试（输入已保留）。",
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=started,
-                now=datetime.now(UTC),
-                thinking=failed_thinking(thinking, "humanizer_failed"),
-            )
-            yield StreamEvent(
-                kind="error",
-                error_code="humanizer_failed",
-                error_message="人味化任务执行异常，请重试（输入已保留）。",
-            )
-        finally:
-            # 模型阶段脱敏计时（终态事件已发出，stage 关闭不额外发事件）
-            if generation_entered:
-                budget.exit(
-                    RunStage.MODEL_GENERATION, category="qwen_structured_output"
-                )
-
     # ------------------------------------------------------------------
     # Issue 29：生涯规划编排路径
     # ------------------------------------------------------------------
@@ -6003,44 +5408,6 @@ class TurnOrchestrator:
             object_refs=[slice_id] if slice_id else None,
             reason="本轮画像切片使用披露。",
             details=details,
-        )
-
-    def _audit_humanizer_profile_leak(
-        self,
-        account_id: str,
-        assistant_message_id: str,
-        profile_items: list[ProfileSliceItem],
-        result: HumanizerResultProjection,
-    ) -> None:
-        """Issue 04 不变量告警：人味化产物中出现画像原文时记录审计。
-
-        产物指结果投影 JSON（output/edits/fact_check/open_questions 等）
-        与最终正文。扫描只判断「是否出现画像原文」并记录命中条数，绝不
-        复制画像原文；未挂载观测服务或未使用画像时直接跳过。告警只作
-        观测信号，不阻断人味化交付。
-        """
-        if self._observability is None or not profile_items:
-            return
-        artifact_text = json.dumps(result.model_dump(mode="json"), ensure_ascii=False)
-        if result.output is not None:
-            artifact_text += "\n" + result.output.final_text
-        leaked_count = sum(
-            1
-            for item in profile_items
-            if item.value_or_rule and item.value_or_rule in artifact_text
-        )
-        if leaked_count == 0:
-            return
-        self._observability.log_audit(
-            actor_account_id=account_id,
-            action=AuditAction.HUMANIZER_PROFILE_LEAK,
-            result=AuditResult.BLOCKED,
-            object_refs=[assistant_message_id],
-            reason="人味化产物中出现画像原文（不变量违反）。",
-            details={
-                "profile_item_count": len(profile_items),
-                "leaked_count": leaked_count,
-            },
         )
 
     def _audit_teaching_evidence(
