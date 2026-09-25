@@ -349,12 +349,14 @@ def test_modify_item_suppresses_the_old_text_from_later_extraction(
     service.mirror_record(ALICE, record, evidence_message_id="msg-2")
 
     assert [item_.text for item_ in service.list_items(ALICE)] == ["我养了两只猫"]
-    # 抑制键只留键、不留正文：对账输出里不能出现被改掉的旧值。
+    # 抑制键只留键、不留正文：对账输出里不能出现被改掉的旧值。这里只断言
+    # 集合不看顺序：Windows 时钟粒度约 15.6ms，同一刻度内写入的两行
+    # updated_at 相同，列表顺序由条目 id 兜底。
     tombstones = repository.list_items(ALICE, include_withdrawn=True)
-    assert [(item_.status, item_.text) for item_ in tombstones] == [
+    assert {(item_.status, item_.text) for item_ in tombstones} == {
         (AtomicProfileItemStatus.WITHDRAWN, ""),
         (AtomicProfileItemStatus.ACTIVE, "我养了两只猫"),
-    ]
+    }
 
     # 用户再次明确「记住」旧正文：指令优先于抑制键，可以恢复。
     revived = service.remember(ALICE, "我养了一只猫")
