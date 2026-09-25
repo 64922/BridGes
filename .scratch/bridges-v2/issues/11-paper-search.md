@@ -119,10 +119,14 @@
   单独出现：该用例起真实 worker 子进程并断言握手 1.5s 超时与墙钟 < 8s，源码注释
   即写明「并行负载下更长，否则超时与启动竞态、断言失真」；单独复跑 3/3、整文件
   14/14、6 路并发复跑 18/18 全通过，且此后所有全量产物中未再出现，判为负载抖动。
-- 还有两例（`test_openapi_sync.py::test_committed_openapi_matches_current_api`
-  与 `test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent`）
-  曾在两侧间来回漂移：单独复跑两侧均通过，属用例收集顺序敏感（本票新增
-  `tests/paper/` 会改变收集顺序），在最终这次全量里两侧都已通过，不计入差集。
+- 另有两例曾在两侧间来回漂移，均属收集顺序/时钟刻度相关，在最终这次全量里
+  两侧都已通过，故不计入差集；两者都不是本票引入的：
+  - `test_openapi_sync.py::test_committed_openapi_matches_current_api`：单跑
+    两侧均通过（main 上复跑 2 passed）。
+  - `test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent`：
+    **预存在**问题——在 main 上单跑同样失败（`assert '较新的知识兴趣' == 'CNN'`，
+    与本机 Windows 时钟粒度约 15.6ms 下「最新记录」的顺序假设有关），只在整轮
+    跑时可能通过。
 - mypy：两侧均 **115 处 / 23 文件**，且错误集合双向 `comm` 差集为空（仅行号位移）；
   本分支检查 380 个源文件、main 369 个，差额即本票新增的 11 个源文件。
 - ruff `src/`：main 311 → 分支 314，findings 集合双向差集只剩 `api/main.py` 新增
