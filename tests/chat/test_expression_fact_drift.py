@@ -138,7 +138,7 @@ def test_drifted_facts_are_restored_verbatim_in_generation_chain(
 ) -> None:
     """链路级：两种模式下模型换写受保护片段后，落库正文按用户原句逐字恢复。"""
     created = service.create_conversation("alice", mode=mode)
-    _, assistant = service.start_generation("alice", created.conversation_id, USER_QUERY)
+    _, assistant, _ = service.start_generation("alice", created.conversation_id, USER_QUERY)
     list(
         service.stream_generation(
             "alice", created.conversation_id, assistant.message_id, _context()

@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import contextlib
 import secrets
+import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,6 +28,7 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
+from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
     ConversationModeLockConflict,
@@ -129,6 +131,7 @@ from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
+from bridges.storage.errors import StorageError
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
@@ -714,7 +717,9 @@ class ChatService:
         mcp_call: dict[str, Any] | None = None,
         use_knowledge_base: bool = True,
         use_profile: bool = True,
-    ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
+        module_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> tuple[ChatMessageProjection, ChatMessageProjection, bool]:
         """原子创建用户消息、助手占位与 queued 运行，返回两者投影。
 
         Issue 02：同一事务创建用户消息、streaming 助手占位与持久化生成
@@ -722,6 +727,12 @@ class ChatService:
         由后台执行器领取执行，页面/SSE 不再拥有运行生命周期。运行快照
         本轮发送参数（``use_knowledge_base``/``use_profile``），执行器
         与重试按同一份任务契约执行。
+
+        V2 Issue 02：``module_id`` 是服务端校验的逐消息显式模块选择，随
+        用户消息持久化（模型不得从正文改写）；``idempotency_key`` 使同
+        一会话同键重试复用同一运行标识——命中时返回既有消息投影且不
+        重复写任何数据（含运行仍在进行中的情形，绝不误报冲突）。返回
+        第三个元素表示是否为幂等重放。
 
         ``skill_id``/``skill_input``（Issue 28）：携带时本轮走内置 SKILL
         编排（bridges-humanizer）；载荷随用户消息落库，重试沿用同一份
@@ -751,6 +762,14 @@ class ChatService:
             raise ChatDomainError(
                 "conversation_not_found", "对话不存在或没有访问权限。", 404
             )
+        # V2 Issue 02：同一会话同幂等键重试复用稳定运行标识——命中即返回
+        # 既有投影，不重复写用户/助手消息（运行仍在进行中也按重放处理）。
+        if idempotency_key:
+            replay = self._repo.get_run_by_idempotency_key(
+                account_id, conversation_id, idempotency_key
+            )
+            if replay is not None:
+                return (*self._replay_generation_response(account_id, replay), True)
         existing = self._repo.list_messages(account_id, conversation_id)
         if any(message.status == ChatMessageStatus.STREAMING for message in existing):
             raise ChatDomainError(
@@ -788,6 +807,8 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
+            module_id=module_id,
+            idempotency_key=idempotency_key,
         )
         try:
             self._repo.insert_generation_turn(
@@ -804,6 +825,15 @@ class ChatService:
                 "该会话模式已锁定，请继续使用当前模式或新建会话。",
                 409,
             ) from exc
+        except StorageError:
+            # 幂等键唯一索引兜底并发：同键竞争时败方按重放返回
+            if idempotency_key:
+                replay = self._repo.get_run_by_idempotency_key(
+                    account_id, conversation_id, idempotency_key
+                )
+                if replay is not None:
+                    return (*self._replay_generation_response(account_id, replay), True)
+            raise
         self._ensure_retrieval_decision(
             account_id=account_id,
             conversation_id=conversation_id,
@@ -835,6 +865,24 @@ class ChatService:
         return (
             self._project_message(user_message),
             self._project_message(assistant_message, run_view),
+            False,
+        )
+
+    def _replay_generation_response(
+        self, account_id: str, run: GenerationRunRecord
+    ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
+        """按既有运行组装幂等重放投影（不创建任何新数据）。"""
+        user_message = self._repo.get_message(account_id, run.user_message_id)
+        assistant_message = self._repo.get_message(account_id, run.assistant_message_id)
+        if user_message is None or assistant_message is None:
+            raise ChatDomainError(
+                "generation_replay_unavailable",
+                "原请求的数据已不可用，请重新发送消息。",
+                409,
+            )
+        return (
+            self._project_message(user_message),
+            self._project_message(assistant_message, self._run_view(run, account_id)),
         )
 
     def _validate_turn_payloads(
@@ -923,12 +971,15 @@ class ChatService:
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
+        module_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> tuple[MessageRecord, MessageRecord, GenerationRunRecord, dict[str, Any]]:
         """组装一轮的用户消息、助手占位、queued 运行与 started 载荷。
 
         供续轮（``start_generation``）与原子首轮（``start_first_turn``）
         共用；调用方负责事务写入与幂等语义。运行创建即视为"活跃"，
-        读取收敛不会误伤（判定源为运行表）。
+        读取收敛不会误伤（判定源为运行表）。V2 Issue 02：``module_id``
+        随用户消息持久化；运行记录写入图版本与幂等键。
         """
         thinking = initial_thinking(mode).model_dump(mode="json")
         web_search = (
@@ -974,6 +1025,7 @@ class ChatService:
             video=video_payload,
             mcp_call=mcp_call_payload,
             route=route.model_dump(mode="json"),
+            module_id=module_id,
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -1029,6 +1081,8 @@ class ChatService:
             duration_ms=None,
             created_at=now,
             updated_at=now,
+            graph_version=DAILY_GRAPH_VERSION,
+            idempotency_key=idempotency_key,
         )
         started_payload = _started_event_payload(
             conversation_id=conversation_id,
@@ -1157,6 +1211,7 @@ class ChatService:
         mcp_call: dict[str, Any] | None = None,
         use_knowledge_base: bool = True,
         use_profile: bool = True,
+        module_id: str | None = None,
     ) -> ChatFirstTurnResponse:
         """原子创建新会话首轮（Issue 03）：会话、用户消息、助手占位与
         queued 运行在同一事务内落库，返回完整投影。
@@ -1239,6 +1294,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
+            module_id=module_id,
         )
         created_id, created, conflict_not_empty = self._repo.insert_first_turn(
             account_id=account_id,
@@ -1480,7 +1536,8 @@ class ChatService:
         message_id: str,
         use_knowledge_base: bool = True,
         use_profile: bool = True,
-    ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
+        idempotency_key: str | None = None,
+    ) -> tuple[ChatMessageProjection, ChatMessageProjection, bool]:
         """为已终态（失败/停止/完成）的助手消息创建新的助手尝试。
 
         尝试号递增，历史尝试原样保留（含错误状态），新尝试成为该轮的
@@ -1488,6 +1545,9 @@ class ChatService:
         新尝试在同一事务创建 queued 运行并持久化 started 事件，由后台
         执行器领取执行（与发送同一外壳）。``use_knowledge_base``/
         ``use_profile`` 沿用旧尝试轮次的开关，随运行快照落库。
+
+        V2 Issue 02：``idempotency_key`` 使同会话同键重试复用同一运行
+        （返回既有投影，不创建新尝试）；返回第三个元素表示幂等重放。
         """
         message = self._repo.get_message(account_id, message_id)
         if message is None or message.conversation_id != conversation_id:
@@ -1503,6 +1563,13 @@ class ChatService:
             raise ChatDomainError(
                 "conversation_not_found", "对话不存在或没有访问权限。", 404
             )
+        # V2 Issue 02：同幂等键重试复用稳定运行标识（含仍在进行中的运行）。
+        if idempotency_key:
+            replay = self._repo.get_run_by_idempotency_key(
+                account_id, conversation_id, idempotency_key
+            )
+            if replay is not None:
+                return (*self._replay_generation_response(account_id, replay), True)
         existing = self._repo.list_messages(account_id, conversation_id)
         if any(m.status == ChatMessageStatus.STREAMING for m in existing):
             raise ChatDomainError(
@@ -1663,6 +1730,8 @@ class ChatService:
             duration_ms=None,
             created_at=now,
             updated_at=now,
+            graph_version=DAILY_GRAPH_VERSION,
+            idempotency_key=idempotency_key,
         )
         started_payload = _started_event_payload(
             conversation_id=conversation_id,
@@ -1692,6 +1761,60 @@ class ChatService:
         return (
             self._project_message(owner),
             self._project_message(new_attempt, self._run_view(run_record, account_id)),
+            False,
+        )
+
+    # ------------------------------------------------------------------
+    # V2 Issue 02：日常父图执行入口与上下文编译 seam
+    # ------------------------------------------------------------------
+
+    def ensure_turn_context(self, run: GenerationRunRecord) -> None:
+        """编译本轮上下文基础：检索决策（幂等；Issue 03 扩展为编译器）。
+
+        由日常父图 ``compile_context`` 节点调用。入队前的服务层已按同一
+        参数保存过决策时，这里是幂等补齐（租约恢复/重试路径同样有效）。
+        """
+        user_message = self._repo.get_message(run.account_id, run.user_message_id)
+        if user_message is None:
+            return
+        conversation = self._repo.get_conversation(
+            run.account_id, run.conversation_id
+        )
+        mode = (
+            ChatMode(conversation.mode)
+            if conversation is not None
+            else CHAT_MODE
+        )
+        self._ensure_retrieval_decision(
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            assistant_message_id=run.assistant_message_id,
+            user_message_id=run.user_message_id,
+            query=user_message.content,
+            mode=mode,
+            use_knowledge_base=(run.config or {}).get("use_knowledge_base", True),
+            image_payload=user_message.image,
+            video_payload=user_message.video,
+            mcp_call_payload=user_message.mcp_call,
+        )
+
+    def run_graph_turn(
+        self,
+        run: GenerationRunRecord,
+        *,
+        on_event: Callable[[StreamEvent], None],
+        stop_event: threading.Event | None = None,
+    ) -> str | None:
+        """驱动日常 LangGraph 父图执行本轮（事件实时回调，返回最后 kind）。
+
+        执行器把 ``on_event`` 接到游标事件持久化上；停止信号与终态收敛
+        语义见 :mod:`bridges.chat.graph`。
+        """
+        return run_daily_turn(
+            self,
+            run,
+            on_event=on_event,
+            stop_event=stop_event,
         )
 
     def _ensure_retrieval_decision(
@@ -2096,6 +2219,10 @@ class ChatService:
             attempt_count=run.attempt_count,
             created_at=run.created_at,
             updated_at=run.updated_at,
+            graph_version=run.graph_version,
+            current_node=run.current_node,
+            wait_reason=run.wait_reason,
+            model_lock_id=run.model_lock_id,
         )
 
     def _project_message(

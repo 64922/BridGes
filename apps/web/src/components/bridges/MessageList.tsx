@@ -16,6 +16,7 @@ import type {
   CareerPlanningProjection,
   ChatStreamCareerData,
   ChatStreamHumanizerData,
+  ChatStreamNodeData,
   ChatStreamStageData,
   HumanizerResultProjection,
   ImageTaskProjection,
@@ -60,6 +61,16 @@ export const STAGE_LABEL: Record<string, string> = {
   finalizing: "整理收尾",
 };
 
+// V2 Issue 02：日常父图节点中文名（node 事件只映射真实开始/完成的节点）。
+export const NODE_LABEL: Record<string, string> = {
+  validate_turn: "校验回合",
+  compile_context: "编译上下文",
+  select_explicit_module: "选择模块",
+  invoke_subgraph_or_chat: "生成回答",
+  verify_output: "核验输出",
+  persist_result: "保存结果",
+};
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -82,6 +93,8 @@ export interface ChatMessage {
   contextNote?: ContextNoteProjection | null;
   /** Issue 06：流式中的统一阶段状态（检索/生成/检查/收尾，脱敏） */
   stage?: ChatStreamStageData | null;
+  /** V2 Issue 02：进行中的父图节点（started 时非空，completed 即清空）。 */
+  node?: ChatStreamNodeData | null;
   /** Issue 28：文章人味化结果投影（助手消息）；非人味化消息为 null */
   humanizer?: HumanizerResultProjection | null;
   /** Issue 28：用户消息的 SKILL 载荷快照（任务摘要展示）；普通消息为 null */
@@ -648,12 +661,17 @@ export function MessageList({
                   message.content
                 )}
 
-                {message.status === "streaming" && message.stage != null && (
+                {message.status === "streaming" && message.node != null && (
+                  <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
+                    {NODE_LABEL[message.node.node] ?? "正在生成回答"}…
+                  </p>
+                )}
+                {message.status === "streaming" && message.node == null && message.stage != null && (
                   <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
                     {STAGE_LABEL[message.stage.stage] ?? "正在生成回答"}…
                   </p>
                 )}
-                {message.status === "streaming" && message.stage == null && (
+                {message.status === "streaming" && message.node == null && message.stage == null && (
                   <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
                     正在生成回答…
                   </p>

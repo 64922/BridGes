@@ -419,8 +419,8 @@ def test_new_account_without_any_key_can_send_and_receive_answer(
     events = _subscribe_all(
         client, conversation_id, created["assistant_message"]["message_id"]
     )
-    assert [e[0] for e in events if e[0] != "stage"] == ["started", "delta", "done"]
-    done = events[-1][1]
+    assert [e[0] for e in events if e[0] not in ("stage", "node")] == ["started", "delta", "done"]
+    done = [e for e in events if e[0] == "done"][-1][1]
     assert done["message"]["status"] == "done"
     history = client.get(f"/chat/conversations/{conversation_id}").json()
     assert [m["status"] for m in history["messages"]] == ["done", "done"]
@@ -453,7 +453,7 @@ def test_send_streams_started_delta_done_and_persists_history(
     events = _subscribe_all(client, conversation_id, message_id)
     # Issue 06：阶段事件与 started/delta/done 同一事件流；断言只看
     # 内容事件（stage 为独立阶段埋点，不参与正文序列）。
-    content_events = [e for e in events if e[0] != "stage"]
+    content_events = [e for e in events if e[0] not in ("stage", "node")]
     assert [e[0] for e in content_events] == ["started", "delta", "done"]
     started = content_events[0][1]
     assert started["conversation_id"] == conversation_id
@@ -491,7 +491,7 @@ def test_send_multi_delta_streaming_via_programmable_adapter(
     created = _send(client, conversation_id, "你好")
     _drive_executor(sqlite_app)
     events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
-    content_kinds = [e[0] for e in events if e[0] != "stage"]
+    content_kinds = [e[0] for e in events if e[0] not in ("stage", "node")]
     assert content_kinds == ["started", "delta", "delta", "delta", "done"]
     assert "".join(e[1]["delta"] for e in events if e[0] == "delta") == "第一第二第三"
 
@@ -507,7 +507,7 @@ def test_send_failure_streams_error_event_and_persists_actionable_message(
     created = _send(client, conversation_id, "你好")
     _drive_executor(sqlite_app)
     events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
-    content_events = [e for e in events if e[0] != "stage"]
+    content_events = [e for e in events if e[0] not in ("stage", "node")]
     assert [e[0] for e in content_events] == ["started", "error"]
     error = content_events[1][1]["error"]
     assert error["code"] == "rate_limit"
@@ -532,7 +532,7 @@ def test_subscribe_after_run_terminal_replays_all_events_and_ends(
     _drive_executor(sqlite_app)
     # 从任意游标订阅都能拿到剩余事件并结束（这里从 0 全量回放）
     events = _subscribe_all(client, conversation_id, message_id, cursor=0)
-    assert [e[0] for e in events if e[0] != "stage"] == ["started", "delta", "done"]
+    assert [e[0] for e in events if e[0] not in ("stage", "node")] == ["started", "delta", "done"]
     # 从最后游标订阅：立即空流结束
     with client.stream(
         "GET",
@@ -632,7 +632,7 @@ def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) 
     events = _subscribe_all(
         client, conversation_id, retried["assistant_message"]["message_id"]
     )
-    assert [e[0] for e in events if e[0] != "stage"] == ["started", "delta", "done"]
+    assert [e[0] for e in events if e[0] not in ("stage", "node")] == ["started", "delta", "done"]
 
     history = client.get(f"/chat/conversations/{conversation_id}").json()
     assistants = [m for m in history["messages"] if m["role"] == "assistant"]
@@ -750,8 +750,7 @@ def test_restart_runtime_restores_same_conversation(
     # 新进程后台执行器领取并完成同一运行
     _drive_executor(app2)
     events = _subscribe_all(client2, conversation_id, message_id)
-    assert events[-1][0] == "done"
-    assert events[-1][1]["message"]["status"] == "done"
+    assert [e for e in events if e[0] == "done"][-1][1]["message"]["status"] == "done"
     restored = client2.get(f"/chat/conversations/{conversation_id}").json()
     assert [(m["role"], m["status"]) for m in restored["messages"]] == [
         ("user", "done"),
@@ -806,7 +805,7 @@ def test_sse_carries_thinking_in_started_and_done(
     ]
     assert started["thinking"]["evidence"] == []
     assert started["thinking"]["tools"] == []
-    done = events[-1]
+    done = [e for e in events if e[0] == "done"][-1]
     assert done[0] == "done"
     assert done[1]["message"]["thinking"]["steps"] == [
         "理解你的问题与当前语境",
@@ -828,7 +827,7 @@ def test_error_event_keeps_thinking_and_duration(
     created = _send(client, conversation_id, "你好")
     _drive_executor(sqlite_app)
     events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
-    error = events[-1]
+    error = [e for e in events if e[0] == "error"][-1]
     assert error[0] == "error"
     # 失败保留已完成摘要并显示中文状态
     assert error[1]["thinking"] is not None

@@ -102,7 +102,9 @@ def _with_chunks(
 
 
 def _start(service: ChatService, conversation_id: str, content: str = "你好"):
-    return service.start_generation("alice", conversation_id, content)
+    # V2 Issue 02 起 start_generation 返回 (用户消息, 助手消息, 幂等重放标记)
+    user_msg, assistant_msg, _ = service.start_generation("alice", conversation_id, content)
+    return user_msg, assistant_msg
 
 
 def _lock_rows(database: BridgesDatabase, account_id: str = "alice") -> list[dict[str, Any]]:
@@ -332,7 +334,7 @@ def test_retry_attempts_produce_distinct_locks(
     )
 
     service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="成功回答")])
-    _, retried = service.retry_generation(
+    _, retried, _ = service.retry_generation(
         "alice", created.conversation_id, failed.message_id
     )
     list(

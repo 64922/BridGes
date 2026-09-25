@@ -20,6 +20,9 @@ dependencies = [
     "pymupdf>=1.28",
     "cryptography>=42.0",
     "keyring>=25.0",
+    # V2 Issue 02：日常父图（validate_turn → … → persist_result）用
+    # LangGraph 编排；检查点经本仓库事务 SQLite 适配器持久化。
+    "langgraph>=1.2,<2",
     # GQ-08：Windows 无系统 IANA 时区库，zoneinfo 需要 tzdata 包提供
     # （提醒时区换算依赖，缺失时 Asia/Shanghai 等时区校验直接崩溃）。
     "tzdata>=2024.1; platform_system == \"Windows\"",

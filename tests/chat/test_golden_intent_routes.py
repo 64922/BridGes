@@ -188,7 +188,7 @@ def test_unselected_specialty_requests_stay_ordinary(
     service = _chat_service(tmp_path)
     conversation = service.create_conversation("alice")
 
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, content
     )
 
@@ -218,7 +218,7 @@ def test_golden_ordinary_persists_ordinary_snapshot(
     service = _chat_service(tmp_path)
     conversation = service.create_conversation("alice")
 
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, content
     )
 

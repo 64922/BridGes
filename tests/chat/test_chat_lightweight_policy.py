@@ -623,7 +623,7 @@ def test_ordinary_generation_uses_exactly_one_model_call(counting_env) -> None:
     context = counting_env["context"]
 
     created = service.create_conversation("alice")
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", created.conversation_id, "什么是黑洞？讲讲原理"
     )
     list(
@@ -650,7 +650,7 @@ def test_retry_reuses_stored_form_snapshot_without_second_compile(counting_env) 
     context = counting_env["context"]
 
     created = service.create_conversation("alice")
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", created.conversation_id, "什么是黑洞？"
     )
     list(
@@ -663,7 +663,7 @@ def test_retry_reuses_stored_form_snapshot_without_second_compile(counting_env) 
     ).config["global_writing_policy"]
 
     # 创建重试尝试（沿用旧轮次策略快照）。
-    owner, retried = service.retry_generation(
+    owner, retried, _ = service.retry_generation(
         "alice", created.conversation_id, assistant.message_id
     )
     list(
@@ -691,7 +691,7 @@ def test_streaming_generation_keeps_business_terminal_state(counting_env) -> Non
     context = counting_env["context"]
 
     created = service.create_conversation("alice")
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", created.conversation_id, "光速是多少？"
     )
     events = list(

@@ -271,20 +271,16 @@ class GenerationRunExecutor:
         heartbeat.start()
         started = time.monotonic()
         try:
-            config = run.config or {}
-            stream = self._service.stream_generation(
-                account_id,
-                run.conversation_id,
-                run.assistant_message_id,
-                chat_run_context(account_id, run.conversation_id, run_id),
-                until_user_message_id=run.user_message_id,
-                use_knowledge_base=config.get("use_knowledge_base", True),
-                use_profile=config.get("use_profile", True),
+            # V2 Issue 02：本轮经日常 LangGraph 父图执行（固定节点链 +
+            # 检查点持久化 + 可取消节点边界）。事件（node 进度与编排管线
+            # 事件）经回调实时持久化为游标事件；停止信号沿用既有看门狗。
+            last_kind = self._service.run_graph_turn(
+                run,
+                on_event=lambda event: self._persist_event(
+                    account_id, run_id, run.assistant_message_id, event
+                ),
+                stop_event=stop_event,
             )
-            last_kind: str | None = None
-            for event in stream:
-                self._persist_event(account_id, run_id, run.assistant_message_id, event)
-                last_kind = event.kind
             # turn 的停止/空产出路径不发事件：按消息终态补发诚实终态事件
             self._ensure_terminal_event(account_id, run_id, run.assistant_message_id, last_kind)
         finally:

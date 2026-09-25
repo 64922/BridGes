@@ -32,7 +32,7 @@ def test_unselected_paper_prompt_does_not_retry_arxiv(tmp_path: Path) -> None:
         _CapturingAdapter(),
     )
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "搜索量子纠错论文"
     )
 
@@ -63,7 +63,7 @@ def test_retry_of_unselected_paper_prompt_stays_ordinary(tmp_path: Path) -> None
         _CapturingAdapter(),
     )
     conversation = service.create_conversation("alice")
-    user, first = service.start_generation(
+    user, first, _ = service.start_generation(
         "alice", conversation.conversation_id, "搜索量子纠错论文"
     )
     list(
@@ -76,7 +76,7 @@ def test_retry_of_unselected_paper_prompt_stays_ordinary(tmp_path: Path) -> None
         )
     )
 
-    _, retry = service.retry_generation("alice", conversation.conversation_id, first.message_id)
+    _, retry, _ = service.retry_generation("alice", conversation.conversation_id, first.message_id)
     events = list(
         service.stream_generation(
             "alice",

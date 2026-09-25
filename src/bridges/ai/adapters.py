@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         ChatStreamHumanizerData,
         ChatStreamImageData,
         ChatStreamMcpData,
+        ChatStreamNodeData,
         ChatStreamStageData,
         ChatStreamVideoData,
     )
@@ -206,6 +207,8 @@ class StreamEvent:
     lock: ModelRunLock | None = None
     usage: dict[str, Any] | None = field(default=None, repr=False)
     stage: ChatStreamStageData | None = field(default=None, repr=False)
+    #: V2 Issue 02：日常父图节点进度（started/completed，只映射真实步骤）。
+    node: "ChatStreamNodeData | None" = field(default=None, repr=False)
     humanizer: ChatStreamHumanizerData | None = field(default=None, repr=False)
     career: ChatStreamCareerData | None = field(default=None, repr=False)
     image: ChatStreamImageData | None = field(default=None, repr=False)

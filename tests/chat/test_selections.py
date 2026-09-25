@@ -305,7 +305,7 @@ def _send(chat: Any, account: str, conversation_id: str, content: str) -> None:
 
     from bridges.contracts.projects import ObjectDomain
 
-    user, assistant = chat.start_generation(
+    user, assistant, _ = chat.start_generation(
         account, conversation_id, content
     )
     context = RunContextEnvelope(

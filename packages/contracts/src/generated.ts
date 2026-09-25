@@ -445,11 +445,7 @@ export interface paths {
         put?: never;
         /**
          * Create Conversation
-         * @description 新建对话；标题可选，缺省由首条消息自动推导。
-         *
-         *     ``mode`` 缺省为日常陪伴；历史学习项目会话仅通过读取接口兼容。
-         *     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
-         *     逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
+         * @description 拒绝空会话；新会话必须由首条消息在同一事务中创建。
          */
         post: operations["create_conversation_chat_conversations_post"];
         delete?: never;
@@ -797,6 +793,8 @@ export interface paths {
          *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留；运行经后台
          *     执行器领取执行（与发送同一外壳）。检索作用域沿用被重试尝试轮次的
          *     设置（含知识库开关），不重复用户消息。重试与发送同源（GQ-02）。
+         *     V2 Issue 02：``idempotency_key`` 抵御网络重放——同会话同键重试复用
+         *     同一运行（``idempotent_replay=True``），不创建重复尝试。
          */
         post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
         delete?: never;
@@ -8013,10 +8011,10 @@ export interface components {
         };
         /**
          * ChatCreateRequest
-         * @description 新建对话请求；标题可选，缺省由首条消息自动推导。
+         * @description 已退役的空会话创建请求结构。
          *
-         *     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。
-         *     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话）。
+         *     保留字段以便旧请求得到明确拒绝；新会话必须通过首条消息原子创建。
+         *     学习模式与用户插件选择未开放。
          */
         ChatCreateRequest: {
             /**
@@ -8078,6 +8076,8 @@ export interface components {
              * @description 客户端生成的一次性幂等键；同账户同键重放返回同一份数据。
              */
             idempotency_key: string;
+            /** @description 日常模式显式模块标识（V2 Issue 02）；随首条用户消息持久化。 */
+            module_id?: components["schemas"]["ChatModuleId"] | null;
             /**
              * Conversation Id
              * @description 已预建的空会话标识（附件上传路径）；缺省在事务内新建会话。
@@ -8170,6 +8170,13 @@ export interface components {
              * @default true
              */
             use_knowledge_base: boolean;
+            /** @description 日常模式显式模块标识（V2 Issue 02）；服务端按枚举校验并随用户消息持久化，模型不得从正文改写。普通对话为 None。 */
+            module_id?: components["schemas"]["ChatModuleId"] | null;
+            /**
+             * Idempotency Key
+             * @description 客户端生成的一次性幂等键（V2 Issue 02）；同一会话同键重试复用同一运行标识，不重复写用户/助手消息。缺省不启用幂等。
+             */
+            idempotency_key?: string | null;
             /**
              * Skill Id
              * @description 内置 SKILL 注册标识（Issue 28）；携带时本轮走 SKILL 编排而非普通回答。
@@ -8363,6 +8370,16 @@ export interface components {
             mode: components["schemas"]["ChatMode"];
         };
         /**
+         * ChatModuleId
+         * @description 日常模式逐消息显式模块标识（V2 Issue 02 编排合同）。
+         *
+         *     只允许六个显式值：服务端按此枚举校验请求，随用户消息持久化；日常
+         *     父图 ``select_explicit_module`` 节点只读该持久化值派发子图，模型
+         *     不得从正文改写或自行启动模块。普通对话为 ``None``。
+         * @enum {string}
+         */
+        ChatModuleId: "paper" | "commute" | "resources" | "tieba" | "career" | "github";
+        /**
          * ChatPluginSelectionItem
          * @description 对话级插件选择条目（Issue 36）。
          *
@@ -8382,6 +8399,20 @@ export interface components {
              * @description SKILL 插件标识或 MCP 服务器标识。
              */
             plugin_id: string;
+        };
+        /**
+         * ChatRetryRequest
+         * @description 重试助手消息的请求体（V2 Issue 02）。
+         *
+         *     ``idempotency_key`` 抵御网络重放：同一会话同键重试复用同一运行，
+         *     不重复创建新助手尝试。缺省沿用既有「每次重试创建新尝试」语义。
+         */
+        ChatRetryRequest: {
+            /**
+             * Idempotency Key
+             * @description 客户端生成的一次性幂等键；同一会话同键重试复用同一运行。
+             */
+            idempotency_key?: string | null;
         };
         /**
          * ChatRunStartedResponse
@@ -8406,6 +8437,12 @@ export interface components {
             user_message: components["schemas"]["ChatMessageProjection"];
             /** @description 助手消息投影。 */
             assistant_message: components["schemas"]["ChatMessageProjection"];
+            /**
+             * Idempotent Replay
+             * @description True 表示同幂等键重放（复用既有运行，未创建新数据）。
+             * @default false
+             */
+            idempotent_replay: boolean;
         };
         /**
          * ChatRunStatus
@@ -8458,6 +8495,26 @@ export interface components {
              * @description 运行最近更新时间。
              */
             updated_at: string;
+            /**
+             * Graph Version
+             * @description 编排图名称/版本（V2 Issue 02；旧运行无图版本为 None）。
+             */
+            graph_version?: string | null;
+            /**
+             * Current Node
+             * @description 当前执行/最后到达的图节点（V2 Issue 02；失败定位依据）。
+             */
+            current_node?: string | null;
+            /**
+             * Wait Reason
+             * @description 持久等待原因（澄清/逐题等待由后续切片写入；本切片为 None）。
+             */
+            wait_reason?: string | null;
+            /**
+             * Model Lock Id
+             * @description 本轮模型运行锁标识（V2 Issue 02）。
+             */
+            model_lock_id?: string | null;
         };
         /**
          * ChatStopResponse
@@ -8615,14 +8672,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamNodeData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "stage" | "delta" | "error" | "done" | "humanizer" | "career" | "image" | "video" | "mcp_call";
+        ChatStreamEventKind: "started" | "stage" | "node" | "delta" | "error" | "done" | "humanizer" | "career" | "image" | "video" | "mcp_call";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -8708,6 +8765,44 @@ export interface components {
             message_id: string;
             /** @description 调用状态投影。 */
             call: components["schemas"]["McpCallMessageProjection"];
+        };
+        /**
+         * ChatStreamNodeData
+         * @description node 事件载荷：日常父图节点的真实开始/完成进度（V2 Issue 02）。
+         *
+         *     ``node`` 只映射日常父图实际开始或完成的固定节点（validate_turn → …
+         *     → persist_result）：started 在节点体执行前发出，completed 仅在节点
+         *     体成功返回后发出——失败节点只有 started 与随后的 error 事件，绝不
+         *     伪造完成。前端据此展示真实执行进度，失败时按运行视图 ``current_node``
+         *     定位。
+         */
+        ChatStreamNodeData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "node";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /**
+             * Node
+             * @description 日常父图节点名（validate_turn/…/persist_result）。
+             */
+            node: string;
+            /**
+             * Status
+             * @description 节点状态：started 进入；completed 成功完成。
+             * @enum {string}
+             */
+            status: "started" | "completed";
+            /**
+             * Duration Ms
+             * @description 节点耗时（毫秒，completed 携带）。
+             */
+            duration_ms?: number | null;
         };
         /**
          * ChatStreamStageData
@@ -24492,15 +24587,6 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatConversationProjection"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -24510,8 +24596,8 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
-            422: {
+            /** @description Successful Response */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24519,8 +24605,8 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Service Unavailable */
-            503: {
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25653,7 +25739,11 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ChatRetryRequest"] | null;
+            };
+        };
         responses: {
             /** @description 创建响应：新尝试已落库、生成运行已入队；随后订阅持久化事件 */
             200: {

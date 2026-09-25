@@ -105,7 +105,7 @@ def test_paper_route_keeps_arxiv_only_request_inside_its_own_budget(
         _CapturingAdapter(),
     )
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice",
         conversation.conversation_id,
         "给我找几篇Transformer方向相关的论文",

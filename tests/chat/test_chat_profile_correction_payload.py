@@ -100,7 +100,7 @@ def test_chat_persists_correction_before_model_payload(tmp_path: Path) -> None:
     )
 
     conversation = service.create_conversation("account-alice")
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "account-alice", conversation.conversation_id, "把我的关注点换成 CNN"
     )
     run = service._repo.get_run_by_message("account-alice", assistant.message_id)

@@ -56,6 +56,22 @@ class ChatMode(StrEnum):
     STUDY = "study"
 
 
+class ChatModuleId(StrEnum):
+    """日常模式逐消息显式模块标识（V2 Issue 02 编排合同）。
+
+    只允许六个显式值：服务端按此枚举校验请求，随用户消息持久化；日常
+    父图 ``select_explicit_module`` 节点只读该持久化值派发子图，模型
+    不得从正文改写或自行启动模块。普通对话为 ``None``。
+    """
+
+    PAPER = "paper"
+    COMMUTE = "commute"
+    RESOURCES = "resources"
+    TIEBA = "tieba"
+    CAREER = "career"
+    GITHUB = "github"
+
+
 class ChatThinkingSummary(BaseModel):
     """面向用户的可公开思考摘要（Issue 14）。
 
@@ -474,6 +490,18 @@ class ChatMessageCreateRequest(BaseModel):
     use_knowledge_base: bool = Field(
         default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
     )
+    module_id: ChatModuleId | None = Field(
+        default=None,
+        description="日常模式显式模块标识（V2 Issue 02）；服务端按枚举校验并随"
+        "用户消息持久化，模型不得从正文改写。普通对话为 None。",
+    )
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+        description="客户端生成的一次性幂等键（V2 Issue 02）；同一会话同键重试"
+        "复用同一运行标识，不重复写用户/助手消息。缺省不启用幂等。",
+    )
     skill_id: str | None = Field(
         default=None,
         description="内置 SKILL 注册标识（Issue 28）；携带时本轮走 SKILL 编排而非普通回答。",
@@ -517,6 +545,10 @@ class ChatFirstTurnRequest(BaseModel):
         min_length=8,
         max_length=128,
         description="客户端生成的一次性幂等键；同账户同键重放返回同一份数据。",
+    )
+    module_id: ChatModuleId | None = Field(
+        default=None,
+        description="日常模式显式模块标识（V2 Issue 02）；随首条用户消息持久化。",
     )
     conversation_id: str | None = Field(
         default=None,
@@ -670,6 +702,21 @@ class ChatRunView(BaseModel):
     attempt_count: int = Field(default=0, description="领取执行次数（租约恢复递增）。")
     created_at: datetime = Field(description="运行创建时间。")
     updated_at: datetime = Field(description="运行最近更新时间。")
+    graph_version: str | None = Field(
+        default=None,
+        description="编排图名称/版本（V2 Issue 02；旧运行无图版本为 None）。",
+    )
+    current_node: str | None = Field(
+        default=None,
+        description="当前执行/最后到达的图节点（V2 Issue 02；失败定位依据）。",
+    )
+    wait_reason: str | None = Field(
+        default=None,
+        description="持久等待原因（澄清/逐题等待由后续切片写入；本切片为 None）。",
+    )
+    model_lock_id: str | None = Field(
+        default=None, description="本轮模型运行锁标识（V2 Issue 02）。",
+    )
 
 
 class ChatRunStartedResponse(BaseModel):
@@ -684,6 +731,27 @@ class ChatRunStartedResponse(BaseModel):
     cursor: int = Field(description="创建时已持久化的事件游标（started/profile）。")
     user_message: ChatMessageProjection = Field(description="本轮用户消息投影。")
     assistant_message: ChatMessageProjection = Field(description="助手消息投影。")
+    idempotent_replay: bool = Field(
+        default=False,
+        description="True 表示同幂等键重放（复用既有运行，未创建新数据）。",
+    )
+
+
+class ChatRetryRequest(BaseModel):
+    """重试助手消息的请求体（V2 Issue 02）。
+
+    ``idempotency_key`` 抵御网络重放：同一会话同键重试复用同一运行，
+    不重复创建新助手尝试。缺省沿用既有「每次重试创建新尝试」语义。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+        description="客户端生成的一次性幂等键；同一会话同键重试复用同一运行。",
+    )
 
 
 class ChatStreamEventKind(StrEnum):
@@ -691,6 +759,7 @@ class ChatStreamEventKind(StrEnum):
 
     STARTED = "started"
     STAGE = "stage"
+    NODE = "node"
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
@@ -750,6 +819,27 @@ class ChatStreamStageData(BaseModel):
     duration_ms: int | None = Field(default=None, description="阶段耗时（毫秒，done 起携带）。")
     first_token_ms: int | None = Field(
         default=None, description="模型首可见块耗时（毫秒，仅 model_generation 阶段）。"
+    )
+
+
+class ChatStreamNodeData(BaseModel):
+    """node 事件载荷：日常父图节点的真实开始/完成进度（V2 Issue 02）。
+
+    ``node`` 只映射日常父图实际开始或完成的固定节点（validate_turn → …
+    → persist_result）：started 在节点体执行前发出，completed 仅在节点
+    体成功返回后发出——失败节点只有 started 与随后的 error 事件，绝不
+    伪造完成。前端据此展示真实执行进度，失败时按运行视图 ``current_node``
+    定位。
+    """
+
+    kind: Literal["node"] = "node"
+    message_id: str = Field(description="助手消息标识。")
+    node: str = Field(description="日常父图节点名（validate_turn/…/persist_result）。")
+    status: Literal["started", "completed"] = Field(
+        description="节点状态：started 进入；completed 成功完成。"
+    )
+    duration_ms: int | None = Field(
+        default=None, description="节点耗时（毫秒，completed 携带）。"
     )
 
 
@@ -879,6 +969,7 @@ class ChatStreamEvent(BaseModel):
     data: Annotated[
         ChatStreamStartedData
         | ChatStreamStageData
+        | ChatStreamNodeData
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData

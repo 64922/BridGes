@@ -219,7 +219,7 @@ def test_stage_events_in_expected_order_with_desensitized_payloads(
     # 每个阶段先 active 后结束
     for stage in ("local_retrieval", "public_search", "model_generation"):
         assert statuses[stages.index(stage)] == "active"
-    assert events[-1][0] == "done"
+    assert [e for e in events if e[0] == "done"][-1][0] == "done"
     # 脱敏契约：stage 载荷不含消息/查询正文
     for name, payload in events:
         if name == "stage":
@@ -268,7 +268,7 @@ def test_parallel_searches_wall_clock_approaches_slower_source(
     service._turn._web_search = fake_web  # noqa: SLF001 - 测试注入 seam
     service._turn._arxiv_search = fake_arxiv  # noqa: SLF001
     conversation = service.create_conversation("alice")
-    user, assistant = service.start_generation(
+    user, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "Please search the latest progress"
     )
     context = RunContextEnvelope(
@@ -324,7 +324,7 @@ def test_slow_search_degrades_within_stage_budget_not_waiting(
     elapsed = time.monotonic() - started
     assert elapsed < 20.0, f"慢搜索不得拖垮主流程（实耗 {elapsed:.1f}s）"
     # 搜索超时后继续模型知识回答，但正文必须显式标记未联网核实。
-    assert events[-1][0] == "done"
+    assert [e for e in events if e[0] == "done"][-1][0] == "done"
 
 
 def test_public_search_stage_wall_clock_respects_scaled_deadline_plus_tolerance(
@@ -382,7 +382,7 @@ def test_budget_exhaustion_delivers_draft_with_warning(
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)
     events = generation_helpers["subscribe"](client, conversation_id, message_id)
-    assert events[-1][0] == "done"
+    assert [e for e in events if e[0] == "done"][-1][0] == "done"
     final = client.get(f"/chat/conversations/{conversation_id}").json()
     assistant = [m for m in final["messages"] if m["role"] == "assistant"][0]
     assert assistant["status"] == "done"
@@ -409,9 +409,9 @@ def test_budget_exhaustion_before_content_fails_retryable(
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)
     events = generation_helpers["subscribe"](client, conversation_id, message_id)
-    assert events[-1][0] == "error"
-    assert events[-1][1]["error"]["code"] == "budget_exceeded"
-    assert events[-1][1]["error"]["retryable"] is True
+    assert [e for e in events if e[0] == "error"][-1][0] == "error"
+    assert [e for e in events if e[0] == "error"][-1][1]["error"]["code"] == "budget_exceeded"
+    assert [e for e in events if e[0] == "error"][-1][1]["error"]["retryable"] is True
     history = client.get(f"/chat/conversations/{conversation_id}").json()
     assistant = [m for m in history["messages"] if m["role"] == "assistant"][0]
     assert assistant["status"] == "error"

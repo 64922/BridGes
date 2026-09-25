@@ -104,7 +104,7 @@ def test_study_mode_marks_unverified_fallback_and_calls_model_without_evidence(
         gateway=gateway,
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "解释量子纠缠"
     )
 
@@ -202,7 +202,7 @@ def test_study_mode_challenge_is_persisted_as_provider_blocked_without_citations
         web_search_service=web_search,
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "解释量子纠缠"
     )
 
@@ -276,7 +276,7 @@ def test_study_mode_search_failure_does_not_advance_plan_or_lesson(
         web_search_service=web_search,
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "我想学习Transformer架构"
     )
 
@@ -373,7 +373,7 @@ def test_study_mode_retry_success_advances_plan_and_lesson_after_real_sources(
         web_search_service=web_search,
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "我想学习Transformer架构的相关知识"
     )
 
@@ -470,7 +470,7 @@ def test_study_mode_normal_results_provide_verified_source_and_bindable_citation
         web_search_service=web_search,
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "我想学习Transformer架构的相关知识"
     )
 
@@ -622,7 +622,7 @@ def _send_study(
     *,
     use_profile: bool = True,
 ) -> tuple[ChatMessageProjection, list[object]]:
-    _, assistant = service.start_generation(
+    _, assistant, _ = service.start_generation(
         account_id,
         conversation_id,
         content,
@@ -1119,7 +1119,7 @@ def test_study_mode_degraded_retry_creates_distinguishable_new_attempt(
         retrieval=env["retrieval"],
         client=_NowWorkingClient(),  # type: ignore[arg-type]
     )
-    _, retried = retry_service.retry_generation(
+    _, retried, _ = retry_service.retry_generation(
         account, conversation.conversation_id, final.message_id
     )
     events = list(
