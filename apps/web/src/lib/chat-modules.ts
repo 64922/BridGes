@@ -2,14 +2,14 @@ import type { IconName } from "@/components/design-system/Icon";
 import type { ChatMessageProjection } from "@/lib/api";
 
 /**
- * V2 Issue 11：日常聊天可显式选择的模块（当前只有论文搜索接入了子图）。
+ * V2 Issue 11/12：日常聊天可显式选择的模块（论文搜索与校园通勤已接入子图）。
  *
  * 这里只有菜单/历史标签用的中文名称与说明；模块的检索行为完全由服务端
  * 在显式派发后执行。``id`` 与后端 ``ChatModuleId`` 取值一致，
  * 随每条用户消息持久化——历史的模块标识只读消息记录，不随新选择改变。
  */
 export interface ChatModuleOption {
-  id: "paper";
+  id: "paper" | "commute";
   label: string;
   description: string;
   icon: IconName;
@@ -21,6 +21,12 @@ export const CHAT_MODULES: readonly ChatModuleOption[] = [
     label: "论文搜索",
     description: "按主题检索 arXiv 论文，给出阅读顺序与真实链接",
     icon: "paperSearch",
+  },
+  {
+    id: "commute",
+    label: "校园通勤",
+    description: "按步行／自行车／电动车查校内路线，只画高德返回的路径",
+    icon: "route",
   },
 ];
 
@@ -52,6 +58,23 @@ export function hasPendingPaperClarification(
     if (!search) continue;
     if (search.pending?.module_id === "paper") return true;
     if (search.status === "success" || search.status === "empty") return false;
+  }
+  return false;
+}
+
+/**
+ * 历史里最后一条通勤消息是否仍在等待用户回答（V2 Issue 12 等待状态恢复）。
+ *
+ * 通勤的等待只有一种原因：缺少起终点或方式、地点无匹配、候选冲突。最后一条
+ * 带通勤投影的消息即权威结论——它在等就恢复「已选校园通勤」，否则不恢复。
+ */
+export function hasPendingCommuteClarification(
+  messages: readonly ChatMessageProjection[]
+): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const route = messages[index]?.commute_route;
+    if (!route) continue;
+    return route.pending?.module_id === "commute";
   }
   return false;
 }

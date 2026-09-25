@@ -1947,6 +1947,7 @@ def finalize_message(
     teaching: dict[str, Any] | None = None,
     persist_learning: Callable[[], None] | None = None,
     paper_search: dict[str, Any] | None = None,
+    commute_route: dict[str, Any] | None = None,
 ) -> None:
     """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。
 
@@ -1975,6 +1976,7 @@ def finalize_message(
         web_search=web_search,
         arxiv_search=arxiv_search,
         paper_search=paper_search,
+        commute_route=commute_route,
         teaching=teaching,
         persist_learning=persist_learning,
     )

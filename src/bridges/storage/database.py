@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 53
+SCHEMA_VERSION = 54
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2520,6 +2520,17 @@ MIGRATIONS: dict[int, list[str]] = {
             FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
                 ON DELETE CASCADE
         )
+        """,
+    ],
+    # Issue 12（V2 校园通勤）：messages 增加通勤模块的 JSON 投影。
+    # commute_route 保存校园通勤的真实状态（起终点 POI、方式、距离、基础耗时、
+    # 路径点与文字路段、课间规则缓冲、澄清等待状态、失败与停止）。旧行通过
+    # DEFAULT NULL 自然兼容；论文模块的 paper_search 与其建议列保持原样。
+    # 编号 54：52 已被 Issue 11 占用、53 已被学习书页识别与预习占用，
+    # 取当前最大号 +1；并行分支若先合入更高号，按「已在 main 上线者保留」原则让位。
+    54: [
+        """
+        ALTER TABLE messages ADD COLUMN commute_route TEXT
         """,
     ],
 }
