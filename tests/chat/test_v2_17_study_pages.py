@@ -14,9 +14,17 @@ from tests.chat.test_v2_05_photo_attachments import PNG_BYTES, _app, _register, 
 
 class StudyGateway:
     def __init__(
-        self, *, unclear: bool = False, fail_ocr: bool = False, fail_preview: bool = False
+        self,
+        *,
+        unclear: bool = False,
+        extra_unclear: bool = False,
+        low_confidence_kind: str | None = None,
+        fail_ocr: bool = False,
+        fail_preview: bool = False,
     ) -> None:
         self.unclear = unclear
+        self.extra_unclear = extra_unclear
+        self.low_confidence_kind = low_confidence_kind
         self.fail_ocr = fail_ocr
         self.fail_preview = fail_preview
         self.vision_count = 0
@@ -48,14 +56,21 @@ class StudyGateway:
                             "same_section": True,
                             "fragments": [
                                 {
-                                    "kind": "formula",
+                                    "kind": self.low_confidence_kind or "formula",
                                     "position": "中部公式",
                                     "text": "y=ax+b",
-                                    "confidence": 0.9,
+                                    "confidence": 0.5 if self.low_confidence_kind else 0.9,
                                 }
                             ],
                             "unclear": (
-                                [{"position": "中部公式", "reason": "参数 a 模糊"}]
+                                [
+                                    {"position": "中部公式", "reason": "参数 a 模糊"},
+                                    *(
+                                        [{"position": "右侧图表", "reason": "坐标模糊"}]
+                                        if self.extra_unclear
+                                        else []
+                                    ),
+                                ]
                                 if self.unclear
                                 else []
                             ),
@@ -66,7 +81,7 @@ class StudyGateway:
             )
         if capability == "qwen_structured_output":
             if '"questions"' not in payload["prompt"]:
-                refs = re.findall(r'"id":\s*"([^"]+:1)"', payload["prompt"])
+                refs = re.findall(r'"id":\s*"([^"]+)"', payload["prompt"])
                 return ModelCallResult(
                     status=ModelCallStatus.SUCCESS,
                     output={
@@ -272,3 +287,77 @@ def test_preview_failure_retries_without_reupload(tmp_path: Any, monkeypatch: An
         app.state.generation_executor.run_tick()
         reloaded = client.get(f"/chat/conversations/{conversation_id}").json()
         assert reloaded["study"]["stage"] == "tutoring"
+
+
+def test_multiple_unclear_positions_are_resolved_one_at_a_time(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = StudyGateway(unclear=True, extra_unclear=True)
+    with TestClient(app) as client:
+        _register(client, "studymultiunclear")
+        draft = _upload_draft(client, upload_id="multi-unclear").json()
+        first = _first(client, [draft["object_id"]], "multi-unclear-first")
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        supplement = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "第1页中部公式是 y=ax+b", "idempotency_key": "multi-formula"},
+        )
+        assert supplement.status_code == 200, supplement.text
+        app.state.generation_executor.run_tick()
+        waiting = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert waiting["stage"] == "awaiting_pages"
+        assert [issue["position"] for issue in waiting["pages"][0]["unclear"]] == ["右侧图表"]
+        supplement = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "第1页右侧图表横轴是时间", "idempotency_key": "multi-chart"},
+        )
+        assert supplement.status_code == 200, supplement.text
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["stage"] == "tutoring"
+
+
+def test_low_confidence_text_waits_for_confirmation(tmp_path: Any, monkeypatch: Any) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = StudyGateway(low_confidence_kind="text")
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "studylowtext")
+        draft = _upload_draft(client, upload_id="low-text").json()
+        first = _first(client, [draft["object_id"]], "low-text-first")
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["stage"] == "awaiting_pages"
+        assert study["pages"][0]["unclear"][0]["position"] == "中部公式"
+        assert gateway.calls == ["qwen_ocr", "qwen_vision"]
+
+
+def test_mixed_duplicate_page_is_reported(tmp_path: Any, monkeypatch: Any) -> None:
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = StudyGateway()
+    with TestClient(app) as client:
+        _register(client, "studyduplicate")
+        first_draft = _upload_draft(client, upload_id="duplicate-first").json()
+        first = _first(client, [first_draft["object_id"]], "duplicate-first-turn")
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        repeated = _upload_draft(client, upload_id="duplicate-repeated").json()
+        new_page = _upload_draft(
+            client, upload_id="duplicate-new", content=PNG_BYTES + b"-new"
+        ).json()
+        next_turn = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={
+                "content": "",
+                "attachment_ids": [repeated["object_id"], new_page["object_id"]],
+                "idempotency_key": "duplicate-next-turn",
+            },
+        )
+        assert next_turn.status_code == 200, next_turn.text
+        app.state.generation_executor.run_tick()
+        projection = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert len(projection["study"]["pages"]) == 2
+        assert "重复书页" in projection["messages"][-1]["content"]

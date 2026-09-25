@@ -30447,14 +30447,12 @@
           "study": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/StudyState"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Study",
             "description": "学习小节的持久化阶段、页级证据和预习问题。"
           },
           "mode_locked": {
@@ -52290,6 +52288,228 @@
         ],
         "title": "StoryboardStatus",
         "description": "结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。"
+      },
+      "StudyFragment": {
+        "properties": {
+          "fragment_id": {
+            "type": "string",
+            "title": "Fragment Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "formula",
+              "chart"
+            ],
+            "title": "Kind"
+          },
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "user"
+            ],
+            "title": "Source",
+            "default": "photo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fragment_id",
+          "kind",
+          "position",
+          "text",
+          "confidence"
+        ],
+        "title": "StudyFragment"
+      },
+      "StudyPage": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash"
+          },
+          "model_id": {
+            "type": "string",
+            "title": "Model Id"
+          },
+          "replaced_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Replaced Object Ids"
+          },
+          "fragments": {
+            "items": {
+              "$ref": "#/components/schemas/StudyFragment"
+            },
+            "type": "array",
+            "title": "Fragments"
+          },
+          "unclear": {
+            "items": {
+              "$ref": "#/components/schemas/StudyUnclear"
+            },
+            "type": "array",
+            "title": "Unclear"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "ordinal",
+          "content_hash",
+          "model_id",
+          "fragments"
+        ],
+        "title": "StudyPage"
+      },
+      "StudyQuestion": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "unit_titles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Unit Titles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "unit_titles"
+        ],
+        "title": "StudyQuestion"
+      },
+      "StudyState": {
+        "properties": {
+          "subsection_id": {
+            "type": "string",
+            "title": "Subsection Id"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "awaiting_pages",
+              "recognizing",
+              "preview",
+              "tutoring"
+            ],
+            "title": "Stage",
+            "default": "awaiting_pages"
+          },
+          "wait_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Reason"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/StudyPage"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/StudyUnit"
+            },
+            "type": "array",
+            "title": "Units"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/StudyQuestion"
+            },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subsection_id"
+        ],
+        "title": "StudyState"
+      },
+      "StudyUnclear": {
+        "properties": {
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "reason"
+        ],
+        "title": "StudyUnclear"
+      },
+      "StudyUnit": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "fragment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Fragment Ids"
+          },
+          "core": {
+            "type": "boolean",
+            "title": "Core",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "fragment_ids"
+        ],
+        "title": "StudyUnit"
       },
       "StyleDiagnosticFinding": {
         "properties": {

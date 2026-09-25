@@ -91,7 +91,11 @@ export function NewChatHome() {
           </div>
           <div className={styles.blankState} data-testid="new-chat-home">
             <div className={styles.blankStateInner}>
-              <RotatingQuote />
+              {mode === "study" ? (
+                <p className={styles.greetingTitle}>上传本节书页照片开始预习</p>
+              ) : (
+                <RotatingQuote />
+              )}
               {sendError && <ChatSendErrorBanner message={sendError.message} align="center" />}
               <Composer
                 variant="new-chat"

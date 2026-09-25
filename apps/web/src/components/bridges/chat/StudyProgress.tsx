@@ -1,16 +1,6 @@
-import styles from "./chat.module.css";
+import type { ChatConversationProjection } from "@/lib/api";
 
-interface StudyState {
-  stage: "awaiting_pages" | "recognizing" | "preview" | "tutoring";
-  wait_reason?: string | null;
-  pages: {
-    ordinal: number;
-    object_id: string;
-    replaced_object_ids?: string[];
-    fragments: { position: string; text: string; source: "photo" | "user" }[];
-    unclear: { position: string; reason: string }[];
-  }[];
-}
+import styles from "./chat.module.css";
 
 const STAGES = [
   { id: "recognizing", label: "书页识别" },
@@ -20,8 +10,7 @@ const STAGES = [
   { id: "summary", label: "总结" },
 ] as const;
 
-export function StudyProgress({ study }: { study?: Record<string, unknown> | null }) {
-  const state = study as unknown as StudyState | null | undefined;
+export function StudyProgress({ study: state }: { study?: ChatConversationProjection["study"] }) {
   const current = state?.stage === "awaiting_pages" ? "recognizing" : state?.stage ?? "recognizing";
   return (
     <section className={styles.studyProgress} aria-label="学习阶段">
@@ -52,7 +41,7 @@ export function StudyProgress({ study }: { study?: Record<string, unknown> | nul
                       {fragment.source === "user" && "（用户补录）"}
                     </li>
                   ))}
-                  {page.unclear.map((issue, index) => (
+                  {page.unclear?.map((issue, index) => (
                     <li key={index}>待补拍 {issue.position}：{issue.reason}</li>
                   ))}
                 </ul>

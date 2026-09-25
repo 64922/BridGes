@@ -8,17 +8,23 @@ describe("学习阶段与页级证据", () => {
     render(
       <StudyProgress
         study={{
+          subsection_id: "section-1",
           stage: "awaiting_pages",
           wait_reason: "unclear_page",
           pages: [
             {
               ordinal: 1,
               object_id: "photo-1",
+              content_hash: "hash-1",
+              model_id: "test-model",
               replaced_object_ids: [],
               fragments: [
                 {
+                  fragment_id: "user:1",
+                  kind: "formula",
                   position: "中部公式",
                   text: "y=ax+b",
+                  confidence: 1,
                   source: "user",
                 },
               ],

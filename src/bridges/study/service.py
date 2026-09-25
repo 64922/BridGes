@@ -21,53 +21,17 @@ from bridges.chat.run_executor import chat_run_context
 from bridges.chat.turn import failed_thinking, finalize_message, initial_thinking
 from bridges.contracts.ai import ModelCallStatus, ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus, ChatMode, ChatStreamNodeData
+from bridges.contracts.study import (
+    StudyFragment,
+    StudyPage,
+    StudyQuestion,
+    StudyState,
+    StudyUnclear,
+    StudyUnit,
+)
 from bridges.storage.database import BridgesDatabase
 
 STUDY_GRAPH_VERSION = "study-pages-v1"
-
-
-class StudyFragment(BaseModel):
-    fragment_id: str
-    kind: Literal["text", "formula", "chart"]
-    position: str
-    text: str
-    confidence: float = Field(ge=0, le=1)
-    source: Literal["photo", "user"] = "photo"
-
-
-class StudyUnclear(BaseModel):
-    position: str
-    reason: str
-
-
-class StudyPage(BaseModel):
-    object_id: str
-    ordinal: int
-    content_hash: str
-    model_id: str
-    replaced_object_ids: list[str] = Field(default_factory=list)
-    fragments: list[StudyFragment]
-    unclear: list[StudyUnclear] = Field(default_factory=list)
-
-
-class StudyUnit(BaseModel):
-    title: str
-    fragment_ids: list[str] = Field(min_length=1)
-    core: bool = True
-
-
-class StudyQuestion(BaseModel):
-    question: str
-    unit_titles: list[str] = Field(min_length=1)
-
-
-class StudyState(BaseModel):
-    subsection_id: str
-    stage: Literal["awaiting_pages", "recognizing", "preview", "tutoring"] = "awaiting_pages"
-    wait_reason: str | None = None
-    pages: list[StudyPage] = Field(default_factory=list)
-    units: list[StudyUnit] = Field(default_factory=list)
-    questions: list[StudyQuestion] = Field(default_factory=list)
 
 
 class _RecognizedFragment(BaseModel):
@@ -163,6 +127,7 @@ class StudyWorkflow:
         attachments = self._attachments.list_for_message(
             run.account_id, run.conversation_id, run.user_message_id
         )
+        duplicate_count = 0
 
         def node(name: str, body: Callable[[], _GraphState]) -> Any:
             def execute(_: _GraphState, config: RunnableConfig) -> _GraphState:
@@ -199,6 +164,17 @@ class StudyWorkflow:
 
         def invoke(capability: str, payload: dict[str, Any]) -> dict[str, Any]:
             nonlocal last_lock
+            if capability == "qwen_structured_output":
+                payload = {
+                    **payload,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "你是跨学科教材助教，只依据给定书页证据，输出有效 JSON。",
+                        },
+                        {"role": "user", "content": payload["prompt"]},
+                    ],
+                }
             result = self._service._gateway.invoke(
                 capability,
                 "1",
@@ -220,16 +196,19 @@ class StudyWorkflow:
             return result.output
 
         def recognize() -> _GraphState:
+            nonlocal duplicate_count
             state.stage = "recognizing"
             self._states.save(run.account_id, run.conversation_id, state)
             known = {page.content_hash for page in state.pages}
             duplicates = 0
             added = 0
+            supplemented = False
             for attachment in attachments:
                 if stop_event is not None and stop_event.is_set():
                     raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
                 if attachment.content_hash in known:
                     duplicates += 1
+                    duplicate_count += 1
                     continue
                 unresolved_before = [page for page in state.pages if page.unclear]
                 target_match = re.search(r"补拍第\s*(\d+)\s*页", user.content)
@@ -284,7 +263,7 @@ class StudyWorkflow:
                             " fragments(数组：kind 为 text/formula/chart、"
                             "position 为页面位置、text 为所见内容、confidence 为 0-1),"
                             " unclear(数组：position、reason)。"
-                            "逐段保留公式和图表；关键定义或公式模糊必须列入 unclear，不得猜测。"
+                            "逐段保留公式和图表；任何看不清或低置信内容必须列入 unclear，不得猜测。"
                             "后续页是否同一小节参考既有片段："
                             + json.dumps(earlier[:12], ensure_ascii=False)
                             + "；独立 OCR 结果仅供核对："
@@ -313,7 +292,8 @@ class StudyWorkflow:
                 unclear.extend(
                     StudyUnclear(position=item.position, reason="关键内容识别置信度低")
                     for item in parsed.fragments
-                    if item.kind == "formula" and item.confidence < 0.7
+                    if item.confidence < 0.7
+                    and not any(issue.position == item.position for issue in unclear)
                 )
                 if state.pages and not parsed.same_section:
                     unclear.append(
@@ -347,18 +327,32 @@ class StudyWorkflow:
                         (item for item in state.pages if item.ordinal == ordinal), None
                     )
                     if supplement_page is not None and supplement_page.unclear:
-                        supplement_page.fragments.append(
-                            StudyFragment(
-                                fragment_id=f"user:{user.message_id}",
-                                kind="text",
-                                position=supplement_page.unclear[0].position,
-                                text=user.content,
-                                confidence=1,
-                                source="user",
+                        matches = [
+                            issue
+                            for issue in supplement_page.unclear
+                            if issue.position in user.content
+                        ]
+                        if len(matches) != 1:
+                            matches = (
+                                supplement_page.unclear
+                                if len(supplement_page.unclear) == 1
+                                else []
                             )
-                        )
-                        supplement_page.unclear.clear()
-                        self._states.save(run.account_id, run.conversation_id, state)
+                        if matches:
+                            issue = matches[0]
+                            supplement_page.fragments.append(
+                                StudyFragment(
+                                    fragment_id=f"user:{user.message_id}",
+                                    kind="text",
+                                    position=issue.position,
+                                    text=user.content,
+                                    confidence=1,
+                                    source="user",
+                                )
+                            )
+                            supplement_page.unclear.remove(issue)
+                            supplemented = True
+                            self._states.save(run.account_id, run.conversation_id, state)
             unresolved = [page for page in state.pages if page.unclear]
             if unresolved:
                 state.stage = "awaiting_pages"
@@ -375,10 +369,12 @@ class StudyWorkflow:
                 return {
                     "wait": True,
                     "answer": (
-                        f"这些位置还看不清：{details}。请补拍对应位置，或按“第N页……”补录文字。"
+                        (f"检测到{duplicates}张重复书页，已跳过。" if duplicates else "")
+                        + f"这些位置还看不清：{details}。"
+                        "请补拍对应位置，或按“第N页+位置……”补录文字。"
                     ),
                 }
-            if duplicates and not added and not user.content.strip() and run.attempt_number == 1:
+            if duplicates and not added and not supplemented and run.attempt_number == 1:
                 state.stage = "awaiting_pages" if not state.units else "tutoring"
                 self._states.save(run.account_id, run.conversation_id, state)
                 return {"wait": True, "answer": "书页重复，请检查页序后重新发送。"}
@@ -398,6 +394,15 @@ class StudyWorkflow:
                 }
                 for page in state.pages
                 for fragment in page.fragments
+                if fragment.confidence >= 0.7
+                and not (
+                    fragment.source == "photo"
+                    and any(
+                        correction.source == "user"
+                        and correction.position == fragment.position
+                        for correction in page.fragments
+                    )
+                )
             ]
             mapped = invoke(
                 "qwen_structured_output",
@@ -419,9 +424,16 @@ class StudyWorkflow:
                     current_node, "study_map_invalid", "知识范围映射不完整，请重试。"
                 ) from exc
             valid_ids = {fragment["id"] for fragment in fragments}
-            if any(set(unit.fragment_ids) - valid_ids for unit in units):
+            cited_ids = {fragment_id for unit in units for fragment_id in unit.fragment_ids}
+            if cited_ids - valid_ids or any(
+                not any(
+                    fragment.fragment_id in cited_ids
+                    for fragment in page.fragments
+                )
+                for page in state.pages
+            ):
                 raise StudyWorkflowError(
-                    current_node, "study_map_invalid", "知识点缺少可追溯书页依据，请重试。"
+                    current_node, "study_map_invalid", "知识点未覆盖每页书页依据，请重试。"
                 )
             state.units = units
             state.stage = "preview"
@@ -477,7 +489,8 @@ class StudyWorkflow:
             )
             return {
                 "answer": (
-                    f"已识别本节范围：{scope}\n\n"
+                    (f"检测到{duplicate_count}张重复书页，已跳过。\n\n" if duplicate_count else "")
+                    + f"已识别本节范围：{scope}\n\n"
                     f"预习时可以带着这些问题阅读，暂不需要作答：\n{questions_text}"
                 )
             }

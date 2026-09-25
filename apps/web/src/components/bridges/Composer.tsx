@@ -109,7 +109,9 @@ export function Composer({
   const draftErrorSeqRef = useRef(0);
   // 有文字或已有照片即可发送；上传未完成的批次禁止提前发送。
   const canSend =
-    (text.trim().length > 0 || drafts.length > 0) &&
+    (mode === "study" && variant === "new-chat"
+      ? drafts.length > 0
+      : text.trim().length > 0 || drafts.length > 0) &&
     dictationPhase === "idle" &&
     uploadingCount === 0;
 
@@ -596,7 +598,7 @@ export function Composer({
             event.preventDefault();
             addFiles(files);
           }}
-          placeholder="输入消息，开始日常对话"
+          placeholder={mode === "study" ? "上传本节书页照片开始预习" : "输入消息，开始日常对话"}
           style={{
             width: "100%",
             flex: 1,
@@ -973,7 +975,7 @@ export function Composer({
             onClick={() => void send()}
             disabled={!canSend}
             aria-label="发送消息"
-            title={canSend ? "发送" : "输入内容后才能发送"}
+            title={canSend ? "发送" : mode === "study" && variant === "new-chat" ? "请先上传本节书页照片" : "输入内容后才能发送"}
           >
             <Icon name="send" size={16} aria-hidden />发送
           </Button>

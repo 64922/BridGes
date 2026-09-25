@@ -431,12 +431,19 @@ class ChatService:
         )
 
     @staticmethod
-    def _require_daily_mode(mode: ChatMode) -> None:
-        if mode != ChatMode.COMPANION:
+    def _validate_study_payload(
+        module_id: Any,
+        image_payload: Any,
+        video_payload: Any,
+        mcp_call_payload: Any,
+    ) -> None:
+        if module_id is not None:
             raise ChatDomainError(
-                "study_mode_unavailable",
-                "学习模式尚未开放；历史学习对话目前仅支持查看。",
-                409,
+                "study_module_forbidden", "学习模式不能选择日常模块。", 422
+            )
+        if any(item is not None for item in (image_payload, video_payload, mcp_call_payload)):
+            raise ChatDomainError(
+                "study_payload_forbidden", "学习模式只接受本节书页照片和文字。", 422
             )
 
     def set_conversation_mode(
@@ -829,14 +836,7 @@ class ChatService:
             self._validate_draft_attachments(account_id, attachment_ids)
         mode = ChatMode(record.mode)
         if mode == ChatMode.STUDY:
-            if module_id is not None:
-                raise ChatDomainError(
-                    "study_module_forbidden", "学习模式不能选择日常模块。", 422
-                )
-            if any(item is not None for item in (image_payload, video_payload, mcp_call_payload)):
-                raise ChatDomainError(
-                    "study_payload_forbidden", "学习模式只接受本节书页照片和文字。", 422
-                )
+            self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
             study = StudyRepository(self._repo.database).get(account_id, conversation_id)
             if not attachment_ids and (study is None or study.stage != "awaiting_pages"):
                 raise ChatDomainError(
@@ -1326,24 +1326,9 @@ class ChatService:
         attachment_ids = [oid for oid in (attachment_ids or []) if oid]
         if not content and not attachment_ids:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
-        if mode == ChatMode.STUDY:
-            if module_id is not None:
-                raise ChatDomainError(
-                    "study_module_forbidden", "学习模式不能选择日常模块。", 422
-                )
-            if not attachment_ids:
-                raise ChatDomainError(
-                    "study_pages_required", "请至少上传一张本节书页照片开始学习。", 422
-                )
         image_payload, video_payload, mcp_call_payload = self._validate_turn_payloads(
             image, video, mcp_call
         )
-        if mode == ChatMode.STUDY and any(
-            item is not None for item in (image_payload, video_payload, mcp_call_payload)
-        ):
-            raise ChatDomainError(
-                "study_payload_forbidden", "学习模式只接受本节书页照片和文字。", 422
-            )
         # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
         # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
         # 同键重放（含预建会话路径）必须 200 返回既有数据，不能被 409
@@ -1361,6 +1346,12 @@ class ChatService:
                     "conversation_mode_locked",
                     "该会话模式已锁定，请新建另一个会话以使用其他模式。",
                     409,
+                )
+        if mode == ChatMode.STUDY:
+            self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
+            if not attachment_ids:
+                raise ChatDomainError(
+                    "study_pages_required", "请至少上传一张本节书页照片开始学习。", 422
                 )
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
@@ -2632,7 +2623,7 @@ class ChatService:
             title=title,
             mode=mode,
             study=(
-                state.model_dump(mode="json")
+                state
                 if mode == ChatMode.STUDY
                 and (state := StudyRepository(self._repo.database).get(
                     account_id, conversation_id

@@ -32,6 +32,7 @@ from bridges.contracts.retrieval import (
     RetrievalRoundProjection,
 )
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.study import StudyState
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
 from bridges.routing import CapabilityRoute
@@ -393,7 +394,7 @@ class ChatConversationProjection(BaseModel):
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
-    study: dict[str, Any] | None = Field(
+    study: StudyState | None = Field(
         default=None, description="学习小节的持久化阶段、页级证据和预习问题。"
     )
     mode_locked: bool = Field(

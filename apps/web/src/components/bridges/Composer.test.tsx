@@ -82,6 +82,26 @@ describe("Composer 输入框", () => {
       expect(screen.getByRole("textbox").getAttribute("placeholder")).toBe(PLACEHOLDER);
     }
   );
+
+  it("学习首轮必须先上传照片，文字会保留", async () => {
+    vi.mocked(uploadChatAttachmentDraft).mockResolvedValue(
+      draftProjection("study-photo", "书页.png"),
+    );
+    const onSend = vi.fn().mockResolvedValue(true);
+    render(<Composer variant="new-chat" mode="study" onSend={onSend} />);
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const send = screen.getByRole("button", { name: "发送消息" }) as HTMLButtonElement;
+    expect(textbox.placeholder).toBe("上传本节书页照片开始预习");
+    fireEvent.change(textbox, { target: { value: "这是本节第一张" } });
+    expect(send.disabled).toBe(true);
+
+    pickFiles([pngFile("书页.png")]);
+    await waitForThumb("书页.png");
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("这是本节第一张", ["study-photo"]));
+  });
 });
 
 describe("Composer 照片附件（Issue 05）", () => {
