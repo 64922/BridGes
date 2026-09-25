@@ -65,8 +65,16 @@ MODEL_BY_CAPABILITY: dict[str, str] = {
     "qwen_embedding": EMBEDDING_MODEL_ID,
 }
 
+#: 已验证上下文窗口登记表（token；模型字面量唯一来源豁免于本模块）。
+#: V2 Issue 03 上下文编译预算的输入；issue 09 引入用户手填模型后由
+#: 模型配置的已验证元数据接管，此处维护固定矩阵时代的已知快照。
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    CHAT_MODEL_ID: 131072,
+}
+
 __all__ = [
     "ASR_LONG_MODEL_ID",
+    "MODEL_CONTEXT_WINDOWS",
     "ASR_MODEL_ID",
     "CHAT_MODEL_ID",
     "EMBEDDING_MODEL_ID",

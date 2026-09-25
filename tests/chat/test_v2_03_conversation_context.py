@@ -290,10 +290,10 @@ def test_recovery_of_earlier_agreement_with_source_ids() -> None:
 
 
 def test_recovery_prefers_quoted_span() -> None:
-    """验收 3：引号原文优先作为检索线索（小窗口让早先消息进摘要区）。"""
+    """验收 3：引号原文优先作为检索线索（含中文弯引号；小窗口进摘要区）。"""
     records = [
         *_exchange(1, "Transformer 的注意力机制是核心", "好的，这个话题我记下了。"),
-        _record("u2", ChatMessageRole.USER, "再讲讲「注意力机制」？", minutes=4),
+        _record("u2", ChatMessageRole.USER, "再讲讲“注意力机制”？", minutes=4),
     ]
     compiled = compile_turn_context(
         messages=records,

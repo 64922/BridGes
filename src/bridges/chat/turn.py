@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ALL_COMPLETED, Future, wait
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -443,13 +443,63 @@ _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
 }
 
 
-def _contract(mode: ChatMode) -> ModeContract:
-    return _MODE_CONTRACTS[mode]
-
-
 def mode_system_contract(mode: ChatMode) -> ModeContract:
     """模式合同的公开访问器（V2 Issue 03 上下文编译器取系统规则用）。"""
     return _MODE_CONTRACTS[mode]
+
+
+@dataclass(frozen=True)
+class HistoryItem:
+    """配对后的一条会话历史项（带来源消息 ID；上下文审计共用）。"""
+
+    message_id: str
+    role: ChatMessageRole
+    content: str
+
+
+def history_items(
+    messages: Sequence[MessageRecord],
+    *,
+    until_user_message_id: str | None = None,
+) -> list[HistoryItem]:
+    """把仓库消息配对为模型历史项（``_model_history`` 与上下文编译器共用）。
+
+    用户消息原文总是纳入；助手消息只取已完成（done）的最近一条——失败、
+    停止与进行中的尝试不进上下文，避免把错误内容当成回答。
+    ``until_user_message_id`` 把历史截断到指定轮次（重试旧轮次失败消息时，
+    新尝试的上下文不得包含其后的后续轮次）；为 None 时在自然结束处补上
+    最后一条已完成的助手回答。
+    """
+    items: list[HistoryItem] = []
+    latest_done: MessageRecord | None = None
+    for message in messages:
+        if message.role == ChatMessageRole.USER:
+            if latest_done is not None:
+                items.append(
+                    HistoryItem(
+                        latest_done.message_id,
+                        ChatMessageRole.ASSISTANT,
+                        latest_done.content,
+                    )
+                )
+                latest_done = None
+            items.append(
+                HistoryItem(message.message_id, ChatMessageRole.USER, message.content)
+            )
+            if (
+                until_user_message_id is not None
+                and message.message_id == until_user_message_id
+            ):
+                return items
+        elif message.status == ChatMessageStatus.DONE:
+            latest_done = message
+    if latest_done is not None:
+        items.append(
+            HistoryItem(
+                latest_done.message_id, ChatMessageRole.ASSISTANT, latest_done.content
+            )
+        )
+    return items
 
 
 #: 生成失败/断流时向用户展示的中文说明（稳定错误码 → 可操作提示）。
@@ -701,7 +751,7 @@ def initial_thinking(mode: ChatMode) -> ChatThinkingSummary:
     第二步」的时序缺口。
     """
     return ChatThinkingSummary(
-        steps=[step.describe() for step in _contract(mode).steps],
+        steps=[step.describe() for step in mode_system_contract(mode).steps],
     )
 
 
@@ -1880,9 +1930,11 @@ class TurnOrchestrator:
         first_token_ms: int | None = None
         try:
             # V2 Issue 03：日常父图编译的上下文优先——近期原文 + 较早摘要 +
-            # 补回原文已在图内按锁定模型窗口编好；旧路径回退既有组装。
+            # 补回原文已在图内按锁定模型窗口编好（服务边界已产出独立副本，
+            # assemble_payload 只做列表级插入、不改写消息字典）；旧路径
+            # 回退既有组装。
             history = (
-                [dict(message) for message in compiled_messages]
+                compiled_messages
                 if compiled_messages is not None
                 else self._model_history(
                     account_id, conversation_id, until_user_message_id
@@ -5504,36 +5556,27 @@ class TurnOrchestrator:
         """组装发送给模型的会话历史。
 
         首条为当前对话模式的系统角色合同（companion/study，Issue 14）；
-        每轮用户消息只带最新一条已完成（done）的助手回答；失败、停止与
-        进行中的尝试不进上下文，避免把错误内容当成回答。``until_user_message_id``
-        把历史截断到指定轮次（重试旧轮次失败消息时，新尝试的上下文不得
-        包含其后的后续轮次）。
+        配对语义（用户原文总是纳入、助手只取最近一条已完成、按
+        ``until_user_message_id`` 截断）由 :func:`history_items` 统一实现
+        （V2 Issue 03 起与上下文编译器共用，避免语义漂移）。
         """
         messages = self._repo.list_messages(account_id, conversation_id)
         record = self._repo.get_conversation(account_id, conversation_id)
         mode = ChatMode(record.mode) if record is not None else CHAT_MODE
         history: list[dict[str, str]] = [
-            {"role": "system", "content": _contract(mode).system_prompt}
+            {"role": "system", "content": mode_system_contract(mode).system_prompt}
         ]
-        latest_done: MessageRecord | None = None
-        for message in messages:
-            if message.role == ChatMessageRole.USER:
-                if latest_done is not None:
-                    history.append(
-                        {"role": "assistant", "content": latest_done.content}
-                    )
-                    latest_done = None
-                history.append({"role": "user", "content": message.content})
-                if (
-                    until_user_message_id is not None
-                    and message.message_id == until_user_message_id
-                ):
-                    break
-            elif message.status == ChatMessageStatus.DONE:
-                latest_done = message
-        else:
-            if latest_done is not None:
-                history.append({"role": "assistant", "content": latest_done.content})
+        history.extend(
+            {
+                "role": (
+                    "user" if item.role == ChatMessageRole.USER else "assistant"
+                ),
+                "content": item.content,
+            }
+            for item in history_items(
+                messages, until_user_message_id=until_user_message_id
+            )
+        )
         return history
 
     @staticmethod

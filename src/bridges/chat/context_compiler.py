@@ -25,8 +25,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from unicodedata import category
 
-from bridges.chat.turn import mode_system_contract
-from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus, ChatMode
+from bridges.ai.fixed_models import MODEL_CONTEXT_WINDOWS
+from bridges.chat.turn import history_items, mode_system_contract
+from bridges.contracts.chat import ChatMessageRole, ChatMode
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -48,13 +49,9 @@ OUTPUT_RESERVE_MARGIN_TOKENS = 256
 TOOL_RESERVE_TOKENS = 512
 #: 每张当前回合图片的输入成本估算（文本预算口径下的保守常量）。
 IMAGE_COST_TOKENS = 1024
-#: 未知模型的保守缺省窗口（已验证模型以 :data:`MODEL_CONTEXT_WINDOWS` 为准）。
+#: 未知模型的保守缺省窗口（已验证模型以 ``fixed_models.MODEL_CONTEXT_WINDOWS``
+#: 为准——受控模型资产单一事实源）。
 DEFAULT_CONTEXT_WINDOW = 32768
-#: 已验证模型上下文窗口登记表（token）；issue 09 引入用户手填模型后由
-#: 模型配置的已验证元数据提供，此处维护固定矩阵时代的已知快照。
-MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "qwen3.7-plus-2026-05-26": 131072,
-}
 #: 近期原文最多可占可用材料预算的既定份额（其余留给摘要与补回原文）。
 RECENT_VERBATIM_SHARE = 0.6
 #: 初次摘要单条最大字符数。
@@ -77,8 +74,8 @@ _BACK_REFERENCE_MARKERS = (
     "记得",
     "答应",
 )
-#: 引号原文（用户显式引用的实体或约定）。
-_QUOTED_SPAN_RE = re.compile(r"[「『\"]([^「」『』\"]{1,64})[」』\"]")
+#: 引号原文（用户显式引用的实体或约定；含直角、双角、弯引号与直引号）。
+_QUOTED_SPAN_RE = re.compile(r"[「『“\"]([^「」『』”\"]{1,64})[」』”\"]")
 #: CJK 连续串（≥2 字）与拉丁/数字词（≥3 字符）。
 _TOKEN_RUN_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9]{3,}")
 #: 标记路径候选词在较早消息中的最大出现占比（超过视为太常见，不作为线索）。
@@ -113,11 +110,6 @@ def estimate_tokens(text: str) -> int:
         else:
             other += 1
     return tokens + (other + 3) // 4
-
-
-def verified_model_ids() -> tuple[str, ...]:
-    """已登记窗口的模型 ID（测试与审计辅助）。"""
-    return tuple(MODEL_CONTEXT_WINDOWS)
 
 
 @dataclass(frozen=True)
@@ -195,7 +187,7 @@ class CompiledTurnContext:
 
 @dataclass(frozen=True)
 class _TurnItem:
-    """按 ``TurnOrchestrator._model_history`` 语义配对的一条历史项。"""
+    """编译内部的会话历史项（与 :class:`turn.HistoryItem` 同形）。"""
 
     message_id: str
     role: ChatMessageRole
@@ -205,32 +197,22 @@ class _TurnItem:
 def _pair_history_items(
     messages: Sequence[MessageRecord], current_user_message_id: str
 ) -> list[_TurnItem]:
-    """把仓库消息配对为历史项，截断到当前用户消息（重试旧轮次语义）。
+    """取共享配对结果并断言当前用户消息在列（编译需要当前请求在末尾）。
 
-    用户消息原文总是纳入；助手消息只取已完成（done）的最近一条——失败、
-    停止与进行中的尝试不进上下文。
+    配对语义（用户原文总是纳入、助手只取最近一条已完成、按当前轮次
+    截断）由 :func:`turn.history_items` 统一实现，避免两处漂移。
     """
-    items: list[_TurnItem] = []
-    latest_done: MessageRecord | None = None
-    for message in messages:
-        if message.role == ChatMessageRole.USER:
-            if latest_done is not None:
-                items.append(
-                    _TurnItem(
-                        latest_done.message_id,
-                        ChatMessageRole.ASSISTANT,
-                        latest_done.content,
-                    )
-                )
-                latest_done = None
-            items.append(
-                _TurnItem(message.message_id, ChatMessageRole.USER, message.content)
-            )
-            if message.message_id == current_user_message_id:
-                return items
-        elif message.status == ChatMessageStatus.DONE:
-            latest_done = message
-    raise ValueError(f"当前用户消息不在会话历史中：{current_user_message_id}")
+    items = [
+        _TurnItem(item.message_id, item.role, item.content)
+        for item in history_items(
+            messages, until_user_message_id=current_user_message_id
+        )
+    ]
+    if not items or items[-1].message_id != current_user_message_id:
+        raise ValueError(
+            f"当前用户消息不在会话历史中：{current_user_message_id}"
+        )
+    return items
 
 
 def _compact(text: str) -> str:
@@ -390,16 +372,16 @@ def compile_turn_context(
         item for item in items if item.message_id not in recent_ids
     ]
 
-    # 实体/约定补回：只在本会话较早消息中检索原文。
-    candidates = _recovery_candidates(current.content, older)
-    recovered = _recover_older_items(candidates, older)
-    unresolved = bool(candidates) and not recovered
-
     # 裁剪顺序（预算不足时）：先缩较旧原文（移入摘要），再重做摘要；
-    # 当前请求、系统规则与补回的关键证据不裁，触底如实记录。
+    # 当前请求、系统规则与补回的关键证据不裁，触底如实记录。补回在每轮
+    # 裁剪后重算——预算收缩把近期原文降级进摘要时，被引用的原文要能从
+    # 摘要区补回，不丢关键证据。
     entry_max_chars = SUMMARY_ENTRY_MAX_CHARS
     floor_exceeded = False
     while True:
+        candidates = _recovery_candidates(current.content, older)
+        recovered = _recover_older_items(candidates, older)
+        unresolved = bool(candidates) and not recovered
         summary_text, summary_range = _summary_block(
             older, entry_max_chars=entry_max_chars
         )
