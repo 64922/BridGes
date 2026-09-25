@@ -253,8 +253,9 @@ class LayeredRetrievalService:
             ):
                 return None
             use_knowledge_base = decision.action == RetrievalDecisionAction.RETRIEVE
-            # 附件存在时本轮一定形成检索轮次：无候选也要落库，供前端如实
-            # 呈现「附件仍在处理中/无匹配片段」，而不是静默跳过。
+            # 附件存在时不被「跳过」决策短路：即使决策不检索知识库，本轮也要
+            # 为附件跑检索。是否落库仍取决于有没有已就绪材料——无材料且决策
+            # 为跳过时不落库，本轮的文件可读性由聊天上下文的如实说明块承担。
         layers = self._resolve_layers(
             account_id,
             attachment_ids=attachment_ids,
@@ -562,20 +563,16 @@ class LayeredRetrievalService:
             layers[RetrievalSourceLayer.ATTACHMENT].update(
                 status=RetrievalLayerStatus.NO_MATERIAL,
                 note="附件仍在处理中或暂无可检索内容。",
-            )
-            layers[RetrievalSourceLayer.ATTACHMENT][
-                "ready_document_ids"
-            ] = self._ready_documents(
-                account_id,
-                source="chat_attachment",
-                object_ids=attachment_ids,
-            )
-            layers[RetrievalSourceLayer.ATTACHMENT][
-                "stale"
-            ] = self._has_stale_documents(
-                account_id,
-                source="chat_attachment",
-                object_ids=attachment_ids,
+                ready_document_ids=self._ready_documents(
+                    account_id,
+                    source="chat_attachment",
+                    object_ids=attachment_ids,
+                ),
+                stale=self._has_stale_documents(
+                    account_id,
+                    source="chat_attachment",
+                    object_ids=attachment_ids,
+                ),
             )
         layers[RetrievalSourceLayer.PROJECT]["note"] = "学习项目文件来源已退役。"
         if use_knowledge_base:

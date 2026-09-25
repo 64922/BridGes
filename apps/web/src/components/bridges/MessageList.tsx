@@ -602,29 +602,29 @@ export function MessageList({
                               ` · 第 ${attachment.ordinal} 个`}
                           </span>
                           {conversationId && (
-                            <AttachmentIngestionInfo
-                              conversationId={conversationId}
-                              attachment={attachment}
-                              labels={CHAT_INGESTION_LABELS}
-                            />
-                          )}
-                          {conversationId && (
-                            <a
-                              href={chatAttachmentContentUrl(conversationId, attachment.object_id)}
-                              download={attachment.original_filename}
-                              style={{
-                                alignSelf: "flex-start",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "2px",
-                                fontSize: "var(--text-xs)",
-                                color: "var(--color-text-secondary)",
-                                minHeight: "var(--target-size)",
-                              }}
-                            >
-                              <Icon name="download" size={14} aria-hidden />
-                              下载原件
-                            </a>
+                            <>
+                              <AttachmentIngestionInfo
+                                conversationId={conversationId}
+                                attachment={attachment}
+                                labels={CHAT_INGESTION_LABELS}
+                              />
+                              <a
+                                href={chatAttachmentContentUrl(conversationId, attachment.object_id)}
+                                download={attachment.original_filename}
+                                style={{
+                                  alignSelf: "flex-start",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "2px",
+                                  fontSize: "var(--text-xs)",
+                                  color: "var(--color-text-secondary)",
+                                  minHeight: "var(--target-size)",
+                                }}
+                              >
+                                <Icon name="download" size={14} aria-hidden />
+                                下载原件
+                              </a>
+                            </>
                           )}
                         </div>
                       )

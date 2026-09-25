@@ -140,17 +140,6 @@ class AttachmentRepository:
         ).fetchall()
         return list(rows)
 
-    def object_ids_for_message(
-        self, account_id: str, conversation_id: str, message_id: str
-    ) -> list[str]:
-        """返回消息绑定的对象标识（检索层确定本轮附件作用域用）。"""
-        rows = self._database.scoped(account_id).execute(
-            "SELECT object_id FROM chat_attachments"
-            " WHERE account_id = ? AND conversation_id = ? AND message_id = ?",
-            (account_id, conversation_id, message_id),
-        ).fetchall()
-        return [str(row["object_id"]) for row in rows]
-
     def bound_object_ids_for_conversation(
         self, account_id: str, conversation_id: str, *, limit: int
     ) -> list[str]:
@@ -176,22 +165,6 @@ class AttachmentRepository:
             " AND conversation_id = ? AND object_id = ? AND message_id IS NOT NULL"
             " LIMIT 1",
             (account_id, conversation_id, object_id),
-        ).fetchone()
-        return row is not None
-
-    def bound_exists(
-        self,
-        account_id: str,
-        object_id: str,
-        conversation_id: str,
-        message_id: str,
-    ) -> bool:
-        """附件是否仍绑定在指定用户消息上（引用打开时实时校验用）。"""
-        row = self._database.scoped(account_id).execute(
-            "SELECT 1 FROM chat_attachments WHERE account_id = ?"
-            " AND object_id = ? AND conversation_id = ? AND message_id = ?"
-            " LIMIT 1",
-            (account_id, object_id, conversation_id, message_id),
         ).fetchone()
         return row is not None
 

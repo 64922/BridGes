@@ -41,6 +41,9 @@ from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import SUPPORTED_MEDIA_TYPES, IngestionService
 from bridges.lifecycle.catalog import delete_account_rows, export_rows
 
+#: 仓库根目录（跨端契约比对：前端事实文件与后端常量必须一致）。
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 #: 最小合法 PNG 魔数（嗅探只校验魔数与扩展名一致性）。
 PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR-test-photo-bytes"
 #: 扩展名与内容不符的 PDF（魔数对但正文损坏 → 解析器判定失败）。
@@ -582,11 +585,71 @@ def test_ready_but_unmatched_attachment_is_not_described(
         )
         assert note is not None, blocks
         assert "没有检索到与当前问题相关的片段" in note
-        assert "不要描述或断言文件内容" in note
+        assert "不要描述或断言该文件的内容" in note
 
         assistant = _last_assistant(client, conversation_id)
         citations = (assistant["retrieval"] or {}).get("citations") or []
         assert citations == []
+
+
+def test_cited_and_unmatched_files_are_told_apart(
+    tmp_path: Path, monkeypatch: Any, generation_helpers: Any
+) -> None:
+    """同一轮既有命中文件又有未命中文件时，逐份如实说明（不连坐、不冒充）。"""
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        _register(client, "mixed")
+        adapter = _CapturingAdapter()
+        app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
+        cited = _upload_draft(
+            client, filename="statistics.docx", upload_id="u-mix-docx", content=_docx_bytes()
+        ).json()
+        other = _upload_draft(
+            client,
+            filename="outline.md",
+            upload_id="u-mix-md",
+            content="# 复习提纲\n\n第一节 矩阵乘法的定义。\n\n第二节 特征值的几何意义。\n".encode(),
+        ).json()
+        _drive_ingestion(app)
+
+        conversation_id = _start_conversation(client, app)
+        _send(
+            client,
+            app,
+            generation_helpers,
+            conversation_id,
+            "根据我的文件 置信水平 是什么意思？",
+            [cited["object_id"], other["object_id"]],
+        )
+
+        assistant = _last_assistant(client, conversation_id)
+        cited_names = {
+            item["filename"] for item in (assistant["retrieval"] or {}).get("citations") or []
+        }
+        assert "statistics.docx" in cited_names
+
+        blocks = _system_blocks(adapter)
+        note = next(
+            (block for block in blocks if "本轮用户附加的文件处理结果" in block), None
+        )
+        assert note is not None, blocks
+        # 未命中的那份文件被点名；命中的那份不被说成「读不到」。
+        assert "outline.md" in note
+        assert "没有检索到与当前问题相关的片段" in note
+        assert "statistics.docx" not in note
+
+
+def test_frontend_attachment_facts_match_server() -> None:
+    """界面支持类型说明与白名单随服务端事实同步（AC1：界面说明不漂移）。"""
+    source = (
+        REPO_ROOT / "apps" / "web" / "src" / "lib" / "chat-attachments.ts"
+    ).read_text(encoding="utf-8")
+    assert SUPPORTED_MEDIA_TYPE_HINT in source
+    for extension in (".pdf", ".docx", ".txt", ".md", ".markdown", ".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        assert f'"{extension}"' in source, extension
+    # 流水线不解析的类型不出现在客户端白名单里（提前拦截与服务端一致）。
+    for extension in (".csv", ".xlsx", ".pptx", ".json"):
+        assert f'"{extension}"' not in source, extension
 
 
 # ---------------------------------------------------------------------------

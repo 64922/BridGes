@@ -129,8 +129,3 @@ export const CHAT_INGESTION_LABELS: Record<string, string> = {
 export function isIngestionSettled(status: string): boolean {
   return !["queued", "processing", "recovery", "loading"].includes(status);
 }
-
-/** 摄取状态是否需要向用户说明原因（等待/失败/无法识别都值得解释）。 */
-export function needsIngestionExplanation(status: string): boolean {
-  return status !== "ready" && status !== "none";
-}

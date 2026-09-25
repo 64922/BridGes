@@ -928,9 +928,10 @@ def attachment_scope_note(
 ) -> str | None:
     """本轮文件附件的如实说明块（V2 Issue 06）；无可说明返回 None。
 
-    两种情况必须让模型知道「本轮没拿到文件正文」：附件还没解析成功，
-    或已解析但检索没有产出该附件的片段（片段由检索层按问题选出，解析
-    成功不等于模型看到了内容）。任一情况都不许凭文件名或常识作答。
+    两种情况必须让模型知道「本轮没拿到某份文件的正文」：该文件还没解析
+    成功，或已解析但本轮检索没有产出该文件的片段（片段由检索层按问题
+    选出，解析成功不等于模型看到了内容，同轮另有一份文件命中也不代表
+    这一份可读）。任一情况都不许凭文件名或常识作答。
     """
     if not file_attachments:
         return None
@@ -942,20 +943,25 @@ def attachment_scope_note(
                 f"- 「{attachment.original_filename}」：{state}。请如实告知用户"
                 "当前无法查看该文件的内容，不要猜测或声称已经读取。"
             )
-    if retrieval_round is None or not any(
-        citation.source_layer == RetrievalSourceLayer.ATTACHMENT
-        for citation in retrieval_round.citations
-    ):
-        ready = [
-            item for item in file_attachments if file_attachment_state(item) is None
-        ]
-        if ready:
-            names = "、".join(f"「{item.original_filename}」" for item in ready)
-            lines.append(
-                f"- {names}已解析，但本轮没有检索到与当前问题相关的片段："
-                "不要描述或断言文件内容，也不要声称已经读取；"
-                "请如实告知用户本轮无法基于该文件作答。"
-            )
+    # 引用按文件名核对到具体附件：本轮命中的文件不算「没有片段」，
+    # 未命中的已解析文件逐个给出禁用正文的描述许可。
+    cited_names = {
+        citation.filename
+        for citation in (retrieval_round.citations if retrieval_round else [])
+        if citation.source_layer == RetrievalSourceLayer.ATTACHMENT
+    }
+    unmatched = [
+        item
+        for item in file_attachments
+        if file_attachment_state(item) is None
+        and item.original_filename not in cited_names
+    ]
+    for item in unmatched:
+        lines.append(
+            f"- 「{item.original_filename}」已解析，但本轮没有检索到与当前问题"
+            "相关的片段：不要描述或断言该文件的内容，也不要声称已经读取；"
+            "请如实告知用户本轮无法基于该文件作答。"
+        )
     if len(lines) == 1:
         return None
     return "\n".join(lines)
