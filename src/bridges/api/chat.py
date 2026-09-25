@@ -54,16 +54,16 @@ from bridges.contracts.feedback import (
     AnswerFeedbackRequest,
     FeedbackResolveRequest,
 )
-from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
 )
 from bridges.ingestion.service import IngestionService
 from bridges.observability.service import ObservabilityService
+from bridges.retirement import raise_retired_file_source, record_compatibility_observation
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
-from bridges.retirement import record_compatibility_observation, raise_retired_file_source
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 

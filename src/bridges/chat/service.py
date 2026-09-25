@@ -126,8 +126,8 @@ from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
-from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
 from bridges.profiles.service import ProfileService
+from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
@@ -790,9 +790,10 @@ class ChatService:
         # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
         # 校验失败（数量/重复/跨账户）在此拒绝，草稿保留供用户调整重试。
         if attachment_ids:
-            self._require_attachment_service()
             try:
-                self._attachments.validate_draft_ids(account_id, attachment_ids)
+                self._require_attachment_service().validate_draft_ids(
+                    account_id, attachment_ids
+                )
             except ChatAttachmentError as exc:
                 raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
         mode = ChatMode(record.mode)
@@ -1283,9 +1284,10 @@ class ChatService:
                 )
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
-            self._require_attachment_service()
             try:
-                self._attachments.validate_draft_ids(account_id, attachment_ids)
+                self._require_attachment_service().validate_draft_ids(
+                    account_id, attachment_ids
+                )
             except ChatAttachmentError as exc:
                 raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
         capability_route = self._route_for_turn(
