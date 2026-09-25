@@ -1,4 +1,4 @@
-"""四维画像的公开读、改、撤回合同。"""
+"""四维画像的公开读、改、撤回合同（含 V2 无类别原子列表）。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from bridges.api.auth import SubjectDep
+from bridges.contracts.atomic_profile import (
+    AtomicProfileItemDeleteRequest,
+    AtomicProfileItemModifyRequest,
+    AtomicProfileItemProjection,
+    AtomicProfileMigrationReport,
+)
 from bridges.contracts.profile_extraction import ProfileStatusProjection
 from bridges.contracts.profiles import (
     FourDimensionProfileDeleteRequest,
@@ -16,6 +22,7 @@ from bridges.contracts.profiles import (
     FourDimensionProfileWithdrawRequest,
     ProfileError,
 )
+from bridges.profiles.atomic import AtomicProfileError, AtomicProfileService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
@@ -171,6 +178,168 @@ async def delete_four_dimension_record(
     except FourDimensionProfileError as exc:
         raise _four_dimension_error(exc, "four_dimension_delete_failed") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# V2 Issue 08：无类别的原子画像列表。旧四维路由保留给既有客户端与迁移
+# 对账，新页面只读写这里——列表顺序即写入顺序，页面上没有类别与分组。
+
+
+def _get_atomic_profile_service(request: Request) -> AtomicProfileService:
+    service: AtomicProfileService | None = getattr(
+        request.app.state, "atomic_profile_service", None
+    )
+    if service is None:
+        raise RuntimeError("AtomicProfileService not attached to application state.")
+    return service
+
+
+AtomicProfileServiceDep = Annotated[
+    AtomicProfileService, Depends(_get_atomic_profile_service)
+]
+
+
+def _atomic_error(exc: AtomicProfileError, failure_code: str) -> HTTPException:
+    message = str(exc)
+    if "对象不存在" in message or "访问权限" in message:
+        return _profile_error(
+            status.HTTP_404_NOT_FOUND, "atomic_profile_not_found", message
+        )
+    if "版本冲突" in message or "已删除" in message or "已存在内容相同" in message:
+        return _profile_error(
+            status.HTTP_409_CONFLICT, "atomic_profile_conflict", message
+        )
+    return _profile_error(status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message)
+
+
+@router.get(
+    "/items",
+    response_model=list[AtomicProfileItemProjection],
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ProfileError}},
+)
+async def list_atomic_profile_items(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+) -> list[AtomicProfileItemProjection]:
+    """列出当前账户的全部原子画像条目（无类别、无分组）。"""
+
+    return service.projections(subject.account_id)
+
+
+@router.patch(
+    "/items/{item_id}",
+    response_model=AtomicProfileItemProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def modify_atomic_profile_item(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    item_id: str,
+    request: AtomicProfileItemModifyRequest,
+) -> AtomicProfileItemProjection:
+    """行内编辑一条条目；用户正文优先于自动提取。"""
+    try:
+        item = service.modify_item(subject.account_id, item_id, request)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_modify_failed") from exc
+    return AtomicProfileService.project(item)
+
+
+@router.delete(
+    "/items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def delete_atomic_profile_item(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    item_id: str,
+    request: AtomicProfileItemDeleteRequest,
+) -> Response:
+    """删除一条条目；写入墓碑，旧消息重放不会让它复活。"""
+    try:
+        service.delete_item(subject.account_id, item_id, request.version)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_delete_failed") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# 旧四类数据的原子化迁移：迁移是账户级、可重复执行且只读旧记录的操作，
+# 因此入口保持显式（由运维或后续管理界面触发），不在读列表时隐式写入。
+
+
+@router.post(
+    "/items/migration",
+    response_model=AtomicProfileMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def run_atomic_profile_migration(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+) -> AtomicProfileMigrationReport:
+    """把当前账户的旧四类记录迁成原子列表，并返回可对账报告。
+
+    重复执行是安全的：已迁移的旧记录只计入重复，不重复写入条目。
+    """
+    try:
+        return service.migrate_account(subject.account_id)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_migration_failed") from exc
+
+
+@router.get(
+    "/items/migration",
+    response_model=AtomicProfileMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def latest_atomic_profile_migration(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+) -> AtomicProfileMigrationReport:
+    """返回当前账户最近一次原子化迁移报告；从未迁移过时如实返回不存在。"""
+    report = service.latest_migration_report(subject.account_id)
+    if report is None:
+        raise _profile_error(
+            status.HTTP_404_NOT_FOUND,
+            "atomic_profile_migration_not_found",
+            "没有可对账的迁移记录。",
+        )
+    return report
+
+
+@router.post(
+    "/items/migration/{run_id}/rollback",
+    response_model=AtomicProfileMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def rollback_atomic_profile_migration(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    run_id: str,
+) -> AtomicProfileMigrationReport:
+    """回滚指定迁移批次：只删除该批次新建的条目，旧四类记录保持不动。"""
+    try:
+        return service.rollback_migration(subject.account_id, run_id)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_migration_rollback_failed") from exc
 
 
 __all__ = ["router"]

@@ -26,6 +26,14 @@ from bridges.profiles.automatic import (
     RuleBasedAutomaticProfileExtractor,
     SqliteAutomaticProfileRepository,
 )
+from bridges.profiles.atomic import (
+    ATOMIC_PROFILE_MIGRATION_VERSION,
+    AtomicProfileError,
+    AtomicProfileRepository,
+    AtomicProfileService,
+    InMemoryAtomicProfileRepository,
+    SqliteAtomicProfileRepository,
+)
 from bridges.contracts.profile_extraction import ProfileExtractionOutput
 from bridges.profiles.signals import (
     PROFILE_SIGNAL_CLASSIFIER_VERSION,
@@ -66,6 +74,12 @@ __all__ = [
     "InMemoryAutomaticProfileRepository",
     "RuleBasedAutomaticProfileExtractor",
     "SqliteAutomaticProfileRepository",
+    "ATOMIC_PROFILE_MIGRATION_VERSION",
+    "AtomicProfileError",
+    "AtomicProfileRepository",
+    "AtomicProfileService",
+    "InMemoryAtomicProfileRepository",
+    "SqliteAtomicProfileRepository",
     "ProfileExtractionOutput",
     "PROFILE_SIGNAL_CLASSIFIER_VERSION",
     "ProfileSignalCategory",

@@ -855,8 +855,14 @@ class FourDimensionProfileService:
 
         self._observation_delete_callback = callback
 
-    def list_records(self, account_id: str) -> list[FourDimensionProfileRecord]:
-        return self._repository.list_records(account_id)
+    def list_records(
+        self, account_id: str, *, include_withdrawn: bool = False
+    ) -> list[FourDimensionProfileRecord]:
+        """列出账户内记录；``include_withdrawn`` 供原子化迁移读撤回墓碑。"""
+
+        return self._repository.list_records(
+            account_id, include_withdrawn=include_withdrawn
+        )
 
     def transaction(self) -> AbstractContextManager[None]:
         """为自动画像批量提交暴露四维记录的事务边界。"""

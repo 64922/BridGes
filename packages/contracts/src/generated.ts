@@ -2898,6 +2898,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Atomic Profile Items
+         * @description 列出当前账户的全部原子画像条目（无类别、无分组）。
+         */
+        get: operations["list_atomic_profile_items_profiles_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Atomic Profile Item
+         * @description 删除一条条目；写入墓碑，旧消息重放不会让它复活。
+         */
+        delete: operations["delete_atomic_profile_item_profiles_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Modify Atomic Profile Item
+         * @description 行内编辑一条条目；用户正文优先于自动提取。
+         */
+        patch: operations["modify_atomic_profile_item_profiles_items__item_id__patch"];
+        trace?: never;
+    };
+    "/profiles/items/migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest Atomic Profile Migration
+         * @description 返回当前账户最近一次原子化迁移报告；从未迁移过时如实返回不存在。
+         */
+        get: operations["latest_atomic_profile_migration_profiles_items_migration_get"];
+        put?: never;
+        /**
+         * Run Atomic Profile Migration
+         * @description 把当前账户的旧四类记录迁成原子列表，并返回可对账报告。
+         *
+         *     重复执行是安全的：已迁移的旧记录只计入重复，不重复写入条目。
+         */
+        post: operations["run_atomic_profile_migration_profiles_items_migration_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/items/migration/{run_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Atomic Profile Migration
+         * @description 回滚指定迁移批次：只删除该批次新建的条目，旧四类记录保持不动。
+         */
+        post: operations["rollback_atomic_profile_migration_profiles_items_migration__run_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/observations": {
         parameters: {
             query?: never;
@@ -6961,6 +7051,163 @@ export interface components {
             /** Person Id */
             person_id: string;
         };
+        /**
+         * AtomicProfileItemDeleteRequest
+         * @description 删除确认的乐观锁请求。
+         */
+        AtomicProfileItemDeleteRequest: {
+            /**
+             * Version
+             * @description 用户读到的版本号。
+             */
+            version: number;
+        };
+        /**
+         * AtomicProfileItemModifyRequest
+         * @description 行内编辑的乐观锁请求。
+         */
+        AtomicProfileItemModifyRequest: {
+            /**
+             * Text
+             * @description 替换后的正文。
+             */
+            text: string;
+            /**
+             * Version
+             * @description 用户读到的版本号。
+             */
+            version: number;
+        };
+        /**
+         * AtomicProfileItemProjection
+         * @description 原子画像页面投影：无类别、无分组、无内部哈希。
+         */
+        AtomicProfileItemProjection: {
+            /**
+             * Profile Item Id
+             * @description 稳定的原子条目标识。
+             */
+            profile_item_id: string;
+            /**
+             * Text
+             * @description 条目正文。
+             */
+            text: string;
+            /**
+             * Version
+             * @description 修改/删除使用的乐观锁版本号。
+             */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近一次变化时间。
+             */
+            updated_at: string;
+            /**
+             * User Edited At
+             * @description 用户最近一次编辑时间，可为空。
+             */
+            user_edited_at?: string | null;
+            /**
+             * Source Message Ids
+             * @description 证据来源消息标识。
+             */
+            source_message_ids?: string[];
+            /** @description 最近一次写入来源，用于区分「你修改过」和自动整理。 */
+            write_origin: components["schemas"]["AtomicProfileWriteOrigin"];
+        };
+        /**
+         * AtomicProfileMigrationReport
+         * @description 账户级原子化迁移报告；只含计数、标识与对账摘要，不含正文。
+         */
+        AtomicProfileMigrationReport: {
+            /**
+             * Run Id
+             * @description 迁移批次标识。
+             */
+            run_id: string;
+            /**
+             * Owner Account Id
+             * @description 所属账户标识。
+             */
+            owner_account_id: string;
+            /**
+             * Migration Version
+             * @description 迁移合同版本。
+             */
+            migration_version: string;
+            /** @description 迁移状态。 */
+            status: components["schemas"]["AtomicProfileMigrationStatus"];
+            /**
+             * Migrated
+             * @description 本批次新建的原子条目数。
+             */
+            migrated: number;
+            /**
+             * Duplicated
+             * @description 已存在同键条目、未重复写入的条数。
+             */
+            duplicated: number;
+            /**
+             * Tombstoned
+             * @description 旧记录为撤回状态、只写墓碑的条数。
+             */
+            tombstoned: number;
+            /**
+             * Skipped
+             * @description 无正文等不可迁移的旧记录条数。
+             */
+            skipped: number;
+            /**
+             * Failed
+             * @description 失败条数。
+             */
+            failed: number;
+            /**
+             * Created Item Ids
+             * @description 本批次新建条目标识，回滚删除依据。
+             */
+            created_item_ids?: string[];
+            /**
+             * Source Record Ids
+             * @description 本批次覆盖的四维记录标识，用于对账。
+             */
+            source_record_ids?: string[];
+            /**
+             * Reconciliation Digest
+             * @description 来源记录标识与内容哈希的确定性摘要。
+             */
+            reconciliation_digest: string;
+            /**
+             * Retryable
+             * @description 同一批次是否可安全重试。
+             */
+            retryable: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 报告创建时间。
+             */
+            created_at: string;
+            /**
+             * Undone At
+             * @description 回滚时间；非空表示批次已撤销。
+             */
+            undone_at?: string | null;
+        };
+        /**
+         * AtomicProfileMigrationStatus
+         * @description 账户级原子化迁移状态。
+         * @enum {string}
+         */
+        AtomicProfileMigrationStatus: "completed" | "retryable" | "undone";
+        /**
+         * AtomicProfileWriteOrigin
+         * @description 条目写入来源（内部字段，页面只用于诚实标注最近变化）。
+         * @enum {string}
+         */
+        AtomicProfileWriteOrigin: "automatic" | "user" | "migration";
         /**
          * AttestationConclusion
          * @description 一次签名或复核的结论。
@@ -32781,6 +33028,312 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    list_atomic_profile_items_profiles_items_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileItemProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_atomic_profile_item_profiles_items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtomicProfileItemDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    modify_atomic_profile_item_profiles_items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtomicProfileItemModifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileItemProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    latest_atomic_profile_migration_profiles_items_migration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileMigrationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_atomic_profile_migration_profiles_items_migration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileMigrationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    rollback_atomic_profile_migration_profiles_items_migration__run_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileMigrationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -133,6 +133,9 @@ class DailyTurnState(TypedDict, total=False):
     #: 较早摘要 + 补回原文；纯字符串/数字，检查点可序列化）。
     #: V2 Issue 05：None 表示照片轮跳过编译，生成回退多模态组装。
     compiled_messages: list[dict[str, str]] | None
+    #: V2 Issue 08：同一次编译的预算记录（模型 ID、预算与已用估算），
+    #: 供画像块按剩余输入预算裁剪；照片轮跳过编译时为空。
+    context_budget: dict[str, object] | None
 
 
 class _GraphDeps:
@@ -369,8 +372,10 @@ def _node_compile_context(
     del state
     deps: _GraphDeps = config["configurable"]["deps"]
     deps.service.ensure_turn_context(deps.run)
+    compiled_messages, context_budget = deps.service.compile_turn_context(deps.run)
     return {
-        "compiled_messages": deps.service.compile_turn_context(deps.run),
+        "compiled_messages": compiled_messages,
+        "context_budget": context_budget,
     }
 
 
@@ -410,6 +415,8 @@ def _node_invoke_subgraph_or_chat(
         compiled_messages=state.get("compiled_messages"),
         # 运行级模型锁定（V2 Issue 09）：换运行配置不中途切换本轮模型。
         model_id=state.get("run_model_id"),
+        # V2 Issue 08：画像块与编译器共用同一份剩余输入预算。
+        context_budget=state.get("context_budget"),
     )
     for event in stream:
         deps.emit(event)
