@@ -40,11 +40,20 @@ from bridges.contracts.ai import (
 )
 from bridges.contracts.workflows import RunContextEnvelope
 
-# 与既有 media Qwen OCR 管线保持同一固定 prompt；这里不导入 media 包，
-# 避免 media → chat → ingestion 的模块循环。
+#: 通用文档 OCR 提示词（V2 Issue 07）。
+#:
+#: 知识库材料是讲义、笔记、简历、教材章节等普通文档，不是科学图表，
+#: 因此提示词只描述抽取任务与输出边界，不注入任何学科预设（原
+#: "scientific image" 版本会让非科学材料按图表/公式语义识别）。提示词
+#: 变化会改变图片的解析文本，``parsers.IMAGE_PARSER_VERSION`` 随之递增，
+#: 旧解析缓存自动失效并重新识别。这里不导入 media 包，避免
+#: media → chat → ingestion 的模块循环。
 OCR_IMAGE_PROMPT = (
-    "Extract all visible text from this scientific image. "
-    "Preserve the reading order. Do not add commentary."
+    "Extract all visible text from this document image. "
+    "Preserve the reading order and line breaks. "
+    "Transcribe any formulas or tables as plain text. "
+    "Do not add commentary, and do not guess at unreadable text; "
+    "if the image has no legible text, return an empty response."
 )
 
 #: 知识库 OCR 统一使用的注册能力（Issue 09 单一事实源中的逻辑名/版本）。

@@ -1,4 +1,8 @@
-"""Issue 12：全局知识库检索决策的确定性与持久化幂等性。"""
+"""Issue 12：全局知识库检索决策的确定性与持久化幂等性。
+
+Issue 07 更新：规则版本升为 ``retrieval-intent/v3``，学科名词白名单退役，
+触发只由模式、能力路由与用户请求决定。
+"""
 
 from __future__ import annotations
 
@@ -29,7 +33,7 @@ def test_companion_greeting_skips_global_knowledge_base(env):
 
     assert decision.action == RetrievalDecisionAction.SKIP
     assert decision.reason == RetrievalDecisionReason.COMPANION_DEFAULT
-    assert decision.rules_version == "retrieval-intent/v2"
+    assert decision.rules_version == "retrieval-intent/v3"
 
 
 def test_companion_topic_name_retrieves_global_knowledge_base() -> None:
@@ -42,6 +46,55 @@ def test_companion_topic_name_retrieves_global_knowledge_base() -> None:
 
     assert decision.action == RetrievalDecisionAction.RETRIEVE
     assert decision.reason == RetrievalDecisionReason.KNOWLEDGE_BASE_REQUIRED
+
+
+def test_bare_topic_name_no_longer_triggers_retrieval_in_any_discipline() -> None:
+    """Issue 07：主题名词本身不是触发条件，且判定与学科无关。"""
+    science = decide_retrieval(
+        "热力学第二定律",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=True,
+    )
+    humanities = decide_retrieval(
+        "合同违约责任",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=True,
+    )
+
+    for decision in (science, humanities):
+        assert decision.action == RetrievalDecisionAction.SKIP
+        assert decision.reason == RetrievalDecisionReason.COMPANION_DEFAULT
+    # 学习模式同样按请求形态判定：没有请求形态的主题名词不触发检索。
+    study_topic = decide_retrieval(
+        "热力学第二定律",
+        mode="study",
+        capability_route="study",
+        use_knowledge_base=True,
+    )
+    assert study_topic.action == RetrievalDecisionAction.SKIP
+
+
+def test_named_first_version_materials_trigger_retrieval() -> None:
+    """Issue 07：点名首版材料类型（讲义/笔记/简历/教材章节）即触发检索。"""
+    resume = decide_retrieval(
+        "根据我的简历，我有哪些项目经验？",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=True,
+    )
+    textbook = decide_retrieval(
+        "教材第三章讲了什么",
+        mode="companion",
+        capability_route="companion",
+        use_knowledge_base=True,
+    )
+
+    assert resume.action == RetrievalDecisionAction.RETRIEVE
+    assert resume.reason == RetrievalDecisionReason.UPLOADED_MATERIAL
+    assert textbook.action == RetrievalDecisionAction.RETRIEVE
+    assert textbook.reason == RetrievalDecisionReason.UPLOADED_MATERIAL
 
 
 def test_user_disabled_still_skips_global_knowledge_base() -> None:

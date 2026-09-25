@@ -205,7 +205,7 @@ def test_image_parses_metadata_and_marks_missing_ocr() -> None:
         + b"\x00" * 40
     )
     parsed = parse_document(png, "图表.png", "image/png")
-    assert IMAGE_PARSER_VERSION == "image-ocr-v1"
+    assert IMAGE_PARSER_VERSION == "image-ocr-v2"
     assert parsed.parser_version == IMAGE_PARSER_VERSION
     assert parsed.title == "图表"
     assert "800×600 像素" in parsed.text

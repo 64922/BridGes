@@ -115,6 +115,9 @@ def register_builtin_capabilities(registry: CapabilityRegistry) -> None:
     )
     # T061: real Qwen OCR and vision capabilities for media/science ingestion.
     # Issue 09：与核心对话对齐同一快照，兼容性由真实 smoke 门禁验证。
+    # prompt_version 记入运行锁，是「这次识别用的是哪版提示词」的审计依据：
+    # Issue 07 把知识库 OCR 提示词从科学图片预设改为通用文档抽取，故升到
+    # 2026-09-25（不做「按当前提示词回猜历史运行」）。
     registry.register(
         CapabilityRecord(
             name="qwen_ocr",
@@ -128,7 +131,7 @@ def register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             supported_modalities=["text", "image"],
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            prompt_version="2026-07-24",
+            prompt_version="2026-09-25",
         )
     )
     registry.register(

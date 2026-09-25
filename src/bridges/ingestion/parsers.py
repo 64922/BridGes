@@ -109,7 +109,9 @@ PDF_PARSER_VERSION = "pdf-pymupdf-v1"
 DOCX_PARSER_VERSION = "docx-xml-v1"
 TEXT_PARSER_VERSION = "text-utf8-v1"
 MARKDOWN_PARSER_VERSION = "markdown-v1"
-IMAGE_PARSER_VERSION = "image-ocr-v1"
+#: 图片解析版本（v2：Issue 07 通用 OCR 提示词替换科学图片预设，识别文本
+#: 随之变化，旧解析缓存必须失效后按新提示词重新识别）。
+IMAGE_PARSER_VERSION = "image-ocr-v2"
 IMAGE_OCR_FALLBACK_MARKER = "图片内容未做文字识别"
 
 
