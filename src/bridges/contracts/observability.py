@@ -60,6 +60,9 @@ class AuditAction(str, Enum):
     PROFILE_AUTO_WRITE_RECALL = "profile_auto_write_recall"
     PROFILE_INTENT = "profile_intent"
     PROFILE_SLICE_USED = "profile_slice_used"
+    # V2 Issue 03：每轮上下文编译记录（details 只含模型 ID、预算/摘要/
+    # 估算版本、窗口与预留计数、采用的原文消息 ID，不含任何消息正文）。
+    CONTEXT_COMPILED = "context_compiled"
     ANSWER_FEEDBACK = "answer_feedback"
     FEEDBACK_RESOLVED = "feedback_resolved"
     HUMANIZER_GENERATE = "humanizer_generate"

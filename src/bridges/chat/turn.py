@@ -447,6 +447,11 @@ def _contract(mode: ChatMode) -> ModeContract:
     return _MODE_CONTRACTS[mode]
 
 
+def mode_system_contract(mode: ChatMode) -> ModeContract:
+    """模式合同的公开访问器（V2 Issue 03 上下文编译器取系统规则用）。"""
+    return _MODE_CONTRACTS[mode]
+
+
 #: 生成失败/断流时向用户展示的中文说明（稳定错误码 → 可操作提示）。
 STREAM_INTERRUPTED_MESSAGE = "连接中断，已保留已接收内容，可点击重试。"
 
@@ -1813,11 +1818,17 @@ class TurnOrchestrator:
         use_profile: bool = True,
         *,
         gateway: ModelGateway,
+        compiled_messages: list[dict[str, str]] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
         ``gateway`` 每次调用传入（模型传输是回合级依赖；测试与组合路径
         通过服务层替换网关后仍经同一接口生效）。
+
+        ``compiled_messages``（V2 Issue 03）是日常父图 ``compile_context``
+        节点产出的模型就绪上下文；传入时模型历史以它为准（近期原文 +
+        较早摘要 + 补回原文，详见 ``context_compiler``），未传入时回退到
+        既有 ``_model_history`` 组装（旧编排路径/直连生成）。
 
         生成前执行一轮分层本地检索（Issue 20）：按「当前附件 → 当前项目
         文件 → 已授权全局知识库」确定候选作用域，把最终引用固化为消息的
@@ -1868,8 +1879,14 @@ class TurnOrchestrator:
         generation_entered = False
         first_token_ms: int | None = None
         try:
-            history = self._model_history(
-                account_id, conversation_id, until_user_message_id
+            # V2 Issue 03：日常父图编译的上下文优先——近期原文 + 较早摘要 +
+            # 补回原文已在图内按锁定模型窗口编好；旧路径回退既有组装。
+            history = (
+                [dict(message) for message in compiled_messages]
+                if compiled_messages is not None
+                else self._model_history(
+                    account_id, conversation_id, until_user_message_id
+                )
             )
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
             route_messages = self._repo.list_messages(account_id, conversation_id)
