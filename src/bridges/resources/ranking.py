@@ -323,7 +323,7 @@ def _scored_video(candidate: VideoCandidate, analysis: ResourcesTermAnalysis) ->
             title=candidate.title,
             creator=candidate.uploader,
             year=candidate.published_at.year if candidate.published_at else None,
-            source="bilibili",
+            source=BILIBILI_SOURCE,
             url=candidate.url,
             stage=stage,
             reason_zh=_video_reason(candidate, stage, analysis),
