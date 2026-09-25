@@ -20,8 +20,8 @@
 ### 实现摘要（2026-09-25，分支 `v2/13-learning-resources`，worktree `../BridGes-13-learning-resources`）
 
 提交：`8443e8c`（实现）→ `7658850`（合并 main 的 Issue 06 聊天文件附件）→ `9f3c3cc`
-（code-review 复核修复）。阻塞票 Issue 11 已在 main 上 `ready-for-human`，本分支已并到
-main 当前状态。
+（code-review 复核修复）→ `75afd12` 及其后一笔 docs 提交（本工单记录、来源常量单源化与迁移撞号警告）。
+阻塞票 Issue 11 已在 main 上 `ready-for-human`，本分支已并到 main 当前状态。
 
 **架构：第二个接入日常父图的显式模块，不新增合同。**
 父图 `select_explicit_module → invoke_subgraph_or_chat` 只按随用户消息持久化的
@@ -138,6 +138,15 @@ main 当前状态。
 
 方向提醒（与 Issue 11 同款）：v54 的库不能再由 main 版程序启动（会报库版本高于程序），
 合并前不要用 main 版程序打开已升级的桌面库。
+
+**撞号警告（合并前必查）**：当前有**三个**并行分支同时声明迁移 **54**，而 main 仍是 53：
+issue 12（`messages.commute_route`）、issue 13（本票，`messages.learning_resources`）、
+issue 14（`messages.tieba_research`）。迁移执行是
+`for version in range(current + 1, SCHEMA_VERSION + 1): MIGRATIONS[version]`——**按键逐个取，
+不连续会 KeyError**；而 dict 字面量里出现两个 `54:` 键时 Python 会静默保留后者。因此三票
+不能共用 54：**按合并顺序，第一票保留 54、第二票改 55、第三票改 56，并同步各自的
+`SCHEMA_VERSION`**（改完都要实测升级路径）。这是 Issue 08/11 撞号事故的同一形态，
+`git merge` 在改写位置不相邻时不会报冲突，必须人肉核对键的连续性。
 
 ### 真实可得性验证（AC4）
 
