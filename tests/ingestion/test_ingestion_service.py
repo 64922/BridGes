@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from conftest import (
     make_ingestion,
     upload_text,
@@ -552,7 +553,19 @@ def test_image_ocr_without_port_falls_back_honestly_and_stays_ready(storage) -> 
     assert "图片内容未做文字识别" in str(row["content"])
 
 
-def test_image_parse_cache_version_expiry_reparses_with_ocr(storage) -> None:
+@pytest.mark.parametrize(
+    "stale_version",
+    [
+        # 无 OCR 时代的元数据解析缓存。
+        "image-metadata-v1",
+        # Issue 07 之前的「科学图片」提示词识别结果：提示词变化后必须重新
+        # 识别，旧账号不得继续使用带学科预设的文本。
+        "image-ocr-v1",
+    ],
+)
+def test_image_parse_cache_version_expiry_reparses_with_ocr(
+    storage, stale_version
+) -> None:
     ocr = _FakeOcrPort("缓存失效后重新识别")
     service, _ = make_ingestion(storage, ocr=ocr)
     account_id = storage["account_a"]
@@ -570,7 +583,7 @@ def test_image_parse_cache_version_expiry_reparses_with_ocr(storage) -> None:
         "spans": [{"start": 0, "end": len(legacy_text), "page": None, "section": None}],
         "page_count": 0,
         "section_count": 0,
-        "parser_version": "image-metadata-v1",
+        "parser_version": stale_version,
     }
 
     with storage["database"].transaction():
@@ -581,7 +594,7 @@ def test_image_parse_cache_version_expiry_reparses_with_ocr(storage) -> None:
             (
                 account_id,
                 str(object_row["content_hash"]),
-                "image-metadata-v1",
+                stale_version,
                 json.dumps(legacy, ensure_ascii=False),
             ),
         )
