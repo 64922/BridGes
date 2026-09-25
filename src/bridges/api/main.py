@@ -26,12 +26,14 @@ from bridges.ai import (
 )
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.production import build_production_composition
+from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.startup_check import log_qwen_startup_connectivity_warnings
 from bridges.api import (
     auth,
     chat,
     compatibility,
     credentials,
+    model_settings,
     domain_packs,
     evaluation,
     expression,
@@ -93,6 +95,7 @@ from bridges.credentials.global_credential import (
     is_global_qwen_key_configured,
 )
 from bridges.credentials.ids import (
+    GLOBAL_QWEN_CREDENTIAL_ID,
     AMAP_BROWSER_MAP_CREDENTIAL_ID,
     AMAP_WEB_SERVICE_CREDENTIAL_ID,
     SETTINGS_TAVILY_CREDENTIAL_ID,
@@ -496,6 +499,15 @@ def create_app(
     if settings_at_credential is not None:
         credential_updates: dict[str, Any] = {}
         try:
+            # V2 Issue 09：设置页更换过的全局 Qwen 凭据与交互式首启保存在
+            # 同一项（ADR-0024 的优先级不变：文件/环境变量优先，凭据库兜底），
+            # 因此这里在缺少环境配置时把已保存的密钥载入运行期。
+            if settings_at_credential.qwen_api_key is None:
+                stored_qwen_key = app.state.runtime_credential_store.get(
+                    GLOBAL_QWEN_CREDENTIAL_ID
+                )
+                if stored_qwen_key is not None and stored_qwen_key.get_secret_value():
+                    credential_updates["qwen_api_key"] = stored_qwen_key
             if settings_at_credential.tavily_api_key is None:
                 settings_tavily_key = app.state.runtime_credential_store.get(
                     SETTINGS_TAVILY_CREDENTIAL_ID
@@ -1093,9 +1105,17 @@ def create_app(
     # 真实适配器接线），API 组合根、CLI 启动门与发布门复用同一实现；
     # 注册表与 adapter 不再各自编写模型字面量。
     settings = app.state.settings
-    production_composition = build_production_composition(settings)
+    # V2 Issue 09：运行配置（用户手填并验证通过的主模型 ID）由状态表承载，
+    # 网关每次调用读取；注册表与生产组合门禁仍以出厂批准矩阵为准。
+    run_model_config = RunModelConfigProvider(app.state.state_store)
+    production_composition = build_production_composition(
+        settings, model_config_provider=run_model_config
+    )
     capability_registry = production_composition.registry
     model_gateway = production_composition.gateway
+    app.state.run_model_config_provider = run_model_config
+    # 设置页更换 Qwen 密钥时就地轮换这个共享客户端（Issue 09）。
+    app.state.qwen_client = production_composition.qwen_client
 
     # Issue 03：启动连通性自检（非阻塞、仅告警）。test 环境（确定性
     # 适配器驱动）与未配置全局 Qwen Key 时不执行；其余环境在后台线程
@@ -1197,6 +1217,9 @@ def create_app(
                 gateway=model_gateway,
                 recorder=SqliteModelRunLockRecorder(bridges_database),
             )
+            # Issue 09：更换 Qwen 密钥时同步更新向量化端口的凭据判定来源
+            # （向量模型本身仍独立固定，不随主模型改变）。
+            app.state.embedding_port = embedding_port
             # Issue 14：知识库 OCR 统一走 Issue 09 生产组合的注册能力与
             # Issue 10 运行记录接缝（网关解析固定模型/区域/重试政策，锁由
             # recorder 幂等持久化），端口不再自建 client/adapter。
@@ -1313,6 +1336,7 @@ def create_app(
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
+            model_config_provider=run_model_config,
             attachment_service=getattr(app.state, "chat_attachment_service", None),
             retrieval_service=getattr(app.state, "retrieval_service", None),
             web_search_service=getattr(app.state, "web_search_service", None),
@@ -1724,6 +1748,7 @@ def create_app(
 
     app.include_router(auth.router)
     app.include_router(credentials.router)
+    app.include_router(model_settings.router)
     app.include_router(compatibility.router)
     app.include_router(chat.router)
     app.include_router(ingestion.router)

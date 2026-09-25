@@ -359,6 +359,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/credentials/qwen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Qwen Credential
+         * @description 验证并替换全局 Qwen 凭据；失败保留旧凭据（V2 Issue 09）。
+         *
+         *     验证对象是当前生效的主模型 ID：先查百炼模型元数据（密钥可用且能看到该
+         *     模型），再用候选密钥做一次最小真实调用（密钥能实际调用推理服务）。任一
+         *     不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型
+         *     调用即使用新凭据。
+         *
+         *     凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。
+         */
+        put: operations["replace_qwen_credential_settings_credentials_qwen_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/credentials/tavily": {
         parameters: {
             query?: never;
@@ -403,6 +430,30 @@ export interface paths {
         get?: never;
         /** Replace Amap Browser Map Credential */
         put: operations["replace_amap_browser_map_credential_settings_credentials_amap_browser_map_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Settings
+         * @description 报告实际模型 ID、能力、上下文长度与最近验证结论（不含任何密钥）。
+         */
+        get: operations["get_model_settings_settings_models_get"];
+        /**
+         * Replace Model Configuration
+         * @description 验证并原子激活手填的主模型 ID；失败保留原配置。
+         */
+        put: operations["replace_model_configuration_settings_models_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -10077,6 +10128,7 @@ export interface components {
         };
         /** CredentialSettingsResponse */
         CredentialSettingsResponse: {
+            qwen: components["schemas"]["CredentialStatus"];
             tavily: components["schemas"]["CredentialStatus"];
             amap: components["schemas"]["AMapCredentialStatus"];
         };
@@ -16655,6 +16707,64 @@ export interface components {
          * @enum {string}
          */
         ModelCallStatus: "success" | "degraded" | "blocked" | "retryable_fail";
+        /** ModelCandidate */
+        ModelCandidate: {
+            /** Model Id */
+            model_id: string;
+        };
+        /**
+         * ModelCapabilities
+         * @description 主模型能力档案（V2 Issue 09）。
+         *
+         *     字段是「元数据核对」与「真实能力探测」两种证据的共同结论：百炼模型信息
+         *     给出声明值，真实调用给出实测值；两者都通过才会被激活为运行配置。任一
+         *     字段为 False 都表示该能力不可用，不能保存为 BridGes 主模型。
+         */
+        ModelCapabilities: {
+            /**
+             * Text
+             * @description 是否支持文本输入与文本输出。
+             * @default false
+             */
+            text: boolean;
+            /**
+             * Image
+             * @description 是否支持图片输入（视觉理解）。
+             * @default false
+             */
+            image: boolean;
+            /**
+             * Tool Calling
+             * @description 是否支持工具调用（function calling）。
+             * @default false
+             */
+            tool_calling: boolean;
+            /**
+             * Structured Output
+             * @description 是否支持结构化输出（JSON object/schema）。
+             * @default false
+             */
+            structured_output: boolean;
+        };
+        /**
+         * ModelCapabilityCheck
+         * @description 一条能力证据：元数据声明或真实探测。
+         */
+        ModelCapabilityCheck: {
+            /** Capability */
+            capability: string;
+            /** Label */
+            label: string;
+            /**
+             * Source
+             * @description metadata（百炼声明）或 probe（真实调用）。
+             */
+            source: string;
+            /** Ok */
+            ok: boolean;
+            /** Message */
+            message?: string | null;
+        };
         /**
          * ModelRunLock
          * @description Immutable snapshot of one model invocation.
@@ -16765,6 +16875,51 @@ export interface components {
             cost_estimate?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * ModelSettingsResponse
+         * @description 当前生效的运行配置与最近一次验证结论。
+         */
+        ModelSettingsResponse: {
+            /** Model Id */
+            model_id: string;
+            /** Source */
+            source: string;
+            capabilities: components["schemas"]["ModelCapabilities"];
+            /** Context Window */
+            context_window?: number | null;
+            /** Max Input Tokens */
+            max_input_tokens?: number | null;
+            /** Metadata Version */
+            metadata_version: string;
+            /** Revision */
+            revision: number;
+            /** Validated At */
+            validated_at?: string | null;
+            /** Credential Configured */
+            credential_configured: boolean;
+            last_validation?: components["schemas"]["ModelValidationReport"] | null;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * ModelValidationReport
+         * @description 一次主模型验证的完整结论（成功与失败都保留）。
+         */
+        ModelValidationReport: {
+            /** Model Id */
+            model_id: string;
+            /** Passed */
+            passed: boolean;
+            capabilities: components["schemas"]["ModelCapabilities"];
+            /** Context Window */
+            context_window?: number | null;
+            /** Max Input Tokens */
+            max_input_tokens?: number | null;
+            /** Checks */
+            checks?: components["schemas"]["ModelCapabilityCheck"][];
+            /** Message */
+            message?: string | null;
         };
         /**
          * NarrationAudio
@@ -24389,6 +24544,41 @@ export interface operations {
             };
         };
     };
+    replace_qwen_credential_settings_credentials_qwen_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     replace_tavily_credential_settings_credentials_tavily_put: {
         parameters: {
             query?: never;
@@ -24481,6 +24671,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CredentialStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_model_settings_settings_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_model_configuration_settings_models_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettingsResponse"];
                 };
             };
             /** @description Validation Error */

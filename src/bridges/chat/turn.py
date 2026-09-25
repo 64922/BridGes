@@ -1869,11 +1869,14 @@ class TurnOrchestrator:
         *,
         gateway: ModelGateway,
         compiled_messages: list[dict[str, str]] | None = None,
+        model_override: str | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
         ``gateway`` 每次调用传入（模型传输是回合级依赖；测试与组合路径
-        通过服务层替换网关后仍经同一接口生效）。
+        通过服务层替换网关后仍经同一接口生效）。``model_override`` 是本轮
+        启动时锁定的主模型 ID（V2 Issue 09）：进行中的轮次沿用启动时模型，
+        运行配置的更换只作用于之后创建的轮次。
 
         ``compiled_messages``（V2 Issue 03）是日常父图 ``compile_context``
         节点产出的模型就绪上下文；传入时模型历史以它为准（近期原文 +
@@ -3284,7 +3287,11 @@ class TurnOrchestrator:
                 )
                 yield StreamEvent(kind="delta", delta=content)
             for event in gateway.stream(
-                CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
+                CHAT_CAPABILITY_NAME,
+                CHAT_CAPABILITY_VERSION,
+                run_context,
+                payload,
+                model_override=model_override,
             ):
                 if stop_event.is_set():
                     finalize_message(

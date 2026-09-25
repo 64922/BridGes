@@ -107,6 +107,14 @@ class QwenEmbeddingPort:
         self._gateway = gateway
         self._recorder = recorder
 
+    def replace_api_key(self, api_key: SecretStr | None) -> None:
+        """就地轮换全局凭据（V2 Issue 09 设置页更换密钥）。
+
+        向量模型仍独立固定为 ``text-embedding-v4``；这里只更新"是否配置了
+        全局凭据"的判定来源，避免更换密钥后端口仍按旧凭据的可读性拒绝调用。
+        """
+        self._api_key = api_key
+
     def embed(
         self,
         account_id: str,

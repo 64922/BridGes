@@ -30,6 +30,12 @@ from bridges.ai.adapters import (
     TransientError,
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
+from bridges.ai.run_model_config import (
+    RunModelConfigProvider,
+    RunModelConfigSnapshot,
+    configured_model_id,
+    is_configurable_capability,
+)
 from bridges.contracts.ai import (
     CapabilityRecord,
     CapabilityStatus,
@@ -61,8 +67,14 @@ class ModelGatewayError(Exception):
 class ModelGateway:
     """Resolve capabilities, invoke adapters, and record run locks."""
 
-    def __init__(self, registry: CapabilityRegistry) -> None:
+    def __init__(
+        self,
+        registry: CapabilityRegistry,
+        *,
+        model_config_provider: RunModelConfigProvider | None = None,
+    ) -> None:
         self._registry = registry
+        self._model_config_provider = model_config_provider
         self._adapters: dict[tuple[str, str], CapabilityAdapter] = {}
 
     def register_adapter(
@@ -91,6 +103,34 @@ class ModelGateway:
         """
         return self._adapters.get((capability_name, capability_version))
 
+    def _effective_capability(
+        self, capability: CapabilityRecord, model_override: str | None
+    ) -> CapabilityRecord:
+        """解析本次调用实际使用的模型绑定（V2 Issue 09）。
+
+        优先级：**运行级锁定**（``model_override``，进行中的轮次沿用启动时
+        的模型）高于**运行配置**（用户在设置中验证保存的主模型，每次调用
+        读取，新旧会话的下一轮即生效），两者都没有时保持出厂矩阵绑定。
+
+        只有可运行配置的能力（主对话/结构化/画像/视觉/OCR）接受覆盖；向量化
+        等固定项即使收到锁定值也取注册表绑定。生效模型与运行配置一致时，返回
+        的记录同时携带该配置的输入额度，漂移守卫与运行锁都以实际模型为准。
+        """
+        if not is_configurable_capability(capability.name):
+            return capability
+        model_id = model_override
+        config: RunModelConfigSnapshot | None = None
+        if self._model_config_provider is not None:
+            config = self._model_config_provider.snapshot()
+            if model_id is None:
+                model_id = configured_model_id(capability.name, config)
+        if not model_id or model_id == capability.model_id:
+            return capability
+        update: dict[str, Any] = {"model_id": model_id}
+        if config is not None and model_id == config.model_id:
+            update["max_input_tokens"] = config.max_input_tokens
+        return capability.model_copy(update=update)
+
     def invoke(
         self,
         capability_name: str,
@@ -98,6 +138,7 @@ class ModelGateway:
         run_context: RunContextEnvelope,
         payload: dict[str, Any] | None = None,
         budget: RunBudget | None = None,
+        model_override: str | None = None,
     ) -> ModelCallResult:
         """Invoke a capability and return a result with an immutable run lock.
 
@@ -110,6 +151,9 @@ class ModelGateway:
         预算放不放得下「退避 + 最小调用窗口 + 交接预留」——放不下直接以
         真实错误终态收尾，不再等待退避或发起重试。未传入时保持既有
         行为（适配器默认超时，重试只受 RetryPolicy 约束）。
+
+        ``model_override``（V2 Issue 09）：本运行的模型锁定；进行中的轮次
+        传入启动时解析的模型 ID，换运行配置不会中途切换本轮模型。
         """
         payload = payload or {}
         try:
@@ -143,6 +187,7 @@ class ModelGateway:
                 degradation_reason=str(exc),
             )
 
+        primary = self._effective_capability(primary, model_override)
         if primary.status != CapabilityStatus.VERIFIED:
             return self._blocked_result(
                 run_context,
@@ -229,6 +274,7 @@ class ModelGateway:
         capability_version: str,
         run_context: RunContextEnvelope,
         payload: dict[str, Any] | None = None,
+        model_override: str | None = None,
     ) -> Iterator[StreamEvent]:
         """流式调用一个能力，逐块产出事件并在结束时附带不可变运行锁。
 
@@ -274,6 +320,7 @@ class ModelGateway:
             )
             return
 
+        primary = self._effective_capability(primary, model_override)
         if primary.status != CapabilityStatus.VERIFIED:
             blocked = self._blocked_result(
                 run_context,
@@ -316,6 +363,7 @@ class ModelGateway:
                 capability_version,
                 run_context,
                 payload,
+                model_override=model_override,
             )
             if result.status == ModelCallStatus.SUCCESS and result.lock is not None:
                 content = ""

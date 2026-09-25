@@ -26,6 +26,7 @@ from pydantic import SecretStr, ValidationError
 
 from bridges.config import Settings, secret_file_reference
 from bridges.credentials.ids import (
+    GLOBAL_QWEN_CREDENTIAL_ID,
     RUNTIME_TAVILY_CREDENTIAL_ID,
     SETTINGS_TAVILY_CREDENTIAL_ID,
 )
@@ -33,7 +34,9 @@ from bridges.credentials.store import CredentialStoreError, OsCredentialStore
 from bridges.persistence import PersistenceError, resolve_database_path
 
 CONFIG_SCHEMA_VERSION = 1
-RUNTIME_QWEN_CREDENTIAL_ID = "global-qwen-api-key"
+#: 全局百炼运行凭据的凭据库标识（单一事实源在 ``credentials.ids``；设置页
+#: 更换密钥写同一项，因此下次启动解析到的就是最新值）。
+RUNTIME_QWEN_CREDENTIAL_ID = GLOBAL_QWEN_CREDENTIAL_ID
 _SECRET_ENV_FIELDS = (
     "BRIDGES_SECRET_KEY",
     "BRIDGES_SECRET_KEY_FILE",

@@ -9,8 +9,12 @@ const PASSWORD = "correct-horse-12";
  *
  * 原 Issue 10 E2E（录入/显示隐藏/保存/探测/重试/替换/两步删除）随密钥
  * 设置页一起删除，不得只删不验。本文件以负向断言锁定"入口不存在"：
- * 账户菜单严格为三项、设置中心无密钥入口、旧页面与旧 API 一律 404，
- * 且整个桌面应用不再发起 /api/auth/key-settings 请求。
+ * 账户菜单严格为三项、设置中心无旧「密钥设置」入口、旧页面与旧 API 一律
+ * 404，且整个桌面应用不再发起 /api/auth/key-settings 请求。
+ *
+ * V2 Issue 09 按 docs/v2/interaction.md §6.3 新增「密钥与模型管理」入口
+ * （/account/settings/models，全局 Qwen 凭据与主模型 ID），因此原
+ * 「设置中心无任何密钥链接」断言收窄为「旧密钥设置入口不得复活」。
  */
 
 test("账户菜单按顺序且仅包含切换账号、个人资料、退出登录", async ({ page }) => {
@@ -38,9 +42,14 @@ test("设置中心不再出现密钥设置卡片，个人资料与数据隐私�
   await expect(page.getByRole("heading", { name: "设置" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "个人资料" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "数据与隐私" })).toBeVisible();
-  // 密钥设置、模型连接与能力状态等文案一律不存在。
+  // 旧「密钥设置」文案与入口不得复活；Issue 09 新增的「密钥与模型管理」
+  // 入口指向 V2 设置页（与已退役的账户级 key-settings 面无关）。
   await expect(page.getByText(/密钥设置|模型连接|能力状态|百炼/)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /密钥/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /密钥设置/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "打开密钥与模型管理" })).toHaveAttribute(
+    "href",
+    "/account/settings/models"
+  );
 
   // 个人资料入口仍然可打开。
   await page.getByRole("link", { name: "打开个人资料" }).click();

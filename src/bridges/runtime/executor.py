@@ -35,6 +35,7 @@ from bridges.ai import (
 )
 from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID, VISION_MODEL_ID
 from bridges.ai.production import build_production_composition
+from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.repository import ConversationRepository
@@ -88,7 +89,28 @@ class BackgroundExecutor:
         self._video: VideoService | None = None
         self._deletion: DeletionService | None = None
         self._attachment_cleanup: ChatAttachmentService | None = None
+        self._model_config_provider: RunModelConfigProvider | None = None
         self._idle_reason: str | None = None
+
+    def _run_model_config_provider(self) -> RunModelConfigProvider:
+        """后台执行器共享的主模型运行配置提供者（V2 Issue 09）。
+
+        与 API 进程共享同一数据目录：执行器在每次模型调用前从状态表读取当前
+        生效的运行配置，因此设置页激活的新主模型无需重启 worker 即在下一次
+        调用生效；读取失败时回落本进程缓存/出厂快照，不中断任务。
+        """
+        if self._model_config_provider is not None:
+            return self._model_config_provider
+        settings = self._settings
+        state_port = None
+        try:
+            state_port = build_state_store(
+                settings.database_url, encryption_key=settings.secret_key
+            )
+        except (PersistenceError, ValueError):
+            state_port = None
+        self._model_config_provider = RunModelConfigProvider(state_port)
+        return self._model_config_provider
 
     def ensure_database(self) -> BridgesDatabase | None:
         """启动契约（Issue 06）：构造任何仓库前对配置的数据库执行
@@ -196,7 +218,9 @@ class BackgroundExecutor:
             # （Issue 10 recorder）由 Embedding（Issue 15）与 OCR（Issue 14）
             # 共享同一实例；缺少全局 Key 时组合不绑定适配器，端口失败关闭、
             # 诚实降级。
-            composition = build_production_composition(settings)
+            composition = build_production_composition(
+                settings, model_config_provider=self._run_model_config_provider()
+            )
             # Issue 15：worker 摄取/重建与 API 查询向量共用同一生产组合
             # 与统一运行锁 recorder，每次实际远端批次持久化一条审计锁。
             embedding = QwenEmbeddingPort(
@@ -297,7 +321,9 @@ class BackgroundExecutor:
                     prompt_version="2026-08-05",
                 )
             )
-            gateway = ModelGateway(registry)
+            gateway = ModelGateway(
+                registry, model_config_provider=self._run_model_config_provider()
+            )
             gateway.register_adapter("qwen_image", "1", QwenImageAdapter(client))
             gateway.register_adapter("qwen_vision", "1", QwenVisionAdapter(client))
             assert self._database is not None
@@ -369,7 +395,9 @@ class BackgroundExecutor:
                     prompt_version="2026-08-05",
                 )
             )
-            gateway = ModelGateway(registry)
+            gateway = ModelGateway(
+                registry, model_config_provider=self._run_model_config_provider()
+            )
             gateway.register_adapter("qwen_wan", "1", QwenWanAdapter(client))
             assert self._database is not None
             self._video = VideoService(

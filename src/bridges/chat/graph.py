@@ -126,6 +126,8 @@ class DailyTurnState(TypedDict, total=False):
     use_profile: bool
     #: select_explicit_module 的派发决定（本切片恒为 "chat"）。
     module_dispatch: str
+    #: 本轮启动时锁定的主模型 ID（V2 Issue 09；None 表示沿用出厂矩阵）。
+    run_model_id: str | None
     model_lock_id: str | None
     #: V2 Issue 03：compile_context 产出的模型就绪上下文（近期原文 +
     #: 较早摘要 + 补回原文；纯字符串/数字，检查点可序列化）。
@@ -405,6 +407,8 @@ def _node_invoke_subgraph_or_chat(
         use_knowledge_base=state.get("use_knowledge_base", True),
         use_profile=state.get("use_profile", True),
         compiled_messages=state.get("compiled_messages"),
+        # 运行级模型锁定（V2 Issue 09）：换运行配置不中途切换本轮模型。
+        model_id=state.get("run_model_id"),
     )
     for event in stream:
         deps.emit(event)
@@ -520,6 +524,7 @@ def run_daily_turn(
         "mode": "",
         "use_knowledge_base": bool(config.get("use_knowledge_base", True)),
         "use_profile": bool(config.get("use_profile", True)),
+        "run_model_id": config.get("run_model_id"),
     }
     graph = build_daily_graph(saver)
     # 保存器按构造绑定 (thread_id=会话, checkpoint_ns=运行) 定位谱系，

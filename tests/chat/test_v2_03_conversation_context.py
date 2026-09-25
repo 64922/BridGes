@@ -22,7 +22,11 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from bridges.ai.adapters import StreamChunk
-from bridges.ai.fixed_models import CHAT_MODEL_ID
+from bridges.ai.fixed_models import (
+    CHAT_MODEL_ID,
+    FACTORY_MAIN_MODEL_CONTEXT_WINDOW,
+    FACTORY_MAIN_MODEL_MAX_INPUT_TOKENS,
+)
 from bridges.chat.context_compiler import (
     CONTEXT_BUDGET_VERSION,
     DEFAULT_CONTEXT_WINDOW,
@@ -216,9 +220,13 @@ def test_dynamic_budget_reserves_and_compilation_record() -> None:
         mode=ChatMode.COMPANION,
     )
 
-    expected_budget = 131072 - OUTPUT_RESERVE_TOKENS - OUTPUT_RESERVE_MARGIN_TOKENS
+    expected_budget = (
+        FACTORY_MAIN_MODEL_CONTEXT_WINDOW
+        - OUTPUT_RESERVE_TOKENS
+        - OUTPUT_RESERVE_MARGIN_TOKENS
+    )
     expected_budget -= TOOL_RESERVE_TOKENS
-    assert compiled.context_window == 131072
+    assert compiled.context_window == FACTORY_MAIN_MODEL_CONTEXT_WINDOW
     assert compiled.input_budget_tokens == expected_budget
     assert compiled.reserves.output_tokens == (
         OUTPUT_RESERVE_TOKENS + OUTPUT_RESERVE_MARGIN_TOKENS
@@ -234,8 +242,9 @@ def test_dynamic_budget_reserves_and_compilation_record() -> None:
     assert record["summary_version"] == SUMMARY_VERSION
     assert record["token_estimate_version"] == "token-estimate-v1"
     assert record["adopted_message_ids"] == ["u1", "a1", "u2"]
-    # 已验证窗口登记表：未知模型回退保守缺省窗口。
-    assert verified_context_window(CHAT_MODEL_ID) == 131072
+    # 已验证窗口登记表：出厂主模型回退到出厂快照验证值；未知模型回退
+    # 保守缺省窗口。
+    assert verified_context_window(CHAT_MODEL_ID) == FACTORY_MAIN_MODEL_CONTEXT_WINDOW
     assert verified_context_window("unknown-model") == DEFAULT_CONTEXT_WINDOW
 
 
@@ -431,7 +440,7 @@ def test_model_switch_recomputes_budget_next_turn() -> None:
     )
 
     assert small.context_window == 2500
-    assert large.context_window == 131072
+    assert large.context_window == FACTORY_MAIN_MODEL_CONTEXT_WINDOW
     assert small.input_budget_tokens < large.input_budget_tokens
     # 小窗口触发较早原文摘要化；大窗口下近期原文保留更多。
     assert len(_user_contents(small.messages)) <= len(_user_contents(large.messages))
@@ -517,7 +526,11 @@ def test_graph_turn_delivers_compiled_context_and_audit(
     assert record["budget_version"] == CONTEXT_BUDGET_VERSION
     assert record["summary_version"] == SUMMARY_VERSION
     assert record["adopted_message_ids"]
-    assert record["context_window"] == 131072
+    # 运行配置快照（V2 Issue 09）提供已验证窗口与最大输入额度，编译取
+    # 两者较小值作为输入上界。
+    assert record["context_window"] == min(
+        FACTORY_MAIN_MODEL_CONTEXT_WINDOW, FACTORY_MAIN_MODEL_MAX_INPUT_TOKENS
+    )
 
 
 # ---------------------------------------------------------------------------

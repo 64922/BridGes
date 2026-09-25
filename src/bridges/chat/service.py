@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 from bridges import __version__
 from bridges.ai import ModelGateway
+from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.adapters import StreamEvent
 from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
@@ -240,9 +241,13 @@ class ChatService:
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
+        model_config_provider: RunModelConfigProvider | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
+        #: V2 Issue 09：主模型运行配置（手填并验证通过的主模型 ID）。运行创建
+        #: 时解析一次并随运行配置持久化，进行中的轮次不因换配置而切换模型。
+        self._model_config_provider = model_config_provider
         self._attachments = attachment_service
         #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
         self._retrieval = retrieval_service
@@ -1056,6 +1061,9 @@ class ChatService:
             "use_knowledge_base": use_knowledge_base,
             "use_profile": use_profile,
         }
+        run_model_id = self._run_model_id()
+        if run_model_id is not None:
+            run_config["run_model_id"] = run_model_id
         if (
             image_payload is None
             and video_payload is None
@@ -1387,6 +1395,17 @@ class ChatService:
             idempotent_replay=False,
         )
 
+    def _run_model_id(self) -> str | None:
+        """本轮启动时锁定的主模型 ID（V2 Issue 09）。
+
+        运行创建即本轮启动：此处解析一次并写入运行配置，之后换运行配置只影响
+        新创建的轮次；进行中的轮次（含租约恢复的续跑）沿用同一模型，历史
+        消息的模型记录不被改写。未装配提供者时返回 None（沿用出厂矩阵）。
+        """
+        if self._model_config_provider is None:
+            return None
+        return self._model_config_provider.snapshot().model_id
+
     def stream_generation(
         self,
         account_id: str,
@@ -1397,6 +1416,7 @@ class ChatService:
         use_knowledge_base: bool = True,
         use_profile: bool = True,
         compiled_messages: list[dict[str, str]] | None = None,
+        model_id: str | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成（委托给回合编排深模块，接口与语义不变）。
 
@@ -1419,6 +1439,7 @@ class ChatService:
             use_profile=use_profile,
             gateway=self._gateway,
             compiled_messages=compiled_messages,
+            model_override=model_id,
         )
 
     def stop_generation(
@@ -1713,6 +1734,9 @@ class ChatService:
             "use_knowledge_base": use_knowledge_base,
             "use_profile": use_profile,
         }
+        run_model_id = self._run_model_id()
+        if run_model_id is not None:
+            run_config["run_model_id"] = run_model_id
         if policy_snapshot is not None:
             run_config["global_writing_policy"] = policy_snapshot
         profile_correction = (previous_config or {}).get("profile_correction")
@@ -1827,15 +1851,33 @@ class ChatService:
             if conversation is not None
             else CHAT_MODE
         )
-        # 固定矩阵时代的锁定主模型；issue 09 引入用户手填模型后改为运行
-        # 配置的已验证模型 ID，预算随其已验证窗口在下一轮自动重算。
+        # 本轮启动时锁定的主模型（V2 Issue 09 运行级模型锁）：预算按锁定
+        # 模型的已验证窗口计算——运行配置快照带该模型的已验证窗口与最大
+        # 输入额度时取两者较小值（architecture.md §4 取上界合同）；快照已
+        # 切换（罕见的中途换配置）或未装配提供者时回退登记表与保守缺省
+        # 窗口，绝不虚大可用预算。
+        model_id = (run.config or {}).get("run_model_id") or CHAT_MODEL_ID
+        context_window: int | None = None
+        if self._model_config_provider is not None:
+            snapshot = self._model_config_provider.snapshot()
+            if snapshot.model_id == model_id:
+                if (
+                    snapshot.context_window is not None
+                    and snapshot.max_input_tokens is not None
+                ):
+                    context_window = min(
+                        snapshot.context_window, snapshot.max_input_tokens
+                    )
+                else:
+                    context_window = snapshot.context_window
         compiled = _compile_turn_context(
             messages=self._repo.list_messages(
                 run.account_id, run.conversation_id
             ),
             current_user_message_id=run.user_message_id,
-            model_id=CHAT_MODEL_ID,
+            model_id=model_id,
             mode=mode,
+            context_window=context_window,
         )
         if self._observability is not None:
             self._observability.log_audit(

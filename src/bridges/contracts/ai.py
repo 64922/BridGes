@@ -136,6 +136,22 @@ class CapabilityRecord(BaseModel):
     )
 
 
+class ModelCapabilities(BaseModel):
+    """主模型能力档案（V2 Issue 09）。
+
+    字段是「元数据核对」与「真实能力探测」两种证据的共同结论：百炼模型信息
+    给出声明值，真实调用给出实测值；两者都通过才会被激活为运行配置。任一
+    字段为 False 都表示该能力不可用，不能保存为 BridGes 主模型。
+    """
+
+    text: bool = Field(default=False, description="是否支持文本输入与文本输出。")
+    image: bool = Field(default=False, description="是否支持图片输入（视觉理解）。")
+    tool_calling: bool = Field(default=False, description="是否支持工具调用（function calling）。")
+    structured_output: bool = Field(
+        default=False, description="是否支持结构化输出（JSON object/schema）。"
+    )
+
+
 class ModelRunLock(BaseModel):
     """Immutable snapshot of one model invocation.
 
