@@ -404,3 +404,10 @@ def test_payload_contract_sends_only_image_and_fixed_prompt(
     assert payload["prompt"] == OCR_IMAGE_PROMPT
     assert payload["temperature"] == 0.01
     assert payload["max_tokens"] == 4096
+
+
+def test_ocr_prompt_is_general_document_task_without_discipline_preset() -> None:
+    """Issue 07：知识库材料不分学科，OCR 提示词也不带任何学科预设。"""
+    lowered = OCR_IMAGE_PROMPT.lower()
+    assert "scientific" not in lowered
+    assert "extract" in lowered

@@ -173,7 +173,8 @@ def test_retry_reuses_retrieval_round_and_citations(chat_env: dict[str, Any]) ->
     conversation_id = seed_conversation(chat_env, account)
     add_material(chat_env, account, "知识库.txt", "热力学第二定律内容。", layer="knowledge_base")
 
-    user, first, _ = _send(chat_env, conversation_id, "热力学")
+    # Issue 07 起裸学科名词不再单独触发检索，改用点名材料的请求形态。
+    user, first, _ = _send(chat_env, conversation_id, "根据我的材料，热力学第二定律讲了什么？")
     assert first.retrieval is not None
     first_round_id = first.retrieval.round_id
 
@@ -251,7 +252,8 @@ def test_message_projection_survives_reload(chat_env: dict[str, Any]) -> None:
     account = chat_env["account_a"]
     conversation_id = seed_conversation(chat_env, account)
     add_material(chat_env, account, "知识库.txt", "热力学内容。", layer="knowledge_base")
-    _, final, _ = _send(chat_env, conversation_id, "热力学")
+    # 同上：请求形态点名材料，检索才会触发（裸名词在 Issue 07 后不触发）。
+    _, final, _ = _send(chat_env, conversation_id, "根据我的材料，热力学讲了什么？")
     assert final.retrieval is not None
 
     # 重新打开对话（模拟刷新/重启）后引用仍指向相同来源
