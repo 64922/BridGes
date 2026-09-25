@@ -177,15 +177,18 @@ from bridges.persistence import (
 )
 from bridges.plugins.service import PluginService
 from bridges.profiles import (
+    AtomicProfileService,
     AutomaticProfileService,
     FourDimensionContractGate,
     FourDimensionProfileService,
     GatewayAutomaticProfileExtractor,
+    InMemoryAtomicProfileRepository,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     InMemoryProfileRepository,
     ProfileService,
     RuleBasedAutomaticProfileExtractor,
+    SqliteAtomicProfileRepository,
     SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
@@ -1083,6 +1086,19 @@ def create_app(
         app.state.four_dimension_profile_service
     )
 
+    # V2 Issue 08：无类别的原子画像列表。四维记录仍是提取与冲突消解引擎，
+    # 原子条目是它的用户可见镜像；两者共用同一份证据，因此这里复用同一个
+    # 数据目录：有持久化数据目录时落 bridges.db，内存模式（测试/E2E）不落盘。
+    atomic_profile_repository = (
+        SqliteAtomicProfileRepository(profile_database)
+        if profile_database is not None
+        else InMemoryAtomicProfileRepository()
+    )
+    app.state.atomic_profile_service = AtomicProfileService(
+        four_dimensions=app.state.four_dimension_profile_service,
+        repository=atomic_profile_repository,
+    )
+
     # T020: register a profile-specific impact resolver so assertion deletions
     # produce scope-correct memory-slice downstreams in addition to the generic
     # cache, index and run resolvers registered by T011.
@@ -1197,6 +1213,7 @@ def create_app(
             if profile_database is not None
             else None
         ),
+        atomic_profile_service=app.state.atomic_profile_service,
     )
 
     # Issue 11: 持久化流式聊天纵向切片。对话/消息/运行锁写入 bridges.db；
@@ -1385,6 +1402,7 @@ def create_app(
             selections_service=app.state.chat_selections_service,
             mcp_service=getattr(app.state, "mcp_service", None),
             automatic_profile_service=app.state.automatic_profile_service,
+            atomic_profile_service=getattr(app.state, "atomic_profile_service", None),
         )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。

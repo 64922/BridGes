@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 51
+SCHEMA_VERSION = 52
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2438,12 +2438,70 @@ MIGRATIONS: dict[int, list[str]] = {
         ALTER TABLE chat_attachments ADD COLUMN ordinal INTEGER
         """,
     ],
+    # V2 Issue 08：无固定类别的原子画像。
+    # - profile_items：条目身份是「账户 + 规范化正文」的抑制键，表里没有任何
+    #   用户可见类别；write_origin / user_edited_at 支撑「用户编辑优先」，
+    #   withdrawn 行即删除墓碑（正文清空、保留抑制键），migration_run_id 记录
+    #   创建该条目的迁移批次，供按批次回滚。
+    # - profile_item_migrations：账户级迁移台账，只存计数、标识与对账摘要，
+    #   不存任何画像正文。
+    51: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_items (
+            profile_item_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            identity_key TEXT NOT NULL,
+            source_record_id TEXT,
+            source_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            topic_hint TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            write_origin TEXT NOT NULL,
+            confidence TEXT NOT NULL DEFAULT 'low',
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            user_edited_at TEXT,
+            migration_run_id TEXT,
+            UNIQUE (account_id, identity_key)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_items_account_status
+            ON profile_items(account_id, status, updated_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS profile_item_migrations (
+            run_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            migration_version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            migrated INTEGER NOT NULL DEFAULT 0,
+            duplicated INTEGER NOT NULL DEFAULT 0,
+            tombstoned INTEGER NOT NULL DEFAULT 0,
+            skipped INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            created_item_ids_json TEXT NOT NULL DEFAULT '[]',
+            source_record_ids_json TEXT NOT NULL DEFAULT '[]',
+            reconciliation_digest TEXT NOT NULL,
+            retryable INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            undone_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_item_migrations_account
+            ON profile_item_migrations(account_id, created_at, run_id)
+        """,
+    ],
     # Issue 11（V2 论文搜索）：messages 增加两个显式模块列的 JSON 投影。
     # paper_search 保存论文模块的真实状态（查询词、来源、全文可得性、澄清
     # 等待状态、失败与停止），module_suggestion 保存普通聊天中「一键以原文
     # 启动论文模块」的建议（只建议，绝不暗中检索）。旧行通过 DEFAULT NULL
     # 自然兼容；旧 arXiv 自动路由投影（arxiv_search）保持原样只读。
-    51: [
+    # 编号 52：51 已被 Issue 08 的原子画像迁移占用，两个分支各自都曾声明 51，
+    # 合并时按「已在 main 上线者保留」原则让位，避免 v51 库跳过本迁移。
+    52: [
         """
         ALTER TABLE messages ADD COLUMN paper_search TEXT
         """,

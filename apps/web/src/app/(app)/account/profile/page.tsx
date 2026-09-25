@@ -1,4 +1,4 @@
-import { FourDimensionProfileCenter } from "@/components/account/profile/FourDimensionProfileCenter";
+import { AtomicProfileCenter } from "@/components/account/profile/AtomicProfileCenter";
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
@@ -6,15 +6,16 @@ export const metadata = {
 };
 
 /**
- * 用户画像（Issue 14：四维画像展开期用户页面）。
+ * 用户画像（V2 Issue 08：无固定类别的原子长期信息列表）。
  *
- * 默认页面只展示四类画像、内容和首次稳定记录时间，支持修改与撤回；头像由
- * 个人资料页面负责，旧治理面在兼容期保留为后端只读能力。
+ * 页面只读写原子条目：逐条修改与删除、行内保存／取消、删除先确认，空态
+ * 说明提取边界。旧四维记录与旧治理面仅保留为后端能力（转成原子列表后由
+ * 后端迁移台账负责对账），页面不再按类别分组展示。
  */
 export default function ProfileCenterPage() {
   return (
     <MainContent>
-      <FourDimensionProfileCenter />
+      <AtomicProfileCenter />
     </MainContent>
   );
 }
