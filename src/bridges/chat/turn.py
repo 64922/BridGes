@@ -36,8 +36,10 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intake import assess_intake
 from bridges.chat.attachments import (
+    FILE_MEDIA_TYPES,
     PHOTO_MEDIA_TYPES,
     ChatAttachmentError,
+    ChatAttachmentRecord,
     ChatAttachmentService,
 )
 from bridges.chat.budget import (
@@ -892,6 +894,70 @@ def retrieval_context(citations: list[CitationProjection]) -> str:
             break
         used += len(line)
         lines.append(line)
+    return "\n".join(lines)
+
+
+#: 解析未完成状态的中文表述（V2 Issue 06）。
+_FILE_ATTACHMENT_STATE_NOTES = {
+    "queued": "仍在解析中",
+    "processing": "仍在解析中",
+    "recovery": "上次解析中断，正在恢复",
+    "empty": "没有可读取的正文（可能是扫描件或空文件）",
+    "none": "尚未开始解析",
+}
+
+
+def file_attachment_state(attachment: ChatAttachmentRecord) -> str | None:
+    """文件附件当前的解析状态中文表述；已解析（ready）返回 None。
+
+    V2 Issue 06：解析中、解析失败或没有可读正文的文件，其内容本轮不会
+    进入检索片段，必须让模型知道「这份文件读不出来」。
+    """
+    projection = attachment.projection()
+    if projection.ingestion_status == "ready":
+        return None
+    if projection.ingestion_status == "error":
+        reason = projection.ingestion_error or "原因未知"
+        return f"解析失败（{reason}）"
+    return _FILE_ATTACHMENT_STATE_NOTES.get(projection.ingestion_status, "当前无法读取")
+
+
+def attachment_scope_note(
+    file_attachments: list[ChatAttachmentRecord],
+    retrieval_round: RetrievalRoundProjection | None,
+) -> str | None:
+    """本轮文件附件的如实说明块（V2 Issue 06）；无可说明返回 None。
+
+    两种情况必须让模型知道「本轮没拿到文件正文」：附件还没解析成功，
+    或已解析但检索没有产出该附件的片段（片段由检索层按问题选出，解析
+    成功不等于模型看到了内容）。任一情况都不许凭文件名或常识作答。
+    """
+    if not file_attachments:
+        return None
+    lines = ["本轮用户附加的文件处理结果（请据此如实回答）："]
+    for attachment in file_attachments:
+        state = file_attachment_state(attachment)
+        if state is not None:
+            lines.append(
+                f"- 「{attachment.original_filename}」：{state}。请如实告知用户"
+                "当前无法查看该文件的内容，不要猜测或声称已经读取。"
+            )
+    if retrieval_round is None or not any(
+        citation.source_layer == RetrievalSourceLayer.ATTACHMENT
+        for citation in retrieval_round.citations
+    ):
+        ready = [
+            item for item in file_attachments if file_attachment_state(item) is None
+        ]
+        if ready:
+            names = "、".join(f"「{item.original_filename}」" for item in ready)
+            lines.append(
+                f"- {names}已解析，但本轮没有检索到与当前问题相关的片段："
+                "不要描述或断言文件内容，也不要声称已经读取；"
+                "请如实告知用户本轮无法基于该文件作答。"
+            )
+    if len(lines) == 1:
+        return None
     return "\n".join(lines)
 
 
@@ -1786,6 +1852,7 @@ def assemble_payload(
     *,
     tools_context: str | None = None,
     retrieval_round: RetrievalRoundProjection | None = None,
+    attachment_note: str | None = None,
     web_search_projection: WebSearchProjection | None = None,
     arxiv_search_projection: ArxivSearchProjection | None = None,
     teaching_projection: TeachingTurnProjection | None = None,
@@ -1798,9 +1865,9 @@ def assemble_payload(
 
     所有编排路径的模型载荷都经此构造——新增上下文来源只改这里，不散落
     在调用方（原来的 ``payload["messages"].insert(1, ...)`` 约定收敛于
-    本函数）。注入顺序固定：工具集合 → 检索 → 公网 → arXiv → 教学 →
-    画像切片（与既有语义一致：最具体的上下文在最上方）。模型只能引用
-    各块提供的材料，不得声称存在未提供的文件、页码或来源。
+    本函数）。注入顺序固定：工具集合 → 检索 → 本轮附件说明 → 公网 →
+    arXiv → 教学 → 画像切片（与既有语义一致：最具体的上下文在最上方）。
+    模型只能引用各块提供的材料，不得声称存在未提供的文件、页码或来源。
     """
     messages = list(history)
     allowed_web_result_ids = teaching_web_result_ids(teaching_projection)
@@ -1811,6 +1878,7 @@ def assemble_payload(
             if retrieval_round is not None and retrieval_round.citations
             else None
         ),
+        attachment_note,
         (
             web_search_context(
                 web_search_projection,
@@ -3322,6 +3390,12 @@ class TurnOrchestrator:
                 history,
                 tools_context=tools_context,
                 retrieval_round=retrieval_round,
+                attachment_note=self._attachment_scope_note(
+                    account_id,
+                    conversation_id,
+                    until_user_message_id,
+                    retrieval_round,
+                ),
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
                 teaching_projection=teaching_projection,
@@ -5797,9 +5871,16 @@ class TurnOrchestrator:
             return {"role": "user", "content": message.content}
         image_parts: list[dict[str, Any]] = []
         unread_count = 0
+        file_count = 0
         for attachment in self._attachments.list_for_message(
             account_id, conversation_id, message.message_id
         ):
+            if attachment.media_type in FILE_MEDIA_TYPES:
+                # V2 Issue 06：文件正文来自解析与检索片段，是否可读由
+                # ``attachment_scope_note`` 作为独立 system 块如实说明
+                # （摘要编译路径不经过本方法，说在块里才不会漏）。
+                file_count += 1
+                continue
             if attachment.media_type not in PHOTO_MEDIA_TYPES:
                 continue
             try:
@@ -5818,15 +5899,23 @@ class TurnOrchestrator:
             )
         content = message.content
         if not content:
-            # 纯附件消息：模型收到的是本轮真实可读的照片；一张都读不出
-            # 时如实告知，绝不伪装已识别。
-            content = (
-                "（用户只发送了照片，没有写文字。请简要确认你看到了这些照片，"
-                "并询问用户想对它们做什么。）"
-                if image_parts
-                else "（用户发送了照片，但照片内容当前无法读取。请如实告知"
-                "用户暂时无法查看照片，请用户稍后重试。）"
-            )
+            # 纯附件消息：模型收到的是本轮真实可读的照片；一张都读不出、
+            # 也没有文件时如实告知，绝不伪装已识别。
+            if image_parts:
+                content = (
+                    "（用户只发送了照片，没有写文字。请简要确认你看到了这些照片，"
+                    "并询问用户想对它们做什么。）"
+                )
+            elif file_count:
+                content = (
+                    "（用户只发送了文件，没有写文字。请简要确认你收到了这些文件，"
+                    "并询问用户想对它们做什么。）"
+                )
+            else:
+                content = (
+                    "（用户发送了照片，但照片内容当前无法读取。请如实告知"
+                    "用户暂时无法查看照片，请用户稍后重试。）"
+                )
         elif unread_count and not image_parts:
             # 有文字但本轮照片全部不可读：仍须告知照片存在且不可读，
             # 防止模型对「这张照片里是什么」凭空作答。
@@ -5842,6 +5931,29 @@ class TurnOrchestrator:
             "role": "user",
             "content": [*image_parts, {"type": "text", "text": content}],
         }
+
+    def _attachment_scope_note(
+        self,
+        account_id: str,
+        conversation_id: str,
+        user_message_id: str | None,
+        retrieval_round: RetrievalRoundProjection | None,
+    ) -> str | None:
+        """本轮用户消息携带的文件附件的如实说明（V2 Issue 06）。
+
+        只针对本轮真实附加的文件：文件已解析但没有产出可引用片段时，模型
+        必须知道「本轮没拿到文件正文」，不能凭文件名或常识作答。
+        """
+        if self._attachments is None or user_message_id is None:
+            return None
+        files = [
+            attachment
+            for attachment in self._attachments.list_for_message(
+                account_id, conversation_id, user_message_id
+            )
+            if attachment.media_type in FILE_MEDIA_TYPES
+        ]
+        return attachment_scope_note(files, retrieval_round)
 
     @staticmethod
     def _lock_model_id(lock: ModelRunLock | None) -> str | None:

@@ -12,27 +12,32 @@ import {
   uploadChatAttachmentDraft,
 } from "@/lib/api";
 import type { ChatAttachmentDraftProjection } from "@/lib/api";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_DUPLICATE_MESSAGE,
+  CHAT_INGESTION_LABELS,
+  CHAT_TOO_LARGE_MESSAGE,
+  CHAT_TOO_MANY_MESSAGE,
+  CHAT_UNSUPPORTED_TYPE_MESSAGE,
+  attachmentIcon,
+  attachmentTypeLabel,
+  formatAttachmentSize,
+  isIngestionSettled,
+  isPhotoAttachment,
+  isPickedFileAcceptable,
+} from "@/lib/chat-attachments";
 import { CHAT_MODULES, type ChatModuleSelectionId } from "@/lib/chat-modules";
 import type { CapabilityAvailability } from "./chat/ReadAloudControls";
+import { IngestionStatusChip } from "./AttachmentIngestion";
 import { Menu } from "./Menu";
 import styles from "./chat/chat.module.css";
 
-// Issue 05：照片附件客户端约束（与服务端同款限制，提前拦截减少无效上传）。
-const PHOTO_ACCEPT = "image/png,image/jpeg,image/gif,image/webp";
-const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
-const PHOTO_MAX_COUNT = 10;
-const PHOTO_TYPE_LABELS: Record<string, string> = {
-  "image/png": "PNG",
-  "image/jpeg": "JPEG",
-  "image/gif": "GIF",
-  "image/webp": "WebP",
-};
-// 中文原因与服务端保持一致：无论客户端还是服务端拦截，用户看到同一句话。
-const UNSUPPORTED_TYPE_MESSAGE =
-  "暂不支持该文件类型，聊天附件目前仅支持 PNG、JPEG、GIF、WebP 图片。";
-const TOO_LARGE_MESSAGE = "文件超过 10 MB 大小限制，请压缩后重试。";
-const DUPLICATE_MESSAGE = "同一附件不能重复添加。";
-const TOO_MANY_MESSAGE = "一条消息最多添加 10 个附件。";
+// Issue 05/06：附件客户端约束（与服务端同款限制，提前拦截减少无效上传）。
+// 照片（PNG/JPEG/GIF/WebP）本轮多模态直读；PDF/DOCX/TXT/Markdown 本轮经
+// 解析、分块与检索引用，解析状态在草稿与消息里都可见。
+const DRAFT_STATUS_POLL_MS = 3000;
 
 /** 单条附件提示（类型/体积/数量等被拒绝时的中文原因，可逐条关闭）。 */
 interface DraftError {
@@ -43,7 +48,7 @@ interface DraftError {
 
 interface ComposerProps {
   /**
-   * 发送回调：``attachmentIds`` 为本轮照片草稿的 object_id（按页序排列），
+   * 发送回调：``attachmentIds`` 为本轮附件草稿的 object_id（按页序排列），
    * 空数组表示纯文字消息。纯附件（无文字）也允许发送。
    */
   onSend: (text: string, attachmentIds: string[]) => Promise<boolean> | boolean | void;
@@ -96,7 +101,7 @@ export function Composer({
   const dictationSecondsRef = useRef(0);
   const dictationAbortRef = useRef<AbortController | null>(null);
   const pendingAudioRef = useRef<Blob | null>(null);
-  // Issue 05：照片草稿按页序保存（object_id 即草稿，发送时随消息原子绑定）。
+  // Issue 05/06：附件草稿按页序保存（object_id 即草稿，发送时随消息原子绑定）。
   const [drafts, setDrafts] = useState<ChatAttachmentDraftProjection[]>([]);
   const [draftErrors, setDraftErrors] = useState<DraftError[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
@@ -105,7 +110,7 @@ export function Composer({
   const [brokenPreviews, setBrokenPreviews] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftErrorSeqRef = useRef(0);
-  // 有文字或已有照片即可发送；上传未完成的批次禁止提前发送。
+  // 有文字或已有附件即可发送；上传未完成的批次禁止提前发送。
   const canSend =
     (text.trim().length > 0 || drafts.length > 0) &&
     dictationPhase === "idle" &&
@@ -140,13 +145,13 @@ export function Composer({
       cancelRecording();
       requestAnimationFrame(autoGrow);
     } catch (error) {
-      // 发送错误由宿主页面统一呈现，文字与照片附件保留等待重试。
+      // 发送错误由宿主页面统一呈现，文字与附件保留等待重试。
       void error;
     }
   };
 
   // ------------------------------------------------------------------
-  // Issue 05：照片附件草稿（选择/拖入/粘贴 → 上传草稿 → 发送时绑定）
+  // Issue 05/06：附件草稿（选择/拖入/粘贴 → 上传草稿 → 发送时绑定）
   // ------------------------------------------------------------------
 
   const addDraftError = (message: string, filename?: string) => {
@@ -189,17 +194,17 @@ export function Composer({
     const seenNames = new Set(
       drafts.map((draft) => `${draft.original_filename}:${draft.content_length}`)
     );
-    let capacity = PHOTO_MAX_COUNT - drafts.length;
+    let capacity = CHAT_ATTACHMENT_MAX_COUNT - drafts.length;
     const accepted: File[] = [];
     for (const file of files) {
-      if (!PHOTO_TYPE_LABELS[file.type]) {
-        addDraftError(UNSUPPORTED_TYPE_MESSAGE, file.name);
-      } else if (file.size > PHOTO_MAX_BYTES) {
-        addDraftError(TOO_LARGE_MESSAGE, file.name);
+      if (!isPickedFileAcceptable(file.name)) {
+        addDraftError(CHAT_UNSUPPORTED_TYPE_MESSAGE, file.name);
+      } else if (file.size > CHAT_ATTACHMENT_MAX_BYTES) {
+        addDraftError(CHAT_TOO_LARGE_MESSAGE, file.name);
       } else if (seenNames.has(`${file.name}:${file.size}`)) {
-        addDraftError(DUPLICATE_MESSAGE, file.name);
+        addDraftError(CHAT_DUPLICATE_MESSAGE, file.name);
       } else if (capacity <= 0) {
-        addDraftError(TOO_MANY_MESSAGE, file.name);
+        addDraftError(CHAT_TOO_MANY_MESSAGE, file.name);
       } else {
         seenNames.add(`${file.name}:${file.size}`);
         accepted.push(file);
@@ -262,6 +267,33 @@ export function Composer({
       cancelled = true;
     };
   }, []);
+
+  // V2 Issue 06：文件草稿在发送前就排队解析，未到终态时轮询刷新草稿投影
+  // （排队 → 解析中 → 已解析/失败/无法识别）。照片不参与文档解析，也从不
+  // 触发轮询；合并时保留本地页序与本地新增草稿。
+  const pendingParseCount = drafts.filter(
+    (draft) =>
+      !isPhotoAttachment(draft.media_type) &&
+      !isIngestionSettled(draft.ingestion_status)
+  ).length;
+  useEffect(() => {
+    if (pendingParseCount === 0) return;
+    const timer = window.setInterval(() => {
+      listChatAttachmentDrafts()
+        .then((rows) => {
+          setDrafts((current) => {
+            const byId = new Map(rows.map((row) => [row.object_id, row]));
+            const merged = current.map((draft) => byId.get(draft.object_id) ?? draft);
+            const known = new Set(merged.map((draft) => draft.object_id));
+            return [...merged, ...rows.filter((row) => !known.has(row.object_id))];
+          });
+        })
+        .catch(() => {
+          // 轮询失败保留上一次状态，下一次定时器继续（不清空草稿）。
+        });
+    }, DRAFT_STATUS_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [pendingParseCount]);
 
 
   const applyPrefill = (value: string) => {
@@ -651,7 +683,7 @@ export function Composer({
       {drafts.length > 0 && (
         <ul
           data-testid="composer-attachments"
-          aria-label="待发送照片"
+          aria-label="待发送附件"
           style={{
             listStyle: "none",
             margin: 0,
@@ -663,6 +695,7 @@ export function Composer({
         >
           {drafts.map((draft, index) => {
             const filename = draft.original_filename;
+            const photo = isPhotoAttachment(draft.media_type);
             return (
               <li
                 key={draft.object_id}
@@ -676,39 +709,64 @@ export function Composer({
                   gap: "var(--space-1)",
                 }}
               >
-                {/* 同源预览：经账户授权返回；读取失败在附件旁显示中文原因。 */}
-                {brokenPreviews.has(draft.object_id) ? (
+                {/* 照片出缩略图（同源预览，经账户授权返回）；文件出文档卡片
+                    （图标 + 类型 + 大小），不把不可预览的文件当图片渲染。 */}
+                {photo ? (
+                  brokenPreviews.has(draft.object_id) ? (
+                    <div
+                      role="note"
+                      style={{
+                        width: "100%",
+                        height: 64,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "1px dashed var(--color-border)",
+                        borderRadius: "var(--radius-sm)",
+                        color: "var(--color-status-error)",
+                        fontSize: "var(--text-sm)",
+                        textAlign: "center",
+                        padding: "0 var(--space-1)",
+                      }}
+                    >
+                      照片内容当前无法读取，请移除后重新添加。
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={chatAttachmentDraftContentUrl(draft.object_id)}
+                      alt={`照片预览：${filename}`}
+                      onError={() => markPreviewBroken(draft.object_id)}
+                      style={{
+                        width: "100%",
+                        height: 64,
+                        objectFit: "cover",
+                        borderRadius: "var(--radius-sm)",
+                      }}
+                    />
+                  )
+                ) : (
                   <div
-                    role="note"
+                    data-testid="composer-file-card"
                     style={{
                       width: "100%",
                       height: 64,
                       display: "flex",
+                      flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      border: "1px dashed var(--color-border)",
+                      gap: "2px",
+                      border: "1px solid var(--color-border)",
                       borderRadius: "var(--radius-sm)",
-                      color: "var(--color-status-error)",
+                      backgroundColor: "var(--color-bg-secondary)",
+                      color: "var(--color-text-secondary)",
                       fontSize: "var(--text-sm)",
-                      textAlign: "center",
-                      padding: "0 var(--space-1)",
                     }}
                   >
-                    照片内容当前无法读取，请移除后重新添加。
+                    <Icon name={attachmentIcon(draft.media_type)} size={20} aria-hidden />
+                    <span>{attachmentTypeLabel(draft.media_type, filename)}</span>
+                    <span>{formatAttachmentSize(draft.content_length)}</span>
                   </div>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={chatAttachmentDraftContentUrl(draft.object_id)}
-                    alt={`照片预览：${filename}`}
-                    onError={() => markPreviewBroken(draft.object_id)}
-                    style={{
-                      width: "100%",
-                      height: 64,
-                      objectFit: "cover",
-                      borderRadius: "var(--radius-sm)",
-                    }}
-                  />
                 )}
                 <span
                   title={filename}
@@ -727,16 +785,38 @@ export function Composer({
                     color: "var(--color-text-secondary)",
                   }}
                 >
-                  第 {index + 1} 张
+                  第 {index + 1} {photo ? "张" : "个"}
                 </span>
-                <span
-                  style={{
-                    fontSize: "var(--text-sm)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  {PHOTO_TYPE_LABELS[draft.media_type] ?? "图片"}
-                </span>
+                {photo && (
+                  <span
+                    style={{
+                      fontSize: "var(--text-sm)",
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    {attachmentTypeLabel(draft.media_type, filename)}
+                  </span>
+                )}
+                {/* AC2：解析中、可用、失败与无法识别的状态可见；失败原因
+                    直接给出中文说明，不用颜色或图标代替文字。 */}
+                {!photo && (
+                  <IngestionStatusChip
+                    status={draft.ingestion_status}
+                    label={CHAT_INGESTION_LABELS[draft.ingestion_status]}
+                  />
+                )}
+                {!photo && draft.ingestion_error && (
+                  <span
+                    role="alert"
+                    style={{
+                      fontSize: "var(--text-xs)",
+                      color: "var(--color-status-error)",
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    {draft.ingestion_error}
+                  </span>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
                   <button
                     type="button"
@@ -759,7 +839,7 @@ export function Composer({
                   <span style={{ flex: 1 }} />
                   <button
                     type="button"
-                    aria-label={`移除图片 ${filename}`}
+                    aria-label={`移除附件 ${filename}`}
                     onClick={() => removeDraft(draft.object_id)}
                     style={{ ...iconButtonStyle, minWidth: 0, minHeight: 0 }}
                   >
@@ -884,8 +964,9 @@ export function Composer({
 
         <input
           ref={fileInputRef}
+          data-testid="composer-file-input"
           type="file"
-          accept={PHOTO_ACCEPT}
+          accept={CHAT_ATTACHMENT_ACCEPT}
           multiple
           onChange={onFileInputChange}
           style={{ display: "none" }}
@@ -911,7 +992,8 @@ export function Composer({
           items={[
             {
               label: "添加照片和文件",
-              description: "从电脑选择图片，也可拖入或粘贴",
+              description:
+                "支持 PDF、DOCX、TXT、Markdown 与图片，单个 10 MB 内，也可拖入或粘贴",
               icon: "imagePicture",
               // 随后打开系统文件选择框：焦点先回到触发按钮，关闭对话框
               // 时归还目标不会是已卸载的菜单项。
@@ -928,7 +1010,7 @@ export function Composer({
         />
         {uploadingCount > 0 && (
           <span role="status" className={styles.composerDictationText}>
-            正在添加图片…
+            正在添加附件…
           </span>
         )}
         <button

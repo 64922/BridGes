@@ -29,7 +29,7 @@ from bridges.contracts.chat import (
     ChatAttachmentDraftProjection,
     ChatAttachmentProjection,
 )
-from bridges.ingestion.service import display_ingestion_status
+from bridges.ingestion.service import IngestionError, IngestionService, display_ingestion_status
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
@@ -37,10 +37,25 @@ from bridges.storage.repository import BridgesObjectRepository
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENT_COUNT = 10
 
-#: V2 Issue 05：聊天照片附件本轮仅接受图片类型；文件类型自 Issue 06 接入。
+#: V2 Issue 05：照片附件本轮直接以多模态图片部件注入模型。
 PHOTO_MEDIA_TYPES = frozenset(
     {"image/png", "image/jpeg", "image/gif", "image/webp"}
 )
+#: V2 Issue 06：文件附件本轮经文档解析器解析、分块与检索引用；类型集合与
+#: ``bridges.ingestion.parsers`` 的解析范围、``ingestion.SUPPORTED_MEDIA_TYPES``
+#: 严格一致（代表材料解析测试核对，界面文案与流水线不允许漂移）。
+FILE_MEDIA_TYPES = frozenset(
+    {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+        "text/markdown",
+    }
+)
+#: 聊天附件允许的媒体类型（照片 + 文件）。
+CHAT_ATTACHMENT_MEDIA_TYPES = PHOTO_MEDIA_TYPES | FILE_MEDIA_TYPES
+#: 面向用户的支持类型说明（错误文案与界面提示共用同一份措辞）。
+SUPPORTED_MEDIA_TYPE_HINT = "PDF、DOCX、TXT、Markdown 与 PNG、JPEG、GIF、WebP 图片"
 
 _EXTENSION_TYPES = {
     ".csv": "text/csv",
@@ -118,7 +133,11 @@ class ChatAttachmentRecord:
 
 @dataclass(frozen=True)
 class ChatAttachmentDraftRecord:
-    """发送前隔离的附件草稿（只归属账户，不归属会话）。"""
+    """发送前隔离的附件草稿（只归属账户，不归属会话）。
+
+    V2 Issue 06：文件草稿在发送前就开始解析，草稿投影随对象一起给出
+    解析状态与失败中文原因（照片草稿没有摄取记录，呈现 ``none``）。
+    """
 
     object_id: str
     account_id: str
@@ -129,6 +148,10 @@ class ChatAttachmentDraftRecord:
     content_hash: str
     created_at: datetime
     updated_at: datetime
+    #: 摄取原始状态（无摄取记录为 None）与失败中文原因。
+    ingestion_raw_status: str | None = None
+    ingestion_lease_expires_at: str | None = None
+    ingestion_error: str | None = None
 
     def projection(self) -> ChatAttachmentDraftProjection:
         return ChatAttachmentDraftProjection(
@@ -137,6 +160,10 @@ class ChatAttachmentDraftRecord:
             media_type=self.media_type,
             content_length=self.content_length,
             content_hash=self.content_hash,
+            ingestion_status=display_ingestion_status(
+                self.ingestion_raw_status, self.ingestion_lease_expires_at
+            ).value,
+            ingestion_error=self.ingestion_error,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
@@ -153,12 +180,16 @@ class ChatAttachmentService:
         attachment_repository: AttachmentRepository | None = None,
         conversation_repository: ConversationRepository | None = None,
         draft_repository: AttachmentDraftRepository | None = None,
+        ingestion_service: IngestionService | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
         self._attachments = attachment_repository or AttachmentRepository(database)
         self._conversations = conversation_repository or ConversationRepository(database)
         self._drafts = draft_repository or AttachmentDraftRepository(database)
+        # V2 Issue 06：文件草稿上传即入队解析（解析/索引在后台执行器完成）；
+        # 未装配摄取服务时（只读/历史构造）跳过，草稿本身仍可用。
+        self._ingestion = ingestion_service
 
     def conversation_project_id(
         self, account_id: str, conversation_id: str
@@ -444,8 +475,9 @@ class ChatAttachmentService:
         """上传一个附件草稿；返回投影与是否为新建记录。
 
         只校验类型、体积与账户（V2 新会话必须由首条消息原子创建，新
-        聊天页还没有会话 ID，草稿不归属会话）；本轮仅接受照片类型。
-        同一 ``upload_id`` 幂等重放，同名同内容去重复用既有草稿。
+        聊天页还没有会话 ID，草稿不归属会话）；接受照片与文件两类
+        （V2 Issue 06）。同一 ``upload_id`` 幂等重放，同名同内容去重复用
+        既有草稿。文件草稿上传即入队解析，解析状态随草稿投影呈现。
         """
         filename = validate_filename(original_filename)
         if not content:
@@ -455,11 +487,10 @@ class ChatAttachmentService:
                 "file_too_large", "文件超过 10 MB 大小限制，请压缩后重试。", 413
             )
         media_type = sniff_media_type(filename, content)
-        if media_type not in PHOTO_MEDIA_TYPES:
+        if media_type not in CHAT_ATTACHMENT_MEDIA_TYPES:
             raise ChatAttachmentError(
                 "invalid_file_type",
-                "暂不支持该文件类型，聊天附件目前仅支持"
-                " PNG、JPEG、GIF、WebP 图片。",
+                f"暂不支持该文件类型，聊天附件目前支持{SUPPORTED_MEDIA_TYPE_HINT}。",
             )
         upload_key = upload_id or secrets.token_urlsafe(18)
         if len(upload_key) > 120 or not re.fullmatch(r"[A-Za-z0-9._~-]+", upload_key):
@@ -472,9 +503,11 @@ class ChatAttachmentService:
                 raise ChatAttachmentError(
                     "upload_id_conflict", "上传标识已用于其他文件，请重新选择。", 409
                 )
+            self._enqueue_parse(account_id, str(existing["object_id"]), media_type)
             return self._row_to_draft_record(existing), False
         duplicate = self._drafts.duplicate_row(account_id, filename, content_hash)
         if duplicate is not None:
+            self._enqueue_parse(account_id, str(duplicate["object_id"]), media_type)
             return self._row_to_draft_record(duplicate), False
 
         try:
@@ -504,9 +537,30 @@ class ChatAttachmentService:
             raise ChatAttachmentError(
                 "attachment_save_failed", "附件保存失败，请稍后重试。", 503
             ) from exc
+        self._enqueue_parse(account_id, stored.object_id, media_type)
         record = self.get_draft(account_id, stored.object_id)
         assert record is not None
         return record, True
+
+    def _enqueue_parse(self, account_id: str, object_id: str, media_type: str) -> None:
+        """把文件草稿交给摄取服务解析（照片走多模态直读，不入队）。
+
+        草稿尚未绑定会话，``conversation_id`` 留空——附件作用域由发送时的
+        消息绑定决定，解析与索引不依赖会话。入队失败如实报错（客户端可
+        用同一上传标识重试，重放路径会再次入队），不假装已开始解析。
+        """
+        if self._ingestion is None or media_type not in FILE_MEDIA_TYPES:
+            return
+        try:
+            self._ingestion.enqueue(
+                account_id, object_id, source="chat_attachment"
+            )
+        except IngestionError as exc:
+            raise ChatAttachmentError(
+                "attachment_parse_failed",
+                f"文件已保存，但解析任务入队失败：{exc.message}请重新上传该文件。",
+                503,
+            ) from exc
 
     def get_draft(
         self, account_id: str, object_id: str
@@ -610,6 +664,17 @@ class ChatAttachmentService:
             content_hash=str(row["content_hash"]),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
+            ingestion_raw_status=(
+                str(row["ingestion_raw_status"])
+                if row["ingestion_raw_status"] is not None
+                else None
+            ),
+            ingestion_lease_expires_at=(
+                str(row["lease_expires_at"]) if row["lease_expires_at"] is not None else None
+            ),
+            ingestion_error=(
+                str(row["failure_reason"]) if row["failure_reason"] is not None else None
+            ),
         )
 
     def _require_conversation(self, account_id: str, conversation_id: str) -> None:

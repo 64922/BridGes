@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MessageList, type ChatMessage } from "./MessageList";
-import type { PaperSearchProjection } from "@/lib/api";
+import type { ChatAttachmentProjection, PaperSearchProjection } from "@/lib/api";
 
 afterEach(cleanup);
 
@@ -44,6 +44,94 @@ function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     ...overrides,
   };
 }
+
+describe("MessageList 附件卡片（V2 Issue 05/06）", () => {
+  function attachment(
+    overrides: Partial<ChatAttachmentProjection> = {}
+  ): ChatAttachmentProjection {
+    return {
+      object_id: "obj-file",
+      original_filename: "统计讲义.pdf",
+      media_type: "application/pdf",
+      content_length: 2048,
+      content_hash: "hash",
+      conversation_id: "conversation-1",
+      message_id: "user-1",
+      status: "bound",
+      ordinal: 1,
+      ingestion_status: "ready",
+      ingestion_error: null,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("文件附件渲染为文档卡片：文件名、类型、大小、解析状态与下载", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[userMessage({ attachments: [attachment()] })]}
+      />
+    );
+
+    const card = screen.getByTestId("message-file-card");
+    expect(card.textContent).toContain("统计讲义.pdf");
+    expect(card.textContent).toContain("PDF");
+    expect(card.textContent).toContain("2 KB");
+    expect(screen.getByTestId("ingestion-status-ready").textContent).toContain("已解析，可引用");
+    const download = screen.getByRole("link", { name: /下载原件/ }) as HTMLAnchorElement;
+    expect(download.getAttribute("href")).toBe(
+      "/api/chat/conversations/conversation-1/attachments/obj-file/download"
+    );
+    // 文件不当图片渲染。
+    expect(screen.queryByAltText("用户发送的照片：统计讲义.pdf")).toBeNull();
+  });
+
+  it("解析失败的文件附件在卡片里给出中文原因", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          userMessage({
+            attachments: [
+              attachment({
+                ingestion_status: "error",
+                ingestion_error: "解析失败：DOCX 文件结构损坏。",
+              }),
+            ],
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("ingestion-status-error").textContent).toContain("解析失败");
+    expect(screen.getByText(/DOCX 文件结构损坏/)).toBeTruthy();
+  });
+
+  it("照片附件仍渲染缩略图", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          userMessage({
+            attachments: [
+              attachment({
+                object_id: "obj-photo",
+                original_filename: "板书.png",
+                media_type: "image/png",
+                ingestion_status: "none",
+              }),
+            ],
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByAltText("用户发送的照片：板书.png")).toBeTruthy();
+    expect(screen.queryByTestId("message-file-card")).toBeNull();
+  });
+});
 
 describe("MessageList 模块标识与建议（V2 Issue 11）", () => {
   it("用户消息的模块标识只来自该条消息的持久化值", () => {
