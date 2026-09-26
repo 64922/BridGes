@@ -141,26 +141,103 @@ BOSS 直聘的岗位链接一律返回「请稍候」反爬页，应届生求职
 
 ### 全量回归与基线比对（2026-09-26）
 
-跑法两侧完全一致：`pytest tests -q --tb=no -rfE -p no:randomly`，另 `--deselect` 三条本机
-会挂死的 `test_start_fails_*`，两侧各自独立仓外 `--basetemp`，**两侧都不设 `PYTHONPATH`**
-（使子进程导入问题对两边同等生效）。
+跑法两侧完全一致：`pytest tests -q --tb=no -rfE -p no:randomly
+--ignore=tests/humanize_eval`，另 `--deselect` 三条本机会挂死的 `test_start_fails_*`，
+两侧各自独立仓外 `--basetemp`，**两侧都不设 `PYTHONPATH`**（使子进程导入问题对两边
+同等生效）。`--ignore=tests/humanize_eval` 是既有约定：该目录 211 条在整树跑动里会
+因 `conftest` 同名模块冲突报 `ImportError`（本票第一轮跑动漏了这条，多出的 4 条
+失败全部来自此，已剔除后重跑）。
 
 | 侧 | 提交 | 结果 |
 | --- | --- | --- |
-| main | `90a06e1` | **273 失败 / 3912 通过 / 40 跳过 / 2 错误** |
-| 本分支 | `TBD` | **TBD** |
+| main | `90a06e1`（本票开发期基线） | **273 失败 / 3912 通过 / 40 跳过 / 2 错误** |
+| 本分支（合并 main 前） | `a5952a5` | **273 失败 / 3982 通过 / 43 跳过 / 2 错误** |
 
-- 收集数 main 4441 → 分支 4514：**+73 恰为 `tests/career_plan/` 三个文件的用例数**
+- 收集数 main 4230 → 分支 4303：**+73 恰为 `tests/career_plan/` 三个文件的用例数**
   （core 33 / module_flow 13 / sources 27，逐文件 `--collect-only` 比对），无其他增减。
-- 失败用例名集合双向比对：**TBD**
+- 失败用例名集合双向比对（`-rfE` 名单）：**仅分支独有 2 项、仅 main 独有 2 项**：
+  - 仅分支独有：`tests/closeout/test_api_boot.py` 两例 —— worktree 无仓库 `.venv`
+    的环境产物（带 `PYTHONPATH=src` 单跑即 2 passed，与 Issue 11/14 工单记录同一产物）。
+  - 仅 main 独有：`tests/runtime/test_runtime_contract.py` 两个受端口占用的启动用例
+    （`test_startup_full_journey_...`、`test_startup_reports_chinese_error_when_port_is_occupied`）
+    —— 这一对就是 `NEEDS_WEB_BUILD` 门控的两例：worktree 没有 `apps/web/.next`
+    生产构建产物，因此在分支侧转跳过、在 main 侧真跑并失败。
+  - 账目对平：Δ通过 +70 = 新增 73 − api_boot 2（分支侧由通过转失败）− 1（另一条环境
+    相关用例在 worktree 侧由通过转跳过）；Δ跳过 +3 = 上述 2 条 `NEEDS_WEB_BUILD`
+    ＋ 那 1 条；Δ失败 0 = api_boot 2 转失败 − 上述 2 条转跳过。跳过项的具体名单未逐条
+    记录，`-rfE` 只列失败名。
 - 静态检查：mypy 两侧均 **115 处 / 23 文件**，本票新增代码 **0 处**；ruff
   `src/bridges/career_plan` 与 `tests/career_plan` **零 finding**（全仓既有 591 处为各模块
   历史遗留，未触碰）。
-- 前端：`tsc --noEmit` 干净；vitest **21 文件 / 164 通过**（合并前 main 侧 20 文件 /
-  150），本票新增 `CareerPlanCard.test.tsx` 9 例与 chip 用例 1 例；`next lint` 无新增
-  warning（既有两条来自 `ImageTaskCard.tsx` 与 `Composer.tsx`）。
+- 前端：`tsc --noEmit` 干净；vitest 合并前 main 侧 **21 文件 / 169 通过**、合并树
+  **22 文件 / 183 通过**（Δ +14 = `CareerPlanCard.test.tsx` 9 例 + chip 1 例 +
+  `chat-modules.test.ts` 职业规划 4 例）；`next lint` 无新增 warning（既有三条来自
+  `ImageTaskCard.tsx`、另一个图片位置与 `Composer.tsx`）。
 - 本机共享桌面库 `%LOCALAPPDATA%\BridGes\data` 未被本次开发与验证触碰（迁移只在临时目录
-  实测）；合并到 main 后 main 的 `SCHEMA_VERSION` 为 57。
+  实测，只读探针实测现库 v54 / 30 列 / 164 条消息）；以 main 启动只会顺序补跑
+  55→58 四条迁移。
+
+### 合并 main 的接缝处理与合并后验证（2026-09-26）
+
+收尾时 main 已从 `90a06e1` 前进到 **`27d3d02`**（Issue 16 GitHub 项目推荐 `689e330`
+与 Issue 17 学习页与预览并入成 `a40d202` 之后，又有一条 Issue 16 的工单补记），
+分支先 `git merge main` 再验证。12 个文件冲突，
+绝大多数是「两侧各加一条模块登记」，按**两者都保留**处理（`api/main.py` 两处、
+`chat/repository.py` 六处、`chat/service.py`、`contracts/chat.py`、`MessageList.tsx`
+两处、`Icon.tsx`、`lib/api.ts`、`Composer.test.tsx`）；三处判定口径必须改：
+
+- **迁移号让位 57 → 58**：Issue 16 已占 57（`messages.github_projects`），本票的
+  `messages.career_plan` 整体改号为 **58**，`SCHEMA_VERSION = 58`。改号后实测三条路径
+  （全部在临时目录，未触碰本机共享库）：① 全新库 → v58 且含 `career_plan` 与
+  `github_projects`（34 列）；② 造一个 v57 旧库（删该列并把版本戳改回 57）→
+  `initialize()` 后补回该列、版本戳升到 58；③ 重复 `initialize()` 幂等（34 列不变）。
+  迁移键 1–58 连续无缺号。
+- **「未接入模块」反例第三次换人，且反例池这次用尽**：六个日常模块
+  （`paper／commute／resources／tieba／career／github`）现已全部接入，`ChatModuleId`
+  枚举里已没有「契约合法但子图未接入」的取值——未知取值在请求契约层就被 422 拒掉
+  （既有用例 `test_module_id_rejected_before_dispatch_when_unknown` 覆盖此处）。
+  六条拒绝用例（chat 2 处、commute／paper／resources／tieba／career 各 1 处）改为把
+  `career` 临时从 `AVAILABLE_MODULE_IDS` 里摘掉，复现「契约内但子图尚未接入」的构造，
+  验证的仍是 `select_explicit_module` 的同一条拒绝逻辑；前端
+  `chatModuleLabel` 的「未接入取值不回显英文 ID」反例同理由 `career` 改为不存在的标识。
+  父图那道门保留并改写注释：它守的是「新增模块 ID 先上契约、子图随后接入」的过渡状态。
+- `openapi.json` 与 `packages/contracts/src/generated.ts` 不手工合并，按合并后的代码
+  重新生成（299 paths / **695** schemas，较 main 的 682 多出本票 13 个 schema）；
+  `tests/contracts` 与 `tests/architecture` 合并后复跑 **30 passed**。
+
+**合并树全量回归**（同一命令、同一 deselect 集、同一 `--ignore`；两侧各自仓外
+`--basetemp`，均不设 `PYTHONPATH`）：
+
+| 侧 | 提交 | 结果 |
+| --- | --- | --- |
+| main | `27d3d02` | **273 失败 / 3970 通过 / 40 跳过 / 2 错误** |
+| 合并树（分支 + main） | `42e2334` | **273 失败 / 4041 通过 / 42 跳过 / 2 错误** |
+
+- 收集数 main 4288 → 合并树 4361：**+73 仍恰为 `tests/career_plan/` 三个文件**
+  （core 33 / module_flow 13 / sources 27），无其他增减。
+- 失败用例名集合双向比对（两侧各 275 条失败名，`-rfE` 名单）：**仅合并树独有 2 项、
+  仅 main 独有 2 项**，且与合并前那一对完全相同：
+  - 仅合并树独有：`tests/closeout/test_api_boot.py` 两例（worktree 无 `.venv` 的环境产物）。
+  - 仅 main 独有：`tests/runtime/test_runtime_contract.py` 的两例（`NEEDS_WEB_BUILD`
+    门控，worktree 无 `apps/web/.next` → 合并树侧跳过）。
+  - 账目完全对平：Δ通过 +71 = 新增 73 − api_boot 2；Δ跳过 +2 = 上述两条
+    `NEEDS_WEB_BUILD`；Δ失败 0 = api_boot 2 转失败 − 上述 2 条转跳过。
+- 本票新增的 `tests/career_plan` 73 例在合并树上**全部真跑通过**（无 skip、无失败）；
+  `tests/chat`、`tests/commute`、`tests/paper`、`tests/resources`、`tests/tieba` 里被改写
+  的六条拒绝用例也复跑通过（合并前先单独跑过一遍：6 个目录 **294 passed**）。
+- 静态检查：mypy main **115 处 / 23 文件** vs 合并树 **115 处 / 23 文件**（同一命令、
+  同一文件集合，本票新增代码 0 处）；ruff 同一组文件 main **592** vs 合并树 **594**，
+  差集只有 `src/bridges/api/main.py` 的 E402 从 103 条变 106 条（本票新增的 3 行模块
+  装配导入，与该文件既有的「导入写在 `logger = ...` 之后」惯例同款，Issue 14 同期为
+  +4），另有 `tests/chat/test_v2_02_resumable_runs.py` 由 25 条降到 24 条（改写拒绝用例
+  时合并/缩短了长行）；新增文件 **零 finding**。
+- 前端：`tsc --noEmit` 干净；vitest main **21 文件 / 169 通过** vs 合并树
+  **22 文件 / 183 通过**（Δ +14 = `CareerPlanCard.test.tsx` 9 例 + `Composer.test.tsx`
+  职业规划 chip 1 例 + `chat-modules.test.ts` 职业规划 4 例）；`next lint` 无 error、
+  无新增 warning。
+- 合并后 main 的 `SCHEMA_VERSION` 为 **58**；本机共享桌面库仍是 v54 且**未被本次合并与
+  验证触碰**（只读探针实测 30 列 / 164 条消息），下一次以 main 启动会顺序补跑
+  55（资料）、56（贴吧）、57（GitHub）、58（职业规划）四条迁移。
 
 ### 跨模块发现（不在本票范围，留给后续）
 
