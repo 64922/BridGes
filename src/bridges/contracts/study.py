@@ -89,10 +89,23 @@ class StudyReview(BaseModel):
     complete: bool = False
 
 
+class StudySummaryPoint(BaseModel):
+    """总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。"""
+
+    kind: Literal["learned", "mastered", "gap"]
+    text: str = Field(min_length=1)
+    question_ids: list[str] = Field(default_factory=list)
+    fragment_ids: list[str] = Field(default_factory=list)
+
+
+class StudySummary(BaseModel):
+    points: list[StudySummaryPoint] = Field(min_length=1)
+
+
 class StudyState(BaseModel):
     subsection_id: str
     stage: Literal[
-        "awaiting_pages", "recognizing", "preview", "tutoring", "review"
+        "awaiting_pages", "recognizing", "preview", "tutoring", "review", "summary"
     ] = "awaiting_pages"
     wait_reason: str | None = None
     pages: list[StudyPage] = Field(default_factory=list)
@@ -101,6 +114,7 @@ class StudyState(BaseModel):
     tutoring: list[StudyExchange] = Field(default_factory=list)
     page_update: StudyPageUpdate | None = None
     review: StudyReview | None = None
+    summary: StudySummary | None = None
 
     def public_view(self) -> "StudyState":
         """题库仅留在服务端；客户端只接收已展示题及其实际判定。"""

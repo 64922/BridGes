@@ -882,7 +882,8 @@ class ChatService:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
             study = StudyRepository(self._repo.database).get(account_id, conversation_id)
             if not attachment_ids and (
-                study is None or study.stage not in {"awaiting_pages", "tutoring", "review"}
+                study is None
+                or study.stage not in {"awaiting_pages", "tutoring", "review", "summary"}
             ):
                 raise ChatDomainError(
                     "study_pages_required",

@@ -55484,7 +55484,8 @@
               "recognizing",
               "preview",
               "tutoring",
-              "review"
+              "review",
+              "summary"
             ],
             "title": "Stage",
             "default": "awaiting_pages"
@@ -55547,6 +55548,16 @@
                 "type": "null"
               }
             ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -55554,6 +55565,62 @@
           "subsection_id"
         ],
         "title": "StudyState"
+      },
+      "StudySummary": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/StudySummaryPoint"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "title": "StudySummary"
+      },
+      "StudySummaryPoint": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "learned",
+              "mastered",
+              "gap"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "question_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Question Ids"
+          },
+          "fragment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fragment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "StudySummaryPoint",
+        "description": "总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。"
       },
       "StudyUnclear": {
         "properties": {
