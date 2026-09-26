@@ -1752,7 +1752,8 @@ class ChatService:
             study = StudyRepository(self._repo.database).get(account_id, conversation_id)
             if study is not None and study.review is not None:
                 latest_user = next(
-                    (item for item in reversed(existing) if item.role == ChatMessageRole.USER), None,
+                    (item for item in reversed(existing) if item.role == ChatMessageRole.USER),
+                    None,
                 )
                 if (latest_user is None or latest_user.message_id != owner.message_id
                         or any(item.status == ChatMessageStatus.DONE

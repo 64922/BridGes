@@ -25,7 +25,8 @@ describe("学习阶段与页级证据", () => {
     const button = screen.getByRole("button", { name: "暂停复盘回辅导" });
     expect(button.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("复盘").getAttribute("aria-current")).toBe("step");
-    rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring", review: {} }}
+    rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
+      review: { complete: false, needs_replan: false } }}
       onAction={onAction} />);
     fireEvent.click(screen.getByRole("button", { name: "继续复盘" }));
     expect(onAction).toHaveBeenCalledWith("继续复盘");
@@ -34,7 +35,7 @@ describe("学习阶段与页级证据", () => {
   it("复盘结束不重新开题，追加页待确认时不提供复盘操作", () => {
     const onAction = vi.fn(async () => true);
     const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
-      review: { complete: true } }} onAction={onAction} />);
+      review: { complete: true, needs_replan: false } }} onAction={onAction} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByRole("status").textContent).toContain("复盘已结束");
     rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",

@@ -15,7 +15,7 @@ from bridges.contracts.study import StudyReview, StudyReviewQuestion, StudyState
 from bridges.study.tutoring import page_sources
 
 
-def review_intent(text: str) -> Literal["start", "pause"] | None:
+def review_intent(text: str) -> Literal["start", "pause", "tutor"] | None:
     """只接受明确的阶段请求；引用、疑问、否定和普通回答不改变阶段。"""
     text = re.sub(r"[\s，,。！!]+", "", text)
     if re.fullmatch(
@@ -27,6 +27,12 @@ def review_intent(text: str) -> Literal["start", "pause"] | None:
         return "start"
     if text in {"暂停复盘", "暂停复盘回辅导", "回到辅导", "回辅导", "先回辅导"}:
         return "pause"
+    if re.match(
+        r"(?:暂停复盘|先回辅导)?(?:我想|我需要)?(?:请|麻烦|能不能|可以)?"
+        r"(?:先)?(?:给我|帮我)?(?:再|重新)?(?:讲讲|讲一下|讲解|解释|辅导)",
+        text,
+    ):
+        return "tutor"
     return None
 
 

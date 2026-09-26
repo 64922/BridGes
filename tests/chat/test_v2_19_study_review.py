@@ -349,3 +349,29 @@ def test_failed_commit_rolls_back_grade_and_next_question(tmp_path: Any, monkeyp
         assert result["messages"][-1]["status"] == "done"
         assert result["study"]["review"]["questions"][0]["answer"] == "a 是斜率"
         assert len(result["study"]["review"]["questions"]) == 2
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_request_to_explain_returns_to_tutoring_without_grading(
+    tmp_path: Any,
+    monkeypatch: Any,
+    fail: bool,
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = ReviewGateway()
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        endpoint = _start(client, app)
+        before = _ask(client, app, endpoint, "学完了")["study"]
+        gateway.fail_tutor = fail
+        result = _ask(client, app, endpoint, "先给我再讲一下斜率")
+        assert not any(task == "study.grade" for task, _ in gateway.review_calls)
+        if fail:
+            assert result["messages"][-1]["status"] == "error"
+            assert result["study"] == before
+        else:
+            assert result["study"]["stage"] == "tutoring"
+            assert result["study"]["review"]["active_question_id"] is None
+            assert result["study"]["review"]["questions"] == before["review"]["questions"]
+            resumed = _ask(client, app, endpoint, "继续复盘")
+            assert "复盘第2题" in resumed["messages"][-1]["content"]

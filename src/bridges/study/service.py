@@ -606,6 +606,8 @@ class StudyWorkflow:
             )}
 
         def tutoring() -> _GraphState:
+            if state.stage == "review" and state.review:
+                state.review.active_question_id = None
             state.stage = "tutoring"
             existing = next((item for item in state.tutoring
                              if item.user_message_id == run.user_message_id), None)
@@ -665,6 +667,8 @@ class StudyWorkflow:
                 entry = "study.pause_review"
             elif intent == "start":
                 entry = "study.plan_review"
+            elif intent == "tutor":
+                entry = "study.tutor"
             elif state.stage == "review" and state.review and not state.review.complete:
                 entry = "study.grade"
             else:
