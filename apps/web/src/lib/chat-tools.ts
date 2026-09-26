@@ -4,7 +4,8 @@ import type { IconName } from "@/components/design-system/Icon";
  * 聊天工具入口的结构化意图（Issue 13）：「+」菜单与空白态建议卡共享。
  *
  * 论文搜索已经接入真实 arXiv MCP 流程；其它意图目前只负责预填前缀，
- * 不在前端伪造任何工具结果。
+ * 不在前端伪造任何工具结果。Issue 21 起图片生成与视频生成的意图入口
+ * 一并退役（ADR-0030 列明的退役能力），不再出现在任何入口列表里。
  */
 export interface ChatToolIntent {
   label: string;
@@ -16,18 +17,10 @@ export interface ChatToolIntent {
 export const CHAT_TOOL_INTENTS: readonly ChatToolIntent[] = [
   { label: "论文搜索", icon: "paperSearch", prefix: "论文搜索：" },
   { label: "生涯规划助手", icon: "career", prefix: "生涯规划助手：" },
-  { label: "图片生成", icon: "imagePicture", prefix: "图片生成：" },
-  { label: "视频生成", icon: "videoClapper", prefix: "视频生成：" },
 ] as const;
 
 /** Issue 29：「生涯规划助手」入口已接入真实任务对话框（不再预填前缀）。 */
 export const CAREER_TOOL_LABEL = "生涯规划助手" as const;
-
-/** Issue 31：「图片生成」入口已接入真实任务对话框（不再预填前缀）。 */
-export const IMAGE_TOOL_LABEL = "图片生成" as const;
-
-/** Issue 32：「视频生成」入口已接入真实任务对话框（不再预填前缀）。 */
-export const VIDEO_TOOL_LABEL = "视频生成" as const;
 
 /**
  * Issue 29：生涯规划意图的显式前缀（与后端 src/bridges/career/intent.py

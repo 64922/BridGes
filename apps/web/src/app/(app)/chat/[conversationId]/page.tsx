@@ -32,13 +32,12 @@ import {
   type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
-import { readAloudSession } from "@/lib/read-aloud";
 import {
   hasPendingCommuteClarification,
   pendingClarificationModule,
   type ChatModuleSelectionId,
 } from "@/lib/chat-modules";
-import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
+import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import { isIngestionSettled, isPhotoAttachment } from "@/lib/chat-attachments";
 import type {
@@ -218,9 +217,6 @@ export default function ChatConversationPage() {
     setModuleId(null);
     void load();
   }, [load]);
-
-  // 切换对话/离开页面/切换账户时安全停止朗读播放会话。
-  useEffect(() => () => readAloudSession.stop(), [conversationId]);
 
   // V2 Issue 06：已发送文件附件的解析在后台继续，卡片状态要刷新才会从
   // 「排队解析中」走到「已解析，可引用／解析失败／无法识别正文」。只要还有
@@ -824,7 +820,6 @@ export default function ChatConversationPage() {
                   void retry(messageId, suggestionModuleId)
                 }
                 conversationId={conversationId}
-                tts={MEDIA_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
                 announcement={announcement}
               />

@@ -20,7 +20,7 @@ from bridges.contracts.evaluation_suite import (
     MetricValue,
 )
 
-#: 模板腔/AI 味/机翻感指示短语（全部为通用中文表达中的套话，原创清单）。
+#: 模板腔/AI 味指示短语（全部为通用中文表达中的套话，原创清单）。
 _TEMPLATE_PHRASES = (
     "首先", "其次", "综上所述", "总而言之", "众所周知", "值得注意的是",
     "不难看出", "由此可见", "需要指出的是", "一般来说",
@@ -28,9 +28,6 @@ _TEMPLATE_PHRASES = (
 _AI_PHRASES = (
     "作为 AI", "作为一个人工智能", "我是 AI", "希望能帮到你", "希望对你有帮助",
     "如果你有任何问题", "随时问我", "我可以帮助你", "很高兴为你服务",
-)
-_MT_PHRASES = (
-    "在某种程度上", "被广泛认为是", "值得注意的是的是", "作为一个整体",
 )
 
 #: 结论强度限定词（校准指标：高风险/证据不足时必须出现）。
@@ -158,33 +155,6 @@ def _dimension_count(assertions: list[Any], dimension: str) -> int:
     return sum(
         1 for a in assertions if isinstance(a, dict) and a.get("canonical_dimension") == dimension
     )
-
-
-def humanization_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValue]:
-    final_text = str(outputs.get("final_text", ""))
-    fact_lock_check = outputs.get("fact_lock_check") or {}
-    edits = outputs.get("edits", [])
-    skill_status = str(outputs.get("skill_status", ""))
-    dimension = EvaluationDimension.HUMANIZATION
-
-    template = _clamp(5.0 - _count_any(final_text, _TEMPLATE_PHRASES))
-    mt = _clamp(5.0 - _count_any(final_text, _MT_PHRASES))
-    ai = _clamp(5.0 - _count_any(final_text, _AI_PHRASES))
-    contract_done = skill_status in {"done", "needs_human"}
-    edits_ok = all(
-        isinstance(edit, dict) and str(edit.get("reason", "")).strip()
-        for edit in edits
-    ) and bool(edits)
-    task_fit = 5.0 if contract_done and edits_ok else (3.0 if contract_done else 0.0)
-    fact_invariance = 5.0 if fact_lock_check.get("passed") is True else 0.0
-
-    return [
-        _mv("template_ratio", "模板腔抑制", template, dimension, "scale-humanization-5"),
-        _mv("machine_translation_feel", "机翻感抑制", mt, dimension, "scale-humanization-5"),
-        _mv("ai_flavor", "AI 味抑制", ai, dimension, "scale-humanization-5"),
-        _mv("task_fit", "任务适配度", task_fit, dimension, "scale-humanization-5"),
-        _mv("fact_invariance", "事实不变性", fact_invariance, dimension, "scale-humanization-5"),
-    ]
 
 
 def science_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValue]:
@@ -368,7 +338,6 @@ def security_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValu
 
 _DIMENSION_METRICS = {
     "task-profile-loop": profile_metrics,
-    "task-humanization": humanization_metrics,
     "task-science": science_metrics,
     "task-teaching": teaching_metrics,
     "task-career": career_metrics,
@@ -412,7 +381,6 @@ def run_auto_assertions(
     web_triggered = bool(outputs.get("web_search_triggered"))
     alt_text = str(outputs.get("alt_text", ""))
     asset_available = bool(outputs.get("asset_available"))
-    skill_status = str(outputs.get("skill_status", ""))
     model_id = outputs.get("model_id")
 
     checks = {
@@ -429,14 +397,7 @@ def run_auto_assertions(
             ("结合你的学习目标", "根据你的目标", "结合你正在学的", "根据你的兴趣"),
         ),
         "profile_stable": _dimension_count(assertions, "stage_goal") <= 1,
-        "humanizer_contract_complete": skill_status in {"done", "needs_human"}
-        and bool(outputs.get("final_text"))
-        and bool(outputs.get("edits")),
-        "fact_invariance": bool(
-            (outputs.get("fact_lock_check") or {}).get("passed", True)
-        ),
         "template_free": not _contains_any(final_answer, _TEMPLATE_PHRASES),
-        "audience_fit": skill_status in {"done", "needs_human"},
         "claim_present": not claim_marker or claim_marker in final_answer,
         "claim_absent": not forbidden or forbidden not in final_answer,
         "evidence_used": bool(citations) or not case.initial_state.get("kb_docs"),
@@ -495,7 +456,6 @@ __all__ = [
     "compute_dimension_metrics",
     "run_auto_assertions",
     "profile_metrics",
-    "humanization_metrics",
     "science_metrics",
     "teaching_metrics",
     "career_metrics",

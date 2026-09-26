@@ -162,8 +162,8 @@ def record_submission(
 def consensus_summary(review_set: BlindReviewSet) -> dict[str, Any]:
     """盲评一致性摘要：评审数、一致率、低一致性项目与自动裁判标注。
 
-    含 ``legacy`` 标记：旧人工评审集只读展示，不进入新的隔离多模型
-    自动统计（统计入口见 bridges.humanize_eval.aggregator）。
+    含 ``legacy`` 标记：旧人工评审集只读展示；隔离多模型自动统计入口
+    已于 Issue 21 随文章人味化评测框架退役移除。
     """
     return {
         "reviewer_count": len({s.reviewer_id for s in review_set.submissions}),

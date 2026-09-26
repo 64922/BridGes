@@ -77,8 +77,6 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       skill: latest.skill ?? skillOfPreviousUser(items),
       // Issue 29：生涯规划结果投影（助手消息）
       careerPlanning: latest.career_planning ?? null,
-      // Issue 30：本条助手消息的朗读状态快照（服务端持久化）
-      readAloud: latest.read_aloud ?? null,
       // Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡）
       image: latest.image ?? null,
       // Issue 32：本条助手消息的视频任务/资产状态快照（任务卡与资产卡）

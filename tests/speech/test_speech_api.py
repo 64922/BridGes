@@ -1,10 +1,11 @@
-"""听写与朗读 API 测试（Issue 30，GQ-03 迁移）。
+"""听写 API 测试（Issue 30，GQ-03 迁移；Issue 21 退役朗读）。
 
-用临时 sqlite 应用验证：新账户无任何账户 Key/探测记录即可提交听写与
-朗读（GQ-03：入口由全局运行凭据驱动，不再返回 no_api_key 或
-capability_probing 门禁错误）、听写端点校验（MIME/空音频/超限）、
-朗读端点状态机与跨账户拒绝。真实供应商调用由服务级测试的固定快照
-覆盖；这里验证 API 边界与 GQ-03 后语义。
+用临时 sqlite 应用验证：新账户无任何账户 Key/探测记录即可提交听写
+（GQ-03：入口由全局运行凭据驱动，不再返回 no_api_key 或
+capability_probing 门禁错误）、听写端点校验（MIME/空音频/超限）。
+真实供应商调用由服务级测试的固定快照覆盖；这里验证 API 边界与 GQ-03
+后语义。回答朗读已按 ADR-0030 退役，其 410 契约与历史只读面由
+``tests/retirement/test_legacy_generation_exit.py`` 固定。
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.api.auth import SESSION_COOKIE_NAME
 from bridges.api.main import create_app
 from bridges.config import get_settings
 
@@ -61,9 +63,13 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
 
 
 def _create_conversation(client: TestClient) -> str:
-    response = client.post("/chat/conversations", json={})
-    assert response.status_code == 201, response.text
-    return response.json()["conversation_id"]
+    """建会话走聊天服务：首轮原子创建后空会话创建入口恒为 409。"""
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    subject = client.app.state.identity_service.resolve_session(session_token).subject
+    return client.app.state.chat_service.create_conversation(
+        subject.account_id
+    ).conversation_id
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -177,41 +183,3 @@ def test_dictation_reports_deterministic_failure(
     assert payload["error_code"] == "empty_transcript"
     assert payload["retryable"] is True
 
-
-def test_read_aloud_endpoints_account_scoped(client: TestClient, sqlite_app: Any) -> None:
-    """朗读端点状态机与账户隔离：无任何 Key/探测记录即可发起（GQ-03）。"""
-    _register(client)
-    conversation_id = _create_conversation(client)
-    # 不存在的消息 → 404。
-    response = client.post(f"/chat/conversations/{conversation_id}/messages/m-none/read-aloud")
-    assert response.status_code == 404
-    assert response.json()["detail"]["error"] == "message_not_found"
-    # 无 TTS 适配器时确定性失败（BLOCKED，非模拟成功）。
-    message_id = _seed_done_assistant_message(sqlite_app, client, conversation_id)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud"
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["state"] == "failed"
-    assert payload["retryable"] is False
-    assert payload["error_code"] is not None
-    # 音频未就绪 → 404。
-    response = client.get(
-        f"/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud/audio"
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"]["error"] == "audio_not_ready"
-    # 删除朗读幂等复位。
-    response = client.delete(
-        f"/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud"
-    )
-    assert response.status_code == 200
-    assert response.json()["state"] == "not_generated"
-    # 跨账户访问：他人账户消息仍不可见（404，不泄漏存在性）。
-    _register(client, "2")
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud"
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"]["error"] == "message_not_found"

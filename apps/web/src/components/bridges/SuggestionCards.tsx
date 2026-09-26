@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
-import { CHAT_TOOL_INTENTS, IMAGE_TOOL_LABEL, VIDEO_TOOL_LABEL } from "@/lib/chat-tools";
+import { CHAT_TOOL_INTENTS } from "@/lib/chat-tools";
 
 export interface SuggestionCard {
   icon: IconName;
@@ -17,10 +17,8 @@ const SUGGESTION_DESCRIPTIONS: Record<string, string> = {
   "生涯规划助手": "说明你的阶段与目标，一起排优先级",
 };
 
-export const SUGGESTION_CARDS: readonly SuggestionCard[] = CHAT_TOOL_INTENTS.filter(
-  (tool) =>
-    tool.label !== IMAGE_TOOL_LABEL && tool.label !== VIDEO_TOOL_LABEL
-).map((tool) => ({
+/** Issue 21：图片/视频生成意图已从入口清单退役，无需再按标签过滤。 */
+export const SUGGESTION_CARDS: readonly SuggestionCard[] = CHAT_TOOL_INTENTS.map((tool) => ({
   icon: tool.icon,
   label: tool.label,
   description: SUGGESTION_DESCRIPTIONS[tool.label] ?? "",

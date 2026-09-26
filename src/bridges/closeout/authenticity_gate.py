@@ -115,6 +115,17 @@ RETIRED_PROBE_SAMPLES: tuple[tuple[str, str, str], ...] = (
     ("POST", "/plugins", "user_extensions_retired"),
     ("POST", "/mcp", "user_extensions_retired"),
     ("GET", "/learning/review-tasks/*", "learning_review_retired"),
+    ("POST", "/chat/conversations/*/image-tasks/*/retry", "legacy_image_retired"),
+    ("DELETE", "/chat/conversations/*/image-assets/*", "legacy_image_retired"),
+    ("POST", "/chat/conversations/*/video-tasks/*/cancel", "legacy_video_retired"),
+    ("PUT", "/chat/conversations/*/video-assets/*/description", "legacy_video_retired"),
+    (
+        "POST",
+        "/chat/conversations/*/messages/*/read-aloud",
+        "legacy_read_aloud_retired",
+    ),
+    ("POST", "/science/sources", "legacy_science_retired"),
+    ("POST", "/science/claim-graphs", "legacy_science_retired"),
 )
 
 
@@ -1088,109 +1099,6 @@ def _probe_career(
     )
 
 
-def _probe_humanizer(
-    gateway: Any,
-    recorder: Any,
-    token: str,
-    *,
-    global_key_configured: bool,
-) -> LiveProbeResult:
-    """Humanizer 首稿探针：经业务服务走真实结构化调用并落 draft 锁。"""
-    from bridges.contracts.humanizer import (
-        HumanizerPath,
-        HumanizerSkillInput,
-        HumanizerTaskContract,
-    )
-    from bridges.skills import create_builtin_registry
-    from bridges.skills.humanizer.service import HumanizerService
-
-    capability = "qwen_structured_output"
-    approved = MODEL_BY_CAPABILITY[capability]
-    if not global_key_configured:
-        return LiveProbeResult(
-            capability=capability,
-            status="inconclusive",
-            approved_model_id=approved,
-            error_code=MISSING_GLOBAL_QWEN_KEY,
-            detail="未配置安装级全局 Qwen Key，Humanizer 探针无法执行。",
-        )
-    if gateway.get_adapter(capability, "1") is None:
-        return LiveProbeResult(
-            capability=capability,
-            status="inconclusive",
-            approved_model_id=approved,
-            error_code="no_adapter",
-            detail="生产组合未绑定真实适配器。",
-        )
-    run_id = _probe_run_id("humanizer", token)
-    started = time.monotonic()
-    try:
-        service = HumanizerService(
-            registry=create_builtin_registry(),
-            gateway=gateway,
-            run_lock_recorder=recorder,
-        )
-        events = list(
-            service.run_task(
-                PROBE_ACCOUNT_ID,
-                "conv-humanizer-probe",
-                "msg-humanizer-probe",
-                HumanizerSkillInput(
-                    skill_id="bridges-humanizer",
-                    contract=HumanizerTaskContract(
-                        path=HumanizerPath.REWRITE,
-                        source_text="Transformer 是一种使用注意力机制的神经网络架构。",
-                    ),
-                ),
-                _run_context(run_id),
-            )
-        )
-    except Exception as exc:  # noqa: BLE001 - 探针只输出稳定分类
-        return LiveProbeResult(
-            capability=capability,
-            status="failed",
-            approved_model_id=approved,
-            latency_ms=_latency_ms(started),
-            expected_locks=1,
-            error_code=exc.__class__.__name__.lower(),
-            detail="Humanizer 探针执行异常。",
-        )
-    locks = recorder.list_locks_by_run(PROBE_ACCOUNT_ID, run_id)
-    draft_locks = [
-        lock
-        for lock in locks
-        if any(ref.operation == "humanizer_draft" for ref in lock.business_refs)
-    ]
-    if not draft_locks:
-        return LiveProbeResult(
-            capability=capability,
-            status="failed",
-            approved_model_id=approved,
-            latency_ms=_latency_ms(started),
-            expected_locks=1,
-            error_code=MISSING_RUN_LOCK,
-            detail="Humanizer 真实调用未产生 humanizer_draft 锁。",
-        )
-    all_success = all(lock.status == ModelCallStatus.SUCCESS for lock in draft_locks)
-    final_status: Any = "unknown"
-    with contextlib.suppress(IndexError):
-        final_status = getattr(getattr(events[-1], "result", None), "status", None)
-    return LiveProbeResult(
-        capability=capability,
-        status="passed" if all_success else "failed",
-        approved_model_id=approved,
-        actual_model_id=draft_locks[0].actual_model_id,
-        latency_ms=_latency_ms(started),
-        lock_ids=tuple(lock.lock_id for lock in locks),
-        expected_locks=len(locks),
-        error_code=None if all_success else "humanizer_lock_failed",
-        detail=(
-            f"Humanizer 探针生成 {len(locks)} 条真实锁（draft+revision），"
-            f"领域终态 {final_status}。"
-        ),
-    )
-
-
 def _probe_profile(
     gateway: Any,
     recorder: Any,
@@ -1359,16 +1267,8 @@ def run_live_suite(
             "chat",
         )
     )
-    # Humanizer/Career：经业务服务完成真实结构化调用（每次调用独立落锁，
+    # Career：经业务服务完成真实结构化调用（每次调用独立落锁，
     # 修订/修复场景保留每条锁；领域终态只作报告说明，不以解析失败形成完成态）。
-    probes.append(
-        _probe_humanizer(
-            gateway,
-            recorder,
-            token,
-            global_key_configured=composition.global_key_configured,
-        )
-    )
     probes.append(
         _probe_career(
             gateway,

@@ -62,7 +62,11 @@ from bridges.contracts.teaching_progress import (
 )
 from bridges.ingestion.service import IngestionService
 from bridges.observability.service import ObservabilityService
-from bridges.retirement import raise_retired_file_source, record_compatibility_observation
+from bridges.retirement import (
+    raise_retired_capability,
+    raise_retired_file_source,
+    record_compatibility_observation,
+)
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -260,6 +264,37 @@ def _reject_retired_file_fields(
         raise_retired_file_source(request, endpoint=endpoint)
 
 
+def _reject_retired_generation_fields(
+    request: Request,
+    fields: set[str],
+    *,
+    endpoint: str,
+    image: object = None,
+    video: object = None,
+) -> None:
+    """在任何会话或消息写入前拦截旧图片/视频生成载荷。
+
+    Issue 21：图片与视频生成是 ADR-0030 列明的退役能力。提交路径与聊天
+    发送合一，所以退役门必须落在聊天写入契约上——携带 ``image``/``video``
+    的请求稳定返回 410，不创建消息，也不触发任何供应商调用；历史任务的
+    只读面（任务/资产查询与字节流）继续可用。
+    """
+    if "image" in fields or image is not None:
+        raise_retired_capability(
+            request,
+            endpoint=f"{endpoint}.image",
+            error="legacy_image_retired",
+            message="图片生成与编辑已退役，历史结果仍可查看与导出。",
+        )
+    if "video" in fields or video is not None:
+        raise_retired_capability(
+            request,
+            endpoint=f"{endpoint}.video",
+            error="legacy_video_retired",
+            message="视频生成已退役，历史结果仍可查看与导出。",
+        )
+
+
 def _sse_frame(event_kind: str, payload: dict[str, Any]) -> str:
     """按持久化事件记录编码 SSE 帧（kind 即事件名）。"""
     data = json.dumps(payload, ensure_ascii=False)
@@ -402,6 +437,13 @@ def create_first_turn(
         skill_id=body.skill_id,
         skill_input=body.skill_input,
         mcp_call=body.mcp_call,
+    )
+    _reject_retired_generation_fields(
+        request,
+        body.model_fields_set,
+        endpoint="legacy.chat.first-turn.create",
+        image=body.image,
+        video=body.video,
     )
     try:
         if body.plugin_selection:
@@ -932,6 +974,13 @@ async def send_message(
         skill_input=body.skill_input,
         mcp_call=body.mcp_call,
     )
+    _reject_retired_generation_fields(
+        request,
+        body.model_fields_set,
+        endpoint="legacy.chat.messages.send",
+        image=body.image,
+        video=body.video,
+    )
     try:
         user_message, assistant_message, idempotent_replay = service.start_generation(
             subject.account_id,
@@ -1183,6 +1232,7 @@ def stop_message(
 async def retry_message(
     conversation_id: str,
     message_id: str,
+    request: Request,
     service: ChatServiceDep,
     subject: SubjectDep,
     retrieval_service: RetrievalServiceDep,
@@ -1196,22 +1246,22 @@ async def retry_message(
     V2 Issue 02：``idempotency_key`` 抵御网络重放——同会话同键重试复用
     同一运行（``idempotent_replay=True``），不创建重复尝试。
     """
-    # Issue 31：图片任务消息不走消息级重试——任务卡内提供同输入重试
-    # （POST /image-tasks/{id}/retry），避免创建重复任务。
+    # Issue 21：图片/视频生成已退役，任务卡内的同输入重试入口也不再存在。
+    # 历史任务消息的消息级重试稳定返回 410，绝不重新入队供应商调用。
     previous = service.message_projection(subject.account_id, message_id)
     if previous is not None and previous.image is not None:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "image_task_retry_via_card",
-            "图片任务请使用任务卡内的重试按钮。",
+        raise_retired_capability(
+            request,
+            endpoint="legacy.image.retry",
+            error="legacy_image_retired",
+            message="图片生成与编辑已退役，历史结果仍可查看与导出。",
         )
-    # Issue 32：视频任务消息同样不走消息级重试——任务卡内提供同输入
-    # 重试（POST /video-tasks/{id}/retry），避免创建重复任务。
     if previous is not None and previous.video is not None:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "video_task_retry_via_card",
-            "视频任务请使用任务卡内的重试按钮。",
+        raise_retired_capability(
+            request,
+            endpoint="legacy.video.retry",
+            error="legacy_video_retired",
+            message="视频生成已退役，历史结果仍可查看与导出。",
         )
     # 重试沿用旧尝试轮次的全局知识库开关：新尝试生成新检索轮次，但用户
     # 发送时的设置不应被重试静默改变；检索服务未挂载时回退默认开启。

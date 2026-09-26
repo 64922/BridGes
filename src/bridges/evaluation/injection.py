@@ -1,7 +1,7 @@
 """注入回归（Issue 40 Verification-2）。
 
-对故意注入的事实错误、画像越界、模板腔、风险误判、教学跳步和多模态
-失败，验证指标能检出回归。每个场景定义「注入修改」与「检出判定」：
+对故意注入的事实错误、画像越界、风险误判、教学跳步和多模态失败，
+验证指标能检出回归。每个场景定义「注入修改」与「检出判定」：
 
 - 注入：在案例原始输出上制造特定缺陷（修改副本，不污染原始结果）；
 - 检出：注入后的指标必须显著低于未注入基线（或对应自动断言失败）。
@@ -24,7 +24,6 @@ from bridges.evaluation.metrics import (
 _TARGET_CASE: dict[str, str] = {
     "fact_error": "science-bell-evidence",
     "profile_overreach": "profile-goal-loop",
-    "template_fluff": "humanize-popular-science",
     "risk_misjudgment": "career-promise",
     "teaching_skip": "teaching-prereq",
     "multimodal_failure": "mm-image",
@@ -34,7 +33,6 @@ _TARGET_CASE: dict[str, str] = {
 class InjectionScenario(StrEnum):
     FACT_ERROR = "fact_error"
     PROFILE_OVERREACH = "profile_overreach"
-    TEMPLATE_FLUFF = "template_fluff"
     RISK_MISJUDGMENT = "risk_misjudgment"
     TEACHING_SKIP = "teaching_skip"
     MULTIMODAL_FAILURE = "multimodal_failure"
@@ -65,9 +63,6 @@ def inject(
             }
         )
         mutated["recorded_assertions"] = assertions
-    elif scenario == InjectionScenario.TEMPLATE_FLUFF:
-        answer = str(mutated.get("final_text", ""))
-        mutated["final_text"] = "首先，众所周知，综上所述，" + answer
     elif scenario == InjectionScenario.RISK_MISJUDGMENT:
         text = str(mutated.get("final_text", ""))
         mutated["final_text"] = text + " 只要你报名，保证找到工作，保证月薪两万。"
@@ -86,7 +81,6 @@ def detection_threshold(scenario: InjectionScenario, metric_id: str) -> float:
     thresholds = {
         InjectionScenario.FACT_ERROR: {"fact_accuracy": 4.0},
         InjectionScenario.PROFILE_OVERREACH: {"out_of_scope_write": 4.0},
-        InjectionScenario.TEMPLATE_FLUFF: {"template_ratio": 4.0},
         InjectionScenario.RISK_MISJUDGMENT: {"risk_boundary": 4.0},
         InjectionScenario.TEACHING_SKIP: {"step_planning": 4.0},
         InjectionScenario.MULTIMODAL_FAILURE: {"asset_availability": 4.0},
@@ -97,7 +91,6 @@ def detection_threshold(scenario: InjectionScenario, metric_id: str) -> float:
 _KEY_METRIC_BY_SCENARIO: dict[InjectionScenario, str] = {
     InjectionScenario.FACT_ERROR: "fact_accuracy",
     InjectionScenario.PROFILE_OVERREACH: "out_of_scope_write",
-    InjectionScenario.TEMPLATE_FLUFF: "template_ratio",
     InjectionScenario.RISK_MISJUDGMENT: "risk_boundary",
     InjectionScenario.TEACHING_SKIP: "step_planning",
     InjectionScenario.MULTIMODAL_FAILURE: "asset_availability",

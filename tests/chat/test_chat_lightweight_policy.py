@@ -41,7 +41,6 @@ from bridges.contracts.expression_task import (
     Surface,
 )
 from bridges.contracts.profiles import ProfileSensitivityClass, ProfileSliceItem
-from bridges.skills.humanizer.method_rules import METHOD_RULES_BLOCK_MARKER
 
 #: 文章体裁规则内容（不是边界声明里的“改写证据”等一般动词）。
 _ARTICLE_BODY_TERMS = ("科普必现", "体裁", "去模板腔", "钩子", "金句", "引用原句")
@@ -253,7 +252,6 @@ def test_compile_snapshot_renders_rules_without_article_or_method_ids() -> None:
     )
 
     block = snapshot.system_block
-    assert METHOD_RULES_BLOCK_MARKER not in block
     assert "chat.frequency-alert" not in block
     assert "rewrite.main-clause-first" not in block
     assert all(term not in block for term in _ARTICLE_BODY_TERMS)

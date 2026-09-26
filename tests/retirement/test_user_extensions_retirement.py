@@ -88,10 +88,10 @@ def test_builtin_skills_are_read_only_and_paper_search_remains_internal(
 
     assert response.status_code == 200
     skills = response.json()
+    # Issue 21：文章人味化退役，内置清单只剩两个本地解析能力。
     assert [item["skill_id"] for item in skills] == [
         "bridges-pdf",
         "bridges-documents",
-        "bridges-humanizer",
     ]
     assert all(item["read_only"] for item in skills)
     assert all("enabled" not in item for item in skills)

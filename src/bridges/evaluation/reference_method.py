@@ -3,7 +3,7 @@
 本方法是本仓库为评测套件独立编写的规则式基线：不调用任何模型，只对
 案例的固定输入（知识库材料、预期 Claim）做确定性处理。它的行为刻意
 朴素——绝不幻觉（只引用提供的材料）、绝不越界（不写任何画像）、
-绝不个性化——因此可作为「事实安全但无个性化/无人味」的合法对照，
+绝不个性化——因此可作为「事实安全但无个性化」的合法对照，
 用于证明评测指标能区分系统行为差异。
 
 许可证：随本仓库 MIT 发布（见套件 license-reference-method 记录）；
@@ -13,22 +13,6 @@
 from __future__ import annotations
 
 from bridges.contracts.evaluation_suite import EvalCase, ToolCallRecord
-from bridges.contracts.expression import Genre
-from bridges.contracts.humanizer import (
-    FactLockCheckResult,
-    FactLockEntry,
-    FactLockSeverity,
-    FactLockStatus,
-    HumanizerEdit,
-    HumanizerEditKind,
-    HumanizerFactCheckItem,
-    HumanizerOutputContract,
-    HumanizerPath,
-    HumanizerResultProjection,
-    HumanizerResultStatus,
-    HumanizerTaskContract,
-)
-from bridges.skills.humanizer.factlock import extract_locks
 
 #: 参考方法的固定版本（进入运行锁的 tool_adapter_versions）。
 REFERENCE_METHOD_VERSION = "reference-method-v1"
@@ -43,8 +27,6 @@ class ReferenceMethod:
 
     def run(self, case: EvalCase) -> dict[str, object]:
         """执行一个案例，返回结构化产物（与各维度执行器同形状）。"""
-        if case.task_id == "task-humanization":
-            return self._humanization(case)
         if case.task_id == "task-career":
             return self._career(case)
         if case.task_id == "task-multimodal":
@@ -104,72 +86,6 @@ class ReferenceMethod:
             "context_note": {"state": "empty", "profile_enabled": False, "profile_items": []},
             "tool_calls": [],
         }
-
-    def _humanization(self, case: EvalCase) -> dict[str, object]:
-        # 朴素基线：原样返回输入文本，事实锁逐一核对为保持，不做任何改写。
-        source = str(
-            case.initial_state.get("source_text", "")
-            or (case.turns[-1].content if case.turns else "")
-        )
-        locks = extract_locks(source)
-        entries = [
-            FactLockEntry(
-                entry_id=f"ref-lock-{index}",
-                kind=lock.kind,
-                surface_before=lock.surface,
-                surface_after=lock.surface,
-                canonical=lock.canonical,
-                status=FactLockStatus.PRESERVED,
-                severity=FactLockSeverity.INFO,
-                note="参考基线不做改写，事实锁保持。",
-            )
-            for index, lock in enumerate(locks)
-        ]
-        projection = HumanizerResultProjection(
-            task_id="reference-task",
-            skill_id="bridges-humanizer",
-            skill_version="1.0.0",
-            path=HumanizerPath.REWRITE,
-            genre=Genre.POPULAR_SCIENCE,
-            contract=HumanizerTaskContract(
-                path=HumanizerPath.REWRITE,
-                genre=Genre.POPULAR_SCIENCE,
-                source_text=source[:400],
-                source_label="参考基线",
-            ),
-            status=HumanizerResultStatus.DONE,
-            output=HumanizerOutputContract(
-                final_text=source[:400],
-                edits=[
-                    HumanizerEdit(
-                        edit_id="ref-1",
-                        kind=HumanizerEditKind.NO_CHANGE,
-                        original="（参考基线）",
-                        revised="（参考基线）",
-                        reason="参考基线不做改写。",
-                    )
-                ],
-                fact_check=[
-                    HumanizerFactCheckItem(
-                        item="全部事实锁",
-                        result="已核实（原样保持）",
-                        evidence="原文事实锁",
-                    )
-                ],
-                open_questions=["参考基线不识别任务契约。"],
-            ),
-            fact_lock_check=FactLockCheckResult(
-                check_id="ref-factlock",
-                source_text=source,
-                entries=entries,
-                blocking_conflicts=[],
-                needs_human=[],
-                passed=True,
-            ),
-            references=[],
-            genre_check=["参考基线不执行体裁规则。"],
-        )
-        return projection.model_dump(mode="json")
 
     def _career(self, case: EvalCase) -> dict[str, object]:
         return {

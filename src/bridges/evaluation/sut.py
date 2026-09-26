@@ -1,8 +1,8 @@
 """被测系统（SUT）注册与规格（Issue 40）。
 
 登记四种类别：完整 BridGes、基础 Qwen、合法开源参考方法与可解释消融
-（移除画像切片 / 移除 bridges-humanizer / 移除证据检索）。消融以完整
-BridGes 为基座，只关闭单一特性，保证对比可解释。
+（移除画像切片 / 移除证据检索）。消融以完整 BridGes 为基座，只关闭
+单一特性，保证对比可解释。
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ class SUTFeatureSet(BaseModel):
 
     profile_slices: bool = Field(default=False, description="是否注入画像切片。")
     evidence_retrieval: bool = Field(default=False, description="是否使用本地证据检索。")
-    humanizer_skill: bool = Field(default=False, description="是否启用 humanizer SKILL。")
     teaching_gate: bool = Field(default=False, description="是否启用教学证据门与强制联网。")
     plain_chat: bool = Field(default=False, description="纯聊天（无任何系统增强）。")
     deterministic_reference: bool = Field(
@@ -42,11 +41,10 @@ def _full() -> SUTSpec:
     return SUTSpec(
         sut_id="bridges_full",
         kind=SUTKind.BRIDGES_FULL,
-        description="完整 BridGes 纵向链路（画像切片 + 证据检索 + humanizer + 教学门）。",
+        description="完整 BridGes 纵向链路（画像切片 + 证据检索 + 教学门）。",
         features=SUTFeatureSet(
             profile_slices=True,
             evidence_retrieval=True,
-            humanizer_skill=True,
             teaching_gate=True,
         ),
     )
@@ -85,7 +83,7 @@ def _ablation(sut_id: str, *, removes: list[str], **features: bool) -> SUTSpec:
 
 
 def build_sut_registry() -> dict[str, SUTSpec]:
-    """构建内置 SUT 注册表：完整、基线、参考与三个可解释消融。"""
+    """构建内置 SUT 注册表：完整、基线、参考与两个可解释消融。"""
     registry = {
         "bridges_full": _full(),
         "qwen_baseline": _baseline(),
@@ -97,11 +95,6 @@ def build_sut_registry() -> dict[str, SUTSpec]:
                 "ablation_no_profile",
                 removes=["画像切片"],
                 profile_slices=False,
-            ),
-            "ablation_no_humanizer": _ablation(
-                "ablation_no_humanizer",
-                removes=["bridges-humanizer SKILL"],
-                humanizer_skill=False,
             ),
             "ablation_no_evidence": _ablation(
                 "ablation_no_evidence",

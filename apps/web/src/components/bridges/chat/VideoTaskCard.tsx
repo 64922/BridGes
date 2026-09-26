@@ -2,26 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import {
-  cancelVideoTask,
-  deleteVideoAsset,
   getVideoAsset,
   getVideoTask,
-  retryVideoTask,
-  updateVideoDescription,
   videoUrl,
   type VideoAssetProjection,
   type VideoTaskProjection,
   type VideoTaskStatus,
 } from "@/lib/api";
-import { useApiMutation, useApiQuery } from "@/lib/data";
+import { useApiQuery } from "@/lib/data";
 
 /** 轮询间隔（毫秒）：任务进行中每 5 秒查询一次云端进度。 */
 const POLL_INTERVAL_MS = 5000;
 
-/** 进行中状态：轮询与取消入口的条件（终态停轮询）。 */
+/** 进行中状态：轮询条件（终态停轮询）。 */
 const ACTIVE_STATUSES: VideoTaskStatus[] = [
   "queued",
   "submitting",
@@ -95,19 +90,17 @@ const cardStyle: React.CSSProperties = {
 };
 
 /**
- * 视频任务状态卡（Issue 32），嵌入助手消息流。
+ * 旧视频任务只读卡（Issue 32 引入，Issue 21 退役写入口）。
  *
- * 呈现排队/提交中/生成中/恢复中/成功/失败/取消中/已取消八态：进行中
- * 每 5 秒轮询任务投影（任务表是权威，消息投影是快照），成功后拉取资产
- * 详情渲染资产卡；取消后迟到结果不会发布为成功资产（后端条件发布保证）。
- * 失败可重试同一输入，能力不可用等不可重试错误只显示原因。卸载/切换时
- * 停止轮询，不遗留跨对话/跨账户的请求。
+ * 视频生成是 ADR-0030 列明的退役能力：本卡只负责历史结果的只读呈现——
+ * 状态芯片、提示词、预览与下载；取消、重试、说明修改与删除一律不再提供
+ * （对应写入口稳定返回 410）。进行中的历史任务仍每 5 秒轮询一次投影，
+ * 保证状态显示与任务表一致。
  */
 export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }: VideoTaskCardProps) {
-  // 轮询任务投影（任务表是权威，消息投影是快照）：useApiQuery 统一
-  // loading/error/reload 生命周期——首次立即拉取、每 5 秒一轮、终态停
-  // 轮询、卸载自动清理。
-  const { data: polled, reload } = useApiQuery(
+  // 轮询任务投影（任务表是权威，消息投影是快照）：首次立即拉取、每 5 秒
+  // 一轮、终态停轮询、卸载自动清理。
+  const { data: polled } = useApiQuery(
     `video-task:${conversationId}:${initialTask.task_id}`,
     () => getVideoTask(conversationId, initialTask.task_id),
     {
@@ -120,31 +113,7 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
 
   const [asset, setAsset] = useState<VideoAssetProjection | null>(null);
   const [assetError, setAssetError] = useState("");
-  const [deleted, setDeleted] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const notifiedRef = useRef(false);
-
-  // 取消/重试/删除：pending 与 error 由 useApiMutation 统一管理。
-  const { run: runCancel, pending: cancelling, error: cancelError } = useApiMutation(() =>
-    cancelVideoTask(conversationId, task.task_id)
-  );
-  const { run: runRetry, pending: retrying, error: retryError } = useApiMutation(() =>
-    retryVideoTask(conversationId, task.task_id)
-  );
-  const { run: runDelete, pending: deleting, error: deleteError } = useApiMutation(() =>
-    deleteVideoAsset(conversationId, task.asset_id ?? "")
-  );
-
-  const busy = cancelling ? "cancel" : retrying ? "retry" : deleting ? "delete" : "";
-  const actionError = cancelError ?? retryError ?? deleteError;
-
-  // 消息投影变化时同步（刷新/重登后从消息投影恢复）。
-  useEffect(() => {
-    if (initialTask.status !== "succeeded") {
-      setAsset(null);
-      setAssetError("");
-    }
-  }, [initialTask]);
 
   // 成功态：拉取资产详情（可访问文字说明/提示/模型/供应商任务标识）。
   useEffect(() => {
@@ -170,39 +139,7 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
     }
   }, [polled?.status, onSucceeded]);
 
-  const handleCancel = async () => {
-    if (busy) return;
-    try {
-      await runCancel();
-      reload();
-    } catch {
-      // 错误已进入 mutation error，由下方提示区展示。
-    }
-  };
-
-  const handleRetry = async () => {
-    if (busy) return;
-    try {
-      await runRetry();
-      notifiedRef.current = false;
-      reload();
-    } catch {
-      // 错误已进入 mutation error，由下方提示区展示。
-    }
-  };
-
-  const handleDelete = async () => {
-    if (busy || !task.asset_id) return;
-    try {
-      await runDelete();
-      setDeleted(true);
-      setShowDeleteConfirm(false);
-    } catch {
-      // 错误已进入 mutation error，由下方提示区展示。
-    }
-  };
-
-  if (deleted || task.deleted) {
+  if (task.deleted) {
     return (
       <div style={cardStyle} data-testid="video-asset-deleted">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
@@ -217,27 +154,15 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
     return (
       <div style={cardStyle} data-testid="video-asset-card">
         {asset ? (
-          <VideoAssetContent
-            conversationId={conversationId}
-            asset={asset}
-            busy={busy}
-            onDeleteConfirmOpen={() => setShowDeleteConfirm(true)}
-          />
+          <VideoAssetContent conversationId={conversationId} asset={asset} />
         ) : (
           <div role="status" style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
-            {assetError || actionError?.message || "正在加载视频…"}
+            {assetError || "正在加载视频…"}
           </div>
         )}
-        {showDeleteConfirm && (
-          <DeleteConfirm
-            busy={busy === "delete"}
-            onCancel={() => setShowDeleteConfirm(false)}
-            onConfirm={() => void handleDelete()}
-          />
-        )}
-        {(assetError || actionError) && (
+        {assetError && (
           <p role="alert" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-            {assetError || actionError?.message}
+            {assetError}
           </p>
         )}
       </div>
@@ -245,8 +170,6 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
   }
 
   const meta = STATUS_META[task.status];
-  const canCancel = ["queued", "submitting", "generating", "recovery"].includes(task.status);
-  const canRetry = task.status === "failed" && task.retryable;
   return (
     <div style={cardStyle} data-testid="video-task-card">
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
@@ -283,80 +206,30 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
       )}
       {task.status === "recovery" && (
         <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-          上次处理被中断，后台正在恢复任务；若长时间无进展请稍后重试。
+          上次处理被中断，后台正在恢复任务。
         </p>
       )}
       {task.status === "cancelling" && (
         <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-          正在取消生成任务，已生成的云端结果不会被保存。
+          该历史任务已请求取消，已生成的云端结果不会被保存。
         </p>
       )}
-      {(canCancel || canRetry) && (
-        <div style={{ display: "flex", gap: "var(--space-2)" }}>
-          {canRetry && (
-            <Button variant="secondary" size="sm" onClick={() => void handleRetry()} disabled={busy !== ""} data-testid="video-task-retry">
-              <Icon name="retry" size={14} aria-hidden />
-              {busy === "retry" ? "正在重试…" : "重试"}
-            </Button>
-          )}
-          {canCancel && (
-            <Button variant="secondary" size="sm" onClick={() => void handleCancel()} disabled={busy !== ""} data-testid="video-task-cancel">
-              {busy === "cancel" ? "正在取消…" : "取消"}
-            </Button>
-          )}
-        </div>
-      )}
-      {(assetError || actionError) && (
-        <p role="alert" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-          {assetError || actionError?.message}
-        </p>
-      )}
+      {/* Issue 21：视频生成入口已退役，历史任务只展示状态，不再提供重试或取消。 */}
+      <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
+        视频生成已退役，这条历史任务只能查看。
+      </p>
     </div>
   );
 }
 
-/** 资产卡内容：视频预览、可访问文字说明编辑、下载、删除入口。 */
+/** 历史资产只读内容：视频预览、可访问文字说明与下载。 */
 function VideoAssetContent({
   conversationId,
   asset,
-  busy,
-  onDeleteConfirmOpen,
 }: {
   conversationId: string;
   asset: VideoAssetProjection;
-  busy: string;
-  onDeleteConfirmOpen: () => void;
 }) {
-  const [editingDescription, setEditingDescription] = useState(false);
-  const [descriptionDraft, setDescriptionDraft] = useState(asset.description);
-  const [descriptionSaving, setDescriptionSaving] = useState(false);
-  const [descriptionError, setDescriptionError] = useState("");
-
-  // 资产更新（说明保存后）时同步本地视图。
-  useEffect(() => {
-    setDescriptionDraft(asset.description);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅资产整体变化时校正
-  }, [asset]);
-
-  const saveDescription = async () => {
-    if (descriptionSaving) return;
-    const cleaned = descriptionDraft.trim();
-    if (!cleaned) {
-      setDescriptionError("可访问文字说明不能为空。");
-      return;
-    }
-    setDescriptionSaving(true);
-    setDescriptionError("");
-    try {
-      await updateVideoDescription(conversationId, asset.asset_id, cleaned);
-      setEditingDescription(false);
-    } catch (error) {
-      setDescriptionError(error instanceof Error ? error.message : "保存失败，请重试。");
-    } finally {
-      setDescriptionSaving(false);
-    }
-  };
-
   return (
     <div style={{ display: "grid", gap: "var(--space-3)" }}>
       {/* 视频预览：不自动播放（省流量/省电），由用户点击播放。 */}
@@ -385,79 +258,14 @@ function VideoAssetContent({
         创建于 {asset.created_at.slice(0, 16).replace("T", " ")}
       </p>
 
-      {/* 可访问文字说明 */}
       <div data-testid="video-description">
-        {editingDescription ? (
-          <div style={{ display: "grid", gap: "var(--space-2)" }}>
-            <label htmlFor="video-description-input" style={{ fontSize: "var(--text-xs)", color: "var(--color-text-secondary)" }}>
-              可访问文字说明（用于无障碍描述，会随视频一同保存）
-            </label>
-            <textarea
-              id="video-description-input"
-              data-testid="video-description-input"
-              value={descriptionDraft}
-              onChange={(event) => setDescriptionDraft(event.target.value)}
-              rows={2}
-              style={{
-                width: "100%",
-                padding: "var(--space-2) var(--space-3)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)",
-                background: "var(--color-surface)",
-                color: "var(--color-text)",
-                fontSize: "var(--text-sm)",
-                fontFamily: "inherit",
-                boxSizing: "border-box",
-                resize: "vertical",
-              }}
-            />
-            {descriptionError && (
-              <p role="alert" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-                {descriptionError}
-              </p>
-            )}
-            <div style={{ display: "flex", gap: "var(--space-2)" }}>
-              <Button variant="primary" size="sm" onClick={() => void saveDescription()} disabled={descriptionSaving} data-testid="video-description-save">
-                {descriptionSaving ? "正在保存…" : "保存"}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setEditingDescription(false);
-                  setDescriptionError("");
-                  setDescriptionDraft(asset.description);
-                }}
-                data-testid="video-description-cancel"
-              >
-                取消
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
-            <p style={{ margin: 0, flex: 1, fontSize: "var(--text-xs)", color: "var(--color-text-secondary)" }}>
-              <span style={{ fontWeight: 600 }}>可访问文字说明：</span>
-              {asset.description || "（空）"}
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setDescriptionDraft(asset.description);
-                setDescriptionError("");
-                setEditingDescription(true);
-              }}
-              data-testid="video-description-edit"
-            >
-              修改
-            </Button>
-          </div>
-        )}
+        <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-secondary)" }}>
+          <span style={{ fontWeight: 600 }}>可访问文字说明：</span>
+          {asset.description || "（空）"}
+        </p>
       </div>
 
-      {/* 下载 / 删除 */}
-      <div style={{ display: "flex", gap: "var(--space-2)" }}>
+      <div style={{ display: "flex" }}>
         <a
           href={videoUrl(conversationId, asset.asset_id, true)}
           download
@@ -477,48 +285,6 @@ function VideoAssetContent({
           <Icon name="download" size={14} aria-hidden />
           下载视频
         </a>
-        <Button variant="secondary" size="sm" onClick={onDeleteConfirmOpen} disabled={busy === "delete"} data-testid="video-delete">
-          删除视频
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** 带影响说明的删除确认区（对象数 + 消息引用说明）。 */
-function DeleteConfirm({
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div
-      role="alertdialog"
-      aria-label="删除视频确认"
-      data-testid="video-delete-confirm"
-      style={{
-        display: "grid",
-        gap: "var(--space-2)",
-        padding: "var(--space-3)",
-        border: "1px solid var(--color-status-error)",
-        borderRadius: "var(--radius-md)",
-        background: "var(--color-status-error-bg)",
-      }}
-    >
-      <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-primary)" }}>
-        删除该视频将移除其本地对象，对话中引用此视频的消息将显示「已删除」；此操作不可撤销。
-      </p>
-      <div style={{ display: "flex", gap: "var(--space-2)" }}>
-        <Button variant="danger" size="sm" onClick={onConfirm} disabled={busy} data-testid="video-delete-confirm-button">
-          {busy ? "正在删除…" : "确认删除"}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={onCancel} data-testid="video-delete-cancel">
-          保留视频
-        </Button>
       </div>
     </div>
   );

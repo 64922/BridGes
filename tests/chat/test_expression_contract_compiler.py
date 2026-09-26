@@ -1,5 +1,8 @@
 """Issue 03：版本化表达任务契约编译器的表驱动测试。
 
+编译器服务普通聊天的轻量表达策略（Issue 07）与路由意图判定；文章专用
+编排与体裁规则已于 Issue 21 随旧 SKILL 退役，本文件只覆盖编译器本身。
+
 覆盖测试计划 7 项：
 1. surface × operation × reality × intensity × evidence mode 表驱动，含用户显式选择。
 2. 邮件/报告/教程/观点文/演讲/科普/科研段落/未声明体裁不误落科普必现模板。
@@ -25,13 +28,11 @@ from bridges.contracts.expression_task import (
     SourceScope,
     Surface,
 )
-from bridges.skills.humanizer.contract_compiler import (
+from bridges.expression_task.contract_compiler import (
     ContractVersionError,
     CompileRequest,
     compile_task_contract,
 )
-from bridges.skills.humanizer.genre_rules import check_genre, genre_rule_set
-from bridges.skills.humanizer.intent import route_humanizer_message
 
 # ---------------------------------------------------------------------------
 # 测试计划 1：surface × operation × reality × intensity × evidence mode 表驱动
@@ -205,15 +206,7 @@ def test_no_popular_science_default(content: str, expected_genre) -> None:
     )
     assert result.contract.genre == expected_genre
     if expected_genre is None:
-        # 通用 profile 无必现/禁止元素，体裁复核必然通过。
-        genre_check = check_genre("任何文本", None)
-        assert genre_check.passed
-        assert genre_rule_set(None).display_name == "通用文章"
-        # 通用 profile 无禁止模式、无可选表达，不注入科普必现句型。
-        generic = genre_rule_set(None)
-        assert not generic.prohibited
-        assert not generic.optional_devices
-        # 裁决链记录未识别体裁使用通用 profile。
+        # 裁决链记录未识别体裁使用通用 profile，不注入科普必现句型。
         assert any(
             a.rule_id == "genre-generic-profile" for a in result.record.adjudications
         )
@@ -224,14 +217,7 @@ def test_mail_is_not_forced_into_popular_science_templates() -> None:
     result = compile_task_contract(
         CompileRequest(content="帮我润色这封邮件", source_material="尊敬的客户：感谢您选择我们。")
     )
-    contract = result.contract
-    assert contract.genre is None
-    # 从契约派生的旧契约也保持 None，而不是科普兜底。
-    route = route_humanizer_message("帮我润色这封邮件：尊敬的客户：感谢您选择我们。")
-    assert route is not None
-    assert route.skill_input.contract.genre is None
-    assert route.skill_input.expression_contract is not None
-    assert route.skill_input.expression_contract.version_hash
+    assert result.contract.genre is None
 
 
 # ---------------------------------------------------------------------------

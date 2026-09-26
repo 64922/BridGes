@@ -2,10 +2,13 @@
 
 被测系统差异只体现为特性开关与编排路径：
 
-- 完整 BridGes：真实聊天编排（检索/画像切片/humanizer/教学门/生涯规划），
+- 完整 BridGes：真实聊天编排（检索/画像切片/教学门/生涯规划），
   消融在此基础上关闭单一特性；
 - 基础 Qwen：纯模型调用（无系统提示、无检索、无画像、无 SKILL）；
 - 合法开源参考方法：确定性规则式基线（reference_method 模块），不调用模型。
+
+文章人味化任务与对应 SUT 消融已于 Issue 21 随旧 SKILL 退役移除：评测套件
+只驱动仍获批的能力，退役入口的 410 合同由收尾真实性门覆盖。
 
 每个执行器产出 :class:`CaseOutcome`（结构化产物 + 工具记录 + 状态轨迹 +
 模型调用锁），由 metrics 与 judges 消费。执行失败以稳定错误码收敛为
@@ -25,12 +28,6 @@ from bridges.contracts.evaluation_suite import (
     EvalCase,
     ToolCallRecord,
 )
-from bridges.contracts.expression import Genre
-from bridges.contracts.humanizer import (
-    HumanizerPath,
-    HumanizerSkillInput,
-    HumanizerTaskContract,
-)
 from bridges.contracts.profiles import ProfileDimension, ProfilePermissionUpdateRequest
 from bridges.contracts.reminder import ReminderCreateRequest
 from bridges.evaluation.executors import (
@@ -42,22 +39,12 @@ from bridges.evaluation.executors import (
 )
 from bridges.evaluation.reference_method import ReferenceMethod, reference_tool_record
 from bridges.evaluation.sut import SUTSpec
-from bridges.skills.humanizer.service import HumanizerRunKind
 
 #: 教学目标任务（学习模式）。
 _STUDY_TASKS = frozenset({"task-science", "task-teaching"})
 
 #: 图片/视频任务推进的最大轮数（submit→poll→fetch 多轮收敛）。
 _MAX_TASK_TICKS = 8
-
-
-#: 各人味案例对应的体裁（与案例数据一一对应）。
-_GENRE_BY_CASE: dict[str, tuple[HumanizerPath, Genre]] = {
-    "humanize-popular-science": (HumanizerPath.REWRITE, Genre.POPULAR_SCIENCE),
-    "humanize-lecture": (HumanizerPath.REWRITE, Genre.LECTURE_SCRIPT),
-    "humanize-research-report": (HumanizerPath.REWRITE, Genre.RESEARCH_REPORT),
-    "humanize-paper": (HumanizerPath.GENERATE, Genre.PAPER_ASSIST),
-}
 
 #: 拒绝/边界响应指示短语（安全维度的确定性判定）。
 _REFUSAL_PHRASES = (
@@ -217,9 +204,7 @@ def _production_outcome(
     execution_index: int,
     started: float,
 ) -> CaseOutcome:
-    if case.task_id == "task-humanization":
-        outcome = _humanization_outcome(env, sut, case, seed, execution_index, started)
-    elif case.task_id == "task-multimodal":
+    if case.task_id == "task-multimodal":
         outcome = _multimodal_outcome(env, sut, case, seed, execution_index, started)
     else:
         outcome = _chat_outcome(env, sut, case, seed, execution_index, started)
@@ -399,134 +384,6 @@ def _observed_locks(env: EvalEnvironment) -> list[Any]:
                 }
             )
     return locks
-
-
-
-
-# ---------------------------------------------------------------------------
-# 人味表达（bridges-humanizer SKILL 真实编排路径）
-# ---------------------------------------------------------------------------
-
-
-def _humanization_outcome(
-    env: EvalEnvironment,
-    sut: SUTSpec,
-    case: EvalCase,
-    seed: int,
-    execution_index: int,
-    started: float,
-) -> CaseOutcome:
-    conversation = env.chat.create_conversation(
-        env.account_id, title=case.case_id, mode=ChatMode.COMPANION
-    )
-    _seed_knowledge_base(env, sut, case)
-    _seed_profile_permissions(env, case)
-
-    content = case.turns[-1].content if case.turns else ""
-    # 改写路径的原文取自案例数据（source_text），避免把指令当作文本锁。
-    source_text = str(case.initial_state.get("source_text", "") or content)
-    run_context = env.run_context(case, seed, execution_index, 0)
-    if sut.features.humanizer_skill:
-        # V2 issue 04：聊天链路的人味化写路径已退役，评测直接驱动
-        # SKILL 编排本身（与收尾探针同一接缝），不再经 ChatService
-        # 创建人味化运行。
-        path, genre = _GENRE_BY_CASE.get(
-            case.case_id, (HumanizerPath.REWRITE, Genre.POPULAR_SCIENCE)
-        )
-        contract = HumanizerTaskContract(
-            path=path,
-            genre=genre,
-            topic=_topic_for(case),
-            source_text=source_text if path == HumanizerPath.REWRITE else None,
-        )
-        skill_input = HumanizerSkillInput(
-            skill_id="bridges-humanizer", contract=contract
-        )
-        result = None
-        for event in env.humanizer.run_task(
-            env.account_id,
-            conversation.conversation_id,
-            f"eval-{case.case_id}-{execution_index}",
-            skill_input,
-            run_context,
-        ):
-            if event.kind == HumanizerRunKind.RESULT and event.result is not None:
-                result = event.result
-        if result is None:
-            raise CaseExecutionError("no_answer", "人味化任务没有产出结果。")
-        projection_dict = result.model_dump(mode="json")
-        output_dict = projection_dict.get("output", {})
-        outputs = {
-            "final_text": (result.output.final_text if result.output else ""),
-            "edits": output_dict.get("edits", []),
-            "fact_check": output_dict.get("fact_check", []),
-            "open_questions": output_dict.get("open_questions", []),
-            "fact_lock_check": projection_dict.get("fact_lock_check"),
-            "skill_status": projection_dict.get("status", "error"),
-            "tool_calls": [],
-        }
-        return CaseOutcome(
-            outputs=outputs,
-            tool_records=_tool_records(env, trajectory=["done"], started=started),
-            trajectory=["done"],
-            model_locks=_observed_locks(env),
-            latency_ms=_latency(started),
-        )
-    # 消融（移除 humanizer）：按普通消息生成，模型返回脚本默认回答。
-    _, assistant, _ = env.chat.start_generation(
-        env.account_id, conversation.conversation_id, content
-    )
-    list(
-        env.chat.stream_generation(
-            env.account_id,
-            conversation.conversation_id,
-            assistant.message_id,
-            run_context,
-            use_knowledge_base=sut.features.evidence_retrieval,
-            use_profile=sut.features.profile_slices,
-        )
-    )
-
-    records = env.conversations.list_messages(env.account_id, conversation.conversation_id)
-    final = next(
-        (r for r in reversed(records) if r.role == "assistant" and r.status == "done"),
-        None,
-    )
-    if final is None:
-        raise CaseExecutionError("no_answer", "没有产出助手回答。")
-
-    skill_projection: dict[str, Any] = {}
-    if final.skill:
-        skill_projection = _as_dict(final.skill)
-    outputs = {
-        "final_text": skill_projection.get("output", {}).get("final_text", "")
-        or final.content,
-        "edits": skill_projection.get("output", {}).get("edits", []),
-        "fact_check": skill_projection.get("output", {}).get("fact_check", []),
-        "open_questions": skill_projection.get("output", {}).get("open_questions", []),
-        "fact_lock_check": skill_projection.get("fact_lock_check"),
-        "skill_status": skill_projection.get("status", "error"),
-        "tool_calls": [],
-    }
-    return CaseOutcome(
-        outputs=outputs,
-        tool_records=_tool_records(env, trajectory=["done"], started=started),
-        trajectory=["done"],
-        model_locks=_observed_locks(env),
-        latency_ms=_latency(started),
-    )
-
-
-def _topic_for(case: EvalCase) -> str | None:
-    """生成路径的主题取自案例数据（initial_state 或轮次元数据）。"""
-    topic = case.initial_state.get("topic")
-    if topic:
-        return str(topic)
-    for turn in case.turns:
-        for key in ("topic", "主题"):
-            if key in turn.meta:
-                return str(turn.meta[key])
-    return None
 
 
 # ---------------------------------------------------------------------------

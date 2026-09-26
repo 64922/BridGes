@@ -30,7 +30,7 @@ from bridges.contracts.expression_task import (
     Surface,
 )
 from bridges.contracts.profiles import ProfileSliceItem
-from bridges.skills.humanizer.contract_compiler import (
+from bridges.expression_task.contract_compiler import (
     CompileRequest,
     compile_task_contract,
 )
@@ -41,7 +41,8 @@ GLOBAL_CHAT_LIGHTWEIGHT_VERSION = "global-chat-lightweight-v2"
 #: 安全基线版本（资源缺失或画像不可用时使用，值保持不变以兼容旧快照）。
 SAFE_BASELINE_POLICY_VERSION = "global-humanized-writing-safe-baseline-v1"
 GLOBAL_CHAT_LIGHTWEIGHT_SOURCE = (
-    "BridGes 原创净室规则（见 src/bridges/skills/humanizer/skill/CLEAN_ROOM.md）"
+    "BridGes 原创净室规则（文章人味化 SKILL 已于 Issue 21 退役，"
+    "规则正文保留在本模块与 bridges/expression_task/contract_compiler.py）"
 )
 
 _DEFAULT_RESOURCE = object()

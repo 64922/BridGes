@@ -124,16 +124,6 @@ SCALES: list[ScoringScale] = [
         ],
     ),
     _scale(
-        "scale-humanization-5",
-        [
-            ("template_ratio", "模板腔抑制"),
-            ("machine_translation_feel", "机翻感抑制"),
-            ("ai_flavor", "AI 味抑制"),
-            ("task_fit", "任务适配度"),
-            ("fact_invariance", "事实不变性"),
-        ],
-    ),
-    _scale(
         "scale-science-5",
         [
             ("fact_accuracy", "事实准确"),
@@ -202,16 +192,6 @@ SCHEMAS: list[ExpectedArtifactSchema] = [
             ("recorded_assertions", "array", "本轮落库的画像断言", True),
             ("final_answer", "string", "最终回答文本", True),
             ("context_note", "object", "上下文说明快照", True),
-        ],
-    ),
-    _schema(
-        "schema-humanizer-output",
-        [
-            ("final_text", "string", "最终文本", True),
-            ("edits", "array", "逐项修改细节", True),
-            ("fact_check", "array", "事实核查结果", True),
-            ("open_questions", "array", "尚未解决的问题", True),
-            ("fact_lock_check", "object", "事实锁前后比较", False),
         ],
     ),
     _schema(
@@ -297,15 +277,6 @@ MANIFEST: list[DataManifestEntry] = [
         license_ref="license-original-suite",
         content_hash="sha256:0452427e92f246b91139c2a1",
         record_count=3,
-    ),
-    DataManifestEntry(
-        dataset_id="dataset-humanization",
-        version="1",
-        title="四体裁人味化语料",
-        description="科普文案/课程讲稿/科研汇报/论文写作的改写与生成场景。",
-        license_ref="license-original-suite",
-        content_hash="sha256:4eb51e43bf0e6650b976d6b6",
-        record_count=4,
     ),
     DataManifestEntry(
         dataset_id="dataset-science",
@@ -405,19 +376,6 @@ TASKS: list[TaskDefinition] = [
         budget=_BUDGET,
         required_claims=["画像记录正确", "无越界写入", "后续回答体现个性化", "跨轮画像稳定"],
         legal_state_paths=[["done"]],
-    ),
-    TaskDefinition(
-        task_id="task-humanization",
-        dimension=EvaluationDimension.HUMANIZATION,
-        title="原创人味表达",
-        description="覆盖科普文案、课程讲稿、科研汇报和论文写作，测量模板腔、"
-        "机翻感、AI 味、任务适配度和事实不变性。",
-        dataset_refs=["dataset-humanization"],
-        scale_id="scale-humanization-5",
-        expected_artifact_schema_id="schema-humanizer-output",
-        budget=_BUDGET,
-        required_claims=["输出合同完整", "事实锁保持", "体裁适配", "修改附理由"],
-        legal_state_paths=[["done"], ["needs_human"]],
     ),
     TaskDefinition(
         task_id="task-science",
@@ -607,248 +565,6 @@ CASES: list[EvalCase] = [
                     {
                         "match": "",
                         "answer": "DNA 复制是半保留复制，两条链分别作为模板合成互补链。",
-                    },
-                ],
-            },
-        },
-    ),
-    # ---------------- 人味表达 ----------------
-    EvalCase(
-        case_id="humanize-popular-science",
-        suite_id=SUITE_ID,
-        suite_version=SUITE_VERSION,
-        task_id="task-humanization",
-        title="科普文案改写（含事实锁）",
-        context=_context(),
-        authorization=_AUTH_DEFAULT,
-        turns=[
-            _turn(
-                "user",
-                "帮我改得更自然一点：光速约为每秒 30 万公里，即 299792458 米/秒，"
-                "是宇宙中信息传播速度的上限。爱因斯坦在 1905 年提出狭义相对论。"
-                "改写时请不要改变这些数值和结论。",
-            ),
-        ],
-        expected_claims=["数值与结论保持", "输出合同完整"],
-        auto_assertions=[
-            _assert("a-contract", "humanizer_contract_complete", "输出合同五项齐全"),
-            _assert("a-factlock", "fact_invariance", "数值/单位/结论强度保持不变"),
-            _assert("a-template", "template_free", "模板腔抑制"),
-        ],
-        human_scale_id="scale-humanization-5",
-        budget=_BUDGET,
-        expected_artifact_schema_id="schema-humanizer-output",
-        initial_state={
-            "source_text": "光速约为每秒 30 万公里，即 299792458 米/秒，"
-            "是宇宙中信息传播速度的上限。爱因斯坦在 1905 年提出狭义相对论。",
-            "script": {
-                "rules": [
-                    {
-                        "match": "",
-                        "answer": {
-                            "final_text": "光速，简单说就是宇宙中信息传播速度的极限，"
-                            "约为每秒 30 万公里（299792458 米/秒）。你可以把它比作一条"
-                            "全球限速路：再快的车也不能超过它。但需要注意的是，这个类比"
-                            "只能说明速度上限，并不意味着它可以被随意突破——1905 年"
-                            "爱因斯坦提出狭义相对论后，这一极限成为物理学的基石。"
-                            "生活中，当你看到“光年”这个单位时，记住它的本质就是光走"
-                            "一年的距离。",
-                            "edits": [
-                                {
-                                    "kind": "word_choice",
-                                    "original": "约为每秒 30 万公里",
-                                    "revised": "以每秒约 30 万公里（299792458 米/秒）的速度传播",
-                                    "reason": "用动词句提升节奏，保留数值精度",
-                                }
-                            ],
-                            "fact_check": [
-                                {
-                                    "item": "光速数值 299792458 m/s",
-                                    "result": "已核实",
-                                    "evidence": "原文事实锁",
-                                }
-                            ],
-                            "open_questions": [],
-                        },
-                    },
-                ],
-            },
-        },
-    ),
-    EvalCase(
-        case_id="humanize-lecture",
-        suite_id=SUITE_ID,
-        suite_version=SUITE_VERSION,
-        task_id="task-humanization",
-        title="课程讲稿改写",
-        context=_context(),
-        authorization=_AUTH_DEFAULT,
-        turns=[
-            _turn(
-                "user",
-                "把这段讲稿改得适合大一新生：热力学第二定律指出，孤立系统的熵不会减少。"
-                "克劳修斯在 1850 年提出该定律。",
-            ),
-        ],
-        expected_claims=["受众适配", "事实不变"],
-        auto_assertions=[
-            _assert("a-contract", "humanizer_contract_complete", "输出合同完整"),
-            _assert("a-factlock", "fact_invariance", "定律表述与年份保持"),
-            _assert("a-fit", "audience_fit", "适配大一新生"),
-        ],
-        human_scale_id="scale-humanization-5",
-        budget=_BUDGET,
-        expected_artifact_schema_id="schema-humanizer-output",
-        initial_state={
-            "source_text": "热力学第二定律指出，孤立系统的熵不会减少。"
-            "克劳修斯在 1850 年提出该定律。",
-            "script": {
-                "rules": [
-                    {
-                        "match": "",
-                        "answer": {
-                            "final_text": "同学们，本讲目标是让你能说出热力学第二定律的"
-                            "经典表述。如果你还不熟悉“熵”这个字，先别担心——可以把它想成"
-                            "一个容器里混乱程度的度量。举个例子：把一杯热咖啡放在桌上，"
-                            "它会慢慢变凉，而不会自己变热，这就是孤立系统熵不会减少的"
-                            "日常版。该定律由克劳修斯在 1850 年明确提出。来，检查一下："
-                            "你能说出为什么咖啡不会自己变热吗？停一下，花一分钟和同桌"
-                            "讨论你的答案。",
-                            "edits": [
-                                {
-                                    "kind": "audience_adapt",
-                                    "original": "热力学第二定律指出",
-                                    "revised": "同学们，把一杯热咖啡放在桌上，它会慢慢变凉",
-                                    "reason": "用生活例子引入，降低抽象门槛",
-                                }
-                            ],
-                            "fact_check": [
-                                {
-                                    "item": "克劳修斯 1850 年提出",
-                                    "result": "已核实",
-                                    "evidence": "原文事实锁",
-                                }
-                            ],
-                            "open_questions": [],
-                        },
-                    },
-                ],
-            },
-        },
-    ),
-    EvalCase(
-        case_id="humanize-research-report",
-        suite_id=SUITE_ID,
-        suite_version=SUITE_VERSION,
-        task_id="task-humanization",
-        title="科研汇报改写",
-        context=_context(learning_stage="advanced"),
-        authorization=_AUTH_DEFAULT,
-        turns=[
-            _turn(
-                "user",
-                "帮我润色组会汇报稿：我们的实验测得该材料的电阻率为 1.2e-3 Ω·m，"
-                "与文献报道值（1.1e-3 至 1.3e-3 Ω·m）一致。请注意不要夸大结论。",
-            ),
-        ],
-        expected_claims=["结论强度保持", "数值保持"],
-        auto_assertions=[
-            _assert("a-contract", "humanizer_contract_complete", "输出合同完整"),
-            _assert("a-factlock", "fact_invariance", "数值与结论强度保持"),
-        ],
-        human_scale_id="scale-humanization-5",
-        budget=_BUDGET,
-        expected_artifact_schema_id="schema-humanizer-output",
-        initial_state={
-            "source_text": "我们的实验测得该材料的电阻率为 1.2e-3 Ω·m，"
-            "与文献报道值（1.1e-3 至 1.3e-3 Ω·m）一致。",
-            "script": {
-                "rules": [
-                    {
-                        "match": "",
-                        "answer": {
-                            "final_text": "本次汇报围绕我们材料的电阻率测量结果。"
-                            "结果显示，我们测得的电阻率为 1.2e-3 Ω·m，落在文献报道的"
-                            " 1.1e-3 至 1.3e-3 Ω·m 区间内，与已发表数据一致。我们采用"
-                            "四探针法测量，并使用统计方法分析误差。需要说明的是，"
-                            "本结果受限于样品制备条件，样本量有限。下一步，我们计划"
-                            "补充更多批次样品并做系统比较。",
-                            "edits": [
-                                {
-                                    "kind": "rewrite",
-                                    "original": "与文献报道值一致",
-                                    "revised": "落在文献报道区间内，与已发表数据一致",
-                                    "reason": "用区间表述替代断言，保持结论强度不变",
-                                }
-                            ],
-                            "fact_check": [
-                                {
-                                    "item": "电阻率数值 1.2e-3 Ω·m",
-                                    "result": "已核实",
-                                    "evidence": "原文事实锁",
-                                }
-                            ],
-                            "open_questions": [],
-                        },
-                    },
-                ],
-            },
-        },
-    ),
-    EvalCase(
-        case_id="humanize-paper",
-        suite_id=SUITE_ID,
-        suite_version=SUITE_VERSION,
-        task_id="task-humanization",
-        title="论文写作生成",
-        context=_context(learning_stage="advanced", science_domain="astronomy"),
-        authorization=_AUTH_DEFAULT,
-        turns=[
-            _turn(
-                "user",
-                "帮我写一段论文引言：主题是太阳系外行星大气中的水汽探测。"
-                "受众是天文专业研究生。请只依据事实写作，不要编造观测数据。",
-            ),
-        ],
-        expected_claims=["按主题生成", "不编造数据"],
-        auto_assertions=[
-            _assert("a-contract", "humanizer_contract_complete", "输出合同完整"),
-            _assert("a-claim", "claim_absent", "不编造具体观测数值"),
-        ],
-        human_scale_id="scale-humanization-5",
-        budget=_BUDGET,
-        expected_artifact_schema_id="schema-humanizer-output",
-        initial_state={
-            "source_text": "",
-            "topic": "太阳系外行星大气中的水汽探测",
-            "script": {
-                "rules": [
-                    {
-                        "match": "",
-                        "answer": {
-                            "final_text": "系外行星大气光谱学是刻画行星宜居性的关键手段。"
-                            "本文建议的引言结构如下：摘要部分概述水汽作为生命相关分子"
-                            "直接探针的重要性；引言梳理现有探测结果并讨论其证据强度。"
-                            "写作时注意术语表达的一致性，避免长句堆叠；引用需逐条核查"
-                            "文献并标注 DOI；论证段落应明确因果与推理链。请注意：若使用"
-                            "AI 辅助工具起草，应在正文或致谢中披露。",
-                            "edits": [
-                                {
-                                    "kind": "no_change",
-                                    "original": "（生成路径基线）",
-                                    "revised": "（生成路径基线）",
-                                    "reason": "生成路径按体裁规则组织段落",
-                                }
-                            ],
-                            "fact_check": [
-                                {
-                                    "item": "未编造具体观测数值",
-                                    "result": "已核实",
-                                    "evidence": "生成路径无来源数据，仅作定性表述",
-                                }
-                            ],
-                            "open_questions": ["是否需要在引言中引用具体探测任务？"],
-                        },
                     },
                 ],
             },
@@ -1613,22 +1329,14 @@ PINS: list[ModelSkillPin] = [
         model_id=VIDEO_MODEL_ID,
         prompt_version="1",
     ),
-    ModelSkillPin(
-        capability_name="bridges-humanizer",
-        capability_version="1",
-        skill_id="bridges-humanizer",
-        skill_version="1.0.0",
-        license_ref="license-original-suite",
-    ),
 ]
 
-#: 运行矩阵：全部七个任务 × 六种被测系统（完整/基线/参考 + 三消融）。
+#: 运行矩阵：全部六个任务 × 五种被测系统（完整/基线/参考 + 两消融）。
 _SUT_IDS = [
     "bridges_full",
     "qwen_baseline",
     "open_source_reference",
     "ablation_no_profile",
-    "ablation_no_humanizer",
     "ablation_no_evidence",
 ]
 
