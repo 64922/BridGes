@@ -152,3 +152,64 @@
   `next lint` 干净。
 - 工作树里为了跑前端检查临时 `mklink /J` 了 `apps/web/node_modules`（worktree
   不装依赖）；合并前请先删掉这个联接再删工作树，避免删目录时穿透到主检出。
+
+### 合并 main 的接缝处理与合并后验证（2026-09-26）
+
+收尾时 main 已从 `3272835` 前进到 `6f8b15d`（Issue 12 校园通勤 `272c5b8`、Issue 13
+学习资料推荐 `bbcc9e1` 均已并入，另有共享库笔记与两条测试/文档提交），分支先
+`git merge main` 再验证。共 15 个文件冲突，绝大多数是「两侧各加一条模块登记」，
+按**两者都保留**处理；另有三处必须改判定口径：
+
+- **迁移号让位 54 → 56**：Issue 12 已占 54（`messages.commute_route`）、Issue 13
+  已占 55（`messages.learning_resources`），本票的 `messages.tieba_research` 整体
+  改号为 **56**，`SCHEMA_VERSION = 56`，键 53/54/55/56 连续无缺号。改号后实测
+  四条路径：① 全新库 → v56 且含 `tieba_research`；② 造一个 v55 旧库（删列并把
+  版本戳改回 55）→ `initialize()` 后补回该列、版本戳升到 56；③ 重复
+  `initialize()` 幂等（32 列不变）。全部在临时目录执行，未触碰本机共享桌面库。
+- **「未接入模块」反例第二次换人**：贴吧接入后，main 上以 tieba 当反例的三处
+  （`tests/chat/test_v2_02_resumable_runs.py` 两处、
+  `tests/commute/test_commute_module_flow.py` 一处）与分支上以 commute 当反例的
+  一处（`tests/tieba/test_tieba_module_flow.py`）全部改用仍未接入的 `career`，
+  注释与 docstring 里的「仍未接入的 X 模块」同步改掉。当前未接入的只剩
+  `career` 与 `github`。
+- **前端等待态恢复的合并语义**：main 的 `pendingClarificationModule` 只看
+  `paper_search`/`learning_resources`，且只把 success/empty 当终态；本票版本只看
+  最新一条带模块投影的消息、把「没有 pending」一律视为本轮已结束（贴吧的
+  `links_only` 是常规结局，必须算结束）。合并后统一采用后者并把 `tieba_research`
+  加进投影列表；通勤形态不同，仍走 main 的 `hasPendingCommuteClarification`。
+  `chat-modules.test.ts` 按合并后的实现重写（菜单 ID 顺序为
+  `paper, commute, resources, tieba`）。
+- `openapi.json` 与 `packages/contracts/src/generated.ts` 不手工合并，按合并后的
+  代码重新生成（`PYTHONPATH=src scripts/regenerate_openapi.py` → 299 paths / 668
+  schemas，再跑 `openapi-typescript`）；`tests/contracts/test_openapi_sync.py` 2 passed。
+
+**合并树全量回归**（同一命令与同一 deselect 集；两侧各自仓外 `--basetemp`，均不设
+`PYTHONPATH`）：
+
+| 侧 | 提交 | 结果 |
+| --- | --- | --- |
+| main | `6f8b15d` | **273 失败 / 3868 通过 / 40 跳过 / 2 错误** |
+| 合并树（分支 + main） | `d46ff21` + 合并 main | **272 失败 / 3911 通过 / 42 跳过 / 2 错误** |
+
+- 收集数 4186 → 4230：**+44 恰为 `tests/tieba/` 三个文件的用例数**（16+12+16），
+  逐文件收集数比对后无其他增减；这 44 条**全部真跑通过**（无 skip、无失败）。
+- 失败名称集合双向比对：**仅合并树独有 2 项、仅 main 独有 3 项**，逐项归因：
+  - 仅合并树独有：`tests/closeout/test_api_boot.py` 两例 —— worktree 无仓库
+    `.venv` 的环境产物（带 `PYTHONPATH=src` 单跑即 2 passed）。
+  - 仅 main 独有：`tests/runtime/test_runtime_contract.py` 两个 `NEEDS_WEB_BUILD`
+    用例（worktree 无 `apps/web/.next` → 合并树侧改为跳过）；
+    `tests/profiles/test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent`
+    （本机时钟粒度导致的预存在顺序抖动，两侧单跑都失败）。
+- 账目对平：Δ通过 +43 = 新增 44 + 预存在抖动 1 − api_boot 2；Δ跳过 +2 = 两个
+  `NEEDS_WEB_BUILD`；Δ失败 −1 = api_boot 2 −（跳过 2 + 抖动 1）。
+- 静态检查：mypy 两侧均 **115 处 / 23 文件**，归一到「文件 + 错误码」后**逐条相同**；
+  ruff 同一组文件 main 126 条 vs 合并树 129 条，差集只有 `src/bridges/api/main.py`
+  的 E402 多 4 条 —— 即本票新增的 4 行模块导入，与该文件既有的「导入写在
+  `logger = ...` 之后」惯例同款（main 上该文件已有 93 条 E402）。
+- 前端：`tsc --noEmit` 干净；vitest **20 文件 / 150 通过**（合并前 main 侧 17 文件 /
+  111、本票分支 18 文件 / 125），本票新增用例与两侧既有用例同时通过。
+- 合并后 main 的 `SCHEMA_VERSION` 为 56，本机共享桌面库仍是 v51 且**未被本次合并
+  与验证触碰**（只读探针实测）。注意该库的预存在不一致：版本戳 51 但迁移 52 的两列
+  已存在，因此下次以 main 启动桌面端会在 migration 52 上报 duplicate column name；
+  修法见 Issue 12 工单的共享库笔记（把版本戳手工改到 52）。
+

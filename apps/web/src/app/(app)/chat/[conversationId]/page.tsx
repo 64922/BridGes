@@ -34,6 +34,7 @@ import {
 } from "@/lib/api";
 import { readAloudSession } from "@/lib/read-aloud";
 import {
+  hasPendingCommuteClarification,
   pendingClarificationModule,
   type ChatModuleSelectionId,
 } from "@/lib/chat-modules";
@@ -183,12 +184,18 @@ export default function ChatConversationPage() {
       const projection = await getChatConversation(conversationId);
       setConversation(projection);
       setLoadState("ready");
-      // V2 Issue 11/14：重开对话时若最后一条模块消息仍在等澄清，恢复输入区
-      // 的模块选择（只在本对话首次加载时判定一次），下一条回复从该处继续。
+      // V2 Issue 11/12/13/14：重开对话时若最后一条模块消息仍在等澄清，恢复输入
+      // 区的模块选择（只在本对话首次加载时判定一次），下一条回复从该处继续。
+      // 论文、贴吧与资料共用同一套等待合同，由 pendingClarificationModule 一并
+      // 判定；通勤的等待状态形态不同，用自己那一个判定。
       if (!resumeModuleCheckedRef.current) {
         resumeModuleCheckedRef.current = true;
         const pendingModule = pendingClarificationModule(projection.messages ?? []);
-        if (pendingModule) setModuleId(pendingModule);
+        if (pendingModule) {
+          setModuleId(pendingModule);
+        } else if (hasPendingCommuteClarification(projection.messages ?? [])) {
+          setModuleId("commute");
+        }
       }
     } catch (error) {
       setLoadState("error");

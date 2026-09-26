@@ -135,6 +135,10 @@ class MessageRecord:
     module_suggestion: dict[str, Any] | None = None
     #: V2 Issue 14：贴吧信息搜集投影（查询词/候选/读取范围/官方核验/失败）。
     tieba_research: dict[str, Any] | None = None
+    #: V2 Issue 13：学习资料推荐模块状态投影（原词/层次/清单/等待/失败）。
+    learning_resources: dict[str, Any] | None = None
+    #: V2 Issue 12：校园通勤模块状态投影（起终点 POI/方式/距离/耗时/路径点/缓冲）。
+    commute_route: dict[str, Any] | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -524,7 +528,8 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route, module_id, paper_search, module_suggestion, tieba_research"
+            " mcp_call, route, module_id, paper_search, module_suggestion,"
+            " learning_resources, commute_route, tieba_research"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -538,7 +543,8 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call, route, module_id, paper_search, module_suggestion, tieba_research"
+            " mcp_call, route, module_id, paper_search, module_suggestion,"
+            " learning_resources, commute_route, tieba_research"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -629,6 +635,26 @@ class ConversationRepository:
                 (_json_dumps(tieba_research), _iso(updated_at), message_id, account_id),
             )
 
+    def update_message_commute_route(
+        self,
+        account_id: str,
+        message_id: str,
+        commute_route: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """写入校园通勤状态投影（V2 Issue 12）。
+
+        与 ``paper_search`` 同形：失败/停止路径在消息终态收敛之前先落投影，
+        保证用户在同一消息里看到真实起终点、方式与失败分类，而不是空白。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET commute_route = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(commute_route), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
     def update_message_module_suggestion(
         self,
         account_id: str,
@@ -642,6 +668,26 @@ class ConversationRepository:
                 "UPDATE messages SET module_suggestion = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ?",
                 (_json_dumps(suggestion), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_learning_resources(
+        self,
+        account_id: str,
+        message_id: str,
+        learning_resources: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """写入学习资料推荐模块状态投影（V2 Issue 13）。
+
+        与 ``paper_search`` 同形：失败/停止路径在消息终态收敛之前先落投影，
+        保证用户在同一消息里看到真实查询词与失败分类，而不是空白。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET learning_resources = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(learning_resources), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -782,6 +828,8 @@ class ConversationRepository:
         persist_learning: Callable[[], None] | None = None,
         paper_search: dict[str, Any] | None = None,
         module_suggestion: dict[str, Any] | None = None,
+        learning_resources: dict[str, Any] | None = None,
+        commute_route: dict[str, Any] | None = None,
         tieba_research: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
@@ -819,6 +867,8 @@ class ConversationRepository:
                 arxiv_search is not None
                 or paper_search is not None
                 or module_suggestion is not None
+                or learning_resources is not None
+                or commute_route is not None
                 or tieba_research is not None
             ):
                 assignments = [
@@ -851,9 +901,15 @@ class ConversationRepository:
                 if paper_search is not None:
                     assignments.append("paper_search = ?")
                     values.append(_json_dumps(paper_search))
+                if commute_route is not None:
+                    assignments.append("commute_route = ?")
+                    values.append(_json_dumps(commute_route))
                 if module_suggestion is not None:
                     assignments.append("module_suggestion = ?")
                     values.append(_json_dumps(module_suggestion))
+                if learning_resources is not None:
+                    assignments.append("learning_resources = ?")
+                    values.append(_json_dumps(learning_resources))
                 if tieba_research is not None:
                     assignments.append("tieba_research = ?")
                     values.append(_json_dumps(tieba_research))
@@ -2115,6 +2171,8 @@ class ConversationRepository:
             ),
             paper_search=_json_loads_any(row["paper_search"]),
             module_suggestion=_json_loads_any(row["module_suggestion"]),
+            learning_resources=_json_loads_any(row["learning_resources"]),
+            commute_route=_json_loads_any(row["commute_route"]),
             tieba_research=_json_loads_any(row["tieba_research"]),
         )
 

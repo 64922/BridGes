@@ -135,6 +135,22 @@ export type TiebaReply = components["schemas"]["TiebaReply"];
 export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];
 export type TiebaRejectedCandidate = components["schemas"]["TiebaRejectedCandidate"];
 export type TiebaOfficialCheck = components["schemas"]["TiebaOfficialCheck"];
+// V2 Issue 13：学习资料推荐模块投影（图书与哔哩哔哩视频清单）。
+export type LearningResourcesProjection = components["schemas"]["LearningResourcesProjection"];
+export type ResourcesStatus = components["schemas"]["ResourcesStatus"];
+export type ResourceItem = components["schemas"]["ResourceItem"];
+export type ResourceKind = components["schemas"]["ResourceKind"];
+// V2 Issue 12：校园通勤投影（起终点 POI、方式、路径点与文字路段、课间缓冲）
+// 与浏览器地图运行时配置（只含 JS API Key 与同源代理路径，不含安全密钥）。
+export type CommuteRouteProjection = components["schemas"]["CommuteRouteProjection"];
+export type CommuteRouteStatus = components["schemas"]["CommuteRouteStatus"];
+export type CommuteMode = components["schemas"]["CommuteMode"];
+export type CommutePlace = components["schemas"]["CommutePlace"];
+export type CommutePlaceCandidate = components["schemas"]["CommutePlaceCandidate"];
+export type CommutePlaceRole = components["schemas"]["CommutePlaceRole"];
+export type CommuteRouteStep = components["schemas"]["CommuteRouteStep"];
+export type CommuteBreakBuffer = components["schemas"]["CommuteBreakBuffer"];
+export type CommuteMapConfig = components["schemas"]["MapConfigResponse"];
 export type WebSearchProjection = components["schemas"]["WebSearchProjection"];
 export type WebSearchResult = components["schemas"]["WebSearchResult"];
 export type WebSearchStatus = components["schemas"]["WebSearchStatus"];
@@ -295,6 +311,31 @@ export async function fetchCredentialSettings(): Promise<CredentialSettings> {
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+/**
+ * 浏览器地图运行时配置（V2 Issue 12）：只含 JS API Key 与同源代理路径。
+ * 安全密钥永不下发，地图数据服务请求由后端代理追加。
+ */
+export async function fetchCommuteMapConfig(): Promise<CommuteMapConfig> {
+  const res = await fetch(`${API_BASE}/commute/map-config`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 把后端下发的代理路径拼成高德 JS API 的 ``serviceHost``（绝对地址）。
+ *
+ * 后端只知道自己在 API 前缀下的位置，浏览器侧要按当前 API 基地址解析：
+ * 默认同源 ``/api`` 时结果是当前源；``NEXT_PUBLIC_API_BASE_URL`` 为绝对地址
+ * （另一端口/域名的 API）时也要指向那一侧，否则地图数据请求会打到网页源。
+ */
+export function commuteMapServiceHost(serviceHostPath: string): string {
+  const base = new URL(`${API_BASE}/`, window.location.origin);
+  return new URL(serviceHostPath.replace(/^\/+/, ""), base).toString().replace(/\/$/, "");
 }
 
 /** 验证并保存 Tavily API Key；成功后清空输入框，不返回密钥。 */

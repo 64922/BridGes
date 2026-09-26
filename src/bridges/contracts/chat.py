@@ -14,7 +14,9 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.commute.contracts import CommuteRouteProjection
 from bridges.paper.contracts import PaperSearchProjection
+from bridges.resources.contracts import LearningResourcesProjection
 from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.contracts.career import (
     CareerPlanningProcessState,
@@ -337,6 +339,14 @@ class ChatMessageProjection(BaseModel):
     tieba_research: TiebaResearchProjection | None = Field(
         default=None,
         description="本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。",
+    )
+    # V2 Issue 13：学习资料推荐模块状态（原词/层次/图书与视频清单/等待/失败）。
+    learning_resources: LearningResourcesProjection | None = Field(
+        default=None, description="本条助手消息的学习资料推荐状态（图书与视频清单）。"
+    )
+    # V2 Issue 12：校园通勤模块状态（起终点 POI/方式/距离/耗时/路径点/课间缓冲）。
+    commute_route: CommuteRouteProjection | None = Field(
+        default=None, description="本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。"
     )
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近更新时间。")

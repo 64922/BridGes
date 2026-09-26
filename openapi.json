@@ -1604,6 +1604,113 @@
         }
       }
     },
+    "/commute/map-config": {
+      "get": {
+        "tags": [
+          "校园通勤"
+        ],
+        "summary": "Get Map Config",
+        "description": "返回浏览器地图的加载配置；每次都实时读取当前生效的凭据。",
+        "operationId": "get_map_config_commute_map_config_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/commute/amap-proxy/{path}": {
+      "get": {
+        "tags": [
+          "校园通勤"
+        ],
+        "summary": "Amap Proxy",
+        "description": "代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。",
+        "operationId": "amap_proxy_commute_amap_proxy__path__get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings/models": {
       "get": {
         "tags": [
@@ -31401,6 +31508,28 @@
             ],
             "description": "本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。"
           },
+          "learning_resources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningResourcesProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的学习资料推荐状态（图书与视频清单）。"
+          },
+          "commute_route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommuteRouteProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -33685,6 +33814,541 @@
         ],
         "title": "CloudProjectionStatus",
         "description": "Lifecycle status of a cloud control projection."
+      },
+      "CommuteBreakBuffer": {
+        "properties": {
+          "in_window": {
+            "type": "boolean",
+            "title": "In Window",
+            "description": "当前时刻是否命中课间前后十分钟窗口。"
+          },
+          "matched_break_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Break Time",
+            "description": "命中的课间时间点 HH:MM；未命中为 None。"
+          },
+          "minutes_away": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Away",
+            "description": "与命中时间点的分钟差（绝对值）。"
+          },
+          "added_minutes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Added Minutes",
+            "description": "建议在高德耗时之外增加分钟数。",
+            "default": 0
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At",
+            "description": "判定时刻（含时区）。"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "判定所用时区，固定 Asia/Shanghai。"
+          },
+          "rule_note": {
+            "type": "string",
+            "title": "Rule Note",
+            "description": "中文规则说明（明示不是实时人流数据）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "in_window",
+          "checked_at",
+          "timezone",
+          "rule_note"
+        ],
+        "title": "CommuteBreakBuffer",
+        "description": "课间规则缓冲：当前时刻是否落在八个课间点前后十分钟内。\n\n这是**规则估计**，不是实时人流数据；``rule_note`` 每次都必须随结果展示。"
+      },
+      "CommuteMode": {
+        "type": "string",
+        "enum": [
+          "walking",
+          "bicycling",
+          "electrobike"
+        ],
+        "title": "CommuteMode",
+        "description": "出行方式（仅步行、自行车、电动车；三者是高德各自独立的能力）。"
+      },
+      "CommutePlace": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/CommutePlaceRole",
+            "description": "起点或终点。"
+          },
+          "original_phrase": {
+            "type": "string",
+            "title": "Original Phrase",
+            "description": "用户原话中的地点写法（逐字保留）。"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "实际发送给高德的最小检索词；沿用上一轮候选时为产生该候选的检索词。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "高德返回的 POI 名称。"
+          },
+          "location": {
+            "type": "string",
+            "title": "Location",
+            "description": "高德返回的坐标串 lng,lat（绝不臆造）。"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address",
+            "description": "高德返回的地址。"
+          },
+          "poi_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poi Id",
+            "description": "高德 POI 标识。"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District",
+            "description": "高德返回的区县名。"
+          },
+          "campus_verified": {
+            "type": "boolean",
+            "title": "Campus Verified",
+            "description": "是否确认属于华东交通大学校内或校门。",
+            "default": false
+          },
+          "match_basis": {
+            "type": "string",
+            "title": "Match Basis",
+            "description": "匹配与范围判定依据（命中什么、核对了什么）。"
+          },
+          "unverified": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unverified",
+            "description": "本地点未核实项（例如未实测楼门可通行）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "original_phrase",
+          "query",
+          "name",
+          "location",
+          "match_basis"
+        ],
+        "title": "CommutePlace",
+        "description": "解析后的地点：坐标只来自高德 POI 检索结果。"
+      },
+      "CommutePlaceCandidate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "高德返回的 POI 名称。"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location",
+            "description": "高德返回的坐标串 lng,lat。"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address",
+            "description": "高德返回的地址。"
+          },
+          "poi_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poi Id",
+            "description": "高德 POI 标识。"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District",
+            "description": "高德返回的区县名。"
+          },
+          "campus": {
+            "type": "boolean",
+            "title": "Campus",
+            "description": "名称或地址是否确认指向华东交通大学。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CommutePlaceCandidate",
+        "description": "一个真实取得的 POI 候选（澄清候选冲突时逐项列出）。"
+      },
+      "CommutePlaceRole": {
+        "type": "string",
+        "enum": [
+          "origin",
+          "destination"
+        ],
+        "title": "CommutePlaceRole",
+        "description": "地点在路线中的角色（澄清问题按其区分「起点/终点」）。"
+      },
+      "CommuteRouteProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CommuteRouteStatus",
+            "description": "本轮模块状态。"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommuteMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本轮出行方式。"
+          },
+          "mode_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Label",
+            "description": "方式中文标签。"
+          },
+          "mode_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Phrase",
+            "description": "用户原话中的方式写法。"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommutePlace"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析后的起点。"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommutePlace"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析后的终点。"
+          },
+          "origin_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CommutePlaceCandidate"
+            },
+            "type": "array",
+            "title": "Origin Candidates",
+            "description": "起点候选（澄清冲突时列出）。"
+          },
+          "destination_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CommutePlaceCandidate"
+            },
+            "type": "array",
+            "title": "Destination Candidates",
+            "description": "终点候选（澄清冲突时列出）。"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M",
+            "description": "高德返回的路线距离（米）。"
+          },
+          "base_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Duration Seconds",
+            "description": "高德返回的基础耗时（秒，仅本轮方式）。"
+          },
+          "suggested_total_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Total Seconds",
+            "description": "基础耗时加缓冲后的建议总时间（秒）。"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/CommuteRouteStep"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "高德返回的文字路段。"
+          },
+          "polyline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Polyline",
+            "description": "高德返回的路径点（按顺序的坐标串）。"
+          },
+          "path_verified": {
+            "type": "boolean",
+            "title": "Path Verified",
+            "description": "是否取得可绘制的路径点（否则不生成地图线）。",
+            "default": false
+          },
+          "buffer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommuteBreakBuffer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课间规则缓冲判定。"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleQueryRecord"
+            },
+            "type": "array",
+            "title": "Queries",
+            "description": "本轮全部外部调用的统一记录（查询/证据/时间/错误）。"
+          },
+          "evidence_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Notes",
+            "description": "证据边界说明（吸附过远、路径点缺失、校外被拒等）。"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleWaitState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "跨轮次等待状态（澄清问题）；无等待为 None。"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At",
+            "description": "路线核验完成时间。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "本轮失败是否可重试。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "CommuteRouteProjection",
+        "description": "通勤模块随助手消息持久化的完整投影。"
+      },
+      "CommuteRouteStatus": {
+        "type": "string",
+        "enum": [
+          "clarification",
+          "success",
+          "unverified",
+          "error",
+          "stopped"
+        ],
+        "title": "CommuteRouteStatus",
+        "description": "通勤模块的用户可见状态（同一消息内如实显示）。"
+      },
+      "CommuteRouteStep": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Index",
+            "description": "路段序号（从 1 开始，按高德返回顺序）。"
+          },
+          "instruction": {
+            "type": "string",
+            "title": "Instruction",
+            "description": "高德返回的行走指令。"
+          },
+          "road_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Road Name",
+            "description": "高德返回的道路名。"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M",
+            "description": "本段距离（米）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "instruction"
+        ],
+        "title": "CommuteRouteStep",
+        "description": "一个文字路段（高德返回的原始指令、道路名与路段距离）。"
       },
       "Conflict": {
         "properties": {
@@ -43586,6 +44250,182 @@
         "title": "LearningRecordType",
         "description": "Kind of observable learning evidence that may update a knowledge state.\n\nBrowsing and completion-only activities are deliberately excluded; they are\nstored as ``LearningActivity`` and never promoted to learning records."
       },
+      "LearningResourcesProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ResourcesStatus",
+            "description": "本轮模块状态。"
+          },
+          "original_phrase": {
+            "type": "string",
+            "title": "Original Phrase",
+            "description": "保留的原始专业名词。",
+            "default": ""
+          },
+          "normalized_term": {
+            "type": "string",
+            "title": "Normalized Term",
+            "description": "规范化值。",
+            "default": ""
+          },
+          "expansions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expansions",
+            "description": "本轮使用的扩展词。"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "解析置信度。",
+            "default": 0.0
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal",
+            "description": "本轮学习目的（备考/项目等）。"
+          },
+          "level_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Label",
+            "description": "本轮学习层次的中文标签。"
+          },
+          "level_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Basis",
+            "description": "层次判定依据。"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleQueryRecord"
+            },
+            "type": "array",
+            "title": "Queries",
+            "description": "本轮全部外部调用的统一记录（查询/证据/时间/错误）。"
+          },
+          "final_query": {
+            "type": "string",
+            "title": "Final Query",
+            "description": "实际用于检索的最终查询词。",
+            "default": ""
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "按由浅入深顺序排列的真实资料条目。"
+          },
+          "requested_books": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requested Books",
+            "description": "本轮目标图书数量。",
+            "default": 0
+          },
+          "requested_videos": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requested Videos",
+            "description": "本轮目标视频数量。",
+            "default": 0
+          },
+          "evidence_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Notes",
+            "description": "证据边界说明（实际数量、来源不足、未观看等）。"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleWaitState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "跨轮次等待状态（学习层次澄清）；无等待为 None。"
+          },
+          "searched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Searched At",
+            "description": "检索完成时间。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "本轮失败是否可重试。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "LearningResourcesProjection",
+        "description": "资料模块随助手消息持久化的完整投影。"
+      },
       "LectureScriptElement": {
         "properties": {
           "element_id": {
@@ -43873,6 +44713,59 @@
         ],
         "title": "MainCapability",
         "description": "当前主能力集合；后续能力只能以新注册项追加。"
+      },
+      "MapConfigResponse": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "js_api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Js Api Key"
+          },
+          "service_host_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Host Path",
+            "description": "代理路径（相对 API 基地址；前端据此拼出绝对地址）。"
+          },
+          "security_code_configured": {
+            "type": "boolean",
+            "title": "Security Code Configured",
+            "default": false
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured"
+        ],
+        "title": "MapConfigResponse",
+        "description": "浏览器地图的运行时配置（不含任何安全密钥正文）。"
       },
       "MaterialSufficiency": {
         "type": "string",
@@ -47955,6 +48848,190 @@
         ],
         "title": "ResearchReportElement",
         "description": "A structural element required by the research-report genre contract (T027).\n\nResearch reports must keep observation, analysis, interpretation, limitation\nand next-step distinct so peers can judge the boundary between data and\ninference."
+      },
+      "ResourceItem": {
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Order",
+            "description": "由浅入深的学习顺序（从 1 开始）。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ResourceKind",
+            "description": "条目类型：book（图书）或 video（视频）。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "来源返回的原始标题。"
+          },
+          "creator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creator",
+            "description": "图书作者或视频作者（UP 主）名称；来源未给为 None。"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year",
+            "description": "图书出版年份或视频发布年份。"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "元数据来源（openlibrary / openalex / bilibili）。"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "可点开的直达链接（书目页 / 视频页）。"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "适用阶段（入门 / 打基础 / 进阶）。"
+          },
+          "reason_zh": {
+            "type": "string",
+            "title": "Reason Zh",
+            "description": "中文选择理由（含阶段判定与搭配依据）。"
+          },
+          "match_basis": {
+            "type": "string",
+            "title": "Match Basis",
+            "description": "主题与来源核对依据（命中哪些词、核对了什么元数据）。"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher",
+            "description": "图书出版社；来源未给或视频条目为 None。"
+          },
+          "isbn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isbn",
+            "description": "图书 ISBN；来源未给或视频条目为 None。"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds",
+            "description": "视频时长（秒）；图书条目或来源未给为 None。"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At",
+            "description": "来源声明的发布时间；未给为 None。"
+          },
+          "view_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Count",
+            "description": "视频公开播放次数（平台计数）；图书条目为 None。"
+          },
+          "like_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Like Count",
+            "description": "视频公开点赞数（平台计数，只作弱证据）；图书条目为 None。"
+          },
+          "unverified": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unverified",
+            "description": "本条未核实项（例如未观看视频、缺 ISBN）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "kind",
+          "title",
+          "source",
+          "url",
+          "stage",
+          "reason_zh",
+          "match_basis"
+        ],
+        "title": "ResourceItem",
+        "description": "一份经来源核对的推荐条目（图书或视频，阅读顺序见 ``order``）。"
+      },
+      "ResourceKind": {
+        "type": "string",
+        "enum": [
+          "book",
+          "video"
+        ],
+        "title": "ResourceKind",
+        "description": "清单条目的类型（图书 / 视频）。"
+      },
+      "ResourcesStatus": {
+        "type": "string",
+        "enum": [
+          "clarification",
+          "searching",
+          "success",
+          "empty",
+          "error",
+          "stopped"
+        ],
+        "title": "ResourcesStatus",
+        "description": "资料模块的用户可见状态（同一消息内如实显示）。"
       },
       "RestorePreview": {
         "properties": {
