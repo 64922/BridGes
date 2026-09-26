@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";

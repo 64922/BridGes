@@ -350,6 +350,8 @@ class EvaluationRunner:
 def _dimension_for_task(task_id: str) -> Any:
     from bridges.contracts.evaluation_suite import EvaluationDimension
 
+    # Issue 21：``task-humanization`` 已不在现行套件里（人味化任务退役），
+    # 映射保留用于读取历史评测报告与旧锁重放，不参与新用例生成。
     mapping = {
         "task-profile-loop": EvaluationDimension.PROFILE,
         "task-humanization": EvaluationDimension.HUMANIZATION,

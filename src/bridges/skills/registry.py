@@ -12,7 +12,6 @@ Issue 21：唯一内置 SKILL（文章人味化）已随旧入口退役移除，
 from __future__ import annotations
 
 import threading
-from datetime import UTC, datetime
 
 from bridges.contracts.humanizer import HumanizerSkillManifest
 
