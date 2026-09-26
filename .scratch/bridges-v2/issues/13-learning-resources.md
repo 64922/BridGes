@@ -127,26 +127,31 @@
 - 契约：`tests/contracts` 3 例通过（`test_openapi_sync.py` 确认 `openapi.json` 与当前 API 同步）；
   合并 main 后契约按合并源码重新生成，未采信文本自动合并。
 
-### 迁移升级实测（`SCHEMA_VERSION` 53 → 54）
+### 迁移升级实测（`SCHEMA_VERSION` 53 → 54 → 55）
 
-本票新增迁移 `54: ALTER TABLE messages ADD COLUMN learning_resources TEXT`，main 为 53
-（Issue 06 的 `study_states`）。实测（本地 SQLite）：
+本票新增迁移 `ALTER TABLE messages ADD COLUMN learning_resources TEXT`，最初编号 **54**（分支
+点上 main 为 53，Issue 06 的 `study_states`）。合并 main 时发现 **54 已被先上线的 Issue 12
+占用**（`messages.commute_route`），按「已在 main 上线者保留编号」让位，本票改为 **55**，
+`SCHEMA_VERSION = 55`。实测（本地 SQLite）：
 
 - main 代码新建库 → **v53**，`messages` 无 `learning_resources`（29 列）；
-- 同一个库文件用分支代码 `initialize()` → **v54**，列被补上（30 列）；
-- 迁移键连续 `1..54`，无空洞。
+- 分支代码对同一个库 `initialize()` → **v54**，列被补上（30 列）；
+- 合并后：全新库 `initialize()` → **v55**，`commute_route` 与 `learning_resources` 同时存在（31 列）；
+- 合并后：**真实桌面库副本**（`%LOCALAPPDATA%\BridGes\data\bridges.db`，实测为 v54、30 列、
+  164 条消息）→ `initialize()` 后 **v55**、31 列、消息数不变、`PRAGMA integrity_check = ok`，
+  再次 `initialize()` 幂等不变；
+- 迁移键连续 `1..55`，无空洞。
 
-方向提醒（与 Issue 11 同款）：v54 的库不能再由 main 版程序启动（会报库版本高于程序），
-合并前不要用 main 版程序打开已升级的桌面库。
+方向提醒（与 Issue 11 同款）：v55 的库不能再由旧版程序启动（会报库版本高于程序），
+合并前不要用旧版程序打开已升级的桌面库。
 
-**撞号警告（合并前必查）**：当前有**三个**并行分支同时声明迁移 **54**，而 main 仍是 53：
-issue 12（`messages.commute_route`）、issue 13（本票，`messages.learning_resources`）、
-issue 14（`messages.tieba_research`）。迁移执行是
+**撞号警告（遗留）**：迁移执行是
 `for version in range(current + 1, SCHEMA_VERSION + 1): MIGRATIONS[version]`——**按键逐个取，
-不连续会 KeyError**；而 dict 字面量里出现两个 `54:` 键时 Python 会静默保留后者。因此三票
-不能共用 54：**按合并顺序，第一票保留 54、第二票改 55、第三票改 56，并同步各自的
-`SCHEMA_VERSION`**（改完都要实测升级路径）。这是 Issue 08/11 撞号事故的同一形态，
-`git merge` 在改写位置不相邻时不会报冲突，必须人肉核对键的连续性。
+不连续会 KeyError**；而 dict 字面量里出现两个同号键时 Python 会静默保留后者。本票合并时
+issue 12（54）、issue 13（本票）、issue 14 **三票都声明过 54**，已按「第一票保留 54、第二票
+55、第三票 56」处理：**issue 14 合并时必须把 `tieba_research` 从 54 改到 56 并同步
+`SCHEMA_VERSION`，改完实测升级路径**。这是 Issue 08/11 撞号事故的同一形态，`git merge` 在
+改写位置不相邻时不会报冲突，必须人肉核对键的连续性。
 
 ### 真实可得性验证（AC4）
 
@@ -182,3 +187,43 @@ issue 14（`messages.tieba_research`）。迁移执行是
 - 澄清重问与陈旧澄清粘性行为与 Issue 11 同源（同一套等待合同），未单独收紧。
 - 视频发现依赖公网搜索凭据；缺凭据时本轮图书照常给出，视频缺口在证据边界里如实说明，
   不会用别的来源或模型记忆补条目。
+- `apps/web` 的「外部调用记录」渲染现在抽成共用组件 `QueryRecordList`，本票只把论文卡与
+  资料卡接过去；先合并的通勤卡（Issue 12）仍是自己的内联实现，留作后续统一，不在本票里
+  顺手动别人的卡片。
+
+### 合并 main 与合并后复验（2026-09-26）
+
+`git merge main`（main = `87ec590`，已含 Issue 12 校园通勤）共 15 处冲突，全部手动解，随后
+按合并源码重新生成 `openapi.json` 与 `packages/contracts/src/generated.ts`（不手改生成物）：
+
+- 模块派发：父图 `AVAILABLE_MODULE_IDS` = paper/commute/resources 三个都可用，派发链三条
+  各自保留；`NODE_LABELS` 合并两份子图节点表。
+- 消息投影：仓储、`finalize_message`、`ChatService` 构造与投影校验、契约、审计动作码
+  同时保留 `learning_resources` 与 `commute_route` 两侧字段。
+- 迁移：按上文改 55。
+- 前端：注册表三模块；待澄清恢复改为单入口 `pendingClarificationModule`（论文 + 资料）
+  加通勤兜底 `hasPendingCommuteClarification`；消息列表同时渲染资料卡与通勤卡。
+
+**合并暴露的一条跨票冲突（已修）**：`tests/commute/test_commute_module_flow.py::
+test_modules_not_yet_available_are_still_rejected` 拿 `resources` 当「未接入模块」反例，
+本票接入后该反例失效。改用仍未接入的贴吧（与 tests/chat 同款反例），用例本意不变。
+
+**合并树全量回归（同一套协议：`-q --tb=no -rfE -p no:randomly`，仓外 basetemp，
+deselect 三条 `test_start_fails_*`，两侧都不带 PYTHONPATH）**：
+
+- 合并前 main（`87ec590`）：**273 失败 / 3813 通过 / 40 跳过 / 2 错误**（13:06）；
+- 合并树（`cd19bfe`）：**274 失败 / 3865 通过 / 42 跳过 / 2 错误**（13:13）；
+- `-rfE` 名集双向比对：仅 3 条只在合并树出现、2 条只在 main 出现，逐条查清：
+  - 只在 main：2 条 `tests/runtime/test_runtime_contract.py` 用例——main 有 `apps/web/.next`
+    生产构建产物所以会真跑并失败，worktree 缺产物直接跳过（跳过原因原文：需要先在
+    `apps/web` 执行 `npm run build` 生成生产构建产物），正是跳过数 40 → 42 的来处；
+  - 只在合并树：2 条 `tests/closeout/test_api_boot.py` 用例——worktree 没有可导入的安装包
+    （`PYTHONPATH=src` 后 2 passed，已实证），属既有环境性差异；
+  - 只在合并树：1 条即上文跨票反例，已修，单文件复跑 17 passed。
+- 账目对齐：新增用例 55（`tests/resources`）= 通过数 +52（55 − 1 反例 − 2 closeout 环境项），
+  失败数 273 → 274 = +3（2 closeout + 1 反例）− 2（runtime 转跳过）；无未解释差异。
+- 静态与前端（合并树）：`mypy` 115 条/23 文件与 main **逐条相同**（归一化后名集双向差为空）；
+  `ruff check src` 318 → 320（新增 2 条 `E402`，来自 `api/main.py` 里资料适配器 import 与
+  Issue 11 的 import 同位）；`tsc --noEmit` 干净、`next lint` 3 条既有告警、
+  `vitest` 19 文件 136 通过（含两张新卡与 `chat-modules`）。
+
