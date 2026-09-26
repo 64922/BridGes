@@ -1,7 +1,7 @@
 """注入回归测试（Issue 40 Verification-2）。
 
-对故意注入的事实错误、画像越界、模板腔、风险误判、教学跳步和多模态
-失败，验证指标能检出回归——指标失效即评测体系失效。
+对故意注入的事实错误、画像越界、风险误判、教学跳步和多模态失败，
+验证指标能检出回归——指标失效即评测体系失效。
 """
 
 from __future__ import annotations
@@ -22,14 +22,13 @@ from bridges.evaluation.injection import (
     [
         InjectionScenario.FACT_ERROR,
         InjectionScenario.PROFILE_OVERREACH,
-        InjectionScenario.TEMPLATE_FLUFF,
         InjectionScenario.RISK_MISJUDGMENT,
         InjectionScenario.TEACHING_SKIP,
         InjectionScenario.MULTIMODAL_FAILURE,
     ],
 )
 def test_injection_is_detected(scenario: InjectionScenario) -> None:
-    """六类注入全部能被指标/断言检出。"""
+    """五类注入全部能被指标/断言检出。"""
     case_id = target_case_id(scenario)
     case = next(c for c in suite_data.CASES if c.case_id == case_id)
     # 基线输出（由案例脚本的"好答案"构造）。

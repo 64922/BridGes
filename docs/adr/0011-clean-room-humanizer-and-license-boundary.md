@@ -52,3 +52,14 @@ BridGes 将建立原创只读内置 `bridges-humanizer` SKILL，重新编写规�
   protected，授权改结论不等于授权改这些项。
 - 高风险体裁的来源硬门失败仍阻止交付，任何风格评分或系统裁判多数票都
   不能放行。
+
+## Issue 21 补充（2026-09-26）
+
+- 文章人味化能力已按 ADR-0030 退役：本 ADR 各增量引用的
+  `src/bridges/skills/humanizer/skill/CLEAN_ROOM.md`、
+  `src/bridges/skills/humanizer/skill/SKILL.md` 与
+  `tests/humanizer/test_method_rules_consistency.py` 已随编排整体移除，
+  净室记录与许可证边界的历史结论以本 ADR 与 git 历史为准。
+- 退役不改变本 ADR 的约束力：仓库内不得引入参考项目的可复制资产；仅剩的
+  确定性表达任务契约编译器（`src/bridges/expression_task/`）仍为 BridGes
+  原创实现。

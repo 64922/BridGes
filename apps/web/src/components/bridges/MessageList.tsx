@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -30,12 +30,10 @@ import type {
   ChatStreamStageData,
   HumanizerResultProjection,
   ImageTaskProjection,
-  ReadAloudProjection,
   VideoTaskProjection,
 } from "@/lib/api";
 import { ImageTaskCard } from "./chat/ImageTaskCard";
 import { VideoTaskCard } from "./chat/VideoTaskCard";
-import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ModuleSuggestionCard } from "./chat/ModuleSuggestionCard";
 import { PaperSearchCard } from "./chat/PaperSearchCard";
 import { GithubProjectsCard } from "./chat/GithubProjectsCard";
@@ -177,9 +175,7 @@ export interface ChatMessage {
   careerPlanning?: CareerPlanningProjection | null;
   /** Issue 29：流式中的生涯规划过程卡状态（五态中文） */
   careerProcess?: ChatStreamCareerData | null;
-  /** Issue 30：本条助手消息的朗读状态快照（服务端持久化，刷新一致） */
-  readAloud?: ReadAloudProjection | null;
-  /** Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡） */
+  /** Issue 31：本条助手消息的图片任务/资产状态快照（历史只读卡） */
   image?: ImageTaskProjection | null;
   video?: VideoTaskProjection | null;
   /** Issue 05：本轮用户消息绑定的照片附件（按页序）；纯文字消息为空 */
@@ -219,8 +215,6 @@ interface MessageListProps {
   conversationId?: string;
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表（正文/投影同步） */
   onRefreshMessages?: () => void;
-  /** Issue 30：TTS 能力可用性（账户级探测快照；不可用时禁用朗读入口并说明原因） */
-  tts?: CapabilityAvailability;
 }
 
 /** Issue 29：该轮是否为生涯规划意图（显式前缀或强触发关键词命中；
@@ -281,18 +275,9 @@ function MessageAction({
 function AssistantActions({
   message,
   onRetry,
-  onReadAloud,
-  readAloudPressed = false,
-  readAloudDisabled = false,
 }: {
   message: ChatMessage;
   onRetry?: (id: string) => void;
-  /** Issue 30：朗读入口（消息操作栏按钮；无回调时为模板静态展示） */
-  onReadAloud?: () => void;
-  /** 生成中/播放中时入口按钮 pressed 态 */
-  readAloudPressed?: boolean;
-  /** TTS 能力不可用时禁用入口（原因在消息下方说明） */
-  readAloudDisabled?: boolean;
 }) {
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const [feedback, setFeedback] = useState<"good" | "bad" | null>(null);
@@ -345,13 +330,6 @@ function AssistantActions({
         label="回答需改进"
         pressed={feedback === "bad"}
         onClick={() => setFeedback((value) => (value === "bad" ? null : "bad"))}
-      />
-      <MessageAction
-        icon="readAloud"
-        label="朗读"
-        pressed={readAloudPressed}
-        disabled={readAloudDisabled}
-        onClick={() => onReadAloud?.()}
       />
       {feedback && (
         <span role="status" style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
@@ -528,12 +506,8 @@ export function MessageList({
   onTeachingSkip,
   onTeachingBeginnerStart,
   onUseModuleSuggestion,
-  tts,
   onRefreshMessages,
 }: MessageListProps) {
-  // Issue 30：每条助手消息的朗读控制器句柄（供消息操作栏「朗读」按钮桥接）
-  const readAloudRefs = useRef(new Map<string, ReadAloudControlsHandle>());
-  const [activeReadAloudId, setActiveReadAloudId] = useState<string | null>(null);
   return (
     <ol
       role="list"
@@ -979,41 +953,7 @@ export function MessageList({
                   </p>
                 )}
 
-                <AssistantActions
-                  message={message}
-                  onRetry={onRetry}
-                  onReadAloud={
-                    conversationId
-                      ? () => readAloudRefs.current.get(message.id)?.generate()
-                      : undefined
-                  }
-                  readAloudPressed={activeReadAloudId === message.id}
-                  readAloudDisabled={tts ? !tts.available : false}
-                />
-
-                {conversationId &&
-                  message.role === "assistant" &&
-                  message.status !== "streaming" &&
-                  message.status !== "error" && (
-                    <ReadAloudControls
-                      ref={(handle) => {
-                        if (handle) {
-                          readAloudRefs.current.set(message.id, handle);
-                        } else {
-                          readAloudRefs.current.delete(message.id);
-                        }
-                      }}
-                      conversationId={conversationId}
-                      messageId={message.id}
-                      projection={message.readAloud ?? null}
-                      tts={tts ?? { available: true }}
-                      onActivityChange={(active) =>
-                        setActiveReadAloudId((current) =>
-                          active ? message.id : current === message.id ? null : current
-                        )
-                      }
-                    />
-                  )}
+                <AssistantActions message={message} onRetry={onRetry} />
 
                 {conversationId &&
                   message.role === "assistant" &&

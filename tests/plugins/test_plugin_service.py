@@ -88,19 +88,6 @@ def test_builtin_plugins_present_and_default_enabled(tmp_path) -> None:
     assert all(p.source and p.license for p in projection.builtin)
 
 
-def test_builtin_humanizer_matches_skill_registry(tmp_path) -> None:
-    harness = _Harness(tmp_path)
-    projection = harness.service.list_plugins(harness.acc1)
-    humanizer = next(
-        p for p in projection.builtin if p.skill_id == "bridges-humanizer"
-    )
-    manifest = harness.registry.get("bridges-humanizer")
-    assert humanizer.version == manifest.version
-    assert humanizer.name == manifest.name
-    assert humanizer.capabilities == list(manifest.capabilities)
-    assert humanizer.demo_kind == "chat"
-
-
 def test_builtin_toggle_persists_per_account(tmp_path) -> None:
     harness = _Harness(tmp_path)
     harness.service.set_enabled(harness.acc1, "bridges-pdf", enabled=False)
@@ -316,7 +303,6 @@ def test_state_survives_service_recreation(tmp_path) -> None:
     assert user[0].version == "1.2.3"
     assert user[0].package_id == installed.package_id
     assert not next(p for p in projection.builtin if p.skill_id == "bridges-documents").enabled
-    assert next(p for p in projection.builtin if p.skill_id == "bridges-humanizer").enabled
 
 
 # ---------------------------------------------------------------------------
@@ -362,13 +348,6 @@ def test_demo_parses_markdown_attachment_for_real(tmp_path) -> None:
     assert "演示文本" not in str(details)
     assert details["plugin_id"] == "bridges-documents"
     assert details["parser_version"] == "markdown-v1"
-
-
-def test_demo_rejects_chat_kind_skill(tmp_path) -> None:
-    harness = _Harness(tmp_path)
-    with pytest.raises(PluginError) as excinfo:
-        harness.service.demo(harness.acc1, "bridges-humanizer", "a.md", b"# x")
-    assert excinfo.value.code == "demo_unsupported"
 
 
 def test_demo_rejects_disabled_builtin(tmp_path) -> None:

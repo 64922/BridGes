@@ -4,12 +4,14 @@ SkillRegistry 记录随应用发布的内置 SKILL 清单：稳定注册标识�
 只读来源与能力说明。默认内置、不依赖用户手工上传或 `.env`；版本进入
 能力注册与运行审计。插件治理页（Issue 34）只消费本注册表做展示与启停，
 不得修改 SKILL 内容。
+
+Issue 21：唯一内置 SKILL（文章人味化）已随旧入口退役移除，注册表保留为
+校验与展示缝（当前无内置条目），不再注册任何已退役能力。
 """
 
 from __future__ import annotations
 
 import threading
-from datetime import UTC, datetime
 
 from bridges.contracts.humanizer import HumanizerSkillManifest
 
@@ -69,38 +71,6 @@ class SkillRegistry:
             return skill_id in self._skills
 
 
-def _humanizer_manifest() -> HumanizerSkillManifest:
-    """bridges-humanizer 的固定注册清单（与 SKILL.md 版本一致）。"""
-    from bridges.chat.lightweight_policy import GLOBAL_CHAT_LIGHTWEIGHT_VERSION
-
-    return HumanizerSkillManifest(
-        skill_id="bridges-humanizer",
-        name="文章人味化",
-        version="1.0.0",
-        description=(
-            "原创净室人味化 SKILL：在保持科学事实、限定条件与引用关系的前提下，"
-            "按科普文案/课程讲稿/科研汇报/论文写作四类体裁改进表达的自然度、"
-            "任务适配度与可读性；支持改写已有文本与按主题生成，固定输出最终文本、"
-            "修改明细、理由、事实核查与未决问题，并受文本级事实锁约束。"
-        ),
-        read_only=True,
-        source="BridGes 原创净室实现（见 SKILL/CLEAN_ROOM.md 来源清洁记录）",
-        license="原创，零第三方复用（净室声明）",
-        capabilities=[
-            f"普通自然语言正文全局轻量表达策略（{GLOBAL_CHAT_LIGHTWEIGHT_VERSION}；零额外模型调用）",
-            "改写已有文本（粘贴或当前账户文件）",
-            "按主题/受众/体裁/渠道/硬约束生成新文章",
-            "四类体裁独立表达规则（不共用泛化模板）",
-            "文本级事实锁：数值/单位/对象关系/限定条件/公式/引用/结论强度",
-            "固定输出合同：最终文本/修改明细/每项理由/事实核查/未决问题",
-        ],
-        registration_version=_REGISTRATION_VERSION,
-        registered_at=datetime.now(UTC),
-    )
-
-
 def create_builtin_registry() -> SkillRegistry:
-    """创建并注册全部默认内置 SKILL。"""
-    registry = SkillRegistry()
-    registry.register(_humanizer_manifest())
-    return registry
+    """创建内置 SKILL 注册表；Issue 21 后已无内置 SKILL（人味化退役）。"""
+    return SkillRegistry()

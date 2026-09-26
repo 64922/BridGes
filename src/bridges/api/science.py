@@ -1,12 +1,14 @@
 """Science source API routes.
 
-Routes implement uploading, listing, retrieving, versioning and correcting text
-and PDF scientific sources within the scope of an account and project.
+ADR-0030 把「旧科学文章创作路径」列为退役能力：本路由只保留历史只读面
+（来源/版本/分块/主张图与各校验门的读取），供旧结果继续查看与导出。
+来源上传、版本修正、撤权、科学检索与主张图生成一律稳定返回 410，
+历史链接不会误触发新执行。
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -15,30 +17,34 @@ from bridges.contracts.science import (
     ChunkVersion,
     CitationValidationResult,
     ClaimGraph,
-    ClaimGraphResult,
-    ClaimRequest,
     DocumentVersion,
     FactLockSet,
-    IngestionRunRef,
     PublishGateResult,
     ScientificQualityGateResult,
-    SearchRequest,
-    SearchResult,
     SourceError,
     SourceProjection,
     SourceSummary,
-    SourceUploadRequest,
-    SourceVersionRequest,
     ValidationReport,
 )
-from bridges.science import (
-    ClaimEvidenceService,
-    ScienceError,
-    ScienceSearchService,
-    ScienceSourceService,
-)
+from bridges.retirement import raise_retired_capability
+from bridges.science import ClaimEvidenceService, ScienceError, ScienceSourceService
 
 router = APIRouter(prefix="/science", tags=["science"])
+
+_RETIRED_ERROR = "legacy_science_retired"
+_RETIRED_MESSAGE = "旧科学文章创作路径已退役，历史来源与结论仍可查看与导出。"
+_RETIRED_RESPONSES = {status.HTTP_410_GONE: {"model": SourceError}}
+
+
+def _retire_science_write(request: Request, endpoint: str) -> None:
+    """统一拒绝旧科学创作写入口，不解析请求正文。"""
+    raise_retired_capability(
+        request,
+        endpoint=endpoint,
+        error=_RETIRED_ERROR,
+        replacement_path="/knowledge-base",
+        message=_RETIRED_MESSAGE,
+    )
 
 
 def _get_science_service(request: Request) -> ScienceSourceService:
@@ -47,15 +53,6 @@ def _get_science_service(request: Request) -> ScienceSourceService:
     )
     if service is None:
         raise RuntimeError("ScienceSourceService not attached to application state.")
-    return service
-
-
-def _get_search_service(request: Request) -> ScienceSearchService:
-    service: ScienceSearchService | None = getattr(
-        request.app.state, "science_search_service", None
-    )
-    if service is None:
-        raise RuntimeError("ScienceSearchService not attached to application state.")
     return service
 
 
@@ -69,7 +66,6 @@ def _get_claim_service(request: Request) -> ClaimEvidenceService:
 
 
 ScienceServiceDep = Annotated[ScienceSourceService, Depends(_get_science_service)]
-SearchServiceDep = Annotated[ScienceSearchService, Depends(_get_search_service)]
 ClaimServiceDep = Annotated[ClaimEvidenceService, Depends(_get_claim_service)]
 
 
@@ -82,59 +78,29 @@ def _science_error(status_code: int, error: str, message: str) -> HTTPException:
 
 @router.post(
     "/projects/{project_id}/sources",
-    response_model=IngestionRunRef,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_403_FORBIDDEN: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def upload_source_to_project(
-    service: ScienceServiceDep,
-    subject: SubjectDep,
+    request: Request,
+    _subject: SubjectDep,
     project_id: str,
-    request: SourceUploadRequest,
-) -> IngestionRunRef:
-    """Upload a text or PDF source into a project."""
-    try:
-        return service.ingest_upload(
-            account_id=subject.account_id,
-            project_id=project_id,
-            request=request,
-        )
-    except ScienceError as exc:
-        raise _science_error(
-            status.HTTP_403_FORBIDDEN, "source_ingestion_failed", str(exc)
-        ) from exc
+) -> None:
+    """上传来源到项目。已退役：不再接受写入，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.source.upload_project")
 
 
 @router.post(
     "/sources",
-    response_model=IngestionRunRef,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_403_FORBIDDEN: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def upload_source(
-    service: ScienceServiceDep,
-    subject: SubjectDep,
-    request: SourceUploadRequest,
-) -> IngestionRunRef:
-    """Upload a personal text or PDF source (not bound to a project)."""
-    try:
-        return service.ingest_upload(
-            account_id=subject.account_id,
-            project_id=None,
-            request=request,
-        )
-    except ScienceError as exc:
-        raise _science_error(
-            status.HTTP_403_FORBIDDEN, "source_ingestion_failed", str(exc)
-        ) from exc
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """上传个人来源。已退役：不再接受写入，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.source.upload")
 
 
 @router.get(
@@ -216,31 +182,16 @@ async def list_source_versions(
 
 @router.post(
     "/sources/{source_id}/versions",
-    response_model=DocumentVersion,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_404_NOT_FOUND: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def create_source_version(
-    service: ScienceServiceDep,
-    subject: SubjectDep,
+    request: Request,
+    _subject: SubjectDep,
     source_id: str,
-    request: SourceVersionRequest,
-) -> DocumentVersion:
-    """Create a new document version by applying chunk corrections."""
-    try:
-        return service.create_new_version(
-            account_id=subject.account_id,
-            source_id=source_id,
-            request=request,
-        )
-    except ScienceError as exc:
-        raise _science_error(
-            status.HTTP_404_NOT_FOUND, "source_not_found", str(exc)
-        ) from exc
+) -> None:
+    """按分块修正创建新版本。已退役：不再接受写入，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.source.version_create")
 
 
 @router.get(
@@ -272,130 +223,71 @@ async def get_chunk(
 
 @router.post(
     "/sources/{source_id}/revoke",
-    response_model=dict[str, Any],
-    status_code=status.HTTP_200_OK,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_404_NOT_FOUND: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def revoke_source(
-    service: ScienceServiceDep,
-    subject: SubjectDep,
+    request: Request,
+    _subject: SubjectDep,
     source_id: str,
-) -> dict[str, Any]:
-    """Revoke a source so it cannot be used in new evidence."""
-    try:
-        source_ref, event = service.revoke_source(
-            account_id=subject.account_id,
-            source_id=source_id,
-            reason="用户撤权",
-            subject=subject,
-        )
-    except ScienceError as exc:
-        raise _science_error(
-            status.HTTP_404_NOT_FOUND, "source_not_found", str(exc)
-        ) from exc
-
-    return {
-        "source_id": source_id,
-        "status": "revoked",
-        "object_ref": source_ref.model_dump(),
-        "invalidation_event_id": event.event_id if event is not None else None,
-    }
+) -> None:
+    """撤权来源。已退役：不再接受写入，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.source.revoke")
 
 
 
 @router.post(
     "/projects/{project_id}/search",
-    response_model=SearchResult,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_403_FORBIDDEN: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def search_project_sources(
-    service: SearchServiceDep,
-    subject: SubjectDep,
+    request: Request,
+    _subject: SubjectDep,
     project_id: str,
-    request: SearchRequest,
-) -> SearchResult:
-    """Search scientific sources within a project using scoped hybrid retrieval."""
-    # 项目是账户自己的科学项目空间（PERSONAL_VAULT 域，与源对象编码一致），
-    # 只注入项目标识，不改写对象域。
-    scoped_request = request.model_copy(update={"project_id": project_id})
-    return service.search(subject, scoped_request)
+) -> None:
+    """项目内科学来源检索。已退役：不再接受执行请求，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.search.project")
 
 
 @router.post(
     "/search",
-    response_model=SearchResult,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_403_FORBIDDEN: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def search_personal_sources(
-    service: SearchServiceDep,
-    subject: SubjectDep,
-    request: SearchRequest,
-) -> SearchResult:
-    """Search personal scientific sources using scoped hybrid retrieval."""
-    return service.search(subject, request)
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """个人科学来源检索。已退役：不再接受执行请求，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.search.personal")
 
 
 @router.post(
     "/projects/{project_id}/claim-graphs",
-    response_model=ClaimGraphResult,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_403_FORBIDDEN: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def generate_project_claim_graph(
-    service: ClaimServiceDep,
-    subject: SubjectDep,
+    request: Request,
+    _subject: SubjectDep,
     project_id: str,
-    request: ClaimRequest,
-) -> ClaimGraphResult:
-    """Generate a locatable claim--evidence--citation graph for a project question."""
-    # 项目是账户自己的科学项目空间（PERSONAL_VAULT 域，与源对象编码一致），
-    # 只注入项目标识，不改写对象域。
-    scoped_request = request.model_copy(update={"project_id": project_id})
-    try:
-        return service.generate_claim_graph(subject, scoped_request)
-    except ScienceError as exc:
-        raise _science_error(
-            status.HTTP_403_FORBIDDEN, "claim_generation_failed", str(exc)
-        ) from exc
+) -> None:
+    """生成项目主张—证据图。已退役：不再接受执行请求，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.claim_graph.project")
 
 
 @router.post(
     "/claim-graphs",
-    response_model=ClaimGraphResult,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
-        status.HTTP_403_FORBIDDEN: {"model": SourceError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 async def generate_personal_claim_graph(
-    service: ClaimServiceDep,
-    subject: SubjectDep,
-    request: ClaimRequest,
-) -> ClaimGraphResult:
-    """Generate a locatable claim--evidence--citation graph for a personal question."""
-    try:
-        return service.generate_claim_graph(subject, request)
-    except ScienceError as exc:
-        raise _science_error(
-            status.HTTP_403_FORBIDDEN, "claim_generation_failed", str(exc)
-        ) from exc
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """生成个人主张—证据图。已退役：不再接受执行请求，稳定返回 410。"""
+    _retire_science_write(request, "legacy.science.claim_graph.personal")
 
 
 @router.get(

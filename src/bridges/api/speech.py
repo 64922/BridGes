@@ -1,9 +1,10 @@
-"""听写与单条回答朗读 API 路由（Issue 30，GQ-03 迁移）。
+"""听写与单条回答朗读 API 路由（Issue 30，GQ-03 迁移；Issue 21 退役朗读）。
 
 听写：前端录音并停止后，把完整音频 POST 到固定 ASR 快照，返回可编辑
-转写文本；音频只在请求体内存中直传，不落盘。朗读：每条已完成的助手
-回答可 POST 生成朗读（固定 TTS 快照），GET 投影/音频，DELETE 停止并
-清理。两项能力不再依赖账户凭据服务或账户探测快照（GQ-03）：请求
+转写文本；音频只在请求体内存中直传，不落盘。朗读：ADR-0030 把「回答
+朗读」列为退役能力，因此生成与停止清理一律稳定返回 410，只保留历史
+只读面（GET 投影与 GET 音频），旧回答上已生成的音频仍可回放。两项
+能力的读取路径都不依赖账户凭据服务或账户探测快照（GQ-03）：请求
 直接进入已由启动硬门保证完成注册的全局模型网关固定适配器；音频
 请求体只含音频与固定提示，不携带密钥、画像或无关聊天历史。
 """
@@ -26,9 +27,14 @@ from bridges.contracts.speech import (
     ReadAloudProjection,
     SpeechError,
 )
+from bridges.retirement import raise_retired_capability
 from bridges.speech.service import SpeechService
 
 router = APIRouter(prefix="/chat", tags=["speech"])
+
+_RETIRED_ERROR = "legacy_read_aloud_retired"
+_RETIRED_MESSAGE = "回答朗读已退役，已生成的音频仍可回放。"
+_RETIRED_RESPONSES = {status.HTTP_410_GONE: {"model": ChatError}}
 
 
 def _get_speech_service(request: Request) -> SpeechService:
@@ -129,35 +135,22 @@ async def transcribe_dictation(
 
 @router.post(
     "/conversations/{conversation_id}/messages/{message_id}/read-aloud",
-    response_model=ReadAloudProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_409_CONFLICT: {"model": ChatError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 def generate_read_aloud(
     conversation_id: str,
     message_id: str,
-    service: SpeechServiceDep,
-    subject: SubjectDep,
-) -> Response:
-    """为一条已完成的助手回答生成朗读（固定 TTS 快照）。
-
-    同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先
-    清理再写新对象。不检查账户凭据或探测快照（GQ-03）：新账户无需
-    任何个人 Qwen 配置即可生成朗读。生成失败返回 failed 投影与重试
-    语义，回答正文不受影响。
-    """
-    try:
-        projection = service.generate_read_aloud(
-            subject.account_id, conversation_id, message_id
-        )
-    except SpeechError as exc:
-        raise _handle_speech_error(exc) from exc
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=projection.model_dump(mode="json"),
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """为一条已完成的助手回答生成朗读。已退役：不再接受生成请求，稳定返回 410。"""
+    raise_retired_capability(
+        request,
+        endpoint="legacy.speech.read_aloud.generate",
+        error=_RETIRED_ERROR,
+        replacement_path="/",
+        message=_RETIRED_MESSAGE,
     )
 
 
@@ -223,26 +216,23 @@ def get_read_aloud_audio(
 
 @router.delete(
     "/conversations/{conversation_id}/messages/{message_id}/read-aloud",
-    response_model=ReadAloudProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 def delete_read_aloud(
     conversation_id: str,
     message_id: str,
-    service: SpeechServiceDep,
-    subject: SubjectDep,
-) -> Response:
-    """停止并清理朗读：删除账户对象库中的音频并复位状态，幂等。"""
-    try:
-        projection = service.delete_read_aloud(
-            subject.account_id, conversation_id, message_id
-        )
-    except SpeechError as exc:
-        raise _handle_speech_error(exc) from exc
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content=projection.model_dump(mode="json"),
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """停止并清理朗读。已退役：不再接受删除请求，稳定返回 410。
+
+    历史音频随旧消息保留，按账户导出与账户删除合同处置。
+    """
+    raise_retired_capability(
+        request,
+        endpoint="legacy.speech.read_aloud.delete",
+        error=_RETIRED_ERROR,
+        replacement_path="/",
+        message=_RETIRED_MESSAGE,
     )

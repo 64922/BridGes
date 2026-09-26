@@ -231,7 +231,7 @@ class WebSearchServiceAdapter:
             TiebaSearchHit(
                 url=result.url,
                 title=result.title,
-                snippet=result.content or "",
+                snippet=result.snippet,
             )
             for result in projection.results
         )

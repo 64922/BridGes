@@ -19,8 +19,6 @@ interface ChatThreadProps {
   /** V2 Issue 11：点击模块建议（以该轮原文显式启动模块） */
   onUseModuleSuggestion?: (messageId: string, moduleId: ChatModuleId) => void;
   conversationId?: string;
-  /** Issue 30：TTS 能力可用性（账户级探测快照） */
-  tts?: { available: boolean; reason?: string };
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表 */
   onRefreshMessages?: () => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
@@ -41,7 +39,6 @@ export function ChatThread({
   onTeachingBeginnerStart,
   onUseModuleSuggestion,
   conversationId,
-  tts,
   onRefreshMessages,
   announcement,
 }: ChatThreadProps) {
@@ -72,7 +69,6 @@ export function ChatThread({
           onTeachingBeginnerStart={onTeachingBeginnerStart}
           onUseModuleSuggestion={onUseModuleSuggestion}
           conversationId={conversationId}
-          tts={tts}
           onRefreshMessages={onRefreshMessages}
         />
       </div>

@@ -71,10 +71,8 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatMode,
     ChatStreamCareerData,
-    ChatStreamImageData,
     ChatStreamMcpData,
     ChatStreamStageData,
-    ChatStreamVideoData,
     ChatThinkingSummary,
     ContextNoteProjection,
     ContextNoteState,
@@ -85,7 +83,7 @@ from bridges.contracts.chat import (
     VideoRequestPayload,
 )
 from bridges.contracts.humanizer import HumanizerSkillInput
-from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
+from bridges.contracts.image import ImageTaskKind
 from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
@@ -108,7 +106,6 @@ from bridges.contracts.teaching import (
     TeachingEvidenceSourceType,
     TeachingTurnProjection,
 )
-from bridges.contracts.video import VideoError, VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.evidence_coverage import ACCEPTED_WEB_VERIFICATIONS
 from bridges.learning.progress import TeachingProgressService
@@ -688,55 +685,6 @@ class CareerPlannerOrchestrator(Protocol):
         budget: RunBudget | None = None,
         writing_policy: GlobalWritingPolicySnapshot | None = None,
     ) -> Iterator[CareerRunEvent]: ...
-
-
-class ImageOrchestrator(Protocol):
-    """图片生成/编辑编排接缝（Issue 31，运行时由 ImageService 实现）。
-
-    聊天分支只负责把请求载荷转成异步任务并收敛消息；云端提交/轮询、
-    资产落库与迟到结果隔离都在后台执行器进程内完成，不阻塞消息流。
-    """
-
-    def submit_generation(
-        self,
-        account_id: str,
-        conversation_id: str,
-        message_id: str,
-        prompt: str,
-        size: str = "1024*1024",
-    ) -> ImageTaskProjection: ...
-
-    def submit_edit(
-        self,
-        account_id: str,
-        conversation_id: str,
-        message_id: str,
-        prompt: str,
-        *,
-        source_version_id: str | None,
-        source_object_id: str | None,
-        source_scope: str | None = None,
-        size: str = "1024*1024",
-    ) -> ImageTaskProjection: ...
-
-
-class VideoOrchestrator(Protocol):
-    """文生视频编排接缝（Issue 32，运行时由 VideoService 实现）。
-
-    聊天分支只负责把请求载荷转成异步任务并收敛消息；云端提交/轮询、
-    资产落库与迟到结果隔离都在后台执行器进程内完成，不阻塞消息流。
-    """
-
-    def submit(
-        self,
-        account_id: str,
-        conversation_id: str,
-        message_id: str,
-        prompt: str,
-        *,
-        size: str,
-        duration_seconds: int,
-    ) -> VideoTaskProjection: ...
 
 
 # ---------------------------------------------------------------------------
@@ -2016,8 +1964,6 @@ class TurnOrchestrator:
         atomic_profile_service: AtomicProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
-        image_service: ImageOrchestrator | None = None,
-        video_service: VideoOrchestrator | None = None,
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
@@ -2047,10 +1993,6 @@ class TurnOrchestrator:
         self._observability = observability_service
         #: 生涯规划编排（Issue 29）。
         self._career_planner = career_planner_service
-        #: 图片生成与编辑编排（Issue 31）。
-        self._image = image_service
-        #: 文生视频编排（Issue 32，Wan 固定绑定）。
-        self._video = video_service
         #: 对话级插件选择域（Issue 36）：选择校验、失效清洗与工具上下文编译。
         self._selections = selections_service
         #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用。
@@ -2328,9 +2270,8 @@ class TurnOrchestrator:
                     error_message=retired_message,
                 )
                 return
-            # Issue 31：用户消息携带图片生成/编辑载荷（前端图片对话框提交）
-            # 走图片异步任务编排——创建任务并立即收敛消息（任务卡状态由
-            # 后台执行器写回消息投影），绝不阻塞等待云端生成。
+            # Issue 21：用户消息带图片/视频生成载荷时只收敛为退役错误——两个
+            # 能力已退役，编排层不再创建任何生成任务（见下方 refusal 方法）。
             owner_message = owner_user_message(
                 self._repo.list_messages(account_id, conversation_id),
                 assistant_message_id,
@@ -2347,67 +2288,20 @@ class TurnOrchestrator:
                     thinking,
                 )
                 return
-            owner_image = image_payload_from(owner_message)
-            if owner_image is not None:
-                if self._image is None:
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code="image_unavailable",
-                        error_message="图片能力暂不可用，请稍后重试。",
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=failed_thinking(thinking, "image_unavailable"),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code="image_unavailable",
-                        error_message="图片能力暂不可用，请稍后重试。",
-                    )
-                    return
-                yield from self._stream_image_request(
+            if image_payload_from(owner_message) is not None:
+                # Issue 21：图片生成与编辑已退役。升级前遗留的带载荷消息若仍有
+                # 排队运行，执行器恢复时会走到这里——不再提交任务，只收敛为
+                # 退役错误；历史任务卡与资产只读面保持可用。
+                yield from self._refuse_retired_image_request(
                     account_id,
-                    conversation_id,
                     assistant_message_id,
-                    owner_image,
                 )
                 return
-            # Issue 32：用户消息携带文生视频载荷（前端视频对话框提交）走
-            # 视频异步任务编排（Wan 固定绑定）——创建任务并立即收敛消息，
-            # 绝不阻塞等待云端生成；失败原因与安全重试边界由任务卡呈现。
-            owner_video = video_payload_from(owner_message, route)
-            if owner_video is not None:
-                if self._video is None:
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.ERROR,
-                        error_code="video_unavailable",
-                        error_message="视频能力暂不可用，请稍后重试。",
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=failed_thinking(thinking, "video_unavailable"),
-                    )
-                    yield StreamEvent(
-                        kind="error",
-                        error_code="video_unavailable",
-                        error_message="视频能力暂不可用，请稍后重试。",
-                    )
-                    return
-                yield from self._stream_video_request(
+            # Issue 21：文生视频同样退役，与图片一致只收敛为退役错误。
+            if video_payload_from(owner_message, route) is not None:
+                yield from self._refuse_retired_video_request(
                     account_id,
-                    conversation_id,
                     assistant_message_id,
-                    owner_video,
                 )
                 return
             # Issue 36：用户消息携带 MCP 调用载荷（前端选中插件的调用
@@ -4934,213 +4828,70 @@ class TurnOrchestrator:
             kind="error", error_code=error_code, error_message=error_message
         )
 
-    def _stream_image_request(
+    def _refuse_retired_image_request(
         self,
         account_id: str,
-        conversation_id: str,
         assistant_message_id: str,
-        payload: ImageRequestPayload,
     ) -> Iterator[StreamEvent]:
-        """图片生成/编辑编排：创建异步任务 → IMAGE 事件 → 收敛 DONE。
+        """图片生成/编辑已退役：只收敛为退役错误，不创建任何生成任务。
 
-        任务创建（含助手消息投影）在图片服务的事务内原子完成；本方法
-        只发事件与收敛消息状态，不调用任何模型。任务完成/失败/取消由
-        后台执行器写回消息投影，前端刷新消息列表即可恢复——任务表是
-        权威，消息投影是快照。
+        Issue 21：公开写入口已全部返回 410，但升级前遗留的、仍排队的带载荷
+        运行会在执行器恢复时走到这里；退役判定因此必须落在编排层，保证
+        「退役能力不再产生新写入」。历史任务卡与资产只读面不受影响。
         """
         started = time.monotonic()
-        now = datetime.now(UTC)
-        assert self._image is not None
-        try:
-            if payload.kind == ImageTaskKind.EDIT:
-                projection = self._image.submit_edit(
-                    account_id,
-                    conversation_id,
-                    assistant_message_id,
-                    payload.prompt,
-                    source_version_id=payload.source_version_id,
-                    source_object_id=payload.source_object_id,
-                    source_scope=payload.source_scope,
-                    size=payload.size,
-                )
-            else:
-                projection = self._image.submit_generation(
-                    account_id,
-                    conversation_id,
-                    assistant_message_id,
-                    payload.prompt,
-                    size=payload.size,
-                )
-        except ImageError as exc:
-            finalize_message(
-                self._repo,
-                account_id,
-                assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code=exc.code,
-                error_message=exc.message,
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=started,
-                now=now,
-                thinking=failed_thinking(initial_thinking(CHAT_MODE), exc.code),
-            )
-            yield StreamEvent(
-                kind="error", error_code=exc.code, error_message=exc.message
-            )
-            return
-        except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
-            finalize_message(
-                self._repo,
-                account_id,
-                assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code="image_submit_failed",
-                error_message="图片任务提交异常，请重试。",
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=started,
-                now=now,
-                thinking=failed_thinking(
-                    initial_thinking(CHAT_MODE), "image_submit_failed"
-                ),
-            )
-            yield StreamEvent(
-                kind="error",
-                error_code="image_submit_failed",
-                error_message="图片任务提交异常，请重试。",
-            )
-            return
-
-        # 图片任务不再流式产出文本：正文收敛为提交摘要，状态由任务卡呈现。
-        summary = (
-            "已提交图片编辑请求，正在处理…"
-            if payload.kind == ImageTaskKind.EDIT
-            else "已提交图片生成请求，正在处理…"
-        )
-        self._repo.update_message_content(
-            account_id, assistant_message_id, summary, now
-        )
+        message = "图片生成与编辑已退役，历史结果仍可查看与导出。"
         finalize_message(
             self._repo,
             account_id,
             assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            error_code=None,
-            error_message=None,
+            status=ChatMessageStatus.ERROR,
+            error_code="legacy_image_retired",
+            error_message=message,
             duration_ms=None,
             model_id=None,
             run_lock_id=None,
             started=started,
-            now=now,
-            thinking=done_thinking(initial_thinking(CHAT_MODE)),
-        )
-        yield StreamEvent(
-            kind="image",
-            image=ChatStreamImageData(
-                message_id=assistant_message_id,
-                task=projection,
+            now=datetime.now(UTC),
+            thinking=failed_thinking(
+                initial_thinking(CHAT_MODE), "legacy_image_retired"
             ),
         )
-        yield StreamEvent(kind="done")
+        yield StreamEvent(
+            kind="error",
+            error_code="legacy_image_retired",
+            error_message=message,
+        )
 
-    def _stream_video_request(
+    def _refuse_retired_video_request(
         self,
         account_id: str,
-        conversation_id: str,
         assistant_message_id: str,
-        payload: VideoRequestPayload,
     ) -> Iterator[StreamEvent]:
-        """文生视频编排：创建异步任务 → VIDEO 事件 → 收敛 DONE。
-
-        任务创建（含助手消息投影）在视频服务的事务内原子完成；本方法
-        只发事件与收敛消息状态，不调用任何模型。任务完成/失败/取消由
-        后台执行器写回消息投影，前端刷新消息列表即可恢复——任务表是
-        权威，消息投影是快照。
-        """
+        """文生视频已退役：只收敛为退役错误，不创建任何生成任务。"""
         started = time.monotonic()
-        now = datetime.now(UTC)
-        assert self._video is not None
-        try:
-            projection = self._video.submit(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                payload.prompt,
-                size=payload.size,
-                duration_seconds=payload.duration_seconds,
-            )
-        except VideoError as exc:
-            finalize_message(
-                self._repo,
-                account_id,
-                assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code=exc.code,
-                error_message=exc.message,
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=started,
-                now=now,
-                thinking=failed_thinking(initial_thinking(CHAT_MODE), exc.code),
-            )
-            yield StreamEvent(
-                kind="error", error_code=exc.code, error_message=exc.message
-            )
-            return
-        except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
-            finalize_message(
-                self._repo,
-                account_id,
-                assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code="video_submit_failed",
-                error_message="视频任务提交异常，请重试。",
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=started,
-                now=now,
-                thinking=failed_thinking(
-                    initial_thinking(CHAT_MODE), "video_submit_failed"
-                ),
-            )
-            yield StreamEvent(
-                kind="error",
-                error_code="video_submit_failed",
-                error_message="视频任务提交异常，请重试。",
-            )
-            return
-
-        # 视频任务不再流式产出文本：正文收敛为提交摘要，状态由任务卡呈现。
-        self._repo.update_message_content(
-            account_id, assistant_message_id, "已提交视频生成请求，正在处理…", now
-        )
+        message = "视频生成已退役，历史结果仍可查看与导出。"
         finalize_message(
             self._repo,
             account_id,
             assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            error_code=None,
-            error_message=None,
+            status=ChatMessageStatus.ERROR,
+            error_code="legacy_video_retired",
+            error_message=message,
             duration_ms=None,
             model_id=None,
             run_lock_id=None,
             started=started,
-            now=now,
-            thinking=done_thinking(initial_thinking(CHAT_MODE)),
-        )
-        yield StreamEvent(
-            kind="video",
-            video=ChatStreamVideoData(
-                message_id=assistant_message_id,
-                task=projection,
+            now=datetime.now(UTC),
+            thinking=failed_thinking(
+                initial_thinking(CHAT_MODE), "legacy_video_retired"
             ),
         )
-        yield StreamEvent(kind="done")
+        yield StreamEvent(
+            kind="error",
+            error_code="legacy_video_retired",
+            error_message=message,
+        )
 
     def _stream_mcp_call(
         self,

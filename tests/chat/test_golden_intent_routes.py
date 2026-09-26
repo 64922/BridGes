@@ -27,7 +27,6 @@ import pytest
 import bridges.ai  # noqa: F401 - 预载以打破既有导入环
 from bridges.career.intent import is_career_intent
 from bridges.routing import MainCapability, NaturalLanguageRouter, RouteStatus
-from bridges.skills.humanizer.intent import route_humanizer_message
 from tests.chat.test_arxiv_search_chat import _CapturingAdapter, _context
 
 #: 前端建议卡「生涯规划助手」文案原句（chat-template.tsx），金标要求
@@ -81,12 +80,15 @@ GOLDEN_ORDINARY: tuple[str, ...] = (
 
 @pytest.mark.parametrize("content", GOLDEN_HUMANIZER)
 def test_golden_humanizer_detector(content: str) -> None:
-    routed = route_humanizer_message(content)
+    """Issue 21：人味化专用编排退役，改写请求按普通聊天处理。
 
-    assert routed is not None
-    assert routed.skill_input.skill_id == "bridges-humanizer"
-    assert routed.skill_input.route is not None
-    assert routed.skill_input.route.source == "natural_language"
+    历史链接与自然语言请求都不再产出 bridges-humanizer 载荷
+    （旧载荷在写入口稳定 410），正文表达并入自然对话。
+    """
+    decision = NaturalLanguageRouter().classify(content)
+
+    assert decision.main_capability == MainCapability.ORDINARY_CHAT
+    assert decision.status == RouteStatus.ORDINARY
 
 
 @pytest.mark.parametrize("content", GOLDEN_CAREER)
@@ -111,7 +113,6 @@ def test_golden_paper_router(content: str) -> None:
 
 @pytest.mark.parametrize("content", GOLDEN_ORDINARY)
 def test_golden_ordinary_stays_ordinary(content: str) -> None:
-    assert route_humanizer_message(content) is None
     assert not is_career_intent(content)
     decision = NaturalLanguageRouter().classify(content)
 

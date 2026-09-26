@@ -12,8 +12,7 @@ router = APIRouter(tags=["skills"])
 
 @router.get("/skills")
 def list_builtin_skills(request: Request) -> list[dict[str, object]]:
-    registry = getattr(request.app.state, "skill_registry", None)
-    return [item.model_dump() for item in create_builtin_plugin_manifests(registry)]
+    return [item.model_dump() for item in create_builtin_plugin_manifests()]
 
 
 @router.get("/compatibility/observations")

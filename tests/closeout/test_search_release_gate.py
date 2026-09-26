@@ -66,8 +66,8 @@ def test_web_search_classified_exactly_once_as_external_non_qwen() -> None:
 
 
 def test_manifest_version_bumped_for_issue07() -> None:
-    """Issue 07 收口使清单版本受控递增到 v2。"""
-    assert CAPABILITY_MANIFEST_VERSION == 2
+    """清单版本受控递增：v2=Issue 07 网页搜索收口，v3=Issue 21 旧生成入口退役，v4=Issue 21 人味化改判退役。"""
+    assert CAPABILITY_MANIFEST_VERSION == 4
 
 
 # ---------------------------------------------------------------------------

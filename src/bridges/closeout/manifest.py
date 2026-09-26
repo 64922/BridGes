@@ -30,7 +30,13 @@ from bridges.ai.fixed_models import MODEL_BY_CAPABILITY
 #: v2（Issue 07）：通用网页搜索收口——``tavily_web_search`` 唯一分类为
 #: ``external_non_qwen`` 且自带凭据（ADR-0029），发布门断言生产提供方
 #: 清单恰好只有 tavily。
-CAPABILITY_MANIFEST_VERSION = 2
+#: v3（Issue 21）：旧图片/视频生成、回答朗读与科学文章创作的公开写入口
+#: 退役为 410（``legacy_image_writes``/``legacy_video_writes``/
+#: ``legacy_read_aloud_writes``/``legacy_science_writes``）；对应供应商
+#: 适配器与发布门真实探针保留，历史结果按只读面继续可查可导出。
+#: v4（Issue 21）：文章人味化编排与评测框架整体移除——``humanizer``
+#: 由 ``qwen_model`` 改判 ``retired``，只保留历史投影读取与 410 守卫。
+CAPABILITY_MANIFEST_VERSION = 4
 
 #: 稳定门禁错误码（Issue 17 Observability 合同）。
 UNCLASSIFIED_CAPABILITY = "unclassified_capability"
@@ -92,6 +98,10 @@ CHAT_ACTIONS: tuple[str, ...] = (
     "legacy_media",
     "legacy_reminders",
     "legacy_extensions",
+    "legacy_image",
+    "legacy_video",
+    "legacy_read_aloud",
+    "legacy_science",
 )
 
 
@@ -204,12 +214,15 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
     ),
     CapabilityManifestEntry(
         id="humanizer",
-        journey="Humanizer 首稿与条件修订",
-        category=CapabilityCategory.QWEN_MODEL,
-        model_capability="qwen_structured_output",
-        route_patterns=(_px("/chat/humanizer"),),
+        journey="文章人味化专用编排（Issue 21 整体退役）",
+        category=CapabilityCategory.RETIRED,
+        retired_capability_names=("bridges-humanizer",),
         chat_actions=("humanizer",),
-        truth_contract="每次结构化调用分别落锁，模型输出确实决定结果。",
+        truth_contract=(
+            "SKILL 编排与评测框架已移除；带 ``bridges-humanizer`` 载荷的"
+            "写入稳定返回 410（``humanizer_capability_retired``），历史"
+            "结果与过程投影按只读面继续可查可导出。"
+        ),
     ),
     CapabilityManifestEntry(
         id="career",
@@ -253,57 +266,49 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
     ),
     CapabilityManifestEntry(
         id="image_generate_edit",
-        journey="现代图片生成/编辑",
+        journey="图片生成/编辑（Issue 21 退役公开入口，供应商能力保留）",
         category=CapabilityCategory.QWEN_MODEL,
         model_capability="qwen_image",
-        route_patterns=(
-            _p("/chat/conversations/*/image-tasks"),
-            _p("/chat/conversations/*/image-tasks/*"),
-            _p("/chat/conversations/*/image-tasks/*/retry"),
-            _p("/chat/conversations/*/image-assets/*"),
-            _p("/chat/conversations/*/image-assets/*/versions/*/image"),
-        ),
         chat_actions=("image_generate", "image_edit"),
-        truth_contract="实际供应商动作逐次落锁；纯本地读取不造锁。",
+        truth_contract=(
+            "公开提交/取消/重试/删除入口已退役为 410（见 legacy_image_writes）；"
+            "适配器与真实供应商探针保留在发布门，历史结果只读可导出。"
+        ),
     ),
     CapabilityManifestEntry(
         id="image_cancel",
-        journey="图片供应商取消",
+        journey="图片供应商取消（Issue 21 退役公开入口）",
         category=CapabilityCategory.QWEN_MODEL,
         model_capability="qwen_image",
-        route_patterns=(_p("/chat/conversations/*/image-tasks/*/cancel"),),
         chat_actions=("image_cancel",),
-        truth_contract="真实取消动作逐次落锁；无云任务不伪造取消成功。",
+        truth_contract="公开取消入口已退役为 410；供应商取消探针仅在发布门内驱动。",
     ),
     CapabilityManifestEntry(
         id="image_alt_text",
-        journey="图片视觉替代文本",
+        journey="图片视觉替代文本（Issue 21 退役公开入口）",
         category=CapabilityCategory.QWEN_MODEL,
         model_capability="qwen_vision",
-        route_patterns=(_p("/chat/conversations/*/image-assets/*/alt-text"),),
         chat_actions=("image_alt_text",),
-        truth_contract="真实视觉调用落锁；失败/空输出回退明确 fallback 且不冒充模型来源。",
+        truth_contract="公开替代文本写入入口已退役为 410；历史替代文本仍随资产只读展示。",
     ),
     CapabilityManifestEntry(
         id="video_generate",
-        journey="现代视频生成",
+        journey="视频生成（Issue 21 退役公开入口，供应商能力保留）",
         category=CapabilityCategory.QWEN_MODEL,
         model_capability="qwen_wan",
-        route_patterns=(
-            _px("/chat/conversations/*/video-tasks"),
-            _px("/chat/conversations/*/video-assets"),
-        ),
         chat_actions=("video_generate",),
-        truth_contract="Wan 调用逐次落锁；本地状态投影不造锁。",
+        truth_contract=(
+            "公开提交/取消/重试/删除入口已退役为 410（见 legacy_video_writes）；"
+            "适配器与真实供应商探针保留在发布门，历史结果只读可导出。"
+        ),
     ),
     CapabilityManifestEntry(
         id="video_cancel",
-        journey="视频供应商取消",
+        journey="视频供应商取消（Issue 21 退役公开入口）",
         category=CapabilityCategory.QWEN_MODEL,
         model_capability="qwen_wan",
-        route_patterns=(_p("/chat/conversations/*/video-tasks/*/cancel"),),
         chat_actions=("video_cancel",),
-        truth_contract="真实取消动作逐次落锁；无可安全取消任务时失败关闭，不伪造成功。",
+        truth_contract="公开取消入口已退役为 410；供应商取消探针仅在发布门内驱动。",
     ),
     CapabilityManifestEntry(
         id="asr_short",
@@ -323,12 +328,14 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
     ),
     CapabilityManifestEntry(
         id="tts",
-        journey="回答朗读 TTS",
+        journey="回答朗读 TTS（Issue 21 退役公开入口，适配器保留）",
         category=CapabilityCategory.QWEN_MODEL,
         model_capability="qwen_tts",
-        route_patterns=(_px("/chat/conversations/*/messages/*/read-aloud"),),
         chat_actions=("tts_narration",),
-        truth_contract="真实语音 adapter、固定模型及运行锁。",
+        truth_contract=(
+            "公开生成/停止入口已退役为 410（见 legacy_read_aloud_writes）；"
+            "适配器与真实语音探针保留在发布门，历史音频只读可回放与导出。"
+        ),
     ),
     # ── external_non_qwen：不消费 Qwen Key 的外部能力 ────────────────────
     CapabilityManifestEntry(
@@ -382,6 +389,8 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
             _p("/chat/conversations/*/learning-plan-adjustments"),
             _p("/chat/conversations/*/learning-progress"),
             _px("/chat/conversations/*/feedback"),
+            # Issue 21：历史人味化投影的查看遥测（只写审计，不产生生成调用）。
+            _px("/chat/humanizer"),
         ),
         chat_actions=("conversation_list",),
         truth_contract="本地会话/消息 CRUD 不应产生 Qwen 调用或运行锁。",
@@ -458,6 +467,78 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
         truth_contract="只读历史访问，不调用模型、不造锁。",
     ),
     # ── retired：稳定返回 410 的退役写入口 ───────────────────────────────
+    CapabilityManifestEntry(
+        id="legacy_media_history_reads",
+        journey="旧图片/视频/朗读历史只读访问（Issue 21 保留的兼容层）",
+        category=CapabilityCategory.LOCAL_DETERMINISTIC,
+        route_patterns=(
+            _p("/chat/conversations/*/image-tasks/*"),
+            _p("/chat/conversations/*/image-assets/*"),
+            _p("/chat/conversations/*/image-assets/*/versions/*/image"),
+            _p("/chat/conversations/*/video-tasks/*"),
+            _p("/chat/conversations/*/video-assets/*"),
+            _p("/chat/conversations/*/video-assets/*/video"),
+            _p("/chat/conversations/*/messages/*/read-aloud"),
+            _p("/chat/conversations/*/messages/*/read-aloud/audio"),
+        ),
+        truth_contract=(
+            "旧结果的只读渲染：本地读取、不调用模型、不造锁；写入口一律 410。"
+        ),
+    ),
+    CapabilityManifestEntry(
+        id="legacy_image_writes",
+        journey="旧图片生成/编辑写入口（Issue 21）",
+        category=CapabilityCategory.RETIRED,
+        route_patterns=(
+            _p("/chat/conversations/*/image-tasks/*/cancel", "POST"),
+            _p("/chat/conversations/*/image-tasks/*/retry", "POST"),
+            _p("/chat/conversations/*/image-assets/*/alt-text", "PUT"),
+            _p("/chat/conversations/*/image-assets/*", "DELETE"),
+        ),
+        chat_actions=("legacy_image",),
+        truth_contract="稳定返回 410；历史任务/资产只读查询与字节流仍可用。",
+    ),
+    CapabilityManifestEntry(
+        id="legacy_video_writes",
+        journey="旧视频生成写入口（Issue 21）",
+        category=CapabilityCategory.RETIRED,
+        route_patterns=(
+            _p("/chat/conversations/*/video-tasks/*/cancel", "POST"),
+            _p("/chat/conversations/*/video-tasks/*/retry", "POST"),
+            _p("/chat/conversations/*/video-assets/*/description", "PUT"),
+            _p("/chat/conversations/*/video-assets/*", "DELETE"),
+        ),
+        chat_actions=("legacy_video",),
+        truth_contract="稳定返回 410；历史任务/资产只读查询与字节流仍可用。",
+    ),
+    CapabilityManifestEntry(
+        id="legacy_read_aloud_writes",
+        journey="旧回答朗读写入口（Issue 21）",
+        category=CapabilityCategory.RETIRED,
+        route_patterns=(
+            _p("/chat/conversations/*/messages/*/read-aloud", "POST"),
+            _p("/chat/conversations/*/messages/*/read-aloud", "DELETE"),
+        ),
+        chat_actions=("legacy_read_aloud",),
+        truth_contract="稳定返回 410；历史朗读投影与音频只读查询仍可用。",
+    ),
+    CapabilityManifestEntry(
+        id="legacy_science_writes",
+        journey="旧科学文章创作写入口（Issue 21）",
+        category=CapabilityCategory.RETIRED,
+        route_patterns=(
+            _p("/science/projects/*/sources", "POST"),
+            _p("/science/sources", "POST"),
+            _p("/science/sources/*/versions", "POST"),
+            _p("/science/sources/*/revoke", "POST"),
+            _p("/science/projects/*/search", "POST"),
+            _p("/science/search", "POST"),
+            _p("/science/projects/*/claim-graphs", "POST"),
+            _p("/science/claim-graphs", "POST"),
+        ),
+        chat_actions=("legacy_science",),
+        truth_contract="稳定返回 410；历史来源、分块与主张图只读查询仍可用。",
+    ),
     CapabilityManifestEntry(
         id="legacy_expression_writes",
         journey="旧 Expression 写入口",

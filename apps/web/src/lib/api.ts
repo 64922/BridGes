@@ -69,7 +69,6 @@ export type ImageTaskStatus = components["schemas"]["ImageTaskStatus"];
 export type ImageAssetProjection = components["schemas"]["ImageAssetProjection"];
 export type ImageVersionProjection = components["schemas"]["ImageVersionProjection"];
 export type ImageAltTextSource = components["schemas"]["ImageAltTextSource"];
-export type ImageDeletionProjection = components["schemas"]["ImageDeletionProjection"];
 export type ImageRequestPayload = components["schemas"]["ImageRequestPayload"];
 export type ChatStreamImageData = components["schemas"]["ChatStreamImageData"];
 // Issue 32：文生视频契约（生成类型来自 openapi.json；Wan 固定绑定）。
@@ -77,7 +76,6 @@ export type VideoTaskProjection = components["schemas"]["VideoTaskProjection"];
 export type VideoTaskStatus = components["schemas"]["VideoTaskStatus"];
 export type VideoAssetProjection = components["schemas"]["VideoAssetProjection"];
 export type VideoDescriptionSource = components["schemas"]["VideoDescriptionSource"];
-export type VideoDeletionProjection = components["schemas"]["VideoDeletionProjection"];
 export type VideoRequestPayload = components["schemas"]["VideoRequestPayload"];
 export type ChatStreamVideoData = components["schemas"]["ChatStreamVideoData"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
@@ -108,7 +106,6 @@ export type ReadAloudProjection = components["schemas"]["ReadAloudProjection"];
 export type ReadAloudState = components["schemas"]["ReadAloudState"];
 export type DocumentIngestionProjection = components["schemas"]["DocumentIngestionProjection"];
 export type KnowledgeBaseMaterialProjection = components["schemas"]["KnowledgeBaseMaterialProjection"];
-export type IngestionStatus = components["schemas"]["IngestionStatus"];
 export type IndexStatusProjection = components["schemas"]["IndexStatusProjection"];
 export type IndexVersionProjection = components["schemas"]["IndexVersionProjection"];
 export type IndexContractProjection = components["schemas"]["IndexContractProjection"];
@@ -1799,45 +1796,6 @@ export async function transcribeDictation(
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
-
-/** 为一条已完成的助手回答生成朗读（固定 TTS 快照；失败返回 failed 投影）。 */
-export async function generateReadAloud(
-  conversationId: string,
-  messageId: string
-): Promise<ReadAloudProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 删除朗读音频并复位状态（幂等；同源会话 Cookie 授权）。 */
-export async function deleteReadAloud(
-  conversationId: string,
-  messageId: string
-): Promise<ReadAloudProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 朗读音频的同源播放地址（经账户授权校验后流式返回）。 */
-export function readAloudAudioUrl(
-  conversationId: string,
-  messageId: string
-): string {
-  return `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud/audio`;
-}
-
-// ---------------------------------------------------------------------------
-// Issue 31：图片生成与编辑（任务操作面 + 资产操作面）
-// ---------------------------------------------------------------------------
-
 /** 查询任务投影（刷新/重登/重启后恢复任务状态；呈现态含 recovery）。 */
 export async function getImageTask(
   conversationId: string,
@@ -1850,33 +1808,6 @@ export async function getImageTask(
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
-
-/** 取消任务：本地标记为权威；迟到结果不会发布为成功资产。 */
-export async function cancelImageTask(
-  conversationId: string,
-  taskId: string
-): Promise<ImageTaskProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-tasks/${encodeURIComponent(taskId)}/cancel`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 重试失败任务：同输入（提示/来源不变）重新入队，固定同一模型快照。 */
-export async function retryImageTask(
-  conversationId: string,
-  taskId: string
-): Promise<ImageTaskProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-tasks/${encodeURIComponent(taskId)}/retry`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
 /** 查询资产投影：版本链、替代文本与当前版本指针。 */
 export async function getImageAsset(
   conversationId: string,
@@ -1889,39 +1820,6 @@ export async function getImageAsset(
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
-
-/** 修改替代文本（来源标记为 manual）。 */
-export async function updateImageAltText(
-  conversationId: string,
-  assetId: string,
-  altText: string
-): Promise<ImageAssetProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}/alt-text`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ alt_text: altText }),
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 删除资产并返回影响说明（版本数/消息引用/对象处置）；幂等。 */
-export async function deleteImageAsset(
-  conversationId: string,
-  assetId: string
-): Promise<ImageDeletionProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
 /**
  * 指定版本图片的同源地址（经账户授权校验 + 私有缓存头流式返回）。
  * ``download=1`` 附加附件下载头；默认内联显示。
@@ -1952,33 +1850,6 @@ export async function getVideoTask(
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
-
-/** 取消任务：本地标记为「取消中」，worker 收敛为已取消；迟到结果不发布。 */
-export async function cancelVideoTask(
-  conversationId: string,
-  taskId: string
-): Promise<VideoTaskProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-tasks/${encodeURIComponent(taskId)}/cancel`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 重试失败任务：同输入（提示不变）重新入队，固定同一模型快照。 */
-export async function retryVideoTask(
-  conversationId: string,
-  taskId: string
-): Promise<VideoTaskProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-tasks/${encodeURIComponent(taskId)}/retry`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
 /** 查询资产投影：可访问文字说明、提示、模型、供应商任务标识与时间。 */
 export async function getVideoAsset(
   conversationId: string,
@@ -1991,39 +1862,6 @@ export async function getVideoAsset(
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
-
-/** 修改可访问文字说明（来源标记为 manual）。 */
-export async function updateVideoDescription(
-  conversationId: string,
-  assetId: string,
-  description: string
-): Promise<VideoAssetProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}/description`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ description }),
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 删除资产并返回影响说明（对象数/消息引用/对象处置）；幂等。 */
-export async function deleteVideoAsset(
-  conversationId: string,
-  assetId: string
-): Promise<VideoDeletionProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
 /**
  * 视频的同源地址（经账户授权校验 + 私有缓存头流式返回）。
  * ``download=1`` 附加附件下载头；默认内联预览。

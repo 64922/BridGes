@@ -16,7 +16,7 @@
 
 产品合同与迁移顺序详见 [`ADR-0026`](docs/adr/0026-frozen-product-contracts-and-migration-gates.md)。
 
-面向华东交通大学学生的 [V2 设计文档](docs/v2/README.md)及[桌面交互原型](apps/web/prototypes/v2-desktop/README.md)已获认可，生产功能仍按后续 tickets 实施；本页「产品特性」描述当前版本。
+面向华东交通大学学生的 [V2 设计文档](docs/v2/README.md)已获认可，生产功能仍按后续 tickets 实施；本页「产品特性」描述当前版本。桌面交互的验收依据是 [获批交互脚本](apps/web/e2e/issue21-desktop-acceptance.spec.ts)（1280×720／1440×900／1920×1080 三视口，连真实 API 与后台执行器）。
 
 ## 快速开始
 

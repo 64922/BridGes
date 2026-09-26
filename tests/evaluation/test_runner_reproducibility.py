@@ -123,7 +123,7 @@ def test_suite_run_produces_all_suts_and_tasks(runner: EvaluationRunner) -> None
     suts = {r.sut_id for r in outcome.results}
     tasks = {r.task_id for r in outcome.results}
     assert {"bridges_full", "qwen_baseline", "open_source_reference"} <= suts
-    assert {"ablation_no_profile", "ablation_no_humanizer", "ablation_no_evidence"} <= suts
+    assert {"ablation_no_profile", "ablation_no_evidence"} <= suts
     assert tasks == {case.task_id for case in suite_data.CASES}
     # 报告已生成且含全部维度。
     assert outcome.report.estimates

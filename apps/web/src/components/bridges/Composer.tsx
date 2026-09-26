@@ -29,7 +29,7 @@ import {
   isPickedFileAcceptable,
 } from "@/lib/chat-attachments";
 import { CHAT_MODULES, type ChatModuleSelectionId } from "@/lib/chat-modules";
-import type { CapabilityAvailability } from "./chat/ReadAloudControls";
+import type { CapabilityAvailability } from "./chat/capability-availability";
 import { IngestionStatusChip } from "./AttachmentIngestion";
 import { Menu } from "./Menu";
 import styles from "./chat/chat.module.css";

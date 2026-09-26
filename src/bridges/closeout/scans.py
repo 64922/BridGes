@@ -99,7 +99,7 @@ def scan_direct_client_bypass(root: Path = REPO_ROOT) -> list[ScanViolation]:
     """扫描 ``QwenApiClient(`` 构造：业务模块直连即 ``direct_client_bypass``。
 
     ``QwenApiClient`` 只允许出现在 ``src/bridges/ai``（客户端自身与其真实
-    adapter 组装处）；业务服务（chat/humanizer/career/profiles/ingestion/
+    adapter 组装处）；业务服务（chat/career/profiles/ingestion/
     retrieval/image/video/speech/media/science 等）一律经批准 adapter 与
     recorder 接缝，任何直连构造都使发布门失败并点名文件与行号。
     """

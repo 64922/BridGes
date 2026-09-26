@@ -6,7 +6,6 @@ from bridges.evaluation import suite_data
 from bridges.evaluation.metrics import (
     career_metrics,
     compute_dimension_metrics,
-    humanization_metrics,
     multimodal_metrics,
     profile_metrics,
     run_auto_assertions,
@@ -87,53 +86,6 @@ def test_profile_no_personalization_gets_zero_gain() -> None:
     assert _metric(metrics, "personalization_gain") == 0.0
 
 
-# ---------------------------------------------------------------------------
-# 人味表达（AC-3）
-# ---------------------------------------------------------------------------
-
-
-def test_humanization_metrics_measure_quality() -> None:
-    case = _case("humanize-popular-science")
-    outputs = {
-        "final_text": "光以每秒约 30 万公里（299792458 米/秒）的速度传播。",
-        "edits": [{"reason": "用动词句提升节奏"}],
-        "fact_check": [{"result": "已核实"}],
-        "open_questions": [],
-        "fact_lock_check": {"passed": True, "blocking_conflicts": []},
-        "skill_status": "done",
-    }
-    metrics = humanization_metrics(case, outputs)
-    assert _metric(metrics, "template_ratio") == 5.0
-    assert _metric(metrics, "fact_invariance") == 5.0
-    assert _metric(metrics, "task_fit") == 5.0
-
-
-def test_humanization_template_fluff_detected() -> None:
-    case = _case("humanize-popular-science")
-    outputs = {
-        "final_text": "首先，众所周知，综上所述，光速是 299792458 米/秒。",
-        "edits": [{"reason": "x"}],
-        "fact_check": [{"result": "已核实"}],
-        "open_questions": [],
-        "fact_lock_check": {"passed": True},
-        "skill_status": "done",
-    }
-    metrics = humanization_metrics(case, outputs)
-    assert _metric(metrics, "template_ratio") < 5.0
-
-
-def test_humanization_incomplete_contract_fails() -> None:
-    case = _case("humanize-popular-science")
-    outputs = {
-        "final_text": "没有合同。",
-        "edits": [],
-        "fact_check": [],
-        "open_questions": [],
-        "fact_lock_check": None,
-        "skill_status": "error",
-    }
-    assertions = run_auto_assertions(case, outputs)
-    assert not any(a.assertion_id == "a-contract" and a.passed for a in assertions)
 
 
 # ---------------------------------------------------------------------------

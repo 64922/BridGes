@@ -1,13 +1,10 @@
-"""文生视频 API 路由（Issue 32，GQ-04 迁移）。
+"""文生视频 API 路由（Issue 32，GQ-04 迁移；Issue 21 退役写入口）。
 
-提交路径与聊天发送合一（``ChatMessageCreateRequest.video`` 载荷走 SSE）；
-本路由只承载任务与资产的操作面：取消、同输入重试、任务查询、资产
-投影（可访问文字说明）、说明修改、视频字节流与带影响说明的删除。全部
-资源按账户+对话双重作用域校验，跨账户一律 404 不泄漏存在性；视频字节
-响应附加私有缓存头，杜绝缓存跨账户复用。能力门只接受「视频生成」固定
-绑定（wan2.7-t2v-2026-06-12，ADR-0007 Wan 例外），界面不提供模型选择；
-任务操作面不检查账户凭据或探测快照（GQ-04），新账户无需任何个人
-Qwen 配置即可重试任务。
+文生视频是 ADR-0030 列明的退役能力：本路由只保留历史只读面——任务查询、
+资产投影（可访问文字说明）与视频字节流，供旧会话继续查看与导出。取消、
+同输入重试、说明修改与资产删除一律稳定返回 410，历史链接不会误触发新
+执行。全部资源按账户+对话双重作用域校验，跨账户一律 404 不泄漏存在性；
+视频字节响应附加私有缓存头，杜绝缓存跨账户复用。
 """
 
 from __future__ import annotations
@@ -20,14 +17,17 @@ from bridges.api.auth import SubjectDep
 from bridges.contracts.chat import ChatError
 from bridges.contracts.video import (
     VideoAssetProjection,
-    VideoDeletionProjection,
-    VideoDescriptionUpdateRequest,
     VideoError,
     VideoTaskProjection,
 )
+from bridges.retirement import raise_retired_capability
 from bridges.video.service import VideoService
 
 router = APIRouter(prefix="/chat", tags=["video"])
+
+_RETIRED_ERROR = "legacy_video_retired"
+_RETIRED_MESSAGE = "视频生成已退役，历史结果仍可查看与导出。"
+_RETIRED_RESPONSES = {status.HTTP_410_GONE: {"model": ChatError}}
 
 
 def _get_video_service(request: Request) -> VideoService:
@@ -91,55 +91,44 @@ def get_video_task(
 
 @router.post(
     "/conversations/{conversation_id}/video-tasks/{task_id}/cancel",
-    response_model=VideoTaskProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_409_CONFLICT: {"model": ChatError},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 def cancel_video_task(
     conversation_id: str,
     task_id: str,
-    service: VideoServiceDep,
-    subject: SubjectDep,
-) -> VideoTaskProjection:
-    """取消任务：本地标记为「取消中」，worker 收敛为已取消；迟到结果不发布。
-
-    已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。
-    """
-    try:
-        return service.cancel(subject.account_id, conversation_id, task_id)
-    except VideoError as exc:
-        raise _handle_video_error(exc) from exc
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """取消任务。已退役：不再接受取消请求，稳定返回 410。"""
+    raise_retired_capability(
+        request,
+        endpoint="legacy.video.cancel",
+        error=_RETIRED_ERROR,
+        replacement_path="/",
+        message=_RETIRED_MESSAGE,
+    )
 
 
 @router.post(
     "/conversations/{conversation_id}/video-tasks/{task_id}/retry",
-    response_model=VideoTaskProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_409_CONFLICT: {"model": ChatError},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 def retry_video_task(
     conversation_id: str,
     task_id: str,
-    service: VideoServiceDep,
-    subject: SubjectDep,
-) -> VideoTaskProjection:
-    """重试失败任务：同输入（提示不变）重新入队，固定同一快照。
-
-    不检查账户凭据或探测快照（GQ-04）：新账户无需任何个人 Qwen 配置
-    即可重试，云端调用由已注册的全局模型网关固定适配器执行。
-    """
-    try:
-        return service.retry(subject.account_id, conversation_id, task_id)
-    except VideoError as exc:
-        raise _handle_video_error(exc) from exc
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """重试失败任务。已退役：不再接受重试请求，稳定返回 410。"""
+    raise_retired_capability(
+        request,
+        endpoint="legacy.video.retry",
+        error=_RETIRED_ERROR,
+        replacement_path="/",
+        message=_RETIRED_MESSAGE,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -171,28 +160,23 @@ def get_video_asset(
 
 @router.put(
     "/conversations/{conversation_id}/video-assets/{asset_id}/description",
-    response_model=VideoAssetProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 def update_video_description(
     conversation_id: str,
     asset_id: str,
-    body: VideoDescriptionUpdateRequest,
-    service: VideoServiceDep,
-    subject: SubjectDep,
-) -> VideoAssetProjection:
-    """修改资产可访问文字说明（来源标记为 manual，替代提示词默认值）。"""
-    try:
-        return service.update_description(
-            subject.account_id, conversation_id, asset_id, body.description
-        )
-    except VideoError as exc:
-        raise _handle_video_error(exc) from exc
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """修改资产可访问文字说明。已退役：不再接受写入，稳定返回 410。"""
+    raise_retired_capability(
+        request,
+        endpoint="legacy.video.description",
+        error=_RETIRED_ERROR,
+        replacement_path="/",
+        message=_RETIRED_MESSAGE,
+    )
 
 
 @router.get(
@@ -239,26 +223,23 @@ def get_video_bytes(
 
 @router.delete(
     "/conversations/{conversation_id}/video-assets/{asset_id}",
-    response_model=VideoDeletionProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
-    },
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
 )
 def delete_video_asset(
     conversation_id: str,
     asset_id: str,
-    service: VideoServiceDep,
-    subject: SubjectDep,
-) -> VideoDeletionProjection:
-    """删除资产并返回影响说明：移除对象数、更新的消息引用与对象处置状态。
+    request: Request,
+    _subject: SubjectDep,
+) -> None:
+    """删除资产。已退役：不再接受删除请求，稳定返回 410。
 
-    删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理
-    失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，
-    可观察可恢复；幂等，已删除资产返回零计数投影。
+    历史资产随旧会话保留，按账户导出与账户删除合同处置。
     """
-    try:
-        return service.delete_asset(subject.account_id, conversation_id, asset_id)
-    except VideoError as exc:
-        raise _handle_video_error(exc) from exc
+    raise_retired_capability(
+        request,
+        endpoint="legacy.video.delete",
+        error=_RETIRED_ERROR,
+        replacement_path="/",
+        message=_RETIRED_MESSAGE,
+    )

@@ -68,8 +68,6 @@ from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.reminder.service import ReminderService
 from bridges.reminder.smtp import QqMailGateway
 from bridges.retrieval.service import LayeredRetrievalService
-from bridges.skills.humanizer.service import HumanizerService
-from bridges.skills.registry import create_builtin_registry
 from bridges.speech.service import SpeechService
 from bridges.storage import (
     BridgesDatabase,
@@ -171,7 +169,7 @@ class ScriptedAdapter:
     """可编程能力适配器：按案例脚本响应模型调用，记录全部载荷。
 
     脚本规则（``case.initial_state["script"]``）按载荷文本子串首中优先；
-    空 needle 为默认规则。结构化能力（humanizer/生涯）的答案是字典，
+    空 needle 为默认规则。结构化能力（如生涯规划）的答案是字典，
     聊天/听写/朗读/图片/视频按各自适配器输出形状返回。
     """
 
@@ -527,16 +525,6 @@ class EvalEnvironment:
         )
         self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
         self.learning = LearningService(repository=InMemoryLearningRepository())
-        self.skill_registry = create_builtin_registry()
-        self.humanizer = HumanizerService(
-            registry=self.skill_registry,
-            gateway=self.gateway,
-            # Issue 11：评测执行器同样注入统一锁仓库——真实结构化调用
-            # （首稿/修订/修复）的锁落评测库，不留下无锁入口。
-            run_lock_recorder=SqliteModelRunLockRecorder(self.database),
-            retrieval_service=self.retrieval,
-            observability_service=self.observability,
-        )
         self.career = CareerPlannerService(
             gateway=self.gateway,
             profile_service=self.profiles,

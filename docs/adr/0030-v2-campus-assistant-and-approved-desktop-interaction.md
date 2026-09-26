@@ -16,7 +16,9 @@ BridGes V2 面向华东交通大学在读学生的日常学习、校园生活和
 
 实现采用 LangGraph 日常父图加六个显式模块子图、独立学习阶段图；共享有预算和证据追溯的会话上下文编译器。现有账户隔离、SQLite、SSE、知识库混合检索和历史导出可作为底座，旧业务工作流不因名称相同而直接复用。外部检索与地图必须有实际可核验结果和失败降级，不能用模型记忆填补未取得的帖子回复、岗位样本或路线。
 
-详细合同以 [产品契约](../v2/product-contract.md)、[交互规格](../v2/interaction.md)、[工作流](../v2/workflows.md)、[可行性门](../v2/feasibility.md)、[技术架构](../v2/architecture.md)和[交付顺序](../v2/delivery-plan.md)为准；[已认可的桌面原型](../../apps/web/prototypes/v2-desktop/README.md)作为正式 UI 的交互验收参考。
+详细合同以 [产品契约](../v2/product-contract.md)、[交互规格](../v2/interaction.md)、[工作流](../v2/workflows.md)、[可行性门](../v2/feasibility.md)、[技术架构](../v2/architecture.md)和[交付顺序](../v2/delivery-plan.md)为准；正式 UI 的交互验收依据是获批桌面交互脚本 `apps/web/e2e/issue21-desktop-acceptance.spec.ts`。
+
+**补充（2026-09-26，Issue 21）**：作为交互评审参考的一次性桌面原型 `apps/web/prototypes/v2-desktop/` 及其内存演示数据，已在正式界面验收通过后移除；本 ADR 的交互合同不变，验收依据改为上述脚本（三个视口、连真实 API 与后台执行器，零路由 mock）。
 
 ## 与旧决策的关系
 

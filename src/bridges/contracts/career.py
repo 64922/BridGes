@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 
 class CareerPlanningProcessState(StrEnum):
-    """生涯规划过程卡状态（与 humanizer 五态一致，另加 done/clarify）。
+    """生涯规划过程卡状态（沿用聊天过程卡五态，另加 done/clarify）。
 
     - ``loading``：进行中；
     - ``clarify``：信息不足，先问一个关键澄清问题（Issue 09 intake）；

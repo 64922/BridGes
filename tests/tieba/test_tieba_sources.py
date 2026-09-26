@@ -32,6 +32,12 @@ from bridges.tieba.reading import (
     parse_thread_page,
 )
 from bridges.tieba.searching import WebSearchServiceAdapter
+from bridges.web_search.contracts import (
+    WebSearchProjection,
+    WebSearchResult,
+    WebSearchStatus,
+    WebSearchVerification,
+)
 
 TARGET_FORUM = "华东交通大学吧"
 
@@ -297,10 +303,13 @@ class _FakeWebSearchProjection:
 
 
 class _FakeResult:
-    def __init__(self, url: str, title: str, content: str) -> None:
+    """搜索服务结果的替身：字段与 ``WebSearchResult`` 一致（摘要字段是 ``snippet``）。"""
+
+    def __init__(self, url: str, title: str, snippet: str) -> None:
         self.url = url
         self.title = title
-        self.content = content
+        self.snippet = snippet
+        self.content_summary = snippet
 
 
 class _FakeWebSearch:
@@ -365,3 +374,49 @@ def test_adapter_maps_empty_and_error_statuses() -> None:
         "account-1", query="tieba.baidu.com 华东交通大学吧 话题", reason="贴吧信息搜集"
     )
     assert outcome.record.status is ModuleQueryStatus.ERROR
+
+
+class _ProjectionService:
+    """搜索服务替身：直接返回**真实** ``WebSearchProjection`` 合同对象。"""
+
+    def __init__(self, projection: object) -> None:
+        self._projection = projection
+
+    def search(self, account_id: str, plan: object, **_: object) -> object:
+        del account_id, plan
+        return self._projection
+
+
+def test_adapter_accepts_real_web_search_projection_contract() -> None:
+    """适配器必须吃真实搜索投影：``WebSearchResult`` 只有 ``snippet`` 摘要。
+
+    回归（Issue 21 桌面验收发现）：适配器曾按 ``result.content`` 取摘要，
+    而真实合同没有该字段——只要搜索真的返回结果，贴吧检索就抛
+    AttributeError，整轮以「生成过程出现内部错误」收场。这里用真实投影
+    合同驱动，替身字段与生产合同不符时同样失败。
+    """
+    result = WebSearchResult(
+        result_id="closeout-1",
+        title="转专业政策讨论",
+        site="tieba.baidu.com",
+        url="https://tieba.baidu.com/p/10745250786",
+        snippet="华东交通大学吧. 关注18.9w贴子786.1w. App内查看.",
+        accessed_at=datetime(2026, 9, 26, tzinfo=UTC),
+        verification=WebSearchVerification.VERIFIED,
+        content_summary="正文摘要：转专业按学分绩点排名，各学院要求不同。",
+    )
+    projection = WebSearchProjection(
+        status=WebSearchStatus.SUCCESS,
+        trigger_reason="贴吧信息搜集",
+        query_summary="华东交通大学吧 转专业",
+        results=[result],
+        searched_at=datetime(2026, 9, 26, tzinfo=UTC),
+    )
+
+    outcome = WebSearchServiceAdapter(_ProjectionService(projection)).search_public(
+        "account-1", query="tieba.baidu.com 华东交通大学吧 转专业", reason="贴吧信息搜集"
+    )
+
+    assert outcome.record.status is ModuleQueryStatus.SUCCESS
+    assert [hit.url for hit in outcome.candidates] == ["https://tieba.baidu.com/p/10745250786"]
+    assert outcome.hits[0].snippet == result.snippet

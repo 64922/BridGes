@@ -104,6 +104,7 @@ class PluginService:
         self._registry = skill_registry
         self._checker = checker or PluginPackageChecker()
         self._clock = clock or (lambda: datetime.now(UTC))
+
     def _ensure_not_retired(self) -> None:
         raise PluginError(
             "user_extensions_retired",
@@ -116,7 +117,9 @@ class PluginService:
     # ------------------------------------------------------------------
 
     def _manifests(self) -> list[BuiltinPluginManifest]:
-        return create_builtin_plugin_manifests(self._registry)
+        # Issue 21：人味化 SKILL 退役后内置清单只剩两个本地解析能力，
+        # 注册表不再参与清单构造。
+        return create_builtin_plugin_manifests()
 
     def list_plugins(self, account_id: str) -> PluginListProjection:
         builtin = [

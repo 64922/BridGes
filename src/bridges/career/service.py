@@ -1228,7 +1228,7 @@ def _evidence_lines(evidence: list[CareerEvidenceSource]) -> str:
 
 
 def _build_system_prompt(mode: str, evidence: list[CareerEvidenceSource]) -> str:
-    """生涯规划系统提示词：任务边界 + 证据合同 + 六类输出要求 + 人味化约束。
+    """生涯规划系统提示词：任务边界 + 证据合同 + 六类输出要求 + 表达约束。
 
     六类划分、事实与推测分离、边界禁令都是确定性合同；模型只负责在
     合同内生成，不自行扩大授权或改变输出结构。
@@ -1249,7 +1249,7 @@ def _build_system_prompt(mode: str, evidence: list[CareerEvidenceSource]) -> str
 - 涉及岗位、教育路径、资格、行业趋势等会变化的信息时，每条必须引用
   证据合同内的来源（evidence_refs）；引用多个来源时在 note 中说明证据间
   关系（一致/差异/冲突）。
-- 表达受 BridGes 人味化规则约束：自然、有分寸、面向用户真实情境，保留
+- 表达受 BridGes 净室表达规则约束：自然、有分寸、面向用户真实情境，保留
   限定条件；不得模板化堆砌列表腔，不得以自然为代价牺牲事实与边界。
 - 硬性禁止：不作就业、薪酬或录取保证；不基于单次情绪、敏感身份猜测或
   未确认画像作稳定职业判断；不提供招聘撮合、职位投递、录取预测或执业

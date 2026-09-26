@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { SKIP_LINK_ID, SkipLink } from "@/components/design-system/SkipLink";
 import { useAuth } from "@/context/AuthContext";
-import { readAloudSession } from "@/lib/read-aloud";
 import { saveSearchReturnFocus } from "@/lib/search-shortcut";
 
 import { AppSidebar } from "./AppSidebar";
@@ -27,12 +26,6 @@ export function AppShell({ children, showSkipLink = true }: AppShellProps) {
   const { accountRevision, authState, sessionError, refreshSession } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-
-  // Issue 39 AC3：账户切换/登出（accountRevision 变化）时立即停止并释放
-  // 旧账户的朗读播放会话，防止音频在新账户页面继续播放。
-  useEffect(() => {
-    readAloudSession.dispose();
-  }, [accountRevision]);
 
   // Issue 02：客户端导航后浏览器可能把焦点落在 shell 的跳转链接上。
   // 只识别固定语义 ID，不把通用的 visually-hidden 样式类当作焦点契约；

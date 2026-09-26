@@ -1,17 +1,17 @@
 """内置只读插件清单（Issue 34）。
 
-bridges-pdf、bridges-documents 与 bridges-humanizer 随应用发布并默认
-安装，展示固定版本、能力、来源与授权。humanizer 条目从既有 SKILL
-注册表（Issue 28）派生，保证「插件中心展示」与「聊天真实调用」共用
-同一事实源；PDF/Documents 为本地解析能力，版本随应用固定。
+bridges-pdf 与 bridges-documents 随应用发布并默认安装，展示固定版本、
+能力、来源与授权；两者都是本地解析能力，版本随应用固定。
+
+Issue 21：文章人味化（bridges-humanizer）已退役，内置清单不再包含它，
+不再把已退役能力展示为可用。
 """
 
 from __future__ import annotations
 
 from bridges.contracts.plugins import BuiltinPluginManifest
-from bridges.skills.registry import SkillRegistry
 
-BUILTIN_PLUGIN_IDS = ("bridges-pdf", "bridges-documents", "bridges-humanizer")
+BUILTIN_PLUGIN_IDS = ("bridges-pdf", "bridges-documents")
 
 
 def _pdf_manifest() -> BuiltinPluginManifest:
@@ -61,35 +61,9 @@ def _documents_manifest() -> BuiltinPluginManifest:
     )
 
 
-def create_builtin_plugin_manifests(
-    skill_registry: SkillRegistry | None = None,
-) -> list[BuiltinPluginManifest]:
-    """创建全部内置插件清单；humanizer 条目从 SKILL 注册表派生。"""
-    manifests = [_pdf_manifest(), _documents_manifest()]
-    if skill_registry is not None:
-        try:
-            humanizer = skill_registry.get("bridges-humanizer")
-        except Exception:
-            humanizer = None
-        if humanizer is not None:
-            manifests.append(
-                BuiltinPluginManifest(
-                    skill_id=humanizer.skill_id,
-                    name=humanizer.name,
-                    version=humanizer.version,
-                    description=humanizer.description,
-                    source=humanizer.source,
-                    license=humanizer.license,
-                    capabilities=list(humanizer.capabilities),
-                    data_categories=[
-                        "用户粘贴或选择的当前账户文本与附件文本",
-                        "本次任务显式选择的画像切片（如开启）",
-                    ],
-                    read_only=True,
-                    demo_kind="chat",
-                )
-            )
-    return manifests
+def create_builtin_plugin_manifests() -> list[BuiltinPluginManifest]:
+    """创建全部内置插件清单（本地解析能力，均为只读展示）。"""
+    return [_pdf_manifest(), _documents_manifest()]
 
 
 __all__ = ["BUILTIN_PLUGIN_IDS", "create_builtin_plugin_manifests"]

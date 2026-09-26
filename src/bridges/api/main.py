@@ -1263,7 +1263,9 @@ def create_app(
     # 路由返回"对话存储未启用"，绝不静默降级到内存。
     bridges_database = getattr(app.state, "bridges_database", None)
     if bridges_database is not None:
-        # Issue 28：内置只读 SKILL 注册表（humanizer 与插件中心共用同源）。
+        # Issue 28：内置只读 SKILL 注册表（插件中心与 /skills 展示共用
+        # 同源）。Issue 21 后唯一内置 SKILL（人味化）退役，注册表为空，
+        # 保留为校验缝。
         skill_registry = create_builtin_registry()
         app.state.skill_registry = skill_registry
         object_repository = getattr(app.state, "object_repository", None)
@@ -1358,9 +1360,10 @@ def create_app(
                 chat_repository=ConversationRepository(bridges_database),
                 observability_service=app.state.observability_service,
             )
-            # Issue 34：SKILL 插件中心。内置包随应用发布（humanizer 条目
-            # 与 SKILL 注册表同源），用户包经安全闭锁后按账户安装到对象库
-            # 与 skill_packages 表；启停/卸载/演示全部账户作用域并写审计。
+            # Issue 34：SKILL 插件中心。内置包随应用发布（当前只剩两个本地
+            # 解析能力，不再展示已退役能力），用户包经安全闭锁后按账户安装
+            # 到对象库与 skill_packages 表；启停/卸载/演示全部账户作用域
+            # 并写审计。
             mcp_pid_dir = Path(cast(SqliteStateStore, state_store).path).parent / "mcp-pids"
             mcp_runtime = McpRuntime(pid_dir=mcp_pid_dir)
             retire_user_extensions(bridges_database, runtime=mcp_runtime)
@@ -1524,8 +1527,6 @@ def create_app(
             ),
             observability_service=app.state.observability_service,
             career_planner_service=app.state.career_planner_service,
-            image_service=app.state.image_service,
-            video_service=app.state.video_service,
             selections_service=app.state.chat_selections_service,
             mcp_service=getattr(app.state, "mcp_service", None),
             automatic_profile_service=app.state.automatic_profile_service,

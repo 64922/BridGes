@@ -20,7 +20,7 @@ from bridges.routing.contracts import (
     RouteStatus,
     VideoGenerationPlan,
 )
-from bridges.skills.humanizer.contract_compiler import REWRITE_ACTION_RE
+from bridges.expression_task.contract_compiler import REWRITE_ACTION_RE
 from bridges.video.constants import (
     VIDEO_DEFAULT_DURATION_SECONDS,
     VIDEO_DEFAULT_SIZE,

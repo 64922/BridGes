@@ -1,8 +1,9 @@
 """账户数据目录（Issue 37）：导出类别、删除顺序与逻辑摘要。
 
-「账户数据」= bridges.db 中全部带 ``account_id`` 列的业务表（38 张，
-Issue 05-36 各域交付）；派生数据（FTS/向量/解析缓存/索引版本）由
-``document_records`` 状态重建，不参与导出但参与删除与备份快照。
+「账户数据」= bridges.db 中全部带 ``account_id`` 列的业务表（Issue 05-36
+各域交付 + V2 图状态与生成运行，Issue 21 补齐）；派生数据（FTS/向量/
+解析缓存/索引版本/图检查点/生成事件流）由 ``document_records`` 与消息
+状态重建，不参与导出但参与删除与备份快照。
 本模块是导出、删除、备份与恢复四者的单一事实源：新增表时只需在此
 登记，四处行为自动一致。
 """
@@ -45,6 +46,14 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "chat_attachments",
     "mode_events",
     "answer_feedback",
+    # V2 图状态与生成运行（Issue 21 补齐）：事件/检查点必须先于父表删除
+    # （generation_events 外键指向 generation_runs，外键强制打开）。
+    "generation_events",
+    "graph_checkpoint_writes",
+    "graph_checkpoints",
+    "generation_runs",
+    "retrieval_decisions",
+    "study_states",
     "image_tasks",
     "image_versions",
     "image_assets",
@@ -82,6 +91,9 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "model_run_lock_links",
     "model_run_locks",
     "learning_projects",
+    # 账户级 SMTP 验证尝试（注册/换绑邮箱）随账户物理删除。
+    "smtp_verification_attempts",
+    "workflow_runs",
     "objects",
     "accounts",
 )
@@ -118,6 +130,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         256,
     ),
     ExportCategory("answer_feedback", "回答反馈", ("answer_feedback",), 512),
+    # Issue 21：退役能力的生成结果按账户导出（历史图片/视频任务、资产与
+    # 版本元数据）；对象二进制仍只走「资产清单」，朗读音频同理。
+    ExportCategory(
+        "legacy_media",
+        "历史媒体结果",
+        ("image_tasks", "image_versions", "image_assets", "video_tasks", "video_assets"),
+        512,
+    ),
     ExportCategory(
         "teaching_progress",
         "对话教学进度",
@@ -186,7 +206,10 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ),
     ExportCategory("objects", "资产清单", ("objects",), 256),
     ExportCategory(
-        "retrieval", "检索与引用", ("retrieval_rounds", "message_citations"), 256
+        "retrieval",
+        "检索与引用",
+        ("retrieval_rounds", "message_citations", "retrieval_decisions"),
+        256,
     ),
 )
 
@@ -261,7 +284,19 @@ def logical_summary(
         "mode_events",
         "model_run_locks",
         "chat_attachments",
+        "chat_attachment_drafts",
         "answer_feedback",
+        "study_states",
+        "generation_runs",
+        "generation_events",
+        "graph_checkpoints",
+        "graph_checkpoint_writes",
+        "retrieval_decisions",
+        "image_tasks",
+        "image_versions",
+        "image_assets",
+        "video_tasks",
+        "video_assets",
         "learning_progress",
         "teaching_plans",
         "teaching_lessons",
@@ -305,6 +340,8 @@ def logical_summary(
         "objects",
         "retrieval_rounds",
         "message_citations",
+        "smtp_verification_attempts",
+        "workflow_runs",
     )
     counts = _scoped_row_counts(database, account_id, tables)
     return {table: counts[table] for table in tables}

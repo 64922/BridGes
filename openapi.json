@@ -17224,7 +17224,7 @@
           "science"
         ],
         "summary": "Upload Source To Project",
-        "description": "Upload a text or PDF source into a project.",
+        "description": "上传来源到项目。已退役：不再接受写入，稳定返回 410。",
         "operationId": "upload_source_to_project_science_projects__project_id__sources_post",
         "parameters": [
           {
@@ -17253,56 +17253,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SourceUploadRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IngestionRunRef"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       },
@@ -17384,7 +17354,7 @@
           "science"
         ],
         "summary": "Upload Source",
-        "description": "Upload a personal text or PDF source (not bound to a project).",
+        "description": "上传个人来源。已退役：不再接受写入，稳定返回 410。",
         "operationId": "upload_source_science_sources_post",
         "parameters": [
           {
@@ -17404,56 +17374,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SourceUploadRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IngestionRunRef"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       },
@@ -17686,7 +17626,7 @@
           "science"
         ],
         "summary": "Create Source Version",
-        "description": "Create a new document version by applying chunk corrections.",
+        "description": "按分块修正创建新版本。已退役：不再接受写入，稳定返回 410。",
         "operationId": "create_source_version_science_sources__source_id__versions_post",
         "parameters": [
           {
@@ -17715,56 +17655,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SourceVersionRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentVersion"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -17863,7 +17773,7 @@
           "science"
         ],
         "summary": "Revoke Source",
-        "description": "Revoke a source so it cannot be used in new evidence.",
+        "description": "撤权来源。已退役：不再接受写入，稳定返回 410。",
         "operationId": "revoke_source_science_sources__source_id__revoke_post",
         "parameters": [
           {
@@ -17893,37 +17803,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Revoke Source Science Sources  Source Id  Revoke Post"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -17944,7 +17832,7 @@
           "science"
         ],
         "summary": "Search Project Sources",
-        "description": "Search scientific sources within a project using scoped hybrid retrieval.",
+        "description": "项目内科学来源检索。已退役：不再接受执行请求，稳定返回 410。",
         "operationId": "search_project_sources_science_projects__project_id__search_post",
         "parameters": [
           {
@@ -17973,56 +17861,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SearchRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SearchResult"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -18033,7 +17891,7 @@
           "science"
         ],
         "summary": "Search Personal Sources",
-        "description": "Search personal scientific sources using scoped hybrid retrieval.",
+        "description": "个人科学来源检索。已退役：不再接受执行请求，稳定返回 410。",
         "operationId": "search_personal_sources_science_search_post",
         "parameters": [
           {
@@ -18053,56 +17911,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SearchRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SearchResult"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -18113,7 +17941,7 @@
           "science"
         ],
         "summary": "Generate Project Claim Graph",
-        "description": "Generate a locatable claim--evidence--citation graph for a project question.",
+        "description": "生成项目主张—证据图。已退役：不再接受执行请求，稳定返回 410。",
         "operationId": "generate_project_claim_graph_science_projects__project_id__claim_graphs_post",
         "parameters": [
           {
@@ -18142,56 +17970,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClaimRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClaimGraphResult"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       }
@@ -18202,7 +18000,7 @@
           "science"
         ],
         "summary": "Generate Personal Claim Graph",
-        "description": "Generate a locatable claim--evidence--citation graph for a personal question.",
+        "description": "生成个人主张—证据图。已退役：不再接受执行请求，稳定返回 410。",
         "operationId": "generate_personal_claim_graph_science_claim_graphs_post",
         "parameters": [
           {
@@ -18222,56 +18020,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClaimRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClaimGraphResult"
+                  "$ref": "#/components/schemas/SourceError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SourceError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
+            }
           }
         }
       },
@@ -23494,7 +23262,7 @@
           "speech"
         ],
         "summary": "Generate Read Aloud",
-        "description": "为一条已完成的助手回答生成朗读（固定 TTS 快照）。\n\n同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先\n清理再写新对象。不检查账户凭据或探测快照（GQ-03）：新账户无需\n任何个人 Qwen 配置即可生成朗读。生成失败返回 failed 投影与重试\n语义，回答正文不受影响。",
+        "description": "为一条已完成的助手回答生成朗读。已退役：不再接受生成请求，稳定返回 410。",
         "operationId": "generate_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_post",
         "parameters": [
           {
@@ -23533,45 +23301,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReadAloudProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -23676,7 +23414,7 @@
           "speech"
         ],
         "summary": "Delete Read Aloud",
-        "description": "停止并清理朗读：删除账户对象库中的音频并复位状态，幂等。",
+        "description": "停止并清理朗读。已退役：不再接受删除请求，稳定返回 410。\n\n历史音频随旧消息保留，按账户导出与账户删除合同处置。",
         "operationId": "delete_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_delete",
         "parameters": [
           {
@@ -23715,35 +23453,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReadAloudProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -23948,7 +23666,7 @@
           "image"
         ],
         "summary": "Cancel Image Task",
-        "description": "取消任务：本地标记为权威，尽力通知云端；迟到结果不发布。\n\n已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。",
+        "description": "取消任务。已退役：不再接受取消请求，稳定返回 410。",
         "operationId": "cancel_image_task_chat_conversations__conversation_id__image_tasks__task_id__cancel_post",
         "parameters": [
           {
@@ -23987,55 +23705,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ImageTaskProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24056,7 +23734,7 @@
           "image"
         ],
         "summary": "Retry Image Task",
-        "description": "重试失败任务：同输入（提示/来源不变）重新入队，固定同一快照。\n\n不检查账户凭据或探测快照（GQ-04）：新账户无需任何个人 Qwen 配置\n即可重试，云端调用由已注册的全局模型网关固定适配器执行。",
+        "description": "重试失败任务。已退役：不再接受重试请求，稳定返回 410。",
         "operationId": "retry_image_task_chat_conversations__conversation_id__image_tasks__task_id__retry_post",
         "parameters": [
           {
@@ -24095,55 +23773,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ImageTaskProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24260,7 +23898,7 @@
           "image"
         ],
         "summary": "Delete Image Asset",
-        "description": "删除资产并返回影响说明：移除版本数、更新的消息引用与对象处置状态。\n\n删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理\n失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，\n可观察可恢复；幂等，已删除资产返回零计数投影。",
+        "description": "删除资产。已退役：不再接受删除请求，稳定返回 410。\n\n历史资产随旧会话保留，按账户导出与账户删除合同处置。",
         "operationId": "delete_image_asset_chat_conversations__conversation_id__image_assets__asset_id__delete",
         "parameters": [
           {
@@ -24299,45 +23937,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ImageDeletionProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24358,7 +23966,7 @@
           "image"
         ],
         "summary": "Update Image Alt Text",
-        "description": "修改资产替代文本（来源标记为 manual，替代自动生成值）。",
+        "description": "修改资产替代文本。已退役：不再接受写入，稳定返回 410。",
         "operationId": "update_image_alt_text_chat_conversations__conversation_id__image_assets__asset_id__alt_text_put",
         "parameters": [
           {
@@ -24396,66 +24004,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ImageAltTextUpdateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ImageAssetProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
+            }
           }
         }
       }
@@ -24681,7 +24249,7 @@
           "video"
         ],
         "summary": "Cancel Video Task",
-        "description": "取消任务：本地标记为「取消中」，worker 收敛为已取消；迟到结果不发布。\n\n已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。",
+        "description": "取消任务。已退役：不再接受取消请求，稳定返回 410。",
         "operationId": "cancel_video_task_chat_conversations__conversation_id__video_tasks__task_id__cancel_post",
         "parameters": [
           {
@@ -24720,55 +24288,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VideoTaskProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24789,7 +24317,7 @@
           "video"
         ],
         "summary": "Retry Video Task",
-        "description": "重试失败任务：同输入（提示不变）重新入队，固定同一快照。\n\n不检查账户凭据或探测快照（GQ-04）：新账户无需任何个人 Qwen 配置\n即可重试，云端调用由已注册的全局模型网关固定适配器执行。",
+        "description": "重试失败任务。已退役：不再接受重试请求，稳定返回 410。",
         "operationId": "retry_video_task_chat_conversations__conversation_id__video_tasks__task_id__retry_post",
         "parameters": [
           {
@@ -24828,55 +24356,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VideoTaskProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24993,7 +24481,7 @@
           "video"
         ],
         "summary": "Delete Video Asset",
-        "description": "删除资产并返回影响说明：移除对象数、更新的消息引用与对象处置状态。\n\n删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理\n失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，\n可观察可恢复；幂等，已删除资产返回零计数投影。",
+        "description": "删除资产。已退役：不再接受删除请求，稳定返回 410。\n\n历史资产随旧会话保留，按账户导出与账户删除合同处置。",
         "operationId": "delete_video_asset_chat_conversations__conversation_id__video_assets__asset_id__delete",
         "parameters": [
           {
@@ -25032,45 +24520,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VideoDeletionProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -25091,7 +24549,7 @@
           "video"
         ],
         "summary": "Update Video Description",
-        "description": "修改资产可访问文字说明（来源标记为 manual，替代提示词默认值）。",
+        "description": "修改资产可访问文字说明。已退役：不再接受写入，稳定返回 410。",
         "operationId": "update_video_description_chat_conversations__conversation_id__video_assets__asset_id__description_put",
         "parameters": [
           {
@@ -25129,66 +24587,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VideoDescriptionUpdateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VideoAssetProjection"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatError"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
+            }
           }
         }
       }
@@ -30164,7 +29582,7 @@
           "done"
         ],
         "title": "CareerPlanningProcessState",
-        "description": "生涯规划过程卡状态（与 humanizer 五态一致，另加 done/clarify）。\n\n- ``loading``：进行中；\n- ``clarify``：信息不足，先问一个关键澄清问题（Issue 09 intake）；\n- ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；\n- ``error``：不可重试错误；\n- ``permission``：凭据/能力未就绪；\n- ``recovery``：可重试错误；\n- ``done``：完成。"
+        "description": "生涯规划过程卡状态（沿用聊天过程卡五态，另加 done/clarify）。\n\n- ``loading``：进行中；\n- ``clarify``：信息不足，先问一个关键澄清问题（Issue 09 intake）；\n- ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；\n- ``error``：不可重试错误；\n- ``permission``：凭据/能力未就绪；\n- ``recovery``：可重试错误；\n- ``done``：完成。"
       },
       "CareerPlanningProjection": {
         "properties": {
@@ -33113,38 +32531,6 @@
         "title": "ChatThinkingSummary",
         "description": "面向用户的可公开思考摘要（Issue 14）。\n\n由结构化进度事件与可披露结果构造，绝不包含原始 Chain-of-Thought、\n系统提示、隐藏指令或逐 token 推理。四类内容均可为空列表。"
       },
-      "ChunkCorrection": {
-        "properties": {
-          "chunk_id": {
-            "type": "string",
-            "title": "Chunk Id",
-            "description": "Chunk to correct."
-          },
-          "corrected_text": {
-            "type": "string",
-            "title": "Corrected Text",
-            "description": "Corrected chunk text."
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "type": "object",
-        "required": [
-          "chunk_id",
-          "corrected_text"
-        ],
-        "title": "ChunkCorrection",
-        "description": "A human correction to a single chunk.\n\nCorrections create a new DocumentVersion so history is preserved."
-      },
       "ChunkStructurePath": {
         "properties": {
           "section": {
@@ -34076,52 +33462,6 @@
         "title": "ClaimGraph",
         "description": "A versioned collection of claims, evidence and citations for one answer."
       },
-      "ClaimGraphResult": {
-        "properties": {
-          "graph": {
-            "$ref": "#/components/schemas/ClaimGraph",
-            "description": "Generated claim graph."
-          },
-          "search_result": {
-            "$ref": "#/components/schemas/SearchResult",
-            "description": "Retrieval result that fed the graph."
-          },
-          "publish_gate": {
-            "$ref": "#/components/schemas/PublishGateResult",
-            "description": "Publish gate run against the graph."
-          },
-          "model_run_lock": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ModelRunLock"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Lock for the model call that generated claims."
-          },
-          "validation_report": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ValidationReport"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Honest-degradation validation report (T016)."
-          }
-        },
-        "type": "object",
-        "required": [
-          "graph",
-          "search_result",
-          "publish_gate"
-        ],
-        "title": "ClaimGraphResult",
-        "description": "Result of generating a claim graph from a question."
-      },
       "ClaimImportance": {
         "type": "string",
         "enum": [
@@ -34131,64 +33471,6 @@
         ],
         "title": "ClaimImportance",
         "description": "Importance of a claim within an answer."
-      },
-      "ClaimRequest": {
-        "properties": {
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Query",
-            "description": "Scientific question."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope."
-          },
-          "object_domain": {
-            "$ref": "#/components/schemas/ObjectDomain",
-            "default": "personal_vault"
-          },
-          "top_k": {
-            "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Top K",
-            "description": "Maximum retrieval candidates.",
-            "default": 5
-          },
-          "include_refutations": {
-            "type": "boolean",
-            "title": "Include Refutations",
-            "description": "Include refuting/limiting evidence where found.",
-            "default": true
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id",
-            "description": "Optional workflow run to bind the graph to."
-          }
-        },
-        "type": "object",
-        "required": [
-          "query"
-        ],
-        "title": "ClaimRequest",
-        "description": "Request to generate a claim graph from a scientific question.\n\nThe service compiles scope first, runs hybrid retrieval, then produces\nclaim-level evidence and citations against the retrieved source versions."
       },
       "ClaimTrustStatus": {
         "type": "string",
@@ -35578,38 +34860,6 @@
         ],
         "title": "ConversationMode",
         "description": "普通聊天的模式合同；文章流程不使用。"
-      },
-      "CoverageGap": {
-        "properties": {
-          "gap_type": {
-            "type": "string",
-            "title": "Gap Type",
-            "description": "Type of gap, e.g. lexical, vector, scope."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable reason."
-          },
-          "detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Detail"
-          }
-        },
-        "type": "object",
-        "required": [
-          "gap_type",
-          "reason"
-        ],
-        "title": "CoverageGap",
-        "description": "A coverage or recall gap reported to the caller."
       },
       "CredentialSettingsResponse": {
         "properties": {
@@ -42488,23 +41738,6 @@
         "title": "ImageAltTextSource",
         "description": "替代文本来源：模型自动生成 / 确定性降级 / 用户手动修改。"
       },
-      "ImageAltTextUpdateRequest": {
-        "properties": {
-          "alt_text": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Alt Text",
-            "description": "新的替代文本。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "alt_text"
-        ],
-        "title": "ImageAltTextUpdateRequest",
-        "description": "修改替代文本的请求。"
-      },
       "ImageAssetProjection": {
         "properties": {
           "asset_id": {
@@ -42576,46 +41809,6 @@
         ],
         "title": "ImageAssetProjection",
         "description": "图片资产的公开投影：版本链、替代文本与当前版本指针。"
-      },
-      "ImageDeletionProjection": {
-        "properties": {
-          "asset_id": {
-            "type": "string",
-            "title": "Asset Id",
-            "description": "已删除的资产标识。"
-          },
-          "removed_versions": {
-            "type": "integer",
-            "title": "Removed Versions",
-            "description": "实际移除的版本数量。"
-          },
-          "updated_messages": {
-            "type": "integer",
-            "title": "Updated Messages",
-            "description": "引用该资产的助手消息投影更新数量。"
-          },
-          "object_status": {
-            "type": "string",
-            "title": "Object Status",
-            "description": "对象处置：cleaned（已物理清理）或 pending_cleanup（待清理轮重试）。"
-          },
-          "deleted_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Deleted At",
-            "description": "删除完成时间。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "asset_id",
-          "removed_versions",
-          "updated_messages",
-          "object_status",
-          "deleted_at"
-        ],
-        "title": "ImageDeletionProjection",
-        "description": "删除资产的影响说明与结果（幂等：已删除资产返回零计数）。"
       },
       "ImageRequestPayload": {
         "properties": {
@@ -43255,83 +42448,6 @@
         ],
         "title": "IndexVersionStatus",
         "description": "索引版本生命周期状态。\n\n- ``building``：正在全量重建（合同变化触发），尚未服务检索；\n- ``active``：当前唯一可服务检索的版本；\n- ``obsolete``：被新版本替代，但在明确清理前仍可回滚；\n- ``failed``：重建失败，上一可用版本继续服务。"
-      },
-      "IngestionRunRef": {
-        "properties": {
-          "run_id": {
-            "type": "string",
-            "title": "Run Id",
-            "description": "Ingestion run identifier."
-          },
-          "source_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Id"
-          },
-          "status": {
-            "$ref": "#/components/schemas/IngestionStatus",
-            "default": "pending"
-          },
-          "gate_results": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/GateResult"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/InputQualityGate"
-            },
-            "type": "object",
-            "title": "Gate Results"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Run creation timestamp."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last run update timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "run_id",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "IngestionRunRef",
-        "description": "Reference to an asynchronous ingestion run."
-      },
-      "IngestionStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "running",
-          "completed",
-          "failed",
-          "quarantined"
-        ],
-        "title": "IngestionStatus",
-        "description": "Status of an ingestion run."
       },
       "InputQualityGate": {
         "type": "string",
@@ -50704,128 +49820,6 @@
         "title": "RetiredCapabilityError",
         "description": "稳定的 410 响应体，不回显账户、路径参数或请求正文。"
       },
-      "RetrievalCandidate": {
-        "properties": {
-          "candidate_id": {
-            "type": "string",
-            "title": "Candidate Id",
-            "description": "Stable candidate identifier for this result set."
-          },
-          "chunk_id": {
-            "type": "string",
-            "title": "Chunk Id",
-            "description": "Chunk identifier."
-          },
-          "document_id": {
-            "type": "string",
-            "title": "Document Id",
-            "description": "Document version identifier."
-          },
-          "source_id": {
-            "type": "string",
-            "title": "Source Id",
-            "description": "Source entry identifier."
-          },
-          "text": {
-            "type": "string",
-            "title": "Text",
-            "description": "Chunk text content."
-          },
-          "structure_path": {
-            "$ref": "#/components/schemas/ChunkStructurePath",
-            "description": "Hierarchical location in document."
-          },
-          "channels": {
-            "items": {
-              "$ref": "#/components/schemas/RetrievalChannel"
-            },
-            "type": "array",
-            "title": "Channels",
-            "description": "Channels that recalled this candidate."
-          },
-          "lexical_rank": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lexical Rank",
-            "description": "Rank in lexical channel."
-          },
-          "vector_rank": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vector Rank",
-            "description": "Rank in vector channel."
-          },
-          "fused_rank": {
-            "type": "integer",
-            "title": "Fused Rank",
-            "description": "Final rank after fusion and reranking."
-          },
-          "lexical_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lexical Score",
-            "description": "Raw lexical score; for ranking only."
-          },
-          "vector_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vector Score",
-            "description": "Raw vector similarity score; for ranking only."
-          },
-          "fused_score": {
-            "type": "number",
-            "title": "Fused Score",
-            "description": "Fused ranking score; for ranking only."
-          },
-          "source_lifecycle_status": {
-            "$ref": "#/components/schemas/LifecycleStatus",
-            "description": "Lifecycle status of the document version at retrieval time."
-          },
-          "source_status": {
-            "$ref": "#/components/schemas/SourceStatus",
-            "description": "Source entry status at retrieval time."
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_id",
-          "chunk_id",
-          "document_id",
-          "source_id",
-          "text",
-          "structure_path",
-          "fused_rank",
-          "fused_score",
-          "source_lifecycle_status",
-          "source_status"
-        ],
-        "title": "RetrievalCandidate",
-        "description": "A single candidate chunk returned by scoped hybrid retrieval.\n\nScores are ranking signals only; they are not evidence strength and must not\nbe shown to users as confidence or truth values."
-      },
       "RetrievalCandidateFile": {
         "properties": {
           "document_id": {
@@ -50858,15 +49852,6 @@
         ],
         "title": "RetrievalCandidateFile",
         "description": "两阶段检索第一阶段选出的文件摘要。"
-      },
-      "RetrievalChannel": {
-        "type": "string",
-        "enum": [
-          "lexical",
-          "vector"
-        ],
-        "title": "RetrievalChannel",
-        "description": "Channel that produced a retrieval candidate."
       },
       "RetrievalDecisionAction": {
         "type": "string",
@@ -52803,65 +51788,6 @@
         "title": "ScopeViolationReport",
         "description": "Audit-safe report when a scope check fails.\n\nThe report intentionally does not include private content, full prompts or\nkeys; it records only the subject, requested scope, reason and timestamp."
       },
-      "SearchRequest": {
-        "properties": {
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Query",
-            "description": "Scientific question or search text."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope; None searches personal vault sources."
-          },
-          "object_domain": {
-            "$ref": "#/components/schemas/ObjectDomain",
-            "description": "Authority domain that owns the index.",
-            "default": "personal_vault"
-          },
-          "top_k": {
-            "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Top K",
-            "description": "Maximum candidates to return.",
-            "default": 10
-          },
-          "include_lexical": {
-            "type": "boolean",
-            "title": "Include Lexical",
-            "description": "Include full-text lexical candidates.",
-            "default": true
-          },
-          "include_vector": {
-            "type": "boolean",
-            "title": "Include Vector",
-            "description": "Include vector/semantic similarity candidates.",
-            "default": true
-          },
-          "rerank": {
-            "type": "boolean",
-            "title": "Rerank",
-            "description": "Apply reciprocal-rank fusion reranking across channels.",
-            "default": true
-          }
-        },
-        "type": "object",
-        "required": [
-          "query"
-        ],
-        "title": "SearchRequest",
-        "description": "Scoped hybrid search request over scientific sources.\n\nThe search service compiles a ScopeEnvelope from the authenticated subject,\nproject, object domain and declared purpose before touching any index."
-      },
       "SearchResponse": {
         "properties": {
           "query": {
@@ -52898,64 +51824,6 @@
         ],
         "title": "SearchResponse",
         "description": "统一搜索响应：查询回显、索引就绪信号、结果列表与分类计数。"
-      },
-      "SearchResult": {
-        "properties": {
-          "query": {
-            "type": "string",
-            "title": "Query",
-            "description": "Original query."
-          },
-          "scope_envelope": {
-            "$ref": "#/components/schemas/ScopeEnvelope",
-            "description": "Compiled scope snapshot."
-          },
-          "index_snapshot_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Index Snapshot Id",
-            "description": "Identifier of the index version used."
-          },
-          "candidates": {
-            "items": {
-              "$ref": "#/components/schemas/RetrievalCandidate"
-            },
-            "type": "array",
-            "title": "Candidates"
-          },
-          "lexical_total": {
-            "type": "integer",
-            "title": "Lexical Total",
-            "description": "Number of lexical candidates before fusion.",
-            "default": 0
-          },
-          "vector_total": {
-            "type": "integer",
-            "title": "Vector Total",
-            "description": "Number of vector candidates before fusion.",
-            "default": 0
-          },
-          "coverage_gaps": {
-            "items": {
-              "$ref": "#/components/schemas/CoverageGap"
-            },
-            "type": "array",
-            "title": "Coverage Gaps"
-          }
-        },
-        "type": "object",
-        "required": [
-          "query",
-          "scope_envelope"
-        ],
-        "title": "SearchResult",
-        "description": "Result of a scoped hybrid search.\n\nCarries the compiled scope envelope so callers can audit the scope snapshot\nthat was enforced, and so downstream claim/evidence steps can bind the same\nscope. Coverage gaps are reported explicitly rather than silently dropping\nchannels."
       },
       "SearchResultItem": {
         "properties": {
@@ -54693,67 +53561,6 @@
         "title": "SourceType",
         "description": "来源类型：区分用户原文、补充/授权材料、外部来源、常识与显式假设。"
       },
-      "SourceUploadRequest": {
-        "properties": {
-          "filename": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Filename",
-            "description": "Original filename."
-          },
-          "media_type": {
-            "$ref": "#/components/schemas/MediaType",
-            "description": "Declared media type."
-          },
-          "content": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Content",
-            "description": "Base64-encoded raw content bytes."
-          },
-          "license_state": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LicenseState"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "canonical_identity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canonical Identity"
-          }
-        },
-        "type": "object",
-        "required": [
-          "filename",
-          "media_type",
-          "content"
-        ],
-        "title": "SourceUploadRequest",
-        "description": "Request to upload a text or PDF scientific source."
-      },
       "SourceUsage": {
         "type": "string",
         "enum": [
@@ -54764,35 +53571,6 @@
         ],
         "title": "SourceUsage",
         "description": "来源条目的允许用途；纯改写默认只消费用户原文。"
-      },
-      "SourceVersionRequest": {
-        "properties": {
-          "base_document_id": {
-            "type": "string",
-            "title": "Base Document Id",
-            "description": "Document version to base the new version on."
-          },
-          "chunk_corrections": {
-            "items": {
-              "$ref": "#/components/schemas/ChunkCorrection"
-            },
-            "type": "array",
-            "title": "Chunk Corrections",
-            "description": "Corrections to apply to chunks."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Reason for the new version.",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "required": [
-          "base_document_id"
-        ],
-        "title": "SourceVersionRequest",
-        "description": "Request to create a new document version from a corrected source."
       },
       "SpanLocation": {
         "properties": {
@@ -59093,46 +57871,6 @@
         "title": "VideoAssetProjection",
         "description": "视频资产的公开投影：说明文字、模型/供应商快照与对象指针。\n\n每个成功任务恰好产生一个视频对象；资产与任务一一对应，无版本链\n（视频生成不提供编辑）。``cloud_task_id`` 是供应商任务标识，用于\n追溯真实云端任务。"
       },
-      "VideoDeletionProjection": {
-        "properties": {
-          "asset_id": {
-            "type": "string",
-            "title": "Asset Id",
-            "description": "已删除的资产标识。"
-          },
-          "removed_objects": {
-            "type": "integer",
-            "title": "Removed Objects",
-            "description": "实际移除的对象数量（0 或 1）。"
-          },
-          "updated_messages": {
-            "type": "integer",
-            "title": "Updated Messages",
-            "description": "引用该资产的助手消息投影更新数量。"
-          },
-          "object_status": {
-            "type": "string",
-            "title": "Object Status",
-            "description": "对象处置：cleaned（已物理清理）或 pending_cleanup（待清理轮重试）。"
-          },
-          "deleted_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Deleted At",
-            "description": "删除完成时间。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "asset_id",
-          "removed_objects",
-          "updated_messages",
-          "object_status",
-          "deleted_at"
-        ],
-        "title": "VideoDeletionProjection",
-        "description": "删除资产的影响说明与结果（幂等：已删除资产返回零计数）。"
-      },
       "VideoDescriptionSource": {
         "type": "string",
         "enum": [
@@ -59141,23 +57879,6 @@
         ],
         "title": "VideoDescriptionSource",
         "description": "可访问文字说明来源：提示词确定性生成 / 用户手动修改。"
-      },
-      "VideoDescriptionUpdateRequest": {
-        "properties": {
-          "description": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Description",
-            "description": "新的可访问文字说明。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "description"
-        ],
-        "title": "VideoDescriptionUpdateRequest",
-        "description": "修改可访问文字说明的请求。"
       },
       "VideoGenerationPlan": {
         "properties": {
