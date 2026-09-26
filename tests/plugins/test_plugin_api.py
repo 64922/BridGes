@@ -79,7 +79,7 @@ def test_list_plugins_returns_builtin_and_empty_user(client: TestClient) -> None
     assert response.status_code == 200
     body = response.json()
     ids = [p["skill_id"] for p in body["builtin"]]
-    assert ids == ["bridges-pdf", "bridges-documents", "bridges-humanizer"]
+    assert ids == ["bridges-pdf", "bridges-documents"]
     assert all(p["enabled"] for p in body["builtin"])
     assert all(p["read_only"] for p in body["builtin"])
     assert body["user"] == []
@@ -266,18 +266,6 @@ def test_demo_parses_markdown_for_real(client: TestClient) -> None:
     assert body["parser_version"] == "markdown-v1"
     assert body["sections"] >= 1
     assert "正文" in body["preview"]
-
-
-def test_demo_chat_kind_skill_rejected(client: TestClient) -> None:
-    _register(client)
-    response = _post_zip(
-        client,
-        "/plugins/builtin/bridges-humanizer/demo",
-        "demo.md",
-        "# 标题\n".encode("utf-8"),
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"]["error"] == "demo_unsupported"
 
 
 def test_demo_disabled_builtin_conflict(client: TestClient) -> None:
