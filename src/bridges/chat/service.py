@@ -28,6 +28,8 @@ from bridges.ai.adapters import StreamEvent
 from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.career_plan.contracts import CareerPlanProjection
+from bridges.career_plan.service import CareerPlanService
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
 from bridges.paper.service import PaperSearchService
@@ -263,6 +265,7 @@ class ChatService:
         model_config_provider: RunModelConfigProvider | None = None,
         paper_search_service: PaperSearchService | None = None,
         tieba_research_service: TiebaResearchService | None = None,
+        career_plan_service: CareerPlanService | None = None,
         learning_resources_service: LearningResourcesService | None = None,
         commute_service: CommuteService | None = None,
     ) -> None:
@@ -284,6 +287,9 @@ class ChatService:
         #: V2 Issue 14：贴吧信息搜集模块子图（显式 module_id=tieba 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._tieba_research = tieba_research_service
+        #: V2 Issue 15：职业规划模块子图（显式 module_id=career 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._career_plan = career_plan_service
         #: V2 Issue 13：学习资料推荐模块子图（显式 module_id=resources 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._learning_resources = learning_resources_service
@@ -2045,6 +2051,11 @@ class ChatService:
         return self._tieba_research
 
     @property
+    def career_plan_service(self) -> CareerPlanService | None:
+        """职业规划模块子图服务（V2 Issue 15）；未装配时为 None。"""
+        return self._career_plan
+
+    @property
     def learning_resources_service(self) -> LearningResourcesService | None:
         """学习资料推荐模块子图服务（V2 Issue 13）；未装配时为 None。"""
         return self._learning_resources
@@ -2562,6 +2573,12 @@ class ChatService:
             tieba_research=(
                 TiebaResearchProjection.model_validate(message.tieba_research)
                 if message.tieba_research is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            career_plan=(
+                CareerPlanProjection.model_validate(message.career_plan)
+                if message.career_plan is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

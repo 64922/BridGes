@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.commute.contracts import CommuteRouteProjection
+from bridges.career_plan.contracts import CareerPlanProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
 from bridges.tieba.contracts import TiebaResearchProjection
@@ -339,6 +340,10 @@ class ChatMessageProjection(BaseModel):
     tieba_research: TiebaResearchProjection | None = Field(
         default=None,
         description="本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。",
+    )
+    # V2 Issue 15：职业规划状态（检索计划/岗位样本/剔除依据/统计口径/建议）。
+    career_plan: CareerPlanProjection | None = Field(
+        default=None, description="本条助手消息的职业规划状态（岗位样本与统计口径）。"
     )
     # V2 Issue 13：学习资料推荐模块状态（原词/层次/图书与视频清单/等待/失败）。
     learning_resources: LearningResourcesProjection | None = Field(

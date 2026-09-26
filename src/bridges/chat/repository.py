@@ -135,6 +135,8 @@ class MessageRecord:
     module_suggestion: dict[str, Any] | None = None
     #: V2 Issue 14：贴吧信息搜集投影（查询词/候选/读取范围/官方核验/失败）。
     tieba_research: dict[str, Any] | None = None
+    #: V2 Issue 15：职业规划投影（检索计划/岗位样本/剔除依据/统计口径/建议）。
+    career_plan: dict[str, Any] | None = None
     #: V2 Issue 13：学习资料推荐模块状态投影（原词/层次/清单/等待/失败）。
     learning_resources: dict[str, Any] | None = None
     #: V2 Issue 12：校园通勤模块状态投影（起终点 POI/方式/距离/耗时/路径点/缓冲）。
@@ -529,7 +531,7 @@ class ConversationRepository:
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
-            " learning_resources, commute_route, tieba_research"
+            " learning_resources, commute_route, tieba_research, career_plan"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -544,7 +546,7 @@ class ConversationRepository:
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
-            " learning_resources, commute_route, tieba_research"
+            " learning_resources, commute_route, tieba_research, career_plan"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -654,6 +656,25 @@ class ConversationRepository:
                 (_json_dumps(commute_route), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
+
+    def update_message_career_plan(
+        self,
+        account_id: str,
+        message_id: str,
+        career_plan: dict[str, Any],
+        updated_at: datetime,
+    ) -> None:
+        """写入职业规划投影（V2 Issue 15）。
+
+        与 ``paper_search``／``tieba_research`` 同形：失败/停止路径在消息终态
+        收敛之前先落投影，用户才能在同一条消息里看到真实查询词与失败分类。
+        """
+        with self._db.transaction():
+            self._db.scoped(account_id).execute(
+                "UPDATE messages SET career_plan = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(career_plan), _iso(updated_at), message_id, account_id),
+            )
 
     def update_message_module_suggestion(
         self,
@@ -831,6 +852,7 @@ class ConversationRepository:
         learning_resources: dict[str, Any] | None = None,
         commute_route: dict[str, Any] | None = None,
         tieba_research: dict[str, Any] | None = None,
+        career_plan: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -870,6 +892,7 @@ class ConversationRepository:
                 or learning_resources is not None
                 or commute_route is not None
                 or tieba_research is not None
+                or career_plan is not None
             ):
                 assignments = [
                     "status = ?",
@@ -913,6 +936,9 @@ class ConversationRepository:
                 if tieba_research is not None:
                     assignments.append("tieba_research = ?")
                     values.append(_json_dumps(tieba_research))
+                if career_plan is not None:
+                    assignments.append("career_plan = ?")
+                    values.append(_json_dumps(career_plan))
                 values.extend([message_id, account_id])
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET "
@@ -2174,6 +2200,7 @@ class ConversationRepository:
             learning_resources=_json_loads_any(row["learning_resources"]),
             commute_route=_json_loads_any(row["commute_route"]),
             tieba_research=_json_loads_any(row["tieba_research"]),
+            career_plan=_json_loads_any(row["career_plan"]),
         )
 
 

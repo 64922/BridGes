@@ -135,6 +135,20 @@ export type TiebaReply = components["schemas"]["TiebaReply"];
 export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];
 export type TiebaRejectedCandidate = components["schemas"]["TiebaRejectedCandidate"];
 export type TiebaOfficialCheck = components["schemas"]["TiebaOfficialCheck"];
+// V2 Issue 15：职业规划模块投影（检索计划、公开岗位样本、剔除依据、统计口径与建议）。
+export type CareerPlanProjection = components["schemas"]["CareerPlanProjection"];
+export type CareerPlanStatus = components["schemas"]["CareerPlanStatus"];
+export type CareerQueryPlanItem = components["schemas"]["CareerQueryPlanItem"];
+export type JobSample = components["schemas"]["JobSample"];
+export type JobReadStatus = components["schemas"]["JobReadStatus"];
+export type CareerRejectedSample = components["schemas"]["CareerRejectedSample"];
+export type CareerCandidateLink = components["schemas"]["CareerCandidateLink"];
+export type CareerAnalysis = components["schemas"]["CareerAnalysis"];
+export type SalaryInterval = components["schemas"]["SalaryInterval"];
+export type SkillStat = components["schemas"]["SkillStat"];
+export type CityCount = components["schemas"]["CityCount"];
+export type CareerAdviceItem = components["schemas"]["CareerAdviceItem"];
+export type AdjacentJobSuggestion = components["schemas"]["AdjacentJobSuggestion"];
 // V2 Issue 13：学习资料推荐模块投影（图书与哔哩哔哩视频清单）。
 export type LearningResourcesProjection = components["schemas"]["LearningResourcesProjection"];
 export type ResourcesStatus = components["schemas"]["ResourcesStatus"];

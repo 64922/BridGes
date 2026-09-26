@@ -36,6 +36,12 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from bridges.ai.adapters import StreamEvent
+from bridges.career_plan.service import (
+    CAREER_MODULE_ID,
+    CAREER_NODE_LABELS,
+    CareerModuleError,
+)
+from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
 from bridges.chat.run_executor import chat_run_context
 from bridges.chat.turn import (
@@ -108,7 +114,13 @@ RUN_CONFIG_MODULE_ID = "module_id"
 
 #: 已接入日常父图的显式模块（其余模块仍在开发：显式拒绝，绝不悄悄降级）。
 AVAILABLE_MODULE_IDS: frozenset[str] = frozenset(
-    {PAPER_MODULE_ID, COMMUTE_MODULE_ID, RESOURCES_MODULE_ID, TIEBA_MODULE_ID}
+    {
+        PAPER_MODULE_ID,
+        COMMUTE_MODULE_ID,
+        RESOURCES_MODULE_ID,
+        TIEBA_MODULE_ID,
+        CAREER_MODULE_ID,
+    }
 )
 
 #: 节点的用户可读名称（失败信息标注位置用）。
@@ -124,6 +136,7 @@ NODE_LABELS: dict[str, str] = {
     **TIEBA_NODE_LABELS,
     **RESOURCES_NODE_LABELS,
     **COMMUTE_NODE_LABELS,
+    **CAREER_NODE_LABELS,
 }
 
 
@@ -458,6 +471,8 @@ def _node_invoke_subgraph_or_chat(
         return _invoke_resources_module(deps, state)
     if dispatch == COMMUTE_MODULE_ID:
         return _invoke_commute_module(deps, state)
+    if dispatch == CAREER_MODULE_ID:
+        return _invoke_career_module(deps, state)
     run = deps.run
     stream = deps.service.stream_generation(
         run.account_id,
@@ -642,6 +657,47 @@ def _invoke_commute_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str,
     return {}
 
 
+def _invoke_career_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
+    """职业规划子图执行体（V2 Issue 15）：与论文子图共用父图节点与事件流。
+
+    子图内的失败按真实失败的子图步骤标注位置（``career.collect`` 等），并把
+    等待原因写入运行表（持久化等待状态，跨轮次恢复的依据）。本模块的正文与
+    分析完全由真实岗位证据渲染，不调用模型（因此不传模型 ID）。
+    """
+    run = deps.run
+    service = getattr(deps.service, "career_plan_service", None)
+    if service is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT,
+            "module_not_available",
+            "职业规划模块当前不可用，请稍后重试。",
+            retryable=True,
+        )
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(state["assistant_message_id"], node, status, duration_ms=duration_ms)
+
+    try:
+        outcome = service.run(
+            repo=deps.repo,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            user_message_id=run.user_message_id,
+            assistant_message_id=run.assistant_message_id,
+            emit_node=emit_node,
+            stop_event=deps.stop_event,
+        )
+    except CareerModuleError as error:
+        raise DailyTurnError(
+            error.node, error.code, error.message, retryable=error.retryable
+        ) from error
+    if outcome.wait_reason is not None:
+        deps.repo.update_generation_progress(
+            run.account_id, run.run_id, wait_reason=outcome.wait_reason
+        )
+    return {}
+
+
 def _node_verify_output(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
@@ -697,6 +753,7 @@ def _node_persist_result(
                 or detect_tieba_suggestion(user_message.content)
                 or detect_commute_suggestion(user_message.content)
                 or detect_resources_suggestion(user_message.content)
+                or detect_career_suggestion(user_message.content)
             )
             if suggestion is not None:
                 deps.repo.update_message_module_suggestion(
