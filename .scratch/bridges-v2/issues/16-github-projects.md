@@ -123,3 +123,19 @@
   单跑并设 `PYTHONPATH=src` 后全部通过（`test_cli_contract`／`test_api_boot`／`test_runtime_contract`
   19 passed/2 skipped、`test_runtime_smoke` 9 passed/3 deselect），确认是环境注入而非回归，
   随后按同一跑法重跑两侧得到上表。
+
+**合并记录（2026-09-26）**
+
+- 分支 `v2/16-github-projects` 以 `--no-ff` 并入 main：合并提交 `689e330`。合并树与分支树
+  **逐字节相同**（`git rev-parse ^{tree}` 两侧同为 `76e5744…`），因此分支上的全量结论直接适用于
+  合并树。
+- 合并后在主仓（含 `.venv`／`.next` 的完整环境）复核 `tests/github`／`tests/contracts`／
+  `tests/closeout/test_api_boot.py`／`tests/chat`：**460 通过 / 101 失败 / 1 跳过**，101 条失败
+  **全部落在两侧一致的既有失败名单内**（本票相关文件 0 失败）；前端 vitest **21 文件 / 169 例**
+  通过、`tsc --noEmit` 干净（比分支侧多 4 例，来自并行合并的 Issue 17 用例）。
+- 并行票撞号核查：本票合并后 main 又被 Issue 17 推进到 `a40d202`；在该 tip 上核实迁移键
+  **50–57 连续**、`SCHEMA_VERSION = 57`，`57` 仍是本票的 `messages.github_projects`
+  （Issue 17 的 `document_records` 建在基线表结构里，不占迁移号），未撞号、无缺号。
+- 收尾实证：worktree 已移除（`apps/web/node_modules` 的 junction 用 `cmd //c rmdir` 拆链，
+  主仓 `node_modules` 经确认完好）、分支已删、`git worktree prune --dry-run -v` 无输出、
+  远程只剩 `main`。探针只发最小公开查询词、只读网络，未写入任何数据。
