@@ -1,11 +1,48 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StudyProgress } from "./StudyProgress";
 
 afterEach(cleanup);
 
 describe("学习阶段与页级证据", () => {
+  it("开始操作等待请求完成，失败后仍可重试", async () => {
+    let finish!: (value: boolean) => void;
+    const onAction = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    render(<StudyProgress study={{ subsection_id: "s", stage: "tutoring" }} onAction={onAction} />);
+    const button = screen.getByRole("button", { name: "开始复盘" });
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith("开始复盘");
+    expect(button.hasAttribute("disabled")).toBe(true);
+    finish(false);
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+  });
+
+  it("复盘中可暂停，生成时禁用阶段操作", () => {
+    const onAction = vi.fn(async () => true);
+    const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "review" }}
+      onAction={onAction} busy />);
+    const button = screen.getByRole("button", { name: "暂停复盘回辅导" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("复盘").getAttribute("aria-current")).toBe("step");
+    rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
+      review: { complete: false, needs_replan: false } }}
+      onAction={onAction} />);
+    fireEvent.click(screen.getByRole("button", { name: "继续复盘" }));
+    expect(onAction).toHaveBeenCalledWith("继续复盘");
+  });
+
+  it("复盘结束不重新开题，追加页待确认时不提供复盘操作", () => {
+    const onAction = vi.fn(async () => true);
+    const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
+      review: { complete: true, needs_replan: false } }} onAction={onAction} />);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("复盘已结束");
+    rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
+      page_update: { pages: [] } }} onAction={onAction} />);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("刷新后展示等待位置和用户补录来源，阶段不可点击", () => {
     render(
       <StudyProgress

@@ -812,7 +812,7 @@ export default function ChatConversationPage() {
           ) : (
             <>
               {conversation?.mode === "study" && (
-                <StudyProgress study={conversation.study} />
+                <StudyProgress study={conversation.study} busy={generating} onAction={sendMessage} />
               )}
               <ChatThread
                 messages={threadMessages}

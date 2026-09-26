@@ -1946,6 +1946,7 @@ def finalize_message(
     arxiv_search: dict[str, Any] | None = None,
     teaching: dict[str, Any] | None = None,
     persist_learning: Callable[[], None] | None = None,
+    final_content: str | None = None,
     paper_search: dict[str, Any] | None = None,
     tieba_research: dict[str, Any] | None = None,
     career_plan: dict[str, Any] | None = None,
@@ -1987,6 +1988,7 @@ def finalize_message(
         github_projects=github_projects,
         teaching=teaching,
         persist_learning=persist_learning,
+        final_content=final_content,
     )
 
 

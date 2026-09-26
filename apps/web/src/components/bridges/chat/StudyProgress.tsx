@@ -1,3 +1,6 @@
+import { useState } from "react";
+
+import { Button } from "@/components/design-system/Button";
 import type { ChatConversationProjection } from "@/lib/api";
 
 import styles from "./chat.module.css";
@@ -10,8 +13,20 @@ const STAGES = [
   { id: "summary", label: "总结" },
 ] as const;
 
-export function StudyProgress({ study: state }: { study?: ChatConversationProjection["study"] }) {
+export function StudyProgress({ study: state, busy = false, onAction }: {
+  study?: ChatConversationProjection["study"];
+  busy?: boolean;
+  onAction?: (text: string) => Promise<boolean>;
+}) {
+  const [sending, setSending] = useState(false);
   const current = state?.stage === "awaiting_pages" ? "recognizing" : state?.stage ?? "recognizing";
+  const action = state?.stage === "review" ? "暂停复盘回辅导"
+    : state?.review ? "继续复盘" : "开始复盘";
+  async function act() {
+    if (!onAction || sending || busy) return;
+    setSending(true);
+    try { await onAction(action); } finally { setSending(false); }
+  }
   return (
     <section className={styles.studyProgress} aria-label="学习阶段">
       <ol className={styles.studyStages}>
@@ -25,6 +40,21 @@ export function StudyProgress({ study: state }: { study?: ChatConversationProjec
           </li>
         ))}
       </ol>
+      {onAction && !state?.page_update && (state?.stage === "tutoring" || state?.stage === "review") && (
+        <div className={styles.studyReviewActions}>
+          {(!state.review?.complete || state.stage === "review") && (
+            <Button variant="secondary" size="sm" disabled={busy || sending}
+              onClick={() => void act()}>{action}</Button>
+          )}
+          <span role="status">{state.review?.complete
+            ? "本节复盘已结束，作答与判定已保存。"
+            : state.stage === "review"
+              ? "请在下方回答当前一题；不知道也可以直说。"
+              : state.review
+                ? "复盘已暂停，继续时从未问题开始；未作答题不计为已掌握。"
+                : "学完本节后，可以开始逐题复盘。"}</span>
+        </div>
+      )}
       {state?.wait_reason && <p role="status">{state.wait_reason === "page_order"
         ? "书上页码与上传顺序不一致，请查看证据并按下方消息调整页序。"
         : "书页有待补拍的位置，请查看下方消息。"}</p>}

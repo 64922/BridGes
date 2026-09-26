@@ -23337,6 +23337,49 @@ export interface components {
             /** Unit Titles */
             unit_titles: string[];
         };
+        /** StudyReview */
+        StudyReview: {
+            /** Questions */
+            questions?: components["schemas"]["StudyReviewQuestion"][];
+            /** Active Question Id */
+            active_question_id?: string | null;
+            /**
+             * Needs Replan
+             * @default false
+             */
+            needs_replan: boolean;
+            /**
+             * Complete
+             * @default false
+             */
+            complete: boolean;
+        };
+        /** StudyReviewQuestion */
+        StudyReviewQuestion: {
+            /** Question Id */
+            question_id: string;
+            /** Question */
+            question: string;
+            /** Coverage Units */
+            coverage_units: string[];
+            /** Fragment Ids */
+            fragment_ids: string[];
+            /**
+             * Asked
+             * @default false
+             */
+            asked: boolean;
+            /** Answer */
+            answer?: string | null;
+            /** Judgement */
+            judgement?: ("correct" | "incomplete" | "incorrect") | null;
+            /** Canonical Answer */
+            canonical_answer?: string | null;
+            /** Explanation */
+            explanation?: string | null;
+            /** User Message Id */
+            user_message_id?: string | null;
+        };
         /** StudySource */
         StudySource: {
             /** Source Id */
@@ -23366,7 +23409,7 @@ export interface components {
              * @default awaiting_pages
              * @enum {string}
              */
-            stage: "awaiting_pages" | "recognizing" | "preview" | "tutoring";
+            stage: "awaiting_pages" | "recognizing" | "preview" | "tutoring" | "review";
             /** Wait Reason */
             wait_reason?: string | null;
             /** Pages */
@@ -23378,6 +23421,7 @@ export interface components {
             /** Tutoring */
             tutoring?: components["schemas"]["StudyExchange"][];
             page_update?: components["schemas"]["StudyPageUpdate"] | null;
+            review?: components["schemas"]["StudyReview"] | null;
         };
         /** StudyUnclear */
         StudyUnclear: {
