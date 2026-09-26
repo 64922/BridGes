@@ -7,7 +7,7 @@
 ## 阅读顺序
 
 1. [产品契约](product-contract.md)：用户、范围、模式、模块和退出边界。
-2. [桌面交互](interaction.md)：页面、控件、状态与错误处理；对应 [可交互原型](../../apps/web/prototypes/v2-desktop/README.md)。
+2. [桌面交互](interaction.md)：页面、控件、状态与错误处理；可验收状态由获批交互脚本 `apps/web/e2e/issue21-desktop-acceptance.spec.ts` 核对。
 3. [工作流](workflows.md)：六个日常模块与学习模式的节点、澄清门和输出合同。
 4. [可行性与上线门](feasibility.md)：各模块的真实可得性、风险与降级。
 5. [技术架构](architecture.md)：LangGraph、会话上下文、存储、画像、知识库、模型与凭据。
