@@ -55272,6 +55272,139 @@
         ],
         "title": "StudyQuestion"
       },
+      "StudyReview": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/StudyReviewQuestion"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "active_question_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Question Id"
+          },
+          "needs_replan": {
+            "type": "boolean",
+            "title": "Needs Replan",
+            "default": false
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "StudyReview"
+      },
+      "StudyReviewQuestion": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "coverage_units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Coverage Units"
+          },
+          "fragment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fragment Ids"
+          },
+          "asked": {
+            "type": "boolean",
+            "title": "Asked",
+            "default": false
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "judgement": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "correct",
+                  "incomplete",
+                  "incorrect"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judgement"
+          },
+          "canonical_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Answer"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "user_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Message Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "question",
+          "coverage_units",
+          "fragment_ids"
+        ],
+        "title": "StudyReviewQuestion"
+      },
       "StudySource": {
         "properties": {
           "source_id": {
@@ -55350,7 +55483,8 @@
               "awaiting_pages",
               "recognizing",
               "preview",
-              "tutoring"
+              "tutoring",
+              "review"
             ],
             "title": "Stage",
             "default": "awaiting_pages"
@@ -55398,6 +55532,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/StudyPageUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyReview"
               },
               {
                 "type": "null"

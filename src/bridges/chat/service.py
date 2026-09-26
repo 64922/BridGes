@@ -882,7 +882,7 @@ class ChatService:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
             study = StudyRepository(self._repo.database).get(account_id, conversation_id)
             if not attachment_ids and (
-                study is None or study.stage not in {"awaiting_pages", "tutoring"}
+                study is None or study.stage not in {"awaiting_pages", "tutoring", "review"}
             ):
                 raise ChatDomainError(
                     "study_pages_required",
@@ -1749,6 +1749,18 @@ class ChatService:
                 "not_retryable_message", "找不到该助手消息对应的用户消息。", 400
             )
         if record.mode == ChatMode.STUDY.value:
+            study = StudyRepository(self._repo.database).get(account_id, conversation_id)
+            if study is not None and study.review is not None:
+                latest_user = next(
+                    (item for item in reversed(existing) if item.role == ChatMessageRole.USER), None,
+                )
+                if (latest_user is None or latest_user.message_id != owner.message_id
+                        or any(item.status == ChatMessageStatus.DONE
+                               for item in attempt_group(existing, owner.message_id))):
+                    raise ChatDomainError(
+                        "study_review_retry_stale",
+                        "本轮已完成或学习进度已更新，请继续当前题或回辅导提问。", 409,
+                    )
             for previous_attempt in attempt_group(existing, owner.message_id):
                 if previous_attempt.status != ChatMessageStatus.DONE:
                     continue
@@ -2729,7 +2741,7 @@ class ChatService:
             title=title,
             mode=mode,
             study=(
-                state
+                state.public_view()
                 if mode == ChatMode.STUDY
                 and (state := StudyRepository(self._repo.database).get(
                     account_id, conversation_id

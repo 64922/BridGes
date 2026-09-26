@@ -870,6 +870,7 @@ class ConversationRepository:
         arxiv_search: dict[str, Any] | None = None,
         teaching: dict[str, Any] | None = None,
         persist_learning: Callable[[], None] | None = None,
+        final_content: str | None = None,
         paper_search: dict[str, Any] | None = None,
         module_suggestion: dict[str, Any] | None = None,
         learning_resources: dict[str, Any] | None = None,
@@ -1056,6 +1057,11 @@ class ConversationRepository:
                     "UPDATE messages SET teaching = ?"
                     " WHERE message_id = ? AND account_id = ? AND status = ?",
                     (_json_dumps(teaching), message_id, account_id, status.value),
+                )
+            if cursor.rowcount and final_content is not None:
+                self._db.scoped(account_id).execute(
+                    "UPDATE messages SET content = ? WHERE message_id = ? AND account_id = ?",
+                    (final_content, message_id, account_id),
                 )
             if cursor.rowcount and persist_learning is not None:
                 persist_learning()

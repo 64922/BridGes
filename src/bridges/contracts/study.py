@@ -69,12 +69,42 @@ class StudyPageUpdate(BaseModel):
     wait_reason: str | None = None
 
 
+class StudyReviewQuestion(BaseModel):
+    question_id: str
+    question: str
+    coverage_units: list[str]
+    fragment_ids: list[str]
+    asked: bool = False
+    answer: str | None = None
+    judgement: Literal["correct", "incomplete", "incorrect"] | None = None
+    canonical_answer: str | None = None
+    explanation: str | None = None
+    user_message_id: str | None = None
+
+
+class StudyReview(BaseModel):
+    questions: list[StudyReviewQuestion] = Field(default_factory=list)
+    active_question_id: str | None = None
+    needs_replan: bool = False
+    complete: bool = False
+
+
 class StudyState(BaseModel):
     subsection_id: str
-    stage: Literal["awaiting_pages", "recognizing", "preview", "tutoring"] = "awaiting_pages"
+    stage: Literal[
+        "awaiting_pages", "recognizing", "preview", "tutoring", "review"
+    ] = "awaiting_pages"
     wait_reason: str | None = None
     pages: list[StudyPage] = Field(default_factory=list)
     units: list[StudyUnit] = Field(default_factory=list)
     questions: list[StudyQuestion] = Field(default_factory=list)
     tutoring: list[StudyExchange] = Field(default_factory=list)
     page_update: StudyPageUpdate | None = None
+    review: StudyReview | None = None
+
+    def public_view(self) -> "StudyState":
+        """题库仅留在服务端；客户端只接收已展示题及其实际判定。"""
+        result = self.model_copy(deep=True)
+        if result.review:
+            result.review.questions = [item for item in result.review.questions if item.asked]
+        return result

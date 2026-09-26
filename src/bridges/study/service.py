@@ -32,6 +32,7 @@ from bridges.contracts.study import (
     StudyUnit,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.study.review import grade, next_question, plan_review, review_intent
 from bridges.study.tutoring import tutor
 
 STUDY_GRAPH_VERSION = "study-pages-v1"
@@ -108,6 +109,7 @@ class _GraphState(TypedDict, total=False):
     answer: str
     tutoring: dict[str, Any]
     updated_pages: dict[str, Any]
+    reviewed: dict[str, Any]
 
 
 class StudyWorkflow:
@@ -140,7 +142,7 @@ class StudyWorkflow:
             run.account_id, run.conversation_id, run.user_message_id
         )
         duplicate_count = 0
-        updating = state.stage == "tutoring" and bool(state.page_update or any(
+        updating = state.stage in {"tutoring", "review"} and bool(state.page_update or any(
             item.content_hash not in {page.content_hash for page in state.pages}
             for item in attachments
         ))
@@ -592,6 +594,10 @@ class StudyWorkflow:
             state.wait_reason = None
             state.page_update = None
             state.questions = committed.questions
+            if state.review:
+                state.review.active_question_id = None
+                state.review.needs_replan = True
+                state.review.complete = False
             return {"updated_pages": state.model_dump(), "answer": (
                 (f"检测到{duplicate_count}张重复书页，已跳过。\n\n" if duplicate_count else "")
                 + f"已更新本节书页，共{len(state.pages)}页。"
@@ -600,6 +606,7 @@ class StudyWorkflow:
             )}
 
         def tutoring() -> _GraphState:
+            state.stage = "tutoring"
             existing = next((item for item in state.tutoring
                              if item.user_message_id == run.user_message_id), None)
             if existing is not None:
@@ -612,14 +619,57 @@ class StudyWorkflow:
                 ) from exc
             return {"answer": exchange.answer, "tutoring": exchange.model_dump()}
 
+        intent = review_intent(user.content)
+
+        def review() -> _GraphState:
+            try:
+                if intent == "pause":
+                    state.stage = "tutoring"
+                    if state.review:
+                        state.review.active_question_id = None
+                    answer = (
+                        "已暂停复盘，可以继续提问或追加本节照片。已问题与判定保留；"
+                        "继续复盘时从未问题开始，未作答题不计为已掌握。"
+                    )
+                elif intent == "start":
+                    if state.review is None or state.review.needs_replan:
+                        state.review = plan_review(self._service, run, state, invoke)
+                    state.stage = "review"
+                    if state.review.active_question_id:
+                        current = next(item for item in state.review.questions
+                                       if item.question_id == state.review.active_question_id)
+                        answer = f"请回答当前复盘题：{current.question}"
+                    else:
+                        answer = next_question(state.review)
+                else:
+                    answer = grade(self._service, run, state, user.content, invoke)
+            except ValueError as exc:
+                raise StudyWorkflowError(
+                    current_node, "study_review_invalid",
+                    "复盘结果未通过核验，原题已保留，请重试。",
+                ) from exc
+            return {"answer": answer, "reviewed": state.model_dump()}
+
         graph = StateGraph(_GraphState)
         graph.add_node("study.recognize", node("study.recognize", recognize))
         graph.add_node("study.map", node("study.map", map_units))
         graph.add_node("study.preview", node("study.preview", preview))
         graph.add_node("study.tutor", node("study.tutor", tutoring))
         graph.add_node("study.finish_pages", node("study.finish_pages", finish_pages))
-        graph.add_edge(START, "study.tutor" if state.stage == "tutoring"
-                       and not updating and not attachments else "study.recognize")
+        graph.add_node("study.plan_review", node("study.plan_review", review))
+        graph.add_node("study.grade", node("study.grade", review))
+        graph.add_node("study.pause_review", node("study.pause_review", review))
+        entry = "study.recognize"
+        if state.stage in {"tutoring", "review"} and not updating and not attachments:
+            if intent == "pause":
+                entry = "study.pause_review"
+            elif intent == "start":
+                entry = "study.plan_review"
+            elif state.stage == "review" and state.review and not state.review.complete:
+                entry = "study.grade"
+            else:
+                entry = "study.tutor"
+        graph.add_edge(START, entry)
         graph.add_conditional_edges(
             "study.recognize",
             lambda result: END if result.get("wait") else "study.map",
@@ -629,6 +679,8 @@ class StudyWorkflow:
         graph.add_edge("study.preview", END)
         graph.add_edge("study.finish_pages", END)
         graph.add_edge("study.tutor", END)
+        for name in ("study.plan_review", "study.grade", "study.pause_review"):
+            graph.add_edge(name, END)
         saver = RepositoryCheckpointSaver(
             self._repo.database,
             account_id=run.account_id,
@@ -650,6 +702,11 @@ class StudyWorkflow:
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
             def persist_tutoring() -> None:
+                if output.get("reviewed"):
+                    self._states.save_in_transaction(
+                        run.account_id, run.conversation_id,
+                        StudyState.model_validate(output["reviewed"]),
+                    )
                 if output.get("updated_pages"):
                     self._states.save_in_transaction(
                         run.account_id, run.conversation_id,
@@ -662,9 +719,10 @@ class StudyWorkflow:
                         state.tutoring.append(exchange)
                     self._states.save_in_transaction(run.account_id, run.conversation_id, state)
 
-            self._repo.update_message_content(
-                run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
-            )
+            if not output.get("reviewed"):
+                self._repo.update_message_content(
+                    run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
+                )
             finalize_message(
                 self._repo,
                 run.account_id,
@@ -678,6 +736,7 @@ class StudyWorkflow:
                 started=started,
                 now=datetime.now(UTC),
                 persist_learning=persist_tutoring,
+                final_content=answer if output.get("reviewed") else None,
             )
             return None
         except StudyWorkflowError as exc:
