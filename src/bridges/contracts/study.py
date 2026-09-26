@@ -24,19 +24,21 @@ class StudyPage(BaseModel):
     ordinal: int
     content_hash: str
     model_id: str
+    page_number: int | None = Field(default=None, ge=1)
+    same_section: bool = True
     replaced_object_ids: list[str] = Field(default_factory=list)
     fragments: list[StudyFragment]
     unclear: list[StudyUnclear] = Field(default_factory=list)
 
 
 class StudyUnit(BaseModel):
-    title: str
+    title: str = Field(min_length=1)
     fragment_ids: list[str] = Field(min_length=1)
     core: bool = True
 
 
 class StudyQuestion(BaseModel):
-    question: str
+    question: str = Field(min_length=1)
     unit_titles: list[str] = Field(min_length=1)
 
 
