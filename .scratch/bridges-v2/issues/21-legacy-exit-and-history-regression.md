@@ -72,6 +72,13 @@
     建数据的 integration 模块。
 - 定点：`tests/storage/test_v2_21_migration_gate.py` 7 项、`tests/retirement/test_legacy_generation_exit.py` 8 项、
   `tests/science` 59 项、`tests/tieba` 45 项（含本次发现缺陷的回归用例）全部通过。
+- 合并后（`ba0d9da7` 合并树与分支树 `rev-parse ^{tree}` 相同）在 main 上补跑定点并逐目录对基线：
+  `tests/chat tests/plugins` → **140 失败／531 通过**（= 基线 chat 101 + plugins 39，逐目录数相同）；
+  `tests/storage tests/retirement tests/contracts tests/skills tests/lifecycle` → **16 失败／155 通过**
+  （= 基线 retirement 11 + lifecycle 5，storage／contracts／skills 均 0）；本票三个新测试文件
+  （`test_v2_21_migration_gate`／`test_legacy_generation_exit`／`test_v2_21_retired_history_lifecycle`）
+  定点复跑 **20 项全通过**，且不在全量失败名单内（`tests/retirement` 的 11 条失败全部来自既有的
+  `test_user_extensions_retirement.py`）。
 - 前端：`vitest run` **22 文件 / 189 用例**通过；`tsc --noEmit` 干净（exit 0，无输出）。
 - `ruff`：改动文件与 main 同量（`src/bridges/chat/{turn,service}.py` 与 `src/bridges/api/main.py` 两侧同为 107 条既有告警），
   本票引入的 F401 已清零。
@@ -110,4 +117,11 @@
   是仓库既定取舍（CI 重试、本地不重试），本票不改配置，正式验收按逐视口独立运行、失败则以隔离复跑取证
   （证据汇总留档 `.tmp/issue21/acceptance-flake-evidence.md`）。
 - 图片/视频的供应商适配器与发布门探针按清单 v3 保留（历史只读面与发布门需要），它们的公开写入口已关闭。
+- 既有（本票未引入、也未修复）的收集期循环导入：`tests/plugins` 若在没有任何模块先完整加载 `bridges.chat` 的情况下被收集，
+  `test_plugin_api.py`／`test_plugin_service.py` 会抛 `ImportError: cannot import name 'PluginService' from partially
+  initialized module`，链路为 `plugins.service` → `bridges.chat.attachments` → `chat/__init__` → `chat.service` →
+  `context_compiler` → `chat.turn` → `chat.selections` → `plugins.service`。已用合并前主仓树核对：在 `e22e3f3` 上
+  单独跑 `pytest tests/plugins` 报同一错误（该版本 `plugins/service.py` 已有 `from bridges.chat.attachments import
+  sniff_media_type`），故属既有顺序依赖，非本票引入；与 `tests/chat` 一起收集（或按全量顺序）即正常收集
+  （合并后实测 `tests/chat tests/plugins` 收集无错、结果与基线逐目录一致）。本票不改动该链路。
 
