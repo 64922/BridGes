@@ -115,6 +115,10 @@ const icons = {
   tiebaThread: stroke(
     "M4.5 5.25h15M4.5 9.75h11.5M4.5 14.25h15M4.5 18.75h8",
   ),
+  // V2 Issue 16：GitHub 项目推荐（仓库书架：两本并排 + 底部标签）。
+  githubRepo: stroke(
+    "M4.5 4.5h6v13h-6zM13.5 4.5h6v9h-6zM4.5 17.5h6M13.5 13.5h6",
+  ),
   dictation: stroke(
     "M9 5.75a3 3 0 016 0V11a3 3 0 01-6 0V5.75zM5.5 11a6.5 6.5 0 0013 0M12 17.5V21M8.5 21h7",
   ),

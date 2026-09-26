@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 56
+SCHEMA_VERSION = 57
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2550,6 +2550,17 @@ MIGRATIONS: dict[int, list[str]] = {
     56: [
         """
         ALTER TABLE messages ADD COLUMN tieba_research TEXT
+        """,
+    ],
+    # Issue 16（V2 GitHub 项目推荐）：messages 增加本模块列的 JSON 投影。
+    # 保存用户 idea 的场景与要点、每次 GitHub 接口调用的查询记录、逐个仓库的
+    # 功能匹配与覆盖范围、维护与许可证据、已读实现文件、限流状态与失败分类；
+    # 旧行通过 DEFAULT NULL 自然兼容。
+    # 编号 57：54/55/56 已被先合并的 Issue 12/13/14 占用，按「已在 main 上线者
+    # 保留编号」原则让位，避免已升到 v56 的库静默跳过本列。
+    57: [
+        """
+        ALTER TABLE messages ADD COLUMN github_projects TEXT
         """,
     ],
 }
