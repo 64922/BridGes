@@ -25,7 +25,9 @@ export function StudyProgress({ study: state }: { study?: ChatConversationProjec
           </li>
         ))}
       </ol>
-      {state?.wait_reason && <p role="status">书页有待补拍的位置，请查看下方消息。</p>}
+      {state?.wait_reason && <p role="status">{state.wait_reason === "page_order"
+        ? "书上页码与上传顺序不一致，请查看证据并按下方消息调整页序。"
+        : "书页有待补拍的位置，请查看下方消息。"}</p>}
       {state?.pages && state.pages.length > 0 && (
         <details>
           <summary>已识别书页与证据（{state.pages.length} 页）</summary>
@@ -33,6 +35,7 @@ export function StudyProgress({ study: state }: { study?: ChatConversationProjec
             {state.pages.map((page) => (
               <li key={page.object_id}>
                 <strong>第{page.ordinal}页</strong>
+                {page.page_number != null && `（书上第${page.page_number}页）`}
                 {page.replaced_object_ids && page.replaced_object_ids.length > 0 && "（已补拍更新）"}
                 <ul>
                   {page.fragments.map((fragment, index) => (

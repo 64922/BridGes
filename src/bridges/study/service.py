@@ -43,6 +43,7 @@ class _RecognizedFragment(BaseModel):
 
 class _Recognition(BaseModel):
     same_section: bool
+    page_number: int | None = Field(default=None, ge=1)
     fragments: list[_RecognizedFragment] = Field(min_length=1)
     unclear: list[StudyUnclear] = Field(default_factory=list)
 
@@ -164,6 +165,8 @@ class StudyWorkflow:
 
         def invoke(capability: str, payload: dict[str, Any]) -> dict[str, Any]:
             nonlocal last_lock
+            if stop_event is not None and stop_event.is_set():
+                raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
             if capability == "qwen_structured_output":
                 payload = {
                     **payload,
@@ -182,6 +185,8 @@ class StudyWorkflow:
                 payload=payload,
                 model_override=(run.config or {}).get("run_model_id"),
             )
+            if stop_event is not None and stop_event.is_set():
+                raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
             if result.status not in {ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED}:
                 raise StudyWorkflowError(
                     current_node,
@@ -197,12 +202,28 @@ class StudyWorkflow:
 
         def recognize() -> _GraphState:
             nonlocal duplicate_count
+            previous_stage = state.stage
             state.stage = "recognizing"
+            if any(item.content_hash not in {page.content_hash for page in state.pages}
+                   for item in attachments):
+                state.units = []
+                state.questions = []
             self._states.save(run.account_id, run.conversation_id, state)
             known = {page.content_hash for page in state.pages}
             duplicates = 0
             added = 0
             supplemented = False
+            if not attachments and state.wait_reason == "page_order":
+                order = re.fullmatch(
+                    r"页序\s*[:：]\s*(\d+(?:\s*[,，]\s*\d+)*)", user.content.strip()
+                )
+                if order:
+                    ordinals = [int(value) for value in re.split(r"[,，]", order.group(1))]
+                    if sorted(ordinals) == list(range(1, len(state.pages) + 1)):
+                        state.pages = [state.pages[index - 1] for index in ordinals]
+                        for index, page in enumerate(state.pages, 1):
+                            page.ordinal = index
+                        self._states.save(run.account_id, run.conversation_id, state)
             for attachment in attachments:
                 if stop_event is not None and stop_event.is_set():
                     raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
@@ -260,6 +281,7 @@ class StudyWorkflow:
                         "temperature": 0.01,
                         "prompt": (
                             "只输出 JSON 对象，字段 same_section(boolean),"
+                            " page_number(书上印刷页码，正整数；看不到或不确定时为 null)，"
                             " fragments(数组：kind 为 text/formula/chart、"
                             "position 为页面位置、text 为所见内容、confidence 为 0-1),"
                             " unclear(数组：position、reason)。"
@@ -304,6 +326,8 @@ class StudyWorkflow:
                     ordinal=ordinal,
                     content_hash=record.content_hash,
                     model_id=(last_lock.actual_model_id or "") if last_lock else "",
+                    page_number=parsed.page_number,
+                    same_section=parsed.same_section if state.pages else True,
                     replaced_object_ids=(
                         [*replacement.replaced_object_ids, replacement.object_id]
                         if replacement
@@ -326,19 +350,18 @@ class StudyWorkflow:
                     supplement_page = next(
                         (item for item in state.pages if item.ordinal == ordinal), None
                     )
-                    if supplement_page is not None and supplement_page.unclear:
+                    if (supplement_page is not None and supplement_page.unclear
+                            and supplement_page.same_section):
                         matches = [
                             issue
                             for issue in supplement_page.unclear
                             if issue.position in user.content
                         ]
-                        if len(matches) != 1:
-                            matches = (
-                                supplement_page.unclear
-                                if len(supplement_page.unclear) == 1
-                                else []
-                            )
-                        if matches:
+                        supplement = (
+                            user.content.split(matches[0].position, 1)[1].strip()
+                            if len(matches) == 1 else ""
+                        )
+                        if re.fullmatch(r"(?:[:：]|[^？?。\n]*[是为])\s*\S.*", supplement):
                             issue = matches[0]
                             supplement_page.fragments.append(
                                 StudyFragment(
@@ -371,11 +394,29 @@ class StudyWorkflow:
                     "answer": (
                         (f"检测到{duplicates}张重复书页，已跳过。" if duplicates else "")
                         + f"这些位置还看不清：{details}。"
-                        "请补拍对应位置，或按“第N页+位置……”补录文字。"
+                        "请补拍对应位置，或按“第N页+位置：具体内容”补录文字。"
+                        "不同小节的书页请在新对话上传。"
                     ),
                 }
+            numbered = [page for page in state.pages if page.page_number is not None]
+            if any(
+                left.page_number is not None and right.page_number is not None
+                and left.page_number > right.page_number
+                for left, right in zip(numbered, numbered[1:], strict=False)
+            ):
+                state.stage = "awaiting_pages"
+                state.wait_reason = "page_order"
+                self._states.save(run.account_id, run.conversation_id, state)
+                self._repo.update_generation_progress(
+                    run.account_id, run.run_id, wait_reason=state.wait_reason,
+                )
+                return {
+                    "wait": True,
+                    "answer": "书上页码与上传顺序不一致，请查看页级证据，"
+                    "按当前上传页号发送完整顺序，例如“页序：2,1”。",
+                }
             if duplicates and not added and not supplemented and run.attempt_number == 1:
-                state.stage = "awaiting_pages" if not state.units else "tutoring"
+                state.stage = previous_stage
                 self._states.save(run.account_id, run.conversation_id, state)
                 return {"wait": True, "answer": "书页重复，请检查页序后重新发送。"}
             if not state.pages:

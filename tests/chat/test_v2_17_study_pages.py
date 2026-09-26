@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from bridges.contracts.ai import ModelCallResult, ModelCallStatus
@@ -21,6 +22,8 @@ class StudyGateway:
         low_confidence_kind: str | None = None,
         fail_ocr: bool = False,
         fail_preview: bool = False,
+        page_numbers: list[int] | None = None,
+        same_section: bool = True,
     ) -> None:
         self.unclear = unclear
         self.extra_unclear = extra_unclear
@@ -29,6 +32,8 @@ class StudyGateway:
         self.fail_preview = fail_preview
         self.vision_count = 0
         self.calls: list[str] = []
+        self.page_numbers = page_numbers
+        self.same_section = same_section
 
     def invoke(
         self,
@@ -53,7 +58,11 @@ class StudyGateway:
                 output={
                     "content": json.dumps(
                         {
-                            "same_section": True,
+                            "same_section": self.same_section,
+                            "page_number": (
+                                self.page_numbers[self.vision_count - 1]
+                                if self.page_numbers else None
+                            ),
                             "fragments": [
                                 {
                                     "kind": self.low_confidence_kind or "formula",
@@ -187,6 +196,9 @@ def test_two_pages_preview_survives_reload_and_is_private(tmp_path: Any, monkeyp
         ]
         _register(client, "studyother")
         assert client.get(f"/chat/conversations/{conversation_id}").status_code == 404
+        assert client.get(
+            f"/chat/conversations/{conversation_id}/attachments/{a['object_id']}/content"
+        ).status_code == 404
 
 
 def test_unclear_page_waits_and_user_text_keeps_source(tmp_path: Any, monkeypatch: Any) -> None:
@@ -361,3 +373,155 @@ def test_mixed_duplicate_page_is_reported(tmp_path: Any, monkeypatch: Any) -> No
         projection = client.get(f"/chat/conversations/{conversation_id}").json()
         assert len(projection["study"]["pages"]) == 2
         assert "重复书页" in projection["messages"][-1]["content"]
+
+
+def test_files_cannot_start_or_extend_study_and_remain_drafts(
+    tmp_path: Any, monkeypatch: Any,
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = StudyGateway()
+    with TestClient(app) as client:
+        _register(client, "studyfile")
+        document = _upload_draft(
+            client, filename="notes.txt", upload_id="study-file", content=b"notes",
+        ).json()
+        rejected = _first(client, [document["object_id"]])
+        assert rejected.status_code == 422
+        assert client.get("/chat/conversations").json()["conversations"] == []
+        photo = _upload_draft(client, upload_id="study-photo").json()
+        first = _first(client, [photo["object_id"]], "study-photo-first")
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        rejected = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "", "attachment_ids": [document["object_id"]]},
+        )
+        assert rejected.status_code == 422
+        assert client.get(
+            f"/chat/attachment-drafts/{document['object_id']}/content"
+        ).status_code == 200
+
+
+def test_appended_page_failure_invalidates_old_preview(tmp_path: Any, monkeypatch: Any) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = StudyGateway()
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "studyappendfail")
+        photo = _upload_draft(client, upload_id="append-first").json()
+        first = _first(client, [photo["object_id"]])
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        gateway.fail_ocr = True
+        extra = _upload_draft(client, upload_id="append-extra", content=PNG_BYTES + b"2").json()
+        client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "", "attachment_ids": [extra["object_id"]]},
+        )
+        app.state.generation_executor.run_tick()
+        projection = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert projection["study"]["stage"] == "recognizing"
+        assert projection["study"]["questions"] == []
+        assert projection["study"]["units"] == []
+        assert "暂不需要作答" in projection["messages"][1]["content"]
+
+
+@pytest.mark.parametrize("content", [
+    "第1页还是看不清", "第1页中部公式", "第1页右侧图表是直线", "第1页中部公式看不清",
+])
+def test_unrelated_text_does_not_resolve_unclear_formula(
+    tmp_path: Any, monkeypatch: Any, content: str,
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = StudyGateway(unclear=True)
+    with TestClient(app) as client:
+        _register(client, "studynotsupplement")
+        photo = _upload_draft(client).json()
+        first = _first(client, [photo["object_id"]])
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        client.post(f"/chat/conversations/{conversation_id}/messages", json={"content": content})
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["stage"] == "awaiting_pages"
+        assert study["questions"] == []
+
+
+def test_reversed_book_pages_wait_for_persisted_order_correction(
+    tmp_path: Any, monkeypatch: Any,
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = StudyGateway(page_numbers=[12, 11])
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "studyorder")
+        a = _upload_draft(client, upload_id="order-a").json()
+        b = _upload_draft(client, upload_id="order-b", content=PNG_BYTES + b"b").json()
+        first = _first(client, [a["object_id"], b["object_id"]])
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        state = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert state["wait_reason"] == "page_order"
+        assert state["questions"] == []
+        client.post(
+            f"/chat/conversations/{conversation_id}/messages", json={"content": "页序：2,1"},
+        )
+        app.state.generation_executor.run_tick()
+        state = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert state["stage"] == "tutoring"
+        assert [page["object_id"] for page in state["pages"]] == [b["object_id"], a["object_id"]]
+        assert [page["ordinal"] for page in state["pages"]] == [1, 2]
+        assert [page["page_number"] for page in state["pages"]] == [11, 12]
+        assert gateway.vision_count == 2
+
+
+def test_different_section_cannot_be_cleared_by_arbitrary_text(
+    tmp_path: Any, monkeypatch: Any,
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = StudyGateway(same_section=False)
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "studysection")
+        a = _upload_draft(client, upload_id="section-a").json()
+        b = _upload_draft(client, upload_id="section-b", content=PNG_BYTES + b"b").json()
+        first = _first(client, [a["object_id"], b["object_id"]])
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "第2页整页是热力学"},
+        )
+        app.state.generation_executor.run_tick()
+        state = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert state["stage"] == "awaiting_pages"
+        assert state["questions"] == []
+
+
+def test_stop_during_preview_does_not_advance_stage(tmp_path: Any, monkeypatch: Any) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = StudyGateway()
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "studystop")
+        photo = _upload_draft(client).json()
+        first = _first(client, [photo["object_id"]]).json()
+        conversation_id = first["conversation"]["conversation_id"]
+        assistant_id = first["assistant_message"]["message_id"]
+        original = gateway.invoke
+
+        def stopping_invoke(*args: Any, **kwargs: Any) -> ModelCallResult:
+            result = original(*args, **kwargs)
+            if '"questions"' in kwargs.get("payload", {}).get("prompt", ""):
+                stopped = client.post(
+                    f"/chat/conversations/{conversation_id}/messages/{assistant_id}/stop",
+                )
+                assert stopped.status_code == 200
+            return result
+
+        monkeypatch.setattr(gateway, "invoke", stopping_invoke)
+        app.state.generation_executor.run_tick()
+        projection = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert projection["messages"][-1]["status"] == "stopped"
+        assert projection["study"]["stage"] == "preview"
+        assert projection["study"]["questions"] == []

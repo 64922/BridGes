@@ -53477,6 +53477,23 @@
             "type": "string",
             "title": "Model Id"
           },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "same_section": {
+            "type": "boolean",
+            "title": "Same Section",
+            "default": true
+          },
           "replaced_object_ids": {
             "items": {
               "type": "string"
@@ -53513,6 +53530,7 @@
         "properties": {
           "question": {
             "type": "string",
+            "minLength": 1,
             "title": "Question"
           },
           "unit_titles": {
@@ -53609,6 +53627,7 @@
         "properties": {
           "title": {
             "type": "string",
+            "minLength": 1,
             "title": "Title"
           },
           "fragment_ids": {

@@ -113,7 +113,8 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftErrorSeqRef = useRef(0);
   // 有文字或已有附件即可发送；上传未完成的批次禁止提前发送。
-  const canSend =
+  const hasStudyFile = mode === "study" && drafts.some((draft) => !isPhotoAttachment(draft.media_type));
+  const canSend = !hasStudyFile &&
     (mode === "study" && variant === "new-chat"
       ? drafts.length > 0
       : text.trim().length > 0 || drafts.length > 0) &&
@@ -630,7 +631,9 @@ export function Composer({
             event.preventDefault();
             addFiles(files);
           }}
-          placeholder={mode === "study" ? "上传本节书页照片开始预习" : "输入消息，开始日常对话"}
+          placeholder={mode === "study"
+            ? variant === "new-chat" ? "上传本节书页照片开始预习" : "补充同节书页，或按提示补录文字、调整页序"
+            : "输入消息，开始日常对话"}
           style={{
             width: "100%",
             flex: 1,
@@ -647,6 +650,7 @@ export function Composer({
         />
       </div>
 
+      {hasStudyFile && <p role="alert">学习模式只接受本节书页照片，请移除文件附件后发送。</p>}
       {draftErrors.length > 0 && (
         <ul
           role="alert"

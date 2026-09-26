@@ -22295,6 +22295,13 @@ export interface components {
             content_hash: string;
             /** Model Id */
             model_id: string;
+            /** Page Number */
+            page_number?: number | null;
+            /**
+             * Same Section
+             * @default true
+             */
+            same_section: boolean;
             /** Replaced Object Ids */
             replaced_object_ids?: string[];
             /** Fragments */

@@ -383,7 +383,9 @@ class ChatService:
             )
         return self._attachments
 
-    def _validate_draft_attachments(self, account_id: str, attachment_ids: list[str]) -> None:
+    def _validate_draft_attachments(
+        self, account_id: str, attachment_ids: list[str], *, photos_only: bool = False,
+    ) -> None:
         """V2 Issue 05：校验账户级照片草稿并统一转成会话域错误。"""
         try:
             self._require_attachment_service().validate_draft_ids(
@@ -391,6 +393,14 @@ class ChatService:
             )
         except ChatAttachmentError as exc:
             raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+        if photos_only:
+            attachments = self._require_attachment_service()
+            for object_id in attachment_ids:
+                draft = attachments.get_draft(account_id, object_id)
+                if draft is None or draft.media_type not in PHOTO_MEDIA_TYPES:
+                    raise ChatDomainError(
+                        "study_pages_required", "学习模式只接受本节书页照片，请移除文件附件。", 422
+                    )
 
     # ------------------------------------------------------------------
     # 对话
@@ -851,7 +861,9 @@ class ChatService:
         # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
         # 校验失败（数量/重复/跨账户）在此拒绝，草稿保留供用户调整重试。
         if attachment_ids:
-            self._validate_draft_attachments(account_id, attachment_ids)
+            self._validate_draft_attachments(
+                account_id, attachment_ids, photos_only=record.mode == ChatMode.STUDY.value,
+            )
         mode = ChatMode(record.mode)
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
@@ -1373,7 +1385,9 @@ class ChatService:
                 )
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
-            self._validate_draft_attachments(account_id, attachment_ids)
+            self._validate_draft_attachments(
+                account_id, attachment_ids, photos_only=mode == ChatMode.STUDY,
+            )
         capability_route = self._route_for_turn(
             image_payload=image_payload,
             video_payload=video_payload,
