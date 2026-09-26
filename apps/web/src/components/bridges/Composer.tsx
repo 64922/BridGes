@@ -632,7 +632,7 @@ export function Composer({
             addFiles(files);
           }}
           placeholder={mode === "study"
-            ? variant === "new-chat" ? "上传本节书页照片开始预习" : "补充同节书页，或按提示补录文字、调整页序"
+            ? variant === "new-chat" ? "上传本节书页照片开始预习" : "哪里不懂就问，也可以追加同节书页"
             : "输入消息，开始日常对话"}
           style={{
             width: "100%",

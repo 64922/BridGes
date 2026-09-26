@@ -94,6 +94,11 @@ export const NODE_LABEL: Record<string, string> = {
   invoke_subgraph_or_chat: "生成回答",
   verify_output: "核验输出",
   persist_result: "保存结果",
+  "study.recognize": "识别本节书页",
+  "study.map": "核对知识范围",
+  "study.preview": "整理预习问题",
+  "study.tutor": "依据书页解答",
+  "study.finish_pages": "更新本节书页",
   // V2 Issue 11：论文子图节点（显式派发后逐步显示真实进度）。
   "paper.parse": "理解论文请求",
   "paper.plan": "规划论文检索",

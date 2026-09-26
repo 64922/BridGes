@@ -23254,6 +23254,24 @@ export interface components {
          * @enum {string}
          */
         StoryboardStatus: "draft" | "designing" | "source_generated" | "static_validated" | "sandbox_rendering" | "completed" | "repairable" | "repair_exhausted" | "quarantined" | "failed";
+        /** StudyExchange */
+        StudyExchange: {
+            /** User Message Id */
+            user_message_id: string;
+            /** Assistant Message Id */
+            assistant_message_id: string;
+            /** Question */
+            question: string;
+            /** Answer */
+            answer: string;
+            /** Sources */
+            sources: components["schemas"]["StudySource"][];
+            /**
+             * Gap
+             * @default
+             */
+            gap: string;
+        };
         /** StudyFragment */
         StudyFragment: {
             /** Fragment Id */
@@ -23300,12 +23318,44 @@ export interface components {
             /** Unclear */
             unclear?: components["schemas"]["StudyUnclear"][];
         };
+        /**
+         * StudyPageUpdate
+         * @description 追加页的候选范围，全部核对并合并成功后才替换已确认范围。
+         */
+        StudyPageUpdate: {
+            /** Pages */
+            pages: components["schemas"]["StudyPage"][];
+            /** Units */
+            units?: components["schemas"]["StudyUnit"][];
+            /** Wait Reason */
+            wait_reason?: string | null;
+        };
         /** StudyQuestion */
         StudyQuestion: {
             /** Question */
             question: string;
             /** Unit Titles */
             unit_titles: string[];
+        };
+        /** StudySource */
+        StudySource: {
+            /** Source Id */
+            source_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "knowledge_base" | "web";
+            /** Label */
+            label: string;
+            /** Snippet */
+            snippet: string;
+            /** Object Id */
+            object_id?: string | null;
+            /** Fragment Id */
+            fragment_id?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /** StudyState */
         StudyState: {
@@ -23325,6 +23375,9 @@ export interface components {
             units?: components["schemas"]["StudyUnit"][];
             /** Questions */
             questions?: components["schemas"]["StudyQuestion"][];
+            /** Tutoring */
+            tutoring?: components["schemas"]["StudyExchange"][];
+            page_update?: components["schemas"]["StudyPageUpdate"] | null;
         };
         /** StudyUnclear */
         StudyUnclear: {

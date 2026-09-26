@@ -406,7 +406,7 @@ def test_files_cannot_start_or_extend_study_and_remain_drafts(
         ).status_code == 200
 
 
-def test_appended_page_failure_invalidates_old_preview(tmp_path: Any, monkeypatch: Any) -> None:
+def test_appended_page_failure_preserves_confirmed_scope(tmp_path: Any, monkeypatch: Any) -> None:
     app = _app(tmp_path, monkeypatch)
     gateway = StudyGateway()
     app.state.chat_service._gateway = gateway
@@ -424,9 +424,11 @@ def test_appended_page_failure_invalidates_old_preview(tmp_path: Any, monkeypatc
         )
         app.state.generation_executor.run_tick()
         projection = client.get(f"/chat/conversations/{conversation_id}").json()
-        assert projection["study"]["stage"] == "recognizing"
-        assert projection["study"]["questions"] == []
-        assert projection["study"]["units"] == []
+        assert projection["study"]["stage"] == "tutoring"
+        assert projection["study"]["questions"]
+        assert projection["study"]["units"]
+        assert len(projection["study"]["pages"]) == 1
+        assert projection["study"]["page_update"] is not None
         assert "暂不需要作答" in projection["messages"][1]["content"]
 
 

@@ -22,14 +22,17 @@ from bridges.chat.turn import failed_thinking, finalize_message, initial_thinkin
 from bridges.contracts.ai import ModelCallStatus, ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus, ChatMode, ChatStreamNodeData
 from bridges.contracts.study import (
+    StudyExchange,
     StudyFragment,
     StudyPage,
+    StudyPageUpdate,
     StudyQuestion,
     StudyState,
     StudyUnclear,
     StudyUnit,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.study.tutoring import tutor
 
 STUDY_GRAPH_VERSION = "study-pages-v1"
 
@@ -81,22 +84,30 @@ class StudyRepository:
 
     def save(self, account_id: str, conversation_id: str, state: StudyState) -> None:
         with self._db.transaction():
-            self._db.scoped(account_id).execute(
-                "INSERT INTO study_states (account_id, conversation_id, state_json, updated_at)"
-                " VALUES (?, ?, ?, ?) ON CONFLICT(account_id, conversation_id)"
-                " DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at",
-                (
-                    account_id,
-                    conversation_id,
-                    state.model_dump_json(),
-                    datetime.now(UTC).isoformat(),
-                ),
-            )
+            self.save_in_transaction(account_id, conversation_id, state)
+
+    def save_in_transaction(
+        self, account_id: str, conversation_id: str, state: StudyState,
+    ) -> None:
+        """由消息终态事务调用，问答与消息要么一起成功、要么一起回滚。"""
+        self._db.scoped(account_id).execute(
+            "INSERT INTO study_states (account_id, conversation_id, state_json, updated_at)"
+            " VALUES (?, ?, ?, ?) ON CONFLICT(account_id, conversation_id)"
+            " DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at",
+            (
+                account_id,
+                conversation_id,
+                state.model_dump_json(),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
 
 
 class _GraphState(TypedDict, total=False):
     wait: bool
     answer: str
+    tutoring: dict[str, Any]
+    updated_pages: dict[str, Any]
 
 
 class StudyWorkflow:
@@ -129,6 +140,25 @@ class StudyWorkflow:
             run.account_id, run.conversation_id, run.user_message_id
         )
         duplicate_count = 0
+        updating = state.stage == "tutoring" and bool(state.page_update or any(
+            item.content_hash not in {page.content_hash for page in state.pages}
+            for item in attachments
+        ))
+        committed = state.model_copy(deep=True)
+        if state.page_update is not None:
+            state.pages = state.page_update.pages
+            state.units = state.page_update.units
+            state.wait_reason = state.page_update.wait_reason
+
+        def save_state() -> None:
+            if updating:
+                pending = committed.model_copy(deep=True)
+                pending.page_update = StudyPageUpdate(
+                    pages=state.pages, units=state.units, wait_reason=state.wait_reason,
+                )
+                self._states.save(run.account_id, run.conversation_id, pending)
+            else:
+                self._states.save(run.account_id, run.conversation_id, state)
 
         def node(name: str, body: Callable[[], _GraphState]) -> Any:
             def execute(_: _GraphState, config: RunnableConfig) -> _GraphState:
@@ -167,7 +197,7 @@ class StudyWorkflow:
             nonlocal last_lock
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
-            if capability == "qwen_structured_output":
+            if capability == "qwen_structured_output" and "messages" not in payload:
                 payload = {
                     **payload,
                     "messages": [
@@ -191,7 +221,7 @@ class StudyWorkflow:
                 raise StudyWorkflowError(
                     current_node,
                     result.error_code or "study_model_failed",
-                    "书页处理模型暂时不可用，请稍后重试。",
+                    "学习处理模型暂时不可用，请稍后重试。",
                 )
             last_lock = result.lock
             if not isinstance(result.output, dict):
@@ -202,13 +232,17 @@ class StudyWorkflow:
 
         def recognize() -> _GraphState:
             nonlocal duplicate_count
+            if not attachments and state.wait_reason == "recognition_failed":
+                return {
+                    "wait": True, "answer": "追加书页识别尚未完成，请重试原失败消息或重新补拍。",
+                }
             previous_stage = state.stage
             state.stage = "recognizing"
             if any(item.content_hash not in {page.content_hash for page in state.pages}
                    for item in attachments):
                 state.units = []
                 state.questions = []
-            self._states.save(run.account_id, run.conversation_id, state)
+            save_state()
             known = {page.content_hash for page in state.pages}
             duplicates = 0
             added = 0
@@ -224,7 +258,18 @@ class StudyWorkflow:
                         for index, page in enumerate(state.pages, 1):
                             page.ordinal = index
                         state.wait_reason = None
-                        self._states.save(run.account_id, run.conversation_id, state)
+                        save_state()
+            if not attachments:
+                confirmation = re.fullmatch(
+                    r"确认第\s*(\d+)\s*页属于本节[。！!]?", user.content.strip(),
+                )
+                if confirmation:
+                    for page in state.pages:
+                        if page.ordinal == int(confirmation.group(1)) and not page.same_section:
+                            page.same_section = True
+                            page.unclear = [issue for issue in page.unclear
+                                            if issue.reason != "疑似不同小节，请确认或在新对话上传"]
+                            save_state()
             for attachment in attachments:
                 if stop_event is not None and stop_event.is_set():
                     raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
@@ -343,7 +388,7 @@ class StudyWorkflow:
                     state.pages.append(page)
                 known.add(record.content_hash)
                 added += 1
-                self._states.save(run.account_id, run.conversation_id, state)
+                save_state()
             if not attachments and user.content.strip() and state.wait_reason == "unclear_page":
                 match = re.search(r"第\s*(\d+)\s*页", user.content)
                 if match:
@@ -380,12 +425,12 @@ class StudyWorkflow:
                             )
                             supplement_page.unclear.remove(issue)
                             supplemented = True
-                            self._states.save(run.account_id, run.conversation_id, state)
+                            save_state()
             unresolved = [page for page in state.pages if page.unclear]
             if unresolved:
                 state.stage = "awaiting_pages"
                 state.wait_reason = "unclear_page"
-                self._states.save(run.account_id, run.conversation_id, state)
+                save_state()
                 self._repo.update_generation_progress(
                     run.account_id, run.run_id, wait_reason=state.wait_reason
                 )
@@ -400,6 +445,7 @@ class StudyWorkflow:
                         (f"检测到{duplicates}张重复书页，已跳过。" if duplicates else "")
                         + f"这些位置还看不清：{details}。"
                         "请补拍对应位置，或按“第N页+位置：具体内容”补录文字。"
+                        "若确认是同节照片，请回复“确认第N页属于本节”；"
                         "不同小节的书页请在新对话上传。"
                     ),
                 }
@@ -411,7 +457,7 @@ class StudyWorkflow:
             ):
                 state.stage = "awaiting_pages"
                 state.wait_reason = "page_order"
-                self._states.save(run.account_id, run.conversation_id, state)
+                save_state()
                 self._repo.update_generation_progress(
                     run.account_id, run.run_id, wait_reason=state.wait_reason,
                 )
@@ -422,7 +468,7 @@ class StudyWorkflow:
                 }
             if duplicates and not added and not supplemented and run.attempt_number == 1:
                 state.stage = previous_stage
-                self._states.save(run.account_id, run.conversation_id, state)
+                save_state()
                 return {"wait": True, "answer": "书页重复，请检查页序后重新发送。"}
             if not state.pages:
                 return {"wait": True, "answer": "请上传本节书页照片后开始预习。"}
@@ -484,7 +530,7 @@ class StudyWorkflow:
             state.units = units
             state.stage = "preview"
             state.wait_reason = None
-            self._states.save(run.account_id, run.conversation_id, state)
+            save_state()
             return {}
 
         def preview() -> _GraphState:
@@ -541,18 +587,48 @@ class StudyWorkflow:
                 )
             }
 
+        def finish_pages() -> _GraphState:
+            state.stage = "tutoring"
+            state.wait_reason = None
+            state.page_update = None
+            state.questions = committed.questions
+            return {"updated_pages": state.model_dump(), "answer": (
+                (f"检测到{duplicate_count}张重复书页，已跳过。\n\n" if duplicate_count else "")
+                + f"已更新本节书页，共{len(state.pages)}页。"
+                "知识范围：" + "、".join(unit.title for unit in state.units)
+                + "。原有辅导问答与来源已保留，可以继续提问。"
+            )}
+
+        def tutoring() -> _GraphState:
+            existing = next((item for item in state.tutoring
+                             if item.user_message_id == run.user_message_id), None)
+            if existing is not None:
+                return {"answer": existing.answer, "tutoring": existing.model_dump()}
+            try:
+                exchange = tutor(self._service, run, state, user.content, invoke, stop_event)
+            except ValueError as exc:
+                raise StudyWorkflowError(
+                    current_node, "study_tutor_invalid", "辅导依据或结果未通过核验，请重试。"
+                ) from exc
+            return {"answer": exchange.answer, "tutoring": exchange.model_dump()}
+
         graph = StateGraph(_GraphState)
         graph.add_node("study.recognize", node("study.recognize", recognize))
         graph.add_node("study.map", node("study.map", map_units))
         graph.add_node("study.preview", node("study.preview", preview))
-        graph.add_edge(START, "study.recognize")
+        graph.add_node("study.tutor", node("study.tutor", tutoring))
+        graph.add_node("study.finish_pages", node("study.finish_pages", finish_pages))
+        graph.add_edge(START, "study.tutor" if state.stage == "tutoring"
+                       and not updating and not attachments else "study.recognize")
         graph.add_conditional_edges(
             "study.recognize",
             lambda result: END if result.get("wait") else "study.map",
             {END: END, "study.map": "study.map"},
         )
-        graph.add_edge("study.map", "study.preview")
+        graph.add_edge("study.map", "study.finish_pages" if updating else "study.preview")
         graph.add_edge("study.preview", END)
+        graph.add_edge("study.finish_pages", END)
+        graph.add_edge("study.tutor", END)
         saver = RepositoryCheckpointSaver(
             self._repo.database,
             account_id=run.account_id,
@@ -571,6 +647,21 @@ class StudyWorkflow:
                 None if saver.get_tuple(saver.run_config()) is not None else {}, config
             )
             answer = output.get("answer") or "已保存书页，请继续补拍。"
+            if stop_event is not None and stop_event.is_set():
+                raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
+            def persist_tutoring() -> None:
+                if output.get("updated_pages"):
+                    self._states.save_in_transaction(
+                        run.account_id, run.conversation_id,
+                        StudyState.model_validate(output["updated_pages"]),
+                    )
+                if output.get("tutoring"):
+                    exchange = StudyExchange.model_validate(output["tutoring"])
+                    if not any(item.user_message_id == exchange.user_message_id
+                               for item in state.tutoring):
+                        state.tutoring.append(exchange)
+                    self._states.save_in_transaction(run.account_id, run.conversation_id, state)
+
             self._repo.update_message_content(
                 run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
             )
@@ -586,9 +677,13 @@ class StudyWorkflow:
                 lock=last_lock,
                 started=started,
                 now=datetime.now(UTC),
+                persist_learning=persist_tutoring,
             )
             return None
         except StudyWorkflowError as exc:
+            if updating and current_node == "study.recognize":
+                state.wait_reason = "recognition_failed"
+                save_state()
             message_status = (
                 ChatMessageStatus.STOPPED if exc.code == "stopped" else ChatMessageStatus.ERROR
             )
@@ -608,6 +703,9 @@ class StudyWorkflow:
             on_event(StreamEvent(kind="error", error_code=exc.code, error_message=exc.message))
             return "error"
         except Exception:
+            if updating and current_node == "study.recognize":
+                state.wait_reason = "recognition_failed"
+                save_state()
             finalize_message(
                 self._repo,
                 run.account_id,
