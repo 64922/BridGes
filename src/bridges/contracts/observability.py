@@ -117,6 +117,10 @@ class AuditAction(str, Enum):
     # V2 Issue 12：校园通勤模块的高德 POI 检索与路线规划外发记录。
     # details 只含服务、检索词指纹与长度、状态码、尝试次数与耗时，不含检索词正文。
     CAMPUS_ROUTE_LOOKUP = "campus_route_lookup"
+    # V2 Issue 16：GitHub 项目推荐模块的公开仓库检索与证据读取外发记录。
+    # details 只含来源、端点分类与路径指纹、额度剩余、终止状态与耗时，
+    # 不含查询正文，也不含仓库标识。
+    GITHUB_REPOSITORY_LOOKUP = "github_repository_lookup"
     PLUGIN_INSTALL = "plugin_install"
     PLUGIN_UNINSTALL = "plugin_uninstall"
     PLUGIN_ENABLE = "plugin_enable"

@@ -8816,6 +8816,8 @@ export interface components {
             learning_resources?: components["schemas"]["LearningResourcesProjection"] | null;
             /** @description 本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。 */
             commute_route?: components["schemas"]["CommuteRouteProjection"] | null;
+            /** @description 本条助手消息的 GitHub 项目推荐状态（功能匹配、维护与许可证据）。 */
+            github_projects?: components["schemas"]["GithubProjectsProjection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -13846,6 +13848,500 @@ export interface components {
          * @enum {string}
          */
         GenreElementRole: "core_concept" | "analogy" | "analogy_boundary" | "action_relevance" | "learning_objective" | "prerequisite" | "comprehension_check" | "practice_pause" | "observation" | "analysis" | "interpretation" | "limitation" | "next_step" | "structure_suggestion" | "language_suggestion" | "citation_verification" | "argument_suggestion" | "ai_disclosure_reminder";
+        /**
+         * GithubContextSource
+         * @description 「它」指向的前文依据（可追溯：模块、原词与前文消息 ID）。
+         */
+        GithubContextSource: {
+            /**
+             * Kind
+             * @description 前文来源分类：paper_search／github_projects。
+             */
+            kind: string;
+            /**
+             * Label
+             * @description 面向用户的中文说明（例如「上一轮论文搜索」）。
+             */
+            label: string;
+            /**
+             * Phrase
+             * @description 前文里的原始词，逐字保留。
+             */
+            phrase: string;
+            /**
+             * Message Id
+             * @description 承载该原词的助手消息 ID（可追溯前文原话）。
+             */
+            message_id?: string | null;
+        };
+        /**
+         * GithubCoverage
+         * @description 一个推荐仓库相对用户 idea 的覆盖范围。
+         * @enum {string}
+         */
+        GithubCoverage: "whole" | "component";
+        /**
+         * GithubEvidenceKind
+         * @description 一条证据的来源等级（越低越弱，README 只是项目自述）。
+         * @enum {string}
+         */
+        GithubEvidenceKind: "metadata" | "readme" | "implementation";
+        /**
+         * GithubFeatureMatch
+         * @description 一条「idea 要点 → 仓库证据」的匹配判定（含证据类型与原文片段）。
+         */
+        GithubFeatureMatch: {
+            /**
+             * Feature
+             * @description 用户 idea 里的必要功能原词。
+             */
+            feature: string;
+            /**
+             * Matched
+             * @description 是否在该仓库的已取得证据里真实出现。
+             */
+            matched: boolean;
+            /** @description 命中证据的等级；未命中为 None。 */
+            evidence_kind?: components["schemas"]["GithubEvidenceKind"] | null;
+            /**
+             * Matched Terms
+             * @description 在证据文本里真实命中的关键词。
+             */
+            matched_terms?: string[];
+            /**
+             * Evidence
+             * @description 命中的真实文本片段或未命中的中文说明。
+             */
+            evidence: string;
+        };
+        /**
+         * GithubFileRead
+         * @description 一次真实读取到的仓库文件／目录（路径、类型与真实片段）。
+         */
+        GithubFileRead: {
+            /**
+             * Path
+             * @description 仓库内的真实路径。
+             */
+            path: string;
+            /**
+             * Kind
+             * @description file 或 dir。
+             */
+            kind: string;
+            /**
+             * Size
+             * @description 上游返回的字节数；目录为 None。
+             */
+            size?: number | null;
+            /**
+             * Sha
+             * @description 上游返回的内容指纹。
+             */
+            sha?: string | null;
+            /**
+             * Entries
+             * @description 目录读取到的直接子项名称（最多 30 条）。
+             */
+            entries?: string[];
+            /**
+             * Excerpt
+             * @description 文件读取到的真实文本片段（去 base64 后截断）。
+             */
+            excerpt?: string | null;
+        };
+        /**
+         * GithubImplementationCheck
+         * @description README 点名路径的实际核对结果（README 自述 vs 真实目录）。
+         */
+        GithubImplementationCheck: {
+            /**
+             * Claim
+             * @description README 里点名的路径／模块原文片段。
+             */
+            claim: string;
+            /**
+             * Path
+             * @description 在该仓库中核对的真实路径。
+             */
+            path: string;
+            /**
+             * Status
+             * @description confirmed（实际读取到存在）／missing（实际上游返回不存在）／unread（本轮没有读取，因此不下结论）。
+             */
+            status: string;
+            /**
+             * Evidence
+             * @description 中文依据说明。
+             */
+            evidence: string;
+        };
+        /**
+         * GithubLicenseCheck
+         * @description 许可证据：元数据字段与许可证文件是否真的读到。
+         */
+        GithubLicenseCheck: {
+            /**
+             * Detected
+             * @description 上游元数据是否标注了许可。
+             */
+            detected: boolean;
+            /**
+             * Spdx Id
+             * @description SPDX 标识（例如 MIT）。
+             */
+            spdx_id?: string | null;
+            /**
+             * Name
+             * @description 许可名称原文。
+             */
+            name?: string | null;
+            /**
+             * Path
+             * @description 仓库内许可文件路径。
+             */
+            path?: string | null;
+            /**
+             * License Url
+             * @description 上游给出的许可说明链接。
+             */
+            license_url?: string | null;
+            /**
+             * File Read
+             * @description 是否真的读取了许可文件内容。
+             * @default false
+             */
+            file_read: boolean;
+            /**
+             * Excerpt
+             * @description 许可文件读到的真实片段。
+             */
+            excerpt?: string | null;
+            /**
+             * Note
+             * @description 面向用户的中文结论（含未取得时的限制）。
+             */
+            note: string;
+        };
+        /**
+         * GithubMaintenanceEvidence
+         * @description 维护与活跃度证据（全部来自 API 元数据，含取得时间）。
+         */
+        GithubMaintenanceEvidence: {
+            /**
+             * Pushed At
+             * @description 最近推送时间。
+             */
+            pushed_at?: string | null;
+            /**
+             * Created At
+             * @description 创建时间。
+             */
+            created_at?: string | null;
+            /**
+             * Stars
+             * @description star 数（仅作辅助，不优先于功能匹配）。
+             * @default 0
+             */
+            stars: number;
+            /**
+             * Forks
+             * @description fork 数。
+             * @default 0
+             */
+            forks: number;
+            /**
+             * Open Issues
+             * @description 未关闭 issue 数。
+             * @default 0
+             */
+            open_issues: number;
+            /**
+             * Archived
+             * @description 是否只读归档。
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Is Fork
+             * @description 是否为复刻。
+             * @default false
+             */
+            is_fork: boolean;
+            /**
+             * Runnable Hints
+             * @description 根目录里实际读到的可运行线索（清单文件等）。
+             */
+            runnable_hints?: string[];
+            /**
+             * Note
+             * @description 面向用户的中文说明。
+             */
+            note: string;
+        };
+        /**
+         * GithubProjectStatus
+         * @description 一轮 GitHub 项目推荐的终态。
+         *
+         *     ``SUCCESS`` 只表示真的取得了可展示的仓库证据（API 元数据 + 至少一次
+         *     README 或实现文件读取）；只拿到 API 元数据时是 ``METADATA_ONLY``（如实
+         *     标注未读取 README 与实现文件，通常是上游限流）；检索有结果但没有一个
+         *     仓库覆盖 idea 的要点才是 ``EMPTY``。
+         * @enum {string}
+         */
+        GithubProjectStatus: "clarification" | "searching" | "success" | "metadata_only" | "empty" | "error" | "stopped";
+        /**
+         * GithubProjectsProjection
+         * @description GitHub 项目推荐对外的完整投影。
+         */
+        GithubProjectsProjection: {
+            status: components["schemas"]["GithubProjectStatus"];
+            /**
+             * Scenario
+             * @description 核心用户场景（来自原文）。
+             */
+            scenario: string;
+            /**
+             * Original Request
+             * @description 用户本轮原文，逐字保留。
+             */
+            original_request: string;
+            /**
+             * Features
+             * @description 必要功能原词。
+             */
+            features?: string[];
+            /**
+             * Tech Terms
+             * @description 可选技术词。
+             */
+            tech_terms?: string[];
+            /**
+             * Whole Idea
+             * @description 是否要找完整产品。
+             * @default true
+             */
+            whole_idea: boolean;
+            /**
+             * Component Terms
+             * @description 用户明说要找的组件能力原词。
+             */
+            component_terms?: string[];
+            /** @description idea 来自前文时的可追溯依据（AC5 的关联原话）。 */
+            context_source?: components["schemas"]["GithubContextSource"] | null;
+            /**
+             * Queries
+             * @description 每次外部调用的统一记录（查询词/条数/时间/错误）。
+             */
+            queries?: components["schemas"]["ModuleQueryRecord"][];
+            /**
+             * Recommendations
+             * @description 本轮真实取得证据并纳入推荐的仓库。
+             */
+            recommendations?: components["schemas"]["GithubRecommendation"][];
+            /**
+             * Rejected
+             * @description 被检索到但未纳入推荐的仓库与理由。
+             */
+            rejected?: components["schemas"]["GithubRejectedRepository"][];
+            /** @description 上游限流的真实状态。 */
+            rate_limit: components["schemas"]["GithubRateLimitState"];
+            /**
+             * Evidence Boundary
+             * @description 本轮证据边界与缺口的中文说明。
+             */
+            evidence_boundary?: string[];
+            /**
+             * Empty Reason
+             * @description 没有可推荐结果时的中文原因。
+             */
+            empty_reason?: string | null;
+            /**
+             * Retryable
+             * @description 失败是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Completed At
+             * @description 本轮收敛时间。
+             */
+            completed_at?: string | null;
+            /** @description 等待用户回答的澄清状态；无等待为 None。 */
+            pending?: components["schemas"]["ModuleWaitState"] | null;
+        };
+        /**
+         * GithubRateLimitState
+         * @description 上游限流的真实状态（额度用尽时保留可重试结论）。
+         *
+         *     只给出「是否撞上」与面向用户的说明：剩余额度与重置时刻属于检索内部日志
+         *     （``docs/v2/interaction.md`` §4），不进入投影，也不呈现给用户。
+         */
+        GithubRateLimitState: {
+            /**
+             * Limited
+             * @description 本轮是否真的撞上额度限制。
+             * @default false
+             */
+            limited: boolean;
+            /**
+             * Note
+             * @description 面向用户的中文说明。
+             */
+            note?: string | null;
+        };
+        /**
+         * GithubReadmeStatus
+         * @description README 的真实取得状态（缺失也是真实结果，不当作失败）。
+         * @enum {string}
+         */
+        GithubReadmeStatus: "read" | "not_found" | "too_large" | "not_fetched" | "error";
+        /**
+         * GithubRecommendation
+         * @description 一个纳入推荐的仓库：覆盖范围、功能匹配、维护与许可证据、借鉴角度。
+         */
+        GithubRecommendation: {
+            /**
+             * Rank
+             * @description 推荐序号（1 起，按功能匹配优先排序）。
+             */
+            rank: number;
+            /**
+             * Full Name
+             * @description owner/repo。
+             */
+            full_name: string;
+            /**
+             * Html Url
+             * @description 仓库直达链接。
+             */
+            html_url: string;
+            /** @description 整体项目还是组件项目。 */
+            coverage: components["schemas"]["GithubCoverage"];
+            /**
+             * Covers Parts
+             * @description 组件项目覆盖的 idea 要点；整体项目为空。
+             */
+            covers_parts?: string[];
+            /**
+             * Coverage Note
+             * @description 覆盖范围的中文说明。
+             */
+            coverage_note: string;
+            /**
+             * Description
+             * @description 元数据里的仓库简介原文。
+             */
+            description?: string | null;
+            /**
+             * Topics
+             * @description 元数据里的话题标签。
+             */
+            topics?: string[];
+            /**
+             * Language
+             * @description 元数据里的主要语言。
+             */
+            language?: string | null;
+            /**
+             * Feature Matches
+             * @description 逐条要点的匹配判定。
+             */
+            feature_matches?: components["schemas"]["GithubFeatureMatch"][];
+            /**
+             * Matched Feature Count
+             * @description 命中的要点数。
+             * @default 0
+             */
+            matched_feature_count: number;
+            /**
+             * Evidence Kinds
+             * @description 本轮真实取得的证据等级（去重、弱→强）。
+             */
+            evidence_kinds?: components["schemas"]["GithubEvidenceKind"][];
+            /** @description README 的真实取得状态。 */
+            readme_status: components["schemas"]["GithubReadmeStatus"];
+            /**
+             * Readme Url
+             * @description README 页面链接。
+             */
+            readme_url?: string | null;
+            /**
+             * Readme Excerpt
+             * @description README 里命中原词的片段（自述，已截断）。
+             */
+            readme_excerpt?: string | null;
+            /**
+             * Files Read
+             * @description 实际读取到的实现文件／目录。
+             */
+            files_read?: components["schemas"]["GithubFileRead"][];
+            /**
+             * Implementation Checks
+             * @description README 点名路径的实际核对结果。
+             */
+            implementation_checks?: components["schemas"]["GithubImplementationCheck"][];
+            /** @description 维护与活跃度证据。 */
+            maintenance: components["schemas"]["GithubMaintenanceEvidence"];
+            /** @description 许可证据。 */
+            license: components["schemas"]["GithubLicenseCheck"];
+            /**
+             * Reason Zh
+             * @description 纳入推荐并排在此位次的中文理由。
+             */
+            reason_zh: string;
+            /**
+             * Borrow Note
+             * @description 可借鉴角度的中文说明（只依据已取得的证据）。
+             */
+            borrow_note: string;
+            /**
+             * Strengths
+             * @description 优点（有证据支持的部分）。
+             */
+            strengths?: string[];
+            /**
+             * Limitations
+             * @description 局限（证据缺口与未核实的部分）。
+             */
+            limitations?: string[];
+            /**
+             * Insight Zh
+             * @description 模型在给定证据范围内写的中文归纳；未生成时为 None。
+             */
+            insight_zh?: string | null;
+            /**
+             * Retrieved At
+             * Format: date-time
+             * @description 本轮证据取得时间。
+             */
+            retrieved_at: string;
+        };
+        /**
+         * GithubRejectedRepository
+         * @description 被检索到但没有纳入推荐的仓库与理由（留下痕迹，不静默丢弃）。
+         */
+        GithubRejectedRepository: {
+            /** Full Name */
+            full_name: string;
+            /** Url */
+            url: string;
+            /**
+             * Reason
+             * @description 未纳入推荐的中文依据。
+             */
+            reason: string;
+        };
         /**
          * GrantPermission
          * @description Fine-grained permission on a shared project object.

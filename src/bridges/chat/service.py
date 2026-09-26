@@ -30,6 +30,8 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
+from bridges.github.contracts import GithubProjectsProjection
+from bridges.github.service import GithubProjectsService
 from bridges.paper.service import PaperSearchService
 from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.tieba.service import TiebaResearchService
@@ -265,6 +267,7 @@ class ChatService:
         tieba_research_service: TiebaResearchService | None = None,
         learning_resources_service: LearningResourcesService | None = None,
         commute_service: CommuteService | None = None,
+        github_projects_service: GithubProjectsService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -290,6 +293,9 @@ class ChatService:
         #: V2 Issue 12：校园通勤模块子图（显式 module_id=commute 时派发；
         #: 未装配或未配置高德凭据时如实降级，绝不改走普通对话或编造路线）。
         self._commute = commute_service
+        #: V2 Issue 16：GitHub 项目推荐模块子图（显式 module_id=github 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._github_projects = github_projects_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -2040,6 +2046,11 @@ class ChatService:
         return self._paper_search
 
     @property
+    def github_projects_service(self) -> GithubProjectsService | None:
+        """GitHub 项目推荐子图服务（V2 Issue 16）；未装配时为 None。"""
+        return self._github_projects
+
+    @property
     def tieba_research_service(self) -> TiebaResearchService | None:
         """贴吧信息搜集子图服务（V2 Issue 14）；未装配时为 None。"""
         return self._tieba_research
@@ -2562,6 +2573,12 @@ class ChatService:
             tieba_research=(
                 TiebaResearchProjection.model_validate(message.tieba_research)
                 if message.tieba_research is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            github_projects=(
+                GithubProjectsProjection.model_validate(message.github_projects)
+                if message.github_projects is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

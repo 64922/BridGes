@@ -2,15 +2,15 @@ import type { IconName } from "@/components/design-system/Icon";
 import type { ChatMessageProjection } from "@/lib/api";
 
 /**
- * V2 Issue 11/12/13/14：日常聊天可显式选择的模块（论文搜索、校园通勤、学习资料
- * 推荐、贴吧信息搜集）。
+ * V2 Issue 11/12/13/14/16：日常聊天可显式选择的模块（论文搜索、校园通勤、
+ * 学习资料推荐、贴吧信息搜集、GitHub 项目推荐）。
  *
  * 这里只有菜单/历史标签用的中文名称与说明；模块的检索行为完全由服务端
  * 在显式派发后执行。``id`` 与后端 ``ChatModuleId`` 取值一致，
  * 随每条用户消息持久化——历史的模块标识只读消息记录，不随新选择改变。
  */
 export interface ChatModuleOption {
-  id: "paper" | "commute" | "resources" | "tieba";
+  id: "paper" | "commute" | "resources" | "tieba" | "github";
   label: string;
   description: string;
   icon: IconName;
@@ -40,6 +40,12 @@ export const CHAT_MODULES: readonly ChatModuleOption[] = [
     label: "贴吧信息搜集",
     description: "只看华东交通大学吧的公开帖子，拿不到回复时只给帖链",
     icon: "tiebaThread",
+  },
+  {
+    id: "github",
+    label: "GitHub 项目推荐",
+    description: "按你的 idea 检索公开仓库，逐项给出功能匹配与维护许可证据",
+    icon: "githubRepo",
   },
 ];
 
@@ -79,6 +85,7 @@ export function pendingClarificationModule(
       message.paper_search,
       message.tieba_research,
       message.learning_resources,
+      message.github_projects,
     ]) {
       if (!projection) continue;
       if (projection.pending) {

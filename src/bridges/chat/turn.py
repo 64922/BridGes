@@ -1950,6 +1950,7 @@ def finalize_message(
     tieba_research: dict[str, Any] | None = None,
     learning_resources: dict[str, Any] | None = None,
     commute_route: dict[str, Any] | None = None,
+    github_projects: dict[str, Any] | None = None,
 ) -> None:
     """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。
 
@@ -1981,6 +1982,7 @@ def finalize_message(
         tieba_research=tieba_research,
         learning_resources=learning_resources,
         commute_route=commute_route,
+        github_projects=github_projects,
         teaching=teaching,
         persist_learning=persist_learning,
     )
