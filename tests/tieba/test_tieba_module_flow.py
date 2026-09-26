@@ -651,17 +651,25 @@ def test_stop_during_search_marks_message_stopped(
 
 
 def test_other_modules_still_rejected_and_no_silent_search(
-    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    sqlite_app: Any,
+    client: TestClient,
+    generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """其他未接入模块仍被显式拒绝，且不产生任何检索。"""
+    """请求契约内但子图尚未接入的模块仍被显式拒绝，且不产生任何检索。"""
     _register(client)
+    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
+    # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
+    monkeypatch.setattr(
+        "bridges.chat.graph.AVAILABLE_MODULE_IDS",
+        frozenset({"paper", "commute", "resources", "tieba", "github"}),
+    )
     port = _FakeSearchPort(hits=[])
     _install_tieba_service(sqlite_app, port=port)
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
 
-    # 反例取调用时尚未接入的 career（Issue 12 合并后 commute 已可用）。
-    _send(client, conversation_id, "帮我规划一下职业", module_id="career")
+    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )

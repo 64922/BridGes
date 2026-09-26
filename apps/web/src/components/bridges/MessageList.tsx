@@ -8,6 +8,7 @@ import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools
 import { chatAttachmentContentUrl } from "@/lib/api";
 import type {
   ArxivSearchProjection,
+  CareerPlanProjection,
   ChatAttachmentProjection,
   ChatModuleId,
   CommuteRouteProjection,
@@ -39,6 +40,7 @@ import { ModuleSuggestionCard } from "./chat/ModuleSuggestionCard";
 import { PaperSearchCard } from "./chat/PaperSearchCard";
 import { GithubProjectsCard } from "./chat/GithubProjectsCard";
 import { TiebaResearchCard } from "./chat/TiebaResearchCard";
+import { CareerPlanCard } from "./chat/CareerPlanCard";
 import { LearningResourcesCard } from "./chat/LearningResourcesCard";
 import { CommuteRouteCard } from "./chat/CommuteRouteCard";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
@@ -111,6 +113,13 @@ export const NODE_LABEL: Record<string, string> = {
   "github.inspect": "核对仓库证据",
   "github.rank": "按功能匹配排序",
   "github.present": "整理推荐结果",
+  // V2 Issue 15：职业规划子图节点（真实节点名，不做美化猜测）。
+  "career.parse": "理解求职目标",
+  "career.plan": "制定检索计划",
+  "career.collect": "读取公开岗位",
+  "career.filter": "筛选匹配岗位",
+  "career.analyze": "归纳技能与薪资",
+  "career.advise": "给出求职建议",
   // V2 Issue 13：资料子图节点（显式派发后逐步显示真实进度）。
   "resources.parse": "理解学习需求",
   "resources.search_books": "检索图书书目",
@@ -172,6 +181,8 @@ export interface ChatMessage {
   paperSearch?: PaperSearchProjection | null;
   /** V2 Issue 14：本条助手消息的贴吧信息搜集状态（已读帖子/帖链降级/官方核验） */
   tiebaResearch?: TiebaResearchProjection | null;
+  /** V2 Issue 15：本条助手消息的职业规划状态（检索计划/岗位样本/剔除依据/统计口径） */
+  careerPlan?: CareerPlanProjection | null;
   /** V2 Issue 13：本条助手消息的学习资料推荐状态（原词/层次/图书与视频清单） */
   learningResources?: LearningResourcesProjection | null;
   /** V2 Issue 16：本条助手消息的 GitHub 项目推荐状态（候选仓库/功能匹配/维护与许可） */
@@ -778,6 +789,16 @@ export function MessageList({
                 {conversationId && (
                   <TiebaResearchCard
                     research={message.tiebaResearch ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* V2 Issue 15：职业规划结果卡（检索计划/岗位样本/剔除依据/
+                    统计口径与单位/建议/证据边界/失败与重试）。 */}
+                {conversationId && (
+                  <CareerPlanCard
+                    plan={message.careerPlan ?? null}
                     streaming={message.status === "streaming"}
                     onRetry={() => onRetry?.(message.id)}
                   />

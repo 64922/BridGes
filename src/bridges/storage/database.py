@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 57
+SCHEMA_VERSION = 58
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2561,6 +2561,17 @@ MIGRATIONS: dict[int, list[str]] = {
     57: [
         """
         ALTER TABLE messages ADD COLUMN github_projects TEXT
+        """,
+    ],
+    # Issue 15（V2 职业规划）：messages 增加职业规划模块的 JSON 投影列。
+    # 保存实际查询词与筛选条件、逐条岗位字段（链接/公司/城市/薪资原文/发布
+    # 日期/要求）、剔除依据、技能与薪资统计口径、建议与失败分类；旧行通过
+    # DEFAULT NULL 自然兼容，其余模块投影列保持原样只读。
+    # 编号 58：57 已被先合并的 Issue 16 占用，按「已在 main 上线者保留编号」原则
+    # 让位，避免已升到 v57 的库静默跳过本列。
+    58: [
+        """
+        ALTER TABLE messages ADD COLUMN career_plan TEXT
         """,
     ],
 }

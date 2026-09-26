@@ -60,6 +60,8 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       paperSearch: latest.paper_search ?? null,
       // V2 Issue 14：贴吧信息搜集投影（已读帖子/帖链降级/官方核验）
       tiebaResearch: latest.tieba_research ?? null,
+      // V2 Issue 15：职业规划投影（检索计划/岗位样本/剔除依据/统计口径）
+      careerPlan: latest.career_plan ?? null,
       // V2 Issue 13：学习资料推荐投影（图书与哔哩哔哩视频清单）
       learningResources: latest.learning_resources ?? null,
       // V2 Issue 16：GitHub 项目推荐投影（逐仓库的功能匹配、维护与许可证据）

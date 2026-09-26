@@ -135,6 +135,20 @@ export type TiebaReply = components["schemas"]["TiebaReply"];
 export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];
 export type TiebaRejectedCandidate = components["schemas"]["TiebaRejectedCandidate"];
 export type TiebaOfficialCheck = components["schemas"]["TiebaOfficialCheck"];
+// V2 Issue 15：职业规划模块投影（检索计划、公开岗位样本、剔除依据、统计口径与建议）。
+export type CareerPlanProjection = components["schemas"]["CareerPlanProjection"];
+export type CareerPlanStatus = components["schemas"]["CareerPlanStatus"];
+export type CareerQueryPlanItem = components["schemas"]["CareerQueryPlanItem"];
+export type JobSample = components["schemas"]["JobSample"];
+export type JobReadStatus = components["schemas"]["JobReadStatus"];
+export type CareerRejectedSample = components["schemas"]["CareerRejectedSample"];
+export type CareerCandidateLink = components["schemas"]["CareerCandidateLink"];
+export type CareerAnalysis = components["schemas"]["CareerAnalysis"];
+export type SalaryInterval = components["schemas"]["SalaryInterval"];
+export type SkillStat = components["schemas"]["SkillStat"];
+export type CityCount = components["schemas"]["CityCount"];
+export type CareerAdviceItem = components["schemas"]["CareerAdviceItem"];
+export type AdjacentJobSuggestion = components["schemas"]["AdjacentJobSuggestion"];
 // V2 Issue 16：GitHub 项目推荐模块投影（逐仓库的功能匹配、维护与许可证据）。
 export type GithubProjectsProjection = components["schemas"]["GithubProjectsProjection"];
 export type GithubProjectStatus = components["schemas"]["GithubProjectStatus"];

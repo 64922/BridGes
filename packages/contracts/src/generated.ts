@@ -6443,6 +6443,28 @@ export interface components {
             password: string;
         };
         /**
+         * AdjacentJobSuggestion
+         * @description 相邻岗位建议（单列，绝不混入主样本的薪资与技能统计）。
+         */
+        AdjacentJobSuggestion: {
+            /**
+             * Title
+             * @description 相邻岗位名。
+             */
+            title: string;
+            /**
+             * Reason
+             * @description 为什么单列这一项。
+             */
+            reason: string;
+            /**
+             * Sample Count
+             * @description 本轮检索到的该岗位样本数。
+             * @default 0
+             */
+            sample_count: number;
+        };
+        /**
          * AdvanceStageRequest
          * @description 推进失效事件阶段。
          */
@@ -7591,6 +7613,79 @@ export interface components {
             source_version?: string | null;
         };
         /**
+         * CareerAdviceItem
+         * @description ``career.advise`` 的一条建议（区分证据与推断）。
+         */
+        CareerAdviceItem: {
+            /**
+             * Kind
+             * @description 建议分类：skill／project／action。
+             */
+            kind: string;
+            /**
+             * Title
+             * @description 建议标题。
+             */
+            title: string;
+            /**
+             * Detail
+             * @description 建议正文。
+             */
+            detail: string;
+            /**
+             * Basis
+             * @description 依据：命中的样本要求原文或样本链接。
+             */
+            basis?: string[];
+            /**
+             * Inference
+             * @description 是否为推断（不是样本原文直接支持的内容）。
+             */
+            inference: boolean;
+        };
+        /**
+         * CareerAnalysis
+         * @description ``career.analyze`` 的分析结果（只基于主样本，附口径说明）。
+         */
+        CareerAnalysis: {
+            /**
+             * Sample Count
+             * @description 主样本岗位数。
+             */
+            sample_count: number;
+            /** City Composition */
+            city_composition?: components["schemas"]["CityCount"][];
+            /**
+             * Published Span
+             * @description 样本发布日期范围；无绝对日期为 None。
+             */
+            published_span?: string | null;
+            /** Skill Stats */
+            skill_stats?: components["schemas"]["SkillStat"][];
+            /** Salary Intervals */
+            salary_intervals?: components["schemas"]["SalaryInterval"][];
+            /**
+             * Incomparable Notes
+             * @description 未并入区间的薪资原文与原因。
+             */
+            incomparable_notes?: string[];
+            /**
+             * Sample Scope Note
+             * @description 本轮样本口径说明（样本量、日期、地区）。
+             */
+            sample_scope_note: string;
+            /**
+             * Small Sample
+             * @description 样本量是否不足以支撑总体推断。
+             */
+            small_sample: boolean;
+            /**
+             * Overall Inference Stopped
+             * @description 样本不足时是否已停止总体推断（不产出全国市场结论）。
+             */
+            overall_inference_stopped: boolean;
+        };
+        /**
          * CareerAssumption
          * @description 待验证假设：说明下一步核查方式，不得包装成结论。
          */
@@ -7625,6 +7720,34 @@ export interface components {
              * @description 下一步核查方式（查什么来源、如何验证）。
              */
             verification_next_step?: string | null;
+        };
+        /**
+         * CareerCandidateLink
+         * @description 仅有搜索摘要时的链接降级（未核实，不纳入样本）。
+         */
+        CareerCandidateLink: {
+            /** Url */
+            url: string;
+            /**
+             * Title
+             * @description 搜索服务给出的标题（未核实页面）。
+             */
+            title: string;
+            /**
+             * Source
+             * @description 来源标识。
+             */
+            source: string;
+            /**
+             * Source Label
+             * @description 来源中文名。
+             */
+            source_label: string;
+            /**
+             * Note
+             * @description 为什么没有纳入样本的中文说明。
+             */
+            note: string;
         };
         /**
          * CareerEvidenceKind
@@ -7778,6 +7901,133 @@ export interface components {
              */
             rationale?: string | null;
         };
+        /**
+         * CareerPlanProjection
+         * @description 职业规划模块对外的完整投影。
+         */
+        CareerPlanProjection: {
+            status: components["schemas"]["CareerPlanStatus"];
+            /**
+             * Topic
+             * @description 本轮分析的岗位主题（中文）。
+             */
+            topic: string;
+            /**
+             * Original Request
+             * @description 用户原始请求，逐字保留。
+             */
+            original_request: string;
+            /**
+             * Job Terms
+             * @description 检索用岗位锚点原话。
+             */
+            job_terms?: string[];
+            /**
+             * Family Title
+             * @description 命中的岗位族名称。
+             */
+            family_title?: string | null;
+            /**
+             * Stage
+             * @description 毕业阶段原话。
+             */
+            stage?: string | null;
+            /**
+             * Graduation Year
+             * @description 届别年份。
+             */
+            graduation_year?: number | null;
+            /**
+             * Cities
+             * @description 期望城市。
+             */
+            cities?: string[];
+            /**
+             * Constraints
+             * @description 其他约束原话。
+             */
+            constraints?: string[];
+            /**
+             * Plan
+             * @description 本轮实际执行的检索计划（来源、查询词、筛选条件）。
+             */
+            plan?: components["schemas"]["CareerQueryPlanItem"][];
+            /**
+             * Queries
+             * @description 每次外部调用的统一记录（查询词/条数/时间/错误）。
+             */
+            queries?: components["schemas"]["ModuleQueryRecord"][];
+            /**
+             * Samples
+             * @description 公开可读且岗位与城市都匹配的主样本。
+             */
+            samples?: components["schemas"]["JobSample"][];
+            /**
+             * Candidate Links
+             * @description 未核实或未读到的候选链接（不纳入样本）。
+             */
+            candidate_links?: components["schemas"]["CareerCandidateLink"][];
+            /**
+             * Rejected
+             * @description 被剔除的候选与剔除依据。
+             */
+            rejected?: components["schemas"]["CareerRejectedSample"][];
+            /** @description 技能与薪资分析；样本为空时为 None。 */
+            analysis?: components["schemas"]["CareerAnalysis"] | null;
+            /**
+             * Advices
+             * @description 面向用户的可执行建议。
+             */
+            advices?: components["schemas"]["CareerAdviceItem"][];
+            /**
+             * Adjacent Suggestions
+             * @description 相邻岗位单列建议。
+             */
+            adjacent_suggestions?: components["schemas"]["AdjacentJobSuggestion"][];
+            /**
+             * Evidence Boundary
+             * @description 本轮证据边界与缺口的中文说明。
+             */
+            evidence_boundary?: string[];
+            /**
+             * Empty Reason
+             * @description 没有结果时的中文原因。
+             */
+            empty_reason?: string | null;
+            /**
+             * Retryable
+             * @description 失败是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Completed At
+             * @description 本轮收敛时间。
+             */
+            completed_at?: string | null;
+            /** @description 等待用户回答的澄清状态；无等待为 None。 */
+            pending?: components["schemas"]["ModuleWaitState"] | null;
+        };
+        /**
+         * CareerPlanStatus
+         * @description 一轮职业规划分析的终态。
+         *
+         *     ``SUCCESS`` 只表示真的读到了公开可读且匹配的岗位；只拿到搜索链接时是
+         *     ``LINKS_ONLY``（明确标注未核实、未纳入样本），检索完全没有可用候选才是
+         *     ``EMPTY``。
+         * @enum {string}
+         */
+        CareerPlanStatus: "clarification" | "success" | "links_only" | "empty" | "error" | "stopped";
         /**
          * CareerPlanningOutputContract
          * @description 生涯规划的模型输出合同（六类 + 正文 + 边界声明 + 未决问题）。
@@ -7988,6 +8238,68 @@ export interface components {
          * @enum {string}
          */
         CareerPlanningStatus: "done" | "error";
+        /**
+         * CareerQueryPlanItem
+         * @description ``career.plan`` 的一条检索计划（实际发送的查询词与筛选条件）。
+         */
+        CareerQueryPlanItem: {
+            /**
+             * Source
+             * @description 来源标识：boss／corporate／campus。
+             */
+            source: string;
+            /**
+             * Source Label
+             * @description 来源中文名。
+             */
+            source_label: string;
+            /**
+             * Query
+             * @description 实际发送的最小查询词。
+             */
+            query: string;
+            /**
+             * Reason
+             * @description 为什么这样查。
+             */
+            reason: string;
+            /**
+             * Filters
+             * @description 本轮对来源结果施加的筛选条件。
+             */
+            filters?: string[];
+        };
+        /**
+         * CareerRejectedSample
+         * @description 被主样本剔除的候选与剔除依据（不静默丢弃）。
+         */
+        CareerRejectedSample: {
+            /**
+             * Url
+             * @description 候选链接。
+             */
+            url: string;
+            /**
+             * Title
+             * @description 候选岗位名（未核实时为搜索标题）。
+             */
+            title: string;
+            /**
+             * Company
+             * @description 公司名；未读到为 None。
+             */
+            company?: string | null;
+            /**
+             * Kind
+             * @description 剔除分类：adjacent／city／city_unverified／expired／duplicate／not_job／title_mismatch。
+             */
+            kind: string;
+            /**
+             * Evidence
+             * @description 剔除依据的中文说明。
+             */
+            evidence: string;
+        };
         /**
          * CareerReviewItem
          * @description 一条确定性复核结果（事实证据门/引用核验/过时/冲突标注）。
@@ -8812,6 +9124,8 @@ export interface components {
             module_suggestion?: components["schemas"]["ModuleSuggestionProjection"] | null;
             /** @description 本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。 */
             tieba_research?: components["schemas"]["TiebaResearchProjection"] | null;
+            /** @description 本条助手消息的职业规划状态（岗位样本与统计口径）。 */
+            career_plan?: components["schemas"]["CareerPlanProjection"] | null;
             /** @description 本条助手消息的学习资料推荐状态（图书与视频清单）。 */
             learning_resources?: components["schemas"]["LearningResourcesProjection"] | null;
             /** @description 本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。 */
@@ -9804,6 +10118,16 @@ export interface components {
          * @enum {string}
          */
         CitationVerificationStatus: "verified" | "stale" | "unlocatable" | "source_revoked" | "source_superseded";
+        /**
+         * CityCount
+         * @description 岗位样本的城市构成。
+         */
+        CityCount: {
+            /** City */
+            city: string;
+            /** Count */
+            count: number;
+        };
         /**
          * Claim
          * @description A single scientific proposition produced from retrieval and validation.
@@ -16095,6 +16419,113 @@ export interface components {
          */
         InviteTokenStatus: "pending" | "accepted" | "revoked" | "expired";
         /**
+         * JobReadStatus
+         * @description 单个岗位页的真实读取结果分类。
+         * @enum {string}
+         */
+        JobReadStatus: "read" | "partial" | "access_restricted" | "unrecognized" | "not_found" | "timeout" | "error" | "cancelled";
+        /**
+         * JobSample
+         * @description 一个公开可读、岗位与城市都匹配的岗位样本。
+         *
+         *     不可访问的字段留空（``None``／空列表），绝不用模型知识或邻近岗位填充。
+         */
+        JobSample: {
+            /**
+             * Url
+             * @description 岗位直达链接。
+             */
+            url: string;
+            /**
+             * Source
+             * @description 来源标识：boss／corporate／campus。
+             */
+            source: string;
+            /**
+             * Source Label
+             * @description 来源中文名。
+             */
+            source_label: string;
+            /**
+             * Title
+             * @description 页面上的岗位名原文。
+             */
+            title: string;
+            /**
+             * Company
+             * @description 公司名原文。
+             */
+            company?: string | null;
+            /**
+             * City
+             * @description 城市原文。
+             */
+            city?: string | null;
+            /**
+             * Salary Raw
+             * @description 薪资原文。
+             */
+            salary_raw?: string | null;
+            /**
+             * Published Raw
+             * @description 发布日期原文。
+             */
+            published_raw?: string | null;
+            /**
+             * Published Date
+             * @description 能确定为绝对日期时的发布日期；相对说法为 None。
+             */
+            published_date?: string | null;
+            /**
+             * Experience
+             * @description 经验要求原文。
+             */
+            experience?: string | null;
+            /**
+             * Education
+             * @description 学历要求原文。
+             */
+            education?: string | null;
+            /**
+             * Requirements
+             * @description 页面上的能力要求原文条目。
+             */
+            requirements?: string[];
+            /**
+             * Skills
+             * @description 从能力要求原文里命中的技能关键词。
+             */
+            skills?: string[];
+            /**
+             * Title Evidence
+             * @description 岗位名匹配目标岗位的依据说明。
+             */
+            title_evidence: string;
+            /**
+             * City Evidence
+             * @description 城市匹配的核对依据说明。
+             */
+            city_evidence: string;
+            /**
+             * Retrieved At
+             * Format: date-time
+             * @description 实际抓取时间。
+             */
+            retrieved_at: string;
+            /** @description 读取结果分类。 */
+            read_status: components["schemas"]["JobReadStatus"];
+            /**
+             * Error Code
+             * @description 未取得内容时的分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 未取得内容时的中文原因。
+             */
+            error_message?: string | null;
+        };
+        /**
          * KeyEpoch
          * @description A key epoch under which device-local objects are encrypted.
          *
@@ -21090,6 +21521,52 @@ export interface components {
             context_envelope: components["schemas"]["RunContextEnvelope"];
         };
         /**
+         * SalaryInterval
+         * @description 同一计薪单位下的薪资区间（样本量与原文都留痕）。
+         */
+        SalaryInterval: {
+            /**
+             * Unit
+             * @description 计薪单位：元/月、元/天、元/年。
+             */
+            unit: string;
+            /**
+             * Sample Count
+             * @description 该单位下的岗位样本数。
+             */
+            sample_count: number;
+            /**
+             * Amount Min
+             * @description 区间下限（元）。
+             */
+            amount_min: number;
+            /**
+             * Amount Max
+             * @description 区间上限（元）。
+             */
+            amount_max: number;
+            /**
+             * Amount Median
+             * @description 样本中点中位数（元）。
+             */
+            amount_median: number;
+            /**
+             * Cities
+             * @description 该区间覆盖的城市。
+             */
+            cities?: string[];
+            /**
+             * Raws
+             * @description 该区间用到的薪资原文。
+             */
+            raws?: string[];
+            /**
+             * Small Sample
+             * @description 样本量是否不足以支撑总体推断（此时不称为市场均值）。
+             */
+            small_sample: boolean;
+        };
+        /**
          * SandboxDependency
          * @description 沙箱运行的依赖项记录。
          */
@@ -22153,6 +22630,24 @@ export interface components {
             opinion: string;
             /** @default approve */
             conclusion: components["schemas"]["AttestationConclusion"];
+        };
+        /**
+         * SkillStat
+         * @description 技能关键词统计（只统计主样本原文里命中的词）。
+         */
+        SkillStat: {
+            /** Term */
+            term: string;
+            /**
+             * Count
+             * @description 出现该词的样本数。
+             */
+            count: number;
+            /**
+             * Urls
+             * @description 来源样本链接。
+             */
+            urls?: string[];
         };
         /**
          * Source

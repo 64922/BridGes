@@ -76,6 +76,11 @@ from bridges.tieba.official import HttpOfficialSiteReader
 from bridges.tieba.reading import HttpTiebaThreadReader
 from bridges.tieba.searching import WebSearchServiceAdapter
 from bridges.tieba.service import TiebaResearchService
+from bridges.career_plan.collecting import HttpJobPageReader
+from bridges.career_plan.searching import (
+    WebSearchServiceAdapter as CareerWebSearchAdapter,
+)
+from bridges.career_plan.service import CareerPlanService
 from bridges.paper.sources import (
     ENRICH_TIMEOUT_SECONDS,
     ArxivPaperSource,
@@ -1430,6 +1435,14 @@ def create_app(
         app.router.add_event_handler(
             "shutdown", app.state.tieba_research_service.close
         )
+        # V2 Issue 15：职业规划模块子图——检索同样复用唯一通用公网搜索服务，
+        # 岗位页按公开 GET 有界读取；只把公开可读且岗位与城市都匹配的岗位纳入
+        # 主样本，读不到页面时如实降级为「未核实链接」。
+        app.state.career_plan_service = CareerPlanService(
+            search=CareerWebSearchAdapter(app.state.web_search_service),
+            reader=HttpJobPageReader(),
+        )
+        app.router.add_event_handler("shutdown", app.state.career_plan_service.close)
         # V2 Issue 16：GitHub 项目推荐模块子图——公开仓库检索与证据读取都走
         # GitHub 官方只读 REST API（有限缓存、额度退避与脱敏披露审计），
         # README 只当项目自述，实现文件证据来自实际读取到的路径与内容。
@@ -1494,6 +1507,7 @@ def create_app(
             tieba_research_service=getattr(
                 app.state, "tieba_research_service", None
             ),
+            career_plan_service=getattr(app.state, "career_plan_service", None),
             github_projects_service=getattr(
                 app.state, "github_projects_service", None
             ),

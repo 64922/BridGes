@@ -517,6 +517,24 @@ describe("Composer 显式模块菜单（V2 Issue 11）", () => {
     expect(screen.queryByTestId("composer-module-chip")).toBeNull();
   });
 
+  // V2 Issue 15：职业规划与其他模块共用同一套菜单/chip 机制。
+  it("`+` 菜单可选择职业规划，chip 可移除且文字不丢失", () => {
+    render(<ModuleHarness />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "我想找 Java 后端开发的工作，城市南昌" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加功能或文件" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /职业规划/ }));
+
+    expect(screen.getByTestId("composer-module-chip").textContent).toContain("职业规划");
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "我想找 Java 后端开发的工作，城市南昌"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "移除职业规划模块" }));
+  });
+
   // V2 Issue 16：GitHub 项目推荐与其他模块共用同一套菜单/chip 机制。
   it("`+` 菜单可选择 GitHub 项目推荐，chip 可移除且文字不丢失", () => {
     render(<ModuleHarness />);

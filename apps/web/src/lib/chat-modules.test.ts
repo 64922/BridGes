@@ -8,6 +8,7 @@ import {
   pendingClarificationModule,
 } from "./chat-modules";
 import type {
+  CareerPlanProjection,
   ChatMessageProjection,
   CommuteRouteProjection,
   GithubProjectsProjection,
@@ -104,6 +105,7 @@ function message(
   search: PaperSearchProjection | null,
   tieba: TiebaResearchProjection | null = null,
   resources: LearningResourcesProjection | null = null,
+  career: CareerPlanProjection | null = null,
   github: GithubProjectsProjection | null = null
 ): ChatMessageProjection {
   return {
@@ -116,6 +118,7 @@ function message(
     paper_search: search,
     tieba_research: tieba,
     learning_resources: resources,
+    career_plan: career,
     github_projects: github,
     created_at: "2026-09-20T10:00:00Z",
     updated_at: "2026-09-20T10:00:01Z",
@@ -194,6 +197,37 @@ function commuteMessage(
   };
 }
 
+/** 职业规划投影：只填本测试关心的字段，其余用真实的完整形态。 */
+function careerPlan(overrides: Partial<CareerPlanProjection> = {}): CareerPlanProjection {
+  return {
+    status: "success",
+    topic: "后端开发",
+    original_request: "我想找 Java 后端开发的工作，城市南昌",
+    job_terms: ["Java 后端开发"],
+    family_title: "后端开发",
+    stage: null,
+    graduation_year: null,
+    cities: ["南昌"],
+    constraints: [],
+    plan: [],
+    queries: [],
+    samples: [],
+    candidate_links: [],
+    rejected: [],
+    analysis: null,
+    advices: [],
+    adjacent_suggestions: [],
+    evidence_boundary: [],
+    empty_reason: null,
+    retryable: false,
+    error_code: null,
+    error_message: null,
+    completed_at: null,
+    pending: null,
+    ...overrides,
+  };
+}
+
 const pendingPaperClarification: PaperSearchProjection = paperSearch({
   status: "clarification",
   pending: {
@@ -226,18 +260,20 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(chatModuleIcon("resources")).toBe("learningProject");
     expect(chatModuleLabel("github")).toBe("GitHub 项目推荐");
     expect(chatModuleIcon("github")).toBe("githubRepo");
-    // 仍未接入的模块没有中文名：宁可不显示标签，也不在中文界面回显英文枚举值。
-    expect(chatModuleLabel("career")).toBeNull();
-    expect(chatModuleIcon("career")).toBe("chatBubble");
+    // 六个日常模块已全部接入；未知（或尚未接入的）取值没有中文名：
+    // 宁可不显示标签，也不在中文界面回显英文枚举值。
+    expect(chatModuleLabel("unknown_module")).toBeNull();
+    expect(chatModuleIcon("unknown_module")).toBe("chatBubble");
     expect(chatModuleLabel(null)).toBeNull();
   });
 
-  it("菜单里已接入模块的 ID 与后端枚举一致", () => {
+  it("菜单里六个已接入模块的 ID 与后端枚举一致", () => {
     expect(CHAT_MODULES.map((module) => module.id)).toEqual([
       "paper",
       "commute",
       "resources",
       "tieba",
+      "career",
       "github",
     ]);
   });
@@ -341,6 +377,63 @@ describe("chat-modules（V2 Issue 14 贴吧）", () => {
   });
 });
 
+describe("chat-modules 职业规划（V2 Issue 15）", () => {
+  it("职业规划在菜单里给中文名与岗位图标", () => {
+    expect(chatModuleLabel("career")).toBe("职业规划");
+    expect(chatModuleIcon("career")).toBe("careerPlan");
+  });
+
+  it("最后一条职业规划消息还在等澄清时恢复模块选择", () => {
+    const pending = careerPlan({
+      status: "clarification",
+      pending: {
+        module_id: "career",
+        kind: "clarification",
+        question: "你想找的是哪个岗位方向？",
+        origin_message_id: "a-1",
+        context: {},
+        created_at: "2026-09-26T02:00:00Z",
+      },
+    });
+    expect(pendingClarificationModule([message("m-1", null, null, null, pending)])).toBe(
+      "career"
+    );
+    // 其他模块的历史判定不受职业规划等待影响（互不冒充）。
+    expect(pendingClarificationModule([message("m-1", pendingPaperClarification)])).toBe(
+      "paper"
+    );
+  });
+
+  it("职业规划已有结论时不恢复：success / links_only / empty 都算本轮结束", () => {
+    for (const status of ["success", "links_only", "empty"] as const) {
+      expect(
+        pendingClarificationModule([message("m-1", null, null, null, careerPlan({ status }))])
+      ).toBeNull();
+    }
+  });
+
+  it("职业规划失败时不冒领更早的等待状态", () => {
+    const pending = careerPlan({
+      status: "clarification",
+      pending: {
+        module_id: "career",
+        kind: "clarification",
+        question: "你想找的是哪个岗位方向？",
+        origin_message_id: "a-1",
+        context: {},
+        created_at: "2026-09-26T02:00:00Z",
+      },
+    });
+    // 失败是「本轮结束了」，不再把更早那条澄清当成待续问题。
+    expect(
+      pendingClarificationModule([
+        message("m-1", null, null, null, pending),
+        message("m-2", null, null, null, careerPlan({ status: "error" })),
+      ])
+    ).toBeNull();
+  });
+});
+
 describe("chat-modules GitHub 项目推荐（V2 Issue 16）", () => {
   it("GitHub 在菜单里给中文名与仓库图标", () => {
     expect(chatModuleLabel("github")).toBe("GitHub 项目推荐");
@@ -362,17 +455,21 @@ describe("chat-modules GitHub 项目推荐（V2 Issue 16）", () => {
         created_at: "2026-09-26T02:00:00Z",
       },
     });
-    expect(pendingClarificationModule([message("m-1", null, null, null, pending)])).toBe(
-      "github"
-    );
+    expect(
+      pendingClarificationModule([message("m-1", null, null, null, null, pending)])
+    ).toBe("github");
     // 论文的历史判定不受 GitHub 等待影响（两者互不冒充）。
-    expect(pendingClarificationModule([message("m-1", pendingPaperClarification)])).toBe("paper");
+    expect(pendingClarificationModule([message("m-1", pendingPaperClarification)])).toBe(
+      "paper"
+    );
   });
 
   it("GitHub 已有结论时不恢复：success / metadata_only / empty 都算本轮结束", () => {
     for (const status of ["success", "metadata_only", "empty"] as const) {
       expect(
-        pendingClarificationModule([message("m-1", null, null, null, githubProjects({ status }))])
+        pendingClarificationModule([
+          message("m-1", null, null, null, null, githubProjects({ status })),
+        ])
       ).toBeNull();
     }
   });
@@ -391,14 +488,14 @@ describe("chat-modules GitHub 项目推荐（V2 Issue 16）", () => {
     });
     expect(
       pendingClarificationModule([
-        message("m-1", null, null, null, pending),
-        message("m-2", null, null, null, githubProjects({ status: "error" })),
+        message("m-1", null, null, null, null, pending),
+        message("m-2", null, null, null, null, githubProjects({ status: "error" })),
       ])
     ).toBeNull();
     expect(
       pendingClarificationModule([
-        message("m-1", null, null, null, pending),
-        message("m-2", null, null, null, githubProjects({ status: "stopped" })),
+        message("m-1", null, null, null, null, pending),
+        message("m-2", null, null, null, null, githubProjects({ status: "stopped" })),
       ])
     ).toBeNull();
   });
@@ -413,6 +510,7 @@ describe("chat-modules 校园通勤（V2 Issue 12）", () => {
       "commute",
       "resources",
       "tieba",
+      "career",
       "github",
     ]);
   });
