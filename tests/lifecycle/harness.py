@@ -161,6 +161,165 @@ class Harness:
             (f"mcp-{account_id[:4]}", account_id, _now(), _now()),
         )
 
+    def seed_retired_and_v2_state(self, account_id: str) -> str:
+        """V2 图状态与退役能力的历史结果（Issue 21 删除/导出/恢复回归数据）。
+
+        覆盖新增登记表：图检查点（含写入）、生成运行与事件流、检索决策、
+        学习小节状态、账户级 SMTP 验证尝试、工作流运行、OCR 解析缓存、
+        附件草稿、画像墓碑，以及已退役的图片/视频生成结果（任务、资产、
+        版本元数据与对象）。行标识与正文都带完整账户 ID，多账户数据不共用键。
+        """
+        conversation_id = self.create_conversation(account_id, f"历史-{account_id}", 1)
+        message_id = f"msg-{conversation_id}-1"
+        image_object_id = self.create_object(
+            account_id,
+            "legacy.png",
+            f"legacy-image-{account_id}".encode(),
+        )
+        draft_object_id = self.create_object(
+            account_id,
+            "draft.png",
+            f"legacy-draft-{account_id}".encode(),
+        )
+        now = _now()
+        with self.database.transaction():
+            scoped = self.database.scoped(account_id)
+            scoped.execute(
+                "INSERT INTO image_tasks(task_id, account_id, conversation_id, message_id,"
+                " kind, prompt, status, model_id, asset_id, result_version_id,"
+                " created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, 'generate', ?, 'done', 'wanx2.1-t2i-turbo', ?, ?, ?, ?)",
+                (
+                    f"img-task-{account_id}", account_id, conversation_id, message_id,
+                    f"历史图片任务：{account_id}", f"img-asset-{account_id}",
+                    f"img-ver-{account_id}", now, now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO image_assets(asset_id, account_id, conversation_id, alt_text,"
+                " alt_text_source, current_version_id, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, 'model', ?, ?, ?)",
+                (
+                    f"img-asset-{account_id}", account_id, conversation_id,
+                    f"历史图片替代文本：{account_id}", f"img-ver-{account_id}", now, now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO image_versions(version_id, asset_id, account_id, kind, prompt,"
+                " model_id, object_id, media_type, content_length, created_at)"
+                " VALUES (?, ?, ?, 'generate', ?, 'wanx2.1-t2i-turbo', ?, 'image/png', 18, ?)",
+                (
+                    f"img-ver-{account_id}", f"img-asset-{account_id}", account_id,
+                    f"历史图片任务：{account_id}", image_object_id, now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO video_tasks(task_id, account_id, conversation_id, message_id,"
+                " prompt, status, model_id, asset_id, result_object_id, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, 'done', 'wan2.2-t2v-plus', ?, ?, ?, ?)",
+                (
+                    f"video-task-{account_id}", account_id, conversation_id, message_id,
+                    f"历史视频任务：{account_id}", f"video-asset-{account_id}",
+                    image_object_id, now, now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO video_assets(asset_id, account_id, conversation_id, description,"
+                " description_source, object_id, prompt, model_id, media_type, content_length,"
+                " created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, 'prompt', ?, ?, 'wan2.2-t2v-plus', 'video/mp4', 18, ?, ?)",
+                (
+                    f"video-asset-{account_id}", account_id, conversation_id,
+                    f"历史视频说明：{account_id}", image_object_id,
+                    f"历史视频任务：{account_id}", now, now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO study_states(account_id, conversation_id, state_json, updated_at)"
+                " VALUES (?, ?, ?, ?)",
+                (
+                    account_id, conversation_id,
+                    '{"stage": "summary", "owner": "' + account_id + '"}', now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO generation_runs(run_id, account_id, conversation_id,"
+                " user_message_id, assistant_message_id, status, stage, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, 'done', 'completed', ?, ?)",
+                (
+                    f"gen-{account_id}", account_id, conversation_id, message_id,
+                    f"assistant-{account_id}", now, now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO generation_events(run_id, seq, account_id, kind, payload, created_at)"
+                " VALUES (?, 1, ?, 'delta', ?, ?)",
+                (f"gen-{account_id}", account_id, f'{{"text": "历史回答 {account_id}"}}', now),
+            )
+            scoped.execute(
+                "INSERT INTO graph_checkpoints(thread_id, checkpoint_ns, checkpoint_id,"
+                " account_id, conversation_id, run_id, type, checkpoint, created_at)"
+                " VALUES (?, '', 'ckpt-1', ?, ?, ?, 'langgraph', ?, ?)",
+                (
+                    f"thread-{account_id}", account_id, conversation_id,
+                    f"gen-{account_id}", b"checkpoint-bytes", now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO graph_checkpoint_writes(thread_id, checkpoint_ns, checkpoint_id,"
+                " task_id, task_path, idx, channel, type, value, account_id)"
+                " VALUES (?, '', 'ckpt-1', 'task-1', '', 0, 'messages', 'json', ?, ?)",
+                (f"thread-{account_id}", b"write-bytes", account_id),
+            )
+            scoped.execute(
+                "INSERT INTO retrieval_decisions(decision_id, assistant_message_id,"
+                " user_message_id, conversation_id, account_id, action, reason, rules_version,"
+                " capability_route, mode, query_fingerprint, created_at)"
+                " VALUES (?, ?, ?, ?, ?, 'skip', '无需检索', 'v1', 'daily', 'companion', ?, ?)",
+                (
+                    f"decision-{account_id}", f"assistant-{account_id}", message_id,
+                    conversation_id, account_id, f"fp-{account_id}", now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO smtp_verification_attempts(attempt_id, account_id, state,"
+                " message_token, deadline_at, created_at, updated_at)"
+                " VALUES (?, ?, 'verified', ?, ?, ?, ?)",
+                (f"smtp-{account_id}", account_id, f"token-{account_id}", now, now, now),
+            )
+            scoped.execute(
+                "INSERT INTO workflow_runs(run_id, account_id, context_json, work_order_json,"
+                " status, artifact_trust_status, updated_at)"
+                " VALUES (?, ?, '{}', '{}', 'completed', 'verified', ?)",
+                (f"workflow-{account_id}", account_id, now),
+            )
+            scoped.execute(
+                "INSERT INTO document_parse_cache(account_id, content_hash, parser_version,"
+                " parsed_json, created_at, ocr_run_id)"
+                " VALUES (?, ?, 'v1', '{}', ?, ?)",
+                (account_id, f"parse-{account_id}", now, f"ocr-{account_id}"),
+            )
+            scoped.execute(
+                "INSERT INTO chat_attachment_drafts(object_id, account_id, upload_id,"
+                " original_filename, media_type, content_length, content_hash, created_at,"
+                " updated_at) VALUES (?, ?, ?, '草稿.png', 'image/png', 17, ?, ?, ?)",
+                (
+                    draft_object_id,
+                    account_id,
+                    f"upload-{account_id}",
+                    f"hash-{account_id}",
+                    now,
+                    now,
+                ),
+            )
+            scoped.execute(
+                "INSERT INTO profile_extraction_tombstones(account_id, message_id, created_at)"
+                " VALUES (?, ?, ?)",
+                (account_id, message_id, now),
+            )
+        return conversation_id
+
+
     def inject_canaries(self) -> None:
         """写入剩余账户级凭据类别的金丝雀（SMTP 授权码）。"""
         self.smtp_credentials.save(self.acc1, SecretStr(SMTP_CANARY))

@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -901,6 +902,7 @@ MIGRATIONS: dict[int, list[str]] = {
     # Issue 28：内置 bridges-humanizer SKILL 走真实消息流程。用户消息
     # 携带 skill JSON（标识+任务契约快照，重试沿用）；助手消息的人味化
     # 结果投影（输出合同/事实锁/引用/五态过程）同样固化在 skill 列。
+    # Issue 21：该 SKILL 退役，skill 列只服务历史只读投影与兼容层。
     16: [
         """
         ALTER TABLE messages ADD COLUMN skill TEXT
@@ -2604,10 +2606,13 @@ class BridgesDatabase:
     单连接 + 显式事务边界；``initialize`` 幂等，可安全重复调用。
     迁移完成后执行 schema 完整性校验，metadata 声称当前版本但核心对象缺失时
     以稳定错误码失败关闭，避免缺表后继续服务。
+    迁移门（Issue 21）：升级既有库前先落一份一致性备份，备份失败则不迁移。
     """
 
     def __init__(self, path: str | Path) -> None:
         self.path = str(path)
+        #: 迁移前备份文件路径（本次升级落下的还原点）；未发生升级为 None。
+        self.migration_backup_path: Path | None = None
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -2759,12 +2764,84 @@ class BridgesDatabase:
             return False
         return True
 
+    def _backup_before_migration(self) -> Path | None:
+        """升级既有库前落一份一致性备份，返回备份路径（未升级为 None）。
+
+        仅当「记录版本低于当前目标版本」且「库里已有业务行」时备份：首次
+        启动建库与已是最新版本的重启都不产生文件。备份用 SQLite 在线备份
+        API 在快照锁内完成（WAL 一致性视图），文件名带目标版本与时间戳；
+        同一库的旧迁移前备份先清理，避免每次升级累积多份。备份失败按迁移
+        门失败关闭——不写任何 schema 变更。
+        """
+        self.migration_backup_path = None
+        if self.path == ":memory:":
+            return None
+        current = self._stored_schema_version()
+        if current is None or current >= SCHEMA_VERSION:
+            return None
+        if not self._has_business_rows():
+            return None
+        db_path = Path(self.path)
+        target = db_path.with_name(
+            f"{db_path.name}.backup-before-v{SCHEMA_VERSION}-"
+            f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        )
+        try:
+            for stale in db_path.parent.glob(f"{db_path.name}.backup-before-v*"):
+                stale.unlink(missing_ok=True)
+            with self.snapshot_lock():
+                self.snapshot_to(target)
+        except (StorageError, OSError) as exc:
+            raise StorageError(
+                "数据库升级前的备份创建失败，本次升级已取消；"
+                "请检查数据目录权限与磁盘剩余空间后重试。"
+            ) from exc
+        self.migration_backup_path = target
+        logger.info(
+            "database_migration_backup_created",
+            extra={"from_version": current, "to_version": SCHEMA_VERSION},
+        )
+        return target
+
+    def _stored_schema_version(self) -> int | None:
+        """读取 ``schema_meta`` 中的版本号；未建库或无记录时返回 None。"""
+        try:
+            row = self._connection.execute(
+                "SELECT value FROM schema_meta WHERE key = 'version'"
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        if row is None:
+            return None
+        try:
+            return int(str(row["value"]))
+        except ValueError:
+            return None
+
+    def _has_business_rows(self) -> bool:
+        """库中是否已有任意业务行（``schema_meta`` 之外的表非空即算）。"""
+        for name in self._schema_object_names("table"):
+            if name == "schema_meta" or name.startswith("sqlite_"):
+                continue
+            try:
+                row = self._connection.execute(
+                    f"SELECT 1 FROM {name} LIMIT 1"
+                ).fetchone()
+            except sqlite3.Error:
+                continue
+            if row is not None:
+                return True
+        return False
+
     def initialize(self) -> int:
         """事务化创建或升级数据库模式，返回当前版本；重复调用安全。
 
         迁移脚本与版本号在单个事务内完成：中途失败整体回滚，不会留下
         半迁移状态；已是最新版本时仍执行完整性校验，确保核心表/索引存在。
+        升级既有库（版本更低且已有数据）前先落一份迁移前备份：备份失败即
+        拒绝迁移，保证「每个数据库变更有备份」。
         """
+        self._backup_before_migration()
         try:
             with self.transaction():
                 self._connection.execute(
