@@ -208,6 +208,12 @@ issue 12（54）、issue 13（本票）、issue 14 **三票都声明过 54**，�
 test_modules_not_yet_available_are_still_rejected` 拿 `resources` 当「未接入模块」反例，
 本票接入后该反例失效。改用仍未接入的贴吧（与 tests/chat 同款反例），用例本意不变。
 
+**给 Issue 14（贴吧）的遗留提醒**：合并后 main 里「未接入模块」反例共 5 处——`career` 2 处
+（tests/paper、tests/resources，仍有效）与 `tieba` 3 处（tests/chat 2 处、tests/commute 1 处，
+即本次改动的那条）。Issue 14 接入贴吧后，**这 3 处 `tieba` 反例必须换成 `career` 或 `github`**，
+否则会拿到正常结果而不是 `module_not_available`；同一类耦合在 Issue 12 → 13 合并时已经出现过
+一次（见上）。
+
 **合并树全量回归（同一套协议：`-q --tb=no -rfE -p no:randomly`，仓外 basetemp，
 deselect 三条 `test_start_fails_*`，两侧都不带 PYTHONPATH）**：
 
