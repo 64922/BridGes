@@ -2770,8 +2770,9 @@ class BridgesDatabase:
         仅当「记录版本低于当前目标版本」且「库里已有业务行」时备份：首次
         启动建库与已是最新版本的重启都不产生文件。备份用 SQLite 在线备份
         API 在快照锁内完成（WAL 一致性视图），文件名带目标版本与时间戳；
-        同一库的旧迁移前备份先清理，避免每次升级累积多份。备份失败按迁移
-        门失败关闭——不写任何 schema 变更。
+        新备份落盘后才清理同一库的旧备份（避免每次升级累积多份，清理失败
+        只告警）。备份失败按迁移门失败关闭——不写任何 schema 变更，也不动
+        上一份还原点。
         """
         self.migration_backup_path = None
         if self.path == ":memory:":
@@ -2787,8 +2788,6 @@ class BridgesDatabase:
             f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
         )
         try:
-            for stale in db_path.parent.glob(f"{db_path.name}.backup-before-v*"):
-                stale.unlink(missing_ok=True)
             with self.snapshot_lock():
                 self.snapshot_to(target)
         except (StorageError, OSError) as exc:
@@ -2796,6 +2795,16 @@ class BridgesDatabase:
                 "数据库升级前的备份创建失败，本次升级已取消；"
                 "请检查数据目录权限与磁盘剩余空间后重试。"
             ) from exc
+        for stale in db_path.parent.glob(f"{db_path.name}.backup-before-v*"):
+            if stale == target:
+                continue
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "database_migration_backup_prune_failed",
+                    extra={"path": str(stale)},
+                )
         self.migration_backup_path = target
         logger.info(
             "database_migration_backup_created",

@@ -150,6 +150,44 @@ def test_upgrade_refuses_to_migrate_when_backup_fails(
     assert _counts(path, LEGACY_TABLES) == before
 
 
+def test_upgrade_keeps_previous_restore_point_when_new_backup_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "bridges.db"
+    _build_legacy_database(path)
+    previous = tmp_path / f"bridges.db.backup-before-v{SCHEMA_VERSION}-20260101000000"
+    previous.write_bytes(b"previous-restore-point")
+
+    def _failing_snapshot(self: BridgesDatabase, target: object) -> None:
+        raise StorageError("模拟备份写入失败")
+
+    monkeypatch.setattr(BridgesDatabase, "snapshot_to", _failing_snapshot)
+    database = BridgesDatabase(path)
+    with pytest.raises(StorageError):
+        database.initialize()
+    # 新备份失败不消耗旧还原点：升级被拒时上一份备份仍在。
+    assert previous.exists()
+
+
+def test_upgrade_prunes_previous_restore_point_after_new_backup(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bridges.db"
+    _build_legacy_database(path)
+    previous = tmp_path / f"bridges.db.backup-before-v{SCHEMA_VERSION}-20260101000000"
+    previous.write_bytes(b"previous-restore-point")
+
+    database = BridgesDatabase(path)
+    assert database.initialize() == SCHEMA_VERSION
+    assert database.migration_backup_path is not None
+    assert database.migration_backup_path.exists()
+    # 备份成功后清理旧还原点，同一库只留最新一份。
+    assert not previous.exists()
+    assert [item.name for item in tmp_path.glob("*.backup-before-v*")] == [
+        database.migration_backup_path.name
+    ]
+
+
 def test_failed_migration_rolls_back_to_previous_version_and_data(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
