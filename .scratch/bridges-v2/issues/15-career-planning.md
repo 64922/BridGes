@@ -106,7 +106,9 @@ BOSS 直聘的岗位链接一律返回「请稍候」反爬页，应届生求职
 
 ### 真实样本验证（2026-09-26，本机实测）
 
-探针（仓库外 `bt15-probe/live_probe6.py`）**直接调用模块自身的管线**——`parse_career_request`
+探针（临时脚本，留档于仓库本地忽略目录 `.tmp/issue15/live_probe6.py`、原始日志
+`.tmp/issue15/probe6.out`，不入库；开发期的 `bt15-probe` 临时目录已清理）
+**直接调用模块自身的管线**——`parse_career_request`
 → `build_plan` → `WebSearchServiceAdapter` → `HttpJobPageReader` → `filter_candidates` →
 `analyze_samples`，不是另写一套逻辑；只发公开查询、只读公开页面，不打印或落盘任何凭据。
 
