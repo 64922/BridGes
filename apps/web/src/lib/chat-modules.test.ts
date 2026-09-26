@@ -4,10 +4,12 @@ import {
   CHAT_MODULES,
   chatModuleIcon,
   chatModuleLabel,
+  hasPendingCommuteClarification,
   pendingClarificationModule,
 } from "./chat-modules";
 import type {
   ChatMessageProjection,
+  CommuteRouteProjection,
   LearningResourcesProjection,
   PaperSearchProjection,
 } from "@/lib/api";
@@ -63,6 +65,37 @@ function learningResources(
   };
 }
 
+/** 通勤投影：只填本测试关心的字段，其余用真实的完整形态。 */
+function commuteRoute(
+  overrides: Partial<CommuteRouteProjection> = {}
+): CommuteRouteProjection {
+  return {
+    status: "success",
+    mode: "walking",
+    mode_label: "步行",
+    mode_phrase: null,
+    origin: null,
+    destination: null,
+    origin_candidates: [],
+    destination_candidates: [],
+    distance_m: 1800,
+    base_duration_seconds: 1400,
+    suggested_total_seconds: 1400,
+    steps: [],
+    polyline: [],
+    path_verified: false,
+    buffer: null,
+    queries: [],
+    evidence_notes: [],
+    pending: null,
+    resolved_at: null,
+    error_code: null,
+    error_message: null,
+    retryable: false,
+    ...overrides,
+  };
+}
+
 /** 历史消息投影：只填本测试关心的字段。 */
 function message(
   id: string,
@@ -80,6 +113,17 @@ function message(
     learning_resources: resources,
     created_at: "2026-09-20T10:00:00Z",
     updated_at: "2026-09-20T10:00:01Z",
+  };
+}
+
+/** 通勤历史消息投影（模块标识随用户消息持久化）。 */
+function commuteMessage(
+  id: string,
+  route: CommuteRouteProjection | null
+): ChatMessageProjection {
+  return {
+    ...message(id, null),
+    commute_route: route,
   };
 }
 
@@ -118,9 +162,12 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(chatModuleIcon("github")).toBe("chatBubble");
     expect(chatModuleLabel(null)).toBeNull();
   });
-
-  it("菜单里两个已接入模块的 ID 与后端枚举一致", () => {
-    expect(CHAT_MODULES.map((module) => module.id)).toEqual(["paper", "resources"]);
+  it("菜单里三个已接入模块的 ID 与后端枚举一致", () => {
+    expect(CHAT_MODULES.map((module) => module.id)).toEqual([
+      "paper",
+      "commute",
+      "resources",
+    ]);
   });
 
   it("最后一条论文消息还在等澄清时恢复论文模块选择", () => {
@@ -163,5 +210,77 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(
       pendingClarificationModule([message("m-1", null), message("m-2", null)])
     ).toBeNull();
+  });
+});
+
+describe("chat-modules 校园通勤（V2 Issue 12）", () => {
+  it("校园通勤在菜单里给中文名与路线图标", () => {
+    expect(chatModuleLabel("commute")).toBe("校园通勤");
+    expect(chatModuleIcon("commute")).toBe("route");
+    expect(CHAT_MODULES.map((module) => module.id)).toEqual([
+      "paper",
+      "commute",
+      "resources",
+    ]);
+  });
+
+  it("最后一条通勤消息还在等澄清时恢复模块选择", () => {
+    expect(
+      hasPendingCommuteClarification([
+        commuteMessage(
+          "m-1",
+          commuteRoute({
+            status: "clarification",
+            pending: {
+              module_id: "commute",
+              kind: "clarification",
+              question: "「图书馆」在高德匹配到多个地点，你要从哪一个出发？",
+              origin_message_id: "a-1",
+              context: {},
+              created_at: "2026-09-25T01:40:00Z",
+            },
+          })
+        ),
+      ])
+    ).toBe(true);
+  });
+
+  it("已有更晚的通勤结果时不恢复（等待状态已被取代）", () => {
+    expect(
+      hasPendingCommuteClarification([
+        commuteMessage(
+          "m-1",
+          commuteRoute({
+            status: "clarification",
+            pending: {
+              module_id: "commute",
+              kind: "clarification",
+              question: "请补充终点。",
+              origin_message_id: "a-1",
+              context: {},
+              created_at: "2026-09-25T01:40:00Z",
+            },
+          })
+        ),
+        commuteMessage("m-2", commuteRoute({ status: "success" })),
+      ])
+    ).toBe(false);
+  });
+
+  it("失败的等待状态不恢复（错误不是等待用户回答）", () => {
+    expect(
+      hasPendingCommuteClarification([
+        commuteMessage(
+          "m-1",
+          commuteRoute({ status: "error", error_code: "amap_not_configured" })
+        ),
+      ])
+    ).toBe(false);
+  });
+
+  it("普通聊天历史不恢复通勤模块", () => {
+    expect(
+      hasPendingCommuteClarification([message("m-1", null), commuteMessage("m-2", null)])
+    ).toBe(false);
   });
 });

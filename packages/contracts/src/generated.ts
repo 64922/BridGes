@@ -437,6 +437,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/commute/map-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Map Config
+         * @description 返回浏览器地图的加载配置；每次都实时读取当前生效的凭据。
+         */
+        get: operations["get_map_config_commute_map_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commute/amap-proxy/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Amap Proxy
+         * @description 代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。
+         */
+        get: operations["amap_proxy_commute_amap_proxy__path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/models": {
         parameters: {
             query?: never;
@@ -8772,6 +8812,8 @@ export interface components {
             module_suggestion?: components["schemas"]["ModuleSuggestionProjection"] | null;
             /** @description 本条助手消息的学习资料推荐状态（图书与视频清单）。 */
             learning_resources?: components["schemas"]["LearningResourcesProjection"] | null;
+            /** @description 本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。 */
+            commute_route?: components["schemas"]["CommuteRouteProjection"] | null;
             /**
              * Created At
              * Format: date-time
@@ -10085,6 +10127,291 @@ export interface components {
          * @enum {string}
          */
         CloudProjectionStatus: "active" | "pending_device" | "revoked" | "expired";
+        /**
+         * CommuteBreakBuffer
+         * @description 课间规则缓冲：当前时刻是否落在八个课间点前后十分钟内。
+         *
+         *     这是**规则估计**，不是实时人流数据；``rule_note`` 每次都必须随结果展示。
+         */
+        CommuteBreakBuffer: {
+            /**
+             * In Window
+             * @description 当前时刻是否命中课间前后十分钟窗口。
+             */
+            in_window: boolean;
+            /**
+             * Matched Break Time
+             * @description 命中的课间时间点 HH:MM；未命中为 None。
+             */
+            matched_break_time?: string | null;
+            /**
+             * Minutes Away
+             * @description 与命中时间点的分钟差（绝对值）。
+             */
+            minutes_away?: number | null;
+            /**
+             * Added Minutes
+             * @description 建议在高德耗时之外增加分钟数。
+             * @default 0
+             */
+            added_minutes: number;
+            /**
+             * Checked At
+             * Format: date-time
+             * @description 判定时刻（含时区）。
+             */
+            checked_at: string;
+            /**
+             * Timezone
+             * @description 判定所用时区，固定 Asia/Shanghai。
+             */
+            timezone: string;
+            /**
+             * Rule Note
+             * @description 中文规则说明（明示不是实时人流数据）。
+             */
+            rule_note: string;
+        };
+        /**
+         * CommuteMode
+         * @description 出行方式（仅步行、自行车、电动车；三者是高德各自独立的能力）。
+         * @enum {string}
+         */
+        CommuteMode: "walking" | "bicycling" | "electrobike";
+        /**
+         * CommutePlace
+         * @description 解析后的地点：坐标只来自高德 POI 检索结果。
+         */
+        CommutePlace: {
+            /** @description 起点或终点。 */
+            role: components["schemas"]["CommutePlaceRole"];
+            /**
+             * Original Phrase
+             * @description 用户原话中的地点写法（逐字保留）。
+             */
+            original_phrase: string;
+            /**
+             * Query
+             * @description 实际发送给高德的最小检索词；沿用上一轮候选时为产生该候选的检索词。
+             */
+            query: string;
+            /**
+             * Name
+             * @description 高德返回的 POI 名称。
+             */
+            name: string;
+            /**
+             * Location
+             * @description 高德返回的坐标串 lng,lat（绝不臆造）。
+             */
+            location: string;
+            /**
+             * Address
+             * @description 高德返回的地址。
+             */
+            address?: string | null;
+            /**
+             * Poi Id
+             * @description 高德 POI 标识。
+             */
+            poi_id?: string | null;
+            /**
+             * District
+             * @description 高德返回的区县名。
+             */
+            district?: string | null;
+            /**
+             * Campus Verified
+             * @description 是否确认属于华东交通大学校内或校门。
+             * @default false
+             */
+            campus_verified: boolean;
+            /**
+             * Match Basis
+             * @description 匹配与范围判定依据（命中什么、核对了什么）。
+             */
+            match_basis: string;
+            /**
+             * Unverified
+             * @description 本地点未核实项（例如未实测楼门可通行）。
+             */
+            unverified?: string[];
+        };
+        /**
+         * CommutePlaceCandidate
+         * @description 一个真实取得的 POI 候选（澄清候选冲突时逐项列出）。
+         */
+        CommutePlaceCandidate: {
+            /**
+             * Name
+             * @description 高德返回的 POI 名称。
+             */
+            name: string;
+            /**
+             * Location
+             * @description 高德返回的坐标串 lng,lat。
+             */
+            location?: string | null;
+            /**
+             * Address
+             * @description 高德返回的地址。
+             */
+            address?: string | null;
+            /**
+             * Poi Id
+             * @description 高德 POI 标识。
+             */
+            poi_id?: string | null;
+            /**
+             * District
+             * @description 高德返回的区县名。
+             */
+            district?: string | null;
+            /**
+             * Campus
+             * @description 名称或地址是否确认指向华东交通大学。
+             * @default false
+             */
+            campus: boolean;
+        };
+        /**
+         * CommutePlaceRole
+         * @description 地点在路线中的角色（澄清问题按其区分「起点/终点」）。
+         * @enum {string}
+         */
+        CommutePlaceRole: "origin" | "destination";
+        /**
+         * CommuteRouteProjection
+         * @description 通勤模块随助手消息持久化的完整投影。
+         */
+        CommuteRouteProjection: {
+            /** @description 本轮模块状态。 */
+            status: components["schemas"]["CommuteRouteStatus"];
+            /** @description 本轮出行方式。 */
+            mode?: components["schemas"]["CommuteMode"] | null;
+            /**
+             * Mode Label
+             * @description 方式中文标签。
+             */
+            mode_label?: string | null;
+            /**
+             * Mode Phrase
+             * @description 用户原话中的方式写法。
+             */
+            mode_phrase?: string | null;
+            /** @description 解析后的起点。 */
+            origin?: components["schemas"]["CommutePlace"] | null;
+            /** @description 解析后的终点。 */
+            destination?: components["schemas"]["CommutePlace"] | null;
+            /**
+             * Origin Candidates
+             * @description 起点候选（澄清冲突时列出）。
+             */
+            origin_candidates?: components["schemas"]["CommutePlaceCandidate"][];
+            /**
+             * Destination Candidates
+             * @description 终点候选（澄清冲突时列出）。
+             */
+            destination_candidates?: components["schemas"]["CommutePlaceCandidate"][];
+            /**
+             * Distance M
+             * @description 高德返回的路线距离（米）。
+             */
+            distance_m?: number | null;
+            /**
+             * Base Duration Seconds
+             * @description 高德返回的基础耗时（秒，仅本轮方式）。
+             */
+            base_duration_seconds?: number | null;
+            /**
+             * Suggested Total Seconds
+             * @description 基础耗时加缓冲后的建议总时间（秒）。
+             */
+            suggested_total_seconds?: number | null;
+            /**
+             * Steps
+             * @description 高德返回的文字路段。
+             */
+            steps?: components["schemas"]["CommuteRouteStep"][];
+            /**
+             * Polyline
+             * @description 高德返回的路径点（按顺序的坐标串）。
+             */
+            polyline?: string[];
+            /**
+             * Path Verified
+             * @description 是否取得可绘制的路径点（否则不生成地图线）。
+             * @default false
+             */
+            path_verified: boolean;
+            /** @description 课间规则缓冲判定。 */
+            buffer?: components["schemas"]["CommuteBreakBuffer"] | null;
+            /**
+             * Queries
+             * @description 本轮全部外部调用的统一记录（查询/证据/时间/错误）。
+             */
+            queries?: components["schemas"]["ModuleQueryRecord"][];
+            /**
+             * Evidence Notes
+             * @description 证据边界说明（吸附过远、路径点缺失、校外被拒等）。
+             */
+            evidence_notes?: string[];
+            /** @description 跨轮次等待状态（澄清问题）；无等待为 None。 */
+            pending?: components["schemas"]["ModuleWaitState"] | null;
+            /**
+             * Resolved At
+             * @description 路线核验完成时间。
+             */
+            resolved_at?: string | null;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 本轮失败是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+        };
+        /**
+         * CommuteRouteStatus
+         * @description 通勤模块的用户可见状态（同一消息内如实显示）。
+         * @enum {string}
+         */
+        CommuteRouteStatus: "clarification" | "success" | "unverified" | "error" | "stopped";
+        /**
+         * CommuteRouteStep
+         * @description 一个文字路段（高德返回的原始指令、道路名与路段距离）。
+         */
+        CommuteRouteStep: {
+            /**
+             * Index
+             * @description 路段序号（从 1 开始，按高德返回顺序）。
+             */
+            index: number;
+            /**
+             * Instruction
+             * @description 高德返回的行走指令。
+             */
+            instruction: string;
+            /**
+             * Road Name
+             * @description 高德返回的道路名。
+             */
+            road_name?: string | null;
+            /**
+             * Distance M
+             * @description 本段距离（米）。
+             */
+            distance_m?: number | null;
+        };
         /**
          * Conflict
          * @description An explicit, user-visible evidence conflict.
@@ -16787,6 +17114,28 @@ export interface components {
          * @enum {string}
          */
         MainCapability: "ordinary_chat" | "paper_search" | "clarification" | "humanizer" | "image" | "video" | "career";
+        /**
+         * MapConfigResponse
+         * @description 浏览器地图的运行时配置（不含任何安全密钥正文）。
+         */
+        MapConfigResponse: {
+            /** Configured */
+            configured: boolean;
+            /** Js Api Key */
+            js_api_key?: string | null;
+            /**
+             * Service Host Path
+             * @description 代理路径（相对 API 基地址；前端据此拼出绝对地址）。
+             */
+            service_host_path?: string | null;
+            /**
+             * Security Code Configured
+             * @default false
+             */
+            security_code_configured: boolean;
+            /** Notice */
+            notice?: string | null;
+        };
         /**
          * MaterialSufficiency
          * @description 材料充分度裁决。
@@ -25694,6 +26043,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CredentialStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_map_config_commute_map_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    amap_proxy_commute_amap_proxy__path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -10,6 +10,7 @@ import type {
   ArxivSearchProjection,
   ChatAttachmentProjection,
   ChatModuleId,
+  CommuteRouteProjection,
   ContextNoteProjection,
   LearningResourcesProjection,
   ModuleSuggestionProjection,
@@ -35,6 +36,7 @@ import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsH
 import { ModuleSuggestionCard } from "./chat/ModuleSuggestionCard";
 import { PaperSearchCard } from "./chat/PaperSearchCard";
 import { LearningResourcesCard } from "./chat/LearningResourcesCard";
+import { CommuteRouteCard } from "./chat/CommuteRouteCard";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { BrandLogo } from "./BrandLogo";
 import { CareerPlanningProcessCard } from "./CareerPlanningProcessCard";
@@ -99,6 +101,12 @@ export const NODE_LABEL: Record<string, string> = {
   "resources.search_videos": "查找哔哩哔哩视频",
   "resources.rank": "筛选与排序资料",
   "resources.present": "整理资料清单",
+  // V2 Issue 12：校园通勤子图节点（解析→定位→路线→缓冲→呈现）。
+  "route.parse": "理解通勤请求",
+  "route.resolve": "定位起终点",
+  "route.request": "查询高德路线",
+  "route.buffer": "计算课间缓冲",
+  "route.present": "整理路线结果",
 };
 
 export interface ChatMessage {
@@ -148,6 +156,8 @@ export interface ChatMessage {
   paperSearch?: PaperSearchProjection | null;
   /** V2 Issue 13：本条助手消息的学习资料推荐状态（原词/层次/图书与视频清单） */
   learningResources?: LearningResourcesProjection | null;
+  /** V2 Issue 12：本条助手消息的校园通勤状态（起终点/路线/缓冲/等待/失败） */
+  commuteRoute?: CommuteRouteProjection | null;
   /** V2 Issue 11：普通聊天中的一键模块建议（只建议，未检索） */
   moduleSuggestion?: ModuleSuggestionProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
@@ -748,6 +758,17 @@ export function MessageList({
                 {conversationId && (
                   <LearningResourcesCard
                     resources={message.learningResources ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* V2 Issue 12：校园通勤路线卡（关键信息 → 可缩放地图 →
+                    路线文字 → 外部调用记录与证据边界）。没有可核验路径点时
+                    卡内只显示真实地点并说明没有画线。 */}
+                {conversationId && (
+                  <CommuteRouteCard
+                    route={message.commuteRoute ?? null}
                     streaming={message.status === "streaming"}
                     onRetry={() => onRetry?.(message.id)}
                   />

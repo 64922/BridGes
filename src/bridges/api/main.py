@@ -52,6 +52,7 @@ from bridges.api import (
     vault,
     workflows,
 )
+from bridges.api import commute as commute_api
 from bridges.api.csrf import CsrfOriginMiddleware
 from bridges.api.data import router as data_router
 from bridges.api.image import router as image_router
@@ -61,6 +62,8 @@ from bridges.api.plugins import router as plugins_router
 from bridges.api.reminder import router as reminder_router
 from bridges.api.speech import router as speech_router
 from bridges.api.video import router as video_router
+from bridges.commute.service import CommuteService
+from bridges.commute.sources import AmapRouteClient
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.paper.presenting import PaperSummaryGenerator
 from bridges.paper.service import PaperSearchService
@@ -443,6 +446,13 @@ def _credential_store_for_namespace(
     if settings.credential_backend == "encrypted-volume":
         return EncryptedVolumeCredentialStore(data_dir, namespace=namespace)
     return OsCredentialStore(data_dir=data_dir, namespace=namespace)
+
+
+def _amap_web_service_key(app: Any) -> str | None:
+    """读取当前生效的高德路线 Web 服务 Key；未配置时返回 None（模块据此降级）。"""
+    return commute_api.secret_setting(
+        getattr(app.state, "settings", None), "amap_web_service_key"
+    )
 
 
 def _paper_metadata_client() -> httpx.Client:
@@ -1423,6 +1433,15 @@ def create_app(
         app.router.add_event_handler(
             "shutdown", app.state.learning_resources_service.close
         )
+        # V2 Issue 12：校园通勤模块子图——高德路线 Web 服务 Key 从**当前生效**
+        # 设置读取（设置页更换后新请求立即生效，无需重建服务）；未配置凭据时
+        # 模块如实降级并提示去设置，绝不编造路线。
+        app.state.commute_amap_client = AmapRouteClient(
+            key_provider=lambda: _amap_web_service_key(app),
+            observability=app.state.observability_service,
+        )
+        app.state.commute_service = CommuteService(amap=app.state.commute_amap_client)
+        app.router.add_event_handler("shutdown", app.state.commute_amap_client.close)
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1435,6 +1454,7 @@ def create_app(
             learning_resources_service=getattr(
                 app.state, "learning_resources_service", None
             ),
+            commute_service=getattr(app.state, "commute_service", None),
             profile_service=getattr(app.state, "profile_service", None),
             teaching_progress_service=getattr(
                 app.state, "teaching_progress_service", None
@@ -1843,6 +1863,7 @@ def create_app(
 
     app.include_router(auth.router)
     app.include_router(credentials.router)
+    app.include_router(commute_api.router)
     app.include_router(model_settings.router)
     app.include_router(compatibility.router)
     app.include_router(chat.router)

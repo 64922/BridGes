@@ -135,6 +135,8 @@ class MessageRecord:
     module_suggestion: dict[str, Any] | None = None
     #: V2 Issue 13：学习资料推荐模块状态投影（原词/层次/清单/等待/失败）。
     learning_resources: dict[str, Any] | None = None
+    #: V2 Issue 12：校园通勤模块状态投影（起终点 POI/方式/距离/耗时/路径点/缓冲）。
+    commute_route: dict[str, Any] | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -525,7 +527,7 @@ class ConversationRepository:
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
-            " learning_resources"
+            " learning_resources, commute_route"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -540,7 +542,7 @@ class ConversationRepository:
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
-            " learning_resources"
+            " learning_resources, commute_route"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -609,6 +611,26 @@ class ConversationRepository:
                 "UPDATE messages SET paper_search = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ?",
                 (_json_dumps(paper_search), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_commute_route(
+        self,
+        account_id: str,
+        message_id: str,
+        commute_route: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """写入校园通勤状态投影（V2 Issue 12）。
+
+        与 ``paper_search`` 同形：失败/停止路径在消息终态收敛之前先落投影，
+        保证用户在同一消息里看到真实起终点、方式与失败分类，而不是空白。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET commute_route = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(commute_route), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -786,6 +808,7 @@ class ConversationRepository:
         paper_search: dict[str, Any] | None = None,
         module_suggestion: dict[str, Any] | None = None,
         learning_resources: dict[str, Any] | None = None,
+        commute_route: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -823,6 +846,7 @@ class ConversationRepository:
                 or paper_search is not None
                 or module_suggestion is not None
                 or learning_resources is not None
+                or commute_route is not None
             ):
                 assignments = [
                     "status = ?",
@@ -854,6 +878,9 @@ class ConversationRepository:
                 if paper_search is not None:
                     assignments.append("paper_search = ?")
                     values.append(_json_dumps(paper_search))
+                if commute_route is not None:
+                    assignments.append("commute_route = ?")
+                    values.append(_json_dumps(commute_route))
                 if module_suggestion is not None:
                     assignments.append("module_suggestion = ?")
                     values.append(_json_dumps(module_suggestion))
@@ -2119,6 +2146,7 @@ class ConversationRepository:
             paper_search=_json_loads_any(row["paper_search"]),
             module_suggestion=_json_loads_any(row["module_suggestion"]),
             learning_resources=_json_loads_any(row["learning_resources"]),
+            commute_route=_json_loads_any(row["commute_route"]),
         )
 
 

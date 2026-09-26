@@ -114,6 +114,9 @@ class AuditAction(str, Enum):
     # OpenAlex 图书记录、哔哩哔哩公开视频接口）。details 与上一项同构：只有
     # 来源、查询指纹与长度、终止状态与耗时，不含查询正文。
     LEARNING_RESOURCE_LOOKUP = "learning_resource_lookup"
+    # V2 Issue 12：校园通勤模块的高德 POI 检索与路线规划外发记录。
+    # details 只含服务、检索词指纹与长度、状态码、尝试次数与耗时，不含检索词正文。
+    CAMPUS_ROUTE_LOOKUP = "campus_route_lookup"
     PLUGIN_INSTALL = "plugin_install"
     PLUGIN_UNINSTALL = "plugin_uninstall"
     PLUGIN_ENABLE = "plugin_enable"

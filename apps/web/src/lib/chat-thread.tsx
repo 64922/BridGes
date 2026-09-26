@@ -61,6 +61,8 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       // V2 Issue 13：学习资料推荐投影（图书与哔哩哔哩视频清单）
       learningResources: latest.learning_resources ?? null,
       moduleSuggestion: latest.module_suggestion ?? null,
+      // V2 Issue 12：校园通勤投影（起终点、路线卡、课间缓冲与等待状态）
+      commuteRoute: latest.commute_route ?? null,
       teaching: latest.teaching ?? null,
       // Issue 27：本次上下文说明披露；无披露为 null
       contextNote: latest.context_note ?? null,
