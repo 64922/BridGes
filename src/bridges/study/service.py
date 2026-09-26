@@ -223,6 +223,7 @@ class StudyWorkflow:
                         state.pages = [state.pages[index - 1] for index in ordinals]
                         for index, page in enumerate(state.pages, 1):
                             page.ordinal = index
+                        state.wait_reason = None
                         self._states.save(run.account_id, run.conversation_id, state)
             for attachment in attachments:
                 if stop_event is not None and stop_event.is_set():
@@ -361,7 +362,11 @@ class StudyWorkflow:
                             user.content.split(matches[0].position, 1)[1].strip()
                             if len(matches) == 1 else ""
                         )
-                        if re.fullmatch(r"(?:[:：]|[^？?。\n]*[是为])\s*\S.*", supplement):
+                        if re.fullmatch(
+                            r"(?:[:：]|[^？?。\n]*[是为])\s*\S.*", supplement, flags=re.DOTALL,
+                        ) and not re.search(
+                            r"[？?]|是不是|是啥|是什么|不知道|看不清|不清楚", supplement,
+                        ):
                             issue = matches[0]
                             supplement_page.fragments.append(
                                 StudyFragment(

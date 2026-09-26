@@ -24,6 +24,7 @@ class StudyGateway:
         fail_preview: bool = False,
         page_numbers: list[int] | None = None,
         same_section: bool = True,
+        fail_map: bool = False,
     ) -> None:
         self.unclear = unclear
         self.extra_unclear = extra_unclear
@@ -34,6 +35,7 @@ class StudyGateway:
         self.calls: list[str] = []
         self.page_numbers = page_numbers
         self.same_section = same_section
+        self.fail_map = fail_map
 
     def invoke(
         self,
@@ -90,6 +92,8 @@ class StudyGateway:
             )
         if capability == "qwen_structured_output":
             if '"questions"' not in payload["prompt"]:
+                if self.fail_map:
+                    return ModelCallResult(status=ModelCallStatus.BLOCKED, error_code="map_failed")
                 refs = re.findall(r'"id":\s*"([^"]+)"', payload["prompt"])
                 return ModelCallResult(
                     status=ModelCallStatus.SUCCESS,
@@ -428,6 +432,7 @@ def test_appended_page_failure_invalidates_old_preview(tmp_path: Any, monkeypatc
 
 @pytest.mark.parametrize("content", [
     "第1页还是看不清", "第1页中部公式", "第1页右侧图表是直线", "第1页中部公式看不清",
+    "第1页中部公式是不是 y=ax+b？", "第1页中部公式是啥？",
 ])
 def test_unrelated_text_does_not_resolve_unclear_formula(
     tmp_path: Any, monkeypatch: Any, content: str,
@@ -473,6 +478,56 @@ def test_reversed_book_pages_wait_for_persisted_order_correction(
         assert [page["ordinal"] for page in state["pages"]] == [1, 2]
         assert [page["page_number"] for page in state["pages"]] == [11, 12]
         assert gateway.vision_count == 2
+
+
+def test_order_correction_is_not_reapplied_after_map_failure(
+    tmp_path: Any, monkeypatch: Any,
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = StudyGateway(page_numbers=[12, 11], fail_map=True)
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "studyorderretry")
+        a = _upload_draft(client, upload_id="retry-a").json()
+        b = _upload_draft(client, upload_id="retry-b", content=PNG_BYTES + b"b").json()
+        first = _first(client, [a["object_id"], b["object_id"]])
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        client.post(
+            f"/chat/conversations/{conversation_id}/messages", json={"content": "页序：2,1"},
+        )
+        app.state.generation_executor.run_tick()
+        failed = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert failed["messages"][-1]["status"] == "error"
+        gateway.fail_map = False
+        retry = client.post(
+            f"/chat/conversations/{conversation_id}/messages/"
+            f"{failed['messages'][-1]['message_id']}/retry",
+            json={"idempotency_key": "order-map-retry"},
+        )
+        assert retry.status_code == 200
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["stage"] == "tutoring"
+        assert [page["page_number"] for page in study["pages"]] == [11, 12]
+
+
+def test_multiline_formula_supplement_preserves_source(tmp_path: Any, monkeypatch: Any) -> None:
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = StudyGateway(unclear=True)
+    with TestClient(app) as client:
+        _register(client, "studymultiline")
+        photo = _upload_draft(client).json()
+        first = _first(client, [photo["object_id"]])
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+        content = "第1页中部公式：y=ax+b\na=2，b=1"
+        client.post(f"/chat/conversations/{conversation_id}/messages", json={"content": content})
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["stage"] == "tutoring"
+        assert study["pages"][0]["fragments"][-1]["source"] == "user"
+        assert study["pages"][0]["fragments"][-1]["text"] == content
 
 
 def test_different_section_cannot_be_cleared_by_arbitrary_text(
