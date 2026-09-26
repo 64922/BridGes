@@ -32,6 +32,8 @@ from bridges.career_plan.contracts import CareerPlanProjection
 from bridges.career_plan.service import CareerPlanService
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
+from bridges.github.contracts import GithubProjectsProjection
+from bridges.github.service import GithubProjectsService
 from bridges.paper.service import PaperSearchService
 from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.tieba.service import TiebaResearchService
@@ -268,6 +270,7 @@ class ChatService:
         career_plan_service: CareerPlanService | None = None,
         learning_resources_service: LearningResourcesService | None = None,
         commute_service: CommuteService | None = None,
+        github_projects_service: GithubProjectsService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -296,6 +299,9 @@ class ChatService:
         #: V2 Issue 12：校园通勤模块子图（显式 module_id=commute 时派发；
         #: 未装配或未配置高德凭据时如实降级，绝不改走普通对话或编造路线）。
         self._commute = commute_service
+        #: V2 Issue 16：GitHub 项目推荐模块子图（显式 module_id=github 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._github_projects = github_projects_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -389,7 +395,9 @@ class ChatService:
             )
         return self._attachments
 
-    def _validate_draft_attachments(self, account_id: str, attachment_ids: list[str]) -> None:
+    def _validate_draft_attachments(
+        self, account_id: str, attachment_ids: list[str], *, photos_only: bool = False,
+    ) -> None:
         """V2 Issue 05：校验账户级照片草稿并统一转成会话域错误。"""
         try:
             self._require_attachment_service().validate_draft_ids(
@@ -397,6 +405,14 @@ class ChatService:
             )
         except ChatAttachmentError as exc:
             raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+        if photos_only:
+            attachments = self._require_attachment_service()
+            for object_id in attachment_ids:
+                draft = attachments.get_draft(account_id, object_id)
+                if draft is None or draft.media_type not in PHOTO_MEDIA_TYPES:
+                    raise ChatDomainError(
+                        "study_pages_required", "学习模式只接受本节书页照片，请移除文件附件。", 422
+                    )
 
     # ------------------------------------------------------------------
     # 对话
@@ -857,7 +873,9 @@ class ChatService:
         # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
         # 校验失败（数量/重复/跨账户）在此拒绝，草稿保留供用户调整重试。
         if attachment_ids:
-            self._validate_draft_attachments(account_id, attachment_ids)
+            self._validate_draft_attachments(
+                account_id, attachment_ids, photos_only=record.mode == ChatMode.STUDY.value,
+            )
         mode = ChatMode(record.mode)
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
@@ -1379,7 +1397,9 @@ class ChatService:
                 )
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
-            self._validate_draft_attachments(account_id, attachment_ids)
+            self._validate_draft_attachments(
+                account_id, attachment_ids, photos_only=mode == ChatMode.STUDY,
+            )
         capability_route = self._route_for_turn(
             image_payload=image_payload,
             video_payload=video_payload,
@@ -2046,6 +2066,11 @@ class ChatService:
         return self._paper_search
 
     @property
+    def github_projects_service(self) -> GithubProjectsService | None:
+        """GitHub 项目推荐子图服务（V2 Issue 16）；未装配时为 None。"""
+        return self._github_projects
+
+    @property
     def tieba_research_service(self) -> TiebaResearchService | None:
         """贴吧信息搜集子图服务（V2 Issue 14）；未装配时为 None。"""
         return self._tieba_research
@@ -2579,6 +2604,12 @@ class ChatService:
             career_plan=(
                 CareerPlanProjection.model_validate(message.career_plan)
                 if message.career_plan is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            github_projects=(
+                GithubProjectsProjection.model_validate(message.github_projects)
+                if message.github_projects is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

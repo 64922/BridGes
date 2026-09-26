@@ -689,17 +689,25 @@ def test_study_mode_rejects_daily_module(
 
 
 def test_other_modules_still_rejected_and_no_silent_search(
-    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    sqlite_app: Any,
+    client: TestClient,
+    generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """尚未接入的模块仍被显式拒绝，且不产生任何检索。"""
+    """请求契约内但子图尚未接入的模块仍被显式拒绝，且不产生任何检索。"""
     _register(client)
+    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
+    # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
+    monkeypatch.setattr(
+        "bridges.chat.graph.AVAILABLE_MODULE_IDS",
+        frozenset({"paper", "commute", "resources", "tieba", "github"}),
+    )
     port = _FakeSearchPort()
     _install_career_service(sqlite_app, port=port)
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
 
-    # 反例取尚未接入的 github（Issue 15 合并后 career 已可用）。
-    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="github")
+    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )

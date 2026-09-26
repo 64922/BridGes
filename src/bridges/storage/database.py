@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 57
+SCHEMA_VERSION = 58
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2552,12 +2552,24 @@ MIGRATIONS: dict[int, list[str]] = {
         ALTER TABLE messages ADD COLUMN tieba_research TEXT
         """,
     ],
+    # Issue 16（V2 GitHub 项目推荐）：messages 增加本模块列的 JSON 投影。
+    # 保存用户 idea 的场景与要点、每次 GitHub 接口调用的查询记录、逐个仓库的
+    # 功能匹配与覆盖范围、维护与许可证据、已读实现文件、限流状态与失败分类；
+    # 旧行通过 DEFAULT NULL 自然兼容。
+    # 编号 57：54/55/56 已被先合并的 Issue 12/13/14 占用，按「已在 main 上线者
+    # 保留编号」原则让位，避免已升到 v56 的库静默跳过本列。
+    57: [
+        """
+        ALTER TABLE messages ADD COLUMN github_projects TEXT
+        """,
+    ],
     # Issue 15（V2 职业规划）：messages 增加职业规划模块的 JSON 投影列。
     # 保存实际查询词与筛选条件、逐条岗位字段（链接/公司/城市/薪资原文/发布
     # 日期/要求）、剔除依据、技能与薪资统计口径、建议与失败分类；旧行通过
     # DEFAULT NULL 自然兼容，其余模块投影列保持原样只读。
-    # 编号 57：53–56 已分别被 Issue 11/12/13/14 占用，取紧邻的下一个连续号。
-    57: [
+    # 编号 58：57 已被先合并的 Issue 16 占用，按「已在 main 上线者保留编号」原则
+    # 让位，避免已升到 v57 的库静默跳过本列。
+    58: [
         """
         ALTER TABLE messages ADD COLUMN career_plan TEXT
         """,

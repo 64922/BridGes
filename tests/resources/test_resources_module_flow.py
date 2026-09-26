@@ -679,17 +679,26 @@ def test_plain_chat_suggests_resources_module_without_searching(
 
 
 def test_other_modules_still_rejected_and_no_silent_search(
-    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    sqlite_app: Any,
+    client: TestClient,
+    generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """未接入模块仍被明确拒绝；普通聊天不产生任何资料检索记录。"""
+    """请求契约内但子图尚未接入的模块仍被明确拒绝；普通聊天不产生任何资料检索记录。"""
     _register(client)
+    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
+    # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
+    monkeypatch.setattr(
+        "bridges.chat.graph.AVAILABLE_MODULE_IDS",
+        frozenset({"paper", "commute", "resources", "tieba", "github"}),
+    )
     openlibrary = _FakeBookSource(candidates=[BEGINNER_BOOK, HANDBOOK_BOOK])
     _install_resources_service(
         sqlite_app, books=[openlibrary], discoverer=_FakeDiscoverer()
     )
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="github")
+    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )

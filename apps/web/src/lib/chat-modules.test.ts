@@ -11,6 +11,7 @@ import type {
   CareerPlanProjection,
   ChatMessageProjection,
   CommuteRouteProjection,
+  GithubProjectsProjection,
   LearningResourcesProjection,
   PaperSearchProjection,
   TiebaResearchProjection,
@@ -104,7 +105,8 @@ function message(
   search: PaperSearchProjection | null,
   tieba: TiebaResearchProjection | null = null,
   resources: LearningResourcesProjection | null = null,
-  career: CareerPlanProjection | null = null
+  career: CareerPlanProjection | null = null,
+  github: GithubProjectsProjection | null = null
 ): ChatMessageProjection {
   return {
     message_id: id,
@@ -117,8 +119,40 @@ function message(
     tieba_research: tieba,
     learning_resources: resources,
     career_plan: career,
+    github_projects: github,
     created_at: "2026-09-20T10:00:00Z",
     updated_at: "2026-09-20T10:00:01Z",
+  };
+}
+
+/** GitHub 项目推荐投影（V2 Issue 16）：只填本测试关心的字段。 */
+function githubProjects(
+  overrides: Partial<GithubProjectsProjection> = {}
+): GithubProjectsProjection {
+  return {
+    status: "success",
+    scenario: "校园二手书交换平台",
+    original_request: "我想做一个校园二手书交换平台",
+    features: ["发布想卖的书", "线下交换"],
+    tech_terms: [],
+    whole_idea: true,
+    component_terms: [],
+    context_source: null,
+    queries: [],
+    recommendations: [],
+    rejected: [],
+    rate_limit: {
+      limited: false,
+      note: null,
+    },
+    evidence_boundary: [],
+    empty_reason: null,
+    retryable: false,
+    error_code: null,
+    error_message: null,
+    completed_at: null,
+    pending: null,
+    ...overrides,
   };
 }
 
@@ -224,19 +258,23 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(chatModuleIcon("paper")).toBe("paperSearch");
     expect(chatModuleLabel("resources")).toBe("学习资料推荐");
     expect(chatModuleIcon("resources")).toBe("learningProject");
-    // 未接入模块没有中文名：宁可不显示标签，也不在中文界面回显英文枚举值。
-    expect(chatModuleLabel("github")).toBeNull();
-    expect(chatModuleIcon("github")).toBe("chatBubble");
+    expect(chatModuleLabel("github")).toBe("GitHub 项目推荐");
+    expect(chatModuleIcon("github")).toBe("githubRepo");
+    // 六个日常模块已全部接入；未知（或尚未接入的）取值没有中文名：
+    // 宁可不显示标签，也不在中文界面回显英文枚举值。
+    expect(chatModuleLabel("unknown_module")).toBeNull();
+    expect(chatModuleIcon("unknown_module")).toBe("chatBubble");
     expect(chatModuleLabel(null)).toBeNull();
   });
 
-  it("菜单里五个已接入模块的 ID 与后端枚举一致", () => {
+  it("菜单里六个已接入模块的 ID 与后端枚举一致", () => {
     expect(CHAT_MODULES.map((module) => module.id)).toEqual([
       "paper",
       "commute",
       "resources",
       "tieba",
       "career",
+      "github",
     ]);
   });
 
@@ -396,6 +434,73 @@ describe("chat-modules 职业规划（V2 Issue 15）", () => {
   });
 });
 
+describe("chat-modules GitHub 项目推荐（V2 Issue 16）", () => {
+  it("GitHub 在菜单里给中文名与仓库图标", () => {
+    expect(chatModuleLabel("github")).toBe("GitHub 项目推荐");
+    expect(chatModuleIcon("github")).toBe("githubRepo");
+    expect(CHAT_MODULES.find((module) => module.id === "github")?.description).toContain(
+      "公开仓库"
+    );
+  });
+
+  it("最后一条 GitHub 消息还在等澄清时恢复 GitHub 模块选择", () => {
+    const pending = githubProjects({
+      status: "clarification",
+      pending: {
+        module_id: "github",
+        kind: "clarification",
+        question: "你想找哪个项目或哪个功能的公开仓库？",
+        origin_message_id: "a-1",
+        context: {},
+        created_at: "2026-09-26T02:00:00Z",
+      },
+    });
+    expect(
+      pendingClarificationModule([message("m-1", null, null, null, null, pending)])
+    ).toBe("github");
+    // 论文的历史判定不受 GitHub 等待影响（两者互不冒充）。
+    expect(pendingClarificationModule([message("m-1", pendingPaperClarification)])).toBe(
+      "paper"
+    );
+  });
+
+  it("GitHub 已有结论时不恢复：success / metadata_only / empty 都算本轮结束", () => {
+    for (const status of ["success", "metadata_only", "empty"] as const) {
+      expect(
+        pendingClarificationModule([
+          message("m-1", null, null, null, null, githubProjects({ status })),
+        ])
+      ).toBeNull();
+    }
+  });
+
+  it("本轮失败或停止时不冒领更早的等待状态", () => {
+    const pending = githubProjects({
+      status: "clarification",
+      pending: {
+        module_id: "github",
+        kind: "clarification",
+        question: "你想找哪个功能的公开仓库？",
+        origin_message_id: "a-1",
+        context: {},
+        created_at: "2026-09-26T02:00:00Z",
+      },
+    });
+    expect(
+      pendingClarificationModule([
+        message("m-1", null, null, null, null, pending),
+        message("m-2", null, null, null, null, githubProjects({ status: "error" })),
+      ])
+    ).toBeNull();
+    expect(
+      pendingClarificationModule([
+        message("m-1", null, null, null, null, pending),
+        message("m-2", null, null, null, null, githubProjects({ status: "stopped" })),
+      ])
+    ).toBeNull();
+  });
+});
+
 describe("chat-modules 校园通勤（V2 Issue 12）", () => {
   it("校园通勤在菜单里给中文名与路线图标", () => {
     expect(chatModuleLabel("commute")).toBe("校园通勤");
@@ -406,6 +511,7 @@ describe("chat-modules 校园通勤（V2 Issue 12）", () => {
       "resources",
       "tieba",
       "career",
+      "github",
     ]);
   });
 

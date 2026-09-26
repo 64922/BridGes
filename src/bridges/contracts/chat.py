@@ -14,8 +14,9 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
-from bridges.commute.contracts import CommuteRouteProjection
 from bridges.career_plan.contracts import CareerPlanProjection
+from bridges.commute.contracts import CommuteRouteProjection
+from bridges.github.contracts import GithubProjectsProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
 from bridges.tieba.contracts import TiebaResearchProjection
@@ -352,6 +353,11 @@ class ChatMessageProjection(BaseModel):
     # V2 Issue 12：校园通勤模块状态（起终点 POI/方式/距离/耗时/路径点/课间缓冲）。
     commute_route: CommuteRouteProjection | None = Field(
         default=None, description="本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。"
+    )
+    # V2 Issue 16：GitHub 项目推荐状态（场景与要点/逐仓库证据/覆盖范围/限流）。
+    github_projects: GithubProjectsProjection | None = Field(
+        default=None,
+        description="本条助手消息的 GitHub 项目推荐状态（功能匹配、维护与许可证据）。",
     )
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近更新时间。")

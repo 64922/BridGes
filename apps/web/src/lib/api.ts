@@ -149,6 +149,21 @@ export type SkillStat = components["schemas"]["SkillStat"];
 export type CityCount = components["schemas"]["CityCount"];
 export type CareerAdviceItem = components["schemas"]["CareerAdviceItem"];
 export type AdjacentJobSuggestion = components["schemas"]["AdjacentJobSuggestion"];
+// V2 Issue 16：GitHub 项目推荐模块投影（逐仓库的功能匹配、维护与许可证据）。
+export type GithubProjectsProjection = components["schemas"]["GithubProjectsProjection"];
+export type GithubProjectStatus = components["schemas"]["GithubProjectStatus"];
+export type GithubCoverage = components["schemas"]["GithubCoverage"];
+export type GithubEvidenceKind = components["schemas"]["GithubEvidenceKind"];
+export type GithubReadmeStatus = components["schemas"]["GithubReadmeStatus"];
+export type GithubContextSource = components["schemas"]["GithubContextSource"];
+export type GithubFeatureMatch = components["schemas"]["GithubFeatureMatch"];
+export type GithubRecommendation = components["schemas"]["GithubRecommendation"];
+export type GithubRejectedRepository = components["schemas"]["GithubRejectedRepository"];
+export type GithubMaintenanceEvidence = components["schemas"]["GithubMaintenanceEvidence"];
+export type GithubLicenseCheck = components["schemas"]["GithubLicenseCheck"];
+export type GithubImplementationCheck = components["schemas"]["GithubImplementationCheck"];
+export type GithubFileRead = components["schemas"]["GithubFileRead"];
+export type GithubRateLimitState = components["schemas"]["GithubRateLimitState"];
 // V2 Issue 13：学习资料推荐模块投影（图书与哔哩哔哩视频清单）。
 export type LearningResourcesProjection = components["schemas"]["LearningResourcesProjection"];
 export type ResourcesStatus = components["schemas"]["ResourcesStatus"];

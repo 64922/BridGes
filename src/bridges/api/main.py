@@ -67,6 +67,11 @@ from bridges.commute.sources import AmapRouteClient
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.paper.presenting import PaperSummaryGenerator
 from bridges.paper.service import PaperSearchService
+from bridges.github.client import GITHUB_TIMEOUT_SECONDS, GithubApiClient
+from bridges.github.inspecting import GithubRepositoryReader
+from bridges.github.presenting import GithubInsightGenerator
+from bridges.github.searching import GithubApiSearchAdapter
+from bridges.github.service import GithubProjectsService
 from bridges.tieba.official import HttpOfficialSiteReader
 from bridges.tieba.reading import HttpTiebaThreadReader
 from bridges.tieba.searching import WebSearchServiceAdapter
@@ -467,6 +472,11 @@ def _amap_web_service_key(app: Any) -> str | None:
 def _paper_metadata_client() -> httpx.Client:
     """论文元数据补充的共享客户端（独立短超时；不承载账户凭据）。"""
     return httpx.Client(timeout=ENRICH_TIMEOUT_SECONDS)
+
+
+def _github_api_client() -> httpx.Client:
+    """GitHub 公开接口客户端（独立短超时；不承载账户凭据，只用公开只读接口）。"""
+    return httpx.Client(timeout=GITHUB_TIMEOUT_SECONDS)
 
 
 def _resource_metadata_client() -> httpx.Client:
@@ -1433,6 +1443,21 @@ def create_app(
             reader=HttpJobPageReader(),
         )
         app.router.add_event_handler("shutdown", app.state.career_plan_service.close)
+        # V2 Issue 16：GitHub 项目推荐模块子图——公开仓库检索与证据读取都走
+        # GitHub 官方只读 REST API（有限缓存、额度退避与脱敏披露审计），
+        # README 只当项目自述，实现文件证据来自实际读取到的路径与内容。
+        app.state.github_api_client = GithubApiClient(
+            client=_github_api_client(),
+            observability=app.state.observability_service,
+        )
+        app.state.github_projects_service = GithubProjectsService(
+            search=GithubApiSearchAdapter(app.state.github_api_client),
+            reader=GithubRepositoryReader(app.state.github_api_client),
+            insights=GithubInsightGenerator(model_gateway),
+        )
+        app.router.add_event_handler(
+            "shutdown", app.state.github_api_client.close
+        )
         # V2 Issue 13：学习资料推荐模块子图——图书书目（Open Library 为主、
         # OpenAlex 有限补充）与哔哩哔哩视频（公网搜索发现后逐条核对公开元数据）。
         # 收尾夹具模式不装配外部来源，两条检索如实标注缺口。
@@ -1483,6 +1508,9 @@ def create_app(
                 app.state, "tieba_research_service", None
             ),
             career_plan_service=getattr(app.state, "career_plan_service", None),
+            github_projects_service=getattr(
+                app.state, "github_projects_service", None
+            ),
             learning_resources_service=getattr(
                 app.state, "learning_resources_service", None
             ),
