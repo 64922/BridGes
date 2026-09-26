@@ -1527,8 +1527,6 @@ def create_app(
             ),
             observability_service=app.state.observability_service,
             career_planner_service=app.state.career_planner_service,
-            image_service=app.state.image_service,
-            video_service=app.state.video_service,
             selections_service=app.state.chat_selections_service,
             mcp_service=getattr(app.state, "mcp_service", None),
             automatic_profile_service=app.state.automatic_profile_service,

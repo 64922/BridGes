@@ -411,6 +411,37 @@ def test_historical_media_message_retry_does_not_reenqueue(
     assert len(video_adapter.calls) == video_calls
 
 
+def test_payload_bearing_legacy_run_is_refused_at_orchestration(
+    sqlite_app: Any, client: TestClient
+) -> None:
+    """升级前遗留的带载荷运行在编排层同样被拒：不建任务、不调供应商。
+
+    公开写入口已全部 410，但带载荷的消息与排队运行可能早于退役写入库；
+    执行器恢复这类运行时会走到聊天编排的载荷分支，退役判定必须在那里
+    同样成立，否则「退役能力不再产生新写入」会从恢复路径漏出去。
+    """
+    account = _register(client)
+    image_adapter, video_adapter = _install_media_adapters(sqlite_app)
+    first_turn = sqlite_app.state.chat_service.start_first_turn(
+        account["id"],
+        content="帮我画一座桥",
+        idempotency_key="issue21-legacy-media-run",
+        image={"kind": "generate", "prompt": "一座桥的素描"},
+    )
+    conversation_id = first_turn.conversation.conversation_id
+
+    sqlite_app.state.generation_executor.run_tick()
+
+    messages = client.get(f"/chat/conversations/{conversation_id}").json()["messages"]
+    assistant = [item for item in messages if item["role"] == "assistant"][-1]
+    assert assistant["status"] == "error"
+    assert assistant["error_code"] == "legacy_image_retired"
+    assert _row_count(sqlite_app, account["id"], "image_tasks") == 0
+    assert _row_count(sqlite_app, account["id"], "video_tasks") == 0
+    assert image_adapter.calls == []
+    assert video_adapter.calls == []
+
+
 def test_read_aloud_generation_is_retired_but_history_stays_readable(
     sqlite_app: Any, client: TestClient
 ) -> None:

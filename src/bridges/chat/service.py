@@ -69,9 +69,7 @@ from bridges.chat.turn import (
     CHAT_MODE,
     STREAM_INTERRUPTED_MESSAGE,
     CareerPlannerOrchestrator,
-    ImageOrchestrator,
     TurnOrchestrator,
-    VideoOrchestrator,
     attempt_group,
     cancelled_arxiv_search,
     cancelled_web_search,
@@ -260,8 +258,6 @@ class ChatService:
         atomic_profile_service: AtomicProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
-        image_service: ImageOrchestrator | None = None,
-        video_service: VideoOrchestrator | None = None,
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
@@ -319,12 +315,6 @@ class ChatService:
         self._observability = observability_service
         #: 生涯规划编排（Issue 29）；未挂载时规划意图按普通消息处理。
         self._career_planner = career_planner_service
-        #: 图片生成与编辑编排（Issue 31）；未挂载时携带 image 载荷的
-        #: 消息按错误收敛（测试/内存环境不假装生成）。
-        self._image = image_service
-        #: 文生视频编排（Issue 32，Wan 固定绑定）；未挂载时携带 video
-        #: 载荷的消息按错误收敛（测试/内存环境不假装生成）。
-        self._video = video_service
         #: 对话级插件选择域（Issue 36）：选择校验、失效清洗与工具上下文
         #: 编译；未挂载时不注入工具集合、不校验选择（内存测试环境）。
         self._selections = selections_service
@@ -353,8 +343,6 @@ class ChatService:
             atomic_profile_service=self._atomic_profiles,
             observability_service=self._observability,
             career_planner_service=self._career_planner,
-            image_service=self._image,
-            video_service=self._video,
             selections_service=self._selections,
             mcp_service=self._mcp,
             writing_policy_compiler=self._writing_policy,
