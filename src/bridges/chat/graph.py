@@ -68,6 +68,12 @@ from bridges.resources.service import (
     ResourcesModuleError,
 )
 from bridges.resources.suggestion import detect_resources_suggestion
+from bridges.tieba.service import (
+    TIEBA_MODULE_ID,
+    TIEBA_NODE_LABELS,
+    TiebaModuleError,
+)
+from bridges.tieba.suggestion import detect_tieba_suggestion
 
 if TYPE_CHECKING:
     from bridges.chat.repository import GenerationRunRecord
@@ -102,7 +108,7 @@ RUN_CONFIG_MODULE_ID = "module_id"
 
 #: 已接入日常父图的显式模块（其余模块仍在开发：显式拒绝，绝不悄悄降级）。
 AVAILABLE_MODULE_IDS: frozenset[str] = frozenset(
-    {PAPER_MODULE_ID, COMMUTE_MODULE_ID, RESOURCES_MODULE_ID}
+    {PAPER_MODULE_ID, COMMUTE_MODULE_ID, RESOURCES_MODULE_ID, TIEBA_MODULE_ID}
 )
 
 #: 节点的用户可读名称（失败信息标注位置用）。
@@ -115,6 +121,7 @@ NODE_LABELS: dict[str, str] = {
     NODE_PERSIST_RESULT: "保存结果",
     # 子图节点：失败信息按真实失败的子图步骤标注位置（Issue 11 起）。
     **PAPER_NODE_LABELS,
+    **TIEBA_NODE_LABELS,
     **RESOURCES_NODE_LABELS,
     **COMMUTE_NODE_LABELS,
 }
@@ -425,7 +432,7 @@ def _node_select_explicit_module(
     deps: _GraphDeps = config["configurable"]["deps"]
     module_id = state.get("module_id")
     if module_id is not None and module_id not in AVAILABLE_MODULE_IDS:
-        # 其余模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
+        # 其余两个模块子图尚未接入；显式拒绝，绝不悄悄降级为普通对话
         # （派发只读持久化值，模型无法从正文改写模块选择）。
         raise DailyTurnError(
             NODE_SELECT_EXPLICIT_MODULE,
@@ -445,6 +452,8 @@ def _node_invoke_subgraph_or_chat(
     dispatch = state.get("module_dispatch")
     if dispatch == PAPER_MODULE_ID:
         return _invoke_paper_module(deps, state)
+    if dispatch == TIEBA_MODULE_ID:
+        return _invoke_tieba_module(deps, state)
     if dispatch == RESOURCES_MODULE_ID:
         return _invoke_resources_module(deps, state)
     if dispatch == COMMUTE_MODULE_ID:
@@ -501,6 +510,46 @@ def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
             stop_event=deps.stop_event,
         )
     except PaperModuleError as error:
+        raise DailyTurnError(
+            error.node, error.code, error.message, retryable=error.retryable
+        ) from error
+    if outcome.wait_reason is not None:
+        deps.repo.update_generation_progress(
+            run.account_id, run.run_id, wait_reason=outcome.wait_reason
+        )
+    return {}
+
+
+def _invoke_tieba_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
+    """贴吧子图执行体：节点进度经同一 ``node`` 事件与 current_node 透传。
+
+    子图内的失败按真实失败的子图步骤标注位置（``tieba.search`` 等），
+    并把等待原因写入运行表（持久化等待状态，跨轮次恢复的依据）。
+    """
+    run = deps.run
+    service = getattr(deps.service, "tieba_research_service", None)
+    if service is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT,
+            "module_not_available",
+            "贴吧信息搜集模块当前不可用，请稍后重试。",
+            retryable=True,
+        )
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(state["assistant_message_id"], node, status, duration_ms=duration_ms)
+
+    try:
+        outcome = service.run(
+            repo=deps.repo,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            user_message_id=run.user_message_id,
+            assistant_message_id=run.assistant_message_id,
+            emit_node=emit_node,
+            stop_event=deps.stop_event,
+        )
+    except TiebaModuleError as error:
         raise DailyTurnError(
             error.node, error.code, error.message, retryable=error.retryable
         ) from error
@@ -631,6 +680,9 @@ def _node_persist_result(
 
     V2 Issue 13：论文建议优先（论文请求更具体），没有论文建议时才看
     资料请求。建议字段每轮只有一个，因此两个模块不会互相覆盖。
+
+    V2 Issue 14：贴吧建议接在论文之后（吧内请求同样明确），其后才是通勤
+    与资料；四者共用同一建议字段，命中即止。
     """
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
@@ -638,9 +690,11 @@ def _node_persist_result(
         user_message = deps.repo.get_message(run.account_id, run.user_message_id)
         if user_message is not None:
             # 一条消息只给一个建议：论文建议优先（其请求形态更明确），
-            # 未命中时才依次考虑通勤与资料建议；三者都只建议，不后台执行。
+            # 未命中时才依次考虑贴吧、通勤与资料建议；四者都只建议，
+            # 不后台执行。
             suggestion = (
                 detect_paper_suggestion(user_message.content)
+                or detect_tieba_suggestion(user_message.content)
                 or detect_commute_suggestion(user_message.content)
                 or detect_resources_suggestion(user_message.content)
             )

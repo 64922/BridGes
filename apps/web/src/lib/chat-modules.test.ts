@@ -12,6 +12,7 @@ import type {
   CommuteRouteProjection,
   LearningResourcesProjection,
   PaperSearchProjection,
+  TiebaResearchProjection,
 } from "@/lib/api";
 
 /** 论文投影：只填本测试关心的字段，其余用真实的完整形态。 */
@@ -100,6 +101,7 @@ function commuteRoute(
 function message(
   id: string,
   search: PaperSearchProjection | null,
+  tieba: TiebaResearchProjection | null = null,
   resources: LearningResourcesProjection | null = null
 ): ChatMessageProjection {
   return {
@@ -110,9 +112,40 @@ function message(
     status: "done",
     content: "回答",
     paper_search: search,
+    tieba_research: tieba,
     learning_resources: resources,
     created_at: "2026-09-20T10:00:00Z",
     updated_at: "2026-09-20T10:00:01Z",
+  };
+}
+
+/** 贴吧投影：只填本测试关心的字段。 */
+function tiebaResearch(
+  overrides: Partial<TiebaResearchProjection> = {}
+): TiebaResearchProjection {
+  return {
+    status: "success",
+    topic: "宿舍条件",
+    original_question: "华东交通大学吧里最近的宿舍条件怎么样",
+    topic_terms: ["宿舍", "条件"],
+    place_or_event: [],
+    time_filter: { requirement: null, year: null, applied: false, note: "未提出时间条件。" },
+    queries: [],
+    forum: "华东交通大学吧",
+    confirmed_posts: [],
+    candidate_links: [],
+    rejected_candidates: [],
+    official_check_requested: false,
+    official_checks: [],
+    sections: [],
+    evidence_boundary: [],
+    empty_reason: null,
+    retryable: false,
+    error_code: null,
+    error_message: null,
+    completed_at: null,
+    pending: null,
+    ...overrides,
   };
 }
 
@@ -162,11 +195,13 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(chatModuleIcon("github")).toBe("chatBubble");
     expect(chatModuleLabel(null)).toBeNull();
   });
-  it("菜单里三个已接入模块的 ID 与后端枚举一致", () => {
+
+  it("菜单里四个已接入模块的 ID 与后端枚举一致", () => {
     expect(CHAT_MODULES.map((module) => module.id)).toEqual([
       "paper",
       "commute",
       "resources",
+      "tieba",
     ]);
   });
 
@@ -178,7 +213,7 @@ describe("chat-modules（V2 Issue 11/13）", () => {
 
   it("最后一条资料消息还在等澄清时恢复资料模块选择", () => {
     expect(
-      pendingClarificationModule([message("m-1", null, pendingResourcesClarification)])
+      pendingClarificationModule([message("m-1", null, null, pendingResourcesClarification)])
     ).toBe("resources");
   });
 
@@ -186,7 +221,7 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(
       pendingClarificationModule([
         message("m-1", pendingPaperClarification),
-        message("m-2", null, pendingResourcesClarification),
+        message("m-2", null, null, pendingResourcesClarification),
       ])
     ).toBe("resources");
   });
@@ -200,8 +235,8 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     ).toBeNull();
     expect(
       pendingClarificationModule([
-        message("m-1", null, pendingResourcesClarification),
-        message("m-2", null, learningResources({ status: "empty" })),
+        message("m-1", null, null, pendingResourcesClarification),
+        message("m-2", null, null, learningResources({ status: "empty" })),
       ])
     ).toBeNull();
   });
@@ -209,6 +244,62 @@ describe("chat-modules（V2 Issue 11/13）", () => {
   it("普通聊天历史不恢复任何模块", () => {
     expect(
       pendingClarificationModule([message("m-1", null), message("m-2", null)])
+    ).toBeNull();
+  });
+});
+
+describe("chat-modules（V2 Issue 14 贴吧）", () => {
+  it("贴吧模块给中文名与图标", () => {
+    expect(chatModuleLabel("tieba")).toBe("贴吧信息搜集");
+    expect(chatModuleIcon("tieba")).toBe("tiebaThread");
+  });
+
+  it("最后一条贴吧消息还在等澄清时恢复贴吧模块选择", () => {
+    const pending = tiebaResearch({
+      status: "clarification",
+      pending: {
+        module_id: "tieba",
+        kind: "clarification",
+        question: "你想查华东交通大学吧里的哪个话题？",
+        origin_message_id: "a-1",
+        context: {},
+        created_at: "2026-09-25T02:00:00Z",
+      },
+    });
+    expect(pendingClarificationModule([message("m-1", null, pending)])).toBe("tieba");
+    // 论文的历史判定不受贴吧等待影响（两者互不冒充）。
+    expect(pendingClarificationModule([message("m-1", pendingPaperClarification, null)])).toBe(
+      "paper"
+    );
+  });
+
+  it("贴吧已有结论时不恢复：success / links_only / empty 都算本轮结束", () => {
+    for (const status of ["success", "links_only", "empty"] as const) {
+      expect(
+        pendingClarificationModule([message("m-1", null, tiebaResearch({ status }))])
+      ).toBeNull();
+    }
+  });
+
+  it("本轮检索失败或停止时不冒领更早的等待状态", () => {
+    const pending = tiebaResearch({
+      status: "clarification",
+      pending: {
+        module_id: "tieba",
+        kind: "clarification",
+        question: "你想查哪个话题？",
+        origin_message_id: "a-1",
+        context: {},
+        created_at: "2026-09-25T02:00:00Z",
+      },
+    });
+    // 失败/停止是「本轮结束了」，不再把更早那条澄清当成待续问题（否则下次
+    // 发言会被悄悄派发到贴吧模块）。
+    expect(
+      pendingClarificationModule([
+        message("m-1", null, pending),
+        message("m-2", null, tiebaResearch({ status: "error" })),
+      ])
     ).toBeNull();
   });
 });
@@ -221,6 +312,7 @@ describe("chat-modules 校园通勤（V2 Issue 12）", () => {
       "paper",
       "commute",
       "resources",
+      "tieba",
     ]);
   });
 

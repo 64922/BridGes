@@ -133,6 +133,8 @@ class MessageRecord:
     paper_search: dict[str, Any] | None = None
     #: V2 Issue 11：普通聊天中的「一键以原文启动论文模块」建议（只建议）。
     module_suggestion: dict[str, Any] | None = None
+    #: V2 Issue 14：贴吧信息搜集投影（查询词/候选/读取范围/官方核验/失败）。
+    tieba_research: dict[str, Any] | None = None
     #: V2 Issue 13：学习资料推荐模块状态投影（原词/层次/清单/等待/失败）。
     learning_resources: dict[str, Any] | None = None
     #: V2 Issue 12：校园通勤模块状态投影（起终点 POI/方式/距离/耗时/路径点/缓冲）。
@@ -527,7 +529,7 @@ class ConversationRepository:
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
-            " learning_resources, commute_route"
+            " learning_resources, commute_route, tieba_research"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -542,7 +544,7 @@ class ConversationRepository:
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
-            " learning_resources, commute_route"
+            " learning_resources, commute_route, tieba_research"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -613,6 +615,25 @@ class ConversationRepository:
                 (_json_dumps(paper_search), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
+
+    def update_message_tieba_research(
+        self,
+        account_id: str,
+        message_id: str,
+        tieba_research: dict[str, Any],
+        updated_at: datetime,
+    ) -> None:
+        """写入贴吧信息搜集投影（V2 Issue 14）。
+
+        与 ``paper_search`` 同形：失败/停止路径在消息终态收敛之前先落投影，
+        用户才能在同一条消息里看到真实查询词与失败分类。
+        """
+        with self._db.transaction():
+            self._db.scoped(account_id).execute(
+                "UPDATE messages SET tieba_research = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(tieba_research), _iso(updated_at), message_id, account_id),
+            )
 
     def update_message_commute_route(
         self,
@@ -809,6 +830,7 @@ class ConversationRepository:
         module_suggestion: dict[str, Any] | None = None,
         learning_resources: dict[str, Any] | None = None,
         commute_route: dict[str, Any] | None = None,
+        tieba_research: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -847,6 +869,7 @@ class ConversationRepository:
                 or module_suggestion is not None
                 or learning_resources is not None
                 or commute_route is not None
+                or tieba_research is not None
             ):
                 assignments = [
                     "status = ?",
@@ -887,6 +910,9 @@ class ConversationRepository:
                 if learning_resources is not None:
                     assignments.append("learning_resources = ?")
                     values.append(_json_dumps(learning_resources))
+                if tieba_research is not None:
+                    assignments.append("tieba_research = ?")
+                    values.append(_json_dumps(tieba_research))
                 values.extend([message_id, account_id])
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET "
@@ -2147,6 +2173,7 @@ class ConversationRepository:
             module_suggestion=_json_loads_any(row["module_suggestion"]),
             learning_resources=_json_loads_any(row["learning_resources"]),
             commute_route=_json_loads_any(row["commute_route"]),
+            tieba_research=_json_loads_any(row["tieba_research"]),
         )
 
 

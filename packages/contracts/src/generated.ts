@@ -8810,6 +8810,8 @@ export interface components {
             paper_search?: components["schemas"]["PaperSearchProjection"] | null;
             /** @description 普通聊天中的一键模块建议（只建议，不检索）。 */
             module_suggestion?: components["schemas"]["ModuleSuggestionProjection"] | null;
+            /** @description 本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。 */
+            tieba_research?: components["schemas"]["TiebaResearchProjection"] | null;
             /** @description 本条助手消息的学习资料推荐状态（图书与视频清单）。 */
             learning_resources?: components["schemas"]["LearningResourcesProjection"] | null;
             /** @description 本条助手消息的校园通勤状态（地点/方式/路线/缓冲/失败）。 */
@@ -19242,6 +19244,12 @@ export interface components {
          */
         ReadAloudState: "not_generated" | "ready" | "failed";
         /**
+         * ReadStatus
+         * @description 单个帖子的真实读取结果分类。
+         * @enum {string}
+         */
+        ReadStatus: "read" | "partial" | "access_restricted" | "unrecognized" | "not_found" | "timeout" | "error" | "cancelled";
+        /**
          * RealityMode
          * @description 现实承诺：现实禁止补亲历；虚构或混合必须标明哪些内容允许创作。
          * @enum {string}
@@ -23542,6 +23550,340 @@ export interface components {
             expires_at: string;
             /** @description Current capsule status. */
             status: components["schemas"]["CapsuleStatus"];
+        };
+        /**
+         * TiebaCandidateLink
+         * @description 仅有搜索摘要时的帖链降级（归属未确认，不含任何回复内容）。
+         */
+        TiebaCandidateLink: {
+            /** Url */
+            url: string;
+            /**
+             * Title
+             * @description 搜索服务给出的标题（未核实页面）。
+             */
+            title: string;
+            /**
+             * Source
+             * @description 检索来源标识。
+             */
+            source: string;
+        };
+        /**
+         * TiebaOfficialCheck
+         * @description 学校官方页面核验结果（与吧友经历分开展示）。
+         */
+        TiebaOfficialCheck: {
+            /**
+             * Title
+             * @description 官方页面标题。
+             */
+            title: string;
+            /**
+             * Url
+             * @description 官方页面链接。
+             */
+            url: string;
+            /**
+             * Host
+             * @description 页面主机名。
+             */
+            host: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             * @description 实际取得该页面的时间。
+             */
+            fetched_at: string;
+            /**
+             * Status
+             * @description verified（已定位相关段落）／excerpt_not_found（未定位相关段落）／fetch_failed（未能取得页面）。
+             */
+            status: string;
+            /**
+             * Excerpt
+             * @description 官方页面中命中原词的真实文本窗口；未命中为 None。
+             */
+            excerpt?: string | null;
+            /**
+             * Matched Terms
+             * @description 在该页面文本中真实命中的原始名词。
+             */
+            matched_terms?: string[];
+            /**
+             * Error Code
+             * @description 未取得页面时的失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 未取得页面时的中文说明。
+             */
+            error_message?: string | null;
+        };
+        /**
+         * TiebaPostProjection
+         * @description 一个真实读到并确认属于目标贴吧的帖子。
+         */
+        TiebaPostProjection: {
+            /**
+             * Thread Id
+             * @description 帖子 ID。
+             */
+            thread_id?: string | null;
+            /**
+             * Url
+             * @description 帖子直达链接。
+             */
+            url: string;
+            /**
+             * Title
+             * @description 页面上的帖子标题。
+             */
+            title?: string | null;
+            /**
+             * Affiliation Evidence
+             * @description 归属确认依据的中文说明。
+             */
+            affiliation_evidence: string;
+            /** @description 读取结果分类。 */
+            read_status: components["schemas"]["ReadStatus"];
+            /**
+             * Pages Read
+             * @description 实际读取页数。
+             * @default 0
+             */
+            pages_read: number;
+            /**
+             * Pages Limit
+             * @description 本轮页数上限。
+             * @default 0
+             */
+            pages_limit: number;
+            /**
+             * Total Pages
+             * @description 页面声明的总页数。
+             */
+            total_pages?: number | null;
+            /**
+             * Floor Min
+             * @description 实际读到的最小楼层。
+             */
+            floor_min?: number | null;
+            /**
+             * Floor Max
+             * @description 实际读到的最大楼层。
+             */
+            floor_max?: number | null;
+            /**
+             * Replies Obtained
+             * @description 是否真的取得了回复文本。
+             */
+            replies_obtained: boolean;
+            /**
+             * Replies
+             * @description 真实读到的楼层。
+             */
+            replies?: components["schemas"]["TiebaReply"][];
+            /**
+             * Read Error Code
+             * @description 未取得内容时的分类码。
+             */
+            read_error_code?: string | null;
+            /**
+             * Read Error Message
+             * @description 未取得内容时的中文原因说明。
+             */
+            read_error_message?: string | null;
+            /**
+             * Retrieved At
+             * Format: date-time
+             * @description 读取时间。
+             */
+            retrieved_at: string;
+        };
+        /**
+         * TiebaRejectedCandidate
+         * @description 被剔除的候选与剔除理由（他吧同名帖必须留下痕迹，不静默丢弃）。
+         */
+        TiebaRejectedCandidate: {
+            /** Url */
+            url: string;
+            /** Title */
+            title: string;
+            /**
+             * Evidence
+             * @description 剔除依据的中文说明。
+             */
+            evidence: string;
+        };
+        /**
+         * TiebaReply
+         * @description 真实读到的楼层；时间与楼层按页面原文记录。
+         */
+        TiebaReply: {
+            /**
+             * Floor
+             * @description 楼层号；页面未给出为 None。
+             */
+            floor?: number | null;
+            /**
+             * Posted At
+             * @description 页面上的发帖时间原文。
+             */
+            posted_at?: string | null;
+            /**
+             * Is Original Poster
+             * @description 是否楼主本人发言。
+             * @default false
+             */
+            is_original_poster: boolean;
+            /**
+             * Content
+             * @description 楼层正文（页面原文，已去标签）。
+             */
+            content: string;
+        };
+        /**
+         * TiebaResearchProjection
+         * @description 贴吧模块对外的完整投影。
+         */
+        TiebaResearchProjection: {
+            status: components["schemas"]["TiebaResearchStatus"];
+            /**
+             * Topic
+             * @description 本轮实际检索的主题词（中文拼接）。
+             */
+            topic: string;
+            /**
+             * Original Question
+             * @description 用户原始问题，逐字保留。
+             */
+            original_question: string;
+            /**
+             * Topic Terms
+             * @description 检索用原始名词。
+             */
+            topic_terms?: string[];
+            /**
+             * Place Or Event
+             * @description 事件／地点原始名词。
+             */
+            place_or_event?: string[];
+            /** @description 时间条件的执行状态。 */
+            time_filter: components["schemas"]["TiebaTimeFilter"];
+            /**
+             * Queries
+             * @description 每次外部调用的统一记录（查询词/条数/时间/错误）。
+             */
+            queries?: components["schemas"]["ModuleQueryRecord"][];
+            /**
+             * Forum
+             * @description 目标贴吧名称。
+             * @default 华东交通大学吧
+             */
+            forum: string;
+            /**
+             * Confirmed Posts
+             * @description 确认属于目标贴吧的公开帖子。
+             */
+            confirmed_posts?: components["schemas"]["TiebaPostProjection"][];
+            /**
+             * Candidate Links
+             * @description 仅有搜索摘要时的帖链（明确标注归属未确认）。
+             */
+            candidate_links?: components["schemas"]["TiebaCandidateLink"][];
+            /**
+             * Rejected Candidates
+             * @description 被剔除的他吧同名帖与剔除依据。
+             */
+            rejected_candidates?: components["schemas"]["TiebaRejectedCandidate"][];
+            /**
+             * Official Check Requested
+             * @description 本轮问题是否要求追加官方核验。
+             * @default false
+             */
+            official_check_requested: boolean;
+            /**
+             * Official Checks
+             * @description 实际取得的学校官方页面核验结果。
+             */
+            official_checks?: components["schemas"]["TiebaOfficialCheck"][];
+            /**
+             * Sections
+             * @description 只由已读文本分出的段落（可核验的个人经历／不同看法／不确定点）。
+             */
+            sections?: string[];
+            /**
+             * Evidence Boundary
+             * @description 本轮证据边界与缺口的中文说明。
+             */
+            evidence_boundary?: string[];
+            /**
+             * Empty Reason
+             * @description 没有结果时的中文原因。
+             */
+            empty_reason?: string | null;
+            /**
+             * Retryable
+             * @description 失败是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Completed At
+             * @description 本轮收敛时间。
+             */
+            completed_at?: string | null;
+            /** @description 等待用户回答的澄清状态；无等待为 None。 */
+            pending?: components["schemas"]["ModuleWaitState"] | null;
+        };
+        /**
+         * TiebaResearchStatus
+         * @description 一轮贴吧信息搜集的终态。
+         *
+         *     ``SUCCESS`` 只表示真的读到了确认属于目标贴吧的帖子；只拿到候选帖链时
+         *     是 ``LINKS_ONLY``（如实标注归属未确认、未取得回复内容），检索完全没有
+         *     可用候选才是 ``EMPTY``。
+         * @enum {string}
+         */
+        TiebaResearchStatus: "clarification" | "searching" | "success" | "links_only" | "empty" | "error" | "stopped";
+        /**
+         * TiebaTimeFilter
+         * @description 时间条件的真实执行状态：解析到了什么、有没有真的用上。
+         */
+        TiebaTimeFilter: {
+            /**
+             * Requirement
+             * @description 时间条件原话。
+             */
+            requirement?: string | null;
+            /**
+             * Year
+             * @description 绝对年份；相对说法为 None。
+             */
+            year?: number | null;
+            /**
+             * Applied
+             * @description 是否真的按帖子时间过滤过。
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Note
+             * @description 面向用户的中文说明（含未执行时的原因）。
+             */
+            note: string;
         };
         /**
          * Tombstone

@@ -126,6 +126,15 @@ export type ModuleQueryStatus = components["schemas"]["ModuleQueryStatus"];
 export type PaperSearchProjection = components["schemas"]["PaperSearchProjection"];
 export type PaperSearchStatus = components["schemas"]["PaperSearchStatus"];
 export type PaperRecommendation = components["schemas"]["PaperRecommendation"];
+// V2 Issue 14：贴吧信息搜集模块投影（真实读到的帖子/楼层、帖链降级与官方核验）。
+export type TiebaResearchProjection = components["schemas"]["TiebaResearchProjection"];
+export type TiebaResearchStatus = components["schemas"]["TiebaResearchStatus"];
+export type TiebaTimeFilter = components["schemas"]["TiebaTimeFilter"];
+export type TiebaPostProjection = components["schemas"]["TiebaPostProjection"];
+export type TiebaReply = components["schemas"]["TiebaReply"];
+export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];
+export type TiebaRejectedCandidate = components["schemas"]["TiebaRejectedCandidate"];
+export type TiebaOfficialCheck = components["schemas"]["TiebaOfficialCheck"];
 // V2 Issue 13：学习资料推荐模块投影（图书与哔哩哔哩视频清单）。
 export type LearningResourcesProjection = components["schemas"]["LearningResourcesProjection"];
 export type ResourcesStatus = components["schemas"]["ResourcesStatus"];

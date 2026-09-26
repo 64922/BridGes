@@ -67,6 +67,10 @@ from bridges.commute.sources import AmapRouteClient
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.paper.presenting import PaperSummaryGenerator
 from bridges.paper.service import PaperSearchService
+from bridges.tieba.official import HttpOfficialSiteReader
+from bridges.tieba.reading import HttpTiebaThreadReader
+from bridges.tieba.searching import WebSearchServiceAdapter
+from bridges.tieba.service import TiebaResearchService
 from bridges.paper.sources import (
     ENRICH_TIMEOUT_SECONDS,
     ArxivPaperSource,
@@ -1405,6 +1409,17 @@ def create_app(
             summarizer=PaperSummaryGenerator(model_gateway),
         )
         app.router.add_event_handler("shutdown", app.state.paper_search_service.close)
+        # V2 Issue 14：贴吧信息搜集模块子图——检索复用唯一通用公网搜索服务
+        # （审计/缓存/预算同一路径），帖子页面按公开 GET 有界读取，访问受限
+        # 时如实降级为「仅帖链」；官方核验只取学校官方域名页面。
+        app.state.tieba_research_service = TiebaResearchService(
+            search=WebSearchServiceAdapter(app.state.web_search_service),
+            reader=HttpTiebaThreadReader(),
+            official_reader=HttpOfficialSiteReader(),
+        )
+        app.router.add_event_handler(
+            "shutdown", app.state.tieba_research_service.close
+        )
         # V2 Issue 13：学习资料推荐模块子图——图书书目（Open Library 为主、
         # OpenAlex 有限补充）与哔哩哔哩视频（公网搜索发现后逐条核对公开元数据）。
         # 收尾夹具模式不装配外部来源，两条检索如实标注缺口。
@@ -1451,6 +1466,9 @@ def create_app(
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             paper_search_service=getattr(app.state, "paper_search_service", None),
+            tieba_research_service=getattr(
+                app.state, "tieba_research_service", None
+            ),
             learning_resources_service=getattr(
                 app.state, "learning_resources_service", None
             ),

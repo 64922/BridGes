@@ -21,7 +21,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 55
+SCHEMA_VERSION = 56
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2540,6 +2540,16 @@ MIGRATIONS: dict[int, list[str]] = {
     55: [
         """
         ALTER TABLE messages ADD COLUMN learning_resources TEXT
+        """,
+    ],
+    # Issue 14（V2 贴吧信息搜集）：messages 增加贴吧模块的 JSON 投影列。
+    # 保存实际查询词、候选与剔除依据、真实读到的页数/楼层/时间、官方核验
+    # 结果与失败分类；旧行通过 DEFAULT NULL 自然兼容。
+    # 编号 56：54 已被 Issue 12、55 已被 Issue 13 占用，按「已在 main 上线者保留
+    # 编号」原则让位，避免已升到 v55 的库静默跳过本列。
+    56: [
+        """
+        ALTER TABLE messages ADD COLUMN tieba_research TEXT
         """,
     ],
 }

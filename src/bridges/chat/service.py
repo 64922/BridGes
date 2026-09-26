@@ -31,6 +31,8 @@ from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
 from bridges.paper.service import PaperSearchService
+from bridges.tieba.contracts import TiebaResearchProjection
+from bridges.tieba.service import TiebaResearchService
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
 from bridges.resources.service import LearningResourcesService
@@ -260,6 +262,7 @@ class ChatService:
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
         model_config_provider: RunModelConfigProvider | None = None,
         paper_search_service: PaperSearchService | None = None,
+        tieba_research_service: TiebaResearchService | None = None,
         learning_resources_service: LearningResourcesService | None = None,
         commute_service: CommuteService | None = None,
     ) -> None:
@@ -278,6 +281,9 @@ class ChatService:
         #: V2 Issue 11：论文搜索模块子图（显式 module_id=paper 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._paper_search = paper_search_service
+        #: V2 Issue 14：贴吧信息搜集模块子图（显式 module_id=tieba 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._tieba_research = tieba_research_service
         #: V2 Issue 13：学习资料推荐模块子图（显式 module_id=resources 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._learning_resources = learning_resources_service
@@ -2034,6 +2040,11 @@ class ChatService:
         return self._paper_search
 
     @property
+    def tieba_research_service(self) -> TiebaResearchService | None:
+        """贴吧信息搜集子图服务（V2 Issue 14）；未装配时为 None。"""
+        return self._tieba_research
+
+    @property
     def learning_resources_service(self) -> LearningResourcesService | None:
         """学习资料推荐模块子图服务（V2 Issue 13）；未装配时为 None。"""
         return self._learning_resources
@@ -2545,6 +2556,12 @@ class ChatService:
             module_suggestion=(
                 ModuleSuggestionProjection.model_validate(message.module_suggestion)
                 if message.module_suggestion is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            tieba_research=(
+                TiebaResearchProjection.model_validate(message.tieba_research)
+                if message.tieba_research is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

@@ -17,6 +17,7 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
+from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
@@ -333,6 +334,11 @@ class ChatMessageProjection(BaseModel):
     )
     module_suggestion: ModuleSuggestionProjection | None = Field(
         default=None, description="普通聊天中的一键模块建议（只建议，不检索）。"
+    )
+    # V2 Issue 14：贴吧信息搜集状态（查询词/候选与剔除/已读范围/官方核验）。
+    tieba_research: TiebaResearchProjection | None = Field(
+        default=None,
+        description="本条助手消息的贴吧信息搜集状态（真实读取范围与官方核验）。",
     )
     # V2 Issue 13：学习资料推荐模块状态（原词/层次/图书与视频清单/等待/失败）。
     learning_resources: LearningResourcesProjection | None = Field(

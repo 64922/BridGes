@@ -1947,6 +1947,7 @@ def finalize_message(
     teaching: dict[str, Any] | None = None,
     persist_learning: Callable[[], None] | None = None,
     paper_search: dict[str, Any] | None = None,
+    tieba_research: dict[str, Any] | None = None,
     learning_resources: dict[str, Any] | None = None,
     commute_route: dict[str, Any] | None = None,
 ) -> None:
@@ -1977,6 +1978,7 @@ def finalize_message(
         web_search=web_search,
         arxiv_search=arxiv_search,
         paper_search=paper_search,
+        tieba_research=tieba_research,
         learning_resources=learning_resources,
         commute_route=commute_route,
         teaching=teaching,

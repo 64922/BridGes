@@ -58,6 +58,8 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       arxivSearch: latest.arxiv_search ?? null,
       // V2 Issue 11：论文模块投影与普通聊天里的模块建议
       paperSearch: latest.paper_search ?? null,
+      // V2 Issue 14：贴吧信息搜集投影（已读帖子/帖链降级/官方核验）
+      tiebaResearch: latest.tieba_research ?? null,
       // V2 Issue 13：学习资料推荐投影（图书与哔哩哔哩视频清单）
       learningResources: latest.learning_resources ?? null,
       moduleSuggestion: latest.module_suggestion ?? null,
