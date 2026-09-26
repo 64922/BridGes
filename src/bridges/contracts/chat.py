@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.paper.contracts import PaperSearchProjection
+from bridges.resources.contracts import LearningResourcesProjection
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
@@ -332,6 +333,10 @@ class ChatMessageProjection(BaseModel):
     )
     module_suggestion: ModuleSuggestionProjection | None = Field(
         default=None, description="普通聊天中的一键模块建议（只建议，不检索）。"
+    )
+    # V2 Issue 13：学习资料推荐模块状态（原词/层次/图书与视频清单/等待/失败）。
+    learning_resources: LearningResourcesProjection | None = Field(
+        default=None, description="本条助手消息的学习资料推荐状态（图书与视频清单）。"
     )
     # V2 Issue 12：校园通勤模块状态（起终点 POI/方式/距离/耗时/路径点/课间缓冲）。
     commute_route: CommuteRouteProjection | None = Field(

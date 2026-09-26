@@ -126,6 +126,11 @@ export type ModuleQueryStatus = components["schemas"]["ModuleQueryStatus"];
 export type PaperSearchProjection = components["schemas"]["PaperSearchProjection"];
 export type PaperSearchStatus = components["schemas"]["PaperSearchStatus"];
 export type PaperRecommendation = components["schemas"]["PaperRecommendation"];
+// V2 Issue 13：学习资料推荐模块投影（图书与哔哩哔哩视频清单）。
+export type LearningResourcesProjection = components["schemas"]["LearningResourcesProjection"];
+export type ResourcesStatus = components["schemas"]["ResourcesStatus"];
+export type ResourceItem = components["schemas"]["ResourceItem"];
+export type ResourceKind = components["schemas"]["ResourceKind"];
 // V2 Issue 12：校园通勤投影（起终点 POI、方式、路径点与文字路段、课间缓冲）
 // 与浏览器地图运行时配置（只含 JS API Key 与同源代理路径，不含安全密钥）。
 export type CommuteRouteProjection = components["schemas"]["CommuteRouteProjection"];

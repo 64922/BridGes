@@ -1,11 +1,9 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
-import type {
-  ModuleQueryRecord,
-  PaperRecommendation,
-  PaperSearchProjection,
-} from "@/lib/api";
+import type { PaperRecommendation, PaperSearchProjection } from "@/lib/api";
+
+import { QueryRecordList } from "./QueryRecordList";
 
 /** V2 Issue 11：论文模块状态的中文标题（每条助手消息内如实显示）。 */
 const STATUS_TITLES: Record<string, string> = {
@@ -25,46 +23,11 @@ const ROLE_LABELS: Record<string, string> = {
   recent: "较新研究",
 };
 
-const QUERY_STATUS_LABELS: Record<string, string> = {
-  success: "成功",
-  empty: "无结果",
-  skipped: "未执行",
-  timeout: "超时",
-  cancelled: "已取消",
-  rate_limited: "被上游限流",
-  error: "失败",
-};
-
 const SOURCE_LABELS: Record<string, string> = {
   arxiv: "arXiv",
   crossref: "Crossref",
   openalex: "OpenAlex",
 };
-
-function formatTime(value: string | null | undefined): string {
-  if (!value) return "时间未知";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
-}
-
-/** 一次外部调用的真实记录：来源、实际查询词、结果分类、取得时间与错误。 */
-function QueryRecordRow({ record }: { record: ModuleQueryRecord }) {
-  const failed = record.status === "error" || record.status === "timeout";
-  return (
-    <li style={{ color: failed ? "var(--color-status-error)" : "var(--color-text-secondary)" }}>
-      <strong>{SOURCE_LABELS[record.source] ?? record.source}</strong>
-      {" · 查询「"}
-      {record.query}
-      {"」 · "}
-      {QUERY_STATUS_LABELS[record.status] ?? record.status}
-      {`（${record.evidence_count} 条）`}
-      {" · "}
-      {formatTime(record.retrieved_at)}
-      {/* 缓存命中/上游次数/冷却秒数是内部日志（interaction.md §6），不呈现给用户。 */}
-      {record.error_message ? `：${record.error_message}` : ""}
-    </li>
-  );
-}
 
 /** 一篇推荐结果：阅读顺序、来源链接、全文可得性与理由。 */
 function PaperRow({ paper }: { paper: PaperRecommendation }) {
@@ -264,29 +227,11 @@ export function PaperSearchCard({
         </p>
       )}
 
-      {queries.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            本次外部调用记录
-          </p>
-          <ul
-            data-testid="paper-search-queries"
-            style={{
-              margin: 0,
-              paddingLeft: "var(--space-5)",
-              listStyle: "disc",
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-1)",
-              fontSize: "var(--text-xs)",
-            }}
-          >
-            {queries.map((record, index) => (
-              <QueryRecordRow key={`${record.source}-${record.query}-${index}`} record={record} />
-            ))}
-          </ul>
-        </div>
-      )}
+      <QueryRecordList
+        records={queries}
+        testId="paper-search-queries"
+        sourceLabels={SOURCE_LABELS}
+      />
 
       {papers.length > 0 && (
         <ol

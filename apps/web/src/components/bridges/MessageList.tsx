@@ -12,6 +12,7 @@ import type {
   ChatModuleId,
   CommuteRouteProjection,
   ContextNoteProjection,
+  LearningResourcesProjection,
   ModuleSuggestionProjection,
   PaperSearchProjection,
   RetrievalRoundProjection,
@@ -34,6 +35,7 @@ import { VideoTaskCard } from "./chat/VideoTaskCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ModuleSuggestionCard } from "./chat/ModuleSuggestionCard";
 import { PaperSearchCard } from "./chat/PaperSearchCard";
+import { LearningResourcesCard } from "./chat/LearningResourcesCard";
 import { CommuteRouteCard } from "./chat/CommuteRouteCard";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { BrandLogo } from "./BrandLogo";
@@ -93,6 +95,12 @@ export const NODE_LABEL: Record<string, string> = {
   "paper.enrich": "核对论文来源",
   "paper.rank": "筛选与排序论文",
   "paper.present": "整理论文结果",
+  // V2 Issue 13：资料子图节点（显式派发后逐步显示真实进度）。
+  "resources.parse": "理解学习需求",
+  "resources.search_books": "检索图书书目",
+  "resources.search_videos": "查找哔哩哔哩视频",
+  "resources.rank": "筛选与排序资料",
+  "resources.present": "整理资料清单",
   // V2 Issue 12：校园通勤子图节点（解析→定位→路线→缓冲→呈现）。
   "route.parse": "理解通勤请求",
   "route.resolve": "定位起终点",
@@ -146,6 +154,8 @@ export interface ChatMessage {
   moduleId?: string | null;
   /** V2 Issue 11：本条助手消息的论文模块状态（查询/来源/等待/失败/停止） */
   paperSearch?: PaperSearchProjection | null;
+  /** V2 Issue 13：本条助手消息的学习资料推荐状态（原词/层次/图书与视频清单） */
+  learningResources?: LearningResourcesProjection | null;
   /** V2 Issue 12：本条助手消息的校园通勤状态（起终点/路线/缓冲/等待/失败） */
   commuteRoute?: CommuteRouteProjection | null;
   /** V2 Issue 11：普通聊天中的一键模块建议（只建议，未检索） */
@@ -738,6 +748,16 @@ export function MessageList({
                 {conversationId && (
                   <PaperSearchCard
                     search={message.paperSearch ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* V2 Issue 13：学习资料推荐结果卡（原词/层次/按由浅入深的
+                    图书与视频清单/每次外部调用记录/证据边界/失败与重试）。 */}
+                {conversationId && (
+                  <LearningResourcesCard
+                    resources={message.learningResources ?? null}
                     streaming={message.status === "streaming"}
                     onRetry={() => onRetry?.(message.id)}
                   />

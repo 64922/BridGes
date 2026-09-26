@@ -32,6 +32,8 @@ from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
 from bridges.paper.service import PaperSearchService
 from bridges.paper.contracts import PaperSearchProjection
+from bridges.resources.contracts import LearningResourcesProjection
+from bridges.resources.service import LearningResourcesService
 from bridges.chat.attachments import (
     PHOTO_MEDIA_TYPES,
     ChatAttachmentError,
@@ -258,6 +260,7 @@ class ChatService:
         writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
         model_config_provider: RunModelConfigProvider | None = None,
         paper_search_service: PaperSearchService | None = None,
+        learning_resources_service: LearningResourcesService | None = None,
         commute_service: CommuteService | None = None,
     ) -> None:
         self._repo = repository
@@ -275,6 +278,9 @@ class ChatService:
         #: V2 Issue 11：论文搜索模块子图（显式 module_id=paper 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._paper_search = paper_search_service
+        #: V2 Issue 13：学习资料推荐模块子图（显式 module_id=resources 时派发；
+        #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
+        self._learning_resources = learning_resources_service
         #: V2 Issue 12：校园通勤模块子图（显式 module_id=commute 时派发；
         #: 未装配或未配置高德凭据时如实降级，绝不改走普通对话或编造路线）。
         self._commute = commute_service
@@ -2028,6 +2034,11 @@ class ChatService:
         return self._paper_search
 
     @property
+    def learning_resources_service(self) -> LearningResourcesService | None:
+        """学习资料推荐模块子图服务（V2 Issue 13）；未装配时为 None。"""
+        return self._learning_resources
+
+    @property
     def commute_service(self) -> CommuteService | None:
         """校园通勤模块子图服务（V2 Issue 12）；未装配时为 None。"""
         return self._commute
@@ -2534,6 +2545,12 @@ class ChatService:
             module_suggestion=(
                 ModuleSuggestionProjection.model_validate(message.module_suggestion)
                 if message.module_suggestion is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            learning_resources=(
+                LearningResourcesProjection.model_validate(message.learning_resources)
+                if message.learning_resources is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MessageList, type ChatMessage } from "./MessageList";
-import type { ChatAttachmentProjection, PaperSearchProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  LearningResourcesProjection,
+  PaperSearchProjection,
+} from "@/lib/api";
 
 afterEach(cleanup);
 
@@ -17,6 +21,28 @@ const paperProjection: PaperSearchProjection = {
   final_query: "transformer",
   papers: [],
   requested_count: 3,
+  evidence_notes: [],
+  pending: null,
+  searched_at: null,
+  error_code: null,
+  error_message: null,
+  retryable: false,
+};
+
+const resourcesProjection: LearningResourcesProjection = {
+  status: "success",
+  original_phrase: "深度学习",
+  normalized_term: "深度学习",
+  expansions: ["deep learning"],
+  confidence: 0.9,
+  goal: null,
+  level_label: "零基础入门",
+  level_basis: "你说了「零基础」",
+  queries: [],
+  final_query: "深度学习 deep learning",
+  items: [],
+  requested_books: 2,
+  requested_videos: 3,
   evidence_notes: [],
   pending: null,
   searched_at: null,
@@ -188,5 +214,16 @@ describe("MessageList 模块标识与建议（V2 Issue 11）", () => {
     );
 
     expect(screen.getByTestId("paper-search-card-success")).toBeTruthy();
+  });
+
+  it("资料推荐结果卡渲染在该条助手消息内", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[assistantMessage({ learningResources: resourcesProjection })]}
+      />
+    );
+
+    expect(screen.getByTestId("resources-card-success")).toBeTruthy();
   });
 });
