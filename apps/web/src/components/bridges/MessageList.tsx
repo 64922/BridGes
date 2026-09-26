@@ -102,6 +102,7 @@ export const NODE_LABEL: Record<string, string> = {
   "study.plan_review": "安排本节复盘题",
   "study.grade": "核对本题回答",
   "study.pause_review": "暂停复盘回辅导",
+  "study.summarize": "整理本节总结",
   // V2 Issue 11：论文子图节点（显式派发后逐步显示真实进度）。
   "paper.parse": "理解论文请求",
   "paper.plan": "规划论文检索",

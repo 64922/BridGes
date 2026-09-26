@@ -120,6 +120,45 @@ def test_export_unknown_account_rejected(tmp_path) -> None:
     assert excinfo.value.status_code == 404
 
 
+def test_export_includes_study_section_state_with_summary(tmp_path) -> None:
+    """学习小节状态（含复盘判定与学习总结）随账户导出，且不跨账户。"""
+    harness = Harness(tmp_path)
+    harness.seed_everything()
+    own = harness.create_conversation(harness.acc1, "学习小节", 0)
+    other = harness.create_conversation(harness.acc2, "他人的学习小节", 0)
+    state = {
+        "subsection_id": own,
+        "stage": "summary",
+        "review": {"complete": True, "questions": [{"question_id": "q1", "question": "a 是什么？",
+            "coverage_units": ["线性函数"], "fragment_ids": ["f1"], "asked": True,
+            "judgement": "correct"}]},
+        "summary": {"points": [{"kind": "learned", "text": "线性函数 y=ax+b",
+            "fragment_ids": ["f1"]}]},
+    }
+    for account_id, conversation_id in ((harness.acc1, own), (harness.acc2, other)):
+        harness.database.scoped(account_id).execute(
+            "INSERT INTO study_states (account_id, conversation_id, state_json, updated_at)"
+            " VALUES (?, ?, ?, ?)",
+            (
+                account_id,
+                conversation_id,
+                json.dumps(state, ensure_ascii=False),
+                "2026-09-26T00:00:00+00:00",
+            ),
+        )
+    preview = harness.export.preview(harness.acc1)
+    categories = {item.category: item for item in preview.categories}
+    assert categories["study"].item_count == 1
+    document = _export_document(harness, harness.acc1)
+    items = document["categories"]["study"]["items"]
+    assert [item["conversation_id"] for item in items] == [own]
+    exported = json.loads(items[0]["state_json"])
+    assert exported["stage"] == "summary"
+    assert exported["summary"]["points"][0]["text"] == "线性函数 y=ax+b"
+    assert exported["review"]["questions"][0]["judgement"] == "correct"
+    assert "他人的学习小节" not in json.dumps(document, ensure_ascii=False)
+
+
 def test_export_audit_contains_counts_not_content(tmp_path) -> None:
     harness = Harness(tmp_path)
     harness.seed_everything()

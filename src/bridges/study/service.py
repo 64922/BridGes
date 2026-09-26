@@ -9,7 +9,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict, TypeVar
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -33,6 +33,7 @@ from bridges.contracts.study import (
 )
 from bridges.storage.database import BridgesDatabase
 from bridges.study.review import grade, next_question, plan_review, review_intent
+from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
 STUDY_GRAPH_VERSION = "study-pages-v1"
@@ -112,6 +113,10 @@ class _GraphState(TypedDict, total=False):
     reviewed: dict[str, Any]
 
 
+#: 节点返回值：图节点返回增量状态，图内子步骤（如总结）返回自己的结果。
+_NodeResult = TypeVar("_NodeResult")
+
+
 class StudyWorkflow:
     def __init__(self, service: Any) -> None:
         self._service = service
@@ -142,10 +147,13 @@ class StudyWorkflow:
             run.account_id, run.conversation_id, run.user_message_id
         )
         duplicate_count = 0
-        updating = state.stage in {"tutoring", "review"} and bool(state.page_update or any(
-            item.content_hash not in {page.content_hash for page in state.pages}
-            for item in attachments
-        ))
+        updating = state.stage in {"tutoring", "review", "summary"} and bool(
+            state.page_update
+            or any(
+                item.content_hash not in {page.content_hash for page in state.pages}
+                for item in attachments
+            )
+        )
         committed = state.model_copy(deep=True)
         if state.page_update is not None:
             state.pages = state.page_update.pages
@@ -162,36 +170,40 @@ class StudyWorkflow:
             else:
                 self._states.save(run.account_id, run.conversation_id, state)
 
+        def run_node(name: str, body: Callable[[], _NodeResult]) -> _NodeResult:
+            """报告真实开始的节点、检查停止信号，并记录节点耗时。"""
+            nonlocal current_node
+            current_node = name
+            if stop_event is not None and stop_event.is_set():
+                raise StudyWorkflowError(name, "stopped", "学习处理已停止。")
+            self._repo.update_generation_progress(run.account_id, run.run_id, current_node=name)
+            on_event(
+                StreamEvent(
+                    kind="node",
+                    node=ChatStreamNodeData(
+                        message_id=run.assistant_message_id, node=name, status="started"
+                    ),
+                )
+            )
+            began = time.monotonic()
+            result = body()
+            on_event(
+                StreamEvent(
+                    kind="node",
+                    node=ChatStreamNodeData(
+                        message_id=run.assistant_message_id,
+                        node=name,
+                        status="completed",
+                        duration_ms=max(1, int((time.monotonic() - began) * 1000)),
+                    ),
+                )
+            )
+            return result
+
         def node(name: str, body: Callable[[], _GraphState]) -> Any:
             def execute(_: _GraphState, config: RunnableConfig) -> _GraphState:
-                nonlocal current_node
                 del config
-                current_node = name
-                if stop_event is not None and stop_event.is_set():
-                    raise StudyWorkflowError(name, "stopped", "学习处理已停止。")
-                self._repo.update_generation_progress(run.account_id, run.run_id, current_node=name)
-                on_event(
-                    StreamEvent(
-                        kind="node",
-                        node=ChatStreamNodeData(
-                            message_id=run.assistant_message_id, node=name, status="started"
-                        ),
-                    )
-                )
-                began = time.monotonic()
-                result = body()
-                on_event(
-                    StreamEvent(
-                        kind="node",
-                        node=ChatStreamNodeData(
-                            message_id=run.assistant_message_id,
-                            node=name,
-                            status="completed",
-                            duration_ms=max(1, int((time.monotonic() - began) * 1000)),
-                        ),
-                    )
-                )
-                return result
+                return run_node(name, body)
 
             return execute
 
@@ -598,6 +610,8 @@ class StudyWorkflow:
                 state.review.active_question_id = None
                 state.review.needs_replan = True
                 state.review.complete = False
+            # 书页范围变了：旧总结不再对应当前知识范围与题目，等重排后再生成。
+            state.summary = None
             return {"updated_pages": state.model_dump(), "answer": (
                 (f"检测到{duplicate_count}张重复书页，已跳过。\n\n" if duplicate_count else "")
                 + f"已更新本节书页，共{len(state.pages)}页。"
@@ -623,6 +637,23 @@ class StudyWorkflow:
 
         intent = review_intent(user.content)
 
+        def finish_review(answer: str) -> str:
+            """复盘计划全部判定后进入总结；已生成的总结只复述，不重复生成。"""
+            if state.summary is None:
+                try:
+                    state.summary = run_node(
+                        "study.summarize",
+                        lambda: build_summary(self._service, run, state, invoke),
+                    )
+                except ValueError as exc:
+                    raise StudyWorkflowError(
+                        "study.summarize", "study_summary_invalid",
+                        "总结结果未通过核验，复盘判定与题目记录已保留，请重试。",
+                    ) from exc
+            state.stage = "summary"
+            text = render_summary(state.summary, state)
+            return f"{answer}\n\n{text}" if answer else text
+
         def review() -> _GraphState:
             try:
                 if intent == "pause":
@@ -641,10 +672,15 @@ class StudyWorkflow:
                         current = next(item for item in state.review.questions
                                        if item.question_id == state.review.active_question_id)
                         answer = f"请回答当前复盘题：{current.question}"
+                    elif state.review.complete:
+                        # 复盘计划已完成：复述总结（缺失时在此补齐），不再出题。
+                        answer = ""
                     else:
                         answer = next_question(state.review)
                 else:
                     answer = grade(self._service, run, state, user.content, invoke)
+                if intent != "pause" and state.review is not None and state.review.complete:
+                    answer = finish_review(answer)
             except ValueError as exc:
                 raise StudyWorkflowError(
                     current_node, "study_review_invalid",
@@ -662,7 +698,7 @@ class StudyWorkflow:
         graph.add_node("study.grade", node("study.grade", review))
         graph.add_node("study.pause_review", node("study.pause_review", review))
         entry = "study.recognize"
-        if state.stage in {"tutoring", "review"} and not updating and not attachments:
+        if state.stage in {"tutoring", "review", "summary"} and not updating and not attachments:
             if intent == "pause":
                 entry = "study.pause_review"
             elif intent == "start":

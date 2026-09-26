@@ -21,6 +21,38 @@ class ReviewGateway(TutorGateway):
         self.question_count = 3
         self.judgement = "correct"
 
+    def summarize(self, payload: dict[str, Any]) -> ModelCallResult:
+        """最后一题判定后触发的学习总结替身（工单 20）：三段均按实际判定写。"""
+        data = next(
+            json.loads(message["content"])
+            for message in payload["messages"]
+            if message["content"].startswith('{"')
+        )
+        correct = [
+            item["question_id"] for item in data["questions"]
+            if item["judgement"] == "correct"
+        ]
+        weak = [
+            item["question_id"] for item in data["questions"]
+            if item["judgement"] != "correct"
+        ]
+        points: list[dict[str, Any]] = [
+            {
+                "kind": "learned",
+                "text": "本节讲线性函数 y=ax+b 的斜率与截距。",
+                "fragment_ids": [data["sources"][0]["fragment_id"]],
+            }
+        ]
+        if correct:
+            points.append(
+                {"kind": "mastered", "text": "能读懂斜率与截距。", "question_ids": correct}
+            )
+        if weak:
+            points.append(
+                {"kind": "gap", "text": "截距的几何意义还需要补。", "question_ids": weak}
+            )
+        return ModelCallResult(status=ModelCallStatus.SUCCESS, output={"points": points})
+
     def invoke(
         self,
         capability: str,
@@ -30,6 +62,8 @@ class ReviewGateway(TutorGateway):
         **kwargs: Any,
     ) -> ModelCallResult:
         task = payload.get("task")
+        if task == "study.summarize":
+            return self.summarize(payload)
         if task not in {"study.plan_review", "study.grade"}:
             return super().invoke(capability, version, context, payload, **kwargs)
         data = next(

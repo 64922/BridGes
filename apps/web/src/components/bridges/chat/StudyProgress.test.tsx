@@ -107,4 +107,52 @@ describe("学习阶段与页级证据", () => {
     expect(screen.getByText(/同节归属待确认/)).toBeTruthy();
     expect(screen.queryByText(/已识别书页与证据/)).toBeNull();
   });
+
+  it("总结阶段分述三段并逐条给出题目判定与书页依据", () => {
+    render(<StudyProgress study={{
+      subsection_id: "section-1", stage: "summary",
+      pages: [{ ordinal: 1, object_id: "photo-1", content_hash: "hash", model_id: "test",
+        page_number: 12, same_section: true, replaced_object_ids: [], unclear: [],
+        fragments: [{ fragment_id: "photo-1:1", kind: "formula", position: "中部公式",
+          text: "y=ax+b", confidence: 0.9, source: "photo" }] }],
+      review: { complete: true, needs_replan: false, questions: [
+        { question_id: "q1", question: "a 的含义是什么？", coverage_units: ["线性函数"],
+          fragment_ids: ["photo-1:1"], asked: true, judgement: "correct" },
+        { question_id: "q2", question: "b 如何影响图像？", coverage_units: ["线性函数"],
+          fragment_ids: ["photo-1:1"], asked: true, judgement: "incorrect" },
+      ] },
+      summary: { points: [
+        { kind: "learned", text: "本节讲线性函数 y=ax+b。", fragment_ids: ["photo-1:1"] },
+        { kind: "mastered", text: "能解释斜率。", question_ids: ["q1"] },
+        { kind: "gap", text: "截距的几何意义需要补。", question_ids: ["q2"] },
+      ] },
+    }} />);
+
+    expect(screen.getByText("总结").getAttribute("aria-current")).toBe("step");
+    expect(screen.getByText("学到了什么")).toBeTruthy();
+    expect(screen.getByText("复盘已掌握")).toBeTruthy();
+    expect(screen.getByText("还需补的点")).toBeTruthy();
+    expect(screen.getByText(/第1题「a 的含义是什么？」判定为正确/)).toBeTruthy();
+    expect(screen.getByText(/第2题「b 如何影响图像？」判定为错误/)).toBeTruthy();
+    expect(screen.getByText(/上传第1页（书上第12页） · 中部公式/)).toBeTruthy();
+    expect(screen.getByText(/学新小节请新建学习对话/)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("全部答对时待补段只陈述实际判定，不宣称有漏洞", () => {
+    render(<StudyProgress study={{
+      subsection_id: "section-1", stage: "summary", pages: [],
+      review: { complete: true, needs_replan: false, questions: [
+        { question_id: "q1", question: "a 的含义是什么？", coverage_units: ["线性函数"],
+          fragment_ids: [], asked: true, judgement: "correct" },
+      ] },
+      summary: { points: [
+        { kind: "learned", text: "本节讲线性函数。", fragment_ids: [] },
+        { kind: "mastered", text: "能解释斜率。", question_ids: ["q1"] },
+      ] },
+    }} />);
+
+    expect(screen.getByText("本次复盘的题目全部答对，暂无待补的理解点。")).toBeTruthy();
+    expect(screen.queryByText(/本次复盘没有判定为正确的题目/)).toBeNull();
+  });
 });

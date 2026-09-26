@@ -23409,7 +23409,7 @@ export interface components {
              * @default awaiting_pages
              * @enum {string}
              */
-            stage: "awaiting_pages" | "recognizing" | "preview" | "tutoring" | "review";
+            stage: "awaiting_pages" | "recognizing" | "preview" | "tutoring" | "review" | "summary";
             /** Wait Reason */
             wait_reason?: string | null;
             /** Pages */
@@ -23422,6 +23422,29 @@ export interface components {
             tutoring?: components["schemas"]["StudyExchange"][];
             page_update?: components["schemas"]["StudyPageUpdate"] | null;
             review?: components["schemas"]["StudyReview"] | null;
+            summary?: components["schemas"]["StudySummary"] | null;
+        };
+        /** StudySummary */
+        StudySummary: {
+            /** Points */
+            points: components["schemas"]["StudySummaryPoint"][];
+        };
+        /**
+         * StudySummaryPoint
+         * @description 总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。
+         */
+        StudySummaryPoint: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "learned" | "mastered" | "gap";
+            /** Text */
+            text: string;
+            /** Question Ids */
+            question_ids?: string[];
+            /** Fragment Ids */
+            fragment_ids?: string[];
         };
         /** StudyUnclear */
         StudyUnclear: {

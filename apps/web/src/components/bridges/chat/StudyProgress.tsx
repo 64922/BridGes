@@ -13,6 +13,42 @@ const STAGES = [
   { id: "summary", label: "总结" },
 ] as const;
 
+const JUDGEMENT_LABEL: Record<string, string> = {
+  correct: "正确",
+  incomplete: "不完整",
+  incorrect: "错误",
+};
+
+// 三段兜底文案与消息内总结一致：空段只陈述实际判定，不额外宣称掌握。
+const SUMMARY_SECTIONS = [
+  { kind: "learned", label: "学到了什么", empty: "本节没有可依据书页归纳的内容。" },
+  { kind: "mastered", label: "复盘已掌握", empty: "本次复盘没有判定为正确的题目。" },
+  { kind: "gap", label: "还需补的点", empty: "本次复盘的题目全部答对，暂无待补的理解点。" },
+] as const;
+
+function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>) {
+  const labels = new Map<string, string>();
+  (state.review?.questions ?? []).forEach((item, index) => {
+    labels.set(
+      item.question_id,
+      `第${index + 1}题「${item.question}」`
+        + (item.judgement ? `判定为${JUDGEMENT_LABEL[item.judgement]}` : "未作答"),
+    );
+  });
+  for (const page of state.pages ?? []) {
+    for (const fragment of page.fragments) {
+      labels.set(
+        fragment.fragment_id,
+        `上传第${page.ordinal}页`
+          + (page.page_number != null ? `（书上第${page.page_number}页）` : "")
+          + ` · ${fragment.position}`
+          + (fragment.source === "user" ? " · 用户补录" : ""),
+      );
+    }
+  }
+  return labels;
+}
+
 export function StudyProgress({ study: state, busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
   busy?: boolean;
@@ -27,6 +63,8 @@ export function StudyProgress({ study: state, busy = false, onAction }: {
     setSending(true);
     try { await onAction(action); } finally { setSending(false); }
   }
+  const summary = state?.summary;
+  const labels = summary && state ? evidenceLabels(state) : null;
   return (
     <section className={styles.studyProgress} aria-label="学习阶段">
       <ol className={styles.studyStages}>
@@ -40,6 +78,43 @@ export function StudyProgress({ study: state, busy = false, onAction }: {
           </li>
         ))}
       </ol>
+      {summary && labels && (
+        <div className={styles.studySummary}>
+          {SUMMARY_SECTIONS.map((section) => {
+            const points = summary.points.filter((point) => point.kind === section.kind);
+            return (
+              <div key={section.kind} className={styles.studySummarySection}>
+                <h3>{section.label}</h3>
+                {points.length === 0 ? (
+                  <p>{section.empty}</p>
+                ) : (
+                  <ul>
+                    {points.map((point, index) => {
+                      const refs = [
+                        ...(point.question_ids ?? []),
+                        ...(point.fragment_ids ?? []),
+                      ].map((ref) => labels.get(ref)).filter((label): label is string => !!label);
+                      return (
+                        <li key={index}>
+                          {point.text}
+                          {refs.length > 0 && (
+                            <span className={styles.studySummaryEvidence}>
+                              依据：{refs.join("；")}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+          <p className={styles.studySummaryNote}>
+            总结依据本节书页与已判定题；可以继续追问本节内容，学新小节请新建学习对话。
+          </p>
+        </div>
+      )}
       {onAction && !state?.page_update && (state?.stage === "tutoring" || state?.stage === "review") && (
         <div className={styles.studyReviewActions}>
           {(!state.review?.complete || state.stage === "review") && (

@@ -513,3 +513,27 @@
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+
+.studySummary {
+  margin-top: var(--space-2);
+}
+
+.studySummarySection h3 {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.studySummarySection ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+.studySummaryEvidence {
+  display: block;
+  color: var(--color-text-secondary);
+}
+
+.studySummaryNote {
+  margin: var(--space-2) 0 0;
+}
