@@ -28,6 +28,26 @@ export function StudyProgress({ study: state }: { study?: ChatConversationProjec
       {state?.wait_reason && <p role="status">{state.wait_reason === "page_order"
         ? "书上页码与上传顺序不一致，请查看证据并按下方消息调整页序。"
         : "书页有待补拍的位置，请查看下方消息。"}</p>}
+      {state?.page_update && (
+        <details open>
+          <summary>追加书页待确认（尚未更新本节范围）</summary>
+          <p role="status">{state.page_update.wait_reason === "page_order"
+            ? "请按下方消息调整追加后的页序。"
+            : state.page_update.wait_reason === "recognition_failed"
+              ? "追加书页识别未完成，请重试原失败消息或补拍。"
+              : "请查看下方消息，补充不清晰内容或确认同节归属。"}</p>
+          <ul>
+            {state.page_update.pages.map((page) => (
+              <li key={page.object_id}>
+                上传第{page.ordinal}页
+                {page.page_number != null && `（书上第${page.page_number}页）`}
+                {!page.same_section && " · 同节归属待确认"}
+                {page.unclear?.map((issue) => ` · ${issue.position}：${issue.reason}`).join("")}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {state?.pages && state.pages.length > 0 && (
         <details>
           <summary>已识别书页与证据（{state.pages.length} 页）</summary>

@@ -127,6 +127,14 @@ class ContextReserves:
 
 
 @dataclass(frozen=True)
+class ContextEvidence:
+    """按相关性降序传入的带来源材料；首项是本轮必要证据。"""
+
+    evidence_id: str
+    content: str
+
+
+@dataclass(frozen=True)
 class CompiledTurnContext:
     """一次上下文编译的产物与审计记录字段。"""
 
@@ -152,6 +160,7 @@ class CompiledTurnContext:
     unresolved_reference: bool = False
     #: 裁剪已到下限仍超预算（当前请求与关键证据保留，如实记录触底）。
     budget_floor_exceeded: bool = False
+    adopted_evidence_ids: list[str] = field(default_factory=list)
 
     def model_messages(self) -> list[dict[str, str]]:
         """返回模型就绪消息列表的独立副本（图状态/载荷安全复用）。"""
@@ -182,6 +191,7 @@ class CompiledTurnContext:
             "recovered_message_ids": list(self.recovered_message_ids),
             "unresolved_reference": self.unresolved_reference,
             "budget_floor_exceeded": self.budget_floor_exceeded,
+            "adopted_evidence_ids": list(self.adopted_evidence_ids),
         }
 
 
@@ -321,6 +331,8 @@ def compile_turn_context(
     model_id: str | None,
     mode: ChatMode,
     context_window: int | None = None,
+    system_prompt: str | None = None,
+    evidence: Sequence[ContextEvidence] = (),
 ) -> CompiledTurnContext:
     """编译一轮普通对话的模型输入上下文（纯函数；详见模块说明）。
 
@@ -355,7 +367,9 @@ def compile_turn_context(
     # 近期原文窗口：从最新往回贪心纳入，占用不超过可用材料预算的既定份额；
     # 当前请求无论如何都保留。较早片段进摘要。
     contract = mode_system_contract(mode)
-    system_tokens = estimate_tokens(contract.system_prompt)
+    prompt = system_prompt if system_prompt is not None else contract.system_prompt
+    selected_evidence = list(evidence)
+    system_tokens = estimate_tokens(prompt)
     materials_budget = max(0, input_budget - system_tokens - image_tokens)
     recent_budget = int(materials_budget * RECENT_VERBATIM_SHARE)
     recent: list[_TurnItem] = [current]
@@ -385,7 +399,7 @@ def compile_turn_context(
         summary_text, summary_range = _summary_block(
             older, entry_max_chars=entry_max_chars
         )
-        blocks: list[str] = [contract.system_prompt]
+        blocks: list[str] = [prompt, *(item.content for item in selected_evidence)]
         if summary_text is not None:
             blocks.append(summary_text)
         if recovered:
@@ -397,6 +411,9 @@ def compile_turn_context(
         input_estimate += image_tokens
         if input_estimate <= input_budget:
             break
+        if len(selected_evidence) > 1:
+            selected_evidence.pop()
+            continue
         if len(recent) > 1:
             # 最旧的近期原文降级进摘要（追加到较早序列末尾，保持时间序）。
             demoted = recent.pop(0)
@@ -446,4 +463,5 @@ def compile_turn_context(
         recovered_message_ids=[item.message_id for item in recovered],
         unresolved_reference=unresolved,
         budget_floor_exceeded=floor_exceeded,
+        adopted_evidence_ids=[item.evidence_id for item in selected_evidence],
     )

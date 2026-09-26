@@ -42,6 +42,33 @@ class StudyQuestion(BaseModel):
     unit_titles: list[str] = Field(min_length=1)
 
 
+class StudySource(BaseModel):
+    source_id: str
+    kind: Literal["page", "knowledge_base", "web"]
+    label: str
+    snippet: str
+    object_id: str | None = None
+    fragment_id: str | None = None
+    url: str | None = None
+
+
+class StudyExchange(BaseModel):
+    user_message_id: str
+    assistant_message_id: str
+    question: str
+    answer: str
+    sources: list[StudySource]
+    gap: str = ""
+
+
+class StudyPageUpdate(BaseModel):
+    """追加页的候选范围，全部核对并合并成功后才替换已确认范围。"""
+
+    pages: list[StudyPage]
+    units: list[StudyUnit] = Field(default_factory=list)
+    wait_reason: str | None = None
+
+
 class StudyState(BaseModel):
     subsection_id: str
     stage: Literal["awaiting_pages", "recognizing", "preview", "tutoring"] = "awaiting_pages"
@@ -49,3 +76,5 @@ class StudyState(BaseModel):
     pages: list[StudyPage] = Field(default_factory=list)
     units: list[StudyUnit] = Field(default_factory=list)
     questions: list[StudyQuestion] = Field(default_factory=list)
+    tutoring: list[StudyExchange] = Field(default_factory=list)
+    page_update: StudyPageUpdate | None = None

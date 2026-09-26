@@ -55057,6 +55057,47 @@
         "title": "StoryboardStatus",
         "description": "结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。"
       },
+      "StudyExchange": {
+        "properties": {
+          "user_message_id": {
+            "type": "string",
+            "title": "User Message Id"
+          },
+          "assistant_message_id": {
+            "type": "string",
+            "title": "Assistant Message Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/StudySource"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "gap": {
+            "type": "string",
+            "title": "Gap",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_message_id",
+          "assistant_message_id",
+          "question",
+          "answer",
+          "sources"
+        ],
+        "title": "StudyExchange"
+      },
       "StudyFragment": {
         "properties": {
           "fragment_id": {
@@ -55173,6 +55214,41 @@
         ],
         "title": "StudyPage"
       },
+      "StudyPageUpdate": {
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/StudyPage"
+            },
+            "type": "array",
+            "title": "Pages"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/StudyUnit"
+            },
+            "type": "array",
+            "title": "Units"
+          },
+          "wait_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pages"
+        ],
+        "title": "StudyPageUpdate",
+        "description": "追加页的候选范围，全部核对并合并成功后才替换已确认范围。"
+      },
       "StudyQuestion": {
         "properties": {
           "question": {
@@ -55195,6 +55271,72 @@
           "unit_titles"
         ],
         "title": "StudyQuestion"
+      },
+      "StudySource": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "page",
+              "knowledge_base",
+              "web"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "fragment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fragment Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "kind",
+          "label",
+          "snippet"
+        ],
+        "title": "StudySource"
       },
       "StudyState": {
         "properties": {
@@ -55244,6 +55386,23 @@
             },
             "type": "array",
             "title": "Questions"
+          },
+          "tutoring": {
+            "items": {
+              "$ref": "#/components/schemas/StudyExchange"
+            },
+            "type": "array",
+            "title": "Tutoring"
+          },
+          "page_update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyPageUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

@@ -45,6 +45,7 @@ from bridges.chat.attachments import (
     ChatAttachmentError,
     ChatAttachmentService,
 )
+from bridges.chat.context_compiler import ContextEvidence
 from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
@@ -880,10 +881,12 @@ class ChatService:
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
             study = StudyRepository(self._repo.database).get(account_id, conversation_id)
-            if not attachment_ids and (study is None or study.stage != "awaiting_pages"):
+            if not attachment_ids and (
+                study is None or study.stage not in {"awaiting_pages", "tutoring"}
+            ):
                 raise ChatDomainError(
                     "study_pages_required",
-                    "当前阶段请上传本节书页；辅导问答将在后续学习切片开放。",
+                    "当前阶段请上传本节书页，或重试尚未完成的识别与预习。",
                     422,
                 )
         capability_route = self._route_for_turn(
@@ -1984,7 +1987,9 @@ class ChatService:
         )
 
     def compile_turn_context(
-        self, run: GenerationRunRecord
+        self, run: GenerationRunRecord, *,
+        system_prompt: str | None = None,
+        evidence: list[ContextEvidence] | None = None,
     ) -> tuple[list[dict[str, str]] | None, dict[str, object] | None]:
         """编译本轮模型输入上下文（V2 Issue 03）。
 
@@ -2048,6 +2053,8 @@ class ChatService:
             model_id=model_id,
             mode=mode,
             context_window=context_window,
+            system_prompt=system_prompt,
+            evidence=evidence or [],
         )
         if self._observability is not None:
             self._observability.log_audit(
