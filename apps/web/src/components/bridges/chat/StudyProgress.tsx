@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { Button } from "@/components/design-system/Button";
 import type { ChatConversationProjection } from "@/lib/api";
 
 import styles from "./chat.module.css";
@@ -42,8 +43,8 @@ export function StudyProgress({ study: state, busy = false, onAction }: {
       {onAction && !state?.page_update && (state?.stage === "tutoring" || state?.stage === "review") && (
         <div className={styles.studyReviewActions}>
           {(!state.review?.complete || state.stage === "review") && (
-            <button type="button" className="sc-btn sc-btn--secondary"
-              disabled={busy || sending} onClick={() => void act()}>{action}</button>
+            <Button variant="secondary" size="sm" disabled={busy || sending}
+              onClick={() => void act()}>{action}</Button>
           )}
           <span role="status">{state.review?.complete
             ? "本节复盘已结束，作答与判定已保存。"
