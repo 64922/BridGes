@@ -334,10 +334,15 @@ class CareerPlanService:
                 continue
             if projection.pending is not None:
                 return projection.pending
+            # 失败与停止同样是「本轮结束了」（前端卡片与等待恢复语义一致）：
+            # 不再把更早那条澄清当成待续问题，否则用户的下一条消息会被接上
+            # 旧请求的城市与阶段。
             if projection.status in {
                 CareerPlanStatus.SUCCESS,
                 CareerPlanStatus.LINKS_ONLY,
                 CareerPlanStatus.EMPTY,
+                CareerPlanStatus.ERROR,
+                CareerPlanStatus.STOPPED,
             }:
                 return None
         return None
@@ -633,6 +638,11 @@ def _evidence_boundary(
             "相邻岗位（"
             + "、".join(analysis.adjacent_jobs[:3])
             + "）单列建议，不并入技能与薪资统计。"
+        )
+    if analysis.experience_hint:
+        notes.append(
+            f"你提到的经验要求「{analysis.experience_hint}」本轮没有做经验过滤："
+            "样本里的经验要求逐条展示，由你自己核对。"
         )
     if not samples:
         notes.append("本轮没有可用岗位样本，因此没有给出技能、薪资或市场层面的结论。")

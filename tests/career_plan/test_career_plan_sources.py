@@ -82,14 +82,16 @@ def test_metadata_fallback_marks_job_posting_only_with_duty_text() -> None:
     card_html = """
     <html><head><title>测试工程师</title>
     <meta property="og:title" content="测试工程师" />
-    <meta property="og:site_name" content="某某科技" /></head>
+    <meta property="og:site_name" content="某某招聘网" /></head>
     <body><h2>9-12K</h2><p>岗位职责：负责产品测试与质量保障</p>
     <p>任职要求：熟悉自动化测试</p></body></html>
     """
     card = parse_job_page(card_html, reference=NOW)
     assert card.is_job_posting is True
     assert card.title == "测试工程师"
-    assert card.company == "某某科技"
+    assert card.salary_raw == "9-12K"
+    # og:site_name 是招聘网站自己的名字，不是雇主：宁可留空，也不写成公司名。
+    assert card.company is None
 
 
 def test_page_without_usable_structure_is_unrecognized() -> None:

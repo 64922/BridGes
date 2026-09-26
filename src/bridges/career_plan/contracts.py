@@ -137,7 +137,12 @@ class CareerRejectedSample(BaseModel):
     url: str = Field(description="候选链接。")
     title: str = Field(description="候选岗位名（未核实时为搜索标题）。")
     company: str | None = Field(default=None, description="公司名；未读到为 None。")
-    kind: str = Field(description="剔除分类：adjacent／city／expired／duplicate／not_job。")
+    kind: str = Field(
+        description=(
+            "剔除分类：adjacent／city／city_unverified／expired／duplicate／"
+            "not_job／title_mismatch。"
+        )
+    )
     evidence: str = Field(description="剔除依据的中文说明。")
 
 

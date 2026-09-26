@@ -125,15 +125,6 @@ _UNIT_TEXT_LABELS: dict[str, str] = {
 }
 
 
-class JobPageReadError(Exception):
-    """读取层的稳定错误（分类码 + 中文说明）。"""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
 @dataclass(frozen=True)
 class ParsedJobPage:
     """一次岗位页解析出来的真实字段（取不到的一律为 None／空）。"""
@@ -425,7 +416,10 @@ def _from_metadata(html: str, *, reference: datetime) -> ParsedJobPage:
     expired_evidence = _expired_evidence(body_text) or _expired_evidence(html)
     return ParsedJobPage(
         title=title or None,
-        company=_clean_text(meta.get("og:site_name", "")) or None,
+        # 公司名只在页面自己声明雇主时才有（结构化数据里的 hiringOrganization）；
+        # 元数据里的 og:site_name 是**站点名**（招聘网站自己的名字），不是雇主，
+        # 拿它当公司名会误导用户，也会让去重键把不同公司的岗位判成重复。
+        company=None,
         city=_city_from_text(title),
         salary_raw=_salary_hint_text(body_text),
         published_raw=published_raw,

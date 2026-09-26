@@ -56,7 +56,12 @@ def build_plan(
             source=SOURCE_CAMPUS,
             source_label=SOURCE_LABELS[SOURCE_CAMPUS],
             query=_join(CAMPUS_HOST, jobs, city_part, "校园招聘", stage_part),
-            reason="最后找校招页，补充面向在校生与应届生的岗位。",
+            reason=(
+                "最后找校招页，补充面向在校生与应届生的岗位。"
+                if not stage_part
+                else f"最后找校招页，补充面向在校生与应届生的岗位；"
+                f"查询带上你给的阶段「{stage_part}」。"
+            ),
             filters=[*filters, "校园招聘/应届生口径"],
         ),
     )
@@ -74,16 +79,22 @@ def _stage_part(analysis: CareerRequestAnalysis) -> str:
 
 
 def _filters(analysis: CareerRequestAnalysis, city: str | None) -> list[str]:
+    """筛选条件只列**实际执行**的判定。
+
+    阶段与经验要求只进查询词或只作原话展示（见 ``build_plan`` 的 reason 与
+    证据边界），不写进筛选条件——写了不做等于给用户一个空头承诺。
+    """
     filters = ["岗位名必须命中目标岗位或其同义名"]
     if city:
         filters.append(f"城市必须是「{city}」")
+        others = [item for item in analysis.cities if item != city]
+        if others:
+            filters.append(
+                f"你给了多个城市，本轮只按第一个城市「{city}」检索与过滤；"
+                f"「{'、'.join(others)}」本轮未检索"
+            )
     else:
         filters.append("未给出城市：不按城市过滤，但逐条标注岗位实际城市")
-    stage = _stage_part(analysis)
-    if stage:
-        filters.append(f"阶段：{stage}")
-    if analysis.experience_hint:
-        filters.append(f"经验要求：{analysis.experience_hint}")
     filters.append("排除相邻岗位、已过期与重复岗位")
     return filters
 

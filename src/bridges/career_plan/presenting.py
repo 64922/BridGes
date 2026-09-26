@@ -23,10 +23,20 @@ from bridges.career_plan.filtering import (
     KIND_NOT_JOB,
     KIND_TITLE_MISMATCH,
 )
-from bridges.career_plan.planning import build_plan
 
 #: 单个样本最多列出的要求原文条数。
 MAX_REQUIREMENT_LINES = 6
+
+#: 统一查询记录状态 → 中文（正文一律用中文，不回显英文枚举值）。
+QUERY_STATUS_LABELS: dict[str, str] = {
+    "success": "成功",
+    "empty": "无结果",
+    "skipped": "未执行",
+    "timeout": "超时",
+    "cancelled": "已取消",
+    "rate_limited": "被上游限流",
+    "error": "失败",
+}
 
 #: 剔除分类 → 中文小标题（不静默丢弃，逐类写明）。
 REJECTION_LABELS: dict[str, str] = {
@@ -117,7 +127,8 @@ def render_stopped_content(projection: CareerPlanProjection) -> str:
         f"· 原请求：{projection.original_request}",
     ]
     for record in projection.queries:
-        lines.append(f"· 已发出的查询词：{record.query}（状态：{record.status}）")
+        status = QUERY_STATUS_LABELS.get(str(record.status), str(record.status))
+        lines.append(f"· 已发出的查询词：{record.query}（状态：{status}）")
     if projection.samples:
         lines.append(f"· 停止前已读到 {len(projection.samples)} 个匹配的岗位样本")
     lines.append("")
@@ -160,8 +171,9 @@ def _query_lines(projection: CareerPlanProjection) -> list[str]:
         return []
     lines = ["", "【每次外部调用记录】"]
     for record in projection.queries:
+        status = QUERY_STATUS_LABELS.get(str(record.status), str(record.status))
         head = (
-            f"· {record.source}｜{record.query}｜状态：{record.status}｜"
+            f"· 提供方 {record.source}｜{record.query}｜状态：{status}｜"
             f"取得 {record.evidence_count} 条"
         )
         if record.detail:
@@ -286,14 +298,6 @@ def _boundary_lines(projection: CareerPlanProjection) -> list[str]:
     for note in projection.evidence_boundary:
         lines.append(f"· {note}")
     return lines
-
-
-def default_plan_text(analysis: CareerRequestAnalysis) -> str:
-    """检索计划的中文摘要（澄清轮展示将要执行的查询）。"""
-    plan = build_plan(analysis)
-    if not plan:
-        return ""
-    return "；".join(f"{item.source_label}：{item.query}" for item in plan)
 
 
 def _fmt(moment: datetime) -> str:

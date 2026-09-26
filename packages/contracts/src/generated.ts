@@ -8291,7 +8291,7 @@ export interface components {
             company?: string | null;
             /**
              * Kind
-             * @description 剔除分类：adjacent／city／expired／duplicate／not_job。
+             * @description 剔除分类：adjacent／city／city_unverified／expired／duplicate／not_job／title_mismatch。
              */
             kind: string;
             /**

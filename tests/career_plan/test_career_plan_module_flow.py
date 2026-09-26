@@ -79,11 +79,12 @@ class _FakeSearchPort:
         on_call: Any | None = None,
     ) -> None:
         self.queries: list[tuple[str, str]] = []
-        self._per_source = per_source or {}
-        self._status = status
-        self._error_code = error_code
-        self._error_message = error_message
-        self._retryable = retryable
+        # 命中结果与检索状态都是公开可改的：多轮用例要「先成功、后失败、再成功」。
+        self.per_source = per_source if per_source is not None else {}
+        self.status = status
+        self.error_code = error_code
+        self.error_message = error_message
+        self.retryable = retryable
         self._on_call = on_call
 
     @property
@@ -104,14 +105,14 @@ class _FakeSearchPort:
         self.queries.append((query, source))
         if self._on_call is not None:
             self._on_call(stop_event)
-        hits = tuple(self._per_source.get(source, []))
+        hits = tuple(self.per_source.get(source, []))
         record = query_record(
             query=query,
-            status=self._status,
+            status=self.status,
             evidence_count=len(hits),
-            error_code=self._error_code,
-            error_message=self._error_message,
-            retryable=self._retryable,
+            error_code=self.error_code,
+            error_message=self.error_message,
+            retryable=self.retryable,
         )
         return CareerSearchOutcome(record=record, hits=hits)
 
@@ -292,6 +293,9 @@ def test_samples_are_rendered_with_plan_analysis_and_evidence(
     assert "15-25K·15薪" in content and "2026-09-20" in content
     assert "元/月" in content and "不作为市场均值" in content
     assert "相邻岗位" not in content or "单列" in content
+    # 正文不出现英文枚举值：查询状态回显中文（卡片与正文同一套口径）
+    assert "状态：成功" in content
+    assert "success" not in content
 
 
 def test_adjacent_jobs_are_separated_from_main_sample(
@@ -520,6 +524,89 @@ def test_clarification_then_resume_keeps_original_request(
     assert career["job_terms"] == ["Java 后端开发"]
     assert career["cities"] == ["南昌"]
     assert port.query_texts, "恢复轮必须真的发起检索"
+
+
+def test_error_turn_ends_the_wait_so_next_message_starts_fresh(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """失败轮同样结束等待：下一条消息不会被接上旧请求的城市。"""
+    _register(client)
+    port = _FakeSearchPort(
+        per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+    )
+    reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+    _install_career_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    # 第一轮岗位含糊 → 澄清等待，原请求里带着城市
+    _send(client, conversation_id, "帮我看看有哪些岗位，城市南昌", module_id="career")
+    first = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    assert first["career_plan"]["status"] == "clarification"
+
+    # 第二轮回答岗位，但检索整体失败 → 消息收敛为失败
+    hits = port.per_source.pop("boss")
+    port.status = ModuleQueryStatus.ERROR
+    port.error_code = "career_search_failed"
+    port.error_message = "岗位检索没有形成结果，请稍后重试。"
+    _send(client, conversation_id, "Java 后端开发", module_id="career")
+    second = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    assert second["career_plan"]["status"] == "error"
+
+    # 第三轮换成新岗位且没再给城市：不能把第一轮的南昌接过来
+    port.per_source["boss"] = hits
+    port.status = ModuleQueryStatus.SUCCESS
+    port.error_code = None
+    port.error_message = None
+    before = len(port.query_texts)
+    _send(client, conversation_id, "算法工程师", module_id="career")
+    third = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    career = third["career_plan"]
+    assert career["job_terms"] == ["算法工程师"]
+    assert career["cities"] == []
+    assert career["original_request"] == "算法工程师"
+    assert all("南昌" not in query for query in port.query_texts[before:])
+    assert any("未给出城市" in f for item in career["plan"] for f in item["filters"])
+
+
+def test_experience_hint_is_disclosed_as_not_filtered(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """验收 3/4：用户提到的经验要求不假装过滤过，写进证据边界逐条说明。"""
+    _register(client)
+    port = _FakeSearchPort(
+        per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+    )
+    reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+    _install_career_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(
+        client,
+        conversation_id,
+        "我想找 Java 后端开发，城市南昌，经验 1-3年",
+        module_id="career",
+    )
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    career = assistant["career_plan"]
+    assert any(
+        "1-3年" in note and "没有做经验过滤" in note
+        for note in career["evidence_boundary"]
+    )
+    assert "没有做经验过滤" in assistant["content"]
+    # 经验要求不得偷偷变成筛选条件
+    assert all(
+        "经验" not in text for item in career["plan"] for text in item["filters"]
+    )
 
 
 def test_stop_during_collect_marks_message_stopped(

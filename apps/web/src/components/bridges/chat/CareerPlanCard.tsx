@@ -1,13 +1,13 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
+import { QueryRecordList } from "./QueryRecordList";
 import type {
   CareerAdviceItem,
   CareerPlanProjection,
   CareerQueryPlanItem,
   CareerRejectedSample,
   JobSample,
-  ModuleQueryRecord,
   SalaryInterval,
 } from "@/lib/api";
 
@@ -21,14 +21,9 @@ const STATUS_TITLES: Record<string, string> = {
   stopped: "已停止岗位检索",
 };
 
-const QUERY_STATUS_LABELS: Record<string, string> = {
-  success: "成功",
-  empty: "无结果",
-  skipped: "未执行",
-  timeout: "超时",
-  cancelled: "已取消",
-  rate_limited: "被上游限流",
-  error: "失败",
+/** 检索提供方的中文名（来源词汇表属于模块自己的领域）。 */
+const QUERY_SOURCE_LABELS: Record<string, string> = {
+  tavily: "公网搜索服务",
 };
 
 const READ_STATUS_LABELS: Record<string, string> = {
@@ -72,25 +67,6 @@ function PlanRow({ item }: { item: CareerQueryPlanItem }) {
   );
 }
 
-/** 一次外部调用的真实记录：来源、实际查询词、结果分类、取得时间与错误。 */
-function QueryRecordRow({ record }: { record: ModuleQueryRecord }) {
-  const failed = record.status === "error" || record.status === "timeout";
-  return (
-    <li style={{ color: failed ? "var(--color-status-error)" : "var(--color-text-secondary)" }}>
-      <strong>{record.source}</strong>
-      {" · 查询「"}
-      {record.query}
-      {"」 · "}
-      {QUERY_STATUS_LABELS[record.status] ?? record.status}
-      {`（${record.evidence_count} 条）`}
-      {" · "}
-      {formatTime(record.retrieved_at)}
-      {record.detail ? `：${record.detail}` : ""}
-      {record.error_message ? `：${record.error_message}` : ""}
-    </li>
-  );
-}
-
 /** 一个真实读到的岗位样本：要么字段留空，要么来自页面原文。 */
 function SampleRow({ sample }: { sample: JobSample }) {
   const requirements = sample.requirements ?? [];
@@ -110,8 +86,8 @@ function SampleRow({ sample }: { sample: JobSample }) {
         {sample.title || sample.url}
       </a>
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-        {sample.company ? `${sample.company} · ` : ""}
-        城市：{sample.city ?? "页面未给出"} · 薪资原文：{sample.salary_raw ?? "页面未给出"} · 发布日期：
+        公司：{sample.company ?? "页面未给出"} · 城市：{sample.city ?? "页面未给出"} · 薪资原文：
+        {sample.salary_raw ?? "页面未给出"} · 发布日期：
         {sample.published_raw ?? "页面未给出"}
         {sample.published_date ? `（${sample.published_date}）` : ""}
         {sample.experience ? ` · 经验：${sample.experience}` : ""}
@@ -384,29 +360,11 @@ export function CareerPlanCard({
         </div>
       )}
 
-      {queries.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            本次外部调用记录
-          </p>
-          <ul
-            data-testid="career-plan-queries"
-            style={{
-              margin: 0,
-              paddingLeft: "var(--space-5)",
-              listStyle: "disc",
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-1)",
-              fontSize: "var(--text-xs)",
-            }}
-          >
-            {queries.map((record, index) => (
-              <QueryRecordRow key={`${record.source}-${record.query}-${index}`} record={record} />
-            ))}
-          </ul>
-        </div>
-      )}
+      <QueryRecordList
+        records={queries}
+        testId="career-plan-queries"
+        sourceLabels={QUERY_SOURCE_LABELS}
+      />
 
       {/* AC2：主样本只含公开可读、岗位与城市都匹配的岗位，字段逐项留痕。 */}
       {samples.length > 0 && (

@@ -156,6 +156,30 @@ def test_plan_without_city_says_city_is_not_filtered() -> None:
     assert any("未给出城市" in f for item in plan for f in item.filters)
 
 
+def test_plan_uses_first_city_and_discloses_the_rest() -> None:
+    """多个城市只按第一个发查询，且必须写明其余城市本轮没有检索。"""
+    analysis = parse_career_request("我想找 Java 后端开发，城市南昌、北京")
+    plan = build_plan(analysis)
+    assert all("南昌" in item.query for item in plan)
+    assert all("北京" not in item.query for item in plan)
+    assert any(
+        "北京" in f and "未检索" in f for item in plan for f in item.filters
+    ), "只检索了第一个城市，就必须在筛选条件里说明其他城市没查"
+
+
+def test_plan_filters_only_claim_what_is_actually_enforced() -> None:
+    """筛选条件只写真正执行的判定：阶段与经验只影响查询词或原话展示。"""
+    analysis = parse_career_request("我想找 Java 后端开发，2026 届，经验 1-3年，城市南昌")
+    plan = build_plan(analysis)
+    assert analysis.experience_hint == "1-3年"
+    assert analysis.graduation_year == 2026
+    for item in plan:
+        for text in item.filters:
+            assert "经验" not in text, text
+            assert "毕业阶段" not in text and "2026 届" not in text, text
+    assert any("校园招聘/应届生口径" in f for item in plan for f in item.filters)
+
+
 # --------------------------------------------------------------------------
 # career.filter：主样本口径
 # --------------------------------------------------------------------------
