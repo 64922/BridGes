@@ -703,7 +703,8 @@ def test_modules_not_yet_available_are_still_rejected(
     _install_commute(sqlite_app, _FakeAmap())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    _send(client, conversation_id, "帮我推荐学习资料", module_id="resources")
+    # 反例取尚未接入的贴吧（Issue 13 合并后 resources 已可用，不能再当反例）。
+    _send(client, conversation_id, "搜一下贴吧", module_id="tieba")
     assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
 
     assert assistant["status"] == "error"
