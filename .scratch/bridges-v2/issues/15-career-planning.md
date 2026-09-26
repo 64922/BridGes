@@ -239,6 +239,14 @@ BOSS 直聘的岗位链接一律返回「请稍候」反爬页，应届生求职
   验证触碰**（只读探针实测 30 列 / 164 条消息），下一次以 main 启动会顺序补跑
   55（资料）、56（贴吧）、57（GitHub）、58（职业规划）四条迁移。
 
+**合并记录：** 分支 `v2/15-career-planning` 以 `--no-ff` 并入 main，合并提交
+**`4db7b75`**；合并后 main 的树哈希与分支 tip `0e36bfb` **逐字节相同**
+（`git rev-parse HEAD^{tree}` 两侧都是 `d6c0d2c`），因此上面那份合并树全量回归结论
+可直接沿用。合并后在工作树上另做了一次收尾冒烟：`tests/career_plan` +
+`tests/contracts` + `tests/chat/test_v2_02_resumable_runs.py` **86 passed**；
+并在临时目录实测 main 的新库 → `SCHEMA_VERSION=58`、含 `career_plan`、迁移键
+1–58 无缺号。
+
 ### 跨模块发现（不在本票范围，留给后续）
 
 - `src/bridges/tieba/searching.py:234` 用 `snippet=result.content or ""`，而搜索投影的结果项
