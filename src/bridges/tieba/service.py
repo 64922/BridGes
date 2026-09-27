@@ -30,7 +30,7 @@ from bridges.tieba.contracts import (
     TiebaSearchHit,
     TiebaTimeFilter,
 )
-from bridges.tieba.lexicon import TARGET_FORUM_NAME
+from bridges.tieba.lexicon import HOLIDAY_ARRANGEMENT_TERMS, TARGET_FORUM_NAME
 from bridges.tieba.official import (
     OFFICIAL_FETCH_LIMIT,
     TiebaOfficialReader,
@@ -48,6 +48,8 @@ from bridges.tieba.presenting import (
 )
 from bridges.tieba.reading import TiebaThreadReader
 from bridges.tieba.searching import (
+    REJECT_NOT_A_THREAD,
+    HitDiagnostics,
     SearchOutcome,
     TiebaSearchPort,
     plan_queries,
@@ -102,8 +104,34 @@ FORUM_NAME = TARGET_FORUM_NAME
 
 #: 官方核验触发时的中文说明。
 OFFICIAL_TRIGGER_NOTE = (
-    "本轮问题涉及校规／费用／开放时间／办事流程，已追加学校官方页面核验。"
+    "本轮问题涉及校规／费用／开放时间／办事流程／放假安排，已追加学校官方页面核验。"
 )
+
+#: 放假安排未指定年份时的说明：不假定年份，也不把历史通知当作本次安排。
+#: 排序只用当前年份挑官方页面，年份不会被写进用户问题或官方结论。
+HOLIDAY_YEAR_NOTE = (
+    "问题没有指定年份：本轮不假定年份，也不把历史通知或旧帖当作本次安排；"
+    "官方页面按原始名词与当前年份 {year} 优先挑选（只用于排序），"
+    "并按原文摘录与取得时间呈现。"
+)
+
+#: 逐轮查询的中文标签；有界计划固定为精确词 + 一条备用放宽词（见 ``plan_queries``）。
+QUERY_ROUND_LABELS: tuple[str, str] = ("精确词查询", "备用放宽词查询")
+
+#: 归零终止：这些查询状态下不再跑计划内的后续查询。
+STOP_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
+    {ModuleQueryStatus.CANCELLED}
+)
+
+#: 读取失败分类的中文短标签（仅帖链的「页面不可读」原因）。
+READ_BLOCK_LABELS: dict[ReadStatus, str] = {
+    ReadStatus.ACCESS_RESTRICTED: "访问受限，未绕过",
+    ReadStatus.UNRECOGNIZED: "页面结构无法解析",
+    ReadStatus.NOT_FOUND: "帖子不存在或已删除",
+    ReadStatus.TIMEOUT: "读取超时",
+    ReadStatus.ERROR: "读取失败",
+    ReadStatus.CANCELLED: "已停止读取",
+}
 
 
 class TiebaModuleError(Exception):
@@ -130,20 +158,27 @@ class TiebaRunOutcome:
 
 @dataclass(frozen=True)
 class _SearchAttempts:
-    """有界检索的合并结果：采用的候选、被他吧证据排除的候选与全部查询记录。"""
+    """有界检索的合并结果：采用的候选、被剔除的候选、查询记录与逐轮诊断。"""
 
     hits: tuple[TiebaSearchHit, ...]
     rejected: tuple[TiebaRejectedCandidate, ...]
     records: list[ModuleQueryRecord]
+    diagnostics: HitDiagnostics = HitDiagnostics()
+    rounds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class _ReadOutcome:
-    """读取阶段的真实产出：确认帖、他吧帖与仅帖链。"""
+    """读取阶段的真实产出：确认帖、他吧帖、仅帖链与读取侧计数。"""
 
     confirmed: list[TiebaPostProjection]
     rejected: list[TiebaRejectedCandidate]
     unconfirmed: list[TiebaCandidateLink]
+    #: 读过页面但没取得可确认归属的候选数，与超出读取上限、未尝试读取的候选数。
+    unreadable: int = 0
+    not_attempted: int = 0
+    #: 未取得页面的候选总数（帖链列表按上限截断，计数不截断）。
+    unconfirmed_total: int = 0
 
 
 class TiebaResearchService:
@@ -275,6 +310,8 @@ class TiebaResearchService:
             sections=sections,
             time_filter=time_filter,
             official_checks=official_checks,
+            attempts=attempts,
+            reads=reads,
         )
         if projection.status is TiebaResearchStatus.ERROR:
             self._persist_failure(
@@ -316,11 +353,23 @@ class TiebaResearchService:
         *,
         stop_event: threading.Event | None,
     ) -> _SearchAttempts:
-        """有界检索：先精确词，没有可用候选时再用一条放宽词。"""
+        """有界检索：先精确词，没有可用候选时再用一条放宽词。
+
+        「检索成功但没有可用候选」与「请求失败」分开判断：前者按既有计划继续
+        下一轮查询（这就是放宽词存在的意义），后者只在可重试时继续；取消、
+        永久错误与超出搜索预算都在计划内终止，不扩大查询范围。
+        """
         records: list[ModuleQueryRecord] = []
         rejected: list[TiebaRejectedCandidate] = []
+        rejected_urls: set[str] = set()
+        rounds: list[str] = []
+        raw_hits = 0
+        usable = 0
         deadline = time.monotonic() + self._search_deadline_seconds
-        for query in plan_queries(analysis):
+        for position, query in enumerate(plan_queries(analysis)):
+            if position and _budget_exhausted(stop_event, deadline):
+                rounds.append(_skipped_round_note(position, stop_event))
+                break
             outcome = self._search.search_public(
                 account_id,
                 query=query,
@@ -329,14 +378,33 @@ class TiebaResearchService:
                 deadline=deadline,
             )
             records.append(outcome.record)
-            rejected.extend(outcome.rejected)
+            raw_hits += outcome.diagnostics.raw_hits
+            usable = outcome.diagnostics.usable
+            # 去重跨轮生效：同一条链接在两轮里都出现时只留一条剔除记录，多出来的
+            # 那次仍算进原始命中数（计入重复链接），正文里不会同一条链接列两遍。
+            fresh = [item for item in outcome.rejected if item.url not in rejected_urls]
+            rejected_urls.update(item.url for item in fresh)
+            rejected.extend(fresh)
+            rounds.append(_round_note(position, outcome))
             if outcome.candidates:
                 return _SearchAttempts(
-                    hits=outcome.candidates, rejected=tuple(rejected), records=records
+                    hits=outcome.candidates,
+                    rejected=tuple(rejected),
+                    records=records,
+                    diagnostics=_deduped_diagnostics(
+                        rejected, raw_hits=raw_hits, usable=usable
+                    ),
+                    rounds=tuple(rounds),
                 )
-            if not outcome.record.retryable:
+            if not _plan_continues(outcome.record):
                 break
-        return _SearchAttempts(hits=(), rejected=tuple(rejected), records=records)
+        return _SearchAttempts(
+            hits=(),
+            rejected=tuple(rejected),
+            records=records,
+            diagnostics=_deduped_diagnostics(rejected, raw_hits=raw_hits, usable=usable),
+            rounds=tuple(rounds),
+        )
 
     def _read_candidates(
         self,
@@ -348,6 +416,7 @@ class TiebaResearchService:
         confirmed: list[TiebaPostProjection] = []
         rejected = list(attempts.rejected)
         unconfirmed: list[TiebaCandidateLink] = []
+        unreadable = 0
         deadline = time.monotonic() + self._read_deadline_seconds
         for hit in attempts.hits[:READ_POSTS_LIMIT]:
             if stop_event is not None and stop_event.is_set():
@@ -368,14 +437,19 @@ class TiebaResearchService:
                     )
                 )
                 continue
-            unconfirmed.append(_unconfirmed_link(hit))
+            unreadable += 1
+            unconfirmed.append(_unconfirmed_link(hit, _read_block_reason(result)))
         # 超出读取上限的候选没有读过页面，因此只能作为帖链给出。
+        not_attempted = len(attempts.hits[READ_POSTS_LIMIT:])
         for hit in attempts.hits[READ_POSTS_LIMIT:]:
-            unconfirmed.append(_unconfirmed_link(hit))
+            unconfirmed.append(_unconfirmed_link(hit, "未读取：超出本轮读取条数上限"))
         return _ReadOutcome(
             confirmed=confirmed,
             rejected=rejected,
             unconfirmed=unconfirmed[:CANDIDATE_LINKS_LIMIT],
+            unreadable=unreadable,
+            not_attempted=not_attempted,
+            unconfirmed_total=len(unconfirmed),
         )
 
     # -- 官方核验 --------------------------------------------------------
@@ -392,9 +466,12 @@ class TiebaResearchService:
         if reader is None:
             return []
         deadline = time.monotonic() + self._official_deadline_seconds
-        urls: list[str] = []
+        terms = _official_terms(analysis)
+        # 问题自带年份时按用户年份挑页面，否则按当前年份（只影响挑选顺序）。
+        preferred_year = analysis.time_year or datetime.now(UTC).year
+        candidates: list[str] = []
         for query, reason in (
-            (official_query(analysis), "校规／费用／开放时间／流程核对学校官方页面"),
+            (official_query(analysis), "校规／费用／开放时间／流程／放假安排核对学校官方页面"),
             (official_fallback_query(analysis), "官方域名未命中，改用校名与主题再找官方页面"),
         ):
             outcome = self._search.search_public(
@@ -404,11 +481,13 @@ class TiebaResearchService:
                 stop_event=stop_event,
                 deadline=deadline,
             )
-            urls = _official_urls(outcome)
-            if urls:
+            candidates = _official_candidates(
+                outcome, terms, preferred_year=preferred_year
+            )
+            if candidates:
                 break
         checks: list[TiebaOfficialCheck] = []
-        for url in _dedupe(urls)[:OFFICIAL_FETCH_LIMIT]:
+        for url in candidates[:OFFICIAL_FETCH_LIMIT]:
             if stop_event is not None and stop_event.is_set():
                 break
             checks.append(
@@ -639,16 +718,118 @@ def _confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPr
     )
 
 
-def _unconfirmed_link(hit: TiebaSearchHit) -> TiebaCandidateLink:
+def _unconfirmed_link(hit: TiebaSearchHit, reason: str) -> TiebaCandidateLink:
+    """仅帖链降级：来源标识与「为什么只有帖链」分开记，不把原因塞进来源字段。"""
     return TiebaCandidateLink(
         url=hit.url,
         title=hit.title,
-        source="tavily（归属未确认）",
+        source="tavily",
+        unconfirmed_reason=reason,
     )
 
 
-def _official_urls(outcome: SearchOutcome) -> list[str]:
-    return [hit.url for hit in outcome.hits if is_official_url(hit.url)]
+def _read_block_reason(result: TiebaReadResult) -> str:
+    """读取失败或页面未声明吧名时的中文短因（页面不可读一类）。"""
+    if result.forum_name is None and result.status in {ReadStatus.READ, ReadStatus.PARTIAL}:
+        return "页面不可读：页面未声明所属贴吧"
+    label = READ_BLOCK_LABELS.get(result.status, result.status.value)
+    return f"页面不可读：{label}"
+
+
+def _budget_exhausted(
+    stop_event: threading.Event | None, deadline: float
+) -> bool:
+    """计划内是否还有继续下一轮查询的余地（停止与预算都在此判定）。"""
+    if stop_event is not None and stop_event.is_set():
+        return True
+    return time.monotonic() >= deadline
+
+
+def _deduped_diagnostics(
+    rejected: Sequence[TiebaRejectedCandidate], *, raw_hits: int, usable: int
+) -> HitDiagnostics:
+    """剔除记录跨轮去重后的计数：多出来的命中归入重复链接。
+
+    各计数之和始终等于原始命中数（``duplicate`` 是去重后的差额，含轮内重复与
+    跨轮重复），因此正文里的「原始命中构成」与剔除记录条目数能对上。
+    """
+    not_a_thread = sum(1 for item in rejected if item.evidence == REJECT_NOT_A_THREAD)
+    other_forum = len(rejected) - not_a_thread
+    return HitDiagnostics(
+        raw_hits=raw_hits,
+        not_a_thread=not_a_thread,
+        other_forum=other_forum,
+        duplicate=raw_hits - not_a_thread - other_forum - usable,
+        usable=usable,
+    )
+
+
+def _plan_continues(record: ModuleQueryRecord) -> bool:
+    """这一轮查询之后是否继续计划内的下一轮。
+
+    检索本身完成（成功／零结果）但没给出可用候选时继续——这正是备用放宽词
+    存在的原因；查询失败只在可重试时继续，取消与永久错误都在此终止。
+    """
+    if record.status in STOP_QUERY_STATUSES:
+        return False
+    if record.status in FAILED_QUERY_STATUSES:
+        return record.retryable
+    return True
+
+
+def _round_note(position: int, outcome: SearchOutcome) -> str:
+    """逐轮诊断：查询词、原始结果数、可用候选数与剔除数（脱敏，只记计数）。"""
+    label = QUERY_ROUND_LABELS[position]
+    if outcome.record.status in FAILED_QUERY_STATUSES:
+        reason = outcome.record.error_message or outcome.record.status.value
+        return (
+            f"{label}「{outcome.record.query}」未完成（{reason}），"
+            f"取得 {len(outcome.hits)} 条原始结果。"
+        )
+    return (
+        f"{label}「{outcome.record.query}」取得 {len(outcome.hits)} 条原始结果："
+        f"可用候选 {len(outcome.candidates)} 条，"
+        f"剔除 {len(outcome.rejected)} 条（其中非帖子链接 {outcome.diagnostics.not_a_thread} 条、"
+        f"他吧证据 {outcome.diagnostics.other_forum} 条）。"
+    )
+
+
+def _skipped_round_note(position: int, stop_event: threading.Event | None) -> str:
+    """备用查询没有执行时的原因：停止还是预算耗尽。"""
+    label = QUERY_ROUND_LABELS[position]
+    if stop_event is not None and stop_event.is_set():
+        return f"{label}因你已停止而未执行。"
+    return f"{label}因超出本轮检索预算而未执行。"
+
+
+def _official_terms(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
+    """官方候选排序用的原始名词（与官方查询词同源，不额外发明词）。"""
+    terms = list(analysis.topic_terms)
+    terms.extend(topic for topic in analysis.official_topics if topic not in terms)
+    return tuple(terms)
+
+
+def _official_candidates(
+    outcome: SearchOutcome, terms: Sequence[str], *, preferred_year: int
+) -> list[str]:
+    """官方页面按「点题且提到目标年份」优先排序，只作证据挑选顺序。
+
+    真实取证里「放假」类查询的第一条官方命中可能是几年前的活动报道，排序
+    把标题同时含原始名词与目标年份的通知类页面提到前面，避免旧帖顶在首位；
+    目标年份取用户问题里的年份，问题没写年份时取当前年份。排序结果不影响
+    任何结论，年份也不会写进用户问题或官方结论。
+    """
+
+    def rank(hit: TiebaSearchHit) -> int:
+        title = hit.title or ""
+        mentions_topic = any(term and term in title for term in terms)
+        if mentions_topic and str(preferred_year) in title:
+            return 0
+        return 1 if mentions_topic else 2
+
+    candidates = [hit for hit in outcome.hits if is_official_url(hit.url)]
+    ordered = sorted(candidates, key=rank)  # 稳定排序：同档保持检索顺序
+    return _dedupe([hit.url for hit in ordered])
 
 
 def _summarize(
@@ -739,6 +920,8 @@ def _projection(
     sections: list[str],
     time_filter: TiebaTimeFilter,
     official_checks: list[TiebaOfficialCheck],
+    attempts: _SearchAttempts,
+    reads: _ReadOutcome,
 ) -> TiebaResearchProjection:
     error_record = _first_error(records)
     if confirmed:
@@ -750,15 +933,30 @@ def _projection(
     else:
         status = TiebaResearchStatus.EMPTY
     boundary = _evidence_boundary(
-        confirmed=confirmed, unconfirmed=unconfirmed, rejected=rejected
+        confirmed=confirmed,
+        unconfirmed=unconfirmed,
+        rejected=rejected,
+        attempts=attempts,
+        reads=reads,
     )
     if analysis.needs_official_check:
         boundary.append(OFFICIAL_TRIGGER_NOTE)
+    if _holiday_without_year(analysis):
+        boundary.append(HOLIDAY_YEAR_NOTE.format(year=datetime.now(UTC).year))
     if status is TiebaResearchStatus.LINKS_ONLY:
         boundary.append(
             "候选帖的贴吧归属未能确认：只有真的读到帖子页面才会纳入确认结果，"
             "搜索摘要不足以确认归属。"
         )
+    # 失败分类只描述本轮的真实落点：已经读到确认帖子的轮次不整体报失败，早先
+    # 一次可重试的查询失败留在查询记录里；没有确认帖子时按可重试如实标注。
+    ended_in_error = status is TiebaResearchStatus.ERROR
+    retryable = bool(
+        error_record is not None
+        and error_record.retryable
+        and (ended_in_error or not confirmed)
+    )
+    surface_error = ended_in_error or retryable
     return TiebaResearchProjection(
         status=status,
         topic=_topic_of(analysis) or FORUM_NAME,
@@ -775,18 +973,33 @@ def _projection(
         sections=sections,
         evidence_boundary=boundary,
         empty_reason=(
-            _empty_reason(unconfirmed, rejected)
+            _empty_reason(unconfirmed, rejected, attempts.diagnostics)
             if status in {TiebaResearchStatus.LINKS_ONLY, TiebaResearchStatus.EMPTY}
             else None
         ),
-        retryable=bool(error_record and error_record.retryable),
-        error_code=error_record.error_code if error_record is not None else None,
-        error_message=error_record.error_message if error_record is not None else None,
+        retryable=retryable,
+        error_code=(
+            error_record.error_code if error_record is not None and surface_error else None
+        ),
+        error_message=(
+            error_record.error_message
+            if error_record is not None and surface_error
+            else None
+        ),
     )
 
 
+def _holiday_without_year(analysis: TiebaQuestionAnalysis) -> bool:
+    """放假安排类问题没有指定年份：必须写明本轮不假定年份。"""
+    if analysis.time_year is not None:
+        return False
+    return bool(set(analysis.topic_terms) & HOLIDAY_ARRANGEMENT_TERMS)
+
+
 def _empty_reason(
-    unconfirmed: list[TiebaCandidateLink], rejected: list[TiebaRejectedCandidate]
+    unconfirmed: list[TiebaCandidateLink],
+    rejected: list[TiebaRejectedCandidate],
+    diagnostics: HitDiagnostics,
 ) -> str:
     if unconfirmed:
         return (
@@ -795,10 +1008,24 @@ def _empty_reason(
         )
     if rejected:
         return (
-            f"检索到的帖子都带其他贴吧的证据（已逐个列出剔除依据），"
-            f"没有可确认属于「{FORUM_NAME}」的帖子。"
+            f"{_hit_composition(diagnostics)}，没有可确认属于「{FORUM_NAME}」的帖子"
+            "（已逐个列出剔除依据）。"
         )
     return f"本轮检索没有返回可确认属于「{FORUM_NAME}」的公开帖子。"
+
+
+def _hit_composition(diagnostics: HitDiagnostics) -> str:
+    """原始命中数的构成说明：命中条数不等于可用候选数，也不等于确认帖数。"""
+    parts: list[str] = []
+    if diagnostics.not_a_thread:
+        parts.append(f"非帖子链接 {diagnostics.not_a_thread} 条")
+    if diagnostics.other_forum:
+        parts.append(f"带其他贴吧证据 {diagnostics.other_forum} 条")
+    if diagnostics.duplicate:
+        parts.append(f"重复链接 {diagnostics.duplicate} 条")
+    if not parts:
+        return f"共取得 {diagnostics.raw_hits} 条原始搜索结果"
+    return f"共取得 {diagnostics.raw_hits} 条原始搜索结果（{'、'.join(parts)}）"
 
 
 def _evidence_boundary(
@@ -806,17 +1033,27 @@ def _evidence_boundary(
     confirmed: list[TiebaPostProjection],
     unconfirmed: list[TiebaCandidateLink],
     rejected: list[TiebaRejectedCandidate],
+    attempts: _SearchAttempts,
+    reads: _ReadOutcome,
 ) -> list[str]:
     notes = [
         f"只纳入有证据确认属于「{FORUM_NAME}」的帖子；确认依据是真的读到了帖子页面。",
     ]
+    notes.extend(attempts.rounds)
     if unconfirmed:
         notes.append(
-            f"另有 {len(unconfirmed)} 条候选帖没有取得页面，因此只给出帖链："
-            "贴吧归属未确认，也未取得回复内容。"
+            f"另有 {reads.unconfirmed_total} 条候选帖没有取得页面（其中页面不可读 "
+            f"{reads.unreadable} 条、超出读取上限未读取 {reads.not_attempted} 条），"
+            f"因此只给出 {len(unconfirmed)} 条帖链：贴吧归属未确认，也未取得回复内容。"
         )
     if rejected:
-        notes.append(f"已剔除 {len(rejected)} 条证据指向其他贴吧的同名帖。")
+        note = f"已剔除 {len(rejected)} 条候选（非帖子链接与他吧证据都在剔除依据里逐条留痕）"
+        if attempts.diagnostics.duplicate:
+            note += (
+                f"；含两轮重复在内的原始命中 {attempts.diagnostics.raw_hits} 条，"
+                "重复链接只列一次"
+            )
+        notes.append(f"{note}。")
     if confirmed:
         unread = [post for post in confirmed if not post.replies_obtained]
         if unread:
@@ -824,6 +1061,12 @@ def _evidence_boundary(
                 f"其中 {len(unread)} 个帖子确认了归属但没有取得回复内容，未做任何内容推断。"
             )
         notes.append("不承诺完整抓取某帖全部回复，也不绕过登录或访问限制。")
+    if attempts.diagnostics.raw_hits:
+        notes.append(
+            f"本轮共取得 {attempts.diagnostics.raw_hits} 条原始搜索结果，"
+            f"其中可用候选 {attempts.diagnostics.usable} 条："
+            "原始命中数不等于确认帖子数。"
+        )
     notes.append("本模块不调用模型生成内容，正文与引文都来自实际取得的页面文本。")
     return notes
 

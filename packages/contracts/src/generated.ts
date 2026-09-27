@@ -24330,6 +24330,11 @@ export interface components {
              * @description 检索来源标识。
              */
             source: string;
+            /**
+             * Unconfirmed Reason
+             * @description 归属未确认的具体原因（页面不可读／未读取）。
+             */
+            unconfirmed_reason?: string | null;
         };
         /**
          * TiebaOfficialCheck

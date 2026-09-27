@@ -154,32 +154,7 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
             lines.append(f"· {section}")
 
     lines.extend(_rejected_lines(projection))
-
-    if projection.official_checks:
-        lines.append("")
-        lines.append("【学校官方页面核验（官方规定与吧友经历分开看）】")
-        for check in projection.official_checks:
-            lines.append("")
-            lines.append(f"· {check.title}")
-            lines.append(f"  链接：{check.url}")
-            lines.append(f"  取得时间：{_fmt(check.fetched_at)}")
-            if check.status == STATUS_VERIFIED and check.excerpt:
-                lines.append(f"  官方原文摘录：{check.excerpt}")
-                lines.append(f"  命中名词：{'、'.join(check.matched_terms)}")
-            else:
-                lines.append(f"  {check.error_message or '未取得官方依据。'}")
-        lines.append("")
-        lines.append(
-            "说明：以上为学校官方页面原文摘录；前文帖子内容是吧友个人经历，"
-            "不能替代官方规定。"
-        )
-    elif projection.official_check_requested:
-        lines.append("")
-        lines.append("【学校官方页面核验】")
-        lines.append(
-            "本轮涉及校规／费用／开放时间／流程，但没有取得可用的学校官方页面，"
-            "因此不给出官方结论。"
-        )
+    lines.extend(_official_lines(projection))
 
     if projection.evidence_boundary:
         lines.append("")
@@ -197,6 +172,8 @@ def render_empty_content(projection: TiebaResearchProjection) -> str:
         lines.append(f"· 实际查询词：{record.query}（取得 {record.evidence_count} 条候选）")
     lines.extend(_candidate_link_lines(projection))
     lines.extend(_rejected_lines(projection))
+    # 空态同样要给官方核验结果：贴吧没有可用帖子时，官方来源往往才是答案。
+    lines.extend(_official_lines(projection))
     if projection.evidence_boundary:
         lines.append("")
         lines.append("【证据边界】")
@@ -221,7 +198,7 @@ def render_stopped_content(projection: TiebaResearchProjection) -> str:
 
 
 def _candidate_link_lines(projection: TiebaResearchProjection) -> list[str]:
-    """候选帖链段：只给链接与搜索标题，并写明归属未确认、未取得回复内容。"""
+    """候选帖链段：只给链接与搜索标题，并逐条写明未确认归属的原因。"""
     if not projection.candidate_links:
         return []
     lines = [
@@ -229,15 +206,46 @@ def _candidate_link_lines(projection: TiebaResearchProjection) -> list[str]:
         "【候选帖链（搜索摘要发现，贴吧归属未确认，未取得回复内容）】",
     ]
     for index, link in enumerate(projection.candidate_links, start=1):
-        lines.append(f"{index}. {link.title}｜{link.url}")
+        reason = f"{link.unconfirmed_reason}；" if link.unconfirmed_reason else ""
+        lines.append(f"{index}. {link.title}｜{link.url}（{link.source}；{reason}归属未确认）")
     return lines
 
 
+def _official_lines(projection: TiebaResearchProjection) -> list[str]:
+    """官方核验段：官方规定与吧友经历分列；成功、仅帖链与空态共用同一段渲染。"""
+    if projection.official_checks:
+        lines = ["", "【学校官方页面核验（官方规定与吧友经历分开看）】"]
+        for check in projection.official_checks:
+            lines.append("")
+            lines.append(f"· {check.title}")
+            lines.append(f"  链接：{check.url}")
+            lines.append(f"  取得时间：{_fmt(check.fetched_at)}")
+            if check.status == STATUS_VERIFIED and check.excerpt:
+                lines.append(f"  官方原文摘录：{check.excerpt}")
+                lines.append(f"  命中名词：{'、'.join(check.matched_terms)}")
+            else:
+                lines.append(f"  {check.error_message or '未取得官方依据。'}")
+        lines.append("")
+        lines.append(
+            "说明：以上为学校官方页面原文摘录；前文帖子内容是吧友个人经历，"
+            "不能替代官方规定。"
+        )
+        return lines
+    if projection.official_check_requested:
+        return [
+            "",
+            "【学校官方页面核验】",
+            "本轮涉及校规／费用／开放时间／流程／放假安排，但没有取得可用的学校官方页面，"
+            "因此不给出官方结论。",
+        ]
+    return []
+
+
 def _rejected_lines(projection: TiebaResearchProjection) -> list[str]:
-    """被剔除的同名帖：剔除依据逐条写出，不静默丢弃。"""
+    """被剔除的候选：剔除依据逐条写出（非帖子链接与他吧证据都在内），不静默丢弃。"""
     if not projection.rejected_candidates:
         return []
-    lines = ["", "【已剔除的同名帖（证据指向其他贴吧）】"]
+    lines = ["", "【已剔除的候选（每条附剔除依据）】"]
     for rejected in projection.rejected_candidates:
         lines.append(f"· {rejected.title}（{rejected.evidence}）｜{rejected.url}")
     return lines

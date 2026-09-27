@@ -133,7 +133,14 @@ PLACE_EVENT_TERMS: frozenset[str] = frozenset(
     }
 )
 
-#: 官方核验触发词：涉及校规、费用、开放时间或办事流程时必须追加官方核对。
+#: 放假与校历安排类词：这类问题必须走学校官方来源（校历／放假通知），贴吧讨论
+#: 只能作为经历参考，不能当作本次安排。只收放假安排本身的词：返校／开学一类
+#: 学期节奏词不在本票范围内，避免把官方核验扩到所有学期问题。
+HOLIDAY_ARRANGEMENT_TERMS: frozenset[str] = frozenset(
+    {"放假", "假期", "校历", "调课", "补课", "调休"}
+)
+
+#: 官方核验触发词：涉及校规、费用、开放时间、办事流程或放假安排时必须追加官方核对。
 OFFICIAL_TRIGGERS: frozenset[str] = frozenset(
     {
         "规定",
@@ -186,7 +193,7 @@ OFFICIAL_TRIGGERS: frozenset[str] = frozenset(
         "缓考",
         "免修",
     }
-)
+) | HOLIDAY_ARRANGEMENT_TERMS
 
 #: 官方页面只允许来自学校官方域名（含各二级学院子域）。
 OFFICIAL_DOMAIN_SUFFIX = "ecjtu.edu.cn"
@@ -272,6 +279,11 @@ _PARTICLES = frozenset(
 #: 尾随的形容词／疑问词：短语尾部的这些字不构成名词（「名额多」→「名额」）。
 _TRAILING_MODIFIERS = frozenset({"多", "少", "好", "差", "大", "小", "高", "低", "吗", "呢"})
 
+#: 方位类单字：它们既是结构词，也是真实名词的成分（中秋／上铺／下铺／中午／
+#: 家里／内心／外语）。按字删除会把原词拆掉（「中秋节」→「秋节」），因此这几个
+#: 字不参与删字处理；单独成词时由长度过滤自然丢弃。
+_WORD_FORMING_CHARS = frozenset({"中", "上", "下", "里", "内", "外"})
+
 _SPLIT = re.compile(r"[\s,，。！？；;、:：/|\-—~“”\"'（）()\[\]{}<>=+*#@!?]+")
 _CHINESE_RUN = re.compile(r"[\u4e00-\u9fff]{2,12}")
 _LATIN_RUN = re.compile(r"[A-Za-z][A-Za-z0-9_+#.-]{1,30}")
@@ -301,6 +313,10 @@ def extract_topic_terms(question: str) -> list[str]:
     先认校园词表里的长词（宿舍／转专业／保研…），再把模块用语与语气词从
     文本里去掉，剩余的短片段才作为补充原始名词；找不到任何名词时就返回空，
     由调用方去问一个问题。
+
+    结构词按字删除只对真正的结构字生效：``_WORD_FORMING_CHARS`` 里的方位类
+    单字同时也是真实名词的成分（中秋／上铺／中午），删掉会破坏原词，因此
+    保留原字。
     """
     remainder = question
     terms: list[str] = []
@@ -311,6 +327,8 @@ def extract_topic_terms(question: str) -> list[str]:
             if len(terms) >= MAX_QUERY_TERMS:
                 return terms
     for word in sorted(MODULE_STOPWORDS | _PARTICLES, key=len, reverse=True):
+        if word in _WORD_FORMING_CHARS:
+            continue
         remainder = remainder.replace(word, " ")
     for chunk in _SPLIT.split(remainder):
         for candidate in _topic_candidates(chunk):

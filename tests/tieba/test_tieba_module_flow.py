@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,8 +29,9 @@ from bridges.tieba.contracts import (
     TiebaReply,
     TiebaSearchHit,
 )
-from bridges.tieba.official import STATUS_VERIFIED
-from bridges.tieba.searching import SearchOutcome, query_record
+from bridges.tieba.official import STATUS_VERIFIED, official_query
+from bridges.tieba.parsing import parse_tieba_request
+from bridges.tieba.searching import SearchOutcome, plan_queries, query_record
 from bridges.tieba.service import TiebaResearchService
 from tests.chat.test_chat_api import _create_conversation, _gateway_with, _register
 
@@ -115,11 +117,15 @@ class _FakeSearchPort:
             error_message=self._error_message,
             retryable=self._retryable,
         )
-        from bridges.tieba.searching import classify_hits
+        from bridges.tieba.searching import classify_hits_with_diagnostics
 
-        candidates, rejected = classify_hits(hits)
+        candidates, rejected, diagnostics = classify_hits_with_diagnostics(hits)
         return SearchOutcome(
-            record=record, hits=hits, candidates=candidates, rejected=rejected
+            record=record,
+            hits=hits,
+            candidates=candidates,
+            rejected=rejected,
+            diagnostics=diagnostics,
         )
 
 
@@ -616,6 +622,324 @@ def test_search_failure_keeps_query_and_is_retryable(
     assert tieba["retryable"] is True
 
 
+_RAW_NON_THREAD_HITS: list[tuple[str, str]] = [
+    ("https://www.ecjtu.edu.cn/index.htm", "华东交通大学"),
+    ("https://nani.baidu.com/home/main?id=tb.1.ce8f0206", "华东交大小益君的贴吧"),
+    (
+        "https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=5674439",
+        "中秋节放假安排专题",
+    ),
+    ("https://baike.baidu.com/item/中秋节", "中秋节"),
+    ("https://zhidao.baidu.com/question/1", "中秋节放假几天"),
+    ("https://www.ecjtu.edu.cn/xysh.htm", "校园生活"),
+    ("https://zhidao.baidu.com/question/2", "中秋节期间食堂开放吗"),
+    ("https://www.zhihu.com/question/1", "中秋节怎么安排"),
+    ("https://tieba.baidu.com/f?kw=华东交通大学", "华东交通大学吧首页"),
+]
+
+
+def _raw_non_thread_hits(count: int, *, offset: int = 0) -> list[TiebaSearchHit]:
+    """真实运行记录里的形态：搜索结果页面都不是贴吧帖子页。
+
+    ``offset`` 用来取另一批链接，让「两轮各自有独立命中」与「两轮命中重复」
+    两种情形都能构造。
+    """
+    return [
+        TiebaSearchHit(url=url, title=title, snippet="")
+        for url, title in _RAW_NON_THREAD_HITS[offset : offset + count]
+    ]
+
+
+def test_success_without_usable_candidates_runs_the_planned_fallback_query(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """首轮检索成功但 5 条原始结果都不是帖子页：继续执行计划内的备用放宽词。
+
+    原缺陷：成功记录 ``retryable=false`` 让编排提前退出，计划里的第二条查询
+    从不执行（模拟调用计数为 1，预期为有界的 2）。
+    """
+    _register(client)
+    primary = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))[0]
+    relaxed = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))[1]
+    port = _FakeSearchPort(
+        per_query={
+            primary: _raw_non_thread_hits(5),
+            relaxed: [
+                TiebaSearchHit(
+                    url="https://tieba.baidu.com/p/10745250786",
+                    title="中秋节放假安排讨论",
+                    snippet="华东交通大学吧. 关注18.9w贴子786.1w. App内查看.",
+                )
+            ],
+        }
+    )
+    reader = _FakeReader(
+        {
+            CONFIRMED_URL: _read_result(
+                url=CONFIRMED_URL,
+                status=ReadStatus.READ,
+                title="中秋节放假安排讨论",
+                replies=REAL_REPLIES,
+            )
+        }
+    )
+    _install_tieba_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert port.queries == [primary, relaxed]
+    tieba = assistant["tieba_research"]
+    assert tieba["status"] == "success"
+    assert tieba["confirmed_posts"][0]["url"] == CONFIRMED_URL
+    assert len(tieba["queries"]) == 2
+    # 首轮那 5 条非帖子链接逐条留痕，且计入证据边界。
+    assert [item["evidence"] for item in tieba["rejected_candidates"]] == [
+        "搜索结果不是帖子页面链接"
+    ] * 5
+    assert any("非帖子链接 5 条" in note for note in tieba["evidence_boundary"])
+    assert "备用放宽词查询" in assistant["content"]
+
+
+def test_two_rounds_without_usable_candidates_explain_the_empty_state(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """两轮都没有可用候选：有界终止（2 次查询），空态给出可核对的过滤理由。"""
+    _register(client)
+    queries = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))
+    port = _FakeSearchPort(
+        per_query={
+            queries[0]: _raw_non_thread_hits(5),
+            queries[1]: _raw_non_thread_hits(3, offset=5),
+        }
+    )
+    _install_tieba_service(sqlite_app, port=port, reader=_FakeReader())
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert port.queries == list(queries)
+    tieba = assistant["tieba_research"]
+    assert tieba["status"] == "empty"
+    assert tieba["confirmed_posts"] == []
+    assert tieba["candidate_links"] == []
+    # 原始命中数（8）不等于确认帖子数（0），空态必须说清 8 条都去了哪里。
+    assert "共取得 8 条原始搜索结果" in tieba["empty_reason"]
+    assert "非帖子链接 8 条" in tieba["empty_reason"]
+    assert "原始命中数不等于确认帖子数" in " ".join(tieba["evidence_boundary"])
+    assert "没有可确认属于" in assistant["content"]
+    assert tieba["retryable"] is False
+
+
+def test_two_rounds_with_zero_hits_explain_the_empty_state(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """两轮都零结果的空态：说明「本轮没有返回公开帖子」，不编造过滤理由。"""
+    _register(client)
+    queries = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))
+    port = _FakeSearchPort(hits=[])
+    _install_tieba_service(sqlite_app, port=port, reader=_FakeReader())
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert port.queries == list(queries)
+    tieba = assistant["tieba_research"]
+    assert tieba["status"] == "empty"
+    assert tieba["empty_reason"] == "本轮检索没有返回可确认属于「华东交通大学吧」的公开帖子。"
+    assert tieba["rejected_candidates"] == []
+    assert tieba["candidate_links"] == []
+    assert "本轮检索没有返回可确认属于" in assistant["content"]
+
+
+def test_repeated_links_across_rounds_are_listed_once_and_counted_as_duplicates(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """两轮返回同一条链接：剔除记录只列一次，多出来的那次算作重复链接。"""
+    _register(client)
+    queries = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))
+    repeated = _raw_non_thread_hits(5)
+    port = _FakeSearchPort(per_query={queries[0]: repeated, queries[1]: repeated})
+    _install_tieba_service(sqlite_app, port=port, reader=_FakeReader())
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert port.queries == list(queries)
+    tieba = assistant["tieba_research"]
+    # 原始命中 10 条，其中 5 条是重复链接：剔除记录只有 5 条唯一链接。
+    assert len(tieba["rejected_candidates"]) == 5
+    assert len({item["url"] for item in tieba["rejected_candidates"]}) == 5
+    assert "共取得 10 条原始搜索结果" in tieba["empty_reason"]
+    assert "重复链接 5 条" in tieba["empty_reason"]
+    assert any("重复链接只列一次" in note for note in tieba["evidence_boundary"])
+    # 正文里同一条链接不会出现两遍。
+    for item in tieba["rejected_candidates"]:
+        assert assistant["content"].count(item["url"]) == 1
+
+
+def test_permanent_error_stops_without_running_the_fallback_query(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """永久错误直接终止：不因为存在备用词就无条件重试。"""
+    _register(client)
+    port = _FakeSearchPort(
+        status=ModuleQueryStatus.ERROR,
+        error_code="web_search_unauthorized",
+        error_message="搜索凭据无效，请先在设置中更新。",
+        retryable=False,
+    )
+    _install_tieba_service(sqlite_app, port=port)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert len(port.queries) == 1
+    assert assistant["status"] == "error"
+    assert assistant["error_code"] == "web_search_unauthorized"
+    assert assistant["tieba_research"]["status"] == "error"
+    assert assistant["tieba_research"]["retryable"] is False
+
+
+def test_exhausted_search_budget_skips_the_fallback_query(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """超出检索预算就停止：备用词不执行，并把原因写进证据边界。"""
+    _register(client)
+    port = _FakeSearchPort(hits=_raw_non_thread_hits(5))
+    service = TiebaResearchService(
+        search=port, reader=_FakeReader(), official_reader=None, search_deadline_seconds=0.0
+    )
+    sqlite_app.state.tieba_research_service = service
+    sqlite_app.state.chat_service._tieba_research = service  # noqa: SLF001
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert len(port.queries) == 1
+    assert any(
+        "超出本轮检索预算" in note
+        for note in assistant["tieba_research"]["evidence_boundary"]
+    )
+
+
+def test_unreadable_pages_are_listed_with_their_read_reason(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """候选帖读不到页面时只给帖链，并写明「页面不可读」的具体原因。"""
+    _register(client)
+    blocked_url = "https://tieba.baidu.com/p/10745250786"
+    port = _FakeSearchPort(
+        hits=[TiebaSearchHit(url=blocked_url, title="中秋放假通知", snippet="")]
+    )
+    reader = _FakeReader()  # 默认全部命中访问限制
+    _install_tieba_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    tieba = assistant["tieba_research"]
+    assert tieba["status"] == "links_only"
+    assert tieba["candidate_links"][0]["source"] == "tavily"
+    assert "访问受限" in tieba["candidate_links"][0]["unconfirmed_reason"]
+    assert "页面不可读 1 条" in " ".join(tieba["evidence_boundary"])
+    assert "页面不可读" in assistant["content"]
+
+
+def test_holiday_question_runs_official_check_without_filling_in_a_year(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """放假安排走既有官方核验路径，与贴吧讨论分列；没有年份就不补年份。"""
+    _register(client)
+    analysis = parse_tieba_request("华东交通大学吧 中秋节放假")
+    official_hit = TiebaSearchHit(
+        url="https://www.ecjtu.edu.cn/xysh.htm",
+        title="关于中秋节放假安排的通知-华东交通大学",
+        snippet="",
+    )
+    port = _FakeSearchPort(
+        per_query={
+            plan_queries(analysis)[0]: [
+                TiebaSearchHit(
+                    url="https://tieba.baidu.com/p/10745250786",
+                    title="中秋放假讨论",
+                    snippet="",
+                )
+            ],
+            official_query(analysis): [official_hit],
+        }
+    )
+    reader = _FakeReader(
+        {
+            CONFIRMED_URL: _read_result(
+                url=CONFIRMED_URL, status=ReadStatus.READ, title="中秋放假讨论"
+            )
+        }
+    )
+    official_reader = _FakeOfficialReader(
+        {
+            official_hit.url: TiebaOfficialCheck(
+                title="关于中秋节放假安排的通知-华东交通大学",
+                url=official_hit.url,
+                host="www.ecjtu.edu.cn",
+                fetched_at=datetime(2026, 9, 27, 3, 0, tzinfo=UTC),
+                status=STATUS_VERIFIED,
+                excerpt="中秋节放假安排：9 月 25 日至 27 日放假调休，共 3 天。",
+                matched_terms=["放假", "中秋节"],
+            )
+        }
+    )
+    _install_tieba_service(
+        sqlite_app, port=port, reader=reader, official_reader=official_reader
+    )
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    tieba = assistant["tieba_research"]
+    assert tieba["official_check_requested"] is True
+    assert official_reader.fetched == [official_hit.url]
+    assert tieba["official_checks"][0]["status"] == "verified"
+    assert "官方原文摘录" in assistant["content"]
+    assert "不能替代官方规定" in assistant["content"]
+    # 官方核验限定学校官方域名；原句没有年份，查询词与说明都不补年份。
+    assert any(query.startswith("site:ecjtu.edu.cn") for query in port.queries)
+    assert all("20" not in query for query in port.queries)
+    assert any("不假定年份" in note for note in tieba["evidence_boundary"])
+
+
 def test_stop_during_search_marks_message_stopped(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
@@ -725,3 +1049,60 @@ def test_study_mode_rejects_daily_module(
 
     assert response.status_code == 422
     assert port.queries == []
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        ModuleQueryStatus.ERROR,
+        ModuleQueryStatus.TIMEOUT,
+        ModuleQueryStatus.RATE_LIMITED,
+        ModuleQueryStatus.CANCELLED,
+    ],
+)
+def test_terminal_query_states_stop_the_bounded_plan(status: ModuleQueryStatus) -> None:
+    """永久错误、超时、限流与取消都只发出计划内的第一条查询。"""
+    port = _FakeSearchPort(status=status, retryable=False)
+    service = TiebaResearchService(search=port, reader=_FakeReader())
+    analysis = parse_tieba_request("华东交通大学吧 中秋节放假")
+
+    attempts = service._search_candidates("account-1", analysis, stop_event=None)
+
+    assert len(port.queries) == 1
+    assert attempts.hits == ()
+    assert attempts.rounds and "未完成" in attempts.rounds[0]
+
+
+def test_stop_after_the_first_round_skips_the_fallback_query() -> None:
+    """停止发生在首轮之后：备用词不再发出，逐轮说明写明「因你已停止」。"""
+    stop_event = threading.Event()
+    port = _FakeSearchPort(hits=[], on_call=lambda _event: stop_event.set())
+    service = TiebaResearchService(search=port, reader=_FakeReader())
+    analysis = parse_tieba_request("华东交通大学吧 中秋节放假")
+
+    attempts = service._search_candidates("account-1", analysis, stop_event=stop_event)
+
+    assert len(port.queries) == 1
+    assert attempts.hits == ()
+    assert attempts.rounds[-1] == "备用放宽词查询因你已停止而未执行。"
+
+
+def test_retryable_transient_failure_still_uses_the_fallback_query() -> None:
+    """可重试的临时失败不终止计划：备用查询命中后候选进入读取路径。"""
+    analysis = parse_tieba_request("华东交通大学吧 中秋节放假")
+    primary, relaxed = plan_queries(analysis)
+    fallback_hit = TiebaSearchHit(
+        url="https://tieba.baidu.com/p/10745250786", title="中秋放假讨论", snippet=""
+    )
+    port = _FakeSearchPort(
+        status=ModuleQueryStatus.TIMEOUT,
+        error_message="搜索提供方超时，请稍后重试。",
+        retryable=True,
+        per_query={primary: [], relaxed: [fallback_hit]},
+    )
+    service = TiebaResearchService(search=port, reader=_FakeReader())
+
+    attempts = service._search_candidates("account-1", analysis, stop_event=None)
+
+    assert port.queries == [primary, relaxed]
+    assert [hit.url for hit in attempts.hits] == [fallback_hit.url]
