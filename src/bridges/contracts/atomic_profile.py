@@ -49,11 +49,39 @@ class AtomicProfileMemoryStatus(StrEnum):
 
 
 class AtomicProfileMigrationStatus(StrEnum):
-    """账户级原子化迁移状态。"""
+    """账户级原子化迁移状态；成功与可重试失败分开，便于页面给出准确结论。"""
 
     COMPLETED = "completed"
     RETRYABLE = "retryable"
     UNDONE = "undone"
+
+
+class AtomicProfileReconciliationOutcome(StrEnum):
+    """单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。"""
+
+    MIGRATED = "migrated"
+    DUPLICATED = "duplicated"
+    TOMBSTONED = "tombstoned"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+class AtomicProfileReconciliationEntry(BaseModel):
+    """单条旧四维记录的对账明细：只有标识、结论与原因码，没有画像正文。
+
+    报告里的计数回答「迁入了几条」；本明细回答「哪一条为什么没迁入」，使
+    用户编辑优先、删除墓碑和重复来源的判断可复核，而不是靠猜。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_record_id: str = Field(description="旧四维记录标识。")
+    outcome: AtomicProfileReconciliationOutcome = Field(description="该条结论。")
+    reason_code: str = Field(description="结论的确定性原因码，不含正文。")
+    profile_item_id: str | None = Field(
+        default=None,
+        description="迁入或已存在的原子条目标识；只写墓碑或未写入时为空。",
+    )
 
 
 class AtomicProfileItem(BaseModel):
@@ -168,6 +196,10 @@ class AtomicProfileMigrationReport(BaseModel):
         default_factory=list, description="本批次覆盖的四维记录标识，用于对账。"
     )
     reconciliation_digest: str = Field(description="来源记录标识与内容哈希的确定性摘要。")
+    reconciliation: list[AtomicProfileReconciliationEntry] = Field(
+        default_factory=list,
+        description="逐条对账明细：每条来源记录的结论与原因码（不含正文）。",
+    )
     retryable: bool = Field(description="同一批次是否可安全重试。")
     created_at: datetime = Field(description="报告创建时间。")
     undone_at: datetime | None = Field(
@@ -186,5 +218,7 @@ __all__ = [
     "AtomicProfileMemoryStatus",
     "AtomicProfileMigrationReport",
     "AtomicProfileMigrationStatus",
+    "AtomicProfileReconciliationEntry",
+    "AtomicProfileReconciliationOutcome",
     "AtomicProfileWriteOrigin",
 ]

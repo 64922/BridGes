@@ -28149,6 +28149,14 @@
             "title": "Reconciliation Digest",
             "description": "来源记录标识与内容哈希的确定性摘要。"
           },
+          "reconciliation": {
+            "items": {
+              "$ref": "#/components/schemas/AtomicProfileReconciliationEntry"
+            },
+            "type": "array",
+            "title": "Reconciliation",
+            "description": "逐条对账明细：每条来源记录的结论与原因码（不含正文）。"
+          },
           "retryable": {
             "type": "boolean",
             "title": "Retryable",
@@ -28200,7 +28208,58 @@
           "undone"
         ],
         "title": "AtomicProfileMigrationStatus",
-        "description": "账户级原子化迁移状态。"
+        "description": "账户级原子化迁移状态；成功与可重试失败分开，便于页面给出准确结论。"
+      },
+      "AtomicProfileReconciliationEntry": {
+        "properties": {
+          "source_record_id": {
+            "type": "string",
+            "title": "Source Record Id",
+            "description": "旧四维记录标识。"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AtomicProfileReconciliationOutcome",
+            "description": "该条结论。"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code",
+            "description": "结论的确定性原因码，不含正文。"
+          },
+          "profile_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Item Id",
+            "description": "迁入或已存在的原子条目标识；只写墓碑或未写入时为空。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_record_id",
+          "outcome",
+          "reason_code"
+        ],
+        "title": "AtomicProfileReconciliationEntry",
+        "description": "单条旧四维记录的对账明细：只有标识、结论与原因码，没有画像正文。\n\n报告里的计数回答「迁入了几条」；本明细回答「哪一条为什么没迁入」，使\n用户编辑优先、删除墓碑和重复来源的判断可复核，而不是靠猜。"
+      },
+      "AtomicProfileReconciliationOutcome": {
+        "type": "string",
+        "enum": [
+          "migrated",
+          "duplicated",
+          "tombstoned",
+          "skipped",
+          "failed"
+        ],
+        "title": "AtomicProfileReconciliationOutcome",
+        "description": "单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。"
       },
       "AtomicProfileWriteOrigin": {
         "type": "string",

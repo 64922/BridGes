@@ -134,8 +134,7 @@ describe("AtomicProfileCenter", () => {
     expect(empty.textContent).toContain("能引用原话");
   });
 
-  it("keeps the edit failure message and reloads the list on conflict", async () => {
-    api.listAtomicProfileItems.mockResolvedValue([item()]);
+  it("keeps the edit failure message and reloads the list on conflict", async () => {    api.listAtomicProfileItems.mockResolvedValue([item()]);
     api.modifyAtomicProfileItem.mockRejectedValue(new Error("版本冲突，请刷新后重试。"));
 
     render(<AtomicProfileCenter />);
@@ -148,5 +147,28 @@ describe("AtomicProfileCenter", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("版本冲突");
     await waitFor(() => expect(api.listAtomicProfileItems).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows a retryable failure state instead of an empty profile", async () => {
+    // 结构漂移被修复前，画像接口返回 5xx：页面必须显示「服务失败 + 重试」，
+    // 不能把失败渲染成「还没有长期信息」，否则用户会以为历史信息真的不存在。
+    api.listAtomicProfileItems.mockRejectedValue(
+      new Error("持久化不可用，当前实例拒绝数据读写。")
+    );
+
+    render(<AtomicProfileCenter />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("持久化不可用");
+    expect(screen.queryByTestId("atomic-empty")).toBeNull();
+    expect(screen.queryByTestId("atomic-item")).toBeNull();
+
+    // 重试成功后回到正常列表，不残留失败态。
+    api.listAtomicProfileItems.mockResolvedValue([item()]);
+    fireEvent.click(screen.getByText("重试"));
+
+    const rows = await screen.findAllByTestId("atomic-item");
+    expect(rows).toHaveLength(1);
+    expect(screen.queryByTestId("atomic-empty")).toBeNull();
   });
 });

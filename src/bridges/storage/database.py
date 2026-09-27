@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 58
+SCHEMA_VERSION = 59
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2576,6 +2576,79 @@ MIGRATIONS: dict[int, list[str]] = {
         ALTER TABLE messages ADD COLUMN career_plan TEXT
         """,
     ],
+    # 编号 59（工单 01）：修复「版本号已到 58 但缺画像对象」的结构漂移。
+    # 成因是历史编号冲突：Issue 08（原子画像）与并行分支的 Issue 11 都曾把
+    # 画像表与 paper_search 列声明为 51，合并时 paper_search 让位到 52，而
+    # 已经由旧构建升到 51 的库不会重放 51，于是 profile_items 与其索引永久
+    # 缺失（运行库实测：schema_meta=58、两表两索引皆无，画像接口 500）。
+    # 本迁移是「补齐缺失、不动已有」的幂等修复：全部 IF NOT EXISTS，对结构
+    # 正常的库是空操作，绝不 DROP/清空既有对象；同名对象若结构不兼容，由
+    # verify_schema_integrity 的列级校验以稳定错误码拒绝启动，而不是在这里
+    # 猜结构覆盖。建表语句与 51 保持一致，两条升级路径收敛到同一结构。
+    59: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_items (
+            profile_item_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            identity_key TEXT NOT NULL,
+            source_record_id TEXT,
+            source_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            topic_hint TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            write_origin TEXT NOT NULL,
+            confidence TEXT NOT NULL DEFAULT 'low',
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            user_edited_at TEXT,
+            migration_run_id TEXT,
+            UNIQUE (account_id, identity_key)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_items_account_status
+            ON profile_items(account_id, status, updated_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS profile_item_migrations (
+            run_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            migration_version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            migrated INTEGER NOT NULL DEFAULT 0,
+            duplicated INTEGER NOT NULL DEFAULT 0,
+            tombstoned INTEGER NOT NULL DEFAULT 0,
+            skipped INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            created_item_ids_json TEXT NOT NULL DEFAULT '[]',
+            source_record_ids_json TEXT NOT NULL DEFAULT '[]',
+            reconciliation_digest TEXT NOT NULL,
+            retryable INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            undone_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_item_migrations_account
+            ON profile_item_migrations(account_id, created_at, run_id)
+        """,
+        # 逐条对账台账：一次迁移批次里每条旧四维记录的结论与原因码（不含
+        # 任何画像正文）。迁移报告只存计数，无法说明「哪条为什么没迁入」；
+        # 本表补上逐条明细，且随报告事务一起提交，供页面与排障复核。
+        """
+        CREATE TABLE IF NOT EXISTS profile_item_migration_records (
+            run_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            source_record_id TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            reason_code TEXT NOT NULL,
+            profile_item_id TEXT,
+            recorded_at TEXT NOT NULL,
+            PRIMARY KEY (run_id, account_id, source_record_id)
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -2587,17 +2660,78 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "study_states",
     "learning_project_migration_conversations",
     "schema_meta",
+    # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
+    # 冲突整体缺失，而当时的完整性清单没有覆盖画像结构，于是进程「健康」却
+    # 让 /profiles/items 持续 500。
+    "profile_items",
+    "profile_item_migrations",
+    "profile_item_migration_records",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。
 REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_conversations_account_updated",
     "idx_learning_project_migration_conversations_account",
+    "idx_profile_items_account_status",
+    "idx_profile_item_migrations_account",
 })
+
+#: 需要在「存在性」之上再核对必需列的核心对象。
+#: 同名对象存在但列不齐（例如被同名旧表顶替）时属于未知不兼容结构：必须失败
+#: 关闭，不能仅凭对象名存在就报告健康。这里只登记查询路径真正依赖的列。
+REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
+    "profile_items": frozenset({
+        "profile_item_id",
+        "account_id",
+        "text",
+        "identity_key",
+        "source_record_id",
+        "source_message_ids_json",
+        "topic_hint",
+        "status",
+        "write_origin",
+        "confidence",
+        "version",
+        "created_at",
+        "updated_at",
+        "user_edited_at",
+        "migration_run_id",
+    }),
+    "profile_item_migrations": frozenset({
+        "run_id",
+        "account_id",
+        "migration_version",
+        "status",
+        "migrated",
+        "duplicated",
+        "tombstoned",
+        "skipped",
+        "failed",
+        "created_item_ids_json",
+        "source_record_ids_json",
+        "reconciliation_digest",
+        "retryable",
+        "created_at",
+        "undone_at",
+    }),
+    "profile_item_migration_records": frozenset({
+        "run_id",
+        "account_id",
+        "source_record_id",
+        "outcome",
+        "reason_code",
+        "profile_item_id",
+        "recorded_at",
+    }),
+}
 
 #: schema 完整性失败时写入错误消息的稳定错误码。
 #: 调用方（API 健康检查、E2E 断言）以此字符串判断失败类别，勿直接内联。
 SCHEMA_INTEGRITY_ERROR_CODE = "database_schema_integrity"
+
+#: 核心对象存在但结构不兼容时的稳定错误码；与「缺失」区分，便于排障时判断
+#: 是走迁移修复（缺失且版本可升级）还是需要人工介入（结构被顶替）。
+SCHEMA_OBJECT_INCOMPATIBLE_ERROR_CODE = "database_schema_object_incompatible"
 
 
 class BridgesDatabase:
@@ -2724,9 +2858,13 @@ class BridgesDatabase:
         return sorted(self._schema_object_names("table"))
 
     def verify_schema_integrity(self) -> None:
-        """校验核心契约表与索引存在；缺失时抛出稳定错误码。
+        """校验核心契约表、索引与画像必需列；缺失或不兼容时抛稳定错误码。
 
-        不依赖业务数据，只检查 ``sqlite_master``；错误信息不含完整路径。
+        执行顺序由 ``initialize`` 保证：先跑可安全修复的已知漂移迁移，再做本
+        校验。因此这里报错意味着「迁移无法修复」——要么对象缺失但没有可用的
+        迁移路径（版本号已到当前值），要么同名对象结构被顶替。
+        不依赖业务数据，只检查 ``sqlite_master`` 与 ``PRAGMA table_info``；
+        错误信息只含对象名与列名，不含路径、行数据或画像正文。
         """
         tables = self._schema_object_names("table")
         indexes = self._schema_object_names("index")
@@ -2752,6 +2890,63 @@ class BridgesDatabase:
                 f"（{SCHEMA_INTEGRITY_ERROR_CODE}）："
                 f"{'；'.join(details)}。请勿手动修改数据库文件。"
             )
+
+        incompatible = self._incompatible_object_details(tables)
+        if incompatible:
+            raise self._incompatible_object_error(incompatible)
+
+    def _incompatible_object_details(self, tables: set[str]) -> list[str]:
+        """返回「已存在但缺必需列」的对象诊断，只含表名与列名。
+
+        表名取自 ``REQUIRED_TABLE_COLUMNS`` 常量（非外部输入），并显式跳过
+        缺失表——缺失由调用方按「缺失」错误码处理，这里只判结构。
+        """
+
+        details: list[str] = []
+        for table, required_columns in REQUIRED_TABLE_COLUMNS.items():
+            if table not in tables:
+                continue
+            try:
+                rows = self._connection.execute(
+                    f'PRAGMA table_info("{table}")'
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise StorageError(
+                    "数据库 schema 完整性校验失败（无法读取表结构）："
+                    f"{SCHEMA_OBJECT_INCOMPATIBLE_ERROR_CODE}；对象：{table}"
+                ) from exc
+            present = {str(row["name"]) for row in rows}
+            lacking = sorted(required_columns - present)
+            if lacking:
+                details.append(f"{table} 缺少列：{lacking}")
+        return details
+
+    def _incompatible_object_error(self, details: list[str]) -> StorageError:
+        logger.error(
+            "database_schema_object_incompatible",
+            extra={
+                "schema_version": self.schema_version,
+                "incompatible_objects": details,
+            },
+        )
+        return StorageError(
+            "数据库 schema 结构不兼容"
+            f"（{SCHEMA_OBJECT_INCOMPATIBLE_ERROR_CODE}）："
+            f"{'；'.join(details)}。请勿手动修改数据库文件。"
+        )
+
+    def _raise_if_existing_objects_incompatible(self) -> None:
+        """升级前先确认「已存在的」画像对象结构可信，再跑修复迁移。
+
+        漂移的成因不止一种：同名对象被顶替（例如只留一半列）时，修复迁移的
+        建索引语句会以 sqlite 错误中断，并被 ``initialize`` 的兜底包装成
+        「文件损坏」——诊断就失真了。这里提前以稳定错误码拒绝，且不写任何
+        schema 变更。
+        """
+
+        details = self._incompatible_object_details(self._schema_object_names("table"))
+        if details:
+            raise self._incompatible_object_error(details)
 
     @property
     def schema_ready(self) -> bool:
@@ -2875,6 +3070,10 @@ class BridgesDatabase:
                         f"（{SCHEMA_VERSION}），请升级程序后再启动。"
                     )
                 if current < SCHEMA_VERSION:
+                    # 先确认既有对象结构可信，再跑修复迁移：结构被顶替的对象
+                    # 不是「可安全修复的已知漂移」，必须明确失败而不是让迁移
+                    # 以「文件损坏」的假象中断。
+                    self._raise_if_existing_objects_incompatible()
                     for version in range(current + 1, SCHEMA_VERSION + 1):
                         if version == 34:
                             self._validate_conversation_modes_for_lock()
