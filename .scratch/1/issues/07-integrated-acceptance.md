@@ -130,6 +130,14 @@
 
 六张修复在同一集成提交上按用户路径复核完毕：修复前失败与修复后证据齐备，全量回归与基线的失败名单双向一致，前端类型检查与用例全绿，账户隔离与刷新/重试回归通过。**不给出无条件「全部验收通过」**：验收标准第 3 项保持未勾选，因为「原句通勤的真实路线／路线失败／仅底图失败」受阻于外部条件（高德两项凭据均未配置，§6），属明确标注的未验收分支而非未说明的阻塞；其余七项均已核验。补齐高德凭据后应只重跑该分支（联合路径 3 的路线与两种失败展示）即可闭环。
 
+### 9. 合并、合并后验证与清理实证
+
+- 合并：本票分支 `codex/07-integrated-acceptance`（唯一提交 `a6ce7a6`）以 `--no-ff` 合入 main `3697d58`；合并树 `24e39cd2899b54479c38d90388fb06c56d3eddb6` **与分支树逐字节相同**，`git diff 21d2e1c 3697d58 -- src apps packages scripts tests openapi.json pyproject.toml` 为空（本票不含代码改动，只改工单记录）。
+- 合并后定点复跑（main 上，同一跑法）：`tests/storage/test_issue01_profile_schema_recovery.py tests/profiles tests/commute tests/ai/test_image_request_contract.py tests/github tests/tieba tests/contracts` **542 passed / 1 failed / 98.06 s**（`raw/postmerge-targeted.log`）。与 §5 合并前的 573 passed／1 failed 之比：差额 31 条正是合并前多跑的两个学习用例文件（`tests/chat/test_v2_17_study_pages.py`、`tests/chat/test_study_recognition_failures.py`，`--collect-only` 实测 31 条），失败项仍是同一条既有用例 `test_chat_correction_uses_latest_record_and_is_idempotent`。
+- 全量结论沿用依据：合并树与分支树的 git tree 哈希相同、代码树无差异，故 §5 的全量对账（251 failed／3815 passed／37 skipped、失败名单与基线双向 diff 为空）继续适用，未重跑。
+- 推送：`21d2e1c..3697d58  main -> main`；本条记录在推送之后补写，随之再推一次，推后 `main == origin/main`。
+- 清理：临时基线工作树 `.worktrees/07-prefix-baseline`（detached `6939da3`）用 `git worktree remove` **一次成功**（该工作树内没有沙箱跑测试留下的 `.tmp`／`.pytest_cache`，未触发受限 ACL 问题），`.worktrees/` 已空；本地分支 `codex/07-integrated-acceptance` 已删（was `a6ce7a6`）；`git worktree prune -v` 与 `git worktree prune --dry-run -v` **均无输出**（无失效记录）；`git worktree list` 只剩主仓。主仓另有 v2 轮遗留的 11 条本地分支（`03-atomic-first-turn-shell`、`worktree-12-…` 等），非本票产物，未动。
+
 ## Comments
 
 暂无。
