@@ -28149,6 +28149,14 @@
             "title": "Reconciliation Digest",
             "description": "来源记录标识与内容哈希的确定性摘要。"
           },
+          "reconciliation": {
+            "items": {
+              "$ref": "#/components/schemas/AtomicProfileReconciliationEntry"
+            },
+            "type": "array",
+            "title": "Reconciliation",
+            "description": "逐条对账明细：每条来源记录的结论与原因码（不含正文）。"
+          },
           "retryable": {
             "type": "boolean",
             "title": "Retryable",
@@ -28200,7 +28208,58 @@
           "undone"
         ],
         "title": "AtomicProfileMigrationStatus",
-        "description": "账户级原子化迁移状态。"
+        "description": "账户级原子化迁移状态；成功与可重试失败分开，便于页面给出准确结论。"
+      },
+      "AtomicProfileReconciliationEntry": {
+        "properties": {
+          "source_record_id": {
+            "type": "string",
+            "title": "Source Record Id",
+            "description": "旧四维记录标识。"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AtomicProfileReconciliationOutcome",
+            "description": "该条结论。"
+          },
+          "reason_code": {
+            "type": "string",
+            "title": "Reason Code",
+            "description": "结论的确定性原因码，不含正文。"
+          },
+          "profile_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Item Id",
+            "description": "迁入或已存在的原子条目标识；只写墓碑或未写入时为空。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_record_id",
+          "outcome",
+          "reason_code"
+        ],
+        "title": "AtomicProfileReconciliationEntry",
+        "description": "单条旧四维记录的对账明细：只有标识、结论与原因码，没有画像正文。\n\n报告里的计数回答「迁入了几条」；本明细回答「哪一条为什么没迁入」，使\n用户编辑优先、删除墓碑和重复来源的判断可复核，而不是靠猜。"
+      },
+      "AtomicProfileReconciliationOutcome": {
+        "type": "string",
+        "enum": [
+          "migrated",
+          "duplicated",
+          "tombstoned",
+          "skipped",
+          "failed"
+        ],
+        "title": "AtomicProfileReconciliationOutcome",
+        "description": "单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。\n\n``duplicated`` 是「来源或身份已经存在，因此没有新建条目」的合并计数：具体\n是用户条目优先、来源已迁移还是墓碑抑制，看同一条明细的原因码。``failed``\n只出现在可重试报告里——整批已回滚，台账只留失败那一条。"
       },
       "AtomicProfileWriteOrigin": {
         "type": "string",
@@ -40083,11 +40142,24 @@
             ],
             "title": "Note",
             "description": "面向用户的中文说明。"
+          },
+          "reset_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset At",
+            "description": "上游给出的额度恢复时间（UTC 时刻，呈现时转本地时区）；未知为 None。"
           }
         },
         "type": "object",
         "title": "GithubRateLimitState",
-        "description": "上游限流的真实状态（额度用尽时保留可重试结论）。\n\n只给出「是否撞上」与面向用户的说明：剩余额度与重置时刻属于检索内部日志\n（``docs/v2/interaction.md`` §4），不进入投影，也不呈现给用户。"
+        "description": "上游限流的真实状态（额度用尽时保留可重试结论）。\n\n只给出「是否撞上」、面向用户的说明与**上游给出的**重置时刻（按本地时区\n呈现，便于用户判断何时重试）；剩余额度属于检索内部日志\n（``docs/v2/interaction.md`` §4），不进入投影。上游没给重置时刻时\n``reset_at`` 为 None——呈现侧如实说「没有给出恢复时间」，不自己推一个。"
       },
       "GithubReadmeStatus": {
         "type": "string",

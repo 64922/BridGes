@@ -23,12 +23,14 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 import re
 import secrets
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 from bridges.contracts.atomic_profile import (
     AtomicProfileItem,
@@ -40,6 +42,8 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMemoryStatus,
     AtomicProfileMigrationReport,
     AtomicProfileMigrationStatus,
+    AtomicProfileReconciliationEntry,
+    AtomicProfileReconciliationOutcome,
     AtomicProfileWriteOrigin,
 )
 from bridges.contracts.profiles import (
@@ -59,8 +63,21 @@ from bridges.profiles.four_dimensions import (
     is_recallable_confidence,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.storage.errors import StorageError
+
+logger = logging.getLogger(__name__)
 
 ATOMIC_PROFILE_MIGRATION_VERSION = "profile-atomic-v1"
+#: 逐条对账原因码（工单 01）。迁移报告的计数回答「迁入了几条」，这里回答
+#: 「每条为什么是这个结论」；全部是确定性规则，且不含任何画像正文。
+MIGRATION_REASON_MIGRATED = "source_migrated"
+MIGRATION_REASON_EMPTY_TEXT = "source_text_empty"
+MIGRATION_REASON_SOURCE_WITHDRAWN = "source_withdrawn_tombstone_written"
+MIGRATION_REASON_SOURCE_ALREADY_MIGRATED = "source_record_already_linked"
+MIGRATION_REASON_IDENTITY_TOMBSTONED = "identity_suppressed_by_tombstone"
+MIGRATION_REASON_USER_ITEM_KEPT = "user_item_kept_not_overwritten"
+MIGRATION_REASON_IDENTITY_EXISTS = "identity_exists_item_linked"
+MIGRATION_REASON_MIGRATION_FAILED = "source_migration_failed"
 #: 单轮注入模型的最大条目数（最小切片：只取当前任务必要的几条）。
 MAX_SLICE_ITEMS = 4
 _MAX_ITEM_TEXT_LENGTH = 1000
@@ -333,6 +350,16 @@ class AtomicProfileRepository(ABC):
     ) -> AtomicProfileMigrationReport | None:
         """返回单个账户最新的迁移报告。"""
 
+    def snapshot_before_migration(self) -> str | None:
+        """迁移前落一份一致性快照，返回可恢复的备份标识。
+
+        默认实现不做任何事：内存仓库没有需要保护的文件。可持久化实现覆盖
+        本方法，让「迁移前有还原点」成为仓库端口的一部分，而不是调用方的
+        约定。
+        """
+
+        return None
+
 
 class InMemoryAtomicProfileRepository(AtomicProfileRepository):
     """供领域与 API 测试使用的确定性内存仓库。"""
@@ -455,6 +482,43 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
         """
 
         return _joined_transaction(self._db)
+
+    def snapshot_before_migration(self) -> str | None:
+        """用 SQLite 在线备份 API 落一份迁移前快照，返回备份文件路径。
+
+        与库级迁移门同一套原语（``snapshot_lock`` + ``snapshot_to``）：WAL
+        库用文件拷贝会读到过期快照，因此必须在快照锁内走备份 API。文件名带
+        固定前缀与秒级时间戳，重复迁移只保留最新一份，避免每次点按都堆积
+        几 MB 的副本；快照在清理旧副本之前落盘，失败时降级为告警并返回空值
+        ——单批迁移本身仍受事务保护（失败整体回滚），调用方据空值知道本次
+        没有额外还原点。
+        """
+
+        path = self._db.path
+        if path == ":memory:":
+            return None
+        target = Path(path).with_name(
+            f"{Path(path).name}.backup-before-atomic-profile-"
+            f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        )
+        try:
+            with self._db.snapshot_lock():
+                self._db.snapshot_to(target)
+        except (OSError, StorageError) as exc:
+            logger.warning(
+                "atomic_profile_migration_snapshot_failed",
+                extra={"target": target.name, "error": str(exc)},
+            )
+            return None
+        for stale in Path(path).parent.glob(
+            f"{Path(path).name}.backup-before-atomic-profile-*"
+        ):
+            if stale != target:
+                try:
+                    stale.unlink()
+                except OSError:
+                    continue
+        return str(target)
 
     @staticmethod
     def _iso(value: datetime) -> str:
@@ -600,11 +664,14 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
         )
         return removed
 
-    @staticmethod
-    def _report_from_row(row: object) -> AtomicProfileMigrationReport:
+    def _report_from_row(self, row: object) -> AtomicProfileMigrationReport:
+        """还原完整报告：计数字段来自报告行，逐条明细来自同批次台账。"""
+
+        run_id = str(row["run_id"])  # type: ignore[index]
+        owner_id = str(row["account_id"])  # type: ignore[index]
         return AtomicProfileMigrationReport(
-            run_id=str(row["run_id"]),  # type: ignore[index]
-            owner_account_id=str(row["account_id"]),  # type: ignore[index]
+            run_id=run_id,
+            owner_account_id=owner_id,
             migration_version=str(row["migration_version"]),  # type: ignore[index]
             status=AtomicProfileMigrationStatus(str(row["status"])),  # type: ignore[index]
             migrated=int(row["migrated"]),  # type: ignore[index]
@@ -621,6 +688,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 for value in json.loads(str(row["source_record_ids_json"]))  # type: ignore[index]
             ],
             reconciliation_digest=str(row["reconciliation_digest"]),  # type: ignore[index]
+            reconciliation=self._reconciliation_for_run(owner_id, run_id),
             retryable=bool(int(row["retryable"])),  # type: ignore[index]
             created_at=SqliteAtomicProfileRepository._dt(
                 str(row["created_at"])  # type: ignore[index]
@@ -632,10 +700,43 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             ),
         )
 
+    @staticmethod
+    def _reconciliation_from_row(row: object) -> AtomicProfileReconciliationEntry:
+        return AtomicProfileReconciliationEntry(
+            source_record_id=str(row["source_record_id"]),  # type: ignore[index]
+            outcome=AtomicProfileReconciliationOutcome(str(row["outcome"])),  # type: ignore[index]
+            reason_code=str(row["reason_code"]),  # type: ignore[index]
+            profile_item_id=(
+                str(row["profile_item_id"])  # type: ignore[index]
+                if row["profile_item_id"] is not None  # type: ignore[index]
+                else None
+            ),
+        )
+
+    def _reconciliation_for_run(
+        self, owner_id: str, run_id: str
+    ) -> list[AtomicProfileReconciliationEntry]:
+        """按来源记录顺序返回某批次的逐条对账明细。
+
+        顺序即写入顺序：同一批次内 source_record_id 不会重复（主键约束），
+        因此按 rowid 读取即可复现迁移时的逐条顺序。
+        """
+
+        rows = self._db.scoped(owner_id).execute(
+            "SELECT source_record_id, outcome, reason_code, profile_item_id "
+            "FROM profile_item_migration_records "
+            "WHERE account_id = ? AND run_id = ? ORDER BY rowid",
+            (owner_id, run_id),
+        ).fetchall()
+        return [
+            SqliteAtomicProfileRepository._reconciliation_from_row(row) for row in rows
+        ]
+
     def save_migration_report(
         self, report: AtomicProfileMigrationReport
     ) -> AtomicProfileMigrationReport:
-        self._db.scoped(report.owner_account_id).execute(
+        scoped = self._db.scoped(report.owner_account_id)
+        scoped.execute(
             "INSERT INTO profile_item_migrations ("
             "run_id, account_id, migration_version, status, migrated, duplicated, "
             "tombstoned, skipped, failed, created_item_ids_json, source_record_ids_json, "
@@ -668,6 +769,27 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 self._iso(report.undone_at) if report.undone_at else None,
             ),
         )
+        # 逐条对账明细与报告同事务落盘：报告被回滚时明细一起消失，不会出现
+        # 「有明细没有报告」的半状态。同一批次重复保存（如回滚改写状态）用
+        # UPSERT 覆盖，不产生重复行。
+        for entry in report.reconciliation:
+            scoped.execute(
+                "INSERT INTO profile_item_migration_records ("
+                "run_id, account_id, source_record_id, outcome, reason_code, "
+                "profile_item_id, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(run_id, account_id, source_record_id) DO UPDATE SET "
+                "outcome = excluded.outcome, reason_code = excluded.reason_code, "
+                "profile_item_id = excluded.profile_item_id",
+                (
+                    report.run_id,
+                    report.owner_account_id,
+                    entry.source_record_id,
+                    entry.outcome.value,
+                    entry.reason_code,
+                    entry.profile_item_id,
+                    self._iso(report.created_at),
+                ),
+            )
         return report
 
     def get_migration_report(
@@ -677,7 +799,9 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "SELECT * FROM profile_item_migrations WHERE account_id = ? AND run_id = ?",
             (owner_id, run_id),
         ).fetchone()
-        return self._report_from_row(row) if row is not None else None
+        if row is None:
+            return None
+        return self._report_from_row(row)
 
     def get_latest_migration_report(
         self, owner_id: str
@@ -689,7 +813,9 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "WHERE account_id = ? ORDER BY rowid DESC LIMIT 1",
             (owner_id,),
         ).fetchone()
-        return self._report_from_row(row) if row is not None else None
+        if row is None:
+            return None
+        return self._report_from_row(row)
 
 
 class AtomicProfileService:
@@ -1056,55 +1182,42 @@ class AtomicProfileService:
         """把旧四类记录一次性转成无类别的原子列表。
 
         只读旧记录、不原位改写：重复执行是幂等的（新增 0、重复 N），回滚按
-        批次删除本批次新建的条目即可恢复。
+        批次删除本批次新建的条目即可恢复。迁移前先经仓库端口落一份一致性快照
+        （内存仓库没有需要保护的文件时为空值），写入全部在一次事务内完成：
+        任一条失败即整体回滚，只留下可重试的对账报告与失败那一条的原因，不产生
+        半迁移状态。每条旧记录的结论与原因码逐条入账，页面据此说明「哪条为什么
+        没迁入」，而不是只给一个计数。
         """
 
+        snapshot = self._repository.snapshot_before_migration()
+        logger.info(
+            "atomic_profile_migration_started",
+            extra={
+                "account_id": account_id,
+                "backup": Path(snapshot).name if snapshot else None,
+            },
+        )
         run_id = f"atomic-{secrets.token_urlsafe(12)}"
         now = _now()
         records = self._four_dimensions.list_records(account_id, include_withdrawn=True)
-        counts = {"migrated": 0, "duplicated": 0, "tombstoned": 0, "skipped": 0}
+        counts = {outcome.value: 0 for outcome in AtomicProfileReconciliationOutcome}
         created: list[str] = []
-        source_ids: list[str] = []
+        source_ids = [record.record_id for record in records]
+        reconciliation: list[AtomicProfileReconciliationEntry] = []
+        failing_record_id: str | None = None
         digest = _digest((record.record_id, record.content_hash) for record in records)
         try:
             with self._repository.transaction():
                 for record in records:
-                    source_ids.append(record.record_id)
-                    if not normalize_text(record.content):
-                        counts["skipped"] += 1
-                        continue
-                    if record.status == FourDimensionRecordStatus.WITHDRAWN:
-                        self._write_migration_tombstone(account_id, record, run_id, now)
-                        counts["tombstoned"] += 1
-                        continue
-                    key = identity_key(account_id, record.content)
-                    if (
-                        self._repository.find_item_by_source(
-                            account_id, record.record_id
-                        )
-                        is not None
+                    failing_record_id = record.record_id
+                    entry = self._reconcile_record(account_id, record, run_id, now)
+                    reconciliation.append(entry)
+                    counts[entry.outcome.value] += 1
+                    if entry.profile_item_id is not None and (
+                        entry.outcome == AtomicProfileReconciliationOutcome.MIGRATED
                     ):
-                        counts["duplicated"] += 1
-                        continue
-                    existing = self._repository.find_item_by_identity(account_id, key)
-                    if existing is not None:
-                        if existing.status == AtomicProfileItemStatus.ACTIVE:
-                            existing.source_record_id = record.record_id
-                            existing.topic_hint = (
-                                existing.topic_hint or record.dimension.value
-                            )
-                            self._repository.save_item(existing)
-                        counts["duplicated"] += 1
-                        continue
-                    item = _item_from_record(
-                        account_id,
-                        record,
-                        write_origin=AtomicProfileWriteOrigin.MIGRATION,
-                        migration_run_id=run_id,
-                    )
-                    self._repository.save_item(item)
-                    created.append(item.profile_item_id)
-                    counts["migrated"] += 1
+                        created.append(entry.profile_item_id)
+                failing_record_id = None
                 report = AtomicProfileMigrationReport(
                     run_id=run_id,
                     owner_account_id=account_id,
@@ -1118,29 +1231,133 @@ class AtomicProfileService:
                     created_item_ids=created,
                     source_record_ids=source_ids,
                     reconciliation_digest=digest,
+                    reconciliation=reconciliation,
                     retryable=False,
                     created_at=now,
                 )
                 return self._repository.save_migration_report(report)
-        except ProfileError:
+        except ProfileError as exc:
+            # 事务已整体回滚：本批次没有提交任何条目或墓碑。失败前已判定的结论
+            # 随回滚一起作废——把它们写进台账会让台账声称迁入了并不存在的条目，
+            # 因此计数全部归零、逐条明细只留失败那一条；重试会重新判定每一条。
+            logger.warning(
+                "atomic_profile_migration_failed",
+                extra={
+                    "account_id": account_id,
+                    "run_id": run_id,
+                    "record_id": failing_record_id,
+                    "error_type": type(exc).__name__,
+                },
+            )
             report = AtomicProfileMigrationReport(
                 run_id=run_id,
                 owner_account_id=account_id,
                 migration_version=ATOMIC_PROFILE_MIGRATION_VERSION,
                 status=AtomicProfileMigrationStatus.RETRYABLE,
                 migrated=0,
-                duplicated=counts["duplicated"],
+                duplicated=0,
                 tombstoned=0,
-                skipped=counts["skipped"],
+                skipped=0,
                 failed=1,
                 created_item_ids=[],
                 source_record_ids=source_ids,
                 reconciliation_digest=digest,
+                reconciliation=(
+                    [
+                        AtomicProfileReconciliationEntry(
+                            source_record_id=failing_record_id,
+                            outcome=AtomicProfileReconciliationOutcome.FAILED,
+                            reason_code=MIGRATION_REASON_MIGRATION_FAILED,
+                        )
+                    ]
+                    if failing_record_id is not None
+                    else []
+                ),
                 retryable=True,
                 created_at=now,
             )
             with self._repository.transaction():
                 return self._repository.save_migration_report(report)
+
+    def _reconcile_record(
+        self,
+        account_id: str,
+        record: FourDimensionProfileRecord,
+        run_id: str,
+        now: datetime,
+    ) -> AtomicProfileReconciliationEntry:
+        """判定单条旧四维记录能否原子化，返回带原因码的对账结论。
+
+        判定顺序即用户可见语义的顺序：先看有没有可迁移正文，再看来源是否已
+        撤回（墓碑只写不复活），然后按来源记录去重，最后按正文身份去看用户
+        权威——用户改过或删过的正文一律不覆盖，只如实记下原因。
+        """
+
+        if not normalize_text(record.content):
+            return AtomicProfileReconciliationEntry(
+                source_record_id=record.record_id,
+                outcome=AtomicProfileReconciliationOutcome.SKIPPED,
+                reason_code=MIGRATION_REASON_EMPTY_TEXT,
+            )
+        if record.status == FourDimensionRecordStatus.WITHDRAWN:
+            tombstone_id = self._write_migration_tombstone(
+                account_id, record, run_id, now
+            )
+            return AtomicProfileReconciliationEntry(
+                source_record_id=record.record_id,
+                outcome=AtomicProfileReconciliationOutcome.TOMBSTONED,
+                reason_code=MIGRATION_REASON_SOURCE_WITHDRAWN,
+                profile_item_id=tombstone_id,
+            )
+        by_source = self._repository.find_item_by_source(account_id, record.record_id)
+        if by_source is not None:
+            return AtomicProfileReconciliationEntry(
+                source_record_id=record.record_id,
+                outcome=AtomicProfileReconciliationOutcome.DUPLICATED,
+                reason_code=MIGRATION_REASON_SOURCE_ALREADY_MIGRATED,
+                profile_item_id=by_source.profile_item_id,
+            )
+        existing = self._repository.find_item_by_identity(
+            account_id, identity_key(account_id, record.content)
+        )
+        if existing is not None:
+            if existing.status == AtomicProfileItemStatus.WITHDRAWN:
+                return AtomicProfileReconciliationEntry(
+                    source_record_id=record.record_id,
+                    outcome=AtomicProfileReconciliationOutcome.DUPLICATED,
+                    reason_code=MIGRATION_REASON_IDENTITY_TOMBSTONED,
+                    profile_item_id=existing.profile_item_id,
+                )
+            if existing.write_origin == AtomicProfileWriteOrigin.USER:
+                # 用户权威：用户记住或改写的同一条事实不回填、不改写。
+                return AtomicProfileReconciliationEntry(
+                    source_record_id=record.record_id,
+                    outcome=AtomicProfileReconciliationOutcome.DUPLICATED,
+                    reason_code=MIGRATION_REASON_USER_ITEM_KEPT,
+                    profile_item_id=existing.profile_item_id,
+                )
+            existing.source_record_id = record.record_id
+            existing.topic_hint = existing.topic_hint or record.dimension.value
+            self._repository.save_item(existing)
+            return AtomicProfileReconciliationEntry(
+                source_record_id=record.record_id,
+                outcome=AtomicProfileReconciliationOutcome.DUPLICATED,
+                reason_code=MIGRATION_REASON_IDENTITY_EXISTS,
+                profile_item_id=existing.profile_item_id,
+            )
+        item = _item_from_record(
+            account_id,
+            record,
+            write_origin=AtomicProfileWriteOrigin.MIGRATION,
+            migration_run_id=run_id,
+        )
+        self._repository.save_item(item)
+        return AtomicProfileReconciliationEntry(
+            source_record_id=record.record_id,
+            outcome=AtomicProfileReconciliationOutcome.MIGRATED,
+            reason_code=MIGRATION_REASON_MIGRATED,
+            profile_item_id=item.profile_item_id,
+        )
 
     def rollback_migration(
         self, account_id: str, run_id: str
@@ -1279,15 +1496,19 @@ class AtomicProfileService:
         record: FourDimensionProfileRecord,
         run_id: str,
         now: datetime,
-    ) -> None:
-        """为已撤回的旧记录补墓碑：抑制键已存在时只把活动条目转为墓碑。"""
+    ) -> str | None:
+        """为已撤回的旧记录补墓碑：抑制键已存在时只把活动条目转为墓碑。
+
+        返回墓碑条目标识（已有条目被转墓碑时返回该条目），供逐条对账说明
+        「这条已撤回的旧记录对应哪个抑制键」。
+        """
 
         key = identity_key(account_id, record.content)
         existing = self._repository.find_item_by_identity(account_id, key)
         if existing is not None:
             if existing.status == AtomicProfileItemStatus.ACTIVE:
                 self._write_tombstone(existing)
-            return
+            return existing.profile_item_id
         tombstone = AtomicProfileItem(
             profile_item_id=_new_item_id(),
             owner_account_id=account_id,
@@ -1306,11 +1527,20 @@ class AtomicProfileService:
             migration_run_id=run_id,
         )
         self._repository.save_item(tombstone)
+        return tombstone.profile_item_id
 
 
 __all__ = [
     "ATOMIC_PROFILE_MIGRATION_VERSION",
     "MAX_SLICE_ITEMS",
+    "MIGRATION_REASON_EMPTY_TEXT",
+    "MIGRATION_REASON_IDENTITY_EXISTS",
+    "MIGRATION_REASON_IDENTITY_TOMBSTONED",
+    "MIGRATION_REASON_MIGRATED",
+    "MIGRATION_REASON_SOURCE_ALREADY_MIGRATED",
+    "MIGRATION_REASON_SOURCE_WITHDRAWN",
+    "MIGRATION_REASON_MIGRATION_FAILED",
+    "MIGRATION_REASON_USER_ITEM_KEPT",
     "AtomicProfileError",
     "AtomicProfileRepository",
     "AtomicProfileService",

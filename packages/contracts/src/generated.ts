@@ -7230,6 +7230,11 @@ export interface components {
              */
             reconciliation_digest: string;
             /**
+             * Reconciliation
+             * @description 逐条对账明细：每条来源记录的结论与原因码（不含正文）。
+             */
+            reconciliation?: components["schemas"]["AtomicProfileReconciliationEntry"][];
+            /**
              * Retryable
              * @description 同一批次是否可安全重试。
              */
@@ -7248,10 +7253,46 @@ export interface components {
         };
         /**
          * AtomicProfileMigrationStatus
-         * @description 账户级原子化迁移状态。
+         * @description 账户级原子化迁移状态；成功与可重试失败分开，便于页面给出准确结论。
          * @enum {string}
          */
         AtomicProfileMigrationStatus: "completed" | "retryable" | "undone";
+        /**
+         * AtomicProfileReconciliationEntry
+         * @description 单条旧四维记录的对账明细：只有标识、结论与原因码，没有画像正文。
+         *
+         *     报告里的计数回答「迁入了几条」；本明细回答「哪一条为什么没迁入」，使
+         *     用户编辑优先、删除墓碑和重复来源的判断可复核，而不是靠猜。
+         */
+        AtomicProfileReconciliationEntry: {
+            /**
+             * Source Record Id
+             * @description 旧四维记录标识。
+             */
+            source_record_id: string;
+            /** @description 该条结论。 */
+            outcome: components["schemas"]["AtomicProfileReconciliationOutcome"];
+            /**
+             * Reason Code
+             * @description 结论的确定性原因码，不含正文。
+             */
+            reason_code: string;
+            /**
+             * Profile Item Id
+             * @description 迁入或已存在的原子条目标识；只写墓碑或未写入时为空。
+             */
+            profile_item_id?: string | null;
+        };
+        /**
+         * AtomicProfileReconciliationOutcome
+         * @description 单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。
+         *
+         *     ``duplicated`` 是「来源或身份已经存在，因此没有新建条目」的合并计数：具体
+         *     是用户条目优先、来源已迁移还是墓碑抑制，看同一条明细的原因码。``failed``
+         *     只出现在可重试报告里——整批已回滚，台账只留失败那一条。
+         * @enum {string}
+         */
+        AtomicProfileReconciliationOutcome: "migrated" | "duplicated" | "tombstoned" | "skipped" | "failed";
         /**
          * AtomicProfileWriteOrigin
          * @description 条目写入来源（内部字段，页面只用于诚实标注最近变化）。
@@ -14399,8 +14440,10 @@ export interface components {
          * GithubRateLimitState
          * @description 上游限流的真实状态（额度用尽时保留可重试结论）。
          *
-         *     只给出「是否撞上」与面向用户的说明：剩余额度与重置时刻属于检索内部日志
-         *     （``docs/v2/interaction.md`` §4），不进入投影，也不呈现给用户。
+         *     只给出「是否撞上」、面向用户的说明与**上游给出的**重置时刻（按本地时区
+         *     呈现，便于用户判断何时重试）；剩余额度属于检索内部日志
+         *     （``docs/v2/interaction.md`` §4），不进入投影。上游没给重置时刻时
+         *     ``reset_at`` 为 None——呈现侧如实说「没有给出恢复时间」，不自己推一个。
          */
         GithubRateLimitState: {
             /**
@@ -14414,6 +14457,11 @@ export interface components {
              * @description 面向用户的中文说明。
              */
             note?: string | null;
+            /**
+             * Reset At
+             * @description 上游给出的额度恢复时间（UTC 时刻，呈现时转本地时区）；未知为 None。
+             */
+            reset_at?: string | null;
         };
         /**
          * GithubReadmeStatus

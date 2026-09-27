@@ -7,7 +7,9 @@
 - **缺哪项只问哪项**：缺失或含糊时返回**一个**澄清问题，绝不一次问两项，
   也不替用户猜起点、终点或方式；
 - **不猜坐标**：「我这里」等无法定位的指代只追问具体楼名或入口；
-- **并列方式进入选择**：同一句里出现多种方式时列出候选请用户选一种。
+- **并列方式进入选择**：同一句里出现多种方式时列出候选请用户选一种；
+- **句首口语前缀不是地点**：先剥离「我现在想」「请问」这类句首意图词，再识别
+  起终点，句中的地点文字与数字一字不动；整句就是位置指代时不做剥离，仍只追问。
 
 上下文来源只有两处：本轮用户原文，以及调用方传入的**已确认会话前文**
 （最近若干条用户消息）。仍不足以补全时问用户，而不是套用默认值。
@@ -68,14 +70,84 @@ _A_TO_B = re.compile(r"^(?P<a>.+?)\s*(?:到|去|往|走到|骑到|前往)\s*(?P<
 #: ``从 A``（只给出起点）。
 _FROM_ONLY = re.compile(r"^从\s*(?P<a>.+)$")
 
-#: 句首主语／意图前缀（剥离后才能正确识别「去图书馆」这类只有终点的写法）。
-_LEADING_INTENT = re.compile(r"^(?:我想|我要|我们|我|帮我|请|麻烦|想问一下|问一下|打算)+")
+#: 句首意图前缀的构成单元：请求与礼貌用语、主语、时间填充、意愿动词。
+_INTENT_UNITS: tuple[str, ...] = (
+    "想请问",
+    "请问",
+    "想问一下",
+    "问一下",
+    "麻烦",
+    "帮我",
+    "帮忙",
+    "查一下",
+    "看下",
+    "看看",
+    "请",
+    "我们",
+    "我",
+    "现在",
+    "目前",
+    "今天",
+    "明天",
+    "今晚",
+    "早上",
+    "中午",
+    "下午",
+    "晚上",
+    "待会儿",
+    "待会",
+    "等会儿",
+    "等下",
+    "一会儿",
+    "一会",
+    "马上",
+    "立刻",
+    "先",
+    "要",
+    "想",
+    "打算",
+    "准备",
+    "需要",
+)
+
+#: 句首意图前缀：这些词用户会任意连写（「我现在想」「我打算今天」「帮我看看」），
+#: 所以按词类逐词剥离，而不是枚举整段短语。长单元优先，避免「我」抢先命中「我们」。
+_LEADING_INTENT_UNIT = re.compile(
+    "^(?:"
+    + "|".join(re.escape(unit) for unit in sorted(_INTENT_UNITS, key=len, reverse=True))
+    + ")"
+)
+
+#: 地点写法的句首词（``从 A``／``去 B``／``前往 B``……）。
+_PLACE_HEADS: tuple[str, ...] = ("从", "前往", "走到", "骑到", "到", "去", "往")
 
 #: 需要从地点短语两端剥离的符号与助词。
 _EDGE_TRIM = " \t，。！？、；：,.!?;:-—~～的了在把和与"
 
 #: 指代判定：命中即视为无法定位（只追问，不猜坐标）。
 _WHITESPACE = re.compile(r"\s+")
+
+
+def _strip_leading_intent(text: str) -> str:
+    """剥离句首的口语意图前缀，剥到地点写法或位置指代为止。
+
+    「我现在想从42栋步行到南区25栋」交给地点识别的是「从42栋步行到南区25栋」。
+    剥到不能再剥（下一个词既不是地点写法的句首词 ``从``／``到``／``去``…，也不是
+    位置指代）就整体放弃，一字不改：地名本身以意图词开头时（「先骕楼」「明天广场」）
+    删掉的首字就是地名的一部分，整句是位置指代（「我现在的位置」）时删掉「现在」
+    会让它看起来像一个能拿去检索的地点。
+    """
+    value = text.strip(_EDGE_TRIM)
+    original = value
+    while True:
+        # 每剥一个词都会留下空格（方式词在进入这里之前已被替换成空格）。
+        value = value.strip(_EDGE_TRIM)
+        if value.startswith(_PLACE_HEADS) or value.startswith(UNLOCATABLE_MARKERS):
+            return value
+        unit = _LEADING_INTENT_UNIT.match(value)
+        if unit is None:
+            return original
+        value = value[unit.end() :]
 
 
 def parse_commute_request(
@@ -321,7 +393,7 @@ def detect_mode(
 
 def extract_places(text: str) -> tuple[str | None, str | None]:
     """抽出 (起点原话, 终点原话)；识别不出的一侧为 None。"""
-    stripped = _LEADING_INTENT.sub("", text).strip()
+    stripped = _strip_leading_intent(text)
     match = _FROM_TO.match(stripped)
     if match is not None:
         return _clean_place(match.group("a")), _clean_place(match.group("b"))

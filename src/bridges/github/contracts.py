@@ -70,6 +70,19 @@ class GithubReadmeStatus(StrEnum):
     ERROR = "error"
 
 
+class GithubDeepCheckStatus(StrEnum):
+    """额外核查（根目录清单、许可与实现文件）的真实完成情况。
+
+    只区分「为什么没做完」，不猜结论：未完成的候选仅凭已取得的证据呈现，
+    由投影逐条说明，绝不把没查过的说成不匹配或不存在。
+    """
+
+    DONE = "done"
+    RATE_LIMITED = "rate_limited"
+    NOT_OBTAINED = "not_obtained"
+    INTERRUPTED = "interrupted"
+
+
 class GithubClarification(BaseModel):
     """缺失关键信息时只问一项，并把恢复载荷写回消息。"""
 
@@ -250,8 +263,9 @@ class GithubRepositoryEvidence(BaseModel):
     runnable_hints: list[str] = Field(
         default_factory=list, description="根目录里实际读到的可运行线索（清单文件等）。"
     )
-    rate_limited: bool = Field(
-        default=False, description="该仓库证据是否因上游额度限制而缺失（可重试）。"
+    deep_checks: GithubDeepCheckStatus = Field(
+        default=GithubDeepCheckStatus.DONE,
+        description="许可与实现文件核查的真实完成情况；未完成时如实说明原因。",
     )
     matched_query: str = Field(description="召回该候选的实际查询词。")
     retrieved_at: datetime = Field(description="证据取得时间。")
@@ -306,12 +320,18 @@ class GithubRecommendation(BaseModel):
 class GithubRateLimitState(BaseModel):
     """上游限流的真实状态（额度用尽时保留可重试结论）。
 
-    只给出「是否撞上」与面向用户的说明：剩余额度与重置时刻属于检索内部日志
-    （``docs/v2/interaction.md`` §4），不进入投影，也不呈现给用户。
+    只给出「是否撞上」、面向用户的说明与**上游给出的**重置时刻（按本地时区
+    呈现，便于用户判断何时重试）；剩余额度属于检索内部日志
+    （``docs/v2/interaction.md`` §4），不进入投影。上游没给重置时刻时
+    ``reset_at`` 为 None——呈现侧如实说「没有给出恢复时间」，不自己推一个。
     """
 
     limited: bool = Field(default=False, description="本轮是否真的撞上额度限制。")
     note: str | None = Field(default=None, description="面向用户的中文说明。")
+    reset_at: datetime | None = Field(
+        default=None,
+        description="上游给出的额度恢复时间（UTC 时刻，呈现时转本地时区）；未知为 None。",
+    )
 
 
 class GithubProjectsProjection(BaseModel):
