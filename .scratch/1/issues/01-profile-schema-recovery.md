@@ -134,7 +134,14 @@
 
 - 实现提交：`6dd60d5`（修复迁移 59、完整性预检与稳定错误码、逐条对账与台账、快照、受控重试参数、15 个新用例）
 - 评审修正提交：`a78bb9e`（台账与回滚事实一致、账户表登记、快照告警、原因码更名、文档对齐）
-- 记录提交：`5a422cc`
+- 记录提交：`5a422cc`、回填提交 `2b32d16`
+- 合并：先 `git merge main`（当时 main = `6b9b9c7`，含并行票 02 与 04）得 `0d79857`，**无冲突**（main 侧改动未触及本票任何文件，`SCHEMA_VERSION` 仍是 58、与本票的 59 不撞号）；随后 **no-ff 入 main `23ff326`**（合并树 `b162529b` == 分支树 `b162529b`，故分支上的全部验证结论对 main 适用），**main == origin/main `23ff326`**。
+
+### 合并后验证与清理实证（2026-09-27）
+
+- 合并后在 main 工作树复跑：`tests/storage/test_issue01_profile_schema_recovery.py tests/profiles/test_issue01_profile_recovery.py tests/contracts` **18 passed**；`tests/storage tests/profiles tests/api tests/contracts tests/lifecycle tests/ai` **655 passed / 6 failed**（6 条全是前述预存在失败：1 条 chat 画像纠错时钟、5 条 lifecycle 接口夹具）；`npx vitest run` **24 文件 / 202 例**通过、`tsc --noEmit` 干净；`scripts/regenerate_openapi.py` 复跑后 `openapi.json` 无差异。
+- 清理实证：Issue 工作树 `.worktrees/01-profile-schema-recovery` 已删（`git worktree remove --force` 一次成功，目录未残留）；本地分支 `codex/01-profile-schema-recovery` 已删（`-d` 安全检查通过，4 个提交经合并提交可达）；`git worktree list` 只剩主仓与并行票 06 的工作树；`.git/worktrees/` 只有 `06-tieba-research`，`git worktree prune --dry-run -v` 无输出（无失效记录）。
+- 一处与既往票不同的事实：本工作树的 `apps/web/node_modules` 清理时是**实体副本**（与主仓同名目录 inode 不同、`dir /AL` 查不到重解析点，均 361 条），因此按普通目录随工作树删除；主仓 `apps/web/node_modules` 清理后仍 361 条、完好。
 
 ### 未完成事项
 
