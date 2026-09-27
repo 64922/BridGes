@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -729,6 +730,31 @@ def test_two_rounds_without_usable_candidates_explain_the_empty_state(
     assert tieba["retryable"] is False
 
 
+def test_two_rounds_with_zero_hits_explain_the_empty_state(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """两轮都零结果的空态：说明「本轮没有返回公开帖子」，不编造过滤理由。"""
+    _register(client)
+    queries = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))
+    port = _FakeSearchPort(hits=[])
+    _install_tieba_service(sqlite_app, port=port, reader=_FakeReader())
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert port.queries == list(queries)
+    tieba = assistant["tieba_research"]
+    assert tieba["status"] == "empty"
+    assert tieba["empty_reason"] == "本轮检索没有返回可确认属于「华东交通大学吧」的公开帖子。"
+    assert tieba["rejected_candidates"] == []
+    assert tieba["candidate_links"] == []
+    assert "本轮检索没有返回可确认属于" in assistant["content"]
+
+
 def test_permanent_error_stops_without_running_the_fallback_query(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
@@ -985,6 +1011,7 @@ def test_study_mode_rejects_daily_module(
     assert response.status_code == 422
     assert port.queries == []
 
+
 @pytest.mark.parametrize(
     "status",
     [
@@ -1005,6 +1032,20 @@ def test_terminal_query_states_stop_the_bounded_plan(status: ModuleQueryStatus) 
     assert len(port.queries) == 1
     assert attempts.hits == ()
     assert attempts.rounds and "未完成" in attempts.rounds[0]
+
+
+def test_stop_after_the_first_round_skips_the_fallback_query() -> None:
+    """停止发生在首轮之后：备用词不再发出，逐轮说明写明「因你已停止」。"""
+    stop_event = threading.Event()
+    port = _FakeSearchPort(hits=[], on_call=lambda _event: stop_event.set())
+    service = TiebaResearchService(search=port, reader=_FakeReader())
+    analysis = parse_tieba_request("华东交通大学吧 中秋节放假")
+
+    attempts = service._search_candidates("account-1", analysis, stop_event=stop_event)
+
+    assert len(port.queries) == 1
+    assert attempts.hits == ()
+    assert attempts.rounds[-1] == "备用放宽词查询因你已停止而未执行。"
 
 
 def test_retryable_transient_failure_still_uses_the_fallback_query() -> None:

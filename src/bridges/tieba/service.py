@@ -114,8 +114,8 @@ HOLIDAY_YEAR_NOTE = (
     "并按原文摘录与取得时间呈现。"
 )
 
-#: 逐轮查询的中文标签（有界计划：精确词 → 放宽词）。
-QUERY_ROUND_LABELS: tuple[str, ...] = ("精确词查询", "备用放宽词查询")
+#: 逐轮查询的中文标签；有界计划固定为精确词 + 一条备用放宽词（见 ``plan_queries``）。
+QUERY_ROUND_LABELS: tuple[str, str] = ("精确词查询", "备用放宽词查询")
 
 #: 归零终止：这些查询状态下不再跑计划内的后续查询。
 STOP_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
@@ -176,6 +176,8 @@ class _ReadOutcome:
     #: 读过页面但没取得可确认归属的候选数，与超出读取上限、未尝试读取的候选数。
     unreadable: int = 0
     not_attempted: int = 0
+    #: 未取得页面的候选总数（帖链列表按上限截断，计数不截断）。
+    unconfirmed_total: int = 0
 
 
 class TiebaResearchService:
@@ -437,6 +439,7 @@ class TiebaResearchService:
             unconfirmed=unconfirmed[:CANDIDATE_LINKS_LIMIT],
             unreadable=unreadable,
             not_attempted=not_attempted,
+            unconfirmed_total=len(unconfirmed),
         )
 
     # -- 官方核验 --------------------------------------------------------
@@ -453,7 +456,10 @@ class TiebaResearchService:
         if reader is None:
             return []
         deadline = time.monotonic() + self._official_deadline_seconds
-        urls: list[str] = []
+        terms = _official_terms(analysis)
+        # 问题自带年份时按用户年份挑页面，否则按当前年份（只影响挑选顺序）。
+        preferred_year = analysis.time_year or datetime.now(UTC).year
+        candidates: list[str] = []
         for query, reason in (
             (official_query(analysis), "校规／费用／开放时间／流程／放假安排核对学校官方页面"),
             (official_fallback_query(analysis), "官方域名未命中，改用校名与主题再找官方页面"),
@@ -465,13 +471,13 @@ class TiebaResearchService:
                 stop_event=stop_event,
                 deadline=deadline,
             )
-            urls = _official_urls(outcome)
-            if urls:
+            candidates = _official_candidates(
+                outcome, terms, preferred_year=preferred_year
+            )
+            if candidates:
                 break
         checks: list[TiebaOfficialCheck] = []
-        for url in _official_candidates(
-            outcome, _official_terms(analysis), current_year=datetime.now(UTC).year
-        )[:OFFICIAL_FETCH_LIMIT]:
+        for url in candidates[:OFFICIAL_FETCH_LIMIT]:
             if stop_event is not None and stop_event.is_set():
                 break
             checks.append(
@@ -743,7 +749,7 @@ def _plan_continues(record: ModuleQueryRecord) -> bool:
 
 def _round_note(position: int, outcome: SearchOutcome) -> str:
     """逐轮诊断：查询词、原始结果数、可用候选数与剔除数（脱敏，只记计数）。"""
-    label = _round_label(position)
+    label = QUERY_ROUND_LABELS[position]
     if outcome.record.status in FAILED_QUERY_STATUSES:
         reason = outcome.record.error_message or outcome.record.status.value
         return (
@@ -760,20 +766,10 @@ def _round_note(position: int, outcome: SearchOutcome) -> str:
 
 def _skipped_round_note(position: int, stop_event: threading.Event | None) -> str:
     """备用查询没有执行时的原因：停止还是预算耗尽。"""
-    label = _round_label(position)
+    label = QUERY_ROUND_LABELS[position]
     if stop_event is not None and stop_event.is_set():
         return f"{label}因你已停止而未执行。"
     return f"{label}因超出本轮检索预算而未执行。"
-
-
-def _round_label(position: int) -> str:
-    if position < len(QUERY_ROUND_LABELS):
-        return QUERY_ROUND_LABELS[position]
-    return f"第 {position + 1} 轮查询"
-
-
-def _official_urls(outcome: SearchOutcome) -> list[str]:
-    return [hit.url for hit in outcome.hits if is_official_url(hit.url)]
 
 
 def _official_terms(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
@@ -784,22 +780,22 @@ def _official_terms(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
 
 
 def _official_candidates(
-    outcome: SearchOutcome, terms: Sequence[str], *, current_year: int
+    outcome: SearchOutcome, terms: Sequence[str], *, preferred_year: int
 ) -> list[str]:
-    """官方页面按「点题且提到当前年份」优先排序，只作证据挑选顺序。
+    """官方页面按「点题且提到目标年份」优先排序，只作证据挑选顺序。
 
     真实取证里「放假」类查询的第一条官方命中可能是几年前的活动报道，排序
-    把标题同时含原始名词与当前年份的通知类页面提到前面，避免旧帖顶在首位；
-    排序结果不影响任何结论，年份也不会写进用户问题或官方结论。
+    把标题同时含原始名词与目标年份的通知类页面提到前面，避免旧帖顶在首位；
+    目标年份取用户问题里的年份，问题没写年份时取当前年份。排序结果不影响
+    任何结论，年份也不会写进用户问题或官方结论。
     """
 
-    def rank(hit: TiebaSearchHit) -> tuple[int, int]:
+    def rank(hit: TiebaSearchHit) -> int:
         title = hit.title or ""
         mentions_topic = any(term and term in title for term in terms)
-        mentions_year = str(current_year) in title
-        if mentions_topic and mentions_year:
-            return (0, 0)
-        return (1 if mentions_topic else 2, 0)
+        if mentions_topic and str(preferred_year) in title:
+            return 0
+        return 1 if mentions_topic else 2
 
     candidates = [hit for hit in outcome.hits if is_official_url(hit.url)]
     ordered = sorted(candidates, key=rank)  # 稳定排序：同档保持检索顺序
@@ -1016,9 +1012,9 @@ def _evidence_boundary(
     notes.extend(attempts.rounds)
     if unconfirmed:
         notes.append(
-            f"另有 {len(unconfirmed)} 条候选帖没有取得页面（其中页面不可读 "
+            f"另有 {reads.unconfirmed_total} 条候选帖没有取得页面（其中页面不可读 "
             f"{reads.unreadable} 条、超出读取上限未读取 {reads.not_attempted} 条），"
-            "因此只给出帖链：贴吧归属未确认，也未取得回复内容。"
+            f"因此只给出 {len(unconfirmed)} 条帖链：贴吧归属未确认，也未取得回复内容。"
         )
     if rejected:
         notes.append(

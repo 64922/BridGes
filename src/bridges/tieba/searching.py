@@ -146,11 +146,13 @@ def classify_hits_with_diagnostics(
     kept: list[TiebaSearchHit] = []
     rejected: list[TiebaRejectedCandidate] = []
     seen: set[str] = set()
-    counts = {"not_a_thread": 0, "other_forum": 0, "duplicate": 0}
+    not_a_thread = 0
+    other_forum = 0
+    duplicate = 0
     for hit in hits:
         thread_id = thread_id_of(hit.url)
         if thread_id is None:
-            counts["not_a_thread"] += 1
+            not_a_thread += 1
             rejected.append(
                 TiebaRejectedCandidate(
                     url=hit.url.strip(),
@@ -161,7 +163,7 @@ def classify_hits_with_diagnostics(
             continue
         url = canonical_url(hit.url)
         if url in seen:
-            counts["duplicate"] += 1
+            duplicate += 1
             continue
         seen.add(url)
         hit = hit.model_copy(update={"url": url, "thread_id": thread_id})
@@ -169,15 +171,15 @@ def classify_hits_with_diagnostics(
         if rejection is None:
             kept.append(hit)
         else:
-            counts["other_forum"] += 1
+            other_forum += 1
             rejected.append(
                 TiebaRejectedCandidate(url=url, title=hit.title, evidence=rejection)
             )
     diagnostics = HitDiagnostics(
         raw_hits=len(hits),
-        not_a_thread=counts["not_a_thread"],
-        other_forum=counts["other_forum"],
-        duplicate=counts["duplicate"],
+        not_a_thread=not_a_thread,
+        other_forum=other_forum,
+        duplicate=duplicate,
         usable=len(kept),
     )
     return tuple(kept), tuple(rejected), diagnostics

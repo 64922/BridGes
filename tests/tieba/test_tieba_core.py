@@ -426,7 +426,7 @@ def test_official_candidates_prefer_topical_current_year_pages() -> None:
         rejected=(),
     )
 
-    ordered = _official_candidates(outcome, ("放假", "中秋节"), current_year=2026)
+    ordered = _official_candidates(outcome, ("放假", "中秋节"), preferred_year=2026)
 
     assert ordered[0] == "https://lib.ecjtu.edu.cn/info/1076/7501.htm"
     assert "https://www.zhihu.com/question/1" not in ordered
