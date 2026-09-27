@@ -4,6 +4,11 @@
 要求调用方传入已完成显式 schema upgrade 的数据库。直接命令行入口已停用；
 正式操作请使用 replay_profile_extractions.py 的权威库、备份、dry-run 和 v2
 队列流程。
+
+工单 01 补充：画像对象缺失时，自动抽取的镜像会以
+``profile_extraction_unexpected`` 被重试到耗尽。这类行只有在**确认缺表是
+原因**、且结构已由修复迁移补齐之后，才用同一受控流程重排；因此错误码是显式
+入参而不是自动放宽的匹配条件，也不会顺带重跑其他聊天。
 """
 
 from __future__ import annotations
@@ -23,10 +28,23 @@ from bridges.storage import BridgesDatabase  # noqa: E402
 from bridges.storage.database import SCHEMA_VERSION  # noqa: E402
 
 _QUEUE_NAME = "profile-extraction"
+#: 历史批次：模型网关 400 的 exhausted 行。
 _ERROR_PREFIX = "client_error_400"
-_TOMBSTONE_NOTE = "画像抽取历史 400 清理：已跳过，原消息已撤回或被墓碑阻止。"
-_MISSING_RUN_NOTE = "画像抽取历史 400 清理：已跳过，缺少对应的 run 记录。"
-_REQUEUE_NOTE = "画像抽取历史 400 清理：已重新入队，等待 run_retry_tick 重处理。"
+#: 缺表导致抽取失败的兜底错误码（工单 01）。它同时也会被其他未预期异常
+#: 复用，所以不能当作「缺表」的自动判据：调用方必须先确认成因再显式传入。
+MISSING_TABLE_ERROR_CODE = "profile_extraction_unexpected"
+
+
+def _tombstone_note(error_prefix: str) -> str:
+    return f"画像抽取历史 {error_prefix} 清理：已跳过，原消息已撤回或被墓碑阻止。"
+
+
+def _missing_run_note(error_prefix: str) -> str:
+    return f"画像抽取历史 {error_prefix} 清理：已跳过，缺少对应的 run 记录。"
+
+
+def _requeue_note(error_prefix: str) -> str:
+    return f"画像抽取历史 {error_prefix} 清理：已重新入队，等待 run_retry_tick 重处理。"
 
 
 @dataclass
@@ -71,18 +89,25 @@ def _note(prefix: str, original: Any) -> str:
     return f"{prefix} 原错误：{original_text[:400]}"[:500]
 
 
-def _is_retryable(row: Any | None) -> bool:
+def _is_retryable(row: Any | None, error_prefix: str = _ERROR_PREFIX) -> bool:
     return (
         row is not None
         and str(row["status"]) == "exhausted"
-        and str(row["last_error"] or "").startswith(_ERROR_PREFIX)
+        and str(row["last_error"] or "").startswith(error_prefix)
     )
 
 
 def cleanup_exhausted_profile_extractions(
     database: BridgesDatabase,
+    *,
+    error_prefix: str = _ERROR_PREFIX,
 ) -> CleanupSummary:
-    """重置可安全重跑的历史 400 行，并将其放回统一任务队列。"""
+    """重置可安全重跑的历史 400 行，并将其放回统一任务队列。
+
+    ``error_prefix`` 默认只匹配历史 400 批次。画像对象缺失把抽取重试到耗尽的
+    行（``MISSING_TABLE_ERROR_CODE``）必须显式传入该错误码才处理——成因要先被
+    确认，且修复迁移已补齐结构；默认调用不会碰它们，也不会重跑全量聊天。
+    """
 
     schema_row = database.connection.execute(
         "SELECT value FROM schema_meta WHERE key = 'version'"
@@ -105,7 +130,7 @@ def cleanup_exhausted_profile_extractions(
         WHERE status = 'exhausted' AND last_error LIKE ?
         ORDER BY account_id, message_id
         """,
-        (f"{_ERROR_PREFIX}%", f"{_ERROR_PREFIX}%"),
+        (f"{error_prefix}%", f"{error_prefix}%"),
     ).fetchall()
 
     with database.transaction():
@@ -145,25 +170,25 @@ def cleanup_exhausted_profile_extractions(
             ).fetchone() is not None
 
             if tombstoned:
-                if _is_retryable(run):
+                if _is_retryable(run, error_prefix):
                     database.connection.execute(
                         "UPDATE profile_extraction_runs "
                         "SET status = 'exhausted', last_error = ?, updated_at = ? "
                         "WHERE extraction_id = ?",
                         (
-                            _note(_TOMBSTONE_NOTE, run["last_error"]),
+                            _note(_tombstone_note(error_prefix), run["last_error"]),
                             _now(),
                             run["extraction_id"],
                         ),
                     )
                     summary.skipped_runs += 1
-                if _is_retryable(task):
+                if _is_retryable(task, error_prefix):
                     database.connection.execute(
                         "UPDATE profile_extraction_tasks "
                         "SET status = 'exhausted', last_error = ?, updated_at = ? "
                         "WHERE task_id = ?",
                         (
-                            _note(_TOMBSTONE_NOTE, task["last_error"]),
+                            _note(_tombstone_note(error_prefix), task["last_error"]),
                             _now(),
                             task["task_id"],
                         ),
@@ -172,13 +197,13 @@ def cleanup_exhausted_profile_extractions(
                 continue
 
             if run is None:
-                if _is_retryable(task):
+                if _is_retryable(task, error_prefix):
                     database.connection.execute(
                         "UPDATE profile_extraction_tasks "
                         "SET status = 'exhausted', last_error = ?, updated_at = ? "
                         "WHERE task_id = ?",
                         (
-                            _note(_MISSING_RUN_NOTE, task["last_error"]),
+                            _note(_missing_run_note(error_prefix), task["last_error"]),
                             _now(),
                             task["task_id"],
                         ),
@@ -186,11 +211,11 @@ def cleanup_exhausted_profile_extractions(
                     summary.skipped_tasks += 1
                 continue
 
-            if not _is_retryable(run):
-                if _is_retryable(task):
+            if not _is_retryable(run, error_prefix):
+                if _is_retryable(task, error_prefix):
                     summary.skipped_tasks += 1
                 continue
-            if task is not None and not _is_retryable(task):
+            if task is not None and not _is_retryable(task, error_prefix):
                 summary.skipped_runs += 1
                 continue
 
@@ -199,7 +224,7 @@ def cleanup_exhausted_profile_extractions(
                 "SET status = 'pending', attempts = 0, last_error = ?, updated_at = ? "
                 "WHERE extraction_id = ?",
                 (
-                    _note(_REQUEUE_NOTE, run["last_error"]),
+                    _note(_requeue_note(error_prefix), run["last_error"]),
                     _now(),
                     run["extraction_id"],
                 ),
@@ -222,7 +247,7 @@ def cleanup_exhausted_profile_extractions(
                         message_id,
                         extractor_version,
                         source_hash,
-                        _note(_REQUEUE_NOTE, run["last_error"]),
+                        _note(_requeue_note(error_prefix), run["last_error"]),
                         timestamp,
                         timestamp,
                     ),
@@ -234,7 +259,7 @@ def cleanup_exhausted_profile_extractions(
                     "SET status = 'pending', attempts = 0, last_error = ?, updated_at = ? "
                     "WHERE task_id = ?",
                     (
-                        _note(_REQUEUE_NOTE, task["last_error"]),
+                        _note(_requeue_note(error_prefix), task["last_error"]),
                         _now(),
                         task_id,
                     ),
