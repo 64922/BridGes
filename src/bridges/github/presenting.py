@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from bridges.contracts.ai import ModelCallResult, ModelRunLock
@@ -103,6 +104,8 @@ def render_result_content(projection: GithubProjectsProjection) -> str:
             f"前文依据：{projection.context_source.label}的原始词"
             f"「{projection.context_source.phrase}」。"
         )
+    if projection.rate_limit.limited:
+        lines.append(_rate_limit_line(projection))
     lines.append("")
     lines.append(f"共 {len(projection.recommendations)} 个仓库，按功能匹配优先：")
     for item in projection.recommendations:
@@ -155,6 +158,8 @@ def render_empty_content(projection: GithubProjectsProjection) -> str:
         + (_search_queries(projection) or "（本轮没有发出查询）")
         + "。",
     ]
+    if projection.rate_limit.limited:
+        lines.append(_rate_limit_line(projection))
     lines.append(projection.empty_reason or "本轮没有可推荐的公开仓库，我不会用记忆补造条目。")
     if projection.rejected:
         lines.append("已检索但未纳入的候选：")
@@ -168,6 +173,25 @@ def render_stopped_content(projection: GithubProjectsProjection) -> str:
     query = _search_queries(projection)
     detail = query or "（未发出查询）"
     return f"GitHub 项目推荐已停止，实际查询词：{detail}。已完成的步骤保留在本条消息内。"
+
+
+def rate_limit_recovery_note(reset_at: datetime | None) -> str:
+    """额度恢复时间的中文说法：按**本地时区**呈现已知时间，不知道就不编造。"""
+    if reset_at is None:
+        return "上游没有给出恢复时间"
+    return f"预计 {_local_time(reset_at)}（本地时间）恢复"
+
+
+def _rate_limit_line(projection: GithubProjectsProjection) -> str:
+    state = projection.rate_limit
+    note = state.note or "本轮撞上 GitHub 接口额度限制，本轮不再继续请求。"
+    scope = "以下为已核实部分。" if projection.recommendations else ""
+    return f"上游额度：{note}{scope}{rate_limit_recovery_note(state.reset_at)}，稍后可重试。"
+
+
+def _local_time(moment: datetime) -> str:
+    """把时刻转成本地时区再展示（与贴吧／职业规划模块同一做法）。"""
+    return moment.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _search_queries(projection: GithubProjectsProjection) -> str:
@@ -308,6 +332,7 @@ __all__ = [
     "INSIGHT_MAX_CHARS",
     "InsightOutcome",
     "README_STATUS_LABELS",
+    "rate_limit_recovery_note",
     "render_clarification_content",
     "render_empty_content",
     "render_result_content",

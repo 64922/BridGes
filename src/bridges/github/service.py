@@ -41,6 +41,7 @@ from bridges.github.parsing import parse_github_request, pending_payload
 from bridges.github.presenting import (
     GithubInsightGenerator,
     InsightOutcome,
+    rate_limit_recovery_note,
     render_clarification_content,
     render_empty_content,
     render_result_content,
@@ -126,6 +127,7 @@ class _SearchAttempts:
 
     candidates: list[GithubRepositoryCandidate]
     records: list[ModuleQueryRecord]
+    reset_at: datetime | None = None
 
 
 class GithubProjectsService:
@@ -235,10 +237,14 @@ class GithubProjectsService:
         if stopped is not None:
             return stopped
 
+        rate_limited = inspection.rate_limited or _has_rate_limit(attempts.records)
         ranked = run.node(
             NODE_RANK,
             lambda: rank_candidates(
-                analysis, inspection.evidence, uninspected=remaining
+                analysis,
+                inspection.evidence,
+                uninspected=remaining,
+                rate_limited=rate_limited,
             ),
         )
         insights = run.node(
@@ -251,7 +257,8 @@ class GithubProjectsService:
             analysis=analysis,
             records=list(attempts.records) + list(inspection.records),
             ranked=ranked,
-            rate_limited=inspection.rate_limited or _has_rate_limit(attempts.records),
+            rate_limited=rate_limited,
+            rate_limit_reset_at=inspection.reset_at or attempts.reset_at,
             insights=insights,
             insights_note=insights.note,
         )
@@ -301,6 +308,7 @@ class GithubProjectsService:
         candidates: list[GithubRepositoryCandidate] = []
         seen: set[str] = set()
         records: list[ModuleQueryRecord] = []
+        reset_at: datetime | None = None
         deadline = time.monotonic() + self._search_deadline_seconds
         for index, query in enumerate(plan_queries(analysis)):
             if index > 0 and len(candidates) >= MIN_WHOLE_RESULTS:
@@ -313,6 +321,8 @@ class GithubProjectsService:
                 deadline=deadline,
             )
             records.append(outcome.record)
+            if outcome.reset_at is not None:
+                reset_at = outcome.reset_at
             for candidate in outcome.candidates:
                 if candidate.full_name in seen:
                     continue
@@ -323,7 +333,9 @@ class GithubProjectsService:
             if outcome.record.status in FAILED_QUERY_STATUSES and outcome.record.retryable:
                 break
         return _SearchAttempts(
-            candidates=_by_identity_relevance(analysis, candidates), records=records
+            candidates=_by_identity_relevance(analysis, candidates),
+            records=records,
+            reset_at=reset_at,
         )
 
     # -- 证据读取 --------------------------------------------------------
@@ -478,7 +490,7 @@ class GithubProjectsService:
             component_terms=list(analysis.component_terms),
             context_source=analysis.context_source,
             queries=list(queries),
-            rate_limit=_rate_limit_state(queries, limited=False),
+            rate_limit=_rate_limit_state(limited=False),
             evidence_boundary=["你已停止本轮推荐，未继续读取仓库证据。"],
             completed_at=now,
         )
@@ -599,6 +611,7 @@ def _projection(
     records: Sequence[ModuleQueryRecord],
     ranked: RankOutcome,
     rate_limited: bool,
+    rate_limit_reset_at: datetime | None,
     insights: InsightOutcome,
     insights_note: str | None,
 ) -> GithubProjectsProjection:
@@ -607,6 +620,7 @@ def _projection(
         item.model_copy(update={"insight_zh": insights.insights.get(item.full_name)})
         for item in ranked.recommendations
     ]
+    metadata_only = False
     if recommendations:
         # 全部推荐都只到元数据一级：如实降级为「只取得元数据」，并保留可重试。
         metadata_only = all(
@@ -625,7 +639,9 @@ def _projection(
         analysis=analysis,
         recommendations=recommendations,
         rejected=ranked.rejected,
-        rate_limited=rate_limited or status is GithubProjectStatus.METADATA_ONLY,
+        rate_limited=rate_limited,
+        rate_limit_reset_at=rate_limit_reset_at,
+        metadata_only=metadata_only,
         insights_note=insights_note,
         has_insights=bool(insights.insights),
     )
@@ -641,10 +657,9 @@ def _projection(
         queries=list(records),
         recommendations=recommendations,
         rejected=list(ranked.rejected),
-        rate_limit=_rate_limit_state(
-            records,
-            limited=rate_limited or bool(status is GithubProjectStatus.METADATA_ONLY),
-        ),
+        # 额度限制只按**真实撞上**记账：只取得元数据不等于上游限流，
+        # 说成限流会让用户等一个不存在的恢复时间。
+        rate_limit=_rate_limit_state(limited=rate_limited, reset_at=rate_limit_reset_at),
         evidence_boundary=boundary,
         empty_reason=(
             _failure_reason(error_record)
@@ -653,7 +668,7 @@ def _projection(
         ),
         retryable=bool(error_record and error_record.retryable)
         or rate_limited
-        or status is GithubProjectStatus.METADATA_ONLY,
+        or metadata_only,
         error_code=error_record.error_code if error_record is not None else None,
         error_message=error_record.error_message if error_record is not None else None,
     )
@@ -685,6 +700,8 @@ def _evidence_boundary(
     recommendations: Sequence[GithubRecommendation],
     rejected: Sequence[GithubRejectedRepository],
     rate_limited: bool,
+    rate_limit_reset_at: datetime | None,
+    metadata_only: bool,
     insights_note: str | None,
     has_insights: bool,
 ) -> list[str]:
@@ -705,8 +722,14 @@ def _evidence_boundary(
         notes.append(f"另有 {len(rejected)} 个候选没有纳入推荐，理由已逐条列出。")
     if rate_limited:
         notes.append(
-            "本轮撞上 GitHub 接口额度限制，缺失的 README／文件证据已在各仓库下如实标出；"
-            "稍后重试可补齐。"
+            "本轮撞上 GitHub 接口额度限制，没有再继续外发请求；缺失的 README／文件"
+            "证据与未完成检查的候选已在各仓库下如实标出，"
+            f"{rate_limit_recovery_note(rate_limit_reset_at)}，稍后重试可补齐。"
+        )
+    if metadata_only and not rate_limited:
+        notes.append(
+            "本轮只取得 API 元数据（没有读到 README 与实现文件），"
+            "不对内部实现作断言；稍后可重试补齐证据。"
         )
     if not recommendations:
         notes.append("本轮没有可展示的推荐，正文只保留实际查询词与真实原因。")
@@ -722,17 +745,22 @@ def _evidence_boundary(
 
 
 def _rate_limit_state(
-    records: Sequence[ModuleQueryRecord], *, limited: bool
+    *,
+    limited: bool,
+    reset_at: datetime | None = None,
 ) -> GithubRateLimitState:
+    """限流投影：只报「是否撞上 + 恢复时间」，重试口吻由呈现侧统一补一次。
+
+    不复用调用记录里的错误文案：那是给记录与失败正文看的（自带「稍后可重试」），
+    直接抄进限流行会和呈现侧拼出的重试提示重复。
+    """
     if not limited:
         return GithubRateLimitState(note="本轮未撞上 GitHub 接口额度限制。")
-    for record in records:
-        if record.status is ModuleQueryStatus.RATE_LIMITED:
-            return GithubRateLimitState(
-                limited=True,
-                note=record.error_message or "GitHub 接口额度已用尽，稍后可重试。",
-            )
-    return GithubRateLimitState(limited=True, note="本轮撞上 GitHub 接口额度限制，稍后可重试。")
+    return GithubRateLimitState(
+        limited=True,
+        note="本轮撞上 GitHub 接口额度限制，本轮不再继续请求。",
+        reset_at=reset_at,
+    )
 
 
 def _first_error(records: Sequence[ModuleQueryRecord]) -> ModuleQueryRecord | None:

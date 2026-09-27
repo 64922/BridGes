@@ -36,6 +36,11 @@ from tests.chat.test_chat_api import _create_conversation, _gateway_with, _regis
 WHOLE_IDEA = "我想做一个校园二手书交换平台，学生可以发布想卖的书，搜索想要的书，线下交换"
 WHOLE_QUERY = "校园二手书交换"
 
+#: 工单 05 的真实请求形态：中文功能词「智能体」不能被辅助词剥离拆碎。
+AGENT_REQUEST = "给我推荐几个智能体项目"
+AGENT_QUERY = "智能体"
+AGENT_README = "多智能体协作框架：多个智能体分工完成同一项复杂任务。"
+
 
 @pytest.fixture
 def sqlite_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -111,17 +116,25 @@ class _FakeSearchPort:
 
 
 class _FakeReader:
-    """读取替身：按仓库名返回脚本化证据，并记录读取过的仓库。"""
+    """读取替身：按仓库名返回脚本化证据，并记录读取过的仓库。
+
+    ``limited_after`` 复现「读到某个候选时额度用尽」的真实形态：前面的候选照常
+    带回证据，被额度挡住的候选没有证据，也不会被说成不匹配。
+    """
 
     def __init__(
         self,
         evidences: dict[str, GithubRepositoryEvidence] | None = None,
         *,
         rate_limited: bool = False,
+        limited_after: str | None = None,
+        reset_at: datetime | None = None,
     ) -> None:
         self.inspected: list[str] = []
         self._evidences = evidences or {}
         self._rate_limited = rate_limited
+        self._limited_after = limited_after
+        self._reset_at = reset_at
 
     def inspect_candidates(
         self,
@@ -149,8 +162,18 @@ class _FakeReader:
                     evidence_count=1 if found else 0,
                 )
             )
+            if candidate.full_name == self._limited_after:
+                return InspectionOutcome(
+                    evidence=evidence,
+                    records=records,
+                    rate_limited=True,
+                    reset_at=self._reset_at,
+                )
         return InspectionOutcome(
-            evidence=evidence, records=records, rate_limited=self._rate_limited
+            evidence=evidence,
+            records=records,
+            rate_limited=self._rate_limited,
+            reset_at=self._reset_at if self._rate_limited else None,
         )
 
 
@@ -326,6 +349,212 @@ def test_explicit_dispatch_recommends_grounded_repositories(
     assert "链接：https://github.com/253936563/huanshu" in assistant["content"]
     assert "不对内部架构" in assistant["content"]
     assert adapter.calls == 0  # GitHub 轮不调用模型
+
+
+def test_chinese_agent_request_keeps_candidates_through_the_whole_path(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """「给我推荐几个智能体项目」：解析、检索、证据、排序、呈现都要保住候选。
+
+    真实缺陷形态：检索词已经是对的（「智能体」），但匹配前把「能」当辅助词按
+    子串删掉，要点成了「智 体」，于是证据原文写着「智能体」的仓库也被判为未覆盖。
+    """
+    _register(client)
+    port = _FakeSearchPort(
+        per_query={
+            AGENT_QUERY: [
+                _candidate("openbmb/AgentVerse", description="多智能体协作框架"),
+                _candidate("demo/agentscope", description="智能体应用开发框架"),
+            ]
+        }
+    )
+    reader = _FakeReader(
+        {
+            "openbmb/AgentVerse": _evidence(
+                "openbmb/AgentVerse",
+                description="多智能体协作框架",
+                readme_text=AGENT_README,
+            ),
+            "demo/agentscope": _evidence(
+                "demo/agentscope",
+                description="智能体应用开发框架",
+                readme_text="面向智能体应用的开发框架。",
+            ),
+        }
+    )
+    _install_github_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, AGENT_REQUEST, module_id="github")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    projects = assistant["github_projects"]
+    assert projects["status"] == "success"
+    assert projects["scenario"] == AGENT_QUERY
+    assert port.queries == [AGENT_QUERY]
+    assert {item["full_name"] for item in projects["recommendations"]} == {
+        "openbmb/AgentVerse",
+        "demo/agentscope",
+    }
+    assert projects["rejected"] == []
+
+    first = projects["recommendations"][0]
+    match = first["feature_matches"][0]
+    assert match["feature"] == AGENT_QUERY
+    assert match["matched"] is True
+    assert match["matched_terms"] == [AGENT_QUERY]
+    assert "智能体" in assistant["content"]
+
+
+def test_unrelated_repositories_are_still_rejected_for_the_agent_request(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """修正剥离不能放宽召回：只含片段或通用词的仓库仍被剔除并说明理由。"""
+    _register(client)
+    port = _FakeSearchPort(
+        per_query={
+            AGENT_QUERY: [
+                _candidate("demo/smart-doc", description="智能文档助手"),
+                _candidate(
+                    "earendil-works/pi-mono",
+                    description="Coding agent 与 LLM 工具集合",
+                ),
+            ]
+        }
+    )
+    reader = _FakeReader(
+        {
+            "demo/smart-doc": _evidence(
+                "demo/smart-doc",
+                description="智能文档助手",
+                readme_text="支持智能排版、智能问答与多种文档格式，界面友好，功能完整。",
+            ),
+            "earendil-works/pi-mono": _evidence(
+                "earendil-works/pi-mono",
+                description="Coding agent 与 LLM 工具集合",
+                readme_text="A collection of coding agents and LLM tools.",
+            ),
+        }
+    )
+    _install_github_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, AGENT_REQUEST, module_id="github")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    projects = assistant["github_projects"]
+    assert projects["recommendations"] == []
+    assert projects["status"] == "empty"
+    rejected = {item["full_name"]: item["reason"] for item in projects["rejected"]}
+    assert "没有出现你 idea 的要点" in rejected["demo/smart-doc"]
+    assert "earendil-works/pi-mono" in rejected
+
+
+def test_rate_limited_third_candidate_keeps_the_verified_recommendations(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """第三个候选撞上限流：前两个符合条件的推荐保留，未检查的候选另行说明。
+
+    真实形态：一轮检索拿到多个候选，前两个读完并匹配，第三个触发额度限制。
+    已取得的推荐不能因为后面读不到就丢掉；没读到的候选也不许说成不匹配。
+    """
+    _register(client)
+    reset_at = datetime(2026, 9, 27, 13, 45, tzinfo=UTC)
+    port = _FakeSearchPort(
+        per_query={
+            AGENT_QUERY: [
+                _candidate("openbmb/AgentVerse", description="多智能体协作框架"),
+                _candidate("demo/agentscope", description="智能体应用开发框架"),
+                _candidate("demo/third", description="智能体工具集"),
+            ]
+        }
+    )
+    reader = _FakeReader(
+        {
+            "openbmb/AgentVerse": _evidence(
+                "openbmb/AgentVerse",
+                description="多智能体协作框架",
+                readme_text=AGENT_README,
+            ),
+            "demo/agentscope": _evidence(
+                "demo/agentscope",
+                description="智能体应用开发框架",
+                readme_text="面向智能体应用的开发框架。",
+            ),
+        },
+        limited_after="demo/third",
+        reset_at=reset_at,
+    )
+    _install_github_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, AGENT_REQUEST, module_id="github")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    projects = assistant["github_projects"]
+    assert [item["rank"] for item in projects["recommendations"]] == [1, 2]
+    assert {item["full_name"] for item in projects["recommendations"]} == {
+        "openbmb/AgentVerse",
+        "demo/agentscope",
+    }
+    # 未读取的候选与「已读但不匹配」分别说明：未完成检查，不等于不匹配。
+    rejected = {item["full_name"]: item["reason"] for item in projects["rejected"]}
+    assert "未完成检查" in rejected["demo/third"]
+    assert "不匹配" in rejected["demo/third"]
+    # 限流状态、可重试与恢复时间三者一致，时间按本地时区呈现。
+    rate_limit = projects["rate_limit"]
+    assert rate_limit["limited"] is True
+    assert rate_limit["reset_at"] is not None
+    assert projects["retryable"] is True
+    assert reset_at.astimezone().strftime("%Y-%m-%d %H:%M") in assistant["content"]
+    assert "本地时间" in assistant["content"]
+
+
+def test_metadata_only_without_a_quota_limit_does_not_claim_one(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """只取得元数据不等于撞上限流：降级照说，但不许编造额度限制。"""
+    _register(client)
+    port = _FakeSearchPort(
+        per_query={AGENT_QUERY: [_candidate("demo/agent-kit", description="智能体工具集")]}
+    )
+    reader = _FakeReader(
+        {
+            "demo/agent-kit": _evidence(
+                "demo/agent-kit",
+                description="智能体工具集",
+                readme_text=None,
+                readme_status=GithubReadmeStatus.NOT_FOUND,
+            )
+        }
+    )
+    _install_github_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, AGENT_REQUEST, module_id="github")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    projects = assistant["github_projects"]
+    assert projects["status"] == "metadata_only"
+    assert projects["recommendations"][0]["evidence_kinds"] == ["metadata"]
+    assert projects["rate_limit"]["limited"] is False
+    assert "未撞上" in projects["rate_limit"]["note"]
+    assert "本轮只取得 API 元数据" in assistant["content"]
+    # 没有额度限制就不出现恢复时间或限流说法。
+    assert "上游额度" not in assistant["content"]
+    assert "恢复" not in assistant["content"]
 
 
 def test_metadata_only_degradation_when_rate_limited(
