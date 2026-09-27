@@ -310,6 +310,8 @@ describe("CommuteRouteCard（V2 Issue 12）", () => {
       "路线线"
     );
     expect(screen.queryByTestId("commute-route-map-canvas")).toBeNull();
+    // 路径点不足不是凭据问题：不把用户引到凭据区
+    expect(screen.queryByTestId("commute-route-map-credential-action")).toBeNull();
     // 已证实的地点、距离与路段仍然呈现
     expect(screen.getByTestId("commute-route-facts").textContent).toContain("1.8 公里");
     expect(screen.getByTestId("commute-route-steps").textContent).toContain("向东步行 200 米");
@@ -325,7 +327,13 @@ describe("CommuteRouteCard（V2 Issue 12）", () => {
       security_code_configured: false,
       notice: "未配置高德浏览器地图凭据：请在设置页「高德凭据」中填写后重试。",
     });
-    render(<CommuteRouteCard route={projection()} streaming={false} />);
+    render(
+      <CommuteRouteCard
+        route={projection()}
+        streaming={false}
+        returnTo="/chat/conversation-1"
+      />
+    );
 
     await waitFor(() =>
       expect(screen.getByTestId("commute-route-map-unavailable")).toBeTruthy()
@@ -334,6 +342,15 @@ describe("CommuteRouteCard（V2 Issue 12）", () => {
       "设置页"
     );
     expect(screen.getByTestId("commute-route-facts").textContent).toContain("1.8 公里");
+
+    // 底图凭据单独指向「高德浏览器地图」分区，且路线本身仍算成功
+    expect(screen.getByTestId("commute-route-card-success")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("commute-route-map-credential-action")
+        .getAttribute("href")
+    ).toBe("/account/settings/models?return_to=%2Fchat%2Fconversation-1#amap-browser-map");
+    expect(screen.queryByTestId("commute-route-credential-action")).toBeNull();
   });
 
   it("澄清状态逐项列出高德返回的候选并说明回复方式", () => {
@@ -419,6 +436,86 @@ describe("CommuteRouteCard（V2 Issue 12）", () => {
 
     fireEvent.click(screen.getByTestId("commute-route-retry"));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("缺路线 Key 时给出直达「高德 Web 服务」凭据区的配置入口", () => {
+    render(
+      <CommuteRouteCard
+        route={projection({
+          status: "error",
+          error_code: "amap_not_configured",
+          error_message: "未配置高德路线 Web 服务 Key：请在设置页填写并验证后重试。",
+          retryable: false,
+          distance_m: null,
+          base_duration_seconds: null,
+          suggested_total_seconds: null,
+          steps: [],
+          polyline: [],
+          path_verified: false,
+        })}
+        streaming={false}
+        returnTo="/chat/conversation-1"
+      />
+    );
+
+    const action = screen.getByTestId("commute-route-credential-action");
+    expect(action.textContent).toContain("高德 Web 服务 Key");
+    // 与底图凭据分开说明，链接带分区锚点与原会话返回路径
+    expect(action.textContent).toContain("高德浏览器地图");
+    expect(action.querySelector("a")?.getAttribute("href")).toBe(
+      "/account/settings/models?return_to=%2Fchat%2Fconversation-1#amap-web-service"
+    );
+  });
+
+  it("凭据被拒同样指向 Web 服务凭据区，非凭据失败不给配置入口", () => {
+    const { unmount } = render(
+      <CommuteRouteCard
+        route={projection({
+          status: "error",
+          error_code: "amap_key_rejected",
+          error_message: "高德凭据被拒绝（10001 INVALID_USER_KEY）。",
+          retryable: false,
+          distance_m: null,
+          base_duration_seconds: null,
+          suggested_total_seconds: null,
+          steps: [],
+          polyline: [],
+          path_verified: false,
+        })}
+        streaming={false}
+        returnTo="/chat/conversation-1"
+      />
+    );
+    expect(
+      screen
+        .getByTestId("commute-route-credential-action")
+        .querySelector("a")
+        ?.getAttribute("href")
+    ).toBe("/account/settings/models?return_to=%2Fchat%2Fconversation-1#amap-web-service");
+    unmount();
+
+    // 超时不是凭据问题：只如实说明失败，不把用户引到凭据区
+    render(
+      <CommuteRouteCard
+        route={projection({
+          status: "error",
+          error_code: "amap_timeout",
+          error_message: "高德路线规划超时。",
+          retryable: true,
+          distance_m: null,
+          base_duration_seconds: null,
+          suggested_total_seconds: null,
+          steps: [],
+          polyline: [],
+          path_verified: false,
+        })}
+        streaming={false}
+        onRetry={() => {}}
+        returnTo="/chat/conversation-1"
+      />
+    );
+    expect(screen.queryByTestId("commute-route-credential-action")).toBeNull();
+    expect(screen.getByTestId("commute-route-retry")).toBeTruthy();
   });
 
   it("停止状态如实显示已停止并保留已发出的查询", () => {

@@ -23,7 +23,14 @@ interface AccountMenuProps {
   onNavigate?: () => void;
 }
 
-/** Production account menu with the exact Issue 08 action order. */
+/**
+ * 生产环境账户菜单。
+ *
+ * 本轮新增「设置」入口：进入真实设置页（`/account/settings`），页内再进
+ * 「密钥与模型设置」。切换账号、个人资料、退出登录保持 Issue 08 的真实
+ * 业务行为与相对顺序，四项都不指向仅开发环境可达的模板页；密钥本身没有
+ * 直达入口（仍须经设置页），个人资料直接落在真实资料页。
+ */
 export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenuProps) {
   const router = useRouter();
   const { logout } = useAuth();
@@ -110,6 +117,11 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
           color: "var(--color-text-primary)",
         }}
         items={[
+          {
+            label: "设置",
+            icon: "settings",
+            onSelect: () => go("/account/settings"),
+          },
           {
             label: "切换账号",
             icon: "account",

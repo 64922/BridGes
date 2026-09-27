@@ -809,12 +809,14 @@ export function MessageList({
 
                 {/* V2 Issue 12：校园通勤路线卡（关键信息 → 可缩放地图 →
                     路线文字 → 外部调用记录与证据边界）。没有可核验路径点时
-                    卡内只显示真实地点并说明没有画线。 */}
+                    卡内只显示真实地点并说明没有画线。缺凭据时卡内给出
+                    直达对应凭据分区的配置入口，并带回本会话路径。 */}
                 {conversationId && (
                   <CommuteRouteCard
                     route={message.commuteRoute ?? null}
                     streaming={message.status === "streaming"}
                     onRetry={() => onRetry?.(message.id)}
+                    returnTo={`/chat/${conversationId}`}
                   />
                 )}
 

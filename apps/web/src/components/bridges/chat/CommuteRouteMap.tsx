@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { commuteMapServiceHost, fetchCommuteMapConfig } from "@/lib/api";
@@ -79,22 +80,28 @@ type MapState = "loading" | "unavailable" | "ready" | "failed";
  * 校园通勤路线地图（V2 Issue 12）。
  *
  * 只画服务端从高德取得的路径点：少于两个合法点时地图不建、也不标出猜测位置。
- * 底图凭据缺失、安全密钥缺失或脚本加载失败都在原位写明原因并指向设置页；
- * 距离、耗时与文字路段由路线卡其余部分照常呈现。
+ * 底图凭据缺失、安全密钥缺失或脚本加载失败都在原位写明原因；凭据类原因另给
+ * 直达「高德浏览器地图」凭据分区的配置入口。地图只是底图显示，距离、耗时与
+ * 文字路段由路线卡其余部分照常呈现。
  */
 export function CommuteRouteMap({
   polyline,
   originLabel,
   destinationLabel,
+  browserMapSettingsHref = null,
 }: {
   polyline: readonly string[];
   originLabel?: string | null;
   destinationLabel?: string | null;
+  /** 「高德浏览器地图」凭据分区的配置链接（缺凭据时显示）。 */
+  browserMapSettingsHref?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<AmapMap | null>(null);
   const [state, setState] = useState<MapState>("loading");
   const [notice, setNotice] = useState<string>("");
+  // 是否因缺少底图凭据而不可用（区别于「路径点不足」「脚本加载失败」）。
+  const [credentialMissing, setCredentialMissing] = useState(false);
 
   const pointCount = parsePath(polyline).length;
   const drawable = pointCount >= 2;
@@ -111,6 +118,7 @@ export function CommuteRouteMap({
     }
     let disposed = false;
     setState("loading");
+    setCredentialMissing(false);
     const points = parsePath(pathKey.split("|"));
     void (async () => {
       try {
@@ -118,6 +126,7 @@ export function CommuteRouteMap({
         if (disposed) return;
         if (!config.configured || !config.js_api_key) {
           setState("unavailable");
+          setCredentialMissing(true);
           setNotice(
             config.notice ??
               "未配置高德浏览器地图凭据，地图底图不可用；距离与耗时不受影响。"
@@ -126,6 +135,7 @@ export function CommuteRouteMap({
         }
         if (!config.security_code_configured || !config.service_host_path) {
           setState("unavailable");
+          setCredentialMissing(true);
           setNotice(
             config.notice ??
               "缺少高德地图安全密钥，地图无法加载；请在设置页补填后重试。"
@@ -254,6 +264,15 @@ export function CommuteRouteMap({
               ? "正在加载地图…"
               : notice}
         </span>
+        {credentialMissing && browserMapSettingsHref && (
+          <Link
+            href={browserMapSettingsHref}
+            data-testid="commute-route-map-credential-action"
+            style={credentialLinkStyle}
+          >
+            前往配置高德浏览器地图凭据
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -271,4 +290,14 @@ const zoomButtonStyle: React.CSSProperties = {
   backgroundColor: "var(--color-surface)",
   color: "var(--color-text-secondary)",
   cursor: "pointer",
+};
+
+/** 底图凭据缺失时的配置入口：与状态文字同一行，保持目标尺寸可键盘点击。 */
+const credentialLinkStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "var(--target-size)",
+  color: "var(--color-accent-secondary)",
+  fontWeight: 600,
+  textDecoration: "none",
 };

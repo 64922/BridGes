@@ -20,12 +20,13 @@ test.describe("Issue 08 — 账户上拉菜单", () => {
     await trigger.focus();
     await page.keyboard.press("Enter");
     const items = page.getByRole("menuitem");
-    // GQ-06：账户菜单严格为三项（移除密钥设置）。
-    await expect(items).toHaveText(["切换账号", "个人资料", "退出登录"]);
+    // 本票新增「设置」入口后的固定四项；切换账号 / 个人资料 / 退出登录保持
+    // 原相对顺序，密钥仍无直达入口（须经设置页）。
+    await expect(items).toHaveText(["设置", "切换账号", "个人资料", "退出登录"]);
     await expect(items.nth(0)).toBeFocused();
 
     await page.keyboard.press("End");
-    await expect(items.nth(2)).toBeFocused();
+    await expect(items.nth(3)).toBeFocused();
     await page.keyboard.press("Home");
     await expect(items.nth(0)).toBeFocused();
     await page.keyboard.press("ArrowDown");
@@ -66,7 +67,10 @@ test.describe("Issue 08 — 个人资料", () => {
     const accountTrigger = page.getByRole("button", { name: /账户菜单：/ });
     await accountTrigger.focus();
     await page.keyboard.press("Enter");
+    // 首项是「设置」，个人资料在第三项。
     await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "个人资料" })).toBeFocused();
     await page.keyboard.press("Enter");
     await page.waitForURL("/account/settings/profile");
 
