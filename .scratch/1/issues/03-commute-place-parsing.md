@@ -158,6 +158,25 @@ PYTHONPATH=src <agent>/python.exe -m pytest -q --tb=no -rf --basetemp=<仓外独
 3. **澄清回答自带口语前缀的恢复路径**（范围外，未改）：等待状态下用户整句作答
    （如「我现在在南区」）时，`_answer_for_side` 仍把整句当地点短语。可复现，未纳入本票。
 
+### 合并、合并后验证与清理实证（2026-09-27）
+
+- 合并前 main 已被并行票推进（`f77e8e2` → `8e03368`，issue 05 合入，改动全在
+  `src/bridges/github` 与前端，与本票无文件重叠）；先 `git merge main` 把 issue 05 并入
+  分支（`970fed5`，无冲突），再在分支上复跑 `tests/commute tests/github` **153 passed**。
+- no-ff 合入 main：`a84eca7`「Merge issue 03: 正确解析带口语前缀的校园通勤请求」，
+  **合并树 `70c5ea6f` == 分支树 `70c5ea6f`**（合并引入零内容差异）。
+- 合并后在 main 工作树定点复跑：`tests/commute tests/chat tests/plugins`
+  **140 failed / 634 passed**；其中 `tests/commute` **93 passed / 0 failed**
+  （634 − 541 = 93），140 条失败**全部落在基线全量跑的失败集内**（新增失败 0 条），
+  与既有基线 `tests/chat tests/plugins` 140/541 一致。
+- 推送：`git push origin main` 成功（`8e03368..a84eca7`），main == origin/main == `a84eca7`。
+- 清理实证六项：① `.worktrees/03-commute-place-parsing` 与 `.worktrees/03-baseline-main`
+  两个目录磁盘上已不存在；② `git worktree list` 只剩主仓与并行票 06 的工作树；
+  ③ 本地分支 `codex/03-commute-place-parsing` 已删（`-d` 安全检查通过，4 个提交经合并
+  提交可达）；④ `git worktree prune --dry-run -v` 无输出（无失效记录）；⑤ main 与
+  origin/main 指向同一提交；⑥ `.git/worktrees/` 下只剩 `06-tieba-research`，无本票残留。
+  两个工作树 `git worktree remove --force` 均一次成功，未出现受限 ACL 目录。
+
 ## Comments
 
 暂无。
