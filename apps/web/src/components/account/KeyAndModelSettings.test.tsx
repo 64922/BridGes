@@ -113,6 +113,42 @@ describe("KeyAndModelSettings", () => {
     await waitFor(() => expect(api.fetchModelSettings.mock.calls.length).toBeGreaterThan(1));
   });
 
+  it("高德路线 Key 与浏览器地图凭据独立：保存路线 Key 只翻转本分区状态", async () => {
+    api.replaceAmapWebServiceCredential.mockResolvedValue(configuredStatus);
+    api.fetchCredentialSettings.mockResolvedValue({
+      qwen: configuredStatus,
+      tavily: configuredStatus,
+      amap: {
+        web_service: { ...configuredStatus, configured: false, last_validated_at: null },
+        browser_map: { ...configuredStatus, configured: false, last_validated_at: null },
+      },
+    });
+    render(<KeyAndModelSettings />);
+
+    const routeKeyInput = await screen.findByLabelText(/高德 Web 服务 Key/);
+    // 两个分区由消息卡锚点定位，取的就是配置链接里的同一个 id。
+    const routeKeySection = document.getElementById("amap-web-service")!;
+    const browserMapSection = document.getElementById("amap-browser-map")!;
+    const statusIn = (section: HTMLElement) =>
+      section.querySelector('[data-testid="credential-status"]')!.textContent;
+    expect(statusIn(routeKeySection)).toBe("未配置");
+    expect(statusIn(browserMapSection)).toBe("未配置");
+
+    fireEvent.change(routeKeyInput, { target: { value: "new-amap-web-service-candidate" } });
+    fireEvent.submit(formOf(routeKeyInput));
+
+    await waitFor(() =>
+      expect(api.replaceAmapWebServiceCredential).toHaveBeenCalledWith(
+        "new-amap-web-service-candidate"
+      )
+    );
+    expect(await screen.findByText("高德 Web 服务凭据已验证并保存。")).toBeTruthy();
+    await waitFor(() => expect(statusIn(routeKeySection)).toBe("已配置"));
+    // 路线 Key 保存后底图凭据仍为未配置，且输入框不回显候选值。
+    expect(statusIn(browserMapSection)).toBe("未配置");
+    expect(routeKeyInput).toHaveProperty("value", "");
+  });
+
   it("keeps the old credential and explains the order when the candidate key is rejected", async () => {
     api.replaceQwenCredential.mockRejectedValue(
       new Error(
