@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+import pytest
 
 from bridges.ai import ModelGateway
 from bridges.ai.capability_registry import CapabilityRegistry
@@ -185,6 +186,39 @@ def test_callers_can_still_send_explicit_pixel_parameters() -> None:
     part = captured[0]["messages"][0]["content"][0]
     assert part["min_pixels"] == VERIFIED_MIN_PIXELS_FLOOR
     assert "max_pixels" not in part
+
+
+@pytest.mark.parametrize(
+    ("name", "adapter_type"),
+    [("qwen_ocr", QwenOcrAdapter), ("qwen_vision", QwenVisionAdapter)],
+)
+def test_pre_fix_parameters_fail_through_both_adapters(
+    name: str, adapter_type: type
+) -> None:
+    """修复前的参数形态经两个适配器都必然 400——通过不是空断言。
+
+    旧实现把 ``min_pixels=3072, max_pixels=8388608`` 当默认值拆进请求；这里
+    显式按旧默认值调用同一个上游合同，确认拒绝分支确实会触发（修复后之所以
+    通过，是因为不再发明这两个可选参数），OCR 与视觉两条路径都覆盖。
+    """
+    captured: list[dict[str, Any]] = []
+    gateway = _gateway_with(adapter_type(_client(captured)), name)
+
+    result = gateway.invoke(
+        name,
+        "1",
+        _context(),
+        payload={
+            "image_base64": "aGVsbG8=",
+            "min_pixels": 3072,
+            "max_pixels": 8388608,
+        },
+    )
+
+    assert result.status == ModelCallStatus.BLOCKED, result.status
+    assert result.error_code == "client_error_400"
+    part = captured[0]["messages"][0]["content"][0]
+    assert part["min_pixels"] == 3072
 
 
 def test_knowledge_base_ocr_and_vision_share_the_same_construction() -> None:

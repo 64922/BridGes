@@ -36,7 +36,7 @@
 
 ## 执行与验收记录
 
-**分支／提交：** `codex/issue-04-study-image-recognition`（worktree `.worktrees/04-study-image-recognition`）；实现与测试 `37f7de3`，本条记录与留档随后的 docs 提交。基线 `main @ 6939da3`。留档证据：主仓 `.tmp/issue04/`（含 `README.md` 索引；**不含密钥**）。
+**分支／提交：** `codex/issue-04-study-image-recognition`（worktree `.worktrees/04-study-image-recognition`）；`37f7de3`（实现与测试）→ `737ef1b`（本记录）→ 本提交（两轴评审反馈修订：失败锁归因、共享文案能力中立、JSON 抽取、补"修复前失败"与进程重启用例）。基线 `main @ 6939da3`。留档证据：主仓 `.tmp/issue04/`（含 `README.md` 索引；**不含密钥**）。
 
 ### 1. 原始图片来源确认
 

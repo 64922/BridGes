@@ -83,12 +83,12 @@ class StudyWorkflowError(Exception):
 
 
 #: 学习模型调用失败的兜底文案。可重试故障（限流、超时、连接中断）保留
-#: "稍后重试"指引；非重试错误（参数不兼容、鉴权、模型缺失、响应解析）
-#: 明说重试不会恢复并给出下一步——旧实现把二者都写成"学习处理模型暂时
-#: 不可用，请稍后重试。"，让用户等待不可能发生的恢复（issue 04 第 5 条）。
+#: "稍后重试"指引；非重试错误明说重试不会恢复并给出下一步——旧实现把二者
+#: 都写成"学习处理模型暂时不可用，请稍后重试。"，让用户等待不可能发生的
+#: 恢复（issue 04 第 5 条）。
 _STUDY_MODEL_RETRYABLE_FALLBACK = "学习处理模型暂时不可用，请稍后重试。"
 _STUDY_MODEL_FINAL_FALLBACK = (
-    "学习处理未完成：模型拒绝了本次请求，重试不会恢复；请检查主模型配置或反馈该问题。"
+    "学习处理未完成：该错误重试不会恢复；请检查主模型配置，或把这次失败反馈给我们。"
 )
 
 
@@ -114,16 +114,20 @@ def _json_object_text(content: str) -> str:
     （issue 04 用原始教材页复现：整段合法 JSON 被围栏与一句说明包住，
     ``model_validate_json`` 因此以"书页结构识别不完整"失败）。围栏与
     前后说明是可确定的包装，剥掉后仍按原 pydantic 合同校验，识别结论
-    本身不做任何猜测或补全。
+    本身不做任何猜测或补全。按第一个完整 JSON 对象截取（而不是"首个
+    ``{`` 到最后一个 ``}``"），说明文字里再出现花括号也不会改变截取范围。
     """
     text = content.strip()
     if text.startswith("```"):
         _, _, text = text.partition("\n")
     start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        return text[start : end + 1]
-    return text
+    if start < 0:
+        return text
+    try:
+        _, end = json.JSONDecoder().raw_decode(text[start:])
+    except ValueError:
+        return text[start:]
+    return text[start : start + end]
 
 
 class StudyRepository:
@@ -193,6 +197,9 @@ class StudyWorkflow:
     ) -> str | None:
         started = time.monotonic()
         last_lock: ModelRunLock | None = None
+        #: 失败尝试自己的运行锁（与最后一次成功调用的 ``last_lock`` 分开，
+        #: 避免把成功的锁当失败证据）。
+        failure_lock: ModelRunLock | None = None
         current_node = "study.recognize"
         state = self._states.get(run.account_id, run.conversation_id) or StudyState(
             subsection_id=run.conversation_id
@@ -265,7 +272,7 @@ class StudyWorkflow:
             return execute
 
         def invoke(capability: str, payload: dict[str, Any]) -> dict[str, Any]:
-            nonlocal last_lock
+            nonlocal failure_lock, last_lock
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
             if capability == "qwen_structured_output" and "messages" not in payload:
@@ -289,10 +296,10 @@ class StudyWorkflow:
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
             if result.status not in {ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED}:
-                # 失败尝试的运行锁也要保留：错误码、能力、实际模型与运行关联
-                # 随消息终态一起落库，内部可按关联标识复核（issue 04 第 5 条）。
-                if result.lock is not None:
-                    last_lock = result.lock
+                # 只保留失败尝试自己的锁：网关没给锁就如实留空，不能把上一次
+                # 成功调用的锁当成本次失败的证据（issue 04 第 5 条：内部记录要
+                # 能按关联标识复核失败的能力、错误码与实际模型）。
+                failure_lock = result.lock
                 raise StudyWorkflowError(
                     current_node,
                     result.error_code or "study_model_failed",
@@ -868,8 +875,8 @@ class StudyWorkflow:
                 error_code=exc.code,
                 error_message=f"在「{exc.node}」步骤失败：{exc.message}",
                 duration_ms=None,
-                model_id=last_lock.actual_model_id if last_lock else None,
-                lock=last_lock,
+                model_id=failure_lock.actual_model_id if failure_lock else None,
+                lock=failure_lock,
                 started=started,
                 now=datetime.now(UTC),
                 thinking=failed_thinking(initial_thinking(ChatMode.STUDY), exc.code),

@@ -425,3 +425,61 @@ def test_retry_after_partial_failure_does_not_duplicate_pages(
         assert [page["object_id"] for page in reloaded["study"]["pages"]] == pages
         # 已识别的第 1 页被识别为重复并跳过，没有追加成第 4 页。
         assert "检测到1张重复书页，已跳过。" in reloaded["messages"][-1]["content"]
+
+
+def test_restart_after_partial_failure_recovers_without_duplicating_pages(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """进程重启后恢复：已识别页与阶段来自持久化，重试不重复、不虚假推进。
+
+    第 2 页识别失败时中途重启（同一数据目录重建 app，内存态清空），
+    重启后的重试仍按原状态合同收敛：阶段、页序与上下文不因重启改变。
+    """
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = _TransientOnceGateway(
+        fail_capability="qwen_vision", fail_at=2
+    )
+    with TestClient(app) as client:
+        _register(client, "studyissue04restart")
+        pages = _three_pages(client)
+        first = _first(client, pages, "issue04-restart-first")
+        assert first.status_code == 201, first.text
+        conversation_id = first.json()["conversation"]["conversation_id"]
+        app.state.generation_executor.run_tick()
+
+        failed = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert failed["study"]["stage"] == "recognizing"
+        assert [page["ordinal"] for page in failed["study"]["pages"]] == [1]
+        pages_before_restart = failed["study"]["pages"]
+        message_id = failed["messages"][-1]["message_id"]
+        assert failed["messages"][-1]["status"] == "error"
+
+    # 模拟进程重启：同一数据目录重建应用，内存注册表与网关都清空。
+    restarted = _app(tmp_path, monkeypatch)
+    assert restarted is not app
+    restarted.state.chat_service._gateway = StudyGateway()
+    with TestClient(restarted) as client:
+        logged_in = client.post(
+            "/auth/login",
+            json={"identifier": "studyissue04restart_user", "password": "Passw0rd123!"},
+        )
+        assert logged_in.status_code == 200, logged_in.text
+
+        restored = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert restored["study"]["stage"] == "recognizing"
+        # 页与页级证据完全来自持久化状态，重启前后一致（内存态不参与）。
+        assert restored["study"]["pages"] == pages_before_restart
+
+        retry = client.post(
+            f"/chat/conversations/{conversation_id}/messages/{message_id}/retry",
+            json={"idempotency_key": "issue04-restart-attempt"},
+        )
+        assert retry.status_code == 200, retry.text
+        restarted.state.generation_executor.run_tick()
+
+        reloaded = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert reloaded["study"]["stage"] == "tutoring"
+        assert [page["object_id"] for page in reloaded["study"]["pages"]] == pages
+        assert "检测到1张重复书页，已跳过。" in reloaded["messages"][-1]["content"]
+        # 附件仍绑定原会话：账户范围内可见，且没有跨会话挂载。
+        assert all(page["object_id"] in pages for page in reloaded["study"]["pages"])
