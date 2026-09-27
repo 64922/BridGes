@@ -320,7 +320,8 @@ def test_render_marks_unconfirmed_links_and_missing_replies() -> None:
             TiebaCandidateLink(
                 url="https://tieba.baidu.com/p/10745250786",
                 title="东北电力和华东交通哪个好",
-                source="tavily（归属未确认）",
+                source="tavily",
+                unconfirmed_reason="页面不可读：访问受限，未绕过",
             )
         ],
         evidence_boundary=["只纳入有证据确认属于「华东交通大学吧」的帖子。"],

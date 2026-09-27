@@ -48,6 +48,7 @@ from bridges.tieba.presenting import (
 )
 from bridges.tieba.reading import TiebaThreadReader
 from bridges.tieba.searching import (
+    REJECT_NOT_A_THREAD,
     HitDiagnostics,
     SearchOutcome,
     TiebaSearchPort,
@@ -360,8 +361,10 @@ class TiebaResearchService:
         """
         records: list[ModuleQueryRecord] = []
         rejected: list[TiebaRejectedCandidate] = []
+        rejected_urls: set[str] = set()
         rounds: list[str] = []
-        diagnostics = HitDiagnostics()
+        raw_hits = 0
+        usable = 0
         deadline = time.monotonic() + self._search_deadline_seconds
         for position, query in enumerate(plan_queries(analysis)):
             if position and _budget_exhausted(stop_event, deadline):
@@ -375,15 +378,22 @@ class TiebaResearchService:
                 deadline=deadline,
             )
             records.append(outcome.record)
-            rejected.extend(outcome.rejected)
-            diagnostics = diagnostics.merged(outcome.diagnostics)
+            raw_hits += outcome.diagnostics.raw_hits
+            usable = outcome.diagnostics.usable
+            # 去重跨轮生效：同一条链接在两轮里都出现时只留一条剔除记录，多出来的
+            # 那次仍算进原始命中数（计入重复链接），正文里不会同一条链接列两遍。
+            fresh = [item for item in outcome.rejected if item.url not in rejected_urls]
+            rejected_urls.update(item.url for item in fresh)
+            rejected.extend(fresh)
             rounds.append(_round_note(position, outcome))
             if outcome.candidates:
                 return _SearchAttempts(
                     hits=outcome.candidates,
                     rejected=tuple(rejected),
                     records=records,
-                    diagnostics=diagnostics,
+                    diagnostics=_deduped_diagnostics(
+                        rejected, raw_hits=raw_hits, usable=usable
+                    ),
                     rounds=tuple(rounds),
                 )
             if not _plan_continues(outcome.record):
@@ -392,7 +402,7 @@ class TiebaResearchService:
             hits=(),
             rejected=tuple(rejected),
             records=records,
-            diagnostics=diagnostics,
+            diagnostics=_deduped_diagnostics(rejected, raw_hits=raw_hits, usable=usable),
             rounds=tuple(rounds),
         )
 
@@ -709,11 +719,12 @@ def _confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPr
 
 
 def _unconfirmed_link(hit: TiebaSearchHit, reason: str) -> TiebaCandidateLink:
-    """仅帖链降级：把「为什么只有帖链」的原因写进来源说明，不静默降级。"""
+    """仅帖链降级：来源标识与「为什么只有帖链」分开记，不把原因塞进来源字段。"""
     return TiebaCandidateLink(
         url=hit.url,
         title=hit.title,
-        source=f"tavily（{reason}；归属未确认）",
+        source="tavily",
+        unconfirmed_reason=reason,
     )
 
 
@@ -732,6 +743,25 @@ def _budget_exhausted(
     if stop_event is not None and stop_event.is_set():
         return True
     return time.monotonic() >= deadline
+
+
+def _deduped_diagnostics(
+    rejected: Sequence[TiebaRejectedCandidate], *, raw_hits: int, usable: int
+) -> HitDiagnostics:
+    """剔除记录跨轮去重后的计数：多出来的命中归入重复链接。
+
+    各计数之和始终等于原始命中数（``duplicate`` 是去重后的差额，含轮内重复与
+    跨轮重复），因此正文里的「原始命中构成」与剔除记录条目数能对上。
+    """
+    not_a_thread = sum(1 for item in rejected if item.evidence == REJECT_NOT_A_THREAD)
+    other_forum = len(rejected) - not_a_thread
+    return HitDiagnostics(
+        raw_hits=raw_hits,
+        not_a_thread=not_a_thread,
+        other_forum=other_forum,
+        duplicate=raw_hits - not_a_thread - other_forum - usable,
+        usable=usable,
+    )
 
 
 def _plan_continues(record: ModuleQueryRecord) -> bool:
@@ -1017,9 +1047,13 @@ def _evidence_boundary(
             f"因此只给出 {len(unconfirmed)} 条帖链：贴吧归属未确认，也未取得回复内容。"
         )
     if rejected:
-        notes.append(
-            f"已剔除 {len(rejected)} 条候选（非帖子链接与他吧证据都在剔除依据里逐条留痕）。"
-        )
+        note = f"已剔除 {len(rejected)} 条候选（非帖子链接与他吧证据都在剔除依据里逐条留痕）"
+        if attempts.diagnostics.duplicate:
+            note += (
+                f"；含两轮重复在内的原始命中 {attempts.diagnostics.raw_hits} 条，"
+                "重复链接只列一次"
+            )
+        notes.append(f"{note}。")
     if confirmed:
         unread = [post for post in confirmed if not post.replies_obtained]
         if unread:

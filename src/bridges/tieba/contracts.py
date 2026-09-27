@@ -50,7 +50,7 @@ class TiebaQuestionAnalysis(BaseModel):
     )
     time_year: int | None = Field(default=None, description="时间条件里的绝对年份。")
     needs_official_check: bool = Field(
-        default=False, description="是否涉及校规／费用／开放时间／办事流程。"
+        default=False, description="是否涉及校规／费用／开放时间／办事流程／放假安排。"
     )
     official_topics: list[str] = Field(
         default_factory=list, description="触发官方核验的原始名词与触发词。"
@@ -172,6 +172,9 @@ class TiebaCandidateLink(BaseModel):
     url: str
     title: str = Field(description="搜索服务给出的标题（未核实页面）。")
     source: str = Field(description="检索来源标识。")
+    unconfirmed_reason: str | None = Field(
+        default=None, description="归属未确认的具体原因（页面不可读／未读取）。"
+    )
 
 
 class TiebaTimeFilter(BaseModel):

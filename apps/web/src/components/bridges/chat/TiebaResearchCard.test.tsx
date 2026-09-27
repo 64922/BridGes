@@ -141,7 +141,8 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
             {
               url: "https://tieba.baidu.com/p/7000000001",
               title: "宿舍条件汇总",
-              source: "tavily（页面不可读：访问受限，未绕过；归属未确认）",
+              source: "tavily",
+              unconfirmed_reason: "页面不可读：访问受限，未绕过",
             },
           ],
           rejected_candidates: [
@@ -165,8 +166,10 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
     expect(screen.getByTestId("tieba-research-degraded").textContent).toContain("仅帖链");
     const links = screen.getByTestId("tieba-candidate-links");
     expect(links.textContent).toContain("宿舍条件汇总");
-    // 帖链逐条带出「为什么只有帖链」：页面不可读，而不是只写「归属未确认」。
+    // 帖链逐条带出「为什么只有帖链」：来源、具体原因与归属未确认分列。
+    expect(links.textContent).toContain("tavily");
     expect(links.textContent).toContain("页面不可读：访问受限");
+    expect(links.textContent).toContain("归属未确认");
     const rejected = screen.getByTestId("tieba-rejected-candidates");
     expect(rejected.textContent).toContain("上海交通大学研究生吧");
     expect(rejected.textContent).toContain("搜索结果不是帖子页面链接");

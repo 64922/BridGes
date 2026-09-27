@@ -56422,6 +56422,18 @@
             "type": "string",
             "title": "Source",
             "description": "检索来源标识。"
+          },
+          "unconfirmed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unconfirmed Reason",
+            "description": "归属未确认的具体原因（页面不可读／未读取）。"
           }
         },
         "type": "object",

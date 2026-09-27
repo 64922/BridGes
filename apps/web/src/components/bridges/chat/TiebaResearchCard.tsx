@@ -141,12 +141,17 @@ function PostRow({ post }: { post: TiebaPostProjection }) {
 
 /** 仅有搜索摘要的帖链：逐条展示未确认归属的具体原因（页面不可读／未读取）。 */
 function CandidateLinkRow({ link }: { link: TiebaCandidateLink }) {
+  const reason = link.unconfirmed_reason ? `（${link.unconfirmed_reason}）` : "";
   return (
     <li style={{ color: "var(--color-text-secondary)" }}>
       <a href={link.url} target="_blank" rel="noreferrer">
         {link.title || link.url}
       </a>
-      <span style={{ color: "var(--color-status-wait)" }}> · {link.source}</span>
+      <span style={{ color: "var(--color-status-wait)" }}>
+        {" "}
+        · {link.source}
+        {reason} · 归属未确认
+      </span>
     </li>
   );
 }

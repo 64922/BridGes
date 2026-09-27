@@ -622,25 +622,31 @@ def test_search_failure_keeps_query_and_is_retryable(
     assert tieba["retryable"] is True
 
 
-def _raw_non_thread_hits(count: int) -> list[TiebaSearchHit]:
-    """真实运行记录里的形态：搜索结果页面都不是贴吧帖子页。"""
+_RAW_NON_THREAD_HITS: list[tuple[str, str]] = [
+    ("https://www.ecjtu.edu.cn/index.htm", "华东交通大学"),
+    ("https://nani.baidu.com/home/main?id=tb.1.ce8f0206", "华东交大小益君的贴吧"),
+    (
+        "https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=5674439",
+        "中秋节放假安排专题",
+    ),
+    ("https://baike.baidu.com/item/中秋节", "中秋节"),
+    ("https://zhidao.baidu.com/question/1", "中秋节放假几天"),
+    ("https://www.ecjtu.edu.cn/xysh.htm", "校园生活"),
+    ("https://zhidao.baidu.com/question/2", "中秋节期间食堂开放吗"),
+    ("https://www.zhihu.com/question/1", "中秋节怎么安排"),
+    ("https://tieba.baidu.com/f?kw=华东交通大学", "华东交通大学吧首页"),
+]
+
+
+def _raw_non_thread_hits(count: int, *, offset: int = 0) -> list[TiebaSearchHit]:
+    """真实运行记录里的形态：搜索结果页面都不是贴吧帖子页。
+
+    ``offset`` 用来取另一批链接，让「两轮各自有独立命中」与「两轮命中重复」
+    两种情形都能构造。
+    """
     return [
-        TiebaSearchHit(
-            url=url,
-            title=title,
-            snippet="",
-        )
-        for url, title in [
-            ("https://www.ecjtu.edu.cn/index.htm", "华东交通大学"),
-            ("https://nani.baidu.com/home/main?id=tb.1.ce8f0206", "华东交大小益君的贴吧"),
-            (
-                "https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=5674439",
-                "中秋节放假安排专题",
-            ),
-            ("https://baike.baidu.com/item/中秋节", "中秋节"),
-            ("https://zhidao.baidu.com/question/1", "中秋节放假几天"),
-            ("https://www.ecjtu.edu.cn/xysh.htm", "校园生活"),
-        ][:count]
+        TiebaSearchHit(url=url, title=title, snippet="")
+        for url, title in _RAW_NON_THREAD_HITS[offset : offset + count]
     ]
 
 
@@ -706,7 +712,10 @@ def test_two_rounds_without_usable_candidates_explain_the_empty_state(
     _register(client)
     queries = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))
     port = _FakeSearchPort(
-        per_query={queries[0]: _raw_non_thread_hits(5), queries[1]: _raw_non_thread_hits(3)}
+        per_query={
+            queries[0]: _raw_non_thread_hits(5),
+            queries[1]: _raw_non_thread_hits(3, offset=5),
+        }
     )
     _install_tieba_service(sqlite_app, port=port, reader=_FakeReader())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
@@ -753,6 +762,36 @@ def test_two_rounds_with_zero_hits_explain_the_empty_state(
     assert tieba["rejected_candidates"] == []
     assert tieba["candidate_links"] == []
     assert "本轮检索没有返回可确认属于" in assistant["content"]
+
+
+def test_repeated_links_across_rounds_are_listed_once_and_counted_as_duplicates(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """两轮返回同一条链接：剔除记录只列一次，多出来的那次算作重复链接。"""
+    _register(client)
+    queries = plan_queries(parse_tieba_request("华东交通大学吧 中秋节放假"))
+    repeated = _raw_non_thread_hits(5)
+    port = _FakeSearchPort(per_query={queries[0]: repeated, queries[1]: repeated})
+    _install_tieba_service(sqlite_app, port=port, reader=_FakeReader())
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "华东交通大学吧 中秋节放假", module_id="tieba")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert port.queries == list(queries)
+    tieba = assistant["tieba_research"]
+    # 原始命中 10 条，其中 5 条是重复链接：剔除记录只有 5 条唯一链接。
+    assert len(tieba["rejected_candidates"]) == 5
+    assert len({item["url"] for item in tieba["rejected_candidates"]}) == 5
+    assert "共取得 10 条原始搜索结果" in tieba["empty_reason"]
+    assert "重复链接 5 条" in tieba["empty_reason"]
+    assert any("重复链接只列一次" in note for note in tieba["evidence_boundary"])
+    # 正文里同一条链接不会出现两遍。
+    for item in tieba["rejected_candidates"]:
+        assert assistant["content"].count(item["url"]) == 1
 
 
 def test_permanent_error_stops_without_running_the_fallback_query(
@@ -829,8 +868,8 @@ def test_unreadable_pages_are_listed_with_their_read_reason(
 
     tieba = assistant["tieba_research"]
     assert tieba["status"] == "links_only"
-    assert tieba["candidate_links"][0]["source"].startswith("tavily（页面不可读")
-    assert "访问受限" in tieba["candidate_links"][0]["source"]
+    assert tieba["candidate_links"][0]["source"] == "tavily"
+    assert "访问受限" in tieba["candidate_links"][0]["unconfirmed_reason"]
     assert "页面不可读 1 条" in " ".join(tieba["evidence_boundary"])
     assert "页面不可读" in assistant["content"]
 

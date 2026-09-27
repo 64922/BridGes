@@ -206,7 +206,8 @@ def _candidate_link_lines(projection: TiebaResearchProjection) -> list[str]:
         "【候选帖链（搜索摘要发现，贴吧归属未确认，未取得回复内容）】",
     ]
     for index, link in enumerate(projection.candidate_links, start=1):
-        lines.append(f"{index}. {link.title}｜{link.url}（{link.source}）")
+        reason = f"{link.unconfirmed_reason}；" if link.unconfirmed_reason else ""
+        lines.append(f"{index}. {link.title}｜{link.url}（{link.source}；{reason}归属未确认）")
     return lines
 
 
