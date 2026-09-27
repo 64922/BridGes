@@ -106,6 +106,18 @@
 
 **提交版本**：实现 `9d83bf2`（保留原句主题词 + 有界备用检索）→ 第一轮两轴评审修正 `5c39232` → 第二轮两轴评审修正 `4488868`（候选帖链来源与原因分列、剔除记录跨轮去重、契约重生成）；本记录随 docs 提交一并进库（即本次提交）。分支 `codex/06-tieba-research`，基于 `main` = `a15a084`（本地分支，未合并、未推送）。
 
+### 合并、合并后验证与清理实证（2026-09-27）
+
+- **合并**：分支先并入当时 main `91e6818` 得 `f5c4e36`（**零冲突**：`openapi.json` 与 `generated.ts` 两侧改动由 Git 自动合并成功），随后 **no-ff 入 main `de74153`**；`git rev-parse de74153^{tree}` == `git rev-parse codex/06-tieba-research^{tree}` == `1376f716…`，即合并树与已验证的分支树是同一棵树。
+- **契约对账（本记录第 99 行要求的那件事）**：合并后重跑 `PYTHONPATH=src scripts/regenerate_openapi.py`（299 paths）与 `npx openapi-typescript`，**重生成结果与自动合并结果逐字节一致**（`git diff` 无内容差异）；`openapi.json` 同时含 main 侧变更（画像对账 `AtomicProfileReconciliationEntry`／`reconciliation` 等）与本票的 `unconfirmed_reason`，`packages/contracts/src/generated.ts` 同（两侧标记各计数 1／3）。前端 `tsc --noEmit` 干净、`npx vitest run` **24 文件 / 203 例全过**。
+- **合并树定点**：`tests/tieba tests/web_search tests/contracts` **215 passed / 2 skipped**；`tests/chat tests/plugins` **140 failed / 541 passed**（与 main 并入工单 04 后的既有基线一致）。
+- **合并树全量**（`PYTHONPATH=src`、仓外 basetemp、不 ignore、不 deselect、`-q --tb=no -rf`）：**251 failed / 3813 passed / 39 skipped**（20:53，日志 `.tmp/issue06/raw/full-merged.txt`）。对照取工单 03 分支的全量（其代码树即合并前 main `91e6818` 的代码树）：**251 failed / 3776 passed / 37 skipped**；失败名称**双向 diff 为空**（各 251 条，名单 md5 相同 `53c5978e…`）。账目对平：Δ收集 +39 = 本票 +24（`tests/tieba` 45→69）+ 工单 05 的 +15（`tests/github` 45→60，基线树不含该票；合并树实测 `tests/tieba tests/github` 收集 **129** = 69+60）；Δ跳过 +2 = 两条 `NEEDS_WEB_BUILD`（本工作树无生产构建，基线树有）；Δ通过 +37 = 24 + 15 − 2。
+- **合并后 main 定点**（主仓树有 `.venv` 与生产构建）：`tests/tieba tests/web_search tests/contracts tests/closeout/test_api_boot.py tests/chat tests/plugins` **140 failed / 758 passed / 2 skipped**（440 s，日志 `.tmp/issue06/raw/postmerge-main.txt`）。140 条失败与本票合并树全量里的 chat／plugins 子集**逐名双向 diff 为空**，且**全部落在**上述 251 条基线名单内（新增失败 0）；`tests/closeout/test_api_boot.py` 两例在主仓树上通过。
+- **推送**：`git -c http.proxy=http://127.0.0.1:7890 push origin main` → `91e6818..de74153`，**main == origin/main `de74153`**，远程仅 `refs/heads/main`。
+- **清理**：`apps/web/node_modules` junction 用 `[System.IO.Directory]::Delete($false)` 拆链（主仓 `node_modules` 361 条不变）；`.worktrees/06-tieba-research` 用**普通 `git worktree remove`（未用 --force）一次成功**、目录已消失；本地分支 `codex/06-tieba-research` 已删；`git worktree prune --expire now` 后 `prune --dry-run -v` 无输出、`git worktree list` 只剩主仓、`.git/worktrees` 已不存在、`.worktrees/` 目录为空。**本票运行都用了仓外 basetemp，工作树里没有沙箱 ACL 目录**，所以这次没有触发提权删除。
+- **迁移**：本票无迁移，`SCHEMA_VERSION` 仍 **59**、键 1–59 连续（合并后 main 实测）。
+- 留档新增：`.tmp/issue06/raw/full-merged.txt`、`merged.names`、`ref-main.names`、`postmerge-main.txt`、`postmerge-main.names`，脚本 `.tmp/issue06/scripts/run_merged_regression.cmd`。
+
 ## Comments
 
 **第一轮两轴评审（标准 + 规格）后的收尾**
