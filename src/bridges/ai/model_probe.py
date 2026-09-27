@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from bridges.ai.adapters import AdapterError, AuthError, RegionError, TransientError
+from bridges.ai.image_request import image_content_part
 from bridges.ai.qwen_client import QwenApiClient, choice_text, first_choice
 from bridges.contracts.ai import ModelCapabilities
 from bridges.observability.scrubber import scrub_value
@@ -35,11 +36,16 @@ PROBE_REQUEST_TIMEOUT_SECONDS = 30.0
 PROBE_MAX_TOKENS = 32
 #: 探测工具名（固定，便于在响应中断言归因）。
 PROBE_TOOL_NAME = "record_ping"
-#: 8×8 白色 PNG（探测图片输入用的最小合法图片，无任何用户数据）。
+#: 64×64 白色 PNG（探测图片输入的最小图片，无任何用户数据）。
+#: 旧值是 8×8，会被服务端以 ``height:8 or width:8 must be larger than 10``
+#: 拒绝（issue 04 用实际生效模型实测）；探测图必须落在模型真实合同内，
+#: 否则图片能力被误判为不可用。
 PROBE_IMAGE_DATA_URL = (
     "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAD0lEQVR42mP4jwMwDC0JALoev0GJ"
-    "6La7AAAAAElFTkSuQmCC"
+    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA"
+    "XklEQVR4nO3PMQ0AMAzAsPInvYLYYVWKESTzjhsd8KsBrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0B"
+    "rQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BbQHKU9LC7/CP1AAAAABJRU5ErkJg"
+    "gg=="
 )
 
 #: 能力字段 → 面向用户的中文标签（设置页逐项展示）。
@@ -256,13 +262,19 @@ class ModelCapabilityProbe:
 
     @staticmethod
     def _image_payload(model_id: str) -> dict[str, Any]:
+        """图片探测载荷：与业务图片调用共用同一内容块构造（issue 04）。
+
+        探测必须覆盖真实业务请求形态——旧实现自行拼装内容块且不带像素
+        参数，与（当时还硬编码 ``min_pixels`` 的）适配器形态不一致，于是
+        出现"探测通过、业务请求必然失败"的假通过。
+        """
         return {
             "model": model_id,
             "messages": [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image_url", "image_url": {"url": PROBE_IMAGE_DATA_URL}},
+                        image_content_part(PROBE_IMAGE_DATA_URL),
                         {"type": "text", "text": "这张图片是什么颜色？只回答颜色。"},
                     ],
                 }

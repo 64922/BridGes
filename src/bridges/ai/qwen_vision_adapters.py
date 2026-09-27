@@ -13,19 +13,15 @@ from __future__ import annotations
 from typing import Any
 
 from bridges.ai.adapters import (
+    REQUEST_TIMEOUT_SECONDS_KEY,
     AdapterError,
     AdapterResult,
     CapabilityAdapter,
 )
+from bridges.ai.image_request import image_content_part, image_data_url
 from bridges.ai.qwen_client import QwenApiClient, first_choice
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
-
-
-def _data_url_for_image(image_base64: str, mime_type: str | None) -> str:
-    """Build a data URL from a base64-encoded image string."""
-    declared = (mime_type or "image/png").split(";")[0].strip()
-    return f"data:{declared};base64,{image_base64}"
 
 
 class QwenOcrAdapter(CapabilityAdapter):
@@ -63,7 +59,7 @@ class QwenOcrAdapter(CapabilityAdapter):
                 retryable=False,
             )
 
-        data_url = _data_url_for_image(image_base64, payload.get("mime_type"))
+        data_url = image_data_url(image_base64, payload.get("mime_type"))
         prompt = str(
             payload.get("prompt")
             or "Extract all visible text, formulas, tables and regions from this scientific image."
@@ -74,12 +70,11 @@ class QwenOcrAdapter(CapabilityAdapter):
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": data_url},
-                        "min_pixels": payload.get("min_pixels", 3072),
-                        "max_pixels": payload.get("max_pixels", 8388608),
-                    },
+                    image_content_part(
+                        data_url,
+                        min_pixels=payload.get("min_pixels"),
+                        max_pixels=payload.get("max_pixels"),
+                    ),
                     {"type": "text", "text": prompt},
                 ],
             }
@@ -96,7 +91,9 @@ class QwenOcrAdapter(CapabilityAdapter):
         if task:
             request_body["ocr_options"] = {"task": task}
 
-        response_body = self._client.chat_completions(request_body)
+        response_body = self._client.chat_completions(
+            request_body, timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY)
+        )
         choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
@@ -135,7 +132,7 @@ class QwenVisionAdapter(CapabilityAdapter):
                 retryable=False,
             )
 
-        data_url = _data_url_for_image(image_base64, payload.get("mime_type"))
+        data_url = image_data_url(image_base64, payload.get("mime_type"))
         prompt = str(
             payload.get("prompt")
             or (
@@ -148,12 +145,11 @@ class QwenVisionAdapter(CapabilityAdapter):
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": data_url},
-                        "min_pixels": payload.get("min_pixels", 3072),
-                        "max_pixels": payload.get("max_pixels", 8388608),
-                    },
+                    image_content_part(
+                        data_url,
+                        min_pixels=payload.get("min_pixels"),
+                        max_pixels=payload.get("max_pixels"),
+                    ),
                     {"type": "text", "text": prompt},
                 ],
             }
@@ -166,7 +162,9 @@ class QwenVisionAdapter(CapabilityAdapter):
             "max_tokens": payload.get("max_tokens", 2048),
         }
 
-        response_body = self._client.chat_completions(request_body)
+        response_body = self._client.chat_completions(
+            request_body, timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY)
+        )
         choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(

@@ -15,10 +15,16 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field, ValidationError
 
-from bridges.ai.adapters import StreamEvent
+from bridges.ai.adapters import REQUEST_TIMEOUT_SECONDS_KEY, StreamEvent
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
 from bridges.chat.run_executor import chat_run_context
-from bridges.chat.turn import failed_thinking, finalize_message, initial_thinking
+from bridges.chat.turn import (
+    error_is_retryable,
+    failed_thinking,
+    finalize_message,
+    initial_thinking,
+    user_facing_error,
+)
 from bridges.contracts.ai import ModelCallStatus, ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus, ChatMode, ChatStreamNodeData
 from bridges.contracts.study import (
@@ -37,6 +43,13 @@ from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
 STUDY_GRAPH_VERSION = "study-pages-v1"
+
+#: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
+#: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
+#: 超时是 60 秒——视觉调用贴着上限，整页识别会以 ``transient`` 超时失败，
+#: 书页无法进入预习。这里按实测值给出余量，只作用于本流程的图片调用，
+#: 不改全局默认超时，也不影响其他调用方。
+STUDY_IMAGE_CALL_TIMEOUT_SECONDS = 180.0
 
 
 class _RecognizedFragment(BaseModel):
@@ -67,6 +80,50 @@ class StudyWorkflowError(Exception):
         self.code = code
         self.message = message
         super().__init__(message)
+
+
+#: 学习模型调用失败的兜底文案。可重试故障（限流、超时、连接中断）保留
+#: "稍后重试"指引；非重试错误（参数不兼容、鉴权、模型缺失、响应解析）
+#: 明说重试不会恢复并给出下一步——旧实现把二者都写成"学习处理模型暂时
+#: 不可用，请稍后重试。"，让用户等待不可能发生的恢复（issue 04 第 5 条）。
+_STUDY_MODEL_RETRYABLE_FALLBACK = "学习处理模型暂时不可用，请稍后重试。"
+_STUDY_MODEL_FINAL_FALLBACK = (
+    "学习处理未完成：模型拒绝了本次请求，重试不会恢复；请检查主模型配置或反馈该问题。"
+)
+
+
+def model_failure_message(error_code: str | None) -> str:
+    """模型调用失败的用户可见中文原因（共享映射优先，按可重试性兜底）。
+
+    稳定错误码（参数、鉴权、限流、区域、响应解析）统一取
+    ``bridges.chat.turn`` 与 ``bridges.ai.errors`` 的同一映射源，不再由
+    学习流程自造文案。
+    """
+    fallback = (
+        _STUDY_MODEL_RETRYABLE_FALLBACK
+        if error_is_retryable(error_code)
+        else _STUDY_MODEL_FINAL_FALLBACK
+    )
+    return user_facing_error(error_code, fallback)
+
+
+def _json_object_text(content: str) -> str:
+    """抽取视觉模型正文里的 JSON 对象正文再交给原合同校验。
+
+    视觉能力没有结构化输出开关，实测模型会把 JSON 包在 ```json 代码块里
+    （issue 04 用原始教材页复现：整段合法 JSON 被围栏与一句说明包住，
+    ``model_validate_json`` 因此以"书页结构识别不完整"失败）。围栏与
+    前后说明是可确定的包装，剥掉后仍按原 pydantic 合同校验，识别结论
+    本身不做任何猜测或补全。
+    """
+    text = content.strip()
+    if text.startswith("```"):
+        _, _, text = text.partition("\n")
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    return text
 
 
 class StudyRepository:
@@ -232,10 +289,14 @@ class StudyWorkflow:
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
             if result.status not in {ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED}:
+                # 失败尝试的运行锁也要保留：错误码、能力、实际模型与运行关联
+                # 随消息终态一起落库，内部可按关联标识复核（issue 04 第 5 条）。
+                if result.lock is not None:
+                    last_lock = result.lock
                 raise StudyWorkflowError(
                     current_node,
                     result.error_code or "study_model_failed",
-                    "学习处理模型暂时不可用，请稍后重试。",
+                    model_failure_message(result.error_code),
                 )
             last_lock = result.lock
             if not isinstance(result.output, dict):
@@ -306,6 +367,13 @@ class StudyWorkflow:
                     else (
                         unresolved_before[0]
                         if len(unresolved_before) == 1
+                        # 隐式补齐只在流程确实在等补拍时生效：一次上传多页的
+                        # 批次里，未标"补拍第N页"的后一页是**新的一页**，不是
+                        # 前一页的重拍。旧实现对着空消息也做替换，导致三页首传
+                        # 被上一页的待确认项吞掉一页（issue 04 用原始三张教材
+                        # 页实测：第 1 页有看不清项时，第 2 页替换掉了第 1 页，
+                        # 最终只识别出两页）。
+                        and state.wait_reason == "unclear_page"
                         and (not user.content.strip() or "补拍" in user.content)
                         else None
                     )
@@ -325,6 +393,8 @@ class StudyWorkflow:
                         ),
                         "task": None,
                         "temperature": 0.01,
+                        # 整页图片调用按实测耗时给足超时（见常量说明）。
+                        REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
                     },
                 )
                 ocr_text = ocr.get("content")
@@ -339,6 +409,8 @@ class StudyWorkflow:
                         "image_base64": encoded,
                         "mime_type": record.media_type,
                         "temperature": 0.01,
+                        # 整页图片调用按实测耗时给足超时（见常量说明）。
+                        REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
                         "prompt": (
                             "只输出 JSON 对象，字段 same_section(boolean),"
                             " page_number(书上印刷页码，正整数；看不到或不确定时为 null)，"
@@ -354,7 +426,9 @@ class StudyWorkflow:
                     },
                 )
                 try:
-                    parsed = _Recognition.model_validate_json(str(vision.get("content", "")))
+                    parsed = _Recognition.model_validate_json(
+                        _json_object_text(str(vision.get("content", "")))
+                    )
                 except ValidationError as exc:
                     raise StudyWorkflowError(
                         current_node, "study_recognition_invalid", "书页结构识别不完整，请重试。"
@@ -794,7 +868,8 @@ class StudyWorkflow:
                 error_code=exc.code,
                 error_message=f"在「{exc.node}」步骤失败：{exc.message}",
                 duration_ms=None,
-                model_id=None,
+                model_id=last_lock.actual_model_id if last_lock else None,
+                lock=last_lock,
                 started=started,
                 now=datetime.now(UTC),
                 thinking=failed_thinking(initial_thinking(ChatMode.STUDY), exc.code),
