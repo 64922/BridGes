@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from bridges.commute.contracts import (
     MISSING_DESTINATION,
     MISSING_DESTINATION_CHOICE,
@@ -280,3 +282,117 @@ def test_candidate_choice_keeps_the_query_that_produced_it() -> None:
 
     assert resumed.origin_place is not None
     assert resumed.origin_place.query == "华东交通大学图书馆"
+
+
+# ---------------------------------------------------------------------------
+# 句首口语前缀（Issue 03）：前缀不是地点，地点文字与数字一字不动
+# ---------------------------------------------------------------------------
+
+#: 同一趟出行的等价说法：句首口语前缀（主语／时间／意愿动词）任意连写。
+EQUIVALENT_SENTENCES: tuple[tuple[str, CommuteMode, str], ...] = (
+    ("从42栋步行到南区25栋", CommuteMode.WALKING, "步行"),
+    ("42栋到南区25栋，步行", CommuteMode.WALKING, "步行"),
+    ("我想从42栋到南区25栋，步行", CommuteMode.WALKING, "步行"),
+    ("我现在想从42栋步行到南区25栋", CommuteMode.WALKING, "步行"),
+    ("我现在想走路从42栋到南区25栋", CommuteMode.WALKING, "走路"),
+    ("帮我看看从42栋骑车到南区25栋", CommuteMode.BICYCLING, "骑车"),
+    ("我打算今天从42栋骑电动车到南区25栋", CommuteMode.ELECTROBIKE, "骑电动车"),
+)
+
+
+@pytest.mark.parametrize(("sentence", "mode", "mode_phrase"), EQUIVALENT_SENTENCES)
+def test_colloquial_prefix_leaves_places_mode_and_digits_intact(
+    sentence: str, mode: CommuteMode, mode_phrase: str
+) -> None:
+    """原句「我现在想从42栋步行到南区25栋」与各等价说法解析结果一致。"""
+    analysis = parse_commute_request(sentence)
+
+    assert analysis.origin_phrase == "42栋"
+    assert analysis.destination_phrase == "南区25栋"
+    assert analysis.mode is mode
+    assert analysis.mode_phrase == mode_phrase
+    assert analysis.clarification is None
+
+
+def test_intent_words_never_survive_inside_a_place_phrase() -> None:
+    """前缀只能被剥掉，不能换一种形式留在地点里（如「现在想从42栋」）。"""
+    analysis = parse_commute_request("我现在想从42栋步行到南区25栋")
+
+    for phrase in (analysis.origin_phrase, analysis.destination_phrase):
+        assert phrase is not None
+        assert not any(
+            word in phrase for word in ("我", "现在", "想", "从", "步行")
+        ), f"地点短语里混入了前缀：{phrase!r}"
+
+
+def test_zone_words_and_digits_are_not_trimmed_as_intent() -> None:
+    """校区词与数字是地点的一部分，不因剥离前缀被删掉。"""
+    analysis = parse_commute_request("我从南区25栋步行到北区3号楼")
+
+    assert analysis.origin_phrase == "南区25栋"
+    assert analysis.destination_phrase == "北区3号楼"
+
+
+def test_colloquial_prefix_with_only_a_destination_still_asks_origin() -> None:
+    """「我现在想去图书馆」缺的是起点：前缀不得被当成起点。"""
+    analysis = parse_commute_request("我现在想去图书馆")
+
+    assert analysis.destination_phrase == "图书馆"
+    assert analysis.origin_phrase is None
+    assert analysis.clarification is not None
+    assert analysis.clarification.missing == MISSING_ORIGIN
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ("请问从南区到北区怎么走", "我们要从南区到北区", "现在从南区到北区"),
+)
+def test_prefix_does_not_become_a_place_and_missing_mode_is_still_asked(sentence: str) -> None:
+    """礼貌／主语／时间前缀同样只剥离、不进地点；缺方式仍只问方式。"""
+    analysis = parse_commute_request(sentence)
+
+    assert analysis.origin_phrase == "南区"
+    assert analysis.destination_phrase == "北区"
+    assert analysis.clarification is not None
+    assert analysis.clarification.missing == MISSING_MODE
+
+
+def test_question_tail_words_are_not_treated_as_an_intent_prefix() -> None:
+    """「要多久…」是问句尾巴而不是意图前缀：只有终点时仍只问起点。"""
+    analysis = parse_commute_request("要多久到图书馆")
+
+    assert analysis.destination_phrase == "图书馆"
+    assert analysis.origin_phrase is None
+    assert analysis.clarification is not None
+    assert analysis.clarification.missing == MISSING_ORIGIN
+
+
+@pytest.mark.parametrize(
+    ("sentence", "origin", "destination"),
+    (
+        ("先骕楼到北门怎么走", "先骕楼", "北门"),
+        ("明天广场步行到南区", "明天广场", "南区"),
+    ),
+)
+def test_place_names_that_begin_with_intent_words_are_kept_intact(
+    sentence: str, origin: str, destination: str
+) -> None:
+    """「先骕楼」的「先」、「明天广场」的「明天」是地名首字，不得当前缀剥掉。"""
+    analysis = parse_commute_request(sentence)
+
+    assert analysis.origin_phrase == origin
+    assert analysis.destination_phrase == destination
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ("我现在的位置到北门怎么走", "请问我现在的位置到北门怎么走"),
+)
+def test_locational_reference_still_asks_instead_of_becoming_a_place(sentence: str) -> None:
+    """「我现在的位置」是必须追问的指代，带不带礼貌前缀都不能当可检索地点。"""
+    analysis = parse_commute_request(sentence)
+
+    assert analysis.origin_unlocatable is True
+    assert analysis.clarification is not None
+    assert analysis.clarification.missing == MISSING_ORIGIN_UNLOCATABLE
+    assert "现在的位置" in analysis.clarification.question

@@ -724,3 +724,96 @@ def test_modules_not_yet_available_are_still_rejected(
     )
     assert plain_assistant["commute_route"] is None
     assert plain["user_message"]["module_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Issue 03：句首口语前缀不得进入地点端口
+# ---------------------------------------------------------------------------
+
+
+def test_colloquial_prefix_never_reaches_the_place_port(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """原句走完整子图：端口只收到两个地点，起终点顺序不颠倒。"""
+    _register(client)
+    fake = _install_commute(sqlite_app, _FakeAmap())
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, "我现在想从42栋步行到南区25栋", module_id="commute")
+    assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    route = assistant["commute_route"]
+    assert route["status"] == "success"
+    assert route["mode"] == CommuteMode.WALKING.value
+    assert route["origin"]["original_phrase"] == "42栋"
+    assert route["destination"]["original_phrase"] == "南区25栋"
+    assert route["origin"]["name"] == "华东交通大学42栋"
+    assert route["destination"]["name"] == "华东交通大学南区"
+    # 真正送进地点端口的检索词：起点就是用户写的「42栋」，都不含句首意图前缀。
+    # 终点词由 resolving.py 的校内别名模板给出（「南区25栋」→「南区」），是既有
+    # 行为、本票未改；模板是否该保留「25栋」见工单记录（留 07 判定）。
+    assert fake.place_calls == ["华东交通大学42栋", "华东交通大学南区"]
+    for query in fake.place_calls:
+        assert not any(
+            word in query for word in ("我", "现在", "想", "请问", "从")
+        ), f"检索词里混入了意图前缀：{query!r}"
+    assert [
+        item["query"] for item in route["queries"] if item["source"] == AMAP_SOURCE_PLACE
+    ] == fake.place_calls
+    # 起终点顺序不颠倒：两处坐标互不相同，颠倒即可见
+    assert fake.route_calls == [
+        (CommuteMode.WALKING, route["origin"]["location"], route["destination"]["location"])
+    ]
+
+
+def test_colloquial_sentence_without_mode_asks_then_resumes(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """带前缀但缺方式：只问方式且不发外部请求，回答后起终点仍是 42栋／南区25栋。"""
+    _register(client)
+    fake = _install_commute(sqlite_app, _FakeAmap())
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "我现在想从42栋到南区25栋", module_id="commute")
+    first = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert first["commute_route"]["status"] == "clarification"
+    assert first["commute_route"]["pending"]["context"]["awaiting"] == "mode"
+    assert first["content"].count("？") == 1
+    assert fake.place_calls == [], "澄清轮绝不发外部请求"
+
+    _send(client, conversation_id, "步行", module_id="commute")
+    resumed = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    route = resumed["commute_route"]
+    assert route["status"] == "success"
+    assert route["origin"]["name"] == "华东交通大学42栋"
+    assert route["destination"]["name"] == "华东交通大学南区"
+    assert fake.place_calls == ["华东交通大学42栋", "华东交通大学南区"]
+
+
+def test_colloquial_sentence_reports_a_service_failure_not_a_missing_place(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """同一句在无凭据时如实报「高德未配置」，不伪装成「没有这个地点」。"""
+    _register(client)
+    calls: list[str] = []
+
+    def _fail_if_called(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(500, json={})
+
+    real_client = AmapRouteClient(
+        key_provider=lambda: None,
+        client=httpx.Client(transport=httpx.MockTransport(_fail_if_called)),
+    )
+    _install_commute(sqlite_app, real_client)
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, "我现在想从42栋步行到南区25栋", module_id="commute")
+    assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    assert assistant["status"] == "error"
+    assert assistant["error_code"] == "amap_not_configured"
+    route = assistant["commute_route"]
+    assert route["status"] == "error"
+    assert route["retryable"] is False
+    assert "设置页" in (route["error_message"] or "")
+    assert calls == [], "未配置凭据时绝不发出外部请求"
