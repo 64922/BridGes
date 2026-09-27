@@ -8,7 +8,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, ExitStack, contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
@@ -62,6 +62,7 @@ from bridges.profiles.atomic import (
     MemoryDirective,
     parse_memory_directive,
 )
+from bridges.profiles.commit import ProfileCommit, ProfileRecordSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -73,6 +74,7 @@ from bridges.profiles.signals import (
     ProfileSignalClassification,
     ProfileSignalClassifier,
 )
+from bridges.profiles.transactions import joined_transaction
 from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
@@ -209,6 +211,15 @@ class AutomaticProfileRepository(ABC):
 
     @abstractmethod
     def transaction(self) -> AbstractContextManager[None]: ...
+
+    def durable_queue(self) -> TaskQueue | None:
+        """返回跨重启可恢复的重试队列；无持久化的实现返回空值。
+
+        重试要跨进程恢复就必须有持久队列，因此「有没有队列」由仓库自己
+        声明，调用方不再判断存储实现类型。默认实现没有队列。
+        """
+
+        return None
 
     @abstractmethod
     def get_run(
@@ -824,7 +835,19 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             self.database.initialize()
 
     def transaction(self) -> AbstractContextManager[None]:
-        return self.database.transaction()
+        """事务边界；同一连接上已有事务时并入外层。
+
+        抽取记账、四维记录与原子条目共用一个 ``BridgesDatabase``，因此并入
+        规则与另外两个画像仓库一致：跨记录写入落在同一个提交里，单连接
+        SQLite 也不会出现嵌套 ``BEGIN``。
+        """
+
+        return joined_transaction(self.database)
+
+    def durable_queue(self) -> TaskQueue | None:
+        """持久化的提取重试队列；重试任务与运行记录同库同事务。"""
+
+        return TaskQueue(self.database, default_lease_seconds=60)
 
     @staticmethod
     def _iso(value: datetime) -> str:
@@ -1145,6 +1168,13 @@ class AutomaticProfileService:
         # V2 Issue 08：原子条目是用户可见的长期信息列表；挂载后自动抽取
         # 在写四维记录的同时镜像成无类别条目，并处理本轮「记住／忘掉」。
         self._atomic_profiles = atomic_profile_service
+        # Issue 04：四维来源与原子镜像的提交边界归属；本类不再判断仓库
+        # 类型、连接或事务开关，只决定抽取、证据校验与有界重试。
+        self._commit = ProfileCommit(
+            state=repository,
+            records=four_dimension_service,
+            items=atomic_profile_service,
+        )
         self._repository = repository
         self._classifier = classifier or ProfileSignalClassifier()
         self._extractor = extractor or RuleBasedAutomaticProfileExtractor(self._classifier)
@@ -1156,11 +1186,7 @@ class AutomaticProfileService:
         # 组合（内存测试/无审计存储）不伪造锁，也不产生假调用证据。
         self._lock_recorder = lock_recorder
         self._capability_degraded_reason: str | None = None
-        self._queue = (
-            TaskQueue(repository.database, default_lease_seconds=60)
-            if isinstance(repository, SqliteAutomaticProfileRepository)
-            else None
-        )
+        self._queue = repository.durable_queue()
         if self._queue is not None:
             self._queue.set_lease_seconds(self._queue_name, 60)
             self._recover_inflight_runs()
@@ -1603,7 +1629,7 @@ class AutomaticProfileService:
         collector = _AttemptLockCollector()
         attempt_ordinal = run.attempts + 1
         try:
-            with self._commit_transaction():
+            with self._commit.transaction():
                 output = self._extract_once(
                     account_id=account_id,
                     conversation_id=conversation_id,
@@ -1689,7 +1715,7 @@ class AutomaticProfileService:
         record_ids: list[str] = []
         correction: ProfileCorrectionResult
         try:
-            with self._commit_transaction():
+            with self._commit.transaction():
                 record, changed = self._four_dimensions.correct_record(
                     account_id,
                     dimension=intent.dimension,
@@ -2078,16 +2104,6 @@ class AutomaticProfileService:
         result = self._run_retry_task(task, task.attempts + 1)
         return f"profile-extraction: {result.value}。"
 
-    @contextmanager
-    def _commit_transaction(self) -> Iterator[None]:
-        with ExitStack() as stack:
-            stack.enter_context(self._repository.transaction())
-            # SQLite 两个仓库共用同一连接，自动仓库事务已经覆盖四维写入；
-            # 内存仓库则分别建立可回滚快照，确保整批提交失败时零部分写入。
-            if not isinstance(self._repository, SqliteAutomaticProfileRepository):
-                stack.enter_context(self._four_dimensions.transaction())
-            yield
-
     def _run_retry_task(
         self, task: ProfileExtractionRetryTask, attempt: int
     ) -> ProfileExtractionStatus:
@@ -2150,7 +2166,7 @@ class AutomaticProfileService:
         # 重试绝不改写来源（历史 NULL 行按本次实际路径回填）。
         collector = _AttemptLockCollector()
         try:
-            with self._commit_transaction():
+            with self._commit.transaction():
                 content = self._message_content(
                     task.account_id, task.message_id, run.source_snapshot
                 )
@@ -2376,8 +2392,8 @@ class AutomaticProfileService:
         signal_classification: ProfileSignalClassification,
         source: ProfileExtractionSource,
     ) -> tuple[list[str], int]:
-        record_ids: list[str] = []
         observed_count = 0
+        submissions: list[ProfileRecordSubmission] = []
         audit_version = _signal_audit_version(
             self.extractor_version, signal_classification, source
         )
@@ -2473,31 +2489,28 @@ class AutomaticProfileService:
                 and re.search(r"我(?:现在|目前)?更喜欢", content)
             ):
                 action = ProfileExtractionAction.UPDATE.value
-            record = self._four_dimensions.upsert_automatic_record(
-                account_id,
-                dimension=item.dimension,
-                content=item.normalized_value,
-                action=action,
-                confidence=confidence,
-                evidence_quote=_evidence_quote(content, item.normalized_value),
-                evidence_message_id=message_id,
-                change_note=(
-                    "用户明确确认，可靠程度已提高"
-                    if self._is_user_confirmation(content)
-                    else "多次对话中再次出现，可靠程度已提高"
-                    if confidence == FourDimensionConfidence.HIGH
-                    else "首次明确表达，等待再次确认"
-                ),
-                migration_version=audit_version,
-            )
-            if self._atomic_profiles is not None:
-                # V2 Issue 08：同一条事实镜像成无类别的原子条目；已被用户
-                # 删除（墓碑）或已被用户编辑成别的正文时镜像保持原样。
-                self._atomic_profiles.mirror_record(
-                    account_id, record, evidence_message_id=message_id
+            submissions.append(
+                ProfileRecordSubmission(
+                    dimension=item.dimension,
+                    content=item.normalized_value,
+                    action=action,
+                    confidence=confidence,
+                    evidence_quote=_evidence_quote(content, item.normalized_value),
+                    evidence_message_id=message_id,
+                    change_note=(
+                        "用户明确确认，可靠程度已提高"
+                        if self._is_user_confirmation(content)
+                        else "多次对话中再次出现，可靠程度已提高"
+                        if confidence == FourDimensionConfidence.HIGH
+                        else "首次明确表达，等待再次确认"
+                    ),
+                    migration_version=audit_version,
                 )
-            record_ids.append(record.record_id)
-        return list(dict.fromkeys(record_ids)), observed_count
+            )
+        # Issue 04：四维记录与原子镜像由提交 module 在同一事务里成对写入。
+        # 镜像不写入（用户已删除同键条目或已改成别的正文）是正常结果，不算
+        # 提交失败，因此这里只回报真正落库的记录标识。
+        return self._commit.write_records(account_id, submissions), observed_count
 
     def _validate_item(
         self,

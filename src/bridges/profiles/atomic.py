@@ -62,6 +62,7 @@ from bridges.profiles.four_dimensions import (
     confidence_rank,
     is_recallable_confidence,
 )
+from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
@@ -105,22 +106,6 @@ _DIRECTIVE_TAIL_RE = re.compile(r"(?:吧|了|好吗|可以吗|谢谢)[。！!？
 
 class AtomicProfileError(ProfileError):
     """原子画像领域错误；消息可直接展示，不泄漏其他账户的存在。"""
-
-
-@contextmanager
-def _joined_transaction(database: BridgesDatabase) -> Iterator[None]:
-    """数据库事务边界；已在事务内时并入外层。
-
-    单连接 SQLite 不允许嵌套 ``BEGIN``。镜像写入常发生在调用方（自动抽取）
-    的四维记录事务里，此时并入外层事务才能保证两者同生共死；独立调用则自己
-    开启事务。
-    """
-
-    if database.connection.in_transaction:
-        yield
-        return
-    with database.transaction():
-        yield
 
 
 class MemoryDirective:
@@ -481,7 +466,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
         条目，因此这里的写入必须与调用方同属一次提交（失败一起回滚）。
         """
 
-        return _joined_transaction(self._db)
+        return joined_transaction(self._db)
 
     def snapshot_before_migration(self) -> str | None:
         """用 SQLite 在线备份 API 落一份迁移前快照，返回备份文件路径。
@@ -828,6 +813,15 @@ class AtomicProfileService:
     ) -> None:
         self._four_dimensions = four_dimensions
         self._repository = repository
+
+    def transaction(self) -> AbstractContextManager[None]:
+        """为批量提交暴露原子仓库的事务边界。
+
+        单元写入自己开事务；跨记录提交（自动提取的四维记录 + 原子镜像）
+        需要由调用方在同一个边界内写入，因此这里把仓库边界交给提交 module。
+        """
+
+        return self._repository.transaction()
 
     # -- 读 ---------------------------------------------------------------
 
