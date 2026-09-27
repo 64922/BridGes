@@ -24,11 +24,12 @@ from bridges.contracts.atomic_profile import (
 )
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.profiles import FourDimension, FourDimensionProfileRecord
-from bridges.profiles.adapters import InMemoryProfileRepository
+from bridges.profiles.adapters import InMemoryProfileRepository, ProfileError
 from bridges.profiles.atomic import (
     MIGRATION_REASON_EMPTY_TEXT,
     MIGRATION_REASON_IDENTITY_TOMBSTONED,
     MIGRATION_REASON_MIGRATED,
+    MIGRATION_REASON_MIGRATION_FAILED,
     MIGRATION_REASON_SOURCE_ALREADY_MIGRATED,
     MIGRATION_REASON_SOURCE_WITHDRAWN,
     MIGRATION_REASON_USER_ITEM_KEPT,
@@ -482,6 +483,87 @@ def test_migration_snapshot_is_written_and_rolled_back_by_transaction(
         record.record_id
         for record in four_dimensions.list_records(second_account)
     ] == ["fdr-fail"]
+
+
+def test_retryable_report_keeps_only_the_failed_record_in_the_ledger(
+    tmp_path: Path,
+) -> None:
+    """可重试报告与台账不得声称迁入过已回滚的条目。
+
+    失败前已成功写入的条目会随事务一起回滚，若把它们按原结论写进台账，台账
+    就会出现指向不存在条目的「已迁入」行——审计者据此会以为画像里有这条信息。
+    """
+
+    path = tmp_path / "bridges.db"
+    BridgesDatabase(path).initialize()
+    four_dimensions = FourDimensionProfileService(
+        source_repository=InMemoryProfileRepository(),
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    account = "acc-retryable"
+    _record_with_content(four_dimensions, account, "喜欢看科普", record_id="fdr-ok")
+    _record_with_content(
+        four_dimensions, account, "喜欢看天体物理", record_id="fdr-fail"
+    )
+    # 前置条件：第一条先被成功迁入，第二条才失败（否则复现不到已回滚的结论）。
+    assert [
+        record.record_id for record in four_dimensions.list_records(account)
+    ] == ["fdr-ok", "fdr-fail"]
+
+    class _FailingRepository(SqliteAtomicProfileRepository):
+        def save_item(self, item: Any) -> Any:
+            if item.write_origin == AtomicProfileWriteOrigin.MIGRATION and (
+                item.text == "喜欢看天体物理"
+            ):
+                raise ProfileError("注入失败：模拟单条对账失败")
+            return super().save_item(item)
+
+    failing = AtomicProfileService(
+        four_dimensions, _FailingRepository(BridgesDatabase(path), initialize=False)
+    )
+    report = failing.migrate_account(account)
+
+    assert report.status == AtomicProfileMigrationStatus.RETRYABLE
+    assert report.retryable is True
+    assert (
+        report.migrated,
+        report.duplicated,
+        report.tombstoned,
+        report.skipped,
+        report.failed,
+    ) == (0, 0, 0, 0, 1)
+    assert report.created_item_ids == []
+    assert [entry.outcome for entry in report.reconciliation] == ["failed"]
+    failed_entry = report.reconciliation[0]
+    assert failed_entry.source_record_id == "fdr-fail"
+    assert failed_entry.reason_code == MIGRATION_REASON_MIGRATION_FAILED
+    assert failed_entry.profile_item_id is None
+
+    # 台账与计数自洽：只有失败那一条，没有任何指向不存在条目的迁移行。
+    connection = sqlite3.connect(path)
+    try:
+        ledger = connection.execute(
+            "SELECT source_record_id, outcome, reason_code, profile_item_id "
+            "FROM profile_item_migration_records WHERE account_id = ? ORDER BY rowid",
+            (account,),
+        ).fetchall()
+        items = connection.execute(
+            "SELECT COUNT(*) FROM profile_items WHERE account_id = ?", (account,)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert ledger == [("fdr-fail", "failed", MIGRATION_REASON_MIGRATION_FAILED, None)]
+    assert items == 0
+
+    # 重试重新逐条判定：同一批记录随后完整迁入，台账被覆盖为真实结论。
+    retry = _sqlite_service(path, four_dimensions).migrate_account(account)
+    assert retry.status == AtomicProfileMigrationStatus.COMPLETED
+    assert retry.migrated == 2
+    assert {entry.source_record_id: entry.outcome for entry in retry.reconciliation} == {
+        "fdr-ok": "migrated",
+        "fdr-fail": "migrated",
+    }
+    assert (retry.migrated, retry.failed) == (2, 0)
 
 
 def test_automatic_extraction_still_mirrors_after_repair(

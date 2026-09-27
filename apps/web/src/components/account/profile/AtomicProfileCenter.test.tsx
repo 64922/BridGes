@@ -134,7 +134,8 @@ describe("AtomicProfileCenter", () => {
     expect(empty.textContent).toContain("能引用原话");
   });
 
-  it("keeps the edit failure message and reloads the list on conflict", async () => {    api.listAtomicProfileItems.mockResolvedValue([item()]);
+  it("keeps the edit failure message and reloads the list on conflict", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([item()]);
     api.modifyAtomicProfileItem.mockRejectedValue(new Error("版本冲突，请刷新后重试。"));
 
     render(<AtomicProfileCenter />);

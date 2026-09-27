@@ -85,6 +85,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_extraction_privacy_blocks",
     "profile_items",
     "profile_item_migrations",
+    # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。
+    "profile_item_migration_records",
     "messages",
     "conversations",
     # 关联行有 lock_id 外键指向 model_run_locks，必须先删。
@@ -176,6 +178,7 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
             "profile_extraction_privacy_blocks",
             "profile_items",
             "profile_item_migrations",
+            "profile_item_migration_records",
         ),
         512,
     ),
@@ -323,6 +326,7 @@ def logical_summary(
         "profile_extraction_tombstones",
         "profile_items",
         "profile_item_migrations",
+        "profile_item_migration_records",
         "learning_projects",
         "learning_project_migration_runs",
         "learning_project_migrations",

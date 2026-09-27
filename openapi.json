@@ -28259,7 +28259,7 @@
           "failed"
         ],
         "title": "AtomicProfileReconciliationOutcome",
-        "description": "单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。"
+        "description": "单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。\n\n``duplicated`` 是「来源或身份已经存在，因此没有新建条目」的合并计数：具体\n是用户条目优先、来源已迁移还是墓碑抑制，看同一条明细的原因码。``failed``\n只出现在可重试报告里——整批已回滚，台账只留失败那一条。"
       },
       "AtomicProfileWriteOrigin": {
         "type": "string",
