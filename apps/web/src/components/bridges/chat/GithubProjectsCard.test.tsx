@@ -270,10 +270,13 @@ describe("GithubProjectsCard（V2 Issue 16）", () => {
     const note = screen.getByTestId("github-rate-limit").textContent ?? "";
     expect(note).toContain("仓库读取额度已用尽");
     expect(note).not.toContain("检索剩余");
-    // 恢复时间按本地时区呈现（与时间戳本身的时区无关）。
+    // 恢复时间按本地时区呈现（与时间戳本身的时区无关），并写明「本地时间」。
     const localTime = new Date(resetAt).toLocaleString("zh-CN");
     expect(note).toContain(localTime);
+    expect(note).toContain("（本地时间）");
     expect(note).toContain("恢复");
+    // 重试承诺只说一遍：说明文案与恢复时间后面不再各拼一次。
+    expect(note.split("稍后可重试").length - 1).toBe(1);
     // 受限时标题说明只给了已核实部分，与投影状态一致。
     expect(screen.getByTestId("github-projects-card-metadata_only").textContent).toContain(
       "上游额度受限，结果为已核实部分"

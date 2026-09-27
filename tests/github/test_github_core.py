@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 from bridges.github.contracts import (
     GithubCoverage,
+    GithubDeepCheckStatus,
     GithubEvidenceKind,
     GithubFileRead,
     GithubIdeaAnalysis,
@@ -42,6 +43,9 @@ from bridges.github.suggestion import detect_github_suggestion
 
 WHOLE_IDEA = "我想做一个校园二手书交换平台，学生可以发布想卖的书，搜索想要的书，线下交换"
 
+#: 工单 05 的真实请求形态：中文功能词「智能体」不能被辅助词剥离拆碎。
+AGENT_IDEA = "给我推荐几个智能体项目"
+
 
 def _evidence(
     *,
@@ -56,6 +60,7 @@ def _evidence(
     stars: int = 10,
     pushed_at: datetime | None = None,
     archived: bool = False,
+    deep_checks: GithubDeepCheckStatus = GithubDeepCheckStatus.DONE,
 ) -> GithubRepositoryEvidence:
     return GithubRepositoryEvidence(
         full_name=full_name,
@@ -71,6 +76,7 @@ def _evidence(
         pushed_at=pushed_at or datetime(2026, 9, 1, tzinfo=UTC),
         matched_query="校园二手书交换",
         retrieved_at=datetime(2026, 9, 26, tzinfo=UTC),
+        deep_checks=deep_checks,
     )
 
 
@@ -181,7 +187,8 @@ def test_feature_matching_prefers_implementation_over_readme_over_metadata() -> 
 
     assert matches["学生可以发布想卖的书"].matched is True
     assert matches["学生可以发布想卖的书"].evidence_kind is GithubEvidenceKind.IMPLEMENTATION
-    # 命中片段按证据原文并成完整短语展示（不再罗列「发布想、布想卖」这类碎段）。
+    # 原词整体命中时 matched_terms 就是用户原话本身（先整词、后逐字片段）：
+    # 不再罗列「发布想、布想卖」这类碎段。
     assert any(
         "发布" in term for term in matches["学生可以发布想卖的书"].matched_terms
     )
@@ -278,9 +285,6 @@ def test_overlapping_fragments_are_merged_back_into_whole_words() -> None:
     assert "命中关键词「联邦学习」" in matches[0].evidence
 
 
-AGENT_IDEA = "给我推荐几个智能体项目"
-
-
 def test_chinese_term_with_an_auxiliary_char_matches_as_a_whole_word() -> None:
     """「智能体」不能被辅助词剥离拆碎：证据里真实出现的原词必须命中。
 
@@ -349,6 +353,67 @@ def test_fragment_or_generic_only_evidence_is_not_counted_as_coverage() -> None:
     assert outcome.recommendations == []
     for item in outcome.rejected:
         assert "没有出现你 idea 的要点" in item.reason
+
+
+def test_feature_made_only_of_generic_words_is_not_coverage_even_verbatim() -> None:
+    """只由通用词拼成的要点，整句出现也不算覆盖功能。
+
+    整词优先匹配不能让「用户功能」这类通用拼盘蒙混过关：它整句出现在 README 里
+    （「提供用户功能与系统功能」）也不构成功能证据，否则放宽召回就又回来了。
+    """
+    analysis = parse_github_request("我想做一个校园二手书交换平台，支持用户功能")
+    evidence = _evidence(
+        full_name="demo/generic-plate",
+        description="校园二手书交换平台",
+        readme_text="本项目提供用户功能与系统功能，界面友好、功能完整。",
+    )
+
+    assert analysis.features == ["用户功能"]
+    match = match_features(analysis, evidence)[0]
+
+    assert match.matched is False
+    assert match.matched_terms == []
+
+    outcome = rank_candidates(analysis, [evidence])
+
+    assert outcome.recommendations == []
+    assert "没有出现你 idea 的要点" in outcome.rejected[0].reason
+
+
+def test_unfinished_deep_checks_are_reported_with_the_real_reason() -> None:
+    """额外核查没做完时逐条说明真实原因：额度、清单没取得、检查中断各不相同。"""
+    analysis = parse_github_request(AGENT_IDEA)
+    limited = _evidence(
+        full_name="demo/limited",
+        description="多智能体协作框架",
+        readme_text="多智能体协作框架。",
+        deep_checks=GithubDeepCheckStatus.RATE_LIMITED,
+    )
+    unobtained = _evidence(
+        full_name="demo/unobtained",
+        description="多智能体协作框架",
+        readme_text="多智能体协作框架。",
+        deep_checks=GithubDeepCheckStatus.NOT_OBTAINED,
+    )
+    interrupted = _evidence(
+        full_name="demo/interrupted",
+        description="多智能体协作框架",
+        readme_text="多智能体协作框架。",
+        deep_checks=GithubDeepCheckStatus.INTERRUPTED,
+    )
+
+    outcome = rank_candidates(analysis, [limited, unobtained, interrupted])
+    limits = {item.full_name: item.limitations for item in outcome.recommendations}
+
+    assert "上游额度限制导致该仓库的许可与实现文件核查本轮未完成。" in limits["demo/limited"]
+    assert any(
+        "许可与实现文件核查未完成" in note and "不代表仓库里没有这些文件" in note
+        for note in limits["demo/unobtained"]
+    )
+    assert any(
+        "核查未完成" in note and "不代表它不匹配" in note
+        for note in limits["demo/interrupted"]
+    )
 
 
 def test_rejection_reason_says_when_nothing_was_readable() -> None:

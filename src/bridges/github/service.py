@@ -490,7 +490,7 @@ class GithubProjectsService:
             component_terms=list(analysis.component_terms),
             context_source=analysis.context_source,
             queries=list(queries),
-            rate_limit=_rate_limit_state(queries, limited=False),
+            rate_limit=_rate_limit_state(limited=False),
             evidence_boundary=["你已停止本轮推荐，未继续读取仓库证据。"],
             completed_at=now,
         )
@@ -659,9 +659,7 @@ def _projection(
         rejected=list(ranked.rejected),
         # 额度限制只按**真实撞上**记账：只取得元数据不等于上游限流，
         # 说成限流会让用户等一个不存在的恢复时间。
-        rate_limit=_rate_limit_state(
-            records, limited=rate_limited, reset_at=rate_limit_reset_at
-        ),
+        rate_limit=_rate_limit_state(limited=rate_limited, reset_at=rate_limit_reset_at),
         evidence_boundary=boundary,
         empty_reason=(
             _failure_reason(error_record)
@@ -747,22 +745,21 @@ def _evidence_boundary(
 
 
 def _rate_limit_state(
-    records: Sequence[ModuleQueryRecord],
     *,
     limited: bool,
     reset_at: datetime | None = None,
 ) -> GithubRateLimitState:
+    """限流投影：只报「是否撞上 + 恢复时间」，重试口吻由呈现侧统一补一次。
+
+    不复用调用记录里的错误文案：那是给记录与失败正文看的（自带「稍后可重试」），
+    直接抄进限流行会和呈现侧拼出的重试提示重复。
+    """
     if not limited:
         return GithubRateLimitState(note="本轮未撞上 GitHub 接口额度限制。")
-    for record in records:
-        if record.status is ModuleQueryStatus.RATE_LIMITED:
-            return GithubRateLimitState(
-                limited=True,
-                note=record.error_message or "GitHub 接口额度已用尽，本轮不再继续请求。",
-                reset_at=reset_at,
-            )
     return GithubRateLimitState(
-        limited=True, note="本轮撞上 GitHub 接口额度限制，本轮不再继续请求。", reset_at=reset_at
+        limited=True,
+        note="本轮撞上 GitHub 接口额度限制，本轮不再继续请求。",
+        reset_at=reset_at,
     )
 
 

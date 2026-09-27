@@ -130,6 +130,15 @@ class GithubApiClient:
             return None
         return datetime.fromtimestamp(min(stamps), tz=UTC)
 
+    def reset_at_for(self, bucket: str) -> datetime | None:
+        """某个桶自己的额度重置时间。
+
+        两个桶的窗口互不相干（检索 10/分、核心 60/时），混用会把恢复时间报早：
+        真正挡住这一轮的是哪个桶，就该报哪个桶的重置时间。
+        """
+        epoch = self._reset_at.get(bucket)
+        return datetime.fromtimestamp(epoch, tz=UTC) if epoch is not None else None
+
     @property
     def limited(self) -> bool:
         """本轮是否真的撞上额度限制（额度用尽且尚未重置）。"""

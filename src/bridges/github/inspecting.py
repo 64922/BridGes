@@ -13,7 +13,7 @@
   不存在都不额外发请求），嵌套路径才真的去读一次目录或文件，读到的片段就是
   「实现文件证据」。未读取的实现细节一律不断言。
 
-上游额度用尽是常态：撞上即停止继续读取并标记 ``rate_limited``，把已取得的
+上游额度用尽是常态：撞上即停止继续读取并把原因记进 ``deep_checks``，把已取得的
 证据如实带回，由 ``github.present`` 展示实际结果与缺口。
 """
 
@@ -28,8 +28,9 @@ from datetime import UTC, datetime
 from threading import Event
 
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
-from bridges.github.client import GithubApiClient, GithubResponse
+from bridges.github.client import BUCKET_CORE, GithubApiClient, GithubResponse
 from bridges.github.contracts import (
+    GithubDeepCheckStatus,
     GithubFileRead,
     GithubImplementationCheck,
     GithubLicenseCheck,
@@ -215,12 +216,12 @@ class GithubRepositoryReader:
         额度是这一来源的常态，顺序按「先相关性、后细节」排：第一遍只发每个候选
         的 README 请求，第二遍才回头发根目录清单、许可与实现文件请求。额度中途
         用尽时，已经读到的 README 一律如实带回（不能因为后面读不到就把前面读到
-        的丢掉），没做完额外核查的候选带上 ``rate_limited`` 标记由投影如实说明；
-        额度用尽后不再外发任何请求。
+        的丢掉），没做完额外核查的候选带上 ``deep_checks`` 的真实原因由投影如实
+        说明；额度用尽后不再外发任何请求。
         """
         records: list[ModuleQueryRecord] = []
         reads: list[_ReadmeRead] = []
-        limited = False
+        deep_checks = GithubDeepCheckStatus.DONE
         reset_at: datetime | None = None
         for candidate in candidates[:INSPECT_LIMIT]:
             if stop_event is not None and stop_event.is_set():
@@ -239,24 +240,32 @@ class GithubRepositoryReader:
             read, record = self._read_readme(account_id, candidate)
             records.append(record)
             if record.status is ModuleQueryStatus.RATE_LIMITED:
-                limited = True
-                reset_at = self._client.reset_at
+                deep_checks = GithubDeepCheckStatus.RATE_LIMITED
+                reset_at = self._client.reset_at_for(BUCKET_CORE)
                 break
             reads.append(read)
         evidence: list[GithubRepositoryEvidence] = []
         for read in reads:
-            if limited or _interrupted(stop_event, deadline):
-                evidence.append(self._unverified(read, rate_limited=limited))
+            if deep_checks is not GithubDeepCheckStatus.DONE:
+                evidence.append(self._unverified(read, deep_checks=deep_checks))
                 continue
-            item, deep_limited = self._deepen(
-                account_id, read, records, deadline=deadline
-            )
+            if _interrupted(stop_event, deadline):
+                evidence.append(
+                    self._unverified(read, deep_checks=GithubDeepCheckStatus.INTERRUPTED)
+                )
+                continue
+            item, status = self._deepen(account_id, read, records, deadline=deadline)
             evidence.append(item)
-            if deep_limited:
-                limited = True
-                reset_at = self._client.reset_at
+            if status is GithubDeepCheckStatus.RATE_LIMITED:
+                deep_checks = status
+                reset_at = self._client.reset_at_for(BUCKET_CORE)
         return InspectionOutcome(
-            evidence=evidence, records=records, rate_limited=limited, reset_at=reset_at
+            evidence=evidence,
+            records=records,
+            rate_limited=deep_checks is GithubDeepCheckStatus.RATE_LIMITED,
+            reset_at=(
+                reset_at if deep_checks is GithubDeepCheckStatus.RATE_LIMITED else None
+            ),
         )
 
     # -- 额外核查（第二遍） ----------------------------------------------
@@ -268,7 +277,7 @@ class GithubRepositoryReader:
         records: list[ModuleQueryRecord],
         *,
         deadline: float | None,
-    ) -> tuple[GithubRepositoryEvidence, bool]:
+    ) -> tuple[GithubRepositoryEvidence, GithubDeepCheckStatus]:
         """补根目录清单、许可与实现文件核查；中途撞上额度即停并如实标注。"""
         root_entries, root_record, root_limited = self._read_root(
             account_id, read.candidate
@@ -276,13 +285,25 @@ class GithubRepositoryReader:
         records.append(root_record)
         if root_record.status is not ModuleQueryStatus.SUCCESS:
             # 清单没取得就不做任何「存在／缺失」判定：不下结论好过下错结论。
-            return self._unverified(read, rate_limited=root_limited), root_limited
+            status = (
+                GithubDeepCheckStatus.RATE_LIMITED
+                if root_limited
+                else GithubDeepCheckStatus.NOT_OBTAINED
+            )
+            return self._unverified(read, deep_checks=status), status
         license_check, license_records, license_limited = self._read_license(
             account_id, read.candidate, root_entries
         )
         records.extend(license_records)
         if license_limited:
-            return self._evidence(read, license_check=license_check, rate_limited=True), True
+            return (
+                self._evidence(
+                    read,
+                    license_check=license_check,
+                    deep_checks=GithubDeepCheckStatus.RATE_LIMITED,
+                ),
+                GithubDeepCheckStatus.RATE_LIMITED,
+            )
         checks, files_read, impl_records, impl_limited = self._read_implementation(
             account_id,
             read.candidate,
@@ -291,6 +312,9 @@ class GithubRepositoryReader:
             deadline=deadline,
         )
         records.extend(impl_records)
+        status = (
+            GithubDeepCheckStatus.RATE_LIMITED if impl_limited else GithubDeepCheckStatus.DONE
+        )
         return (
             self._evidence(
                 read,
@@ -298,21 +322,21 @@ class GithubRepositoryReader:
                 files_read=files_read,
                 checks=checks,
                 runnable_hints=_runnable_hints(root_entries),
-                rate_limited=impl_limited,
+                deep_checks=status,
             ),
-            impl_limited,
+            status,
         )
 
     # -- 证据组装 --------------------------------------------------------
 
     def _unverified(
-        self, read: _ReadmeRead, *, rate_limited: bool
+        self, read: _ReadmeRead, *, deep_checks: GithubDeepCheckStatus
     ) -> GithubRepositoryEvidence:
         """只读到 README（或什么都没读到）时的如实证据：不做存在性判定。"""
         return self._evidence(
             read,
             license_check=_unlisted_license(read.candidate),
-            rate_limited=rate_limited,
+            deep_checks=deep_checks,
         )
 
     def _evidence(
@@ -323,7 +347,7 @@ class GithubRepositoryReader:
         files_read: list[GithubFileRead] | None = None,
         checks: list[GithubImplementationCheck] | None = None,
         runnable_hints: list[str] | None = None,
-        rate_limited: bool = False,
+        deep_checks: GithubDeepCheckStatus = GithubDeepCheckStatus.DONE,
     ) -> GithubRepositoryEvidence:
         candidate = read.candidate
         return GithubRepositoryEvidence(
@@ -347,7 +371,7 @@ class GithubRepositoryReader:
             files_read=list(files_read or []),
             implementation_checks=list(checks or []),
             runnable_hints=list(runnable_hints or []),
-            rate_limited=rate_limited,
+            deep_checks=deep_checks,
             matched_query=candidate.matched_query,
             retrieved_at=datetime.now(UTC),
         )
@@ -676,7 +700,11 @@ def _unread_license(
 
 
 def _unlisted_license(candidate: GithubRepositoryCandidate) -> GithubLicenseCheck:
-    """根目录清单没取得时的许可证据：只用上游元数据字段，不猜测许可状态。"""
+    """根目录清单没取得时的许可证据：只用上游元数据字段，不猜测许可状态。
+
+    这里不写原因：清单没取得可能是额度限制、上游报错或检查被中断（
+    ``deep_checks`` 记的是真实原因），猜测原因会把其中一种说成事实。
+    """
     label = candidate.license_spdx_id or candidate.license_name
     if label:
         return GithubLicenseCheck(
@@ -687,8 +715,8 @@ def _unlisted_license(candidate: GithubRepositoryCandidate) -> GithubLicenseChec
             license_url=None,
             file_read=False,
             note=(
-                f"上游元数据标注许可为「{label}」，但本轮没有取得根目录清单与许可文件"
-                "（通常是上游额度限制），未核对许可正文。"
+                f"上游元数据标注许可为「{label}」，但本轮没有取得根目录清单与许可文件，"
+                "未核对许可正文。"
             ),
         )
     return GithubLicenseCheck(

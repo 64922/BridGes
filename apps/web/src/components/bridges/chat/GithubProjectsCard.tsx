@@ -302,10 +302,11 @@ function RejectedRow({ item }: { item: GithubRejectedRepository }) {
 function RateLimitNote({ rateLimit }: { rateLimit: GithubRateLimitState }) {
   if (!rateLimit.limited && !rateLimit.note) return null;
   // 只给「是否撞上 + 面向用户的说明 + 上游给出的恢复时间」：剩余额度是检索内部
-  // 日志（interaction.md §4），不呈现；恢复时间按本地时区显示，上游没给就不编造。
+  // 日志（interaction.md §4），不呈现；恢复时间按本地时区显示并写明「本地时间」，
+  // 上游没给就如实说没有，后端正文用的是同一句话术。
   const recovery = rateLimit.limited
     ? rateLimit.reset_at
-      ? `（预计 ${formatTime(rateLimit.reset_at)} 恢复，稍后可重试）`
+      ? `（预计 ${formatTime(rateLimit.reset_at)}（本地时间）恢复，稍后可重试）`
       : "（上游没有给出恢复时间，稍后可重试）"
     : "";
   return (

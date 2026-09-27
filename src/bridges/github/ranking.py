@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 
 from bridges.github.contracts import (
     GithubCoverage,
+    GithubDeepCheckStatus,
     GithubEvidenceKind,
     GithubFeatureMatch,
     GithubIdeaAnalysis,
@@ -233,6 +234,10 @@ _EDGE_AUX: frozenset[str] = frozenset(word for word in AUX_WORDS if len(word) ==
 
 #: 边界剥离后至少要留下的字符数（剥完更短就说明剥过头了，保留原样）。
 _MIN_CORE_CHARS = 2
+
+#: 短要点（只剩一两个双字词）命中时必须凑够的连续字数：「智能」单独出现
+#: 不等于「智能体」，至少要连成这么长的原词片段才算。
+_MIN_SHORT_CORE_SPAN = 3
 
 _KIND_LABELS: dict[GithubEvidenceKind, str] = {
     GithubEvidenceKind.IMPLEMENTATION: "实际读取的实现文件",
@@ -510,7 +515,13 @@ def _keyword_hits(core: str, text: str, *, phrase: str | None = None) -> list[st
     先拿用户原词整体比对：完整短语在证据里连续出现即命中，辅助词一律不动它
     （「智能体」这种含单字的术语因此不会被剥碎）；整词没出现时才退回剥掉边界
     辅助词后的骨架做逐字命中。
+
+    整词命中的 ``matched_terms`` 就是该要点本身（不是被切碎的字片段）：原词在
+    证据里连续出现才算命中，展示时保留用户原话。只由通用词拼成的要点
+    （「用户功能」这类）一律不算功能证据，与逐字命中路径同一条底线。
     """
+    if _generic_phrase(core):
+        return []
     if phrase:
         whole = _whole_phrase_hit(phrase, text)
         if whole is not None:
@@ -542,7 +553,10 @@ def _keyword_hits(core: str, text: str, *, phrase: str | None = None) -> list[st
     if len(bigrams) <= 2:
         # 短要点只能靠整词或相邻片段命中：「智能」单独出现不等于「智能体」。
         merged = _merge_hits(bigram_hits, text)
-        if _cjk_length(core) >= 3 and max((len(span) for span in merged), default=0) < 3:
+        if (
+            _cjk_length(core) >= _MIN_SHORT_CORE_SPAN
+            and max((len(span) for span in merged), default=0) < _MIN_SHORT_CORE_SPAN
+        ):
             return []
         return merged[:4]
     if len(bigram_hits) / len(bigrams) >= MIN_KEYWORD_RATIO:
@@ -560,9 +574,30 @@ def _whole_phrase_hit(phrase: str, text: str) -> str | None:
         if lowered in GENERIC_LATIN or len(value) < 3:
             return None
         return value if lowered in text.lower() else None
-    if value in GENERIC_BIGRAMS:
+    if _generic_phrase(value):
         return None
     return value if value in text else None
+
+
+def _generic_phrase(core: str) -> bool:
+    """整条要点是否只由通用词拼成（「用户功能」不是功能证据）。
+
+    把要点按通用双字词从左到右尽量盖住：盖得满说明它本身没有实质内容词，
+    整词命中它不该算作覆盖了功能。含通用词的**真术语**不受影响——「智能体」
+    里「智能」盖不住「体」，「搜索结果」里「搜索」不是通用词，都保留。
+    """
+    if core in GENERIC_BIGRAMS:
+        return True
+    runs = _CJK_RUN.findall(core)
+    if not runs:
+        return False
+    for run in runs:
+        index = 0
+        while index < len(run):
+            if run[index : index + 2] not in GENERIC_BIGRAMS:
+                return False
+            index += 2
+    return True
 
 
 def _cjk_length(text: str) -> int:
@@ -819,8 +854,15 @@ def _limitations(
         check.status == "confirmed" for check in evidence.implementation_checks
     ):
         items.append("未读取实现文件，不对内部架构与代码质量作断言。")
-    if evidence.rate_limited:
+    if evidence.deep_checks is GithubDeepCheckStatus.RATE_LIMITED:
         items.append("上游额度限制导致该仓库的许可与实现文件核查本轮未完成。")
+    elif evidence.deep_checks is GithubDeepCheckStatus.NOT_OBTAINED:
+        items.append(
+            "根目录清单本轮没有取得，许可与实现文件核查未完成"
+            "（这不代表仓库里没有这些文件）。"
+        )
+    elif evidence.deep_checks is GithubDeepCheckStatus.INTERRUPTED:
+        items.append("本轮检查时间用尽，许可与实现文件核查未完成（这不代表它不匹配）。")
     if not evidence.license.detected:
         items.append("未见许可证，不声称代码可自由复用。")
     elif not evidence.license.file_read:
