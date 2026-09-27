@@ -103,7 +103,7 @@ _INTENT_UNITS: tuple[str, ...] = (
     "马上",
     "立刻",
     "先",
-    "我要",
+    "要",
     "想",
     "打算",
     "准备",
@@ -112,11 +112,14 @@ _INTENT_UNITS: tuple[str, ...] = (
 
 #: 句首意图前缀：这些词用户会任意连写（「我现在想」「我打算今天」「帮我看看」），
 #: 所以按词类逐词剥离，而不是枚举整段短语。长单元优先，避免「我」抢先命中「我们」。
-_LEADING_INTENT = re.compile(
+_LEADING_INTENT_UNIT = re.compile(
     "^(?:"
     + "|".join(re.escape(unit) for unit in sorted(_INTENT_UNITS, key=len, reverse=True))
-    + ")+"
+    + ")"
 )
+
+#: 地点写法的句首词（``从 A``／``去 B``／``前往 B``……）。
+_PLACE_HEADS: tuple[str, ...] = ("从", "前往", "走到", "骑到", "到", "去", "往")
 
 #: 需要从地点短语两端剥离的符号与助词。
 _EDGE_TRIM = " \t，。！？、；：,.!?;:-—~～的了在把和与"
@@ -126,15 +129,25 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 def _strip_leading_intent(text: str) -> str:
-    """剥离句首的口语意图前缀，句中文字原样保留。
+    """剥离句首的口语意图前缀，剥到地点写法或位置指代为止。
 
-    整句本身就是位置指代（「我现在的位置」「我这里」）时一律不剥离：删掉
-    「现在」会让它看起来像一个能拿去检索的地点，而这类指代只能追问。
+    「我现在想从42栋步行到南区25栋」交给地点识别的是「从42栋步行到南区25栋」。
+    剥到不能再剥（下一个词既不是地点写法的句首词 ``从``／``到``／``去``…，也不是
+    位置指代）就整体放弃，一字不改：地名本身以意图词开头时（「先骕楼」「明天广场」）
+    删掉的首字就是地名的一部分，整句是位置指代（「我现在的位置」）时删掉「现在」
+    会让它看起来像一个能拿去检索的地点。
     """
     value = text.strip(_EDGE_TRIM)
-    if value.startswith(UNLOCATABLE_MARKERS):
-        return value
-    return _LEADING_INTENT.sub("", value).strip(_EDGE_TRIM)
+    original = value
+    while True:
+        # 每剥一个词都会留下空格（方式词在进入这里之前已被替换成空格）。
+        value = value.strip(_EDGE_TRIM)
+        if value.startswith(_PLACE_HEADS) or value.startswith(UNLOCATABLE_MARKERS):
+            return value
+        unit = _LEADING_INTENT_UNIT.match(value)
+        if unit is None:
+            return original
+        value = value[unit.end() :]
 
 
 def parse_commute_request(

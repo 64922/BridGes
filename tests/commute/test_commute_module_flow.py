@@ -748,8 +748,9 @@ def test_colloquial_prefix_never_reaches_the_place_port(
     assert route["destination"]["original_phrase"] == "南区25栋"
     assert route["origin"]["name"] == "华东交通大学42栋"
     assert route["destination"]["name"] == "华东交通大学南区"
-    # 真正送进地点端口的检索词：起点是用户写的「42栋」，终点是校内别名模板
-    # （「南区」），两者都不含句首意图前缀
+    # 真正送进地点端口的检索词：起点就是用户写的「42栋」，都不含句首意图前缀。
+    # 终点词由 resolving.py 的校内别名模板给出（「南区25栋」→「南区」），是既有
+    # 行为、本票未改；模板是否该保留「25栋」见工单记录（留 07 判定）。
     assert fake.place_calls == ["华东交通大学42栋", "华东交通大学南区"]
     for query in fake.place_calls:
         assert not any(

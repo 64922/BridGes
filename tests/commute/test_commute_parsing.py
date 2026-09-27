@@ -343,9 +343,13 @@ def test_colloquial_prefix_with_only_a_destination_still_asks_origin() -> None:
     assert analysis.clarification.missing == MISSING_ORIGIN
 
 
-def test_polite_prefix_does_not_become_the_origin() -> None:
-    """礼貌前缀「请问」同样只剥离、不进地点；缺方式仍只问方式。"""
-    analysis = parse_commute_request("请问从南区到北区怎么走")
+@pytest.mark.parametrize(
+    "sentence",
+    ("请问从南区到北区怎么走", "我们要从南区到北区", "现在从南区到北区"),
+)
+def test_prefix_does_not_become_a_place_and_missing_mode_is_still_asked(sentence: str) -> None:
+    """礼貌／主语／时间前缀同样只剥离、不进地点；缺方式仍只问方式。"""
+    analysis = parse_commute_request(sentence)
 
     assert analysis.origin_phrase == "南区"
     assert analysis.destination_phrase == "北区"
@@ -353,9 +357,40 @@ def test_polite_prefix_does_not_become_the_origin() -> None:
     assert analysis.clarification.missing == MISSING_MODE
 
 
-def test_locational_reference_still_asks_instead_of_becoming_a_place() -> None:
-    """「我现在的位置」是必须追问的指代，不能剥离前缀后当可检索地点。"""
-    analysis = parse_commute_request("我现在的位置到北门怎么走")
+def test_question_tail_words_are_not_treated_as_an_intent_prefix() -> None:
+    """「要多久…」是问句尾巴而不是意图前缀：只有终点时仍只问起点。"""
+    analysis = parse_commute_request("要多久到图书馆")
+
+    assert analysis.destination_phrase == "图书馆"
+    assert analysis.origin_phrase is None
+    assert analysis.clarification is not None
+    assert analysis.clarification.missing == MISSING_ORIGIN
+
+
+@pytest.mark.parametrize(
+    ("sentence", "origin", "destination"),
+    (
+        ("先骕楼到北门怎么走", "先骕楼", "北门"),
+        ("明天广场步行到南区", "明天广场", "南区"),
+    ),
+)
+def test_place_names_that_begin_with_intent_words_are_kept_intact(
+    sentence: str, origin: str, destination: str
+) -> None:
+    """「先骕楼」的「先」、「明天广场」的「明天」是地名首字，不得当前缀剥掉。"""
+    analysis = parse_commute_request(sentence)
+
+    assert analysis.origin_phrase == origin
+    assert analysis.destination_phrase == destination
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ("我现在的位置到北门怎么走", "请问我现在的位置到北门怎么走"),
+)
+def test_locational_reference_still_asks_instead_of_becoming_a_place(sentence: str) -> None:
+    """「我现在的位置」是必须追问的指代，带不带礼貌前缀都不能当可检索地点。"""
+    analysis = parse_commute_request(sentence)
 
     assert analysis.origin_unlocatable is True
     assert analysis.clarification is not None
