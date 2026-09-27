@@ -96,6 +96,8 @@
 
 **集成注意事项**：无数据库迁移、`SCHEMA_VERSION` 不变（仍 58）。**契约有变更**：`TiebaCandidateLink` 新增 `unconfirmed_reason`，因此 `openapi.json` 与 `packages/contracts/src/generated.ts` 已按新代码重新生成（合并时两者必须一起进）；`needs_official_check` 的描述补上「放假安排」。改动落在 `src/bridges/tieba/`、`tests/tieba/`、贴吧结果卡、上述两个生成文件。**有意的语义变更**：早先一次可重试的查询失败不再把整轮报成失败（只有终态为错误、或没有确认帖子时才 `retryable=True` 并透出 `error_code`／`error_message`），对应任务 2「把『没有可用候选』与『请求失败是否可重试』分开」；两面行为分别由既有 `test_search_failure_keeps_query_and_is_retryable` 与本票新增的 `test_retryable_transient_failure_still_uses_the_fallback_query` 固定。剔除记录现在跨轮去重（同一条链接不列两遍），正文的空态构成写「非帖子链接 N 条、重复链接 M 条」，若前端自行拼接空态文案需同步。
 
+**合并边界（本记录写就时 main 已前进）**：本分支基于 `main` = `a15a084`，而 main 现为 `f77e8e2`（并行票 01／04 已合并，其中 01 占用了迁移号 59，`SCHEMA_VERSION` 现为 **59**）。前面的「仍 58」指本票自己不带迁移、合并后 `SCHEMA_VERSION` 等于主分支当时的值；合并本票前需先 `git merge main` 并把两侧的 `openapi.json` 一起对账（main 侧自分支点起也有 +60 行改动），然后按 `scripts/regenerate_openapi.py`（带 `PYTHONPATH=src`）与 `npx openapi-typescript` 重跑一遍，确认贴吧侧的 `unconfirmed_reason` 与 main 侧契约变更同时存在于同一个生成文件里。
+
 **未完成事项**
 
 - 真实检索两轮都没有可用帖子候选（本机 Tavily 对「华东交通大学吧 中秋节放假」返回的全部是官网／其他高校通知／用户主页），因此本轮没有「真实确认帖子 → 读取楼层」的正向证据；该路径由既有替身用例（`test_confirmed_thread_is_read_with_floors_times_and_sections`）与 Issue 14 的真实样本覆盖，不伪造成已通过。
