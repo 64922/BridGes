@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 
 import { FormField } from "@/components/bridges/FormField";
 import { Button } from "@/components/design-system/Button";
@@ -13,12 +14,19 @@ import {
   replaceQwenCredential,
   replaceTavilyCredential,
 } from "@/lib/api";
+import {
+  AMAP_BROWSER_MAP_ANCHOR,
+  AMAP_WEB_SERVICE_ANCHOR,
+} from "@/lib/settings-links";
 
 import styles from "./KeyAndModelSettings.module.css";
 import { MainModelSettings } from "./MainModelSettings";
 import { QWEN_CREDENTIAL_FIRST_GUIDANCE, formatValidationTime } from "./qwen-settings-copy";
 
 type CredentialGroup = "qwen" | "tavily" | "amap_web_service" | "amap_browser_map";
+
+/** 可由消息卡锚点定位的分区（只认这两个固定 id，不做任意元素聚焦）。 */
+const ANCHORED_SECTIONS = [AMAP_WEB_SERVICE_ANCHOR, AMAP_BROWSER_MAP_ANCHOR];
 
 function CredentialState({ status }: { status?: CredentialStatus }) {
   if (!status) return <span className={styles.status}>读取中</span>;
@@ -32,7 +40,7 @@ function CredentialState({ status }: { status?: CredentialStatus }) {
   );
 }
 
-export function KeyAndModelSettings() {
+export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | null }) {
   const [settings, setSettings] = useState<CredentialSettingsValue | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -48,6 +56,14 @@ export function KeyAndModelSettings() {
   const [saved, setSaved] = useState<Partial<Record<CredentialGroup, boolean>>>({});
   // 密钥更新成功后主模型卡片要重新读取「密钥是否可用」。
   const [modelReloadKey, setModelReloadKey] = useState(0);
+
+  // 从消息卡带锚点跳进来时把键盘焦点移到目标凭据分区：浏览器只按锚点滚动，
+  // 焦点仍停在页首，读屏与键盘用户拿不到「已到哪一组凭据」的上下文。
+  useEffect(() => {
+    const anchor = window.location.hash.replace(/^#/, "");
+    if (!ANCHORED_SECTIONS.includes(anchor)) return;
+    document.getElementById(anchor)?.focus();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +135,13 @@ export function KeyAndModelSettings() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
+        {returnTo && (
+          <p>
+            <Link href={returnTo} className={styles.backLink} data-testid="settings-return-to-chat">
+              返回原会话
+            </Link>
+          </p>
+        )}
         <header>
           <p className={styles.eyebrow}>账户设置 · 密钥与模型</p>
           <h1 className={styles.title}>密钥与模型管理</h1>
@@ -222,11 +245,19 @@ export function KeyAndModelSettings() {
             </form>
           </section>
 
-          <section className={styles.card} aria-labelledby="amap-web-title">
+          <section
+            id={AMAP_WEB_SERVICE_ANCHOR}
+            tabIndex={-1}
+            className={styles.card}
+            aria-labelledby="amap-web-title"
+          >
             <div className={styles.cardHeader}>
               <div>
                 <h2 id="amap-web-title" className={styles.cardTitle}>高德 Web 服务</h2>
-                <p className={styles.description}>服务端路线与地理编码使用此 Key；探测只查询固定公开地址。</p>
+                <p className={styles.description}>
+                  服务端路线规划与地点查询使用此 Key；探测只查询固定公开地址。缺少它时路线与地点查询不可用，
+                  但已有路线信息不受影响，底图显示另由下方浏览器地图凭据决定。
+                </p>
               </div>
               <CredentialState status={statusFor("amap_web_service")} />
             </div>
@@ -263,12 +294,18 @@ export function KeyAndModelSettings() {
             </form>
           </section>
 
-          <section className={styles.card} aria-labelledby="amap-js-title">
+          <section
+            id={AMAP_BROWSER_MAP_ANCHOR}
+            tabIndex={-1}
+            className={styles.card}
+            aria-labelledby="amap-js-title"
+          >
             <div className={styles.cardHeader}>
               <div>
                 <h2 id="amap-js-title" className={styles.cardTitle}>高德浏览器地图</h2>
                 <p className={styles.description}>
-                  对 JS API 加载器做只读探测；安全码与 Key 的配对由地图代理请求验证。
+                  只用于在页面里显示地图底图；对 JS API 加载器做只读探测，安全码与 Key 的配对由地图代理请求验证。
+                  缺少它时底图不可用，但已取得的路线、距离、耗时与路段文字照常可用。
                 </p>
               </div>
               <CredentialState status={statusFor("amap_browser_map")} />

@@ -84,16 +84,37 @@ MODEL_CALL_ERROR_MESSAGES_ZH: dict[str, str] = {
     "invalid_response_format": "结构化输出格式参数无效，请检查任务配置。",
 }
 
+#: ``client_error_<status>`` 里语义上仍是瞬时的 HTTP 状态：408 请求超时、
+#: 429 限流。``qwen_client`` 通常已把它们分别归类为超时类错误与
+#: ``rate_limit``，只有适配器透出原始状态码时才会走到这里——这是 HTTP
+#: 状态层面的分类，不是第二套重试词表。其余 4xx 表示请求本身被服务端
+#: 拒绝（参数不兼容、内容不合规、模型不存在），重试同一个请求必然同样
+#: 失败，不得提示"稍后重试"让用户等待不可能发生的恢复（issue 04：
+#: ``min_pixels`` 参数不兼容曾被笼统展示为"稍后重试"）。
+_RETRYABLE_CLIENT_ERROR_STATUSES = frozenset({"408", "429"})
+
 
 def user_facing_model_error(code: str | None, fallback: str) -> str:
     """把模型调用稳定错误码映射为中文文案（Issue 06 第七轮：真实错误透传）。
 
-    ``client_error_<status>`` 形态按状态码生成通用文案；未映射的 code
-    使用调用方提供的回退文案，绝不把供应商原始 message 原样透传。
+    ``client_error_<status>`` 形态按状态码生成文案：4xx 里的请求拒绝与
+    瞬时状态分开措辞；未映射的 code 使用调用方提供的回退文案，绝不把
+    供应商原始 message 原样透传。
     """
     if code in MODEL_CALL_ERROR_MESSAGES_ZH:
         return MODEL_CALL_ERROR_MESSAGES_ZH[code]
     if code is not None and code.startswith("client_error_"):
         status = code.removeprefix("client_error_")
+        if (
+            status.isdigit()
+            and 400 <= int(status) < 500
+            and status not in _RETRYABLE_CLIENT_ERROR_STATUSES
+        ):
+            # 能力中立：本映射被聊天、知识库、图片、语音共用，这里不能假定
+            # 失败的是"主模型"。
+            return (
+                f"模型拒绝了本次请求（HTTP {status}），重试不会恢复；"
+                "请检查请求参数与该模型是否可用。"
+            )
         return f"模型服务返回错误（HTTP {status}），请稍后重试。"
     return fallback

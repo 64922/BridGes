@@ -9,15 +9,19 @@ const PASSWORD = "correct-horse-12";
  *
  * 原 Issue 10 E2E（录入/显示隐藏/保存/探测/重试/替换/两步删除）随密钥
  * 设置页一起删除，不得只删不验。本文件以负向断言锁定"入口不存在"：
- * 账户菜单严格为三项、设置中心无旧「密钥设置」入口、旧页面与旧 API 一律
- * 404，且整个桌面应用不再发起 /api/auth/key-settings 请求。
+ * 账户菜单没有密钥直达入口、设置中心无旧「密钥设置」入口、旧页面与旧 API
+ * 一律 404，且整个桌面应用不再发起 /api/auth/key-settings 请求。
  *
  * V2 Issue 09 按 docs/v2/interaction.md §6.3 新增「密钥与模型管理」入口
  * （/account/settings/models，全局 Qwen 凭据与主模型 ID），因此原
  * 「设置中心无任何密钥链接」断言收窄为「旧密钥设置入口不得复活」。
+ * 本轮按 SETTINGS.HOME 给账户菜单补上「设置」入口，菜单因此固定四项；
+ * 密钥仍需经设置页进入，不因此出现直达入口。
  */
 
-test("账户菜单按顺序且仅包含切换账号、个人资料、退出登录", async ({ page }) => {
+test("账户菜单按顺序包含设置、切换账号、个人资料、退出登录，且没有密钥直达入口", async ({
+  page,
+}) => {
   const creds = uniqueCredentials("gq06-menu");
   await signUp(page, creds.username, creds.qqEmail, PASSWORD);
 
@@ -26,6 +30,7 @@ test("账户菜单按顺序且仅包含切换账号、个人资料、退出登�
   });
   await trigger.click();
   await expect(page.getByRole("menuitem")).toHaveText([
+    "设置",
     "切换账号",
     "个人资料",
     "退出登录",

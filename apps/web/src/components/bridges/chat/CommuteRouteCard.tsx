@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonLink } from "@/components/design-system/ButtonLink";
 import { Icon } from "@/components/design-system/Icon";
 import type {
   CommuteBreakBuffer,
@@ -9,7 +10,18 @@ import type {
   CommuteRouteStep,
   ModuleQueryRecord,
 } from "@/lib/api";
+import {
+  AMAP_BROWSER_MAP_ANCHOR,
+  AMAP_WEB_SERVICE_ANCHOR,
+  credentialSettingsHref,
+} from "@/lib/settings-links";
 import { CommuteRouteMap } from "./CommuteRouteMap";
+
+/**
+ * 需要用户去「高德 Web 服务」凭据区处理的失败码：缺 Key 与 Key 被拒。
+ * 两者都由服务端路线查询的 Key 决定，与浏览器地图凭据无关。
+ */
+const AMAP_WEB_SERVICE_ERROR_CODES = new Set(["amap_not_configured", "amap_key_rejected"]);
 
 /** V2 Issue 12：通勤模块状态的中文标题（每条助手消息内如实显示）。 */
 const STATUS_TITLES: Record<string, string> = {
@@ -154,15 +166,21 @@ function bufferLine(buffer: CommuteBreakBuffer): string {
  * 高德基础耗时、课间缓冲与建议总时间，再给可缩放地图与路线文字，最后是本次
  * 外部调用记录与证据边界。澄清候选、失败与停止都在同一条消息内如实呈现；
  * 未取得路径点时只显示已证实的地点并说明没有画线，绝不绘制猜测路线。
+ *
+ * 缺凭据时卡内给出直达对应凭据分区的配置入口（`returnTo` 为原会话路径，
+ * 配置完可原路返回，重试仍由用户在消息上显式触发）。
  */
 export function CommuteRouteCard({
   route,
   streaming,
   onRetry,
+  returnTo = null,
 }: {
   route: CommuteRouteProjection | null;
   streaming: boolean;
   onRetry?: () => void;
+  /** 原会话路径（`/chat/<id>`），用于配置凭据后返回。 */
+  returnTo?: string | null;
 }) {
   if (!route) return null;
   const shellStyle: React.CSSProperties = {
@@ -284,6 +302,27 @@ export function CommuteRouteCard({
         </p>
       )}
 
+      {/* 缺路线 Key 与 Key 被拒时给出直达「高德 Web 服务」凭据区的配置入口：
+          路线与地点查询归这一组，底图是否可用由浏览器地图凭据单独决定。 */}
+      {failed &&
+        route.error_code != null &&
+        AMAP_WEB_SERVICE_ERROR_CODES.has(route.error_code) && (
+          <div
+            data-testid="commute-route-credential-action"
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--space-2)" }}
+          >
+            <p style={{ margin: 0, fontSize: "var(--text-xs)" }}>
+              路线与地点查询用的是「高德 Web 服务 Key」（与页面底图的「高德浏览器地图」凭据分开配置）。
+            </p>
+            <ButtonLink
+              href={credentialSettingsHref(AMAP_WEB_SERVICE_ANCHOR, returnTo)}
+              variant="secondary"
+            >
+              前往配置高德 Web 服务 Key
+            </ButtonLink>
+          </div>
+        )}
+
       {hasRoute && (
         <div>
           <p style={{ margin: 0, fontWeight: 600 }}>路线地图</p>
@@ -291,6 +330,7 @@ export function CommuteRouteCard({
             polyline={polyline}
             originLabel={origin?.name ?? null}
             destinationLabel={destination?.name ?? null}
+            browserMapSettingsHref={credentialSettingsHref(AMAP_BROWSER_MAP_ANCHOR, returnTo)}
           />
         </div>
       )}

@@ -132,8 +132,11 @@ def test_ocr_adapter_request_shape_and_model_id() -> None:
     image_part = message["content"][0]
     assert image_part["type"] == "image_url"
     assert image_part["image_url"]["url"] == "data:image/png;base64,aGVsbG8="
-    assert image_part["min_pixels"] == 3072
-    assert image_part["max_pixels"] == 8388608
+    # issue 04：像素参数是供应商可选参数，适配器不再发明默认值；调用方未给出
+    # 时不写入请求（服务端默认值对当前模型必然有效）。参数合同见
+    # tests/ai/test_image_request_contract.py。
+    assert "min_pixels" not in image_part
+    assert "max_pixels" not in image_part
 
 
 def test_ocr_adapter_uses_default_prompt_when_missing() -> None:
