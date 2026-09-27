@@ -25,6 +25,18 @@
   line-height: var(--line-height-tight);
 }
 
+/* 「返回原会话」：从通勤消息卡跳进来时的原路返回入口（不改动原会话消息）。 */
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-size);
+  /* 链接色（§设计令牌：主强调留给按钮，链接用次级强调）。 */
+  color: var(--color-accent-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .lead {
   max-width: 64ch;
   margin-top: var(--space-3);

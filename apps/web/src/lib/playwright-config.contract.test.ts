@@ -70,6 +70,24 @@ describe("Playwright webServer 数据库生命周期契约（Issue 06）", () =>
     expect(webServer!.reuseExistingServer).toBe(!Boolean(process.env.CI));
   });
 
+  it("生产构建配置只替换前端条目，且绝不复用陈旧进程（工单 02）", async () => {
+    const { default: prodConfig } = await import("../../playwright.prod.config");
+    const prodServers = (prodConfig.webServer ?? []) as WebServerEntry[];
+    expect(prodServers).toHaveLength(servers.length);
+
+    prodServers.forEach((server, index) => {
+      const dev = servers[index];
+      if (dev.command === "npm run dev") {
+        // 前端条目跑 next build 的产物（next start），端口随 PORT。
+        expect(server.command).toBe(`npm run start -- -p ${process.env.PORT || "3000"}`);
+        expect(server.reuseExistingServer).toBe(false);
+        return;
+      }
+      // 其余条目（API 的 /health/ready 与本 run 数据库等）逐字沿用主配置。
+      expect(server).toEqual(dev);
+    });
+  });
+
   it("closeout 配置同样等待 /health/ready、使用本 run 数据库且绝不复用进程", async () => {
     // closeout 配置在未指定端口时会预检默认端口占用；注入测试端口绕过。
     process.env.BRIDGES_CLOSEOUT_PORTS = "9,8,7,6,5";
