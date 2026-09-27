@@ -18,7 +18,11 @@ from typing import Any
 from bridges.ai.ports import ModelRunLockRecorder
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.contracts.ai import BusinessRef, ModelRunLock
-from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
+from bridges.contracts.chat import (
+    ChatMessageRole,
+    ChatMessageStatus,
+    ChatStreamEventKind,
+)
 from bridges.contracts.feedback import AnswerFeedback, FeedbackKind, FeedbackStatus
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
@@ -1827,6 +1831,24 @@ class ConversationRepository:
             )
             for row in rows
         ]
+
+    def has_terminal_generation_event(self, account_id: str, run_id: str) -> bool:
+        """运行上是否已有终态事件（done/error）。
+
+        终态收尾据此判重：重复收尾不改写订阅端已收到的结果，也不追加
+        第二条有效终态（游标回放因此保持单调）。
+        """
+        row = self._db.scoped(account_id).execute(
+            "SELECT 1 FROM generation_events WHERE run_id = ? AND account_id = ?"
+            " AND kind IN (?, ?) LIMIT 1",
+            (
+                run_id,
+                account_id,
+                ChatStreamEventKind.DONE.value,
+                ChatStreamEventKind.ERROR.value,
+            ),
+        ).fetchone()
+        return row is not None
 
     def claim_generation_run(
         self,

@@ -24,9 +24,10 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
+from bridges.chat.terminal import GenerationTerminal, internal_error_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
     error_is_retryable,
@@ -41,9 +42,6 @@ from bridges.contracts.chat import (
     ChatMode,
     ChatRunStatus,
     ChatStreamDeltaData,
-    ChatStreamDoneData,
-    ChatStreamErrorData,
-    ChatStreamErrorDetail,
     ChatStreamEventKind,
 )
 from bridges.contracts.projects import ObjectDomain
@@ -114,6 +112,11 @@ class GenerationRunExecutor:
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
         self._profile_extraction = profile_extraction_service
+        #: 生成终态 module（Issue 01）：执行器只提供标识与兜底结果，跨对象
+        #: 提交顺序、判重与重放都在 module 内部。
+        self._terminal = GenerationTerminal(
+            self._repo, projection=service.message_projection
+        )
         #: 最近一轮执行的中文摘要（受监督循环输出）。
         self._last_summary = "generation: 执行器就绪。"
 
@@ -274,51 +277,38 @@ class GenerationRunExecutor:
             # V2 Issue 02：本轮经日常 LangGraph 父图执行（固定节点链 +
             # 检查点持久化 + 可取消节点边界）。事件（node 进度与编排管线
             # 事件）经回调实时持久化为游标事件；停止信号沿用既有看门狗。
-            last_kind = self._service.run_graph_turn(
+            self._service.run_graph_turn(
                 run,
                 on_event=lambda event: self._persist_event(
                     account_id, run_id, run.assistant_message_id, event
                 ),
                 stop_event=stop_event,
             )
-            # turn 的停止/空产出路径不发事件：按消息终态补发诚实终态事件
-            self._ensure_terminal_event(account_id, run_id, run.assistant_message_id, last_kind)
         finally:
             heartbeat.stop()
             heartbeat.join(timeout=STOP_POLL_SECONDS + 0.5)
             self._service._lifecycle.unregister(run.assistant_message_id)  # noqa: SLF001
-        message = self._repo.get_message(account_id, run.assistant_message_id)
         duration_ms = max(1, int((time.monotonic() - started) * 1000))
-        if message is not None and message.status == ChatMessageStatus.DONE:
-            self._finalize_run(
-                account_id, run_id, ChatRunStatus.DONE.value, None, None, duration_ms
-            )
-            self._last_summary = f"generation: 运行 {run_id} 完成。"
-        elif message is not None and message.status == ChatMessageStatus.STOPPED:
-            self._finalize_run(
-                account_id, run_id, ChatRunStatus.STOPPED.value, None, None, duration_ms
-            )
-            self._last_summary = f"generation: 运行 {run_id} 已停止。"
-        elif message is not None:
-            self._finalize_run(
-                account_id,
-                run_id,
-                ChatRunStatus.FAILED.value,
-                message.error_code or "internal_error",
-                message.error_message or "生成过程出现内部错误，请重试。",
-                duration_ms,
-            )
-            self._last_summary = f"generation: 运行 {run_id} 失败（{message.error_code}）。"
-        else:
-            self._finalize_run(
-                account_id,
-                run_id,
-                ChatRunStatus.FAILED.value,
-                "internal_error",
-                "生成过程出现内部错误，请重试。",
-                duration_ms,
-            )
-            self._last_summary = f"generation: 运行 {run_id} 消息缺失，按失败收敛。"
+        # 共同终态 module（Issue 01）：结果从已提交消息派生，终态事件与运行
+        # 状态按固定顺序补齐；turn 的停止/空产出路径不发终态事件，残留
+        # streaming 由兜底结果收敛。重复收尾不改写已提交结果。
+        commit = self._terminal.converge(
+            account_id,
+            run_id,
+            run.assistant_message_id,
+            fallback=internal_error_outcome(),
+            run_duration_ms=duration_ms,
+        )
+        label = {
+            ChatMessageStatus.DONE: "完成",
+            ChatMessageStatus.STOPPED: "已停止",
+        }.get(commit.outcome.status, "失败")
+        suffix = (
+            f"（{commit.outcome.error_code}）"
+            if commit.outcome.status == ChatMessageStatus.ERROR
+            else ""
+        )
+        self._last_summary = f"generation: 运行 {run_id} {label}{suffix}。"
         self._queue.complete(claim)
 
     # ------------------------------------------------------------------
@@ -339,7 +329,7 @@ class GenerationRunExecutor:
                 message_id=message_id, delta=event.delta
             ).model_dump(mode="json")
         elif kind == "error":
-            payload = self._error_event_payload(
+            payload = self._terminal.error_payload(
                 account_id,
                 message_id,
                 code=event.error_code or "generation_failed",
@@ -347,10 +337,7 @@ class GenerationRunExecutor:
                 retryable=error_is_retryable(event.error_code),
             )
         elif kind == "done":
-            final = self._service.message_projection(account_id, message_id)
-            payload = ChatStreamDoneData(
-                message_id=message_id, message=final
-            ).model_dump(mode="json")
+            payload = self._terminal.done_payload(account_id, message_id)
         else:
             data = getattr(event, kind, None)
             if data is None:
@@ -359,95 +346,6 @@ class GenerationRunExecutor:
         self._repo.append_generation_event(
             account_id, run_id, kind, payload, datetime.now(UTC)
         )
-
-    def _ensure_terminal_event(
-        self,
-        account_id: str,
-        run_id: str,
-        message_id: str,
-        last_kind: str | None,
-    ) -> None:
-        """turn 未产出终态事件时按消息终态补发（停止/空产出路径）。"""
-        if last_kind in {ChatStreamEventKind.DONE.value, ChatStreamEventKind.ERROR.value}:
-            return
-        message = self._repo.get_message(account_id, message_id)
-        if message is None:
-            return
-        if message.status == ChatMessageStatus.DONE:
-            final = self._service.message_projection(account_id, message_id)
-            payload = ChatStreamDoneData(
-                message_id=message_id, message=final
-            ).model_dump(mode="json")
-            self._repo.append_generation_event(
-                account_id, run_id, ChatStreamEventKind.DONE.value, payload, datetime.now(UTC)
-            )
-        elif message.status == ChatMessageStatus.STOPPED:
-            self._append_error_event(
-                account_id,
-                run_id,
-                message_id,
-                code="stopped",
-                message="生成已停止。",
-                retryable=True,
-            )
-        elif message.status == ChatMessageStatus.ERROR:
-            self._append_error_event(
-                account_id,
-                run_id,
-                message_id,
-                code=message.error_code or "generation_failed",
-                message=message.error_message or "生成失败，请稍后重试。",
-                retryable=error_is_retryable(message.error_code),
-            )
-        else:
-            # 消息仍残留 streaming（执行器兜底路径）：收敛为可重试错误
-            conversation = self._repo.get_conversation(account_id, message.conversation_id)
-            mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-            finalize_message(
-                self._repo,
-                account_id,
-                message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code="internal_error",
-                error_message="生成过程出现内部错误，请重试。",
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=time.monotonic(),
-                now=datetime.now(UTC),
-                thinking=failed_thinking(initial_thinking(mode), "internal_error"),
-            )
-            self._append_error_event(
-                account_id,
-                run_id,
-                message_id,
-                code="internal_error",
-                message="生成过程出现内部错误，请重试。",
-                retryable=True,
-            )
-
-    def _error_event_payload(
-        self,
-        account_id: str,
-        message_id: str,
-        *,
-        code: str,
-        message: str,
-        retryable: bool,
-    ) -> dict[str, Any]:
-        """构造 error 事件载荷（执行器各终态路径共用，保留思考/耗时/投影）。"""
-        final = self._service.message_projection(account_id, message_id)
-        return ChatStreamErrorData(
-            message_id=message_id,
-            error=ChatStreamErrorDetail(
-                code=code, message=message, retryable=retryable
-            ),
-            thinking=final.thinking if final is not None else None,
-            duration_ms=final.duration_ms if final is not None else None,
-            web_search=final.web_search if final is not None else None,
-            arxiv_search=final.arxiv_search if final is not None else None,
-            teaching=final.teaching if final is not None else None,
-        ).model_dump(mode="json")
 
     def _append_error_event(
         self,
@@ -459,7 +357,7 @@ class GenerationRunExecutor:
         message: str,
         retryable: bool,
     ) -> None:
-        payload = self._error_event_payload(
+        payload = self._terminal.error_payload(
             account_id, message_id, code=code, message=message, retryable=retryable
         )
         self._repo.append_generation_event(
