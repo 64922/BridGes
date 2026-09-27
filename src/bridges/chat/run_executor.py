@@ -27,7 +27,12 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
-from bridges.chat.terminal import GenerationTerminal, internal_error_outcome
+from bridges.chat.terminal import (
+    STOPPED_CODE,
+    STOPPED_MESSAGE,
+    GenerationTerminal,
+    internal_error_outcome,
+)
 from bridges.chat.turn import (
     CHAT_MODE,
     error_is_retryable,
@@ -407,8 +412,8 @@ class GenerationRunExecutor:
             run.account_id,
             run.run_id,
             run.assistant_message_id,
-            code="stopped",
-            message="生成已停止。",
+            code=STOPPED_CODE,
+            message=STOPPED_MESSAGE,
             retryable=True,
         )
         self._finalize_run(

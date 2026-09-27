@@ -14,12 +14,15 @@
    已终态的消息不会被改写（含并发收尾中先提交者的结果）。
 2. **提交顺序固定：消息 → 终态事件 → 运行。** 事件先于运行，因为订阅端点
    以运行终态判断结束——运行先终态会让最后一次回放读不到终态事件；运行
-   放在最后，因为它是三者中唯一可由消息重算的对象。
+   放在最后，因为它是三者中唯一可由消息重算的对象。唯一例外是消息已被
+   删除的竞态：没有消息就没有可投影的终态，此时只收敛运行、不补发事件
+   （该运行没有订阅者会等待它的终态事件）。
 3. **每一步都有持久守卫，因此部分提交可恢复。** 消息仅 streaming→终态、
-   终态事件每个运行至多一条、运行仅 queued/running→终态。任一步失败留下的
-   残留（消息已终态而事件或运行缺失）都是可修复形态：重放同一收尾操作会
-   补齐缺失部分，不改写已提交结果。调用者因此无需猜测顺序，也不需要把
-   三个对象放进同一个事务。
+   终态事件每个运行至多一条（判重与插入在同一事务内，并发收尾最多一条
+   生效）、运行仅 queued/running→终态。任一步失败留下的残留（消息已终态
+   而事件或运行缺失）都是可修复形态：重放同一收尾操作会补齐缺失部分，
+   不改写已提交结果。调用者因此无需猜测顺序，也不需要把三个对象放进
+   同一个事务。
 4. **提交故障后不得出现互相矛盾的终态。** 失败只会留下「尚未补齐」的
    形态（未完成的运行），不会留下与已提交消息相冲突的终态事件或运行状态。
 5. 只决定执行结果，不评估产物可信状态；不接管领取、续租、模型生成与事件
@@ -36,6 +39,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from bridges.chat.turn import (
+    CHAT_MODE,
     done_thinking,
     error_is_retryable,
     failed_thinking,
@@ -58,13 +62,11 @@ from bridges.contracts.chat import (
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository, MessageRecord
 
-#: 残留 streaming 消息的兜底错误码（与现行内部错误合同一致）。
+#: 残留 streaming 消息或缺错误码时的兜底错误码（与现行内部错误合同一致）。
 INTERNAL_ERROR_CODE = "internal_error"
 #: 停止收敛的稳定码与中文原因（停止事件沿用既有 error 传输种类与文案）。
 STOPPED_CODE = "stopped"
 STOPPED_MESSAGE = "生成已停止。"
-#: 无法从消息记录读取错误码时的兜底（不应发生：失败消息必带稳定码）。
-DEFAULT_ERROR_CODE = "generation_failed"
 
 
 class TerminalConvergeError(RuntimeError):
@@ -92,7 +94,7 @@ class TerminalOutcome:
                 error_message=STOPPED_MESSAGE,
                 duration_ms=message.duration_ms,
             )
-        code = message.error_code or DEFAULT_ERROR_CODE
+        code = message.error_code or INTERNAL_ERROR_CODE
         return cls(
             status=ChatMessageStatus.ERROR,
             error_code=code,
@@ -302,20 +304,18 @@ class GenerationTerminal:
         message_id: str,
         outcome: TerminalOutcome,
     ) -> int | None:
-        """补齐终态事件；已有终态事件或运行不存在时不追加。"""
-        if self._repo.has_terminal_generation_event(account_id, run_id):
-            return None
+        """补齐终态事件（判重与插入同事务）；运行不存在时返回 None。"""
         if outcome.status == ChatMessageStatus.DONE:
             payload = self.done_payload(account_id, message_id)
         else:
             payload = self.error_payload(
                 account_id,
                 message_id,
-                code=outcome.error_code or DEFAULT_ERROR_CODE,
+                code=outcome.error_code or INTERNAL_ERROR_CODE,
                 message=outcome.error_message or user_facing_error(outcome.error_code),
                 retryable=outcome.retryable,
             )
-        seq = self._repo.append_generation_event(
+        seq = self._repo.append_terminal_generation_event(
             account_id, run_id, outcome.event_kind, payload, datetime.now(UTC)
         )
         return seq or None
@@ -343,5 +343,6 @@ class GenerationTerminal:
         )
 
     def _mode_of(self, message: MessageRecord) -> ChatMode:
+        """消息所属对话的当前模式（思考摘要按模式派生；缺对话用默认模式）。"""
         conversation = self._repo.get_conversation(message.account_id, message.conversation_id)
-        return ChatMode(conversation.mode) if conversation is not None else ChatMode.COMPANION
+        return ChatMode(conversation.mode) if conversation is not None else CHAT_MODE

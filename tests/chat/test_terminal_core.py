@@ -317,7 +317,7 @@ def test_event_commit_fault_leaves_recoverable_state_and_replays(
     def _unwritable(*args: Any, **kwargs: Any) -> int:
         raise StorageError("数据库当前不可写，请稍后重试或检查数据目录权限。")
 
-    monkeypatch.setattr(repo, "append_generation_event", _unwritable)
+    monkeypatch.setattr(repo, "append_terminal_generation_event", _unwritable)
     with pytest.raises(StorageError):
         _terminal(sqlite_app).converge(account["id"], run_id, message_id)
 
@@ -406,6 +406,42 @@ def test_converge_isolates_runs_and_accounts(
     )
     assert repo.get_generation_run(other_account["id"], other["run_id"]).status == "queued"
     assert _terminal_kinds(sqlite_app, other_account["id"], other["run_id"]) == []
+
+
+def test_concurrent_terminal_append_keeps_single_terminal_event(
+    sqlite_app: Any, client: TestClient
+) -> None:
+    """并发补齐同一运行的终态事件：判重与插入同事务，最多一条生效。"""
+    account = _register(client, "70")
+    conversation_id = _create_conversation(client)
+    created = _send(client, conversation_id, "并发收尾")
+    message_id = created["assistant_message"]["message_id"]
+    run_id = created["run_id"]
+    repo = _repo(sqlite_app)
+    _commit_success_message(repo, account["id"], message_id)
+    terminal = _terminal(sqlite_app)
+    barrier = threading.Barrier(4)
+    results: list[Any] = []
+    lock = threading.Lock()
+
+    def _converge() -> None:
+        barrier.wait(timeout=10)
+        commit = terminal.converge(account["id"], run_id, message_id)
+        with lock:
+            results.append(commit)
+
+    threads = [threading.Thread(target=_converge) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+
+    assert len(results) == 4
+    assert all(commit.outcome.status == ChatMessageStatus.DONE for commit in results)
+    assert sum(1 for commit in results if commit.event_seq is not None) == 1
+    assert sum(1 for commit in results if commit.run_committed) == 1
+    assert _terminal_kinds(sqlite_app, account["id"], run_id) == ["done"]
+    assert repo.get_generation_run(account["id"], run_id).status == "done"
 
 
 def test_stopped_message_derives_stopped_terminal(
