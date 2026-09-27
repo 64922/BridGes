@@ -449,6 +449,103 @@ def test_rate_limit_stops_inspection_and_keeps_partial_evidence() -> None:
     assert not any("second/contents" in path for path in calls)
 
 
+def test_readme_evidence_comes_before_extra_verification_for_every_candidate() -> None:
+    """读取顺序：先把「足以判断相关性」的 README 取齐，再做额外文件核查。
+
+    额度是这一来源的常态：先取相关性证据，撞上额度时前面读到的候选仍带着
+    README 返回，而不是把额度先花在某个候选的许可与实现文件上。
+    """
+    calls: list[str] = []
+    readme = {
+        "content": base64.b64encode("# 多智能体协作框架".encode()).decode(),
+        "encoding": "base64",
+        "path": "README.md",
+        "html_url": "https://github.com/demo/first/blob/main/README.md",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(path)
+        if path.endswith("/readme"):
+            return httpx.Response(200, json=readme, headers=_rate_limit_headers(2))
+        if "first" in path:
+            return httpx.Response(
+                403,
+                json={"message": "API rate limit exceeded"},
+                headers=_rate_limit_headers(0),
+            )
+        return httpx.Response(500, json={}, headers=_rate_limit_headers(0))
+
+    reader = GithubRepositoryReader(GithubApiClient(client=_client(handler)))
+    outcome = reader.inspect_candidates(
+        "account-1", [_candidate("demo/first"), _candidate("demo/second")]
+    )
+
+    # 先给两个候选各取一次 README，再回头给第一个候选补根目录清单。
+    assert calls == [
+        "/repos/demo/first/readme",
+        "/repos/demo/second/readme",
+        "/repos/demo/first/contents",
+    ]
+    assert [item.full_name for item in outcome.evidence] == ["demo/first", "demo/second"]
+    assert all(item.readme_status is GithubReadmeStatus.READ for item in outcome.evidence)
+    assert outcome.rate_limited is True
+    # 额外核查没做完的候选带上标记（由投影如实说明，不升级成实现证据）。
+    assert all(item.rate_limited for item in outcome.evidence)
+    assert outcome.reset_at is not None
+
+
+def test_recovery_time_is_carried_out_when_the_quota_runs_out() -> None:
+    """额度用尽时把上游给出的重置时刻带回：只提示已知时间，不自己编造。"""
+    reset_epoch = 4102444800
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            403,
+            json={"message": "API rate limit exceeded"},
+            headers=_rate_limit_headers(0, reset=reset_epoch),
+        )
+
+    adapter = GithubApiSearchAdapter(GithubApiClient(client=_client(handler)))
+    search = adapter.search_repositories("account-1", query="智能体", reason="测试")
+
+    assert search.record.status is ModuleQueryStatus.RATE_LIMITED
+    assert search.reset_at == datetime.fromtimestamp(reset_epoch, tz=UTC)
+
+    reader = GithubRepositoryReader(GithubApiClient(client=_client(handler)))
+    outcome = reader.inspect_candidates("account-1", [_candidate("demo/first")])
+
+    assert outcome.rate_limited is True
+    assert outcome.reset_at == datetime.fromtimestamp(reset_epoch, tz=UTC)
+
+
+def test_retry_before_the_reset_sends_no_further_requests() -> None:
+    """额度未恢复前的重试不再外发：直接给可重试结论与已知恢复时间。"""
+    calls: list[str] = []
+    reset_epoch = 4102444800
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(
+            403,
+            json={"message": "API rate limit exceeded"},
+            headers=_rate_limit_headers(0, reset=reset_epoch),
+        )
+
+    reader = GithubRepositoryReader(GithubApiClient(client=_client(handler)))
+    first = reader.inspect_candidates("account-1", [_candidate("demo/first")])
+    sent = len(calls)
+    second = reader.inspect_candidates("account-1", [_candidate("demo/first")])
+
+    assert first.rate_limited is True
+    assert sent == 1
+    assert len(calls) == sent  # 重试没有再发请求
+    assert second.rate_limited is True
+    assert second.evidence == []
+    assert second.reset_at == datetime.fromtimestamp(reset_epoch, tz=UTC)
+
+
 def test_inspection_is_bounded_by_candidate_and_read_limits() -> None:
     """读取数量有界：候选数与每个仓库的实现文件读取数都有上限。"""
     readme = {

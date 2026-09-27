@@ -331,13 +331,12 @@ class GithubApiClient:
         if reset is None and bucket in self._reset_at:
             reset = datetime.fromtimestamp(self._reset_at[bucket], tz=UTC)
         self._limited.add(bucket)
-        when = f"（额度将于 {reset.isoformat()} 前后重置）" if reset else ""
         outcome = GithubResponse(
             path=path,
             status_code=status_code,
             payload=None,
             error_code="github_rate_limit",
-            error_message=f"GitHub 接口额度已用尽，本轮不再继续请求{when}，稍后可重试。",
+            error_message="GitHub 接口额度已用尽，本轮不再继续请求；稍后可重试。",
             retryable=True,
             bucket=bucket,
             remaining=remaining if remaining is not None else 0,

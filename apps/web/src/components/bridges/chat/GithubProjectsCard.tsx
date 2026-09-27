@@ -61,6 +61,16 @@ function formatTime(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
 }
 
+/** 额度受限时的标题要点明「只给了已核实部分」，与投影状态和重试能力一致。 */
+function titleFor(projects: GithubProjectsProjection): string {
+  const base = STATUS_TITLES[projects.status] ?? "GitHub 项目推荐";
+  const partial =
+    projects.rate_limit?.limited === true &&
+    projects.status !== "error" &&
+    projects.status !== "clarification";
+  return partial ? `${base}（上游额度受限，结果为已核实部分）` : base;
+}
+
 /** 单条要点的匹配结论：命中就附证据等级与原文窗口，未命中就说未命中。 */
 function FeatureMatchRow({ match }: { match: GithubFeatureMatch }) {
   const terms = match.matched_terms ?? [];
@@ -291,14 +301,20 @@ function RejectedRow({ item }: { item: GithubRejectedRepository }) {
 
 function RateLimitNote({ rateLimit }: { rateLimit: GithubRateLimitState }) {
   if (!rateLimit.limited && !rateLimit.note) return null;
-  // 只给「是否撞上 + 面向用户的说明」：剩余额度与重置时刻是检索内部日志
-  // （interaction.md §4），不呈现。
+  // 只给「是否撞上 + 面向用户的说明 + 上游给出的恢复时间」：剩余额度是检索内部
+  // 日志（interaction.md §4），不呈现；恢复时间按本地时区显示，上游没给就不编造。
+  const recovery = rateLimit.limited
+    ? rateLimit.reset_at
+      ? `（预计 ${formatTime(rateLimit.reset_at)} 恢复，稍后可重试）`
+      : "（上游没有给出恢复时间，稍后可重试）"
+    : "";
   return (
     <span
       data-testid="github-rate-limit"
       style={{ fontSize: "var(--text-xs)", color: "var(--color-status-wait)" }}
     >
       上游额度：{rateLimit.note ?? "本轮触发上游限流。"}
+      {recovery}
     </span>
   );
 }
@@ -360,7 +376,7 @@ export function GithubProjectsCard({
         <strong
           style={{ color: failed ? "var(--color-status-error)" : "var(--color-text-primary)" }}
         >
-          {STATUS_TITLES[projects.status] ?? "GitHub 项目推荐"}
+          {titleFor(projects)}
         </strong>
         {projects.status === "success" && (
           <span

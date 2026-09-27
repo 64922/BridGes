@@ -306,12 +306,18 @@ class GithubRecommendation(BaseModel):
 class GithubRateLimitState(BaseModel):
     """上游限流的真实状态（额度用尽时保留可重试结论）。
 
-    只给出「是否撞上」与面向用户的说明：剩余额度与重置时刻属于检索内部日志
-    （``docs/v2/interaction.md`` §4），不进入投影，也不呈现给用户。
+    只给出「是否撞上」、面向用户的说明与**上游给出的**重置时刻（按本地时区
+    呈现，便于用户判断何时重试）；剩余额度属于检索内部日志
+    （``docs/v2/interaction.md`` §4），不进入投影。上游没给重置时刻时
+    ``reset_at`` 为 None——呈现侧如实说「没有给出恢复时间」，不自己推一个。
     """
 
     limited: bool = Field(default=False, description="本轮是否真的撞上额度限制。")
     note: str | None = Field(default=None, description="面向用户的中文说明。")
+    reset_at: datetime | None = Field(
+        default=None,
+        description="上游给出的额度恢复时间（UTC 时刻，呈现时转本地时区）；未知为 None。",
+    )
 
 
 class GithubProjectsProjection(BaseModel):

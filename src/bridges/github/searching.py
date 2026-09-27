@@ -39,11 +39,12 @@ MIN_WHOLE_RESULTS = 3
 
 @dataclass(frozen=True)
 class SearchOutcome:
-    """一次检索调用的结果：统一查询记录与候选。"""
+    """一次检索调用的结果：统一查询记录、候选与已知的额度恢复时间。"""
 
     query: str
     candidates: list[GithubRepositoryCandidate]
     record: ModuleQueryRecord
+    reset_at: datetime | None = None
 
 
 class GithubSearchPort(Protocol):
@@ -171,6 +172,7 @@ class GithubApiSearchAdapter:
                     error_message=response.error_message,
                     retryable=response.retryable,
                 ),
+                reset_at=response.reset_at if response.rate_limited else None,
             )
         items = (response.payload or {}).get("items") or []
         candidates = [

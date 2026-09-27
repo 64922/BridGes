@@ -251,7 +251,8 @@ describe("GithubProjectsCard（V2 Issue 16）", () => {
     );
   });
 
-  it("限流时只给「是否撞上 + 面向用户的说明」，不暴露剩余额度等内部计数", () => {
+  it("限流时给「是否撞上 + 说明 + 已知恢复时间」，不暴露剩余额度等内部计数", () => {
+    const resetAt = "2026-09-27T13:45:00Z";
     render(
       <GithubProjectsCard
         projects={projection({
@@ -260,15 +261,39 @@ describe("GithubProjectsCard（V2 Issue 16）", () => {
           rate_limit: {
             limited: true,
             note: "仓库读取额度已用尽，本轮只展示已取得的证据。",
+            reset_at: resetAt,
           },
         })}
         streaming={false}
       />
     );
-    const note = screen.getByTestId("github-rate-limit").textContent;
+    const note = screen.getByTestId("github-rate-limit").textContent ?? "";
     expect(note).toContain("仓库读取额度已用尽");
     expect(note).not.toContain("检索剩余");
-    expect(note).not.toContain("重置于");
+    // 恢复时间按本地时区呈现（与时间戳本身的时区无关）。
+    const localTime = new Date(resetAt).toLocaleString("zh-CN");
+    expect(note).toContain(localTime);
+    expect(note).toContain("恢复");
+    // 受限时标题说明只给了已核实部分，与投影状态一致。
+    expect(screen.getByTestId("github-projects-card-metadata_only").textContent).toContain(
+      "上游额度受限，结果为已核实部分"
+    );
+  });
+
+  it("上游没给恢复时间时不编造，只说明额度已用尽", () => {
+    render(
+      <GithubProjectsCard
+        projects={projection({
+          status: "success",
+          recommendations: [recommendation],
+          rate_limit: { limited: true, note: "本轮撞上 GitHub 接口额度限制。" },
+        })}
+        streaming={false}
+      />
+    );
+    const note = screen.getByTestId("github-rate-limit").textContent ?? "";
+    expect(note).toContain("上游没有给出恢复时间");
+    expect(note).not.toContain("预计");
   });
 
   it("失败时显示错误码与重试按钮，点击回调把重试请求交回上层", () => {
