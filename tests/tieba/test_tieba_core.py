@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+from bridges.contracts.modules import ModuleQueryStatus
 from bridges.tieba.contracts import (
     ReadStatus,
     TiebaPostProjection,
@@ -23,13 +26,19 @@ from bridges.tieba.presenting import (
     render_result_content,
 )
 from bridges.tieba.searching import (
+    REJECT_NOT_A_THREAD,
     REJECT_OTHER_FORUM_HEADER,
     REJECT_OTHER_FORUM_TITLE,
     canonical_url,
     classify_hits,
+    classify_hits_with_diagnostics,
     plan_queries,
 )
-from bridges.tieba.service import _apply_time_condition, _time_filter_state
+from bridges.tieba.service import (
+    _apply_time_condition,
+    _official_candidates,
+    _time_filter_state,
+)
 
 
 def test_module_only_question_asks_one_clarification() -> None:
@@ -74,6 +83,50 @@ def test_query_words_keep_original_terms_and_host_hint() -> None:
     assert queries[0] == "tieba.baidu.com 华东交通大学吧 转专业 条件"
     assert "转专业" in queries[0] and "条件" in queries[0]
     assert queries[1].endswith("贴吧")
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # 复现原句：原实现把「中」当结构词删掉，产出「放假、秋节」这样的错词。
+        ("中秋节放假", ["放假", "中秋节"]),
+        ("华东交通大学吧 中秋节 放假 安排", ["放假", "中秋节", "安排"]),
+        ("宿舍 上铺 下铺 尺寸", ["宿舍", "上铺", "下铺", "尺寸"]),
+        ("食堂 中午 排队吗", ["食堂", "中午", "排队"]),
+        ("宿舍 外语 四级 报名", ["报名", "宿舍", "外语", "四级"]),
+        ("家里 打钱 到账 要多久", ["家里", "打钱", "到账", "多久"]),
+        ("校内 下课后 有 热水 吗", ["热水", "校内", "下课后"]),
+    ],
+)
+def test_topic_terms_keep_real_phrases_containing_positional_chars(
+    question: str, expected: list[str]
+) -> None:
+    """方位类单字（中／上／下／里／内／外）是真实名词的成分，不能按字删除。
+
+    「中秋节」被删成「秋节」不是节日特例，而是按字删结构词的通病：同样会
+    把「上铺／下铺／中午／外语／家里」拆掉。这里逐个钉住原始名词。
+    """
+    analysis = parse_tieba_request(question)
+
+    # 同长度词的先后顺序由集合遍历决定，这里比较词集本身。
+    assert sorted(analysis.topic_terms) == sorted(expected)
+    # 检索查询词逐字带上原始名词，不含被拆剩的半截词。
+    for query in plan_queries(analysis):
+        assert "秋节" not in query.split()
+        for term in expected:
+            if term in question:
+                assert term in query
+
+
+def test_holiday_question_requests_official_check_without_inventing_a_year() -> None:
+    """放假安排走官方核验路径，且不凭空补年份（原句没有年份就保持没有）。"""
+    analysis = parse_tieba_request("华东交通大学吧 中秋节放假")
+
+    assert analysis.needs_official_check is True
+    assert "放假" in analysis.official_topics
+    assert analysis.time_requirement is None
+    assert analysis.time_year is None
+    assert all("20" not in query for query in plan_queries(analysis))
 
 
 def test_thread_urls_are_canonicalised() -> None:
@@ -148,8 +201,8 @@ def test_sentence_title_ending_with_forum_mention_is_not_rejected() -> None:
     assert len(kept) == 1
 
 
-def test_non_thread_and_duplicate_urls_are_dropped() -> None:
-    """用户主页与热点页不是帖子；同一帖子的多种链接只留一条。"""
+def test_non_thread_and_duplicate_urls_are_diagnosed() -> None:
+    """用户主页与热点页不是帖子：留下剔除依据；同一帖子的多种链接只留一条。"""
     hits = (
         TiebaSearchHit(
             url="https://nani.baidu.com/home/main?id=tb.1.ce8f0206",
@@ -172,10 +225,19 @@ def test_non_thread_and_duplicate_urls_are_dropped() -> None:
             snippet="",
         ),
     )
-    kept, rejected = classify_hits(hits)
+    kept, rejected, diagnostics = classify_hits_with_diagnostics(hits)
 
-    assert rejected == ()
     assert [hit.url for hit in kept] == ["https://tieba.baidu.com/p/10745250786"]
+    assert [item.evidence for item in rejected] == [
+        REJECT_NOT_A_THREAD,
+        REJECT_NOT_A_THREAD,
+    ]
+    assert diagnostics.raw_hits == 4
+    assert diagnostics.not_a_thread == 2
+    assert diagnostics.duplicate == 1
+    assert diagnostics.usable == 1
+    # 兼容入口返回同样两组结果（他吧剔除同样计数准确）。
+    assert classify_hits(hits) == (kept, rejected)
 
 
 def _post(
@@ -326,3 +388,84 @@ def test_render_result_content_states_read_scope() -> None:
     assert "楼层 1–9" in content
     assert post.url in content
     assert REPLIES_NOT_OBTAINED not in content
+
+
+def test_official_candidates_prefer_topical_current_year_pages() -> None:
+    """官方候选排序：标题点题且带当前年份的通知排前面，旧活动报道不占首位。"""
+    from bridges.tieba.searching import SearchOutcome, query_record
+
+    outcome = SearchOutcome(
+        record=query_record(
+            query="site:ecjtu.edu.cn 华东交通大学 放假 中秋节",
+            status=ModuleQueryStatus.SUCCESS,
+            evidence_count=3,
+        ),
+        hits=(
+            TiebaSearchHit(
+                url="https://jxjy.ecjtu.edu.cn/info/1058/2190.htm",
+                title="国庆悦赏山河美，花式表白我的国｜红色景点打卡来啦！",
+                snippet="",
+            ),
+            TiebaSearchHit(
+                url="https://lib.ecjtu.edu.cn",
+                title="华东交通大学图书馆",
+                snippet="",
+            ),
+            TiebaSearchHit(
+                url="https://lib.ecjtu.edu.cn/info/1076/7501.htm",
+                title="关于2026年中秋节国庆节假期图书馆开放安排的通知",
+                snippet="",
+            ),
+            TiebaSearchHit(
+                url="https://www.zhihu.com/question/1",
+                title="非官方域名不参与",
+                snippet="",
+            ),
+        ),
+        candidates=(),
+        rejected=(),
+    )
+
+    ordered = _official_candidates(outcome, ("放假", "中秋节"), current_year=2026)
+
+    assert ordered[0] == "https://lib.ecjtu.edu.cn/info/1076/7501.htm"
+    assert "https://www.zhihu.com/question/1" not in ordered
+
+
+def test_empty_state_still_shows_official_check_section() -> None:
+    """空态（贴吧没有可用帖子）也要给出官方核验结果，且与吧友讨论分列。"""
+    from bridges.tieba.contracts import (
+        TiebaOfficialCheck,
+        TiebaResearchProjection,
+        TiebaResearchStatus,
+        TiebaTimeFilter,
+    )
+
+    projection = TiebaResearchProjection(
+        status=TiebaResearchStatus.EMPTY,
+        topic="放假 中秋节",
+        original_question="中秋节放假",
+        topic_terms=["放假", "中秋节"],
+        time_filter=TiebaTimeFilter(
+            requirement=None, year=None, applied=False, note="本轮问题没有提出时间条件。"
+        ),
+        official_check_requested=True,
+        official_checks=[
+            TiebaOfficialCheck(
+                title="关于2026年中秋节国庆节假期图书馆开放安排的通知",
+                url="https://lib.ecjtu.edu.cn/info/1076/7501.htm",
+                host="lib.ecjtu.edu.cn",
+                fetched_at=datetime(2026, 9, 27, tzinfo=UTC),
+                status="verified",
+                excerpt="中秋节国庆节假期图书馆开放安排：10 月 1 日至 7 日闭馆。",
+                matched_terms=["中秋节"],
+            )
+        ],
+        empty_reason="共取得 5 条原始搜索结果（非帖子链接 5 条），没有可确认属于该吧的帖子。",
+    )
+
+    content = render_empty_content(projection)
+
+    assert "共取得 5 条原始搜索结果" in content
+    assert "官方原文摘录" in content
+    assert "不能替代官方规定" in content

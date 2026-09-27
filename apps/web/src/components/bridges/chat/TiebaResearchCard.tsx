@@ -139,19 +139,19 @@ function PostRow({ post }: { post: TiebaPostProjection }) {
   );
 }
 
-/** 仅有搜索摘要的帖链：明确标注归属未确认。 */
+/** 仅有搜索摘要的帖链：逐条展示未确认归属的具体原因（页面不可读／未读取）。 */
 function CandidateLinkRow({ link }: { link: TiebaCandidateLink }) {
   return (
     <li style={{ color: "var(--color-text-secondary)" }}>
       <a href={link.url} target="_blank" rel="noreferrer">
         {link.title || link.url}
       </a>
-      <span style={{ color: "var(--color-status-wait)" }}> · 归属未确认（仅有搜索摘要）</span>
+      <span style={{ color: "var(--color-status-wait)" }}> · {link.source}</span>
     </li>
   );
 }
 
-/** 被剔除的候选：他吧同名帖与剔除依据（不静默丢弃）。 */
+/** 被剔除的候选：非帖子链接与他吧证据的剔除依据（不静默丢弃）。 */
 function RejectedRow({ candidate }: { candidate: TiebaRejectedCandidate }) {
   return (
     <li style={{ color: "var(--color-text-tertiary)" }}>
@@ -409,7 +409,7 @@ export function TiebaResearchCard({
       {rejected.length > 0 && (
         <div>
           <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            已剔除的候选（其他贴吧的同名帖）
+            已剔除的候选（每条附剔除依据）
           </p>
           <ul
             data-testid="tieba-rejected-candidates"

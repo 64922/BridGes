@@ -51,6 +51,28 @@ CANONICAL_THREAD_URL = "https://tieba.baidu.com/p/{thread_id}"
 #: 归属剔除原因（稳定文案，测试与前端都依赖）。
 REJECT_OTHER_FORUM_HEADER = "搜索摘要里的页面吧头指向其他贴吧"
 REJECT_OTHER_FORUM_TITLE = "搜索结果标题就是其他贴吧的名称"
+REJECT_NOT_A_THREAD = "搜索结果不是帖子页面链接"
+
+
+@dataclass(frozen=True)
+class HitDiagnostics:
+    """候选判定的脱敏计数：原始命中数不等于可读候选数，更不等于确认帖数。"""
+
+    raw_hits: int = 0
+    not_a_thread: int = 0
+    other_forum: int = 0
+    duplicate: int = 0
+    usable: int = 0
+
+    def merged(self, other: HitDiagnostics) -> HitDiagnostics:
+        """多轮检索的计数合并（逐轮说明由调用方另外记录）。"""
+        return HitDiagnostics(
+            raw_hits=self.raw_hits + other.raw_hits,
+            not_a_thread=self.not_a_thread + other.not_a_thread,
+            other_forum=self.other_forum + other.other_forum,
+            duplicate=self.duplicate + other.duplicate,
+            usable=self.usable + other.usable,
+        )
 
 
 @dataclass(frozen=True)
@@ -61,6 +83,7 @@ class SearchOutcome:
     hits: tuple[TiebaSearchHit, ...]
     candidates: tuple[TiebaSearchHit, ...]
     rejected: tuple[TiebaRejectedCandidate, ...]
+    diagnostics: HitDiagnostics = HitDiagnostics()
 
 
 class TiebaSearchPort(Protocol):
@@ -104,15 +127,41 @@ def classify_hits(
     hits: tuple[TiebaSearchHit, ...],
 ) -> tuple[tuple[TiebaSearchHit, ...], tuple[TiebaRejectedCandidate, ...]]:
     """按可得证据分组：可保留的候选与被他吧证据排除的候选。"""
+    kept, rejected, _ = classify_hits_with_diagnostics(hits)
+    return kept, rejected
+
+
+def classify_hits_with_diagnostics(
+    hits: tuple[TiebaSearchHit, ...],
+) -> tuple[
+    tuple[TiebaSearchHit, ...],
+    tuple[TiebaRejectedCandidate, ...],
+    HitDiagnostics,
+]:
+    """同上，并给出脱敏计数：非帖子链接、他吧证据、重复与可用候选各多少条。
+
+    不是帖子页面的命中（用户主页、专题页、官网页面）也留下剔除记录：空态
+    必须能解释「搜索结果为什么没有可用帖子」，不能静默丢弃。
+    """
     kept: list[TiebaSearchHit] = []
     rejected: list[TiebaRejectedCandidate] = []
     seen: set[str] = set()
+    counts = {"not_a_thread": 0, "other_forum": 0, "duplicate": 0}
     for hit in hits:
         thread_id = thread_id_of(hit.url)
         if thread_id is None:
+            counts["not_a_thread"] += 1
+            rejected.append(
+                TiebaRejectedCandidate(
+                    url=hit.url.strip(),
+                    title=hit.title,
+                    evidence=REJECT_NOT_A_THREAD,
+                )
+            )
             continue
         url = canonical_url(hit.url)
         if url in seen:
+            counts["duplicate"] += 1
             continue
         seen.add(url)
         hit = hit.model_copy(update={"url": url, "thread_id": thread_id})
@@ -120,10 +169,18 @@ def classify_hits(
         if rejection is None:
             kept.append(hit)
         else:
+            counts["other_forum"] += 1
             rejected.append(
                 TiebaRejectedCandidate(url=url, title=hit.title, evidence=rejection)
             )
-    return tuple(kept), tuple(rejected)
+    diagnostics = HitDiagnostics(
+        raw_hits=len(hits),
+        not_a_thread=counts["not_a_thread"],
+        other_forum=counts["other_forum"],
+        duplicate=counts["duplicate"],
+        usable=len(kept),
+    )
+    return tuple(kept), tuple(rejected), diagnostics
 
 
 def _rejection_evidence(hit: TiebaSearchHit) -> str | None:
@@ -235,7 +292,7 @@ class WebSearchServiceAdapter:
             )
             for result in projection.results
         )
-        candidates, rejected = classify_hits(hits)
+        candidates, rejected, diagnostics = classify_hits_with_diagnostics(hits)
         return SearchOutcome(
             record=query_record(
                 query=query,
@@ -250,6 +307,7 @@ class WebSearchServiceAdapter:
             hits=hits,
             candidates=candidates,
             rejected=rejected,
+            diagnostics=diagnostics,
         )
 
 

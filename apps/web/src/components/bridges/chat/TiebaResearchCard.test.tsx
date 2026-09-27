@@ -131,7 +131,7 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
     expect(screen.queryByTestId("tieba-post-8123456789-replies")).toBeNull();
   });
 
-  it("仅帖链降级时标注归属未确认，并保留被剔除的他吧同名帖", () => {
+  it("仅帖链降级时逐条标注未确认原因，并保留被剔除的候选依据", () => {
     render(
       <TiebaResearchCard
         research={projection({
@@ -141,7 +141,7 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
             {
               url: "https://tieba.baidu.com/p/7000000001",
               title: "宿舍条件汇总",
-              source: "tavily",
+              source: "tavily（页面不可读：访问受限，未绕过；归属未确认）",
             },
           ],
           rejected_candidates: [
@@ -149,6 +149,11 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
               url: "https://tieba.baidu.com/p/7000000002",
               title: "宿舍条件怎么样",
               evidence: "页面吧头显示「上海交通大学研究生吧」，非目标贴吧。",
+            },
+            {
+              url: "https://nani.baidu.com/home/main?id=tb.1.ce8f0206",
+              title: "华东交大小益君的贴吧",
+              evidence: "搜索结果不是帖子页面链接",
             },
           ],
           evidence_boundary: ["页面读取被访问限制打断，只给出帖链，未取得任何回复内容。"],
@@ -160,10 +165,11 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
     expect(screen.getByTestId("tieba-research-degraded").textContent).toContain("仅帖链");
     const links = screen.getByTestId("tieba-candidate-links");
     expect(links.textContent).toContain("宿舍条件汇总");
-    expect(links.textContent).toContain("归属未确认");
-    expect(screen.getByTestId("tieba-rejected-candidates").textContent).toContain(
-      "上海交通大学研究生吧"
-    );
+    // 帖链逐条带出「为什么只有帖链」：页面不可读，而不是只写「归属未确认」。
+    expect(links.textContent).toContain("页面不可读：访问受限");
+    const rejected = screen.getByTestId("tieba-rejected-candidates");
+    expect(rejected.textContent).toContain("上海交通大学研究生吧");
+    expect(rejected.textContent).toContain("搜索结果不是帖子页面链接");
     expect(screen.getByTestId("tieba-research-notes").textContent).toContain(
       "未取得任何回复内容"
     );
