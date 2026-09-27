@@ -17,7 +17,7 @@ services:
       - BRIDGES_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
       # Issue 10：容器使用自动生成主密钥保护的加密凭据卷（bridges-data 卷）。
       - BRIDGES_CREDENTIAL_BACKEND=encrypted-volume
-      # GQ-08：全局百炼运行凭据由宿主机注入（Compose 不创建、不读取 .env）。
+      # 全局百炼运行凭据由宿主机注入，无需创建 .env。
       # 在宿主机配置 BRIDGES_QWEN_API_KEY=sk-... 后执行
       #   docker compose -f infra/compose/docker-compose.yml up
       # 或使用 `docker compose --env-file <秘密文件> up` 传入。
@@ -25,9 +25,19 @@ services:
       # 取消下方 volumes 中的注释行，把宿主机路径设为 QWEN_KEY_FILE_HOST
       # 并把 BRIDGES_QWEN_API_KEY_FILE 指向容器内路径：
       #   QWEN_KEY_FILE_HOST=/host/path/qwen.key BRIDGES_QWEN_API_KEY_FILE=/run/secrets/qwen_key docker compose up
-      # Key 轮换后必须重建/重启全部服务，不提供运行期热更新。
+      # 修改部署变量后需重建相关容器；设置页更换按 ADR-0031 生效。
       - BRIDGES_QWEN_API_KEY=${BRIDGES_QWEN_API_KEY:-}
       - BRIDGES_QWEN_API_KEY_FILE=${BRIDGES_QWEN_API_KEY_FILE:-}
+      # V2 搜索与地图凭据可从宿主机注入，也可在设置页验证后保存。
+      # 使用 *_FILE 时须另行把对应文件只读挂载到容器内指定路径。
+      - BRIDGES_TAVILY_API_KEY=${BRIDGES_TAVILY_API_KEY:-}
+      - BRIDGES_TAVILY_API_KEY_FILE=${BRIDGES_TAVILY_API_KEY_FILE:-}
+      - BRIDGES_AMAP_WEB_SERVICE_KEY=${BRIDGES_AMAP_WEB_SERVICE_KEY:-}
+      - BRIDGES_AMAP_WEB_SERVICE_KEY_FILE=${BRIDGES_AMAP_WEB_SERVICE_KEY_FILE:-}
+      - BRIDGES_AMAP_JS_API_KEY=${BRIDGES_AMAP_JS_API_KEY:-}
+      - BRIDGES_AMAP_JS_API_KEY_FILE=${BRIDGES_AMAP_JS_API_KEY_FILE:-}
+      - BRIDGES_AMAP_SECURITY_JS_CODE=${BRIDGES_AMAP_SECURITY_JS_CODE:-}
+      - BRIDGES_AMAP_SECURITY_JS_CODE_FILE=${BRIDGES_AMAP_SECURITY_JS_CODE_FILE:-}
     volumes:
       - bridges-data:/var/lib/bridges
       # - ${QWEN_KEY_FILE_HOST:-}:/run/secrets/qwen_key:ro
@@ -72,9 +82,18 @@ services:
     environment:
       - BRIDGES_ENVIRONMENT=production
       - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+      - BRIDGES_CREDENTIAL_BACKEND=encrypted-volume
       # GQ-08：与 API 使用同一全局百炼运行凭据（直接注入或文件引用）。
       - BRIDGES_QWEN_API_KEY=${BRIDGES_QWEN_API_KEY:-}
       - BRIDGES_QWEN_API_KEY_FILE=${BRIDGES_QWEN_API_KEY_FILE:-}
+      - BRIDGES_TAVILY_API_KEY=${BRIDGES_TAVILY_API_KEY:-}
+      - BRIDGES_TAVILY_API_KEY_FILE=${BRIDGES_TAVILY_API_KEY_FILE:-}
+      - BRIDGES_AMAP_WEB_SERVICE_KEY=${BRIDGES_AMAP_WEB_SERVICE_KEY:-}
+      - BRIDGES_AMAP_WEB_SERVICE_KEY_FILE=${BRIDGES_AMAP_WEB_SERVICE_KEY_FILE:-}
+      - BRIDGES_AMAP_JS_API_KEY=${BRIDGES_AMAP_JS_API_KEY:-}
+      - BRIDGES_AMAP_JS_API_KEY_FILE=${BRIDGES_AMAP_JS_API_KEY_FILE:-}
+      - BRIDGES_AMAP_SECURITY_JS_CODE=${BRIDGES_AMAP_SECURITY_JS_CODE:-}
+      - BRIDGES_AMAP_SECURITY_JS_CODE_FILE=${BRIDGES_AMAP_SECURITY_JS_CODE_FILE:-}
     volumes:
       - bridges-data:/var/lib/bridges
       # - ${QWEN_KEY_FILE_HOST:-}:/run/secrets/qwen_key:ro
@@ -84,6 +103,7 @@ services:
     stop_signal: SIGTERM
     command: ["BridGes", "worker"]
 
+  # 兼容期清理旧提醒与凭据，不创建或发送新提醒。
   scheduler:
     build:
       context: ../..
@@ -91,6 +111,7 @@ services:
     environment:
       - BRIDGES_ENVIRONMENT=production
       - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+      - BRIDGES_CREDENTIAL_BACKEND=encrypted-volume
     volumes:
       - bridges-data:/var/lib/bridges
     depends_on:
@@ -105,8 +126,9 @@ services:
 # 全局百炼运行凭据 BRIDGES_QWEN_API_KEY（或挂载的 BRIDGES_QWEN_API_KEY_FILE）
 # 必须在启动前由宿主机提供：缺失、为空或文件不可读时，API/worker 在容器
 # 启动阶段失败关闭（healthcheck 判定不健康，web 因 depends_on 不启动），
-# 不会出现 Web 正常但 AI 不可用的半启动状态。Key 轮换后必须重建/重启相关
-# 服务，不提供运行期热更新。该 Key 只存在于服务进程配置，不进入浏览器、
+# 启动检查只验证凭据存在，不证明外部模型可调用。修改部署变量后需重建相关
+# 容器；设置页验证更换后的 API 就地生效，其他进程按 ADR-0031 重启读取。
+# 该 Key 不进入浏览器、
 # API 响应、日志、审计正文、数据导出或备份。
 
 volumes:

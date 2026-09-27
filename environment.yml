@@ -4,8 +4,8 @@ channels:
   - defaults
 dependencies:
   - python=3.11
-  - nodejs>=20
-  - pnpm
+  - pip
+  - nodejs=24
   - git
-  - make
-  # Local development only; not required in production images or runtime.
+  # 仅声明本地开发工具；Python 依赖用 python -m pip install -e ".[dev]" 安装。
+  # 前端使用随 Node.js 提供的 npm，按 apps/web/package-lock.json 安装。

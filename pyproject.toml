@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bridges"
 version = "0.1.0"
-description = "BridGes —— 长期科学学习与表达伙伴"
+description = "BridGes —— 面向华东交通大学学生的校园学习助手"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111",
