@@ -101,20 +101,28 @@
 模拟测试（本票改动面）：
 
 - `PYTHONPATH=src pytest tests/ai/test_image_request_contract.py tests/chat/test_study_recognition_failures.py tests/chat/test_error_message_mapping.py -q` → **26 passed**（含修复前形态经两个适配器都 400 的反向断言，证明通过不是空断言）。
-- `tests/ai`：分支 **173 passed / 0 failed**；main 同命令 **165 passed / 0 failed**（差值＝本票新增用例）。
-- `tests/chat tests/plugins`：分支 **140 failed / 531 passed**，与 main 同命令逐条**名称差集为空**（101 + 39 条既有失败一条不多一条不少）。
+- `tests/ai`：分支与合并后 **175 passed / 0 failed**；main 同命令 **165 passed / 0 failed**（+10 = 新增文件 8 例 + 参数化 2 例）。
+- `tests/chat tests/plugins`：分支 **140 failed / 541 passed**，与 main 同命令**逐条名称差集为空**（101 + 39 条既有失败一条不多一条不少；通过数 +10 = 本票新增用例）。
 - 全量 `PYTHONPATH=src pytest tests/ --basetemp=<仓外> --ignore=tests/humanize_eval --deselect tests/integration/test_runtime_smoke.py::test_start_fails_*（3 条本机挂死）` → **249 failed / 3737 passed / 39 skipped / 3 deselected / 0 error**（18:37）；按套件计数与并在其中的 main 基线一致：chat 101、plugins 39、retirement 11、lifecycle 5、ingestion 5、closeout 6、learning_projects 19、mcp 49 等。
 - `ruff check`（本票改动文件）`All checks passed!`；全仓 512 errors 与 main 相同。`mypy src` 98 errors／20 files（check 409→410 个源文件）与 main 相同，本票文件无报错。
 - 桌面 UI 未改动（本票只动后端图片请求构造与提示），因此未跑 Next/vitest。
 
 真实调用（与模拟测试分开留档）：`verify-run.txt`（像素合同 A/A2/B/C/D、三张原图识别轨迹、补录后预习）、`acceptance/verify/report.json`、`acceptance/verify/report_followup.json`、`acceptance/final/report*.json`（第一轮对照）、`evidence-snapshot.txt`（失败轮次关联证据）。密钥以外部文件引用传入，未出现在命令行、日志、报告或测试夹具；留档前已删除该临时密钥文件，并核验库中不含密钥与图片 base64。
 
-### 8. 未完成事项与边界
+### 8. 合并、验证与清理实证（2026-09-27 收尾）
+
+- **合并**：main 未移动（`origin/main == main == a15a084`，先 `git fetch` 核实），`git merge --no-ff codex/issue-04-study-image-recognition` **零冲突**，合并提交 **`a7a790e`**「Merge issue 04: 修复学习书页识别的图片请求并提供准确失败原因」。
+- **合并树等价**：`git rev-parse c1977d0^{tree}` == `git rev-parse a7a790e^{tree}` == `3263fd6099b4ede71f04be5ea53bf7c36c8315b2`，且 `git diff --stat c1977d0 a7a790e` 为空 ⇒ 分支上的全量与真实调用结论直接适用于 main 新顶端。
+- **合并后定点复跑（主仓树、`PYTHONPATH=src`、仓外 basetemp）**：`tests/ai tests/chat tests/plugins` **140 failed / 716 passed**（= chat+plugins 140F/541P + ai 175P），失败名称与分支基线**逐条 diff 为空**。
+- **推送**：`git -c http.proxy=http://127.0.0.1:7890 push origin main`（随后用 `git ls-remote --heads origin` 复核远程 main == 本地 main）。
+- **清理**：`apps/web/node_modules` junction 用 `cmd //c rmdir` 拆链（主仓条目数不变）→ `git worktree remove --force` → `git branch -d codex/issue-04-study-image-recognition` → `git worktree prune --expire now`，`prune --dry-run -v` 无输出；六项实证见下一条记录。
+
+### 9. 未完成事项与边界
 
 - 第 1 页印刷页码在原始照片中不可辨认（材料本身限制，模型按合同不猜测）；如后续需要书页码，应请用户补拍，本票不做猜测或补全。
 - 「三页进入预习」的证据链**包含用户按文档化路径的补录／确认步骤**：识别后流程按设计停在 `awaiting_pages` 等用户澄清，这是既有合同（任何看不清内容必须列入 unclear），不是本票遗留缺陷。
 - 每个生成轮次按既有合同只落**最后一条**调用锁，因此 OCR 逐次成功的证据来自运行轨迹与页级证据，而不是锁表逐条记录。
-- 本票未合并 main、未推送：等人工复核（本记录状态 `ready-for-human`）后按仓库流程 `--no-ff` 合并。
+- 已按仓库流程合并进 main（`a7a790e`）并推送，本工单状态保持 `ready-for-human`（同 issue 02 的约定）。
 - 收尾时 main 已被并行会话推进（issue 02 `a15a084`，**只改 `apps/web`**），分支已 `git merge main` 并在合并树上复跑：`git diff 5b7180e 8e8f8b1 -- src tests pyproject.toml` 为空（Python 侧逐字节未变），定点 `59 passed`，因此上面的 Python 侧全量与真实调用结论对合并树同样成立；合并提交 `8e8f8b1`（合并树 `15226e5c`）。
 
 
