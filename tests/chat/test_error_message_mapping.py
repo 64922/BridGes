@@ -18,11 +18,30 @@ def test_shared_model_call_codes_are_single_source_for_chat() -> None:
 
 
 def test_chat_client_error_prefix_maps_to_chinese() -> None:
-    """client_error_<status> 呈现中文通用文案，英文内部消息不再漏给用户。"""
+    """client_error_<status> 呈现中文文案，英文内部消息不再漏给用户。"""
     result = user_facing_error("client_error_400", "Qwen client error (400). vendor detail")
-    assert result == "模型服务返回错误（HTTP 400），请稍后重试。"
+    assert result == (
+        "模型拒绝了本次请求（HTTP 400），重试不会恢复；请检查请求参数与该模型是否可用。"
+    )
     assert "vendor detail" not in result
     assert "Qwen client error" not in result
+
+
+def test_rejected_client_errors_do_not_promise_recovery() -> None:
+    """issue 04：4xx 请求拒绝不得提示"稍后重试"，瞬时 4xx 仍保留重试指引。
+
+    共享映射被聊天、知识库、图片、语音共用，因此文案不假定失败的是
+    "主模型"（各能力绑定的模型不同）。
+    """
+    for status in ("400", "404", "413", "422"):
+        text = user_facing_error(f"client_error_{status}", "internal")
+        assert "重试不会恢复" in text
+        assert "稍后重试" not in text
+        assert "主模型" not in text
+    for status in ("408", "429"):
+        assert user_facing_error(f"client_error_{status}", "internal") == (
+            f"模型服务返回错误（HTTP {status}），请稍后重试。"
+        )
 
 
 def test_region_subcodes_present_actionable_texts() -> None:
