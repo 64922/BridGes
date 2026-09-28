@@ -805,7 +805,12 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
 
 
 class AtomicProfileService:
-    """原子条目的读写、记忆指令、切片编译与账户级迁移。"""
+    """原子条目的读写、记忆指令、切片编译、账户级迁移与来源撤回恢复。
+
+    失败是否越过墓碑保护点、能否重试、恢复后的可见结果由提交 module 定义
+    （见 :mod:`bridges.profiles.commit`）：墓碑提交之后的来源撤回失败不回滚
+    删除，:meth:`recover_source_withdrawals` 只凭持久墓碑幂等补齐。
+    """
 
     def __init__(
         self,
@@ -918,7 +923,7 @@ class AtomicProfileService:
             self._write_tombstone(item)
         # 撤回在墓碑边界之外逐条执行（见提交 module）；失败如实上抛，
         # 已提交的墓碑保持有效。
-        outcome = self._profile_commit.withdraw_item_sources(account_id, [item])[0]
+        outcome = self.withdraw_item_sources(account_id, [item])[0]
         if outcome.status is SourceWithdrawalStatus.FAILED and outcome.error is not None:
             raise outcome.error
 
@@ -1013,7 +1018,7 @@ class AtomicProfileService:
         # 墓碑已提交：用户可见的删除在本轮成立。来源撤回逐条隔离——部分
         # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
         # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
-        self._profile_commit.withdraw_item_sources(account_id, matched)
+        self.withdraw_item_sources(account_id, matched)
         return AtomicProfileMemoryResult(
             kind=AtomicProfileMemoryKind.FORGET,
             status=AtomicProfileMemoryStatus.FORGOTTEN,
@@ -1027,8 +1032,9 @@ class AtomicProfileService:
 
         墓碑保留 ``source_record_id``，所以「用户已删除、来源还没撤回」这件
         事可以只从持久记录里看出来——这正是恢复不需要进程内对象的原因。
-        用户单独记住的条目与旧正文抑制键没有来源，不在其中；扫描按账户
-        作用域，不涉及其他账户的条目。
+        没有关联来源的条目不在其中：未匹配到四维记录的「记住」条目只剩
+        旧正文抑制键，没有可撤回的来源。扫描按账户作用域，不涉及其他账户
+        的条目。
         """
 
         return [

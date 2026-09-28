@@ -25,7 +25,9 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMigrationStatus,
 )
 from bridges.contracts.profile_extraction import (
+    ProfileExtractionOutcome,
     ProfileExtractionOutput,
+    ProfileExtractionRetryTask,
     ProfileExtractionStatus,
     ProfilePreprocessResult,
 )
@@ -43,6 +45,8 @@ from bridges.profiles.atomic import (
     identity_key,
 )
 from bridges.profiles.automatic import (
+    PROFILE_EXTRACTION_QUEUE,
+    PROFILE_REPLAY_SOURCE_HASH_PREFIX,
     AutomaticProfileRepository,
     AutomaticProfileService,
     InMemoryAutomaticProfileRepository,
@@ -285,6 +289,9 @@ class _Harness:
             for outcome in self.atomic.recover_source_withdrawals(ACCOUNT)
         ]
 
+    def retry(self) -> str:
+        return self.service.run_retry_tick()
+
 
 @pytest.fixture(params=["memory", "sqlite"])
 def harness(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_Harness]:
@@ -306,6 +313,59 @@ def _delete_with_failed_withdrawal(harness: _Harness, text: str) -> AtomicProfil
         harness.atomic.delete_item(ACCOUNT, item.profile_item_id, item.version)
     harness.dimensions.fail_at = 0
     return item
+
+
+def _enqueue_replay_task(harness: _Harness, message_id: str) -> None:
+    """以真实重放形状为旧消息排队一条重放任务。
+
+    重放任务的来源哈希与 ``replay._replay_source_hash`` 同形：
+    ``{原哈希}{重放标记}{原运行标识}``；正文由运行记录的来源快照提供，
+    因此这里不需要消息存储。
+    """
+
+    run = next(
+        item
+        for item in harness.stack.state.list_runs(ACCOUNT)
+        if item.message_id == message_id
+    )
+    replay_hash = (
+        f"{run.source_hash}{PROFILE_REPLAY_SOURCE_HASH_PREFIX}{run.extraction_id}"
+    )
+    harness.stack.state.save_run(
+        run.model_copy(
+            update={
+                "extraction_id": f"{run.extraction_id}-replay",
+                "source_hash": replay_hash,
+                "status": ProfileExtractionStatus.PENDING,
+                "outcome": ProfileExtractionOutcome.PENDING_RETRY,
+                "attempts": 0,
+            }
+        )
+    )
+    task = ProfileExtractionRetryTask(
+        task_id=f"task-{replay_hash}",
+        account_id=run.account_id,
+        message_id=run.message_id,
+        extractor_version=run.extractor_version,
+        source_hash=replay_hash,
+        status=ProfileExtractionStatus.PENDING,
+        attempts=0,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+    )
+    harness.stack.state.save_task(task)
+    queue = harness.stack.state.durable_queue()
+    if queue is not None:
+        queue.enqueue(
+            PROFILE_EXTRACTION_QUEUE,
+            task.task_id,
+            payload={
+                "account_id": task.account_id,
+                "message_id": task.message_id,
+                "extractor_version": task.extractor_version,
+                "source_hash": replay_hash,
+            },
+        )
 
 
 # -- 保护点之后的残留状态：只凭持久记录恢复 --------------------------------
@@ -463,12 +523,64 @@ def test_recovery_keeps_user_edits_and_never_revives_deleted_facts(
     assert harness.record_of(FourDimension.STAGE_GOAL).status is (
         FourDimensionRecordStatus.WITHDRAWN
     )
-    # 恢复之后旧消息再重放一次也不会复活它。
-    harness.extract("message-replay-again")
+    # 恢复之后旧消息按真实重放路径再处理一次：被删事实不因重放复活，
+    # 用户正文也保持当前版本。
+    _enqueue_replay_task(harness, "message-1")
+    harness.retry()
     assert {item.text for item in harness.items()} == {USER_EDIT_TEXT}
+    assert harness.slice_texts() == {USER_EDIT_TEXT}
+    assert harness.record_of(FourDimension.STAGE_GOAL).status is (
+        FourDimensionRecordStatus.WITHDRAWN
+    )
     assert harness.item_by_id(goal.profile_item_id).status is (
         AtomicProfileItemStatus.WITHDRAWN
     )
+
+
+# -- 保护点之内的镜像中断：重试不重复、不半写 --------------------------------
+
+
+def test_interrupted_mirror_retry_does_not_duplicate_or_half_write(
+    harness: _Harness,
+) -> None:
+    """同一批次自动镜像中断后重试：整批回滚、重试不产生重复活动条目。"""
+
+    # 第二条事实的镜像写入失败：整批提交必须一起回滚。
+    harness.atomic.fail_at = 2
+    failed = harness.extract("message-1")
+
+    # 没有「已成功但只写一半」：运行停在可重试状态，业务结果一条都没留下。
+    assert failed.run.status is ProfileExtractionStatus.PENDING
+    assert failed.run.outcome is ProfileExtractionOutcome.PENDING_RETRY
+    assert failed.run.committed_record_ids == []
+    assert harness.records(include_withdrawn=True) == []
+    assert harness.items() == []
+    assert harness.slice_texts() == set()
+
+    # 重试走生产重试路径：同一运行边界内一次补齐两条事实。
+    harness.atomic.fail_at = 0
+    assert harness.retry() == (
+        f"profile-extraction: {ProfileExtractionStatus.SUCCEEDED.value}。"
+    )
+    runs = harness.stack.state.list_runs(ACCOUNT)
+    assert len(runs) == 1
+    assert runs[0].status is ProfileExtractionStatus.SUCCEEDED
+    assert len(runs[0].committed_record_ids) == 2
+    assert {item.text for item in harness.items()} == {GOAL_TEXT, STATUS_TEXT}
+    assert {record.content for record in harness.records()} == {
+        GOAL_TEXT,
+        STATUS_TEXT,
+    }
+    assert harness.slice_texts() == {GOAL_TEXT, STATUS_TEXT}
+
+    # 去重：再次重试没有待处理任务，条目标识与版本都不变。
+    before = {
+        item.text: (item.profile_item_id, item.version) for item in harness.items()
+    }
+    assert harness.retry() == "profile-extraction: 无待处理任务。"
+    assert {
+        item.text: (item.profile_item_id, item.version) for item in harness.items()
+    } == before
 
 
 # -- 保护点之内：编辑的换键与抑制键同成同败 ----------------------------------

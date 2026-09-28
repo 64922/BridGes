@@ -1760,7 +1760,6 @@ class AutomaticProfileService:
                 ),
             )
 
-        record_ids: list[str] = []
         correction: ProfileCorrectionResult
         try:
             with self._commit.transaction():
