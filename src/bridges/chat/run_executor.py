@@ -27,19 +27,13 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
-from bridges.chat.terminal import (
-    STOPPED_CODE,
-    STOPPED_MESSAGE,
-    GenerationTerminal,
-    internal_error_outcome,
-)
+from bridges.chat.terminal import internal_error_outcome, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
     error_is_retryable,
     failed_thinking,
     finalize_message,
     initial_thinking,
-    stopped_thinking,
     user_facing_error,
 )
 from bridges.contracts.chat import (
@@ -117,11 +111,10 @@ class GenerationRunExecutor:
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
         self._profile_extraction = profile_extraction_service
-        #: 生成终态 module（Issue 01）：执行器只提供标识与兜底结果，跨对象
-        #: 提交顺序、判重与重放都在 module 内部。
-        self._terminal = GenerationTerminal(
-            self._repo, projection=service.message_projection
-        )
+        #: 生成终态 module（Issue 01/02）：执行器只提供标识与兜底结果，
+        #: 跨对象提交顺序、判重与重放都在 module 内部。实例由服务持有，
+        #: 图边界提前终止、排队期停止与停止接口兜底共用同一实例。
+        self._terminal = service.terminal
         #: 最近一轮执行的中文摘要（受监督循环输出）。
         self._last_summary = "generation: 执行器就绪。"
 
@@ -268,9 +261,16 @@ class GenerationRunExecutor:
             self._queue.complete(claim)
             return
         if run.stop_requested:
-            # 排队期间已请求停止：不调用模型，直接按停止收敛
-            self._converge(run, status=ChatMessageStatus.STOPPED, claim=claim)
+            # 排队期间已请求停止：不调用模型，经终态 module 按停止收敛
+            #（消息、终态事件与运行一次到位），队列随后确认完成。
+            self._terminal.converge(
+                account_id,
+                run_id,
+                run.assistant_message_id,
+                fallback=stopped_outcome(),
+            )
             self._last_summary = f"generation: 运行 {run_id} 已在排队时请求停止。"
+            self._queue.complete(claim)
             return
         stop_event = self._service._lifecycle.register(run.assistant_message_id)  # noqa: SLF001
         heartbeat = _RunHeartbeat(
@@ -367,83 +367,6 @@ class GenerationRunExecutor:
         )
         self._repo.append_generation_event(
             account_id, run_id, ChatStreamEventKind.ERROR.value, payload, datetime.now(UTC)
-        )
-
-    # ------------------------------------------------------------------
-    # 运行终态
-    # ------------------------------------------------------------------
-
-    def _converge(
-        self,
-        run: GenerationRunRecord,
-        *,
-        status: ChatMessageStatus,
-        claim: Claim,
-    ) -> None:
-        """排队期停止等快速收敛路径：消息与运行直接落到终态。
-
-        与常规终态路径同一契约：终态事件必须持久化（订阅者据此收敛），
-        绝不悬挂——started 之后必有 done/error。
-        """
-        now = datetime.now(UTC)
-        message = self._repo.get_message(run.account_id, run.assistant_message_id)
-        if message is not None and message.status == ChatMessageStatus.STREAMING:
-            conversation = self._repo.get_conversation(
-                run.account_id, run.conversation_id
-            )
-            mode = (
-                ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-            )
-            finalize_message(
-                self._repo,
-                run.account_id,
-                run.assistant_message_id,
-                status=status,
-                error_code=None,
-                error_message=None,
-                duration_ms=None,
-                model_id=None,
-                run_lock_id=None,
-                started=time.monotonic(),
-                now=now,
-                thinking=stopped_thinking(initial_thinking(mode)),
-            )
-        self._append_error_event(
-            run.account_id,
-            run.run_id,
-            run.assistant_message_id,
-            code=STOPPED_CODE,
-            message=STOPPED_MESSAGE,
-            retryable=True,
-        )
-        self._finalize_run(
-            run.account_id,
-            run.run_id,
-            ChatRunStatus.STOPPED.value,
-            None,
-            None,
-            None,
-        )
-        self._queue.complete(claim)
-
-    def _finalize_run(
-        self,
-        account_id: str,
-        run_id: str,
-        status: str,
-        error_code: str | None,
-        error_message: str | None,
-        duration_ms: int | None,
-    ) -> None:
-        """原子收敛运行终态；仅 queued/running → 目标状态（守卫唯一提交）。"""
-        self._repo.finalize_generation_run(
-            account_id,
-            run_id,
-            status=status,
-            error_code=error_code,
-            error_message=error_message,
-            duration_ms=duration_ms,
-            now=datetime.now(UTC),
         )
 
 

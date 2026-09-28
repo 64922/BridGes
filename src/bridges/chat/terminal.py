@@ -28,6 +28,12 @@
 5. 只决定执行结果，不评估产物可信状态；不接管领取、续租、模型生成与事件
    订阅（调度仍属执行器）；不改写模型运行锁与历史消息（运行锁随消息终态
    在同一事务内提交，Issue 10）。
+6. **停止不是错误。** 停止终态的消息不携带错误码与错误原因，但终态事件
+   沿用既有 error 传输种类与稳定码 ``stopped``（合同不变，不为名称整齐
+   新增前端状态）；停止同时把已触发的公网/arXiv 搜索与教学卡片收敛为
+   取消态（内部策略，从消息当前投影派生），避免卡片残留 loading。竞争
+   裁决同样靠持久守卫：已获准提交的终态（先到者）不被迟到完成、迟到
+   异常或重复停止改写。
 """
 
 from __future__ import annotations
@@ -40,11 +46,14 @@ from typing import TYPE_CHECKING, Any
 
 from bridges.chat.turn import (
     CHAT_MODE,
+    cancelled_arxiv_search,
+    cancelled_web_search,
     done_thinking,
     error_is_retryable,
     failed_thinking,
     finalize_message,
     initial_thinking,
+    stopped_teaching_projection,
     stopped_thinking,
     user_facing_error,
 )
@@ -144,6 +153,20 @@ def internal_error_outcome() -> TerminalOutcome:
     )
 
 
+def stopped_outcome(duration_ms: int | None = None) -> TerminalOutcome:
+    """用户停止的兜底结果（稳定码与中文原因同停止事件合同）。
+
+    ``duration_ms`` 供调用者已知耗时口径时随终态写入（如停止接口按
+    单调起点或创建时间估算）；排队期/图边界停止由各入口按现行口径传值。
+    """
+    return TerminalOutcome(
+        status=ChatMessageStatus.STOPPED,
+        error_code=STOPPED_CODE,
+        error_message=STOPPED_MESSAGE,
+        duration_ms=duration_ms,
+    )
+
+
 @dataclass(frozen=True)
 class TerminalCommit:
     """收尾回执：本次调用相对重复调用真正写入了什么。"""
@@ -186,7 +209,7 @@ class GenerationTerminal:
     def converge(
         self,
         account_id: str,
-        run_id: str,
+        run_id: str | None,
         message_id: str,
         *,
         fallback: TerminalOutcome | None = None,
@@ -197,6 +220,8 @@ class GenerationTerminal:
         - 消息已终态：结果从消息派生，``fallback`` 忽略；
         - 消息仍 streaming：按 ``fallback`` 写入终态（残留兜底路径）；
         - 消息已不存在（会话/消息删除竞态）：只收敛运行，不补发事件；
+        - ``run_id`` 为 None（消息没有关联运行，如直接编排的生成被停止）：
+          只收敛消息，不补发终态事件、不收敛运行；
         - 已有终态事件：不再追加，订阅端回放保持单调。
 
         ``run_duration_ms`` 是执行器测量的本轮墙钟耗时（运行记录口径），
@@ -212,6 +237,17 @@ class GenerationTerminal:
             message_committed = self._commit_message(message, fallback) > 0
             # 以提交后的记录为准：并发收尾由持久守卫裁决，后到者沿用先提交结果。
             message = self._repo.get_message(account_id, message_id)
+        if run_id is None:
+            if message is None:
+                outcome = fallback or internal_error_outcome()
+            else:
+                outcome = TerminalOutcome.from_message(message)
+            return TerminalCommit(
+                outcome=outcome,
+                message_committed=message_committed,
+                event_seq=None,
+                run_committed=False,
+            )
         if message is None:
             outcome = fallback or internal_error_outcome()
             return TerminalCommit(
@@ -271,15 +307,31 @@ class GenerationTerminal:
     def _commit_message(self, message: MessageRecord, outcome: TerminalOutcome) -> int:
         """按兜底结果写入消息终态；思考摘要按对话模式与结果派生。
 
+        停止终态不写错误码与错误原因（停止不是错误），并把已触发的搜索
+        与教学卡片收敛为取消态；取消投影从消息当前记录派生，各停止入口
+        （图边界、排队期、停止接口兜底）因此共享同一投影规则。
+
         返回影响行数：0 表示并发收尾已先提交（不覆盖已提交结果）。
         """
         thinking = initial_thinking(self._mode_of(message))
+        web_search = None
+        arxiv_search = None
+        teaching = None
         if outcome.status == ChatMessageStatus.ERROR:
             thinking = failed_thinking(
                 thinking, outcome.error_code or INTERNAL_ERROR_CODE
             )
         elif outcome.status == ChatMessageStatus.STOPPED:
             thinking = stopped_thinking(thinking)
+            now = datetime.now(UTC)
+            web_search = cancelled_web_search(message.web_search, now)
+            arxiv_search = cancelled_arxiv_search(message.arxiv_search, now)
+            stopped_teaching = stopped_teaching_projection(message.teaching)
+            teaching = (
+                stopped_teaching.model_dump(mode="json")
+                if stopped_teaching is not None
+                else None
+            )
         else:
             thinking = done_thinking(thinking)
         return finalize_message(
@@ -287,14 +339,23 @@ class GenerationTerminal:
             message.account_id,
             message.message_id,
             status=outcome.status,
-            error_code=outcome.error_code,
-            error_message=outcome.error_message,
+            error_code=(
+                outcome.error_code if outcome.status == ChatMessageStatus.ERROR else None
+            ),
+            error_message=(
+                outcome.error_message
+                if outcome.status == ChatMessageStatus.ERROR
+                else None
+            ),
             duration_ms=outcome.duration_ms,
             model_id=None,
             run_lock_id=None,
             started=time.monotonic(),
             now=datetime.now(UTC),
             thinking=thinking,
+            web_search=web_search,
+            arxiv_search=arxiv_search,
+            teaching=teaching,
         )
 
     def _append_terminal_event(
@@ -304,15 +365,24 @@ class GenerationTerminal:
         message_id: str,
         outcome: TerminalOutcome,
     ) -> int | None:
-        """补齐终态事件（判重与插入同事务）；运行不存在时返回 None。"""
+        """补齐终态事件（判重与插入同事务）；运行不存在时返回 None。
+
+        中文原因只有一条派生规则：映射表文案优先，收尾结果携带的原因作
+        为未映射码的回退（与运行期实时事件同一规则）。
+        """
         if outcome.status == ChatMessageStatus.DONE:
             payload = self.done_payload(account_id, message_id)
         else:
+            code = outcome.error_code or INTERNAL_ERROR_CODE
+            if outcome.status == ChatMessageStatus.STOPPED:
+                code, message = STOPPED_CODE, STOPPED_MESSAGE
+            else:
+                message = user_facing_error(code, outcome.error_message)
             payload = self.error_payload(
                 account_id,
                 message_id,
-                code=outcome.error_code or INTERNAL_ERROR_CODE,
-                message=outcome.error_message or user_facing_error(outcome.error_code),
+                code=code,
+                message=message,
                 retryable=outcome.retryable,
             )
         seq = self._repo.append_terminal_generation_event(
