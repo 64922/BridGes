@@ -509,8 +509,8 @@ def test_delete_tombstone_survives_source_withdrawal_failure(
     version_before = goal_record.version
 
     # 同一撤回操作幂等补做：补做成功，重复执行不再改写业务结果。
-    first = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
-    second = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    first = harness.atomic.withdraw_item_sources(ACCOUNT, [goal])
+    second = harness.atomic.withdraw_item_sources(ACCOUNT, [goal])
     assert [outcome.status for outcome in first] == [SourceWithdrawalStatus.WITHDRAWN]
     assert [outcome.status for outcome in second] == [
         SourceWithdrawalStatus.ALREADY_WITHDRAWN
@@ -550,7 +550,7 @@ def test_forget_partial_source_failure_stays_recoverable(harness: _Harness) -> N
     assert goal_record.status.value == "active"
 
     # 幂等补做失败的那条来源；重复执行同一撤回不重写业务结果。
-    outcome = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    outcome = harness.atomic.withdraw_item_sources(ACCOUNT, [goal])
     assert [entry.status for entry in outcome] == [SourceWithdrawalStatus.WITHDRAWN]
     goal_record = next(
         record
@@ -595,7 +595,7 @@ def test_repeated_withdrawal_does_not_override_new_user_item(
     remembered = [item for item in harness.items() if item.text == GOAL_TEXT]
     assert len(remembered) == 1
 
-    outcome = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    outcome = harness.atomic.withdraw_item_sources(ACCOUNT, [goal])
     assert [entry.status for entry in outcome] == [
         SourceWithdrawalStatus.ALREADY_WITHDRAWN
     ]
@@ -723,13 +723,13 @@ def test_source_get_record_storage_fault_is_failure_not_already_withdrawn(
         AtomicProfileItemStatus.WITHDRAWN
     )
     harness.dimensions.fail_get_at = harness.dimensions.get_calls + 1
-    outcome = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    outcome = harness.atomic.withdraw_item_sources(ACCOUNT, [goal])
     assert [entry.status for entry in outcome] == [SourceWithdrawalStatus.FAILED]
     assert isinstance(outcome[0].error, StorageError)
 
     # 故障解除后同一撤回幂等补做成功。
     harness.dimensions.fail_get_at = 0
-    outcome = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    outcome = harness.atomic.withdraw_item_sources(ACCOUNT, [goal])
     assert [entry.status for entry in outcome] == [SourceWithdrawalStatus.WITHDRAWN]
 
 
