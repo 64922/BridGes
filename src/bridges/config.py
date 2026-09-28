@@ -37,6 +37,25 @@ def secret_file_reference(field_name: str) -> tuple[str, str] | None:
     return None
 
 
+def secret_environment_source(field_name: str) -> str | None:
+    """返回提供该密钥的环境变量名；未由环境提供时返回 None。
+
+    与 ``Settings`` 的加载规则同源：``<FIELD>_FILE`` 引用在解析时覆盖内联值，
+    因此不空的文件引用优先，其次才是内联 ``<FIELD>``。调用方据此把"当前真正
+    生效的是环境还是凭据库"如实报告给用户——环境变量在进程生命周期内不变，
+    它存在时凭据库里的新值不会生效。
+    """
+    reference = secret_file_reference(field_name)
+    if reference and reference[0]:
+        return reference[1]
+    normalized = field_name.upper()
+    for prefix in (ENV_PREFIX, LEGACY_ENV_PREFIX):
+        env_name = f"{prefix}{normalized}"
+        if os.environ.get(env_name, "").strip():
+            return env_name
+    return None
+
+
 class Settings(BaseSettings):
     """Single source of truth for runtime configuration.
 

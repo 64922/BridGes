@@ -22,7 +22,10 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr
 
 from bridges.api.auth import SubjectDep
+from bridges.api.credential_state import record_runtime_evidence
 from bridges.commute.sources import AMAP_REST_BASE
+from bridges.credentials.amap_probes import diagnose_payload
+from bridges.credentials.ids import AMAP_BROWSER_MAP_ITEM
 from bridges.credentials.store import CredentialStoreError
 
 router = APIRouter(prefix="/commute", tags=["校园通勤"])
@@ -92,7 +95,13 @@ def get_map_config(
 
 @router.get("/amap-proxy/{path:path}")
 def amap_proxy(path: str, request: Request, subject: SubjectDep) -> Response:
-    """代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。"""
+    """代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。
+
+    这条路径是浏览器地图凭据的**真实运行路径**：浏览器发起的每一个地图数据
+    请求都经过这里，因此它拿到的结论（成功或具体失败码）比保存时的探测更强。
+    结论会回写到设置页卡片状态（工单 01）：底图渲染与平台／白名单类限制只有
+    在真实浏览器路径上才能被证实或证伪，保存时的探测不作此类声称。
+    """
     del subject
     if not path.startswith(AMAP_PROXY_PATH_PREFIXES):
         raise HTTPException(
@@ -142,10 +151,47 @@ def amap_proxy(path: str, request: Request, subject: SubjectDep) -> Response:
                 "message": "高德返回内容超出可处理大小。",
             },
         )
+    _record_browser_map_evidence(request, upstream)
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
         media_type=upstream.headers.get("content-type", "application/json"),
+    )
+
+
+def _record_browser_map_evidence(request: Request, upstream: httpx.Response) -> None:
+    """把一次真实地图数据请求的结论回写到设置页卡片状态。
+
+    只对能解析为高德信封的响应下结论：解析不出信封（例如底图瓦片等非 JSON
+    内容）时保持原状态不动，绝不因为"没看懂"就宣称成功或失败。这是**运行路径
+    结论**而不是设置页验证，因此不改变卡片的"最近验证"时间。
+    """
+    try:
+        payload = upstream.json()
+    except ValueError:
+        return
+    if not isinstance(payload, dict) or "status" not in payload:
+        return
+    diagnosis = diagnose_payload(payload)
+    if diagnosis is None:
+        record_runtime_evidence(
+            request,
+            AMAP_BROWSER_MAP_ITEM,
+            error=None,
+            runtime_evidence=(
+                "浏览器发起的真实地图数据请求已成功（服务端追加安全码）："
+                "这对 Key 与安全码在该路径上可用。"
+            ),
+        )
+        return
+    record_runtime_evidence(
+        request,
+        AMAP_BROWSER_MAP_ITEM,
+        error=diagnosis.message,
+        runtime_evidence=(
+            "该结论来自浏览器发起的一次真实地图数据请求，"
+            "晚于保存时的验证，请据此更新凭据。"
+        ),
     )
 
 

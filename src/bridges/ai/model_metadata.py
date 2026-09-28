@@ -43,6 +43,8 @@ MODEL_METADATA_ERR_CREDENTIAL_INVALID = "model_metadata_credential_invalid"
 MODEL_METADATA_ERR_UNAVAILABLE = "model_metadata_unavailable"
 MODEL_METADATA_ERR_MODEL_NOT_FOUND = "model_not_found"
 MODEL_METADATA_ERR_INCOMPLETE = "model_metadata_incomplete"
+#: 额度/计费问题：与"网络跑不通"和"密钥无效"都不同，重试无用，须去控制台处理。
+MODEL_METADATA_ERR_QUOTA_EXCEEDED = "model_metadata_quota_exceeded"
 
 #: 百炼模态编码：文本生成 / 视觉理解。
 _CAPABILITY_TEXT = "TG"
@@ -221,8 +223,15 @@ class BailianModelMetadataSource:
         if response.status_code in (401, 403):
             raise ModelMetadataError(
                 MODEL_METADATA_ERR_CREDENTIAL_INVALID,
-                "百炼拒绝了该 Qwen 密钥（鉴权失败）；请先在「Qwen 凭据」中更换密钥，"
-                "再验证主模型 ID。",
+                "百炼拒绝了该 Qwen 密钥（鉴权失败）：可以在「Qwen 主模型」卡里同时填入"
+                "可用的密钥与模型 ID 一次完成更换，也可以先在「Qwen 凭据」中更换密钥，"
+                "再回到「Qwen 主模型」卡验证模型 ID。",
+            )
+        if response.status_code == 429:
+            raise ModelMetadataError(
+                MODEL_METADATA_ERR_QUOTA_EXCEEDED,
+                "百炼提示请求过于频繁或额度已用尽（HTTP 429）：请在百炼控制台检查"
+                "账号余额与限流配额后重试，稍后重试不会自行恢复。",
             )
         if response.status_code >= 400:
             raise ModelMetadataError(

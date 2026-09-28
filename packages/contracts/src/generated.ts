@@ -349,7 +349,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Credential Settings */
+        /**
+         * Get Credential Settings
+         * @description 报告四类凭据的配置状态、当前生效来源与最近一次验证结论。
+         */
         get: operations["get_credential_settings_settings_credentials_get"];
         put?: never;
         post?: never;
@@ -376,6 +379,9 @@ export interface paths {
          *     不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型
          *     调用即使用新凭据。
          *
+         *     该密钥看不到当前主模型时，提示指向「Qwen 主模型」卡的同一次迁移操作
+         *     （那里可以同时填入候选模型 ID 与这把新密钥），不再形成互相指向的循环。
+         *
          *     凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。
          */
         put: operations["replace_qwen_credential_settings_credentials_qwen_put"];
@@ -394,7 +400,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace Tavily Credential */
+        /**
+         * Replace Tavily Credential
+         * @description 验证并替换 Tavily 搜索凭据；失败保留旧凭据。
+         */
         put: operations["replace_tavily_credential_settings_credentials_tavily_put"];
         post?: never;
         delete?: never;
@@ -411,7 +420,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace Amap Web Service Credential */
+        /**
+         * Replace Amap Web Service Credential
+         * @description 验证并替换高德 Web 服务 Key；失败按具体原因分类，保留旧凭据。
+         */
         put: operations["replace_amap_web_service_credential_settings_credentials_amap_web_service_put"];
         post?: never;
         delete?: never;
@@ -428,7 +440,22 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace Amap Browser Map Credential */
+        /**
+         * Replace Amap Browser Map Credential
+         * @description 验证并保存浏览器地图凭据对（JS API Key ＋ 安全密钥）。
+         *
+         *     验证由两部分组成，且只有第二部分是有效性证据：
+         *
+         *     1. **加载器可达性**：只读正文前缀判断能否取到脚本（真实正文约 968 KB，
+         *        按体积判失败会误杀有效 Key）。可达不是 Key 有效的证据，只是"上游此刻
+         *        连得上"的前提；连不上就无法完成第 2 步，按上游不可达报告且不保存；
+         *     2. **成对真实请求**：按高德官方代理方案，在服务端把 ``jscode``（安全密钥）
+         *        与 JS API Key 一起送到数据服务，用一次真实地理编码请求证明配对可用。
+         *
+         *     底图能否在用户浏览器里渲染依赖浏览器侧底图瓦片请求，服务端无法证明，因此
+         *     成功文案只声明已经证明的那件事；浏览器路径的结论由地图代理在真实请求后
+         *     回写（``runtime_evidence``）。
+         */
         put: operations["replace_amap_browser_map_credential_settings_credentials_amap_browser_map_put"];
         post?: never;
         delete?: never;
@@ -467,6 +494,11 @@ export interface paths {
         /**
          * Amap Proxy
          * @description 代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。
+         *
+         *     这条路径是浏览器地图凭据的**真实运行路径**：浏览器发起的每一个地图数据
+         *     请求都经过这里，因此它拿到的结论（成功或具体失败码）比保存时的探测更强。
+         *     结论会回写到设置页卡片状态（工单 01）：底图渲染与平台／白名单类限制只有
+         *     在真实浏览器路径上才能被证实或证伪，保存时的探测不作此类声称。
          */
         get: operations["amap_proxy_commute_amap_proxy__path__get"];
         put?: never;
@@ -492,6 +524,10 @@ export interface paths {
         /**
          * Replace Model Configuration
          * @description 验证并原子激活手填的主模型 ID；失败保留原配置。
+         *
+         *     可选地同时提交候选密钥（工单 01）：给了候选密钥就用它验证与激活，并在
+         *     成功后一并替换全局凭据——这让"换密钥 + 换主模型"成为一次操作，用户不会
+         *     被两张卡互相指向。
          */
         put: operations["replace_model_configuration_settings_models_put"];
         post?: never;
@@ -6123,16 +6159,10 @@ export interface components {
     schemas: {
         /** AMapBrowserCandidate */
         AMapBrowserCandidate: {
-            /**
-             * Api Key
-             * Format: password
-             */
-            api_key: string;
-            /**
-             * Security Js Code
-             * Format: password
-             */
-            security_js_code: string;
+            /** Api Key */
+            api_key?: string | null;
+            /** Security Js Code */
+            security_js_code?: string | null;
         };
         /** AMapCredentialStatus */
         AMapCredentialStatus: {
@@ -11146,15 +11176,26 @@ export interface components {
             qwen: components["schemas"]["CredentialStatus"];
             tavily: components["schemas"]["CredentialStatus"];
             amap: components["schemas"]["AMapCredentialStatus"];
+            /** Store Error */
+            store_error?: string | null;
         };
-        /** CredentialStatus */
+        /**
+         * CredentialStatus
+         * @description 一张卡片的凭据状态（不含任何凭据正文）。
+         */
         CredentialStatus: {
             /** Configured */
             configured: boolean;
+            /** Effective Source */
+            effective_source?: ("environment" | "credential_store") | null;
             /** Last Validated At */
             last_validated_at?: string | null;
             /** Error */
             error?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Runtime Evidence */
+            runtime_evidence?: string | null;
         };
         /**
          * DataBinding
@@ -18372,10 +18413,20 @@ export interface components {
          * @enum {string}
          */
         ModelCallStatus: "success" | "degraded" | "blocked" | "retryable_fail";
-        /** ModelCandidate */
+        /**
+         * ModelCandidate
+         * @description 候选主模型配置。
+         *
+         *     ``api_key`` 是**可选**的候选 Qwen 密钥（工单 01）：旧密钥已失效、而新密钥
+         *     只覆盖另一批模型时，「Qwen 凭据」卡与「Qwen 主模型」卡会互相指向对方而
+         *     无法脱困。在主模型卡同时提交候选模型 ID 与候选密钥，就能在**同一次操作**
+         *     里完成"换密钥 + 换主模型"：两者都用候选值验证，通过后一起保存生效。
+         */
         ModelCandidate: {
             /** Model Id */
             model_id: string;
+            /** Api Key */
+            api_key?: string | null;
         };
         /**
          * ModelCapabilities
@@ -21792,11 +21843,8 @@ export interface components {
         };
         /** SecretCandidate */
         SecretCandidate: {
-            /**
-             * Api Key
-             * Format: password
-             */
-            api_key: string;
+            /** Api Key */
+            api_key?: string | null;
         };
         /**
          * SemanticDiff

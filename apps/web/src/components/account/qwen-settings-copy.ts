@@ -10,6 +10,13 @@
 export const QWEN_CREDENTIAL_FIRST_GUIDANCE =
   "当前没有可用的 Qwen 密钥：请先在本页「Qwen 凭据」中输入密钥并验证保存，再填写并验证主模型 ID。";
 
+/**
+ * 主模型卡缺少可用密钥时的指引（与后端 ``QWEN_MODEL_MIGRATION_GUIDANCE`` 逐字
+ * 一致）：给出「本卡一起填」与「先去凭据卡」两条都能走通的路径。
+ */
+export const QWEN_MODEL_MIGRATION_GUIDANCE =
+  "当前没有可用的 Qwen 密钥：可以在本卡同时填入主模型 ID 与密钥（一次完成「换密钥 + 换主模型」），也可以先在「Qwen 凭据」中验证并保存密钥，再回到本卡填写主模型 ID。";
+
 /** 末次验证时间的展示文案（无记录时明确说明，不显示空值）。 */
 export function formatValidationTime(value: string | null | undefined): string {
   if (!value) return "尚无验证记录";

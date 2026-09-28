@@ -1,7 +1,6 @@
 """FastAPI application for the BridGes API."""
 
 import hashlib
-import json
 import logging
 import os
 import threading
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import SecretStr, ValidationError as PydanticValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 from bridges import __version__
 from bridges.ai import (
@@ -108,7 +107,7 @@ from bridges.closeout.fixtures import (
     CloseoutQwenAdapter,
     CloseoutWebSearchClient,
 )
-from bridges.config import Settings, get_settings, secret_file_reference
+from bridges.config import Settings, get_settings
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -126,18 +125,13 @@ from bridges.credentials.global_credential import (
     GLOBAL_QWEN_KEY_GUIDANCE,
     is_global_qwen_key_configured,
 )
-from bridges.credentials.ids import (
-    GLOBAL_QWEN_CREDENTIAL_ID,
-    AMAP_BROWSER_MAP_CREDENTIAL_ID,
-    AMAP_WEB_SERVICE_CREDENTIAL_ID,
-    SETTINGS_TAVILY_CREDENTIAL_ID,
+from bridges.credentials.runtime_resolver import (
+    CredentialSource,
+    RuntimeCredentialResolver,
 )
 from bridges.credentials.store import (
-    CredentialStoreError,
     CredentialStorePort,
-    EncryptedVolumeCredentialStore,
-    InMemoryCredentialStore,
-    OsCredentialStore,
+    build_credential_store,
 )
 from bridges.domain import (
     DomainPackLoader,
@@ -454,12 +448,8 @@ def _register_builtin_domain_packs(registry: DomainPackRegistry) -> None:
 def _credential_store_for_namespace(
     settings: Settings | None, data_dir: Path | None, namespace: str
 ) -> CredentialStorePort:
-    """按运行载体为指定命名空间创建凭据存储。"""
-    if settings is None or data_dir is None:
-        return InMemoryCredentialStore(namespace=namespace)
-    if settings.credential_backend == "encrypted-volume":
-        return EncryptedVolumeCredentialStore(data_dir, namespace=namespace)
-    return OsCredentialStore(data_dir=data_dir, namespace=namespace)
+    """按运行载体为指定命名空间创建凭据存储（规则与后台执行器共用一处）。"""
+    return build_credential_store(settings, data_dir, namespace=namespace)
 
 
 def _amap_web_service_key(app: Any) -> str | None:
@@ -552,62 +542,38 @@ def create_app(
             settings_at_credential, data_dir, namespace="runtime"
         )
     )
-    app.state.runtime_credential_store_error = False
     if settings_at_credential is not None:
+        # V2 Issue 09 / 工单 01：把凭据库里已保存的值载入运行期 Settings，
+        # 供进程内其他读取方使用。优先级只由 RuntimeCredentialResolver 决定
+        # （文件/环境变量优先，凭据库兜底）：只有"当前生效来源是凭据库"的项
+        # 才写入运行期快照，避免页面保存的值被环境变量静默遮蔽却仍显示已配置。
+        # 解析器自身吞掉存储读取异常并回落本进程缓存（失败原因见 ``load_error``），
+        # 因此这里没有需要单独处理的失败分支。
+        resolver = RuntimeCredentialResolver(
+            settings=settings_at_credential,
+            credential_store=app.state.runtime_credential_store,
+        )
         credential_updates: dict[str, Any] = {}
-        try:
-            # V2 Issue 09：设置页更换过的全局 Qwen 凭据与交互式首启保存在
-            # 同一项（ADR-0024 的优先级不变：文件/环境变量优先，凭据库兜底），
-            # 因此这里在缺少环境配置时把已保存的密钥载入运行期。
-            if settings_at_credential.qwen_api_key is None:
-                stored_qwen_key = app.state.runtime_credential_store.get(
-                    GLOBAL_QWEN_CREDENTIAL_ID
-                )
-                if stored_qwen_key is not None and stored_qwen_key.get_secret_value():
-                    credential_updates["qwen_api_key"] = stored_qwen_key
-            if settings_at_credential.tavily_api_key is None:
-                settings_tavily_key = app.state.runtime_credential_store.get(
-                    SETTINGS_TAVILY_CREDENTIAL_ID
-                )
-                if settings_tavily_key is not None:
-                    credential_updates["tavily_api_key"] = settings_tavily_key
-            web_service_file_ref = secret_file_reference("AMAP_WEB_SERVICE_KEY")
-            if not (web_service_file_ref and web_service_file_ref[0]):
-                amap_web_service_key = app.state.runtime_credential_store.get(
-                    AMAP_WEB_SERVICE_CREDENTIAL_ID
-                )
-                if amap_web_service_key is not None:
-                    credential_updates["amap_web_service_key"] = amap_web_service_key
-            js_key_file_ref = secret_file_reference("AMAP_JS_API_KEY")
-            security_code_file_ref = secret_file_reference("AMAP_SECURITY_JS_CODE")
-            has_browser_map_file_pair = (
-                js_key_file_ref
-                and js_key_file_ref[0]
-                and security_code_file_ref
-                and security_code_file_ref[0]
+        qwen_key = resolver.qwen_api_key()
+        if qwen_key.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["qwen_api_key"] = qwen_key.value
+        tavily_key = resolver.tavily_api_key()
+        if tavily_key.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["tavily_api_key"] = tavily_key.value
+        web_service_key = resolver.amap_web_service_key()
+        if web_service_key.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["amap_web_service_key"] = web_service_key.value
+        browser_map_pair = resolver.amap_browser_map_pair()
+        if browser_map_pair.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["amap_js_api_key"] = browser_map_pair.js_api_key
+            credential_updates["amap_security_js_code"] = (
+                browser_map_pair.security_js_code
             )
-            if not has_browser_map_file_pair:
-                browser_map_pair = app.state.runtime_credential_store.get(
-                    AMAP_BROWSER_MAP_CREDENTIAL_ID
-                )
-                if browser_map_pair is not None:
-                    pair = json.loads(browser_map_pair.get_secret_value())
-                    if (
-                        isinstance(pair, dict)
-                        and isinstance(pair.get("api_key"), str)
-                        and isinstance(pair.get("security_js_code"), str)
-                    ):
-                        credential_updates["amap_js_api_key"] = SecretStr(pair["api_key"])
-                        credential_updates["amap_security_js_code"] = SecretStr(
-                            pair["security_js_code"]
-                        )
-        except (CredentialStoreError, OSError, ValueError):
-            app.state.runtime_credential_store_error = True
-        else:
-            if credential_updates:
-                app.state.settings = settings_at_credential.model_copy(
-                    update=credential_updates
-                )
+        app.state.credential_resolver = resolver
+        if credential_updates:
+            app.state.settings = settings_at_credential.model_copy(
+                update=credential_updates
+            )
 
     # GQ-01：全局百炼运行凭据是正式运行的必需配置。development/production
     # 缺少 Key 时设置不含秘密的错误标记，就绪检查报告 FAIL——即使绕过

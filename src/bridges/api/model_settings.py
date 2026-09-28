@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from bridges.ai.fixed_models import CHAT_MODEL_ID
 from bridges.ai.model_metadata import (
@@ -39,14 +39,20 @@ from bridges.api.auth import SubjectDep
 from bridges.api.qwen_settings import (
     active_qwen_key,
     active_run_model_config,
+    apply_qwen_key,
     build_metadata_source,
     build_probe_client,
+    credential_store,
     last_validation,
+    qwen_key_shadow_notice,
+    qwen_key_shadowed,
     record_validation,
     run_model_config_provider,
 )
 from bridges.contracts.ai import ModelCapabilities
-from bridges.credentials.global_credential import GLOBAL_QWEN_KEY_SETTINGS_GUIDANCE
+from bridges.credentials.global_credential import QWEN_MODEL_MIGRATION_GUIDANCE
+from bridges.credentials.ids import GLOBAL_QWEN_CREDENTIAL_ID, QWEN_ITEM
+from bridges.credentials.store import CredentialStoreError
 
 router = APIRouter(prefix="/settings/models", tags=["模型设置"])
 
@@ -97,7 +103,20 @@ class ModelSettingsResponse(BaseModel):
 
 
 class ModelCandidate(BaseModel):
+    """候选主模型配置。
+
+    ``api_key`` 是**可选**的候选 Qwen 密钥（工单 01）：旧密钥已失效、而新密钥
+    只覆盖另一批模型时，「Qwen 凭据」卡与「Qwen 主模型」卡会互相指向对方而
+    无法脱困。在主模型卡同时提交候选模型 ID 与候选密钥，就能在**同一次操作**
+    里完成"换密钥 + 换主模型"：两者都用候选值验证，通过后一起保存生效。
+    """
+
     model_id: str
+    api_key: SecretStr | None = None
+
+
+def _candidate_value(secret: SecretStr | None) -> str:
+    return secret.get_secret_value().strip() if secret is not None else ""
 
 
 def _invalid(code: str, message: str, **extra: Any) -> HTTPException:
@@ -198,7 +217,12 @@ def get_model_settings(
 def replace_model_configuration(
     candidate: ModelCandidate, request: Request, subject: SubjectDep
 ) -> ModelSettingsResponse:
-    """验证并原子激活手填的主模型 ID；失败保留原配置。"""
+    """验证并原子激活手填的主模型 ID；失败保留原配置。
+
+    可选地同时提交候选密钥（工单 01）：给了候选密钥就用它验证与激活，并在
+    成功后一并替换全局凭据——这让"换密钥 + 换主模型"成为一次操作，用户不会
+    被两张卡互相指向。
+    """
     del subject
     model_id = candidate.model_id.strip()
     if not model_id:
@@ -207,12 +231,16 @@ def replace_model_configuration(
         )
         raise _invalid(MODEL_ERR_EMPTY_CANDIDATE, message, model_id=model_id)
 
-    api_key = active_qwen_key(request)
+    candidate_key = _candidate_value(candidate.api_key)
+    replacing_key = bool(candidate_key)
+    api_key = (
+        SecretStr(candidate_key) if replacing_key else active_qwen_key(request)
+    )
     if api_key is None:
         # 操作顺序：先配置密钥，再验证模型 ID（字段附近提示用同一文案）。
         raise _invalid(
             MODEL_ERR_CREDENTIAL_NOT_CONFIGURED,
-            GLOBAL_QWEN_KEY_SETTINGS_GUIDANCE,
+            QWEN_MODEL_MIGRATION_GUIDANCE,
             model_id=model_id,
         )
 
@@ -284,6 +312,31 @@ def replace_model_configuration(
         )
 
     checked_at = datetime.now(UTC)
+    key_shadowed = False
+    if replacing_key:
+        # 先落盘再激活：候选密钥已经过完整验证（元数据 + 真实能力探测），
+        # 保存失败（凭据库不可用）时不激活模型，保持两张卡的真实状态一致。
+        store = credential_store(request)
+        if store is None:
+            raise _unavailable(
+                "credential_store_unavailable",
+                "凭据存储暂不可用；主模型未做改动。",
+                model_id=model_id,
+            )
+        try:
+            store.save(GLOBAL_QWEN_CREDENTIAL_ID, api_key)
+        except (CredentialStoreError, OSError) as exc:
+            raise _unavailable(
+                "credential_store_unavailable",
+                "凭据无法安全保存，请检查凭据存储；主模型未做改动。",
+                model_id=model_id,
+            ) from exc
+        # 环境变量优先：此时新密钥在本次运行与重启后都不会生效，如实报告而不是
+        # 显示"已更换密钥"，否则用户会继续拿着失效的旧密钥排错。
+        key_shadowed = qwen_key_shadowed(request)
+        if not key_shadowed:
+            apply_qwen_key(request, api_key)
+        record_validation(request, QWEN_ITEM)
     provider = run_model_config_provider(request)
     provider.activate(
         model_id=model_id,
@@ -293,6 +346,15 @@ def replace_model_configuration(
         validated_at=checked_at,
         metadata_version=metadata.metadata_version,
     )
+    if not replacing_key:
+        message = "验证通过，已从下一条消息起使用新配置。"
+    elif key_shadowed:
+        message = (
+            f"验证通过：主模型已切换，从下一条消息起使用新配置。"
+            f"{qwen_key_shadow_notice()}"
+        )
+    else:
+        message = "验证通过：已同时更换 Qwen 密钥与主模型，从下一条消息起使用新配置。"
     report = ModelValidationReport(
         model_id=model_id,
         passed=True,
@@ -300,7 +362,7 @@ def replace_model_configuration(
         context_window=metadata.context_window,
         max_input_tokens=metadata.max_input_tokens,
         checks=checks,
-        message="验证通过，已从下一条消息起使用新配置。",
+        message=message,
     )
     record_validation(request, report)
     return _settings_response(request)

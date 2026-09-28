@@ -182,14 +182,19 @@ test.describe("设置入口（键盘与刷新）", () => {
     await expect(page.getByRole("heading", { name: "密钥与模型管理" })).toBeVisible();
     await expect(page.getByTestId("credential-status")).toHaveCount(4);
     for (const label of [
+      // 精确匹配：主模型卡另有一个可选输入「Qwen API Key（可选：与主模型一起更换）」。
       "Qwen API Key",
       "Tavily API Key",
       "高德 Web 服务 Key",
       "高德 JS API Key（Web 平台）",
       "高德 JS API 安全码",
     ]) {
-      await expect(page.getByLabel(label)).toHaveValue("");
+      await expect(page.getByLabel(label, { exact: true })).toHaveValue("");
     }
+    // 主模型卡的可选密钥框同样不回显任何值。
+    await expect(
+      page.getByLabel("Qwen API Key（可选：与主模型一起更换）", { exact: true })
+    ).toHaveValue("");
     // 浏览器存储不落任何密钥正文占位
     const storageDump = await page.evaluate(() =>
       Object.entries(window.localStorage)

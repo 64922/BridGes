@@ -10,7 +10,10 @@ import type { ModelCapabilities, ModelSettings, ModelValidationReport } from "@/
 import { fetchModelSettings, replaceModelConfiguration } from "@/lib/api";
 
 import styles from "./KeyAndModelSettings.module.css";
-import { QWEN_CREDENTIAL_FIRST_GUIDANCE, formatValidationTime } from "./qwen-settings-copy";
+import {
+  QWEN_MODEL_MIGRATION_GUIDANCE,
+  formatValidationTime,
+} from "./qwen-settings-copy";
 
 /** 能力展示顺序（与后端核对的能力集合一致）。 */
 const CAPABILITY_FIELDS: { key: keyof ModelCapabilities; label: string }[] = [
@@ -110,6 +113,7 @@ export function MainModelSettings({ reloadKey = 0 }: { reloadKey?: number }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [candidate, setCandidate] = useState("");
+  const [candidateKey, setCandidateKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -137,9 +141,13 @@ export function MainModelSettings({ reloadKey = 0 }: { reloadKey?: number }) {
     setSuccess(null);
     setSaving(true);
     try {
-      const result = await replaceModelConfiguration(candidate.trim());
+      const result = await replaceModelConfiguration(
+        candidate.trim(),
+        candidateKey.trim() || undefined
+      );
       setModel(result);
       setCandidate("");
+      setCandidateKey("");
       setSuccess(
         result.last_validation?.message ?? "验证通过，已从下一条消息起使用新配置。"
       );
@@ -232,9 +240,19 @@ export function MainModelSettings({ reloadKey = 0 }: { reloadKey?: number }) {
           hint="没有预设列表：只接受你手填的完整模型 ID，提交后会先查百炼元数据再用真实调用探测。"
           required
         />
+        <FormField
+          id="qwen-main-api-key"
+          label="Qwen API Key（可选：与主模型一起更换）"
+          type="password"
+          value={candidateKey}
+          onChange={setCandidateKey}
+          placeholder="留空则沿用当前密钥"
+          autoComplete="new-password"
+          hint="旧密钥已失效、新密钥又只能看到别的模型时，在这里与新模型 ID 一起提交：两项会用同一把新密钥验证，通过后一起生效。密钥不回显，验证通过后输入框清空。"
+        />
         {!credentialConfigured && (
           <p className={styles.guidance} data-testid="model-credential-guidance">
-            {QWEN_CREDENTIAL_FIRST_GUIDANCE}
+            {QWEN_MODEL_MIGRATION_GUIDANCE}
           </p>
         )}
         {error && <ErrorSummary title="主模型验证失败" errors={[error]} />}

@@ -1,61 +1,145 @@
-"""搜索、地图与主模型凭据的已认证设置路由。"""
+"""搜索、地图与主模型凭据的已认证设置路由（工单 01 修订）。
+
+「保存成功 ⇒ 系统真的用上了」是本模块的合同：
+
+- **真验证**：每个候选值都要经过一次真实只读请求才会被保存——Qwen 用元数据
+  查询加最小真实调用，Tavily 用固定探针查询，高德 Web 服务用地理编码请求，
+  浏览器地图用「Key + 安全密钥」成对的真实数据服务请求（官方代理方案下由
+  服务端追加 ``jscode``）。探测本身跑不通（上游不可达、非 200、无法解析）与
+  「上游明确拒绝了这个值」是两种结论，前者按 503 报告，绝不冒充"值无效"。
+- **失败落到具体原因**：五张卡都给出稳定分类码（``reason``）与可操作的中文
+  诊断，区分值不存在、平台不符、服务未开通或权限不足、签名或白名单限制、
+  额度超限与上游不可达。文案与日志都不含凭据正文（也不回显上游 ``info``）。
+- **生效边界如实报告**：``effective_source`` 说明当前真正生效的值来自环境变量
+  还是凭据库——环境变量优先，它存在时页面保存的值不会生效（这一点必须让用户
+  看得见，而不是显示"已配置"却解释不了行为）。
+- **只声称已被证明的事**：浏览器地图的底图渲染依赖浏览器的真实请求，保存时
+  无法证明，因此保存成功文案只声明"Key 与安全码通过了一次真实数据服务请求"，
+  底图路径的结论由地图代理在首次真实请求后回写（见 ``runtime_evidence``）。
+"""
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
-import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, SecretStr
 
 from bridges.ai.model_metadata import (
     MODEL_METADATA_ERR_MODEL_NOT_FOUND,
+    MODEL_METADATA_ERR_QUOTA_EXCEEDED,
     MODEL_METADATA_ERR_UNAVAILABLE,
     ModelMetadataError,
 )
 from bridges.ai.model_probe import ModelCapabilityProbe
 from bridges.api.auth import SubjectDep
+from bridges.api.credential_state import (
+    record_credential_validation,
+    validation_snapshot,
+)
 from bridges.api.qwen_settings import (
-    active_qwen_key,
     active_run_model_config,
     apply_qwen_key,
     build_metadata_source,
     build_probe_client,
+    credential_resolver,
+    qwen_key_shadow_notice,
+    qwen_key_shadowed,
+    runtime_settings,
 )
+from bridges.config import secret_environment_source
 from bridges.contracts.ai import ModelCapabilities
+from bridges.credentials.amap_probes import (
+    REASON_BAD_PAYLOAD,
+    REASON_UPSTREAM_ERROR,
+    REASON_UPSTREAM_UNREACHABLE,
+    AmapDiagnosis,
+    probe_data_service,
+    probe_loader,
+)
 from bridges.credentials.ids import (
     AMAP_BROWSER_MAP_CREDENTIAL_ID,
+    AMAP_BROWSER_MAP_ITEM,
     AMAP_WEB_SERVICE_CREDENTIAL_ID,
+    AMAP_WEB_SERVICE_ITEM,
     GLOBAL_QWEN_CREDENTIAL_ID,
-    RUNTIME_TAVILY_CREDENTIAL_ID,
+    QWEN_ITEM,
     SETTINGS_TAVILY_CREDENTIAL_ID,
+    TAVILY_ITEM,
+)
+from bridges.credentials.runtime_resolver import (
+    CredentialSource,
+    ResolvedBrowserMapPair,
+    ResolvedCredential,
 )
 from bridges.credentials.store import CredentialStoreError, CredentialStorePort
-from bridges.web_search.contracts import WebSearchHealthStatus
+from bridges.web_search.contracts import WebSearchHealth, WebSearchHealthStatus
 from bridges.web_search.tavily import TavilySearchClient
 
 router = APIRouter(prefix="/settings/credentials", tags=["凭据设置"])
 
-_AMAP_GEOCODE_ENDPOINT = "https://restapi.amap.com/v3/geocode/geo"
-_AMAP_JS_API_ENDPOINT = "https://webapi.amap.com/maps"
-_AMAP_JS_AUTH_ERRORS = (
-    "INVALID_USER_KEY",
-    "INVALID_USER_SCODE",
-    "INVALID_USER_DOMAIN",
-    "USERKEY_PLAT_NOMATCH",
-)
-#: Qwen 密钥候选被拒绝的原因分类（前端据此在字段附近给出操作顺序提示）。
-_REASON_KEY_REJECTED = "key_rejected"
-_REASON_MODEL_NOT_MATCHING = "model_not_matching_key"
-_REASON_PROBE_FAILED = "probe_failed"
+#: 失败原因分类（稳定机器码；中文文案不参与断言）。
+REASON_CREDENTIAL_MISSING = "credential_missing"
+REASON_KEY_REJECTED = "key_rejected"
+REASON_MODEL_NOT_MATCHING = "model_not_matching_key"
+REASON_PROBE_FAILED = "probe_failed"
+REASON_QUOTA_EXCEEDED = "quota_exceeded"
+
+#: Tavily 失败分类：错误码 → (分类码, 中文诊断)。
+_TAVILY_REASONS: dict[str, tuple[str, str]] = {
+    "web_search_credentials": (
+        "search_credential_invalid",
+        "Tavily 拒绝了该 API Key（凭据无效）：请核对控制台里的 Key 是否完整、"
+        "是否已删除或过期，再重新填入。",
+    ),
+    "web_search_configuration": (
+        "search_credential_invalid",
+        "Tavily 拒绝了该 API Key（凭据无效）：请核对控制台里的 Key 是否完整、"
+        "是否已删除或过期，再重新填入。",
+    ),
+    "web_search_rate_limit": (
+        "search_rate_limited",
+        "Tavily 提示请求过于频繁（429）：请稍后重试；若持续出现，请在控制台检查当日用量。",
+    ),
+    "web_search_quota": (
+        "search_quota_exceeded",
+        "Tavily 账户用量已达上限（套餐或按量额度）：请在控制台调整用量或升级套餐后重试，"
+        "重试不会自行恢复。",
+    ),
+    "web_search_dns": (
+        "search_upstream_unreachable",
+        "无法解析 Tavily 域名：请检查本机网络与 DNS 设置后重试。",
+    ),
+    "web_search_connect": (
+        "search_upstream_unreachable",
+        "无法连接 Tavily：请检查本机网络与代理设置后重试。",
+    ),
+    "web_search_offline": (
+        "search_upstream_unreachable",
+        "当前网络不可用，无法连接 Tavily：请检查网络后重试。",
+    ),
+    "web_search_timeout": (
+        "search_upstream_unreachable",
+        "连接 Tavily 超时：请检查本机网络与代理设置后重试。",
+    ),
+    "web_search_provider": (
+        "search_upstream_error",
+        "Tavily 服务端返回错误：请稍后重试。",
+    ),
+}
 
 
 class CredentialStatus(BaseModel):
+    """一张卡片的凭据状态（不含任何凭据正文）。"""
+
     configured: bool
+    effective_source: Literal["environment", "credential_store"] | None = None
     last_validated_at: datetime | None = None
     error: str | None = None
+    message: str | None = None
+    runtime_evidence: str | None = None
 
 
 class AMapCredentialStatus(BaseModel):
@@ -67,23 +151,19 @@ class CredentialSettingsResponse(BaseModel):
     qwen: CredentialStatus
     tavily: CredentialStatus
     amap: AMapCredentialStatus
+    store_error: str | None = None
 
 
 class SecretCandidate(BaseModel):
-    api_key: SecretStr
+    api_key: SecretStr | None = None
 
 
 class AMapBrowserCandidate(BaseModel):
-    api_key: SecretStr
-    security_js_code: SecretStr
+    api_key: SecretStr | None = None
+    security_js_code: SecretStr | None = None
 
 
 def _store(request: Request) -> CredentialStorePort:
-    if getattr(request.app.state, "runtime_credential_store_error", False):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"error": "credential_store_unavailable", "message": "凭据存储暂不可用。"},
-        )
     store: CredentialStorePort | None = getattr(
         request.app.state, "runtime_credential_store", None
     )
@@ -95,73 +175,69 @@ def _store(request: Request) -> CredentialStorePort:
     return store
 
 
-def _configured(request: Request, field_name: str, *credential_ids: str) -> bool:
-    settings = getattr(request.app.state, "settings", None)
-    configured = getattr(settings, field_name, None) is not None
-    if configured:
-        return True
+def _save_credential(request: Request, identifier: str, secret: SecretStr) -> None:
+    """把已验证的候选值写入凭据库；失败给出不含秘密的中文错误。"""
     try:
-        store = _store(request)
-        return any(store.get(identifier) is not None for identifier in credential_ids)
+        _store(request).save(identifier, secret)
     except (CredentialStoreError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"error": "credential_store_unavailable", "message": "凭据存储暂不可用。"},
+            detail={
+                "error": "credential_store_unavailable",
+                "message": "凭据无法安全保存，请检查凭据存储。",
+            },
         ) from exc
 
 
-def _validation_state(request: Request) -> dict[str, dict[str, Any]]:
-    state: dict[str, dict[str, Any]] | None = getattr(
-        request.app.state, "credential_validation_state", None
+def _mirror_settings(request: Request, **updates: Any) -> None:
+    """把已保存的凭据同步进本进程的运行期 Settings（其他读取方立即看到新值）。"""
+    settings = runtime_settings(request)
+    if settings is not None:
+        request.app.state.settings = settings.model_copy(update=updates)
+
+
+def _reported_source(source: CredentialSource) -> Literal["environment", "credential_store"] | None:
+    if source is CredentialSource.ENVIRONMENT:
+        return "environment"
+    if source is CredentialSource.CREDENTIAL_STORE:
+        return "credential_store"
+    return None
+
+
+def _shadowed_by_environment(
+    resolved: ResolvedCredential | ResolvedBrowserMapPair,
+) -> bool:
+    """该项当前是否由环境变量提供（此时页面保存的值不会生效）。"""
+    return resolved.source is CredentialSource.ENVIRONMENT
+
+
+def _shadow_notice(field_name: str) -> str:
+    """环境变量遮蔽凭据库时的中文提示：写明真正生效的是哪一个值与下一步操作。"""
+    env_var = secret_environment_source(field_name) or f"BRIDGES_{field_name.upper()}"
+    return (
+        f"已通过验证并保存到凭据库；但该项当前由环境变量（{env_var}）提供，"
+        "环境变量优先，本次保存的值不会生效。若要改用页面保存的值，"
+        "请先移除该环境变量（或其 _FILE 引用）并重启 BridGes。"
     )
-    if state is None:
-        state = {}
-        request.app.state.credential_validation_state = state
-    return state
 
 
 def _status(
-    request: Request, name: str, *, configured: bool
+    request: Request,
+    name: str,
+    *,
+    resolved: ResolvedCredential | ResolvedBrowserMapPair,
 ) -> CredentialStatus:
-    validation = _validation_state(request).get(name, {})
+    snapshot = validation_snapshot(request, name)
     return CredentialStatus(
-        configured=configured,
-        last_validated_at=validation.get("last_validated_at"),
-        error=validation.get("error"),
+        configured=resolved.configured,
+        effective_source=_reported_source(resolved.source),
+        last_validated_at=snapshot.get("last_validated_at"),
+        error=snapshot.get("error"),
+        runtime_evidence=snapshot.get("runtime_evidence"),
     )
 
 
-def _amap_browser_map_configured(request: Request) -> bool:
-    settings = getattr(request.app.state, "settings", None)
-    has_environment_pair = (
-        getattr(settings, "amap_js_api_key", None) is not None
-        and getattr(settings, "amap_security_js_code", None) is not None
-    )
-    try:
-        return has_environment_pair or _store(request).get(
-            AMAP_BROWSER_MAP_CREDENTIAL_ID
-        ) is not None
-    except (CredentialStoreError, OSError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"error": "credential_store_unavailable", "message": "凭据存储暂不可用。"},
-        ) from exc
-
-
-def _record_validation(
-    request: Request, name: str, *, error: str | None = None
-) -> datetime:
-    checked_at = datetime.now(UTC)
-    _validation_state(request)[name] = {
-        "last_validated_at": checked_at,
-        "error": error,
-    }
-    return checked_at
-
-
-def _invalid_candidate(
-    name: str, message: str, *, reason: str | None = None
-) -> HTTPException:
+def _invalid_candidate(name: str, message: str, *, reason: str | None = None) -> HTTPException:
     detail: dict[str, Any] = {
         "error": "credential_invalid",
         "credential": name,
@@ -175,99 +251,90 @@ def _invalid_candidate(
     )
 
 
-def _probe_unavailable(message: str) -> HTTPException:
+def _probe_unavailable(message: str, *, reason: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail={"error": "credential_probe_unavailable", "message": message},
+        detail={
+            "error": "credential_probe_unavailable",
+            "message": message,
+            "reason": reason,
+        },
     )
 
 
-def _candidate_value(secret: SecretStr) -> str:
-    return secret.get_secret_value().strip()
+def _amap_probe_error(
+    request: Request, item: str, diagnosis: AmapDiagnosis
+) -> HTTPException:
+    """把高德诊断投影成 HTTP 结论。
+
+    「探测没跑通」（上游不可达、非 200、无法解析的响应）给 503：这时我们并没有
+    拿到"这个值不行"的证据，不能替用户下结论；「上游明确拒绝了这个值」给 422。
+    """
+    record_credential_validation(request, item, error=diagnosis.message)
+    if diagnosis.reason in {
+        REASON_UPSTREAM_UNREACHABLE,
+        REASON_UPSTREAM_ERROR,
+        REASON_BAD_PAYLOAD,
+    }:
+        return _probe_unavailable(diagnosis.message, reason=diagnosis.reason)
+    return _invalid_candidate(item, diagnosis.message, reason=diagnosis.reason)
 
 
-def _probe_amap_web_service(
-    client: httpx.Client, key: str
-) -> bool:
-    try:
-        response = client.get(
-            _AMAP_GEOCODE_ENDPOINT,
-            params={
-                "key": key,
-                "address": "华东交通大学南昌校区",
-                "city": "南昌",
-                "output": "JSON",
-            },
-            follow_redirects=False,
+def _candidate_value(secret: SecretStr | None) -> str:
+    return secret.get_secret_value().strip() if secret is not None else ""
+
+
+def _tavily_diagnosis(result: WebSearchHealth) -> tuple[str, str] | None:
+    """把 Tavily 健康检查结论映射为 (分类码, 中文诊断)；READY 时返回 None。"""
+    if result.status == WebSearchHealthStatus.READY:
+        return None
+    code = result.error_code or ""
+    known = _TAVILY_REASONS.get(code)
+    if known is not None:
+        return known
+    if result.status == WebSearchHealthStatus.RATE_LIMITED:
+        return ("search_rate_limited", "Tavily 提示请求过于频繁（429）：请稍后重试。")
+    if result.status == WebSearchHealthStatus.DNS_ERROR:
+        return (
+            "search_upstream_unreachable",
+            "无法解析 Tavily 域名：请检查本机网络与 DNS 设置后重试。",
         )
-        if response.status_code != 200:
-            return False
-        payload = response.json()
-    except (httpx.HTTPError, ValueError):
-        return False
-    return (
-        isinstance(payload, dict)
-        and payload.get("status") == "1"
-        and payload.get("infocode") == "10000"
-    )
-
-
-def _probe_amap_browser_map(client: httpx.Client, key: str) -> bool:
-    """通过 JS API 加载器检查 Key；安全码不会发送给浏览器加载器。"""
-    try:
-        with client.stream(
-            "GET",
-            _AMAP_JS_API_ENDPOINT,
-            params={"v": "2.0", "key": key},
-            follow_redirects=False,
-        ) as response:
-            if response.status_code != 200:
-                return False
-            body = bytearray()
-            for chunk in response.iter_bytes():
-                body.extend(chunk)
-                if len(body) > 262_144:
-                    return False
-    except httpx.HTTPError:
-        return False
-    script = body.decode("utf-8", errors="replace")
-    return bool(script) and not any(error in script for error in _AMAP_JS_AUTH_ERRORS)
+    if result.status == WebSearchHealthStatus.CONNECT_ERROR:
+        return (
+            "search_upstream_unreachable",
+            "无法连接 Tavily：请检查本机网络与代理设置后重试。",
+        )
+    if result.status == WebSearchHealthStatus.AUTH_ERROR:
+        return (
+            "search_credential_invalid",
+            "Tavily 拒绝了该 API Key（凭据无效）：请核对控制台里的 Key 是否完整、"
+            "是否已删除或过期，再重新填入。",
+        )
+    return ("search_upstream_error", "Tavily 服务未通过验证：请稍后重试。")
 
 
 @router.get("", response_model=CredentialSettingsResponse)
 def get_credential_settings(
     request: Request, response: Response, subject: SubjectDep
 ) -> CredentialSettingsResponse:
+    """报告四类凭据的配置状态、当前生效来源与最近一次验证结论。"""
     del subject
     response.headers["Cache-Control"] = "no-store"
+    resolver = credential_resolver(request)
     return CredentialSettingsResponse(
-        qwen=_status(
-            request, "qwen", configured=active_qwen_key(request) is not None
-        ),
-        tavily=_status(
-            request,
-            "tavily",
-            configured=_configured(
-                request,
-                "tavily_api_key",
-                RUNTIME_TAVILY_CREDENTIAL_ID,
-                SETTINGS_TAVILY_CREDENTIAL_ID,
-            ),
-        ),
+        qwen=_status(request, QWEN_ITEM, resolved=resolver.qwen_api_key()),
+        tavily=_status(request, TAVILY_ITEM, resolved=resolver.tavily_api_key()),
         amap=AMapCredentialStatus(
             web_service=_status(
-                request,
-                "amap_web_service",
-                configured=_configured(
-                    request, "amap_web_service_key", AMAP_WEB_SERVICE_CREDENTIAL_ID
-                ),
+                request, AMAP_WEB_SERVICE_ITEM, resolved=resolver.amap_web_service_key()
             ),
             browser_map=_status(
                 request,
-                "amap_browser_map",
-                configured=_amap_browser_map_configured(request),
+                AMAP_BROWSER_MAP_ITEM,
+                resolved=resolver.amap_browser_map_pair(),
             ),
         ),
+        store_error=resolver.load_error,
     )
 
 
@@ -282,34 +349,45 @@ def replace_qwen_credential(
     不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型
     调用即使用新凭据。
 
+    该密钥看不到当前主模型时，提示指向「Qwen 主模型」卡的同一次迁移操作
+    （那里可以同时填入候选模型 ID 与这把新密钥），不再形成互相指向的循环。
+
     凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。
     """
     del subject
     key = _candidate_value(candidate.api_key)
     if not key:
         message = "Qwen API Key 不能为空。"
-        _record_validation(request, "qwen", error=message)
-        raise _invalid_candidate("qwen", message, reason=_REASON_KEY_REJECTED)
+        record_credential_validation(request, QWEN_ITEM, error=message)
+        raise _invalid_candidate(
+            QWEN_ITEM, message, reason=REASON_CREDENTIAL_MISSING
+        )
 
     secret = SecretStr(key)
     config = active_run_model_config(request)
     try:
         build_metadata_source(request, secret).query(config.model_id)
     except ModelMetadataError as exc:
-        _record_validation(request, "qwen", error=exc.message)
+        record_credential_validation(request, QWEN_ITEM, error=exc.message)
         if exc.code == MODEL_METADATA_ERR_UNAVAILABLE:
-            raise _probe_unavailable(exc.message) from exc
+            raise _probe_unavailable(exc.message, reason=exc.code) from exc
+        if exc.code == MODEL_METADATA_ERR_QUOTA_EXCEEDED:
+            # 额度问题不是"密钥无效"，换密钥也解决不了：单独分类，免得用户白换 Key。
+            raise _invalid_candidate(
+                QWEN_ITEM, exc.message, reason=REASON_QUOTA_EXCEEDED
+            ) from exc
         if exc.code == MODEL_METADATA_ERR_MODEL_NOT_FOUND:
             message = (
-                f"该密钥看不到当前主模型 ID（{config.model_id}）。"
-                "请先更换为可访问该模型的密钥，或在下方「Qwen 主模型 ID」中改填"
-                "该密钥可用的模型，再回来验证密钥。"
+                f"该密钥看不到当前主模型 ID（{config.model_id}）：这正是旧密钥已失效、"
+                "而新密钥只覆盖另一批模型时的典型症状。请在下方「Qwen 主模型」卡里"
+                "同时填入该密钥可用的模型 ID 与这把新密钥，一次完成「换密钥 + "
+                "换主模型」；只换密钥（保留当前主模型）请改用一把能看到该模型的密钥。"
             )
             raise _invalid_candidate(
-                "qwen", message, reason=_REASON_MODEL_NOT_MATCHING
+                QWEN_ITEM, message, reason=REASON_MODEL_NOT_MATCHING
             ) from exc
         raise _invalid_candidate(
-            "qwen", exc.message, reason=_REASON_KEY_REJECTED
+            QWEN_ITEM, exc.message, reason=REASON_KEY_REJECTED
         ) from exc
 
     outcomes = ModelCapabilityProbe(build_probe_client(request, secret)).run(
@@ -318,35 +396,45 @@ def replace_qwen_credential(
     failed = [outcome for outcome in outcomes if not outcome.ok]
     if failed:
         message = failed[0].message or "Qwen 密钥验证失败，请检查密钥后重试。"
-        _record_validation(request, "qwen", error=message)
-        raise _invalid_candidate("qwen", message, reason=_REASON_PROBE_FAILED)
+        record_credential_validation(request, QWEN_ITEM, error=message)
+        raise _invalid_candidate(
+            QWEN_ITEM, message, reason=REASON_PROBE_FAILED
+        )
 
-    try:
-        _store(request).save(GLOBAL_QWEN_CREDENTIAL_ID, secret)
-    except (CredentialStoreError, OSError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "credential_store_unavailable",
-                "message": "凭据无法安全保存，请检查凭据存储。",
-            },
-        ) from exc
-
-    apply_qwen_key(request, secret)
-    checked_at = _record_validation(request, "qwen")
-    return CredentialStatus(configured=True, last_validated_at=checked_at)
+    _save_credential(request, GLOBAL_QWEN_CREDENTIAL_ID, secret)
+    shadowed = qwen_key_shadowed(request)
+    if not shadowed:
+        apply_qwen_key(request, secret)
+    checked_at = record_credential_validation(request, QWEN_ITEM)
+    resolved = credential_resolver(request).qwen_api_key()
+    return CredentialStatus(
+        configured=True,
+        effective_source=_reported_source(resolved.source),
+        last_validated_at=checked_at,
+        message=(
+            qwen_key_shadow_notice()
+            if shadowed
+            else (
+                "Qwen 凭据已验证并保存：已核对百炼元数据，并完成一次最小真实调用"
+                f"（模型 {config.model_id}）。新密钥对下一次调用立即生效，无需重启。"
+            )
+        ),
+    )
 
 
 @router.put("/tavily", response_model=CredentialStatus)
 def replace_tavily_credential(
     candidate: SecretCandidate, request: Request, subject: SubjectDep
 ) -> CredentialStatus:
+    """验证并替换 Tavily 搜索凭据；失败保留旧凭据。"""
     del subject
     key = _candidate_value(candidate.api_key)
     if not key:
         message = "Tavily API Key 不能为空。"
-        _record_validation(request, "tavily", error=message)
-        raise _invalid_candidate("tavily", message)
+        record_credential_validation(request, TAVILY_ITEM, error=message)
+        raise _invalid_candidate(
+            TAVILY_ITEM, message, reason=REASON_CREDENTIAL_MISSING
+        )
 
     probe_client = TavilySearchClient(
         api_key=SecretStr(key),
@@ -354,111 +442,149 @@ def replace_tavily_credential(
         max_results=1,
         fetch_sources=False,
     )
-    result = probe_client.health_check()
-    if result.status != WebSearchHealthStatus.READY:
-        message = "Tavily 验证失败，请检查密钥和账户权限。"
-        _record_validation(request, "tavily", error=message)
-        raise _invalid_candidate("tavily", message)
+    before = credential_resolver(request).tavily_api_key()
+    diagnosis = _tavily_diagnosis(probe_client.health_check())
+    if diagnosis is not None:
+        reason, message = diagnosis
+        record_credential_validation(request, TAVILY_ITEM, error=message)
+        if reason == "search_upstream_unreachable":
+            raise _probe_unavailable(message, reason=reason)
+        raise _invalid_candidate(TAVILY_ITEM, message, reason=reason)
 
-    try:
-        _store(request).save(SETTINGS_TAVILY_CREDENTIAL_ID, SecretStr(key))
-    except (CredentialStoreError, OSError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "credential_store_unavailable",
-                "message": "凭据无法安全保存，请检查凭据存储。",
-            },
-        ) from exc
-
-    app_settings = request.app.state.settings
-    if app_settings is not None:
-        request.app.state.settings = app_settings.model_copy(
-            update={"tavily_api_key": SecretStr(key)}
-        )
-    web_search_service = getattr(request.app.state, "web_search_service", None)
-    if web_search_service is not None:
-        web_search_service.replace_tavily_api_key(SecretStr(key))
-    checked_at = _record_validation(request, "tavily")
-    return CredentialStatus(configured=True, last_validated_at=checked_at)
+    _save_credential(request, SETTINGS_TAVILY_CREDENTIAL_ID, SecretStr(key))
+    shadowed = _shadowed_by_environment(before)
+    if not shadowed:
+        _mirror_settings(request, tavily_api_key=SecretStr(key))
+        web_search_service = getattr(request.app.state, "web_search_service", None)
+        if web_search_service is not None:
+            web_search_service.replace_tavily_api_key(SecretStr(key))
+    checked_at = record_credential_validation(request, TAVILY_ITEM)
+    resolved = credential_resolver(request).tavily_api_key()
+    return CredentialStatus(
+        configured=True,
+        effective_source=_reported_source(resolved.source),
+        last_validated_at=checked_at,
+        message=(
+            _shadow_notice("TAVILY_API_KEY")
+            if shadowed
+            else (
+                "Tavily 凭据已验证并保存：已完成一次固定探针搜索，"
+                "联网搜索的下一次调用立即使用新凭据，无需重启。"
+            )
+        ),
+    )
 
 
 @router.put("/amap/web-service", response_model=CredentialStatus)
 def replace_amap_web_service_credential(
     candidate: SecretCandidate, request: Request, subject: SubjectDep
 ) -> CredentialStatus:
+    """验证并替换高德 Web 服务 Key；失败按具体原因分类，保留旧凭据。"""
     del subject
     key = _candidate_value(candidate.api_key)
     if not key:
         message = "高德 Web 服务 Key 不能为空。"
-        _record_validation(request, "amap_web_service", error=message)
-        raise _invalid_candidate("amap_web_service", message)
-
-    if not _probe_amap_web_service(request.app.state.credential_probe_http_client, key):
-        message = "高德 Web 服务 Key 验证失败，请检查密钥、服务权限和额度。"
-        _record_validation(request, "amap_web_service", error=message)
-        raise _invalid_candidate("amap_web_service", message)
-
-    try:
-        _store(request).save(AMAP_WEB_SERVICE_CREDENTIAL_ID, SecretStr(key))
-    except (CredentialStoreError, OSError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "credential_store_unavailable",
-                "message": "凭据无法安全保存，请检查凭据存储。",
-            },
-        ) from exc
-    checked_at = _record_validation(request, "amap_web_service")
-    app_settings = request.app.state.settings
-    if app_settings is not None:
-        request.app.state.settings = app_settings.model_copy(
-            update={"amap_web_service_key": SecretStr(key)}
+        record_credential_validation(request, AMAP_WEB_SERVICE_ITEM, error=message)
+        raise _invalid_candidate(
+            AMAP_WEB_SERVICE_ITEM, message, reason=REASON_CREDENTIAL_MISSING
         )
-    return CredentialStatus(configured=True, last_validated_at=checked_at)
+
+    diagnosis = probe_data_service(
+        request.app.state.credential_probe_http_client, key=key
+    )
+    if diagnosis is not None:
+        raise _amap_probe_error(request, AMAP_WEB_SERVICE_ITEM, diagnosis)
+
+    before = credential_resolver(request).amap_web_service_key()
+    _save_credential(request, AMAP_WEB_SERVICE_CREDENTIAL_ID, SecretStr(key))
+    shadowed = _shadowed_by_environment(before)
+    if not shadowed:
+        _mirror_settings(request, amap_web_service_key=SecretStr(key))
+    checked_at = record_credential_validation(request, AMAP_WEB_SERVICE_ITEM)
+    resolved = credential_resolver(request).amap_web_service_key()
+    return CredentialStatus(
+        configured=True,
+        effective_source=_reported_source(resolved.source),
+        last_validated_at=checked_at,
+        message=(
+            _shadow_notice("AMAP_WEB_SERVICE_KEY")
+            if shadowed
+            else (
+                "高德 Web 服务凭据已验证并保存：已完成一次真实地理编码请求"
+                "（固定公开地址）。服务端路线与地点查询的下一次调用立即使用新值。"
+            )
+        ),
+    )
 
 
 @router.put("/amap/browser-map", response_model=CredentialStatus)
 def replace_amap_browser_map_credential(
     candidate: AMapBrowserCandidate, request: Request, subject: SubjectDep
 ) -> CredentialStatus:
+    """验证并保存浏览器地图凭据对（JS API Key ＋ 安全密钥）。
+
+    验证由两部分组成，且只有第二部分是有效性证据：
+
+    1. **加载器可达性**：只读正文前缀判断能否取到脚本（真实正文约 968 KB，
+       按体积判失败会误杀有效 Key）。可达不是 Key 有效的证据，只是"上游此刻
+       连得上"的前提；连不上就无法完成第 2 步，按上游不可达报告且不保存；
+    2. **成对真实请求**：按高德官方代理方案，在服务端把 ``jscode``（安全密钥）
+       与 JS API Key 一起送到数据服务，用一次真实地理编码请求证明配对可用。
+
+    底图能否在用户浏览器里渲染依赖浏览器侧底图瓦片请求，服务端无法证明，因此
+    成功文案只声明已经证明的那件事；浏览器路径的结论由地图代理在真实请求后
+    回写（``runtime_evidence``）。
+    """
     del subject
     key = _candidate_value(candidate.api_key)
     security_code = _candidate_value(candidate.security_js_code)
     if not key or not security_code:
         message = "高德浏览器地图 Key 和安全码都不能为空。"
-        _record_validation(request, "amap_browser_map", error=message)
-        raise _invalid_candidate("amap_browser_map", message)
+        record_credential_validation(request, AMAP_BROWSER_MAP_ITEM, error=message)
+        raise _invalid_candidate(
+            AMAP_BROWSER_MAP_ITEM, message, reason=REASON_CREDENTIAL_MISSING
+        )
 
-    if not _probe_amap_browser_map(
-        request.app.state.credential_probe_http_client, key
-    ):
-        message = "高德 JS API Key 验证失败，请检查密钥和 Web 平台配置。"
-        _record_validation(request, "amap_browser_map", error=message)
-        raise _invalid_candidate("amap_browser_map", message)
+    probe_http = request.app.state.credential_probe_http_client
+    loader = probe_loader(probe_http, key)
+    diagnosis = loader.diagnosis
+    if diagnosis is not None:
+        raise _amap_probe_error(request, AMAP_BROWSER_MAP_ITEM, diagnosis)
+
+    diagnosis = probe_data_service(
+        probe_http, key=key, security_code=security_code
+    )
+    if diagnosis is not None:
+        raise _amap_probe_error(request, AMAP_BROWSER_MAP_ITEM, diagnosis)
 
     pair = json.dumps(
         {"api_key": key, "security_js_code": security_code},
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    try:
-        _store(request).save(AMAP_BROWSER_MAP_CREDENTIAL_ID, SecretStr(pair))
-    except (CredentialStoreError, OSError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "credential_store_unavailable",
-                "message": "凭据无法安全保存，请检查凭据存储。",
-            },
-        ) from exc
-    checked_at = _record_validation(request, "amap_browser_map")
-    app_settings = request.app.state.settings
-    if app_settings is not None:
-        request.app.state.settings = app_settings.model_copy(
-            update={
-                "amap_js_api_key": SecretStr(key),
-                "amap_security_js_code": SecretStr(security_code),
-            }
+    before = credential_resolver(request).amap_browser_map_pair()
+    _save_credential(request, AMAP_BROWSER_MAP_CREDENTIAL_ID, SecretStr(pair))
+    shadowed = _shadowed_by_environment(before)
+    if not shadowed:
+        _mirror_settings(
+            request,
+            amap_js_api_key=SecretStr(key),
+            amap_security_js_code=SecretStr(security_code),
         )
-    return CredentialStatus(configured=True, last_validated_at=checked_at)
+    checked_at = record_credential_validation(request, AMAP_BROWSER_MAP_ITEM)
+    resolved = credential_resolver(request).amap_browser_map_pair()
+    return CredentialStatus(
+        configured=True,
+        effective_source=_reported_source(resolved.source),
+        last_validated_at=checked_at,
+        message=(
+            _shadow_notice("AMAP_JS_API_KEY")
+            if shadowed
+            else (
+                "JS API Key 与安全码已保存，并完成一次成对的真实数据服务请求"
+                "（服务端追加 jscode 的地理编码请求）；地图加载器可达。"
+                "底图瓦片不经过 BridGes 代理，因此底图渲染本身在这里无法证明；"
+                "浏览器之后的真实地图数据请求结论会回写到本卡。"
+            )
+        ),
+    )

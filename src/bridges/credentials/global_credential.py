@@ -13,6 +13,8 @@
 - V2 Issue 09 起，设置页可在运行期更换该凭据：候选密钥先经最小只读探测，
   成功后才整体替换（保存为 ``GLOBAL_QWEN_CREDENTIAL_ID``，与交互式首启同一
   项），失败保留旧凭据；解析优先级仍是文件/环境变量优先、凭据库兜底。
+  运行期"按需重读 + 来源报告"的读取入口是
+  ``bridges.credentials.runtime_resolver.RuntimeCredentialResolver``（工单 01）。
 """
 
 from __future__ import annotations
@@ -20,8 +22,6 @@ from __future__ import annotations
 from pydantic import SecretStr
 
 from bridges.config import Settings
-from bridges.credentials.ids import GLOBAL_QWEN_CREDENTIAL_ID
-from bridges.credentials.store import CredentialStoreError, CredentialStorePort
 
 #: 面向运维的中文配置指引（不含任何秘密正文），供启动硬门与 doctor 复用。
 GLOBAL_QWEN_KEY_GUIDANCE = (
@@ -34,6 +34,17 @@ GLOBAL_QWEN_KEY_GUIDANCE = (
 GLOBAL_QWEN_KEY_SETTINGS_GUIDANCE = (
     "当前没有可用的 Qwen 密钥：请先在本页「Qwen 凭据」中输入密钥并验证保存，"
     "再填写并验证主模型 ID。"
+)
+
+#: 主模型卡缺少可用密钥时的中文指引（工单 01）。
+#:
+#: 旧密钥已失效、新密钥又只覆盖另一批模型时，两张卡原本会互相指向对方而无法
+#: 脱困；主模型卡现在可以同时携带候选密钥，因此这里的指引给出两条都能走通的
+#: 路径，不再要求用户先回到凭据卡"解锁"。
+QWEN_MODEL_MIGRATION_GUIDANCE = (
+    "当前没有可用的 Qwen 密钥：可以在本卡同时填入主模型 ID 与密钥（一次完成"
+    "「换密钥 + 换主模型」），也可以先在「Qwen 凭据」中验证并保存密钥，再回到"
+    "本卡填写主模型 ID。"
 )
 
 
@@ -63,28 +74,3 @@ def require_global_qwen_key(settings: Settings) -> SecretStr:
     if key is None:
         raise GlobalQwenCredentialError(GLOBAL_QWEN_KEY_GUIDANCE)
     return key
-
-
-def resolve_settings_qwen_key(
-    settings: Settings | None, credential_store: CredentialStorePort | None
-) -> SecretStr | None:
-    """解析设置页可用的 Qwen 凭据：文件/环境变量优先，其次凭据库。
-
-    布局与 Tavily/高德设置一致（``SETTINGS_*`` 命名空间的读法）：显式配置的
-    环境变量或 ``_FILE`` 引用优先；否则读取交互式首启或设置页保存的全局凭据。
-    凭据库不可读时返回 None（调用方给出"先配置密钥"的操作顺序提示），绝不
-    把凭据库异常升级为请求失败。
-    """
-    if settings is not None:
-        configured = resolve_global_qwen_key(settings)
-        if configured is not None:
-            return configured
-    if credential_store is None:
-        return None
-    try:
-        stored = credential_store.get(GLOBAL_QWEN_CREDENTIAL_ID)
-    except (CredentialStoreError, OSError):
-        return None
-    if stored is None or not stored.get_secret_value():
-        return None
-    return stored

@@ -427,13 +427,23 @@ export async function fetchModelSettings(): Promise<ModelSettings> {
   return res.json();
 }
 
-/** 验证并原子激活手填的主模型 ID；失败保留原配置。 */
-export async function replaceModelConfiguration(modelId: string): Promise<ModelSettings> {
+/**
+ * 验证并原子激活手填的主模型 ID；失败保留原配置。
+ *
+ * 可选地同时提交候选密钥（工单 01）：旧密钥失效、新密钥只覆盖另一批模型时，
+ * 同一次操作就能完成「换密钥 + 换主模型」，不必在两张卡之间来回切换。
+ */
+export async function replaceModelConfiguration(
+  modelId: string,
+  apiKey?: string
+): Promise<ModelSettings> {
   const res = await fetch(`${API_BASE}/settings/models`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ model_id: modelId }),
+    body: JSON.stringify(
+      apiKey ? { model_id: modelId, api_key: apiKey } : { model_id: modelId }
+    ),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
