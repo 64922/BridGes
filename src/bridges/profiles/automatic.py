@@ -1716,11 +1716,12 @@ class AutomaticProfileService:
         correction: ProfileCorrectionResult
         try:
             with self._commit.transaction():
-                record, changed = self._four_dimensions.correct_record(
+                # Issue 05：更正的成对写入（纠正四维记录 + 镜像原子条目）
+                # 由提交 module 归属，首次处理与后台重试共用同一实现。
+                record, changed = self._commit.write_correction(
                     account_id,
                     dimension=intent.dimension,
                     content=intent.new_value,
-                    manage_transaction=False,
                 )
                 if record is None:
                     run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE
@@ -1736,8 +1737,6 @@ class AutomaticProfileService:
                         record_id=record.record_id,
                     )
                 else:
-                    if self._atomic_profiles is not None:
-                        self._atomic_profiles.mirror_record(account_id, record)
                     record_ids.append(record.record_id)
                     run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
                     correction = ProfileCorrectionResult(
@@ -2188,11 +2187,12 @@ class AutomaticProfileService:
                             ProfileExtractionOutcome.SUCCEEDED_CORRECTION_UNRESOLVED
                         )
                     else:
-                        record, changed = self._four_dimensions.correct_record(
+                        # Issue 05：重试与首次处理共用成对写入——纠正成功
+                        # 时原子条目同步镜像，不再只写来源。
+                        record, changed = self._commit.write_correction(
                             task.account_id,
                             dimension=intent.dimension,
                             content=intent.new_value,
-                            manage_transaction=False,
                         )
                         if record is None:
                             correction = ProfileCorrectionResult(
@@ -2265,6 +2265,11 @@ class AutomaticProfileService:
                         now=_now(),
                         signal_classification=signal_classification,
                         source=source,
+                        # 重放任务（来源哈希带重放标记）不得把用户纠正过的
+                        # 记录改回旧值；普通重试保持既有证据阶梯。
+                        from_replay=task.source_hash.endswith(
+                            PROFILE_REPLAY_SOURCE_HASH_PREFIX
+                        ),
                     )
                 task.status = ProfileExtractionStatus.SUCCEEDED
                 task.last_error = None
@@ -2391,6 +2396,7 @@ class AutomaticProfileService:
         now: datetime,
         signal_classification: ProfileSignalClassification,
         source: ProfileExtractionSource,
+        from_replay: bool = False,
     ) -> tuple[list[str], int]:
         observed_count = 0
         submissions: list[ProfileRecordSubmission] = []
@@ -2510,7 +2516,10 @@ class AutomaticProfileService:
         # Issue 04：四维记录与原子镜像由提交 module 在同一事务里成对写入。
         # 镜像不写入（用户已删除同键条目或已改成别的正文）是正常结果，不算
         # 提交失败，因此这里只回报真正落库的记录标识。
-        return self._commit.write_records(account_id, submissions), observed_count
+        return (
+            self._commit.write_records(account_id, submissions, from_replay=from_replay),
+            observed_count,
+        )
 
     def _validate_item(
         self,

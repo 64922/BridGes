@@ -1,8 +1,10 @@
-"""Issue 04：一次自动画像写入的提交边界与跨记录写入。
+"""Issue 04/05：画像跨记录写入的提交边界归属地。
 
 自动提取要同时维护三类记录：四维来源记录（内部提取与冲突消解的依据）、
 它对应的用户可见原子条目（镜像），以及同一批次的提取记账（运行记录与
-观察记录）。本模块是这组写入的提交边界归属地，回答三个问题：
+观察记录）。用户权威操作（聊天更正、删除/忘掉后的来源撤回）维护的是
+同一对记录，且「墓碑先落地、再撤回来源」的顺序是有意的防复活保护。
+本模块是这组写入的提交边界归属地，回答四个问题：
 
 - **一次提交包含哪些写入**：四维来源、原子镜像与提取记账必须同成同败；
   任一步失败就整批回滚，不留下会被后续读取当成成功的部分画像。记账行
@@ -11,28 +13,47 @@
 - **失败后保留什么**：尝试记录（重试任务状态、失败审计、模型运行锁）
   不是业务成功结果，由调用方在回滚之后另开事务保留，供有界重试与审计
   使用。
+- **用户权威的成对写入**：聊天更正走 :meth:`ProfileCommit.write_correction`，
+  首次处理与后台重试共用同一实现，来源与镜像不因路径不同而分叉；墓碑
+  提交后的来源撤回走 :meth:`ProfileCommit.withdraw_item_sources`，逐条
+  隔离且幂等——撤回失败不回滚已提交的墓碑，重复执行不重写业务结果。
+  指令识别、目标匹配与用户请求校验留在各自入口，本模块只负责「先写哪张
+  记录、再撤回哪个来源」的顺序。
 - **谁决定存储形态**：事务边界由各仓库 adapter 自己声明——共用同一
   ``BridgesDatabase`` 的 SQLite 仓库并入外层事务，内存仓库各自建立可
   回滚快照。调用方不判断仓库类型、连接或事务开关。
 
-抽取范围、阈值、提示词、去重与用户权威规则不在本模块：它们分别留在
-自动提取与原子画像的 implementation 中。
+抽取范围、阈值、提示词与抽取侧去重规则不在本模块：它们留在自动提取的
+implementation 中；用户权威规则（版本冲突、条目去重、旧正文抑制、墓碑）
+留在原子画像的 implementation 中，本模块负责把它们与来源撤回编排成序。
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
-from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
-from bridges.profiles.atomic import AtomicProfileService
-from bridges.profiles.four_dimensions import FourDimensionProfileService
+from bridges.contracts.profiles import (
+    FourDimension,
+    FourDimensionConfidence,
+    FourDimensionRecordStatus,
+)
+from bridges.profiles.adapters import ProfileError
 
 if TYPE_CHECKING:
-    # 自动提取编排器在运行时导入本模块，因此仓库端口只在这里取名字。
+    # 自动提取编排器与原子画像服务都会在运行时导入本模块，因此实现类型
+    # 只在这里取名字，避免运行时循环导入。
+    from bridges.contracts.atomic_profile import AtomicProfileItem
+    from bridges.contracts.profiles import FourDimensionProfileRecord
+    from bridges.profiles.atomic import AtomicProfileService
     from bridges.profiles.automatic import AutomaticProfileRepository
+    from bridges.profiles.four_dimensions import FourDimensionProfileService
+
+logger = logging.getLogger(__name__)
 
 
 class ProfileCommitParticipant(Protocol):
@@ -60,29 +81,59 @@ class ProfileRecordSubmission:
     change_note: str | None = None
 
 
+class SourceWithdrawalStatus(Enum):
+    """一条来源撤回的结论；除 ``FAILED`` 外，重复执行收敛到同一结论。"""
+
+    WITHDRAWN = "withdrawn"
+    ALREADY_WITHDRAWN = "already_withdrawn"
+    NO_SOURCE = "no_source"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class SourceWithdrawal:
+    """单个原子条目的来源撤回结果（不含画像正文）。
+
+    ``FAILED`` 携带原始异常供调用方决定上抛或记账；其余结论在重试同一
+    撤回操作时保持不变或收敛为 ``ALREADY_WITHDRAWN``，不会重复写业务
+    结果，也不会影响用户新建或编辑的条目。
+    """
+
+    profile_item_id: str
+    record_id: str | None
+    status: SourceWithdrawalStatus
+    error: Exception | None = None
+
+
 class ProfileCommit:
     """四维来源与原子镜像的提交边界与成对写入。
 
     调用方在同一进程内复用同一个实例：``transaction()`` 打开一次提交，
-    ``write_records()`` 在其中写入跨记录结果。
+    ``write_records()``/``write_correction()`` 在其中写入跨记录结果，
+    ``withdraw_item_sources()`` 在墓碑提交之后撤回来源。
     """
 
     def __init__(
         self,
         *,
-        state: AutomaticProfileRepository,
         records: FourDimensionProfileService,
+        state: AutomaticProfileRepository | None = None,
         items: AtomicProfileService | None = None,
     ) -> None:
         self._records = records
         self._items = items
-        # 顺序固定：记账仓库先开边界，跨记录仓库依次并入。SQLite 三个仓库
-        # 共用连接时只有第一次调用真正 BEGIN，其余并入；内存仓库各自建立
-        # 可回滚快照，同一组业务对象一起回滚。并入规则在 adapter 内部
-        # （见 ``bridges.profiles.transactions``），这里不判断仓库类型。
-        self._participants: list[ProfileCommitParticipant] = [state, records]
+        # 顺序固定：已挂载的仓库依次并入边界。自动提取的边界包含记账
+        # 仓库（``state``）；用户权威操作只需要跨记录两方。SQLite 仓库
+        # 共用连接时只有第一次调用真正 BEGIN，其余并入；内存仓库各自
+        # 建立可回滚快照，同一组业务对象一起回滚。并入规则在 adapter
+        # 内部（见 ``bridges.profiles.transactions``），这里不判断仓库类型。
+        participants: list[ProfileCommitParticipant] = []
+        if state is not None:
+            participants.append(state)
+        participants.append(records)
         if items is not None:
-            self._participants.append(items)
+            participants.append(items)
+        self._participants: list[ProfileCommitParticipant] = participants
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -97,10 +148,15 @@ class ProfileCommit:
         self,
         account_id: str,
         submissions: Iterable[ProfileRecordSubmission],
+        *,
+        from_replay: bool = False,
     ) -> list[str]:
         """按顺序写入四维记录并立刻镜像原子条目，返回去重后的记录标识。
 
         必须在 :meth:`transaction` 内调用；否则每条记录各自成一次提交。
+
+        ``from_replay`` 标记本次写入来自旧消息重放，四维仓库据此保护用户
+        纠正过的记录不被改回旧值；新消息的自动写入保持既有证据阶梯。
 
         镜像不写入是正常结果，不是系统失败：正文为空、用户已把该条目改成
         别的正文时，镜像按用户权威跳过，本方法照常返回该记录标识（调用方
@@ -121,6 +177,7 @@ class ProfileCommit:
                 evidence_message_id=submission.evidence_message_id,
                 change_note=submission.change_note,
                 migration_version=submission.migration_version,
+                from_replay=from_replay,
             )
             if self._items is not None:
                 self._items.mirror_record(
@@ -130,3 +187,109 @@ class ProfileCommit:
                 )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids))
+
+    def write_correction(
+        self,
+        account_id: str,
+        *,
+        dimension: FourDimension,
+        content: str,
+    ) -> tuple[FourDimensionProfileRecord | None, bool]:
+        """聊天更正的成对写入：先按维度纠正四维记录，成功后立刻镜像。
+
+        必须在 :meth:`transaction` 内调用。目标定位、保护阈值（反复纠错）
+        与版本校验留在四维服务，返回 ``(record, changed)`` 语义不变；
+        本方法只保证「记录已改、镜像跟上」是同一个动作——首次处理与后台
+        重试共用这一实现，重试不再出现只写来源、不更新条目的分叉。
+        """
+
+        record, changed = self._records.correct_record(
+            account_id,
+            dimension=dimension,
+            content=content,
+            manage_transaction=False,
+        )
+        if changed and record is not None and self._items is not None:
+            self._items.mirror_record(account_id, record)
+        return record, changed
+
+    def withdraw_item_sources(
+        self,
+        account_id: str,
+        items: Iterable[AtomicProfileItem],
+    ) -> list[SourceWithdrawal]:
+        """撤回原子条目底层的四维来源记录；逐条隔离、幂等。
+
+        必须在墓碑（或抑制键）提交之后调用：调用方不判断「先写哪张记录、
+        再撤回哪个来源」，本方法是撤回一步的唯一归属地。每条撤回独立
+        成败——一条失败不中断其余条目，失败明细随结果返回并记入日志，
+        已提交的墓碑不因此回滚（用户可见的删除不因内部失败重新可见）。
+        重复执行安全：已撤回或没有来源的条目收敛为非 ``FAILED`` 结论，
+        不重写业务结果。
+        """
+
+        outcomes: list[SourceWithdrawal] = []
+        for item in items:
+            record_id = item.source_record_id
+            if record_id is None:
+                outcomes.append(
+                    SourceWithdrawal(
+                        profile_item_id=item.profile_item_id,
+                        record_id=None,
+                        status=SourceWithdrawalStatus.NO_SOURCE,
+                    )
+                )
+                continue
+            outcome = self._withdraw_one(account_id, item, record_id)
+            if outcome.status is SourceWithdrawalStatus.FAILED:
+                logger.warning(
+                    "画像来源撤回失败（可安全重试）：%s / %s / %s",
+                    item.profile_item_id,
+                    record_id,
+                    outcome.error,
+                )
+            outcomes.append(outcome)
+        return outcomes
+
+    def _withdraw_one(
+        self,
+        account_id: str,
+        item: AtomicProfileItem,
+        record_id: str,
+    ) -> SourceWithdrawal:
+        try:
+            record = self._records.get_record(account_id, record_id)
+        except ProfileError:
+            # 来源记录不存在或无权访问：没有可撤回的东西，视为已撤回。
+            return SourceWithdrawal(
+                profile_item_id=item.profile_item_id,
+                record_id=record_id,
+                status=SourceWithdrawalStatus.ALREADY_WITHDRAWN,
+            )
+        except Exception as exc:  # noqa: BLE001 - 存储故障同样逐条隔离
+            return SourceWithdrawal(
+                profile_item_id=item.profile_item_id,
+                record_id=record_id,
+                status=SourceWithdrawalStatus.FAILED,
+                error=exc,
+            )
+        if record.status != FourDimensionRecordStatus.ACTIVE:
+            return SourceWithdrawal(
+                profile_item_id=item.profile_item_id,
+                record_id=record_id,
+                status=SourceWithdrawalStatus.ALREADY_WITHDRAWN,
+            )
+        try:
+            self._records.withdraw_record(account_id, record_id)
+        except Exception as exc:  # noqa: BLE001 - 撤回失败逐条隔离，不中断其余条目
+            return SourceWithdrawal(
+                profile_item_id=item.profile_item_id,
+                record_id=record_id,
+                status=SourceWithdrawalStatus.FAILED,
+                error=exc,
+            )
+        return SourceWithdrawal(
+            profile_item_id=item.profile_item_id,
+            record_id=record_id,
+            status=SourceWithdrawalStatus.WITHDRAWN,
+        )
