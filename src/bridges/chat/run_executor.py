@@ -28,20 +28,10 @@ from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
 from bridges.chat.terminal import internal_error_outcome, stopped_outcome
-from bridges.chat.turn import (
-    CHAT_MODE,
-    error_is_retryable,
-    failed_thinking,
-    finalize_message,
-    initial_thinking,
-    user_facing_error,
-)
 from bridges.contracts.chat import (
     ChatMessageStatus,
-    ChatMode,
     ChatRunStatus,
     ChatStreamDeltaData,
-    ChatStreamEventKind,
 )
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
@@ -50,7 +40,7 @@ from bridges.runtime.queue import Claim, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
 if TYPE_CHECKING:
-    from bridges.chat.repository import ConversationRepository, GenerationRunRecord
+    from bridges.chat.repository import ConversationRepository
     from bridges.chat.service import ChatService
     from bridges.profiles.automatic import AutomaticProfileService
 
@@ -125,25 +115,37 @@ class GenerationRunExecutor:
     def run_tick(self) -> str:
         """执行一轮：先收尸失联运行，再领取一件生成运行并执行到终态。
 
-        收尸不只改运行表：被收尸运行的消息同步收敛为可重试错误并补发
-        终态事件——订阅端回放完即结束，绝不因缺失终态事件悬挂。
+        收尸不只改运行表：被收尸运行的消息、终态事件与运行由终态 module
+        一次收敛——订阅端回放完即结束，绝不因缺失终态事件悬挂，也不会
+        在消息其实已提交结果时追加矛盾的失败终态。
         """
         now = datetime.now(UTC)
-        expired = self._repo.expire_overdue_runs(self._max_attempts, now)
-        for run in expired:
-            self._reap_message(run)
+        overdue = self._repo.list_overdue_runs(self._max_attempts, now)
+        reaped = 0
+        reap_failure = ""
+        for run in overdue:
+            try:
+                self._terminal.reap_lost_run(run)
+                reaped += 1
+            except Exception as exc:  # noqa: BLE001 - 收尸故障不终止执行器
+                # 收尸失败留下的仍是「待收敛」形态（该运行没有写入终态），
+                # 下一轮按同一上限重试；绝不因一个运行让整个执行器停摆，
+                # 否则其余运行将永远无人收敛。
+                reap_failure = f"generation: 运行 {run.run_id} 收尸失败：{exc}"
         claim = self._queue.claim_next(GENERATION_QUEUE, self._worker_name)
         if claim is None:
-            if self._profile_extraction is not None:
-                try:
-                    self._last_summary = self._profile_extraction.run_retry_tick()
-                except Exception as exc:  # noqa: BLE001 - 后台重试不应终止生成 worker
-                    self._last_summary = f"profile-extraction: 本轮处理出错：{exc}"
-                return self._last_summary
-            if expired:
-                self._last_summary = f"generation: 收尸 {len(expired)} 个失联运行。"
+            if reap_failure:
+                self._last_summary = reap_failure
+            elif reaped:
+                self._last_summary = f"generation: 收尸 {reaped} 个失联运行。"
             else:
                 self._last_summary = "generation: 无待处理运行。"
+            if self._profile_extraction is not None:
+                try:
+                    profile_summary = self._profile_extraction.run_retry_tick()
+                except Exception as exc:  # noqa: BLE001 - 后台重试不应终止生成 worker
+                    profile_summary = f"profile-extraction: 本轮处理出错：{exc}"
+                self._last_summary = f"{self._last_summary}；{profile_summary}"
             return self._last_summary
         try:
             self._execute(claim)
@@ -156,40 +158,6 @@ class GenerationRunExecutor:
                 profile_summary = f"profile-extraction: 本轮处理出错：{exc}"
             self._last_summary = f"{self._last_summary}；{profile_summary}"
         return self._last_summary
-
-    def _reap_message(self, run: GenerationRunRecord) -> None:
-        """把失联运行对应的消息收敛为可重试错误并补发终态事件。"""
-        message = self._repo.get_message(run.account_id, run.assistant_message_id)
-        if message is not None and message.status == ChatMessageStatus.STREAMING:
-            conversation = self._repo.get_conversation(run.account_id, run.conversation_id)
-            mode = (
-                ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
-            )
-            finalize_message(
-                self._repo,
-                run.account_id,
-                run.assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                error_code=run.error_code or "generation_worker_lost",
-                error_message=run.error_message
-                or "生成进程意外退出，已保留已接收内容，可点击重试。",
-                duration_ms=run.duration_ms,
-                model_id=None,
-                run_lock_id=None,
-                started=time.monotonic(),
-                now=datetime.now(UTC),
-                thinking=failed_thinking(
-                    initial_thinking(mode), run.error_code or "generation_worker_lost"
-                ),
-            )
-        self._append_error_event(
-            run.account_id,
-            run.run_id,
-            run.assistant_message_id,
-            code=run.error_code or "generation_worker_lost",
-            message=run.error_message or "生成进程意外退出，已保留已接收内容，可点击重试。",
-            retryable=error_is_retryable(run.error_code),
-        )
 
     def run_loop(
         self,
@@ -230,9 +198,16 @@ class GenerationRunExecutor:
             and run.lease_expires_at < datetime.now(UTC)
         )
         if run.status != ChatRunStatus.QUEUED.value and not lease_expired:
-            # 另一执行器已领取且租约未过期：不动运行，队列行交由持有者完成
+            if run.status == ChatRunStatus.RUNNING.value:
+                # 另一执行器正在执行且租约未过期：不动运行，也不动队列行。
+                # 该运行还有恢复预算（收尸只选取预算耗尽的运行），唯一的重
+                # 领通道就是这行队列：提前完成会让它既领不回也收不了尸，
+                # 永久停在 running（Issue 03）。行留给持有者或后续领取者。
+                self._last_summary = f"generation: 运行 {run_id} 由其他执行器执行，跳过。"
+                return
+            # 运行已终态：队列行是收尾遗留，直接完成
             self._queue.complete(claim)
-            self._last_summary = f"generation: 运行 {run_id} 已被执行，跳过。"
+            self._last_summary = f"generation: 运行 {run_id} 已终态，跳过。"
             return
         lease = datetime.now(UTC) + timedelta(seconds=self._lease_seconds)
         if not self._repo.claim_generation_run(
@@ -254,10 +229,19 @@ class GenerationRunExecutor:
 
         幂等语义：运行领取后只有本执行器能提交运行终态（终态更新限定
         queued/running）；崩溃后租约过期由另一执行器恢复，重复领取不会
-        双写终态。
+        双写终态。恢复时结果已确定的运行（消息已提交终态，或消息已随
+        会话删除）不经模型重新生成：只补齐终态事件与运行，再确认队列。
         """
         run = self._repo.get_generation_run(account_id, run_id)
         if run is None:
+            self._queue.complete(claim)
+            return
+        committed = self._terminal.recover_committed_result(account_id, run)
+        if committed is not None:
+            self._last_summary = (
+                f"generation: 运行 {run_id} 结果已提交"
+                f"（{committed.outcome.status.value}），只补齐终态。"
+            )
             self._queue.complete(claim)
             return
         if run.stop_requested:
@@ -334,12 +318,11 @@ class GenerationRunExecutor:
                 message_id=message_id, delta=event.delta
             ).model_dump(mode="json")
         elif kind == "error":
-            payload = self._terminal.error_payload(
+            payload = self._terminal.runtime_error_payload(
                 account_id,
                 message_id,
-                code=event.error_code or "generation_failed",
-                message=user_facing_error(event.error_code, event.error_message),
-                retryable=error_is_retryable(event.error_code),
+                code=event.error_code,
+                error_message=event.error_message,
             )
         elif kind == "done":
             payload = self._terminal.done_payload(account_id, message_id)
@@ -350,23 +333,6 @@ class GenerationRunExecutor:
             payload = data.model_dump(mode="json")
         self._repo.append_generation_event(
             account_id, run_id, kind, payload, datetime.now(UTC)
-        )
-
-    def _append_error_event(
-        self,
-        account_id: str,
-        run_id: str,
-        message_id: str,
-        *,
-        code: str,
-        message: str,
-        retryable: bool,
-    ) -> None:
-        payload = self._terminal.error_payload(
-            account_id, message_id, code=code, message=message, retryable=retryable
-        )
-        self._repo.append_generation_event(
-            account_id, run_id, ChatStreamEventKind.ERROR.value, payload, datetime.now(UTC)
         )
 
 

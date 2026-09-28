@@ -317,7 +317,8 @@ def test_event_commit_fault_leaves_recoverable_state_and_replays(
     def _unwritable(*args: Any, **kwargs: Any) -> int:
         raise StorageError("数据库当前不可写，请稍后重试或检查数据目录权限。")
 
-    monkeypatch.setattr(repo, "append_terminal_generation_event", _unwritable)
+    # 事件写入的唯一入口（终态事件的判重与插入在同一事务内）
+    monkeypatch.setattr(repo, "append_generation_event", _unwritable)
     with pytest.raises(StorageError):
         _terminal(sqlite_app).converge(account["id"], run_id, message_id)
 

@@ -44,7 +44,11 @@ from bridges.career_plan.service import (
 from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
 from bridges.chat.run_executor import chat_run_context
-from bridges.chat.terminal import TerminalOutcome, stopped_outcome
+from bridges.chat.terminal import (
+    INTERNAL_ERROR_CODE,
+    TerminalOutcome,
+    stopped_outcome,
+)
 from bridges.commute.service import (
     COMMUTE_MODULE_ID,
     COMMUTE_NODE_LABELS,
@@ -741,7 +745,7 @@ def _node_verify_output(
     if message.status != ChatMessageStatus.DONE:
         raise DailyTurnError(
             NODE_VERIFY_OUTPUT,
-            message.error_code or "generation_failed",
+            message.error_code or INTERNAL_ERROR_CODE,
             message.error_message or "生成过程出现内部错误，请重试。",
             retryable=True,
         )
