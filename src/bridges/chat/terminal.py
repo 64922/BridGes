@@ -153,12 +153,17 @@ def internal_error_outcome() -> TerminalOutcome:
     )
 
 
-def stopped_outcome() -> TerminalOutcome:
-    """用户停止的兜底结果（稳定码与中文原因同停止事件合同）。"""
+def stopped_outcome(duration_ms: int | None = None) -> TerminalOutcome:
+    """用户停止的兜底结果（稳定码与中文原因同停止事件合同）。
+
+    ``duration_ms`` 供调用者已知耗时口径时随终态写入（如停止接口按
+    单调起点或创建时间估算）；排队期/图边界停止由各入口按现行口径传值。
+    """
     return TerminalOutcome(
         status=ChatMessageStatus.STOPPED,
         error_code=STOPPED_CODE,
         error_message=STOPPED_MESSAGE,
+        duration_ms=duration_ms,
     )
 
 
@@ -204,7 +209,7 @@ class GenerationTerminal:
     def converge(
         self,
         account_id: str,
-        run_id: str,
+        run_id: str | None,
         message_id: str,
         *,
         fallback: TerminalOutcome | None = None,
@@ -215,6 +220,8 @@ class GenerationTerminal:
         - 消息已终态：结果从消息派生，``fallback`` 忽略；
         - 消息仍 streaming：按 ``fallback`` 写入终态（残留兜底路径）；
         - 消息已不存在（会话/消息删除竞态）：只收敛运行，不补发事件；
+        - ``run_id`` 为 None（消息没有关联运行，如直接编排的生成被停止）：
+          只收敛消息，不补发终态事件、不收敛运行；
         - 已有终态事件：不再追加，订阅端回放保持单调。
 
         ``run_duration_ms`` 是执行器测量的本轮墙钟耗时（运行记录口径），
@@ -230,6 +237,17 @@ class GenerationTerminal:
             message_committed = self._commit_message(message, fallback) > 0
             # 以提交后的记录为准：并发收尾由持久守卫裁决，后到者沿用先提交结果。
             message = self._repo.get_message(account_id, message_id)
+        if run_id is None:
+            if message is None:
+                outcome = fallback or internal_error_outcome()
+            else:
+                outcome = TerminalOutcome.from_message(message)
+            return TerminalCommit(
+                outcome=outcome,
+                message_committed=message_committed,
+                event_seq=None,
+                run_committed=False,
+            )
         if message is None:
             outcome = fallback or internal_error_outcome()
             return TerminalCommit(

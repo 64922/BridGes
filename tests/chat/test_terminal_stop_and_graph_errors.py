@@ -104,7 +104,9 @@ def test_queued_stop_never_calls_model_and_converges_shared_terminal(
     adapter = _GatedAdapter([threading.Event()])
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    created = _send(client, conversation_id, "排队期间就要停止")
+    # 正文带论文请求特征：若走到完成收尾，persist_result 会写入论文建议
+    #（业务进度）；停止路径必须止步于停止，不额外推进。
+    created = _send(client, conversation_id, "帮我找一篇强化学习的论文")
     message_id = created["assistant_message"]["message_id"]
     run_id = created["run_id"]
 
@@ -115,6 +117,7 @@ def test_queued_stop_never_calls_model_and_converges_shared_terminal(
     message = _repo(sqlite_app).get_message(account["id"], message_id)
     assert message is not None and message.status == ChatMessageStatus.STOPPED
     assert message.error_code is None, "停止不是错误：消息不携带错误码"
+    assert message.module_suggestion is None, "停止不得额外推进业务进度"
     run = _repo(sqlite_app).get_generation_run(account["id"], run_id)
     assert run is not None and run.status == "stopped"
     assert run.error_code is None

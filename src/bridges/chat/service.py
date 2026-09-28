@@ -54,12 +54,7 @@ from bridges.chat.selections import (
     SelectionResolution,
     selection_key,
 )
-from bridges.chat.terminal import (
-    STOPPED_CODE,
-    STOPPED_MESSAGE,
-    GenerationTerminal,
-    TerminalOutcome,
-)
+from bridges.chat.terminal import GenerationTerminal, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
     STREAM_INTERRUPTED_MESSAGE,
@@ -1637,18 +1632,13 @@ class ChatService:
         # 先收敛状态再注销活跃标记：避免并发读取在两者之间把仍处于
         # streaming 的消息误判为陈旧中断（终态由原子守卫保证单一写入）。
         # 思考摘要与搜索/教学卡片的取消投影由终态 module 统一派生；
-        # 无运行的消息（直接编排的生成）只收敛消息，不补事件与运行。
+        # run_id 传 None（无运行记录，如直接编排的生成）只收敛消息。
         stopped_run = self._repo.get_run_by_message(account_id, message_id)
         self.terminal.converge(
             account_id,
-            stopped_run.run_id if stopped_run is not None else "",
+            stopped_run.run_id if stopped_run is not None else None,
             message_id,
-            fallback=TerminalOutcome(
-                status=ChatMessageStatus.STOPPED,
-                error_code=STOPPED_CODE,
-                error_message=STOPPED_MESSAGE,
-                duration_ms=duration_ms,
-            ),
+            fallback=stopped_outcome(duration_ms=duration_ms),
         )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
