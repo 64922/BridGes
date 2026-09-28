@@ -135,10 +135,12 @@ python -m ruff check <5 个改动文件>                                      # 
 | --- | --- | --- | --- | --- | --- |
 | 分支 `f020312`（基线点 `cb10ae8` + 本票） | 251 | 3883 | 37 | 20:40 | `.`3883+`F`251+`s`37=4171 ✓ |
 | 基线 main `cb10ae8`（detached 工作树） | 251 | 3871 | 37 | 18:06 | `.`3871+`F`251+`s`37=4159 ✓ |
+| 合并树 `d9e8559`（本票 + 并行票 issue-03 `a8d222a`） | 251 | 3896 | 37 | 19:04 | `.`3896+`F`251+`s`37=4184 ✓ |
 
-- **失败名单双向 diff 为空**（两侧各 251 条，`comm` 两个方向都没有输出）；Δ通过 +12 = 本票新增用例 6 个 × 2 adapter，Δ跳过 0（两棵树都在工作树里有生产构建，`NEEDS_WEB_BUILD` 一视同仁）。
+- **分支 vs 基线：失败名单双向 diff 为空**（两侧各 251 条，`comm` 两个方向都没有输出）；Δ通过 +12 = 本票新增用例 6 个 × 2 adapter，Δ跳过 0——两侧运行时工作树里都有生产构建（`apps/web/.next`，基线工作树的那份是首次复跑里 `start` 触发 npm ci/build 留下的，见下），所以 2 条 `NEEDS_WEB_BUILD` 用例两侧都真跑。对照：issue-03 在无构建的基线工作树跑出 39 skipped / 3869 passed，差额正是这 2 条。
+- **合并树 vs 分支：失败名单双向 diff 为空**（各 251 条）；Δ通过 +13 = 并行票 issue-03 的新用例（其记录为 13 条），Δ跳过 0，账目闭合。合并前 main 已被并行票推进（`a8d222a` + `337b3ba`），本票按流程 `git merge --no-ff`（`d9e8559`，零冲突，6 文件 +950/−74）；两侧对账：合并树 vs 分支顶端恰为 issue-03 的 8 个文件，本票内容在合并后未变（`git diff 7fa3330 HEAD` 只含 issue-03 文件）。
 - 旁证：分支失败名单与并行票（issue-03）留档的 main 参照名单（`.tmp/issue06/raw/ref-main.names`，251 条）逐名相同；`tests/profiles` 唯一失败 `test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent` 两侧同名单。
-- **环境因素（与本票无关，但影响这一类测试能否跑完）**：`tests/integration/test_runtime_smoke.py::test_start_fails_*` 会清空全部 `BRIDGES_*` 环境变量，于是 `cli.main start` 落回真实数据目录 `%LOCALAPPDATA%\BridGes\data`。真库锁被别的实例持有时它按预期失败（分支运行时正是这个条件：失败名单里的既有失败）；锁空闲时它会**真的启动一个桌面实例**并写真实数据目录，而测试用 `subprocess.run` 等它退出——永不返回。基线首次复跑就卡在这里（已终止进程树并清理孤儿 api/worker/scheduler），补跑时由我持真库锁复现分支运行时的条件，运行正常完成。运行日志与名单留档主仓 `.tmp/issue06-verify/`。
+- **环境因素（与本票无关，但影响这一类测试能否跑完）**：`tests/integration/test_runtime_smoke.py::test_start_fails_*` 会清空全部 `BRIDGES_*` 环境变量，于是 `cli.main start` 落回真实数据目录 `%LOCALAPPDATA%\BridGes\data`。真库锁被别的实例持有时它按预期失败（分支运行时正是这个条件：失败名单里的既有失败）；锁空闲时它会**真的启动一个桌面实例**并写真实数据目录，而测试用 `subprocess.run` 等它退出——永不返回。基线首次复跑就卡在这里（已终止进程树并清理孤儿 api/worker/scheduler），补跑时由我持真库锁复现分支运行时的条件，运行正常完成（issue-03 用的是两侧对称 deselect，同一现象、两种处置）。运行日志与失败名单留档主仓 `.tmp/issue06-verify/`。
 
 
 
