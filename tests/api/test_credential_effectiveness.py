@@ -61,8 +61,10 @@ def _register(client: TestClient) -> None:
 def _worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BackgroundExecutor:
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "worker-credential-test-secret")
-    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
-    # 加密凭据卷：测试不触碰真实操作系统凭据库，且与 API 进程共享同一数据目录。
+    # 这里要证明的是"跨进程共享凭据卷被重读"，因此用真实文件载体（加密凭据卷，
+    # 落在本用例自己的临时数据目录里）而不是 test 环境的内存替身——test 环境按
+    # 设计不读写任何凭据存储（``build_credential_store``）。
+    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "desktop")
     monkeypatch.setenv("BRIDGES_CREDENTIAL_BACKEND", "encrypted-volume")
     get_settings.cache_clear()
     return BackgroundExecutor(get_settings())

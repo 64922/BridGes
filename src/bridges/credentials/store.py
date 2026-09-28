@@ -405,8 +405,14 @@ def build_credential_store(
     API 组合根与后台执行器必须读到**同一份**凭据，因此"按 backend 选实现"
     的规则只在这里维护一处；数据目录缺失（内存存储、测试替身）时回落进程内
     实现，绝不在缺少数据目录时退回明文文件。
+
+    ``test`` 环境同样回落进程内实现：测试不得读写开发机上的真实操作系统
+    凭据库（那里的值会让"未配置凭据"的用例读到真实密钥、结果不可复现），
+    需要凭据的用例自行注入替身。
     """
     if settings is None or data_dir is None:
+        return InMemoryCredentialStore(namespace=namespace)
+    if str(getattr(settings, "environment", "")).lower() == "test":
         return InMemoryCredentialStore(namespace=namespace)
     if getattr(settings, "credential_backend", "os") == "encrypted-volume":
         return EncryptedVolumeCredentialStore(data_dir, namespace=namespace)
