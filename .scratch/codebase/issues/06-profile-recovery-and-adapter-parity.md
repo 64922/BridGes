@@ -144,3 +144,20 @@ python -m ruff check <5 个改动文件>                                      # 
 
 
 
+### 9. 合并、推送与清理实证（2026-09-28）
+
+- **合并**：`git merge --no-ff codex/06-profile-recovery-and-adapter-parity` → `d9e8559`（零冲突，6 文件 +950/−74）。合并前 main 已被并行票 issue-03 推进到 `337b3ba`，故本轮带跨票对账（见 §8）。
+- **推送**：`git -c http.proxy=http://127.0.0.1:7890 push origin main` → `337b3ba..a56157e`；推送后 `git rev-parse HEAD origin/main` 两侧同为 `a56157e`。
+- **六项清理实证**：
+
+  | # | 检查 | 结果 |
+  | --- | --- | --- |
+  | 1 | `git worktree list` | 只剩主仓 `C:/Users/33755/Desktop/BridGes a56157e [main]` |
+  | 2 | 两个工作树目录是否存在 | 基线目录一步删除；本票目录 `git worktree remove --force` 因权限只删了内容（沙箱测试产物受限 ACL），剩余空目录用 `rmdir` 删除 |
+  | 3 | 本地分支 `codex/06-profile-recovery-and-adapter-parity` | 已删（was `7fa3330`） |
+  | 4 | `git worktree prune --dry-run -v` | 无输出（注册项无残留） |
+  | 5 | `main` 与 `origin/main` | 同为 `a56157e` |
+  | 6 | `git branch -a --list "codex/06*"` | 空 |
+
+- **仓外 basetemp 清理**：`%TEMP%\bt06-*`（两次全量各约 1.4G，另若干定点）已全部删除。
+- **不是本票的遗留（只报告、不代删）**：`.worktrees/02-generation-stop-and-graph-errors`（空壳目录，未在工作树注册表里）、本地分支 `codex/issue-03-learning-evidence-consistency`（并行票 issue-03 会话留下）。
