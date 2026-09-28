@@ -1,0 +1,348 @@
+"""生成终态 module：消息、运行与持久终态事件由同一次收尾协调。
+
+本 module 把「这一轮结束了吗、结果是什么、三个对象是否已经一致」收敛成
+一个 interface（:meth:`GenerationTerminal.converge`）：调用者只提供标识，
+以及消息尚未落终态时的兜底结果；其余全部在 implementation 内部完成——
+从已提交的消息派生结果（完成/失败/停止、错误码、中文原因、可重试性、
+耗时）、按固定顺序补齐终态事件与运行状态、并让重复收尾成为可重放的
+修复操作。
+
+不变量
+------
+1. **消息是终态的唯一真相源。** 结果以已提交的消息记录为准：运行表不携带
+   内容，终态事件只是消息投影的快照，因此绝不从运行或事件反向推导结果；
+   已终态的消息不会被改写（含并发收尾中先提交者的结果）。
+2. **提交顺序固定：消息 → 终态事件 → 运行。** 事件先于运行，因为订阅端点
+   以运行终态判断结束——运行先终态会让最后一次回放读不到终态事件；运行
+   放在最后，因为它是三者中唯一可由消息重算的对象。唯一例外是消息已被
+   删除的竞态：没有消息就没有可投影的终态，此时只收敛运行、不补发事件
+   （该运行没有订阅者会等待它的终态事件）。
+3. **每一步都有持久守卫，因此部分提交可恢复。** 消息仅 streaming→终态、
+   终态事件每个运行至多一条（判重与插入在同一事务内，并发收尾最多一条
+   生效）、运行仅 queued/running→终态。任一步失败留下的残留（消息已终态
+   而事件或运行缺失）都是可修复形态：重放同一收尾操作会补齐缺失部分，
+   不改写已提交结果。调用者因此无需猜测顺序，也不需要把三个对象放进
+   同一个事务。
+4. **提交故障后不得出现互相矛盾的终态。** 失败只会留下「尚未补齐」的
+   形态（未完成的运行），不会留下与已提交消息相冲突的终态事件或运行状态。
+5. 只决定执行结果，不评估产物可信状态；不接管领取、续租、模型生成与事件
+   订阅（调度仍属执行器）；不改写模型运行锁与历史消息（运行锁随消息终态
+   在同一事务内提交，Issue 10）。
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+from bridges.chat.turn import (
+    CHAT_MODE,
+    done_thinking,
+    error_is_retryable,
+    failed_thinking,
+    finalize_message,
+    initial_thinking,
+    stopped_thinking,
+    user_facing_error,
+)
+from bridges.contracts.chat import (
+    ChatMessageProjection,
+    ChatMessageStatus,
+    ChatMode,
+    ChatRunStatus,
+    ChatStreamDoneData,
+    ChatStreamErrorData,
+    ChatStreamErrorDetail,
+    ChatStreamEventKind,
+)
+
+if TYPE_CHECKING:
+    from bridges.chat.repository import ConversationRepository, MessageRecord
+
+#: 残留 streaming 消息或缺错误码时的兜底错误码（与现行内部错误合同一致）。
+INTERNAL_ERROR_CODE = "internal_error"
+#: 停止收敛的稳定码与中文原因（停止事件沿用既有 error 传输种类与文案）。
+STOPPED_CODE = "stopped"
+STOPPED_MESSAGE = "生成已停止。"
+
+
+class TerminalConvergeError(RuntimeError):
+    """收尾请求缺少必要输入（消息仍处生成中但没有兜底结果）。"""
+
+
+@dataclass(frozen=True)
+class TerminalOutcome:
+    """一次收尾要表达的结果（不含提交顺序与恢复知识）。"""
+
+    status: ChatMessageStatus
+    error_code: str | None = None
+    error_message: str | None = None
+    duration_ms: int | None = None
+
+    @classmethod
+    def from_message(cls, message: MessageRecord) -> TerminalOutcome:
+        """从已提交的消息记录派生结果（消息是唯一真相源）。"""
+        if message.status == ChatMessageStatus.DONE:
+            return cls(status=message.status, duration_ms=message.duration_ms)
+        if message.status == ChatMessageStatus.STOPPED:
+            return cls(
+                status=message.status,
+                error_code=STOPPED_CODE,
+                error_message=STOPPED_MESSAGE,
+                duration_ms=message.duration_ms,
+            )
+        code = message.error_code or INTERNAL_ERROR_CODE
+        return cls(
+            status=ChatMessageStatus.ERROR,
+            error_code=code,
+            error_message=message.error_message or user_facing_error(code),
+            duration_ms=message.duration_ms,
+        )
+
+    @property
+    def event_kind(self) -> str:
+        """终态事件的传输种类：完成用 done，失败与停止沿用既有 error 种类。"""
+        if self.status == ChatMessageStatus.DONE:
+            return ChatStreamEventKind.DONE.value
+        return ChatStreamEventKind.ERROR.value
+
+    @property
+    def run_status(self) -> str:
+        """运行记录的终态：与消息终态一一对应。"""
+        if self.status == ChatMessageStatus.DONE:
+            return ChatRunStatus.DONE.value
+        if self.status == ChatMessageStatus.STOPPED:
+            return ChatRunStatus.STOPPED.value
+        return ChatRunStatus.FAILED.value
+
+    @property
+    def retryable(self) -> bool:
+        """可重试性与现行合同一致（停止按可重试呈现，沿用既有事件语义）。"""
+        if self.status == ChatMessageStatus.STOPPED:
+            return True
+        return error_is_retryable(self.error_code)
+
+    def run_error(self) -> tuple[str | None, str | None]:
+        """运行记录的错误字段：只有失败运行记录错误码与原因。
+
+        完成与停止的运行不携带错误码（与既有运行表语义一致，停止不是异常）。
+        """
+        if self.status == ChatMessageStatus.ERROR:
+            return self.error_code, self.error_message
+        return None, None
+
+
+def internal_error_outcome() -> TerminalOutcome:
+    """残留 streaming 消息的兜底结果（稳定码 + 合同中文原因）。"""
+    return TerminalOutcome(
+        status=ChatMessageStatus.ERROR,
+        error_code=INTERNAL_ERROR_CODE,
+        error_message=user_facing_error(INTERNAL_ERROR_CODE),
+    )
+
+
+@dataclass(frozen=True)
+class TerminalCommit:
+    """收尾回执：本次调用相对重复调用真正写入了什么。"""
+
+    outcome: TerminalOutcome
+    #: 本次是否写入了消息终态（并发收尾由持久守卫裁决，后到者为假）。
+    message_committed: bool
+    #: 本次追加的终态事件 seq；已有终态事件时为 None（不重复追加）。
+    event_seq: int | None
+    #: 本次是否写入了运行终态。
+    run_committed: bool
+
+    @property
+    def replayed(self) -> bool:
+        """本次是否什么都没写：结果已由先前提交确定（幂等重放）。"""
+        return (
+            not self.message_committed
+            and self.event_seq is None
+            and not self.run_committed
+        )
+
+
+class GenerationTerminal:
+    """生成终态 module：一次收尾确定消息、运行与终态事件的一致性。"""
+
+    def __init__(
+        self,
+        repo: ConversationRepository,
+        *,
+        projection: Callable[[str, str], ChatMessageProjection | None],
+    ) -> None:
+        """``projection`` 是终态事件的载荷来源（消息投影读取面，按账户隔离）。"""
+        self._repo = repo
+        self._projection = projection
+
+    # ------------------------------------------------------------------
+    # 收尾
+    # ------------------------------------------------------------------
+
+    def converge(
+        self,
+        account_id: str,
+        run_id: str,
+        message_id: str,
+        *,
+        fallback: TerminalOutcome | None = None,
+        run_duration_ms: int | None = None,
+    ) -> TerminalCommit:
+        """把运行收尾到与已提交消息一致的结果（可重复执行）。
+
+        - 消息已终态：结果从消息派生，``fallback`` 忽略；
+        - 消息仍 streaming：按 ``fallback`` 写入终态（残留兜底路径）；
+        - 消息已不存在（会话/消息删除竞态）：只收敛运行，不补发事件；
+        - 已有终态事件：不再追加，订阅端回放保持单调。
+
+        ``run_duration_ms`` 是执行器测量的本轮墙钟耗时（运行记录口径），
+        与消息自身的耗时字段无关。
+        """
+        message = self._repo.get_message(account_id, message_id)
+        message_committed = False
+        if message is not None and message.status == ChatMessageStatus.STREAMING:
+            if fallback is None:
+                raise TerminalConvergeError(
+                    "消息仍处生成中：收尾需要调用者给出兜底结果。"
+                )
+            message_committed = self._commit_message(message, fallback) > 0
+            # 以提交后的记录为准：并发收尾由持久守卫裁决，后到者沿用先提交结果。
+            message = self._repo.get_message(account_id, message_id)
+        if message is None:
+            outcome = fallback or internal_error_outcome()
+            return TerminalCommit(
+                outcome=outcome,
+                message_committed=message_committed,
+                event_seq=None,
+                run_committed=self._finalize_run(
+                    account_id, run_id, outcome, run_duration_ms
+                ),
+            )
+        outcome = TerminalOutcome.from_message(message)
+        event_seq = self._append_terminal_event(account_id, run_id, message_id, outcome)
+        run_committed = self._finalize_run(account_id, run_id, outcome, run_duration_ms)
+        return TerminalCommit(
+            outcome=outcome,
+            message_committed=message_committed,
+            event_seq=event_seq,
+            run_committed=run_committed,
+        )
+
+    # ------------------------------------------------------------------
+    # 终态事件载荷（运行期实时事件与收尾补齐共用同一形状）
+    # ------------------------------------------------------------------
+
+    def done_payload(self, account_id: str, message_id: str) -> dict[str, Any]:
+        """done 事件载荷：完整消息投影（权威终态）。"""
+        return ChatStreamDoneData(
+            message_id=message_id,
+            message=self._projection(account_id, message_id),
+        ).model_dump(mode="json")
+
+    def error_payload(
+        self,
+        account_id: str,
+        message_id: str,
+        *,
+        code: str,
+        message: str,
+        retryable: bool,
+    ) -> dict[str, Any]:
+        """error 事件载荷：稳定码 + 中文原因 + 可重试性，并保留已完成投影。"""
+        final = self._projection(account_id, message_id)
+        return ChatStreamErrorData(
+            message_id=message_id,
+            error=ChatStreamErrorDetail(code=code, message=message, retryable=retryable),
+            thinking=final.thinking if final is not None else None,
+            duration_ms=final.duration_ms if final is not None else None,
+            web_search=final.web_search if final is not None else None,
+            arxiv_search=final.arxiv_search if final is not None else None,
+            teaching=final.teaching if final is not None else None,
+        ).model_dump(mode="json")
+
+    # ------------------------------------------------------------------
+    # 分步提交（顺序与守卫即本 module 的规则，不对外暴露）
+    # ------------------------------------------------------------------
+
+    def _commit_message(self, message: MessageRecord, outcome: TerminalOutcome) -> int:
+        """按兜底结果写入消息终态；思考摘要按对话模式与结果派生。
+
+        返回影响行数：0 表示并发收尾已先提交（不覆盖已提交结果）。
+        """
+        thinking = initial_thinking(self._mode_of(message))
+        if outcome.status == ChatMessageStatus.ERROR:
+            thinking = failed_thinking(
+                thinking, outcome.error_code or INTERNAL_ERROR_CODE
+            )
+        elif outcome.status == ChatMessageStatus.STOPPED:
+            thinking = stopped_thinking(thinking)
+        else:
+            thinking = done_thinking(thinking)
+        return finalize_message(
+            self._repo,
+            message.account_id,
+            message.message_id,
+            status=outcome.status,
+            error_code=outcome.error_code,
+            error_message=outcome.error_message,
+            duration_ms=outcome.duration_ms,
+            model_id=None,
+            run_lock_id=None,
+            started=time.monotonic(),
+            now=datetime.now(UTC),
+            thinking=thinking,
+        )
+
+    def _append_terminal_event(
+        self,
+        account_id: str,
+        run_id: str,
+        message_id: str,
+        outcome: TerminalOutcome,
+    ) -> int | None:
+        """补齐终态事件（判重与插入同事务）；运行不存在时返回 None。"""
+        if outcome.status == ChatMessageStatus.DONE:
+            payload = self.done_payload(account_id, message_id)
+        else:
+            payload = self.error_payload(
+                account_id,
+                message_id,
+                code=outcome.error_code or INTERNAL_ERROR_CODE,
+                message=outcome.error_message or user_facing_error(outcome.error_code),
+                retryable=outcome.retryable,
+            )
+        seq = self._repo.append_terminal_generation_event(
+            account_id, run_id, outcome.event_kind, payload, datetime.now(UTC)
+        )
+        return seq or None
+
+    def _finalize_run(
+        self,
+        account_id: str,
+        run_id: str,
+        outcome: TerminalOutcome,
+        run_duration_ms: int | None,
+    ) -> bool:
+        """收敛运行终态（仅 queued/running → 目标状态）；返回是否本次写入。"""
+        error_code, error_message = outcome.run_error()
+        return (
+            self._repo.finalize_generation_run(
+                account_id,
+                run_id,
+                status=outcome.run_status,
+                error_code=error_code,
+                error_message=error_message,
+                duration_ms=run_duration_ms,
+                now=datetime.now(UTC),
+            )
+            > 0
+        )
+
+    def _mode_of(self, message: MessageRecord) -> ChatMode:
+        """消息所属对话的当前模式（思考摘要按模式派生；缺对话用默认模式）。"""
+        conversation = self._repo.get_conversation(message.account_id, message.conversation_id)
+        return ChatMode(conversation.mode) if conversation is not None else CHAT_MODE

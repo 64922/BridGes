@@ -18,7 +18,11 @@ from typing import Any
 from bridges.ai.ports import ModelRunLockRecorder
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.contracts.ai import BusinessRef, ModelRunLock
-from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
+from bridges.contracts.chat import (
+    ChatMessageRole,
+    ChatMessageStatus,
+    ChatStreamEventKind,
+)
 from bridges.contracts.feedback import AnswerFeedback, FeedbackKind, FeedbackStatus
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
@@ -1686,46 +1690,6 @@ class ConversationRepository:
         ).fetchone()
         return int(row["next_seq"]) if row is not None else 1
 
-    def append_generation_event(
-        self,
-        account_id: str,
-        run_id: str,
-        kind: str,
-        payload: dict[str, Any],
-        created_at: datetime,
-    ) -> int:
-        """向运行追加一条游标事件，返回新 seq；须在调用方事务内执行。
-
-        运行必须属于当前账户（先按账户定位运行），跨账户追加返回 0。
-        """
-        with self._db.transaction():
-            run = self._db.scoped(account_id).execute(
-                "SELECT 1 FROM generation_runs WHERE run_id = ? AND account_id = ?",
-                (run_id, account_id),
-            ).fetchone()
-            if run is None:
-                return 0
-            row = self._db.scoped(account_id).execute(
-                "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq"
-                " FROM generation_events WHERE run_id = ? AND account_id = ?",
-                (run_id, account_id),
-            ).fetchone()
-            seq = int(row["next_seq"]) if row is not None else 1
-            self._db.scoped(account_id).execute(
-                "INSERT INTO generation_events"
-                "(run_id, seq, account_id, kind, payload, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    run_id,
-                    seq,
-                    account_id,
-                    kind,
-                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
-                    _iso(created_at),
-                ),
-            )
-            return seq
-
     def get_generation_run(
         self, account_id: str, run_id: str
     ) -> GenerationRunRecord | None:
@@ -1827,6 +1791,89 @@ class ConversationRepository:
             )
             for row in rows
         ]
+
+    def append_generation_event(
+        self,
+        account_id: str,
+        run_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        created_at: datetime,
+    ) -> int:
+        """向运行追加一条游标事件，返回新 seq。
+
+        运行必须属于当前账户（先按账户定位运行），跨账户追加返回 0。
+        """
+        with self._db.transaction():
+            return self._append_generation_event_locked(
+                account_id, run_id, kind, payload, created_at
+            )
+
+    def append_terminal_generation_event(
+        self,
+        account_id: str,
+        run_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        created_at: datetime,
+    ) -> int:
+        """追加终态事件（done/error）并判重，返回新 seq；已有终态事件返回 0。
+
+        判重与插入在同一事务内：两个执行器竞争收尾同一运行时最多一条终态
+        事件生效，订阅端回放不会读到两个互相矛盾的终态。
+        """
+        with self._db.transaction():
+            existing = self._db.scoped(account_id).execute(
+                "SELECT 1 FROM generation_events WHERE run_id = ? AND account_id = ?"
+                " AND kind IN (?, ?) LIMIT 1",
+                (
+                    run_id,
+                    account_id,
+                    ChatStreamEventKind.DONE.value,
+                    ChatStreamEventKind.ERROR.value,
+                ),
+            ).fetchone()
+            if existing is not None:
+                return 0
+            return self._append_generation_event_locked(
+                account_id, run_id, kind, payload, created_at
+            )
+
+    def _append_generation_event_locked(
+        self,
+        account_id: str,
+        run_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        created_at: datetime,
+    ) -> int:
+        """事件插入实现（调用方已持有事务边界）。"""
+        run = self._db.scoped(account_id).execute(
+            "SELECT 1 FROM generation_runs WHERE run_id = ? AND account_id = ?",
+            (run_id, account_id),
+        ).fetchone()
+        if run is None:
+            return 0
+        row = self._db.scoped(account_id).execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq"
+            " FROM generation_events WHERE run_id = ? AND account_id = ?",
+            (run_id, account_id),
+        ).fetchone()
+        seq = int(row["next_seq"]) if row is not None else 1
+        self._db.scoped(account_id).execute(
+            "INSERT INTO generation_events"
+            "(run_id, seq, account_id, kind, payload, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                seq,
+                account_id,
+                kind,
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                _iso(created_at),
+            ),
+        )
+        return seq
 
     def claim_generation_run(
         self,

@@ -1901,16 +1901,18 @@ def finalize_message(
     learning_resources: dict[str, Any] | None = None,
     commute_route: dict[str, Any] | None = None,
     github_projects: dict[str, Any] | None = None,
-) -> None:
+) -> int:
     """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。
 
     思考摘要接受类型化记录或既有 JSON dict，统一在此转为落库格式——
     所有终态路径（生成/停止/陈旧收敛）共用这一处。
 
     Issue 10：传入 ``lock`` 时，运行锁与消息终态在同一事务内持久化。
+
+    返回影响行数：0 表示消息已不是 streaming（并发收尾已先提交）。
     """
     measured = max(1, int((time.monotonic() - started) * 1000))
-    repo.finalize_message(
+    return repo.finalize_message(
         account_id,
         message_id,
         status=status,
