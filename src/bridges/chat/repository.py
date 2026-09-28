@@ -27,6 +27,14 @@ from bridges.contracts.feedback import AnswerFeedback, FeedbackKind, FeedbackSta
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
+#: 终态事件种类（每个运行至多一条）：运行期实时通道与收尾补齐共用同一判重，
+#: 迟到收尾因此无法追加第二个终态。与 ``TerminalOutcome.event_kind`` 派生
+#: 的种类一一对应。
+_TERMINAL_EVENT_KINDS = (
+    ChatStreamEventKind.DONE.value,
+    ChatStreamEventKind.ERROR.value,
+)
+
 
 @dataclass
 class ConversationRecord:
@@ -1800,41 +1808,24 @@ class ConversationRepository:
         payload: dict[str, Any],
         created_at: datetime,
     ) -> int:
-        """向运行追加一条游标事件，返回新 seq。
+        """向运行追加一条游标事件，返回新 seq；终态事件每个运行至多一条。
 
         运行必须属于当前账户（先按账户定位运行），跨账户追加返回 0。
+        ``done``/``error`` 是终态事件：判重与插入在同一事务内，因此运行期
+        实时通道、收尾补齐、并发收尾与迟到收尾（被收尸/被停止后仍跑完的
+        回合）最多写入一条——订阅端回放不会读到「失败之后又完成」这类
+        互相矛盾的终态，回放末尾的种类始终是该运行的唯一终态（Issue 03）。
+        已有终态事件时返回 0（不写入），与运行/消息的持久守卫同一语义。
         """
         with self._db.transaction():
-            return self._append_generation_event_locked(
-                account_id, run_id, kind, payload, created_at
-            )
-
-    def append_terminal_generation_event(
-        self,
-        account_id: str,
-        run_id: str,
-        kind: str,
-        payload: dict[str, Any],
-        created_at: datetime,
-    ) -> int:
-        """追加终态事件（done/error）并判重，返回新 seq；已有终态事件返回 0。
-
-        判重与插入在同一事务内：两个执行器竞争收尾同一运行时最多一条终态
-        事件生效，订阅端回放不会读到两个互相矛盾的终态。
-        """
-        with self._db.transaction():
-            existing = self._db.scoped(account_id).execute(
-                "SELECT 1 FROM generation_events WHERE run_id = ? AND account_id = ?"
-                " AND kind IN (?, ?) LIMIT 1",
-                (
-                    run_id,
-                    account_id,
-                    ChatStreamEventKind.DONE.value,
-                    ChatStreamEventKind.ERROR.value,
-                ),
-            ).fetchone()
-            if existing is not None:
-                return 0
+            if kind in _TERMINAL_EVENT_KINDS:
+                existing = self._db.scoped(account_id).execute(
+                    "SELECT 1 FROM generation_events WHERE run_id = ? AND account_id = ?"
+                    " AND kind IN (?, ?) LIMIT 1",
+                    (run_id, account_id, *_TERMINAL_EVENT_KINDS),
+                ).fetchone()
+                if existing is not None:
+                    return 0
             return self._append_generation_event_locked(
                 account_id, run_id, kind, payload, created_at
             )
@@ -2135,43 +2126,29 @@ class ConversationRepository:
             },
         }
 
-    def expire_overdue_runs(
+    def list_overdue_runs(
         self, max_attempts: int, now: datetime
     ) -> list[GenerationRunRecord]:
-        """收尸：租约过期且尝试已到上限的运行收敛为可重试失败。
+        """列出失联且恢复预算耗尽的运行（租约过期 + 尝试已达上限）。
 
-        系统级收敛（跨账户调度，不经账户作用域）：持有运行的执行器
-        被强制退出后，租约到期时若已无恢复预算，必须给出明确可重试
-        终态而不是永久 running。返回被收尸的运行记录（执行器据此
-        收敛消息并补发终态事件，订阅端绝不悬挂）。
+        系统级查询（跨账户调度，不经账户作用域）：持有运行的执行器被强制
+        退出后，租约到期且已无恢复预算的运行必须给出可重试终态，而不是
+        永久 running。本方法只**选取**候选，不写任何终态——终态由生成终态
+        module 从已提交的消息派生（消息是唯一真相源）：若该运行的消息其实
+        已提交结果，收尸只补齐缺失的事件与运行，绝不把已完成的回合改写成
+        失败（Issue 03）。
         """
-        with self._db.transaction():
-            rows = self._db.connection.execute(
-                "SELECT run_id, account_id, conversation_id, user_message_id,"
-                " assistant_message_id, attempt_number, status, stage,"
-                " config_json, lease_owner, lease_expires_at, attempt_count,"
-                " stop_requested, error_code, error_message, duration_ms,"
-                " created_at, updated_at, graph_version, current_node,"
-                " wait_reason, model_lock_id, idempotency_key FROM generation_runs"
-                " WHERE status = 'running' AND lease_expires_at IS NOT NULL"
-                " AND lease_expires_at < ? AND attempt_count >= ?",
-                (_iso(now), max_attempts),
-            ).fetchall()
-            if not rows:
-                return []
-            self._db.connection.execute(
-                "UPDATE generation_runs SET status = 'failed', error_code = ?,"
-                " error_message = ?, lease_owner = NULL, lease_expires_at = NULL,"
-                " updated_at = ? WHERE status = 'running' AND lease_expires_at IS NOT NULL"
-                " AND lease_expires_at < ? AND attempt_count >= ?",
-                (
-                    "generation_worker_lost",
-                    "生成进程意外退出，已保留已接收内容，可点击重试。",
-                    _iso(now),
-                    _iso(now),
-                    max_attempts,
-                ),
-            )
+        rows = self._db.connection.execute(
+            "SELECT run_id, account_id, conversation_id, user_message_id,"
+            " assistant_message_id, attempt_number, status, stage,"
+            " config_json, lease_owner, lease_expires_at, attempt_count,"
+            " stop_requested, error_code, error_message, duration_ms,"
+            " created_at, updated_at, graph_version, current_node,"
+            " wait_reason, model_lock_id, idempotency_key FROM generation_runs"
+            " WHERE status = 'running' AND lease_expires_at IS NOT NULL"
+            " AND lease_expires_at < ? AND attempt_count >= ?",
+            (_iso(now), max_attempts),
+        ).fetchall()
         return [self._run_from_row(row) for row in rows]
 
     def request_stop_account_runs(self, account_id: str, now: datetime) -> int:

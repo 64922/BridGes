@@ -57,7 +57,9 @@ from bridges.chat.selections import (
 from bridges.chat.terminal import GenerationTerminal, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
-    STREAM_INTERRUPTED_MESSAGE,
+    # STREAM_INTERRUPTED_MESSAGE 在此 re-export，保持既有导入路径不变
+    #（定义在 chat/turn.py；读取路径的陈旧收敛已迁入终态 module）。
+    STREAM_INTERRUPTED_MESSAGE,  # noqa: F401 - re-export
     CareerPlannerOrchestrator,
     TurnOrchestrator,
     attempt_group,
@@ -65,12 +67,9 @@ from bridges.chat.turn import (
     # error_is_retryable / user_facing_error 在此 re-export，保持 api/chat.py
     # 的既有导入路径不变（定义在 chat/turn.py）。
     error_is_retryable,  # noqa: F401 - re-export
-    failed_thinking,
-    finalize_message,
     initial_thinking,
     owner_user_message,
     result_summary,
-    stopped_thinking,
     user_facing_error,  # noqa: F401 - re-export
 )
 from bridges.commute.contracts import CommuteRouteProjection
@@ -671,22 +670,21 @@ class ChatService:
         """返回对话完整投影；不存在的对话返回 None。
 
         读取时以持久化生成为活跃判定源（Issue 02）：仍有 queued/running
-        运行的消息视为进行中，读取不打断；运行已终态而消息仍残留
-        streaming（执行器异常退出后的兜底）按运行终态收敛；完全没有
-        运行记录的遗留 streaming 消息（旧版本数据）保持 stream_interrupted
-        兜底。绝不把半截占位当回答，也绝不误伤可恢复的运行。
+        运行的消息视为进行中，读取不打断；没有活跃运行的残留 streaming
+        消息交给生成终态 module 的陈旧收敛（Issue 03）——按已终态的运行
+        修复，或按迁移前的 stream_interrupted 语义兜底，并连带补齐缺失的
+        终态事件与运行。绝不把半截占位当回答，也绝不误伤可恢复的运行。
         """
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             return None
         messages = self._repo.list_messages(account_id, conversation_id)
-        now = datetime.now(UTC)
         active_runs = {
             run.assistant_message_id: run
             for run in self._repo.list_active_runs(account_id, conversation_id)
         }
         run_views: dict[str, ChatRunView] = {}
-        for message in messages:
+        for index, message in enumerate(messages):
             if message.status != ChatMessageStatus.STREAMING:
                 continue
             active = active_runs.get(message.message_id)
@@ -694,79 +692,12 @@ class ChatService:
                 # 运行尚未终态：生成仍在进行（或等待执行器领取），不打断
                 run_views[message.message_id] = self._run_view(active, account_id)
                 continue
-            run = self._repo.get_run_by_message(account_id, message.message_id)
-            if run is not None and run.status == ChatRunStatus.STOPPED.value:
-                # 运行已停止但消息残留 streaming（异常）：按停止语义收敛
-                self._reconcile_stale_message(
-                    account_id,
-                    message,
-                    status=ChatMessageStatus.STOPPED,
-                    error_code=None,
-                    error_message=None,
-                    duration_ms=run.duration_ms,
-                    thinking=stopped_thinking(
-                        ChatThinkingSummary(**message.thinking)
-                        if message.thinking is not None
-                        else initial_thinking(CHAT_MODE)
-                    ).model_dump(mode="json"),
-                    now=now,
-                )
-            elif run is not None and run.status == ChatRunStatus.DONE.value:
-                # 运行已成功但消息残留 streaming（异常半写）：按内部错误收敛
-                self._reconcile_stale_message(
-                    account_id,
-                    message,
-                    status=ChatMessageStatus.ERROR,
-                    error_code="internal_error",
-                    error_message="生成过程出现内部错误，请重试。",
-                    duration_ms=max(
-                        1, int((now - message.created_at).total_seconds() * 1000)
-                    ),
-                    thinking=failed_thinking(
-                        ChatThinkingSummary(**message.thinking)
-                        if message.thinking is not None
-                        else initial_thinking(CHAT_MODE),
-                        "internal_error",
-                    ).model_dump(mode="json"),
-                    now=now,
-                )
-            elif run is not None:
-                # 运行以失败终态结束而消息未被执行器收敛：按运行错误码收敛
-                self._reconcile_stale_message(
-                    account_id,
-                    message,
-                    status=ChatMessageStatus.ERROR,
-                    error_code=run.error_code or "internal_error",
-                    error_message=run.error_message
-                    or "生成过程出现内部错误，请重试。",
-                    duration_ms=run.duration_ms,
-                    thinking=failed_thinking(
-                        ChatThinkingSummary(**message.thinking)
-                        if message.thinking is not None
-                        else initial_thinking(CHAT_MODE),
-                        run.error_code or "internal_error",
-                    ).model_dump(mode="json"),
-                    now=now,
-                )
-            else:
-                # 旧版本遗留：无运行记录的 streaming 消息按断流收敛
-                self._reconcile_stale_message(
-                    account_id,
-                    message,
-                    status=ChatMessageStatus.ERROR,
-                    error_code="stream_interrupted",
-                    error_message=STREAM_INTERRUPTED_MESSAGE,
-                    duration_ms=max(
-                        1, int((now - message.created_at).total_seconds() * 1000)
-                    ),
-                    thinking=failed_thinking(
-                        ChatThinkingSummary(**message.thinking)
-                        if message.thinking is not None
-                        else initial_thinking(CHAT_MODE),
-                        "stream_interrupted",
-                    ).model_dump(mode="json"),
-                    now=now,
-                )
+            # 残留 streaming（无活跃运行）：陈旧收敛唯一入口；收敛后以落库
+            # 记录为准重建投影，读取路径不再自拼终态文案与思考摘要。
+            self.terminal.reconcile_stale_message(account_id, message.message_id)
+            refreshed = self._repo.get_message(account_id, message.message_id)
+            if refreshed is not None:
+                messages[index] = refreshed
         resolution = self._resolve_selections(account_id, conversation_id)
         return self._project_conversation(
             account_id,
@@ -2428,42 +2359,6 @@ class ChatService:
     # 投影
     # ------------------------------------------------------------------
 
-    def _reconcile_stale_message(
-        self,
-        account_id: str,
-        message: MessageRecord,
-        *,
-        status: ChatMessageStatus,
-        error_code: str | None,
-        error_message: str | None,
-        duration_ms: int | None,
-        thinking: dict[str, list[str]],
-        now: datetime,
-    ) -> None:
-        """把残留 streaming 消息按指定终态收敛（读取路径陈旧收敛唯一实现）。
-
-        原子守卫保证最多一个写入生效；同步回填记录字段，投影与落库一致。
-        """
-        finalize_message(
-            self._repo,
-            account_id,
-            message.message_id,
-            status=status,
-            error_code=error_code,
-            error_message=error_message,
-            duration_ms=duration_ms,
-            model_id=None,
-            run_lock_id=None,
-            started=_monotonic_of(message.created_at, now),
-            now=now,
-            thinking=thinking,
-        )
-        message.status = status
-        message.error_code = error_code
-        message.error_message = error_message
-        message.duration_ms = duration_ms
-        message.thinking = thinking
-
     def run_view_of(
         self, account_id: str, message_id: str
     ) -> ChatRunView | None:
@@ -2777,11 +2672,6 @@ def _record_selection(
         except (TypeError, ValueError):
             continue
     return result
-
-
-def _monotonic_of(created_at: datetime, now: datetime) -> float:
-    """由创建时间估算生成已进行的秒数（用于陈旧消息的耗时）。"""
-    return max(0.0, (now - created_at).total_seconds())
 
 
 def _validate_image_payload(
