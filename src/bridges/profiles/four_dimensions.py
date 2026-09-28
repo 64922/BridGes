@@ -102,6 +102,23 @@ class FourDimensionProfileError(ProfileError):
     """四维画像领域错误。"""
 
 
+def _automatic_source_record_id(
+    account_id: str, dimension: FourDimension, normalized: str
+) -> str:
+    """自动记录的稳定来源键：账户 + 维度 + 规范化正文。
+
+    同一条事实无论从哪条消息抽取，来源键都相同，这是自动写入幂等与
+    「重放不得改回用户纠正」定位记录的依据。
+    """
+
+    return (
+        "auto-"
+        + hashlib.sha256(
+            f"{account_id}|{dimension.value}|{normalized.casefold()}".encode("utf-8")
+        ).hexdigest()[:32]
+    )
+
+
 @dataclass(frozen=True)
 class FourDimensionMigrationPreflight:
     """收缩前的账户级硬门检查结果。"""
@@ -958,6 +975,7 @@ class FourDimensionProfileService:
         evidence_message_id: str | None = None,
         change_note: str | None = None,
         migration_version: str = "profile-auto-v1",
+        from_replay: bool = False,
     ) -> FourDimensionProfileRecord:
         """提交一条 Issue 15 自动抽取结果到四维目标表。
 
@@ -965,15 +983,17 @@ class FourDimensionProfileService:
         的同义重复只更新同一行，不会生成副本；消息和抽取器版本由上层
         extraction run、observation 和 retry task 分别承担幂等边界。``update`` 在同维度最近一条
         自动记录上改写，保留首次稳定时间；撤回记录不会被自动复活。
+
+        ``from_replay`` 标记本次写入来自旧消息重放：重放不是新的用户陈述，
+        用户纠正过的记录（``correction_count > 0``）不得被它改回旧值——
+        这是「旧消息重放不能恢复已改掉的内容」的保护点。新消息的自动
+        写入不受影响，仍按既有证据阶梯更新。
         """
         normalized = content.strip()
         if not normalized or len(normalized) > 1000:
             raise FourDimensionProfileError("画像内容不合法。")
-        source_record_id = (
-            "auto-"
-            + hashlib.sha256(
-                f"{account_id}|{dimension.value}|{normalized.casefold()}".encode("utf-8")
-            ).hexdigest()[:32]
+        source_record_id = _automatic_source_record_id(
+            account_id, dimension, normalized
         )
         existing: FourDimensionProfileRecord | None = None
         try:
@@ -992,6 +1012,9 @@ class FourDimensionProfileService:
             if existing.status == FourDimensionRecordStatus.WITHDRAWN:
                 raise FourDimensionProfileError("画像记录已撤回，不能自动复活。")
             if existing.correction_count >= 3:
+                return existing
+            if from_replay and existing.correction_count > 0:
+                # 重放不是新的用户陈述：用户纠正过的值不得被旧消息改回。
                 return existing
             if existing.content == normalized:
                 if confidence_rank(confidence) > confidence_rank(existing.confidence):

@@ -57,6 +57,7 @@ from bridges.contracts.profiles import (
     UnusedSliceItem,
 )
 from bridges.profiles.adapters import ProfileError
+from bridges.profiles.commit import ProfileCommit, SourceWithdrawalStatus
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -810,9 +811,17 @@ class AtomicProfileService:
         self,
         four_dimensions: FourDimensionProfileService,
         repository: AtomicProfileRepository,
+        profile_commit: ProfileCommit | None = None,
     ) -> None:
         self._four_dimensions = four_dimensions
         self._repository = repository
+        # Issue 05：用户权威操作的跨记录顺序（墓碑先落地、再撤回来源）由
+        # 提交 module 归属；自动提取编排器注入同一个实例时，两侧共用同一
+        # 份提交规则。未注入时自建只挂载跨记录两方的实例。
+        self._profile_commit = profile_commit or ProfileCommit(
+            records=four_dimensions,
+            items=self,
+        )
 
     def transaction(self) -> AbstractContextManager[None]:
         """为批量提交暴露原子仓库的事务边界。
@@ -895,18 +904,23 @@ class AtomicProfileService:
         """删除条目：条目先转墓碑，再撤回底层记录。
 
         墓碑先写：两次写入之间的失败只会留下「已删条目 + 仍活动的旧记录」，
-        镜像会因墓碑拒绝复活；反过来则会留下用户仍能看到的活动条目。
+        镜像会因墓碑拒绝复活；反过来则会留下用户仍能看到的活动条目。墓碑
+        提交后来源撤回失败时原样上抛（墓碑不回滚，条目保持不可召回），
+        重复执行同一撤回由提交 module 的幂等撤回语义保证。
         """
 
-        with self._repository.transaction():
+        with self._profile_commit.transaction():
             item = self._repository.get_item(account_id, item_id)
             if item.status != AtomicProfileItemStatus.ACTIVE:
                 raise AtomicProfileError("画像条目已删除，不能重复删除。")
             if version != item.version:
                 raise AtomicProfileError("版本冲突，请刷新后重试。")
             self._write_tombstone(item)
-        # 四维仓库自己开事务（单连接不支持嵌套），因此在原子事务之外撤回。
-        self._withdraw_source_record(account_id, item)
+        # 撤回在墓碑边界之外逐条执行（见提交 module）；失败如实上抛，
+        # 已提交的墓碑保持有效。
+        outcome = self._profile_commit.withdraw_item_sources(account_id, [item])[0]
+        if outcome.status is SourceWithdrawalStatus.FAILED and outcome.error is not None:
+            raise outcome.error
 
     # -- 记住／忘掉 -------------------------------------------------------
 
@@ -993,12 +1007,13 @@ class AtomicProfileService:
                 kind=AtomicProfileMemoryKind.FORGET,
                 status=AtomicProfileMemoryStatus.UNRESOLVED,
             )
-        with self._repository.transaction():
+        with self._profile_commit.transaction():
             for item in matched:
                 self._write_tombstone(item)
-        # 墓碑先落地；底层四维记录的撤回各自开事务（见 ``delete_item``）。
-        for item in matched:
-            self._withdraw_source_record(account_id, item)
+        # 墓碑已提交：用户可见的删除在本轮成立。来源撤回逐条隔离——部分
+        # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
+        # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
+        self._profile_commit.withdraw_item_sources(account_id, matched)
         return AtomicProfileMemoryResult(
             kind=AtomicProfileMemoryKind.FORGET,
             status=AtomicProfileMemoryStatus.FORGOTTEN,
@@ -1425,21 +1440,6 @@ class AtomicProfileService:
                 migration_run_id=None,
             )
         )
-
-    def _withdraw_source_record(
-        self, account_id: str, item: AtomicProfileItem
-    ) -> None:
-        """撤回底层四维记录：自动抽取不会复活已撤回的记录。"""
-
-        if item.source_record_id is None:
-            return
-        try:
-            record = self._four_dimensions.get_record(account_id, item.source_record_id)
-        except ProfileError:
-            return
-        if record.status != FourDimensionRecordStatus.ACTIVE:
-            return
-        self._four_dimensions.withdraw_record(account_id, record.record_id)
 
     def _merge_item(
         self,
