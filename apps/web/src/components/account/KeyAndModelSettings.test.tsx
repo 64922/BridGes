@@ -75,7 +75,7 @@ describe("KeyAndModelSettings", () => {
     render(<KeyAndModelSettings />);
 
     const tavilyInput = await screen.findByLabelText(/Tavily API Key/);
-    const qwenInput = screen.getByLabelText(/Qwen API Key/);
+    const qwenInput = screen.getByLabelText(/^Qwen API Key \*$/);
     const routeKeyInput = screen.getByLabelText(/高德 Web 服务 Key/);
     const jsKeyInput = screen.getByLabelText(/高德 JS API Key（Web 平台）/);
     const securityCodeInput = screen.getByLabelText(/高德 JS API 安全码/);
@@ -100,7 +100,7 @@ describe("KeyAndModelSettings", () => {
     api.replaceQwenCredential.mockResolvedValue(configuredStatus);
     render(<KeyAndModelSettings />);
 
-    const qwenInput = await screen.findByLabelText(/Qwen API Key/);
+    const qwenInput = await screen.findByLabelText(/^Qwen API Key \*$/);
     fireEvent.change(qwenInput, { target: { value: "sk-new-qwen-candidate" } });
     fireEvent.submit(formOf(qwenInput));
 
@@ -149,6 +149,80 @@ describe("KeyAndModelSettings", () => {
     expect(routeKeyInput).toHaveProperty("value", "");
   });
 
+  it("shows the effective source so a shadowing environment variable is visible", async () => {
+    api.fetchCredentialSettings.mockResolvedValue({
+      qwen: { ...configuredStatus, effective_source: "environment" },
+      tavily: { ...configuredStatus, effective_source: "credential_store" },
+      amap: {
+        web_service: configuredStatus,
+        browser_map: configuredStatus,
+      },
+    });
+    render(<KeyAndModelSettings />);
+
+    const qwenSection = (await screen.findByLabelText(/^Qwen API Key \*$/)).closest("section")!;
+    expect(qwenSection.querySelector('[data-testid="credential-status"]')!.textContent).toBe(
+      "已配置（环境变量提供）"
+    );
+    const tavilySection = screen.getByLabelText(/Tavily API Key/).closest("section")!;
+    expect(tavilySection.querySelector('[data-testid="credential-status"]')!.textContent).toBe(
+      "已配置（凭据库）"
+    );
+  });
+
+  it("shows the server notice instead of a canned success line", async () => {
+    api.replaceTavilyCredential.mockResolvedValue({
+      ...configuredStatus,
+      message:
+        "已通过验证并保存到凭据库；但该项当前由环境变量（BRIDGES_TAVILY_API_KEY）提供，" +
+        "环境变量优先，本次保存的值不会生效。",
+    });
+    render(<KeyAndModelSettings />);
+
+    // 先等初始状态读完再提交：保存结果并入当前状态，读取未回来时不能丢。
+    const tavilyInput = await screen.findByLabelText(/Tavily API Key/);
+    await screen.findAllByTestId("credential-status");
+    fireEvent.change(tavilyInput, { target: { value: "tvly-shadowed-candidate" } });
+    fireEvent.submit(formOf(tavilyInput));
+
+    expect(await screen.findByText(/本次保存的值不会生效/)).toBeTruthy();
+    expect(screen.queryByText("Tavily 凭据已验证并保存。")).toBeNull();
+  });
+
+  it("shows the browser-path conclusion written back by the map proxy", async () => {
+    api.fetchCredentialSettings.mockResolvedValue({
+      qwen: configuredStatus,
+      tavily: configuredStatus,
+      amap: {
+        web_service: configuredStatus,
+        browser_map: {
+          ...configuredStatus,
+          runtime_evidence: "真实地图请求已成功：Key 与安全码在浏览器加载路径上已生效。",
+        },
+      },
+    });
+    render(<KeyAndModelSettings />);
+
+    const browserMapSection = (await screen.findByLabelText(/高德 JS API 安全码/)).closest(
+      "section"
+    )!;
+    expect(
+      browserMapSection.querySelector('[data-testid="credential-runtime-evidence"]')!.textContent
+    ).toContain("真实地图请求已成功");
+  });
+
+  it("reports an unreadable credential store instead of pretending the state is fresh", async () => {
+    api.fetchCredentialSettings.mockResolvedValue({
+      qwen: { ...configuredStatus, configured: false, last_validated_at: null },
+      tavily: configuredStatus,
+      amap: { web_service: configuredStatus, browser_map: configuredStatus },
+      store_error: "凭据库不可用：读取失败，暂用上一次成功读取的值。",
+    });
+    render(<KeyAndModelSettings />);
+
+    expect(await screen.findByText(/凭据库不可用：读取失败/)).toBeTruthy();
+  });
+
   it("keeps the old credential and explains the order when the candidate key is rejected", async () => {
     api.replaceQwenCredential.mockRejectedValue(
       new Error(
@@ -162,7 +236,7 @@ describe("KeyAndModelSettings", () => {
     });
     render(<KeyAndModelSettings />);
 
-    const qwenInput = await screen.findByLabelText(/Qwen API Key/);
+    const qwenInput = await screen.findByLabelText(/^Qwen API Key \*$/);
     // 未配置时字段附近说明操作顺序。
     expect(await screen.findByText(/请先在本页「Qwen 凭据」中输入密钥并验证保存/)).toBeTruthy();
     fireEvent.change(qwenInput, { target: { value: "sk-rejected" } });

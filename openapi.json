@@ -1324,6 +1324,7 @@
           "凭据设置"
         ],
         "summary": "Get Credential Settings",
+        "description": "报告四类凭据的配置状态、当前生效来源与最近一次验证结论。",
         "operationId": "get_credential_settings_settings_credentials_get",
         "parameters": [
           {
@@ -1373,7 +1374,7 @@
           "凭据设置"
         ],
         "summary": "Replace Qwen Credential",
-        "description": "验证并替换全局 Qwen 凭据；失败保留旧凭据（V2 Issue 09）。\n\n验证对象是当前生效的主模型 ID：先查百炼模型元数据（密钥可用且能看到该\n模型），再用候选密钥做一次最小真实调用（密钥能实际调用推理服务）。任一\n不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型\n调用即使用新凭据。\n\n凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。",
+        "description": "验证并替换全局 Qwen 凭据；失败保留旧凭据（V2 Issue 09）。\n\n验证对象是当前生效的主模型 ID：先查百炼模型元数据（密钥可用且能看到该\n模型），再用候选密钥做一次最小真实调用（密钥能实际调用推理服务）。任一\n不通过都不保存、不改运行期状态；成功后就地轮换运行期密钥，下一次模型\n调用即使用新凭据。\n\n该密钥看不到当前主模型时，提示指向「Qwen 主模型」卡的同一次迁移操作\n（那里可以同时填入候选模型 ID 与这把新密钥），不再形成互相指向的循环。\n\n凭据正文绝不进入响应、日志或错误信息；输入框在成功后被前端清空。",
         "operationId": "replace_qwen_credential_settings_credentials_qwen_put",
         "parameters": [
           {
@@ -1433,6 +1434,7 @@
           "凭据设置"
         ],
         "summary": "Replace Tavily Credential",
+        "description": "验证并替换 Tavily 搜索凭据；失败保留旧凭据。",
         "operationId": "replace_tavily_credential_settings_credentials_tavily_put",
         "parameters": [
           {
@@ -1492,6 +1494,7 @@
           "凭据设置"
         ],
         "summary": "Replace Amap Web Service Credential",
+        "description": "验证并替换高德 Web 服务 Key；失败按具体原因分类，保留旧凭据。",
         "operationId": "replace_amap_web_service_credential_settings_credentials_amap_web_service_put",
         "parameters": [
           {
@@ -1551,6 +1554,7 @@
           "凭据设置"
         ],
         "summary": "Replace Amap Browser Map Credential",
+        "description": "验证并保存浏览器地图凭据对（JS API Key ＋ 安全密钥）。\n\n验证由两部分组成，且只有第二部分是有效性证据：\n\n1. **加载器可达性**：只读加载器正文前缀判断可达与形状（真实正文约 968 KB，\n   按体积判失败会误杀有效 Key），并说明\"拿到脚本不等于 Key 有效\"；\n2. **成对真实请求**：按高德官方代理方案，在服务端把 ``jscode``（安全密钥）\n   与 JS API Key 一起送到数据服务，用一次真实地理编码请求证明配对可用。\n\n底图能否在用户浏览器里渲染依赖浏览器侧的真实请求，保存时无法证明，因此\n成功文案只声明已经证明的那件事；浏览器路径的结论由地图代理在首次真实请求\n后回写（``runtime_evidence``）。",
         "operationId": "replace_amap_browser_map_credential_settings_credentials_amap_browser_map_put",
         "parameters": [
           {
@@ -1660,7 +1664,7 @@
           "校园通勤"
         ],
         "summary": "Amap Proxy",
-        "description": "代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。",
+        "description": "代理高德数据服务请求并在服务端追加安全密钥（官方代理方案）。\n\n这条路径是浏览器地图凭据的**真实运行路径**：浏览器发起的每一个地图数据\n请求都经过这里，因此它拿到的结论（成功或具体失败码）比保存时的探测更强。\n结论会回写到设置页卡片状态（工单 01）：底图渲染与平台／白名单类限制只有\n在真实浏览器路径上才能被证实或证伪，保存时的探测不作此类声称。",
         "operationId": "amap_proxy_commute_amap_proxy__path__get",
         "parameters": [
           {
@@ -1765,7 +1769,7 @@
           "模型设置"
         ],
         "summary": "Replace Model Configuration",
-        "description": "验证并原子激活手填的主模型 ID；失败保留原配置。",
+        "description": "验证并原子激活手填的主模型 ID；失败保留原配置。\n\n可选地同时提交候选密钥（工单 01）：给了候选密钥就用它验证与激活，并在\n成功后一并替换全局凭据——这让\"换密钥 + 换主模型\"成为一次操作，用户不会\n被两张卡互相指向。",
         "operationId": "replace_model_configuration_settings_models_put",
         "parameters": [
           {
@@ -26490,23 +26494,33 @@
       "AMapBrowserCandidate": {
         "properties": {
           "api_key": {
-            "type": "string",
-            "format": "password",
-            "title": "Api Key",
-            "writeOnly": true
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
           },
           "security_js_code": {
-            "type": "string",
-            "format": "password",
-            "title": "Security Js Code",
-            "writeOnly": true
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Js Code"
           }
         },
         "type": "object",
-        "required": [
-          "api_key",
-          "security_js_code"
-        ],
         "title": "AMapBrowserCandidate"
       },
       "AMapCredentialStatus": {
@@ -34930,6 +34944,17 @@
           },
           "amap": {
             "$ref": "#/components/schemas/AMapCredentialStatus"
+          },
+          "store_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Error"
           }
         },
         "type": "object",
@@ -34945,6 +34970,21 @@
           "configured": {
             "type": "boolean",
             "title": "Configured"
+          },
+          "effective_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "environment",
+                  "credential_store"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Source"
           },
           "last_validated_at": {
             "anyOf": [
@@ -34968,13 +35008,36 @@
               }
             ],
             "title": "Error"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "runtime_evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Evidence"
           }
         },
         "type": "object",
         "required": [
           "configured"
         ],
-        "title": "CredentialStatus"
+        "title": "CredentialStatus",
+        "description": "一张卡片的凭据状态（不含任何凭据正文）。"
       },
       "DataBinding": {
         "properties": {
@@ -46213,13 +46276,27 @@
           "model_id": {
             "type": "string",
             "title": "Model Id"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
           }
         },
         "type": "object",
         "required": [
           "model_id"
         ],
-        "title": "ModelCandidate"
+        "title": "ModelCandidate",
+        "description": "候选主模型配置。\n\n``api_key`` 是**可选**的候选 Qwen 密钥（工单 01）：旧密钥已失效、而新密钥\n只覆盖另一批模型时，「Qwen 凭据」卡与「Qwen 主模型」卡会互相指向对方而\n无法脱困。在主模型卡同时提交候选模型 ID 与候选密钥，就能在**同一次操作**\n里完成\"换密钥 + 换主模型\"：两者都用候选值验证，通过后一起保存生效。"
       },
       "ModelCapabilities": {
         "properties": {
@@ -52059,16 +52136,20 @@
       "SecretCandidate": {
         "properties": {
           "api_key": {
-            "type": "string",
-            "format": "password",
-            "title": "Api Key",
-            "writeOnly": true
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
           }
         },
         "type": "object",
-        "required": [
-          "api_key"
-        ],
         "title": "SecretCandidate"
       },
       "SemanticDiff": {

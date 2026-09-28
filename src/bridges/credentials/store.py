@@ -393,3 +393,21 @@ class EncryptedVolumeCredentialStore(CredentialStorePort):
             path = self._blob_path(account_id)
             if path.exists():
                 path.unlink()
+
+
+def build_credential_store(
+    settings: Any | None,
+    data_dir: Path | None,
+    namespace: str = "runtime",
+) -> CredentialStorePort:
+    """按运行载体为指定命名空间创建凭据存储（工单 01）。
+
+    API 组合根与后台执行器必须读到**同一份**凭据，因此"按 backend 选实现"
+    的规则只在这里维护一处；数据目录缺失（内存存储、测试替身）时回落进程内
+    实现，绝不在缺少数据目录时退回明文文件。
+    """
+    if settings is None or data_dir is None:
+        return InMemoryCredentialStore(namespace=namespace)
+    if getattr(settings, "credential_backend", "os") == "encrypted-volume":
+        return EncryptedVolumeCredentialStore(data_dir, namespace=namespace)
+    return OsCredentialStore(data_dir=data_dir, namespace=namespace)

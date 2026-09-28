@@ -36,7 +36,34 @@ function CredentialState({ status }: { status?: CredentialStatus }) {
       data-testid="credential-status"
     >
       {status.configured ? "已配置" : "未配置"}
+      {status.effective_source === "environment" && "（环境变量提供）"}
+      {status.effective_source === "credential_store" && "（凭据库）"}
     </span>
+  );
+}
+
+/**
+ * 保存成功后的说明：以服务端返回的 ``message`` 为准。
+ *
+ * 服务端才知道"这次到底证明了什么"——浏览器地图只证明了成对真实请求，被环境
+ * 变量遮蔽的保存并不会生效。前端固定文案会把这些差异抹平，因此只在服务端没有
+ * 给出说明时才回落到本地兜底句。
+ */
+function SavedNotice({ status, fallback }: { status?: CredentialStatus; fallback: string }) {
+  return (
+    <p className={styles.success} role="status">
+      {status?.message ?? fallback}
+    </p>
+  );
+}
+
+/** 浏览器路径（地图代理）回写的真实运行结论。 */
+function RuntimeEvidence({ status }: { status?: CredentialStatus }) {
+  if (!status?.runtime_evidence) return null;
+  return (
+    <p className={styles.validationTime} data-testid="credential-runtime-evidence">
+      {status.runtime_evidence}
+    </p>
   );
 }
 
@@ -147,12 +174,19 @@ export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | n
           <h1 className={styles.title}>密钥与模型管理</h1>
           <p className={styles.lead}>
             新密钥会先经过只读验证，验证成功后才替换当前凭据。已有密钥不会回显；每次更换请重新输入。
-            Qwen 凭据与主模型按「先密钥、后模型」的顺序分别验证保存，失败时原设置保持有效。
+            保存成功后新凭据立即生效（后台任务无需重启）：卡上会写明这次究竟验证了什么，
+            以及当前真正生效的值来自凭据库还是环境变量（环境变量优先）。
           </p>
         </header>
 
         {loading && <p className={styles.notice} role="status">正在读取凭据状态…</p>}
         {loadError && <ErrorSummary title="凭据状态暂不可用" errors={[loadError]} />}
+        {settings?.store_error && (
+          <ErrorSummary
+            title="凭据库读取失败，以下状态可能不是最新"
+            errors={[settings.store_error]}
+          />
+        )}
 
         <div className={styles.stack}>
           <section className={styles.card} aria-labelledby="qwen-credential-title">
@@ -193,7 +227,9 @@ export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | n
                 <p className={styles.guidance}>{QWEN_CREDENTIAL_FIRST_GUIDANCE}</p>
               )}
               {errors.qwen && <ErrorSummary title="Qwen 密钥验证失败" errors={[errors.qwen]} />}
-              {saved.qwen && <p className={styles.success} role="status">Qwen 凭据已验证并保存。</p>}
+              {saved.qwen && (
+                <SavedNotice status={statusFor("qwen")} fallback="Qwen 凭据已验证并保存。" />
+              )}
               <div className={styles.actions}>
                 <Button type="submit" isLoading={isSaving("qwen")} disabled={loading}>
                   {isSaving("qwen") ? "正在验证并保存…" : "验证并保存"}
@@ -236,7 +272,12 @@ export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | n
                 required
               />
               {errors.tavily && <ErrorSummary title="Tavily 验证失败" errors={[errors.tavily]} />}
-              {saved.tavily && <p className={styles.success} role="status">Tavily 凭据已验证并保存。</p>}
+              {saved.tavily && (
+                <SavedNotice
+                  status={statusFor("tavily")}
+                  fallback="Tavily 凭据已验证并保存。"
+                />
+              )}
               <div className={styles.actions}>
                 <Button type="submit" isLoading={isSaving("tavily")} disabled={loading}>
                   {isSaving("tavily") ? "正在验证并保存…" : "验证并保存"}
@@ -285,7 +326,12 @@ export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | n
                 required
               />
               {errors.amap_web_service && <ErrorSummary title="高德 Web 服务验证失败" errors={[errors.amap_web_service]} />}
-              {saved.amap_web_service && <p className={styles.success} role="status">高德 Web 服务凭据已验证并保存。</p>}
+              {saved.amap_web_service && (
+                <SavedNotice
+                  status={statusFor("amap_web_service")}
+                  fallback="高德 Web 服务凭据已验证并保存。"
+                />
+              )}
               <div className={styles.actions}>
                 <Button type="submit" isLoading={isSaving("amap_web_service")} disabled={loading}>
                   {isSaving("amap_web_service") ? "正在验证并保存…" : "验证并保存"}
@@ -304,13 +350,17 @@ export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | n
               <div>
                 <h2 id="amap-js-title" className={styles.cardTitle}>高德浏览器地图</h2>
                 <p className={styles.description}>
-                  只用于在页面里显示地图底图；对 JS API 加载器做只读探测，安全码与 Key 的配对由地图代理请求验证。
+                  只用于在页面里显示地图底图。保存时做两件事：只读加载器正文前缀判断可达
+                  （拿到脚本不等于 Key 有效），再按高德官方代理方案在服务端把安全码与 Key
+                  一起送到数据服务，用一次真实地理编码请求证明这对凭据可用。
+                  底图能否真正渲染只能在浏览器首次请求底图时确认，结论由地图代理回写。
                   缺少它时底图不可用，但已取得的路线、距离、耗时与路段文字照常可用。
                 </p>
               </div>
               <CredentialState status={statusFor("amap_browser_map")} />
             </div>
             <p className={styles.validationTime}>{formatValidationTime(statusFor("amap_browser_map")?.last_validated_at ?? null)}</p>
+            <RuntimeEvidence status={statusFor("amap_browser_map")} />
             {statusFor("amap_browser_map")?.error && <p className={styles.errorText}>{statusFor("amap_browser_map")?.error}</p>}
             <form
               className={styles.form}
@@ -346,9 +396,10 @@ export function KeyAndModelSettings({ returnTo = null }: { returnTo?: string | n
               />
               {errors.amap_browser_map && <ErrorSummary title="高德浏览器地图验证失败" errors={[errors.amap_browser_map]} />}
               {saved.amap_browser_map && (
-                <p className={styles.success} role="status">
-                  JS API Key 已完成加载器连通性探测并保存。安全码只保存在服务端；与 Key 的配对会由地图代理请求实际验证。
-                </p>
+                <SavedNotice
+                  status={statusFor("amap_browser_map")}
+                  fallback="JS API Key 与安全码已完成一次成对的真实数据服务请求并保存。"
+                />
               )}
               <div className={styles.actions}>
                 <Button type="submit" isLoading={isSaving("amap_browser_map")} disabled={loading}>

@@ -73,8 +73,16 @@ def _register(client: TestClient) -> None:
     assert response.status_code == 201, response.text
 
 
-def _app(monkeypatch: pytest.MonkeyPatch, provider: httpx.Client) -> Any:
-    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", _OLD_KEY)
+def _app(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: httpx.Client,
+    *,
+    environment_key: str | None = _OLD_KEY,
+) -> Any:
+    if environment_key is None:
+        monkeypatch.delenv("BRIDGES_QWEN_API_KEY", raising=False)
+    else:
+        monkeypatch.setenv("BRIDGES_QWEN_API_KEY", environment_key)
     get_settings.cache_clear()
     credentials = InMemoryCredentialStore(namespace="runtime")
     credentials.save(GLOBAL_QWEN_CREDENTIAL_ID, SecretStr(_OLD_KEY))
@@ -87,8 +95,9 @@ def _app(monkeypatch: pytest.MonkeyPatch, provider: httpx.Client) -> Any:
 def test_successful_replacement_persists_and_rotates_the_runtime_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """没有环境变量遮蔽时：保存即生效，本进程立刻换成新密钥。"""
     provider = _provider_client(candidate_key=_NEW_KEY)
-    app = _app(monkeypatch, provider)
+    app = _app(monkeypatch, provider, environment_key=None)
     client = TestClient(app)
     _register(client)
     old_client_key = app.state.qwen_client._api_key.get_secret_value()  # noqa: SLF001
@@ -96,8 +105,11 @@ def test_successful_replacement_persists_and_rotates_the_runtime_key(
     response = client.put("/settings/credentials/qwen", json={"api_key": _NEW_KEY})
 
     assert response.status_code == 200, response.text
-    assert response.json()["configured"] is True
-    assert response.json()["last_validated_at"] is not None
+    body = response.json()
+    assert body["configured"] is True
+    assert body["effective_source"] == "credential_store"
+    assert body["last_validated_at"] is not None
+    assert "无需重启" in body["message"]
     assert _NEW_KEY not in response.text
     assert old_client_key == _OLD_KEY
     assert (
@@ -107,6 +119,42 @@ def test_successful_replacement_persists_and_rotates_the_runtime_key(
     assert app.state.settings.qwen_api_key == SecretStr(_NEW_KEY)
     assert app.state.qwen_client._api_key == SecretStr(_NEW_KEY)  # noqa: SLF001
     assert client.get("/settings/credentials").json()["qwen"]["configured"] is True
+    provider.close()
+
+
+def test_environment_provided_key_shadows_a_saved_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """环境变量优先：页面保存的值不会生效，页面必须如实说明这一点。
+
+    旧行为是"保存后本进程用新值、重启后又回到环境变量值"——用户从界面无法判断
+    真正生效的是哪一个（工单 01 证据 E）。现在环境变量在用时，保存仍会验证并
+    入库，但明确告知生效来源与"去掉环境变量"这一操作。
+    """
+    provider = _provider_client(candidate_key=_NEW_KEY)
+    app = _app(monkeypatch, provider)
+    client = TestClient(app)
+    _register(client)
+    old_client_key = app.state.qwen_client._api_key.get_secret_value()  # noqa: SLF001
+
+    response = client.put("/settings/credentials/qwen", json={"api_key": _NEW_KEY})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["effective_source"] == "environment"
+    assert "BRIDGES_QWEN_API_KEY" in body["message"]
+    assert "不会生效" in body["message"]
+    # 生效中的值没有变化：环境变量仍然是运行期使用的那一个。
+    assert app.state.settings.qwen_api_key == SecretStr(_OLD_KEY)
+    assert app.state.qwen_client._api_key == SecretStr(_OLD_KEY)  # noqa: SLF001
+    assert old_client_key == _OLD_KEY
+    # 候选值已验证并入库，供移除环境变量后使用。
+    assert (
+        app.state.runtime_credential_store.get(GLOBAL_QWEN_CREDENTIAL_ID)
+        == SecretStr(_NEW_KEY)
+    )
+    status = client.get("/settings/credentials").json()["qwen"]
+    assert status["effective_source"] == "environment"
     provider.close()
 
 

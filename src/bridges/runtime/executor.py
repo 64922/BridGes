@@ -21,6 +21,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import SecretStr
+
 if TYPE_CHECKING:
     from bridges.lifecycle.deletion import DeletionService
 
@@ -47,7 +49,13 @@ from bridges.contracts.ai import (
     RetryPolicy,
 )
 from bridges.credentials.global_credential import is_global_qwen_key_configured
-from bridges.credentials.store import EncryptedVolumeCredentialStore, OsCredentialStore
+from bridges.credentials.runtime_resolver import RuntimeCredentialResolver
+from bridges.credentials.store import (
+    CredentialStoreError,
+    EncryptedVolumeCredentialStore,
+    OsCredentialStore,
+    build_credential_store,
+)
 from bridges.identity.service import IdentityService
 from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
@@ -74,6 +82,11 @@ from bridges.video.service import VideoService
 #: 默认轮询间隔（秒）。
 DEFAULT_EXECUTOR_INTERVAL_SECONDS = 60
 
+#: 缺少全局凭据时的待机原因（工单 01）：这些原因会随"保存新凭据"自动解除，
+#: 与"数据库未配置""处理出错"等需要人工处理的原因区分开。
+_IDLE_NO_QWEN_KEY_IMAGE = "worker: 未配置全局百炼运行凭据，图片任务处理待机。"
+_IDLE_NO_QWEN_KEY_VIDEO = "worker: 未配置全局百炼运行凭据，视频任务处理待机。"
+
 
 class BackgroundExecutor:
     """周期执行本地后台任务的执行器。"""
@@ -90,7 +103,73 @@ class BackgroundExecutor:
         self._deletion: DeletionService | None = None
         self._attachment_cleanup: ChatAttachmentService | None = None
         self._model_config_provider: RunModelConfigProvider | None = None
+        self._credentials: RuntimeCredentialResolver | None = None
+        self._effective: Settings | None = None
+        self._composed_qwen_key: SecretStr | None = None
         self._idle_reason: str | None = None
+
+    def _credential_resolver(self) -> RuntimeCredentialResolver:
+        """运行期凭据解析入口（工单 01）。
+
+        与 API 进程共享同一真相源（凭据库 ``runtime`` 命名空间）：每轮开始前
+        重读，因此设置页保存的新凭据无需重启 worker 即在下一次轮询生效；
+        读取失败回落本进程上一次生效的值，不中断任务。
+        """
+        if self._credentials is not None:
+            return self._credentials
+        settings = self._settings
+        store = None
+        try:
+            data_dir = Path(
+                resolve_database_path(settings.database_url or "")
+            ).parent
+        except (PersistenceError, ValueError):
+            data_dir = None
+        if data_dir is not None:
+            try:
+                store = build_credential_store(settings, data_dir, namespace="runtime")
+            except (CredentialStoreError, OSError):
+                store = None
+        self._credentials = RuntimeCredentialResolver(
+            settings=settings, credential_store=store
+        )
+        return self._credentials
+
+    def _effective_settings(self) -> Settings:
+        """返回并入当前生效凭据后的运行期 Settings。
+
+        未配置凭据时原样返回启动快照（各服务据此按"缺凭据待机"处理）；已配置
+        时用**当前生效**的凭据覆盖启动快照里的值——这正是"保存即生效"在 worker
+        侧的落点，而不是只在启动时解析一次。
+        """
+        resolved = self._credential_resolver().qwen_api_key()
+        if resolved.value is None:
+            return self._settings
+        if self._effective is None or self._composed_qwen_key != resolved.value:
+            self._effective = self._settings.model_copy(
+                update={"qwen_api_key": resolved.value}
+            )
+            self._composed_qwen_key = resolved.value
+        return self._effective
+
+    def refresh_credentials(self) -> bool:
+        """每轮开始前对齐凭据；凭据变化时让缓存的服务按新值重建。
+
+        返回是否发生了凭据变化。只重建按凭据构造的服务（摄取/重建、图片、
+        视频），数据库与对象库等与凭据无关的缓存保持不动。
+        """
+        resolved = self._credential_resolver().qwen_api_key()
+        if resolved.value is None or resolved.value == self._composed_qwen_key:
+            return False
+        self._composed_qwen_key = None
+        self._effective = None
+        self._ingestion = None
+        self._project_migration = None
+        self._image = None
+        self._video = None
+        if self._idle_reason in {_IDLE_NO_QWEN_KEY_IMAGE, _IDLE_NO_QWEN_KEY_VIDEO}:
+            self._idle_reason = None
+        return True
 
     def _run_model_config_provider(self) -> RunModelConfigProvider:
         """后台执行器共享的主模型运行配置提供者（V2 Issue 09）。
@@ -205,7 +284,7 @@ class BackgroundExecutor:
         repository = self._ensure_repository()
         if repository is None:
             return None
-        settings = self._settings
+        settings = self._effective_settings()
         database_url = settings.database_url
         if database_url is None or not database_url.get_secret_value():
             self._idle_reason = (
@@ -264,11 +343,9 @@ class BackgroundExecutor:
         repository = self._ensure_repository()
         if repository is None:
             return None
-        settings = self._settings
+        settings = self._effective_settings()
         if not is_global_qwen_key_configured(settings):
-            self._idle_reason = (
-                "worker: 未配置全局百炼运行凭据，图片任务处理待机。"
-            )
+            self._idle_reason = _IDLE_NO_QWEN_KEY_IMAGE
             return None
         try:
             cassette_store = None
@@ -353,11 +430,9 @@ class BackgroundExecutor:
         repository = self._ensure_repository()
         if repository is None:
             return None
-        settings = self._settings
+        settings = self._effective_settings()
         if not is_global_qwen_key_configured(settings):
-            self._idle_reason = (
-                "worker: 未配置全局百炼运行凭据，视频任务处理待机。"
-            )
+            self._idle_reason = _IDLE_NO_QWEN_KEY_VIDEO
             return None
         try:
             cassette_store = None
@@ -471,6 +546,9 @@ class BackgroundExecutor:
 
     def run_tick(self) -> str:
         """执行一轮后台任务并返回中文摘要；可重试错误只记录不退出。"""
+        # 工单 01：凭据在需要它的进程里按运行重读——设置页换过密钥后，这一轮
+        # 就用新值重建按凭据构造的服务，无需重启 worker。
+        self.refresh_credentials()
         repository = self._ensure_repository()
         if repository is None:
             assert self._idle_reason is not None

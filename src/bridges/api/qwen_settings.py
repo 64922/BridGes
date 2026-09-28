@@ -24,7 +24,11 @@ from bridges.ai.run_model_config import (
     RunModelConfigProvider,
     RunModelConfigSnapshot,
 )
-from bridges.credentials.global_credential import resolve_settings_qwen_key
+from bridges.config import secret_environment_source
+from bridges.credentials.runtime_resolver import (
+    CredentialSource,
+    RuntimeCredentialResolver,
+)
 from bridges.credentials.store import CredentialStorePort
 
 #: 最近一次主模型验证报告的内存键（进程内，重启后由激活记录本身兜底）。
@@ -68,9 +72,46 @@ def credential_store(request: Request) -> CredentialStorePort | None:
     return store if store is not None else None
 
 
+def credential_resolver(request: Request) -> RuntimeCredentialResolver:
+    """运行期凭据解析入口（每次调用重读共享真相源，失败回落进程内缓存）。
+
+    只使用组合根注入的实例，不在这里缓存自建实例：保存凭据后运行期
+    ``Settings`` 会被整体替换，缓存旧实例会让后续读取看到退出历史的值。
+    """
+    resolver = getattr(request.app.state, "credential_resolver", None)
+    if isinstance(resolver, RuntimeCredentialResolver):
+        return resolver
+    return RuntimeCredentialResolver(
+        settings=runtime_settings(request), credential_store=credential_store(request)
+    )
+
+
 def active_qwen_key(request: Request) -> SecretStr | None:
     """当前可用的 Qwen 密钥：文件/环境变量优先，其次凭据库。"""
-    return resolve_settings_qwen_key(runtime_settings(request), credential_store(request))
+    return credential_resolver(request).qwen_api_key().value
+
+
+def qwen_key_shadowed(request: Request) -> bool:
+    """当前生效的 Qwen 密钥是否由环境变量（或 ``_FILE`` 引用）提供。
+
+    环境变量在进程生命周期内不变，且优先于凭据库：此时页面保存的新密钥不会
+    生效（重启后仍然如此），保存成功文案必须如实说明，否则用户会看到"已保存"
+    却仍然失败。
+    """
+    return (
+        credential_resolver(request).qwen_api_key().source
+        is CredentialSource.ENVIRONMENT
+    )
+
+
+def qwen_key_shadow_notice() -> str:
+    """密钥被环境变量遮蔽时的中文说明：写清真正生效的来源与下一步操作。"""
+    env_var = secret_environment_source("qwen_api_key") or "BRIDGES_QWEN_API_KEY"
+    return (
+        f"已通过验证并保存到凭据库；但 Qwen 密钥当前由环境变量（{env_var}）提供，"
+        "环境变量优先，本次保存的密钥不会生效。若要改用页面保存的值，"
+        "请先移除该环境变量（或其 _FILE 引用）并重启 BridGes。"
+    )
 
 
 def build_metadata_source(
@@ -182,9 +223,12 @@ __all__ = [
     "apply_qwen_key",
     "build_metadata_source",
     "build_probe_client",
+    "credential_resolver",
     "credential_store",
     "last_validation",
     "probe_http_client",
+    "qwen_key_shadow_notice",
+    "qwen_key_shadowed",
     "record_validation",
     "run_model_config_provider",
     "runtime_settings",

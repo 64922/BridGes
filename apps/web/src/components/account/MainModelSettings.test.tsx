@@ -74,8 +74,12 @@ describe("MainModelSettings", () => {
     render(<MainModelSettings />);
 
     const input = await screen.findByLabelText(/Qwen 主模型 ID/);
+    // 指引给出两条都能走通的路径：本卡同时填，或先去凭据卡再回来。
     expect(screen.getByTestId("model-credential-guidance").textContent).toContain(
-      "请先在本页「Qwen 凭据」中输入密钥并验证保存"
+      "一次完成「换密钥 + 换主模型」"
+    );
+    expect(screen.getByTestId("model-credential-guidance").textContent).toContain(
+      "先在「Qwen 凭据」中验证并保存密钥"
     );
 
     fireEvent.change(input, { target: { value: "qwen-candidate" } });
@@ -195,12 +199,84 @@ describe("MainModelSettings", () => {
     fireEvent.submit(formOf(input));
 
     await waitFor(() =>
-      expect(api.replaceModelConfiguration).toHaveBeenCalledWith("qwen-candidate")
+      expect(api.replaceModelConfiguration).toHaveBeenCalledWith("qwen-candidate", undefined)
     );
     expect(
       await screen.findByText("验证通过，已从下一条消息起使用新配置。")
     ).toBeTruthy();
     await waitFor(() => expect(input).toHaveProperty("value", ""));
     expect(screen.getByTestId("active-model-id").textContent).toBe("qwen-candidate");
+  });
+
+  it("sends the optional candidate key in the same operation and clears it", async () => {
+    const activated = {
+      ...activeModel,
+      model_id: "qwen-candidate",
+      revision: 4,
+      last_validation: {
+        model_id: "qwen-candidate",
+        passed: true,
+        capabilities: activeModel.capabilities,
+        context_window: 1_000_000,
+        max_input_tokens: 999_000,
+        checks: [],
+        message:
+          "验证通过：已同时更换 Qwen 密钥与主模型，从下一条消息起使用新配置。",
+      },
+    };
+    api.replaceModelConfiguration.mockResolvedValue(activated);
+    render(<MainModelSettings />);
+
+    const input = await screen.findByLabelText(/Qwen 主模型 ID/);
+    const keyInput = screen.getByLabelText(/Qwen API Key（可选：与主模型一起更换）/);
+    expect(keyInput).toHaveProperty("type", "password");
+    expect(keyInput).toHaveProperty("value", "");
+    fireEvent.change(input, { target: { value: "qwen-candidate" } });
+    fireEvent.change(keyInput, { target: { value: "sk-fresh-qwen-secret" } });
+    fireEvent.submit(formOf(input));
+
+    await waitFor(() =>
+      expect(api.replaceModelConfiguration).toHaveBeenCalledWith(
+        "qwen-candidate",
+        "sk-fresh-qwen-secret"
+      )
+    );
+    expect(
+      await screen.findByText(
+        "验证通过：已同时更换 Qwen 密钥与主模型，从下一条消息起使用新配置。"
+      )
+    ).toBeTruthy();
+    await waitFor(() => expect(keyInput).toHaveProperty("value", ""));
+  });
+
+  it("shows the server notice when a saved key is shadowed by the environment", async () => {
+    const activated = {
+      ...activeModel,
+      model_id: "qwen-candidate",
+      revision: 4,
+      last_validation: {
+        model_id: "qwen-candidate",
+        passed: true,
+        capabilities: activeModel.capabilities,
+        context_window: 1_000_000,
+        max_input_tokens: 999_000,
+        checks: [],
+        message:
+          "验证通过：主模型已切换，从下一条消息起使用新配置。已通过验证并保存到凭据库；" +
+          "但 Qwen 密钥当前由环境变量（BRIDGES_QWEN_API_KEY）提供，环境变量优先，" +
+          "本次保存的密钥不会生效。",
+      },
+    };
+    api.replaceModelConfiguration.mockResolvedValue(activated);
+    render(<MainModelSettings />);
+
+    const input = await screen.findByLabelText(/Qwen 主模型 ID/);
+    fireEvent.change(input, { target: { value: "qwen-candidate" } });
+    fireEvent.submit(formOf(input));
+
+    // 不谎称已更换密钥：把服务端说明原样显示出来。
+    const notice = await screen.findByText(/本次保存的密钥不会生效/);
+    expect(notice.textContent).toContain("BRIDGES_QWEN_API_KEY");
+    expect(screen.queryByText(/已同时更换 Qwen 密钥与主模型/)).toBeNull();
   });
 });
