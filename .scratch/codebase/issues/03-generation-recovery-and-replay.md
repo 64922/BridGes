@@ -165,3 +165,12 @@ conda `agent` 环境、工作树内运行（`pyproject.toml` 的 `pythonpath=["s
 - **`_TERMINAL_EVENT_KINDS` 字面量表**：新增终态种类时要同步改 `repository.py` 与 `terminal.py` 两处（第 1 节例外 2 已立据）。
 - **收尸故障只在下一轮重试**：`run_tick` 每轮只尝试一次，若存储持续不可写，运行会持续停在待收敛形态（不产生错误终态，也不丢失），需运维侧修复可写性后自愈。
 - **测试用真实临时库、非真实进程击杀**：「进程重启」以同一数据库文件重建仓库/服务/执行器表示；真实 `kill -9` 与 Windows 句柄释放时序未覆盖。
+
+## 9. 合并、合并后验证与清理实证（2026-09-28）
+
+- **合并**：`git merge --no-ff codex/03-generation-recovery-and-replay` → `a8d222a`（ort 策略，零冲突，8 文件 +1417/−295）。**合并树 == 分支树 `1e36e07ea7c8122ae44579dc58032c3e0fc57f13`**、`rev-list main..branch` = 0、`git diff --stat main branch` 为空 ⇒ 分支全量结论（249F/3881P/39S/3desel）对 main 直接成立。合并前 main 仍是分支点 `cb10ae8`（并行票 06 在另一工作树进行中，未推进 main），故无需跨票对账。
+- **合并后定点复跑**（主仓 main，仓外 basetemp）：`tests/chat/test_terminal_recovery_and_replay.py + test_terminal_core.py + test_terminal_stop_and_graph_errors.py + test_v2_02_resumable_runs.py` **39 passed**（77 s：本票 13 + 01 的 9 + 02 的 7 + 持久运行 10）。
+- **推送**：`cb10ae8..a8d222a main -> main`（走本地代理），main == origin/main `a8d222a`；本票分支从未推送（`ls-remote --heads origin '*03-generation*'` 为空）。
+- **零迁移**：`git diff --stat cb10ae8..HEAD -- src/bridges/storage/` 为空，`SCHEMA_VERSION` 仍 59（下一票 60）。
+- **清理**：`git worktree remove .worktrees/03-generation-recovery-and-replay` **一次成功**（本轮测试都以仓外 basetemp + `-p no:cacheprovider` 运行，目录无受限 ACL、无句柄占用）；本地分支已删（was `893c2b2`）；`git worktree prune -v` 无输出、`.git/worktrees/` 只剩并行票的两条。`.worktrees/` 下仍留有 02 轮的惰性空目录 `02-generation-stop-and-graph-errors`（不挂 git、不影响命令，02 记录已如实登记）。
+- **留档**：主仓 `.tmp/codebase-03/raw/`（两侧全量日志与失败名单、mypy 对照文件）。
