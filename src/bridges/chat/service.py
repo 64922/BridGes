@@ -23,23 +23,13 @@ from pydantic import ValidationError
 
 from bridges import __version__
 from bridges.ai import ModelGateway
-from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.adapters import StreamEvent
 from bridges.ai.fixed_models import CHAT_MODEL_ID
+from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career_plan.contracts import CareerPlanProjection
 from bridges.career_plan.service import CareerPlanService
-from bridges.commute.contracts import CommuteRouteProjection
-from bridges.commute.service import CommuteService
-from bridges.github.contracts import GithubProjectsProjection
-from bridges.github.service import GithubProjectsService
-from bridges.paper.service import PaperSearchService
-from bridges.tieba.contracts import TiebaResearchProjection
-from bridges.tieba.service import TiebaResearchService
-from bridges.paper.contracts import PaperSearchProjection
-from bridges.resources.contracts import LearningResourcesProjection
-from bridges.resources.service import LearningResourcesService
 from bridges.chat.attachments import (
     PHOTO_MEDIA_TYPES,
     ChatAttachmentError,
@@ -49,7 +39,6 @@ from bridges.chat.context_compiler import ContextEvidence
 from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
-from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository, StudyWorkflow
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
     ConversationModeLockConflict,
@@ -65,14 +54,13 @@ from bridges.chat.selections import (
     SelectionResolution,
     selection_key,
 )
+from bridges.chat.terminal import GenerationTerminal, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
     STREAM_INTERRUPTED_MESSAGE,
     CareerPlannerOrchestrator,
     TurnOrchestrator,
     attempt_group,
-    cancelled_arxiv_search,
-    cancelled_web_search,
     capability_route_from,
     # error_is_retryable / user_facing_error 在此 re-export，保持 api/chat.py
     # 的既有导入路径不变（定义在 chat/turn.py）。
@@ -82,12 +70,13 @@ from bridges.chat.turn import (
     initial_thinking,
     owner_user_message,
     result_summary,
-    stopped_teaching_projection,
     stopped_thinking,
     user_facing_error,  # noqa: F401 - re-export
 )
-from bridges.contracts.career import CareerPlanningProjection
+from bridges.commute.contracts import CommuteRouteProjection
+from bridges.commute.service import CommuteService
 from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
+from bridges.contracts.career import CareerPlanningProjection
 from bridges.contracts.chat import (
     CHAT_MODULE_VALUES,
     ChatConversationListProjection,
@@ -95,11 +84,11 @@ from bridges.contracts.chat import (
     ChatConversationSummary,
     ChatFirstTurnResponse,
     ChatMessageProjection,
-    ChatModuleId,
     ChatMessageRole,
     ChatMessageStatus,
     ChatMode,
     ChatModeEventProjection,
+    ChatModuleId,
     ChatPluginSelectionItem,
     ChatRunStatus,
     ChatRunView,
@@ -143,19 +132,28 @@ from bridges.contracts.teaching_progress import (
 )
 from bridges.contracts.video import VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.github.contracts import GithubProjectsProjection
+from bridges.github.service import GithubProjectsService
 from bridges.learning.progress import TeachingProgressService
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
-from bridges.profiles.automatic import AutomaticProfileService
+from bridges.paper.contracts import PaperSearchProjection
+from bridges.paper.service import PaperSearchService
 from bridges.profiles.atomic import AtomicProfileService
+from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
+from bridges.resources.contracts import LearningResourcesProjection
+from bridges.resources.service import LearningResourcesService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
 from bridges.storage.errors import StorageError
+from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository, StudyWorkflow
+from bridges.tieba.contracts import TiebaResearchProjection
+from bridges.tieba.service import TiebaResearchService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
@@ -347,6 +345,12 @@ class ChatService:
             mcp_service=self._mcp,
             writing_policy_compiler=self._writing_policy,
             attachment_service=self._attachments,
+        )
+        #: 生成终态 module（Issue 01/02）：图边界提前终止、排队期停止与
+        #: 停止接口兜底共用同一实例；跨对象提交顺序、判重与重放都在
+        #: module 内部，调用者只提供标识与兜底结果。
+        self.terminal = GenerationTerminal(
+            self._repo, projection=self.message_projection
         )
 
     def _ensure_extension_payload_allowed(
@@ -1572,8 +1576,9 @@ class ChatService:
         Issue 02：停止写入运行表的 stop_requested（跨进程真相源），并
         设置同进程停止信号；后台执行器在安全检查点收敛为 stopped。本
         方法等待执行器收敛（≤4 秒）；无执行器运行（测试环境/执行器被
-        长模型调用阻塞）时按既有语义兜底收敛，终态由原子守卫保证唯一
-        写入，绝不会被执行器迟到的终态改写成 done。
+        长模型调用阻塞）时由生成终态 module 兜底收敛——消息、终态事件
+        与运行一次到位，订阅端不因执行器缺位悬挂。终态由原子守卫保证
+        唯一写入，绝不会被执行器迟到的终态改写成 done。
         """
         message = self._repo.get_message(account_id, message_id)
         if message is None or message.conversation_id != conversation_id:
@@ -1616,41 +1621,24 @@ class ChatService:
         started = entry[1] if entry is not None else None
         if stop_event is not None:
             stop_event.set()
-        now = datetime.now(UTC)
-        # 生成线程尚未启动（或跨进程遗留消息）时按创建时间估算耗时并直接
-        # 以墙钟时长传入；运行时用真实单调起点由 finalize_message 计算。
-        duration_ms: int | None = None
+        # 生成线程尚未启动（或跨进程遗留消息）时按创建时间估算耗时；
+        # 已启动时按真实单调起点计算——耗时随终态写入消息记录。
         if started is None:
-            duration_ms = max(1, int((now - message.created_at).total_seconds() * 1000))
-            started = 0.0
+            duration_ms = max(
+                1, int((datetime.now(UTC) - message.created_at).total_seconds() * 1000)
+            )
+        else:
+            duration_ms = max(1, int((time.monotonic() - started) * 1000))
         # 先收敛状态再注销活跃标记：避免并发读取在两者之间把仍处于
         # streaming 的消息误判为陈旧中断（终态由原子守卫保证单一写入）。
-        # 停止同样保留已完成思考摘要并写入中文质量结论（Issue 14）。
-        stopped_teaching = stopped_teaching_projection(message.teaching)
-        finalize_message(
-            self._repo,
+        # 思考摘要与搜索/教学卡片的取消投影由终态 module 统一派生；
+        # run_id 传 None（无运行记录，如直接编排的生成）只收敛消息。
+        stopped_run = self._repo.get_run_by_message(account_id, message_id)
+        self.terminal.converge(
             account_id,
+            stopped_run.run_id if stopped_run is not None else None,
             message_id,
-            status=ChatMessageStatus.STOPPED,
-            error_code=None,
-            error_message=None,
-            duration_ms=duration_ms,
-            model_id=None,
-            run_lock_id=None,
-            started=started,
-            now=now,
-            thinking=stopped_thinking(
-                ChatThinkingSummary(**message.thinking)
-                if message.thinking is not None
-                else initial_thinking(CHAT_MODE)
-            ),
-            web_search=cancelled_web_search(message.web_search, now),
-            arxiv_search=cancelled_arxiv_search(message.arxiv_search, now),
-            teaching=(
-                stopped_teaching.model_dump(mode="json")
-                if stopped_teaching is not None
-                else None
-            ),
+            fallback=stopped_outcome(duration_ms=duration_ms),
         )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)

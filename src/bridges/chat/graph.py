@@ -44,12 +44,7 @@ from bridges.career_plan.service import (
 from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
 from bridges.chat.run_executor import chat_run_context
-from bridges.chat.turn import (
-    failed_thinking,
-    finalize_message,
-    initial_thinking,
-    stopped_thinking,
-)
+from bridges.chat.terminal import TerminalOutcome, stopped_outcome
 from bridges.commute.service import (
     COMMUTE_MODULE_ID,
     COMMUTE_NODE_LABELS,
@@ -59,7 +54,6 @@ from bridges.commute.suggestion import detect_commute_suggestion
 from bridges.contracts.chat import (
     CHAT_MODULE_VALUES,
     ChatMessageStatus,
-    ChatMode,
     ChatStreamNodeData,
 )
 from bridges.github.service import (
@@ -216,6 +210,11 @@ class _GraphDeps:
         self.on_event = on_event
         self.stop_event = stop_event
         self.repo = service._repo  # noqa: SLF001 - 图是服务编排的组成部分
+        #: 生成终态 module（Issue 01/02）：图边界提前终止时的消息、终态
+        #: 事件与运行状态都经它提交，图不再自行拼装投影。
+        self.terminal = service.terminal
+        #: 本轮启动时刻（运行终态的耗时口径，与执行器墙钟同源）。
+        self.started = time.monotonic()
         #: 最后透传事件的 kind（执行器补发终态事件的判断依据）。
         self.last_kind: str | None = None
         #: 最近进入的图节点（未知异常时的失败定位）。
@@ -251,18 +250,6 @@ class _GraphDeps:
             )
         )
 
-    def emit_error(self, *, code: str, message: str) -> None:
-        # error 事件与回合编排同形：code/message 走 StreamEvent 的
-        # error_code/error_message 字段，执行器统一构造脱敏载荷（含
-        # retryable 判定），图内不再重复携带。
-        self.emit(
-            StreamEvent(
-                kind="error",
-                error_code=code,
-                error_message=message,
-            )
-        )
-
     # -- 停止与进度 ------------------------------------------------------
 
     def stop_requested(self) -> bool:
@@ -272,12 +259,6 @@ class _GraphDeps:
         run = self.repo.get_generation_run(self.run.account_id, self.run.run_id)
         return run is not None and run.stop_requested
 
-    def message_streaming(self) -> bool:
-        message = self.repo.get_message(
-            self.run.account_id, self.run.assistant_message_id
-        )
-        return message is not None and message.status == ChatMessageStatus.STREAMING
-
     def record_node(self, node: str) -> None:
         """节点边界实时写入 current_node（失败定位依据）。"""
         self.current_node = node
@@ -285,65 +266,50 @@ class _GraphDeps:
             self.run.account_id, self.run.run_id, current_node=node
         )
 
-    # -- 终态收敛（图提前终止时） ----------------------------------------
+    # -- 终态收敛（图提前终止时，经生成终态 module 提交） ------------------
 
-    def _conversation_mode(self) -> ChatMode:
-        conversation = self.repo.get_conversation(
-            self.run.account_id, self.run.conversation_id
-        )
-        return (
-            ChatMode(conversation.mode) if conversation is not None else ChatMode.COMPANION
-        )
+    def _run_duration_ms(self) -> int:
+        """本轮墙钟耗时（图侧口径，随终态写入运行记录）。"""
+        return max(1, int((time.monotonic() - self.started) * 1000))
 
     def converge_stopped(self) -> None:
-        """把仍处 streaming 的消息收敛为 stopped（幂等；终态由守卫保证）。"""
-        message = self.repo.get_message(
-            self.run.account_id, self.run.assistant_message_id
-        )
-        if message is None or message.status != ChatMessageStatus.STREAMING:
-            return
-        finalize_message(
-            self.repo,
+        """把仍处 streaming 的消息收敛为 stopped（幂等；终态由守卫保证）。
+
+        思考摘要、停止投影、终态事件与运行状态都由终态 module 派生与
+        提交：图只声明「这一轮按用户停止结束」。已获准提交的终态不被
+        迟到完成或重复停止改写（module 的持久守卫裁决）。
+        """
+        self.terminal.converge(
             self.run.account_id,
+            self.run.run_id,
             self.run.assistant_message_id,
-            status=ChatMessageStatus.STOPPED,
-            error_code=None,
-            error_message=None,
-            duration_ms=None,
-            model_id=None,
-            run_lock_id=None,
-            started=time.monotonic(),
-            now=datetime.now(UTC),
-            thinking=stopped_thinking(initial_thinking(self._conversation_mode())),
+            fallback=stopped_outcome(),
+            run_duration_ms=self._run_duration_ms(),
         )
 
     def converge_error(self, error: DailyTurnError) -> None:
-        """把仍处 streaming 的消息收敛为带节点位置与重试办法的错误。"""
-        message = self.repo.get_message(
-            self.run.account_id, self.run.assistant_message_id
-        )
-        if message is None or message.status != ChatMessageStatus.STREAMING:
-            return
+        """把仍处 streaming 的消息收敛为带节点位置与重试办法的错误。
+
+        节点位置的中文文案是本入口的输入；其余（思考摘要、终态事件、
+        运行状态）由终态 module 派生与提交。消息已终态时（例如回合编排
+        已先提交失败）收尾为幂等重放，不追加矛盾事件。
+        """
         label = NODE_LABELS.get(error.node, error.node)
         node_message = (
             f"在「{label}」步骤失败：{error.message}"
             + ("可点击重试。" if error.retryable else "请调整后重试。")
         )
-        finalize_message(
-            self.repo,
+        self.terminal.converge(
             self.run.account_id,
+            self.run.run_id,
             self.run.assistant_message_id,
-            status=ChatMessageStatus.ERROR,
-            error_code=error.code,
-            error_message=node_message,
-            duration_ms=None,
-            model_id=None,
-            run_lock_id=None,
-            started=time.monotonic(),
-            now=datetime.now(UTC),
-            thinking=failed_thinking(initial_thinking(self._conversation_mode()), error.code),
+            fallback=TerminalOutcome(
+                status=ChatMessageStatus.ERROR,
+                error_code=error.code,
+                error_message=node_message,
+            ),
+            run_duration_ms=self._run_duration_ms(),
         )
-        self.emit_error(code=error.code, message=node_message)
 
 
 NodeBody = Callable[[DailyTurnState, RunnableConfig], dict[str, Any] | None]
@@ -354,14 +320,18 @@ def _node(node: str, body: NodeBody) -> Callable[[DailyTurnState, RunnableConfig
 
     def wrapped(state: DailyTurnState, config: RunnableConfig) -> dict[str, Any]:
         deps: _GraphDeps = config["configurable"]["deps"]
-        # 可取消节点边界：用户停止后不再进入后续节点（停止只对未收敛的
-        # 消息生效——已终态的消息不重复收敛）。
-        if deps.stop_requested() and deps.message_streaming():
+        # 可取消节点边界：停止请求一旦可见，不再进入后续节点、不再发出
+        # 节点进度——终态事件必须保持为最后一个事件（订阅端重放以终态
+        # 收尾）；消息终态本身由终态 module 的持久守卫裁决（先提交者胜，
+        # 迟到停止不改写已获准的完成/失败）。
+        if deps.stop_requested():
             raise DailyGraphStop(node)
         deps.record_node(node)
         deps.emit_node(state["assistant_message_id"], node, "started")
         started = time.monotonic()
         updates = body(state, config) or {}
+        if deps.stop_requested():
+            raise DailyGraphStop(node)
         deps.emit_node(
             state["assistant_message_id"],
             node,
@@ -867,14 +837,16 @@ def run_daily_turn(
 
     - 事件（``node`` 进度与编排管线事件）实时经 ``on_event`` 透传，由执
       行器持久化为游标事件（SSE 订阅回放的唯一真相源不变）；
-    - 用户停止（``DailyGraphStop``）在可取消节点边界终止：消息收敛为
-      stopped，运行由执行器按消息终态收敛；
+    - 用户停止（``DailyGraphStop``）在可取消节点边界终止：消息、终态
+      事件与运行状态经生成终态 module 一次性收敛为 stopped（图边界是
+      第一位收尾者，执行器尾段的重复收尾为幂等重放）；
     - 同一运行的检查点谱系已存在（租约恢复：上一尝试进程死亡）时以
       ``invoke(None)`` 从上次提交的节点边界续跑——已完成节点不重跑、
       不重复调模型、游标事件不重复；中断节点的重跑是 at-least-once，
       由消息事务与终态守卫保证收敛一致。
     - 节点失败（``DailyTurnError`` 或未知异常）把失败位置留在运行
-      current_node，消息收敛为带节点位置与重试办法的可重试错误。
+      current_node，消息收敛为带节点位置与重试办法的可重试错误（同样
+      经终态 module 提交；已获准提交的终态不被迟到异常改写）。
     """
     config = run.config or {}
     saver = RepositoryCheckpointSaver(
