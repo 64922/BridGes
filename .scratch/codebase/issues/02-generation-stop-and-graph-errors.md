@@ -145,3 +145,11 @@ conda `agent` 环境、工作树内运行（`pyproject.toml` 的 `pythonpath=["s
 - `stop_requested` 一旦写入不会清除；租约恢复的尝试进入包装器即抛 `DailyGraphStop` 并经 module 收敛为停止（对「停止请求后运行死亡再恢复」是正确语义，但若产品将来要「撤销停止」需先改运行表语义）。
 - 包装器加强后，完成与停止在 `persist_result` 边界竞争时运行表的 `model_lock_id` 可能不写（消息上的运行锁不受影响，仅运行表关联字段缺失，观测口径损失）。
 - 图边界停止的运行耗时改为图侧墙钟（与执行器墙钟同源、相差微秒级）；排队期停止运行耗时保持为空——两口径与迁移前一致。
+
+## 9. 合并、合并后验证与清理实证（2026-09-28）
+
+- **合并**：`git merge --no-ff codex/02-generation-stop-and-graph-errors` → `5a75937`，零冲突（ort 策略，6 文件 +754/−229）。合并树 == 分支树 `12a3dd46c6bdaa87eb7cc90b535aa09f64d2e89f`；`git rev-list --count main..branch` = 0；`git diff --stat main branch` 为空（无契约/生成物文件，与「零契约改动」一致）。合并时 main 仍为分支点 `7c5d04b`（并行票 05 尚未入 main）。
+- **合并后定点复跑**（主仓 main，仓外 basetemp）：`tests/chat/test_terminal_stop_and_graph_errors.py + test_terminal_core.py` **16 passed**（36 s）。
+- **推送**：`7c5d04b..5a75937 main -> main`，main == origin/main `5a75937`。本票分支从未推送（`git branch -r --list '*02-generation-stop*'` 为空）。
+- **清理**：工作树 `.worktrees/02-generation-stop-and-graph-errors` 与 `.worktrees/02-prefix-baseline` 已删（junction 用 `cmd //c rmdir` 摘除后普通 `git worktree remove`）；本地分支 `codex/02-generation-stop-and-graph-errors` 已删（was `d34a88c`）；`git worktree prune --dry-run` 无输出；`ruff check` 与 `mypy` 结果见第 5 节（合并前后同树，无差异）。
+- **留档**：主仓 `.tmp/codebase-02/raw/`（分支与基线全量日志、两侧规范化失败名单及 md5）。
