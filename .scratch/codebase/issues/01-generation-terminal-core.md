@@ -153,7 +153,7 @@
 
 - 实现：`87ac420`（module + 仓库判重/插入 + 执行器尾段迁移 + 9 条合同用例）
 - 评审修正：`7d39c32`（判重与插入同事务、常量复用、默认码、文档）
-- 记录：本提交（工单验收勾选与实现记录）
+- 记录：`5d91576`（工单验收勾选与实现记录）
 
 ## 9. 未完成与残余风险
 
@@ -161,3 +161,13 @@
 - **`_reap_message` 与 `expire_overdue_runs` 的组合缺口**（消息已 `done` 而运行被收尸成 `failed` 时会追加一条矛盾事件）在本票范围外登记，03 迁移时需按「已提交运行终态优先」裁决。
 - 图内 `converge_stopped`/`converge_error` 仍各派生 thinking 与节点文案：终态 module 与它们的文案目前一致但不同源，02 迁移时应收敛为一处。
 - 本票未做前端验证（无界面改动），未跑 vitest/tsc（无前端改动）。
+
+## 10. 合并、合并后验证与清理实证（2026-09-28）
+
+- **合并**：`git merge --no-ff codex/01-generation-terminal-core` → `2276122`，零冲突（ort 策略，6 文件 +1094/−186）。合并树 == 分支树 `f8ed5a10a5f77933289bb12fb15a34883ef5d62a`；`git rev-list --count main..branch` = 0；合并结果与分支顶端 `git diff --stat` 为空（无契约/生成物文件，与「零契约改动」一致）。
+- **推送**：`f10b9ad..2276122  main -> main`，main == origin/main `2276122`（与合并同一次推送；`f10b9ad` 之后本地原已领先的 `f04c79c` 一并推送）。本票分支从未推送（`git branch -r --list '*01-generation-terminal-core*'` 为空）。
+- **合并后定点复跑**（主仓 main，`PYTHONPATH` 清空、仓外 basetemp、`pytest tests/chat tests/plugins -q`）：**140 失败 / 550 通过**（330.13 s）；失败名单去 CRLF 归一化后与分支留档名单逐字节相同（md5 `6575899696db2c25838bf6abfd67f221`）；`--collect-only` 两侧各 690 条且用例 ID 集合相同。（分支那次报 140/549，差的 1 条是运行计数噪声，失败集合无差异。）
+- **本票新用例在主仓**：`tests/chat/test_terminal_core.py` **9 passed**（11.36 s）。
+- **静态检查（主仓）**：ruff 本票 5 文件 2 条（`N818` `repository.py:152`、`E501` `repository.py:1478`），与 `f04c79c` 文件副本逐条同源（仅行号 1474→1478 位移）；mypy 本票文件 1 条 `turn.py:3921`（`status_map.get(...)` 传 `str | None`），位于未改动的既有代码（本票在 `turn.py` 只改 1901 行附近的 `finalize_message` 返回类型）。
+- **清理**：工作树 `.worktrees/01-generation-terminal-core` 普通 `git worktree remove` 一次成功（本轮无常驻受限 ACL 残留）；本地分支 `codex/01-generation-terminal-core` 已删（was `5d91576`）；`git worktree prune --dry-run` 无输出（无失效记录），`.git/worktrees/` 仅余并行会话的 `04-prefix-baseline`、`04-profile-extraction-commit` 两条。
+- **留档**：主仓 `.tmp/codebase-01/raw/`（分支与基线全量日志、两套失败名单、合并后定点日志）。
