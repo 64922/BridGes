@@ -37,6 +37,7 @@ from bridges.contracts.profiles import (
 from bridges.contracts.teaching_progress import PlanAdjustmentTrigger
 from bridges.profiles.adapters import ProfileError
 from bridges.profiles.ports import ProfileRepository
+from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
 
 MIGRATION_VERSION = "profile-four-dimensions-v1"
@@ -422,7 +423,13 @@ class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
             self._db.initialize()
 
     def transaction(self) -> AbstractContextManager[None]:
-        return self._db.transaction()
+        """事务边界；原子条目仓库共用本连接，因此并入外层而不重复 BEGIN。
+
+        与自动提取的记账仓库、原子画像仓库同属一次提交：单连接 SQLite 不
+        允许嵌套事务，跨记录写入必须落在同一个边界里才能同成同败。
+        """
+
+        return joined_transaction(self._db)
 
     @staticmethod
     def _iso(value: datetime) -> str:
