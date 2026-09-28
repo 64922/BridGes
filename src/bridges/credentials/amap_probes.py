@@ -142,15 +142,23 @@ _BY_INFO: Mapping[str, _Reason] = {
     ),
     "ABROAD_DAILY_QUERY_OVER_LIMIT": _Reason(
         REASON_QUOTA_EXCEEDED,
-        "该 Key 的调用量已达上限：请稍后再试或在控制台提升配额。",
+        "该 Key 的调用频率或额度已超限：请稍后再试或在控制台提升配额。",
+    ),
+    "USER_ABROAD_DAILY_QUERY_OVER_LIMIT": _Reason(
+        REASON_QUOTA_EXCEEDED,
+        "账号维度的调用频率或额度已超限：请稍后再试或在控制台提升配额。",
     ),
     "QUOTA_PLAN_RUN_OUT": _Reason(
         REASON_QUOTA_EXCEEDED,
         "该账号的调用余额已耗尽：请在控制台充值或调整配额后重试。",
     ),
-    "SERVICE_EXPIRED": _Reason(
+    "ABROAD_QUOTA_PLAN_RUN_OUT": _Reason(
         REASON_QUOTA_EXCEEDED,
-        "购买的服务已到期：请在控制台续费后重试。",
+        "该账号的海外服务余额已耗尽：请在控制台充值或调整配额后重试。",
+    ),
+    "SERVICE_EXPIRED": _Reason(
+        REASON_SERVICE_NOT_ENABLED,
+        "购买的服务已到期：请在控制台续费或重新开通对应服务后重试。",
     ),
     "ACCESS_TOO_FREQUENT": _Reason(
         REASON_RATE_LIMITED,
@@ -180,12 +188,20 @@ _BY_INFO: Mapping[str, _Reason] = {
     "MISSING_REQUIRED_PARAMS": _Reason(
         REASON_BAD_REQUEST, "请求缺少必填参数：这是 BridGes 侧的问题，请提交反馈。"
     ),
+    "ILLEGAL_REQUEST": _Reason(
+        REASON_BAD_REQUEST,
+        "请求协议或路径非法（例如该接口只接受 GET）：这是 BridGes 侧的问题，"
+        "请提交反馈。",
+    ),
     "NOT_SUPPORT_HTTPS": _Reason(
         REASON_BAD_REQUEST,
-        "该服务不支持 HTTPS 请求：请在控制台确认该 Key 所属服务是否支持 HTTPS。",
+        "该服务不支持 HTTPS 请求：请提交工单请高德为该服务开通 HTTPS，"
+        "或改用支持 HTTPS 的 Key。",
     ),
     "GATEWAY_TIMEOUT": _Reason(
-        REASON_UPSTREAM_ERROR, "高德网关超时：请稍后重试。", retryable=True
+        REASON_RATE_LIMITED,
+        "上游限流或网关超时（受单机 QPS 限制）：请稍后重试。",
+        retryable=True,
     ),
     "SERVER_IS_BUSY": _Reason(
         REASON_UPSTREAM_ERROR, "高德服务器繁忙：请稍后重试。", retryable=True
@@ -225,13 +241,13 @@ _BY_INFOCODE: Mapping[str, _Reason] = {
     "10029": _BY_INFO["ABROAD_DAILY_QUERY_OVER_LIMIT"],
     "10041": _BY_INFO["NO_EFFECTIVE_INTERFACE"],
     "10044": _BY_INFO["USER_DAILY_QUERY_OVER_LIMIT"],
-    "10045": _BY_INFO["ABROAD_DAILY_QUERY_OVER_LIMIT"],
+    "10045": _BY_INFO["USER_ABROAD_DAILY_QUERY_OVER_LIMIT"],
     "20000": _BY_INFO["INVALID_PARAMS"],
     "20001": _BY_INFO["MISSING_REQUIRED_PARAMS"],
-    "20002": _BY_INFO["NOT_SUPPORT_HTTPS"],
+    "20002": _BY_INFO["ILLEGAL_REQUEST"],
     "40000": _BY_INFO["QUOTA_PLAN_RUN_OUT"],
     "40002": _BY_INFO["SERVICE_EXPIRED"],
-    "40003": _BY_INFO["QUOTA_PLAN_RUN_OUT"],
+    "40003": _BY_INFO["ABROAD_QUOTA_PLAN_RUN_OUT"],
 }
 
 
@@ -271,10 +287,12 @@ def diagnose_payload(payload: Any) -> AmapDiagnosis | None:
 
 
 def probe_loader(client: httpx.Client, key: str) -> LoaderProbe:
-    """探测 JS API 加载器可达性与响应形状；不给出任何 Key 有效性的结论。
+    """探测 JS API 加载器是否可达；**不给出任何 Key 有效性的结论**。
 
     只读前缀就停止读取：真实加载器正文约 968 KB，全量读取并设体积上限会把
-    有效 Key 判成失败（工单 01 证据 A）。
+    有效 Key 判成失败（工单 01 证据 A）。可达只说明"能取到脚本"，因此这里
+    只判"HTTP 200 且正文前缀非空"，不解释脚本内容、也不做形状断言；有效性
+    证据来自成对的数据服务请求（``probe_data_service``）。
     """
     try:
         with client.stream(

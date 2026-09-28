@@ -130,7 +130,6 @@ from bridges.credentials.runtime_resolver import (
     RuntimeCredentialResolver,
 )
 from bridges.credentials.store import (
-    CredentialStoreError,
     CredentialStorePort,
     build_credential_store,
 )
@@ -543,41 +542,38 @@ def create_app(
             settings_at_credential, data_dir, namespace="runtime"
         )
     )
-    app.state.runtime_credential_store_error = False
     if settings_at_credential is not None:
         # V2 Issue 09 / 工单 01：把凭据库里已保存的值载入运行期 Settings，
         # 供进程内其他读取方使用。优先级只由 RuntimeCredentialResolver 决定
         # （文件/环境变量优先，凭据库兜底）：只有"当前生效来源是凭据库"的项
         # 才写入运行期快照，避免页面保存的值被环境变量静默遮蔽却仍显示已配置。
+        # 解析器自身吞掉存储读取异常并回落本进程缓存（失败原因见 ``load_error``），
+        # 因此这里没有需要单独处理的失败分支。
         resolver = RuntimeCredentialResolver(
             settings=settings_at_credential,
             credential_store=app.state.runtime_credential_store,
         )
         credential_updates: dict[str, Any] = {}
-        try:
-            qwen_key = resolver.qwen_api_key()
-            if qwen_key.source is CredentialSource.CREDENTIAL_STORE:
-                credential_updates["qwen_api_key"] = qwen_key.value
-            tavily_key = resolver.tavily_api_key()
-            if tavily_key.source is CredentialSource.CREDENTIAL_STORE:
-                credential_updates["tavily_api_key"] = tavily_key.value
-            web_service_key = resolver.amap_web_service_key()
-            if web_service_key.source is CredentialSource.CREDENTIAL_STORE:
-                credential_updates["amap_web_service_key"] = web_service_key.value
-            browser_map_pair = resolver.amap_browser_map_pair()
-            if browser_map_pair.source is CredentialSource.CREDENTIAL_STORE:
-                credential_updates["amap_js_api_key"] = browser_map_pair.js_api_key
-                credential_updates["amap_security_js_code"] = (
-                    browser_map_pair.security_js_code
-                )
-        except (CredentialStoreError, OSError, ValueError):
-            app.state.runtime_credential_store_error = True
-        else:
-            app.state.credential_resolver = resolver
-            if credential_updates:
-                app.state.settings = settings_at_credential.model_copy(
-                    update=credential_updates
-                )
+        qwen_key = resolver.qwen_api_key()
+        if qwen_key.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["qwen_api_key"] = qwen_key.value
+        tavily_key = resolver.tavily_api_key()
+        if tavily_key.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["tavily_api_key"] = tavily_key.value
+        web_service_key = resolver.amap_web_service_key()
+        if web_service_key.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["amap_web_service_key"] = web_service_key.value
+        browser_map_pair = resolver.amap_browser_map_pair()
+        if browser_map_pair.source is CredentialSource.CREDENTIAL_STORE:
+            credential_updates["amap_js_api_key"] = browser_map_pair.js_api_key
+            credential_updates["amap_security_js_code"] = (
+                browser_map_pair.security_js_code
+            )
+        app.state.credential_resolver = resolver
+        if credential_updates:
+            app.state.settings = settings_at_credential.model_copy(
+                update=credential_updates
+            )
 
     # GQ-01：全局百炼运行凭据是正式运行的必需配置。development/production
     # 缺少 Key 时设置不含秘密的错误标记，就绪检查报告 FAIL——即使绕过

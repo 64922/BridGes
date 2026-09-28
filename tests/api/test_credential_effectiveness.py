@@ -166,7 +166,7 @@ def test_map_proxy_writes_a_real_request_conclusion_back_to_the_card() -> None:
     assert card["error"] is not None
     assert "平台" in card["error"]
     assert card["runtime_evidence"] is not None
-    assert "真实地图请求" in card["runtime_evidence"]
+    assert "真实地图数据请求" in card["runtime_evidence"]
     # 诊断写中文原因、不回显上游 info，也不含任何凭据正文；上游正文只作为代理
     # 透传返回给调用方（浏览器需要它）。
     assert "USERKEY_PLAT_NOMATCH" not in card_response.text
@@ -190,12 +190,17 @@ def test_map_proxy_clears_a_previous_failure_after_a_successful_request() -> Non
     _register(client)
 
     client.get("/commute/amap-proxy/v3/geocode/geo")
-    assert client.get("/settings/credentials").json()["amap"]["browser_map"]["error"]
+    failed = client.get("/settings/credentials").json()["amap"]["browser_map"]
+    assert failed["error"]
+    validated_at = failed["last_validated_at"]
 
     client.get("/commute/amap-proxy/v3/geocode/geo")
     card = client.get("/settings/credentials").json()["amap"]["browser_map"]
     assert card["error"] is None
     assert "已成功" in card["runtime_evidence"]
+    assert "服务端追加安全码" in card["runtime_evidence"]
+    # 运行路径结论不冒充"设置页验证"：最近验证时间不变。
+    assert card["last_validated_at"] == validated_at
     provider.close()
 
 

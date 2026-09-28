@@ -106,7 +106,7 @@ def qwen_key_shadowed(request: Request) -> bool:
 
 def qwen_key_shadow_notice() -> str:
     """密钥被环境变量遮蔽时的中文说明：写清真正生效的来源与下一步操作。"""
-    env_var = secret_environment_source("qwen_api_key") or "BRIDGES_QWEN_API_KEY"
+    env_var = secret_environment_source("QWEN_API_KEY") or "BRIDGES_QWEN_API_KEY"
     return (
         f"已通过验证并保存到凭据库；但 Qwen 密钥当前由环境变量（{env_var}）提供，"
         "环境变量优先，本次保存的密钥不会生效。若要改用页面保存的值，"
@@ -148,8 +148,9 @@ def apply_qwen_key(request: Request, key: SecretStr) -> None:
     - 轮换知识库向量化端口的密钥引用（向量模型本身仍独立固定）；
     - 清除未配置全局凭据的健康门标记。
 
-    后台执行器是独立进程，其凭据在下次启动时由启动流程从凭据库解析到新值
-    （ADR-0024：全局 Key 轮换后重启相关服务即生效）。
+    只作用于当前进程；后台执行器是独立进程，但它每轮开始前从同一真相源重读凭据
+    （``bridges.runtime.executor.BackgroundExecutor.refresh_credentials``），因此
+    保存的值无需重启 worker 即在下一次轮询生效（工单 01，ADR-0031 相应修订）。
     """
     settings = runtime_settings(request)
     if settings is not None:

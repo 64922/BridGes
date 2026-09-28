@@ -225,13 +225,6 @@ class RuntimeCredentialResolver:
             return None
         return value
 
-    def _source_for(self, environment_name: str) -> CredentialSource:
-        return (
-            CredentialSource.ENVIRONMENT
-            if secret_environment_source(environment_name) is not None
-            else CredentialSource.CREDENTIAL_STORE
-        )
-
     def _stored(self, identifier: str) -> SecretStr | None:
         if self._store is None:
             return None

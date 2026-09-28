@@ -96,6 +96,28 @@ def _app(provider: httpx.Client, store: InMemoryCredentialStore) -> TestClient:
     )
 
 
+def test_qwen_probe_reports_a_quota_rejection_separately() -> None:
+    """百炼 429（额度/限流）既不是"密钥无效"也不是"上游不可达"。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"message": "Throttling.User"})
+
+    provider = httpx.Client(transport=httpx.MockTransport(handler))
+    store = InMemoryCredentialStore(namespace="runtime")
+    client = _app(provider, store)
+    _register(client)
+
+    response = client.put("/settings/credentials/qwen", json={"api_key": _QWEN_KEY})
+
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["reason"] == "quota_exceeded"
+    assert "429" in detail["message"]
+    assert _QWEN_KEY not in response.text
+    assert store.get("global-qwen-api-key") is None
+    provider.close()
+
+
 @pytest.mark.parametrize("authorized", [True, False])
 def test_qwen_probe_must_pass_valid_and_fail_invalid(authorized: bool) -> None:
     store = InMemoryCredentialStore(namespace="runtime")
@@ -134,6 +156,9 @@ def _tavily_provider(
         (200, False, 200, None),
         (401, False, 422, "search_credential_invalid"),
         (429, False, 422, "search_rate_limited"),
+        # 432/433 是 Tavily 的「用量已达上限」（套餐/按量），与瞬时限流分开报告。
+        (432, False, 422, "search_quota_exceeded"),
+        (433, False, 422, "search_quota_exceeded"),
         (0, True, 503, "search_upstream_unreachable"),
     ],
 )

@@ -29,12 +29,16 @@ from pydantic import BaseModel, SecretStr
 
 from bridges.ai.model_metadata import (
     MODEL_METADATA_ERR_MODEL_NOT_FOUND,
+    MODEL_METADATA_ERR_QUOTA_EXCEEDED,
     MODEL_METADATA_ERR_UNAVAILABLE,
     ModelMetadataError,
 )
 from bridges.ai.model_probe import ModelCapabilityProbe
 from bridges.api.auth import SubjectDep
-from bridges.api.credential_state import record_validation, validation_snapshot
+from bridges.api.credential_state import (
+    record_credential_validation,
+    validation_snapshot,
+)
 from bridges.api.qwen_settings import (
     active_run_model_config,
     apply_qwen_key,
@@ -81,6 +85,7 @@ REASON_CREDENTIAL_MISSING = "credential_missing"
 REASON_KEY_REJECTED = "key_rejected"
 REASON_MODEL_NOT_MATCHING = "model_not_matching_key"
 REASON_PROBE_FAILED = "probe_failed"
+REASON_QUOTA_EXCEEDED = "quota_exceeded"
 
 #: Tavily 失败分类：错误码 → (分类码, 中文诊断)。
 _TAVILY_REASONS: dict[str, tuple[str, str]] = {
@@ -96,7 +101,12 @@ _TAVILY_REASONS: dict[str, tuple[str, str]] = {
     ),
     "web_search_rate_limit": (
         "search_rate_limited",
-        "Tavily 提示请求过于频繁（429）：请稍后重试。",
+        "Tavily 提示请求过于频繁（429）：请稍后重试；若持续出现，请在控制台检查当日用量。",
+    ),
+    "web_search_quota": (
+        "search_quota_exceeded",
+        "Tavily 账户用量已达上限（套餐或按量额度）：请在控制台调整用量或升级套餐后重试，"
+        "重试不会自行恢复。",
     ),
     "web_search_dns": (
         "search_upstream_unreachable",
@@ -154,11 +164,6 @@ class AMapBrowserCandidate(BaseModel):
 
 
 def _store(request: Request) -> CredentialStorePort:
-    if getattr(request.app.state, "runtime_credential_store_error", False):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"error": "credential_store_unavailable", "message": "凭据存储暂不可用。"},
-        )
     store: CredentialStorePort | None = getattr(
         request.app.state, "runtime_credential_store", None
     )
@@ -265,7 +270,7 @@ def _amap_probe_error(
     「探测没跑通」（上游不可达、非 200、无法解析的响应）给 503：这时我们并没有
     拿到"这个值不行"的证据，不能替用户下结论；「上游明确拒绝了这个值」给 422。
     """
-    record_validation(request, item, error=diagnosis.message)
+    record_credential_validation(request, item, error=diagnosis.message)
     if diagnosis.reason in {
         REASON_UPSTREAM_UNREACHABLE,
         REASON_UPSTREAM_ERROR,
@@ -353,7 +358,7 @@ def replace_qwen_credential(
     key = _candidate_value(candidate.api_key)
     if not key:
         message = "Qwen API Key 不能为空。"
-        record_validation(request, QWEN_ITEM, error=message)
+        record_credential_validation(request, QWEN_ITEM, error=message)
         raise _invalid_candidate(
             QWEN_ITEM, message, reason=REASON_CREDENTIAL_MISSING
         )
@@ -363,9 +368,14 @@ def replace_qwen_credential(
     try:
         build_metadata_source(request, secret).query(config.model_id)
     except ModelMetadataError as exc:
-        record_validation(request, QWEN_ITEM, error=exc.message)
+        record_credential_validation(request, QWEN_ITEM, error=exc.message)
         if exc.code == MODEL_METADATA_ERR_UNAVAILABLE:
             raise _probe_unavailable(exc.message, reason=exc.code) from exc
+        if exc.code == MODEL_METADATA_ERR_QUOTA_EXCEEDED:
+            # 额度问题不是"密钥无效"，换密钥也解决不了：单独分类，免得用户白换 Key。
+            raise _invalid_candidate(
+                QWEN_ITEM, exc.message, reason=REASON_QUOTA_EXCEEDED
+            ) from exc
         if exc.code == MODEL_METADATA_ERR_MODEL_NOT_FOUND:
             message = (
                 f"该密钥看不到当前主模型 ID（{config.model_id}）：这正是旧密钥已失效、"
@@ -386,7 +396,7 @@ def replace_qwen_credential(
     failed = [outcome for outcome in outcomes if not outcome.ok]
     if failed:
         message = failed[0].message or "Qwen 密钥验证失败，请检查密钥后重试。"
-        record_validation(request, QWEN_ITEM, error=message)
+        record_credential_validation(request, QWEN_ITEM, error=message)
         raise _invalid_candidate(
             QWEN_ITEM, message, reason=REASON_PROBE_FAILED
         )
@@ -395,7 +405,7 @@ def replace_qwen_credential(
     shadowed = qwen_key_shadowed(request)
     if not shadowed:
         apply_qwen_key(request, secret)
-    checked_at = record_validation(request, QWEN_ITEM)
+    checked_at = record_credential_validation(request, QWEN_ITEM)
     resolved = credential_resolver(request).qwen_api_key()
     return CredentialStatus(
         configured=True,
@@ -421,7 +431,7 @@ def replace_tavily_credential(
     key = _candidate_value(candidate.api_key)
     if not key:
         message = "Tavily API Key 不能为空。"
-        record_validation(request, TAVILY_ITEM, error=message)
+        record_credential_validation(request, TAVILY_ITEM, error=message)
         raise _invalid_candidate(
             TAVILY_ITEM, message, reason=REASON_CREDENTIAL_MISSING
         )
@@ -436,7 +446,7 @@ def replace_tavily_credential(
     diagnosis = _tavily_diagnosis(probe_client.health_check())
     if diagnosis is not None:
         reason, message = diagnosis
-        record_validation(request, TAVILY_ITEM, error=message)
+        record_credential_validation(request, TAVILY_ITEM, error=message)
         if reason == "search_upstream_unreachable":
             raise _probe_unavailable(message, reason=reason)
         raise _invalid_candidate(TAVILY_ITEM, message, reason=reason)
@@ -448,7 +458,7 @@ def replace_tavily_credential(
         web_search_service = getattr(request.app.state, "web_search_service", None)
         if web_search_service is not None:
             web_search_service.replace_tavily_api_key(SecretStr(key))
-    checked_at = record_validation(request, TAVILY_ITEM)
+    checked_at = record_credential_validation(request, TAVILY_ITEM)
     resolved = credential_resolver(request).tavily_api_key()
     return CredentialStatus(
         configured=True,
@@ -474,7 +484,7 @@ def replace_amap_web_service_credential(
     key = _candidate_value(candidate.api_key)
     if not key:
         message = "高德 Web 服务 Key 不能为空。"
-        record_validation(request, AMAP_WEB_SERVICE_ITEM, error=message)
+        record_credential_validation(request, AMAP_WEB_SERVICE_ITEM, error=message)
         raise _invalid_candidate(
             AMAP_WEB_SERVICE_ITEM, message, reason=REASON_CREDENTIAL_MISSING
         )
@@ -490,7 +500,7 @@ def replace_amap_web_service_credential(
     shadowed = _shadowed_by_environment(before)
     if not shadowed:
         _mirror_settings(request, amap_web_service_key=SecretStr(key))
-    checked_at = record_validation(request, AMAP_WEB_SERVICE_ITEM)
+    checked_at = record_credential_validation(request, AMAP_WEB_SERVICE_ITEM)
     resolved = credential_resolver(request).amap_web_service_key()
     return CredentialStatus(
         configured=True,
@@ -515,30 +525,31 @@ def replace_amap_browser_map_credential(
 
     验证由两部分组成，且只有第二部分是有效性证据：
 
-    1. **加载器可达性**：只读加载器正文前缀判断可达与形状（真实正文约 968 KB，
-       按体积判失败会误杀有效 Key），并说明"拿到脚本不等于 Key 有效"；
+    1. **加载器可达性**：只读正文前缀判断能否取到脚本（真实正文约 968 KB，
+       按体积判失败会误杀有效 Key）。可达不是 Key 有效的证据，只是"上游此刻
+       连得上"的前提；连不上就无法完成第 2 步，按上游不可达报告且不保存；
     2. **成对真实请求**：按高德官方代理方案，在服务端把 ``jscode``（安全密钥）
        与 JS API Key 一起送到数据服务，用一次真实地理编码请求证明配对可用。
 
-    底图能否在用户浏览器里渲染依赖浏览器侧的真实请求，保存时无法证明，因此
-    成功文案只声明已经证明的那件事；浏览器路径的结论由地图代理在首次真实请求
-    后回写（``runtime_evidence``）。
+    底图能否在用户浏览器里渲染依赖浏览器侧底图瓦片请求，服务端无法证明，因此
+    成功文案只声明已经证明的那件事；浏览器路径的结论由地图代理在真实请求后
+    回写（``runtime_evidence``）。
     """
     del subject
     key = _candidate_value(candidate.api_key)
     security_code = _candidate_value(candidate.security_js_code)
     if not key or not security_code:
         message = "高德浏览器地图 Key 和安全码都不能为空。"
-        record_validation(request, AMAP_BROWSER_MAP_ITEM, error=message)
+        record_credential_validation(request, AMAP_BROWSER_MAP_ITEM, error=message)
         raise _invalid_candidate(
             AMAP_BROWSER_MAP_ITEM, message, reason=REASON_CREDENTIAL_MISSING
         )
 
     probe_http = request.app.state.credential_probe_http_client
     loader = probe_loader(probe_http, key)
-    if not loader.reachable:
-        assert loader.diagnosis is not None
-        raise _amap_probe_error(request, AMAP_BROWSER_MAP_ITEM, loader.diagnosis)
+    diagnosis = loader.diagnosis
+    if diagnosis is not None:
+        raise _amap_probe_error(request, AMAP_BROWSER_MAP_ITEM, diagnosis)
 
     diagnosis = probe_data_service(
         probe_http, key=key, security_code=security_code
@@ -560,7 +571,7 @@ def replace_amap_browser_map_credential(
             amap_js_api_key=SecretStr(key),
             amap_security_js_code=SecretStr(security_code),
         )
-    checked_at = record_validation(request, AMAP_BROWSER_MAP_ITEM)
+    checked_at = record_credential_validation(request, AMAP_BROWSER_MAP_ITEM)
     resolved = credential_resolver(request).amap_browser_map_pair()
     return CredentialStatus(
         configured=True,
@@ -572,7 +583,8 @@ def replace_amap_browser_map_credential(
             else (
                 "JS API Key 与安全码已保存，并完成一次成对的真实数据服务请求"
                 "（服务端追加 jscode 的地理编码请求）；地图加载器可达。"
-                "底图能否在你的浏览器中渲染，会在首次打开地图时由真实请求确认并回写状态。"
+                "底图瓦片不经过 BridGes 代理，因此底图渲染本身在这里无法证明；"
+                "浏览器之后的真实地图数据请求结论会回写到本卡。"
             )
         ),
     )

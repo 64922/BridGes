@@ -352,6 +352,14 @@ class TavilySearchClient:
                 "搜索请求过于频繁（Tavily 限流），请稍后显式重试。",
                 http_status_category=category,
             )
+        if response.status_code in {432, 433}:
+            # Tavily 用 432/433 表示套餐或按量额度的「用量已达上限」：与 429 的
+            # 瞬时限流不同，重试无效，必须去控制台调整用量。
+            raise WebSearchError(
+                "web_search_quota",
+                "搜索用量已达上限（Tavily 套餐或按量额度），请在控制台调整用量后重试。",
+                http_status_category=category,
+            )
         if response.status_code in {401, 403}:
             raise WebSearchError(
                 "web_search_configuration",
@@ -474,5 +482,8 @@ def _health_status(code: str) -> WebSearchHealthStatus:
     if code.endswith("_configuration") or code.endswith("_permission"):
         return WebSearchHealthStatus.AUTH_ERROR
     if code.endswith("_rate_limit"):
+        return WebSearchHealthStatus.RATE_LIMITED
+    if code.endswith("_quota"):
+        # 用量上限同样"现在别重试"，但原因与瞬时限流分开（页面文案据此区分）。
         return WebSearchHealthStatus.RATE_LIMITED
     return WebSearchHealthStatus.UPSTREAM_ERROR

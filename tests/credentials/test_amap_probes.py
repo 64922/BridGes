@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import httpx
 import pytest
 
@@ -23,6 +25,7 @@ from bridges.credentials.amap_probes import (
     GEOCODE_PATH,
     LOADER_INSPECT_BYTES,
     REASON_BAD_PAYLOAD,
+    REASON_BAD_REQUEST,
     REASON_DOMAIN_RESTRICTED,
     REASON_KEY_INVALID,
     REASON_KEY_RECYCLED,
@@ -33,6 +36,7 @@ from bridges.credentials.amap_probes import (
     REASON_SERVICE_NOT_ENABLED,
     REASON_SIGNATURE_ENABLED,
     REASON_UNKNOWN,
+    REASON_UPSTREAM_ERROR,
     REASON_UPSTREAM_UNREACHABLE,
     classify_amap_failure,
     diagnose_payload,
@@ -98,12 +102,36 @@ def test_official_error_codes_map_to_specific_reasons(
         ("10005", "INVALID_USER_IP", "amap_ip_restricted"),
         ("10041", "NO_EFFECTIVE_INTERFACE", "amap_permission_denied"),
         ("40000", "QUOTA_PLAN_RUN_OUT", REASON_QUOTA_EXCEEDED),
+        # 官方表里容易混的两组：20002 是「请求协议非法」（不是 HTTPS 那条），
+        # 10011 才是「服务不支持 HTTPS」；40002/40003 分别是到期与海外余额。
+        ("20002", "ILLEGAL_REQUEST", REASON_BAD_REQUEST),
+        ("10011", "NOT_SUPPORT_HTTPS", REASON_BAD_REQUEST),
+        ("40002", "SERVICE_EXPIRED", REASON_SERVICE_NOT_ENABLED),
+        ("40003", "ABROAD_QUOTA_PLAN_RUN_OUT", REASON_QUOTA_EXCEEDED),
+        ("10015", "GATEWAY_TIMEOUT", REASON_RATE_LIMITED),
+        ("10016", "SERVER_IS_BUSY", REASON_UPSTREAM_ERROR),
     ],
 )
 def test_remaining_official_codes_are_classified(
     infocode: str, info: str, expected_reason: str
 ) -> None:
     assert classify_amap_failure(infocode, info).reason == expected_reason
+
+
+def test_expired_service_and_illegal_request_do_not_claim_the_wrong_cause() -> None:
+    """到期与协议非法各有具体文案：不混进「额度超限」或「HTTPS 不支持」。"""
+    expired = classify_amap_failure("40002", "SERVICE_EXPIRED")
+    assert "到期" in expired.message
+    assert "HTTPS" not in expired.message
+
+    illegal = classify_amap_failure("20002", "ILLEGAL_REQUEST")
+    assert "协议" in illegal.message
+    assert "HTTPS" not in illegal.message
+
+    # 10045 的官方符号是 USER_ABROAD_DAILY_QUERY_OVER_LIMIT（与 10029 不同）。
+    assert classify_amap_failure(
+        "10045", "USER_ABROAD_DAILY_QUERY_OVER_LIMIT"
+    ).reason == REASON_QUOTA_EXCEEDED
 
 
 def test_symbol_and_number_agree_and_unknown_codes_stay_honest() -> None:
@@ -144,25 +172,49 @@ def test_diagnose_payload_accepts_only_a_success_envelope() -> None:
     assert diagnose_payload(None).reason == REASON_BAD_PAYLOAD
 
 
-def test_loader_probe_reads_only_a_prefix_of_a_real_sized_body() -> None:
-    """真实加载器约 968 KB；探测只读前缀，且不因体积判失败。"""
-    body = _loader_body(968_594)
-    assert len(body) == 968_594
-    read_bytes: list[int] = []
+class _PrefixOnlyStream(httpx.SyncByteStream):
+    """模拟真实加载器的流式正文：读超过给定字节数就让测试失败。
+
+    旧的探测按"正文超过 262,144 字节即判失败"实现（实测正文 294,102 字节处
+    就越界），这条流因此是**防回归**装置：探测若还想读完整正文，测试立刻报错。
+    """
+
+    CHUNK = 32_768
+
+    def __init__(self, body: bytes, allowed: int) -> None:
+        self._body = body
+        self._allowed = allowed
+        self._sent = 0
+
+    def __iter__(self) -> Iterator[bytes]:
+        while self._sent < len(self._body):
+            assert self._sent <= self._allowed, "探测读取了超出前缀的正文"
+            chunk = self._body[self._sent : self._sent + self.CHUNK]
+            self._sent += len(chunk)
+            yield chunk
+
+
+@pytest.mark.parametrize("size", [294_102, 968_594, 968_564])
+def test_loader_probe_reads_only_a_prefix_of_a_real_sized_body(size: int) -> None:
+    """实测正文体积（294,102 是旧体积上限的越界点）下探测只读前缀即返回。"""
+    body = _loader_body(size).encode("utf-8")
+    assert len(body) == size
+    assert size > LOADER_INSPECT_BYTES
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/maps"
         assert request.url.params["v"] == "2.0"
         assert "jscode" not in request.url.params
-        return httpx.Response(200, text=body)
+        return httpx.Response(
+            200,
+            stream=_PrefixOnlyStream(body, allowed=2 * _PrefixOnlyStream.CHUNK),
+        )
 
     with _client(handler) as client:
         outcome = probe_loader(client, "amap-js-key")
 
     assert outcome.reachable is True
     assert outcome.diagnosis is None
-    assert len(body) > LOADER_INSPECT_BYTES
-    del read_bytes
 
 
 def test_loader_probe_does_not_treat_error_markers_as_a_verdict() -> None:

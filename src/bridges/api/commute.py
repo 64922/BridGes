@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr
 
 from bridges.api.auth import SubjectDep
-from bridges.api.credential_state import record_validation
+from bridges.api.credential_state import record_runtime_evidence
 from bridges.commute.sources import AMAP_REST_BASE
 from bridges.credentials.amap_probes import diagnose_payload
 from bridges.credentials.ids import AMAP_BROWSER_MAP_ITEM
@@ -160,10 +160,11 @@ def amap_proxy(path: str, request: Request, subject: SubjectDep) -> Response:
 
 
 def _record_browser_map_evidence(request: Request, upstream: httpx.Response) -> None:
-    """把一次真实地图请求的结论回写到设置页卡片状态。
+    """把一次真实地图数据请求的结论回写到设置页卡片状态。
 
     只对能解析为高德信封的响应下结论：解析不出信封（例如底图瓦片等非 JSON
-    内容）时保持原状态不动，绝不因为"没看懂"就宣称成功或失败。
+    内容）时保持原状态不动，绝不因为"没看懂"就宣称成功或失败。这是**运行路径
+    结论**而不是设置页验证，因此不改变卡片的"最近验证"时间。
     """
     try:
         payload = upstream.json()
@@ -173,20 +174,22 @@ def _record_browser_map_evidence(request: Request, upstream: httpx.Response) -> 
         return
     diagnosis = diagnose_payload(payload)
     if diagnosis is None:
-        record_validation(
+        record_runtime_evidence(
             request,
             AMAP_BROWSER_MAP_ITEM,
+            error=None,
             runtime_evidence=(
-                "真实地图请求已成功：Key 与安全码在浏览器加载路径上已生效。"
+                "浏览器发起的真实地图数据请求已成功（服务端追加安全码）："
+                "这对 Key 与安全码在该路径上可用。"
             ),
         )
         return
-    record_validation(
+    record_runtime_evidence(
         request,
         AMAP_BROWSER_MAP_ITEM,
         error=diagnosis.message,
         runtime_evidence=(
-            "该结论来自一次真实地图请求（浏览器加载路径），"
+            "该结论来自浏览器发起的一次真实地图数据请求，"
             "晚于保存时的验证，请据此更新凭据。"
         ),
     )
