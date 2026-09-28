@@ -1687,6 +1687,54 @@ class AutomaticProfileService:
             observed_count=observed_count,
         )
 
+    def _apply_correction(
+        self,
+        account_id: str,
+        *,
+        dimension: FourDimension,
+        content: str,
+    ) -> tuple[ProfileCorrectionResult, ProfileExtractionOutcome, list[str]]:
+        """执行一次更正写入，返回用户可见结果、运行结论与已提交记录标识。
+
+        首次处理与后台重试的唯一归属地：两条路径的差别只在「谁先决定要不要
+        写」，写完之后的映射（无活动记录／受保护／已写入）只有这一份实现，
+        不会再出现只更新其中一条路径的分叉。
+        """
+
+        record, changed = self._commit.write_correction(
+            account_id,
+            dimension=dimension,
+            content=content,
+        )
+        if record is None:
+            return (
+                ProfileCorrectionResult(
+                    status=ProfileCorrectionStatus.NO_ACTIVE_RECORD,
+                    dimension=dimension,
+                ),
+                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE,
+                [],
+            )
+        if not changed:
+            return (
+                ProfileCorrectionResult(
+                    status=ProfileCorrectionStatus.PROTECTED,
+                    dimension=dimension,
+                    record_id=record.record_id,
+                ),
+                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED,
+                [],
+            )
+        return (
+            ProfileCorrectionResult(
+                status=ProfileCorrectionStatus.WRITTEN,
+                dimension=dimension,
+                record_id=record.record_id,
+            ),
+            ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN,
+            [record.record_id],
+        )
+
     def _preprocess_correction(
         self,
         *,
@@ -1712,38 +1760,17 @@ class AutomaticProfileService:
                 ),
             )
 
-        record_ids: list[str] = []
         correction: ProfileCorrectionResult
         try:
             with self._commit.transaction():
                 # Issue 05：更正的成对写入（纠正四维记录 + 镜像原子条目）
-                # 由提交 module 归属，首次处理与后台重试共用同一实现。
-                record, changed = self._commit.write_correction(
+                # 由提交 module 归属；Issue 06 把「写入 → 结果与结论」的映射
+                # 也收成一份，首次处理与后台重试不再各写一遍。
+                correction, run.outcome, record_ids = self._apply_correction(
                     account_id,
                     dimension=intent.dimension,
                     content=intent.new_value,
                 )
-                if record is None:
-                    run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE
-                    correction = ProfileCorrectionResult(
-                        status=ProfileCorrectionStatus.NO_ACTIVE_RECORD,
-                        dimension=intent.dimension,
-                    )
-                elif not changed:
-                    run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED
-                    correction = ProfileCorrectionResult(
-                        status=ProfileCorrectionStatus.PROTECTED,
-                        dimension=intent.dimension,
-                        record_id=record.record_id,
-                    )
-                else:
-                    record_ids.append(record.record_id)
-                    run.outcome = ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
-                    correction = ProfileCorrectionResult(
-                        status=ProfileCorrectionStatus.WRITTEN,
-                        dimension=intent.dimension,
-                        record_id=record.record_id,
-                    )
                 run.status = ProfileExtractionStatus.SUCCEEDED
                 run.attempts += 1
                 run.committed_record_ids = record_ids
@@ -2172,7 +2199,7 @@ class AutomaticProfileService:
                 signal_classification = self._classifier.classify(content)
                 if signal_classification.category == ProfileSignalCategory.CORRECTION:
                     intent = signal_classification.correction_intent
-                    record_ids = []
+                    record_ids: list[str] = []
                     observed_count = 0
                     if (
                         intent is None
@@ -2187,40 +2214,13 @@ class AutomaticProfileService:
                             ProfileExtractionOutcome.SUCCEEDED_CORRECTION_UNRESOLVED
                         )
                     else:
-                        # Issue 05：重试与首次处理共用成对写入——纠正成功
-                        # 时原子条目同步镜像，不再只写来源。
-                        record, changed = self._commit.write_correction(
+                        # Issue 05/06：重试与首次处理共用成对写入与结果映射
+                        # （纠正成功时原子条目同步镜像）。
+                        correction, run.outcome, record_ids = self._apply_correction(
                             task.account_id,
                             dimension=intent.dimension,
                             content=intent.new_value,
                         )
-                        if record is None:
-                            correction = ProfileCorrectionResult(
-                                status=ProfileCorrectionStatus.NO_ACTIVE_RECORD,
-                                dimension=intent.dimension,
-                            )
-                            run.outcome = (
-                                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE
-                            )
-                        elif not changed:
-                            correction = ProfileCorrectionResult(
-                                status=ProfileCorrectionStatus.PROTECTED,
-                                dimension=intent.dimension,
-                                record_id=record.record_id,
-                            )
-                            run.outcome = (
-                                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED
-                            )
-                        else:
-                            record_ids.append(record.record_id)
-                            correction = ProfileCorrectionResult(
-                                status=ProfileCorrectionStatus.WRITTEN,
-                                dimension=intent.dimension,
-                                record_id=record.record_id,
-                            )
-                            run.outcome = (
-                                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
-                            )
                     source = (
                         run.source
                         if run.source is not None

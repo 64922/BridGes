@@ -23,6 +23,24 @@
   ``BridgesDatabase`` 的 SQLite 仓库并入外层事务，内存仓库各自建立可
   回滚快照。调用方不判断仓库类型、连接或事务开关。
 
+失败落在保护点的哪一侧、之后能不能重试，也由本模块回答：
+
+- **保护点之内**：删除／忘掉的墓碑、编辑的换键与抑制键都在提交边界里。
+  边界内任一步失败即整批回滚，用户可见结果与失败前相同，入口可以整轮
+  重试（纠正路径也一样，见 :meth:`ProfileCommit.write_correction`）。
+- **保护点之后**：只剩来源撤回一步。它失败时墓碑已经提交，删除照常成立
+  ——条目不会回到活动列表或记忆切片，残留状态只是「底层来源记录仍是活
+  动的」，也就是 :meth:`ProfileCommit.recover_source_withdrawals` 的扫描
+  对象。撤回因此逐条隔离：一条失败不影响其余条目，失败只以 ``FAILED``
+  结论返回并可再次重试（``forget`` 保持本轮删除结论，``delete_item`` 原样
+  上抛但墓碑有效）。
+- **恢复不依赖进程内对象**：待补工作只从持久墓碑重新推导，因此连接或
+  module 重建之后仍能补齐。补齐后的可见结果是「条目保持删除、来源记录
+  转为已撤回」；已完成或没有来源的条目收敛为 ``ALREADY_WITHDRAWN``／
+  ``NO_SOURCE``，重复调用不重写业务结果，也不影响用户新建或编辑的条目。
+  恢复入口是公开方法，由调用方（服务层或运维动作）在重启后按账户调用；
+  本模块不自行调度，也不新增台账——残留状态本身就可重复识别。
+
 抽取范围、阈值、提示词与抽取侧去重规则不在本模块：它们留在自动提取的
 implementation 中；用户权威规则（版本冲突、条目去重、旧正文抑制、墓碑）
 留在原子画像的 implementation 中，本模块负责把它们与来源撤回编排成序。
@@ -250,6 +268,27 @@ class ProfileCommit:
                 )
             outcomes.append(outcome)
         return outcomes
+
+    def recover_source_withdrawals(self, account_id: str) -> list[SourceWithdrawal]:
+        """按持久残留状态补齐来源撤回：扫描墓碑条目，幂等重跑撤回。
+
+        跨重启恢复的唯一入口。待补工作只从存储里的墓碑重新推导——已删除
+        且仍指向来源记录的条目（见
+        :meth:`AtomicProfileService.tombstoned_items_with_sources`），因此
+        模块重建、进程内对象全部丢失之后仍然有效，不需要通用任务框架或
+        额外记账表。已完成或没有来源的条目收敛为 ``ALREADY_WITHDRAWN``／
+        ``NO_SOURCE``，不重写业务结果；仍未完成的条目保持 ``FAILED`` 并可
+        再次调用本方法重试。扫描按账户作用域，不碰其他账户的条目。
+
+        恢复后的可见结果：条目保持删除（不在列表与记忆切片里），底层来源
+        记录转为已撤回；用户在这期间新建或编辑的条目不受影响。
+        """
+
+        if self._items is None:
+            return []
+        return self.withdraw_item_sources(
+            account_id, self._items.tombstoned_items_with_sources(account_id)
+        )
 
     def _withdraw_one(
         self,

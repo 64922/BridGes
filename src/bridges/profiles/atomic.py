@@ -57,7 +57,7 @@ from bridges.contracts.profiles import (
     UnusedSliceItem,
 )
 from bridges.profiles.adapters import ProfileError
-from bridges.profiles.commit import ProfileCommit, SourceWithdrawalStatus
+from bridges.profiles.commit import ProfileCommit, SourceWithdrawal, SourceWithdrawalStatus
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -805,7 +805,12 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
 
 
 class AtomicProfileService:
-    """原子条目的读写、记忆指令、切片编译与账户级迁移。"""
+    """原子条目的读写、记忆指令、切片编译、账户级迁移与来源撤回恢复。
+
+    失败是否越过墓碑保护点、能否重试、恢复后的可见结果由提交 module 定义
+    （见 :mod:`bridges.profiles.commit`）：墓碑提交之后的来源撤回失败不回滚
+    删除，:meth:`recover_source_withdrawals` 只凭持久墓碑幂等补齐。
+    """
 
     def __init__(
         self,
@@ -918,7 +923,7 @@ class AtomicProfileService:
             self._write_tombstone(item)
         # 撤回在墓碑边界之外逐条执行（见提交 module）；失败如实上抛，
         # 已提交的墓碑保持有效。
-        outcome = self._profile_commit.withdraw_item_sources(account_id, [item])[0]
+        outcome = self.withdraw_item_sources(account_id, [item])[0]
         if outcome.status is SourceWithdrawalStatus.FAILED and outcome.error is not None:
             raise outcome.error
 
@@ -1013,12 +1018,52 @@ class AtomicProfileService:
         # 墓碑已提交：用户可见的删除在本轮成立。来源撤回逐条隔离——部分
         # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
         # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
-        self._profile_commit.withdraw_item_sources(account_id, matched)
+        self.withdraw_item_sources(account_id, matched)
         return AtomicProfileMemoryResult(
             kind=AtomicProfileMemoryKind.FORGET,
             status=AtomicProfileMemoryStatus.FORGOTTEN,
             matched_count=len(matched),
         )
+
+    # -- 来源撤回与恢复 ---------------------------------------------------
+
+    def tombstoned_items_with_sources(self, account_id: str) -> list[AtomicProfileItem]:
+        """列出仍指向来源记录的已删除条目（跨重启恢复的扫描依据）。
+
+        墓碑保留 ``source_record_id``，所以「用户已删除、来源还没撤回」这件
+        事可以只从持久记录里看出来——这正是恢复不需要进程内对象的原因。
+        没有关联来源的条目不在其中：未匹配到四维记录的「记住」条目只剩
+        旧正文抑制键，没有可撤回的来源。扫描按账户作用域，不涉及其他账户
+        的条目。
+        """
+
+        return [
+            item
+            for item in self._repository.list_items(account_id, include_withdrawn=True)
+            if item.status == AtomicProfileItemStatus.WITHDRAWN and item.source_record_id
+        ]
+
+    def withdraw_item_sources(
+        self, account_id: str, items: Iterable[AtomicProfileItem]
+    ) -> list[SourceWithdrawal]:
+        """在墓碑提交之后撤回这些条目的来源（提交 module 的公开入口）。
+
+        逐条隔离与幂等语义见 :meth:`ProfileCommit.withdraw_item_sources`；
+        本方法只是把撤回一步的归属地暴露给入口与恢复流程，不复制规则。
+        """
+
+        return self._profile_commit.withdraw_item_sources(account_id, items)
+
+    def recover_source_withdrawals(self, account_id: str) -> list[SourceWithdrawal]:
+        """重启后的恢复入口：扫描墓碑条目，幂等补齐未完成的来源撤回。
+
+        结论逐条返回：``WITHDRAWN`` 是本次补齐的，``FAILED`` 是仍未完成的
+        （可再调用本方法重试，也可等下次重启），``ALREADY_WITHDRAWN``／
+        ``NO_SOURCE`` 表示此前已经收敛、本次没有写入。整个恢复只读存储里
+        的墓碑与来源记录，不依赖失败时的进程内对象。
+        """
+
+        return self._profile_commit.recover_source_withdrawals(account_id)
 
     # -- 自动抽取镜像 -----------------------------------------------------
 
