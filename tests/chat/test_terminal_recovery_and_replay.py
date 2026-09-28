@@ -27,10 +27,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from bridges.ai.adapters import RateLimitError, StreamChunk
+from bridges.ai.adapters import RateLimitError, StreamChunk, StreamEvent
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.service import ChatService
+from bridges.chat.terminal import internal_error_outcome
 from bridges.config import get_settings
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.storage.database import BridgesDatabase
@@ -278,6 +279,65 @@ def test_message_commit_window_recovery_repairs_without_second_model_call(
     assert len(repo.list_messages(account["id"], conversation_id)) == 2
 
 
+def test_queue_confirmation_window_keeps_result_and_confirms_row(
+    sqlite_app: Any,
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """队列确认窗口：终态已提交、队列行未确认，重领只确认行不改结果。
+
+    执行器在「收敛运行终态之后、确认队列行之前」失联：消息、终态事件与
+    运行都已提交，队列行留在领取态。租约到期后重新领取该行时不得再次
+    调用模型、不得追加第二条终态事件、不得改写已提交的投影。
+    """
+    account = _register(client)
+    adapter = _ScriptedAdapter(("完整回答",))
+    sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+    created = _send(client, conversation_id)
+    run_id = created["run_id"]
+    message_id = created["assistant_message"]["message_id"]
+    service = sqlite_app.state.chat_service
+    executor = sqlite_app.state.generation_executor
+    repo = service._repo
+    database = sqlite_app.state.bridges_database
+
+    def _crash(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("执行器在确认队列行前失联")
+
+    monkeypatch.setattr(executor._queue, "complete", _crash)  # noqa: SLF001
+    assert "处理出错" in executor.run_tick()
+    monkeypatch.undo()
+
+    message = repo.get_message(account["id"], message_id)
+    assert message is not None and message.status == ChatMessageStatus.DONE
+    assert message.content == "完整回答"
+    assert adapter.stream_calls == 1
+    assert _claim_row(database, run_id) == "claimed", "故障点之后队列行尚未确认"
+    assert [event.kind for event in _terminal_events(repo, account["id"], run_id)] == ["done"]
+    before = _events(repo, account["id"], run_id)
+
+    # 进程重启：新执行器按既有上限重领遗留队列行，只做确认
+    _service, restarted_db, restarted = _rebuild(
+        tmp_path / "bridges.db", adapter, worker_name="recovery-executor"
+    )
+    _expire_queue_lease(restarted_db, run_id)
+    restarted.run_tick()
+
+    assert adapter.stream_calls == 1, "恢复已提交结果不得再次调用模型"
+    assert _claim_row(restarted_db, run_id) == "completed"
+    assert len(repo.list_messages(account["id"], conversation_id)) == 2
+    after = _events(repo, account["id"], run_id)
+    assert [(event.seq, event.kind, event.payload) for event in after] == [
+        (event.seq, event.kind, event.payload) for event in before
+    ], "确认队列行不得改写已提交的事件流"
+    final = repo.get_message(account["id"], message_id)
+    assert final is not None
+    assert final.status == ChatMessageStatus.DONE
+    assert final.content == "完整回答"
+
+
 def test_reap_of_committed_result_keeps_done_without_conflicting_event(
     sqlite_app: Any, client: TestClient, tmp_path: Path
 ) -> None:
@@ -518,6 +578,52 @@ def test_reap_write_fault_keeps_loop_alive_and_repairs_on_next_tick(
     _expire_queue_lease(database, run_id)
     executor.run_tick()
     assert _claim_row(database, run_id) == "completed"
+
+
+# ---------------------------------------------------------------------------
+# 运行期实时载荷与补齐载荷同一规则
+# ---------------------------------------------------------------------------
+
+
+def test_live_error_without_code_uses_shared_internal_error_rule(
+    sqlite_app: Any, client: TestClient
+) -> None:
+    """实时错误事件缺稳定码时与补齐通道同一规则，且不得漏出上游原文。
+
+    缺码的失败若各自兜底，同一次失败在实时通道与补齐通道会写出不同的码
+    与可重试标记，回放读到什么取决于谁先写；缺码时也不得把上游消息当
+    合同文案（``user_facing_error`` 只对已映射码给合同文案）。
+    """
+    account = _register(client)
+    conversation_id = _create_conversation(client)
+    created = _send(client, conversation_id)
+    run_id = created["run_id"]
+    message_id = created["assistant_message"]["message_id"]
+    service = sqlite_app.state.chat_service
+    executor = sqlite_app.state.generation_executor
+    repo = service._repo
+
+    executor._persist_event(  # noqa: SLF001 - 复用真实事件通道
+        account["id"],
+        run_id,
+        message_id,
+        StreamEvent(kind="error", error_code=None, error_message="上游原文不应出现"),
+    )
+
+    terminal = _terminal_events(repo, account["id"], run_id)
+    assert [event.kind for event in terminal] == ["error"]
+    detail = terminal[0].payload["error"]
+    assert detail["code"] == "internal_error"
+    assert detail["retryable"] is True
+    assert detail["message"] == "生成过程出现内部错误，请重试。"
+
+    # 补齐通道对同一形态给出同一码：已有终态事件时不再追加
+    commit = service.terminal.converge(
+        account["id"], run_id, message_id, fallback=internal_error_outcome()
+    )
+    assert commit.event_seq is None, "已有终态事件时不得追加第二条"
+    run = repo.get_generation_run(account["id"], run_id)
+    assert run is not None and run.error_code == "internal_error"
 
 
 # ---------------------------------------------------------------------------

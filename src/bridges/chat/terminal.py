@@ -205,13 +205,19 @@ class TerminalOutcome:
         return None, None
 
 
-def internal_error_outcome() -> TerminalOutcome:
-    """残留 streaming 消息的兜底结果（稳定码 + 合同中文原因）。"""
+def _error_outcome(code: str, duration_ms: int | None = None) -> TerminalOutcome:
+    """失败终态的单一构造：稳定码派生合同中文原因（文案不在此重复）。"""
     return TerminalOutcome(
         status=ChatMessageStatus.ERROR,
-        error_code=INTERNAL_ERROR_CODE,
-        error_message=user_facing_error(INTERNAL_ERROR_CODE),
+        error_code=code,
+        error_message=user_facing_error(code),
+        duration_ms=duration_ms,
     )
+
+
+def internal_error_outcome() -> TerminalOutcome:
+    """残留 streaming 消息的兜底结果（稳定码 + 合同中文原因）。"""
+    return _error_outcome(INTERNAL_ERROR_CODE)
 
 
 def stopped_outcome(duration_ms: int | None = None) -> TerminalOutcome:
@@ -235,21 +241,12 @@ def worker_lost_outcome() -> TerminalOutcome:
     ``_RETRYABLE_CODES`` 派生出合同文案（「生成进程意外退出，已保留
     已接收内容，可点击重试。」）与可重试标记。
     """
-    return TerminalOutcome(
-        status=ChatMessageStatus.ERROR,
-        error_code=WORKER_LOST_CODE,
-        error_message=user_facing_error(WORKER_LOST_CODE),
-    )
+    return _error_outcome(WORKER_LOST_CODE)
 
 
 def interrupted_outcome(duration_ms: int | None = None) -> TerminalOutcome:
     """迁移前遗留（无运行记录）残留 streaming 的兜底结果：断流可重试失败。"""
-    return TerminalOutcome(
-        status=ChatMessageStatus.ERROR,
-        error_code=INTERRUPTED_CODE,
-        error_message=user_facing_error(INTERRUPTED_CODE),
-        duration_ms=duration_ms,
-    )
+    return _error_outcome(INTERRUPTED_CODE, duration_ms)
 
 
 @dataclass(frozen=True)
@@ -462,6 +459,29 @@ class GenerationTerminal:
             arxiv_search=final.arxiv_search if final is not None else None,
             teaching=final.teaching if final is not None else None,
         ).model_dump(mode="json")
+
+    def runtime_error_payload(
+        self,
+        account_id: str,
+        message_id: str,
+        *,
+        code: str | None,
+        error_message: str | None,
+    ) -> dict[str, Any]:
+        """运行期实时错误事件的载荷：与收尾补齐同一套码/文案/可重试规则。
+
+        缺少稳定码的失败按内部错误处理（与 ``internal_error_outcome`` 同
+        一默认）；否则同一次失败在实时通道与补齐通道会写出不同的码与可
+        重试标记，回放读到的结果取决于谁先写入。
+        """
+        resolved = code or INTERNAL_ERROR_CODE
+        return self.error_payload(
+            account_id,
+            message_id,
+            code=resolved,
+            message=user_facing_error(resolved, error_message),
+            retryable=error_is_retryable(resolved),
+        )
 
     # ------------------------------------------------------------------
     # 分步提交（顺序与守卫即本 module 的规则，不对外暴露）

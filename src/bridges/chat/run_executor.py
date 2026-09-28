@@ -28,7 +28,6 @@ from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
 from bridges.chat.terminal import internal_error_outcome, stopped_outcome
-from bridges.chat.turn import error_is_retryable, user_facing_error
 from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatRunStatus,
@@ -201,9 +200,9 @@ class GenerationRunExecutor:
         if run.status != ChatRunStatus.QUEUED.value and not lease_expired:
             if run.status == ChatRunStatus.RUNNING.value:
                 # 另一执行器正在执行且租约未过期：不动运行，也不动队列行。
-                # 队列行是该运行唯一的恢复通道（重领或收尸都要先把行领
-                # 回来），提前完成会让失联运行既不能被重领也不能被收尸，
-                # 永久停在 running（Issue 03）。行仍由持有者或后续领取者完成。
+                # 该运行还有恢复预算（收尸只选取预算耗尽的运行），唯一的重
+                # 领通道就是这行队列：提前完成会让它既领不回也收不了尸，
+                # 永久停在 running（Issue 03）。行留给持有者或后续领取者。
                 self._last_summary = f"generation: 运行 {run_id} 由其他执行器执行，跳过。"
                 return
             # 运行已终态：队列行是收尾遗留，直接完成
@@ -319,12 +318,11 @@ class GenerationRunExecutor:
                 message_id=message_id, delta=event.delta
             ).model_dump(mode="json")
         elif kind == "error":
-            payload = self._terminal.error_payload(
+            payload = self._terminal.runtime_error_payload(
                 account_id,
                 message_id,
-                code=event.error_code or "generation_failed",
-                message=user_facing_error(event.error_code, event.error_message),
-                retryable=error_is_retryable(event.error_code),
+                code=event.error_code,
+                error_message=event.error_message,
             )
         elif kind == "done":
             payload = self._terminal.done_payload(account_id, message_id)
