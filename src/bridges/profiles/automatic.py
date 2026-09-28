@@ -2265,11 +2265,11 @@ class AutomaticProfileService:
                         now=_now(),
                         signal_classification=signal_classification,
                         source=source,
-                        # 重放任务（来源哈希带重放标记）不得把用户纠正过的
-                        # 记录改回旧值；普通重试保持既有证据阶梯。
-                        from_replay=task.source_hash.endswith(
-                            PROFILE_REPLAY_SOURCE_HASH_PREFIX
-                        ),
+                        # 重放任务（来源哈希内嵌重放标记，见
+                        # replay._replay_source_hash 的真实形状）不得把用户
+                        # 纠正过的记录改回旧值；普通重试保持既有证据阶梯。
+                        from_replay=PROFILE_REPLAY_SOURCE_HASH_PREFIX
+                        in task.source_hash,
                     )
                 task.status = ProfileExtractionStatus.SUCCEEDED
                 task.last_error = None

@@ -102,7 +102,7 @@ class FourDimensionProfileError(ProfileError):
     """四维画像领域错误。"""
 
 
-def automatic_source_record_id(
+def _automatic_source_record_id(
     account_id: str, dimension: FourDimension, normalized: str
 ) -> str:
     """自动记录的稳定来源键：账户 + 维度 + 规范化正文。
@@ -992,7 +992,7 @@ class FourDimensionProfileService:
         normalized = content.strip()
         if not normalized or len(normalized) > 1000:
             raise FourDimensionProfileError("画像内容不合法。")
-        source_record_id = automatic_source_record_id(
+        source_record_id = _automatic_source_record_id(
             account_id, dimension, normalized
         )
         existing: FourDimensionProfileRecord | None = None

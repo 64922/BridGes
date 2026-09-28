@@ -57,6 +57,7 @@ from bridges.profiles.four_dimensions import (
     SqliteFourDimensionProfileRepository,
 )
 from bridges.storage import BridgesDatabase
+from bridges.storage.errors import StorageError
 
 ACCOUNT = "account-alice"
 OTHER_ACCOUNT = "account-bob"
@@ -99,7 +100,11 @@ class _TwoFactExtractor:
 
 
 class _WithdrawFailsOnce(FourDimensionProfileService):
-    """``fail_at`` 指定第几次来源撤回失败（0 表示不注入故障）。"""
+    """``fail_at`` 指定第几次来源撤回失败（0 表示不注入故障）。
+
+    ``fail_get_at`` 同理，但注入点在读来源记录（``get_record``）：用于
+    守护「存储故障 ≠ 对象不存在」的撤回结论边界。
+    """
 
     def __init__(
         self,
@@ -111,6 +116,14 @@ class _WithdrawFailsOnce(FourDimensionProfileService):
         )
         self.calls = 0
         self.fail_at = 0
+        self.get_calls = 0
+        self.fail_get_at = 0
+
+    def get_record(self, account_id: str, record_id: str) -> FourDimensionProfileRecord:
+        self.get_calls += 1
+        if self.get_calls == self.fail_get_at:
+            raise StorageError("来源记录读取失败")
+        return super().get_record(account_id, record_id)
 
     def withdraw_record(
         self, account_id: str, record_id: str, version: int | None = None
@@ -394,7 +407,10 @@ def test_replay_does_not_revert_chat_correction(harness: _Harness) -> None:
     assert _stage_goal_item(harness).text == CORRECTED_TEXT
 
     run = harness.state.list_runs(ACCOUNT)[0]
-    replay_hash = f"{run.source_hash}{PROFILE_REPLAY_SOURCE_HASH_PREFIX}"
+    # 与 replay._replay_source_hash 同形：{原哈希}{重放标记}{原运行标识}。
+    replay_hash = (
+        f"{run.source_hash}{PROFILE_REPLAY_SOURCE_HASH_PREFIX}{run.extraction_id}"
+    )
     replay_run = run.model_copy(
         update={
             "extraction_id": f"{run.extraction_id}-replay",
@@ -682,6 +698,41 @@ def test_inline_edit_suppresses_old_text_across_accounts(harness: _Harness) -> N
     }
 
 
+# -- 撤回结论的边界：存储故障与「对象不存在」不混同 --------------------------
+
+
+def test_source_get_record_storage_fault_is_failure_not_already_withdrawn(
+    harness: _Harness,
+) -> None:
+    """读来源时的存储故障按 FAILED 隔离，只有「不存在」才算已撤回。
+
+    守护 ``withdraw_item_sources`` 与四维仓库的边界约定：适配器只对缺对象
+    抛 ``ProfileError``，存储故障是别的异常类型，二者不得混同——否则一次
+    瞬态故障会被当成撤回完成，且永远失去幂等重试的机会。
+    """
+
+    harness.extract("message-1", TWO_FACT_MESSAGE)
+    goal = _goal_item(harness)
+    harness.dimensions.fail_get_at = harness.dimensions.get_calls + 1
+
+    with pytest.raises(StorageError):
+        harness.atomic.delete_item(ACCOUNT, goal.profile_item_id, goal.version)
+
+    # 墓碑保持有效；存储故障被隔离成 FAILED，不是「已撤回」。
+    assert _item_by_id(harness, goal.profile_item_id).status is (
+        AtomicProfileItemStatus.WITHDRAWN
+    )
+    harness.dimensions.fail_get_at = harness.dimensions.get_calls + 1
+    outcome = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    assert [entry.status for entry in outcome] == [SourceWithdrawalStatus.FAILED]
+    assert isinstance(outcome[0].error, StorageError)
+
+    # 故障解除后同一撤回幂等补做成功。
+    harness.dimensions.fail_get_at = 0
+    outcome = harness.atomic._profile_commit.withdraw_item_sources(ACCOUNT, [goal])
+    assert [entry.status for entry in outcome] == [SourceWithdrawalStatus.WITHDRAWN]
+
+
 def test_delete_suppresses_old_text_against_replay(harness: _Harness) -> None:
     """删除后的旧正文不会因旧消息重放复活。"""
 
@@ -693,3 +744,4 @@ def test_delete_suppresses_old_text_against_replay(harness: _Harness) -> None:
 
     assert {item.text for item in harness.items()} == {STATUS_TEXT}
     assert GOAL_TEXT not in harness.slice_texts()
+
