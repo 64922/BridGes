@@ -139,3 +139,29 @@ python -m pytest -q --basetemp=<仓外临时目录>
 - 第一次分支全量因 **C 盘写满**失败（清理了本机历史 basetemp 后重跑通过）。为避免误删其他会话的在跑临时目录，只清理了本票与历史轮次自己的 basetemp。
 - 混合 adapter 组合（状态仓库 SQLite、画像仓库内存）在本票里由测试证明整批回滚一致；生产接线仍让三个仓库共用同一个库，未引入新的组合方式。
 - `AtomicProfileService.transaction()` 目前只有提交 module 使用；如果 06 的 adapter 一致性工作需要不同的事务形状，应在那张票里重新评估而不是改这里。
+
+### 9. 合并、合并后验证与清理实证（2026-09-28）
+
+- **合并**：`git merge --no-ff codex/04-profile-extraction-commit` → **`32e8276`**（父 `3dbde8f` + `fa3c381`），零冲突（ort 策略，7 文件 +784/−72）。合并时 main 已被并行票 issue 01 推进到 `3dbde8f`（不再等于本票分支点 `f04c79c`），因此**「合并树 == 分支树」这条判据本轮不适用**（合并树 `957ec712`、分支树 `b42130eb`），改用两侧对账证明无丢失：
+
+  | 判据 | 结果 |
+  | --- | --- |
+  | 合并 vs 合并前 main（`3dbde8f`） | 恰为本票 7 文件，+784/−72 |
+  | 合并 vs 分支顶端（`fa3c381`） | 恰为 issue 01 的 6 文件（chat/*、其工单记录、`tests/chat/test_terminal_core.py`） |
+  | 本票 7 文件补丁逐字节（`git diff f04c79c fa3c381` vs `git diff 3dbde8f 32e8276`） | md5 两侧同为 `42aa5012a1d7a4d…` |
+  | 两侧改动文件交集 | 空（issue 01 只动 `chat/`，本票只动 `profiles/`） |
+  | 冲突标记扫描 | 无 |
+
+- **推送**：`3dbde8f..32e8276  main -> main`（走本地代理 `http.proxy=http://127.0.0.1:7890`，直连 fetch/push 均超时）。**main == origin/main `32e8276`**；本票分支从未推送。
+- **合并后定点复跑**（主仓 main，`PYTHONPATH` 清空、仓外 basetemp）：`pytest tests/profiles tests/closeout -q` **7 失败 / 430 通过**（123.17 s）；`pytest tests/chat tests/plugins -q` **140 失败 / 550 通过**（315.94 s），失败名单归一化后与并行票留档 `.tmp/codebase-01/raw/main.names` **双向 0 条差**。（首次隔离跑报 141/549，同一条命令重跑即 140/550 且名单逐名相同 ⇒ 单次运行抖动，非合并引入。）
+- **合并后全量**（主仓 main，不 deselect、不 ignore、仓外 basetemp）：**251 失败 / 3836 通过 / 37 跳过 / 0 error**（1038.21 s = 17:18）。失败名单对账：
+
+  | 对比对象 | 仅合并侧 | 仅对方 |
+  | --- | --- | --- |
+  | 并行票 issue 01 分支全量名单（251，`.tmp/codebase-01/raw/branch-full.names`） | **0 条** | **0 条** |
+  | 本票分支全量名单（252，`.tmp/issue04/raw/branch.names`） | 0 条 | 1 条（`tests/image/…::test_alt_text_edit_links_task_and_existing_asset`，即上一轮的分支侧负载抖动，合并后未复现） |
+
+  「合并后名单 == issue 01 分支名单」说明本票没有引入任何新失败，也没有掩盖对方票的既有失败。跳过数 39 → 37 的差额是树内有生产构建（`apps/web/.next/standalone/server.js`）使两条 `NEEDS_WEB_BUILD` 用例真跑，与失败集合无关。全量日志只含一条摘要行（单写者校验通过）。
+- **静态检查（主仓）**：ruff 本票 6 文件 27 条，全部落在未改动的既有代码（`automatic.py` 14、`four_dimensions.py` 13），与 `3dbde8f` 同名文件副本**逐条签名相同**；新增的 `commit.py`、`transactions.py`、测试文件 0 条；全仓 `ruff check .` 514 条。`mypy` 本票 6 文件 **0 条**。
+- **清理**：工作树 `.worktrees/04-profile-extraction-commit` 与基线的 `.worktrees/04-prefix-baseline` 各自普通 `git worktree remove` 一次成功（两者均无 `node_modules` junction，本轮无受限 ACL 残留）；本地分支 `codex/04-profile-extraction-commit` 已删（was `fa3c381`）；`git worktree prune -v` 无输出，`.git/worktrees/` 目录已不存在（全仓无任何失效记录，含并行会话在内）；`.worktrees/` 只剩一个被忽略的空壳目录。
+- **留档**：主仓 `.tmp/codebase-04/raw/`（合并后全量日志与名单、chat+plugins 重跑日志与名单、全量里的 chat/plugins 子集）与 `.tmp/issue04/raw/`（本票分支侧全量日志与名单）。
