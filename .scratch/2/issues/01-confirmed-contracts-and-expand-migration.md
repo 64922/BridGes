@@ -114,3 +114,11 @@ ADR §6 逐项列出 D01–D09 并指向 02 与 [ADR-0032](../../../docs/adr/003
 - 交付 ADR-0033、CONTEXT.md 术语同步与 V2 基线同步说明；本票只整理合同与接缝，未实现能力，状态改 `ready-for-human` 等待人工验收。
 - 验证见上节；相对链接、引用完整性与 `git diff --check` 通过，`tests/contracts` 3 passed。既有断链 `.scratch/final/PRD.md` 为未触碰的历史引用，未在本票改写。
 
+### 2026-09-30：合并、推送与工作树清理
+
+- 合并：`main` 基于 `d4c16ee`，`git merge --no-ff` 合入 `cc40a53` 得合并提交 `0e9ba90`，**无冲突**；合并树 `61152770` == 分支树 `61152770`，故分支上的全部验证结论对 `main` 适用。
+- 推送：`git push origin main` → `3d0c983..0e9ba90`；`origin/main` 与本地 `main` 一致（0/0）。
+- 清理：`git worktree remove .worktrees/01-confirmed-contracts` 成功（工作树干净、无残留目录）；`git branch -d codex/01-confirmed-contracts-and-expand-migration` 删除（安全删除通过，3 个提交经合并提交可达）；`git worktree prune` 无失效记录。
+- 另发现并清理遗留空目录 `.worktrees/02-generation-stop-and-graph-errors`（不在 `git worktree list` 中、无 `.git`、内容为空），用 `rmdir` 删除（非空会失败，零数据风险）。清理后 `.worktrees/` 仅剩 `03-model-quota`、`05-intent-bound-fact-protection` 两个有效工作树。
+
+
