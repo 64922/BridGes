@@ -32,6 +32,8 @@ flowchart TD
 
 固定节点：`validate_turn → compile_context → select_explicit_module → invoke_subgraph_or_chat → verify_output → persist_result`。`select_explicit_module` 根据请求中的 `module_id` 映射，不允许 LLM 改写。允许值为 `paper`、`commute`、`resources`、`tieba`、`career`、`github`，或 `null`。六个子图的详细节点、澄清与证据门见[工作流](workflows.md)。普通对话只能建议模块，须用户明确点击才以原文进入模块图。
 
+> 已确认替代（2026-09-30，待实施）：`module_id` 改为理解提示而非固定派发依据，正文表达明确时按正文路由，运行另记实际路由来源与能力列表；模块内串行步骤改为显式持久节点与完成收据，模块返回产物、由共享内核统一收敛终态（D01、D06、D15、D17）。见 [ADR-0033](../adr/0033-confirmed-workflow-contract-replacements-and-incremental-migration.md)；负责票 10、12、37。
+
 ### 2.2 学习阶段图
 
 阶段持久状态为 `awaiting_pages`、`recognizing`、`preview`、`tutoring`、`review`、`summary`。阶段转移由已验证事件触发：首轮合格照片、识别成功、预习问题已发、用户明示学完、逐题回答、全部题完成。`review → tutoring → review` 是合法暂停路径，`summary → tutoring` 支持同节追问。学习图不接收日常模块 ID。题库记录 `coverage_units`、`asked`、`answer`、`judgement`、`canonical_answer`，追加同节书页后只重排 `asked=false` 的题。
