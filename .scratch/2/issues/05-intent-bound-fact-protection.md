@@ -77,4 +77,23 @@
 - 流式正文整段伪增量属 06，本票未改；`复核结果.json` 的流式案例仍是模拟。
 - 语义参考判断是确定性启发，只作诊断信号，真实模型体验与外部可得性按评测票（39/42）验证。
 
+### 2026-10-01 — 两轴复审加固（agent，提交 `b2acb47`）
+
+`/code-review --base main` 后按两轴意见加固 `fact_protection.py`（仅该文件，85 增 32 删）：
+
+- **类型**：新增 `InconsistencyKind(StrEnum)`，`ProtectionInconsistency.kind` 由裸 `str` 改为枚举，调用方按类别降级不再依赖魔法字符串（与 `ProtectionIntent`/`FragmentKind` 一致）。
+- **配对**：第 1 段判等改用 `digest`（与位置/锚点判定口径一致）；第 3 段仅在源/候选两侧数量相等时 `zip(strict=True)` 顺序配对，数量不等即位置不可靠、保持未配对并拒绝猜测替换（原先 `strict=False` 会把盈余源片段静默配到越界候选）。
+- **引用资格**：清单外链接仅在恰有一个未消费合法来源可唯一确定时才精确绑定，否则记 `ineligible_citation`，不按清单顺序猜测、也不伪造来源。
+- **保留意图按对象判定**：自动判定为 `CORRECTION` 时仅跳过紧邻改动/计算指令的片段（`_CORRECTION_WINDOW=24`），其余片段仍原样保留（此前命中任一指令即整段跳过）；显式传入 `CORRECTION` 仍整段跳过。
+- **`semantic_check` 默认开启**（只报告、不替换、不设门）。
+
+**复验（conda `agent`，Windows）：**
+
+- `tests/chat/test_issue05_intent_bound_fact_protection.py` **20 passed**；`test_chat_lightweight_policy.py` + `test_global_writing_policy.py` + `test_expression_fact_drift.py` **47 passed / 1 xfailed**。
+- 修复前后 `tests/chat` 失败/错误**名单逐名一致**（327 项，零差异）；与分支点 `d4c16ee` 基线比对：`tests/chat` 仅 `test_expression_fact_drift.py::...[study]` 由 failed 转 xfailed，无新增问题；受影响子集（observability/security/contracts/expression/architecture/storage）33 failed / 210 passed / 2 skipped 与基线**逐名一致**。327 项失败/错误为环境既有（conda 环境缺 SSL CA 文件，`ssl.py load_verify_locations` 抛 `FileNotFoundError`），基线同样复现。
+- `docs/人味化/复核脚本.py` 重跑输出与已提交 `复核结果.json` **无差异**。
+- `ruff`：改动文件无新增问题（`observability.py` 5 处 `UP042` 为既有）；`mypy`：`fact_protection.py`/`global_writing_policy.py` 无报错（20 处既有问题在 `graph.py`/`service.py` 等未改动文件）。
+
+无新增模型调用，净室边界不变；全量 `pytest -q` 因既有慢用例超时未跑完（受限证据见上）。
+
 
