@@ -4,13 +4,15 @@
 
 用户在本次拆票过程中确认：**保持可独立验收的功能各一票；画像先建立规格确认票，后续画像实现依赖它。** [02](issues/02-profile-specification-decisions.md) 因而保持 `needs-info`。其余 42 张标为 `ready-for-agent`，含义是描述完整，仍须全部 `Blocked by` 已实施并验收才能领取。创建票据不代表批准画像未决选项。
 
+**2026-09-30 后续交付：** 上段记录拆票时状态；02 已完成 R01–R08 及用户整体确认，规格验收完成，状态改为 `ready-for-agent`。正式依据为 [profile-contract-v1](../../docs/用户画像/画像规格与验收合同.md)和 [ADR-0032](../../docs/adr/0032-profile-facts-controls-and-history-suppression.md)；仅解除 02 的规格依赖，不代表后续画像业务已实现。
+
 ## 范围与合同协调
 
 四个目录的 **21 个文件**已全部阅读：人味化 6、上下文工程 4、用户画像 4、workflow 7，包括三个只读脚本及人味化复核 JSON。逐文件、逐决策、逐缺陷与 39 个 A/L/R 场景映射见 [覆盖清单](COVERAGE.md)。重复要求只指定一个负责票，各消费者在自己的纵向切片中接线验收。
 
 - **路由合同**：workflow D01/D15 明确批准混合启动、正文优先。[01](issues/01-confirmed-contracts-and-expand-migration.md) 记录对旧显式 module_id 限制的正式替代，[12](issues/12-main-agent-hybrid-entry-and-task-relations.md) 实施；上下文文档涉及的旧派发限制按这项有明确替代说明的工作流定稿协调。读取已有材料仍不自动授权新目标或外部刷新，用户“只查论文／不要联网”始终是硬条件。
 - **调用分工**：人味化在原用户可见生成中适配，固定说明用模板，零人味专属追加调用；历史摘要可按需调用并缓存，普通画像提取回答后异步，专业/独立核验按任务与风险启用。调用目的分别计量，普通陪伴保持轻量一次生成。
-- **画像确认**：D01–D09 已逐项选择，整体规格仍未定稿。[02](issues/02-profile-specification-decisions.md) 先确认异常终态提取、无期限目标/完成/续期、身份/恢复、忘掉对原文回补的关系等；[07](issues/07-profile-controls-and-immediate-commands.md)、[16](issues/16-atomic-fact-identity-and-coexistence.md)–[20](issues/20-profile-evidence-disclosure.md) 与相关消费者通过直接/传递依赖等待它。
+- **画像确认**：D01–D09 保留，02 已补齐 R01–R08 并整体定稿。[07](issues/07-profile-controls-and-immediate-commands.md)、[16](issues/16-atomic-fact-identity-and-coexistence.md)–[20](issues/20-profile-evidence-disclosure.md) 与消费者采用 profile-contract-v1；其他直接/传递前置仍按实际实现验收检查。
 - **共同状态**：[08](issues/08-source-bound-task-state-and-waits.md) 拥有有来源的有效任务状态，[11](issues/11-reference-resolution-and-original-recovery.md) 定位对象，[13](issues/13-bounded-summary-cache.md) 摘要仅作派生线索。画像治理沿用已有跨会话长期信息，上下文本次不扩展跨会话召回。
 - **兼容迁移**：新合同/投影先与旧读取并存，模块分批迁移后 [43](issues/43-integrated-migration-and-release-regression.md) 收口。保持账户隔离、模式固定、单教材小节、附件/知识库分域、编辑权威/墓碑、历史可读导出；退役创作/媒体/提醒/用户插件/项目工作台保持退役。
 
@@ -27,7 +29,7 @@
 | 编号 | 交付 | Blocked by | 初始状态 |
 | --- | --- | --- | --- |
 | [01](issues/01-confirmed-contracts-and-expand-migration.md) | 记录已确认合同替代与增量迁移接缝 | 无 | ready-for-agent |
-| [02](issues/02-profile-specification-decisions.md) | 补齐画像剩余规格与验收决策 | 无 | needs-info |
+| [02](issues/02-profile-specification-decisions.md) | 补齐画像剩余规格与验收决策（规格已验收） | 无 | ready-for-agent |
 | [03](issues/03-model-quota-and-call-snapshots.md) | 锁定完整模型额度与每次调用版本 | 无 | ready-for-agent |
 | [04](issues/04-final-payload-budget-and-data-boundary.md) | 守住最终模型载荷预算与材料权威边界 | [03](issues/03-model-quota-and-call-snapshots.md) | ready-for-agent |
 | [05](issues/05-intent-bound-fact-protection.md) | 按保留意图绑定事实片段，修复盲替换 | 无 | ready-for-agent |
