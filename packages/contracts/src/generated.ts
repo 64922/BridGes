@@ -7538,6 +7538,73 @@ export interface components {
             unit: string;
         };
         /**
+         * CallContractVersions
+         * @description 每次模型调用的最小版本合同（改进工单 03）。
+         *
+         *     一次运行可能包含多次调用（主生成、后台摘要/提取、领域模块），每次调用
+         *     各自记录能力、模型、提示词、Schema、配方、上下文编译与质量策略版本，
+         *     **不能用最后一次调用的模型代表整次工作流**。能力名/版本与模型 ID 分别由
+         *     ``ModelRunLock`` 的顶层字段承载；本对象补足其余版本标识。
+         *
+         *     合同只含版本字符串与计数，绝不含提示词正文、消息内容或凭据。
+         */
+        CallContractVersions: {
+            /**
+             * Prompt Version
+             * @description 提示词/模板版本。
+             * @default unknown
+             */
+            prompt_version: string;
+            /**
+             * Input Schema Version
+             * @description 输入 Schema 版本。
+             * @default unknown
+             */
+            input_schema_version: string;
+            /**
+             * Output Schema Version
+             * @description 输出 Schema 版本。
+             * @default unknown
+             */
+            output_schema_version: string;
+            /**
+             * Recipe Version
+             * @description 配方/图版本（本次调用的编排配方）。
+             * @default unknown
+             */
+            recipe_version: string;
+            /**
+             * Context Compile Version
+             * @description 上下文编译预算版本。
+             * @default unknown
+             */
+            context_compile_version: string;
+            /**
+             * Quality Policy Version
+             * @description 质量策略/表达策略版本。
+             * @default unknown
+             */
+            quality_policy_version: string;
+            /**
+             * Estimate Version
+             * @description token 估算版本。
+             * @default unknown
+             */
+            estimate_version: string;
+            /**
+             * Quota Version
+             * @description 运行额度快照合同版本。
+             * @default unknown
+             */
+            quota_version: string;
+            /**
+             * Contract Version
+             * @description 本对象自身的合同版本。
+             * @default call-contract-v1
+             */
+            contract_version: string;
+        };
+        /**
          * CapabilityRoute
          * @description 一次用户消息的主能力路由快照。
          */
@@ -18546,6 +18613,8 @@ export interface components {
              * @description Identifier of the input/output contract that was honored.
              */
             input_output_contract: string;
+            /** @description 每次调用的最小版本合同（能力/模型/提示词/Schema/配方/上下文编译/质量策略/估算/额度版本）；旧行为 None。 */
+            call_contract?: components["schemas"]["CallContractVersions"] | null;
             /**
              * Fallback Path
              * @description Capability names that were attempted, including the primary.

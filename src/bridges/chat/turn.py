@@ -32,6 +32,7 @@ from pydantic import ValidationError
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.ai.errors import user_facing_model_error
+from bridges.ai.model_quota import MODEL_QUOTA_VERSION, RunModelQuota
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intake import assess_intake
@@ -58,7 +59,7 @@ from bridges.chat.global_writing_policy import (
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
-from bridges.contracts.ai import ModelRunLock
+from bridges.contracts.ai import CallContractVersions, ModelRunLock
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
@@ -126,6 +127,11 @@ from bridges.web_search.service import WebSearchService
 #: 核心对话能力的固定绑定（ADR-0009 固定模型矩阵）。
 CHAT_CAPABILITY_NAME = "qwen_text_chat"
 CHAT_CAPABILITY_VERSION = "1"
+
+#: 主生成调用的输出额度（token）。上下文编译的输入预算与模型载荷的
+#: ``max_tokens`` 共用同一值（改进工单 03）：不同输出额度的调用预留不同空间，
+#: 不再把 1,024 当成全局唯一假设。
+CHAT_OUTPUT_TOKENS = 1024
 
 #: 并行公开搜索超时占位（预算到期未完成的结果；调用方按降级处理）。
 _SEARCH_TIMEOUT = object()
@@ -1801,6 +1807,30 @@ def mcp_call_summary(projection: McpCallMessageProjection) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _chat_call_contract(
+    quality_policy_version: str | None,
+) -> CallContractVersions:
+    """构造普通对话调用的最小版本合同（改进工单 03）。
+
+    能力/模型/提示词/Schema 版本由网关从能力合同补齐；此处补配方（父图版本）、
+    上下文编译、质量策略、token 估算与运行额度快照版本。配方版本从
+    ``chat.graph`` 惰性导入，避免 ``turn`` ↔ ``graph`` 模块级循环。
+    """
+    from bridges.chat.context_compiler import (
+        CONTEXT_BUDGET_VERSION,
+        TOKEN_ESTIMATE_VERSION,
+    )
+    from bridges.chat.graph import DAILY_GRAPH_VERSION
+
+    return CallContractVersions(
+        recipe_version=DAILY_GRAPH_VERSION,
+        context_compile_version=CONTEXT_BUDGET_VERSION,
+        quality_policy_version=quality_policy_version or "none",
+        estimate_version=TOKEN_ESTIMATE_VERSION,
+        quota_version=MODEL_QUOTA_VERSION,
+    )
+
+
 def assemble_payload(
     history: list[dict[str, str]],
     *,
@@ -1814,6 +1844,7 @@ def assemble_payload(
     profile_correction_context: str | None = None,
     profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
+    output_tokens: int | None = None,
 ) -> dict[str, Any]:
     """提示词组装单点：上下文按固定顺序以独立 system 块注入。
 
@@ -1822,6 +1853,9 @@ def assemble_payload(
     本函数）。注入顺序固定：工具集合 → 检索 → 本轮附件说明 → 公网 →
     arXiv → 教学 → 画像切片（与既有语义一致：最具体的上下文在最上方）。
     模型只能引用各块提供的材料，不得声称存在未提供的文件、页码或来源。
+
+    ``output_tokens`` 是本次调用自身的输出额度（改进工单 03）；缺省用
+    :data:`CHAT_OUTPUT_TOKENS`。运行锁与编译记录据此记录调用自身输出额度。
     """
     messages = list(history)
     allowed_web_result_ids = teaching_web_result_ids(teaching_projection)
@@ -1863,7 +1897,9 @@ def assemble_payload(
     payload: dict[str, Any] = {
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 1024,
+        "max_tokens": (
+            output_tokens if output_tokens is not None else CHAT_OUTPUT_TOKENS
+        ),
     }
     if writing_policy is not None:
         payload["global_writing_policy"] = writing_policy.metadata()
@@ -2022,6 +2058,7 @@ class TurnOrchestrator:
         gateway: ModelGateway,
         compiled_messages: list[dict[str, str]] | None = None,
         model_override: str | None = None,
+        model_quota: RunModelQuota | None = None,
         context_budget: dict[str, Any] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
@@ -3317,7 +3354,11 @@ class TurnOrchestrator:
                 profile_correction_context=correction_context,
                 profile_memory_context=memory_context,
                 writing_policy=writing_policy,
+                output_tokens=CHAT_OUTPUT_TOKENS,
             )
+            # 改进工单 03：每次调用记录自己的最小版本合同（能力/模型/提示词/
+            # Schema/配方/上下文编译/质量策略/估算/额度版本）。
+            call_contract = _chat_call_contract(writing_policy.version)
             protected_web_results = (
                 web_search_projection.results
                 if web_search_projection is not None
@@ -3415,6 +3456,8 @@ class TurnOrchestrator:
                 run_context,
                 payload,
                 model_override=model_override,
+                call_contract=call_contract,
+                model_quota=model_quota,
             ):
                 if stop_event.is_set():
                     finalize_message(

@@ -413,7 +413,17 @@ def _node_compile_context(
     del state
     deps: _GraphDeps = config["configurable"]["deps"]
     deps.service.ensure_turn_context(deps.run)
-    compiled_messages, context_budget = deps.service.compile_turn_context(deps.run)
+    # 惰性导入：``bridges.chat.service`` 在模块级导入本模块，顶层导入会成环。
+    from bridges.chat.service import ChatDomainError  # noqa: PLC0415
+
+    try:
+        compiled_messages, context_budget = deps.service.compile_turn_context(deps.run)
+    except ChatDomainError as error:
+        # 改进工单 03：运行额度快照不可验证时闭锁本轮——转成带节点位置的
+        # 可重试失败，界面得到明确原因而不是笼统的内部错误。
+        raise DailyTurnError(
+            NODE_COMPILE_CONTEXT, error.code, error.message, retryable=True
+        ) from error
     return {
         "compiled_messages": compiled_messages,
         "context_budget": context_budget,
@@ -472,6 +482,9 @@ def _node_invoke_subgraph_or_chat(
         model_id=state.get("run_model_id"),
         # V2 Issue 08：画像块与编译器共用同一份剩余输入预算。
         context_budget=state.get("context_budget"),
+        # 改进工单 03：运行额度快照与编译器同源（从运行配置读取），
+        # 网关据此记录实际模型与输入额度，旧运行不随新配置漂移。
+        model_quota=(run.config or {}).get("model_quota"),
     )
     for event in stream:
         deps.emit(event)

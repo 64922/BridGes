@@ -20,6 +20,25 @@ MODEL_RUN_LOCK_LINK_FAILED = "model_run_lock_link_failed"
 MODEL_RUN_LOCK_RECOVERY_REQUIRED = "model_run_lock_recovery_required"
 MODEL_RUN_LOCK_SCOPE_VIOLATION = "model_run_lock_scope_violation"
 
+#: 每次调用版本合同的合同版本（字段或语义变化时递增）。
+CALL_CONTRACT_VERSION = "call-contract-v1"
+
+#: 每次调用版本合同中**绝不出现**的敏感字段（脱敏审计与导出据此声明）。
+CALL_CONTRACT_FORBIDDEN_FIELDS: tuple[str, ...] = (
+    "api_key",
+    "authorization",
+    "secret",
+    "token",
+    "prompt",
+    "messages",
+    "content",
+    "response",
+    "image",
+    "video",
+    "audio",
+    "credential",
+)
+
 
 class CapabilityKind(str, Enum):
     """Whether a capability is backed by a model or by a deterministic tool."""
@@ -152,6 +171,45 @@ class ModelCapabilities(BaseModel):
     )
 
 
+class CallContractVersions(BaseModel):
+    """每次模型调用的最小版本合同（改进工单 03）。
+
+    一次运行可能包含多次调用（主生成、后台摘要/提取、领域模块），每次调用
+    各自记录能力、模型、提示词、Schema、配方、上下文编译与质量策略版本，
+    **不能用最后一次调用的模型代表整次工作流**。能力名/版本与模型 ID 分别由
+    ``ModelRunLock`` 的顶层字段承载；本对象补足其余版本标识。
+
+    合同只含版本字符串与计数，绝不含提示词正文、消息内容或凭据。
+    """
+
+    prompt_version: str = Field(default="unknown", description="提示词/模板版本。")
+    input_schema_version: str = Field(default="unknown", description="输入 Schema 版本。")
+    output_schema_version: str = Field(default="unknown", description="输出 Schema 版本。")
+    recipe_version: str = Field(
+        default="unknown", description="配方/图版本（本次调用的编排配方）。"
+    )
+    context_compile_version: str = Field(
+        default="unknown", description="上下文编译预算版本。"
+    )
+    quality_policy_version: str = Field(
+        default="unknown", description="质量策略/表达策略版本。"
+    )
+    estimate_version: str = Field(default="unknown", description="token 估算版本。")
+    quota_version: str = Field(default="unknown", description="运行额度快照合同版本。")
+    contract_version: str = Field(
+        default=CALL_CONTRACT_VERSION, description="本对象自身的合同版本。"
+    )
+
+    def redaction_audit(self) -> dict[str, Any]:
+        """脱敏审计声明：本合同保证不携带的敏感字段。"""
+        return {
+            "contract_version": self.contract_version,
+            "excluded_fields": list(CALL_CONTRACT_FORBIDDEN_FIELDS),
+            "contains_credentials": False,
+            "contains_prompt_body": False,
+        }
+
+
 class ModelRunLock(BaseModel):
     """Immutable snapshot of one model invocation.
 
@@ -174,6 +232,13 @@ class ModelRunLock(BaseModel):
     prompt_version: str = Field(description="Prompt/template version used.")
     input_output_contract: str = Field(
         description="Identifier of the input/output contract that was honored.",
+    )
+    call_contract: CallContractVersions | None = Field(
+        default=None,
+        description=(
+            "每次调用的最小版本合同（能力/模型/提示词/Schema/配方/上下文编译/"
+            "质量策略/估算/额度版本）；旧行为 None。"
+        ),
     )
     fallback_path: list[str] = Field(
         default_factory=list,
