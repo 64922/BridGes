@@ -106,6 +106,9 @@ class AuditAction(str, Enum):
     TEACHING_EVIDENCE_ADJUDICATION = "teaching_evidence_adjudication"
     # Issue 02：学习模式不变量告警（降级轮出现网络来源引用等）。
     LEARNING_INVARIANT = "learning_invariant"
+    # V2 Issue 05：事实片段无法安全精确绑定（缺失片段/清单外引用）时的降级
+    # 记录。details 只含意图与不一致类别计数，不含正文或片段原文。
+    FACT_PROTECTION = "fact_protection"
     ARXIV_SEARCH = "arxiv_search"
     # V2 Issue 11：论文模块的学术元数据补充（Crossref／OpenAlex）外发记录。
     # details 只含来源、标题指纹与长度、状态码与耗时，不含标题正文。

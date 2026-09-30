@@ -50,6 +50,7 @@ from bridges.chat.budget import (
     RunBudget,
     RunStage,
 )
+from bridges.chat.fact_protection import plan_fragment_protection
 from bridges.chat.global_writing_policy import (
     GlobalWritingPolicyCompiler,
     GlobalWritingPolicySnapshot,
@@ -3529,18 +3530,36 @@ class TurnOrchestrator:
                             content,
                             local_source_count=degraded_local_count,
                         )
-                    protected_content = restore_protected_regions(
+                    protection = plan_fragment_protection(
                         protected_owner_query,
                         content,
                         additional_sources=protected_sources,
                     )
-                    if protected_content != content:
-                        content = protected_content
+                    if protection.content != content:
+                        content = protection.content
                         self._repo.update_message_content(
                             account_id,
                             assistant_message_id,
                             content,
                             datetime.now(UTC),
+                        )
+                    if protection.inconsistencies and self._observability is not None:
+                        # Issue 05：关键不一致无法安全修复时采用现有降级语义，
+                        # 只记录意图与不一致类别，不含正文或片段原文。
+                        self._observability.log_audit(
+                            actor_account_id=account_id,
+                            action=AuditAction.FACT_PROTECTION,
+                            result=AuditResult.DEGRADED,
+                            object_refs=[assistant_message_id],
+                            reason="事实片段无法安全精确绑定，保留候选正文并记录降级。",
+                            details={
+                                "intent": protection.intent.value,
+                                "protocol_version": protection.protocol_version,
+                                "inconsistency_kinds": sorted(
+                                    {item.kind for item in protection.inconsistencies}
+                                ),
+                                "count": len(protection.inconsistencies),
+                            },
                         )
                     # 模型阶段关闭事件（在质量检查前发出，duration 只含
                     # 模型流式本身；脱敏首 token 指标随事件持久化，供本地
