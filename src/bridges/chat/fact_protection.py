@@ -53,6 +53,13 @@ class FragmentKind(StrEnum):
     NUMBER_WITH_UNIT = "number_with_unit"
 
 
+class InconsistencyKind(StrEnum):
+    """无法安全修复的绑定不一致类别（供调用方按类别降级）。"""
+
+    MISSING_FRAGMENT = "missing_fragment"
+    INELIGIBLE_CITATION = "ineligible_citation"
+
+
 #: 受保护片段正则。只负责识别「可绑定对象」，不是全局硬词表或风格评分器；
 #: 带单位数值不跨行匹配，避免把换行后的词误并入数值。
 _FRAGMENT_PATTERNS: tuple[tuple[FragmentKind, re.Pattern[str]], ...] = (
@@ -154,6 +161,8 @@ _CJK_UNIT_RE = re.compile(
 
 _ANCHOR_WINDOW = 16
 _ANCHOR_MAX = 8
+#: 片段与改动/计算指令的距离阈值：在此窗口内视为「允许纠正项」，不是事实锁。
+_CORRECTION_WINDOW = 24
 
 
 @dataclass(frozen=True)
@@ -200,7 +209,7 @@ class ProtectedFragment:
 class ProtectionInconsistency:
     """无法安全修复的绑定不一致（不含正文，只带片段本身与确定性原因）。"""
 
-    kind: str
+    kind: InconsistencyKind
     detail: str
     fragment: str = ""
 
@@ -286,9 +295,10 @@ def _pair_fragments(
     """把同类源片段与候选片段做注入式逐一配对，返回 ``{源下标: 候选下标}``。
 
     三段式，均为确定性：
-    1. 文本与锚点都一致的精确匹配（已逐字保留）；
-    2. 锚点一致而文本漂移（同一对象标签，允许换写后回填）；
-    3. 剩余片段按顺序明确逐一配对；候选盈余的源片段保持未配对（拒绝猜测）。
+    1. 来源哈希与对象锚点都一致的精确匹配（已逐字保留，无需替换）；
+    2. 锚点一致而来源哈希不同（同一对象标签，允许换写后回填）；
+    3. 剩余片段仅在两侧数量相等时按顺序明确逐一配对；数量不等说明候选
+       缺漏或盈余，位置不可靠，保持未配对并拒绝猜测替换。
     """
     pairs: dict[int, int] = {}
     used: set[int] = set()
@@ -297,7 +307,7 @@ def _pair_fragments(
         for candidate_index, candidate in enumerate(candidates):
             if candidate_index in used:
                 continue
-            if candidate.text == source.text and candidate.anchor == source.anchor:
+            if candidate.digest == source.digest and candidate.anchor == source.anchor:
                 pairs[source_index] = candidate_index
                 used.add(candidate_index)
                 break
@@ -317,11 +327,12 @@ def _pair_fragments(
     remaining_candidates = [
         index for index in range(len(candidates)) if index not in used
     ]
-    for source_index, candidate_index in zip(
-        remaining_sources, remaining_candidates, strict=False
-    ):
-        pairs[source_index] = candidate_index
-        used.add(candidate_index)
+    if len(remaining_sources) == len(remaining_candidates):
+        for source_index, candidate_index in zip(
+            remaining_sources, remaining_candidates, strict=True
+        ):
+            pairs[source_index] = candidate_index
+            used.add(candidate_index)
     return pairs
 
 
@@ -348,14 +359,32 @@ def detect_protection_intent(text: str) -> ProtectionIntent:
     return ProtectionIntent.VERBATIM
 
 
+def _transform_spans(text: str) -> list[tuple[int, int]]:
+    """用户正文中「改动/计算」指令的位置，用于按对象判定纠正意图。"""
+    return [
+        (match.start(), match.end()) for match in _TRANSFORM_INTENT_RE.finditer(text)
+    ]
+
+
+def _is_correction_target(
+    fragment: ProtectedFragment, spans: list[tuple[int, int]]
+) -> bool:
+    """片段是否紧邻某条改动/计算指令（是则允许被纠正，不是事实锁）。"""
+    return any(
+        start - _CORRECTION_WINDOW <= fragment.end
+        and fragment.start <= end + _CORRECTION_WINDOW
+        for start, end in spans
+    )
+
+
 def _apply_citation_eligibility(
     candidate: str, additional_sources: tuple[str, ...]
 ) -> tuple[str, tuple[ProtectionInconsistency, ...]]:
     """只按引用资格处理候选链接，不按清单顺序强制换链接。
 
     - 候选链接已在合法来源清单内 → 保留（不再换成另一个来源）。
-    - 候选链接在清单外 → 仅在存在未消费的合法来源时按顺序精确绑定；否则
-      记为不一致，交由调用方降级，不伪造来源。
+    - 候选链接在清单外 → 仅当恰有一个未消费的合法来源可唯一确定时才精确绑定；
+      否则记为不一致，交由调用方降级，不按清单顺序猜测、也不伪造来源。
     """
     eligible = [source for source in additional_sources if source]
     if not eligible:
@@ -372,29 +401,40 @@ def _apply_citation_eligibility(
         if fragment.text in eligible:
             consumed.add(fragment.text)
             continue
-        target = next((source for source in eligible if source not in consumed), None)
-        if target is None:
+        remaining = [source for source in eligible if source not in consumed]
+        if len(remaining) != 1:
             inconsistencies.append(
                 ProtectionInconsistency(
-                    kind="ineligible_citation",
+                    kind=InconsistencyKind.INELIGIBLE_CITATION,
                     detail=(
-                        "候选引用了来源清单外的链接且无未使用的合法来源，"
-                        f"按现有降级语义保留：{fragment.text}"
+                        "候选引用了来源清单外的链接且无法唯一确定合法来源，"
+                        f"按现有降级语义保留、不猜测换链接：{fragment.text}"
                     ),
                     fragment=fragment.text,
                 )
             )
             continue
-        consumed.add(target)
-        replacements.append((fragment.start, fragment.end, target))
+        consumed.add(remaining[0])
+        replacements.append((fragment.start, fragment.end, remaining[0]))
     return _apply_replacements(candidate, replacements), tuple(inconsistencies)
 
 
 def _apply_verbatim(
-    original: str, candidate: str, *, append_missing: bool
+    original: str,
+    candidate: str,
+    *,
+    append_missing: bool,
+    correction_spans: list[tuple[int, int]],
 ) -> tuple[str, tuple[ProtectionInconsistency, ...], tuple[tuple[str, str, str], ...]]:
-    """按保留意图精确绑定原正文片段；缺失片段仅在任务要求时补尾。"""
-    sources = compile_protected_fragments(original)
+    """按保留意图精确绑定原正文片段；缺失片段仅在任务要求时补尾。
+
+    紧邻改动/计算指令的片段是「允许纠正项」，不是事实锁，不参与原样保留。
+    """
+    sources = [
+        fragment
+        for fragment in compile_protected_fragments(original)
+        if not _is_correction_target(fragment, correction_spans)
+    ]
     if not sources:
         return candidate, (), ()
     candidates = compile_protected_fragments(candidate)
@@ -421,7 +461,7 @@ def _apply_verbatim(
                 if not append_missing:
                     inconsistencies.append(
                         ProtectionInconsistency(
-                            kind="missing_fragment",
+                            kind=InconsistencyKind.MISSING_FRAGMENT,
                             detail=(
                                 "原样保留片段在候选正文中缺失，非任务必需时不强行补尾："
                                 f"{source.text}"
@@ -449,15 +489,18 @@ def plan_fragment_protection(
     append_missing: bool = False,
     additional_sources: tuple[str, ...] = (),
     intent: ProtectionIntent | None = None,
-    semantic_check: bool = False,
+    semantic_check: bool = True,
 ) -> ProtectionResult:
     """规划候选正文的保护区恢复。
 
     ``original`` 是用户自有正文（受保护片段的权威来源），``candidate`` 是
-    模型候选正文。默认原样保留；命中改动/计算指令时按 ``CORRECTION`` 跳过
-    原样保留。``additional_sources`` 只限定引用资格。``append_missing`` 由
-    任务合同决定，默认不强行补尾。``semantic_check`` 打开时附带语义参考判断。
+    模型候选正文。``intent`` 为空时自动判定：无改动/计算指令则整段原样保留，
+    有则按对象判定，仅跳过紧邻指令的片段（允许纠正项）；显式传入 ``intent``
+    则整段按该意图处理。``additional_sources`` 只限定引用资格。
+    ``append_missing`` 由任务合同决定，默认不强行补尾。``semantic_check``
+    默认附带语义参考判断（只报告，不做替换、不设门）。
     """
+    auto = intent is None
     resolved_intent = intent or detect_protection_intent(original)
     inconsistencies: list[ProtectionInconsistency] = []
     bindings: list[tuple[str, str, str]] = []
@@ -468,16 +511,26 @@ def plan_fragment_protection(
     )
     inconsistencies.extend(citation_inconsistencies)
 
-    if resolved_intent is ProtectionIntent.VERBATIM and original:
+    do_verbatim = bool(original)
+    correction_spans: list[tuple[int, int]] = []
+    if original and resolved_intent is ProtectionIntent.CORRECTION:
+        if auto:
+            # 自动判定为允许纠正：按对象判定，仅跳过紧邻改动/计算指令的片段。
+            correction_spans = _transform_spans(original)
+        else:
+            # 显式传入 CORRECTION：整段跳过原样保留。
+            do_verbatim = False
+    if do_verbatim:
         content, verbatim_inconsistencies, verbatim_bindings = _apply_verbatim(
-            original, content, append_missing=append_missing
+            original,
+            content,
+            append_missing=append_missing,
+            correction_spans=correction_spans,
         )
         inconsistencies.extend(verbatim_inconsistencies)
         bindings.extend(verbatim_bindings)
 
-    semantic = (
-        assess_semantic_reference(original, content) if semantic_check else None
-    )
+    semantic = assess_semantic_reference(original, content) if semantic_check else None
     return ProtectionResult(
         content=content,
         intent=resolved_intent,
