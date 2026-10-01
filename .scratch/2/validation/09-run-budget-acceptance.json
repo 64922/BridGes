@@ -248,5 +248,18 @@
     "integrated_diagnostics": 7,
     "new_diagnostics": 0
   },
-  "limitations": "确定性适配器与可控时钟验证机制；全量既有失败未在本票修复，真实体验与初值性能由评测票验证。"
+  "limitations": "确定性适配器与可控时钟验证机制；全量既有失败未在本票修复，真实体验与初值性能由评测票验证。",
+  "merged_main_suite": {
+    "passed": 67,
+    "failed": 0,
+    "command": "python -m pytest tests/chat/test_improvement09_run_budget_integration.py tests/chat/test_improvement09_budget_batches.py tests/chat/test_improvement09_run_budget_ledger.py tests/storage/test_schema_v63.py tests/lifecycle/test_run_budget_lifecycle.py tests/storage/test_schema_v62.py -q --tb=short --basetemp=.tmp/issue09-main-final --junitxml=.tmp/issue09-main-final.xml"
+  },
+  "delivery": {
+    "merge_commit": "b3e01b7c7480ec24ad4c8b4bc9ab116d9e0e33f5",
+    "remote": "origin",
+    "branch": "main",
+    "issue_worktree_removed": true,
+    "local_issue_branch_removed": true,
+    "stale_worktree_records_pruned": true
+  }
 }

@@ -82,3 +82,12 @@
 ### 验证证据
 
 最终集成回归逐项对账：主线 1138 通过、验收分支 1197 通过，两侧均 105 失败、1 跳过、1 预期失败；失败名单完全一致，新增失败为 0。最终专项（含全量启动后补充的四项回归）63 项全部通过。ruff 两侧各 3 条既有诊断，mypy 两侧各 7 条既有诊断，均无新增；`git diff --check` 通过。计数、失败名单及静态检查结果保存在 [验收证据](../validation/09-run-budget-acceptance.json)。确定性适配器与可控时钟只证明机制，不证明真实模型体验、外部可得性或初值性能；真实评测由 40/42 等评测票完成。
+
+
+### 合并、同步与清理结果
+
+- 验收修复提交 `8d8297b`，最终测试/证据提交 `73d3345`；主线合并提交 `b3e01b7`。合并过程中解决 migration 62 冲突，将预算迁移顺延为 63；保留 Issue 07 的画像控制迁移。
+- 合并后在 main 使用 conda `agent` 重跑预算、生命周期及 v62/v63 迁移专项，67 项通过。pytest 仅报告主线既有缓存目录写权限警告，不影响测试结果。
+- 已将 main 推送到当前配置的 `origin`（`https://github.com/64922/BridGes.git`）。
+- 已删除 `.worktrees/09-shared-persistent-run-budget` 及其测试缓存残留，并用 `git branch -d` 删除已合并的本地分支。
+- 已执行 `git worktree prune --dry-run --verbose` 和 `git worktree prune --verbose`；最终仅保留根目录 main 工作树，无失效登记。
