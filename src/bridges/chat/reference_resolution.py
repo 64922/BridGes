@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from bridges.chat.turn import history_items
 from bridges.contracts.chat import ChatMessageRole
 from bridges.contracts.references import (
     AnchorKind,
@@ -198,8 +199,6 @@ _KIND_KEYWORDS: dict[str, tuple[str, ...]] = {
 _KIND_LABELS = {"paper": "论文", "github": "仓库"}
 _KIND_UNITS = {"paper": "篇", "github": "个"}
 _CLASSIFIER_KINDS = {"篇": "paper", "本": "paper"}
-#: 判定线索候选词在较早消息中的最大出现占比（超过视为太常见，不作线索）。
-_TERM_MAX_DOC_FREQUENCY = 0.4
 #: 单轮用于检索的线索词上限。
 _MAX_TERMS = 12
 #: 单轮按线索采用的消息条数上限（其余命中进入缺口说明）。
@@ -225,6 +224,8 @@ class _ResultItem:
 @dataclass(frozen=True)
 class _ResultList:
     list_id: str
+    group_id: str
+    goal: str
     kind: str
     message_id: str
     owner_message_id: str | None
@@ -268,15 +269,31 @@ def resolve_references(
     ``recent_message_ids`` 是本轮已在近期原文中的消息，用于区分「已可见」与
     「需要按原文补回」；``task`` 是工单 08 的当前任务快照（全部状态条件）。
     """
-    ordered = [record for record in messages if record.message_id != current_user_message_id]
+    # 与编译器共用轮次截断和已完成回答配对，重试不得读取未来或失败尝试。
+    visible_ids = {
+        item.message_id
+        for item in history_items(messages, until_user_message_id=current_user_message_id)
+        if item.message_id != current_user_message_id
+    }
+    ordered = [record for record in messages if record.message_id in visible_ids]
     recent = set(recent_message_ids)
+    excluded_ids = {
+        record.message_id for record in messages
+        if record.message_id not in visible_ids
+        and record.message_id != current_user_message_id
+    }
+    if task is not None and excluded_ids.intersection(
+        [*task.source_message_ids, *(condition.source_message_id for condition in task.conditions)]
+    ):
+        # 当前任务已被后续轮次更新时，旧轮重试只沿其可见原文解析。
+        task = None
     brief = _task_brief(task)
     lists = _extract_result_lists(ordered)
 
     # 步骤 1：明确产物指代（结果列表上的序数）优先于其他信号。
     ordinal = _extract_ordinal(request)
     if ordinal is not None:
-        return _resolve_ordinal(ordinal, request, lists, brief, task)
+        return _resolve_ordinal(ordinal, request, lists, brief, task, recent)
 
     quoted = [span.strip() for span in _QUOTED_SPAN_RE.findall(request)]
     quoted = [span for span in quoted if span]
@@ -286,9 +303,6 @@ def resolve_references(
     has_task_reference = any(marker in request for marker in _TASK_REFERENCE_MARKERS)
     if not (quoted or has_marker or has_continuation or has_pronoun or has_task_reference):
         return ReferenceResolution(status=ReferenceStatus.NONE, task=brief)
-    if not ordered and not lists:
-        return ReferenceResolution(status=ReferenceStatus.NONE, task=brief)
-
     terms = _reference_terms(request, quoted=quoted)
     builder = _ResolutionBuilder(recent=recent, ordered=ordered, brief=brief)
 
@@ -308,6 +322,7 @@ def resolve_references(
     # 步骤 3+4：近期前文优先，再按会话原文检索；命中的消息按补齐必要
     # 相邻轮次补回（结果消息带其直接来源用户消息）。
     matched_messages = _match_messages(terms, ordered)
+    matched_messages.sort(key=lambda match: match.record.message_id not in recent)
     builder.adopt_message_matches(matched_messages)
 
     # 续接回退：没有任务快照也没有任务/列表锚点时，采用最近一次结果列表
@@ -648,8 +663,37 @@ class _ResolutionBuilder:
                     owner_id,
                     reason="结果消息的直接来源轮次（必要相邻原文）。",
                 )
-        if not in_recent:
-            self._note_recovery_cap()
+        elif self._brief is None:
+            self._adopt_adjacent_corrections(record.message_id)
+
+    def _adopt_adjacent_corrections(self, message_id: str) -> None:
+        """无任务快照时保留直接相邻的明示纠正，不推测跨话题关系。"""
+        users = [record for record in self._ordered if record.role == ChatMessageRole.USER]
+        index = next(i for i, record in enumerate(users) if record.message_id == message_id)
+        if index > 0 and _is_adjacent_correction(users[index - 1].content, users[index].content):
+            index -= 1
+            self.adopt_message(
+                users[index].message_id,
+                label=f"消息 {users[index].message_id}",
+                reason="纠正之前的相邻用户原文。",
+            )
+        while index + 1 < len(users):
+            correction = users[index + 1]
+            if not _is_adjacent_correction(users[index].content, correction.content):
+                break
+            revoked = correction.content.startswith(("取消", "撤销", "不再", "不用"))
+            self._corrections[users[index].message_id] = (
+                "该值已被后续原文撤销，不作为当前条件。" if revoked
+                else "该值已被后续相邻原文纠正，以较新来源为准，不采用旧值。"
+            )
+            self.adopt_message(
+                correction.message_id,
+                label=f"消息 {correction.message_id}",
+                reason="明示纠正/撤销的必要相邻原文。",
+            )
+            if revoked:
+                self._missing.append("所引用值已在后续原文撤销，不能作为当前条件。")
+            index += 1
 
     # -- 回退路径 -----------------------------------------------------------
 
@@ -747,16 +791,20 @@ class _ResolutionBuilder:
         for label in labels[:MISSING_MAX_LABELS]:
             self._missing.append(f"引用内容「{label}」本轮未在会话历史中找到。")
 
-    def _note_recovery_cap(self) -> None:
-        if len(self._adopted) > RECOVERED_MAX_MESSAGES:
-            self._missing.append("需要补回的原文超过单轮上限，其余未补回。")
-
     # -- 产出 ---------------------------------------------------------------
 
     def build(self) -> ReferenceResolution:
-        recovered = [message_id for message_id in self._adopted if message_id not in self._recent][
-            :RECOVERED_MAX_MESSAGES
+        recovery_candidates = [
+            message_id for message_id in self._adopted if message_id not in self._recent
         ]
+        recovered = recovery_candidates[:RECOVERED_MAX_MESSAGES]
+        if len(recovery_candidates) > RECOVERED_MAX_MESSAGES:
+            self._missing.append("需要补回的原文超过单轮上限，其余未补回。")
+            for message_id in recovery_candidates[RECOVERED_MAX_MESSAGES:]:
+                self.reject_message(
+                    anchor_id=f"message:{message_id}", label=f"消息 {message_id}",
+                    reason="超过单轮原文补回上限，本轮未提供原文。",
+                )
         ordered_adopted = sorted(
             self._adopted,
             key=lambda message_id: self._order_index.get(message_id, 0),
@@ -790,6 +838,7 @@ def _resolve_ordinal(
     lists: Sequence[_ResultList],
     brief: ReferenceTaskBrief | None,
     task: ReferenceTaskContext | None,
+    recent: set[str],
 ) -> ReferenceResolution:
     """结果列表上的「第 N 个/最后一个」：唯一列表直接续接，多列表才澄清。"""
     kind_hint = _kind_hint(request, ordinal.classifier)
@@ -799,6 +848,19 @@ def _resolve_ordinal(
     candidates = [
         result_list for result_list in lists if (kind_hint is None or result_list.kind == kind_hint)
     ]
+    # 先取每个目标的最新列表，再判断项数；新版删掉的项不能从旧版复活。
+    latest_by_group = {result_list.group_id: result_list for result_list in candidates}
+    candidates = list(latest_by_group.values())
+    terms = _reference_terms(request, quoted=[])
+    scores = [
+        sum(len(term) for term in terms if term in result_list.goal.lower())
+        for result_list in candidates
+    ]
+    if scores and max(scores) > 0:
+        candidates = [
+            result_list for result_list, score in zip(candidates, scores, strict=True)
+            if score == max(scores)
+        ]
     eligible = [
         result_list
         for result_list in candidates
@@ -814,20 +876,19 @@ def _resolve_ordinal(
             task=brief,
             missing_requirements=[f"{label}本轮未定位。"],
         )
-    kinds = {result_list.kind for result_list in eligible}
-    if kind_hint is None and len(kinds) > 1:
-        # 实质歧义：两张及以上不同类列表都能满足同一个「第 N 个」，
-        # 会改变结果，只问一个必要问题（绑定当前任务版本供工单 12 落等待）。
+    if len(candidates) > 1:
+        # 独立目标的同类或不同类列表会改变结果；只问一个必要问题，
+        # 不用项数筛选掩盖版本关系不明的情况。
         options: list[str] = []
         rejected: list[ReferenceAnchor] = []
+        kinds = {result_list.kind for result_list in candidates}
         ordered_kinds = [kind for kind in _KIND_LABELS if kind in kinds]
         ordered_kinds += [kind for kind in sorted(kinds) if kind not in ordered_kinds]
-        for kind in ordered_kinds:
-            latest = max(
-                (lst for lst in eligible if lst.kind == kind),
-                key=lambda lst: lst.version,
-            )
-            options.append(_ordinal_phrase(ordinal, kind))
+        for latest in sorted(candidates, key=lambda lst: ordered_kinds.index(lst.kind)):
+            option = _ordinal_phrase(ordinal, latest.kind)
+            if sum(lst.kind == latest.kind for lst in candidates) > 1:
+                option += f"（{_shorten(latest.goal)}，来源消息 {latest.owner_message_id}）"
+            options.append(option)
             rejected.append(
                 ReferenceAnchor(
                     anchor_id=f"result_list:{latest.list_id}",
@@ -893,13 +954,15 @@ def _resolve_ordinal(
         task=brief,
         anchors=anchors,
         adopted_message_ids=owner_ids,
+        recovered_message_ids=[message_id for message_id in owner_ids if message_id not in recent],
         adopted_object_ids=[item.object_id],
     )
 
 
 def _extract_ordinal(request: str) -> _Ordinal | None:
-    if _LAST_ORDINAL_RE.search(request):
-        return _Ordinal(number=0, classifier="个", is_last=True)
+    last_match = _LAST_ORDINAL_RE.search(request)
+    if last_match:
+        return _Ordinal(number=0, classifier=last_match.group(1), is_last=True)
     match = _ORDINAL_RE.search(request)
     if match is None:
         return None
@@ -932,16 +995,29 @@ def _parse_number(token: str) -> int | None:
 
 
 def _kind_hint(request: str, classifier: str) -> str | None:
+    # 先定位序数紧邻的对象，不能让“第二个仓库对应哪篇论文”被后半句改成论文。
+    ordinal_match = _ORDINAL_RE.search(request) or _LAST_ORDINAL_RE.search(request)
+    if ordinal_match is not None:
+        tail = request[ordinal_match.end():].lstrip(" 的")
+        for kind, keywords in _KIND_KEYWORDS.items():
+            if any(tail.startswith(keyword) for keyword in keywords):
+                return kind
+    classifier_kind = _CLASSIFIER_KINDS.get(classifier)
+    if classifier_kind is not None:
+        return classifier_kind
+    hints = []
     for kind, keywords in _KIND_KEYWORDS.items():
         if any(keyword in request for keyword in keywords):
-            return kind
-    return _CLASSIFIER_KINDS.get(classifier)
+            hints.append(kind)
+    return hints[0] if len(hints) == 1 else None
 
 
 def _extract_result_lists(messages: Sequence[MessageRecord]) -> list[_ResultList]:
     """从助手消息的结构化投影提取结果列表（论文/仓库），按版本编号。"""
     lists: list[_ResultList] = []
     counters: dict[str, int] = {}
+    last_group: dict[str, str] = {}
+    goals: dict[str, str] = {}
     for index, record in enumerate(messages):
         if record.role != ChatMessageRole.ASSISTANT:
             continue
@@ -949,14 +1025,29 @@ def _extract_result_lists(messages: Sequence[MessageRecord]) -> list[_ResultList
         if extracted is None:
             continue
         kind, items = extracted
-        counters[kind] = counters.get(kind, 0) + 1
+        owner_id = _previous_user_message_id(messages, index)
+        owner = next((message for message in messages if message.message_id == owner_id), None)
+        # 仅明确续接/更新才算同一目标的新版；独立主题列表保留歧义。
+        continues = owner is not None and owner.content.startswith(
+            (
+                "再找", "再多找", "继续", "换一批", "更新", "重新找", "再来",
+                "只留", "只保留", "缩减为",
+            )
+        )
+        group_id = last_group.get(kind) if continues else None
+        group_id = group_id or f"{kind}:{owner_id or record.message_id}"
+        last_group[kind] = group_id
+        counters[group_id] = counters.get(group_id, 0) + 1
+        goals.setdefault(group_id, owner.content if owner is not None else "")
         lists.append(
             _ResultList(
                 list_id=f"{kind}:{record.message_id}",
+                group_id=group_id,
+                goal=goals[group_id],
                 kind=kind,
                 message_id=record.message_id,
-                owner_message_id=_previous_user_message_id(messages, index),
-                version=counters[kind],
+                owner_message_id=owner_id,
+                version=counters[group_id],
                 items=tuple(items),
             )
         )
@@ -1026,7 +1117,8 @@ def _reference_terms(request: str, *, quoted: Sequence[str]) -> list[str]:
 
 
 def _match_messages(terms: Sequence[str], messages: Sequence[MessageRecord]) -> list[_MessageMatch]:
-    effective = _frequency_filtered(terms, messages)
+    # 同一关键词往往重复出现在原值与纠正轮，不能按出现频率删除它。
+    effective = list(terms)
     if not effective:
         return []
     matches: list[_MessageMatch] = []
@@ -1046,21 +1138,21 @@ def _match_messages(terms: Sequence[str], messages: Sequence[MessageRecord]) -> 
     return matches
 
 
-def _frequency_filtered(terms: Sequence[str], messages: Sequence[MessageRecord]) -> list[str]:
-    """过滤在较多消息中都出现的常见词（太常见则不是有效引用线索）。"""
-    if len(messages) < 3:
-        return list(terms)
-    max_docs = max(1, int(len(messages) * _TERM_MAX_DOC_FREQUENCY))
-    return [
-        term
-        for term in terms
-        if sum(1 for record in messages if term in record.content.lower()) <= max_docs
-    ]
-
-
 def _condition_matches(condition: TaskCondition, terms: Sequence[str]) -> bool:
     haystack = f"{condition.kind} {condition.text}".lower()
     return any(term.lower() in haystack for term in terms)
+
+
+def _is_adjacent_correction(previous: str, current: str) -> bool:
+    """无主语的直接改值可续接；有对象的纠正/撤销须匹配原文对象。"""
+    if current.startswith(("改成", "改为", "改到", "更正为")):
+        return True
+    markers = ("改成", "改为", "改到", "更正", "纠正", "取消", "撤销", "不再", "不用")
+    if not any(marker in current for marker in markers):
+        return False
+    if current.strip("。！! ") in {"取消", "撤销", "不用了"}:
+        return True
+    return any(term in previous.lower() for term in _reference_terms(current, quoted=[]))
 
 
 # ---------------------------------------------------------------------------

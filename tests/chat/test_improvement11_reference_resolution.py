@@ -241,7 +241,7 @@ def test_continue_with_object_recovers_result_message_and_adjacent_source() -> N
         _user("m0", "帮我看看笔记本。" * 20 + "最终预算不得超过三千元。"),
         _assistant("m1", "好的，为你推荐以下设备：设备甲、设备乙。"),
         *[
-            _user(f"u{i}", "闲聊。" * 50) if i % 2 else _assistant(f"a{i}", "嗯。" * 50)
+            _assistant(f"a{i}", "嗯。" * 50) if i % 2 else _user(f"u{i}", "闲聊。" * 50)
             for i in range(2, 8)
         ],
         _user("m8", "继续推荐设备"),
