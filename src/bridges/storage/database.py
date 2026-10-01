@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 59
+SCHEMA_VERSION = 60
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2647,6 +2647,16 @@ MIGRATIONS: dict[int, list[str]] = {
             recorded_at TEXT NOT NULL,
             PRIMARY KEY (run_id, account_id, source_record_id)
         )
+        """,
+    ],
+    # 改进工单 03：每次模型调用锁补「最小版本合同」列（call_contract_json）。
+    # 记录能力/模型/提示词/Schema/配方/上下文编译/质量策略/估算/额度版本，
+    # 使一次运行的多次调用各自可定位实际能力与全部必要版本，而不是用最后
+    # 一次调用代表整次工作流。列可空，旧行安全读取为 None（legacy 语义）。
+    60: [
+        """
+        ALTER TABLE model_run_locks
+        ADD COLUMN call_contract_json TEXT
         """,
     ],
 }

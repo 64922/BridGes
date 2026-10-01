@@ -26,7 +26,12 @@ from typing import TYPE_CHECKING
 from unicodedata import category
 
 from bridges.ai.fixed_models import MODEL_CONTEXT_WINDOWS
-from bridges.chat.turn import history_items, mode_system_contract
+from bridges.ai.model_quota import RunModelQuota
+from bridges.chat.turn import (
+    CHAT_OUTPUT_TOKENS,
+    history_items,
+    mode_system_contract,
+)
 from bridges.contracts.chat import ChatMessageRole, ChatMode
 
 if TYPE_CHECKING:
@@ -41,17 +46,23 @@ SUMMARY_VERSION = "summary-v1"
 #: token 估算版本（估算规则变化时递增）。
 TOKEN_ESTIMATE_VERSION = "token-estimate-v1"
 
-#: 输出预留：模型载荷 ``max_tokens``（1024）+ 安全余量。
-OUTPUT_RESERVE_TOKENS = 1024
+#: 输出预留缺省值：与主对话调用的输出额度 :data:`CHAT_OUTPUT_TOKENS` 同源
+#: （改进工单 03）——单一事实源，避免两处 ``1024`` 漂移。调用方可传
+#: ``output_tokens`` 覆盖为自身额度；缺省即聊天调用额度。
+OUTPUT_RESERVE_TOKENS = CHAT_OUTPUT_TOKENS
 OUTPUT_RESERVE_MARGIN_TOKENS = 256
 #: 工具调用预留：本轮工具调用与工具结果回传的输入成本预留（模块票接入
 #: 真实工具后在各自合同内细化，本值为日常普通聊天的保守下限）。
 TOOL_RESERVE_TOKENS = 512
 #: 每张当前回合图片的输入成本估算（文本预算口径下的保守常量）。
 IMAGE_COST_TOKENS = 1024
-#: 未知模型的保守缺省窗口（已验证模型以 ``fixed_models.MODEL_CONTEXT_WINDOWS``
-#: 为准——受控模型资产单一事实源）。
+#: 未知模型的保守缺省窗口。它**不是**已验证额度：仅在纯函数直接调用且调用方
+#: 未提供额度快照时作为裁剪上界，编译记录以 ``window_verified=False`` 如实
+#: 标注；生产路径由运行额度快照（``resolve_run_quota``）提供已验证窗口。
 DEFAULT_CONTEXT_WINDOW = 32768
+#: 已验证上下文窗口登记表：出厂批准模型（``fixed_models`` 单一事实源）。
+#: 不在表内的模型没有已验证窗口，不得用缺省值冒充。
+VERIFIED_CONTEXT_WINDOWS: dict[str, int] = MODEL_CONTEXT_WINDOWS
 #: 近期原文最多可占可用材料预算的既定份额（其余留给摘要与补回原文）。
 RECENT_VERBATIM_SHARE = 0.6
 #: 初次摘要单条最大字符数。
@@ -83,10 +94,19 @@ _MARKER_CANDIDATE_MAX_DOC_FREQUENCY = 0.4
 
 
 def verified_context_window(model_id: str | None) -> int:
-    """返回锁定模型的已验证上下文窗口（未知模型用保守缺省值）。"""
+    """返回锁定模型的已验证上下文窗口（未知模型用保守缺省值）。
+
+    注意：缺省值只是裁剪上界，**不是**已验证额度；需要区分时用
+    :func:`is_verified_context_window`。生产路径应优先使用运行额度快照。
+    """
     if model_id is None:
         return DEFAULT_CONTEXT_WINDOW
-    return MODEL_CONTEXT_WINDOWS.get(model_id, DEFAULT_CONTEXT_WINDOW)
+    return VERIFIED_CONTEXT_WINDOWS.get(model_id, DEFAULT_CONTEXT_WINDOW)
+
+
+def is_verified_context_window(model_id: str | None) -> bool:
+    """该模型是否登记有已验证上下文窗口（未知模型为 False）。"""
+    return model_id is not None and model_id in VERIFIED_CONTEXT_WINDOWS
 
 
 def estimate_tokens(text: str) -> int:
@@ -149,6 +169,17 @@ class CompiledTurnContext:
     budget_version: str
     summary_version: str
     token_estimate_version: str
+    #: 本次调用实际使用的输出额度（token，改进工单 03）：不同输出额度的调用
+    #: 预留不同空间，不再统一假定 1,024。
+    output_quota_tokens: int
+    #: 运行额度快照合同版本（无快照时 None）。
+    quota_version: str | None
+    #: 运行额度快照验证依据（无快照时 None）。
+    quota_verification_basis: str | None
+    #: 是否持有已验证的运行额度快照。
+    quota_verified: bool
+    #: ``context_window`` 是否来自已验证来源（额度快照或登记表）而非缺省值。
+    window_verified: bool
     #: 本轮实际采用原文的消息 ID（近期原文 + 补回原文 + 当前请求，按
     #: 会话时间序）。
     adopted_message_ids: list[str]
@@ -176,6 +207,11 @@ class CompiledTurnContext:
             "budget_version": self.budget_version,
             "summary_version": self.summary_version,
             "token_estimate_version": self.token_estimate_version,
+            "output_quota_tokens": self.output_quota_tokens,
+            "quota_version": self.quota_version,
+            "quota_verification_basis": self.quota_verification_basis,
+            "quota_verified": self.quota_verified,
+            "window_verified": self.window_verified,
             "reserves": {
                 "output_tokens": self.reserves.output_tokens,
                 "tool_tokens": self.reserves.tool_tokens,
@@ -333,17 +369,42 @@ def compile_turn_context(
     context_window: int | None = None,
     system_prompt: str | None = None,
     evidence: Sequence[ContextEvidence] = (),
+    output_tokens: int | None = None,
+    quota: RunModelQuota | None = None,
 ) -> CompiledTurnContext:
     """编译一轮普通对话的模型输入上下文（纯函数；详见模块说明）。
 
-    ``context_window`` 显式传入时优先（模型切换后的下一轮按新窗口重算；
-    测试可注入小窗口验证裁剪），否则按 :func:`verified_context_window` 取
-    锁定模型的已验证窗口。
+    窗口解析优先级（改进工单 03）：
+
+    1. ``quota`` 持有已验证额度时以其 ``input_upper_bound()`` 为上界，并标注
+       ``quota_verified``/``window_verified`` 与快照版本、验证依据；
+    2. 否则显式 ``context_window``（模型切换后的下一轮按新窗口重算；测试可
+       注入小窗口验证裁剪）；
+    3. 否则按 :func:`verified_context_window` 取锁定模型的已验证窗口，未知
+       模型回退缺省值并以 ``window_verified=False`` 如实标注（缺省值不冒充
+       已验证额度）。
+
+    ``output_tokens`` 是本次调用自身的输出额度（改进工单 03）；缺省用
+    :data:`OUTPUT_RESERVE_TOKENS`。不同输出额度的调用因此预留不同空间。
     """
-    window = (
-        context_window
-        if context_window is not None
-        else verified_context_window(model_id)
+    if quota is not None and quota.is_verified:
+        # ``is_verified`` 已保证 context_window > 0，但 max_input_tokens 仍可能
+        # 被误配为 0；显式按 None 判定，绝不用 ``or`` 把 0 额度换成缺省窗口。
+        bound = quota.input_upper_bound()
+        window = bound if bound is not None else DEFAULT_CONTEXT_WINDOW
+        window_verified = True
+        quota_verified = True
+    elif context_window is not None:
+        window = context_window
+        window_verified = True
+        # 走到这里说明上面的额度分支未命中（无快照或快照未验证），故为 False。
+        quota_verified = False
+    else:
+        window = verified_context_window(model_id)
+        window_verified = is_verified_context_window(model_id)
+        quota_verified = False
+    output_quota = (
+        output_tokens if output_tokens is not None else OUTPUT_RESERVE_TOKENS
     )
     items = _pair_history_items(messages, current_user_message_id)
     current = items[-1]
@@ -361,7 +422,7 @@ def compile_turn_context(
         else 0
     )
 
-    output_reserve = OUTPUT_RESERVE_TOKENS + OUTPUT_RESERVE_MARGIN_TOKENS
+    output_reserve = output_quota + OUTPUT_RESERVE_MARGIN_TOKENS
     input_budget = max(0, window - output_reserve - TOOL_RESERVE_TOKENS)
 
     # 近期原文窗口：从最新往回贪心纳入，占用不超过可用材料预算的既定份额；
@@ -458,6 +519,13 @@ def compile_turn_context(
         budget_version=CONTEXT_BUDGET_VERSION,
         summary_version=SUMMARY_VERSION,
         token_estimate_version=TOKEN_ESTIMATE_VERSION,
+        output_quota_tokens=output_quota,
+        quota_version=(quota.quota_version if quota is not None else None),
+        quota_verification_basis=(
+            quota.verification_basis.value if quota is not None else None
+        ),
+        quota_verified=quota_verified,
+        window_verified=window_verified,
         adopted_message_ids=adopted,
         summary_source_range=summary_range,
         recovered_message_ids=[item.message_id for item in recovered],

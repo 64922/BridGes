@@ -114,7 +114,7 @@ def test_in_flight_run_keeps_its_model_and_next_run_takes_the_new_one(
 def test_runs_without_a_provider_keep_the_factory_matrix_binding(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """未装配运行配置提供者时运行配置不写入模型锁定（沿用出厂矩阵）。"""
+    """未装配提供者时也冻结出厂额度，调用仍沿用出厂矩阵绑定。"""
     account = _register(client, tag="2")
     adapter = _RecordingChatAdapter()
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
@@ -125,7 +125,8 @@ def test_runs_without_a_provider_keep_the_factory_matrix_binding(
     run = sqlite_app.state.chat_service.generation_run(account["id"], created["run_id"])
 
     assert run is not None and run.config is not None
-    assert "run_model_id" not in run.config
+    assert run.config["run_model_id"] == CHAT_MODEL_ID
+    assert run.config["model_quota"]["verification_basis"] == "factory_matrix"
     generation_helpers["drive"](sqlite_app)
 
     assert adapter.models == [CHAT_MODEL_ID]

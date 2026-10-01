@@ -28592,6 +28592,67 @@
         "title": "BoundingBox",
         "description": "Normalized or pixel bounding box within an image."
       },
+      "CallContractVersions": {
+        "properties": {
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version",
+            "description": "提示词/模板版本。",
+            "default": "unknown"
+          },
+          "input_schema_version": {
+            "type": "string",
+            "title": "Input Schema Version",
+            "description": "输入 Schema 版本。",
+            "default": "unknown"
+          },
+          "output_schema_version": {
+            "type": "string",
+            "title": "Output Schema Version",
+            "description": "输出 Schema 版本。",
+            "default": "unknown"
+          },
+          "recipe_version": {
+            "type": "string",
+            "title": "Recipe Version",
+            "description": "配方/图版本（本次调用的编排配方）。",
+            "default": "unknown"
+          },
+          "context_compile_version": {
+            "type": "string",
+            "title": "Context Compile Version",
+            "description": "上下文编译预算版本。",
+            "default": "unknown"
+          },
+          "quality_policy_version": {
+            "type": "string",
+            "title": "Quality Policy Version",
+            "description": "质量策略/表达策略版本。",
+            "default": "unknown"
+          },
+          "estimate_version": {
+            "type": "string",
+            "title": "Estimate Version",
+            "description": "token 估算版本。",
+            "default": "unknown"
+          },
+          "quota_version": {
+            "type": "string",
+            "title": "Quota Version",
+            "description": "运行额度快照合同版本。",
+            "default": "unknown"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "description": "本对象自身的合同版本。",
+            "default": "call-contract-v1"
+          }
+        },
+        "type": "object",
+        "title": "CallContractVersions",
+        "description": "每次模型调用的最小版本合同（改进工单 03）。\n\n一次运行可能包含多次调用（主生成、后台摘要/提取、领域模块），每次调用\n各自记录能力、模型、提示词、Schema、配方、上下文编译与质量策略版本，\n**不能用最后一次调用的模型代表整次工作流**。能力名/版本与模型 ID 分别由\n``ModelRunLock`` 的顶层字段承载；本对象补足其余版本标识。\n\n合同只含版本字符串与计数，绝不含提示词正文、消息内容或凭据。"
+      },
       "CapabilityRoute": {
         "properties": {
           "version": {
@@ -46434,6 +46495,17 @@
             "type": "string",
             "title": "Input Output Contract",
             "description": "Identifier of the input/output contract that was honored."
+          },
+          "call_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallContractVersions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "每次调用的最小版本合同（能力/模型/提示词/Schema/配方/上下文编译/质量策略/估算/额度版本）；旧行为 None。"
           },
           "fallback_path": {
             "items": {

@@ -30,6 +30,7 @@ from bridges.ai.adapters import (
     TransientError,
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
+from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.run_model_config import (
     RunModelConfigProvider,
     RunModelConfigSnapshot,
@@ -37,6 +38,7 @@ from bridges.ai.run_model_config import (
     is_configurable_capability,
 )
 from bridges.contracts.ai import (
+    CallContractVersions,
     CapabilityRecord,
     CapabilityStatus,
     FallbackPolicy,
@@ -104,9 +106,12 @@ class ModelGateway:
         return self._adapters.get((capability_name, capability_version))
 
     def _effective_capability(
-        self, capability: CapabilityRecord, model_override: str | None
+        self,
+        capability: CapabilityRecord,
+        model_override: str | None,
+        model_quota: RunModelQuota | None = None,
     ) -> CapabilityRecord:
-        """解析本次调用实际使用的模型绑定（V2 Issue 09）。
+        """解析本次调用实际使用的模型绑定（V2 Issue 09 / 改进工单 03）。
 
         优先级：**运行级锁定**（``model_override``，进行中的轮次沿用启动时
         的模型）高于**运行配置**（用户在设置中验证保存的主模型，每次调用
@@ -115,19 +120,26 @@ class ModelGateway:
         只有可运行配置的能力（主对话/结构化/画像/视觉/OCR）接受覆盖；向量化
         等固定项即使收到锁定值也取注册表绑定。生效模型与运行配置一致时，返回
         的记录同时携带该配置的输入额度，漂移守卫与运行锁都以实际模型为准。
+
+        ``model_quota``（改进工单 03）是本运行的额度快照：编译器与网关因此
+        读同一份快照。快照模型 ID 与本次实际模型一致时，其 ``max_input_tokens``
+        覆盖能力记录上的额度——旧运行排队后换配置也沿用旧快照真实额度。
         """
         if not is_configurable_capability(capability.name):
             return capability
-        model_id = model_override
+        model_id = model_override or (model_quota.model_id if model_quota is not None else None)
         config: RunModelConfigSnapshot | None = None
         if self._model_config_provider is not None:
             config = self._model_config_provider.snapshot()
             if model_id is None:
                 model_id = configured_model_id(capability.name, config)
-        if not model_id or model_id == capability.model_id:
+        if not model_id:
             return capability
         update: dict[str, Any] = {"model_id": model_id}
-        if config is not None and model_id == config.model_id:
+        if model_quota is not None and model_quota.model_id == model_id:
+            # 最大输入未知时仍以已验证窗口为上界，不沿用注册表旧模型额度。
+            update["max_input_tokens"] = model_quota.input_upper_bound()
+        elif config is not None and model_id == config.model_id:
             update["max_input_tokens"] = config.max_input_tokens
         return capability.model_copy(update=update)
 
@@ -139,6 +151,8 @@ class ModelGateway:
         payload: dict[str, Any] | None = None,
         budget: RunBudget | None = None,
         model_override: str | None = None,
+        call_contract: CallContractVersions | None = None,
+        model_quota: RunModelQuota | None = None,
     ) -> ModelCallResult:
         """Invoke a capability and return a result with an immutable run lock.
 
@@ -154,6 +168,9 @@ class ModelGateway:
 
         ``model_override``（V2 Issue 09）：本运行的模型锁定；进行中的轮次
         传入启动时解析的模型 ID，换运行配置不会中途切换本轮模型。
+        ``model_quota``（改进工单 03）：本运行的额度快照，与编译器同源。
+        ``call_contract``：本次调用的最小版本合同（提示词/Schema/配方/上下文
+        编译/质量策略/估算/额度版本），写入运行锁供逐调用审计。
         """
         payload = payload or {}
         try:
@@ -187,13 +204,23 @@ class ModelGateway:
                 degradation_reason=str(exc),
             )
 
-        primary = self._effective_capability(primary, model_override)
+        if (
+            model_quota is not None
+            and is_configurable_capability(primary.name)
+            and (not model_quota.is_verified or model_override not in (None, model_quota.model_id))
+        ):
+            return self._blocked_result(
+                run_context, primary, "model_quota_unverified",
+                "本次调用的模型额度未经验证或与锁定模型不一致。", call_contract=call_contract,
+            )
+        primary = self._effective_capability(primary, model_override, model_quota)
         if primary.status != CapabilityStatus.VERIFIED:
             return self._blocked_result(
                 run_context,
                 primary,
                 "capability_not_verified",
                 f"能力未通过验证：{capability_name}@{capability_version}。",
+                call_contract=call_contract,
             )
 
         adapter = self._adapters.get((capability_name, capability_version))
@@ -203,6 +230,7 @@ class ModelGateway:
                 primary,
                 "no_adapter",
                 f"能力没有绑定适配器：{capability_name}@{capability_version}。",
+                call_contract=call_contract,
             )
 
         attempted: list[str] = []
@@ -213,6 +241,7 @@ class ModelGateway:
             payload,
             attempted,
             budget=budget,
+            call_contract=call_contract,
         )
         if primary_result.status in {ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED}:
             return primary_result
@@ -236,6 +265,7 @@ class ModelGateway:
                         "fallback_prohibited",
                         f"禁止降级条件触发：{condition}，不允许使用备选能力。",
                         attempted=attempted,
+                        call_contract=call_contract,
                     )
 
         fallback = self._resolve_fallback(primary.fallback_policy, attempted)
@@ -250,6 +280,7 @@ class ModelGateway:
                 "fallback_no_adapter",
                 f"备选能力没有绑定适配器：{fallback.name}@{fallback.version}。",
                 attempted=attempted,
+                call_contract=call_contract,
             )
 
         # Issue 06 第七轮：备选调用同样受预算重试门约束——剩余预算放不下
@@ -265,6 +296,7 @@ class ModelGateway:
             payload,
             attempted,
             budget=budget,
+            call_contract=call_contract,
         )
         return fallback_result
 
@@ -275,6 +307,8 @@ class ModelGateway:
         run_context: RunContextEnvelope,
         payload: dict[str, Any] | None = None,
         model_override: str | None = None,
+        call_contract: CallContractVersions | None = None,
+        model_quota: RunModelQuota | None = None,
     ) -> Iterator[StreamEvent]:
         """流式调用一个能力，逐块产出事件并在结束时附带不可变运行锁。
 
@@ -320,13 +354,28 @@ class ModelGateway:
             )
             return
 
-        primary = self._effective_capability(primary, model_override)
+        if (
+            model_quota is not None
+            and is_configurable_capability(primary.name)
+            and (not model_quota.is_verified or model_override not in (None, model_quota.model_id))
+        ):
+            blocked = self._blocked_result(
+                run_context, primary, "model_quota_unverified",
+                "本次调用的模型额度未经验证或与锁定模型不一致。", call_contract=call_contract,
+            )
+            yield StreamEvent(
+                kind="error", lock=blocked.lock, error_code=blocked.error_code,
+                error_message=blocked.error_message,
+            )
+            return
+        primary = self._effective_capability(primary, model_override, model_quota)
         if primary.status != CapabilityStatus.VERIFIED:
             blocked = self._blocked_result(
                 run_context,
                 primary,
                 "capability_not_verified",
                 f"能力未通过验证：{capability_name}@{capability_version}。",
+                call_contract=call_contract,
             )
             assert blocked.lock is not None
             yield StreamEvent(
@@ -344,6 +393,7 @@ class ModelGateway:
                 primary,
                 "no_adapter",
                 f"能力没有绑定适配器：{capability_name}@{capability_version}。",
+                call_contract=call_contract,
             )
             assert blocked.lock is not None
             yield StreamEvent(
@@ -364,6 +414,8 @@ class ModelGateway:
                 run_context,
                 payload,
                 model_override=model_override,
+                call_contract=call_contract,
+                model_quota=model_quota,
             )
             if result.status == ModelCallStatus.SUCCESS and result.lock is not None:
                 content = ""
@@ -403,6 +455,7 @@ class ModelGateway:
                             degradation_reason=chunk.error_message,
                             retry_count=connect_retry_count,
                             payload=payload,
+                            call_contract=call_contract,
                         )
                         yield event
                         return
@@ -419,6 +472,7 @@ class ModelGateway:
                                 [f"{primary.name}@{primary.version}"],
                                 retry_count=connect_retry_count,
                                 payload=payload,
+                                call_contract=call_contract,
                             )
                             yield StreamEvent(
                                 kind="error",
@@ -447,6 +501,7 @@ class ModelGateway:
                     degradation_reason=str(exc),
                     retry_count=connect_retry_count,
                     payload=payload,
+                    call_contract=call_contract,
                 )
                 yield event
                 return
@@ -459,6 +514,7 @@ class ModelGateway:
                     degradation_reason=str(exc),
                     retry_count=connect_retry_count,
                     payload=payload,
+                    call_contract=call_contract,
                 )
                 yield event
                 return
@@ -472,6 +528,7 @@ class ModelGateway:
             actual_model_id=actual_model_id,
             usage=usage,
             payload=payload,
+            call_contract=call_contract,
         )
         yield StreamEvent(kind="done", lock=lock, usage=usage)
 
@@ -485,6 +542,7 @@ class ModelGateway:
         degradation_reason: str | None,
         retry_count: int,
         payload: dict[str, Any] | None,
+        call_contract: CallContractVersions | None = None,
     ) -> tuple[ModelRunLock, StreamEvent]:
         """构造流式失败锁与 error 事件（Issue 03：三条错误路径共用）。
 
@@ -502,6 +560,7 @@ class ModelGateway:
             error_code=error_code,
             error_message=error_message,
             payload=payload,
+            call_contract=call_contract,
         )
         event = StreamEvent(
             kind="error",
@@ -557,6 +616,7 @@ class ModelGateway:
         payload: dict[str, Any],
         attempted: list[str],
         budget: RunBudget | None = None,
+        call_contract: CallContractVersions | None = None,
     ) -> tuple[ModelCallResult, ModelRunLock]:
         attempted.append(f"{capability.name}@{capability.version}")
         retry_policy = capability.retry_policy
@@ -594,6 +654,7 @@ class ModelGateway:
                             error_code=exc.code,
                             error_message=exc.message,
                             payload=call_payload,
+                            call_contract=call_contract,
                         )
                         return (
                             ModelCallResult(
@@ -619,6 +680,7 @@ class ModelGateway:
                     error_code=exc.code,
                     error_message=exc.message,
                     payload=call_payload,
+                    call_contract=call_contract,
                 )
                 return (
                     ModelCallResult(
@@ -641,6 +703,7 @@ class ModelGateway:
                     error_code=exc.code,
                     error_message=exc.message,
                     payload=payload,
+                    call_contract=call_contract,
                 )
                 return (
                     ModelCallResult(
@@ -663,6 +726,7 @@ class ModelGateway:
                     error_code=exc.code,
                     error_message=exc.message,
                     payload=payload,
+                    call_contract=call_contract,
                 )
                 return (
                     ModelCallResult(
@@ -687,6 +751,7 @@ class ModelGateway:
                     attempted,
                     retry_count=attempt - 1,
                     payload=payload,
+                    call_contract=call_contract,
                 )
                 return (
                     ModelCallResult(
@@ -708,6 +773,7 @@ class ModelGateway:
                 actual_model_id=actual_model_id,
                 usage=adapter_result.usage,
                 payload=call_payload,
+                call_contract=call_contract,
             )
             return (
                 ModelCallResult(
@@ -729,6 +795,7 @@ class ModelGateway:
             error_code="unexpected",
             error_message="Unexpected empty invocation path.",
             payload=payload,
+            call_contract=call_contract,
         )
         return (
             ModelCallResult(
@@ -748,6 +815,7 @@ class ModelGateway:
         fallback_path: list[str],
         retry_count: int,
         payload: dict[str, Any] | None = None,
+        call_contract: CallContractVersions | None = None,
     ) -> ModelRunLock:
         """构造 ``actual_model_mismatch`` 失败锁（Issue 09 invoke/stream 共用）。
 
@@ -770,6 +838,7 @@ class ModelGateway:
                 f"{capability.model_id} 不一致，调用失败关闭。"
             ),
             payload=payload,
+            call_contract=call_contract,
         )
 
     def _build_lock(
@@ -785,6 +854,7 @@ class ModelGateway:
         error_code: str | None = None,
         error_message: str | None = None,
         payload: dict[str, Any] | None = None,
+        call_contract: CallContractVersions | None = None,
     ) -> ModelRunLock:
         return ModelRunLock(
             lock_id=secrets.token_urlsafe(16),
@@ -798,6 +868,7 @@ class ModelGateway:
             parameters=self._capture_parameters(payload),
             prompt_version=capability.prompt_version,
             input_output_contract=f"{capability.name}:{capability.input_schema_version}->{capability.output_schema_version}",
+            call_contract=self._resolve_call_contract(capability, call_contract),
             fallback_path=list(fallback_path),
             status=status,
             retry_count=retry_count,
@@ -806,6 +877,26 @@ class ModelGateway:
             error_message=error_message,
             created_at=datetime.now(UTC),
             usage=usage,
+        )
+
+    @staticmethod
+    def _resolve_call_contract(
+        capability: CapabilityRecord,
+        call_contract: CallContractVersions | None,
+    ) -> CallContractVersions:
+        """补全每次调用版本合同的能力/模型/提示词/Schema 版本。
+
+        网关是能力合同（提示词版本、输入/输出 Schema 版本）的唯一真相源，
+        因此无论调用方是否提供合同，锁里的合同都必然带上这三项——调用方
+        只需补配方/上下文编译/质量策略/估算/额度版本。
+        """
+        base = call_contract or CallContractVersions()
+        return base.model_copy(
+            update={
+                "prompt_version": capability.prompt_version,
+                "input_schema_version": capability.input_schema_version,
+                "output_schema_version": capability.output_schema_version,
+            }
         )
 
     @staticmethod
@@ -871,6 +962,7 @@ class ModelGateway:
         error_code: str,
         error_message: str,
         attempted: list[str] | None = None,
+        call_contract: CallContractVersions | None = None,
     ) -> ModelCallResult:
         lock = self._build_lock(
             run_context,
@@ -881,6 +973,7 @@ class ModelGateway:
             degradation_reason=error_message,
             error_code=error_code,
             error_message=error_message,
+            call_contract=call_contract,
         )
         return ModelCallResult(
             status=ModelCallStatus.BLOCKED,

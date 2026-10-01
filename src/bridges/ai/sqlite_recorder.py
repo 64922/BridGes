@@ -22,7 +22,9 @@ from bridges.ai.errors import (
 from bridges.ai.metrics import NOOP_MODEL_RUN_LOCK_METRICS, ModelRunLockMetrics
 from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.contracts.ai import (
+    CALL_CONTRACT_VERSION,
     BusinessRef,
+    CallContractVersions,
     ModelCallStatus,
     ModelRunLock,
     PersistedModelRunLock,
@@ -97,6 +99,32 @@ def _json_loads(value: str | None) -> Any:
     if value is None:
         return None
     return json.loads(value)
+
+
+def _load_call_contract(row: Any) -> CallContractVersions | None:
+    """从行读回每次调用版本合同；列缺失/为空/不可解析时返回 None。
+
+    迁移 60 之前的行没有该列（legacy），读回 None 表示「该调用未记录版本
+    合同」，不伪造版本值。
+    """
+    try:
+        raw = row["call_contract_json"]
+    except (IndexError, KeyError):
+        return None
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(str(raw))
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("contract_version") != CALL_CONTRACT_VERSION:
+        return None
+    try:
+        return CallContractVersions.model_validate(payload)
+    except ValueError:
+        return None
 
 
 class SqliteModelRunLockRecorder(ModelRunLockRecorder):
@@ -228,6 +256,7 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
         self._assert_no_secrets(lock.parameters, path="parameters")
         self._assert_numeric_only(lock.usage, path="usage")
         self._assert_numeric_only(lock.cost_estimate, path="cost_estimate")
+        self._assert_version_strings(lock.call_contract)
         for field_name, text in (
             ("error_message", lock.error_message),
             ("error_code", lock.error_code),
@@ -275,6 +304,26 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
                 f"运行锁 {path} 只能包含数值，禁止持久化文本内容。"
             )
 
+    def _assert_version_strings(self, contract: Any) -> None:
+        """每次调用版本合同只允许短版本字符串，且不含凭据形态。
+
+        与 ``parameters`` 的字段黑名单不同，版本字段名天然含 ``prompt`` /
+        ``schema`` 等词，因此这里不做键名拒绝，而是限定「字符串 + 长度上限 +
+        无凭据形态」，确保合同只承载版本标识而不夹带正文或密钥。
+        """
+        if contract is None:
+            return
+        payload = contract.model_dump()
+        for key, value in payload.items():
+            if not isinstance(value, str):
+                raise ModelRunLockSecurityError(
+                    f"运行锁 call_contract.{key} 必须是版本字符串。"
+                )
+            if len(value) > 128 or _SECRET_VALUE_RE.search(value):
+                raise ModelRunLockSecurityError(
+                    f"运行锁 call_contract.{key} 含疑似凭据或超长正文，禁止持久化。"
+                )
+
     def _canonical_hash(self, lock: ModelRunLock) -> str:
         """Stable hash of the lock's canonical content.
 
@@ -284,6 +333,9 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
         """
         payload = lock.model_dump()
         payload.pop("created_at", None)
+        # v59 的锁没有此字段；空合同保持旧哈希形状，恢复重录仍然幂等。
+        if lock.call_contract is None:
+            payload.pop("call_contract", None)
         canonical = _json_dumps(payload)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -296,8 +348,8 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
             " prompt_version, input_output_contract, fallback_path_json,"
             " status, retry_count, degradation_reason, error_code,"
             " error_message, usage, cost_estimate_json, canonical_hash,"
-            " created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " call_contract_json, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 lock.lock_id,
                 lock.account_id,
@@ -319,6 +371,11 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
                 _json_dumps(lock.usage) if lock.usage is not None else None,
                 _json_dumps(lock.cost_estimate) if lock.cost_estimate is not None else None,
                 canonical_hash,
+                (
+                    _json_dumps(lock.call_contract.model_dump())
+                    if lock.call_contract is not None
+                    else None
+                ),
                 _iso(lock.created_at),
             ),
         )
@@ -428,6 +485,7 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
                 "retry_count",
                 "degradation_reason",
                 "cost_estimate_json",
+                "call_contract_json",
             }
 
         links = self._load_links(lock_id, account_id)
@@ -452,6 +510,7 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
             parameters=_json_loads(str(row["parameters"])) or {},
             prompt_version=prompt_version,
             input_output_contract=contract,
+            call_contract=_load_call_contract(row),
             fallback_path=_json_loads(str(row["fallback_path_json"])) or [],
             status=ModelCallStatus(str(row["status"])),
             retry_count=int(row["retry_count"]),
