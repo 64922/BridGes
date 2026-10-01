@@ -314,7 +314,9 @@ class TaskTurnResult(BaseModel):
     wait_resolution: WaitResolution = WaitResolution.NONE
     resolved_wait: TaskWait | None = None
     wait_rejection_reason: str | None = None
-    events: list[str] = Field(default_factory=list, description="本轮产生的任务事件类型。")
+    events: list[TaskEventKind] = Field(
+        default_factory=list, description="本轮产生的任务事件类型。"
+    )
 
 
 class TaskEvent(BaseModel):

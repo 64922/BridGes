@@ -8,7 +8,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from bridges.storage.database import MIGRATIONS, SCHEMA_VERSION, BridgesDatabase
+from bridges.storage.database import (
+    MIGRATIONS,
+    REQUIRED_TABLES,
+    SCHEMA_VERSION,
+    BridgesDatabase,
+)
 
 TASK_TABLES = (
     "conversation_tasks",
@@ -47,6 +52,11 @@ def test_fresh_database_has_task_domain_objects(tmp_path: Path) -> None:
     # 任务表携带账户列，账户隔离由 scoped() 强制。
     for table in TASK_TABLES:
         assert "account_id" in _columns(path, table), table
+
+
+def test_task_tables_are_required_at_startup() -> None:
+    """任务五表纳入启动完整性清单：迁移半执行时启动失败关闭，而非接口 500。"""
+    assert set(TASK_TABLES) <= REQUIRED_TABLES
 
 
 def test_upgrade_from_v60_preserves_data_and_adds_task_domain(tmp_path: Path) -> None:

@@ -2817,6 +2817,13 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "profile_items",
     "profile_item_migrations",
     "profile_item_migration_records",
+    # 工单 08：任务路由在启动装配后无条件查询这五张表；迁移半执行时须在
+    # 启动阶段失败关闭，而不是让任务接口持续 500。
+    "conversation_tasks",
+    "task_versions",
+    "task_conditions",
+    "task_waits",
+    "task_events",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。

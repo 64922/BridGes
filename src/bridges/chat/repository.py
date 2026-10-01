@@ -380,21 +380,19 @@ class ConversationRepository:
         account_id: str,
         conversation_id: str,
         task_id: str | None,
-        *,
-        in_transaction: bool = False,
     ) -> None:
         """设置会话当前跨轮任务指针。
 
         ``conversations.current_task_id`` 属本仓库（见 ``docs/table-owners.md``）；
-        任务领域经此小接口写入，不直连 ``conversations``。``in_transaction=True``
-        时复用调用方已开启的事务，保证与任务写入原子。
+        任务领域经此小接口写入，不直连 ``conversations``。调用方已开启事务时
+        本写入自动并入同一事务（同一 SQLite 连接），保证与任务写入原子。
         """
         statement = (
             "UPDATE conversations SET current_task_id = ?"
             " WHERE conversation_id = ? AND account_id = ?"
         )
         params = (task_id, conversation_id, account_id)
-        if in_transaction:
+        if self._db.connection.in_transaction:
             self._db.scoped(account_id).execute(statement, params)
             return
         with self._db.transaction():

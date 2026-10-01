@@ -56118,6 +56118,25 @@
         "title": "TaskEvent",
         "description": "任务审计事件（append-only）。"
       },
+      "TaskEventKind": {
+        "type": "string",
+        "enum": [
+          "task_created",
+          "version_created",
+          "task_paused",
+          "task_resumed",
+          "task_activated",
+          "task_completed",
+          "task_blocked",
+          "task_cancelled",
+          "condition_revoked",
+          "wait_resolved",
+          "waits_suspended",
+          "waits_expired"
+        ],
+        "title": "TaskEventKind",
+        "description": "任务审计事件的种类（单一事实源，避免各处各写一份字面量）。"
+      },
       "TaskProjection": {
         "properties": {
           "task": {
@@ -56438,7 +56457,7 @@
           },
           "events": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/TaskEventKind"
             },
             "type": "array",
             "title": "Events",
@@ -56667,7 +56686,7 @@
             "type": "array",
             "minItems": 1,
             "title": "Missing Fields",
-            "description": "等待补齐的缺失字段（答复须补齐其中至少一项）。"
+            "description": "等待补齐的缺失字段（答复须一次补齐全部字段才解决等待）。"
           },
           "origin_message_id": {
             "type": "string",

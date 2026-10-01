@@ -12,7 +12,8 @@
   :class:`TaskVersionConflict`，由调用方决定重试或拒绝，避免并发覆盖。
 
 组合操作（一次「落地一轮」可能同时写任务、条件、版本与审计）由服务层用
-``in_transaction=True`` 串接，保证要么整体提交、要么整体回滚。
+:meth:`TaskRepository.transaction` 串接；已在事务内时自动并入外层，保证
+要么整体提交、要么整体回滚。
 """
 
 from __future__ import annotations
@@ -115,9 +116,14 @@ class TaskRepository:
         return self._db
 
     @contextmanager
-    def _tx(self, in_transaction: bool) -> Iterator[None]:
-        """事务边界：已在组合事务内则复用，否则自开一个。"""
-        if in_transaction:
+    def transaction(self) -> Iterator[None]:
+        """事务边界：已在外层事务内则并入，否则自开一个。
+
+        服务层组合多次仓库写入时用本方法圈定原子范围；仓库方法与
+        ``chat/`` 属主仓库的 ``set_current_task`` 都经同一连接状态判断
+        自动并入，不再由调用方手工传递标志。
+        """
+        if self._db.connection.in_transaction:
             yield
             return
         with self._db.transaction():
@@ -132,13 +138,12 @@ class TaskRepository:
         conversation_id: str,
         goal: str,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> TaskRecord:
         """创建任务并把会话当前指针指向它（同一事务）。"""
         moment = now or datetime.now(UTC)
         task_id = _new_id("task")
         try:
-            with self._tx(in_transaction):
+            with self.transaction():
                 self._db.scoped(account_id).execute(
                     "INSERT INTO conversation_tasks"
                     "(task_id, account_id, conversation_id, goal, status,"
@@ -155,9 +160,7 @@ class TaskRepository:
                         _iso(moment),
                     ),
                 )
-                self._conversations.set_current_task(
-                    account_id, conversation_id, task_id, in_transaction=True
-                )
+                self._conversations.set_current_task(account_id, conversation_id, task_id)
         except StorageError:
             raise
         except Exception as exc:  # noqa: BLE001 - 统一中文错误
@@ -202,16 +205,9 @@ class TaskRepository:
         account_id: str,
         conversation_id: str,
         task_id: str | None,
-        *,
-        in_transaction: bool = False,
     ) -> None:
         """更新会话当前任务指针（经 ``chat/`` 属主仓库，不直写非己表）。"""
-        self._conversations.set_current_task(
-            account_id,
-            conversation_id,
-            task_id,
-            in_transaction=in_transaction,
-        )
+        self._conversations.set_current_task(account_id, conversation_id, task_id)
 
     def rebuild_current_pointer(self, account_id: str, conversation_id: str) -> str | None:
         """从持久任务重建当前指针（恢复/重建入口）。
@@ -241,7 +237,6 @@ class TaskRepository:
         *,
         goal: str | None = None,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> TaskRecord:
         moment = now or datetime.now(UTC)
         assignments = ["status = ?", "updated_at = ?"]
@@ -256,7 +251,7 @@ class TaskRepository:
             assignments.append("cancelled_at = ?")
             params.append(_iso(moment))
         params.extend([account_id, task_id])
-        with self._tx(in_transaction):
+        with self.transaction():
             self._db.scoped(account_id).execute(
                 f"UPDATE conversation_tasks SET {', '.join(assignments)}"
                 " WHERE account_id = ? AND task_id = ?",
@@ -280,7 +275,6 @@ class TaskRepository:
         result_refs: list[str] | None = None,
         expected_version: int | None = None,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> TaskVersion:
         """追加不可变版本并推进当前版本号。
 
@@ -296,7 +290,7 @@ class TaskRepository:
         new_version = task.current_version + 1
         version_id = _new_id("tv")
         try:
-            with self._tx(in_transaction):
+            with self.transaction():
                 self._db.scoped(account_id).execute(
                     "INSERT INTO task_versions"
                     "(version_id, task_id, account_id, version, goal,"
@@ -362,12 +356,12 @@ class TaskRepository:
         version: int,
         conditions: list[TaskConditionInput],
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> list[TaskCondition]:
         """落地一批条件，并按来源与取代关系设置状态。
 
         用户明示修订同 ``kind`` 的旧有效条件时自动取代旧值；显式
-        ``replaces`` 指向的条件也被取代。助手草案与模型推测只作草案/线索。
+        ``replaces`` 指向的条件也只在属于目标任务时才被取代。助手草案与
+        模型推测只作草案/线索。
         """
         moment = now or datetime.now(UTC)
 
@@ -376,6 +370,12 @@ class TaskRepository:
             for item in conditions:
                 status = status_for_origin(item.origin)
                 supersedes = item.replaces
+                if supersedes is not None:
+                    # 显式取代必须落在目标任务内：不得借 replaces 把别的
+                    # 任务的条件置为 superseded（默认只绑定目标任务）。
+                    referenced = self.get_condition(account_id, supersedes)
+                    if referenced.task_id != task_id:
+                        raise TaskNotFound("被取代的条件不属于目标任务。")
                 if supersedes is None and item.origin == ConditionOrigin.USER_STATED:
                     # 同类别的明示修订取代仍有效的旧值（5,000 → 3,000）；
                     # 会话范围按会话 + 范围 + 类别定位，任务范围按任务定位。
@@ -418,7 +418,7 @@ class TaskRepository:
                 created.append(self.get_condition(account_id, condition_id))
             return created
 
-        with self._tx(in_transaction):
+        with self.transaction():
             return _apply()
 
     def get_condition(self, account_id: str, condition_id: str) -> TaskCondition:
@@ -497,11 +497,10 @@ class TaskRepository:
         *,
         by_condition_id: str | None = None,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> None:
         """撤销一条条件（用户明确撤销）；被撤销的值不因话题往返复活。"""
         moment = now or datetime.now(UTC)
-        with self._tx(in_transaction):
+        with self.transaction():
             self._db.scoped(account_id).execute(
                 "UPDATE task_conditions SET status = ?, superseded_by = ?,"
                 " updated_at = ? WHERE account_id = ? AND condition_id = ?",
@@ -592,7 +591,6 @@ class TaskRepository:
         origin_message_id: str,
         source_message_id: str,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> TaskWait:
         """保存一个澄清等待并让任务进入等待状态（同一事务）。
 
@@ -608,7 +606,7 @@ class TaskRepository:
         moment = now or datetime.now(UTC)
         wait_id = _new_id("wait")
         try:
-            with self._tx(in_transaction):
+            with self.transaction():
                 self._db.scoped(account_id).execute(
                     "INSERT INTO task_waits"
                     "(wait_id, task_id, account_id, conversation_id, expected_version,"
@@ -706,12 +704,11 @@ class TaskRepository:
         wait_id: str,
         resolved_by_message_id: str,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> TaskWait:
         """把等待项置为已解决并恢复任务为活跃（释放执行资源）。"""
         moment = now or datetime.now(UTC)
         wait = self.get_wait(account_id, wait_id)
-        with self._tx(in_transaction):
+        with self.transaction():
             self._db.scoped(account_id).execute(
                 "UPDATE task_waits SET status = ?, resolved_by_message_id = ?,"
                 " resolved_at = ?, released_at = ?, updated_at = ?"
@@ -745,14 +742,13 @@ class TaskRepository:
         task_id: str,
         *,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> list[str]:
         """暂停任务时让仍开启的等待项失去当前激活状态（不删除）。"""
         moment = now or datetime.now(UTC)
         open_waits = self.list_waits(account_id, task_id, statuses=(WaitStatus.OPEN,))
         if not open_waits:
             return []
-        with self._tx(in_transaction):
+        with self.transaction():
             for wait in open_waits:
                 self._db.scoped(account_id).execute(
                     "UPDATE task_waits SET status = ?, updated_at = ?"
@@ -768,7 +764,6 @@ class TaskRepository:
         *,
         statuses: tuple[WaitStatus, ...] = (WaitStatus.OPEN, WaitStatus.SUSPENDED),
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> list[str]:
         """让等待项进入终态并释放资源（取消任务时使用）。
 
@@ -778,7 +773,7 @@ class TaskRepository:
         pending = self.list_waits(account_id, task_id, statuses=statuses)
         if not pending:
             return []
-        with self._tx(in_transaction):
+        with self.transaction():
             for wait in pending:
                 self._db.scoped(account_id).execute(
                     "UPDATE task_waits SET status = ?, released_at = ?, updated_at = ?"
@@ -804,7 +799,6 @@ class TaskRepository:
         task_id: str | None = None,
         payload: dict[str, Any] | None = None,
         now: datetime | None = None,
-        in_transaction: bool = False,
     ) -> TaskEvent:
         moment = now or datetime.now(UTC)
         event_id = _new_id("te")
@@ -834,7 +828,7 @@ class TaskRepository:
                 created_at=moment,
             )
 
-        with self._tx(in_transaction):
+        with self.transaction():
             return _apply()
 
     def list_events(self, account_id: str, conversation_id: str) -> list[TaskEvent]:

@@ -9,8 +9,8 @@
 
 - 写模型归任务领域仓库；本路由只做参数校验、账户作用域与投影序列化，
   不复制任何状态机规则。
-- 读取一律按会话或任务定位，并经 ``scoped(account_id)`` 强制账户隔离，
-  跨账户访问返回 404。
+- 读取一律按会话或任务定位，并经 ``scoped(account_id)`` 强制账户隔离：
+  单任务读取跨账户返回 404，会话列表在别的账户下返回空表，不暴露对象存在性。
 - ``POST /tasks/turns`` 是确定性入口：同一输入可重放（API 多轮重放证据），
   乐观版本冲突返回 409，普通聊天（无目标无条件）不创建任务。
 """
@@ -56,7 +56,7 @@ class TaskWaitCreateRequest(BaseModel):
     conversation_id: str = Field(min_length=1)
     question: str = Field(min_length=1, description="已向用户提出的那一个问题。")
     missing_fields: list[str] = Field(
-        min_length=1, description="等待补齐的缺失字段（答复须补齐其中至少一项）。"
+        min_length=1, description="等待补齐的缺失字段（答复须一次补齐全部字段才解决等待）。"
     )
     origin_message_id: str = Field(min_length=1, description="提出问题的助手消息 ID。")
     source_message_id: str = Field(min_length=1, description="触发等待的用户消息 ID。")
