@@ -42,3 +42,11 @@
 
 - 最终定向回归 305 passed（包含全部 35 项指代验收、任务/合同/AI/最终载荷预算/会话上下文）。
 - 修复文件 ruff 与 `git diff --check` 通过。验收问题均完成处置，可合入 main。
+
+## 合入、推送与清理结果
+
+- 修复提交 `ae14b05`；执行期间另一个代理将 Issue 16 合入 main `7bbf8d79`，核对没有重叠修改本票接缝后，以 `7ad8bd31` 无冲突合入 Issue 11。
+- 最新 main 上组合回归 331 passed（上述 305 项加 Issue 16 事实身份与 schema v64 测试）。
+- `git push origin main` 成功，远端 `https://github.com/64922/BridGes.git` 已接收合并提交。
+- Issue 工作树 `.worktrees/11-reference-resolution` 已删除；本地 Issue 分支已安全删除；`git worktree prune --dry-run --verbose` 与实际 prune 均无失效记录输出，最终仅保留根 main 工作树。
+- 清理后核对工作树目录不存在、main 与 origin/main 同为 `7ad8bd31`、跟踪文件无未提交修改；本节另作交付记录提交并同步推送。
