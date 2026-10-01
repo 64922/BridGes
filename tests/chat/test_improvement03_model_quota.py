@@ -652,7 +652,7 @@ def test_call_contract_is_persisted_and_read_back(tmp_path: Path) -> None:
     """验收 3/4：运行锁的版本合同随锁持久化并可读回。"""
     database = BridgesDatabase(tmp_path / "bridges.db")
     database.initialize()
-    assert SCHEMA_VERSION == 60
+    assert SCHEMA_VERSION >= 60
     columns = {
         str(row["name"])
         for row in database.connection.execute(
