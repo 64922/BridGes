@@ -97,6 +97,10 @@ class ProfileRecordSubmission:
     evidence_quote: str | None = None
     evidence_message_id: str | None = None
     change_note: str | None = None
+    #: 改进工单 16：完整事实正文（关系会从 content 丢失时由抽取侧提供）。
+    fact_text: str | None = None
+    #: 自动来源记录键的事实身份识别项：同一维度下不同关系的同值事实各自成记录。
+    identity_discriminator: str | None = None
 
 
 class SourceWithdrawalStatus(Enum):
@@ -196,12 +200,14 @@ class ProfileCommit:
                 change_note=submission.change_note,
                 migration_version=submission.migration_version,
                 from_replay=from_replay,
+                identity_discriminator=submission.identity_discriminator,
             )
             if self._items is not None:
                 self._items.mirror_record(
                     account_id,
                     record,
                     evidence_message_id=submission.evidence_message_id,
+                    fact_text=submission.fact_text,
                 )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids))

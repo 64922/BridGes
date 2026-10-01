@@ -130,7 +130,8 @@ def test_recording_can_be_re_enabled_and_extraction_resumes() -> None:
     assert automatic.account_controls(ACCOUNT).recording_enabled is True
 
     _ingest(automatic, 3, "我喜欢跑步")
-    assert [item.text for item in atomic.list_items(ACCOUNT)] == ["跑步"]
+    # 兴趣条目保留完整关系分句：用户看到的「我喜欢跑步」而不是裸对象。
+    assert [item.text for item in atomic.list_items(ACCOUNT)] == ["我喜欢跑步"]
 
 
 def test_usage_switch_off_keeps_items_and_management_operations() -> None:

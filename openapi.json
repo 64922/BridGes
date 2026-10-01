@@ -28780,9 +28780,33 @@
             "title": "Source Message Ids",
             "description": "证据来源消息标识。"
           },
+          "evidence_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Quote",
+            "description": "精确来源原话，可为空（旧记录未保存原话）。"
+          },
           "write_origin": {
             "$ref": "#/components/schemas/AtomicProfileWriteOrigin",
             "description": "最近一次写入来源，用于区分「你修改过」和自动整理。"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id",
+            "description": "本条替代的旧条目标识；可为空。"
           }
         },
         "type": "object",
@@ -28881,6 +28905,13 @@
             "title": "Retryable",
             "description": "同一批次是否可安全重试。"
           },
+          "identity_backfilled": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Identity Backfilled",
+            "description": "本批次为既有条目补齐事实身份的条数。",
+            "default": 0
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -28899,6 +28930,12 @@
             ],
             "title": "Undone At",
             "description": "回滚时间；非空表示批次已撤销。"
+          },
+          "converged": {
+            "type": "boolean",
+            "title": "Converged",
+            "description": "本账户是否已收敛到新事实形态：成功批次且没有失败来源。",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -28914,7 +28951,8 @@
           "failed",
           "reconciliation_digest",
           "retryable",
-          "created_at"
+          "created_at",
+          "converged"
         ],
         "title": "AtomicProfileMigrationReport",
         "description": "账户级原子化迁移报告；只含计数、标识与对账摘要，不含正文。"

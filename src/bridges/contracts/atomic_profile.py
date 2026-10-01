@@ -13,16 +13,71 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from bridges.contracts.profiles import FourDimensionConfidence
 
 
 class AtomicProfileItemStatus(StrEnum):
-    """原子条目状态。"""
+    """原子条目状态。
+
+    ``SUPERSEDED`` 是同一属性槽发生明确变化后退休的旧版本：不再进入列表
+    与切片，但保留正文、来源与被替代关系供对账，不是删除墓碑。
+    """
 
     ACTIVE = "active"
+    SUPERSEDED = "superseded"
     WITHDRAWN = "withdrawn"
+
+
+class AtomicProfileFactRelation(StrEnum):
+    """事实身份中的关系/属性槽（改进工单 16）。
+
+    身份不使用旧的画像维度作键：维度只作为解析提示，关系决定两条事实是否
+    描述同一件事。``GRADE``/``MAJOR``/``IDENTITY`` 是单值属性槽，同槽的
+    明确新值替代旧值；其余关系默认多值并存。
+    """
+
+    STATEMENT = "statement"
+    IDENTITY = "identity"
+    GRADE = "grade"
+    MAJOR = "major"
+    INTEREST = "interest"
+    LEARNING = "learning"
+    RESEARCH = "research"
+    GOAL = "goal"
+
+    @property
+    def is_single_valued(self) -> bool:
+        """单值属性槽：同主体、同范围、同关系产生新值时替代旧活动条目。"""
+
+        return self in {
+            AtomicProfileFactRelation.IDENTITY,
+            AtomicProfileFactRelation.GRADE,
+            AtomicProfileFactRelation.MAJOR,
+        }
+
+
+class AtomicProfileFactScope(StrEnum):
+    """事实适用范围（身份的一部分；默认长期）。"""
+
+    LONG_TERM = "long_term"
+    CURRENT = "current"
+
+
+class AtomicProfileFactIdentity(BaseModel):
+    """一条完整事实的主体/关系/对象/范围身份（内部合同，不进入页面）。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    subject: str = Field(default="user", description="事实主体；当前账户用户。")
+    relation: AtomicProfileFactRelation = Field(
+        default=AtomicProfileFactRelation.STATEMENT, description="关系/属性槽。"
+    )
+    object: str = Field(default="", description="关系指向的对象或属性值。")
+    scope: AtomicProfileFactScope = Field(
+        default=AtomicProfileFactScope.LONG_TERM, description="适用范围。"
+    )
 
 
 class AtomicProfileWriteOrigin(StrEnum):
@@ -92,17 +147,39 @@ class AtomicProfileReconciliationEntry(BaseModel):
 class AtomicProfileItem(BaseModel):
     """一条原子画像信息（内部记录）。
 
-    ``identity_key`` 是「账户 + 规范化正文」构成的去重与抑制键：同一事实
-    只保留一条活动条目，删除后同键条目成为墓碑。``source_record_id`` 指向
-    产生该条目的四维记录（用户单独记住的条目可以为空）。``topic_hint``
-    只供既有内部接线使用（例如学习模式的当前水平假设），绝不进入页面投影、
-    页面分组或模型上下文正文。
+    ``identity_key`` 仍是「账户 + 规范化正文」的文本抑制键（旧墓碑兼容），
+    事实身份另由 ``fact_subject``/``fact_relation``/``fact_object``/
+    ``fact_scope`` 构成并折算为 ``fact_key``：同一事实只保留一条活动条目，
+    同槽明确变化留下被替代版本，删除后同键与同事实都不复活。
+    ``source_record_id`` 指向产生该条目的四维记录（用户单独记住的条目可以
+    为空）。``topic_hint`` 只供既有内部接线使用（例如学习模式的当前水平
+    假设），绝不进入页面投影、页面分组或模型上下文正文。
     """
 
     profile_item_id: str = Field(description="稳定的原子条目标识。")
     owner_account_id: str = Field(description="所属账户标识。")
     text: str = Field(description="条目正文；墓碑条目为空串。")
     identity_key: str = Field(description="账户 + 规范化正文的去重与抑制键。")
+    fact_subject: str = Field(default="user", description="事实主体；当前账户用户。")
+    fact_relation: AtomicProfileFactRelation = Field(
+        default=AtomicProfileFactRelation.STATEMENT, description="事实关系/属性槽。"
+    )
+    fact_object: str = Field(default="", description="事实对象或属性值。")
+    fact_scope: AtomicProfileFactScope = Field(
+        default=AtomicProfileFactScope.LONG_TERM, description="事实适用范围。"
+    )
+    fact_key: str = Field(default="", description="事实身份键；用于同事实合并与抑制。")
+    evidence_quote: str | None = Field(
+        default=None,
+        max_length=500,
+        description="精确来源原话；旧记录未保存原话时为空，绝不伪造。",
+    )
+    supersedes_id: str | None = Field(
+        default=None, description="本条替代的旧条目标识；可为空。"
+    )
+    superseded_by_id: str | None = Field(
+        default=None, description="本条被哪条新版本替代；活动条目为空。"
+    )
     source_record_id: str | None = Field(
         default=None, description="产生该条目的四维记录标识，可为空。"
     )
@@ -141,8 +218,14 @@ class AtomicProfileItemProjection(BaseModel):
     source_message_ids: list[str] = Field(
         default_factory=list, description="证据来源消息标识。"
     )
+    evidence_quote: str | None = Field(
+        default=None, description="精确来源原话，可为空（旧记录未保存原话）。"
+    )
     write_origin: AtomicProfileWriteOrigin = Field(
         description="最近一次写入来源，用于区分「你修改过」和自动整理。"
+    )
+    supersedes_id: str | None = Field(
+        default=None, description="本条替代的旧条目标识；可为空。"
     )
 
 
@@ -206,13 +289,28 @@ class AtomicProfileMigrationReport(BaseModel):
         description="逐条对账明细：每条来源记录的结论与原因码（不含正文）。",
     )
     retryable: bool = Field(description="同一批次是否可安全重试。")
+    identity_backfilled: int = Field(
+        default=0, ge=0, description="本批次为既有条目补齐事实身份的条数。"
+    )
     created_at: datetime = Field(description="报告创建时间。")
     undone_at: datetime | None = Field(
         default=None, description="回滚时间；非空表示批次已撤销。"
     )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def converged(self) -> bool:
+        """本账户是否已收敛到新事实形态：成功批次且没有失败来源。"""
+
+        return (
+            self.status == AtomicProfileMigrationStatus.COMPLETED and self.failed == 0
+        )
+
 
 __all__ = [
+    "AtomicProfileFactIdentity",
+    "AtomicProfileFactRelation",
+    "AtomicProfileFactScope",
     "AtomicProfileItem",
     "AtomicProfileItemDeleteRequest",
     "AtomicProfileItemModifyRequest",

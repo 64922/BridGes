@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 63
+SCHEMA_VERSION = 64
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2904,6 +2904,56 @@ MIGRATIONS: dict[int, list[str]] = {
         WHERE kind = 'transient_retry' AND call_key IS NOT NULL
         """,
     ],
+    # Issue 16：画像条目保存完整事实身份（主体/关系/对象/范围），同一事实
+    # 合并、不同事实并存、单值槽换值替代。旧行按「无关系可解析」处理：
+    # 事实关系回退为整句陈述、范围回退长期，随下次账户迁移由领域层补齐
+    # 真实身份（身份键列可空串，表示尚未补写，绝不伪造）。
+    # - fact_key：账户 + 主体/关系/对象/范围的身份键，用于同事实合并与替代。
+    # - evidence_quote：来源原话引用（页面展示证据；用户编辑换值后清空）。
+    # - supersedes_id / superseded_by_id：替代链（被替代版本保留供对账）。
+    # - profile_item_migrations.identity_backfilled：本批次补齐身份的条目数。
+    64: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN fact_subject TEXT NOT NULL DEFAULT 'user'
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN fact_relation TEXT NOT NULL DEFAULT 'statement'
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN fact_object TEXT NOT NULL DEFAULT ''
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN fact_scope TEXT NOT NULL DEFAULT 'long_term'
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN fact_key TEXT NOT NULL DEFAULT ''
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN evidence_quote TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN supersedes_id TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN superseded_by_id TEXT
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_items_account_fact_key
+        ON profile_items(account_id, fact_key)
+        """,
+        """
+        ALTER TABLE profile_item_migrations
+        ADD COLUMN identity_backfilled INTEGER NOT NULL DEFAULT 0
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -2942,6 +2992,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_conversations_account_updated",
     "idx_learning_project_migration_conversations_account",
     "idx_profile_items_account_status",
+    "idx_profile_items_account_fact_key",
     "idx_profile_item_migrations_account",
 })
 
@@ -2954,6 +3005,14 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "account_id",
         "text",
         "identity_key",
+        "fact_subject",
+        "fact_relation",
+        "fact_object",
+        "fact_scope",
+        "fact_key",
+        "evidence_quote",
+        "supersedes_id",
+        "superseded_by_id",
         "source_record_id",
         "source_message_ids_json",
         "topic_hint",
@@ -2980,6 +3039,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "source_record_ids_json",
         "reconciliation_digest",
         "retryable",
+        "identity_backfilled",
         "created_at",
         "undone_at",
     }),
@@ -2992,6 +3052,24 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "profile_item_id",
         "recorded_at",
     }),
+}
+
+#: 由迁移为「既有表」补加的列（表名 → 列集合）。
+#: ``REQUIRED_TABLE_COLUMNS`` 描述升级后的最终结构；升级前结构校验必须排除
+#: 这些尚未由迁移补齐的列，否则旧版本数据库会在补列之前被误判为「结构被
+#: 顶替」。列名来自本文件的迁移语句常量，非外部输入。
+MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
+    "profile_items": frozenset({
+        "fact_subject",
+        "fact_relation",
+        "fact_object",
+        "fact_scope",
+        "fact_key",
+        "evidence_quote",
+        "supersedes_id",
+        "superseded_by_id",
+    }),
+    "profile_item_migrations": frozenset({"identity_backfilled"}),
 }
 
 #: schema 完整性失败时写入错误消息的稳定错误码。
@@ -3164,17 +3242,25 @@ class BridgesDatabase:
         if incompatible:
             raise self._incompatible_object_error(incompatible)
 
-    def _incompatible_object_details(self, tables: set[str]) -> list[str]:
+    def _incompatible_object_details(
+        self, tables: set[str], *, pending_migrations: bool = False
+    ) -> list[str]:
         """返回「已存在但缺必需列」的对象诊断，只含表名与列名。
 
         表名取自 ``REQUIRED_TABLE_COLUMNS`` 常量（非外部输入），并显式跳过
         缺失表——缺失由调用方按「缺失」错误码处理，这里只判结构。
+        ``pending_migrations=True`` 用于升级前校验：迁移将补加的列不算缺失，
+        否则健康的旧版本库会被误判为「结构被顶替」。
         """
 
         details: list[str] = []
         for table, required_columns in REQUIRED_TABLE_COLUMNS.items():
             if table not in tables:
                 continue
+            if pending_migrations:
+                required_columns = required_columns - MIGRATION_ADDED_COLUMNS.get(
+                    table, frozenset()
+                )
             try:
                 rows = self._connection.execute(
                     f'PRAGMA table_info("{table}")'
@@ -3213,7 +3299,9 @@ class BridgesDatabase:
         schema 变更。
         """
 
-        details = self._incompatible_object_details(self._schema_object_names("table"))
+        details = self._incompatible_object_details(
+            self._schema_object_names("table"), pending_migrations=True
+        )
         if details:
             raise self._incompatible_object_error(details)
 
