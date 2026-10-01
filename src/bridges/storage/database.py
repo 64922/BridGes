@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 64
+SCHEMA_VERSION = 65
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2954,6 +2954,115 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN identity_backfilled INTEGER NOT NULL DEFAULT 0
         """,
     ],
+    # 改进工单 10：持久节点执行内核的产物、收据与待投递事件。
+    # 模块黑盒（service.run）拆成显式持久节点后，每个节点在自己的事务里
+    # 提交类型化产物、输入依赖/哈希、质量裁决、完成收据与待投递事件；
+    # 恢复先读完成收据——已完成的节点回填产物引用、不重复本地效果，
+    # 未完成的节点安全重试；图检查点只保存引用。
+    # - node_artifacts：按 (account, conversation, node, input_key) 唯一的
+    #   不可变产物身份；可信状态独立于运行状态（草稿/证据已绑定/合格/
+    #   冲突/失效）；输入依赖与内容哈希用于复用与失效定位。
+    # - node_receipts：节点局部事务的完成收据；按 (account, run, node,
+    #   input_key) 唯一，记录租约与质量裁决，恢复时据此回填或重试。
+    # - node_outbox：随收据同一事务保存的待投递事件（进度遥测），送达后
+    #   标记 delivered_at；本地效果由消息/产物守卫防重复，事件允许重放。
+    65: [
+        """
+        CREATE TABLE node_artifacts (
+            artifact_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            task_id TEXT,
+            task_version INTEGER,
+            recipe_id TEXT NOT NULL,
+            recipe_version TEXT NOT NULL,
+            node TEXT NOT NULL,
+            artifact_type TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            capability_version TEXT NOT NULL,
+            trust_state TEXT NOT NULL
+                CHECK (trust_state IN (
+                    'draft', 'evidence_bound', 'qualified', 'conflicted', 'invalidated'
+                )),
+            input_key TEXT NOT NULL,
+            input_deps_json TEXT NOT NULL DEFAULT '[]',
+            source_refs_json TEXT NOT NULL DEFAULT '[]',
+            read_scope TEXT NOT NULL DEFAULT '',
+            requirement_coverage_json TEXT NOT NULL DEFAULT '[]',
+            unconfirmed_json TEXT NOT NULL DEFAULT '[]',
+            error_json TEXT,
+            payload_json TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE UNIQUE INDEX idx_node_artifacts_identity
+        ON node_artifacts(account_id, conversation_id, node, input_key)
+        """,
+        """
+        CREATE INDEX idx_node_artifacts_run
+        ON node_artifacts(account_id, run_id)
+        """,
+        """
+        CREATE INDEX idx_node_artifacts_conversation
+        ON node_artifacts(account_id, conversation_id, created_at)
+        """,
+        """
+        CREATE TABLE node_receipts (
+            receipt_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            node TEXT NOT NULL,
+            input_key TEXT NOT NULL,
+            output_key TEXT NOT NULL,
+            artifact_id TEXT,
+            status TEXT NOT NULL
+                CHECK (status IN ('completed', 'needs_input', 'blocked', 'failed')),
+            quality_verdict TEXT NOT NULL
+                CHECK (quality_verdict IN (
+                    'pass', 'need_input', 'repairable_failure', 'blocked', 'invalidated'
+                )),
+            attempt INTEGER NOT NULL DEFAULT 1,
+            lease_owner TEXT,
+            detail_json TEXT NOT NULL DEFAULT '{}',
+            committed_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE UNIQUE INDEX idx_node_receipts_identity
+        ON node_receipts(account_id, run_id, node, input_key)
+        """,
+        """
+        CREATE INDEX idx_node_receipts_run
+        ON node_receipts(account_id, run_id, committed_at)
+        """,
+        """
+        CREATE INDEX idx_node_receipts_conversation
+        ON node_receipts(account_id, conversation_id, node, committed_at)
+        """,
+        """
+        CREATE TABLE node_outbox (
+            receipt_id TEXT NOT NULL,
+            seq INTEGER NOT NULL,
+            account_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            node TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            delivered_at TEXT,
+            PRIMARY KEY (receipt_id, seq)
+        )
+        """,
+        """
+        CREATE INDEX idx_node_outbox_pending
+        ON node_outbox(account_id, run_id, delivered_at)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -2985,6 +3094,11 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 改进工单 07：长期画像使用开关的持久状态；回答切片编译与控制 API 都
     # 无条件读取，缺失时启动失败关闭而不是静默把使用当作始终开启。
     "profile_account_controls",
+    # 改进工单 10：持久节点执行内核的产物、收据与待投递事件；通勤模块
+    # 在启动装配后无条件经内核查询，迁移半执行时须在启动阶段失败关闭。
+    "node_artifacts",
+    "node_receipts",
+    "node_outbox",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。

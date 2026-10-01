@@ -53,6 +53,7 @@ from bridges.commute.service import (
     COMMUTE_MODULE_ID,
     COMMUTE_NODE_LABELS,
     CommuteModuleError,
+    CommuteSupersededError,
 )
 from bridges.commute.suggestion import detect_commute_suggestion
 from bridges.contracts.chat import (
@@ -152,6 +153,10 @@ class DailyGraphStop(Exception):
     def __init__(self, node: str) -> None:
         super().__init__(f"run stopped at node {node}")
         self.node = node
+
+
+class DailyGraphSuperseded(Exception):
+    """迟到结果：执行权已转移，本轮不写任何交付终态（交给当前执行者）。"""
 
 
 class DailyTurnError(Exception):
@@ -686,6 +691,9 @@ def _invoke_commute_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str,
             emit_node=emit_node,
             stop_event=deps.stop_event,
         )
+    except CommuteSupersededError as error:
+        # 迟到结果：本轮不再写交付终态，交给当前持有执行权的执行者收尾。
+        raise DailyGraphSuperseded(str(error)) from error
     except CommuteModuleError as error:
         raise DailyTurnError(
             error.node, error.code, error.message, retryable=error.retryable
@@ -902,6 +910,9 @@ def run_daily_turn(
             graph.invoke(state, graph_config)
     except DailyGraphStop:
         deps.converge_stopped()
+    except DailyGraphSuperseded:
+        # 执行权已转移：消息与运行终态由当前执行者收敛，本轮不再写终态。
+        pass
     except DailyTurnError as error:
         deps.converge_error(error)
     except Exception as exc:  # noqa: BLE001 - 未知异常同样收敛为可重试失败
