@@ -140,12 +140,14 @@ FACT_SUBJECT_USER = "user"
 #: 单值属性槽中年级的取值形状；对象归一化为年级 token 本身，让
 #: 「大二学生」与「大二」合并为同一事实。
 _GRADE_TOKEN_RE = re.compile(
-    r"(?:大[一二三四五六]|研[一二三]|高[一二三四]|初[一二三四]|博[一二三四]|本[一二三四])"
+    r"(?:我)?(?:现在|目前)?(?:是|在读|就读)?"
+    r"(?P<grade>大[一二三四五六]|研[一二三]|高[一二三四]|初[一二三四]|博[一二三四]|本[一二三四])"
+    r"(?:的?学生|年级)?(?:了)?[。！!]?"
 )
 _MAJOR_HINT_RE = re.compile(r"(?:专业|主修|院系|学院|系)")
 _CURRENT_SCOPE_RE = re.compile(r"(?:这次|本轮|本周|今天|今晚)")
 _LEARNING_RE = re.compile(
-    r"(?:正在|在|想|要|准备|打算)?\s*学(?:习)?\s*(?P<obj>[^，。；;！!？?]+)"
+    r"^(?:我)?(?:现在|目前)?(?:正在|在|想|要|准备|打算)?\s*学(?:习)?\s*(?P<obj>[^，。；;！!？?]+)"
 )
 _RESEARCH_RE = re.compile(r"(?:正在|在)?\s*研究\s*(?P<obj>[^，。；;！!？?]+)")
 _INTEREST_RE = re.compile(
@@ -199,15 +201,17 @@ def parse_fact_identity(
             object=normalized,
             scope=scope,
         )
-    grade = _GRADE_TOKEN_RE.search(normalized)
+    grade = _GRADE_TOKEN_RE.fullmatch(normalized)
     if grade is not None:
         return AtomicProfileFactIdentity(
             subject=subject,
             relation=AtomicProfileFactRelation.GRADE,
-            object=grade.group(0),
+            object=grade.group("grade"),
             scope=scope,
         )
-    if _MAJOR_HINT_RE.search(normalized):
+    if _MAJOR_HINT_RE.search(normalized) and not (
+        _INTEREST_RE.search(normalized) or _LEARNING_RE.search(normalized)
+    ):
         major = _MAJOR_HINT_RE.sub("", normalized)
         major = re.sub(r"^(?:我(?:现在|目前)?(?:是|在读|就读|学的是|学的)?)", "", major)
         major = normalize_text(major)
@@ -426,7 +430,8 @@ def _item_from_record(
     migration_run_id: str | None = None,
 ) -> AtomicProfileItem:
     text = normalize_text(record.content)
-    identity = parse_fact_identity(text, dimension=record.dimension)
+    # 旧维度不证明具体关系：裸值按陈述迁入，不能猜成喜欢或正在学习。
+    identity = parse_fact_identity(text)
     source = evidence_message_id or record.evidence_message_id
     return AtomicProfileItem(
         profile_item_id=_new_item_id(),
@@ -451,30 +456,6 @@ def _item_from_record(
         user_edited_at=None,
         migration_run_id=migration_run_id,
     )
-
-
-_RELATION_PREFIXES = (
-    "喜欢",
-    "偏爱",
-    "偏好",
-    "爱",
-    "学习",
-    "学",
-    "研究",
-    "计划",
-    "打算",
-    "准备",
-    "正在",
-)
-
-
-def _strip_relation_prefixes(value: str) -> str:
-    """去掉「喜欢跑步」里的关系前缀，留下可与旧事实对象比较的对象。"""
-
-    for prefix in _RELATION_PREFIXES:
-        if value.startswith(prefix) and len(value) > len(prefix):
-            return value[len(prefix) :]
-    return value
 
 
 def _dimension_hint(topic_hint: str | None) -> FourDimension | None:
@@ -650,14 +631,15 @@ class InMemoryAtomicProfileRepository(AtomicProfileRepository):
     def find_item_by_source(
         self, owner_id: str, source_record_id: str
     ) -> AtomicProfileItem | None:
-        return next(
+        return max(
             (
                 item
                 for item in self._items.values()
                 if item.owner_account_id == owner_id
                 and item.source_record_id == source_record_id
             ),
-            None,
+            key=lambda item: (item.status == AtomicProfileItemStatus.ACTIVE, item.updated_at),
+            default=None,
         )
 
     def list_items(
@@ -917,7 +899,8 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
         self, owner_id: str, source_record_id: str
     ) -> AtomicProfileItem | None:
         row = self._db.scoped(owner_id).execute(
-            "SELECT * FROM profile_items WHERE account_id = ? AND source_record_id = ?",
+            "SELECT * FROM profile_items WHERE account_id = ? AND source_record_id = ? "
+            "ORDER BY (status = 'active') DESC, updated_at DESC LIMIT 1",
             (owner_id, source_record_id),
         ).fetchone()
         return self._item_from_row(row) if row is not None else None
@@ -1307,6 +1290,7 @@ class AtomicProfileService:
                     # 用户写入新正文：旧原话不再对应当前事实，不伪称来源。
                     existing.evidence_quote = None
                 existing.text = normalized
+                existing.identity_key = key
                 existing.status = AtomicProfileItemStatus.ACTIVE
                 existing.superseded_by_id = None
                 _apply_fact_identity(existing, identity, account_id)
@@ -1540,14 +1524,7 @@ class AtomicProfileService:
                     predecessor.profile_item_id if predecessor is not None else None
                 ),
                 source_record_id=record.record_id,
-                source_message_ids=[
-                    *(
-                        predecessor.source_message_ids
-                        if predecessor is not None
-                        else []
-                    ),
-                    *([evidence_message_id] if evidence_message_id else []),
-                ],
+                source_message_ids=[evidence_message_id] if evidence_message_id else [],
                 topic_hint=record.dimension.value,
                 status=AtomicProfileItemStatus.ACTIVE,
                 write_origin=AtomicProfileWriteOrigin.AUTOMATIC,
@@ -1803,7 +1780,7 @@ class AtomicProfileService:
                 profile_item_id=by_source.profile_item_id,
             )
         text = normalize_text(record.content)
-        identity = parse_fact_identity(text, dimension=record.dimension)
+        identity = parse_fact_identity(text)
         existing = self._repository.find_item_by_identity(
             account_id, identity_key(account_id, text)
         )
@@ -1867,9 +1844,7 @@ class AtomicProfileService:
                 continue
             if not normalize_text(item.text):
                 continue
-            identity = parse_fact_identity(
-                item.text, dimension=_dimension_hint(item.topic_hint)
-            )
+            identity = parse_fact_identity(item.text)
             _apply_fact_identity(item, identity, account_id)
             self._repository.save_item(item)
             count += 1
@@ -2010,14 +1985,19 @@ class AtomicProfileService:
             # 「晨跑」这条无关事实一起替代。纯否定（无转向）在身份解析里
             # 退化为整句陈述，但收回本身仍是明确变更，对应旧事实必须退休。
             targets = {
-                _strip_relation_prefixes(value).casefold()
+                fact_identity_key(
+                    account_id,
+                    parse_fact_identity(value, dimension=FourDimension.STAGE_GOAL).model_copy(
+                        update={"scope": identity.scope}
+                    ),
+                )
                 for value in negated
                 if value
             }
             for old in self._repository.list_items(account_id):
                 if old.profile_item_id == item.profile_item_id:
                     continue
-                if old.fact_object and old.fact_object.casefold() in targets:
+                if old.fact_key and old.fact_key in targets:
                     self._supersede_item(old, item.profile_item_id)
                     superseded.append(old.profile_item_id)
         if superseded and item.supersedes_id is None:

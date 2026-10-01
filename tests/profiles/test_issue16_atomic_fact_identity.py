@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from bridges.contracts.atomic_profile import (
     AtomicProfileFactRelation,
     AtomicProfileItem,
@@ -198,6 +200,72 @@ def test_pure_withdrawal_replaces_only_the_matching_fact() -> None:
     assert old.superseded_by_id is not None
 
 
+def test_withdrawal_preserves_other_relations_and_scopes() -> None:
+    _, _, atomic, _ = _services()
+    atomic.remember(ACCOUNT, "我喜欢Python")
+    atomic.remember(ACCOUNT, "我正在学习Python")
+    atomic.remember(ACCOUNT, "今天我喜欢Python")
+
+    atomic.remember(ACCOUNT, "我不喜欢Python了")
+
+    assert _texts(atomic) == {
+        "我正在学习Python", "今天我喜欢Python", "我不喜欢Python了"
+    }
+
+
+def test_remember_rewording_updates_text_identity_key() -> None:
+    _, repository, atomic, _ = _services()
+    first = atomic.remember(ACCOUNT, "我喜欢Python")
+    updated = atomic.remember(ACCOUNT, "我特别喜欢Python")
+
+    assert updated.profile_item_id == first.profile_item_id
+    assert updated.identity_key == identity_key(ACCOUNT, updated.text)
+    assert repository.find_item_by_identity(ACCOUNT, updated.identity_key) is not None
+
+
+def test_grade_word_in_interest_does_not_replace_actual_grade() -> None:
+    _, _, atomic, _ = _services()
+    atomic.remember(ACCOUNT, "我现在大二")
+    item = atomic.remember(ACCOUNT, "我喜欢大三的高等数学课")
+
+    assert item.fact_relation == AtomicProfileFactRelation.INTEREST
+    assert _texts(atomic) == {"我现在大二", "我喜欢大三的高等数学课"}
+
+
+@pytest.mark.parametrize("sqlite", [False, True])
+def test_replacement_uses_only_new_value_evidence_messages(
+    tmp_path: Path, sqlite: bool,
+) -> None:
+    four, repository, atomic, _ = _services()
+    if sqlite:
+        database = BridgesDatabase(tmp_path / "bridges.db")
+        database.initialize()
+        repository = SqliteAtomicProfileRepository(database, initialize=False)
+        atomic = AtomicProfileService(four, repository)
+    first = four.upsert_automatic_record(
+        ACCOUNT, dimension=FourDimension.ACADEMIC_STATUS, content="大二",
+        action="create", confidence=FourDimensionConfidence.HIGH,
+    )
+    atomic.mirror_record(ACCOUNT, first, evidence_message_id="old-message")
+    second = first.model_copy(update={"content": "大三"})
+    new = atomic.mirror_record(ACCOUNT, second, evidence_message_id="new-message")
+
+    assert new is not None
+    assert new.source_message_ids == ["new-message"]
+    old = repository.get_item(ACCOUNT, new.supersedes_id)
+    assert old.source_message_ids == ["old-message"]
+
+    third = atomic.mirror_record(
+        ACCOUNT, first.model_copy(update={"content": "大四"}),
+        evidence_message_id="third-message",
+    )
+    assert third is not None
+    assert _texts(atomic) == {"大四"}
+    assert third.source_message_ids == ["third-message"]
+    assert atomic.mirror_record(ACCOUNT, first, evidence_message_id="old-message") is None
+    assert _texts(atomic) == {"大四"}
+
+
 def test_single_valued_slot_replacement_keeps_history_traceable() -> None:
     four, repository, atomic, _ = _services()
     first = four.upsert_automatic_record(
@@ -383,6 +451,21 @@ def test_migration_backfills_identity_and_reports_convergence() -> None:
     # 幂等：再次迁移不重复补写。
     second = atomic.migrate_account(ACCOUNT)
     assert second.identity_backfilled == 0
+
+
+def test_migration_does_not_infer_missing_relation_from_legacy_dimension() -> None:
+    four, repository, atomic, _ = _services()
+    repository.save_item(_legacy_item(ACCOUNT, "Python", topic_hint="knowledge_interest"))
+    atomic.migrate_account(ACCOUNT)
+    legacy = _item(atomic, "Python")
+    assert legacy.fact_relation == AtomicProfileFactRelation.STATEMENT
+
+    record = four.upsert_automatic_record(
+        ACCOUNT, dimension=FourDimension.KNOWLEDGE_INTEREST, content="Python",
+        action="create", confidence=FourDimensionConfidence.HIGH,
+    )
+    atomic.mirror_record(ACCOUNT, record, fact_text="我喜欢Python")
+    assert _texts(atomic) == {"Python", "我喜欢Python"}
 
 
 def test_mirror_replay_merges_same_fact_without_duplicates() -> None:

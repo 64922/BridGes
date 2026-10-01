@@ -279,7 +279,7 @@ def test_mirror_replaces_value_when_underlying_record_is_updated(
 
     items = service.list_items(ALICE)
     assert [item.text for item in items] == ["假期想学爬山"]
-    assert items[0].source_message_ids == ["msg-1", "msg-2"]
+    assert items[0].source_message_ids == ["msg-2"]
 
 
 def test_mirror_skips_blank_and_tombstoned_content(
