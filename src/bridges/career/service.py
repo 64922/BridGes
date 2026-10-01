@@ -559,7 +559,10 @@ class CareerPlannerService:
         # 失败，绝不做无限重试、不把 transport 断开映射成领域失败。
         # Issue 06 第七轮：修复门与网关重试语义对齐（剩余预算必须放得下
         # 「一次最小调用窗口 + 交接预留」），不再使用旧的估算成本门。
-        if budget is not None and not budget.can_retry_model_call():
+        if budget is not None and (
+            not budget.can_retry_model_call()
+            or not budget.begin_adjustment(reason_code="career_output_invalid")
+        ):
             raise CareerError(
                 "career_output_invalid",
                 "规划结果未通过结构校验，且剩余预算不足，无法修复；"
@@ -581,6 +584,10 @@ class CareerPlannerService:
             lock_refs=lock_refs,
             budget=budget,
         )
+        if budget is not None:
+            budget.end_adjustment(
+                outcome_code="career_repair_failed" if failure is not None else "career_repaired"
+            )
         if failure is not None:
             raise CareerError(
                 "career_output_invalid",

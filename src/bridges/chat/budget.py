@@ -402,9 +402,22 @@ class RunBudget:
         """
         if self.expired():
             return False
+        if self.has_ledger:
+            assert self._ledger is not None and self._account_id is not None
+            if not self._ledger.can_wait_until(self._account_id, self._run_id, self._now()):
+                return False
         return _model_call_budget.model_call_can_retry(
             self.work_remaining_ms(), backoff_ms=backoff_ms
         )
+
+    def can_start_model_call(self) -> bool:
+        """供应商入口再次检查停止与截止；首次调用不套用冷却重试预留。"""
+        if self.expired() or self.work_remaining_ms() <= 0:
+            return False
+        if self.has_ledger:
+            assert self._ledger is not None and self._account_id is not None
+            return self._ledger.can_wait_until(self._account_id, self._run_id, self._now())
+        return True
 
     # ------------------------------------------------------------------
     # 持久化账本协作（工单 09；无账本时按允许/无操作处理）

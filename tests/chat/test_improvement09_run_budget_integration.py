@@ -18,13 +18,18 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import AdapterResult, RateLimitError, StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.budget import RunBudget
-from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
+from bridges.chat.run_budget_ledger import (
+    RunBudgetClass,
+    RunBudgetLedgerRepository,
+    derive_run_budget_plan,
+)
 from bridges.contracts.ai import (
     CapabilityRecord,
     ModelCallStatus,
@@ -133,6 +138,116 @@ def _run_context(account_id: str = "acc-1", run_id: str = "run-1") -> RunContext
     )
 
 
+def _persistent_budget(database: Any, account_id: str = "acc-1") -> tuple[Any, RunBudget]:
+    ledger = RunBudgetLedgerRepository(database)
+    now = datetime.now(UTC)
+    snapshot = ledger.freeze_for_run(
+        account_id=account_id, run_id="run-1", conversation_id="conv-1", now=now,
+        plan=derive_run_budget_plan(
+            RunBudgetClass.LIGHTWEIGHT, deadline_at=now + timedelta(seconds=120)
+        ),
+    )
+    return ledger, RunBudget.from_ledger_snapshot(
+        "run-1", total_budget_ms=snapshot.plan.total_budget_ms,
+        deadline_utc=snapshot.plan.deadline_at, reserve_ms=0, ledger=ledger,
+        account_id=account_id,
+    )
+
+
+def test_separate_calls_to_same_capability_have_separate_retries(tmp_path: Any) -> None:
+    """同能力两次调用各自最多重试一次，所有真实尝试计入共同调用上限。"""
+    from bridges.storage.database import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "budget.db")
+    database.initialize()
+    ledger, budget = _persistent_budget(database)
+    registry = CapabilityRegistry()
+    registry.register(_retryable_capability())
+    gateway = ModelGateway(registry)
+    gateway.register_adapter("qwen_text_chat", "1", _RateLimitedAdapter())
+    for _ in range(2):
+        result = gateway.invoke("qwen_text_chat", "1", _run_context(), budget=budget)
+        assert result.status == ModelCallStatus.RETRYABLE_FAIL
+    snapshot = ledger.load("acc-1", "run-1")
+    assert snapshot.model_calls_used == 4
+    assert snapshot.transient_retries_used == 2
+    calls = [e.call_key for e in ledger.list_entries("acc-1", "run-1") if e.kind == "model_call"]
+    assert len(set(calls)) == 2
+
+
+def test_stop_during_backoff_prevents_next_transport_attempt(
+    tmp_path: Any, monkeypatch: Any,
+) -> None:
+    """用冷却回调模拟停止，避免真实等待并检查下一次外呼被拒绝。"""
+    from bridges.storage.database import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "budget.db")
+    database.initialize()
+    ledger, budget = _persistent_budget(database)
+    registry = CapabilityRegistry()
+    registry.register(_retryable_capability().model_copy(update={
+        "retry_policy": RetryPolicy(max_attempts=3, backoff_seconds=0.01, jitter=False)
+    }))
+    gateway = ModelGateway(registry)
+    calls = []
+
+    class Adapter:
+        def call(self, *args: Any) -> Any:
+            calls.append(1)
+            raise RateLimitError("冷却")
+
+    gateway.register_adapter("qwen_text_chat", "1", Adapter())
+    monkeypatch.setattr(
+        "bridges.ai.model_gateway.time.sleep",
+        lambda _: ledger.close(account_id="acc-1", run_id="run-1", now=datetime.now(UTC)),
+    )
+    gateway.invoke("qwen_text_chat", "1", _run_context(), budget=budget)
+    assert len(calls) == 1
+
+
+def test_conversation_deletion_removes_budget_and_entries(
+    sqlite_app: Any, client: TestClient,
+) -> None:
+    account = _register(client)
+    conversation_id = _create_conversation(client)
+    created = _send(client, conversation_id, "待删除")
+    service = sqlite_app.state.chat_service
+    service.stop_account_generations(account["id"])
+    ledger = _ledger_repo(sqlite_app)
+    assert ledger.load(account["id"], created["run_id"]).status == "closed"
+    service._repo.delete_conversation("other-account", conversation_id)
+    assert ledger.load(account["id"], created["run_id"]) is not None
+    service._repo.delete_conversation(account["id"], conversation_id)
+    assert ledger.load(account["id"], created["run_id"]) is None
+    assert ledger.list_entries(account["id"], created["run_id"]) == []
+
+
+@pytest.mark.parametrize("round_used", [False, True])
+def test_existing_career_repair_claims_shared_adjustment(tmp_path: Any, round_used: bool) -> None:
+    """验证现有生产结构修复入口，第二轮不能重新领取额度。"""
+    from bridges.storage.database import BridgesDatabase
+    from tests.career.test_career_service import (
+        _good_output,
+        _invalid_output,
+        _ProgrammableStructuredAdapter,
+        _run,
+        _service_with_recorder,
+    )
+
+    database = BridgesDatabase(tmp_path / "budget.db")
+    database.initialize()
+    ledger, budget = _persistent_budget(database, "account-1")
+    if round_used:
+        assert budget.begin_adjustment(reason_code="content_fix")
+    adapter = _ProgrammableStructuredAdapter(outputs=[_invalid_output(), _good_output()])
+    service, _ = _service_with_recorder(adapter, database)
+    _run(service, budget=budget)
+    assert adapter.call_count == (1 if round_used else 2)
+    assert ledger.load("account-1", "run-1").adjustment_rounds_used == 1
+    if not round_used:
+        assert any(e.kind == "adjustment_end" for e in ledger.list_entries("account-1", "run-1"))
+
+
 def _retryable_capability() -> CapabilityRecord:
     base = _chat_capability()
     return base.model_copy(
@@ -200,7 +315,9 @@ def test_gateway_invoke_registers_call_and_result() -> None:
         budget=budget,
     )
     assert result.status == ModelCallStatus.SUCCESS
-    assert ledger.calls == ["qwen_text_chat@1"]
+    assert len(ledger.calls) == 1
+    assert ledger.calls[0].startswith("qwen_text_chat@1:")
+    assert ledger.results[0]["call_key"] == ledger.calls[0]
     assert len(ledger.results) == 1
     recorded = ledger.results[0]
     assert recorded["outcome_code"] == "call_completed"
@@ -260,7 +377,7 @@ def test_gateway_transient_retry_is_capped_once_per_call() -> None:
     # 以真实可重试错误终态收尾（不依赖真实睡眠：backoff=0）。
     assert result.status == ModelCallStatus.RETRYABLE_FAIL
     assert result.error_code == "rate_limit"
-    assert ledger.retries == ["qwen_text_chat@1"]
+    assert ledger.retries == ledger.calls
     # 失败结果按真实尝试补记：首次 + 账本放行的一次重试；第二次重试在
     # 发起前已被账本拒绝（attempt 3 不会发生）。
     assert len(ledger.results) == 2
@@ -291,7 +408,9 @@ def test_gateway_stream_registers_call_and_records_usage() -> None:
         )
     )
     assert [event.kind for event in events][-1] == "done"
-    assert ledger.calls == ["qwen_text_chat@1"]
+    assert len(ledger.calls) == 1
+    assert ledger.calls[0].startswith("qwen_text_chat@1:")
+    assert ledger.results[0]["call_key"] == ledger.calls[0]
     assert len(ledger.results) == 1
     assert ledger.results[0]["input_tokens"] == 30
     assert ledger.results[0]["output_tokens"] == 7

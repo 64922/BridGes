@@ -348,9 +348,11 @@ class ConversationRepository:
 
     def delete_conversation(self, account_id: str, conversation_id: str) -> int:
         """删除会话及其消息/模式事件；跨账户目标返回 0。"""
+        from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
         from bridges.tasks.repository import TaskRepository
 
         with self._db.transaction():
+            RunBudgetLedgerRepository(self._db).delete_for_conversation(account_id, conversation_id)
             TaskRepository(self._db, self).delete_for_conversation(account_id, conversation_id)
             self._db.scoped(account_id).execute(
                 "DELETE FROM mode_events WHERE conversation_id = ? AND account_id = ?",
@@ -1794,6 +1796,7 @@ class ConversationRepository:
 
     def delete_run_by_message(self, account_id: str, message_id: str) -> int:
         """删除消息关联的运行与事件（测试构造遗留数据/运维清理路径）。"""
+        from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
         with self._db.transaction():
             rows = self._db.scoped(account_id).execute(
                 "SELECT run_id FROM generation_runs"
@@ -1801,6 +1804,7 @@ class ConversationRepository:
                 (message_id, account_id),
             ).fetchall()
             for row in rows:
+                RunBudgetLedgerRepository(self._db).delete_for_run(account_id, str(row["run_id"]))
                 self._db.scoped(account_id).execute(
                     "DELETE FROM generation_events WHERE run_id = ? AND account_id = ?",
                     (str(row["run_id"]), account_id),

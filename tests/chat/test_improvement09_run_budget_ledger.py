@@ -262,7 +262,7 @@ def test_structural_fix_and_vendor_retry_share_one_round(repo: Any) -> None:
     assert snapshot is not None
     assert snapshot.adjustment_rounds_used == 1
     assert snapshot.transient_retries_used == 1
-    assert snapshot.model_calls_used == 1
+    assert snapshot.model_calls_used == 2
 
 
 def test_transient_retry_capped_once_per_registered_call(repo: Any) -> None:
@@ -625,6 +625,101 @@ def test_entries_carry_only_redacted_metering(repo: Any) -> None:
         assert entry.output_tokens in (None, 200)
     purposes = {entry.purpose for entry in entries}
     assert purposes == {"generation", None}
+
+
+@pytest.mark.parametrize("kind", ["model", "external", "retry", "adjustment"])
+def test_consumption_cannot_cross_frozen_work_deadline(repo: Any, kind: str) -> None:
+    """冻结截止及预留线必须由持久仓库直接守门。"""
+    _freeze_normal(repo, deadline=_NOW + timedelta(seconds=15))
+    kwargs = {"account_id": "acc-1", "run_id": "run-1", "now": _NOW}
+    if kind == "model":
+        allowed = repo.register_model_call(call_key="model:1", **kwargs)
+    elif kind == "external":
+        allowed = repo.register_external_call(call_key="external:1", **kwargs)
+    elif kind == "retry":
+        allowed = repo.register_transient_retry(call_key="model:1", **kwargs)
+    else:
+        allowed = repo.begin_adjustment(**kwargs)
+    assert not allowed
+    assert repo.list_entries("acc-1", "run-1") == []
+
+
+def test_duplicate_release_does_not_free_another_call(repo: Any) -> None:
+    _freeze_normal(repo)
+    kwargs = {"account_id": "acc-1", "run_id": "run-1", "now": _NOW}
+    assert repo.register_external_call(call_key="a", **kwargs)
+    assert repo.register_external_call(call_key="b", **kwargs)
+    repo.record_external_call_result(call_key="a", **kwargs)
+    repo.record_external_call_result(call_key="a", **kwargs)
+    assert repo.register_external_call(call_key="c", **kwargs)
+    assert not repo.register_external_call(call_key="d", **kwargs)
+    assert repo.load("acc-1", "run-1").external_calls_active == 2
+
+
+def test_late_results_meter_once_after_exhaustion(repo: Any) -> None:
+    _freeze_normal(repo)
+    kwargs = {"account_id": "acc-1", "run_id": "run-1", "now": _NOW}
+    assert repo.register_model_call(call_key="a", purpose="generation", **kwargs)
+    assert repo.register_external_call(call_key="b", **kwargs)
+    repo.mark_exhausted(reason_code="budget_exceeded", **kwargs)
+    for _ in range(2):
+        repo.record_model_call_result(call_key="a", input_tokens=12, output_tokens=4, **kwargs)
+        repo.record_external_call_result(call_key="b", **kwargs)
+    snapshot = repo.load("acc-1", "run-1")
+    assert (snapshot.input_tokens_used, snapshot.output_tokens_used) == (12, 4)
+    assert snapshot.external_calls_active == 0
+    result = next(e for e in repo.list_entries("acc-1", "run-1") if e.kind == "model_call_result")
+    assert (result.input_tokens, result.output_tokens, result.purpose) == (12, 4, "generation")
+
+
+def test_unknown_contract_refuses_consumption(repo: Any, database: Any) -> None:
+    _freeze_normal(repo)
+    with database.transaction():
+        database.scoped("acc-1").execute(
+            "UPDATE run_budget_ledger SET contract_version = 'future-v2' WHERE account_id = ?",
+            ("acc-1",),
+        )
+    assert not repo.load("acc-1", "run-1").active
+    assert not repo.register_model_call(
+        account_id="acc-1", run_id="run-1", call_key="a", now=_NOW
+    )
+
+
+def test_retry_consumes_actual_call_limit(repo: Any, database: Any) -> None:
+    _freeze_normal(repo)
+    with database.transaction():
+        database.scoped("acc-1").execute(
+            "UPDATE run_budget_ledger SET model_call_limit = 2 WHERE account_id = ?", ("acc-1",)
+        )
+    kwargs = {"account_id": "acc-1", "run_id": "run-1", "now": _NOW}
+    assert repo.register_model_call(call_key="a", **kwargs)
+    assert repo.register_transient_retry(call_key="a", **kwargs)
+    assert not repo.register_model_call(call_key="b", **kwargs)
+    assert repo.load("acc-1", "run-1").model_calls_used == 2
+
+
+def test_process_restart_recovers_only_dead_process_slots(repo: Any, monkeypatch: Any) -> None:
+    import bridges.chat.run_budget_ledger as ledger_module
+
+    _freeze_normal(repo)
+    kwargs = {"account_id": "acc-1", "run_id": "run-1", "now": _NOW}
+    assert repo.register_external_call(call_key="old", **kwargs)
+    repo.recover_external_calls("acc-1", "run-1", now=_NOW)
+    assert repo.load("acc-1", "run-1").external_calls_active == 1
+    monkeypatch.setattr(ledger_module, "_EXECUTION_PROCESS", "new-process")
+    repo.recover_external_calls("acc-1", "run-1", now=_NOW)
+    repo.recover_external_calls("acc-1", "run-1", now=_NOW)
+    snapshot = repo.load("acc-1", "run-1")
+    assert snapshot.external_calls_active == 0
+    assert snapshot.external_calls_used == 1
+
+
+def test_freeze_competition_returns_same_plan(repo: Any) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        snapshots = list(pool.map(lambda _: _freeze_normal(repo), range(2)))
+    assert snapshots[0] == snapshots[1]
 
 
 def test_export_and_delete_cover_ledger_tables(

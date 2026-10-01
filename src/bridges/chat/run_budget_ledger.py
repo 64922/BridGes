@@ -23,8 +23,10 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -35,6 +37,9 @@ from bridges.storage.database import BridgesDatabase
 
 #: 账本合同版本；未来字段演进时递增，未知版本读回时闭锁而不是猜测语义。
 RUN_BUDGET_CONTRACT_VERSION = "run-budget-v1"
+
+# 数据目录单实例锁保证进程更替时旧进程已退出；同进程租约恢复保留真实占位。
+_EXECUTION_PROCESS = secrets.token_hex(12)
 
 
 class RunBudgetClass(StrEnum):
@@ -147,6 +152,31 @@ def anchor_run_budget_deadline(
 
 
 @dataclass(frozen=True, slots=True)
+class RunBudgetRecipeCosts:
+    """代码登记的配方成本；必要节点、候选读取与一轮修复分别计入。"""
+
+    recipe_version: str
+    necessary_model_calls: int
+    candidate_read_calls: int
+    adjustment_model_calls: int
+    input_tokens_per_call: int
+    output_tokens_per_call: int
+
+    def limits(self, transient_retry_max: int) -> tuple[int, int]:
+        values = (
+            self.necessary_model_calls, self.candidate_read_calls,
+            self.adjustment_model_calls, self.input_tokens_per_call,
+            self.output_tokens_per_call,
+        )
+        if not self.recipe_version or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in values
+        ):
+            raise ValueError("配方版本不能为空，成本必须是非负整数。")
+        calls = sum(values[:3]) * (1 + transient_retry_max)
+        return calls, calls * (self.input_tokens_per_call + self.output_tokens_per_call)
+
+
+@dataclass(frozen=True, slots=True)
 class RunBudgetPlan:
     """运行创建时冻结的预算计划（token_budget 为 None 时只计量不强制）。"""
 
@@ -161,6 +191,7 @@ class RunBudgetPlan:
     deep_read_max: int
     adjustment_rounds_max: int
     transient_retry_max: int
+    recipe_costs: RunBudgetRecipeCosts | None = None
 
 
 def derive_run_budget_plan(
@@ -168,6 +199,7 @@ def derive_run_budget_plan(
     *,
     deadline_at: datetime,
     token_budget: int | None = None,
+    recipe_costs: RunBudgetRecipeCosts | None = None,
 ) -> RunBudgetPlan:
     """按类别初值生成冻结计划。
 
@@ -175,18 +207,22 @@ def derive_run_budget_plan(
     从运行额度快照派生（如 已验证最大输入 × 调用上限），缺省只计量。
     """
     initials = RUN_BUDGET_INITIALS[budget_class]
+    call_limit = initials.model_call_limit
+    if recipe_costs is not None:
+        call_limit, token_budget = recipe_costs.limits(initials.transient_retry_max)
     return RunBudgetPlan(
         budget_class=budget_class,
         total_budget_ms=initials.total_budget_ms,
         deadline_at=deadline_at,
         verify_deliver_reserve_ms=initials.verify_deliver_reserve_ms,
-        model_call_limit=initials.model_call_limit,
+        model_call_limit=call_limit,
         token_budget=token_budget,
         external_parallel_max=initials.external_parallel_max,
         candidate_screen_max=initials.candidate_screen_max,
         deep_read_max=initials.deep_read_max,
         adjustment_rounds_max=initials.adjustment_rounds_max,
         transient_retry_max=initials.transient_retry_max,
+        recipe_costs=recipe_costs,
     )
 
 
@@ -214,7 +250,7 @@ class RunBudgetSnapshot:
 
     @property
     def active(self) -> bool:
-        return self.status == "active"
+        return self.status == "active" and self.contract_version == RUN_BUDGET_CONTRACT_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +283,16 @@ class RunBudgetLedgerRepository:
     def __init__(self, database: BridgesDatabase) -> None:
         self._db = database
 
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """持有连接锁，组合操作并入外层事务。"""
+        with self._db.snapshot_lock():
+            if self._db.connection.in_transaction:
+                yield
+            else:
+                with self._db.transaction():
+                    yield
+
     # ------------------------------------------------------------------
     # 冻结与读取
     # ------------------------------------------------------------------
@@ -265,10 +311,10 @@ class RunBudgetLedgerRepository:
         冻结的截止时间取 ``plan.deadline_at``；重复调用（创建竞争/重试）
         读回既有行——冻结值一旦落库即不可改写。
         """
-        existing = self.load(account_id, run_id)
-        if existing is not None:
-            return existing
-        with self._db.transaction():
+        with self.transaction():
+            existing = self.load(account_id, run_id)
+            if existing is not None:
+                return existing
             self._db.scoped(account_id).execute(
                 """
                 INSERT INTO run_budget_ledger (
@@ -276,9 +322,9 @@ class RunBudgetLedgerRepository:
                     budget_class, total_budget_ms, deadline_at,
                     verify_deliver_reserve_ms, model_call_limit, token_budget,
                     external_parallel_max, candidate_screen_max, deep_read_max,
-                    adjustment_rounds_max, transient_retry_max,
+                    adjustment_rounds_max, transient_retry_max, recipe_costs_json,
                     status, version, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           'active', 1, ?, ?)
                 """,
                 (
@@ -297,6 +343,7 @@ class RunBudgetLedgerRepository:
                     plan.deep_read_max,
                     plan.adjustment_rounds_max,
                     plan.transient_retry_max,
+                    json.dumps(_recipe_costs_dict(plan.recipe_costs), ensure_ascii=False),
                     _iso(now),
                     _iso(now),
                 ),
@@ -323,29 +370,30 @@ class RunBudgetLedgerRepository:
         且截止时间锚定运行创建时刻——兼容补齐绝不把截止向后延。计划由
         类别初值在本模块内生成（冻结口径与创建路径同源）。
         """
-        existing = self.load(account_id, run_id)
-        if existing is not None:
-            return existing
-        plan = derive_run_budget_plan(
-            budget_class,
-            deadline_at=anchor_run_budget_deadline(run_created_at, budget_class),
-            token_budget=token_budget,
-        )
-        snapshot = self.freeze_for_run(
-            account_id=account_id,
-            run_id=run_id,
-            conversation_id=conversation_id,
-            plan=plan,
-            now=now,
-        )
-        self._append_entry(
-            account_id,
-            run_id,
-            kind="compat_created",
-            outcome_code="run_budget_compat_anchored_to_run_created_at",
-            now=now,
-        )
-        return snapshot
+        with self.transaction():
+            existing = self.load(account_id, run_id)
+            if existing is not None:
+                return existing
+            plan = derive_run_budget_plan(
+                budget_class,
+                deadline_at=anchor_run_budget_deadline(run_created_at, budget_class),
+                token_budget=token_budget,
+            )
+            snapshot = self.freeze_for_run(
+                account_id=account_id,
+                run_id=run_id,
+                conversation_id=conversation_id,
+                plan=plan,
+                now=now,
+            )
+            self._append_entry(
+                account_id,
+                run_id,
+                kind="compat_created",
+                outcome_code="run_budget_compat_anchored_to_run_created_at",
+                now=now,
+            )
+            return snapshot
 
     def load(self, account_id: str, run_id: str) -> RunBudgetSnapshot | None:
         row = self._db.scoped(account_id).execute(
@@ -416,20 +464,35 @@ class RunBudgetLedgerRepository:
         now: datetime,
     ) -> None:
         """补记一次模型调用的脱敏结果（用途/结果码/毫秒/token 计量）。"""
+        def consume(_snapshot: RunBudgetSnapshot) -> bool:
+            return self._db.scoped(account_id).execute(
+                "SELECT 1 FROM run_budget_entries WHERE account_id = ? AND run_id = ?"
+                " AND kind = 'model_call_result' AND call_key = ? AND attempt = ?",
+                (account_id, run_id, call_key, attempt),
+            ).fetchone() is None
+
+        registered = self._db.scoped(account_id).execute(
+            "SELECT purpose FROM run_budget_entries WHERE account_id = ? AND run_id = ?"
+            " AND kind = 'model_call' AND call_key = ? ORDER BY seq DESC LIMIT 1",
+            (account_id, run_id, call_key),
+        ).fetchone()
         self._mutate(
             account_id,
             run_id,
             now,
             kind="model_call_result",
             call_key=call_key,
+            purpose=registered["purpose"] if registered is not None else None,
             attempt=attempt,
             outcome_code=outcome_code,
             duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             counter_updates={
                 "input_tokens_used": max(0, input_tokens or 0),
                 "output_tokens_used": max(0, output_tokens or 0),
             },
-            gate=lambda _snapshot: True,
+            gate=consume,
             allow_closed=True,
         )
 
@@ -445,8 +508,8 @@ class RunBudgetLedgerRepository:
     ) -> bool:
         """登记一次临时传输失败重试；每登记调用最多 ``transient_retry_max`` 次。
 
-        幂等守卫：同一 (run_id, call_key, attempt) 的重复登记按幂等成功
-        处理且不重复计数（部分唯一索引 ``idx_run_budget_entries_retry_once``）。
+        幂等守卫：同一 (run_id, call_key, attempt) 的重复登记拒绝放行
+        且不重复计数（部分唯一索引 ``idx_run_budget_entries_retry_once``）。
         错误类型/冷却/剩余额度检查由调用方（网关预算接缝）在登记前完成。
         """
 
@@ -460,7 +523,12 @@ class RunBudgetLedgerRepository:
                 " AND call_key = ?",
                 (run_id, account_id, call_key),
             ).fetchone()
-            return int(row["count"]) < snapshot.plan.transient_retry_max
+            tokens_used = snapshot.input_tokens_used + snapshot.output_tokens_used
+            return (
+                int(row["count"]) < snapshot.plan.transient_retry_max
+                and snapshot.model_calls_used < snapshot.plan.model_call_limit
+                and (snapshot.plan.token_budget is None or tokens_used < snapshot.plan.token_budget)
+            )
 
         def extra_fields(snapshot: RunBudgetSnapshot) -> dict[str, Any]:
             return {
@@ -476,11 +544,10 @@ class RunBudgetLedgerRepository:
             call_key=call_key,
             attempt=1,
             outcome_code=error_code,
-            counter_updates={"transient_retries_used": 1},
+            counter_updates={"transient_retries_used": 1, "model_calls_used": 1},
             gate=consume,
             extra_detail=extra_fields,
             extra_detail_values={"backoff_ms": backoff_ms} if backoff_ms else None,
-            idempotent_unique=True,
         )
 
     def register_external_call(
@@ -505,6 +572,7 @@ class RunBudgetLedgerRepository:
             return {
                 "external_calls_active": snapshot.external_calls_active + 1,
                 "external_parallel_max": snapshot.plan.external_parallel_max,
+                "execution_process": _EXECUTION_PROCESS,
             }
 
         return self._mutate(
@@ -522,6 +590,26 @@ class RunBudgetLedgerRepository:
             extra_detail=extra_fields,
         )
 
+    def recover_external_calls(self, account_id: str, run_id: str, *, now: datetime) -> None:
+        """单实例进程重启后回收旧进程的占位；不重置历史调用消耗。"""
+        with self.transaction():
+            entries = self.list_entries(account_id, run_id)
+            outstanding: dict[str, list[RunBudgetEntry]] = {}
+            for entry in entries:
+                if entry.call_key is None:
+                    continue
+                if entry.kind == "external_call":
+                    outstanding.setdefault(entry.call_key, []).append(entry)
+                elif entry.kind == "external_call_result" and outstanding.get(entry.call_key):
+                    outstanding[entry.call_key].pop(0)
+            for call_key, calls in outstanding.items():
+                for call in calls:
+                    if call.detail.get("execution_process") != _EXECUTION_PROCESS:
+                        self.record_external_call_result(
+                            account_id=account_id, run_id=run_id, call_key=call_key,
+                            outcome_code="process_restarted", now=now,
+                        )
+
     def record_external_call_result(
         self,
         *,
@@ -534,7 +622,13 @@ class RunBudgetLedgerRepository:
         """释放一次外部调用的并发占位（结果只记结果码；重复释放安全）。"""
 
         def consume(snapshot: RunBudgetSnapshot) -> bool:
-            return True
+            row = self._db.scoped(account_id).execute(
+                "SELECT SUM(CASE WHEN kind = 'external_call' THEN 1 ELSE -1 END) AS active"
+                " FROM run_budget_entries WHERE run_id = ? AND account_id = ?"
+                " AND call_key = ? AND kind IN ('external_call', 'external_call_result')",
+                (run_id, account_id, call_key),
+            ).fetchone()
+            return bool(row["active"] and row["active"] > 0)
 
         def extra_fields(snapshot: RunBudgetSnapshot) -> dict[str, Any]:
             return {"external_calls_active": max(0, snapshot.external_calls_active - 1)}
@@ -620,10 +714,10 @@ class RunBudgetLedgerRepository:
         now: datetime,
     ) -> bool:
         """标记预算耗尽（终态收敛前的明确终止原因；幂等）。"""
-        snapshot = self.load(account_id, run_id)
-        if snapshot is None or snapshot.status != "active":
-            return False
-        with self._db.transaction():
+        with self.transaction():
+            snapshot = self.load(account_id, run_id)
+            if snapshot is None or snapshot.status != "active":
+                return False
             updated = self._db.scoped(account_id).execute(
                 """
                 UPDATE run_budget_ledger
@@ -647,10 +741,10 @@ class RunBudgetLedgerRepository:
 
     def close(self, *, account_id: str, run_id: str, now: datetime) -> bool:
         """运行终态后关闭账本（只读封存；幂等，重复关闭返回 False）。"""
-        snapshot = self.load(account_id, run_id)
-        if snapshot is None or snapshot.status == "closed":
-            return False
-        with self._db.transaction():
+        with self.transaction():
+            snapshot = self.load(account_id, run_id)
+            if snapshot is None or snapshot.status == "closed":
+                return False
             updated = self._db.scoped(account_id).execute(
                 """
                 UPDATE run_budget_ledger
@@ -676,7 +770,118 @@ class RunBudgetLedgerRepository:
         snapshot = self.load(account_id, run_id)
         if snapshot is None or not snapshot.active:
             return False
-        return until <= snapshot.plan.deadline_at
+        run = self._db.scoped(account_id).execute(
+            "SELECT stop_requested, status FROM generation_runs"
+            " WHERE run_id = ? AND account_id = ?", (run_id, account_id),
+        ).fetchone()
+        if run is not None and (
+            run["stop_requested"] or run["status"] not in ("queued", "running")
+        ):
+            return False
+        return until <= snapshot.plan.deadline_at - timedelta(
+            milliseconds=snapshot.plan.verify_deliver_reserve_ms
+        )
+
+    def delete_for_conversation(self, account_id: str, conversation_id: str) -> None:
+        """会话删除时清理同账户预算账本及其计量流水。"""
+        with self.transaction():
+            self._db.scoped(account_id).execute(
+                "DELETE FROM run_budget_entries WHERE account_id = ? AND run_id IN"
+                " (SELECT run_id FROM run_budget_ledger"
+                " WHERE account_id = ? AND conversation_id = ?)",
+                (account_id, account_id, conversation_id),
+            )
+            self._db.scoped(account_id).execute(
+                "DELETE FROM run_budget_ledger WHERE account_id = ? AND conversation_id = ?",
+                (account_id, conversation_id),
+            )
+
+    def delete_for_run(self, account_id: str, run_id: str) -> None:
+        """运维删除运行时同时清理其预算。"""
+        with self.transaction():
+            for table in ("run_budget_entries", "run_budget_ledger"):
+                self._db.scoped(account_id).execute(
+                    f"DELETE FROM {table} WHERE account_id = ? AND run_id = ?",
+                    (account_id, run_id),
+                )
+
+    def freeze_batch_plan(
+        self, account_id: str, run_id: str, plan_id: str, detail: dict[str, Any],
+        *, now: datetime,
+    ) -> bool:
+        """冻结经代码核验的分批计划；重放必须与原计划完全一致。"""
+        with self.transaction():
+            plans = [e for e in self.list_entries(account_id, run_id) if e.kind == "batch_plan"]
+            if plans:
+                return plans[0].call_key == plan_id and plans[0].detail == detail
+            return self._mutate(
+                account_id, run_id, now, kind="batch_plan", call_key=plan_id,
+                counter_updates={}, gate=lambda _snapshot: True, extra_detail_values=detail,
+            )
+
+    def begin_batch(self, account_id: str, run_id: str, batch_key: str, *, now: datetime) -> bool:
+        """当前进程尚有此批执行时拒绝重复启动，重启仍使用同一运行额度。"""
+        def consume(_snapshot: RunBudgetSnapshot) -> bool:
+            entries = [e for e in self.list_entries(account_id, run_id) if e.call_key == batch_key]
+            if not entries:
+                return True
+            first = next(e for e in entries if e.kind == "batch_started")
+            deadline = _parse(first.detail["deadline_at"])
+            if deadline is None or now >= deadline:
+                return False
+            last = entries[-1]
+            return last.kind == "batch_failed" or (
+                last.kind == "batch_started"
+                and last.detail.get("execution_process") != _EXECUTION_PROCESS
+            )
+
+        def limits(snapshot: RunBudgetSnapshot) -> dict[str, Any]:
+            previous = next((
+                e for e in self.list_entries(account_id, run_id)
+                if e.call_key == batch_key and e.kind == "batch_started"
+            ), None)
+            if previous is not None:
+                return {**previous.detail, "execution_process": _EXECUTION_PROCESS}
+            plan = next(e for e in self.list_entries(account_id, run_id) if e.kind == "batch_plan")
+            batch = next(
+                b for b in plan.detail["batches"]
+                if f"{plan.call_key}:{b['batch_id']}" == batch_key
+            )
+            return {
+                "execution_process": _EXECUTION_PROCESS,
+                "deadline_at": _iso(now + timedelta(milliseconds=batch["max_duration_ms"])),
+                "model_call_limit": batch["model_call_limit"], "token_limit": batch["token_limit"],
+                "calls_before": snapshot.model_calls_used,
+                "tokens_before": snapshot.input_tokens_used + snapshot.output_tokens_used,
+            }
+
+        return self._mutate(
+            account_id, run_id, now, kind="batch_started", call_key=batch_key,
+            counter_updates={}, gate=consume,
+            extra_detail=limits,
+        )
+
+    def finish_batch(
+        self, account_id: str, run_id: str, batch_key: str, *, now: datetime,
+        detail: dict[str, Any] | None = None, failed: bool = False,
+    ) -> bool:
+        """提交本批脱敏完成引用或失败码；超时与停止后的迟到结果不能推进。"""
+        def consume(_snapshot: RunBudgetSnapshot) -> bool:
+            entries = [e for e in self.list_entries(account_id, run_id) if e.call_key == batch_key]
+            if not entries or entries[-1].kind != "batch_started":
+                return False
+            started = entries[-1]
+            deadline = _parse(started.detail["deadline_at"])
+            return (
+                started.detail.get("execution_process") == _EXECUTION_PROCESS
+                and deadline is not None and now < deadline
+            )
+
+        return self._mutate(
+            account_id, run_id, now,
+            kind="batch_failed" if failed else "batch_completed", call_key=batch_key,
+            counter_updates={}, gate=consume, extra_detail_values=detail,
+        )
 
     def list_entries(self, account_id: str, run_id: str) -> list[RunBudgetEntry]:
         rows = self._db.scoped(account_id).execute(
@@ -704,22 +909,52 @@ class RunBudgetLedgerRepository:
         attempt: int | None = None,
         outcome_code: str | None = None,
         duration_ms: int | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
         extra_detail: Callable[[RunBudgetSnapshot], dict[str, Any]] | None = None,
         extra_detail_values: dict[str, Any] | None = None,
         allow_closed: bool = False,
-        idempotent_unique: bool = False,
     ) -> bool:
-        """账本变更核心：读取快照 → 门校验 → 乐观版本 CAS → 追加流水。
-
-        版本冲突（并发写）时重读快照重试至多重试上限；``idempotent_unique``
-        时唯一索引冲突按幂等成功处理（不重复计数）。
-        """
-        for _ in range(3):
+        """在同一写事务中检查许可、更新版本和追加流水，避免取消竞争。"""
+        with self.transaction():
             snapshot = self.load(account_id, run_id)
-            if snapshot is None:
+            if snapshot is None or snapshot.contract_version != RUN_BUDGET_CONTRACT_VERSION:
                 return False
-            if snapshot.status != "active" and not (allow_closed and snapshot.status == "closed"):
+            if not snapshot.active and not allow_closed:
                 return False
+            if not allow_closed:
+                work_deadline = snapshot.plan.deadline_at - timedelta(
+                    milliseconds=snapshot.plan.verify_deliver_reserve_ms
+                )
+                if now >= work_deadline:
+                    return False
+                if kind in {"model_call", "transient_retry", "external_call"}:
+                    batches = [
+                        e for e in self.list_entries(account_id, run_id)
+                        if e.kind in {"batch_started", "batch_completed", "batch_failed"}
+                    ]
+                    if batches and batches[-1].kind == "batch_started":
+                        batch = batches[-1].detail
+                        if batch.get("execution_process") != _EXECUTION_PROCESS:
+                            return False
+                        batch_deadline = _parse(batch["deadline_at"])
+                        if batch_deadline is None or now >= batch_deadline:
+                            return False
+                        if kind != "external_call" and (
+                            snapshot.model_calls_used - batch["calls_before"]
+                            >= batch["model_call_limit"]
+                            or snapshot.input_tokens_used + snapshot.output_tokens_used
+                            - batch["tokens_before"] >= batch["token_limit"]
+                        ):
+                            return False
+                run = self._db.scoped(account_id).execute(
+                    "SELECT stop_requested, status FROM generation_runs"
+                    " WHERE run_id = ? AND account_id = ?", (run_id, account_id),
+                ).fetchone()
+                if run is not None and (
+                    run["stop_requested"] or run["status"] not in ("queued", "running")
+                ):
+                    return False
             if not gate(snapshot):
                 return False
             detail: dict[str, Any] = {}
@@ -727,44 +962,25 @@ class RunBudgetLedgerRepository:
                 detail.update(extra_detail(snapshot))
             if extra_detail_values:
                 detail.update(extra_detail_values)
-            # 纯流水追加（如 adjustment_end）允许零计数更新：只碰 updated_at。
             assignments = [
                 f"{column} = MAX(0, {column} + ?)" for column in counter_updates
             ]
             assignments.append("updated_at = ?")
             set_clause = ", ".join(assignments)
             params = [*counter_updates.values(), _iso(now), run_id, account_id, snapshot.version]
-            try:
-                with self._db.transaction():
-                    updated = self._db.scoped(account_id).execute(
-                        f"""
-                        UPDATE run_budget_ledger
-                        SET {set_clause}, version = version + 1
-                        WHERE run_id = ? AND account_id = ? AND version = ?
-                        """,
-                        params,
-                    ).rowcount
-                    if not updated:
-                        raise _VersionConflictError()
-                    self._append_entry(
-                        account_id,
-                        run_id,
-                        kind=kind,
-                        purpose=purpose,
-                        call_key=call_key,
-                        attempt=attempt,
-                        outcome_code=outcome_code,
-                        duration_ms=duration_ms,
-                        detail=detail or None,
-                        now=now,
-                    )
-                return True
-            except sqlite3.IntegrityError:
-                # 重复登记同一重试：幂等成功（计数不增）；其余唯一冲突拒绝。
-                return idempotent_unique
-            except _VersionConflictError:
-                continue
-        return False
+            updated = self._db.scoped(account_id).execute(
+                f"UPDATE run_budget_ledger SET {set_clause}, version = version + 1"
+                " WHERE run_id = ? AND account_id = ? AND version = ?", params,
+            ).rowcount
+            if not updated:
+                return False
+            self._append_entry(
+                account_id, run_id, kind=kind, purpose=purpose, call_key=call_key,
+                attempt=attempt, outcome_code=outcome_code, duration_ms=duration_ms,
+                input_tokens=input_tokens, output_tokens=output_tokens,
+                detail=detail or None, now=now,
+            )
+        return True
 
     def _append_entry(
         self,
@@ -777,6 +993,8 @@ class RunBudgetLedgerRepository:
         attempt: int | None = None,
         outcome_code: str | None = None,
         duration_ms: int | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
         detail: dict[str, Any] | None = None,
         now: datetime | None = None,
     ) -> None:
@@ -786,13 +1004,13 @@ class RunBudgetLedgerRepository:
             """
             INSERT INTO run_budget_entries (
                 run_id, seq, account_id, kind, purpose, call_key, attempt,
-                outcome_code, duration_ms, detail_json, created_at
+                outcome_code, duration_ms, input_tokens, output_tokens, detail_json, created_at
             )
             VALUES (
                 ?,
                 COALESCE((SELECT MAX(seq) FROM run_budget_entries
                           WHERE run_id = ?), 0) + 1,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
@@ -805,14 +1023,12 @@ class RunBudgetLedgerRepository:
                 attempt,
                 outcome_code,
                 duration_ms,
+                input_tokens,
+                output_tokens,
                 json.dumps(detail, ensure_ascii=False) if detail else "{}",
                 moment,
             ),
         )
-
-
-class _VersionConflictError(Exception):
-    """乐观版本守卫冲突（内部信号；并发写时重读重试）。"""
 
 
 def _iso(moment: datetime) -> str:
@@ -830,7 +1046,16 @@ def _parse(moment: str | None) -> datetime | None:
     return parsed
 
 
+def _recipe_costs_dict(costs: RunBudgetRecipeCosts | None) -> dict[str, Any]:
+    if costs is None:
+        return {}
+    from dataclasses import asdict
+
+    return asdict(costs)
+
+
 def _snapshot_from_row(row: sqlite3.Row) -> RunBudgetSnapshot:
+    recipe_data = json.loads(row["recipe_costs_json"])
     plan = RunBudgetPlan(
         budget_class=RunBudgetClass(row["budget_class"]),
         total_budget_ms=int(row["total_budget_ms"]),
@@ -845,7 +1070,9 @@ def _snapshot_from_row(row: sqlite3.Row) -> RunBudgetSnapshot:
         deep_read_max=int(row["deep_read_max"]),
         adjustment_rounds_max=int(row["adjustment_rounds_max"]),
         transient_retry_max=int(row["transient_retry_max"]),
+        recipe_costs=RunBudgetRecipeCosts(**recipe_data) if recipe_data else None,
     )
+
     return RunBudgetSnapshot(
         run_id=str(row["run_id"]),
         account_id=str(row["account_id"]),

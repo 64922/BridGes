@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import re
+import secrets
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
@@ -32,7 +33,7 @@ from pydantic import ValidationError
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.ai.errors import user_facing_model_error
-from bridges.ai.model_quota import MODEL_QUOTA_VERSION, RunModelQuota
+from bridges.ai.model_quota import MODEL_QUOTA_VERSION, RUN_MODEL_QUOTA_CONFIG_KEY, RunModelQuota
 from bridges.ai.payload_budget import (
     CallMaterialManifest,
     MaterialCategory,
@@ -70,6 +71,7 @@ from bridges.chat.global_writing_policy import (
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
 from bridges.chat.run_budget_ledger import (
+    RUN_BUDGET_INITIALS,
     RunBudgetLedgerRepository,
     derive_run_budget_class,
 )
@@ -2439,6 +2441,7 @@ class TurnOrchestrator:
         影响仅限崩溃窗口与升级前遗留运行）。
         """
         ledger = RunBudgetLedgerRepository(self._repo.database)
+        ledger.recover_external_calls(account_id, run_id, now=datetime.now(UTC))
         snapshot = ledger.load(account_id, run_id)
         if snapshot is None:
             run = self._repo.get_generation_run(account_id, run_id)
@@ -2450,6 +2453,14 @@ class TurnOrchestrator:
                 mode=mode_hint,
                 route=route_hint,
             )
+            quota = RunModelQuota.from_config(
+                (run.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)
+            )
+            token_budget = (
+                quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
+                if quota is not None and quota.is_verified and quota.max_input_tokens is not None
+                else None
+            )
             snapshot = ledger.ensure_for_run(
                 account_id=account_id,
                 run_id=run_id,
@@ -2457,6 +2468,7 @@ class TurnOrchestrator:
                 budget_class=budget_class,
                 run_created_at=run.created_at,
                 now=datetime.now(UTC),
+                token_budget=token_budget,
             )
         return RunBudget.from_ledger_snapshot(
             run_id,
@@ -4582,7 +4594,7 @@ class TurnOrchestrator:
             stage_deadline = deadline
         search_stop = search_stop_event or _SearchStopEvent(stop_event)
         #: 已在账本登记并发占位的外部分支（finally 中统一释放）。
-        registered_sources: list[str] = []
+        registered_sources: dict[str, str] = {}
         futures: dict[str, Future[_TimedSearchResult] | None] = {}
         pending: set[Future[_TimedSearchResult]] = set()
         done: set[Future[_TimedSearchResult]] = set()
@@ -4605,20 +4617,30 @@ class TurnOrchestrator:
                 }
             futures = {}
             for name, call in calls:
+                call_key = f"public_search:{name}:{secrets.token_hex(12)}"
                 if call is not None and budget is not None:
                     if not budget.register_external_call(
-                        f"public_search:{name}", purpose=f"public_search:{name}"
+                        call_key, purpose=f"public_search:{name}"
                     ):
                         # 超过外部独立并行上限：该分支不启动（预算拒绝），
                         # 结果按未参与处理（None），不自动扩大任务。
                         call = None
                     else:
-                        registered_sources.append(name)
+                        registered_sources[name] = call_key
                 futures[name] = (
                     _submit_daemon_search(call, name=f"public-search-{name}")
                     if call is not None
                     else None
                 )
+                future = futures[name]
+                if future is not None and budget is not None and name in registered_sources:
+                    def release_slot(
+                        _future: Future[_TimedSearchResult], key: str = call_key,
+                        run_budget: RunBudget = budget,
+                    ) -> None:
+                        run_budget.release_external_call(key)
+
+                    future.add_done_callback(release_slot)
             pending = {
                 future for future in futures.values() if future is not None
             }
@@ -4695,8 +4717,9 @@ class TurnOrchestrator:
                 future.cancel()
             # 改进工单 09：分支结束（含超时/取消）后释放账本并发占位。
             if budget is not None:
-                for name in registered_sources:
-                    budget.release_external_call(f"public_search:{name}")
+                for name, call_key in registered_sources.items():
+                    if futures.get(name) is None:
+                        budget.release_external_call(call_key)
 
     # ------------------------------------------------------------------
     # 检索（全部编排路径的单一实现）

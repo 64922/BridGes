@@ -2832,6 +2832,7 @@ MIGRATIONS: dict[int, list[str]] = {
             deep_read_max INTEGER NOT NULL,
             adjustment_rounds_max INTEGER NOT NULL,
             transient_retry_max INTEGER NOT NULL,
+            recipe_costs_json TEXT NOT NULL DEFAULT '{}',
             model_calls_used INTEGER NOT NULL DEFAULT 0,
             external_calls_used INTEGER NOT NULL DEFAULT 0,
             external_calls_active INTEGER NOT NULL DEFAULT 0,
@@ -2860,7 +2861,8 @@ MIGRATIONS: dict[int, list[str]] = {
                 CHECK (kind IN (
                     'model_call', 'model_call_result', 'transient_retry',
                     'external_call', 'external_call_result', 'adjustment_begin',
-                    'adjustment_end', 'exhausted', 'closed', 'compat_created'
+                    'adjustment_end', 'exhausted', 'closed', 'compat_created',
+                    'batch_plan', 'batch_started', 'batch_completed', 'batch_failed'
                 )),
             purpose TEXT,
             call_key TEXT,

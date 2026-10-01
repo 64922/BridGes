@@ -1546,7 +1546,7 @@ class ChatService:
         )
         token_budget = (
             quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
-            if quota is not None and quota.is_verified and quota.max_input_tokens
+            if quota is not None and quota.is_verified and quota.max_input_tokens is not None
             else None
         )
         plan = derive_run_budget_plan(
@@ -1638,6 +1638,9 @@ class ChatService:
             ChatRunStatus.RUNNING.value,
         }:
             self._repo.request_generation_stop(account_id, run.run_id)
+            RunBudgetLedgerRepository(self._repo.database).close(
+                account_id=account_id, run_id=run.run_id, now=datetime.now(UTC)
+            )
             entry = self._lifecycle.signal_and_started(message_id)
             if entry is not None:
                 entry[0].set()
@@ -1707,6 +1710,13 @@ class ChatService:
         执行器在下次收敛点按既有终止语义收尾。返回停止的消息数量。
         """
         self._repo.request_stop_account_runs(account_id, datetime.now(UTC))
+        for run in self._repo.database.scoped(account_id).execute(
+            "SELECT run_id FROM run_budget_ledger WHERE account_id = ? AND status != 'closed'",
+            (account_id,),
+        ).fetchall():
+            RunBudgetLedgerRepository(self._repo.database).close(
+                account_id=account_id, run_id=str(run["run_id"]), now=datetime.now(UTC)
+            )
         stopped = 0
         for conversation in self._repo.list_conversations(account_id):
             for message in self._repo.list_messages(account_id, conversation.conversation_id):

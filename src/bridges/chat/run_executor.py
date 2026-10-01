@@ -214,6 +214,9 @@ class GenerationRunExecutor:
                 self._last_summary = f"generation: 运行 {run_id} 由其他执行器执行，跳过。"
                 return
             # 运行已终态：队列行是收尾遗留，直接完成
+            RunBudgetLedgerRepository(self._database).close(
+                account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+            )
             self._queue.complete(claim)
             self._last_summary = f"generation: 运行 {run_id} 已终态，跳过。"
             return
@@ -246,6 +249,9 @@ class GenerationRunExecutor:
             return
         committed = self._terminal.recover_committed_result(account_id, run)
         if committed is not None:
+            RunBudgetLedgerRepository(self._database).close(
+                account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+            )
             self._last_summary = (
                 f"generation: 运行 {run_id} 结果已提交"
                 f"（{committed.outcome.status.value}），只补齐终态。"
@@ -262,6 +268,9 @@ class GenerationRunExecutor:
                 fallback=stopped_outcome(),
             )
             self._last_summary = f"generation: 运行 {run_id} 已在排队时请求停止。"
+            RunBudgetLedgerRepository(self._database).close(
+                account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+            )
             self._queue.complete(claim)
             return
         stop_event = self._service._lifecycle.register(run.assistant_message_id)  # noqa: SLF001
