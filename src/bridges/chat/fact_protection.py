@@ -63,19 +63,27 @@ class InconsistencyKind(StrEnum):
     AMBIGUOUS_BINDING = "ambiguous_binding"
 
 
+#: 各类可绑定片段的正则（单一事实源：片段识别、围栏遮蔽与未闭合起始符扫描共用）。
+_CODE_FENCE_RE = re.compile(r"```[\s\S]*?```")
+_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+_FORMULA_RE = re.compile(r"\$[^$\n]+\$")
+_URL_RE = re.compile(r"https?://[^\s<>\]})，。；、（）」』”]+")
+_JSON_RE = re.compile(r"\{\s*\"[^{}\n]+\"\s*:\s*[^{}\n]+\}")
+_CITATION_RE = re.compile(r"(?<!\w)\[[0-9]+(?:[-,][0-9]+)*\]")
+_NUMBER_WITH_UNIT_RE = re.compile(
+    r"(?<!\w)\d+(?:\.\d+)?[ \t]*[A-Za-zμΩ%°][^\s，。；;)]*"
+)
+
 #: 受保护片段正则。只负责识别「可绑定对象」，不是全局硬词表或风格评分器；
 #: 带单位数值不跨行匹配，避免把换行后的词误并入数值。
 _FRAGMENT_PATTERNS: tuple[tuple[FragmentKind, re.Pattern[str]], ...] = (
-    (FragmentKind.CODE_FENCE, re.compile(r"```[\s\S]*?```")),
-    (FragmentKind.INLINE_CODE, re.compile(r"`[^`\n]+`")),
-    (FragmentKind.FORMULA, re.compile(r"\$[^$\n]+\$")),
-    (FragmentKind.URL, re.compile(r"https?://[^\s<>\]})，。；、（）」』”]+")),
-    (FragmentKind.JSON, re.compile(r"\{\s*\"[^{}\n]+\"\s*:\s*[^{}\n]+\}")),
-    (FragmentKind.CITATION, re.compile(r"(?<!\w)\[[0-9]+(?:[-,][0-9]+)*\]")),
-    (
-        FragmentKind.NUMBER_WITH_UNIT,
-        re.compile(r"(?<!\w)\d+(?:\.\d+)?[ \t]*[A-Za-zμΩ%°][^\s，。；;)]*"),
-    ),
+    (FragmentKind.CODE_FENCE, _CODE_FENCE_RE),
+    (FragmentKind.INLINE_CODE, _INLINE_CODE_RE),
+    (FragmentKind.FORMULA, _FORMULA_RE),
+    (FragmentKind.URL, _URL_RE),
+    (FragmentKind.JSON, _JSON_RE),
+    (FragmentKind.CITATION, _CITATION_RE),
+    (FragmentKind.NUMBER_WITH_UNIT, _NUMBER_WITH_UNIT_RE),
 )
 
 #: 明确的「改动/计算」指令 → 关闭原样保留（原片段是输入，不是事实锁）。
@@ -268,13 +276,24 @@ def compile_protected_fragments(text: str) -> list[ProtectedFragment]:
 
     返回按出现顺序排列的片段；每个片段带位置、对象锚点与来源哈希，供精确
     绑定使用。识别只依赖确定性正则，不调用模型。
+
+    代码围栏先整体识别并遮蔽再匹配其余类别（Issue 06）：否则行内代码/公式
+    会跨越围栏边界，把两个围栏之间的反引号对配成「跨围栏伪片段」，其起点
+    落在前一个围栏的结束符内部——这种片段在流式增量下会随文本增长才出现，
+    破坏「已追加前缀不再改动」的追加式协议。遮蔽只影响匹配范围，不改变
+    位置与片段正文。
     """
     if not text:
         return []
+    masked = list(text)
+    for match in _CODE_FENCE_RE.finditer(text):
+        masked[match.start() : match.end()] = " " * (match.end() - match.start())
+    masked_text = "".join(masked)
     matches: list[tuple[int, int, FragmentKind, str]] = []
     for kind, pattern in _FRAGMENT_PATTERNS:
-        for match in pattern.finditer(text):
-            matches.append((match.start(), match.end(), kind, match.group(0)))
+        source = text if kind is FragmentKind.CODE_FENCE else masked_text
+        for match in pattern.finditer(source):
+            matches.append((match.start(), match.end(), kind, text[match.start() : match.end()]))
 
     kept: list[tuple[int, int, FragmentKind, str]] = []
     for index, (start, end, kind, value) in enumerate(matches):
@@ -310,6 +329,21 @@ def compile_protected_fragments(text: str) -> list[ProtectedFragment]:
     return fragments
 
 
+def same_fragment_identity(
+    fragment: ProtectedFragment, source: ProtectedFragment
+) -> bool:
+    """两个片段是否「同类 + 同来源哈希 + 同对象锚点」（三段式配对的第 1 段）。
+
+    Issue 06 的流式追加协议与 :func:`_pair_fragments` 共用这一判定：只有
+    精确匹配的候选片段才确认不再被替换，可在流式期间立即追加。
+    """
+    return (
+        fragment.kind is source.kind
+        and fragment.digest == source.digest
+        and fragment.anchor == source.anchor
+    )
+
+
 def _pair_fragments(
     sources: list[ProtectedFragment],
     candidates: list[ProtectedFragment],
@@ -331,7 +365,7 @@ def _pair_fragments(
         for candidate_index, candidate in enumerate(candidates):
             if candidate_index in used:
                 continue
-            if candidate.digest == source.digest and candidate.anchor == source.anchor:
+            if same_fragment_identity(candidate, source):
                 pairs[source_index] = candidate_index
                 used.add(candidate_index)
                 break
@@ -572,6 +606,38 @@ def _apply_verbatim(
     return restored, tuple(inconsistencies), tuple(bindings)
 
 
+def binding_sources(
+    original: str, *, intent: ProtectionIntent | None = None
+) -> list[ProtectedFragment]:
+    """返回原样保留绑定实际使用的源片段（排除允许纠正的目标）。
+
+    Issue 06 的流式追加协议据此判断候选片段是否已与原片段逐字一致：只有
+    与某个源片段「同类 + 同来源哈希 + 同对象锚点」的候选片段才被确认不再
+    改动，可在流式期间立即追加；其余候选片段（可能仍需替换）会被暂缓到片段
+    闭合或终态确认后再输出，保证 delta 始终只追加新内容。
+
+    ``intent`` 为空时按 :func:`detect_protection_intent` 自动判定，与
+    :func:`plan_fragment_protection` 的源集合口径一致；普通问答（``REFERENCE``）
+    与显式纠正不产生原样保留源。
+    """
+    if not original:
+        return []
+    resolved = intent or detect_protection_intent(original)
+    if resolved is ProtectionIntent.REFERENCE:
+        return []
+    correction_spans: list[tuple[int, int]] = []
+    if resolved is ProtectionIntent.CORRECTION:
+        if intent is ProtectionIntent.CORRECTION:
+            # 显式纠正：整段跳过原样保留。
+            return []
+        correction_spans = _transform_spans(original)
+    return [
+        fragment
+        for fragment in compile_protected_fragments(original)
+        if not _is_correction_target(fragment, correction_spans)
+    ]
+
+
 def plan_fragment_protection(
     original: str,
     candidate: str,
@@ -710,7 +776,9 @@ __all__ = [
     "ProtectionResult",
     "SemanticReferenceReport",
     "assess_semantic_reference",
+    "binding_sources",
     "compile_protected_fragments",
     "detect_protection_intent",
     "plan_fragment_protection",
+    "same_fragment_identity",
 ]

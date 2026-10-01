@@ -543,6 +543,26 @@ def test_subscribe_after_run_terminal_replays_all_events_and_ends(
         assert "\n".join(response.iter_lines()).strip() == ""
 
 
+def test_subscribe_response_forbids_intermediary_transform(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    """SSE 响应禁止中间层压缩/变换：压缩会缓冲增量直到运行终态。"""
+    _register(client)
+    conversation_id = _create_conversation(client)
+    created = _send(client, conversation_id, "你好")
+    message_id = created["assistant_message"]["message_id"]
+    _drive_executor(sqlite_app)
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/{message_id}/events",
+        params={"cursor": 0},
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert "no-transform" in response.headers["cache-control"]
+        assert response.headers["x-accel-buffering"] == "no"
+
+
 def test_stop_generation_via_api(client: TestClient, sqlite_app: Any) -> None:
     _register(client)
     sqlite_app.state.chat_service._gateway = _gateway_with(
