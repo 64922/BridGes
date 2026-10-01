@@ -19,6 +19,12 @@ import { signUp, uniqueCredentials } from "./helpers/auth";
  * - 停止不新增模型调用（尝试数/消息数不变）。
  */
 
+// 本文件三个用例共用同一后台生成执行器：并行 worker 会让多轮生成按队列串行，
+// 后两轮在默认 5s 内等不到首块而假失败（本地默认 4 workers 实测 2/3 失败）。
+// 文件内串行；首块等待与仓库其他聊天 E2E 统一为 30s，容忍其他 spec 的队列占用。
+// CI（workers=1）行为不变。
+test.describe.configure({ mode: "serial" });
+
 const PASSWORD = "correct-horse-issue06";
 const API_PORT = process.env.API_PORT || "8000";
 const API_ORIGIN = `http://127.0.0.1:${API_PORT}`;
@@ -162,7 +168,9 @@ test.describe("Issue 06 流式正文 / 终态存储 / 断线重放", () => {
       match: "甲 10 ms",
       // 故障注入：chunk 边界切在被保护数值与行内代码中间，模型正文整体漂移。
       chunks: ["好的，帮你顺一下：甲 1", "1 ms；乙 2", "1 ms，写法 `x =", " 2`。"],
-      delay_ms: 250,
+      // 每个 chunk 的延迟要覆盖前端 dev 编译/导航时间，否则生成可能在停止
+      // 按钮渲染前就结束，流式窗口不可观测（Issue 06 验收复跑发现的假失败）。
+      delay_ms: 1500,
     });
     const conversationId = await sendFromHome(
       page,
@@ -173,7 +181,7 @@ test.describe("Issue 06 流式正文 / 终态存储 / 断线重放", () => {
     const stopButton = page.getByRole("button", { name: "停止生成" });
     await expect(stopButton).toBeVisible({ timeout: 15_000 });
     // 流式期间：已确认前缀正常下发，被改写数值绝不出现在屏幕正文。
-    await expect(thread).toContainText("好的");
+    await expect(thread).toContainText("好的", { timeout: 30_000 });
     for (let i = 0; i < 10; i += 1) {
       await expect(thread).not.toContainText("甲 11");
       await expect(thread).not.toContainText("x = 2");
@@ -230,7 +238,7 @@ test.describe("Issue 06 流式正文 / 终态存储 / 断线重放", () => {
     const thread = page.getByTestId("chat-thread");
     const stopButton = page.getByRole("button", { name: "停止生成" });
     await expect(stopButton).toBeVisible({ timeout: 15_000 });
-    await expect(thread).toContainText("第一段");
+    await expect(thread).toContainText("第一段", { timeout: 30_000 });
 
     // 生成中刷新：页面从权威历史的 active_run 游标续读。
     await page.reload();
@@ -270,7 +278,8 @@ test.describe("Issue 06 流式正文 / 终态存储 / 断线重放", () => {
         "乙 61 ms。",
         "结尾不应出现。",
       ],
-      delay_ms: 700,
+      // 同上：保证点击停止时仍有未到达的迟到分块。
+      delay_ms: 1000,
     });
     const conversationId = await sendFromHome(
       page,
@@ -280,7 +289,7 @@ test.describe("Issue 06 流式正文 / 终态存储 / 断线重放", () => {
     const thread = page.getByTestId("chat-thread");
     const stopButton = page.getByRole("button", { name: "停止生成" });
     await expect(stopButton).toBeVisible({ timeout: 15_000 });
-    await expect(thread).toContainText("先说明");
+    await expect(thread).toContainText("先说明", { timeout: 30_000 });
 
     await stopButton.click();
     const stopped = await waitForTerminal(page, conversationId, "stopped");
