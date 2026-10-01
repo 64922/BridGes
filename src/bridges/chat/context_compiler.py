@@ -23,10 +23,21 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from unicodedata import category
 
 from bridges.ai.fixed_models import MODEL_CONTEXT_WINDOWS
 from bridges.ai.model_quota import RunModelQuota
+
+# 改进工单 04：图片成本与最终载荷门共用同一常量（IMAGE_COST_TOKENS 是
+# payload_budget.IMAGE_PART_COST_TOKENS 的别名），估算函数也只有一个事实源。
+from bridges.ai.payload_budget import (
+    IMAGE_PART_COST_TOKENS as IMAGE_COST_TOKENS,
+)
+from bridges.ai.payload_budget import (
+    TOKEN_ESTIMATE_VERSION as TOKEN_ESTIMATE_VERSION,
+)
+from bridges.ai.payload_budget import (
+    estimate_tokens as estimate_tokens,
+)
 from bridges.chat.turn import (
     CHAT_OUTPUT_TOKENS,
     history_items,
@@ -43,8 +54,6 @@ if TYPE_CHECKING:
 CONTEXT_BUDGET_VERSION = "ctx-budget-v1"
 #: 摘要版本（摘要格式或压缩规则变化时递增）。
 SUMMARY_VERSION = "summary-v1"
-#: token 估算版本（估算规则变化时递增）。
-TOKEN_ESTIMATE_VERSION = "token-estimate-v1"
 
 #: 输出预留缺省值：与主对话调用的输出额度 :data:`CHAT_OUTPUT_TOKENS` 同源
 #: （改进工单 03）——单一事实源，避免两处 ``1024`` 漂移。调用方可传
@@ -54,8 +63,6 @@ OUTPUT_RESERVE_MARGIN_TOKENS = 256
 #: 工具调用预留：本轮工具调用与工具结果回传的输入成本预留（模块票接入
 #: 真实工具后在各自合同内细化，本值为日常普通聊天的保守下限）。
 TOOL_RESERVE_TOKENS = 512
-#: 每张当前回合图片的输入成本估算（文本预算口径下的保守常量）。
-IMAGE_COST_TOKENS = 1024
 #: 未知模型的保守缺省窗口。它**不是**已验证额度：仅在纯函数直接调用且调用方
 #: 未提供额度快照时作为裁剪上界，编译记录以 ``window_verified=False`` 如实
 #: 标注；生产路径由运行额度快照（``resolve_run_quota``）提供已验证窗口。
@@ -107,29 +114,6 @@ def verified_context_window(model_id: str | None) -> int:
 def is_verified_context_window(model_id: str | None) -> bool:
     """该模型是否登记有已验证上下文窗口（未知模型为 False）。"""
     return model_id is not None and model_id in VERIFIED_CONTEXT_WINDOWS
-
-
-def estimate_tokens(text: str) -> int:
-    """确定性 token 估算（:data:`TOKEN_ESTIMATE_VERSION`）。
-
-    CJK 汉字与全角/CJK 标点按 1 token/字、其余字符按 4 字符 1 token 向上
-    取整——对当前 Qwen 文本模型整体略偏保守，只用于预算控制，不冒充真实
-    分词结果。
-    """
-    tokens = 0
-    other = 0
-    for char in text:
-        code = ord(char)
-        if (
-            "\u4e00" <= char <= "\u9fff"
-            or "\u3000" <= char <= "\u303f"
-            or "\uff00" <= char <= "\uffef"
-            or (category(char).startswith("L") and code > 0x2E7F)
-        ):
-            tokens += 1
-        else:
-            other += 1
-    return tokens + (other + 3) // 4
 
 
 @dataclass(frozen=True)
