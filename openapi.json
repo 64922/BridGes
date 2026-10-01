@@ -26265,6 +26265,550 @@
         }
       }
     },
+    "/tasks/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "List Conversation Tasks",
+        "description": "列出某会话的全部任务投影（含有效条件与未决等待）。",
+        "operationId": "list_conversation_tasks_tasks_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskProjection"
+                  },
+                  "title": "Response List Conversation Tasks Tasks Conversations  Conversation Id  Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/conversations/{conversation_id}/events": {
+      "get": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "List Conversation Task Events",
+        "description": "列出某会话的任务审计事件（append-only）。",
+        "operationId": "list_conversation_task_events_tasks_conversations__conversation_id__events_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskEvent"
+                  },
+                  "title": "Response List Conversation Task Events Tasks Conversations  Conversation Id  Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "Get Task",
+        "description": "读取单个任务的当前投影。",
+        "operationId": "get_task_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskProjection"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{task_id}/versions": {
+      "get": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "List Task Versions",
+        "description": "列出任务的不可变版本快照（按版本号升序）。",
+        "operationId": "list_task_versions_tasks__task_id__versions_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskVersion"
+                  },
+                  "title": "Response List Task Versions Tasks  Task Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{task_id}/conditions": {
+      "get": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "List Task Conditions",
+        "description": "列出任务的逐条条件（含草案、线索与被取代值，供审计）。",
+        "operationId": "list_task_conditions_tasks__task_id__conditions_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskCondition"
+                  },
+                  "title": "Response List Task Conditions Tasks  Task Id  Conditions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{task_id}/waits": {
+      "get": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "List Task Waits",
+        "description": "列出任务的澄清等待（含历史终态，供审计）。",
+        "operationId": "list_task_waits_tasks__task_id__waits_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskWait"
+                  },
+                  "title": "Response List Task Waits Tasks  Task Id  Waits Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/waits": {
+      "post": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "Open Task Wait",
+        "description": "登记一个澄清等待：任务进入等待态，等待不保留工作租约。",
+        "operationId": "open_task_wait_tasks_waits_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskWaitCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskWait"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/turns": {
+      "post": {
+        "tags": [
+          "跨轮任务"
+        ],
+        "summary": "Apply Task Turn",
+        "description": "落地一轮任务关系：解析关系、生成版本、绑定条件、处置等待。\n\n确定性入口：同一请求可重放，乐观版本冲突返回 409。",
+        "operationId": "apply_task_turn_tasks_turns_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTurnResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -34311,6 +34855,38 @@
         ],
         "title": "CommuteRouteStep",
         "description": "一个文字路段（高德返回的原始指令、道路名与路段距离）。"
+      },
+      "ConditionOrigin": {
+        "type": "string",
+        "enum": [
+          "user_stated",
+          "assistant_proposal",
+          "model_inference",
+          "tool_observation"
+        ],
+        "title": "ConditionOrigin",
+        "description": "条件来源分级；决定它是否可以直接成为约束。"
+      },
+      "ConditionScope": {
+        "type": "string",
+        "enum": [
+          "task",
+          "conversation"
+        ],
+        "title": "ConditionScope",
+        "description": "条件的有效范围：默认绑定原任务，用户明示才扩展到整个会话。"
+      },
+      "ConditionStatus": {
+        "type": "string",
+        "enum": [
+          "effective",
+          "draft",
+          "clue",
+          "superseded",
+          "revoked"
+        ],
+        "title": "ConditionStatus",
+        "description": "条件的有效状态；只有 ``EFFECTIVE`` 进入有效条件投影。"
       },
       "Conflict": {
         "properties": {
@@ -55316,6 +55892,804 @@
         "title": "SyncOutboxStatus",
         "description": "Delivery state of a durable synchronization outbox entry."
       },
+      "TaskCondition": {
+        "properties": {
+          "condition_id": {
+            "type": "string",
+            "title": "Condition Id"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "提出该条件的任务版本号。"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConditionScope"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ConditionOrigin"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConditionStatus"
+          },
+          "source_message_id": {
+            "type": "string",
+            "title": "Source Message Id"
+          },
+          "source_span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Span"
+          },
+          "supersedes_condition_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Condition Id",
+            "description": "本条取代的旧条件 ID。"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By",
+            "description": "取代本条的新条件 ID；非空即表示本条已失效。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "condition_id",
+          "task_id",
+          "version",
+          "kind",
+          "text",
+          "scope",
+          "origin",
+          "status",
+          "source_message_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskCondition",
+        "description": "一条已落地的条件（含来源与取代关系）。"
+      },
+      "TaskConditionInput": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Kind",
+            "description": "条件类别，例如 budget、exclusion、requirement。"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text",
+            "description": "条件的原话正文（用户可见）。"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConditionScope",
+            "description": "有效范围：默认绑定原任务。",
+            "default": "task"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ConditionOrigin",
+            "description": "来源分级，决定是否直接生效。",
+            "default": "user_stated"
+          },
+          "source_message_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Message Id",
+            "description": "条件来源的用户消息 ID。"
+          },
+          "source_span": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Span",
+            "description": "原话范围（可定位的最小片段），无定位时为 null。"
+          },
+          "replaces": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaces",
+            "description": "被本条明示纠正/撤销的旧条件 ID。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text",
+          "source_message_id"
+        ],
+        "title": "TaskConditionInput",
+        "description": "一轮输入中提出的一条条件（尚未落地）。\n\n``replaces`` 指向被本条纠正/撤销的旧条件 ID；同一任务内同 ``kind`` 的\n明示修订也会自动取代旧值（``5,000 改 3,000``）。"
+      },
+      "TaskErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "稳定错误码。"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "可操作的中文说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "TaskErrorResponse",
+        "description": "任务接口的稳定错误体。"
+      },
+      "TaskEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "account_id",
+          "conversation_id",
+          "task_id",
+          "kind",
+          "created_at"
+        ],
+        "title": "TaskEvent",
+        "description": "任务审计事件（append-only）。"
+      },
+      "TaskProjection": {
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/TaskRecord"
+          },
+          "effective_conditions": {
+            "items": {
+              "$ref": "#/components/schemas/TaskCondition"
+            },
+            "type": "array",
+            "title": "Effective Conditions"
+          },
+          "conversation_conditions": {
+            "items": {
+              "$ref": "#/components/schemas/TaskCondition"
+            },
+            "type": "array",
+            "title": "Conversation Conditions"
+          },
+          "open_waits": {
+            "items": {
+              "$ref": "#/components/schemas/TaskWait"
+            },
+            "type": "array",
+            "title": "Open Waits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "title": "TaskProjection",
+        "description": "任务对外投影：有效条件 + 未决等待 + 来源。\n\n``effective_conditions`` 只包含仍有效的用户约束与工具事实；草案与线索\n不在此列（它们不是用户约束）。``open_waits`` 只包含当前激活的等待项。"
+      },
+      "TaskRecord": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "current_version": {
+            "type": "integer",
+            "title": "Current Version"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "task-v1"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "account_id",
+          "conversation_id",
+          "goal",
+          "status",
+          "current_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskRecord",
+        "description": "跨轮任务的行投影（不含条件明细，明细按需查询）。"
+      },
+      "TaskRelation": {
+        "type": "string",
+        "enum": [
+          "new",
+          "continue",
+          "revise",
+          "pause",
+          "cancel"
+        ],
+        "title": "TaskRelation",
+        "description": "一轮理解产出的有限任务关系。\n\n``new`` 是「本消息属于新任务」；没有目标也没有条件的普通聊天不创建\n任务（普通聊天保持轻量）。关系由工单 12 的主智能体理解产出，本领域\n只做代码校验与落地。"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "waiting",
+          "paused",
+          "blocked",
+          "completed",
+          "cancelled"
+        ],
+        "title": "TaskStatus",
+        "description": "跨轮任务的当前状态；与单次运行状态、产物可信状态分离。"
+      },
+      "TaskTurnRequest": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Conversation Id"
+          },
+          "user_message_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "User Message Id"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/TaskRelation"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal",
+            "description": "本消息表达的任务目标（若有）。"
+          },
+          "explicit_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explicit Task Id",
+            "description": "用户明确指代的任务 ID；缺省用会话当前任务。"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/TaskConditionInput"
+            },
+            "type": "array",
+            "title": "Conditions"
+          },
+          "is_new_topic": {
+            "type": "boolean",
+            "title": "Is New Topic",
+            "description": "本消息是否明确开启无关话题（暂停旧任务）。",
+            "default": false
+          },
+          "is_profile_command": {
+            "type": "boolean",
+            "title": "Is Profile Command",
+            "description": "画像命令（记住/忘掉）：不得填旧等待。",
+            "default": false
+          },
+          "is_learning_action": {
+            "type": "boolean",
+            "title": "Is Learning Action",
+            "description": "学习阶段动作：不得填旧等待。",
+            "default": false
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version",
+            "description": "乐观版本：与当前版本不符时拒绝修订。"
+          },
+          "answer_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Answer Fields",
+            "description": "本消息实际补齐的缺失字段；用于等待匹配。"
+          },
+          "answer_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Text",
+            "description": "本消息作为澄清答复的正文（用于审计，可空）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "user_message_id",
+          "relation"
+        ],
+        "title": "TaskTurnRequest",
+        "description": "一次任务关系落地请求（由工单 12 的主智能体理解后提交）。\n\n普通聊天（无目标、无条件）不创建任务：这是「普通聊天轻量」的强制点。"
+      },
+      "TaskTurnResult": {
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "title": "Created",
+            "description": "本轮是否创建了新任务。"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paused_task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Paused Task Ids"
+          },
+          "cancelled_task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cancelled Task Ids"
+          },
+          "wait_resolution": {
+            "$ref": "#/components/schemas/WaitResolution",
+            "default": "none"
+          },
+          "resolved_wait": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskWait"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wait_rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Rejection Reason"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "本轮产生的任务事件类型。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created"
+        ],
+        "title": "TaskTurnResult",
+        "description": "一次任务关系落地的结果投影。"
+      },
+      "TaskVersion": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "title": "Version Id"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal"
+          },
+          "condition_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Condition Ids"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Message Ids"
+          },
+          "supersedes_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Version"
+          },
+          "invalidated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidated At"
+          },
+          "invalidation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidation Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version_id",
+          "task_id",
+          "version",
+          "goal",
+          "created_at"
+        ],
+        "title": "TaskVersion",
+        "description": "任务在某次条件确定后的不可变快照。"
+      },
+      "TaskWait": {
+        "properties": {
+          "wait_id": {
+            "type": "string",
+            "title": "Wait Id"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "expected_version": {
+            "type": "integer",
+            "title": "Expected Version"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Fields"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "origin_message_id": {
+            "type": "string",
+            "title": "Origin Message Id",
+            "description": "提出该问题的助手消息 ID。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WaitStatus"
+          },
+          "source_message_id": {
+            "type": "string",
+            "title": "Source Message Id",
+            "description": "触发该等待的用户消息 ID。"
+          },
+          "resolved_by_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Message Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At",
+            "description": "终态释放时刻；非空即表示不再占用执行资源。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "wait_id",
+          "task_id",
+          "conversation_id",
+          "expected_version",
+          "question",
+          "origin_message_id",
+          "status",
+          "source_message_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskWait",
+        "description": "一次跨轮澄清等待。\n\n等待项不携带工作租约：进入等待即释放执行资源（见\n``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 固定\n提问时的任务版本，答复必须匹配该版本才被接受。"
+      },
+      "TaskWaitCreateRequest": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Conversation Id"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Question",
+            "description": "已向用户提出的那一个问题。"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Missing Fields",
+            "description": "等待补齐的缺失字段（答复须补齐其中至少一项）。"
+          },
+          "origin_message_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Origin Message Id",
+            "description": "提出问题的助手消息 ID。"
+          },
+          "source_message_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Message Id",
+            "description": "触发等待的用户消息 ID。"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id",
+            "description": "目标任务；缺省用会话当前任务。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "question",
+          "missing_fields",
+          "origin_message_id",
+          "source_message_id"
+        ],
+        "title": "TaskWaitCreateRequest",
+        "description": "登记一个澄清等待（生产由澄清节点调用；等待不保留工作租约）。"
+      },
       "TeachingAnswerEvidence": {
         "properties": {
           "answer_id": {
@@ -58358,6 +59732,27 @@
         ],
         "title": "VideoTaskStatus",
         "description": "视频任务的呈现状态。\n\n- ``queued``：已提交，等待后台执行器领取；\n- ``submitting``：已领取，正在向供应商提交云端任务；\n- ``generating``：云端任务已接受，正在轮询生成；\n- ``recovery``：处理被中断（租约过期），后台正在恢复重领；\n- ``succeeded``：真实模型结果已落为账户资产；\n- ``failed``：失败，error_code/error_message 说明原因，可重试；\n- ``cancelling``：用户已发起取消，worker 正在收敛（尽力通知云端）；\n- ``cancelled``：已取消；迟到结果不会发布为成功资产。"
+      },
+      "WaitResolution": {
+        "type": "string",
+        "enum": [
+          "none",
+          "accepted",
+          "rejected"
+        ],
+        "title": "WaitResolution",
+        "description": "一次用户消息对等待项的处置结果。"
+      },
+      "WaitStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "suspended",
+          "resolved",
+          "expired"
+        ],
+        "title": "WaitStatus",
+        "description": "澄清等待的生命周期状态。\n\n``suspended`` 表示等待项仍存在但已失去当前激活状态（用户换了话题）：\n它不会被后续消息误填，也不会被悄悄恢复为 ``open``。"
       },
       "WebSearchPageClassification": {
         "type": "string",

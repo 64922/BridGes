@@ -48,6 +48,7 @@ from bridges.api import (
     sharing,
     skills,
     sync,
+    tasks,
     vault,
     workflows,
 )
@@ -102,6 +103,8 @@ from bridges.chat import (
 )
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
+from bridges.tasks.repository import TaskRepository
+from bridges.tasks.service import TaskService
 from bridges.closeout.fixtures import (
     CloseoutArxivClient,
     CloseoutQwenAdapter,
@@ -1498,6 +1501,12 @@ def create_app(
             automatic_profile_service=app.state.automatic_profile_service,
             atomic_profile_service=getattr(app.state, "atomic_profile_service", None),
         )
+        # 改进工单 08：跨轮任务领域服务。写模型归任务领域仓库（独立账户
+        # 域表），API 只做投影；关系由工单 12 的主智能体理解后经
+        # POST /tasks/turns 提交，本服务按代码规则裁决。
+        app.state.task_service = TaskService(
+            TaskRepository(bridges_database)
+        )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。
         # test 环境（确定性适配器驱动）不自动启动线程，由测试显式驱动
@@ -1922,6 +1931,8 @@ def create_app(
     app.include_router(mcp_router)
     app.include_router(skills.router)
     app.include_router(data_router)
+    # 改进工单 08：跨轮任务投影与关系落地入口。
+    app.include_router(tasks.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

@@ -89,6 +89,13 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。
     "profile_item_migration_records",
+    # 工单 08：跨轮任务域。子表（事件/等待/条件/版本）先于父表
+    # conversation_tasks 删除（外键强制打开，无 CASCADE）。
+    "task_events",
+    "task_waits",
+    "task_conditions",
+    "task_versions",
+    "conversation_tasks",
     "messages",
     "conversations",
     # 关联行有 lock_id 外键指向 model_run_locks，必须先删。
@@ -122,6 +129,19 @@ class ExportCategory:
 EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("conversations", "对话", ("conversations",), 256),
     ExportCategory("messages", "消息", ("messages",), 1024),
+    # 工单 08：跨轮任务、不可变版本、有效条件、澄清等待与任务审计。
+    ExportCategory(
+        "tasks",
+        "跨轮任务与澄清",
+        (
+            "conversation_tasks",
+            "task_versions",
+            "task_conditions",
+            "task_waits",
+            "task_events",
+        ),
+        512,
+    ),
     # V2 学习小节的阶段状态（书页证据、复盘题目与判定、学习总结）全在
     # state_json 一列，按行导出即完整可读。
     ExportCategory("study", "学习小节状态", ("study_states",), 4096),
@@ -302,6 +322,11 @@ def logical_summary(
     tables = (
         "conversations",
         "messages",
+        "conversation_tasks",
+        "task_versions",
+        "task_conditions",
+        "task_waits",
+        "task_events",
         "mode_events",
         "model_run_locks",
         "chat_attachments",

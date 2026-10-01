@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 60
+SCHEMA_VERSION = 61
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2657,6 +2657,146 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         ALTER TABLE model_run_locks
         ADD COLUMN call_contract_json TEXT
+        """,
+    ],
+    # 改进工单 08：有来源的跨轮任务、不可变任务版本、当前指针与澄清等待。
+    # 权威写模型归 ``bridges/tasks`` 领域仓库；图与消息只存引用。
+    # - conversations.current_task_id：会话的「当前任务指针」（单一事实源，
+    #   指向 conversation_tasks.task_id；无任务为 NULL，旧会话自然兼容）。
+    # - conversation_tasks：任务主体（目标/状态/当前版本号/合同版本）。
+    # - task_versions：不可变版本快照（条件修订生成新版本，旧版本只读）。
+    # - task_conditions：逐条条件（来源分级、有效范围、取代关系；被取代/
+    #   撤销的条件值不因话题往返复活）。
+    # - task_waits：澄清等待（expected_version + 缺失字段 + 来源消息）；
+    #   不携带租约——进入等待即释放执行资源，终态记录 released_at。
+    # - task_events：append-only 审计（任务生命周期与条件取代）。
+    # 全部账户域表，查询经 scoped() 强制隔离；子表先于父表删除。
+    61: [
+        """
+        ALTER TABLE conversations ADD COLUMN current_task_id TEXT
+        """,
+        """
+        CREATE TABLE conversation_tasks (
+            task_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            goal TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN (
+                    'active', 'waiting', 'paused', 'blocked', 'completed', 'cancelled'
+                )),
+            current_version INTEGER NOT NULL DEFAULT 0,
+            contract_version TEXT NOT NULL DEFAULT 'task-v1',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            cancelled_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX idx_conversation_tasks_account_conversation
+        ON conversation_tasks(account_id, conversation_id, updated_at DESC)
+        """,
+        """
+        CREATE INDEX idx_conversation_tasks_account_status
+        ON conversation_tasks(account_id, status)
+        """,
+        """
+        CREATE TABLE task_versions (
+            version_id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES conversation_tasks(task_id),
+            account_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            goal TEXT NOT NULL,
+            condition_ids_json TEXT NOT NULL DEFAULT '[]',
+            source_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            supersedes_version INTEGER,
+            invalidated_at TEXT,
+            invalidation_reason TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE (task_id, version)
+        )
+        """,
+        """
+        CREATE INDEX idx_task_versions_account_task
+        ON task_versions(account_id, task_id, version DESC)
+        """,
+        """
+        CREATE TABLE task_conditions (
+            condition_id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES conversation_tasks(task_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            text TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'task'
+                CHECK (scope IN ('task', 'conversation')),
+            origin TEXT NOT NULL
+                CHECK (origin IN (
+                    'user_stated', 'assistant_proposal', 'model_inference',
+                    'tool_observation'
+                )),
+            status TEXT NOT NULL
+                CHECK (status IN ('effective', 'draft', 'clue', 'superseded', 'revoked')),
+            source_message_id TEXT NOT NULL,
+            source_span TEXT,
+            supersedes_condition_id TEXT,
+            superseded_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_task_conditions_account_task
+        ON task_conditions(account_id, task_id, status, created_at)
+        """,
+        """
+        CREATE INDEX idx_task_conditions_account_scope
+        ON task_conditions(account_id, conversation_id, scope, status)
+        """,
+        """
+        CREATE TABLE task_waits (
+            wait_id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES conversation_tasks(task_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            expected_version INTEGER NOT NULL,
+            missing_fields_json TEXT NOT NULL DEFAULT '[]',
+            question TEXT NOT NULL,
+            origin_message_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open', 'suspended', 'resolved', 'expired')),
+            source_message_id TEXT NOT NULL,
+            resolved_by_message_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            resolved_at TEXT,
+            released_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX idx_task_waits_account_task
+        ON task_waits(account_id, task_id, status)
+        """,
+        """
+        CREATE INDEX idx_task_waits_account_conversation
+        ON task_waits(account_id, conversation_id, status, created_at)
+        """,
+        """
+        CREATE TABLE task_events (
+            event_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            task_id TEXT,
+            kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_task_events_account_conversation
+        ON task_events(account_id, conversation_id, created_at)
         """,
     ],
 }
