@@ -85,8 +85,6 @@ MAX_SLICE_ITEMS = 4
 _MAX_ITEM_TEXT_LENGTH = 1000
 #: 忘掉指令的目标最短长度：过短的目标会误删无关条目，宁可返回「没找到」。
 _MIN_FORGET_TARGET_LENGTH = 2
-#: 目标与条目正文的二元组重合度下限（互含关系另有独立判定）。
-_FORGET_SIMILARITY_THRESHOLD = 0.6
 #: 条目与当前问题的二元组重合度下限（另有「至少共享两个二元组」的绝对门）。
 _QUESTION_MATCH_RATIO = 0.25
 
@@ -180,23 +178,6 @@ def _bigrams(text: str) -> set[str]:
     if len(value) < 2:
         return {value} if value else set()
     return {value[index : index + 2] for index in range(len(value) - 1)}
-
-
-def _matches_target(text: str, target: str) -> bool:
-    """忘掉目标的确定性匹配：相等、互含，或二元组重合度足够高。"""
-
-    left = normalize_text(text).casefold()
-    right = normalize_text(target).casefold()
-    if not left or not right:
-        return False
-    if left == right or left in right or right in left:
-        return True
-    left_grams = _bigrams(left)
-    right_grams = _bigrams(right)
-    if not left_grams or not right_grams:
-        return False
-    shared = len(left_grams & right_grams)
-    return shared / min(len(left_grams), len(right_grams)) >= _FORGET_SIMILARITY_THRESHOLD
 
 
 def _item_matches_question(text: str, current_question: str | None) -> bool:
@@ -1002,12 +983,26 @@ class AtomicProfileService:
                 kind=AtomicProfileMemoryKind.FORGET,
                 status=AtomicProfileMemoryStatus.UNRESOLVED,
             )
-        matched = [
-            item
-            for item in self.list_items(account_id)
-            if _matches_target(item.text, normalized)
+        candidates = self.list_items(account_id)
+        # 完整对象优先：不能因共有「我平时喜欢」等措辞把其他事实一起删除。
+        exact = [
+            item for item in candidates
+            if normalize_text(item.text).casefold() == normalized.casefold()
         ]
-        if not matched:
+        contained = [
+            item for item in candidates
+            if normalize_text(item.text).casefold() in normalized.casefold()
+            or normalized.casefold() in normalize_text(item.text).casefold()
+        ]
+        matched = exact or contained
+        # 多对象只有逐项完整指定时才批量执行；关键词共享或模糊相似需澄清。
+        if not matched or (
+            len(matched) > 1
+            and not all(
+                normalize_text(item.text).casefold() in normalized.casefold()
+                for item in matched
+            )
+        ):
             return AtomicProfileMemoryResult(
                 kind=AtomicProfileMemoryKind.FORGET,
                 status=AtomicProfileMemoryStatus.UNRESOLVED,

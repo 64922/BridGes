@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 62
+SCHEMA_VERSION = 63
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2800,6 +2800,24 @@ MIGRATIONS: dict[int, list[str]] = {
         ON task_events(account_id, conversation_id, created_at)
         """,
     ],
+    # 改进工单 07：账户级画像控制（长期画像使用开关）。
+    # 「停止自动记录」沿用 profile_extraction_privacy_blocks 的账户级行；
+    # 「长期画像使用」是独立持久状态：关闭使用只阻止回答读取长期画像正文，
+    # 不删除信息、不影响主动管理。列级默认 1 表示「首次变化即序号 1」；
+    # 投影层的 usage_control_version=0 只用于「尚无行=从未变更」的默认读取。
+    # usage_control_version 只在该开关真实变化时递增（同值写入幂等）。
+    62: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_account_controls (
+            account_id TEXT PRIMARY KEY,
+            profile_usage_enabled INTEGER NOT NULL DEFAULT 1
+                CHECK (profile_usage_enabled IN (0, 1)),
+            controls_version TEXT NOT NULL DEFAULT 'profile-controls-v1',
+            usage_control_version INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        )
+        """,
+    ],
     # 改进工单 09：持久化整次运行预算账本与有限调整额度。
     # 一次运行的截止时间、调用/token 上限、核验/交付预留与已耗计数在运行
     # 创建时冻结落库，只由执行内核（执行器/编排代码）经本票账本仓库修改；
@@ -2811,9 +2829,9 @@ MIGRATIONS: dict[int, list[str]] = {
     #   外部调用，按调用目的分别计量）。只记标识、结果码、计数与毫秒——
     #   不承载消息正文、提示词或凭据。(run_id, call_key, attempt) 在
     #   kind='transient_retry' 上的部分唯一索引是「每个登记的临时传输失败
-    #   最多重试 1 次」的幂等守卫：重复登记同一重试按幂等成功处理且不重复
+    #   最多重试 1 次」的幂等守卫：重复登记同一重试拒绝放行且不重复
     #   计数；模型调用与外部调用的再次登记是恢复重跑的真实消耗，不设唯一约束。
-    62: [
+    63: [
         """
         CREATE TABLE run_budget_ledger (
             run_id TEXT PRIMARY KEY,
@@ -2914,6 +2932,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 迁移半执行时同样在启动阶段失败关闭。
     "run_budget_ledger",
     "run_budget_entries",
+    # 改进工单 07：长期画像使用开关的持久状态；回答切片编译与控制 API 都
+    # 无条件读取，缺失时启动失败关闭而不是静默把使用当作始终开启。
+    "profile_account_controls",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。
