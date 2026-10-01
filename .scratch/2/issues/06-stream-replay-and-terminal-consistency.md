@@ -81,3 +81,9 @@
 - 停止路径不 `finish()`：未闭合片段按设计丢弃（终态前不下发无法撤回的片段），e2e 与单测固定该边界。
 - 确定性脚本适配器只证明机制；真实模型体验与外部可得性按评测票验证。
 
+### 2026-10-01 — 独立验收（验收修正 `2bd3468`，合并 `23306ae`）
+
+- 验收修正：E2E 三个用例共用单一后台生成执行器，默认 4 workers 并行时生成串行排队导致首块 5s 超时假失败；改为文件内串行 + 30s 首块等待 + 加长脚本延迟，默认配置连续两次 3 passed。
+- 复核证据：定向 30 passed（合并后连 `test_chat_api` 52 passed）；核心套件 884 passed / 100 failed，失败集合与主线逐名一致（0 新增）；fuzz 20000 轮 0 mismatch；ruff/mypy/typecheck 与主线 0 差异。
+- 已通过 `23306ae` 合入 `main`（唯一冲突 api/main.py 导入区，保留主线 tasks 导入与分支 CHAT_CAPABILITY_NAME）并推送 `origin`；Issue 06 工作树与本地分支已删除，失效 worktree 记录检查完成（无失效项）。完整结果见[独立验收记录](../acceptance/06-stream-replay-and-terminal-consistency.md)。
+
