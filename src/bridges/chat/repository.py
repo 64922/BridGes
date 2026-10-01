@@ -348,7 +348,10 @@ class ConversationRepository:
 
     def delete_conversation(self, account_id: str, conversation_id: str) -> int:
         """删除会话及其消息/模式事件；跨账户目标返回 0。"""
+        from bridges.tasks.repository import TaskRepository
+
         with self._db.transaction():
+            TaskRepository(self._db, self).delete_for_conversation(account_id, conversation_id)
             self._db.scoped(account_id).execute(
                 "DELETE FROM mode_events WHERE conversation_id = ? AND account_id = ?",
                 (conversation_id, account_id),
@@ -392,11 +395,12 @@ class ConversationRepository:
             " WHERE conversation_id = ? AND account_id = ?"
         )
         params = (task_id, conversation_id, account_id)
-        if self._db.connection.in_transaction:
-            self._db.scoped(account_id).execute(statement, params)
-            return
-        with self._db.transaction():
-            self._db.scoped(account_id).execute(statement, params)
+        with self._db.snapshot_lock():
+            if self._db.connection.in_transaction:
+                self._db.scoped(account_id).execute(statement, params)
+                return
+            with self._db.transaction():
+                self._db.scoped(account_id).execute(statement, params)
 
     def current_task_id(self, account_id: str, conversation_id: str) -> str | None:
         """读取会话当前跨轮任务指针；无会话或指针为空时返回 None。"""

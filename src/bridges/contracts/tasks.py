@@ -80,6 +80,7 @@ class TaskEventKind(StrEnum):
     WAIT_RESOLVED = "wait_resolved"
     WAITS_SUSPENDED = "waits_suspended"
     WAITS_EXPIRED = "waits_expired"
+    TURN_APPLIED = "turn_applied"
 
 
 class ConditionScope(StrEnum):
@@ -212,8 +213,9 @@ class TaskWait(BaseModel):
     """一次跨轮澄清等待。
 
     等待项不携带工作租约：进入等待即释放执行资源（见
-    ``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 固定
-    提问时的任务版本，答复必须匹配该版本才被接受。
+    ``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 是
+    当前问题绑定的任务版本，答复必须匹配；匹配的部分答复写入新条件时
+    同步推进绑定版本，其余修订让旧等待过期。
     """
 
     wait_id: str

@@ -37,6 +37,7 @@ from bridges.contracts.tasks import (
     TaskEventKind,
     TaskRecord,
     TaskStatus,
+    TaskTurnResult,
     TaskVersion,
     TaskWait,
     WaitStatus,
@@ -123,11 +124,12 @@ class TaskRepository:
         ``chat/`` 属主仓库的 ``set_current_task`` 都经同一连接状态判断
         自动并入，不再由调用方手工传递标志。
         """
-        if self._db.connection.in_transaction:
-            yield
-            return
-        with self._db.transaction():
-            yield
+        with self._db.snapshot_lock():
+            if self._db.connection.in_transaction:
+                yield
+                return
+            with self._db.transaction():
+                yield
 
     # -- 任务 ---------------------------------------------------------------
 
@@ -144,6 +146,8 @@ class TaskRepository:
         task_id = _new_id("task")
         try:
             with self.transaction():
+                if self._conversations.get_conversation(account_id, conversation_id) is None:
+                    raise TaskNotFound("会话不存在或不属于当前账户。")
                 self._db.scoped(account_id).execute(
                     "INSERT INTO conversation_tasks"
                     "(task_id, account_id, conversation_id, goal, status,"
@@ -264,6 +268,36 @@ class TaskRepository:
 
     # -- 版本 ---------------------------------------------------------------
 
+    def delete_for_conversation(self, account_id: str, conversation_id: str) -> None:
+        """删除会话时由任务属主清理来源、等待、快照与审计。"""
+        with self.transaction():
+            self._db.scoped(account_id).execute(
+                "DELETE FROM task_events WHERE account_id = ? AND conversation_id = ?",
+                (account_id, conversation_id),
+            )
+            for table in ("task_waits", "task_conditions", "task_versions"):
+                self._db.scoped(account_id).execute(
+                    f"DELETE FROM {table} WHERE account_id = ? AND task_id IN "
+                    "(SELECT task_id FROM conversation_tasks "
+                    "WHERE account_id = ? AND conversation_id = ?)",
+                    (account_id, account_id, conversation_id),
+                )
+            self._db.scoped(account_id).execute(
+                "DELETE FROM conversation_tasks WHERE account_id = ? AND conversation_id = ?",
+                (account_id, conversation_id),
+            )
+
+    def advance_wait_version(
+        self, account_id: str, wait_id: str, version: int, *, now: datetime
+    ) -> None:
+        """匹配的部分答复落地新条件后，等待继续绑定该新版本。"""
+        with self.transaction():
+            self._db.scoped(account_id).execute(
+                "UPDATE task_waits SET expected_version = ?, updated_at = ? "
+                "WHERE account_id = ? AND wait_id = ? AND status = ?",
+                (version, _iso(now), account_id, wait_id, WaitStatus.OPEN.value),
+            )
+
     def append_version(
         self,
         *,
@@ -282,15 +316,15 @@ class TaskRepository:
         不写入任何行。
         """
         moment = now or datetime.now(UTC)
-        task = self.get_task(account_id, task_id)
-        if task is None:
-            raise TaskNotFound("任务不存在或不属于当前账户。")
-        if expected_version is not None and expected_version != task.current_version:
-            raise TaskVersionConflict(task_id, expected_version, task.current_version)
-        new_version = task.current_version + 1
         version_id = _new_id("tv")
         try:
             with self.transaction():
+                task = self.get_task(account_id, task_id)
+                if task is None:
+                    raise TaskNotFound("任务不存在或不属于当前账户。")
+                if expected_version is not None and expected_version != task.current_version:
+                    raise TaskVersionConflict(task_id, expected_version, task.current_version)
+                new_version = task.current_version + 1
                 self._db.scoped(account_id).execute(
                     "INSERT INTO task_versions"
                     "(version_id, task_id, account_id, version, goal,"
@@ -376,7 +410,8 @@ class TaskRepository:
                     referenced = self.get_condition(account_id, supersedes)
                     if referenced.task_id != task_id:
                         raise TaskNotFound("被取代的条件不属于目标任务。")
-                if supersedes is None and item.origin == ConditionOrigin.USER_STATED:
+                prior = None
+                if item.origin == ConditionOrigin.USER_STATED:
                     # 同类别的明示修订取代仍有效的旧值（5,000 → 3,000）；
                     # 会话范围按会话 + 范围 + 类别定位，任务范围按任务定位。
                     if item.scope == ConditionScope.CONVERSATION:
@@ -387,7 +422,8 @@ class TaskRepository:
                         prior = self._find_effective_condition_by_kind(
                             account_id, task_id, item.kind
                         )
-                    supersedes = prior.condition_id if prior else None
+                    if supersedes is None:
+                        supersedes = prior.condition_id if prior else None
                 condition_id = _new_id("cond")
                 self._db.scoped(account_id).execute(
                     "INSERT INTO task_conditions"
@@ -413,8 +449,12 @@ class TaskRepository:
                         _iso(moment),
                     ),
                 )
-                if supersedes is not None:
+                if supersedes is not None and item.origin == ConditionOrigin.USER_STATED:
                     self._supersede_in_transaction(account_id, supersedes, condition_id, moment)
+                    if prior is not None and prior.condition_id != supersedes:
+                        self._supersede_in_transaction(
+                            account_id, prior.condition_id, condition_id, moment
+                        )
                 created.append(self.get_condition(account_id, condition_id))
             return created
 
@@ -598,15 +638,17 @@ class TaskRepository:
         已取消或已完成的任务不得再登记等待——否则会悄悄把终态任务
         恢复为活跃（任务内容第 7 条「已取消目标不悄悄恢复旧等待」）。
         """
-        task = self.get_task(account_id, task_id)
-        if task is None:
-            raise TaskNotFound("任务不存在或不属于当前账户。")
-        if task.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED}:
-            raise TaskStateConflict("该任务已进入终态，不能再登记澄清等待。")
         moment = now or datetime.now(UTC)
         wait_id = _new_id("wait")
         try:
             with self.transaction():
+                task = self.get_task(account_id, task_id)
+                if task is None or task.conversation_id != conversation_id:
+                    raise TaskNotFound("任务不存在或不属于当前会话。")
+                if task.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED}:
+                    raise TaskStateConflict("该任务已进入终态，不能再登记澄清等待。")
+                if task.current_version != expected_version:
+                    raise TaskVersionConflict(task_id, expected_version, task.current_version)
                 self._db.scoped(account_id).execute(
                     "INSERT INTO task_waits"
                     "(wait_id, task_id, account_id, conversation_id, expected_version,"
@@ -707,8 +749,10 @@ class TaskRepository:
     ) -> TaskWait:
         """把等待项置为已解决并恢复任务为活跃（释放执行资源）。"""
         moment = now or datetime.now(UTC)
-        wait = self.get_wait(account_id, wait_id)
         with self.transaction():
+            wait = self.get_wait(account_id, wait_id)
+            if wait.status != WaitStatus.OPEN:
+                raise TaskStateConflict("该等待已失去激活状态，不能再接收答复。")
             self._db.scoped(account_id).execute(
                 "UPDATE task_waits SET status = ?, resolved_by_message_id = ?,"
                 " resolved_at = ?, released_at = ?, updated_at = ?"
@@ -725,13 +769,18 @@ class TaskRepository:
             )
             self._db.scoped(account_id).execute(
                 "UPDATE conversation_tasks SET status = ?, updated_at = ?"
-                " WHERE account_id = ? AND task_id = ? AND status = ?",
+                " WHERE account_id = ? AND task_id = ? AND status = ?"
+                " AND NOT EXISTS (SELECT 1 FROM task_waits WHERE account_id = ?"
+                " AND task_id = ? AND status = ?)",
                 (
                     TaskStatus.ACTIVE.value,
                     _iso(moment),
                     account_id,
                     wait.task_id,
                     TaskStatus.WAITING.value,
+                    account_id,
+                    wait.task_id,
+                    WaitStatus.OPEN.value,
                 ),
             )
         return self.get_wait(account_id, wait_id)
@@ -788,7 +837,44 @@ class TaskRepository:
                 )
         return [wait.wait_id for wait in pending]
 
+    def expire_wait(self, account_id: str, wait_id: str, *, now: datetime) -> None:
+        """仅终结已失配的问题，不影响同任务的其他匹配等待。"""
+        with self.transaction():
+            self._db.scoped(account_id).execute(
+                "UPDATE task_waits SET status = ?, released_at = ?, updated_at = ? "
+                "WHERE account_id = ? AND wait_id = ? AND status = ?",
+                (
+                    WaitStatus.EXPIRED.value,
+                    _iso(now),
+                    _iso(now),
+                    account_id,
+                    wait_id,
+                    WaitStatus.OPEN.value,
+                ),
+            )
+
     # -- 审计 ---------------------------------------------------------------
+
+    def replay_turn(
+        self, account_id: str, conversation_id: str, message_id: str, fingerprint: str
+    ) -> TaskTurnResult | None:
+        """同一来源消息重放已提交结果；改变消息内容须使用新的消息 ID。"""
+        row = (
+            self._db.scoped(account_id)
+            .execute(
+                "SELECT payload_json FROM task_events WHERE account_id = ? "
+                "AND conversation_id = ? AND kind = ? "
+                "AND json_extract(payload_json, '$.source_message_id') = ? LIMIT 1",
+                (account_id, conversation_id, TaskEventKind.TURN_APPLIED.value, message_id),
+            )
+            .fetchone()
+        )
+        if row is None:
+            return None
+        payload = json.loads(row["payload_json"])
+        if payload["fingerprint"] != fingerprint:
+            raise TaskStateConflict("该来源消息已处理，请使用新的消息 ID 提交修改。")
+        return TaskTurnResult.model_validate(payload["result"])
 
     def record_event(
         self,

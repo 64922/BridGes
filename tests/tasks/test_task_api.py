@@ -282,6 +282,16 @@ def test_account_isolation_and_optimistic_conflict(app_env: dict[str, Any]) -> N
         },
     )
     assert forbidden.status_code == 404
+    orphan = other.post(
+        "/tasks/turns",
+        json={
+            "conversation_id": conversation_id,
+            "user_message_id": "u10",
+            "relation": "new",
+            "goal": "不得写入他人会话",
+        },
+    )
+    assert orphan.status_code == 404
 
 
 def test_tasks_survive_process_restart(app_env: dict[str, Any]) -> None:
@@ -308,3 +318,17 @@ def test_tasks_survive_process_restart(app_env: dict[str, Any]) -> None:
     assert recovered.status_code == 200, recovered.text
     assert recovered.json()["task"]["goal"] == "推荐笔记本"
     assert [c["text"] for c in recovered.json()["effective_conditions"]] == ["预算 5,000 元"]
+    replayed = _turn(
+        client2,
+        conversation_id,
+        user_message_id="u1",
+        relation="new",
+        goal="推荐笔记本",
+        conditions=[{"kind": "budget", "text": "预算 5,000 元", "source_message_id": "u1"}],
+    )
+    assert replayed == created
+    assert len(client2.get(f"/tasks/conversations/{conversation_id}").json()) == 1
+    assert client2.delete(f"/chat/conversations/{conversation_id}").status_code == 204
+    assert client2.get(f"/tasks/{task_id}").status_code == 404
+    assert client2.get(f"/tasks/{task_id}/versions").json() == []
+    assert client2.get(f"/tasks/conversations/{conversation_id}/events").json() == []

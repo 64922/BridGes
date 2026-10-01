@@ -56132,7 +56132,8 @@
           "condition_revoked",
           "wait_resolved",
           "waits_suspended",
-          "waits_expired"
+          "waits_expired",
+          "turn_applied"
         ],
         "title": "TaskEventKind",
         "description": "任务审计事件的种类（单一事实源，避免各处各写一份字面量）。"
@@ -56664,7 +56665,7 @@
           "updated_at"
         ],
         "title": "TaskWait",
-        "description": "一次跨轮澄清等待。\n\n等待项不携带工作租约：进入等待即释放执行资源（见\n``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 固定\n提问时的任务版本，答复必须匹配该版本才被接受。"
+        "description": "一次跨轮澄清等待。\n\n等待项不携带工作租约：进入等待即释放执行资源（见\n``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 是\n当前问题绑定的任务版本，答复必须匹配；匹配的部分答复写入新条件时\n同步推进绑定版本，其余修订让旧等待过期。"
       },
       "TaskWaitCreateRequest": {
         "properties": {

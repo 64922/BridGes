@@ -401,7 +401,7 @@ def test_profile_command_and_learning_action_do_not_fill_wait(env) -> None:
             account,
             TaskTurnRequest(
                 conversation_id="conv-1",
-                user_message_id="u2",
+                user_message_id=f"u2-{flag}",
                 relation=TaskRelation.CONTINUE,
                 explicit_task_id=task_id,
                 answer_fields=["budget"],

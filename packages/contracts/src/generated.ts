@@ -23965,7 +23965,7 @@ export interface components {
          * @description 任务审计事件的种类（单一事实源，避免各处各写一份字面量）。
          * @enum {string}
          */
-        TaskEventKind: "task_created" | "version_created" | "task_paused" | "task_resumed" | "task_activated" | "task_completed" | "task_blocked" | "task_cancelled" | "condition_revoked" | "wait_resolved" | "waits_suspended" | "waits_expired";
+        TaskEventKind: "task_created" | "version_created" | "task_paused" | "task_resumed" | "task_activated" | "task_completed" | "task_blocked" | "task_cancelled" | "condition_revoked" | "wait_resolved" | "waits_suspended" | "waits_expired" | "turn_applied";
         /**
          * TaskProjection
          * @description 任务对外投影：有效条件 + 未决等待 + 来源。
@@ -24172,8 +24172,9 @@ export interface components {
          * @description 一次跨轮澄清等待。
          *
          *     等待项不携带工作租约：进入等待即释放执行资源（见
-         *     ``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 固定
-         *     提问时的任务版本，答复必须匹配该版本才被接受。
+         *     ``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 是
+         *     当前问题绑定的任务版本，答复必须匹配；匹配的部分答复写入新条件时
+         *     同步推进绑定版本，其余修订让旧等待过期。
          */
         TaskWait: {
             /** Wait Id */
