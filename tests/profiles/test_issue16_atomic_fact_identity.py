@@ -236,6 +236,81 @@ def test_single_valued_slot_replacement_keeps_history_traceable() -> None:
     assert projection.supersedes_id == old.profile_item_id
 
 
+def test_automatic_extraction_never_overwrites_user_edited_fact() -> None:
+    _, _, atomic, _ = _services()
+    original = atomic.remember(ACCOUNT, "我喜欢跑步")
+    atomic.modify_item(
+        ACCOUNT,
+        original.profile_item_id,
+        AtomicProfileItemModifyRequest(text="我最爱跑步", version=original.version),
+    )
+    four = FourDimensionProfileService(
+        InMemoryProfileRepository(), InMemoryFourDimensionProfileRepository()
+    )
+    record = four.upsert_automatic_record(
+        ACCOUNT,
+        dimension=FourDimension.HOBBY,
+        content="跑步",
+        action="create",
+        confidence=FourDimensionConfidence.HIGH,
+    )
+
+    mirrored = atomic.mirror_record(
+        ACCOUNT, record, fact_text="我特别喜欢跑步"
+    )
+
+    assert mirrored is not None
+    assert mirrored.text == "我最爱跑步"
+    assert _texts(atomic) == {"我最爱跑步"}
+
+
+def test_new_value_does_not_inherit_previous_evidence_quote() -> None:
+    four, _, atomic, _ = _services()
+    first = four.upsert_automatic_record(
+        ACCOUNT,
+        dimension=FourDimension.ACADEMIC_STATUS,
+        content="大二",
+        action="create",
+        confidence=FourDimensionConfidence.HIGH,
+        evidence_quote="我现在大二",
+    )
+    atomic.mirror_record(ACCOUNT, first)
+    second = four.upsert_automatic_record(
+        ACCOUNT,
+        dimension=FourDimension.ACADEMIC_STATUS,
+        content="大三",
+        action="create",
+        confidence=FourDimensionConfidence.HIGH,
+    )
+    atomic.mirror_record(ACCOUNT, second)
+
+    item = _item(atomic, "大三")
+    assert item.evidence_quote is None
+
+
+def test_user_edit_suppression_uses_original_fact_relation() -> None:
+    _, _, atomic, _ = _services()
+    original = atomic.remember(ACCOUNT, "我计划考研")
+    atomic.modify_item(
+        ACCOUNT,
+        original.profile_item_id,
+        AtomicProfileItemModifyRequest(text="我计划就业", version=original.version),
+    )
+    four = FourDimensionProfileService(
+        InMemoryProfileRepository(), InMemoryFourDimensionProfileRepository()
+    )
+    record = four.upsert_automatic_record(
+        ACCOUNT,
+        dimension=FourDimension.STAGE_GOAL,
+        content="考研",
+        action="create",
+        confidence=FourDimensionConfidence.HIGH,
+    )
+
+    assert atomic.mirror_record(ACCOUNT, record, fact_text="我计划考研") is None
+    assert _texts(atomic) == {"我计划就业"}
+
+
 def test_user_edit_changes_fact_slot_and_suppresses_old_identity() -> None:
     _, _, atomic, _ = _services()
     original = atomic.remember(ACCOUNT, "我喜欢跑步")

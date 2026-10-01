@@ -296,19 +296,6 @@ def fact_identity_key(account_id: str, identity: AtomicProfileFactIdentity) -> s
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
 
 
-def fact_key_for_text(
-    account_id: str,
-    text: str,
-    *,
-    dimension: FourDimension | None = None,
-) -> str:
-    """按正文（+维度提示）解析事实身份并返回身份键。"""
-
-    return fact_identity_key(
-        account_id, parse_fact_identity(text, dimension=dimension)
-    )
-
-
 def parse_explicit_change(text: str) -> tuple[list[str], str | None]:
     """解析明确变更语句：被收回的对象列表与转向后的新值。
 
@@ -464,6 +451,30 @@ def _item_from_record(
         user_edited_at=None,
         migration_run_id=migration_run_id,
     )
+
+
+_RELATION_PREFIXES = (
+    "喜欢",
+    "偏爱",
+    "偏好",
+    "爱",
+    "学习",
+    "学",
+    "研究",
+    "计划",
+    "打算",
+    "准备",
+    "正在",
+)
+
+
+def _strip_relation_prefixes(value: str) -> str:
+    """去掉「喜欢跑步」里的关系前缀，留下可与旧事实对象比较的对象。"""
+
+    for prefix in _RELATION_PREFIXES:
+        if value.startswith(prefix) and len(value) > len(prefix):
+            return value[len(prefix) :]
+    return value
 
 
 def _dimension_hint(topic_hint: str | None) -> FourDimension | None:
@@ -1226,7 +1237,12 @@ class AtomicProfileService:
                 # 被抽取而作为新条目回来（用户编辑优先于自动提取）。旧事实
                 # 身份一并以墓碑保留，普通近义提及也不会复活旧值。必须在
                 # 条目换键之后再写，否则抑制键会被本条自己的旧键占住。
-                self._write_suppression(account_id, previous_text)
+                self._write_suppression(
+                    account_id,
+                    previous_text,
+                    topic_hint=item.topic_hint,
+                    suppress_fact_identity=new_fact_key != previous_fact_key,
+                )
             return saved
 
     def delete_item(self, account_id: str, item_id: str, version: int) -> None:
@@ -1480,6 +1496,11 @@ class AtomicProfileService:
             if existing is not None:
                 if existing.status != AtomicProfileItemStatus.ACTIVE:
                     return None
+                if existing.user_edited_at is not None and existing.text != text:
+                    # 用户编辑优先：同一事实的自动新说法不改写用户版本。
+                    if predecessor is not None:
+                        self._supersede_item(predecessor, existing.profile_item_id)
+                    return existing
                 if predecessor is not None:
                     self._supersede_item(predecessor, existing.profile_item_id)
                 merged = self._merge_item(
@@ -1513,10 +1534,8 @@ class AtomicProfileService:
                 fact_object=identity.object,
                 fact_scope=identity.scope,
                 fact_key=fact_key,
-                evidence_quote=(
-                    evidence_quote
-                    or (predecessor.evidence_quote if predecessor is not None else None)
-                ),
+                # 原话只来自本次来源记录：旧版本的原话不对应新值，绝不继承。
+                evidence_quote=evidence_quote,
                 supersedes_id=(
                     predecessor.profile_item_id if predecessor is not None else None
                 ),
@@ -1900,16 +1919,29 @@ class AtomicProfileService:
             )
         )
 
-    def _write_suppression(self, account_id: str, text: str) -> None:
+    def _write_suppression(
+        self,
+        account_id: str,
+        text: str,
+        *,
+        topic_hint: str | None = None,
+        suppress_fact_identity: bool = True,
+    ) -> None:
         """为用户改掉或被替代的旧值留下抑制键（墓碑），只保留键、不留正文。
 
         同时保留旧正文的文本键与事实身份键：普通同义提及或旧记录重放都
-        不能把用户明确改掉/替代的值作为新条目写回来。
+        不能把用户明确改掉/替代的值作为新条目写回来。``topic_hint`` 是旧
+        条目的维度提示：正文本身看不出关系时（如裸值「考研」），用它可以
+        解析出与原条目一致的事实身份，抑制键才不会落空。
+        ``suppress_fact_identity=False`` 用于同一事实只是换措辞的编辑：事实
+        仍在活动列表里，只抑制旧正文，不能把整个事实身份也封掉。
         """
 
         text_key = identity_key(account_id, text)
-        identity = parse_fact_identity(text)
-        fact_key = fact_identity_key(account_id, identity)
+        identity = parse_fact_identity(text, dimension=_dimension_hint(topic_hint))
+        fact_key = (
+            fact_identity_key(account_id, identity) if suppress_fact_identity else ""
+        )
         duplicate = self._repository.find_item_by_identity(account_id, text_key)
         if duplicate is not None:
             return
@@ -1973,21 +2005,19 @@ class AtomicProfileService:
                 superseded.append(old.profile_item_id)
         negated, _replacement = parse_explicit_change(text)
         if negated:
-            # 明确收回（可带转向）：按被收回的对象替代对应事实，其他目标或
-            # 属性不受影响。纯否定（无转向）在身份解析里退化为整句陈述，
-            # 但收回本身仍是明确变更，旧事实必须退休。
+            # 明确收回（可带转向）：只替代对象完全一致的旧事实。用精确相等而
+            # 不是包含匹配——「我不喜欢晨跑时听音乐」收回的是整句，不能把
+            # 「晨跑」这条无关事实一起替代。纯否定（无转向）在身份解析里
+            # 退化为整句陈述，但收回本身仍是明确变更，对应旧事实必须退休。
+            targets = {
+                _strip_relation_prefixes(value).casefold()
+                for value in negated
+                if value
+            }
             for old in self._repository.list_items(account_id):
                 if old.profile_item_id == item.profile_item_id:
                     continue
-                if any(
-                    value
-                    and old.fact_object
-                    and (
-                        value.casefold() in old.fact_object.casefold()
-                        or old.fact_object.casefold() in value.casefold()
-                    )
-                    for value in negated
-                ):
+                if old.fact_object and old.fact_object.casefold() in targets:
                     self._supersede_item(old, item.profile_item_id)
                     superseded.append(old.profile_item_id)
         if superseded and item.supersedes_id is None:
@@ -2130,7 +2160,6 @@ __all__ = [
     "MemoryDirective",
     "SqliteAtomicProfileRepository",
     "fact_identity_key",
-    "fact_key_for_text",
     "identity_key",
     "normalize_text",
     "parse_explicit_change",

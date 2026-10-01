@@ -427,16 +427,6 @@ def has_probable_profile_signal(content: str) -> bool:
     return ProfileSignalClassifier().classify(content).should_process
 
 
-def _extract_value(text: str, patterns: tuple[str, ...]) -> str | None:
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            value = _normalize(match.group(1))
-            if 1 < len(value) <= 200:
-                return value
-    return None
-
-
 def _extract_value_and_clause(
     text: str, patterns: tuple[str, ...]
 ) -> tuple[str | None, str | None]:
@@ -449,6 +439,11 @@ def _extract_value_and_clause(
             if 1 < len(value) <= 200:
                 return value, _normalize(match.group(0))
     return None, None
+
+
+def _extract_value(text: str, patterns: tuple[str, ...]) -> str | None:
+    value, _clause = _extract_value_and_clause(text, patterns)
+    return value
 
 
 def _record_matches_question(

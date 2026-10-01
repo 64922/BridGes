@@ -52,14 +52,14 @@ def test_fresh_database_has_fact_identity_columns(tmp_path: Path) -> None:
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
     assert SCHEMA_VERSION >= LEGACY_VERSION + 1
-    assert NEW_ITEM_COLUMNS <= _columns(path, "profile_items")
-    assert NEW_MIGRATION_COLUMNS <= _columns(path, "profile_item_migrations")
+    assert _columns(path, "profile_items") >= NEW_ITEM_COLUMNS
+    assert _columns(path, "profile_item_migrations") >= NEW_MIGRATION_COLUMNS
     assert FACT_KEY_INDEX in _index_names(path)
 
 
 def test_fact_identity_columns_are_required_at_startup() -> None:
-    assert NEW_ITEM_COLUMNS <= REQUIRED_TABLE_COLUMNS["profile_items"]
-    assert NEW_MIGRATION_COLUMNS <= REQUIRED_TABLE_COLUMNS["profile_item_migrations"]
+    assert REQUIRED_TABLE_COLUMNS["profile_items"] >= NEW_ITEM_COLUMNS
+    assert REQUIRED_TABLE_COLUMNS["profile_item_migrations"] >= NEW_MIGRATION_COLUMNS
     assert FACT_KEY_INDEX in REQUIRED_INDEXES
 
 
@@ -109,5 +109,5 @@ def test_upgrade_from_v63_preserves_rows_and_adds_identity_columns(
             "PRAGMA table_info(profile_item_migrations)"
         )
     }
-    assert NEW_MIGRATION_COLUMNS <= report_columns
+    assert report_columns >= NEW_MIGRATION_COLUMNS
     assert database.initialize() == SCHEMA_VERSION
