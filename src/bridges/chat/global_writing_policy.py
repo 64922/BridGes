@@ -4,16 +4,21 @@ Issue 07 起普通聊天策略由 ``bridges.chat.lightweight_policy`` 重建：�
 按回答形态只编译少量高优先级正向规则，不再注入共享方法规则块、文章体裁
 规则或全量禁词表。本模块保留 ``GlobalWritingPolicyCompiler`` 等公开接口
 并委托轻量编译器，同时继续提供确定性保护区恢复函数，保证既有调用方与
-旧快照重试兼容。该模块只编译自然语言正文的表达约束，不执行第二次模型
-调用，也不承载文章人味化任务。
+旧快照重试兼容。保护区恢复自 Issue 05 起委托 ``bridges.chat.fact_protection``
+的可绑定片段协议：按保留意图与对象锚点精确逐一绑定，不再盲替换。该模块只
+编译自然语言正文的表达约束，不执行第二次模型调用，也不承载文章人味化任务。
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from bridges.chat.fact_protection import (
+    FACT_PROTECTION_PROTOCOL_VERSION,
+    ProtectionIntent,
+    plan_fragment_protection,
+)
 from bridges.chat.lightweight_policy import (
     GLOBAL_CHAT_LIGHTWEIGHT_SOURCE,
     GLOBAL_CHAT_LIGHTWEIGHT_VERSION,
@@ -136,64 +141,45 @@ class GlobalWritingPolicyCompiler:
         )
 
 
-# 这些正则只负责保护已有合同片段，不是全局硬词表或风格评分器。
-_PROTECTED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("code_fence", re.compile(r"```[\s\S]*?```")),
-    ("inline_code", re.compile(r"`[^`\n]+`")),
-    ("formula", re.compile(r"\$[^$\n]+\$")),
-    ("url", re.compile(r"https?://[^\s<>\]})]+")),
-    ("json", re.compile(r"\{\s*\"[^{}\n]+\"\s*:\s*[^{}\n]+\}")),
-    ("citation", re.compile(r"(?<!\w)\[[0-9]+(?:[-,][0-9]+)*\]")),
-    ("number_with_unit", re.compile(r"(?<!\w)\d+(?:\.\d+)?\s*[A-Za-zμΩ%°][^\s，。；;)]*")),
-)
-
-
-def _protected_regions(text: str) -> list[tuple[str, str]]:
-    regions: list[tuple[str, str]] = []
-    for kind, pattern in _PROTECTED_PATTERNS:
-        regions.extend((kind, match.group(0)) for match in pattern.finditer(text))
-    return regions
+# 保护区恢复已迁至 ``bridges.chat.fact_protection`` 的「可绑定片段协议」
+# （Issue 05）：按保留意图与对象锚点精确逐一绑定，不再按同类第一个候选盲替换。
+# 旧函数名保留为兼容入口，供既有调用方与旧快照重试继续使用。
 
 
 def restore_protected_regions(
     original: str,
     candidate: str,
     *,
-    append_missing: bool = True,
+    append_missing: bool = False,
     additional_sources: tuple[str, ...] = (),
 ) -> str:
-    """按原始输入恢复候选文本中的代码/公式/引用等合同片段。
+    """按保留意图恢复候选文本中的代码/公式/引用等合同片段。
 
-    这是确定性保护而非自然度评分：候选已有相同片段时不重复插入；候选
-    修改了同类片段时按出现顺序替换；候选完全删除片段时追加原片段，宁可
-    保留合同内容，也不让表达策略覆盖事实或机器协议。
+    这是确定性保护而非自然度评分，委托 :func:`plan_fragment_protection`：
+
+    - 仅对确有保留意图的具体对象做精确逐一绑定；已消费的候选片段不再配给
+      其他源片段，顺序变化不串对象。
+    - 用户明确要求纠正/计算时保留授权结果，不把旧输入当事实锁。
+    - ``additional_sources`` 只限定引用资格，不按清单顺序强制换链接。
+    - ``append_missing`` 默认 ``False``：非必需遗漏片段不强行补尾，是否必须
+      出现由任务合同决定。
     """
-    restored = candidate
-    for source_index, source in enumerate((original, *additional_sources)):
-        source_append_missing = append_missing and source_index == 0
-        for kind, original_region in _protected_regions(source):
-            if original_region in restored:
-                continue
-            pattern = dict(_PROTECTED_PATTERNS)[kind]
-            match = pattern.search(restored)
-            if match is not None:
-                restored = (
-                    restored[: match.start()]
-                    + original_region
-                    + restored[match.end() :]
-                )
-            elif source_append_missing:
-                separator = "" if not restored or restored.endswith("\n") else "\n"
-                restored += f"{separator}{original_region}"
-    return restored
+    return plan_fragment_protection(
+        original,
+        candidate,
+        append_missing=append_missing,
+        additional_sources=additional_sources,
+    ).content
 
 
 __all__ = [
+    "FACT_PROTECTION_PROTOCOL_VERSION",
     "GLOBAL_WRITING_POLICY_SOURCE",
     "GLOBAL_WRITING_POLICY_VERSION",
     "GlobalWritingPolicyCompiler",
     "GlobalWritingPolicyResource",
     "GlobalWritingPolicySnapshot",
+    "ProtectionIntent",
     "SAFE_BASELINE_POLICY_VERSION",
     "ChatResponseForm",
     "restore_protected_regions",
