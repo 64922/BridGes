@@ -1180,7 +1180,7 @@ class AtomicProfileService:
             ProfileSliceItem(
                 assertion_id=item.profile_item_id,
                 dimension="",
-                value_or_rule=item.text[:80],
+                value_or_rule=item.text,
                 inclusion_reason="与你当前任务相关的已记住信息",
                 sensitivity_class=_sensitivity_for(item),
             )
@@ -1190,7 +1190,7 @@ class AtomicProfileService:
             UnusedSliceItem(
                 assertion_id=item.profile_item_id,
                 dimension="",
-                value_or_rule=item.text[:80],
+                value_or_rule=item.text,
                 exclusion_reason="与当前问题无关",
             )
             for item in unrelated
@@ -1199,7 +1199,7 @@ class AtomicProfileService:
             UnusedSliceItem(
                 assertion_id=item.profile_item_id,
                 dimension="",
-                value_or_rule=item.text[:80],
+                value_or_rule=item.text,
                 exclusion_reason="超出本轮最小切片预算",
             )
             for item in related[MAX_SLICE_ITEMS:]
@@ -1208,7 +1208,7 @@ class AtomicProfileService:
             UnusedSliceItem(
                 assertion_id=item.profile_item_id,
                 dimension="",
-                value_or_rule=item.text[:80],
+                value_or_rule=item.text,
                 exclusion_reason="本轮刚整理，下一轮才使用",
             )
             for item in same_turn

@@ -31,6 +31,11 @@ from bridges.ai.adapters import (
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
 from bridges.ai.model_quota import RunModelQuota
+from bridges.ai.payload_budget import (
+    DEFAULT_PAYLOAD_OUTPUT_TOKENS,
+    PAYLOAD_REASON_EXCEEDED,
+    evaluate_payload_gate,
+)
 from bridges.ai.run_model_config import (
     RunModelConfigProvider,
     RunModelConfigSnapshot,
@@ -104,6 +109,29 @@ class ModelGateway:
         真实适配器绑定，不直接触碰内部存储。
         """
         return self._adapters.get((capability_name, capability_version))
+
+    @staticmethod
+    def _payload_gate_error(
+        payload: dict[str, Any], model_quota: RunModelQuota | None
+    ) -> str | None:
+        """最终载荷预算门：超限或额度不可验证时返回稳定原因码，否则 None。
+
+        改进工单 04：网关是共同调用边界——所有模型调用在发送前都对**最终**
+        载荷执行预算门（含图片部件与全部已取得工具结果）。超限即闭锁，绝不
+        发送已知超限请求。额度快照缺失时不做门（由调用方闭锁）。
+        """
+        if model_quota is None:
+            return None
+        max_tokens = payload.get("max_tokens")
+        output_tokens = (
+            max_tokens if isinstance(max_tokens, int) else DEFAULT_PAYLOAD_OUTPUT_TOKENS
+        )
+        decision = evaluate_payload_gate(
+            payload, quota=model_quota, output_tokens=output_tokens
+        )
+        if decision.within_budget:
+            return None
+        return decision.reason or PAYLOAD_REASON_EXCEEDED
 
     def _effective_capability(
         self,
@@ -222,6 +250,19 @@ class ModelGateway:
                 f"能力未通过验证：{capability_name}@{capability_version}。",
                 call_contract=call_contract,
             )
+
+        # 改进工单 04：最终载荷预算门（共同调用边界，发送前唯一硬门）。
+        if is_configurable_capability(primary.name):
+            gate_error = self._payload_gate_error(payload, model_quota)
+            if gate_error is not None:
+                return self._blocked_result(
+                    run_context,
+                    primary,
+                    gate_error,
+                    "本轮最终载荷超出该模型的输入预算，已闭锁；"
+                    "请缩小问题范围或减少材料后重试。",
+                    call_contract=call_contract,
+                )
 
         adapter = self._adapters.get((capability_name, capability_version))
         if adapter is None:
@@ -403,6 +444,27 @@ class ModelGateway:
                 lock=blocked.lock,
             )
             return
+
+        # 改进工单 04：最终载荷预算门（共同调用边界，发送前唯一硬门）。
+        if is_configurable_capability(primary.name):
+            gate_error = self._payload_gate_error(payload, model_quota)
+            if gate_error is not None:
+                blocked = self._blocked_result(
+                    run_context,
+                    primary,
+                    gate_error,
+                    "本轮最终载荷超出该模型的输入预算，已闭锁；"
+                    "请缩小问题范围或减少材料后重试。",
+                    call_contract=call_contract,
+                )
+                assert blocked.lock is not None
+                yield StreamEvent(
+                    kind="error",
+                    error_code=blocked.error_code,
+                    error_message=blocked.error_message,
+                    lock=blocked.lock,
+                )
+                return
 
         stream_call = getattr(adapter, "stream_call", None)
         if stream_call is None:
