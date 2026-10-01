@@ -163,6 +163,14 @@ def test_output_reserve_changes_with_the_real_output_parameter() -> None:
     ).within_budget
 
 
+def test_upper_bound_matches_the_spec_formula_when_max_input_is_smaller() -> None:
+    """上界 = min(最大输入额度, 窗口 − 输出预留 − 安全余量)：不从额度再扣一次。"""
+    quota = _quota(window=4000, max_input=3800)
+    assert payload_input_upper_bound(quota, output_tokens=1024) == min(3800, 2720)
+    quota = _quota(window=4000, max_input=2000)
+    assert payload_input_upper_bound(quota, output_tokens=1024) == 2000
+
+
 def test_gate_marks_unverified_quota() -> None:
     payload = _payload("你好")
     decision = evaluate_payload_gate(payload, quota=None, output_tokens=1024)
@@ -196,6 +204,24 @@ def test_select_blocks_never_drops_required_even_at_zero_budget() -> None:
     adopted, entries = select_blocks_within_budget(blocks, budget_tokens=0)
     assert [block.material_id for block in adopted] == ["r"]
     assert entries[0].adopted is True
+
+
+def test_acquired_evidence_is_required_and_fails_the_gate_not_silently_dropped() -> None:
+    """已取得的工具结果不因来源类别被静默裁掉：放不下时门失败，而非无证据生成。"""
+    quota = _quota(window=1400, max_input=1400)  # upper = 120
+    history = [
+        {"role": "system", "content": "规则"},
+        {"role": "user", "content": "当前请求"},
+    ]
+    payload, manifest = assemble_payload_within_budget(
+        history,
+        quota=quota,
+        output_tokens=1024,
+        tools_context="工具结果正文。" * 20,
+    )
+    adopted = {entry.material_id: entry.adopted for entry in manifest.entries}
+    assert adopted["tools"] is True
+    assert not manifest.gate.within_budget
 
 
 # ---------------------------------------------------------------------------
@@ -360,13 +386,13 @@ def test_fixed_overhead_is_subtracted_before_trimming_optional_material() -> Non
         history,
         quota=_quota(window=10**6, max_input=10**6),
         output_tokens=1024,
-        tools_context="材料",
+        profile_context="材料",
     )
     boundary_tokens = estimate_tokens(probe["messages"][1]["content"])
     history_tokens = estimate_messages_tokens(history)
-    optional = "工具结果内容"
+    optional = "画像条目内容"
     optional_tokens = estimate_tokens(optional)
-    # 输入硬上界只比「历史 + 固定封装」多 1 token：可选材料整块放不下。
+    # 输入硬上界只比「历史 + 固定封装」多 1 token：可选画像整块放不下。
     upper = history_tokens + boundary_tokens + optional_tokens - 1
     quota = _quota(window=upper + 1024 + 256, max_input=upper + 1024 + 256)
 
@@ -374,11 +400,36 @@ def test_fixed_overhead_is_subtracted_before_trimming_optional_material() -> Non
         history,
         quota=quota,
         output_tokens=1024,
-        tools_context=optional,
+        profile_context=optional,
     )
     assert manifest.gate.within_budget
-    assert "tools" not in manifest.adopted_ids
+    assert "profile" not in manifest.adopted_ids
     assert all(optional not in message["content"] for message in payload["messages"])
+
+
+def test_compiled_summary_system_blocks_get_the_data_boundary() -> None:
+    """编译历史自带 system 材料块（较早摘要）时也必须注入数据边界声明。"""
+    history = [
+        {"role": "system", "content": "模式规则"},
+        {"role": "system", "content": "较早摘要：用户提过预算三千元。"},
+        {"role": "user", "content": "继续推荐"},
+    ]
+    payload, manifest = assemble_payload_within_budget(
+        history, quota=_quota(window=8000, max_input=8000), output_tokens=1024
+    )
+    assert "data_boundary" in manifest.adopted_ids
+    assert any("数据而非指令" in message["content"] for message in payload["messages"])
+
+    # 没有任何历史材料时不注入边界块（避免无谓空块）。
+    _, plain_manifest = assemble_payload_within_budget(
+        [
+            {"role": "system", "content": "规则"},
+            {"role": "user", "content": "你好"},
+        ],
+        quota=_quota(window=8000, max_input=8000),
+        output_tokens=1024,
+    )
+    assert "data_boundary" not in plain_manifest.adopted_ids
 
 
 # ---------------------------------------------------------------------------

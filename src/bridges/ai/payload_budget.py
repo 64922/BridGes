@@ -249,15 +249,17 @@ def payload_input_upper_bound(
 ) -> int | None:
     """最终载荷的输入硬上界（token）。
 
-    ``min(已验证最大输入额度, 已验证上下文窗口 − 本次输出预留 − 安全余量)``。
+    ``min(已验证最大输入额度, 已验证上下文窗口 − 本次输出预留 − 安全余量)``
+    （工单 04 规格公式：输出预留只从窗口项扣除，不从最大输入额度再扣一次）。
     额度不可验证时返回 ``None``——调用方必须闭锁，绝不用缺省窗口冒充。
     """
     if quota is None or not quota.is_verified:
         return None
-    bound = quota.input_upper_bound()
-    if bound is None:
-        return None
-    return max(0, bound - output_tokens - safety_margin)
+    assert quota.context_window is not None
+    window_bound = quota.context_window - output_tokens - safety_margin
+    if quota.max_input_tokens is None:
+        return max(0, window_bound)
+    return max(0, min(quota.max_input_tokens, window_bound))
 
 
 def evaluate_payload_gate(
@@ -309,14 +311,14 @@ def select_blocks_within_budget(
     （``BACKGROUND``）；``REQUIRED`` 绝不静默丢弃。返回 (采用块, 清单条目)：
     清单对每个块给出采用/排除与原因，估算为各块自身成本。
     """
-    costs = {id(block): estimate_tokens(block.content) for block in blocks}
+    costs = [estimate_tokens(block.content) for block in blocks]
     # 排除优先级：必要性数值越大越先被剔除；同必要性保持输入顺序稳定。
     drop_order = sorted(
         range(len(blocks)),
         key=lambda index: (-int(blocks[index].necessity), index),
     )
     dropped: set[int] = set()
-    total = sum(costs.values())
+    total = sum(costs)
     for index in drop_order:
         if total <= budget_tokens:
             break
@@ -324,7 +326,7 @@ def select_blocks_within_budget(
         if block.necessity is MaterialNecessity.REQUIRED:
             continue
         dropped.add(index)
-        total -= costs[id(block)]
+        total -= costs[index]
 
     adopted: list[PayloadBlock] = []
     entries: list[MaterialManifestEntry] = []
@@ -343,7 +345,7 @@ def select_blocks_within_budget(
                     if is_adopted
                     else "最终载荷超出预算，按必要性裁剪"
                 ),
-                estimated_tokens=costs[id(block)],
+                estimated_tokens=costs[index],
                 source_version=block.source_version,
                 read_range=block.read_range,
             )

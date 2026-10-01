@@ -1489,10 +1489,6 @@ def profile_block_within_budget(
     （``None`` 表示未走编译器，没有预算信息，此时不裁剪）。
     """
 
-    # 延后导入：``context_compiler`` 在模块层导入本模块的配对与模式合同，
-    # 顶层反向导入会成环。
-    from bridges.chat.context_compiler import estimate_tokens
-
     items = list(profile_slice.included_items)
     if remaining_tokens is not None:
         adopted: list[ProfileSliceItem] = []
@@ -1882,8 +1878,11 @@ def _material_blocks(
     教学 → arXiv → 公网 → 附件说明 → 检索 → 工具集合。改进工单 04：不再
     依赖逐次 ``insert(1, ...)`` 的隐含次序，渲染顺序是显式契约。
 
-    必要性：本轮用户纠正（记忆/画像纠正）与当前结论必要证据（教学）为
-    ``REQUIRED``（绝不静默丢弃）；其余为 ``OPTIONAL``，预算不足时先裁。
+    必要性：本轮用户纠正（记忆/画像纠正）、当前结论必要证据（教学、检索、
+    附件说明、公网、arXiv）与工具声明为 ``REQUIRED``——放不下时由调用方给出
+    明确受限结果，绝不静默丢弃后仍生成；只有画像切片是 ``OPTIONAL``（个性化
+    材料，不构成事实依据，预算不足时整条不采用）。更细粒度的任务必要性由
+    14/15/19 等消费者接入真实最终输入时按任务声明。
     """
     allowed_web_result_ids = teaching_web_result_ids(teaching_projection)
     blocks: list[PayloadBlock] = []
@@ -1932,7 +1931,7 @@ def _material_blocks(
                 PayloadBlock(
                     "arxiv",
                     MaterialCategory.ARXIV.value,
-                    MaterialNecessity.OPTIONAL,
+                    MaterialNecessity.REQUIRED,
                     text,
                 )
             )
@@ -1945,7 +1944,7 @@ def _material_blocks(
                 PayloadBlock(
                     "web_search",
                     MaterialCategory.WEB.value,
-                    MaterialNecessity.OPTIONAL,
+                    MaterialNecessity.REQUIRED,
                     text,
                 )
             )
@@ -1954,7 +1953,7 @@ def _material_blocks(
             PayloadBlock(
                 "attachment",
                 MaterialCategory.ATTACHMENT.value,
-                MaterialNecessity.OPTIONAL,
+                MaterialNecessity.REQUIRED,
                 attachment_note,
             )
         )
@@ -1965,7 +1964,7 @@ def _material_blocks(
                 PayloadBlock(
                     "retrieval",
                     MaterialCategory.RETRIEVAL.value,
-                    MaterialNecessity.OPTIONAL,
+                    MaterialNecessity.REQUIRED,
                     text,
                 )
             )
@@ -1974,11 +1973,22 @@ def _material_blocks(
             PayloadBlock(
                 "tools",
                 MaterialCategory.TOOL.value,
-                MaterialNecessity.OPTIONAL,
+                MaterialNecessity.REQUIRED,
                 tools_context,
             )
         )
     return blocks
+
+
+def _history_contains_material_blocks(history: list[dict[str, Any]]) -> bool:
+    """历史中首条模式规则之后是否还带 system 角色材料块。
+
+    改进工单 04：编译产物把较早摘要、补回原文与证据也放在 ``system`` 角色；
+    只要历史里已有这类材料，数据边界声明就必须注入——摘要不因没有追加材料
+    而绕过「材料是数据而非指令」的封装。
+    """
+    start = 1 if history and history[0].get("role") == "system" else 0
+    return any(message.get("role") == "system" for message in history[start:])
 
 
 def _fixed_blocks(
@@ -2099,7 +2109,9 @@ def _assemble(
     )
     fixed_blocks = _fixed_blocks(
         writing_policy=writing_policy,
-        has_material_blocks=bool(material_blocks),
+        has_material_blocks=(
+            bool(material_blocks) or _history_contains_material_blocks(history)
+        ),
     )
     output = output_tokens if output_tokens is not None else CHAT_OUTPUT_TOKENS
     if not gate:
@@ -3706,7 +3718,12 @@ class TurnOrchestrator:
             )
             # 改进工单 04：最终载荷在共同调用边界前先过预算门——材料按必要性
             # 裁剪，放不下必要材料时给出明确受限结果，绝不发送超限载荷。
+            # 编译触底（budget_floor_exceeded）与最终门失败同一语义：拒绝在
+            # 无法容纳必要条件时继续生成（普通聊天与学习路径一致）。
             history_range, summary_instance = self._manifest_scope(context_budget)
+            compile_floor_exceeded = bool(
+                context_budget and context_budget.get("budget_floor_exceeded")
+            )
             if model_quota is not None:
                 payload, material_manifest = assemble_payload_within_budget(
                     history,
@@ -3745,7 +3762,7 @@ class TurnOrchestrator:
                 self._audit_material_manifest(
                     account_id, assistant_message_id, material_manifest
                 )
-            if (
+            if compile_floor_exceeded or (
                 material_manifest is not None
                 and not material_manifest.gate.within_budget
             ):

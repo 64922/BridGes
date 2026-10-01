@@ -26,8 +26,9 @@ from typing import TYPE_CHECKING
 
 from bridges.ai.fixed_models import MODEL_CONTEXT_WINDOWS
 from bridges.ai.model_quota import RunModelQuota
-# 改进工单 04：图片成本与最终载荷门共用同一常量（``IMAGE_COST_TOKENS`` 是
-# ``payload_budget.IMAGE_PART_COST_TOKENS`` 的别名），估算函数也只有一个事实源。
+
+# 改进工单 04：图片成本与最终载荷门共用同一常量（IMAGE_COST_TOKENS 是
+# payload_budget.IMAGE_PART_COST_TOKENS 的别名），估算函数也只有一个事实源。
 from bridges.ai.payload_budget import (
     IMAGE_PART_COST_TOKENS as IMAGE_COST_TOKENS,
 )
