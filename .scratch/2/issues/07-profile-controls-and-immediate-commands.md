@@ -79,7 +79,7 @@
 - 回归：`tests/profiles/test_issue06_profile_recovery.py` 与 `tests/contracts` 合并复跑 44 passed；官方复核脚本 `docs/用户画像/复核脚本.py` 的「停止记录后忘掉」场景输出 `{"kind": "forget", "status": "forgotten", "matched_count": 1}`。
 - 前端 vitest：`ProfileControlsCard.test.tsx`（3）+ `AtomicProfileCenter.test.tsx`（6）共 9 passed。
 - mypy/ruff 与主仓同命令对账：ruff 错误名单两侧逐名一致（全部预存在）；mypy 受检 4 文件唯一错误 `turn.py:4452` 主仓同在（预存在）。
-- 全量对账：主仓基线与分支头两侧同跑法（同 deselect 3 条 `test_start_fails_*`）、失败名单逐名双向 diff，结果见验收合并记录。
+- 全量对账（两侧同跑法：同 deselect 3 条 `test_start_fails_*`、独立 basetemp）：主仓 `95ec00e` = 249F/4157P/37S/1x，分支头 = 248F/4185P/39S/1x。失败名单逐名双向 diff：分支侧零新增失败；仅主仓名单多 `tests/contracts/test_openapi_sync.py::test_committed_openapi_matches_current_api`（主仓预存在失败，分支因重生成 openapi.json 转绿）。跳过 +2 为 `NEEDS_WEB_BUILD` ×2（跳过条件查 `apps/web/.next/standalone/server.js`：主仓有构建产物、工作树未 build），环境差异非回归。
 
 ### 限制与边界
 
