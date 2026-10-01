@@ -341,6 +341,26 @@ def test_sync_gateway_invoke_rejects_over_budget_payload_without_calling_adapter
     assert adapter.models == []
 
 
+def test_multimodal_payload_over_budget_is_rejected_by_the_gateway() -> None:
+    """复核反例「照片轮绕过编译」：图片部件计入最终载荷，超限不发送。"""
+    adapter = _ProgrammableAdapter()
+    gateway = ModelGateway(_chat_registry())
+    gateway.register_adapter("qwen_text_chat", "1", adapter)
+    quota = _quota(window=1688, max_input=1688)  # upper = 408
+    payload = _payload("请看看这张照片")
+    payload["messages"][1]["content"] = [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+        {"type": "text", "text": "请看看这张照片"},
+    ]
+
+    events = list(
+        gateway.stream("qwen_text_chat", "1", _context(), payload, model_quota=quota)
+    )
+    assert events[-1].kind == "error"
+    assert events[-1].error_code == PAYLOAD_REASON_EXCEEDED
+    assert adapter.models == []
+
+
 # ---------------------------------------------------------------------------
 # 验收 5：固定封装计入预算与清单，实际发送载荷与采用清单一致
 # ---------------------------------------------------------------------------

@@ -56,14 +56,14 @@
 
 - 合同版本：`payload-budget-v1`（预算公式/裁剪）、`material-manifest-v1`（清单字段）、`token-estimate-v1`（估算）。
 - `estimate_tokens` 为唯一事实源（由 `context_compiler` 原实现迁入，编译器复用）：CJK 汉字/全角标点 1 token/字、其余 4 字符 1 token 向上取整。只为预算控制，不冒充供应商分词。
-- `payload_input_upper_bound`：`min(已验证最大输入额度, 已验证上下文窗口) − 本次输出预留 − 安全余量(256)`；额度不可验证时返回 `None`——调用方必须闭锁，绝不用缺省窗口冒充。
+- `payload_input_upper_bound`：`min(已验证最大输入额度, 已验证上下文窗口 − 本次输出预留 − 安全余量(256))`；额度不可验证时返回 `None`——调用方必须闭锁，绝不用缺省窗口冒充。
 - `evaluate_payload_gate`：只对**最终** `messages` 计数（系统规则、历史、图片部件按 `IMAGE_PART_COST_TOKENS=1024`/张、工具/检索/画像正文全部计入），输出预留取调用自身 `max_tokens`。
 - `select_blocks_within_budget`：裁剪次序无关 → 可选 → 背景，`REQUIRED` 永不静默丢弃；逐块给出采用/排除原因。
 - `CallMaterialManifest`：脱敏调用清单（材料 ID、类别、必要性、来源版本、读取范围、采用与排除原因、摘要实例、预算门结果、估算与可取得的实际用量字段）。`MANIFEST_FORBIDDEN_FIELDS`/`redaction_audit` 声明清单绝不携带提示词、消息正文、图片内容或凭据。
 
 ### 共同调用边界（`src/bridges/ai/model_gateway.py`）
 
-- `invoke` 与 `stream` 在能力核验后、适配器调用前执行同一 `_payload_gate_error`；超限返回稳定原因码 `payload_budget_exceeded`，未验证返回 `payload_budget_unverified`，绝不调用适配器（被拒绝调用时适配器零调用）。
+- `invoke` 与 `stream` 在能力核验后、适配器调用前执行同一 `_payload_gate_error`；超限返回稳定原因码 `payload_budget_exceeded`，绝不调用适配器（被拒绝调用时适配器零调用）。额度未验证在更早的 `model_quota_unverified` 守卫闭锁，`payload_budget_unverified` 作为 `_payload_gate_error` 的兜底口径保留。
 - 输出预留直接读 final payload 的真实 `max_tokens`，不同输出额度得到不同上界。
 
 ### 聊天端到端（`src/bridges/chat/turn.py`）
@@ -86,7 +86,7 @@
 
 环境：conda `agent`（`C:\Users\33755\anaconda3\envs\agent\python.exe`），`PYTHONUTF8=1`，`CODEBUDDY_SAFE_DELETE_ENABLED=0`（规避沙箱 safe-delete shim 的 pytest 假 ERROR，非本票代码），`--basetemp` 均为工作树独立目录。
 
-- 新增测试 `tests/chat/test_improvement04_payload_budget.py`：**25 passed**。覆盖复核反例（预算 408 追加工具块 1013、1 token 画像、121 条历史）、中英/代码/公式/长 URL/图片/工具混合估算、输出预留随真实参数变化、规格上界公式、必要性裁剪顺序、必需块零预算不丢、已取得证据不因类别静默裁剪、材料数据边界（含编译历史自带摘要块）、纠正优先于可选画像、跨账户拒绝、同步与流式网关发送前拒绝（适配器零调用）、清单不含正文、固定封装计入预算与清单且不误触门。
+- 新增测试 `tests/chat/test_improvement04_payload_budget.py`：**26 passed**。覆盖复核反例（预算 408 追加工具块 1013、1 token 画像、121 条历史、照片轮图片部件越门）、中英/代码/公式/长 URL/图片/工具混合估算、输出预留随真实参数变化、规格上界公式、必要性裁剪顺序、必需块零预算不丢、已取得证据不因类别静默裁剪、材料数据边界（含编译历史自带摘要块）、纠正优先于可选画像、跨账户拒绝、同步与流式网关发送前拒绝（适配器零调用）、清单不含正文、固定封装计入预算与清单且不误触门。
 - 邻接回归：`tests/ai`+`tests/contracts`+本票新测试 **203 passed**；`tests/chat` 邻接组（上下文/照片/画像/运行锁/表达策略/03 验收）全绿。
 - 全量分目录（每个顶层目录独立进程）与未改动 `main` 逐目录逐条对照：**失败集完全一致，无新增失败**。失败均为既有：`chat` 100（`legacy_file_source_retired` 与既有 flaky）、`lifecycle` 5、`profiles` 1、`observability` 2、`retirement` 11、`mcp` 49、`learning_projects` 19、`closeout` 6、`evaluation` 4、`security` 1（并发 flaky）、`integration` 5、`ingestion` 5；`plugins` 为既有循环导入收集错误（两侧一致）。其余目录全绿。
 - 静态检查：本票业务文件 `ruff` 仅既有 `UP042`（`observability.py` 既有枚举定义）；`mypy`（strict）本票文件无新增错误（`turn.py` 唯一错误与基线同位置 `dict.get(str|None)`）。
@@ -121,5 +121,5 @@
 ### 2026-10-01：交付（最终载荷预算门与材料边界）
 
 - 以 worktree `.worktrees/04-final-payload-budget`、分支 `codex/04-final-payload-budget-and-data-boundary`（基点 `1b35c02`，阻塞票 03 已验收合入）交付。
-- 交付内容：最终载荷预算门与材料清单模块、网关共同发送前硬门（同步+流式）、聊天组装重构与清单审计、画像整条裁剪与去 80 字截断、数据边界声明、`payload_budget_exceeded` 受限结果、CONTEXT.md 术语、22 项新测试。
+- 交付内容：最终载荷预算门与材料清单模块、网关共同发送前硬门（同步+流式）、聊天组装重构与清单审计、画像整条裁剪与去 80 字截断、数据边界声明、`payload_budget_exceeded` 受限结果、CONTEXT.md 术语、26 项新测试。
 - 验证见上节；状态改 `ready-for-human` 等待独立验收。
