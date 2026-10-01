@@ -559,6 +559,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     "web_search_evidence_insufficient": "搜索页面没有可安全引用的公开来源，请稍后重试。",
     "web_search_no_results": "没有找到可核实的公开网页结果，请修改问题后重试。",
     "web_search_citation_invalid": "联网回答缺少可核实引用，请重试。",
+    "fact_protection_inconsistent": "回答未能可靠保留要求的事实片段或引用，请重试。",
     "arxiv_timeout": "arXiv 搜索超时，请重试。",
     "arxiv_rate_limit": "arXiv 请求过于频繁，请稍后重试。",
     "arxiv_offline": "当前无法连接 arXiv，请检查网络后重试。",
@@ -615,6 +616,7 @@ _RETRYABLE_CODES = frozenset(
         "web_search_evidence_insufficient",
         "web_search_no_results",
         "web_search_citation_invalid",
+        "fact_protection_inconsistent",
         "arxiv_timeout",
         "arxiv_rate_limit",
         "arxiv_offline",
@@ -3544,14 +3546,18 @@ class TurnOrchestrator:
                             datetime.now(UTC),
                         )
                     if protection.inconsistencies and self._observability is not None:
-                        # Issue 05：关键不一致无法安全修复时采用现有降级语义，
-                        # 只记录意图与不一致类别，不含正文或片段原文。
+                        # Issue 05：关键项下方进入错误终态；审计只含意图和
+                        # 不一致类别，不含正文或片段原文。
                         self._observability.log_audit(
                             actor_account_id=account_id,
                             action=AuditAction.FACT_PROTECTION,
-                            result=AuditResult.DEGRADED,
+                            result=(
+                                AuditResult.BLOCKED
+                                if protection.has_critical_inconsistency
+                                else AuditResult.DEGRADED
+                            ),
                             object_refs=[assistant_message_id],
-                            reason="事实片段无法安全精确绑定，保留候选正文并记录降级。",
+                            reason="事实片段无法安全精确绑定，按任务合同裁决终态。",
                             details={
                                 "intent": protection.intent.value,
                                 "protocol_version": protection.protocol_version,
@@ -3561,6 +3567,33 @@ class TurnOrchestrator:
                                 "count": len(protection.inconsistencies),
                             },
                         )
+                    if protection.has_critical_inconsistency:
+                        error_code = "fact_protection_inconsistent"
+                        error_message = user_facing_error(error_code)
+                        finalize_message(
+                            self._repo,
+                            account_id,
+                            assistant_message_id,
+                            status=ChatMessageStatus.ERROR,
+                            error_code=error_code,
+                            error_message=error_message,
+                            duration_ms=None,
+                            model_id=self._lock_model_id(event.lock),
+                            lock=event.lock,
+                            started=started,
+                            now=datetime.now(UTC),
+                            thinking=failed_thinking(thinking, error_code),
+                            teaching=teaching_payload(
+                                failed_teaching_projection(teaching_projection, error_message)
+                            ),
+                        )
+                        yield StreamEvent(
+                            kind="error",
+                            error_code=error_code,
+                            error_message=error_message,
+                            lock=event.lock,
+                        )
+                        return
                     # 模型阶段关闭事件（在质量检查前发出，duration 只含
                     # 模型流式本身；脱敏首 token 指标随事件持久化，供本地
                     # 性能摘要聚合；错误路径由 finally 关闭计时）

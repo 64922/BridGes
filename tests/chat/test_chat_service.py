@@ -313,7 +313,7 @@ def test_ordinary_generation_restores_protected_contract_fragments(
             StreamChunk(
                 kind="delta",
                 delta=(
-                    "结果见 `result = 0`、$E=mc^2$、"
+                    "请保留 `result = 0`、$E=mc^2$、"
                     "https://example.com/changed 和 {\"answer\": 0}"
                 ),
             )

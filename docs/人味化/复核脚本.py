@@ -54,10 +54,18 @@ def main() -> None:
         ("用户要求纠正代码", "这行 `x = 1` 不对，请把数值改为 2。", "改为 `x = 2`。"),
         ("任务计算新值", "已知 `x = 1`，请计算 `y = x + 1`。", "已知 `x = 1`，所以 `y = 2`。"),
         ("跨来源链接", "", "应看甲的证据 https://example.com/a"),
+        ("对象释义后的正确换序", "甲 10 ms；乙 20 ms", "乙的值为 20 ms；甲的值为 10 ms"),
+        ("对象释义后拒绝猜测", "甲 10 ms；乙 20 ms", "乙的值为 21 ms；甲的值为 11 ms"),
+        ("普通换算答案", "1 s 等于多少 ms？", "1000 ms。"),
+        ("同句混合授权", "把 `x = 1` 改为 `x = 2` 并保留 `y = 3` 不变。", "`x = 2`，`y = 3`。"),
+        ("关键遗漏", "请原样保留：甲 10 ms；乙 20 ms", "甲 10 ms"),
+        ("清单外引用不猜测换链", "", "答案见 https://example.com/changed"),
     )
     protection = []
     for name, original, candidate in protection_cases:
         sources = ("https://example.com/a", "https://example.com/b") if name == "跨来源链接" else ()
+        if name == "清单外引用不猜测换链":
+            sources = ("https://example.com/source",)
         result = plan_fragment_protection(
             original, candidate, additional_sources=sources
         )
@@ -69,11 +77,13 @@ def main() -> None:
                 "恢复后": result.content,
                 "保留意图": result.intent.value,
                 "不一致": [item.kind for item in result.inconsistencies],
+                "关键不一致": result.has_critical_inconsistency,
             }
         )
 
     semantic_cases = (
         ("裸数字与否定", "样本量为30，未发现显著差异。", "样本量为300，发现显著差异。"),
+        ("对象之间转移否定", "甲不会提高，乙会提高。", "甲会提高，乙不会提高。"),
         (
             "中文单位/条件/结论强度",
             "如果温度升高 10 米，则必然显著。",
@@ -109,7 +119,7 @@ def main() -> None:
     received = ""
     deltas = []
     for chunk in ("值 `x = 0", "`。"):
-        restored = restore_protected_regions("`x = 1`", stored + chunk, append_missing=False)
+        restored = restore_protected_regions("值 `x = 1`。", stored + chunk, append_missing=False)
         delta = restored[len(stored):] if restored.startswith(stored) else restored
         stored = restored
         received += delta

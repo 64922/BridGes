@@ -102,14 +102,14 @@ def test_restore_protected_regions_prefers_original_contract_fragments() -> None
     assert '{"answer": 42}' in restored
 
 
-def test_restore_protected_regions_can_bind_search_result_urls() -> None:
+def test_restore_protected_regions_does_not_guess_search_result_urls() -> None:
     restored = restore_protected_regions(
         "",
         "答案见 https://example.com/changed",
         additional_sources=("https://example.com/source",),
     )
 
-    assert "https://example.com/source" in restored
+    assert restored == "答案见 https://example.com/changed"
 
 
 def test_assemble_payload_places_policy_in_the_existing_generation_call() -> None:

@@ -32,7 +32,7 @@
 | [02](issues/02-profile-specification-decisions.md) | 补齐画像剩余规格与验收决策（规格已验收） | 无 | ready-for-agent |
 | [03](issues/03-model-quota-and-call-snapshots.md) | 锁定完整模型额度与每次调用版本 | 无 | ready-for-agent |
 | [04](issues/04-final-payload-budget-and-data-boundary.md) | 守住最终模型载荷预算与材料权威边界 | [03](issues/03-model-quota-and-call-snapshots.md) | ready-for-agent |
-| [05](issues/05-intent-bound-fact-protection.md) | 按保留意图绑定事实片段，修复盲替换 | 无 | ready-for-agent |
+| [05](issues/05-intent-bound-fact-protection.md) | 按保留意图绑定事实片段，修复盲替换 | 无 | ready-for-human |
 | [06](issues/06-stream-replay-and-terminal-consistency.md) | 统一流式正文、终态存储与断线重放 | [05](issues/05-intent-bound-fact-protection.md) | ready-for-agent |
 | [07](issues/07-profile-controls-and-immediate-commands.md) | 分开画像记录与使用控制，保证即时撤回 | [02](issues/02-profile-specification-decisions.md) | ready-for-agent |
 | [08](issues/08-source-bound-task-state-and-waits.md) | 保存有来源的跨轮任务、有效条件与澄清 | [01](issues/01-confirmed-contracts-and-expand-migration.md) | ready-for-agent |
