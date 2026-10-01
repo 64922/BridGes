@@ -463,11 +463,26 @@ def test_multi_field_wait_requires_all_fields(env) -> None:
     assert service.repository.get_wait("acct-1", wait.wait_id).status == WaitStatus.OPEN
     assert service.repository.get_task("acct-1", task_id).status == TaskStatus.WAITING
 
-    full = service.apply_turn(
+    # 跨轮只补另一个字段仍不解决：等待要求一次给出完整缺失字段集合。
+    second_partial = service.apply_turn(
         "acct-1",
         TaskTurnRequest(
             conversation_id="conv-1",
             user_message_id="u3",
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=task_id,
+            answer_fields=["deadline"],
+            answer_text="周五前",
+        ),
+    )
+    assert second_partial.wait_resolution == WaitResolution.REJECTED
+    assert service.repository.get_wait("acct-1", wait.wait_id).status == WaitStatus.OPEN
+
+    full = service.apply_turn(
+        "acct-1",
+        TaskTurnRequest(
+            conversation_id="conv-1",
+            user_message_id="u4",
             relation=TaskRelation.CONTINUE,
             explicit_task_id=task_id,
             answer_fields=["budget", "deadline"],

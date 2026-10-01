@@ -675,7 +675,8 @@ class TaskService:
 
         只接受匹配答复：必须是答复类关系、不是新话题/画像命令/学习动作、
         版本与提问时一致，且本轮 ``answer_fields`` 一次补齐全部缺失字段。
-        只补齐一部分的答复不解决等待，剩余字段仍可在后续轮次补齐。
+        只补齐一部分的答复不解决等待；后续轮次须在 ``answer_fields`` 中
+        给出完整的缺失字段集合（含此前已答字段）才会解决。
         """
         open_waits = self._repo.list_waits(account_id, target.task_id, statuses=(WaitStatus.OPEN,))
         if not open_waits:
