@@ -57,4 +57,8 @@
 
 ## 合并与清理
 
-由本次验收执行合入 `main`、同步推送后删除 Issue 05 工作树及本地 Issue 分支，并检查、清理失效 worktree 记录。最终提交及执行证据记录在工单末尾。
+- 验收修复提交：`dcc77dc`；合并提交：`fc1a354`，父主线已包含同期验收合入的 Issue 03（`899a41f`）。`turn.py` 自动合并，无冲突。
+- 合并后的 `main` 再跑定点：**98 passed / 1 xfailed**，ruff 通过；正常非强制推送后，`ls-remote` 确认远端为 `fc1a3546e1c5e2a978d930404439d5b5df0ee244`。
+- 工作树实体目录已删除；本地 `codex/05-intent-bound-fact-protection` 已以 `git branch -d` 删除。Windows 测试临时目录 ACL 曾阻止实体清理，恢复该工作树内部 `.tmp` 的继承权限后删除成功。
+- 已执行 `git worktree prune --expire now --verbose`，再次 dry-run 无失效记录；最终 `git worktree list --porcelain` 只剩主工作树。
+- 本段收尾记录单独提交并随 `main` 同步；不纳入其他同时进行的工作区修改。
