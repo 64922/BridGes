@@ -1546,8 +1546,9 @@ _MEMORY_RESULT_COPY: dict[tuple[str, str], str] = {
         "不得声称还记得相关内容，也不得再引用被删除的内容。"
     ),
     ("forget", "unresolved"): (
-        "本轮用户要求忘掉，但没有匹配到用户画像中的条目。不得声称已删除；"
-        "可以说没有找到对应信息，并建议到用户画像页查看现有条目。"
+        "本轮用户要求忘掉，但未能唯一定位明确的删除对象，未删除任何条目。"
+        "不得声称已删除或没有记录；请用户明确要忘掉哪条信息，"
+        "也可以建议到用户画像页查看并删除对应条目。"
     ),
 }
 
@@ -2510,6 +2511,19 @@ class TurnOrchestrator:
                     account_id, conversation_id, until_user_message_id
                 )
             )
+            if not use_profile or (
+                self._automatic_profiles is not None
+                and not self._automatic_profiles.is_profile_usage_enabled(account_id)
+            ):
+                # 控制语义进入模型合同；事实级历史过滤由 18 的抑制接缝承接，
+                # 此处用途限制不代表已移除原文、摘要或派生内容里的旧个人事实。
+                history = [dict(message) for message in history]
+                history[0]["content"] += (
+                    "\n【本轮长期信息使用限制】用户已停用长期画像使用。"
+                    "不得从旧对话、摘要或旧回答中的个人信息进行间接个性化。"
+                    "只保留当前任务续接必要的目标、来源和明确条件；"
+                    "本轮用户新提供的信息照常服务当前请求。"
+                )
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
             route_messages = self._repo.list_messages(account_id, conversation_id)
             route_owner = owner_user_message(route_messages, assistant_message_id)

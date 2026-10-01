@@ -57,6 +57,9 @@ def test_usage_switch_off_stops_profile_injection_but_keeps_original_text(
     assert note.state.value == "off"
     assert note.profile_enabled is False
     assert "长期画像使用已关闭" in note.note
+    assert "不得从旧对话、摘要或旧回答中的个人信息进行间接个性化" in (
+        payload["messages"][0]["content"]
+    )
 
 
 def test_usage_switch_reenable_recovers_undeleted_information(env: _Env) -> None:
@@ -75,6 +78,7 @@ def test_usage_switch_reenable_recovers_undeleted_information(env: _Env) -> None
     blocks = env.system_blocks(_SLICE_MARKER)
     assert len(blocks) == 1
     assert GOAL_ITEM in blocks[0]
+    assert "【本轮长期信息使用限制】" not in env.payload()["messages"][0]["content"]
 
 
 def test_stop_recording_then_forget_probe_through_chat(env: _Env) -> None:

@@ -866,12 +866,12 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
     def set_profile_usage_enabled(
         self, account_id: str, enabled: bool, now: datetime
     ) -> ProfileUsageState:
-        current = self._profile_usage_states.get(account_id)
-        if current is not None and current.enabled == enabled:
+        current = self.get_profile_usage_state(account_id)
+        if current.enabled == enabled:
             return current
         state = ProfileUsageState(
             enabled=enabled,
-            version=1 if current is None else current.version + 1,
+            version=current.version + 1,
             updated_at=now,
         )
         self._profile_usage_states[account_id] = state
@@ -1233,17 +1233,21 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             f"INSERT INTO {PROFILE_CONTROLS_TABLE} "
             "(account_id, profile_usage_enabled, controls_version, "
             " usage_control_version, updated_at) "
-            "VALUES (?, ?, ?, 1, ?) "
+            "SELECT ?, ?, ?, 1, ? WHERE ? = 0 OR EXISTS ("
+            f"SELECT 1 FROM {PROFILE_CONTROLS_TABLE} WHERE account_id = ?) "
             "ON CONFLICT(account_id) DO UPDATE SET "
             "profile_usage_enabled = excluded.profile_usage_enabled, "
             f"usage_control_version = {PROFILE_CONTROLS_TABLE}"
             ".usage_control_version + 1, "
             "updated_at = excluded.updated_at "
             "WHERE profile_usage_enabled != excluded.profile_usage_enabled",
-            (account_id, int(enabled), PROFILE_CONTROLS_VERSION, self._iso(now)),
+            (
+                account_id, int(enabled), PROFILE_CONTROLS_VERSION,
+                self._iso(now), int(enabled), account_id,
+            ),
         )
         state = self.get_profile_usage_state(account_id)
-        if state.enabled != enabled or state.updated_at is None:
+        if state.enabled != enabled:
             raise RuntimeError(
                 f"长期画像使用开关写入后未能按原值读回：{account_id}"
             )
@@ -1596,10 +1600,22 @@ class AutomaticProfileService:
         now = _now()
         source_hash = _source_hash(account_id, message_id, content)
         signal_classification = self._classifier.classify(content)
+        # 用户可用引号指定管理对象；只有消息开头的直接命令才去除目标引号
+        # 再检查来源，转述中的命令不因目标可解析而获得管理权限。
+        management_classification = signal_classification
+        if re.match(
+            r"^(?:请|麻烦)?(?:帮我)?(?:记住|忘掉|忘记|删掉|删除)", content.strip()
+        ):
+            management_classification = self._classifier.classify(
+                re.sub(r'[“”"「」『』]', "", content)
+            )
         # Issue 13：来源决策是分类结果的显式、可观测投影；新 run 一律
         # 携带稳定来源，历史行保持 NULL 不做伪造。
         source = self._decide_source(signal_classification)
-        directive = _privacy_directive(content)
+        management_allowed = management_classification.reason_code not in {
+            "quoted_or_relayed_text", "third_party_statement", "hypothetical_or_role_play",
+        }
+        directive = _privacy_directive(content) if management_allowed else None
         if directive is not None:
             scope, normalized_value = directive
             if scope == "content" and normalized_value is None:
@@ -1628,6 +1644,7 @@ class AutomaticProfileService:
         memory_directive = (
             parse_memory_directive(content)
             if self._atomic_profiles is not None
+            and management_allowed
             else None
         )
         recording_blocked = self._repository.is_recording_blocked(account_id)
@@ -2924,13 +2941,14 @@ class AutomaticProfileService:
         if recording_enabled is None and usage_enabled is None:
             raise ValueError(PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE)
         now = _now()
-        if recording_enabled is False:
-            self._repository.block_recording(account_id, None, now)
-        elif recording_enabled is True:
-            self._repository.unblock_recording(account_id)
-        if usage_enabled is not None:
-            self._repository.set_profile_usage_enabled(account_id, usage_enabled, now)
-        controls = self.account_controls(account_id)
+        with self._repository.transaction():
+            if recording_enabled is False:
+                self._repository.block_recording(account_id, None, now)
+            elif recording_enabled is True:
+                self._repository.unblock_recording(account_id)
+            if usage_enabled is not None:
+                self._repository.set_profile_usage_enabled(account_id, usage_enabled, now)
+            controls = self.account_controls(account_id)
         self._audit_controls_update(
             account_id,
             controls=controls,
