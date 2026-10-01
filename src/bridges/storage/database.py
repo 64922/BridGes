@@ -2860,7 +2860,7 @@ MIGRATIONS: dict[int, list[str]] = {
                 CHECK (kind IN (
                     'model_call', 'model_call_result', 'transient_retry',
                     'external_call', 'external_call_result', 'adjustment_begin',
-                    'exhausted', 'closed', 'compat_created'
+                    'adjustment_end', 'exhausted', 'closed', 'compat_created'
                 )),
             purpose TEXT,
             call_key TEXT,

@@ -23,7 +23,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ALL_COMPLETED, Future, wait
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from inspect import Parameter, signature
 from typing import Any, Literal, Protocol
 
@@ -70,10 +70,8 @@ from bridges.chat.global_writing_policy import (
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
 from bridges.chat.run_budget_ledger import (
-    RUN_BUDGET_INITIALS,
     RunBudgetLedgerRepository,
     derive_run_budget_class,
-    derive_run_budget_plan,
 )
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.chat.stream_protection import StreamProtectionAssembler
@@ -2437,7 +2435,7 @@ class TurnOrchestrator:
         方法只读取，并对缺失行的运行按兼容纪律先补齐持久状态再使用——
         截止时间锚定运行创建时刻，绝不把截止向后延、绝不重置已耗计数。
         兼容补齐的类别从会话模式与消息路线派生（创建路径冻结时的完整
-        信号含图片/视频载荷，崩溃窗口内的运行缺失这些信号时按普通处理，
+        信号含图片/视频载荷，崩溃窗口内的运行缺失这些信号时按轻量处理，
         影响仅限崩溃窗口与升级前遗留运行）。
         """
         ledger = RunBudgetLedgerRepository(self._repo.database)
@@ -2450,21 +2448,13 @@ class TurnOrchestrator:
                 return RunBudget(run_id)
             budget_class = derive_run_budget_class(
                 mode=mode_hint,
-                route_is_paper_search=(
-                    route_hint is not None and route_hint.is_paper_search
-                ),
+                route=route_hint,
             )
             snapshot = ledger.ensure_for_run(
                 account_id=account_id,
                 run_id=run_id,
                 conversation_id=run.conversation_id,
-                plan=derive_run_budget_plan(
-                    budget_class,
-                    deadline_at=run.created_at
-                    + timedelta(
-                        milliseconds=RUN_BUDGET_INITIALS[budget_class].total_budget_ms
-                    ),
-                ),
+                budget_class=budget_class,
                 run_created_at=run.created_at,
                 now=datetime.now(UTC),
             )

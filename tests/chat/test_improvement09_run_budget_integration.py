@@ -306,9 +306,11 @@ def _ledger_repo(sqlite_app: Any) -> RunBudgetLedgerRepository:
     return RunBudgetLedgerRepository(sqlite_app.state.chat_service._repo.database)
 
 
-def test_send_freezes_ledger_with_normal_initials(
+def test_send_freezes_ledger_with_lightweight_initials(
     sqlite_app: Any, client: TestClient
 ) -> None:
+    """普通轻量交流在发送时冻结 lightweight 账本：沿用已验证 120 秒前台
+    硬上限、无预留（normal 类别留给配方驱动的检索编排，票 10/12/37）。"""
     account = _register(client)
     conversation_id = _create_conversation(client)
     created = _send(client, conversation_id, "普通文本消息")
@@ -317,16 +319,16 @@ def test_send_freezes_ledger_with_normal_initials(
     assert snapshot is not None
     assert snapshot.status == "active"
     assert snapshot.contract_version == "run-budget-v1"
-    assert snapshot.plan.budget_class.value == "normal"
-    assert snapshot.plan.total_budget_ms == 60_000
-    assert snapshot.plan.verify_deliver_reserve_ms == 15_000
+    assert snapshot.plan.budget_class.value == "lightweight"
+    assert snapshot.plan.total_budget_ms == 120_000
+    assert snapshot.plan.verify_deliver_reserve_ms == 0
     run = sqlite_app.state.chat_service._repo.get_generation_run(
         account["id"], run_id
     )
     assert run is not None
     assert snapshot.plan.deadline_at >= run.created_at
     delta = (snapshot.plan.deadline_at - run.created_at).total_seconds()
-    assert 55 <= delta <= 65
+    assert 115 <= delta <= 125
 
 
 def test_stop_closes_ledger_and_rejects_new_calls(

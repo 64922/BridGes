@@ -24,11 +24,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass, replace
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+from bridges.routing import CapabilityRoute, MainCapability
 from bridges.storage.database import BridgesDatabase
 
 #: 账本合同版本；未来字段演进时递增，未知版本读回时闭锁而不是猜测语义。
@@ -58,16 +60,17 @@ class RunBudgetInitials:
 
 
 #: 已确认初值方案（orchestration.md §10）。lightweight 沿用已验证前台
-#: 硬上限 120 秒且不设预留（普通闲聊只有一次生成调用与收尾，沿用已验证
-#: 调用超时）；normal/deep 的核验/交付预留分别为 15/30 秒——交付前的
-#: 阶段截止按「总预算 − 预留」收紧，保证核验与交付空间不被吃掉。
-#: 调用数上限为保守初值（每日编排真实调用 1–2 次 + 一轮共享修复的余量），
-#: 由配方票（10/12/37）按必要节点重算，40/42 校准。
+#: 硬上限 120 秒且不设预留（普通闲聊/澄清等纯交流沿用已验证调用超时，
+#: 「核心是少调用而非占满任务预算」）；normal/deep 的核验/交付预留分别
+#: 为 15/30 秒——交付前的阶段截止按「总预算 − 预留」收紧，保证核验与
+#: 交付空间不被吃掉。调用数上限为保守守门初值（正常流程真实调用 1–2 次
+#: + 一轮共享修复的余量；普通交流含工具轮，与 normal 同为 6），由配方票
+#: （10/12/37）按必要节点重算，40/42 校准。
 RUN_BUDGET_INITIALS: dict[RunBudgetClass, RunBudgetInitials] = {
     RunBudgetClass.LIGHTWEIGHT: RunBudgetInitials(
         total_budget_ms=120_000,
         verify_deliver_reserve_ms=0,
-        model_call_limit=3,
+        model_call_limit=6,
         external_parallel_max=2,
         candidate_screen_max=20,
         deep_read_max=3,
@@ -97,23 +100,50 @@ RUN_BUDGET_INITIALS: dict[RunBudgetClass, RunBudgetInitials] = {
 }
 
 
+#: 创建时即确定走重材料/重流程路线的主能力（保留 120 秒/30 秒预留的
+#: 深入信封）；论文深入分析在其中，图片/视频/职业规划同理保守处理。
+_DEEP_MAIN_CAPABILITIES = frozenset(
+    {
+        MainCapability.PAPER_SEARCH,
+        MainCapability.IMAGE,
+        MainCapability.VIDEO,
+        MainCapability.CAREER,
+    }
+)
+
+
 def derive_run_budget_class(
     *,
     mode: str | None = None,
-    route_is_paper_search: bool = False,
+    route: CapabilityRoute | None = None,
     has_image: bool = False,
     has_video: bool = False,
 ) -> RunBudgetClass:
     """从创建时可见的信号派生预算类别（内核职责，模型不可指定）。
 
-    - 书页处理（学习模式）、论文深入分析、图片/视频多模态处理是重材料
-      运行 → ``deep``（120 秒/30 秒预留，保住这些路径已验证的信封）；
-    - 其余（普通文本交流、知识库检索、公开搜索）→ ``normal``（60 秒）。
-    ``lightweight`` 留给后台摘要/提取等独立有界运行（各自票内接线）。
+    - 书页处理（学习模式）、论文深入分析、图片/视频多模态与职业规划
+      等重材料/重流程运行 → ``deep``（120 秒/30 秒预留，保住已验证信封）；
+    - 其余（普通闲聊、澄清、润色等纯交流）→ ``lightweight``（沿用已验证
+      前台硬上限 120 秒、无预留——普通交流不占任务预算）。
+    ``normal``（普通检索运行 60 秒）留给配方驱动的检索编排运行，由
+    票 10/12/37 接线后启用。
     """
-    if mode == "study" or route_is_paper_search or has_image or has_video:
+    capability = route.main_capability if route is not None else None
+    if mode == "study" or capability in _DEEP_MAIN_CAPABILITIES or has_image or has_video:
         return RunBudgetClass.DEEP
-    return RunBudgetClass.NORMAL
+    return RunBudgetClass.LIGHTWEIGHT
+
+
+def anchor_run_budget_deadline(
+    created_at: datetime, budget_class: RunBudgetClass
+) -> datetime:
+    """冻结口径唯一锚定：截止 = 运行创建时刻 + 类别总预算。
+
+    排队时间计入预算；冻结与兼容补齐共用本公式，绝不把截止向后延。
+    """
+    return created_at + timedelta(
+        milliseconds=RUN_BUDGET_INITIALS[budget_class].total_budget_ms
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,30 +311,31 @@ class RunBudgetLedgerRepository:
         account_id: str,
         run_id: str,
         conversation_id: str,
-        plan: RunBudgetPlan,
+        budget_class: RunBudgetClass,
         run_created_at: datetime,
         now: datetime,
+        token_budget: int | None = None,
     ) -> RunBudgetSnapshot:
         """确保账本存在；缺失时以运行创建时刻锚定补建（先持久化再使用）。
 
         兼容路径（票 03 同一纪律）：执行器/编排拿到运行时若账本行缺失
         （创建事务与冻结之间的崩溃、旧数据），必须先补齐持久状态再继续，
-        且截止时间锚定运行创建时刻——兼容补齐绝不把截止时间向后延。
+        且截止时间锚定运行创建时刻——兼容补齐绝不把截止向后延。计划由
+        类别初值在本模块内生成（冻结口径与创建路径同源）。
         """
         existing = self.load(account_id, run_id)
         if existing is not None:
             return existing
-        # 锚定运行创建时刻：截止 = 创建时刻 + 冻结总预算（排队时间计入
-        # 预算），兼容补齐绝不把截止向后延。
-        anchored = replace(
-            plan,
-            deadline_at=run_created_at + timedelta(milliseconds=plan.total_budget_ms),
+        plan = derive_run_budget_plan(
+            budget_class,
+            deadline_at=anchor_run_budget_deadline(run_created_at, budget_class),
+            token_budget=token_budget,
         )
         snapshot = self.freeze_for_run(
             account_id=account_id,
             run_id=run_id,
             conversation_id=conversation_id,
-            plan=anchored,
+            plan=plan,
             now=now,
         )
         self._append_entry(
@@ -345,9 +376,12 @@ class RunBudgetLedgerRepository:
         def consume(snapshot: RunBudgetSnapshot) -> bool:
             if snapshot.model_calls_used >= snapshot.plan.model_call_limit:
                 return False
+            # token 上限按已耗输入+输出合计事前守门（输出也是真实消耗）；
+            # 上限通常晚于调用数上限触发，作为溢出兜底存在。
+            tokens_used = snapshot.input_tokens_used + snapshot.output_tokens_used
             return not (
                 snapshot.plan.token_budget is not None
-                and snapshot.input_tokens_used >= snapshot.plan.token_budget
+                and tokens_used >= snapshot.plan.token_budget
             )
 
         def extra_fields(snapshot: RunBudgetSnapshot) -> dict[str, Any]:
@@ -552,6 +586,31 @@ class RunBudgetLedgerRepository:
             extra_detail=extra_fields,
         )
 
+    def end_adjustment(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        outcome_code: str | None = None,
+        now: datetime,
+        detail: dict[str, Any] | None = None,
+    ) -> bool:
+        """补记本轮自动补证/调整的结果（初值、实测与调整结果分开记录）。
+
+        只追加流水不增减计数；已关闭账本拒绝补记。执行方（票 10/12/37）
+        在调整计划收敛后调用一次。
+        """
+        return self._mutate(
+            account_id,
+            run_id,
+            now,
+            kind="adjustment_end",
+            outcome_code=outcome_code,
+            counter_updates={},
+            extra_detail_values=detail,
+            gate=lambda _snapshot: True,
+        )
+
     def mark_exhausted(
         self,
         *,
@@ -639,13 +698,13 @@ class RunBudgetLedgerRepository:
         *,
         kind: str,
         counter_updates: dict[str, int],
-        gate: Any,
+        gate: Callable[[RunBudgetSnapshot], bool],
         call_key: str | None = None,
         purpose: str | None = None,
         attempt: int | None = None,
         outcome_code: str | None = None,
         duration_ms: int | None = None,
-        extra_detail: Any = None,
+        extra_detail: Callable[[RunBudgetSnapshot], dict[str, Any]] | None = None,
         extra_detail_values: dict[str, Any] | None = None,
         allow_closed: bool = False,
         idempotent_unique: bool = False,
@@ -668,16 +727,19 @@ class RunBudgetLedgerRepository:
                 detail.update(extra_detail(snapshot))
             if extra_detail_values:
                 detail.update(extra_detail_values)
-            set_clause = ", ".join(
+            # 纯流水追加（如 adjustment_end）允许零计数更新：只碰 updated_at。
+            assignments = [
                 f"{column} = MAX(0, {column} + ?)" for column in counter_updates
-            )
+            ]
+            assignments.append("updated_at = ?")
+            set_clause = ", ".join(assignments)
             params = [*counter_updates.values(), _iso(now), run_id, account_id, snapshot.version]
             try:
                 with self._db.transaction():
                     updated = self._db.scoped(account_id).execute(
                         f"""
                         UPDATE run_budget_ledger
-                        SET {set_clause}, updated_at = ?, version = version + 1
+                        SET {set_clause}, version = version + 1
                         WHERE run_id = ? AND account_id = ? AND version = ?
                         """,
                         params,

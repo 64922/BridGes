@@ -19,7 +19,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
 
 from bridges import model_call_budget as _model_call_budget
 from bridges import public_search_budget as _public_search_budget
@@ -228,6 +228,16 @@ class RunBudgetLedgerBackend(Protocol):
         run_id: str,
         reason_code: str | None = None,
         now: datetime,
+    ) -> bool: ...
+
+    def end_adjustment(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        outcome_code: str | None = None,
+        now: datetime,
+        detail: dict[str, Any] | None = None,
     ) -> bool: ...
 
     def mark_exhausted(
@@ -516,6 +526,21 @@ class RunBudget:
             now=self._now(),
         )
 
+    def end_adjustment(
+        self, *, outcome_code: str | None = None, detail: dict[str, Any] | None = None
+    ) -> bool:
+        """补记本轮自动补证/调整的结果（无账本时按已记处理）。"""
+        if not self.has_ledger:
+            return True
+        assert self._ledger is not None and self._account_id is not None
+        return self._ledger.end_adjustment(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            outcome_code=outcome_code,
+            detail=detail,
+            now=self._now(),
+        )
+
     def can_wait_until(self, until_utc: datetime) -> bool:
         """限流/冷却等待是否放得下：超过冻结剩余预算即拒绝（工单 09）。
 
@@ -605,15 +630,17 @@ class RunBudget:
     def mark_exhausted(self, *, reason_code: str | None = None) -> None:
         """主动标记预算耗尽（编排层判定不可继续时调用）。
 
-        挂接账本时同时把耗尽原因持久化（明确终止条件；工单 09）。
+        挂接账本时把耗尽原因持久化（明确终止条件；工单 09）——未指明
+        原因时按 ``budget_exceeded`` 落库，耗尽终态必须留痕，绝不止内存
+        标记。
         """
         self._exhausted = True
-        if reason_code is not None and self.has_ledger:
+        if self.has_ledger:
             assert self._ledger is not None and self._account_id is not None
             self._ledger.mark_exhausted(
                 account_id=self._account_id,
                 run_id=self._run_id,
-                reason_code=reason_code,
+                reason_code=reason_code or "budget_exceeded",
                 now=self._now(),
             )
 

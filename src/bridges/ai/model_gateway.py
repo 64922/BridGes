@@ -528,7 +528,7 @@ class ModelGateway:
         # 结果在流结束/失败时补记。未传入预算时跳过（既有行为）。
         stream_began = time.monotonic()
         if budget is not None and not budget.register_model_call(
-            f"{primary.name}@{primary.version}", purpose=primary.name
+            _capability_call_key(primary), purpose=primary.name
         ):
             blocked = self._blocked_result(
                 run_context,
@@ -595,26 +595,16 @@ class ModelGateway:
                         usage = chunk.usage
                 break
             except RegionError as exc:
+                connect_backoff_ms = int(STREAM_CONNECT_RETRY_BACKOFF_SECONDS * 1000)
                 if (
                     not delivered_any_chunk
                     and STREAM_CONNECT_RETRY_ENABLED
                     and connect_retry_count < STREAM_CONNECT_RETRY_MAX_RETRIES
-                    and (
-                        budget is None
-                        or (
-                            budget.can_retry_model_call(
-                                backoff_ms=int(
-                                    STREAM_CONNECT_RETRY_BACKOFF_SECONDS * 1000
-                                )
-                            )
-                            and budget.register_transient_retry(
-                                f"{primary.name}@{primary.version}",
-                                error_code=exc.code,
-                                backoff_ms=int(
-                                    STREAM_CONNECT_RETRY_BACKOFF_SECONDS * 1000
-                                ),
-                            )
-                        )
+                    and _transient_retry_permitted(
+                        budget,
+                        _capability_call_key(primary),
+                        error_code=exc.code,
+                        backoff_ms=connect_backoff_ms,
                     )
                 ):
                     connect_retry_count += 1
@@ -803,7 +793,7 @@ class ModelGateway:
         #（超额调用被代码拒绝）；主调用与备选调用各登记一次。未传入预算
         # 时不登记（既有单测/无编排路径行为不变）。
         if budget is not None and not budget.register_model_call(
-            f"{capability.name}@{capability.version}", purpose=capability.name
+            _capability_call_key(capability), purpose=capability.name
         ):
             blocked = self._blocked_result(
                 run_context,
@@ -852,15 +842,11 @@ class ModelGateway:
                     # 改进工单 09：重试决策同时登记进运行账本——每个登记的
                     # 临时传输失败最多重试 1 次（账本守卫），重试与首次调用
                     # 消耗同一账本、不重置额度。
-                    if budget is not None and (
-                        not budget.can_retry_model_call(
-                            backoff_ms=int(backoff * 1000)
-                        )
-                        or not budget.register_transient_retry(
-                            f"{capability.name}@{capability.version}",
-                            error_code=exc.code,
-                            backoff_ms=int(backoff * 1000),
-                        )
+                    if not _transient_retry_permitted(
+                        budget,
+                        _capability_call_key(capability),
+                        error_code=exc.code,
+                        backoff_ms=int(backoff * 1000),
                     ):
                         lock = self._build_lock(
                             run_context,
@@ -1214,3 +1200,27 @@ def _usage_int(usage: dict[str, Any], key: str) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return max(0, int(value))
+
+
+def _capability_call_key(capability: CapabilityRecord) -> str:
+    """账本登记键：能力名@版本（网关内唯一拼接点，改进工单 09）。"""
+    return f"{capability.name}@{capability.version}"
+
+
+def _transient_retry_permitted(
+    budget: RunBudget | None,
+    call_key: str,
+    *,
+    error_code: str | None,
+    backoff_ms: int,
+) -> bool:
+    """预算接缝的瞬时重试门（改进工单 09）：时间窗口放得下且该登记调用
+    还有重试额度（每登记调用最多 1 次，登记进运行账本）。未挂预算时不拦。
+    """
+    if budget is None:
+        return True
+    if not budget.can_retry_model_call(backoff_ms=backoff_ms):
+        return False
+    return budget.register_transient_retry(
+        call_key, error_code=error_code, backoff_ms=backoff_ms
+    )

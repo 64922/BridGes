@@ -16,7 +16,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -57,6 +57,7 @@ from bridges.chat.repository import (
 from bridges.chat.run_budget_ledger import (
     RUN_BUDGET_INITIALS,
     RunBudgetLedgerRepository,
+    anchor_run_budget_deadline,
     derive_run_budget_class,
     derive_run_budget_plan,
 )
@@ -1520,7 +1521,7 @@ class ChatService:
         run_record: GenerationRunRecord,
         *,
         mode: ChatMode,
-        route: Any | None,
+        route: CapabilityRoute | None,
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         now: datetime,
@@ -1529,42 +1530,36 @@ class ChatService:
 
         截止时间、调用/token 上限、核验/交付预留与外部并行上限在创建时
         按已确认初值方案冻结落库，此后只由执行内核经账本仓库修改——模型
-        不能延时或扩容。明确深入（论文/学习书页）与多模态重材料运行在
-        创建时获更高预算；token 上限从本轮运行额度快照派生（已验证输入
-        上限 × 调用上限），额度未验证时只计量不强制。
+        不能延时或扩容。明确深入（论文/学习书页/多模态）在创建时获更高
+        预算；普通轻量交流沿用已验证前台硬上限（120 秒、无预留）；token
+        上限从本轮运行额度快照派生（已验证输入上限 × 调用上限），额度未
+        验证时只计量不强制。
         """
         budget_class = derive_run_budget_class(
             mode=mode.value,
-            route_is_paper_search=bool(route is not None and route.is_paper_search),
+            route=route,
             has_image=image_payload is not None,
             has_video=video_payload is not None,
-        )
-        plan = derive_run_budget_plan(
-            budget_class,
-            deadline_at=run_record.created_at
-            + timedelta(milliseconds=RUN_BUDGET_INITIALS[budget_class].total_budget_ms),
         )
         quota = RunModelQuota.from_config(
             (run_record.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)
         )
-        if quota is not None and quota.is_verified and quota.max_input_tokens:
-            plan = derive_run_budget_plan(
-                budget_class,
-                deadline_at=plan.deadline_at,
-                token_budget=quota.max_input_tokens * plan.model_call_limit,
-            )
+        token_budget = (
+            quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
+            if quota is not None and quota.is_verified and quota.max_input_tokens
+            else None
+        )
+        plan = derive_run_budget_plan(
+            budget_class,
+            deadline_at=anchor_run_budget_deadline(run_record.created_at, budget_class),
+            token_budget=token_budget,
+        )
         RunBudgetLedgerRepository(self._repo.database).freeze_for_run(
             account_id=run_record.account_id,
             run_id=run_record.run_id,
             conversation_id=run_record.conversation_id,
             plan=plan,
             now=now,
-        )
-
-    def _close_run_budget(self, account_id: str, run_id: str) -> None:
-        """运行终态后关闭预算账本（只读封存；幂等，改进工单 09）。"""
-        RunBudgetLedgerRepository(self._repo.database).close(
-            account_id=account_id, run_id=run_id, now=datetime.now(UTC)
         )
 
     def stream_generation(
@@ -1691,7 +1686,11 @@ class ChatService:
         if stopped_run is not None:
             # 改进工单 09：用户停止即关闭本次运行预算账本——此后任何路径
             # 都不再有新调用（明确继续/重试会创建新运行、新账本）。
-            self._close_run_budget(account_id, stopped_run.run_id)
+            RunBudgetLedgerRepository(self._repo.database).close(
+                account_id=account_id,
+                run_id=stopped_run.run_id,
+                now=datetime.now(UTC),
+            )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
         if finalized is None:

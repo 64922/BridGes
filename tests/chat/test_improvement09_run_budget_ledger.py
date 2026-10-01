@@ -32,6 +32,7 @@ from bridges.chat.run_budget_ledger import (
     derive_run_budget_class,
     derive_run_budget_plan,
 )
+from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.storage.database import SCHEMA_VERSION, BridgesDatabase
 
 #: 以真实时钟为基准的受控时刻（冻结截止的过去/未来都用相对偏移构造，
@@ -90,6 +91,12 @@ def test_initial_values_follow_confirmed_scheme() -> None:
     assert deep.total_budget_ms == 120_000
     assert deep.verify_deliver_reserve_ms == 30_000
     assert lightweight.total_budget_ms == 120_000
+    assert lightweight.verify_deliver_reserve_ms == 0
+    # 调用数上限为保守守门初值：正常流程 1–2 次真实调用 + 一轮共享修复
+    # 的余量；普通交流含工具轮，与 normal 同为 6，deep 留结构修复余量。
+    assert normal.model_call_limit == 6
+    assert deep.model_call_limit == 8
+    assert lightweight.model_call_limit == 6
     for initials in (normal, deep, lightweight):
         assert initials.external_parallel_max == 2
         assert initials.candidate_screen_max == 20
@@ -99,12 +106,42 @@ def test_initial_values_follow_confirmed_scheme() -> None:
     assert deep.deep_read_max == 5
 
 
+def _route(capability: MainCapability) -> CapabilityRoute:
+    # 派生只读 main_capability；用 model_construct 绕开能力载荷校验
+    #（论文路线要求携带完整搜索计划，与本用例无关）。
+    return CapabilityRoute.model_construct(
+        status=RouteStatus.MATCHED,
+        main_capability=capability,
+        confidence=0.9,
+        reason="评审派生用例",
+    )
+
+
 def test_budget_class_derivation() -> None:
-    """学习/论文/图片/视频 → deep；普通文本 → normal。"""
-    assert derive_run_budget_class(mode="daily") is RunBudgetClass.NORMAL
+    """派生：学习/论文/图片/视频/职业规划等重材料运行 → deep；普通闲聊、
+    澄清、润色等纯交流 → lightweight（沿用已验证 120 秒前台硬上限）。
+    normal（普通检索 60 秒）留给配方驱动的检索编排，由票 10/12/37 接线，
+    本票生产路径不派生。"""
+    assert derive_run_budget_class() is RunBudgetClass.LIGHTWEIGHT
+    assert derive_run_budget_class(mode="daily") is RunBudgetClass.LIGHTWEIGHT
+    assert derive_run_budget_class(
+        route=_route(MainCapability.ORDINARY_CHAT)
+    ) is RunBudgetClass.LIGHTWEIGHT
+    assert derive_run_budget_class(
+        route=_route(MainCapability.CLARIFICATION)
+    ) is RunBudgetClass.LIGHTWEIGHT
     assert derive_run_budget_class(mode="study") is RunBudgetClass.DEEP
     assert derive_run_budget_class(
-        route_is_paper_search=True
+        route=_route(MainCapability.PAPER_SEARCH)
+    ) is RunBudgetClass.DEEP
+    assert derive_run_budget_class(
+        route=_route(MainCapability.IMAGE)
+    ) is RunBudgetClass.DEEP
+    assert derive_run_budget_class(
+        route=_route(MainCapability.VIDEO)
+    ) is RunBudgetClass.DEEP
+    assert derive_run_budget_class(
+        route=_route(MainCapability.CAREER)
     ) is RunBudgetClass.DEEP
     assert derive_run_budget_class(has_image=True) is RunBudgetClass.DEEP
     assert derive_run_budget_class(has_video=True) is RunBudgetClass.DEEP
@@ -321,6 +358,30 @@ def test_token_budget_meters_and_refuses_when_exhausted(repo: Any) -> None:
     )
 
 
+def test_token_gate_counts_output_tokens_as_consumption(repo: Any) -> None:
+    """token 上限按已耗输入+输出合计事前守门：输出同样吃掉预算。"""
+    _freeze_normal(repo, token_budget=100)
+    assert repo.register_model_call(
+        account_id="acc-1", run_id="run-1", call_key="a@1", now=_NOW
+    )
+    repo.record_model_call_result(
+        account_id="acc-1",
+        run_id="run-1",
+        call_key="a@1",
+        input_tokens=40,
+        output_tokens=70,
+        outcome_code="call_completed",
+        now=_NOW,
+    )
+    snapshot = repo.load("acc-1", "run-1")
+    assert snapshot is not None
+    assert snapshot.input_tokens_used == 40
+    assert snapshot.output_tokens_used == 70
+    assert not repo.register_model_call(
+        account_id="acc-1", run_id="run-1", call_key="b@1", now=_NOW
+    )
+
+
 def test_rate_limit_wait_beyond_remaining_budget_is_refused(repo: Any) -> None:
     _freeze_normal(repo)
     assert repo.can_wait_until("acc-1", "run-1", _NOW + timedelta(seconds=30))
@@ -329,7 +390,9 @@ def test_rate_limit_wait_beyond_remaining_budget_is_refused(repo: Any) -> None:
 
 def test_verify_deliver_reserve_preserved_for_delivery(repo: Any) -> None:
     """交付前阶段的预算按「总预算 − 预留」收紧：预留空间只留给核验/交付。"""
-    _freeze_normal(repo)
+    # 截止在测试执行时刻取现：全量套件下模块导入到本测试之间可能已流
+    # 逝数分钟，导入时刻冻结会让 60 秒截止提前过期（剩余归零误报）。
+    _freeze_normal(repo, deadline=datetime.now(UTC) + timedelta(seconds=60))
     snapshot = repo.load("acc-1", "run-1")
     assert snapshot is not None
     budget = RunBudget.from_ledger_snapshot(
@@ -386,10 +449,51 @@ def test_exhausted_ledger_still_refuses_and_records_reason(repo: Any) -> None:
     snapshot = repo.load("acc-1", "run-1")
     assert snapshot is not None
     assert snapshot.status == "exhausted"
-    assert snapshot.exhausted_reason == "budget_exhausted"
-    assert not snapshot.active
     assert not repo.register_model_call(
         account_id="acc-1", run_id="run-1", call_key="late@1", now=_NOW
+    )
+
+
+def test_exhausted_without_reason_persists_default_reason(repo: Any) -> None:
+    """编排层不指明原因调用 mark_exhausted 时，耗尽终态仍持久化留痕。"""
+    _freeze_normal(repo)
+    budget = RunBudget.from_ledger_snapshot(
+        "run-1",
+        total_budget_ms=60_000,
+        deadline_utc=datetime.now(UTC) + timedelta(seconds=60),
+        reserve_ms=15_000,
+        ledger=repo,
+        account_id="acc-1",
+    )
+    budget.mark_exhausted()
+    snapshot = repo.load("acc-1", "run-1")
+    assert snapshot is not None
+    assert snapshot.status == "exhausted"
+    assert snapshot.exhausted_reason == "budget_exceeded"
+
+
+def test_adjustment_result_is_recorded_as_separate_entry(repo: Any) -> None:
+    """初值、实测与调整结果分开记录：调整轮结束后补记 adjustment_end。"""
+    _freeze_normal(repo)
+    assert repo.begin_adjustment(
+        account_id="acc-1", run_id="run-1", reason_code="content_fix", now=_NOW
+    )
+    assert repo.end_adjustment(
+        account_id="acc-1",
+        run_id="run-1",
+        outcome_code="adjustment_applied",
+        now=_NOW,
+        detail={"registered_nodes": 2},
+    )
+    kinds = [entry.kind for entry in repo.list_entries("acc-1", "run-1")]
+    assert "adjustment_begin" in kinds and "adjustment_end" in kinds
+    snapshot = repo.load("acc-1", "run-1")
+    assert snapshot is not None
+    assert snapshot.adjustment_rounds_used == 1
+    # 关闭后拒绝补记
+    repo.close(account_id="acc-1", run_id="run-1", now=_NOW)
+    assert not repo.end_adjustment(
+        account_id="acc-1", run_id="run-1", outcome_code="late", now=_NOW
     )
 
 
@@ -413,14 +517,11 @@ def test_new_budget_run_for_explicit_continue(repo: Any) -> None:
 def test_compat_ensure_anchors_deadline_to_run_creation(repo: Any) -> None:
     """兼容补齐（账本缺失）：截止锚定运行创建时刻，绝不向后延。"""
     created_at = _NOW - timedelta(seconds=30)
-    plan = derive_run_budget_plan(
-        RunBudgetClass.NORMAL, deadline_at=created_at + timedelta(seconds=60)
-    )
     snapshot = repo.ensure_for_run(
         account_id="acc-1",
         run_id="run-compat",
         conversation_id="conv-1",
-        plan=plan,
+        budget_class=RunBudgetClass.NORMAL,
         run_created_at=created_at,
         now=_NOW,
     )
@@ -430,7 +531,7 @@ def test_compat_ensure_anchors_deadline_to_run_creation(repo: Any) -> None:
         account_id="acc-1",
         run_id="run-compat",
         conversation_id="conv-1",
-        plan=plan,
+        budget_class=RunBudgetClass.NORMAL,
         run_created_at=created_at,
         now=_NOW,
     )
