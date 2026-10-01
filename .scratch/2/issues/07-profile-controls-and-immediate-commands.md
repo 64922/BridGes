@@ -108,5 +108,14 @@
 - 扩大至全部画像、生命周期及相关聊天/合同测试：463 passed / 6 failed；6 项在 `main@601b744` 单独复跑全部同样失败（旧纠正测试的最新记录排序、生命周期 API 的旧 companion 模式返回 409），无新增失败。
 - ruff 检查本次变更文件无新增诊断，既有 14 项保留（main 同范围 15 项，分支已消除 automatic 导入排序问题）；mypy `--follow-imports=silent --no-incremental` 唯一错误为 `turn.py` 既有字典可空键错误，主线同在（4452 → 4466）。`git diff --check` 通过。
 - 初次测试受旧 basetemp 目录权限和 conda 输出编码影响；使用独立工作区 basetemp、`PYTHONUTF8=1` 和 `--no-capture-output` 后完成上述验证。未将环境错误计为通过。
+
+### 合并、推送与清理
+
+- 验收修复提交 `7fe42bd`；以 `--no-ff` 合入 `main`，合并提交 `f1595e3`，无冲突。
+- 合并后的 main 再验：07 控制/API/迁移/正式聊天/生命周期与合同共 48 passed；前端控制卡与画像中心 9 passed。
+- `origin` 为 `https://github.com/64922/BridGes.git`；`main` 已正常推送，未使用强制推送。
+- Issue 07 工作树及残留目录已删除，本地 `codex/07-profile-controls-and-immediate-commands` 分支已用 `git branch -d` 删除。
+- Windows 旧缓存权限曾阻止目录删除：只在 Issue 07 路径修复权限，由缓存拥有者上下文删除受限缓存后完成清理。未修改其他工作树。
+- `git worktree prune --dry-run --verbose` 与实际 prune 已执行，无失效记录；当前仅保留 main 与 Issue 09 的有效工作树。
 - 测试中的模型响应为确定性桩，只证明门控与持久化机制；真实模型体验按评测票验证。
 
