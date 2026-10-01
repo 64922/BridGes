@@ -255,3 +255,49 @@ def test_set_account_controls_requires_at_least_one_field() -> None:
     _, automatic = _make_service(InMemoryAutomaticProfileRepository())
     with pytest.raises(ValueError):
         automatic.set_account_controls(ACCOUNT)
+
+
+def test_this_turn_only_request_never_writes_long_term_preference() -> None:
+    """本次临时要求只影响当前轮，不改写长期偏好（验收标准 4）。"""
+    atomic, automatic = _make_service(InMemoryAutomaticProfileRepository())
+
+    result = _ingest(automatic, 1, "这次直接给详细推导")
+
+    assert result.run is not None
+    assert result.run.outcome == ProfileExtractionOutcome.NO_SIGNAL
+    assert atomic.list_items(ACCOUNT) == []
+
+
+def test_third_party_and_relayed_text_never_writes_profile() -> None:
+    """第三方描述与转述内容不得直接写用户画像（任务内容 4）。"""
+    atomic, automatic = _make_service(InMemoryAutomaticProfileRepository())
+
+    _ingest(automatic, 1, "我朋友说我喜欢跑步")
+    _ingest(automatic, 2, "刚才的助手总结说我在准备考研")
+
+    assert atomic.list_items(ACCOUNT) == []
+
+
+def test_fuzzy_forget_targets_never_batch_delete() -> None:
+    """模糊目标不批量误删：过短目标与未定位目标都不删除任何条目。"""
+    atomic, automatic = _make_service(InMemoryAutomaticProfileRepository())
+    _ingest(automatic, 1, "记住我喜欢跑步")
+    _ingest(automatic, 2, "记住我喜欢游泳")
+
+    short = _ingest(automatic, 3, "忘掉跑")
+    assert short.memory is not None
+    assert short.memory.status == AtomicProfileMemoryStatus.UNRESOLVED
+    assert short.memory.matched_count == 0
+
+    missing = _ingest(automatic, 4, "忘掉书法")
+    assert missing.memory is not None
+    assert missing.memory.status == AtomicProfileMemoryStatus.UNRESOLVED
+
+    texts = [item.text for item in atomic.list_items(ACCOUNT)]
+    assert texts == ["我喜欢跑步", "我喜欢游泳"]
+
+    # 目标足够具体时，忘掉精确命中并真实删除。
+    explicit = _ingest(automatic, 5, "忘掉游泳")
+    assert explicit.memory is not None
+    assert explicit.memory.status == AtomicProfileMemoryStatus.FORGOTTEN
+    assert [item.text for item in atomic.list_items(ACCOUNT)] == ["我喜欢跑步"]

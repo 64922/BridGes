@@ -2803,8 +2803,9 @@ MIGRATIONS: dict[int, list[str]] = {
     # 改进工单 07：账户级画像控制（长期画像使用开关）。
     # 「停止自动记录」沿用 profile_extraction_privacy_blocks 的账户级行；
     # 「长期画像使用」是独立持久状态：关闭使用只阻止回答读取长期画像正文，
-    # 不删除信息、不影响主动管理。行不存在即默认开启；usage_control_version
-    # 只在该开关真实变化时递增（同值写入幂等）。
+    # 不删除信息、不影响主动管理。列级默认 1 表示「首次变化即序号 1」；
+    # 投影层的 usage_control_version=0 只用于「尚无行=从未变更」的默认读取。
+    # usage_control_version 只在该开关真实变化时递增（同值写入幂等）。
     62: [
         """
         CREATE TABLE IF NOT EXISTS profile_account_controls (

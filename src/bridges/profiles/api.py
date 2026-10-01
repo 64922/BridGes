@@ -27,7 +27,10 @@ from bridges.contracts.profiles import (
     ProfileError,
 )
 from bridges.profiles.atomic import AtomicProfileError, AtomicProfileService
-from bridges.profiles.automatic import AutomaticProfileService
+from bridges.profiles.automatic import (
+    PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
+    AutomaticProfileService,
+)
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
     FourDimensionProfileService,
@@ -152,7 +155,7 @@ async def update_profile_controls(
         raise _profile_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "profile_controls_update_failed",
-            "至少指定 recording_enabled 或 usage_enabled 之一。",
+            PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
         )
     return service.set_account_controls(
         subject.account_id,

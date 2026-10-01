@@ -59,7 +59,7 @@ def test_usage_switch_off_stops_profile_injection_but_keeps_original_text(
     assert "长期画像使用已关闭" in note.note
 
 
-def test_usage_switch_reenable_recovers_undel_information(env: _Env) -> None:
+def test_usage_switch_reenable_recovers_undeleted_information(env: _Env) -> None:
     """重新开启使用后，未删除且有效的信息恢复进入切片。"""
     _, seeded = env.start(GOAL_MESSAGE)
     env.run(seeded)

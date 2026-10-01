@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 from pydantic import ValidationError
 
@@ -99,6 +99,20 @@ PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
 #: 改进工单 07：账户级画像控制表（长期画像使用开关的持久状态）。
 PROFILE_CONTROLS_TABLE = "profile_account_controls"
+#: 控制更新请求两个字段都缺省时的统一错误文案（服务层与 API 层共用）。
+PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE = "至少指定 recording_enabled 或 usage_enabled 之一。"
+
+
+class ProfileUsageState(NamedTuple):
+    """账户级长期画像使用开关的持久状态。
+
+    ``version`` 从 1 起计：每一次真实变化递增，同值重复写入保持不变；
+    从未有持久行时按 ``(True, 0, None)`` 读取（0 表示「从未变更」）。
+    """
+
+    enabled: bool
+    version: int
+    updated_at: datetime | None
 
 # Issue 13 来源守卫稳定名：错误码与观测指标共用同一字面量，改名必须
 # 同步两处，否则"错误码 ↔ 指标"的审计关联会静默漂移。
@@ -292,10 +306,8 @@ class AutomaticProfileRepository(ABC):
         """解除账户级停止记录；返回是否确实移除了账户级阻止。"""
 
     @abstractmethod
-    def get_profile_usage_state(
-        self, account_id: str
-    ) -> tuple[bool, int, datetime | None]:
-        """返回 (是否允许长期画像使用, 变更序号, 最近变化时间)。
+    def get_profile_usage_state(self, account_id: str) -> ProfileUsageState:
+        """返回账户的长期画像使用开关状态。
 
         没有持久化行时按默认 ``(True, 0, None)`` 读取：关闭使用是显式的
         用户控制，默认状态始终允许使用已记录的有效信息。
@@ -304,7 +316,7 @@ class AutomaticProfileRepository(ABC):
     @abstractmethod
     def set_profile_usage_enabled(
         self, account_id: str, enabled: bool, now: datetime
-    ) -> tuple[bool, int, datetime]:
+    ) -> ProfileUsageState:
         """持久化长期画像使用开关；同值重复写入保持序号与时间（幂等）。"""
 
     @abstractmethod
@@ -694,8 +706,8 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
         self._tombstones: set[tuple[str, str]] = set()
         self._account_recording_blocks: set[str] = set()
         self._content_recording_blocks: set[tuple[str, str]] = set()
-        # Issue 07：账户 → (是否允许长期画像使用, 变更序号, 最近变化时间)。
-        self._profile_usage_states: dict[str, tuple[bool, int, datetime]] = {}
+        # Issue 07：账户 → 长期画像使用开关的持久状态。
+        self._profile_usage_states: dict[str, ProfileUsageState] = {}
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -846,23 +858,22 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
         self._account_recording_blocks.discard(account_id)
         return True
 
-    def get_profile_usage_state(
-        self, account_id: str
-    ) -> tuple[bool, int, datetime | None]:
-        state = self._profile_usage_states.get(account_id)
-        if state is None:
-            return True, 0, None
-        enabled, version, updated_at = state
-        return enabled, version, updated_at
+    def get_profile_usage_state(self, account_id: str) -> ProfileUsageState:
+        return self._profile_usage_states.get(
+            account_id, ProfileUsageState(enabled=True, version=0, updated_at=None)
+        )
 
     def set_profile_usage_enabled(
         self, account_id: str, enabled: bool, now: datetime
-    ) -> tuple[bool, int, datetime]:
+    ) -> ProfileUsageState:
         current = self._profile_usage_states.get(account_id)
-        if current is not None and current[0] == enabled:
+        if current is not None and current.enabled == enabled:
             return current
-        version = 1 if current is None else current[1] + 1
-        state = (enabled, version, now)
+        state = ProfileUsageState(
+            enabled=enabled,
+            version=1 if current is None else current.version + 1,
+            updated_at=now,
+        )
         self._profile_usage_states[account_id] = state
         return state
 
@@ -1199,25 +1210,23 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
         )
         return cursor.rowcount > 0
 
-    def get_profile_usage_state(
-        self, account_id: str
-    ) -> tuple[bool, int, datetime | None]:
+    def get_profile_usage_state(self, account_id: str) -> ProfileUsageState:
         row = self.database.scoped(account_id).execute(
             "SELECT profile_usage_enabled, usage_control_version, updated_at "
             f"FROM {PROFILE_CONTROLS_TABLE} WHERE account_id = ?",
             (account_id,),
         ).fetchone()
         if row is None:
-            return True, 0, None
-        return (
-            bool(row["profile_usage_enabled"]),
-            int(row["usage_control_version"]),
-            self._dt(str(row["updated_at"])),
+            return ProfileUsageState(enabled=True, version=0, updated_at=None)
+        return ProfileUsageState(
+            enabled=bool(row["profile_usage_enabled"]),
+            version=int(row["usage_control_version"]),
+            updated_at=self._dt(str(row["updated_at"])),
         )
 
     def set_profile_usage_enabled(
         self, account_id: str, enabled: bool, now: datetime
-    ) -> tuple[bool, int, datetime]:
+    ) -> ProfileUsageState:
         # 单条原子 upsert：值不变时 WHERE 不命中，序号与时间保持不变（幂等）；
         # 值变化时序号在既有行上递增，不依赖先读后写的窗口。
         self.database.scoped(account_id).execute(
@@ -1233,11 +1242,12 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             "WHERE profile_usage_enabled != excluded.profile_usage_enabled",
             (account_id, int(enabled), PROFILE_CONTROLS_VERSION, self._iso(now)),
         )
-        enabled_value, version, updated_at = self.get_profile_usage_state(account_id)
-        assert enabled_value == enabled and updated_at is not None, (
-            "使用开关写入后必须能按原值读回"
-        )
-        return enabled_value, version, updated_at
+        state = self.get_profile_usage_state(account_id)
+        if state.enabled != enabled or state.updated_at is None:
+            raise RuntimeError(
+                f"长期画像使用开关写入后未能按原值读回：{account_id}"
+            )
+        return state
 
     def delete_observations_for_record(
         self, account_id: str, dimension: FourDimension, normalized_value: str
@@ -2884,20 +2894,17 @@ class AutomaticProfileService:
     def is_profile_usage_enabled(self, account_id: str) -> bool:
         """当前账户是否允许回答读取长期画像正文。"""
 
-        enabled, _, _ = self._repository.get_profile_usage_state(account_id)
-        return enabled
+        return self._repository.get_profile_usage_state(account_id).enabled
 
     def account_controls(self, account_id: str) -> ProfileAccountControlsProjection:
         """组合投影当前账户的两个控制开关状态。"""
 
-        usage_enabled, usage_version, usage_updated_at = (
-            self._repository.get_profile_usage_state(account_id)
-        )
+        usage = self._repository.get_profile_usage_state(account_id)
         return ProfileAccountControlsProjection(
             recording_enabled=not self._repository.is_recording_blocked(account_id),
-            usage_enabled=usage_enabled,
-            usage_control_version=usage_version,
-            usage_updated_at=usage_updated_at,
+            usage_enabled=usage.enabled,
+            usage_control_version=usage.version,
+            usage_updated_at=usage.updated_at,
         )
 
     def set_account_controls(
@@ -2915,7 +2922,7 @@ class AutomaticProfileService:
         """
 
         if recording_enabled is None and usage_enabled is None:
-            raise ValueError("至少指定 recording_enabled 或 usage_enabled 之一。")
+            raise ValueError(PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE)
         now = _now()
         if recording_enabled is False:
             self._repository.block_recording(account_id, None, now)
@@ -2923,23 +2930,25 @@ class AutomaticProfileService:
             self._repository.unblock_recording(account_id)
         if usage_enabled is not None:
             self._repository.set_profile_usage_enabled(account_id, usage_enabled, now)
+        controls = self.account_controls(account_id)
         self._audit_controls_update(
             account_id,
-            recording_enabled=recording_enabled,
-            usage_enabled=usage_enabled,
+            controls=controls,
+            recording_target=recording_enabled,
+            usage_target=usage_enabled,
         )
-        return self.account_controls(account_id)
+        return controls
 
     def _audit_controls_update(
         self,
         account_id: str,
         *,
-        recording_enabled: bool | None,
-        usage_enabled: bool | None,
+        controls: ProfileAccountControlsProjection,
+        recording_target: bool | None,
+        usage_target: bool | None,
     ) -> None:
         if self._observability is None:
             return
-        controls = self.account_controls(account_id)
         try:
             self._observability.log_audit(
                 actor_account_id=account_id,
@@ -2948,10 +2957,10 @@ class AutomaticProfileService:
                 reason="profile_controls_update",
                 details={
                     "recording_target": (
-                        recording_enabled if recording_enabled is not None else "unchanged"
+                        recording_target if recording_target is not None else "unchanged"
                     ),
                     "usage_target": (
-                        usage_enabled if usage_enabled is not None else "unchanged"
+                        usage_target if usage_target is not None else "unchanged"
                     ),
                     "recording_enabled": controls.recording_enabled,
                     "usage_enabled": controls.usage_enabled,
