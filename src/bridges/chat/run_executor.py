@@ -43,6 +43,7 @@ from bridges.storage.database import BridgesDatabase
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
     from bridges.chat.service import ChatService
+    from bridges.chat.summary import ChatSummaryService
     from bridges.profiles.automatic import AutomaticProfileService
 
 #: 领取循环默认轮询间隔（秒）——停止请求在 ≤2 秒内可见。
@@ -91,6 +92,7 @@ class GenerationRunExecutor:
         lease_seconds: float = DEFAULT_LEASE_SECONDS,
         max_attempts: int = MAX_EXECUTION_ATTEMPTS,
         profile_extraction_service: AutomaticProfileService | None = None,
+        summary_service: ChatSummaryService | None = None,
     ) -> None:
         self._service = service
         self._repo = service._repo  # noqa: SLF001 - 执行器是服务编排的组成部分
@@ -102,6 +104,9 @@ class GenerationRunExecutor:
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
         self._profile_extraction = profile_extraction_service
+        #: 改进工单 13：回答完成后的有界摘要后台准备（与画像提取同一执行器
+        #: 的辅助 tick；失败只留缺口，不影响生成运行）。
+        self._summary_service = summary_service
         #: 生成终态 module（Issue 01/02）：执行器只提供标识与兜底结果，
         #: 跨对象提交顺序、判重与重放都在 module 内部。实例由服务持有，
         #: 图边界提前终止、排队期停止与停止接口兜底共用同一实例。
@@ -114,6 +119,22 @@ class GenerationRunExecutor:
     # ------------------------------------------------------------------
 
     def run_tick(self) -> str:
+        """执行一轮：生成运行 tick + 画像提取重试 tick + 摘要准备 tick。
+
+        生成运行与辅助任务复用同一受监督线程：摘要任务只在生成运行处理完
+        之后领取，确保「回答后后台准备」；辅助任务失败不改变生成终态。
+        """
+        summary = self._generation_tick()
+        if self._summary_service is not None:
+            try:
+                summary_text = self._summary_service.run_tick()
+            except Exception as exc:  # noqa: BLE001 - 辅助任务不终止执行器
+                summary_text = f"chat-summary: 本轮处理出错：{exc}"
+            summary = f"{summary}；{summary_text}"
+            self._last_summary = summary
+        return summary
+
+    def _generation_tick(self) -> str:
         """执行一轮：先收尸失联运行，再领取一件生成运行并执行到终态。
 
         收尸不只改运行表：被收尸运行的消息、终态事件与运行由终态 module
