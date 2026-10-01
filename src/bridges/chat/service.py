@@ -54,6 +54,13 @@ from bridges.chat.repository import (
     MessageRecord,
     ModeEventRecord,
 )
+from bridges.chat.run_budget_ledger import (
+    RUN_BUDGET_INITIALS,
+    RunBudgetLedgerRepository,
+    anchor_run_budget_deadline,
+    derive_run_budget_class,
+    derive_run_budget_plan,
+)
 from bridges.chat.selections import (
     ChatSelectionsService,
     SelectionResolution,
@@ -868,6 +875,16 @@ class ChatService:
                 if replay is not None:
                     return (*self._replay_generation_response(account_id, replay), True)
             raise
+        # 改进工单 09：运行创建即冻结整次运行预算账本（截止时间/调用与
+        # token 上限/核验交付预留）；执行内核唯一修改，恢复不重置。
+        self._freeze_run_budget(
+            run_record,
+            mode=mode,
+            route=capability_route,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            now=now,
+        )
         self._ensure_retrieval_decision(
             account_id=account_id,
             conversation_id=conversation_id,
@@ -1433,6 +1450,15 @@ class ChatService:
                 assistant_message=assistant_projection,
                 idempotent_replay=True,
             )
+        # 改进工单 09：首轮运行创建即冻结整次运行预算账本。
+        self._freeze_run_budget(
+            run_record,
+            mode=mode,
+            route=capability_route,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            now=now,
+        )
         self._process_profile_effects(
             account_id=account_id,
             conversation_id=created_id,
@@ -1489,6 +1515,52 @@ class ChatService:
         run_config[RUN_MODEL_QUOTA_CONFIG_KEY] = build_run_model_quota(
             current_snapshot
         ).to_config()
+
+    def _freeze_run_budget(
+        self,
+        run_record: GenerationRunRecord,
+        *,
+        mode: ChatMode,
+        route: CapabilityRoute | None,
+        image_payload: dict[str, Any] | None,
+        video_payload: dict[str, Any] | None,
+        now: datetime,
+    ) -> None:
+        """运行创建时冻结整次运行预算账本（改进工单 09）。
+
+        截止时间、调用/token 上限、核验/交付预留与外部并行上限在创建时
+        按已确认初值方案冻结落库，此后只由执行内核经账本仓库修改——模型
+        不能延时或扩容。明确深入（论文/学习书页/多模态）在创建时获更高
+        预算；普通轻量交流沿用已验证前台硬上限（120 秒、无预留）；token
+        上限从本轮运行额度快照派生（已验证输入上限 × 调用上限），额度未
+        验证时只计量不强制。
+        """
+        budget_class = derive_run_budget_class(
+            mode=mode.value,
+            route=route,
+            has_image=image_payload is not None,
+            has_video=video_payload is not None,
+        )
+        quota = RunModelQuota.from_config(
+            (run_record.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)
+        )
+        token_budget = (
+            quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
+            if quota is not None and quota.is_verified and quota.max_input_tokens is not None
+            else None
+        )
+        plan = derive_run_budget_plan(
+            budget_class,
+            deadline_at=anchor_run_budget_deadline(run_record.created_at, budget_class),
+            token_budget=token_budget,
+        )
+        RunBudgetLedgerRepository(self._repo.database).freeze_for_run(
+            account_id=run_record.account_id,
+            run_id=run_record.run_id,
+            conversation_id=run_record.conversation_id,
+            plan=plan,
+            now=now,
+        )
 
     def stream_generation(
         self,
@@ -1566,6 +1638,9 @@ class ChatService:
             ChatRunStatus.RUNNING.value,
         }:
             self._repo.request_generation_stop(account_id, run.run_id)
+            RunBudgetLedgerRepository(self._repo.database).close(
+                account_id=account_id, run_id=run.run_id, now=datetime.now(UTC)
+            )
             entry = self._lifecycle.signal_and_started(message_id)
             if entry is not None:
                 entry[0].set()
@@ -1611,6 +1686,14 @@ class ChatService:
             message_id,
             fallback=stopped_outcome(duration_ms=duration_ms),
         )
+        if stopped_run is not None:
+            # 改进工单 09：用户停止即关闭本次运行预算账本——此后任何路径
+            # 都不再有新调用（明确继续/重试会创建新运行、新账本）。
+            RunBudgetLedgerRepository(self._repo.database).close(
+                account_id=account_id,
+                run_id=stopped_run.run_id,
+                now=datetime.now(UTC),
+            )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
         if finalized is None:
@@ -1627,6 +1710,13 @@ class ChatService:
         执行器在下次收敛点按既有终止语义收尾。返回停止的消息数量。
         """
         self._repo.request_stop_account_runs(account_id, datetime.now(UTC))
+        for run in self._repo.database.scoped(account_id).execute(
+            "SELECT run_id FROM run_budget_ledger WHERE account_id = ? AND status != 'closed'",
+            (account_id,),
+        ).fetchall():
+            RunBudgetLedgerRepository(self._repo.database).close(
+                account_id=account_id, run_id=str(run["run_id"]), now=datetime.now(UTC)
+            )
         stopped = 0
         for conversation in self._repo.list_conversations(account_id):
             for message in self._repo.list_messages(account_id, conversation.conversation_id):
@@ -1892,6 +1982,16 @@ class ChatService:
             new_attempt,
             run_record,
             [(ChatStreamEventKind.STARTED.value, started_payload)],
+        )
+        # 改进工单 09：重试创建的是新运行——建立新预算运行（初值重分配），
+        # 有效产物复用语义由任务/产物票负责；本运行的账本从创建时冻结。
+        self._freeze_run_budget(
+            run_record,
+            mode=mode,
+            route=route,
+            image_payload=owner.image,
+            video_payload=owner.video,
+            now=now,
         )
         self._ensure_retrieval_decision(
             account_id=account_id,

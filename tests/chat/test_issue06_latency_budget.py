@@ -13,7 +13,7 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -362,23 +362,35 @@ def test_public_search_stage_wall_clock_respects_scaled_deadline_plus_tolerance(
     assert elapsed < 2.0, f"慢搜索不得拖垮主流程（实耗 {elapsed:.2f}s）"
 
 
+def _shrink_frozen_budget(sqlite_app: Any, run_id: str, total_ms: int) -> None:
+    """改进 09 后预算由冻结账本决定：把该 run 的账本收紧为 now + total_ms
+    （等价旧 TOTAL_BUDGET_MS 缩放；预算语义的耗尽路径不变）。"""
+    database = sqlite_app.state.chat_service._repo.database
+    deadline = (datetime.now(UTC) + timedelta(milliseconds=total_ms)).isoformat()
+    with database.transaction():
+        database.connection.execute(
+            "UPDATE run_budget_ledger SET total_budget_ms = ?, deadline_at = ?"
+            " WHERE run_id = ?",
+            (total_ms, deadline, run_id),
+        )
+
+
 def test_budget_exhaustion_delivers_draft_with_warning(
     sqlite_app: Any,
     client: TestClient,
     generation_helpers: dict[str, Any],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """预算耗尽：已接收草稿带警告交付，绝不永久 running。
 
     预算 500ms、块间隔 200ms：第三块输出后预算到期（delta 后检查点），
-    草稿保留并以警告终态交付。
+    草稿保留并以警告终态交付。改进 09 后预算来自冻结账本，发送后收紧。
     """
-    monkeypatch.setattr("bridges.chat.budget.TOTAL_BUDGET_MS", 500)
     _register(client)
     adapter = _ChunkedAdapter(chunks=4, delay_per_chunk=0.2)
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](client, conversation_id, content="你好")
+    _shrink_frozen_budget(sqlite_app, created["run_id"], 500)
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)
     events = generation_helpers["subscribe"](client, conversation_id, message_id)
@@ -397,15 +409,14 @@ def test_budget_exhaustion_before_content_fails_retryable(
     sqlite_app: Any,
     client: TestClient,
     generation_helpers: dict[str, Any],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """预算耗尽且无草稿：明确失败（可重试），不得保持 streaming/running。"""
-    monkeypatch.setattr("bridges.chat.budget.TOTAL_BUDGET_MS", 1)
     _register(client)
     adapter = _ChunkedAdapter(chunks=2)
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](client, conversation_id, content="你好")
+    _shrink_frozen_budget(sqlite_app, created["run_id"], 1)
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)
     events = generation_helpers["subscribe"](client, conversation_id, message_id)

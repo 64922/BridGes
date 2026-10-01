@@ -41,7 +41,7 @@ def test_fresh_database_has_profile_controls_table(tmp_path: Path) -> None:
     path = tmp_path / "bridges.db"
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
-    assert SCHEMA_VERSION == LEGACY_VERSION + 1
+    assert SCHEMA_VERSION >= LEGACY_VERSION + 1
     assert CONTROLS_TABLE in _table_names(path)
     columns = _columns(path, CONTROLS_TABLE)
     assert "account_id" in columns

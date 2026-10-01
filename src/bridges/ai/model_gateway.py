@@ -227,6 +227,10 @@ class ModelGateway:
         ``model_quota``（改进工单 03）：本运行的额度快照，与编译器同源。
         ``call_contract``：本次调用的最小版本合同（提示词/Schema/配方/上下文
         编译/质量策略/估算/额度版本），写入运行锁供逐调用审计。
+
+        改进工单 09：传入账本协作对象时，每次真实调用（含备选调用）在
+        网关唯一咽喉点登记进运行账本，超额调用被代码拒绝；临时传输失败
+        的重试登记守卫「每登记调用最多 1 次」。未传入预算时行为不变。
         """
         payload = payload or {}
         try:
@@ -372,6 +376,7 @@ class ModelGateway:
         model_override: str | None = None,
         call_contract: CallContractVersions | None = None,
         model_quota: RunModelQuota | None = None,
+        budget: RunBudget | None = None,
     ) -> Iterator[StreamEvent]:
         """流式调用一个能力，逐块产出事件并在结束时附带不可变运行锁。
 
@@ -384,6 +389,11 @@ class ModelGateway:
         ``stream_call`` 的适配器（如测试替身）降级为一次性 ``invoke``，
         复用其重试/降级语义。能力未注册/未验证/未绑定适配器时产出带
         BLOCKED 运行锁的 error 事件，绝不静默成功。
+
+        改进工单 09：传入 ``budget`` 时，流式调用登记进运行账本（超额
+        拒绝→错误事件）、建连重试经「每登记调用最多 1 次」账本守卫，
+        调用结果（结果码/毫秒/token）补记入账；降级为 ``invoke`` 时预算
+        一并透传。未传入预算时行为不变。
         """
         payload = payload or {}
         try:
@@ -484,12 +494,14 @@ class ModelGateway:
         stream_call = getattr(adapter, "stream_call", None)
         if stream_call is None:
             # 非流式适配器（如测试替身）降级为一次性调用：完整回答作为
-            # 单个 delta 输出，错误沿用 invoke 的分类结果。
+            # 单个 delta 输出，错误沿用 invoke 的分类结果。预算一并透传，
+            # 由 invoke 路径完成调用登记（改进工单 09），不双记。
             result = self.invoke(
                 capability_name,
                 capability_version,
                 run_context,
                 payload,
+                budget=budget,
                 model_override=model_override,
                 call_contract=call_contract,
                 model_quota=model_quota,
@@ -512,18 +524,58 @@ class ModelGateway:
 
         actual_model_id: str | None = primary.model_id
         usage: dict[str, Any] | None = None
+        # 改进工单 09：流式调用同样登记进运行账本（超额调用被代码拒绝）；
+        # 结果在流结束/失败时补记。未传入预算时跳过（既有行为）。
+        stream_began = time.monotonic()
+        call_key = _capability_call_key(primary)
+        if budget is not None and not budget.register_model_call(
+            call_key, purpose=primary.name
+        ):
+            blocked = self._blocked_result(
+                run_context,
+                primary,
+                "run_budget_call_limit",
+                "本次运行的模型调用额度已用尽，无法发起新调用。",
+                call_contract=call_contract,
+            )
+            assert blocked.lock is not None
+            yield StreamEvent(
+                kind="error",
+                error_code=blocked.error_code,
+                error_message=blocked.error_message,
+                lock=blocked.lock,
+            )
+            return
         # Issue 03：流式建连阶段自动重试（尚未下发任何 delta 的 RegionError
         # 重试一次，短退避；重试次数计入运行锁遥测）。已下发 delta 后的
         # 中断不重试——语义同 ``stream_interrupted``，以 error 事件收尾。
         connect_retry_count = 0
         delivered_any_chunk = False
         while True:
+            if budget is not None and budget.has_ledger and not budget.can_start_model_call():
+                _, event = self._stream_error_event(
+                    run_context, primary, error_code="run_budget_call_limit",
+                    error_message="本次运行预算不足或已停止。",
+                    degradation_reason="本次运行预算不足或已停止。",
+                    retry_count=connect_retry_count, payload=payload, call_contract=call_contract,
+                )
+                yield event
+                return
+            call_payload = payload
+            if budget is not None:
+                call_payload = {
+                    **payload, REQUEST_TIMEOUT_SECONDS_KEY: budget.model_call_timeout_ms() / 1000
+                }
             try:
-                for chunk in stream_call(primary, run_context, payload):
+                for chunk in stream_call(primary, run_context, call_payload):
                     delivered_any_chunk = True
                     if chunk.kind == "delta":
                         yield StreamEvent(kind="delta", delta=chunk.delta)
                     elif chunk.kind == "error":
+                        self._record_call_budget_outcome(
+                            budget, call_key, connect_retry_count + 1,
+                            chunk.error_code or "stream_failed", stream_began, chunk.usage,
+                        )
                         lock, event = self._stream_error_event(
                             run_context,
                             primary,
@@ -542,6 +594,10 @@ class ModelGateway:
                         # 同样失败关闭（``actual_model_mismatch``），运行锁如实
                         # 记录漂移值。
                         if reported is not None and reported != primary.model_id:
+                            self._record_call_budget_outcome(
+                                budget, call_key, connect_retry_count + 1,
+                                "actual_model_mismatch", stream_began, chunk.usage,
+                            )
                             lock = self._build_mismatch_lock(
                                 run_context,
                                 primary,
@@ -562,14 +618,29 @@ class ModelGateway:
                         usage = chunk.usage
                 break
             except RegionError as exc:
+                connect_backoff_ms = int(STREAM_CONNECT_RETRY_BACKOFF_SECONDS * 1000)
                 if (
                     not delivered_any_chunk
                     and STREAM_CONNECT_RETRY_ENABLED
                     and connect_retry_count < STREAM_CONNECT_RETRY_MAX_RETRIES
+                    and _transient_retry_permitted(
+                        budget,
+                        call_key,
+                        error_code=exc.code,
+                        backoff_ms=connect_backoff_ms,
+                    )
                 ):
                     connect_retry_count += 1
                     time.sleep(STREAM_CONNECT_RETRY_BACKOFF_SECONDS)
                     continue
+                self._record_call_budget_outcome(
+                    budget,
+                    call_key,
+                    connect_retry_count + 1,
+                    exc.code,
+                    stream_began,
+                    None,
+                )
                 lock, event = self._stream_error_event(
                     run_context,
                     primary,
@@ -583,6 +654,14 @@ class ModelGateway:
                 yield event
                 return
             except (RateLimitError, TransientError, AuthError, AdapterError) as exc:
+                self._record_call_budget_outcome(
+                    budget,
+                    call_key,
+                    connect_retry_count + 1,
+                    exc.code,
+                    stream_began,
+                    None,
+                )
                 lock, event = self._stream_error_event(
                     run_context,
                     primary,
@@ -596,6 +675,14 @@ class ModelGateway:
                 yield event
                 return
 
+        self._record_call_budget_outcome(
+            budget,
+            call_key,
+            connect_retry_count + 1,
+            "stream_completed",
+            stream_began,
+            usage,
+        )
         lock = self._build_lock(
             run_context,
             primary,
@@ -685,6 +772,32 @@ class ModelGateway:
                     return None
         return candidate
 
+    def _record_call_budget_outcome(
+        self,
+        budget: RunBudget | None,
+        call_key: str,
+        attempt: int,
+        outcome_code: str,
+        began: float,
+        usage: dict[str, Any] | None,
+    ) -> None:
+        """把一次调用的脱敏结果补记进运行账本（改进工单 09）。
+
+        只记结果码、毫秒与 token 计量（按调用目的分别计量），不承载
+        任何提示词、正文或凭据；未传入预算时无操作。
+        """
+        if budget is None:
+            return
+        tokens = usage if isinstance(usage, dict) else {}
+        budget.record_model_call_result(
+            call_key,
+            attempt=attempt,
+            outcome_code=outcome_code,
+            duration_ms=max(0, int((time.monotonic() - began) * 1000)),
+            input_tokens=_usage_int(tokens, "prompt_tokens"),
+            output_tokens=_usage_int(tokens, "completion_tokens"),
+        )
+
     def _invoke_capability(
         self,
         capability: CapabilityRecord,
@@ -699,7 +812,33 @@ class ModelGateway:
         retry_policy = capability.retry_policy
         retry_count = 0
 
+        # 改进工单 09：每次真实模型调用在网关唯一咽喉点登记进运行账本
+        #（超额调用被代码拒绝）；主调用与备选调用各登记一次。未传入预算
+        # 时不登记（既有单测/无编排路径行为不变）。
+        call_key = _capability_call_key(capability)
+        if budget is not None and not budget.register_model_call(
+            call_key, purpose=capability.name
+        ):
+            blocked = self._blocked_result(
+                run_context,
+                capability,
+                "run_budget_call_limit",
+                "本次运行的模型调用额度已用尽，无法发起新调用。",
+                attempted=attempted,
+                call_contract=call_contract,
+            )
+            assert blocked.lock is not None
+            return blocked, blocked.lock
+
         for attempt in range(1, retry_policy.max_attempts + 1):
+            if budget is not None and budget.has_ledger and not budget.can_start_model_call():
+                blocked = self._blocked_result(
+                    run_context, capability, "run_budget_call_limit",
+                    "本次运行预算不足或已停止。", attempted=attempted,
+                    call_contract=call_contract,
+                )
+                assert blocked.lock is not None
+                return blocked, blocked.lock
             # Issue 06 第七轮：按剩余预算截断单次调用超时（单一预算常量
             # 来源），经保留载荷键透传给适配器的 HTTP 客户端；未传入预算
             # 时不注入（适配器使用默认超时）。
@@ -707,9 +846,23 @@ class ModelGateway:
             if budget is not None:
                 timeout_seconds = budget.model_call_timeout_ms() / 1000
                 call_payload = {**payload, REQUEST_TIMEOUT_SECONDS_KEY: timeout_seconds}
+            attempt_began = time.monotonic()
             try:
                 adapter_result = adapter.call(capability, run_context, call_payload)
+                # 改进工单 09：调用真实完成（含随后的模型漂移闭锁）即补记
+                # 脱敏结果；终态分类以运行锁为准，账本只做计量与诊断。
+                self._record_call_budget_outcome(
+                    budget,
+                    call_key,
+                    attempt,
+                    "call_completed",
+                    attempt_began,
+                    adapter_result.usage,
+                )
             except (RateLimitError, TransientError) as exc:
+                self._record_call_budget_outcome(
+                    budget, call_key, attempt, exc.code, attempt_began, None
+                )
                 retry_count = attempt - 1
                 if attempt < retry_policy.max_attempts:
                     backoff = retry_policy.backoff_seconds * (2 ** (attempt - 1))
@@ -718,8 +871,14 @@ class ModelGateway:
                     # Issue 06 第七轮：预算放不下「退避 + 一次最小调用窗口 +
                     # 交接预留」时不重试——以真实错误终态收尾（重试次数如实
                     # 记为已发生次数），绝不再等退避、再吃一次调用窗口。
-                    if budget is not None and not budget.can_retry_model_call(
-                        backoff_ms=int(backoff * 1000)
+                    # 改进工单 09：重试决策同时登记进运行账本——每个登记的
+                    # 临时传输失败最多重试 1 次（账本守卫），重试与首次调用
+                    # 消耗同一账本、不重置额度。
+                    if not _transient_retry_permitted(
+                        budget,
+                        call_key,
+                        error_code=exc.code,
+                        backoff_ms=int(backoff * 1000),
                     ):
                         lock = self._build_lock(
                             run_context,
@@ -770,6 +929,9 @@ class ModelGateway:
                     lock,
                 )
             except (RegionError, AuthError) as exc:
+                self._record_call_budget_outcome(
+                    budget, call_key, attempt, exc.code, attempt_began, None
+                )
                 lock = self._build_lock(
                     run_context,
                     capability,
@@ -793,6 +955,9 @@ class ModelGateway:
                     lock,
                 )
             except AdapterError as exc:
+                self._record_call_budget_outcome(
+                    budget, call_key, attempt, exc.code, attempt_began, None
+                )
                 lock = self._build_lock(
                     run_context,
                     capability,
@@ -1059,3 +1224,35 @@ class ModelGateway:
             error_message=error_message,
             degradation_reason=error_message,
         )
+
+
+def _usage_int(usage: dict[str, Any], key: str) -> int | None:
+    """从供应商 usage 字典取整数计量值；缺失或非数时返回 None（只计量）。"""
+    value = usage.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return max(0, int(value))
+
+
+def _capability_call_key(capability: CapabilityRecord) -> str:
+    """账本登记键：能力名@版本加本次调用唯一标识，重试复用同一键。"""
+    return f"{capability.name}@{capability.version}:{secrets.token_hex(12)}"
+
+
+def _transient_retry_permitted(
+    budget: RunBudget | None,
+    call_key: str,
+    *,
+    error_code: str | None,
+    backoff_ms: int,
+) -> bool:
+    """预算接缝的瞬时重试门（改进工单 09）：时间窗口放得下且该登记调用
+    还有重试额度（每登记调用最多 1 次，登记进运行账本）。未挂预算时不拦。
+    """
+    if budget is None:
+        return True
+    if not budget.can_retry_model_call(backoff_ms=backoff_ms):
+        return False
+    return budget.register_transient_retry(
+        call_key, error_code=error_code, backoff_ms=backoff_ms
+    )

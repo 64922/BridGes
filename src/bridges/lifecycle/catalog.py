@@ -54,6 +54,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "graph_checkpoint_writes",
     "graph_checkpoints",
     "generation_runs",
+    # 改进工单 09：运行预算账本。流水行外键指向 run_budget_ledger，
+    # 必须先于账本行删除。
+    "run_budget_entries",
+    "run_budget_ledger",
     "retrieval_decisions",
     "study_states",
     "image_tasks",
@@ -150,6 +154,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
     ExportCategory("generation_runs", "生成运行额度", ("generation_runs",), 512),
+    # 改进工单 09：运行预算账本（冻结计划 + 已耗计数 + 脱敏计量流水；
+    # 不含消息正文与凭据，整行导出即可读）。
+    ExportCategory(
+        "run_budgets",
+        "运行预算账本",
+        ("run_budget_ledger", "run_budget_entries"),
+        256,
+    ),
     ExportCategory(
         "chat_attachments",
         "对话附件",
@@ -339,6 +351,8 @@ def logical_summary(
         "study_states",
         "generation_runs",
         "generation_events",
+        "run_budget_ledger",
+        "run_budget_entries",
         "graph_checkpoints",
         "graph_checkpoint_writes",
         "retrieval_decisions",

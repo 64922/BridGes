@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
+from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
 from bridges.chat.terminal import internal_error_outcome, stopped_outcome
 from bridges.contracts.chat import (
     ChatMessageStatus,
@@ -127,6 +128,13 @@ class GenerationRunExecutor:
             try:
                 self._terminal.reap_lost_run(run)
                 reaped += 1
+                # 改进工单 09：收尸即终态——关闭预算账本，额度计数封存
+                #（用户重试会创建新运行、新账本）。
+                RunBudgetLedgerRepository(self._database).close(
+                    account_id=run.account_id,
+                    run_id=run.run_id,
+                    now=datetime.now(UTC),
+                )
             except Exception as exc:  # noqa: BLE001 - 收尸故障不终止执行器
                 # 收尸失败留下的仍是「待收敛」形态（该运行没有写入终态），
                 # 下一轮按同一上限重试；绝不因一个运行让整个执行器停摆，
@@ -206,6 +214,9 @@ class GenerationRunExecutor:
                 self._last_summary = f"generation: 运行 {run_id} 由其他执行器执行，跳过。"
                 return
             # 运行已终态：队列行是收尾遗留，直接完成
+            RunBudgetLedgerRepository(self._database).close(
+                account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+            )
             self._queue.complete(claim)
             self._last_summary = f"generation: 运行 {run_id} 已终态，跳过。"
             return
@@ -238,6 +249,9 @@ class GenerationRunExecutor:
             return
         committed = self._terminal.recover_committed_result(account_id, run)
         if committed is not None:
+            RunBudgetLedgerRepository(self._database).close(
+                account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+            )
             self._last_summary = (
                 f"generation: 运行 {run_id} 结果已提交"
                 f"（{committed.outcome.status.value}），只补齐终态。"
@@ -254,6 +268,9 @@ class GenerationRunExecutor:
                 fallback=stopped_outcome(),
             )
             self._last_summary = f"generation: 运行 {run_id} 已在排队时请求停止。"
+            RunBudgetLedgerRepository(self._database).close(
+                account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+            )
             self._queue.complete(claim)
             return
         stop_event = self._service._lifecycle.register(run.assistant_message_id)  # noqa: SLF001
@@ -287,6 +304,11 @@ class GenerationRunExecutor:
             run.assistant_message_id,
             fallback=internal_error_outcome(),
             run_duration_ms=duration_ms,
+        )
+        # 改进工单 09：运行进入终态即关闭预算账本（只读封存）；租约恢复
+        # 重跑在收敛前读取的是同一账本行——截止与已耗计数不因恢复重置。
+        RunBudgetLedgerRepository(self._database).close(
+            account_id=account_id, run_id=run_id, now=datetime.now(UTC)
         )
         label = {
             ChatMessageStatus.DONE: "完成",
