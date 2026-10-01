@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — 记录已确认合同替代与增量迁移接缝
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P0
 
@@ -51,3 +51,12 @@
 API 多轮重放末尾条件、纠正、话题往返、等待错接与两个任务并存；断开进程后继续验证。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+## 执行与验收记录
+
+### 2026-10-01：实现与两轮两轴评审
+
+- 交付分支 `codex/08-source-bound-task-state-and-waits`（工作树 `.worktrees/08-source-bound-task-state-and-waits`，基点 `1b35c02`）；提交 `678c62b`（实现）、`7174b2b`（首轮评审修复）、`88633c5`（table-owners 登记）、`5351a59`（Issue 03 schema 断言回归修复）、`b6c756a`（第二轮两轴评审修复）、`9e12c58`（跨轮补齐语义与用例）。
+- 交付：`TASK_CONTRACT_VERSION=task-v1` 合同；schema v61（`conversation_tasks` 等五表 + `conversations.current_task_id`）；`tasks/` 写模型与一轮消息投影；`/tasks` 只读投影与 `turns`/`waits` 入口；`chat/ConversationRepository.set_current_task` 属主写入；导出/删除注册；v61 五表纳入启动完整性清单；openapi 与 `generated.ts` 同步。
+- 两轮两轴评审的发现、逐项处置（含明确不采纳项及理由）、测试证据与限制见 [独立验收记录](../acceptance/08-source-bound-task-state-and-waits.md)。
+- 状态改 `ready-for-human` 等待人工验收；分支尚未推送、未合并，合并与工作树清理待人工确认后执行。
