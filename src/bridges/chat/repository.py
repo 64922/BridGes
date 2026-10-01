@@ -348,7 +348,10 @@ class ConversationRepository:
 
     def delete_conversation(self, account_id: str, conversation_id: str) -> int:
         """删除会话及其消息/模式事件；跨账户目标返回 0。"""
+        from bridges.tasks.repository import TaskRepository
+
         with self._db.transaction():
+            TaskRepository(self._db, self).delete_for_conversation(account_id, conversation_id)
             self._db.scoped(account_id).execute(
                 "DELETE FROM mode_events WHERE conversation_id = ? AND account_id = ?",
                 (conversation_id, account_id),
@@ -372,6 +375,43 @@ class ConversationRepository:
                 " WHERE conversation_id = ? AND account_id = ?",
                 (_iso(updated_at), conversation_id, account_id),
             )
+
+    # -- 跨轮任务指针（工单 08） -------------------------------------------
+
+    def set_current_task(
+        self,
+        account_id: str,
+        conversation_id: str,
+        task_id: str | None,
+    ) -> None:
+        """设置会话当前跨轮任务指针。
+
+        ``conversations.current_task_id`` 属本仓库（见 ``docs/table-owners.md``）；
+        任务领域经此小接口写入，不直连 ``conversations``。调用方已开启事务时
+        本写入自动并入同一事务（同一 SQLite 连接），保证与任务写入原子。
+        """
+        statement = (
+            "UPDATE conversations SET current_task_id = ?"
+            " WHERE conversation_id = ? AND account_id = ?"
+        )
+        params = (task_id, conversation_id, account_id)
+        with self._db.snapshot_lock():
+            if self._db.connection.in_transaction:
+                self._db.scoped(account_id).execute(statement, params)
+                return
+            with self._db.transaction():
+                self._db.scoped(account_id).execute(statement, params)
+
+    def current_task_id(self, account_id: str, conversation_id: str) -> str | None:
+        """读取会话当前跨轮任务指针；无会话或指针为空时返回 None。"""
+        row = self._db.scoped(account_id).execute(
+            "SELECT current_task_id FROM conversations"
+            " WHERE conversation_id = ? AND account_id = ?",
+            (conversation_id, account_id),
+        ).fetchone()
+        if row is None or row["current_task_id"] is None:
+            return None
+        return str(row["current_task_id"])
 
     # -- mode events --------------------------------------------------------
 

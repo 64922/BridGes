@@ -39,6 +39,7 @@ bridges.db 是单机权威数据库（ADR-0013），本文件回答一个问题�
 | `profile_*`（断言/候选/观察/许可/切片/通知） | `profiles/` | 四维画像写入、最小切片与旧治理对象封存 |
 | `eval_*`（套件/用例/报告/盲评/运行锁） | `evaluation/` | A/B 科学评测 |
 | `task_claims` / `workflow_runs` | `workflows/` | 领取型任务契约 |
+| `conversation_tasks` / `task_versions` / `task_conditions` / `task_waits` / `task_events` | `tasks/` | `TaskRepository`（工单 08 跨轮任务写模型；`conversations.current_task_id` 属 `chat/`，由 tasks 域经 `ConversationRepository.set_current_task` 写入，不直连） |
 | `schema_meta` | `storage/` | 数据库迁移元数据 |
 
 ## 跨域只读白名单

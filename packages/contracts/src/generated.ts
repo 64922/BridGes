@@ -6002,6 +6002,168 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversation Tasks
+         * @description 列出某会话的全部任务投影（含有效条件与未决等待）。
+         */
+        get: operations["list_conversation_tasks_tasks_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/conversations/{conversation_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversation Task Events
+         * @description 列出某会话的任务审计事件（append-only）。
+         */
+        get: operations["list_conversation_task_events_tasks_conversations__conversation_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task
+         * @description 读取单个任务的当前投影。
+         */
+        get: operations["get_task_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Task Versions
+         * @description 列出任务的不可变版本快照（按版本号升序）。
+         */
+        get: operations["list_task_versions_tasks__task_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}/conditions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Task Conditions
+         * @description 列出任务的逐条条件（含草案、线索与被取代值，供审计）。
+         */
+        get: operations["list_task_conditions_tasks__task_id__conditions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}/waits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Task Waits
+         * @description 列出任务的澄清等待（含历史终态，供审计）。
+         */
+        get: operations["list_task_waits_tasks__task_id__waits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/waits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Task Wait
+         * @description 登记一个澄清等待：任务进入等待态，等待不保留工作租约。
+         */
+        post: operations["open_task_wait_tasks_waits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Task Turn
+         * @description 落地一轮任务关系：解析关系、生成版本、绑定条件、处置等待。
+         *
+         *     确定性入口：同一请求可重放，乐观版本冲突返回 409。
+         */
+        post: operations["apply_task_turn_tasks_turns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -10787,6 +10949,24 @@ export interface components {
              */
             distance_m?: number | null;
         };
+        /**
+         * ConditionOrigin
+         * @description 条件来源分级；决定它是否可以直接成为约束。
+         * @enum {string}
+         */
+        ConditionOrigin: "user_stated" | "assistant_proposal" | "model_inference" | "tool_observation";
+        /**
+         * ConditionScope
+         * @description 条件的有效范围：默认绑定原任务，用户明示才扩展到整个会话。
+         * @enum {string}
+         */
+        ConditionScope: "task" | "conversation";
+        /**
+         * ConditionStatus
+         * @description 条件的有效状态；只有 ``EFFECTIVE`` 进入有效条件投影。
+         * @enum {string}
+         */
+        ConditionStatus: "effective" | "draft" | "clue" | "superseded" | "revoked";
         /**
          * Conflict
          * @description An explicit, user-visible evidence conflict.
@@ -23650,6 +23830,430 @@ export interface components {
          */
         SyncOutboxStatus: "pending" | "delivered";
         /**
+         * TaskCondition
+         * @description 一条已落地的条件（含来源与取代关系）。
+         */
+        TaskCondition: {
+            /** Condition Id */
+            condition_id: string;
+            /** Task Id */
+            task_id: string;
+            /**
+             * Version
+             * @description 提出该条件的任务版本号。
+             */
+            version: number;
+            /** Kind */
+            kind: string;
+            /** Text */
+            text: string;
+            scope: components["schemas"]["ConditionScope"];
+            origin: components["schemas"]["ConditionOrigin"];
+            status: components["schemas"]["ConditionStatus"];
+            /** Source Message Id */
+            source_message_id: string;
+            /** Source Span */
+            source_span?: string | null;
+            /**
+             * Supersedes Condition Id
+             * @description 本条取代的旧条件 ID。
+             */
+            supersedes_condition_id?: string | null;
+            /**
+             * Superseded By
+             * @description 取代本条的新条件 ID；非空即表示本条已失效。
+             */
+            superseded_by?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * TaskConditionInput
+         * @description 一轮输入中提出的一条条件（尚未落地）。
+         *
+         *     ``replaces`` 指向被本条纠正/撤销的旧条件 ID；同一任务内同 ``kind`` 的
+         *     明示修订也会自动取代旧值（``5,000 改 3,000``）。
+         */
+        TaskConditionInput: {
+            /**
+             * Kind
+             * @description 条件类别，例如 budget、exclusion、requirement。
+             */
+            kind: string;
+            /**
+             * Text
+             * @description 条件的原话正文（用户可见）。
+             */
+            text: string;
+            /**
+             * @description 有效范围：默认绑定原任务。
+             * @default task
+             */
+            scope: components["schemas"]["ConditionScope"];
+            /**
+             * @description 来源分级，决定是否直接生效。
+             * @default user_stated
+             */
+            origin: components["schemas"]["ConditionOrigin"];
+            /**
+             * Source Message Id
+             * @description 条件来源的用户消息 ID。
+             */
+            source_message_id: string;
+            /**
+             * Source Span
+             * @description 原话范围（可定位的最小片段），无定位时为 null。
+             */
+            source_span?: string | null;
+            /**
+             * Replaces
+             * @description 被本条明示纠正/撤销的旧条件 ID。
+             */
+            replaces?: string | null;
+        };
+        /**
+         * TaskErrorResponse
+         * @description 任务接口的稳定错误体。
+         */
+        TaskErrorResponse: {
+            /**
+             * Error
+             * @description 稳定错误码。
+             */
+            error: string;
+            /**
+             * Message
+             * @description 可操作的中文说明。
+             */
+            message: string;
+        };
+        /**
+         * TaskEvent
+         * @description 任务审计事件（append-only）。
+         */
+        TaskEvent: {
+            /** Event Id */
+            event_id: string;
+            /** Account Id */
+            account_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Task Id */
+            task_id: string | null;
+            /** Kind */
+            kind: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * TaskEventKind
+         * @description 任务审计事件的种类（单一事实源，避免各处各写一份字面量）。
+         * @enum {string}
+         */
+        TaskEventKind: "task_created" | "version_created" | "task_paused" | "task_resumed" | "task_activated" | "task_completed" | "task_blocked" | "task_cancelled" | "condition_revoked" | "wait_resolved" | "waits_suspended" | "waits_expired" | "turn_applied";
+        /**
+         * TaskProjection
+         * @description 任务对外投影：有效条件 + 未决等待 + 来源。
+         *
+         *     ``effective_conditions`` 只包含仍有效的用户约束与工具事实；草案与线索
+         *     不在此列（它们不是用户约束）。``open_waits`` 只包含当前激活的等待项。
+         */
+        TaskProjection: {
+            task: components["schemas"]["TaskRecord"];
+            /** Effective Conditions */
+            effective_conditions?: components["schemas"]["TaskCondition"][];
+            /** Conversation Conditions */
+            conversation_conditions?: components["schemas"]["TaskCondition"][];
+            /** Open Waits */
+            open_waits?: components["schemas"]["TaskWait"][];
+        };
+        /**
+         * TaskRecord
+         * @description 跨轮任务的行投影（不含条件明细，明细按需查询）。
+         */
+        TaskRecord: {
+            /** Task Id */
+            task_id: string;
+            /** Account Id */
+            account_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Goal */
+            goal: string;
+            status: components["schemas"]["TaskStatus"];
+            /** Current Version */
+            current_version: number;
+            /**
+             * Contract Version
+             * @default task-v1
+             */
+            contract_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Cancelled At */
+            cancelled_at?: string | null;
+        };
+        /**
+         * TaskRelation
+         * @description 一轮理解产出的有限任务关系。
+         *
+         *     ``new`` 是「本消息属于新任务」；没有目标也没有条件的普通聊天不创建
+         *     任务（普通聊天保持轻量）。关系由工单 12 的主智能体理解产出，本领域
+         *     只做代码校验与落地。
+         *
+         *     ``complete`` 与 ``block`` 让 ``completed`` / ``blocked`` 成为可达状态：
+         *     完成任务仍可被后续 ``revise`` 重新激活（任务内容第 7 条「完成目标可
+         *     继续修订」），阻塞任务则不再接收澄清答复。
+         * @enum {string}
+         */
+        TaskRelation: "new" | "continue" | "revise" | "pause" | "complete" | "block" | "cancel";
+        /**
+         * TaskStatus
+         * @description 跨轮任务的当前状态；与单次运行状态、产物可信状态分离。
+         * @enum {string}
+         */
+        TaskStatus: "active" | "waiting" | "paused" | "blocked" | "completed" | "cancelled";
+        /**
+         * TaskTurnRequest
+         * @description 一次任务关系落地请求（由工单 12 的主智能体理解后提交）。
+         *
+         *     普通聊天（无目标、无条件）不创建任务：这是「普通聊天轻量」的强制点。
+         */
+        TaskTurnRequest: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** User Message Id */
+            user_message_id: string;
+            relation: components["schemas"]["TaskRelation"];
+            /**
+             * Goal
+             * @description 本消息表达的任务目标（若有）。
+             */
+            goal?: string | null;
+            /**
+             * Explicit Task Id
+             * @description 用户明确指代的任务 ID；缺省用会话当前任务。
+             */
+            explicit_task_id?: string | null;
+            /** Conditions */
+            conditions?: components["schemas"]["TaskConditionInput"][];
+            /**
+             * Revoked Condition Ids
+             * @description 用户明确撤销的条件 ID；被撤销的值不因话题往返复活。
+             */
+            revoked_condition_ids?: string[];
+            /**
+             * Result Refs
+             * @description 本版本对应结果的引用（产物/运行 ID），只存引用不存正文。
+             */
+            result_refs?: string[];
+            /**
+             * Is New Topic
+             * @description 本消息是否明确开启无关话题（暂停旧任务）。
+             * @default false
+             */
+            is_new_topic: boolean;
+            /**
+             * Is Profile Command
+             * @description 画像命令（记住/忘掉）：不得填旧等待。
+             * @default false
+             */
+            is_profile_command: boolean;
+            /**
+             * Is Learning Action
+             * @description 学习阶段动作：不得填旧等待。
+             * @default false
+             */
+            is_learning_action: boolean;
+            /**
+             * Expected Version
+             * @description 乐观版本：与当前版本不符时拒绝修订。
+             */
+            expected_version?: number | null;
+            /**
+             * Answer Fields
+             * @description 本消息实际补齐的缺失字段；用于等待匹配。
+             */
+            answer_fields?: string[];
+            /**
+             * Answer Text
+             * @description 本消息作为澄清答复的正文（用于审计，可空）。
+             */
+            answer_text?: string | null;
+        };
+        /**
+         * TaskTurnResult
+         * @description 一次任务关系落地的结果投影。
+         */
+        TaskTurnResult: {
+            /**
+             * Created
+             * @description 本轮是否创建了新任务。
+             */
+            created: boolean;
+            task?: components["schemas"]["TaskProjection"] | null;
+            /** Paused Task Ids */
+            paused_task_ids?: string[];
+            /** Cancelled Task Ids */
+            cancelled_task_ids?: string[];
+            /** @default none */
+            wait_resolution: components["schemas"]["WaitResolution"];
+            resolved_wait?: components["schemas"]["TaskWait"] | null;
+            /** Wait Rejection Reason */
+            wait_rejection_reason?: string | null;
+            /**
+             * Events
+             * @description 本轮产生的任务事件类型。
+             */
+            events?: components["schemas"]["TaskEventKind"][];
+        };
+        /**
+         * TaskVersion
+         * @description 任务在某次条件确定后的不可变快照。
+         *
+         *     ``result_refs`` 保存该版本对应结果的引用（产物/运行 ID），只存引用不
+         *     存正文：任务领域拥有写模型，产物由各自模块拥有（任务内容第 2 条
+         *     「结果引用」、跨票接缝第 10 条）。
+         */
+        TaskVersion: {
+            /** Version Id */
+            version_id: string;
+            /** Task Id */
+            task_id: string;
+            /** Version */
+            version: number;
+            /** Goal */
+            goal: string;
+            /** Condition Ids */
+            condition_ids?: string[];
+            /** Source Message Ids */
+            source_message_ids?: string[];
+            /** Result Refs */
+            result_refs?: string[];
+            /** Supersedes Version */
+            supersedes_version?: number | null;
+            /** Invalidated At */
+            invalidated_at?: string | null;
+            /** Invalidation Reason */
+            invalidation_reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * TaskWait
+         * @description 一次跨轮澄清等待。
+         *
+         *     等待项不携带工作租约：进入等待即释放执行资源（见
+         *     ``docs/workflow/orchestration.md`` 第 3 节）。``expected_version`` 是
+         *     当前问题绑定的任务版本，答复必须匹配；匹配的部分答复写入新条件时
+         *     同步推进绑定版本，其余修订让旧等待过期。
+         */
+        TaskWait: {
+            /** Wait Id */
+            wait_id: string;
+            /** Task Id */
+            task_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Expected Version */
+            expected_version: number;
+            /** Missing Fields */
+            missing_fields?: string[];
+            /** Question */
+            question: string;
+            /**
+             * Origin Message Id
+             * @description 提出该问题的助手消息 ID。
+             */
+            origin_message_id: string;
+            status: components["schemas"]["WaitStatus"];
+            /**
+             * Source Message Id
+             * @description 触发该等待的用户消息 ID。
+             */
+            source_message_id: string;
+            /** Resolved By Message Id */
+            resolved_by_message_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /**
+             * Released At
+             * @description 终态释放时刻；非空即表示不再占用执行资源。
+             */
+            released_at?: string | null;
+        };
+        /**
+         * TaskWaitCreateRequest
+         * @description 登记一个澄清等待（生产由澄清节点调用；等待不保留工作租约）。
+         */
+        TaskWaitCreateRequest: {
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * Question
+             * @description 已向用户提出的那一个问题。
+             */
+            question: string;
+            /**
+             * Missing Fields
+             * @description 等待补齐的缺失字段（答复须一次补齐全部字段才解决等待）。
+             */
+            missing_fields: string[];
+            /**
+             * Origin Message Id
+             * @description 提出问题的助手消息 ID。
+             */
+            origin_message_id: string;
+            /**
+             * Source Message Id
+             * @description 触发等待的用户消息 ID。
+             */
+            source_message_id: string;
+            /**
+             * Task Id
+             * @description 目标任务；缺省用会话当前任务。
+             */
+            task_id?: string | null;
+        };
+        /**
          * TeachingAnswerEvidence
          * @description 把题目、回答、评价依据和知识状态候选串成可追溯记录。
          */
@@ -25562,6 +26166,21 @@ export interface components {
          * @enum {string}
          */
         VideoTaskStatus: "queued" | "submitting" | "generating" | "recovery" | "succeeded" | "failed" | "cancelling" | "cancelled";
+        /**
+         * WaitResolution
+         * @description 一次用户消息对等待项的处置结果。
+         * @enum {string}
+         */
+        WaitResolution: "none" | "accepted" | "rejected";
+        /**
+         * WaitStatus
+         * @description 澄清等待的生命周期状态。
+         *
+         *     ``suspended`` 表示等待项仍存在但已失去当前激活状态（用户换了话题）：
+         *     它不会被后续消息误填，也不会被悄悄恢复为 ``open``。
+         * @enum {string}
+         */
+        WaitStatus: "open" | "suspended" | "resolved" | "expired";
         /**
          * WebSearchPageClassification
          * @description 公网搜索响应页面的确定性分类。
@@ -42997,6 +43616,310 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    list_conversation_tasks_tasks_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskProjection"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversation_task_events_tasks_conversations__conversation_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskEvent"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskProjection"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_task_versions_tasks__task_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskVersion"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_task_conditions_tasks__task_id__conditions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskCondition"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_task_waits_tasks__task_id__waits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskWait"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_task_wait_tasks_waits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskWaitCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskWait"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_task_turn_tasks_turns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskTurnResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
