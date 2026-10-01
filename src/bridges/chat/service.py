@@ -17,7 +17,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -169,6 +169,10 @@ from bridges.tieba.service import TiebaResearchService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
+if TYPE_CHECKING:
+    # 工单 11 的任务查询接缝：只用于类型标注，运行时不引入任务领域依赖。
+    from bridges.tasks.service import TaskService
+
 #: 由首条用户消息推导对话标题的最大长度。
 _TITLE_MAX = 24
 
@@ -278,6 +282,7 @@ class ChatService:
         learning_resources_service: LearningResourcesService | None = None,
         commute_service: CommuteService | None = None,
         github_projects_service: GithubProjectsService | None = None,
+        task_service: TaskService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -309,6 +314,10 @@ class ChatService:
         #: V2 Issue 16：GitHub 项目推荐模块子图（显式 module_id=github 时派发；
         #: 未装配时该模块如实报不可用，绝不降级为普通对话）。
         self._github_projects = github_projects_service
+        #: 改进工单 11：任务查询接缝（工单 08 的任务领域）。编译上下文时
+        #: 读取当前任务快照供指代解析定位条件与纠正关系；未装配时解析只用
+        #: 会话原文（任务条件仍由 Issue 08 的写模型拥有）。
+        self._tasks = task_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -2113,6 +2122,14 @@ class ChatService:
             )
             if any(attachment.media_type in PHOTO_MEDIA_TYPES for attachment in bound):
                 return None, None
+        # 改进工单 11：指代解析的任务查询接缝（只读；工单 08 的任务领域）。
+        task_context = (
+            self._tasks.current_reference_context(
+                run.account_id, run.conversation_id
+            )
+            if self._tasks is not None
+            else None
+        )
         compiled = _compile_turn_context(
             messages=self._repo.list_messages(
                 run.account_id, run.conversation_id
@@ -2124,6 +2141,7 @@ class ChatService:
             output_tokens=CHAT_OUTPUT_TOKENS,
             system_prompt=system_prompt,
             evidence=evidence or [],
+            task=task_context,
         )
         if self._observability is not None:
             record = compiled.to_record()

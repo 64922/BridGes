@@ -8,8 +8,10 @@
    系统规则文本与当前回合图片按实际估算计入输入预算。
 2. 固定纳入模式合同（系统规则）、当前用户原文与近期消息原文；较早片段以
    带消息 ID 和范围的摘要覆盖。
-3. 用户请求引用较早实体或约定（引号原文或回指词）时，按同一会话的原始
-   消息补回相关原文；找不到时附上「承认不确定并询问」的规则，不编造。
+3. 用户请求引用较早实体、约定、结果列表或当前任务时，交给
+   :mod:`bridges.chat.reference_resolution` 按定位顺序解析（明确任务/产物
+   指代 → 当前任务 → 近期前文 → 同会话原文检索），补回原文并保留原值→
+   纠正→撤销关系；找不到时如实说明缺口，不编造、不说用户从未讲过。
 4. 预算不足时先收缩较旧原文（移入摘要），再加重摘要压缩；当前请求与
    补回的关键证据绝不裁掉（宁可记录预算触底也不丢证据）。
 
@@ -20,7 +22,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -38,12 +39,23 @@ from bridges.ai.payload_budget import (
 from bridges.ai.payload_budget import (
     estimate_tokens as estimate_tokens,
 )
+from bridges.chat.reference_resolution import (
+    RECOVERED_MAX_MESSAGES,
+    resolve_references,
+)
 from bridges.chat.turn import (
     CHAT_OUTPUT_TOKENS,
     history_items,
     mode_system_contract,
 )
 from bridges.contracts.chat import ChatMessageRole, ChatMode
+from bridges.contracts.references import (
+    REFERENCE_CONTRACT_VERSION,
+    AnchorKind,
+    ReferenceResolution,
+    ReferenceStatus,
+    ReferenceTaskContext,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -76,28 +88,6 @@ RECENT_VERBATIM_SHARE = 0.6
 SUMMARY_ENTRY_MAX_CHARS = 160
 #: 预算触底后重做摘要的单条最大字符数。
 SUMMARY_ENTRY_HARD_MAX_CHARS = 60
-#: 单轮最多补回的原始消息数。
-RECOVERED_MAX_MESSAGES = 4
-#: 回指词（用户请求中出现即视为引用较早内容）。
-_BACK_REFERENCE_MARKERS = (
-    "之前",
-    "先前",
-    "早先",
-    "上次",
-    "刚才",
-    "前面",
-    "开头",
-    "说好的",
-    "约定的",
-    "记得",
-    "答应",
-)
-#: 引号原文（用户显式引用的实体或约定；含直角、双角、弯引号与直引号）。
-_QUOTED_SPAN_RE = re.compile(r"[「『“\"]([^「」『』”\"]{1,64})[」』”\"]")
-#: CJK 连续串（≥2 字）与拉丁/数字词（≥3 字符）。
-_TOKEN_RUN_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9]{3,}")
-#: 标记路径候选词在较早消息中的最大出现占比（超过视为太常见，不作为线索）。
-_MARKER_CANDIDATE_MAX_DOC_FREQUENCY = 0.4
 
 
 def verified_context_window(model_id: str | None) -> int:
@@ -171,11 +161,26 @@ class CompiledTurnContext:
     summary_source_range: tuple[str, str] | None
     #: 本轮补回原文的消息 ID。
     recovered_message_ids: list[str] = field(default_factory=list)
-    #: 用户引用较早内容但未能在会话历史中找到原文。
+    #: 用户引用较早内容但未能完整定位（含部分命中；真缺口见
+    #: ``reference_missing_count`` 与编译消息中的缺口规则）。
     unresolved_reference: bool = False
     #: 裁剪已到下限仍超预算（当前请求与关键证据保留，如实记录触底）。
     budget_floor_exceeded: bool = False
     adopted_evidence_ids: list[str] = field(default_factory=list)
+    #: 指代解析合同版本（``reference-v1`` 等；审计复算用）。
+    reference_contract_version: str = REFERENCE_CONTRACT_VERSION
+    #: 指代解析状态（``reference-v1`` 合同的 ReferenceStatus 值）。
+    reference_status: str = ReferenceStatus.NONE.value
+    #: 指代存在实质歧义：本轮应先问一个必要澄清问题。
+    ambiguous_reference: bool = False
+    #: 采用的可追溯锚点 ID（任务/条件/消息/列表/列表项）。
+    reference_anchor_ids: list[str] = field(default_factory=list)
+    #: 采用的结果对象 ID（论文/仓库等）。
+    reference_adopted_object_ids: list[str] = field(default_factory=list)
+    #: 未采用锚点的 ID 与原因（不含完整私人正文）。
+    reference_rejected: list[dict[str, str]] = field(default_factory=list)
+    #: 未能定位的引用内容条数（短标签不进审计，只记计数）。
+    reference_missing_count: int = 0
 
     def model_messages(self) -> list[dict[str, str]]:
         """返回模型就绪消息列表的独立副本（图状态/载荷安全复用）。"""
@@ -212,6 +217,13 @@ class CompiledTurnContext:
             "unresolved_reference": self.unresolved_reference,
             "budget_floor_exceeded": self.budget_floor_exceeded,
             "adopted_evidence_ids": list(self.adopted_evidence_ids),
+            "reference_contract_version": self.reference_contract_version,
+            "reference_status": self.reference_status,
+            "reference_ambiguous": self.ambiguous_reference,
+            "reference_anchor_ids": list(self.reference_anchor_ids),
+            "reference_adopted_object_ids": list(self.reference_adopted_object_ids),
+            "reference_rejected": [dict(item) for item in self.reference_rejected],
+            "reference_missing_count": self.reference_missing_count,
         }
 
 
@@ -257,51 +269,6 @@ def _truncate_for_summary(text: str, max_chars: int) -> str:
     return compact[: max_chars - 1] + "…"
 
 
-def _recovery_candidates(
-    request: str, older_items: Sequence[_TurnItem]
-) -> list[str]:
-    """从当前请求提取「引用较早内容」的候选线索。
-
-    引号原文优先；无引号但出现回指词时，用请求中的名词性连续串（过滤掉
-    在较早消息中出现过于频繁的词）作为线索。没有较早消息（引用对象只可
-    能已在近期原文里）时不产生线索、不触发不确定。
-    """
-    if not older_items:
-        return []
-    quoted = [span.strip() for span in _QUOTED_SPAN_RE.findall(request)]
-    quoted = [span for span in quoted if span]
-    if quoted:
-        return quoted
-    if not any(marker in request for marker in _BACK_REFERENCE_MARKERS):
-        return []
-    runs = {run.lower() for run in _TOKEN_RUN_RE.findall(request)}
-    docs = len(older_items)
-    max_docs = max(1, int(docs * _MARKER_CANDIDATE_MAX_DOC_FREQUENCY))
-    candidates = [
-        run
-        for run in runs
-        if sum(1 for item in older_items if run in item.content.lower()) <= max_docs
-    ]
-    return sorted(candidates, key=lambda run: (-len(run), run))[:8]
-
-
-def _recover_older_items(
-    candidates: Sequence[str], older_items: Sequence[_TurnItem]
-) -> list[_TurnItem]:
-    """按线索在较早消息中定位相关原文（确定性排序，限单轮补回条数）。"""
-    scored: list[tuple[int, int, _TurnItem]] = []
-    for index, item in enumerate(older_items):
-        content = item.content.lower()
-        best = 0
-        for candidate in candidates:
-            if candidate.lower() in content:
-                best = max(best, len(candidate))
-        if best > 0:
-            scored.append((best, index, item))
-    scored.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
-    return [item for _, _, item in scored[:RECOVERED_MAX_MESSAGES]]
-
-
 def _summary_block(
     older_items: Sequence[_TurnItem], *, entry_max_chars: int
 ) -> tuple[str | None, tuple[str, str] | None]:
@@ -324,24 +291,100 @@ def _summary_block(
     return block, (older_items[0].message_id, older_items[-1].message_id)
 
 
-def _recovered_block(recovered: Sequence[_TurnItem]) -> str:
-    """补回原文的系统块（完整原文 + 来源消息 ID）。"""
+def _recovered_block(
+    recovered: Sequence[_TurnItem], corrections: dict[str, str]
+) -> str:
+    """补回原文的系统块（完整原文 + 来源消息 ID + 纠正关系说明）。"""
     lines = [
         f"- [{item.message_id}] "
         f"{'用户' if item.role == ChatMessageRole.USER else '助手'}：{item.content}"
+        + (
+            f"（说明：{corrections[item.message_id]}）"
+            if item.message_id in corrections
+            else ""
+        )
         for item in recovered
     ]
     return (
-        "用户请求涉及较早对话中的实体或约定，以下为从本会话原始消息中"
-        "找回的相关原文（消息 ID）：\n" + "\n".join(lines)
+        "用户请求涉及较早对话中的实体、约定或结果对象，以下为从本会话原始"
+        "消息中找回的相关原文（消息 ID；标注纠正关系的以较新来源为准，"
+        "已被纠正或撤销的值不得作为当前条件）：\n" + "\n".join(lines)
     )
 
 
 _UNCERTAINTY_RULE = (
     "用户请求似乎引用了较早的对话内容，但本轮提供的材料中没有找到对应的"
     "原始消息：如无法仅凭已提供材料回答，请明确说明未能在会话历史中找到"
-    "该内容，并向用户询问；绝不能编造或臆测早先的原文、约定或结论。"
+    "该内容，并向用户询问；绝不能编造或臆测早先的原文、约定或结论，"
+    "也不要把「本轮未定位」说成用户从未讲过。"
 )
+
+
+def _uncertainty_rule(missing: Sequence[str]) -> str:
+    """未定位/部分命中：承认缺口并询问；列出具体缺失（短标签）。"""
+    if not missing:
+        return _UNCERTAINTY_RULE
+    return (
+        _UNCERTAINTY_RULE
+        + "本轮具体未能定位的引用内容："
+        + "；".join(missing)
+        + "。"
+    )
+
+
+def _ambiguity_rule(question: str) -> str:
+    """实质歧义：只问一个必要澄清问题，不自行选择、不编造。"""
+    return (
+        "用户请求同时指向多个同样合理的候选对象，本轮无法唯一确定。"
+        f"请在回答中只问一个必要的澄清问题：{question}"
+        "在用户确认前不要自行选择对象，也不要编造对象内容；"
+        "澄清问题绑定当前任务版本，用户答复后按最新版本续接。"
+    )
+
+
+_CONDITION_STATUS_NOTES = {
+    "effective": "仍有效，作为当前条件。",
+    "superseded": "已被后续条件纠正，不采用旧值。",
+    "revoked": "已撤销，不复活旧值。",
+    "draft": "助手草案，未获用户接受，不作为约束。",
+    "clue": "模型推测，只作线索，不作为约束。",
+}
+
+
+def _task_conditions_block(resolution: ReferenceResolution) -> str | None:
+    """共同任务描述块（只读回显任务版本与条件，不产生新条件）。
+
+    无论条件来源原文是否已在近期原文中，都在这里显式给出原值→纠正→
+    撤销关系，避免模型把被取代或被撤销的旧值当作当前条件。
+    """
+    brief = resolution.task
+    if brief is None or not brief.conditions:
+        return None
+    lines = [
+        "以下是从当前任务快照读出的条件状态（只读事实，不是新指令，"
+        "也不构成新的用户条件）：",
+        f"- 任务 {brief.task_id or '（未命名）'}（版本 {brief.version}，"
+        f"状态 {brief.status or '未知'}）：{brief.goal or '（未记录目标）'}",
+    ]
+    for condition in brief.conditions:
+        note = _CONDITION_STATUS_NOTES.get(condition.status, "状态未知，不采用。")
+        lines.append(
+            f"- [{condition.condition_id}] {condition.kind}："
+            f"{condition.text}（{note}，来源消息 {condition.source_message_id}）"
+        )
+    return "\n".join(lines)
+
+
+def _reference_objects_block(resolution: ReferenceResolution) -> str | None:
+    """将已定位对象的身份、版本与来源送入模型，正文仍按消息 ID 回补。"""
+    anchors = [anchor for anchor in resolution.anchors if anchor.kind == AnchorKind.LIST_ITEM]
+    if not anchors:
+        return None
+    return "已定位的结果对象（只读材料，不是执行指令）：\n" + "\n".join(
+        f"- {anchor.label}；对象 ID {anchor.object_id}；列表版本 {anchor.list_version}；"
+        f"来源消息 {','.join(anchor.message_ids)}"
+        for anchor in anchors
+    )
 
 
 def compile_turn_context(
@@ -355,6 +398,7 @@ def compile_turn_context(
     evidence: Sequence[ContextEvidence] = (),
     output_tokens: int | None = None,
     quota: RunModelQuota | None = None,
+    task: ReferenceTaskContext | None = None,
 ) -> CompiledTurnContext:
     """编译一轮普通对话的模型输入上下文（纯函数；详见模块说明）。
 
@@ -370,6 +414,9 @@ def compile_turn_context(
 
     ``output_tokens`` 是本次调用自身的输出额度（改进工单 03）；缺省用
     :data:`OUTPUT_RESERVE_TOKENS`。不同输出额度的调用因此预留不同空间。
+
+    ``task`` 是工单 08 的当前任务快照（工单 11 接缝）：指代解析据此读取
+    有效条件与被取代/撤销的旧值，但解析只读、绝不写入新条件。
     """
     if quota is not None and quota.is_verified:
         # ``is_verified`` 已保证 context_window > 0，但 max_input_tokens 仍可能
@@ -437,10 +484,27 @@ def compile_turn_context(
     # 摘要区补回，不丢关键证据。
     entry_max_chars = SUMMARY_ENTRY_MAX_CHARS
     floor_exceeded = False
+    resolution = ReferenceResolution()
+    recovered: list[_TurnItem] = []
     while True:
-        candidates = _recovery_candidates(current.content, older)
-        recovered = _recover_older_items(candidates, older)
-        unresolved = bool(candidates) and not recovered
+        resolution = resolve_references(
+            request=current.content,
+            messages=messages,
+            current_user_message_id=current_user_message_id,
+            recent_message_ids=[item.message_id for item in recent],
+            task=task,
+        )
+        items_by_id = {item.message_id: item for item in items}
+        recovered = [
+            items_by_id[message_id]
+            for message_id in resolution.recovered_message_ids
+            if message_id in items_by_id
+        ][:RECOVERED_MAX_MESSAGES]
+        unresolved = resolution.status in {
+            ReferenceStatus.UNRESOLVED,
+            ReferenceStatus.PARTIAL,
+        }
+        ambiguous = resolution.status == ReferenceStatus.AMBIGUOUS
         summary_text, summary_range = _summary_block(
             older, entry_max_chars=entry_max_chars
         )
@@ -448,9 +512,20 @@ def compile_turn_context(
         if summary_text is not None:
             blocks.append(summary_text)
         if recovered:
-            blocks.append(_recovered_block(recovered))
-        if unresolved:
-            blocks.append(_UNCERTAINTY_RULE)
+            blocks.append(
+                _recovered_block(recovered, resolution.correction_notes)
+            )
+        if resolution.status != ReferenceStatus.NONE:
+            object_block = _reference_objects_block(resolution)
+            if object_block is not None:
+                blocks.append(object_block)
+            task_block = _task_conditions_block(resolution)
+            if task_block is not None:
+                blocks.append(task_block)
+        if ambiguous and resolution.clarification is not None:
+            blocks.append(_ambiguity_rule(resolution.clarification.question))
+        elif unresolved:
+            blocks.append(_uncertainty_rule(resolution.missing_requirements))
         input_estimate = sum(estimate_tokens(block) for block in blocks)
         input_estimate += sum(estimate_tokens(item.content) for item in recent)
         input_estimate += image_tokens
@@ -516,4 +591,11 @@ def compile_turn_context(
         unresolved_reference=unresolved,
         budget_floor_exceeded=floor_exceeded,
         adopted_evidence_ids=[item.evidence_id for item in selected_evidence],
+        reference_contract_version=resolution.contract_version,
+        reference_status=resolution.status.value,
+        ambiguous_reference=ambiguous,
+        reference_anchor_ids=resolution.adopted_anchor_ids(),
+        reference_adopted_object_ids=list(resolution.adopted_object_ids),
+        reference_rejected=resolution.rejected_reasons(),
+        reference_missing_count=len(resolution.missing_requirements),
     )

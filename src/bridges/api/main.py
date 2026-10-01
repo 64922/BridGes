@@ -1481,6 +1481,13 @@ def create_app(
         )
         app.state.commute_service = CommuteService(amap=app.state.commute_amap_client)
         app.router.add_event_handler("shutdown", app.state.commute_amap_client.close)
+        # 改进工单 08：跨轮任务领域服务。写模型归任务领域仓库（独立账户
+        # 域表），API 只做投影；关系由工单 12 的主智能体理解后经
+        # POST /tasks/turns 提交，本服务按代码规则裁决。工单 11 起同时作为
+        # 指代解析的任务查询接缝（只读）注入 ChatService。
+        app.state.task_service = TaskService(
+            TaskRepository(bridges_database)
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1514,12 +1521,7 @@ def create_app(
             mcp_service=getattr(app.state, "mcp_service", None),
             automatic_profile_service=app.state.automatic_profile_service,
             atomic_profile_service=getattr(app.state, "atomic_profile_service", None),
-        )
-        # 改进工单 08：跨轮任务领域服务。写模型归任务领域仓库（独立账户
-        # 域表），API 只做投影；关系由工单 12 的主智能体理解后经
-        # POST /tasks/turns 提交，本服务按代码规则裁决。
-        app.state.task_service = TaskService(
-            TaskRepository(bridges_database)
+            task_service=app.state.task_service,
         )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。
