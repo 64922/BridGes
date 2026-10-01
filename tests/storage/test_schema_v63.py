@@ -19,7 +19,7 @@ def test_upgrade_from_v62_preserves_profile_controls_and_adds_budget(tmp_path) -
         )
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
-    assert SCHEMA_VERSION == 63
+    assert SCHEMA_VERSION >= 63
     row = database.scoped("a").execute(
         "SELECT profile_usage_enabled FROM profile_account_controls WHERE account_id = ?", ("a",)
     ).fetchone()

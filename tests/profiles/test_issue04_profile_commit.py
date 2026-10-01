@@ -106,12 +106,16 @@ class _MirrorFailsOnce(AtomicProfileService):
         record: FourDimensionProfileRecord,
         *,
         evidence_message_id: str | None = None,
+        fact_text: str | None = None,
     ) -> AtomicProfileItem | None:
         self.calls += 1
         if self.calls == self.fail_at:
             raise RuntimeError("镜像写入失败")
         return super().mirror_record(
-            account_id, record, evidence_message_id=evidence_message_id
+            account_id,
+            record,
+            evidence_message_id=evidence_message_id,
+            fact_text=fact_text,
         )
 
 

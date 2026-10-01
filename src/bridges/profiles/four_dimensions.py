@@ -103,20 +103,24 @@ class FourDimensionProfileError(ProfileError):
 
 
 def _automatic_source_record_id(
-    account_id: str, dimension: FourDimension, normalized: str
+    account_id: str,
+    dimension: FourDimension,
+    normalized: str,
+    identity_discriminator: str | None = None,
 ) -> str:
-    """自动记录的稳定来源键：账户 + 维度 + 规范化正文。
+    """自动记录的稳定来源键：账户 + 维度 + 规范化正文（+ 事实身份识别项）。
 
     同一条事实无论从哪条消息抽取，来源键都相同，这是自动写入幂等与
-    「重放不得改回用户纠正」定位记录的依据。
+    「重放不得改回用户纠正」定位记录的依据。改进工单 16：同一维度下关系
+    不同但正文相同的两条事实（如「喜欢 Python」与「正在学习 Python」）由
+    ``identity_discriminator`` 区分，各自成为独立来源记录；未提供识别项时
+    保持旧键形状，旧调用与旧记录完全兼容。
     """
 
-    return (
-        "auto-"
-        + hashlib.sha256(
-            f"{account_id}|{dimension.value}|{normalized.casefold()}".encode("utf-8")
-        ).hexdigest()[:32]
-    )
+    payload = f"{account_id}|{dimension.value}|{normalized.casefold()}"
+    if identity_discriminator:
+        payload = f"{payload}|{identity_discriminator}"
+    return "auto-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
 
 
 @dataclass(frozen=True)
@@ -976,6 +980,7 @@ class FourDimensionProfileService:
         change_note: str | None = None,
         migration_version: str = "profile-auto-v1",
         from_replay: bool = False,
+        identity_discriminator: str | None = None,
     ) -> FourDimensionProfileRecord:
         """提交一条 Issue 15 自动抽取结果到四维目标表。
 
@@ -993,7 +998,7 @@ class FourDimensionProfileService:
         if not normalized or len(normalized) > 1000:
             raise FourDimensionProfileError("画像内容不合法。")
         source_record_id = _automatic_source_record_id(
-            account_id, dimension, normalized
+            account_id, dimension, normalized, identity_discriminator
         )
         existing: FourDimensionProfileRecord | None = None
         try:

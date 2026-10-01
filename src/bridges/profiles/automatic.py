@@ -22,6 +22,7 @@ from bridges.contracts.ai import (
     ModelRunLock,
 )
 from bridges.contracts.atomic_profile import (
+    AtomicProfileFactRelation,
     AtomicProfileMemoryKind,
     AtomicProfileMemoryResult,
     AtomicProfileMemoryStatus,
@@ -62,6 +63,7 @@ from bridges.observability.service import ObservabilityService
 from bridges.profiles.atomic import (
     AtomicProfileService,
     MemoryDirective,
+    parse_fact_identity,
     parse_memory_directive,
 )
 from bridges.profiles.commit import ProfileCommit, ProfileRecordSubmission
@@ -435,6 +437,20 @@ def _extract_value(text: str, patterns: tuple[str, ...]) -> str | None:
     return None
 
 
+def _extract_value_and_clause(
+    text: str, patterns: tuple[str, ...]
+) -> tuple[str | None, str | None]:
+    """返回值与命中的完整分句：关系词只在完整分句里可见。"""
+
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = _normalize(match.group(1))
+            if 1 < len(value) <= 200:
+                return value, _normalize(match.group(0))
+    return None, None
+
+
 def _record_matches_question(
     record: FourDimensionProfileRecord, current_question: str | None
 ) -> bool:
@@ -550,7 +566,7 @@ class RuleBasedAutomaticProfileExtractor:
                 "action": ProfileExtractionAction.CREATE,
             })
 
-        interest = _extract_value(
+        interest, interest_clause = _extract_value_and_clause(
             text,
             (
                 r"我对\s*([^。！？!?；;，,]+?)\s*(?:很)?感兴趣",
@@ -572,6 +588,8 @@ class RuleBasedAutomaticProfileExtractor:
             items.append({
                 "dimension": dimension,
                 "normalized_value": interest,
+                # 完整分句保留关系词：同一对象「喜欢」与「正在学习」是两条事实。
+                "fact_text": interest_clause,
                 "action": ProfileExtractionAction.CREATE,
             })
 
@@ -2619,23 +2637,18 @@ class AutomaticProfileService:
             action = item.action.value
             if (
                 action == ProfileExtractionAction.CREATE.value
-                and item.dimension
-                in {
-                    FourDimension.ACADEMIC_STATUS,
-                    FourDimension.STAGE_GOAL,
-                }
-                and self._is_explicit_self_statement(
-                    content, signal_classification
-                )
-            ):
-                # 学业阶段与阶段目标是当前稳定状态；后来的明确自述
-                # 更新现有记录，避免把冲突陈述并列注入模型。
-                action = ProfileExtractionAction.UPDATE.value
-            if (
-                action == ProfileExtractionAction.CREATE.value
                 and re.search(r"我(?:现在|目前)?更喜欢", content)
             ):
+                # 「更喜欢」是明确的偏好变更信号，不是同维度后值覆盖：
+                # 只在这条消息自身携带变更词时更新，其他维度冲突靠事实身份并存。
                 action = ProfileExtractionAction.UPDATE.value
+            fact_text = item.fact_text or item.normalized_value
+            identity = parse_fact_identity(fact_text, dimension=item.dimension)
+            identity_discriminator = (
+                None
+                if identity.relation is AtomicProfileFactRelation.STATEMENT
+                else f"{identity.relation.value}:{identity.object.casefold()}"
+            )
             submissions.append(
                 ProfileRecordSubmission(
                     dimension=item.dimension,
@@ -2652,6 +2665,8 @@ class AutomaticProfileService:
                         else "首次明确表达，等待再次确认"
                     ),
                     migration_version=audit_version,
+                    fact_text=item.fact_text,
+                    identity_discriminator=identity_discriminator,
                 )
             )
         # Issue 04：四维记录与原子镜像由提交 module 在同一事务里成对写入。

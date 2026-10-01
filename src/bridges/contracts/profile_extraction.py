@@ -131,6 +131,15 @@ class ProfileExtractionItem(BaseModel):
     action: ProfileExtractionAction = Field(
         description="create/update/observe/ignore。"
     )
+    fact_text: str | None = Field(
+        default=None,
+        max_length=500,
+        description=(
+            "完整事实正文（可选）。关系会从 normalized_value 中丢失时，本地规则"
+            "用原句片段补齐；模型候选按 17 提供完整事实。缺失时沿用以来源记录"
+            "正文为事实正文的旧行为，不伪造原话。"
+        ),
+    )
 
     @field_validator("normalized_value", "evidence_ref", mode="before")
     @classmethod

@@ -6,10 +6,14 @@
 
 不变量：
 
-- **去重**：``identity_key``（账户 + 规范化正文）决定条目身份，同一事实只
-  保留一条活动条目；同键再次出现只补充来源与把握度。
+- **事实身份**：主体/关系/对象/范围构成完整事实身份（``fact_key``），同一
+  事实只保留一条活动条目并补充证据；不同事实（喜欢与正在学习、年级与专业、
+  并行目标）并存。单值属性槽（年级/专业/身份）的明确新值替代旧活动条目，
+  被替代版本保留正文与替代链供对账。``identity_key``（账户 + 规范化正文）
+  仍是文本抑制键，兼容旧墓碑。
 - **用户权威**：用户编辑过的条目不再被自动抽取改写（正文不同即跳过），
-  删除后转为墓碑，旧消息重放与自动抽取都不会让它复活。
+  换值同时抑制旧正文与旧事实身份；删除后转为墓碑，旧消息重放与自动抽取
+  都不会让它复活。
 - **账户隔离**：持久化实现全部经 ``BridgesDatabase.scoped`` 或按账户过滤，
   跨账户读写在领域层即不可达。
 - **可对账、可恢复**：迁移按批次记账并给出确定性对账摘要，回滚只删除该
@@ -33,6 +37,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from bridges.contracts.atomic_profile import (
+    AtomicProfileFactIdentity,
+    AtomicProfileFactRelation,
+    AtomicProfileFactScope,
     AtomicProfileItem,
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
@@ -122,10 +129,204 @@ def normalize_text(text: str) -> str:
 
 
 def identity_key(account_id: str, text: str) -> str:
-    """账户 + 规范化正文构成的去重与抑制键。"""
+    """账户 + 规范化正文构成的文本去重与抑制键（旧墓碑兼容）。"""
 
     payload = f"{account_id}|{normalize_text(text).casefold()}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+#: 事实主体：当前账户用户。事实身份不描述其他人的事实。
+FACT_SUBJECT_USER = "user"
+#: 单值属性槽中年级的取值形状；对象归一化为年级 token 本身，让
+#: 「大二学生」与「大二」合并为同一事实。
+_GRADE_TOKEN_RE = re.compile(
+    r"(?:大[一二三四五六]|研[一二三]|高[一二三四]|初[一二三四]|博[一二三四]|本[一二三四])"
+)
+_MAJOR_HINT_RE = re.compile(r"(?:专业|主修|院系|学院|系)")
+_CURRENT_SCOPE_RE = re.compile(r"(?:这次|本轮|本周|今天|今晚)")
+_LEARNING_RE = re.compile(
+    r"(?:正在|在|想|要|准备|打算)?\s*学(?:习)?\s*(?P<obj>[^，。；;！!？?]+)"
+)
+_RESEARCH_RE = re.compile(r"(?:正在|在)?\s*研究\s*(?P<obj>[^，。；;！!？?]+)")
+_INTEREST_RE = re.compile(
+    r"(?:对(?P<a>[^，。；;！!？?]+?)\s*(?:很|比较|特别)?感兴趣"
+    r"|(?:很|比较|特别|现在|目前)?(?:更)?(?:喜欢|爱|偏好)\s*(?P<b>[^，。；;！!？?]+))"
+)
+_GOAL_RE = re.compile(
+    r"(?:我的|我这阶段的|我目前的)?(?:阶段)?"
+    r"(?:目标(?:是|为)?|计划(?:是|为)?|打算|规划|备考|准备)\s*"
+    r"(?P<obj>[^，。；;！!？?]+)"
+)
+#: 明确收回：``不考研了`` 中的对象 ``考研``。只用于「明确变更」路径。
+_NEGATED_OBJECT_RE = re.compile(
+    r"(?:不再|不打算|不想|不|放弃|取消)"
+    r"(?P<obj>[^，。；;！!？?\s]{2,20}?)(?:了|，|。|；|;|$)"
+)
+#: 明确转向后的新值：``转为准备就业`` 中的 ``准备就业``。
+_REPLACEMENT_TAIL_RE = re.compile(
+    r"(?:改(?:为|成|做)?|转(?:为|向)?|换(?:成|为)?|准备|打算)\s*"
+    r"(?P<obj>[^，。；;！!？?]+)$"
+)
+
+
+def parse_fact_identity(
+    text: str,
+    *,
+    dimension: FourDimension | None = None,
+    subject: str = FACT_SUBJECT_USER,
+) -> AtomicProfileFactIdentity:
+    """从完整事实正文解析主体/关系/对象/范围身份（确定性规则）。
+
+    ``dimension`` 只作解析提示：旧四维抽取丢失关系时（如 ``考研``、
+    ``软件工程专业``），维度帮助选择属性槽；身份本身不使用维度作冲突键，
+    因此「年纪」与「专业」并存、「考研」与「六级」并存。解析不确定时退回
+    ``statement`` 整句事实，宁可并存也不猜测合并。
+    """
+
+    normalized = normalize_text(text)
+    scope = (
+        AtomicProfileFactScope.CURRENT
+        if _CURRENT_SCOPE_RE.search(normalized)
+        else AtomicProfileFactScope.LONG_TERM
+    )
+    negated, replacement = parse_explicit_change(normalized)
+    if negated and replacement is None:
+        # 纯否认不构成新的正事实（"我不考研了"）：按整句陈述保存，让明确
+        # 收回走 forget/明确变更路径，绝不把被否认的值当成新的事实。
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.STATEMENT,
+            object=normalized,
+            scope=scope,
+        )
+    grade = _GRADE_TOKEN_RE.search(normalized)
+    if grade is not None:
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.GRADE,
+            object=grade.group(0),
+            scope=scope,
+        )
+    if _MAJOR_HINT_RE.search(normalized):
+        major = _MAJOR_HINT_RE.sub("", normalized)
+        major = re.sub(r"^(?:我(?:现在|目前)?(?:是|在读|就读|学的是|学的)?)", "", major)
+        major = normalize_text(major)
+        if major:
+            return AtomicProfileFactIdentity(
+                subject=subject,
+                relation=AtomicProfileFactRelation.MAJOR,
+                object=major,
+                scope=scope,
+            )
+    learning = _LEARNING_RE.search(normalized)
+    if learning is not None and normalize_text(learning.group("obj")):
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.LEARNING,
+            object=normalize_text(learning.group("obj")),
+            scope=scope,
+        )
+    research = _RESEARCH_RE.search(normalized)
+    if research is not None and normalize_text(research.group("obj")):
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.RESEARCH,
+            object=normalize_text(research.group("obj")),
+            scope=scope,
+        )
+    interest = _INTEREST_RE.search(normalized)
+    if interest is not None:
+        value = interest.group("a") or interest.group("b") or ""
+        if normalize_text(value):
+            return AtomicProfileFactIdentity(
+                subject=subject,
+                relation=AtomicProfileFactRelation.INTEREST,
+                object=normalize_text(value),
+                scope=scope,
+            )
+    goal = _GOAL_RE.search(normalized)
+    if goal is not None and normalize_text(goal.group("obj")):
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.GOAL,
+            object=normalize_text(goal.group("obj")),
+            scope=scope,
+        )
+    if dimension is FourDimension.ACADEMIC_STATUS:
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.IDENTITY,
+            object=normalized,
+            scope=scope,
+        )
+    if dimension is FourDimension.STAGE_GOAL:
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.GOAL,
+            object=normalized,
+            scope=scope,
+        )
+    if dimension in {FourDimension.KNOWLEDGE_INTEREST, FourDimension.HOBBY}:
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.INTEREST,
+            object=normalized,
+            scope=scope,
+        )
+    return AtomicProfileFactIdentity(
+        subject=subject,
+        relation=AtomicProfileFactRelation.STATEMENT,
+        object=normalized,
+        scope=scope,
+    )
+
+
+def fact_identity_key(account_id: str, identity: AtomicProfileFactIdentity) -> str:
+    """账户 + 主体/关系/对象/范围事实身份键。"""
+
+    payload = "|".join(
+        (
+            account_id,
+            identity.subject.casefold(),
+            identity.relation.value,
+            normalize_text(identity.object).casefold(),
+            identity.scope.value,
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+def fact_key_for_text(
+    account_id: str,
+    text: str,
+    *,
+    dimension: FourDimension | None = None,
+) -> str:
+    """按正文（+维度提示）解析事实身份并返回身份键。"""
+
+    return fact_identity_key(
+        account_id, parse_fact_identity(text, dimension=dimension)
+    )
+
+
+def parse_explicit_change(text: str) -> tuple[list[str], str | None]:
+    """解析明确变更语句：被收回的对象列表与转向后的新值。
+
+    ``我不考研了，转为准备就业`` → ``(["考研"], "准备就业")``；只有被收回
+    对象而没有新值时新值为空。该解析只服务「用户明确变更」路径，普通自动
+    抽取仍由证据与边界检查决定写不写。
+    """
+
+    negated = [
+        normalize_text(match.group("obj"))
+        for match in _NEGATED_OBJECT_RE.finditer(normalize_text(text))
+        if normalize_text(match.group("obj"))
+    ]
+    replacement = _REPLACEMENT_TAIL_RE.search(normalize_text(text))
+    new_value = (
+        normalize_text(replacement.group("obj")) if replacement is not None else None
+    )
+    return list(dict.fromkeys(negated)), new_value
 
 
 def parse_memory_directive(content: str) -> MemoryDirective | None:
@@ -238,12 +439,19 @@ def _item_from_record(
     migration_run_id: str | None = None,
 ) -> AtomicProfileItem:
     text = normalize_text(record.content)
+    identity = parse_fact_identity(text, dimension=record.dimension)
     source = evidence_message_id or record.evidence_message_id
     return AtomicProfileItem(
         profile_item_id=_new_item_id(),
         owner_account_id=account_id,
         text=text,
         identity_key=identity_key(account_id, text),
+        fact_subject=identity.subject,
+        fact_relation=identity.relation,
+        fact_object=identity.object,
+        fact_scope=identity.scope,
+        fact_key=fact_identity_key(account_id, identity),
+        evidence_quote=record.evidence_quote,
         source_record_id=record.record_id,
         source_message_ids=[source] if source else [],
         topic_hint=record.dimension.value,
@@ -255,6 +463,44 @@ def _item_from_record(
         updated_at=record.updated_at,
         user_edited_at=None,
         migration_run_id=migration_run_id,
+    )
+
+
+def _dimension_hint(topic_hint: str | None) -> FourDimension | None:
+    """把内部 topic_hint 还原为 FourDimension 解析提示；未知值返回空。"""
+
+    if not topic_hint:
+        return None
+    try:
+        return FourDimension(topic_hint)
+    except ValueError:
+        return None
+
+
+def _apply_fact_identity(
+    item: AtomicProfileItem, identity: AtomicProfileFactIdentity, account_id: str
+) -> None:
+    """把事实身份写入条目（原地设置四个身份字段与身份键）。"""
+
+    item.fact_subject = identity.subject
+    item.fact_relation = identity.relation
+    item.fact_object = identity.object
+    item.fact_scope = identity.scope
+    item.fact_key = fact_identity_key(account_id, identity)
+
+
+def _identity_for_item(item: AtomicProfileItem) -> AtomicProfileFactIdentity:
+    """读取条目已存的完整事实身份；旧条目缺身份时按正文重新解析。"""
+
+    if item.fact_key and item.fact_object:
+        return AtomicProfileFactIdentity(
+            subject=item.fact_subject,
+            relation=item.fact_relation,
+            object=item.fact_object,
+            scope=item.fact_scope,
+        )
+    return parse_fact_identity(
+        item.text, dimension=_dimension_hint(item.topic_hint)
     )
 
 
@@ -277,7 +523,13 @@ class AtomicProfileRepository(ABC):
     def find_item_by_identity(
         self, owner_id: str, key: str
     ) -> AtomicProfileItem | None:
-        """按去重键查找条目（含墓碑，用于抑制复活）。"""
+        """按文本去重键查找条目（含墓碑，用于抑制复活）。"""
+
+    @abstractmethod
+    def find_item_by_fact_key(
+        self, owner_id: str, key: str
+    ) -> AtomicProfileItem | None:
+        """按事实身份键查找条目（含被替代与墓碑，用于合并与抑制）。"""
 
     @abstractmethod
     def find_item_by_source(
@@ -366,6 +618,20 @@ class InMemoryAtomicProfileRepository(AtomicProfileRepository):
                 item
                 for item in self._items.values()
                 if item.owner_account_id == owner_id and item.identity_key == key
+            ),
+            None,
+        )
+
+    def find_item_by_fact_key(
+        self, owner_id: str, key: str
+    ) -> AtomicProfileItem | None:
+        return next(
+            (
+                item
+                for item in self._items.values()
+                if item.owner_account_id == owner_id
+                and item.fact_key
+                and item.fact_key == key
             ),
             None,
         )
@@ -502,6 +768,28 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             owner_account_id=str(row["account_id"]),  # type: ignore[index]
             text=str(row["text"]),  # type: ignore[index]
             identity_key=str(row["identity_key"]),  # type: ignore[index]
+            fact_subject=str(row["fact_subject"]),  # type: ignore[index]
+            fact_relation=AtomicProfileFactRelation(
+                str(row["fact_relation"])  # type: ignore[index]
+            ),
+            fact_object=str(row["fact_object"]),  # type: ignore[index]
+            fact_scope=AtomicProfileFactScope(str(row["fact_scope"])),  # type: ignore[index]
+            fact_key=str(row["fact_key"]),  # type: ignore[index]
+            evidence_quote=(
+                str(row["evidence_quote"])  # type: ignore[index]
+                if row["evidence_quote"] is not None  # type: ignore[index]
+                else None
+            ),
+            supersedes_id=(
+                str(row["supersedes_id"])  # type: ignore[index]
+                if row["supersedes_id"] is not None  # type: ignore[index]
+                else None
+            ),
+            superseded_by_id=(
+                str(row["superseded_by_id"])  # type: ignore[index]
+                if row["superseded_by_id"] is not None  # type: ignore[index]
+                else None
+            ),
             source_record_id=(
                 str(row["source_record_id"])  # type: ignore[index]
                 if row["source_record_id"] is not None  # type: ignore[index]
@@ -541,12 +829,20 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
     def save_item(self, item: AtomicProfileItem) -> AtomicProfileItem:
         self._db.scoped(item.owner_account_id).execute(
             "INSERT INTO profile_items ("
-            "profile_item_id, account_id, text, identity_key, source_record_id, "
+            "profile_item_id, account_id, text, identity_key, fact_subject, "
+            "fact_relation, fact_object, fact_scope, fact_key, evidence_quote, "
+            "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, topic_hint, status, write_origin, confidence, "
             "version, created_at, updated_at, user_edited_at, migration_run_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
-            "identity_key = excluded.identity_key, source_record_id = excluded.source_record_id, "
+            "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
+            "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
+            "fact_scope = excluded.fact_scope, fact_key = excluded.fact_key, "
+            "evidence_quote = excluded.evidence_quote, "
+            "supersedes_id = excluded.supersedes_id, "
+            "superseded_by_id = excluded.superseded_by_id, "
+            "source_record_id = excluded.source_record_id, "
             "source_message_ids_json = excluded.source_message_ids_json, "
             "topic_hint = excluded.topic_hint, status = excluded.status, "
             "write_origin = excluded.write_origin, confidence = excluded.confidence, "
@@ -559,6 +855,14 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 item.owner_account_id,
                 item.text,
                 item.identity_key,
+                item.fact_subject,
+                item.fact_relation.value,
+                item.fact_object,
+                item.fact_scope.value,
+                item.fact_key,
+                item.evidence_quote,
+                item.supersedes_id,
+                item.superseded_by_id,
                 item.source_record_id,
                 json.dumps(item.source_message_ids, ensure_ascii=False),
                 item.topic_hint,
@@ -586,6 +890,14 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
     def find_item_by_identity(self, owner_id: str, key: str) -> AtomicProfileItem | None:
         row = self._db.scoped(owner_id).execute(
             "SELECT * FROM profile_items WHERE account_id = ? AND identity_key = ?",
+            (owner_id, key),
+        ).fetchone()
+        return self._item_from_row(row) if row is not None else None
+
+    def find_item_by_fact_key(self, owner_id: str, key: str) -> AtomicProfileItem | None:
+        row = self._db.scoped(owner_id).execute(
+            "SELECT * FROM profile_items WHERE account_id = ? AND fact_key = ? "
+            "AND fact_key <> '' ORDER BY updated_at DESC LIMIT 1",
             (owner_id, key),
         ).fetchone()
         return self._item_from_row(row) if row is not None else None
@@ -657,6 +969,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             reconciliation_digest=str(row["reconciliation_digest"]),  # type: ignore[index]
             reconciliation=self._reconciliation_for_run(owner_id, run_id),
             retryable=bool(int(row["retryable"])),  # type: ignore[index]
+            identity_backfilled=int(row["identity_backfilled"]),  # type: ignore[index]
             created_at=SqliteAtomicProfileRepository._dt(
                 str(row["created_at"])  # type: ignore[index]
             ),
@@ -707,8 +1020,9 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "INSERT INTO profile_item_migrations ("
             "run_id, account_id, migration_version, status, migrated, duplicated, "
             "tombstoned, skipped, failed, created_item_ids_json, source_record_ids_json, "
-            "reconciliation_digest, retryable, created_at, undone_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "reconciliation_digest, retryable, identity_backfilled, created_at, "
+            "undone_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(run_id) DO UPDATE SET status = excluded.status, "
             "migrated = excluded.migrated, duplicated = excluded.duplicated, "
             "tombstoned = excluded.tombstoned, skipped = excluded.skipped, "
@@ -716,7 +1030,9 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "created_item_ids_json = excluded.created_item_ids_json, "
             "source_record_ids_json = excluded.source_record_ids_json, "
             "reconciliation_digest = excluded.reconciliation_digest, "
-            "retryable = excluded.retryable, undone_at = excluded.undone_at "
+            "retryable = excluded.retryable, "
+            "identity_backfilled = excluded.identity_backfilled, "
+            "undone_at = excluded.undone_at "
             "WHERE account_id = excluded.account_id",
             (
                 report.run_id,
@@ -732,6 +1048,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 json.dumps(report.source_record_ids, ensure_ascii=False),
                 report.reconciliation_digest,
                 1 if report.retryable else 0,
+                report.identity_backfilled,
                 self._iso(report.created_at),
                 self._iso(report.undone_at) if report.undone_at else None,
             ),
@@ -842,7 +1159,9 @@ class AtomicProfileService:
             updated_at=item.updated_at,
             user_edited_at=item.user_edited_at,
             source_message_ids=list(item.source_message_ids),
+            evidence_quote=item.evidence_quote,
             write_origin=item.write_origin,
+            supersedes_id=item.supersedes_id,
         )
 
     # -- 用户操作 ---------------------------------------------------------
@@ -866,24 +1185,48 @@ class AtomicProfileService:
                 raise AtomicProfileError("版本冲突，请刷新后重试。")
             key = identity_key(account_id, text)
             previous_key = item.identity_key
+            previous_text = item.text
+            previous_fact_key = item.fact_key
+            identity = parse_fact_identity(
+                text, dimension=_dimension_hint(item.topic_hint)
+            )
+            new_fact_key = fact_identity_key(account_id, identity)
             if key != previous_key:
                 duplicate = self._repository.find_item_by_identity(account_id, key)
                 if duplicate is not None and duplicate.profile_item_id != item_id:
                     raise AtomicProfileError(
                         "已存在内容相同的信息，请先删除其中一条。"
                     )
+            if new_fact_key != previous_fact_key:
+                fact_duplicate = self._repository.find_item_by_fact_key(
+                    account_id, new_fact_key
+                )
+                if (
+                    fact_duplicate is not None
+                    and fact_duplicate.profile_item_id != item_id
+                    and fact_duplicate.status == AtomicProfileItemStatus.ACTIVE
+                ):
+                    raise AtomicProfileError(
+                        "已存在内容相同的信息，请先删除其中一条。"
+                    )
             item.text = text
             item.identity_key = key
+            _apply_fact_identity(item, identity, account_id)
+            if key != previous_key:
+                # 用户页面编辑是独立主动来源，不是聊天原话证据：换值后不保留
+                # 旧值的原话引用，避免把用户新写的正文伪称为聊天里说过。
+                item.evidence_quote = None
             item.version += 1
             item.updated_at = _now()
             item.user_edited_at = item.updated_at
             item.write_origin = AtomicProfileWriteOrigin.USER
             saved = self._repository.save_item(item)
-            if key != previous_key:
+            if key != previous_key or new_fact_key != previous_fact_key:
                 # 旧正文转为抑制键：用户改掉的值不会因为旧消息或旧记录再次
-                # 被抽取而作为新条目回来（用户编辑优先于自动提取）。必须在
+                # 被抽取而作为新条目回来（用户编辑优先于自动提取）。旧事实
+                # 身份一并以墓碑保留，普通近义提及也不会复活旧值。必须在
                 # 条目换键之后再写，否则抑制键会被本条自己的旧键占住。
-                self._write_suppression(account_id, previous_key)
+                self._write_suppression(account_id, previous_text)
             return saved
 
     def delete_item(self, account_id: str, item_id: str, version: int) -> None:
@@ -922,10 +1265,16 @@ class AtomicProfileService:
         normalized = normalize_text(text)
         if not normalized or len(normalized) > _MAX_ITEM_TEXT_LENGTH:
             raise AtomicProfileError("画像内容不合法。")
+        record = self._record_for_user_text(account_id, normalized)
+        dimension = record.dimension if record is not None else None
+        identity = parse_fact_identity(normalized, dimension=dimension)
         key = identity_key(account_id, normalized)
+        fact_key = fact_identity_key(account_id, identity)
         now = _now()
         with self._repository.transaction():
             existing = self._repository.find_item_by_identity(account_id, key)
+            if existing is None:
+                existing = self._repository.find_item_by_fact_key(account_id, fact_key)
             if existing is not None:
                 if (
                     existing.status == AtomicProfileItemStatus.ACTIVE
@@ -936,10 +1285,15 @@ class AtomicProfileService:
                         or source_message_id in existing.source_message_ids
                     )
                 ):
+                    self._reconcile_explicit_change(account_id, normalized, existing)
                     return existing
-                record = self._record_for_user_text(account_id, normalized)
+                if existing.text != normalized:
+                    # 用户写入新正文：旧原话不再对应当前事实，不伪称来源。
+                    existing.evidence_quote = None
                 existing.text = normalized
                 existing.status = AtomicProfileItemStatus.ACTIVE
+                existing.superseded_by_id = None
+                _apply_fact_identity(existing, identity, account_id)
                 existing.write_origin = AtomicProfileWriteOrigin.USER
                 existing.confidence = FourDimensionConfidence.HIGH
                 existing.user_edited_at = now
@@ -953,13 +1307,19 @@ class AtomicProfileService:
                 if existing.source_record_id is None and record is not None:
                     existing.source_record_id = record.record_id
                     existing.topic_hint = record.dimension.value
-                return self._repository.save_item(existing)
-            record = self._record_for_user_text(account_id, normalized)
+                saved = self._repository.save_item(existing)
+                self._reconcile_explicit_change(account_id, normalized, saved)
+                return saved
             item = AtomicProfileItem(
                 profile_item_id=_new_item_id(),
                 owner_account_id=account_id,
                 text=normalized,
                 identity_key=key,
+                fact_subject=identity.subject,
+                fact_relation=identity.relation,
+                fact_object=identity.object,
+                fact_scope=identity.scope,
+                fact_key=fact_key,
                 source_record_id=record.record_id if record is not None else None,
                 source_message_ids=[source_message_id] if source_message_id else [],
                 topic_hint=record.dimension.value if record is not None else None,
@@ -972,7 +1332,9 @@ class AtomicProfileService:
                 user_edited_at=now,
                 migration_run_id=None,
             )
-            return self._repository.save_item(item)
+            saved = self._repository.save_item(item)
+            self._reconcile_explicit_change(account_id, normalized, saved)
+            return saved
 
     def forget(self, account_id: str, target: str) -> AtomicProfileMemoryResult:
         """用户明确要求忘掉：删除命中的活动条目；没找到就如实返回未完成。"""
@@ -1068,71 +1430,121 @@ class AtomicProfileService:
         record: FourDimensionProfileRecord,
         *,
         evidence_message_id: str | None = None,
+        fact_text: str | None = None,
     ) -> AtomicProfileItem | None:
-        """把一条四维记录镜像成原子条目。
+        """把一条四维记录镜像成原子条目（事实身份写入）。
 
-        去重键是正文本身，因此同一事实的重复抽取只更新一条条目。返回 ``None``
-        表示本条不写入：正文为空、用户已删除同键条目（墓碑抑制复活），或该
-        条目已被用户编辑成别的内容（用户版本优先）。
+        去重先按事实身份（主体/关系/对象/范围），再兼容旧的正文文本键：
+        同一事实补充证据，不同事实并存；同一底层来源记录换值时旧版本被
+        替代并保留对账。返回 ``None`` 表示本条不写入：正文为空、用户已
+        删除（墓碑抑制复活）、或该条目已被用户编辑成别的内容（用户优先）。
+
+        ``fact_text`` 是抽取侧提供的完整事实正文（关系会从 ``record.content``
+        中丢失时使用，如「喜欢 Python」与「正在学习 Python」）；缺失时沿用
+        来源记录正文，绝不伪造原话。
         """
 
-        text = normalize_text(record.content)
+        text = normalize_text(fact_text or record.content)
         if not text or len(text) > _MAX_ITEM_TEXT_LENGTH:
             return None
+        identity = parse_fact_identity(text, dimension=record.dimension)
         key = identity_key(account_id, text)
+        fact_key = fact_identity_key(account_id, identity)
+        evidence_quote = normalize_text(record.evidence_quote or "") or None
         now = _now()
         with self._repository.transaction():
+            predecessor: AtomicProfileItem | None = None
             by_source = self._repository.find_item_by_source(account_id, record.record_id)
-            recovered: AtomicProfileItem | None = None
             if by_source is not None:
-                if by_source.status == AtomicProfileItemStatus.WITHDRAWN:
+                if by_source.status != AtomicProfileItemStatus.ACTIVE:
                     return None
                 if by_source.user_edited_at is not None and by_source.text != text:
+                    # 用户编辑优先：底层来源的自动变化不改写用户版本。
                     return by_source
-                if by_source.identity_key == key:
+                if by_source.fact_key == fact_key or by_source.identity_key == key:
                     return self._repository.save_item(
                         self._merge_item(
                             by_source,
                             record=record,
+                            text=text,
+                            identity=identity,
                             evidence_message_id=evidence_message_id,
+                            evidence_quote=evidence_quote,
                             now=now,
                         )
                     )
-                # 同一底层记录的值被更新：旧正文退休，再按新正文去重写入。
-                self._repository.delete_item(account_id, by_source.profile_item_id)
-                recovered = by_source
-            existing = self._repository.find_item_by_identity(account_id, key)
+                # 同一底层记录的值被更新：旧版本退休（保留正文供对账），
+                # 新值按事实身份去重后再写。
+                predecessor = by_source
+            existing = self._repository.find_item_by_fact_key(account_id, fact_key)
             if existing is not None:
-                if existing.status == AtomicProfileItemStatus.WITHDRAWN:
+                if existing.status != AtomicProfileItemStatus.ACTIVE:
                     return None
-                return self._repository.save_item(
-                    self._merge_item(
-                        existing,
-                        record=record,
-                        evidence_message_id=evidence_message_id,
-                        now=now,
-                    )
-                )
-            if recovered is not None:
-                recovered.text = text
-                recovered.identity_key = key
-                recovered.version += 1
-                recovered.updated_at = now
-                if evidence_message_id is not None:
-                    recovered.source_message_ids = list(
-                        dict.fromkeys(
-                            [*recovered.source_message_ids, evidence_message_id]
-                        )
-                    )
-                return self._repository.save_item(recovered)
-            return self._repository.save_item(
-                _item_from_record(
-                    account_id,
-                    record,
-                    write_origin=AtomicProfileWriteOrigin.AUTOMATIC,
+                if predecessor is not None:
+                    self._supersede_item(predecessor, existing.profile_item_id)
+                merged = self._merge_item(
+                    existing,
+                    record=record,
+                    text=text,
+                    identity=identity,
                     evidence_message_id=evidence_message_id,
+                    evidence_quote=evidence_quote,
+                    now=now,
                 )
+                if predecessor is not None and merged.supersedes_id is None:
+                    merged.supersedes_id = predecessor.profile_item_id
+                return self._repository.save_item(merged)
+            text_hit = self._repository.find_item_by_identity(account_id, key)
+            if text_hit is not None and text_hit.status != AtomicProfileItemStatus.ACTIVE:
+                # 同文本的墓碑或被替代版本：旧消息重放不得复活。
+                if predecessor is not None:
+                    self._supersede_item(predecessor, None)
+                return None
+            new_id = _new_item_id()
+            if predecessor is not None:
+                self._supersede_item(predecessor, new_id)
+            item = AtomicProfileItem(
+                profile_item_id=new_id,
+                owner_account_id=account_id,
+                text=text,
+                identity_key=key,
+                fact_subject=identity.subject,
+                fact_relation=identity.relation,
+                fact_object=identity.object,
+                fact_scope=identity.scope,
+                fact_key=fact_key,
+                evidence_quote=(
+                    evidence_quote
+                    or (predecessor.evidence_quote if predecessor is not None else None)
+                ),
+                supersedes_id=(
+                    predecessor.profile_item_id if predecessor is not None else None
+                ),
+                source_record_id=record.record_id,
+                source_message_ids=[
+                    *(
+                        predecessor.source_message_ids
+                        if predecessor is not None
+                        else []
+                    ),
+                    *([evidence_message_id] if evidence_message_id else []),
+                ],
+                topic_hint=record.dimension.value,
+                status=AtomicProfileItemStatus.ACTIVE,
+                write_origin=AtomicProfileWriteOrigin.AUTOMATIC,
+                confidence=record.confidence,
+                version=1,
+                created_at=(
+                    predecessor.created_at if predecessor is not None else now
+                ),
+                updated_at=now,
+                user_edited_at=None,
+                migration_run_id=None,
             )
+            item.source_message_ids = list(dict.fromkeys(item.source_message_ids))
+            saved = self._repository.save_item(item)
+            self._reconcile_explicit_change(account_id, text, saved)
+            return saved
 
     # -- 切片 -------------------------------------------------------------
 
@@ -1267,6 +1679,10 @@ class AtomicProfileService:
                     ):
                         created.append(entry.profile_item_id)
                 failing_record_id = None
+                # 新形态并存、逐步迁移、最后收敛：旧版本已写入的原子条目在
+                # 本批次补齐事实身份（不伪造原话，墓碑无正文则保持文本键），
+                # 重复执行幂等；补齐失败与逐条迁移同受外层事务保护。
+                backfilled = self._backfill_item_identities(account_id)
                 report = AtomicProfileMigrationReport(
                     run_id=run_id,
                     owner_account_id=account_id,
@@ -1282,6 +1698,7 @@ class AtomicProfileService:
                     reconciliation_digest=digest,
                     reconciliation=reconciliation,
                     retryable=False,
+                    identity_backfilled=backfilled,
                     created_at=now,
                 )
                 return self._repository.save_migration_report(report)
@@ -1366,9 +1783,17 @@ class AtomicProfileService:
                 reason_code=MIGRATION_REASON_SOURCE_ALREADY_MIGRATED,
                 profile_item_id=by_source.profile_item_id,
             )
+        text = normalize_text(record.content)
+        identity = parse_fact_identity(text, dimension=record.dimension)
         existing = self._repository.find_item_by_identity(
-            account_id, identity_key(account_id, record.content)
+            account_id, identity_key(account_id, text)
         )
+        if existing is None:
+            # 同一事实可能已由另一条旧记录迁入（正文不同但身份相同）：
+            # 只补充来源，不新建副本，也不改写用户权威条目。
+            existing = self._repository.find_item_by_fact_key(
+                account_id, fact_identity_key(account_id, identity)
+            )
         if existing is not None:
             if existing.status == AtomicProfileItemStatus.WITHDRAWN:
                 return AtomicProfileReconciliationEntry(
@@ -1385,7 +1810,7 @@ class AtomicProfileService:
                     reason_code=MIGRATION_REASON_USER_ITEM_KEPT,
                     profile_item_id=existing.profile_item_id,
                 )
-            existing.source_record_id = record.record_id
+            existing.source_record_id = existing.source_record_id or record.record_id
             existing.topic_hint = existing.topic_hint or record.dimension.value
             self._repository.save_item(existing)
             return AtomicProfileReconciliationEntry(
@@ -1407,6 +1832,29 @@ class AtomicProfileService:
             reason_code=MIGRATION_REASON_MIGRATED,
             profile_item_id=item.profile_item_id,
         )
+
+    def _backfill_item_identities(self, account_id: str) -> int:
+        """为既有原子条目补齐事实身份；幂等，不伪造正文或原话。
+
+        旧版本只按正文去重，没有主体/关系/对象/范围。本方法按已保存正文
+        与内部 ``topic_hint`` 解析身份，让旧条目立即获得同事实合并与
+        单值槽替代能力；墓碑没有正文可解析，保持文本键与删除抑制不变。
+        补齐不改变用户的乐观锁版本、正文、来源与编辑权威。
+        """
+
+        count = 0
+        for item in self._repository.list_items(account_id, include_withdrawn=True):
+            if item.fact_key and item.fact_object:
+                continue
+            if not normalize_text(item.text):
+                continue
+            identity = parse_fact_identity(
+                item.text, dimension=_dimension_hint(item.topic_hint)
+            )
+            _apply_fact_identity(item, identity, account_id)
+            self._repository.save_item(item)
+            count += 1
+        return count
 
     def rollback_migration(
         self, account_id: str, run_id: str
@@ -1452,12 +1900,17 @@ class AtomicProfileService:
             )
         )
 
-    def _write_suppression(self, account_id: str, identity_key_value: str) -> None:
-        """为用户改掉或删掉的正文留下抑制键（墓碑），只保留键、不留正文。"""
+    def _write_suppression(self, account_id: str, text: str) -> None:
+        """为用户改掉或被替代的旧值留下抑制键（墓碑），只保留键、不留正文。
 
-        duplicate = self._repository.find_item_by_identity(
-            account_id, identity_key_value
-        )
+        同时保留旧正文的文本键与事实身份键：普通同义提及或旧记录重放都
+        不能把用户明确改掉/替代的值作为新条目写回来。
+        """
+
+        text_key = identity_key(account_id, text)
+        identity = parse_fact_identity(text)
+        fact_key = fact_identity_key(account_id, identity)
+        duplicate = self._repository.find_item_by_identity(account_id, text_key)
         if duplicate is not None:
             return
         now = _now()
@@ -1466,7 +1919,12 @@ class AtomicProfileService:
                 profile_item_id=_new_item_id(),
                 owner_account_id=account_id,
                 text="",
-                identity_key=identity_key_value,
+                identity_key=text_key,
+                fact_subject=identity.subject,
+                fact_relation=identity.relation,
+                fact_object=identity.object,
+                fact_scope=identity.scope,
+                fact_key=fact_key,
                 source_record_id=None,
                 source_message_ids=[],
                 topic_hint=None,
@@ -1481,25 +1939,108 @@ class AtomicProfileService:
             )
         )
 
+    def _supersede_item(
+        self, item: AtomicProfileItem, superseded_by_id: str | None
+    ) -> None:
+        """把活动条目退休为被替代版本；正文与来源保留供对账。"""
+
+        now = _now()
+        self._repository.save_item(
+            item.model_copy(
+                update={
+                    "status": AtomicProfileItemStatus.SUPERSEDED,
+                    "superseded_by_id": superseded_by_id,
+                    "version": item.version + 1,
+                    "updated_at": now,
+                }
+            )
+        )
+
+    def _reconcile_explicit_change(
+        self, account_id: str, text: str, item: AtomicProfileItem
+    ) -> list[str]:
+        """明确变更的对账：单值属性槽换值与「明确收回 + 转向」只替代对应事实。
+
+        返回被替代的旧条目标识。普通追加（不同对象、不同目标）不经过这里，
+        因此「新增六级不覆盖考研」。被替代版本保留在仓库中，供对账与审计。
+        """
+
+        identity = _identity_for_item(item)
+        superseded: list[str] = []
+        if identity.relation.is_single_valued:
+            for old in self._active_slot_conflicts(account_id, item, identity):
+                self._supersede_item(old, item.profile_item_id)
+                superseded.append(old.profile_item_id)
+        negated, _replacement = parse_explicit_change(text)
+        if negated:
+            # 明确收回（可带转向）：按被收回的对象替代对应事实，其他目标或
+            # 属性不受影响。纯否定（无转向）在身份解析里退化为整句陈述，
+            # 但收回本身仍是明确变更，旧事实必须退休。
+            for old in self._repository.list_items(account_id):
+                if old.profile_item_id == item.profile_item_id:
+                    continue
+                if any(
+                    value
+                    and old.fact_object
+                    and (
+                        value.casefold() in old.fact_object.casefold()
+                        or old.fact_object.casefold() in value.casefold()
+                    )
+                    for value in negated
+                ):
+                    self._supersede_item(old, item.profile_item_id)
+                    superseded.append(old.profile_item_id)
+        if superseded and item.supersedes_id is None:
+            item.supersedes_id = superseded[0]
+            self._repository.save_item(item)
+        return superseded
+
+    def _active_slot_conflicts(
+        self,
+        account_id: str,
+        item: AtomicProfileItem,
+        identity: AtomicProfileFactIdentity,
+    ) -> list[AtomicProfileItem]:
+        """同主体、同关系、同范围的单值槽活动条目（对象不同即冲突）。"""
+
+        return [
+            old
+            for old in self._repository.list_items(account_id)
+            if old.profile_item_id != item.profile_item_id
+            and old.fact_subject == identity.subject
+            and old.fact_relation == identity.relation
+            and old.fact_scope == identity.scope
+            and old.fact_object != identity.object
+        ]
+
     def _merge_item(
         self,
         item: AtomicProfileItem,
         *,
         record: FourDimensionProfileRecord,
+        text: str | None = None,
+        identity: AtomicProfileFactIdentity | None = None,
         evidence_message_id: str | None,
+        evidence_quote: str | None = None,
         now: datetime,
     ) -> AtomicProfileItem:
-        """同键再次出现：补充来源与把握度，不产生副本。"""
+        """同一事实再次出现：补充来源、证据与把握度，不产生副本。"""
 
-        text = normalize_text(record.content)
+        resolved_text = normalize_text(text or record.content)
+        resolved_identity = identity or parse_fact_identity(
+            resolved_text, dimension=record.dimension
+        )
         if evidence_message_id is not None:
             item.source_message_ids = list(
                 dict.fromkeys([*item.source_message_ids, evidence_message_id])
             )
         item.source_record_id = item.source_record_id or record.record_id
         item.topic_hint = item.topic_hint or record.dimension.value
-        item.text = text
-        item.identity_key = identity_key(item.owner_account_id, text)
+        item.text = resolved_text
+        item.identity_key = identity_key(item.owner_account_id, resolved_text)
+        _apply_fact_identity(item, resolved_identity, item.owner_account_id)
+        if evidence_quote:
+            item.evidence_quote = evidence_quote
         item.version += 1
         item.updated_at = now
         if is_recallable_confidence(record.confidence) and confidence_rank(
@@ -1537,7 +2078,9 @@ class AtomicProfileService:
         「这条已撤回的旧记录对应哪个抑制键」。
         """
 
-        key = identity_key(account_id, record.content)
+        text = normalize_text(record.content)
+        key = identity_key(account_id, text)
+        identity = parse_fact_identity(text, dimension=record.dimension)
         existing = self._repository.find_item_by_identity(account_id, key)
         if existing is not None:
             if existing.status == AtomicProfileItemStatus.ACTIVE:
@@ -1548,6 +2091,11 @@ class AtomicProfileService:
             owner_account_id=account_id,
             text="",
             identity_key=key,
+            fact_subject=identity.subject,
+            fact_relation=identity.relation,
+            fact_object=identity.object,
+            fact_scope=identity.scope,
+            fact_key=fact_identity_key(account_id, identity),
             source_record_id=record.record_id,
             source_message_ids=[],
             topic_hint=record.dimension.value,
@@ -1581,7 +2129,11 @@ __all__ = [
     "InMemoryAtomicProfileRepository",
     "MemoryDirective",
     "SqliteAtomicProfileRepository",
+    "fact_identity_key",
+    "fact_key_for_text",
     "identity_key",
     "normalize_text",
+    "parse_explicit_change",
+    "parse_fact_identity",
     "parse_memory_directive",
 ]

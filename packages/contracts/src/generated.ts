@@ -7404,8 +7404,18 @@ export interface components {
              * @description 证据来源消息标识。
              */
             source_message_ids?: string[];
+            /**
+             * Evidence Quote
+             * @description 精确来源原话，可为空（旧记录未保存原话）。
+             */
+            evidence_quote?: string | null;
             /** @description 最近一次写入来源，用于区分「你修改过」和自动整理。 */
             write_origin: components["schemas"]["AtomicProfileWriteOrigin"];
+            /**
+             * Supersedes Id
+             * @description 本条替代的旧条目标识；可为空。
+             */
+            supersedes_id?: string | null;
         };
         /**
          * AtomicProfileMigrationReport
@@ -7480,6 +7490,12 @@ export interface components {
              */
             retryable: boolean;
             /**
+             * Identity Backfilled
+             * @description 本批次为既有条目补齐事实身份的条数。
+             * @default 0
+             */
+            identity_backfilled: number;
+            /**
              * Created At
              * Format: date-time
              * @description 报告创建时间。
@@ -7490,6 +7506,11 @@ export interface components {
              * @description 回滚时间；非空表示批次已撤销。
              */
             undone_at?: string | null;
+            /**
+             * Converged
+             * @description 本账户是否已收敛到新事实形态：成功批次且没有失败来源。
+             */
+            readonly converged: boolean;
         };
         /**
          * AtomicProfileMigrationStatus

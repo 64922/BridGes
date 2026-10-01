@@ -134,7 +134,9 @@ class _ChangingGoalExtractor:
                         "normalized_value": value,
                         "evidence_ref": message_id,
                         "reliability": 0.95,
-                        "action": "create",
+                        # 明确的目标变更由抽取侧表达 update；写入层不再按
+                        # 维度强制把后值覆盖到前值上。
+                        "action": "update" if value == "新目标" else "create",
                     }
                 ]
             }
