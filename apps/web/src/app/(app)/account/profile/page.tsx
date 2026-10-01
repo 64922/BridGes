@@ -1,4 +1,5 @@
 import { AtomicProfileCenter } from "@/components/account/profile/AtomicProfileCenter";
+import { ProfileControlsCard } from "@/components/account/profile/ProfileControlsCard";
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
@@ -11,10 +12,14 @@ export const metadata = {
  * 页面只读写原子条目：逐条修改与删除、行内保存／取消、删除先确认，空态
  * 说明提取边界。旧四维记录与旧治理面仅保留为后端能力（转成原子列表后由
  * 后端迁移台账负责对账），页面不再按类别分组展示。
+ *
+ * 改进工单 07：页面顶部提供记录与使用两个独立控制，文案分别解释各自
+ * 含义——停止记录不妨碍主动管理，关闭使用不删除信息。
  */
 export default function ProfileCenterPage() {
   return (
     <MainContent>
+      <ProfileControlsCard />
       <AtomicProfileCenter />
     </MainContent>
   );

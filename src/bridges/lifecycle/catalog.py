@@ -85,6 +85,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_privacy_disclosures",
     "profile_extraction_tombstones",
     "profile_extraction_privacy_blocks",
+    # 改进工单 07：长期画像使用开关（账户级控制状态），随账户删除并导出。
+    "profile_account_controls",
     "profile_items",
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。
@@ -199,6 +201,8 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
             "profile_privacy_disclosures",
             "profile_extraction_tombstones",
             "profile_extraction_privacy_blocks",
+            # 改进工单 07：账户级控制状态（长期画像使用开关）随画像导出。
+            "profile_account_controls",
             "profile_items",
             "profile_item_migrations",
             "profile_item_migration_records",

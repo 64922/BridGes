@@ -2930,6 +2930,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/controls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile Controls
+         * @description 返回当前账户的自动记录与长期画像使用开关状态。
+         */
+        get: operations["get_profile_controls_profiles_controls_get"];
+        /**
+         * Update Profile Controls
+         * @description 更新当前账户的控制开关；同值重复写入幂等，至少指定一项。
+         */
+        put: operations["update_profile_controls_profiles_controls_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/four-dimensions/{record_id}": {
         parameters: {
             query?: never;
@@ -6289,6 +6313,30 @@ export interface paths {
         get: operations["test_recovery_token__test_recovery_token_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_test/chat-stream-script": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Configure Chat Stream Script
+         * @description Test-only endpoint to script deterministic chat streaming.
+         *
+         *     Issue 06：E2E 用它注入分块正文与块间延迟，经真实 API、执行器和
+         *     SSE 链路驱动浏览器；未命中脚本的回合仍走确定性替身。仅在显式
+         *     test 环境注册（与其他 ``/_test/`` 端点同一门控）。
+         */
+        post: operations["test_configure_chat_stream_script__test_chat_stream_script_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -19872,6 +19920,60 @@ export interface components {
              * @description For action relevance: why this matters to the audience.
              */
             action_relevance?: string | null;
+        };
+        /**
+         * ProfileAccountControlsProjection
+         * @description 账户级画像记录/使用控制状态。
+         *
+         *     改进工单 07：自动记录与长期画像使用分开控制——关闭记录只阻止自动
+         *     新增/更新（主动记住、修改、忘掉、删除始终可用）；关闭使用不删除信息，
+         *     只停止回答读取长期画像正文。停止记录的持久状态是
+         *     ``profile_extraction_privacy_blocks`` 的账户级行，这里按「是否开启」
+         *     组合投影。
+         */
+        ProfileAccountControlsProjection: {
+            /**
+             * Controls Version
+             * @description 控制合同版本；客户端据此识别字段语义。
+             * @default profile-controls-v1
+             */
+            controls_version: string;
+            /**
+             * Recording Enabled
+             * @description 自动记录开关：False 表示已停止自动新增/更新。
+             */
+            recording_enabled: boolean;
+            /**
+             * Usage Enabled
+             * @description 长期画像使用开关：False 表示回答不再读取长期画像正文。
+             */
+            usage_enabled: boolean;
+            /**
+             * Usage Control Version
+             * @description 使用开关变更序号；0 表示从未变更，同值重复写入不递增。
+             */
+            usage_control_version: number;
+            /**
+             * Usage Updated At
+             * @description 使用开关最近一次真实变化时间；从未变更为空。
+             */
+            usage_updated_at?: string | null;
+        };
+        /**
+         * ProfileAccountControlsUpdateRequest
+         * @description 更新账户级画像控制的请求；两个字段都可选，但至少指定一项。
+         */
+        ProfileAccountControlsUpdateRequest: {
+            /**
+             * Recording Enabled
+             * @description 目标自动记录状态；不传表示不修改。
+             */
+            recording_enabled?: boolean | null;
+            /**
+             * Usage Enabled
+             * @description 目标长期画像使用状态；不传表示不修改。
+             */
+            usage_enabled?: boolean | null;
         };
         /**
          * ProfileError
@@ -35681,6 +35783,90 @@ export interface operations {
             };
         };
     };
+    get_profile_controls_profiles_controls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAccountControlsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_profile_controls_profiles_controls_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileAccountControlsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAccountControlsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
     delete_four_dimension_record_profiles_four_dimensions__record_id__delete: {
         parameters: {
             query?: never;
@@ -44047,6 +44233,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_configure_chat_stream_script__test_chat_stream_script_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

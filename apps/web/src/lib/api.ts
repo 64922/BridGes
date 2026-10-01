@@ -243,6 +243,9 @@ export type AtomicProfileItemModifyRequest =
   components["schemas"]["AtomicProfileItemModifyRequest"];
 export type AtomicProfileWriteOrigin =
   components["schemas"]["AtomicProfileWriteOrigin"];
+// 改进工单 07：账户级画像记录/使用控制（两个开关互相独立）。
+export type ProfileAccountControlsProjection =
+  components["schemas"]["ProfileAccountControlsProjection"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -1768,6 +1771,30 @@ export async function deleteAtomicProfileItem(
     }
   );
   if (!res.ok) throw await parseApiError(res);
+}
+
+// ---------- 画像记录/使用控制（改进工单 07） ----------
+
+export async function fetchProfileControls(): Promise<ProfileAccountControlsProjection> {
+  const res = await fetch(`${API_BASE}/profiles/controls`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function updateProfileControls(
+  request: { recording_enabled?: boolean; usage_enabled?: boolean }
+): Promise<ProfileAccountControlsProjection> {
+  const res = await fetch(`${API_BASE}/profiles/controls`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 export async function removeAvatar(): Promise<Account> {

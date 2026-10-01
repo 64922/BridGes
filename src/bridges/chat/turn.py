@@ -5734,6 +5734,43 @@ class TurnOrchestrator:
                 [],
                 None,
             )
+        # 改进工单 07：长期画像使用开关关闭时不读取任何长期画像正文（原子
+        # 列表、四维记录与旧画像切片全部跳过）；当前用户原文与任务材料照常
+        # 参与回答，已记录信息保留、主动管理不受影响（profile-contract-v1
+        # R08）。重新开启后未删除且有效的信息恢复可用。
+        if (
+            self._automatic_profiles is not None
+            and not self._automatic_profiles.is_profile_usage_enabled(account_id)
+        ):
+            self._audit_slice_usage(
+                account_id,
+                mode=mode.value,
+                enabled=False,
+                slice_id=None,
+                item_count=0,
+                excluded_count=0,
+                material_categories=material_categories,
+            )
+            return (
+                self._persist_context_note(
+                    account_id,
+                    assistant_message_id,
+                    ContextNoteProjection(
+                        state=ContextNoteState.OFF,
+                        profile_enabled=False,
+                        mode=mode,
+                        used_at=now,
+                        material_categories=material_categories,
+                        note=(
+                            f"长期画像使用已关闭，本轮未注入{_PROFILE_CONTEXT_LABEL}；"
+                            "已记录内容保留，回答只基于当前对话与任务材料。"
+                        ),
+                    ),
+                ),
+                None,
+                [],
+                None,
+            )
         try:
             if self._atomic_profiles is not None:
                 current_messages = self._repo.list_messages(account_id, conversation_id)

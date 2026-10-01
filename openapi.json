@@ -13373,6 +13373,134 @@
         }
       }
     },
+    "/profiles/controls": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Profile Controls",
+        "description": "返回当前账户的自动记录与长期画像使用开关状态。",
+        "operationId": "get_profile_controls_profiles_controls_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAccountControlsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Update Profile Controls",
+        "description": "更新当前账户的控制开关；同值重复写入幂等，至少指定一项。",
+        "operationId": "update_profile_controls_profiles_controls_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileAccountControlsUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAccountControlsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/profiles/four-dimensions/{record_id}": {
       "patch": {
         "tags": [
@@ -26949,6 +27077,49 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Test Recovery Token  Test Recovery Token Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_test/chat-stream-script": {
+      "post": {
+        "summary": "Test Configure Chat Stream Script",
+        "description": "Test-only endpoint to script deterministic chat streaming.\n\nIssue 06：E2E 用它注入分块正文与块间延迟，经真实 API、执行器和\nSSE 链路驱动浏览器；未命中脚本的回合仍走确定性替身。仅在显式\ntest 环境注册（与其他 ``/_test/`` 端点同一门控）。",
+        "operationId": "test_configure_chat_stream_script__test_chat_stream_script_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Test Configure Chat Stream Script  Test Chat Stream Script Post"
                 }
               }
             }
@@ -49100,6 +49271,85 @@
         ],
         "title": "PopularScienceElement",
         "description": "A structural element required by the popular-science genre contract.\n\nThe element distinguishes the core concept from analogies, marks the boundary\nwhere an analogy stops being a mechanism, and links the content to audience\naction relevance."
+      },
+      "ProfileAccountControlsProjection": {
+        "properties": {
+          "controls_version": {
+            "type": "string",
+            "title": "Controls Version",
+            "description": "控制合同版本；客户端据此识别字段语义。",
+            "default": "profile-controls-v1"
+          },
+          "recording_enabled": {
+            "type": "boolean",
+            "title": "Recording Enabled",
+            "description": "自动记录开关：False 表示已停止自动新增/更新。"
+          },
+          "usage_enabled": {
+            "type": "boolean",
+            "title": "Usage Enabled",
+            "description": "长期画像使用开关：False 表示回答不再读取长期画像正文。"
+          },
+          "usage_control_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Usage Control Version",
+            "description": "使用开关变更序号；0 表示从未变更，同值重复写入不递增。"
+          },
+          "usage_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Updated At",
+            "description": "使用开关最近一次真实变化时间；从未变更为空。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recording_enabled",
+          "usage_enabled",
+          "usage_control_version"
+        ],
+        "title": "ProfileAccountControlsProjection",
+        "description": "账户级画像记录/使用控制状态。\n\n改进工单 07：自动记录与长期画像使用分开控制——关闭记录只阻止自动\n新增/更新（主动记住、修改、忘掉、删除始终可用）；关闭使用不删除信息，\n只停止回答读取长期画像正文。停止记录的持久状态是\n``profile_extraction_privacy_blocks`` 的账户级行，这里按「是否开启」\n组合投影。"
+      },
+      "ProfileAccountControlsUpdateRequest": {
+        "properties": {
+          "recording_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Enabled",
+            "description": "目标自动记录状态；不传表示不修改。"
+          },
+          "usage_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Enabled",
+            "description": "目标长期画像使用状态；不传表示不修改。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProfileAccountControlsUpdateRequest",
+        "description": "更新账户级画像控制的请求；两个字段都可选，但至少指定一项。"
       },
       "ProfileError": {
         "properties": {

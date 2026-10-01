@@ -60,6 +60,9 @@ class AuditAction(str, Enum):
     PROFILE_AUTO_WRITE_RECALL = "profile_auto_write_recall"
     PROFILE_INTENT = "profile_intent"
     PROFILE_SLICE_USED = "profile_slice_used"
+    # 改进工单 07：账户级画像记录/使用控制变更（details 只含目标开关与
+    # 变更后的状态，不含任何画像正文）。
+    PROFILE_CONTROLS_UPDATE = "profile_controls_update"
     # V2 Issue 03：每轮上下文编译记录（details 只含模型 ID、预算/摘要/
     # 估算版本、窗口与预留计数、采用的原文消息 ID，不含任何消息正文）。
     CONTEXT_COMPILED = "context_compiled"
