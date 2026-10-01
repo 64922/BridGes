@@ -6,6 +6,10 @@
 Issue 05 起保护区复核改为按保留意图的精确绑定：多片段/换序/遗漏/纠错/
 计算/合法引用各有独立反例，并单列裸数字、中文单位、否定、条件、因果与
 结论强度的语义参考判断（只报告，不替换）。
+
+Issue 06 起流式案例改用正式追加式装配器（``StreamProtectionAssembler``）
+模拟：同一 delta 序列同时驱动前端累加与落库正文，受保护片段闭合前暂缓，
+不再出现「整段正文当伪增量重发」。真实浏览器生命周期验收由 e2e 承担。
 """
 
 from __future__ import annotations
@@ -22,10 +26,13 @@ from bridges.chat.fact_protection import (
     assess_semantic_reference,
     plan_fragment_protection,
 )
-from bridges.chat.global_writing_policy import restore_protected_regions
 from bridges.chat.lightweight_policy import (
     ChatLightweightPolicyCompiler,
     detect_response_form,
+)
+from bridges.chat.stream_protection import (
+    STREAM_CONSISTENCY_PROTOCOL_VERSION,
+    StreamProtectionAssembler,
 )
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.profiles import ProfileSliceItem
@@ -114,20 +121,27 @@ def main() -> None:
         profile_context="【本轮画像信息】回答喜欢简短直接",
     )
 
-    # 对照 turn.py 当前的增量恢复和 delta 发送逻辑，模拟前端累加。
-    stored = ""
-    received = ""
-    deltas = []
+    # 对照 turn.py 当前的追加式装配协议：delta 只表示新内容，同一序列同时
+    # 驱动前端累加与落库正文。原片段为 `x = 1`，模型先流出被改写的
+    # `x = 0 再补全，闭合确认前该片段暂缓，终态只追加恢复后的正确片段。
+    assembler = StreamProtectionAssembler("值 `x = 1`。")
+    raw = ""
+    deltas: list[str] = []
     for chunk in ("值 `x = 0", "`。"):
-        restored = restore_protected_regions("值 `x = 1`。", stored + chunk, append_missing=False)
-        delta = restored[len(stored):] if restored.startswith(stored) else restored
-        stored = restored
-        received += delta
-        deltas.append(delta)
+        raw += chunk
+        delta = assembler.update(raw)
+        if delta:
+            deltas.append(delta)
+    flush, result = assembler.finish()
+    if flush:
+        deltas.append(flush)
+    stored = result.content
+    received = "".join(deltas)
 
     report = {
-        "说明": "实际执行当前仓库纯函数；流式案例模拟当前前后端逻辑，不是真实浏览器验收。",
+        "说明": "实际执行当前仓库纯函数；流式案例使用正式追加式装配器模拟，不是真实浏览器验收。",
         "可绑定片段协议版本": FACT_PROTECTION_PROTOCOL_VERSION,
+        "流式正文协议版本": STREAM_CONSISTENCY_PROTOCOL_VERSION,
         "策略版本": snapshot.version,
         "形态反例": forms,
         "保护区反例": protection,

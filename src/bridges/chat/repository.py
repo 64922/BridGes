@@ -1815,17 +1815,28 @@ class ConversationRepository:
         实时通道、收尾补齐、并发收尾与迟到收尾（被收尸/被停止后仍跑完的
         回合）最多写入一条——订阅端回放不会读到「失败之后又完成」这类
         互相矛盾的终态，回放末尾的种类始终是该运行的唯一终态（Issue 03）。
-        已有终态事件时返回 0（不写入），与运行/消息的持久守卫同一语义。
+
+        Issue 06：终态事件同时是正文回放的**终点**——终态之后不再追加任何
+        内容/状态事件（旧租约迟到产出的 delta/stage 等一律返回 0），否则
+        重连或整段回放会在终态之后读到额外增量，污染正文。``node`` 进度
+        是图执行内部的遥测：日常父图在实时 done 之后仍会补记
+        verify_output/persist_result 的节点边界（见 graph.emit 注释），
+        它不改变正文与终态唯一性，允许在 **done** 终态之后继续追加；错误/
+        停止终态由图中断路径产生（其后不会再有合法节点进度），仍然一律拒绝。
         """
         with self._db.transaction():
-            if kind in _TERMINAL_EVENT_KINDS:
-                existing = self._db.scoped(account_id).execute(
-                    "SELECT 1 FROM generation_events WHERE run_id = ? AND account_id = ?"
-                    " AND kind IN (?, ?) LIMIT 1",
-                    (run_id, account_id, *_TERMINAL_EVENT_KINDS),
-                ).fetchone()
-                if existing is not None:
-                    return 0
+            existing = self._db.scoped(account_id).execute(
+                "SELECT kind FROM generation_events WHERE run_id = ? AND account_id = ?"
+                " AND kind IN (?, ?) LIMIT 1",
+                (run_id, account_id, *_TERMINAL_EVENT_KINDS),
+            ).fetchone()
+            post_terminal_progress = (
+                existing is not None
+                and kind == ChatStreamEventKind.NODE.value
+                and str(existing["kind"]) == ChatStreamEventKind.DONE.value
+            )
+            if existing is not None and not post_terminal_progress:
+                return 0
             return self._append_generation_event_locked(
                 account_id, run_id, kind, payload, created_at
             )

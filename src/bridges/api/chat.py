@@ -302,11 +302,14 @@ def _sse_frame(event_kind: str, payload: dict[str, Any]) -> str:
 
 
 def _stream_response(events: Iterator[str]) -> StreamingResponse:
+    # no-transform：禁止反向代理/中间层（含 Next 前端的 compression
+    # 中间件）对 SSE 正文压缩或变换——压缩会缓冲整个响应直到运行终态，
+    # 使流式增量在浏览器侧退化为一次性到达。
     return StreamingResponse(
         events,
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Cache-Control": "no-cache, no-store, must-revalidate, no-transform",
             "X-Accel-Buffering": "no",
         },
     )

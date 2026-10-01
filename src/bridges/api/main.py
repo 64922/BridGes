@@ -27,6 +27,7 @@ from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.production import build_production_composition
 from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.startup_check import log_qwen_startup_connectivity_warnings
+from bridges.ai.stream_script_fixture import ScriptedChatStreamAdapter
 from bridges.api import (
     auth,
     chat,
@@ -102,6 +103,7 @@ from bridges.chat import (
 )
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
+from bridges.chat.turn import CHAT_CAPABILITY_NAME
 from bridges.closeout.fixtures import (
     CloseoutArxivClient,
     CloseoutQwenAdapter,
@@ -1175,14 +1177,26 @@ def create_app(
     # 网关返回明确的"未绑定适配器"阻塞结果；内置 deterministic 工具能力
     # （领域包校验器）由领域包运行时直接执行。qwen_force_stub 环境开关
     # 已随 Issue 41 移除，任何环境都无法通过配置项开启生产假成功。
+    app.state.test_chat_stream_script = None
     if settings is not None and settings.environment.lower() == "test":
         stub_adapter = (
             CloseoutQwenAdapter()
             if settings.closeout_fixture_mode
             else StubQwenAdapter()
         )
+        # Issue 06：聊天能力包一层脚本化流式适配器，供浏览器生命周期验收
+        # 经 /_test/chat-stream-script 注入 chunk 边界、延迟与停止/重连场景；
+        # 未命中脚本时完全委托同一确定性替身。其余能力仍直接注册替身。
         for capability in capability_registry.list_active():
-            if not model_gateway.is_adapter_registered(capability.name, capability.version):
+            if model_gateway.is_adapter_registered(capability.name, capability.version):
+                continue
+            if capability.name == CHAT_CAPABILITY_NAME:
+                scripted_adapter = ScriptedChatStreamAdapter(stub_adapter)
+                model_gateway.register_adapter(
+                    capability.name, capability.version, scripted_adapter
+                )
+                app.state.test_chat_stream_script = scripted_adapter
+            else:
                 model_gateway.register_adapter(
                     capability.name, capability.version, stub_adapter
                 )
@@ -1986,6 +2000,40 @@ def create_app(
             except IdentityError as exc:
                 return {"error": str(exc)}
             return {"token": token}
+
+        @app.post("/_test/chat-stream-script", response_model=dict[str, Any])
+        async def test_configure_chat_stream_script(
+            payload: dict[str, Any],
+        ) -> dict[str, Any]:
+            """Test-only endpoint to script deterministic chat streaming.
+
+            Issue 06：E2E 用它注入分块正文与块间延迟，经真实 API、执行器和
+            SSE 链路驱动浏览器；未命中脚本的回合仍走确定性替身。仅在显式
+            test 环境注册（与其他 ``/_test/`` 端点同一门控）。
+            """
+            adapter: ScriptedChatStreamAdapter | None = getattr(
+                app.state, "test_chat_stream_script", None
+            )
+            if adapter is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"error": "chat_stream_script_unavailable"},
+                )
+            try:
+                adapter.configure(
+                    match=str(payload.get("match", "")),
+                    chunks=[str(chunk) for chunk in payload.get("chunks", [])],
+                    delay_ms=int(payload.get("delay_ms", 0)),
+                )
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": "invalid_chat_stream_script",
+                        "message": str(exc),
+                    },
+                ) from exc
+            return {"configured": True, "match": payload.get("match", "")}
 
     def _get_workflow_service(request: Request) -> WorkflowService:
         service: WorkflowService | None = getattr(request.app.state, "workflow_service", None)

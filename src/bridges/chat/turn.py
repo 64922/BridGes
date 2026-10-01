@@ -51,15 +51,14 @@ from bridges.chat.budget import (
     RunBudget,
     RunStage,
 )
-from bridges.chat.fact_protection import plan_fragment_protection
 from bridges.chat.global_writing_policy import (
     GlobalWritingPolicyCompiler,
     GlobalWritingPolicySnapshot,
-    restore_protected_regions,
 )
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
+from bridges.chat.stream_protection import StreamProtectionAssembler
 from bridges.contracts.ai import CallContractVersions, ModelRunLock
 from bridges.contracts.career import (
     CareerPlanningProcessState,
@@ -3438,21 +3437,36 @@ class TurnOrchestrator:
                         error_message=user_facing_error("budget_exceeded"),
                     )
                 return
+            # Issue 06：唯一正文协议——追加式装配器保证 delta 只表示新内容，
+            # 未闭合/待确认的受保护片段暂缓到闭合或终态，避免整段伪增量。
+            degraded_local_count = (
+                len(teaching_projection.evidence_gate.local_sources)
+                if teaching_projection is not None
+                else 0
+            )
+            assembler = StreamProtectionAssembler(
+                protected_owner_query,
+                additional_sources=protected_sources,
+            )
+            raw_content = ""
+
+            def _candidate_text() -> str:
+                if allow_model_knowledge_fallback:
+                    return ensure_unverified_teaching_prefix(
+                        raw_content, local_source_count=degraded_local_count
+                    )
+                return raw_content
+
             if allow_model_knowledge_fallback:
                 # Issue 02：降级回答以真实本地命中为锚——保留编号不越界的
-                # 本地引用，剥离网络/论文引用与 URL。
-                degraded_local_count = (
-                    len(teaching_projection.evidence_gate.local_sources)
-                    if teaching_projection is not None
-                    else 0
-                )
-                content = ensure_unverified_teaching_prefix(
-                    content, local_source_count=degraded_local_count
-                )
-                self._repo.update_message_content(
-                    account_id, assistant_message_id, content, datetime.now(UTC)
-                )
-                yield StreamEvent(kind="delta", delta=content)
+                # 本地引用，剥离网络/论文引用与 URL。标注前缀作为首个增量下发。
+                prefix_delta = assembler.update(_candidate_text())
+                content = assembler.emitted
+                if prefix_delta:
+                    self._repo.update_message_content(
+                        account_id, assistant_message_id, content, datetime.now(UTC)
+                    )
+                    yield StreamEvent(kind="delta", delta=prefix_delta)
             for event in gateway.stream(
                 CHAT_CAPABILITY_NAME,
                 CHAT_CAPABILITY_VERSION,
@@ -3498,51 +3512,50 @@ class TurnOrchestrator:
                         first_token_ms = max(
                             1, int((time.monotonic() - generation_started) * 1000)
                         )
-                    candidate_content = content + event.delta
-                    if allow_model_knowledge_fallback:
-                        # Issue 02 不变量告警：降级轮模型输出携带网络来源
-                        # 引用时记 BLOCKED 审计（随后确定性剥离，正文不落地）。
-                        if (
-                            not degraded_invariant_fired
-                            and self._observability is not None
-                            and (
-                                _WEB_CITATION_RE.search(candidate_content)
-                                or _ARXIV_CITATION_RE.search(candidate_content)
-                                or _WEB_URL_RE.search(candidate_content)
-                            )
-                        ):
-                            degraded_invariant_fired = True
-                            self._observability.log_audit(
-                                actor_account_id=account_id,
-                                action=AuditAction.LEARNING_INVARIANT,
-                                result=AuditResult.BLOCKED,
-                                object_refs=[assistant_message_id],
-                                reason="降级轮出现网络来源引用，违反学习模式不变量。",
-                                details={"invariant": "degraded_network_reference"},
-                            )
-                        candidate_content = ensure_unverified_teaching_prefix(
-                            candidate_content,
-                            local_source_count=degraded_local_count,
+                    raw_content += event.delta
+                    # Issue 02 不变量告警：降级轮模型输出携带网络来源引用时
+                    # 记 BLOCKED 审计（随后确定性剥离，正文不落地）。
+                    if (
+                        allow_model_knowledge_fallback
+                        and not degraded_invariant_fired
+                        and self._observability is not None
+                        and (
+                            _WEB_CITATION_RE.search(raw_content)
+                            or _ARXIV_CITATION_RE.search(raw_content)
+                            or _WEB_URL_RE.search(raw_content)
                         )
-                    protected_content = restore_protected_regions(
-                        protected_owner_query,
-                        candidate_content,
-                        append_missing=False,
-                        additional_sources=protected_sources,
-                    )
-                    if protected_content.startswith(content):
-                        safe_delta = protected_content[len(content) :]
-                    else:
-                        safe_delta = protected_content
-                    content = protected_content
-                    self._repo.update_message_content(
-                        account_id, assistant_message_id, content, datetime.now(UTC)
-                    )
-                    self._lifecycle.touch(assistant_message_id)
-                    yield replace(event, delta=safe_delta)
+                    ):
+                        degraded_invariant_fired = True
+                        self._observability.log_audit(
+                            actor_account_id=account_id,
+                            action=AuditAction.LEARNING_INVARIANT,
+                            result=AuditResult.BLOCKED,
+                            object_refs=[assistant_message_id],
+                            reason="降级轮出现网络来源引用，违反学习模式不变量。",
+                            details={"invariant": "degraded_network_reference"},
+                        )
+                    safe_delta = assembler.update(_candidate_text())
+                    content = assembler.emitted
+                    if safe_delta:
+                        self._repo.update_message_content(
+                            account_id, assistant_message_id, content, datetime.now(UTC)
+                        )
+                        self._lifecycle.touch(assistant_message_id)
+                        yield replace(event, delta=safe_delta)
                     if budget.expired():
-                        # 预算到期：停止后续模型输出，按草稿交付（T5）
+                        # 预算到期：停止后续模型输出，按草稿交付（T5）。先按
+                        # 追加协议补齐已收内容，保证落库正文与前端所见一致。
                         budget.mark_exhausted()
+                        flush_delta, _ = assembler.finish()
+                        if flush_delta:
+                            content = assembler.emitted
+                            self._repo.update_message_content(
+                                account_id,
+                                assistant_message_id,
+                                content,
+                                datetime.now(UTC),
+                            )
+                            yield StreamEvent(kind="delta", delta=flush_delta)
                         break
                 elif event.kind == "error":
                     finalize_message(
@@ -3570,24 +3583,18 @@ class TurnOrchestrator:
                     yield event
                     return
                 elif event.kind == "done":
-                    if allow_model_knowledge_fallback:
-                        content = ensure_unverified_teaching_prefix(
-                            content,
-                            local_source_count=degraded_local_count,
-                        )
-                    protection = plan_fragment_protection(
-                        protected_owner_query,
-                        content,
-                        additional_sources=protected_sources,
-                    )
-                    if protection.content != content:
-                        content = protection.content
+                    # Issue 06：终态收敛——按追加协议补齐剩余正文，保证终态
+                    # 正文、落库正文与事件重放逐字一致（不再整段重发）。
+                    flush_delta, protection = assembler.finish()
+                    content = assembler.emitted
+                    if flush_delta:
                         self._repo.update_message_content(
                             account_id,
                             assistant_message_id,
                             content,
                             datetime.now(UTC),
                         )
+                        yield StreamEvent(kind="delta", delta=flush_delta)
                     if protection.inconsistencies and self._observability is not None:
                         # Issue 05：关键项下方进入错误终态；审计只含意图和
                         # 不一致类别，不含正文或片段原文。
