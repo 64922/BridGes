@@ -293,8 +293,11 @@ def test_fuzzy_forget_targets_never_batch_delete() -> None:
     assert missing.memory is not None
     assert missing.memory.status == AtomicProfileMemoryStatus.UNRESOLVED
 
-    texts = [item.text for item in atomic.list_items(ACCOUNT)]
-    assert texts == ["我喜欢跑步", "我喜欢游泳"]
+    # 两次未定位尝试之后两条条目都还在（列表顺序不作为行为依据）。
+    assert {item.text for item in atomic.list_items(ACCOUNT)} == {
+        "我喜欢跑步",
+        "我喜欢游泳",
+    }
 
     # 目标足够具体时，忘掉精确命中并真实删除。
     explicit = _ingest(automatic, 5, "忘掉游泳")
