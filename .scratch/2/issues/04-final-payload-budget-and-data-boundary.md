@@ -123,3 +123,4 @@
 - 以 worktree `.worktrees/04-final-payload-budget`、分支 `codex/04-final-payload-budget-and-data-boundary`（基点 `1b35c02`，阻塞票 03 已验收合入）交付。
 - 交付内容：最终载荷预算门与材料清单模块、网关共同发送前硬门（同步+流式）、聊天组装重构与清单审计、画像整条裁剪与去 80 字截断、数据边界声明、`payload_budget_exceeded` 受限结果、CONTEXT.md 术语、26 项新测试。
 - 验证见上节；状态改 `ready-for-human` 等待独立验收。
+- 已通过 `dec5751` 无冲突合入 `main` 并推送 `origin`；Issue 04 工作树和本地分支已删除，失效 worktree 记录检查完成（无失效项）。独立验收修正与完整结果见[独立验收记录](../acceptance/04-final-payload-budget-and-data-boundary.md)。
