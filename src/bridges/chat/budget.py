@@ -17,7 +17,9 @@ from __future__ import annotations
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Protocol
 
 from bridges import model_call_budget as _model_call_budget
 from bridges import public_search_budget as _public_search_budget
@@ -156,6 +158,85 @@ class StageMetric:
         }
 
 
+class RunBudgetLedgerBackend(Protocol):
+    """持久化账本的内核写入协议（``RunBudgetLedgerRepository`` 结构化满足）。
+
+    ``RunBudget`` 只经该协议写账本（工单 09：计数持久化并由内核唯一
+    修改）；无账本构造（既有单测/直连路径）时全部钩子按「允许/无操作」
+    处理，预算语义与 Issue 06 内存版完全一致。
+    """
+
+    def register_model_call(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str,
+        purpose: str | None = None,
+        now: datetime,
+    ) -> bool: ...
+
+    def record_model_call_result(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str,
+        attempt: int = 1,
+        outcome_code: str | None = None,
+        duration_ms: int | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        now: datetime,
+    ) -> None: ...
+
+    def register_transient_retry(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str,
+        error_code: str | None = None,
+        backoff_ms: int | None = None,
+        now: datetime,
+    ) -> bool: ...
+
+    def register_external_call(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str,
+        purpose: str | None = None,
+        now: datetime,
+    ) -> bool: ...
+
+    def record_external_call_result(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str,
+        outcome_code: str | None = None,
+        now: datetime,
+    ) -> None: ...
+
+    def begin_adjustment(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        reason_code: str | None = None,
+        now: datetime,
+    ) -> bool: ...
+
+    def mark_exhausted(
+        self, *, account_id: str, run_id: str, reason_code: str, now: datetime
+    ) -> bool: ...
+
+    def can_wait_until(self, account_id: str, run_id: str, until: datetime) -> bool: ...
+
+
 class RunBudget:
     """一次前台 run 的预算控制器：总预算 + 阶段墙钟 + 重试门。
 
@@ -168,17 +249,61 @@ class RunBudget:
         run_id: str,
         *,
         total_ms: int | None = None,
+        deadline_utc: datetime | None = None,
+        reserve_ms: int = 0,
+        ledger: RunBudgetLedgerBackend | None = None,
+        account_id: str | None = None,
     ) -> None:
         self._run_id = run_id
         # 运行时读取模块常量（测试可 monkeypatch 注入小预算验证降级路径）
         self._total_ms = total_ms if total_ms is not None else TOTAL_BUDGET_MS
         self._started = time.monotonic()
-        self._deadline = self._started + max(0, self._total_ms) / 1000
+        # 工单 09：账本冻结的绝对截止优先于 total_ms 推导——截止时间在
+        # 运行创建时冻结，租约恢复重载同一截止，恢复不产生新预算。
+        if deadline_utc is not None:
+            now_utc = datetime.now(UTC)
+            frozen_remaining = max(0.0, (deadline_utc - now_utc).total_seconds())
+            self._deadline = time.monotonic() + frozen_remaining
+            # elapsed 按冻结截止与冻结总预算反推：恢复后已耗时间不归零。
+            self._started = self._deadline - max(0, self._total_ms) / 1000
+        else:
+            self._deadline = self._started + max(0, self._total_ms) / 1000
+        #: 核验/交付预留（毫秒）：交付前阶段的截止按「总预算 − 预留」收紧，
+        #: 保证核验与交付空间不被检索/生成/修复吃掉（工单 09 初值 15/30 秒）。
+        self._reserve_ms = max(0, reserve_ms)
         self._current: RunStage | None = None
         self._current_started: float | None = None
         self._metrics: list[StageMetric] = []
         #: 预算已耗尽（编排层应停止进入新阶段）。
         self._exhausted = False
+        #: 持久化账本协作对象（无账本时全部钩子按允许/无操作处理）。
+        self._ledger = ledger
+        self._account_id = account_id
+
+    @classmethod
+    def from_ledger_snapshot(
+        cls,
+        run_id: str,
+        *,
+        total_budget_ms: int,
+        deadline_utc: datetime,
+        reserve_ms: int,
+        ledger: RunBudgetLedgerBackend,
+        account_id: str,
+        active: bool = True,
+    ) -> RunBudget:
+        """从账本冻结快照构造：截止与总预算用冻结值，已耗计数留在账本。"""
+        budget = cls(
+            run_id,
+            total_ms=total_budget_ms,
+            deadline_utc=deadline_utc,
+            reserve_ms=reserve_ms,
+            ledger=ledger,
+            account_id=account_id,
+        )
+        if not active:
+            budget.mark_exhausted()
+        return budget
 
     # ------------------------------------------------------------------
     # 预算查询
@@ -188,9 +313,21 @@ class RunBudget:
         """剩余总预算（毫秒）；耗尽时为 0。"""
         return max(0, int((self._deadline - time.monotonic()) * 1000))
 
+    def work_remaining_ms(self) -> int:
+        """交付前阶段可用的剩余预算（总剩余 − 核验/交付预留；毫秒）。
+
+        检索/搜索/生成/修复都只能消耗本口径；预留空间只留给核验与
+        交付阶段（工单 09：「仍保留必要核验/交付空间」）。
+        """
+        return max(0, self.remaining_ms() - self._reserve_ms)
+
     def absolute_deadline(self) -> float:
         """本次 run 的绝对截止单调时刻。"""
         return self._deadline
+
+    def work_deadline(self) -> float:
+        """交付前阶段的截止（绝对截止 − 核验/交付预留；单调时刻）。"""
+        return self._deadline - self._reserve_ms / 1000
 
     def public_search_deadlines(
         self, active_sources: Iterable[str], *, scale: float = 1.0
@@ -199,6 +336,8 @@ class RunBudget:
 
         包含 Tavily 时，阶段预算统一为 8 秒；arXiv 单独运行时继续
         使用原有来源预算，以免把未参与的 web 约束施加到论文路径。
+        公开搜索是交付前阶段：截止同时不得越过核验/交付预留线
+        （工单 09）。
         """
 
         active = frozenset(active_sources)
@@ -206,14 +345,14 @@ class RunBudget:
         if "web" in active:
             return public_search_deadlines(
                 started,
-                run_deadline=self._deadline,
+                run_deadline=self.work_deadline(),
                 scale=scale,
             )
         stage_deadline = min(
-            self._deadline,
+            self.work_deadline(),
             started
             + source_aware_search_budget_seconds(
-                active, remaining_ms=self.remaining_ms()
+                active, remaining_ms=self.work_remaining_ms()
             ),
         )
         return PublicSearchDeadlines(
@@ -235,24 +374,161 @@ class RunBudget:
 
         算术与常量集中在 ``bridges.model_call_budget``：默认 60 秒、
         交接预留 1 秒、正下限 50ms；单次调用不再可能吃光整轮预算。
-        已主动标记耗尽（``mark_exhausted``）时同样只给正下限窗口。
+        账本冻结了核验/交付预留时（工单 09），截断基线改为「交付前
+        剩余」——单次调用同样吃不到预留空间。已主动标记耗尽
+        （``mark_exhausted``）时同样只给正下限窗口。
         """
         if self.expired():
             return _model_call_budget.model_call_timeout_ms(0)
-        return _model_call_budget.model_call_timeout_ms(self.remaining_ms())
+        return _model_call_budget.model_call_timeout_ms(self.work_remaining_ms())
 
     def can_retry_model_call(self, backoff_ms: int = 0) -> bool:
         """模型调用重试门（Issue 06 第七轮）：剩余预算放不下「退避 + 一次
         最小调用窗口 + 交接预留」时不重试，直接以真实错误终态收尾。
 
         网关重试循环与生涯/人味化修复门共用同一接缝（去重）；已标记
-        耗尽（``mark_exhausted``）时同样不放行。
+        耗尽（``mark_exhausted``）时同样不放行。重试窗口按交付前剩余
+        计算——重试同样不能吃掉核验/交付预留。
         """
         if self.expired():
             return False
         return _model_call_budget.model_call_can_retry(
-            self.remaining_ms(), backoff_ms=backoff_ms
+            self.work_remaining_ms(), backoff_ms=backoff_ms
         )
+
+    # ------------------------------------------------------------------
+    # 持久化账本协作（工单 09；无账本时按允许/无操作处理）
+    # ------------------------------------------------------------------
+
+    @property
+    def has_ledger(self) -> bool:
+        """是否挂接持久化账本（测试据此区分内存版与账本版）。"""
+        return self._ledger is not None and self._account_id is not None
+
+    def _now(self) -> datetime:
+        return datetime.now(UTC)
+
+    def register_model_call(self, call_key: str, *, purpose: str | None = None) -> bool:
+        """登记一次模型调用（超额调用被代码拒绝；无账本时允许）。"""
+        if not self.has_ledger:
+            return True
+        assert self._ledger is not None and self._account_id is not None
+        return self._ledger.register_model_call(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            call_key=call_key,
+            purpose=purpose,
+            now=self._now(),
+        )
+
+    def record_model_call_result(
+        self,
+        call_key: str,
+        *,
+        attempt: int = 1,
+        outcome_code: str | None = None,
+        duration_ms: int | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+    ) -> None:
+        """补记一次模型调用的脱敏结果（按调用目的计量；无账本时无操作）。"""
+        if not self.has_ledger:
+            return
+        assert self._ledger is not None and self._account_id is not None
+        self._ledger.record_model_call_result(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            call_key=call_key,
+            attempt=attempt,
+            outcome_code=outcome_code,
+            duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            now=self._now(),
+        )
+
+    def register_transient_retry(
+        self,
+        call_key: str,
+        *,
+        error_code: str | None = None,
+        backoff_ms: int | None = None,
+    ) -> bool:
+        """登记一次临时传输失败重试（每登记调用最多 1 次；无账本时允许）。
+
+        错误类型（仅 RateLimit/Transient 可重试）、冷却与剩余额度检查由
+        调用方完成；本方法持久化重试计数并执行「最多 1 次」守卫。
+        """
+        if not self.has_ledger:
+            return True
+        assert self._ledger is not None and self._account_id is not None
+        return self._ledger.register_transient_retry(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            call_key=call_key,
+            error_code=error_code,
+            backoff_ms=backoff_ms,
+            now=self._now(),
+        )
+
+    def register_external_call(self, call_key: str, *, purpose: str | None = None) -> bool:
+        """登记一次外部调用分支（并行超过上限时拒绝；无账本时允许）。
+
+        并行与串行消耗同一账本：并发占位 ``external_calls_active`` 由
+        ``register_external_call``/``release_external_call`` 共同维护。
+        """
+        if not self.has_ledger:
+            return True
+        assert self._ledger is not None and self._account_id is not None
+        return self._ledger.register_external_call(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            call_key=call_key,
+            purpose=purpose,
+            now=self._now(),
+        )
+
+    def release_external_call(self, call_key: str, *, outcome_code: str | None = None) -> None:
+        """释放一次外部调用的并发占位（幂等；无账本时无操作）。"""
+        if not self.has_ledger:
+            return
+        assert self._ledger is not None and self._account_id is not None
+        self._ledger.record_external_call_result(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            call_key=call_key,
+            outcome_code=outcome_code,
+            now=self._now(),
+        )
+
+    def begin_adjustment(self, *, reason_code: str | None = None) -> bool:
+        """开始一轮自动补证/调整（整次运行最多一轮；无账本时允许）。
+
+        结构修复与内容修复共享该轮；第二次调用被代码拒绝，模型不能追加。
+        """
+        if not self.has_ledger:
+            return True
+        assert self._ledger is not None and self._account_id is not None
+        return self._ledger.begin_adjustment(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            reason_code=reason_code,
+            now=self._now(),
+        )
+
+    def can_wait_until(self, until_utc: datetime) -> bool:
+        """限流/冷却等待是否放得下：超过冻结剩余预算即拒绝（工单 09）。
+
+        无账本时按内存截止判断。
+        """
+        if self.has_ledger:
+            assert self._ledger is not None and self._account_id is not None
+            return self._ledger.can_wait_until(
+                self._account_id, self._run_id, until_utc
+            )
+        now_utc = datetime.now(UTC)
+        remaining_seconds = (until_utc - now_utc).total_seconds()
+        return remaining_seconds * 1000 <= self.remaining_ms()
 
     # ------------------------------------------------------------------
     # 阶段时钟
@@ -326,9 +602,20 @@ class RunBudget:
             )
         )
 
-    def mark_exhausted(self) -> None:
-        """主动标记预算耗尽（编排层判定不可继续时调用）。"""
+    def mark_exhausted(self, *, reason_code: str | None = None) -> None:
+        """主动标记预算耗尽（编排层判定不可继续时调用）。
+
+        挂接账本时同时把耗尽原因持久化（明确终止条件；工单 09）。
+        """
         self._exhausted = True
+        if reason_code is not None and self.has_ledger:
+            assert self._ledger is not None and self._account_id is not None
+            self._ledger.mark_exhausted(
+                account_id=self._account_id,
+                run_id=self._run_id,
+                reason_code=reason_code,
+                now=self._now(),
+            )
 
     def metrics(self) -> list[StageMetric]:
         """已结束阶段的脱敏指标（进行中阶段不计）。"""

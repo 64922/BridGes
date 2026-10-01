@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 61
+SCHEMA_VERSION = 62
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2800,6 +2800,90 @@ MIGRATIONS: dict[int, list[str]] = {
         ON task_events(account_id, conversation_id, created_at)
         """,
     ],
+    # 改进工单 09：持久化整次运行预算账本与有限调整额度。
+    # 一次运行的截止时间、调用/token 上限、核验/交付预留与已耗计数在运行
+    # 创建时冻结落库，只由执行内核（执行器/编排代码）经本票账本仓库修改；
+    # 模型输出不能延时、扩容或重置。租约恢复重新加载同一行——恢复不产生
+    # 新预算；并行与串行消耗共用同一账本。
+    # - run_budget_ledger：每运行一行（冻结计划 + 已耗计数 + 乐观版本
+    #   version + 生命周期 active → exhausted → closed）。
+    # - run_budget_entries：append-only 计量流水（调用/传输重试/自动调整/
+    #   外部调用，按调用目的分别计量）。只记标识、结果码、计数与毫秒——
+    #   不承载消息正文、提示词或凭据。(run_id, call_key, attempt) 在
+    #   kind='transient_retry' 上的部分唯一索引是「每个登记的临时传输失败
+    #   最多重试 1 次」的幂等守卫：重复登记同一重试按幂等成功处理且不重复
+    #   计数；模型调用与外部调用的再次登记是恢复重跑的真实消耗，不设唯一约束。
+    62: [
+        """
+        CREATE TABLE run_budget_ledger (
+            run_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            contract_version TEXT NOT NULL DEFAULT 'run-budget-v1',
+            budget_class TEXT NOT NULL
+                CHECK (budget_class IN ('lightweight', 'normal', 'deep')),
+            total_budget_ms INTEGER NOT NULL,
+            deadline_at TEXT NOT NULL,
+            verify_deliver_reserve_ms INTEGER NOT NULL,
+            model_call_limit INTEGER NOT NULL,
+            token_budget INTEGER,
+            external_parallel_max INTEGER NOT NULL,
+            candidate_screen_max INTEGER NOT NULL,
+            deep_read_max INTEGER NOT NULL,
+            adjustment_rounds_max INTEGER NOT NULL,
+            transient_retry_max INTEGER NOT NULL,
+            model_calls_used INTEGER NOT NULL DEFAULT 0,
+            external_calls_used INTEGER NOT NULL DEFAULT 0,
+            external_calls_active INTEGER NOT NULL DEFAULT 0,
+            transient_retries_used INTEGER NOT NULL DEFAULT 0,
+            adjustment_rounds_used INTEGER NOT NULL DEFAULT 0,
+            input_tokens_used INTEGER NOT NULL DEFAULT 0,
+            output_tokens_used INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'exhausted', 'closed')),
+            exhausted_reason TEXT,
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_run_budget_ledger_account_status
+        ON run_budget_ledger(account_id, status)
+        """,
+        """
+        CREATE TABLE run_budget_entries (
+            run_id TEXT NOT NULL REFERENCES run_budget_ledger(run_id),
+            seq INTEGER NOT NULL,
+            account_id TEXT NOT NULL,
+            kind TEXT NOT NULL
+                CHECK (kind IN (
+                    'model_call', 'model_call_result', 'transient_retry',
+                    'external_call', 'external_call_result', 'adjustment_begin',
+                    'exhausted', 'closed', 'compat_created'
+                )),
+            purpose TEXT,
+            call_key TEXT,
+            attempt INTEGER,
+            outcome_code TEXT,
+            duration_ms INTEGER,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            detail_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (run_id, seq)
+        )
+        """,
+        """
+        CREATE INDEX idx_run_budget_entries_account
+        ON run_budget_entries(account_id, run_id, seq)
+        """,
+        """
+        CREATE UNIQUE INDEX idx_run_budget_entries_retry_once
+        ON run_budget_entries(run_id, call_key, attempt)
+        WHERE kind = 'transient_retry' AND call_key IS NOT NULL
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -2824,6 +2908,10 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "task_conditions",
     "task_waits",
     "task_events",
+    # 工单 09：运行预算账本是执行内核的无条件依赖（运行创建即冻结），
+    # 迁移半执行时同样在启动阶段失败关闭。
+    "run_budget_ledger",
+    "run_budget_entries",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。

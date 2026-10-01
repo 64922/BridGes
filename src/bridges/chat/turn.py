@@ -23,7 +23,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ALL_COMPLETED, Future, wait
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from inspect import Parameter, signature
 from typing import Any, Literal, Protocol
 
@@ -69,6 +69,12 @@ from bridges.chat.global_writing_policy import (
 )
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
+from bridges.chat.run_budget_ledger import (
+    RUN_BUDGET_INITIALS,
+    RunBudgetLedgerRepository,
+    derive_run_budget_class,
+    derive_run_budget_plan,
+)
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.chat.stream_protection import StreamProtectionAssembler
 from bridges.contracts.ai import CallContractVersions, ModelRunLock
@@ -2417,6 +2423,61 @@ class TurnOrchestrator:
     # 回合入口（对外唯一 interface）
     # ------------------------------------------------------------------
 
+    def _load_run_budget(
+        self,
+        account_id: str,
+        run_id: str,
+        *,
+        route_hint: Any = None,
+        mode_hint: str | None = None,
+    ) -> RunBudget:
+        """从持久化账本加载本次 run 的预算控制器（改进工单 09）。
+
+        账本行在运行创建时冻结（``ChatService._freeze_run_budget``）；本
+        方法只读取，并对缺失行的运行按兼容纪律先补齐持久状态再使用——
+        截止时间锚定运行创建时刻，绝不把截止向后延、绝不重置已耗计数。
+        兼容补齐的类别从会话模式与消息路线派生（创建路径冻结时的完整
+        信号含图片/视频载荷，崩溃窗口内的运行缺失这些信号时按普通处理，
+        影响仅限崩溃窗口与升级前遗留运行）。
+        """
+        ledger = RunBudgetLedgerRepository(self._repo.database)
+        snapshot = ledger.load(account_id, run_id)
+        if snapshot is None:
+            run = self._repo.get_generation_run(account_id, run_id)
+            if run is None:
+                # 运行已随会话/消息删除的竞态：不会进入生成阶段，内存
+                # 预算兜底（与既有 RunBudget 行为一致）。
+                return RunBudget(run_id)
+            budget_class = derive_run_budget_class(
+                mode=mode_hint,
+                route_is_paper_search=(
+                    route_hint is not None and route_hint.is_paper_search
+                ),
+            )
+            snapshot = ledger.ensure_for_run(
+                account_id=account_id,
+                run_id=run_id,
+                conversation_id=run.conversation_id,
+                plan=derive_run_budget_plan(
+                    budget_class,
+                    deadline_at=run.created_at
+                    + timedelta(
+                        milliseconds=RUN_BUDGET_INITIALS[budget_class].total_budget_ms
+                    ),
+                ),
+                run_created_at=run.created_at,
+                now=datetime.now(UTC),
+            )
+        return RunBudget.from_ledger_snapshot(
+            run_id,
+            total_budget_ms=snapshot.plan.total_budget_ms,
+            deadline_utc=snapshot.plan.deadline_at,
+            reserve_ms=snapshot.plan.verify_deliver_reserve_ms,
+            ledger=ledger,
+            account_id=account_id,
+            active=snapshot.active,
+        )
+
     def stream_turn(
         self,
         account_id: str,
@@ -2481,10 +2542,19 @@ class TurnOrchestrator:
         )
         content = ""
         started = time.monotonic()
-        # Issue 06：本次 run 的统一阶段时钟与预算控制器（总预算 120s 硬门；
-        # 阶段事件经 stage 事件流下发，指标只记录 ID/阶段/毫秒/结果码）。
-        budget = RunBudget(run_context.run_id)
         conversation = self._repo.get_conversation(account_id, conversation_id)
+        # Issue 06：本次 run 的统一阶段时钟与预算控制器（阶段事件经 stage
+        # 事件流下发，指标只记录 ID/阶段/毫秒/结果码）。
+        # 改进工单 09：预算改为从持久化账本加载——截止时间与调用/token
+        # 上限在运行创建时冻结，并行/串行、重试与修复消耗同一账本；租约
+        # 恢复重载同一账本行，恢复不重置额度。账本行缺失（创建与冻结间
+        # 崩溃、升级前遗留运行）时按兼容纪律先补齐持久状态再使用。
+        budget = self._load_run_budget(
+            account_id,
+            run_context.run_id,
+            route_hint=capability_route_from(current.route),
+            mode_hint=(conversation.mode if conversation is not None else None),
+        )
         thinking = initial_thinking(
             ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
         )
@@ -3030,6 +3100,7 @@ class TurnOrchestrator:
                         stage_deadline=search_stage_deadline,
                         stop_event=stop_event,
                         search_stop_event=search_stop_event,
+                        budget=budget,
                     )
                     arxiv_result = search_results.get("arxiv")
                     web_result = search_results.get("web")
@@ -3397,6 +3468,7 @@ class TurnOrchestrator:
                         stage_deadline=paper_search_stage_deadline,
                         stop_event=stop_event,
                         search_stop_event=paper_search_stop_event,
+                        budget=budget,
                     )
                     arxiv_result = paper_search_results.get("arxiv")
                     if paper_arxiv_plan is not None:
@@ -3904,6 +3976,7 @@ class TurnOrchestrator:
                 model_override=model_override,
                 call_contract=call_contract,
                 model_quota=model_quota,
+                budget=budget,
             ):
                 if stop_event.is_set():
                     finalize_message(
@@ -4495,6 +4568,7 @@ class TurnOrchestrator:
         stage_deadline: float | None = None,
         stop_event: threading.Event | None = None,
         search_stop_event: _SearchStopEvent | None = None,
+        budget: RunBudget | None = None,
     ) -> dict[str, Any]:
         """并行执行彼此独立且都已确定需要的公开搜索（Issue 06 T3）。
 
@@ -4504,6 +4578,11 @@ class TurnOrchestrator:
         ``_SEARCH_TIMEOUT``、``_SEARCH_CANCELLED`` /异常对象占位，由调用
         方按既有失败语义降级。截止或取消会先传播停止信号，再取消尚未
         开始的 future，并在有界清理窗口内回收已结束的线程。
+
+        改进工单 09：传入 ``budget`` 时，每个实际启动的外部分支先在运行
+        账本登记并发占位（外部独立并行上限由账本守卫，超额分支不启动、
+        结果按未参与处理）；分支结束（含超时/取消）后释放占位。并行与
+        串行消耗同一账本。
         """
         if not calls:
             return {}
@@ -4512,6 +4591,8 @@ class TurnOrchestrator:
         if stage_deadline is None:
             stage_deadline = deadline
         search_stop = search_stop_event or _SearchStopEvent(stop_event)
+        #: 已在账本登记并发占位的外部分支（finally 中统一释放）。
+        registered_sources: list[str] = []
         futures: dict[str, Future[_TimedSearchResult] | None] = {}
         pending: set[Future[_TimedSearchResult]] = set()
         done: set[Future[_TimedSearchResult]] = set()
@@ -4532,14 +4613,22 @@ class TurnOrchestrator:
                     )
                     for name, call in calls
                 }
-            futures = {
-                name: (
+            futures = {}
+            for name, call in calls:
+                if call is not None and budget is not None:
+                    if not budget.register_external_call(
+                        f"public_search:{name}", purpose=f"public_search:{name}"
+                    ):
+                        # 超过外部独立并行上限：该分支不启动（预算拒绝），
+                        # 结果按未参与处理（None），不自动扩大任务。
+                        call = None
+                    else:
+                        registered_sources.append(name)
+                futures[name] = (
                     _submit_daemon_search(call, name=f"public-search-{name}")
                     if call is not None
                     else None
                 )
-                for name, call in calls
-            }
             pending = {
                 future for future in futures.values() if future is not None
             }
@@ -4614,6 +4703,10 @@ class TurnOrchestrator:
         finally:
             for future in pending:
                 future.cancel()
+            # 改进工单 09：分支结束（含超时/取消）后释放账本并发占位。
+            if budget is not None:
+                for name in registered_sources:
+                    budget.release_external_call(f"public_search:{name}")
 
     # ------------------------------------------------------------------
     # 检索（全部编排路径的单一实现）
@@ -4839,6 +4932,7 @@ class TurnOrchestrator:
                 stage_deadline=search_stage_deadline,
                 stop_event=stop_event,
                 search_stop_event=search_stop_event,
+                budget=budget,
             )
             web_result = search_results.get("web")
             if search_plan is not None:

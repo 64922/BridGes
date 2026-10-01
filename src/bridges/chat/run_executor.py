@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
+from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
 from bridges.chat.terminal import internal_error_outcome, stopped_outcome
 from bridges.contracts.chat import (
     ChatMessageStatus,
@@ -127,6 +128,9 @@ class GenerationRunExecutor:
             try:
                 self._terminal.reap_lost_run(run)
                 reaped += 1
+                # 改进工单 09：收尸即终态——关闭预算账本，额度计数封存
+                #（用户重试会创建新运行、新账本）。
+                self._close_run_budget(run.account_id, run.run_id)
             except Exception as exc:  # noqa: BLE001 - 收尸故障不终止执行器
                 # 收尸失败留下的仍是「待收敛」形态（该运行没有写入终态），
                 # 下一轮按同一上限重试；绝不因一个运行让整个执行器停摆，
@@ -288,6 +292,9 @@ class GenerationRunExecutor:
             fallback=internal_error_outcome(),
             run_duration_ms=duration_ms,
         )
+        # 改进工单 09：运行进入终态即关闭预算账本（只读封存）；租约恢复
+        # 重跑在收敛前读取的是同一账本行——截止与已耗计数不因恢复重置。
+        self._close_run_budget(account_id, run_id)
         label = {
             ChatMessageStatus.DONE: "完成",
             ChatMessageStatus.STOPPED: "已停止",
@@ -299,6 +306,12 @@ class GenerationRunExecutor:
         )
         self._last_summary = f"generation: 运行 {run_id} {label}{suffix}。"
         self._queue.complete(claim)
+
+    def _close_run_budget(self, account_id: str, run_id: str) -> None:
+        """运行终态后关闭预算账本（只读封存；幂等，改进工单 09）。"""
+        RunBudgetLedgerRepository(self._database).close(
+            account_id=account_id, run_id=run_id, now=datetime.now(UTC)
+        )
 
     # ------------------------------------------------------------------
     # 事件持久化
