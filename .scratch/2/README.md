@@ -36,7 +36,7 @@
 | [06](issues/06-stream-replay-and-terminal-consistency.md) | 统一流式正文、终态存储与断线重放 | [05](issues/05-intent-bound-fact-protection.md) | ready-for-agent |
 | [07](issues/07-profile-controls-and-immediate-commands.md) | 分开画像记录与使用控制，保证即时撤回 | [02](issues/02-profile-specification-decisions.md) | ready-for-agent |
 | [08](issues/08-source-bound-task-state-and-waits.md) | 保存有来源的跨轮任务、有效条件与澄清 | [01](issues/01-confirmed-contracts-and-expand-migration.md) | ready-for-agent |
-| [09](issues/09-shared-persistent-run-budget.md) | 持久化整次运行预算与有限调整额度 | [03](issues/03-model-quota-and-call-snapshots.md)、[08](issues/08-source-bound-task-state-and-waits.md) | ready-for-agent |
+| [09](issues/09-shared-persistent-run-budget.md) | 持久化整次运行预算与有限调整额度 | [03](issues/03-model-quota-and-call-snapshots.md)、[08](issues/08-source-bound-task-state-and-waits.md) | ready-for-human |
 | [10](issues/10-resumable-commute-kernel-pilot.md) | 以校园通勤贯通持久节点、收据与执行内核 | [04](issues/04-final-payload-budget-and-data-boundary.md)、[08](issues/08-source-bound-task-state-and-waits.md)、[09](issues/09-shared-persistent-run-budget.md) | ready-for-agent |
 | [11](issues/11-reference-resolution-and-original-recovery.md) | 解析任务指代并补回必要原文 | [04](issues/04-final-payload-budget-and-data-boundary.md)、[08](issues/08-source-bound-task-state-and-waits.md) | ready-for-agent |
 | [12](issues/12-main-agent-hybrid-entry-and-task-relations.md) | 主智能体理解混合入口与跨轮任务关系 | [01](issues/01-confirmed-contracts-and-expand-migration.md)、[04](issues/04-final-payload-budget-and-data-boundary.md)、[08](issues/08-source-bound-task-state-and-waits.md)、[09](issues/09-shared-persistent-run-budget.md)、[10](issues/10-resumable-commute-kernel-pilot.md)、[11](issues/11-reference-resolution-and-original-recovery.md) | ready-for-agent |

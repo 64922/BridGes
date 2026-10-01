@@ -248,6 +248,81 @@ def test_existing_career_repair_claims_shared_adjustment(tmp_path: Any, round_us
         assert any(e.kind == "adjustment_end" for e in ledger.list_entries("account-1", "run-1"))
 
 
+@pytest.mark.parametrize("window", ["message_committed", "run_committed", "queued_stop"])
+def test_executor_early_terminal_paths_close_budget(
+    sqlite_app: Any, client: TestClient, window: str,
+) -> None:
+    from tests.chat.test_terminal_core import _commit_success_message
+
+    account = _register(client)
+    conversation_id = _create_conversation(client)
+    created = _send(client, conversation_id, "恢复终态")
+    service = sqlite_app.state.chat_service
+    run_id = created["run_id"]
+    message_id = created["assistant_message"]["message_id"]
+    if window == "queued_stop":
+        service._repo.request_generation_stop(account["id"], run_id)
+    else:
+        _commit_success_message(service._repo, account["id"], message_id)
+        if window == "run_committed":
+            service.terminal.converge(account["id"], run_id, message_id)
+    sqlite_app.state.generation_executor.run_tick()
+    assert _ledger_repo(sqlite_app).load(account["id"], run_id).status == "closed"
+
+
+def test_parallel_search_keeps_slots_until_workers_really_finish(
+    tmp_path: Any, monkeypatch: Any,
+) -> None:
+    import threading
+
+    import bridges.chat.turn as turn_module
+    from bridges.storage.database import BridgesDatabase
+
+    database = BridgesDatabase(tmp_path / "budget.db")
+    database.initialize()
+    ledger, budget = _persistent_budget(database)
+    stop = threading.Event()
+    gate = threading.Event()
+    started = threading.Event()
+    started_count = [0]
+    started_lock = threading.Lock()
+    released = threading.Event()
+    real_release = budget.release_external_call
+
+    def release(key: str, **kwargs: Any) -> None:
+        real_release(key, **kwargs)
+        if ledger.load("acc-1", "run-1").external_calls_active == 0:
+            released.set()
+
+    monkeypatch.setattr(budget, "release_external_call", release)
+
+    def wait_once(pending: Any, **kwargs: Any) -> tuple[set[Any], set[Any]]:
+        assert started.wait(timeout=5)
+        stop.set()
+        return set(), pending
+
+    monkeypatch.setattr(turn_module, "wait", wait_once)
+
+    def call() -> None:
+        with started_lock:
+            started_count[0] += 1
+            if started_count[0] == 2:
+                started.set()
+        assert gate.wait(timeout=5)
+
+    orchestrator = object.__new__(turn_module.TurnOrchestrator)
+    try:
+        orchestrator._parallel_search(
+            [("web", call), ("arxiv", call)], deadline=time.monotonic() + 10,
+            stop_event=stop, budget=budget,
+        )
+        assert ledger.load("acc-1", "run-1").external_calls_active == 2
+    finally:
+        gate.set()
+    assert released.wait(timeout=5)
+    assert ledger.load("acc-1", "run-1").external_calls_active == 0
+
+
 def _retryable_capability() -> CapabilityRecord:
     base = _chat_capability()
     return base.model_copy(
