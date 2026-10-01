@@ -102,7 +102,12 @@ class RunModelQuota(BaseModel):
     @property
     def is_verified(self) -> bool:
         """是否持有可用的已验证上下文窗口。"""
-        return self.context_window is not None and self.context_window > 0
+        return (
+            self.quota_version == MODEL_QUOTA_VERSION
+            and self.verification_basis is not QuotaVerificationBasis.UNVERIFIED
+            and self.context_window is not None
+            and self.context_window > 0
+        )
 
     def input_upper_bound(self) -> int | None:
         """可用输入上界：已验证窗口与最大输入额度取较小者。
@@ -197,12 +202,14 @@ def resolve_run_quota(
     """
     config: Mapping[str, Any] = run_config or {}
     raw = config.get(RUN_MODEL_QUOTA_CONFIG_KEY)
-    if raw is not None:
+    if RUN_MODEL_QUOTA_CONFIG_KEY in config:
         quota = RunModelQuota.from_config(raw)
         if quota is None:
             return QuotaResolution(
                 None, False, None, QUOTA_REASON_UNREADABLE
             )
+        if config.get("run_model_id") not in (None, quota.model_id):
+            return QuotaResolution(None, False, None, QUOTA_REASON_UNREADABLE)
         if not quota.is_verified:
             return QuotaResolution(
                 quota, False, quota.verification_basis, QUOTA_REASON_UNVERIFIED
@@ -236,9 +243,9 @@ def resolve_run_quota(
         )
         return QuotaResolution(
             compat,
-            True,
+            compat.is_verified,
             QuotaVerificationBasis.RUNTIME_CONFIG_SNAPSHOT,
-            None,
+            None if compat.is_verified else QUOTA_REASON_UNVERIFIED,
             compat_applied=True,
         )
 

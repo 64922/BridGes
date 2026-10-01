@@ -30,7 +30,7 @@ from bridges.ai.model_quota import (
     build_run_model_quota,
     resolve_run_quota,
 )
-from bridges.ai.run_model_config import RunModelConfigProvider
+from bridges.ai.run_model_config import RunModelConfigProvider, factory_run_model_config
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career_plan.contracts import CareerPlanProjection
@@ -1453,17 +1453,6 @@ class ChatService:
             idempotent_replay=False,
         )
 
-    def _run_model_id(self) -> str | None:
-        """本轮启动时锁定的主模型 ID（V2 Issue 09）。
-
-        运行创建即本轮启动：此处解析一次并写入运行配置，之后换运行配置只影响
-        新创建的轮次；进行中的轮次（含租约恢复的续跑）沿用同一模型，历史
-        消息的模型记录不被改写。未装配提供者时返回 None（沿用出厂矩阵）。
-        """
-        if self._model_config_provider is None:
-            return None
-        return self._model_config_provider.snapshot().model_id
-
     def _apply_run_model_lock(
         self,
         run_config: dict[str, Any],
@@ -1480,32 +1469,22 @@ class ChatService:
         （排队、重试与跨进程恢复同一口径）；原轮次额度不可解析时保留原锁定
         字段并交给编译阶段明确闭锁，绝不用当前配置冒充旧运行额度。
 
-        未装配提供者且无历史锁定时不写任何锁定字段（沿用出厂矩阵）。
+        未装配提供者时同样保存出厂矩阵快照，避免恢复时重新读取变化后的额度。
         """
+        if previous_config is not None and (
+            previous_config.get("run_model_id") is not None
+            or RUN_MODEL_QUOTA_CONFIG_KEY in previous_config
+        ):
+            # 不可读/未验证的快照也原样保留，重试不能借当前配置绕过闭锁。
+            for key in ("run_model_id", RUN_MODEL_QUOTA_CONFIG_KEY):
+                if key in previous_config:
+                    run_config[key] = previous_config[key]
+            return
         current_snapshot = (
             self._model_config_provider.snapshot()
             if self._model_config_provider is not None
-            else None
+            else factory_run_model_config()
         )
-        if previous_config is not None and (
-            previous_config.get("run_model_id") is not None
-            or previous_config.get(RUN_MODEL_QUOTA_CONFIG_KEY) is not None
-        ):
-            resolution = resolve_run_quota(
-                previous_config, current_snapshot=current_snapshot
-            )
-            if resolution.quota is not None:
-                run_config["run_model_id"] = resolution.quota.model_id
-                run_config[RUN_MODEL_QUOTA_CONFIG_KEY] = (
-                    resolution.quota.to_config()
-                )
-                return
-            locked = previous_config.get("run_model_id")
-            if locked is not None:
-                run_config["run_model_id"] = locked
-            return
-        if current_snapshot is None:
-            return
         run_config["run_model_id"] = current_snapshot.model_id
         run_config[RUN_MODEL_QUOTA_CONFIG_KEY] = build_run_model_quota(
             current_snapshot
@@ -1982,23 +1961,14 @@ class ChatService:
         编译记录只含 ID、版本与计数，供后续材料（V2 Issue 08 的画像块）按同一
         份预算裁剪剩余输入空间。
 
-        V2 Issue 05：当前轮绑定照片附件时返回 ``None``——图片部件无法
-        进入纯文本摘要编译，生成回退到 ``_model_history`` 的多模态组装；
-        照片轮正文短，绕过编译不损失窗口预算语义。
+        当前轮绑定照片附件时仍验证并冻结模型额度，然后返回 ``None``，
+        由多模态路径组装图片部件；最终载荷预算由工单 04 接入。
         """
         user_message = self._repo.get_message(run.account_id, run.user_message_id)
         if user_message is None:
             raise ChatDomainError(
                 "message_not_found", "消息不存在或没有访问权限。", 404
             )
-        if self._attachments is not None:
-            bound = self._attachments.list_for_message(
-                run.account_id, run.conversation_id, run.user_message_id
-            )
-            if any(
-                attachment.media_type in PHOTO_MEDIA_TYPES for attachment in bound
-            ):
-                return None, None
         conversation = self._repo.get_conversation(
             run.account_id, run.conversation_id
         )
@@ -2024,10 +1994,25 @@ class ChatService:
             raise ChatDomainError(
                 "model_quota_unverified",
                 "本轮锁定的模型额度无法验证（可能是排队期间更换了运行配置）："
-                "为避免用未经验证的窗口发起调用，本轮已闭锁；请重试该轮。",
+                "为避免用未经验证的窗口发起调用，本轮已闭锁；"
+                "请核对模型配置，无法补齐时请发送新消息。",
                 409,
             )
         quota = resolution.quota
+        if RUN_MODEL_QUOTA_CONFIG_KEY not in (run.config or {}):
+            # 兼容补齐只执行一次：先持久化，再编译/调用；恢复和网关读取同一份。
+            config = dict(run.config or {})
+            config["run_model_id"] = quota.model_id
+            config[RUN_MODEL_QUOTA_CONFIG_KEY] = quota.to_config()
+            if not self._repo.update_generation_config(run.account_id, run.run_id, config):
+                raise ChatDomainError("run_not_active", "本轮已结束，无法补齐模型额度。", 409)
+            run.config = config
+        if self._attachments is not None:
+            bound = self._attachments.list_for_message(
+                run.account_id, run.conversation_id, run.user_message_id
+            )
+            if any(attachment.media_type in PHOTO_MEDIA_TYPES for attachment in bound):
+                return None, None
         compiled = _compile_turn_context(
             messages=self._repo.list_messages(
                 run.account_id, run.conversation_id

@@ -59,8 +59,8 @@
 
 ### 入队原子保存与编译器/网关同源
 
-- `ChatService._apply_run_model_lock()`：创建运行记录时把 `run_model_id` 与完整 `model_quota` 写入 `generation_runs.config`；重试（`previous_config` 非空）沿用原轮次锁定的模型与额度，原额度不可解析时保留锁定字段并交给编译阶段闭锁。
-- `ChatService.compile_turn_context()`：用 `resolve_run_quota` 解析同一份快照；未解析出已验证额度时抛 `ChatDomainError("model_quota_unverified", …, 409)`；解析成功则把快照与 `CHAT_OUTPUT_TOKENS` 传入编译器，审计记录附带 `quota_compat_applied`。
+- `ChatService._apply_run_model_lock()`：创建运行记录时把 `run_model_id` 与完整 `model_quota` 写入 `generation_runs.config`，无配置提供者时也保存出厂快照；重试原样保留原锁定字段及不可读快照，交给编译阶段闭锁。
+- `ChatService.compile_turn_context()`：用 `resolve_run_quota` 解析同一份快照；未解析出已验证额度时抛 `ChatDomainError("model_quota_unverified", …, 409)`；兼容补齐先持久化并更新 `run.config`，再交给编译器与网关；照片路径同样验证并冻结额度。审计记录附带 `quota_compat_applied`。
 - 编译器 `compile_turn_context(quota=…)` 以 `quota.input_upper_bound()` 为窗口上界并标注 `quota_verified`/`window_verified`；网关 `_effective_capability(..., model_quota=…)` 以同一快照的 `max_input_tokens` 覆盖能力记录额度。图节点 `_node_compile_context` 把闭锁错误转成带节点位置的可重试失败。
 
 ### 每次调用最小版本合同
@@ -75,7 +75,7 @@
 
 ## 接口与迁移变化
 
-- 数据库：`SCHEMA_VERSION` 59 → 60；迁移 60 `ALTER TABLE model_run_locks ADD COLUMN call_contract_json TEXT`（可空，无 down-migration，旧行读回 `None`）。删除/导出沿用既有 `ACCOUNT_TABLES`/`EXPORT_CATEGORIES`（`model_run_locks` 类别已含该列）。
+- 数据库：`SCHEMA_VERSION` 59 → 60；迁移 60 `ALTER TABLE model_run_locks ADD COLUMN call_contract_json TEXT`（可空，无 down-migration，旧行读回 `None`）。空调用合同沿用旧哈希形状，恢复重录仍幂等；未来未知合同版本读回 `None`。删除/备份沿用既有账户目录；正式导出新增 `generation_runs` 类别，仅携带运行关联与脱敏额度，不导出完整 `config_json`。
 - API 契约：`ModelRunLock` 新增 `call_contract` 改变了 `openapi.json`（新增 `CallContractVersions` schema 与 `ModelRunLock.call_contract` 属性）；已用 `scripts/regenerate_openapi.py` 重生成 `openapi.json`，并用 `openapi-typescript@7` 重生成 `packages/contracts/src/generated.ts`。
 - 运行配置：`generation_runs.config` 新增键 `model_quota`（无 schema 变化，随既有 config 列持久化）。
 - 领域术语：`CONTEXT.md` 新增「运行额度快照」「每次调用版本合同」词条。
@@ -116,7 +116,7 @@
 
 - 生产路径的聊天调用输出额度当前恒为 1024（`CHAT_OUTPUT_TOKENS`）；「不同输出额度预留不同空间」由确定性测试覆盖，尚无第二个生产取值来源。
 - 每次调用版本合同仅接入主对话调用；后台摘要/提取、媒体/向量化等调用按「各模块接入时登记」在各自票内补 `call_contract`，未接入前如实为 `unknown`，不伪造版本。
-- `export_run_model_quota`/`redaction_audit` 为库级导出/审计入口；账户级导出（Issue 37）当前不含 `generation_runs` 类别，运行级额度未并入账户导出文档（并入需改动 Issue 37 的精确条数契约，超出本票必要接缝）。
+- 运行额度现已接入正式账户导出、备份恢复及删除路径；未知额度快照版本不猜测语义，导出中额度为 `null`，历史关联仍保留。
 - 全量 `pytest` 单进程在本机未跑完（45 分钟到 53% 仍在推进、未挂起），故改用「按目录隔离 + 硬超时」的等价覆盖；慢为环境性（大量跨进程/子进程用例），非本票代码。
 - `tests/learning::test_answer_assessment_drives_remedial_next_action` 为**既有 flaky 用例**（基线 `d4c16ee` 同样间歇失败），与 `tests/security::test_concurrent_two_account_operations_do_not_cross_contaminate` 同属并发/时序抖动，非本票引入。
 - 确定性替身与合成配置只证明机制正确，不代表真实模型体验或外部可得性（按评测票验证）。
@@ -148,4 +148,30 @@
 | integration | 600s 超时 | 600s 超时 | 环境性慢，两侧一致 |
 
 - 结论：**无新增失败**；失败均为既有 `legacy_file_source_retired`、flaky 并发/教学进度用例与目录隔离下暴露的既有循环导入。
+
+## 独立验收与修正（2026-10-01）
+
+验收基点为 `d4c16ee`，交付提交为 `4fd9617`。`code-review` 的 Standards 与 Spec 两轴独立复审后通过；上文实施者预审中「导出未接入正式路径」等限制由本节与更新后的实现说明替代。
+
+修正以下实际问题：
+
+- 旧运行兼容补齐先持久化，再传递到编译与网关；编译后立即切换配置、新进程重开数据库仍使用旧额度。
+- 重试原样保留不可读/未验证快照，包括未知版本与空值，不能改用当前同 ID 配置绕过闭锁。
+- 正窗口不代表已验证：同时核验快照版本、验证依据和模型一致性；同步与流式网关均拒绝未验证快照。
+- 未装配配置提供者的新运行也保存完整出厂快照；更新旧测试中「不保存锁定」的已过时断言。
+- 照片轮同样验证与冻结模型额度；多模态最终载荷硬门仍由 04 负责。
+- 网关从运行快照选择实际模型和输入上界，不保留注册表旧模型的额度。
+- 空调用合同保留 v59 哈希形状，升级后重录幂等；未来未知调用合同版本读回 `None`。
+- 正式账户导出增加运行额度类别，仅导出关联元数据和额度白名单；通过真实备份、恢复和账户删除验证。
+- 删除本次实现产生的孤儿 `_run_model_id()`，修正新增测试的夹具导入静态检查。
+
+本次实际验证使用 conda `agent` 的 Python，临时目录指定为工作区独立路径，禁用测试子进程的 safe-delete shim：
+
+- 新增验收测试 14 项；连同原 22 项及模型锁、上下文编译、照片、持久生成、终态邻接测试：**83 passed**。
+- `tests/ai`：**175 passed**；`tests/contracts`：**3 passed**。包含契约同步检查。
+- 扩展到 `tests/lifecycle` 的首轮结果：相关合并测试 **269 passed / 5 failed**；5 项生命周期 API 失败在当前 `main` 单独复跑得到完全相同用例、同一 `409 != 201` 前提错误（**9 passed / 5 failed**），不由本票引入。
+- 修改的业务文件与新增测试 `ruff` 通过；mypy 与 `main` 错误集合一致，仅有 `chat/service.py` 既有 5 条类型错误；`git diff --check` 通过。
+- `tests/chat` 与生命周期的完整目录差分尝试因磁盘空间耗尽而未完成；清理本次验收临时数据后复跑上述 83 项全绿。**不把中断的完整目录差分计为本次通过证据**。
+
+验收结论：本票主对话快照、调用版本合同及持久状态生命周期通过。各后台/领域调用仍按原跨票责任接入；普通聊天真实输出参数为 1024，按实际参数记录，不引入第二种虚构生产额度。
 

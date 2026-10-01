@@ -10,9 +10,11 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
+from bridges.ai.model_quota import RunModelQuota, export_run_model_quota
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
@@ -125,6 +127,7 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("study", "学习小节状态", ("study_states",), 4096),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
+    ExportCategory("generation_runs", "生成运行额度", ("generation_runs",), 512),
     ExportCategory(
         "chat_attachments",
         "对话附件",
@@ -247,6 +250,21 @@ def category_preview(
 
 def export_rows(database: BridgesDatabase, account_id: str, table: str) -> list[dict[str, Any]]:
     """导出一张表的全部账户行（sqlite3.Row → dict，列名稳定）。"""
+    if table == "generation_runs":
+        # 只导出运行关联与额度合同，配置中可能有私人材料，不整包导出 config_json。
+        rows = database.scoped(account_id).execute(
+            "SELECT run_id, account_id, conversation_id, user_message_id, assistant_message_id,"
+            " attempt_number, status, created_at, config_json FROM generation_runs"
+            " WHERE account_id = ? ORDER BY rowid", (account_id,),
+        ).fetchall()
+        exported = []
+        for row in rows:
+            item = dict(row)
+            config = json.loads(item.pop("config_json") or "{}")
+            quota = RunModelQuota.from_config(config.get("model_quota"))
+            item["model_quota"] = export_run_model_quota(quota) if quota is not None else None
+            exported.append(item)
+        return exported
     rows = database.scoped(account_id).execute(
         f"SELECT * FROM {table} WHERE account_id = ? ORDER BY rowid",
         (account_id,),

@@ -22,6 +22,7 @@ from bridges.ai.errors import (
 from bridges.ai.metrics import NOOP_MODEL_RUN_LOCK_METRICS, ModelRunLockMetrics
 from bridges.ai.ports import ModelRunLockRecorder, RecordRequest
 from bridges.contracts.ai import (
+    CALL_CONTRACT_VERSION,
     BusinessRef,
     CallContractVersions,
     ModelCallStatus,
@@ -117,6 +118,8 @@ def _load_call_contract(row: Any) -> CallContractVersions | None:
     except ValueError:
         return None
     if not isinstance(payload, dict):
+        return None
+    if payload.get("contract_version") != CALL_CONTRACT_VERSION:
         return None
     try:
         return CallContractVersions.model_validate(payload)
@@ -330,6 +333,9 @@ class SqliteModelRunLockRecorder(ModelRunLockRecorder):
         """
         payload = lock.model_dump()
         payload.pop("created_at", None)
+        # v59 的锁没有此字段；空合同保持旧哈希形状，恢复重录仍然幂等。
+        if lock.call_contract is None:
+            payload.pop("call_contract", None)
         canonical = _json_dumps(payload)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

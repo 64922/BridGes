@@ -127,28 +127,18 @@ class ModelGateway:
         """
         if not is_configurable_capability(capability.name):
             return capability
-        model_id = model_override
+        model_id = model_override or (model_quota.model_id if model_quota is not None else None)
         config: RunModelConfigSnapshot | None = None
         if self._model_config_provider is not None:
             config = self._model_config_provider.snapshot()
             if model_id is None:
                 model_id = configured_model_id(capability.name, config)
-        if not model_id or model_id == capability.model_id:
-            # 模型未改变：仍允许运行额度快照补足输入额度（旧运行兼容）。
-            if (
-                model_quota is not None
-                and model_id
-                and model_quota.model_id == model_id
-                and model_quota.max_input_tokens is not None
-                and model_quota.max_input_tokens != capability.max_input_tokens
-            ):
-                return capability.model_copy(
-                    update={"max_input_tokens": model_quota.max_input_tokens}
-                )
+        if not model_id:
             return capability
         update: dict[str, Any] = {"model_id": model_id}
         if model_quota is not None and model_quota.model_id == model_id:
-            update["max_input_tokens"] = model_quota.max_input_tokens
+            # 最大输入未知时仍以已验证窗口为上界，不沿用注册表旧模型额度。
+            update["max_input_tokens"] = model_quota.input_upper_bound()
         elif config is not None and model_id == config.model_id:
             update["max_input_tokens"] = config.max_input_tokens
         return capability.model_copy(update=update)
@@ -214,6 +204,15 @@ class ModelGateway:
                 degradation_reason=str(exc),
             )
 
+        if (
+            model_quota is not None
+            and is_configurable_capability(primary.name)
+            and (not model_quota.is_verified or model_override not in (None, model_quota.model_id))
+        ):
+            return self._blocked_result(
+                run_context, primary, "model_quota_unverified",
+                "本次调用的模型额度未经验证或与锁定模型不一致。", call_contract=call_contract,
+            )
         primary = self._effective_capability(primary, model_override, model_quota)
         if primary.status != CapabilityStatus.VERIFIED:
             return self._blocked_result(
@@ -355,6 +354,20 @@ class ModelGateway:
             )
             return
 
+        if (
+            model_quota is not None
+            and is_configurable_capability(primary.name)
+            and (not model_quota.is_verified or model_override not in (None, model_quota.model_id))
+        ):
+            blocked = self._blocked_result(
+                run_context, primary, "model_quota_unverified",
+                "本次调用的模型额度未经验证或与锁定模型不一致。", call_contract=call_contract,
+            )
+            yield StreamEvent(
+                kind="error", lock=blocked.lock, error_code=blocked.error_code,
+                error_message=blocked.error_message,
+            )
+            return
         primary = self._effective_capability(primary, model_override, model_quota)
         if primary.status != CapabilityStatus.VERIFIED:
             blocked = self._blocked_result(

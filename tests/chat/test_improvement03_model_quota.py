@@ -77,8 +77,10 @@ from tests.chat.test_chat_api import (
     _register,
 )
 from tests.chat.test_issue02_durable_generation import (  # noqa: F401 - 复用夹具
-    client,
-    sqlite_app,
+    client as client,
+)
+from tests.chat.test_issue02_durable_generation import (
+    sqlite_app as sqlite_app,
 )
 
 _MODEL_A = "qwen-user-model-a"
@@ -261,6 +263,7 @@ def test_resolve_prefers_the_run_snapshot() -> None:
 
 def test_resolve_locks_out_an_unreadable_quota_version() -> None:
     payload = RunModelQuota(
+                  verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
         model_id=_MODEL_A, context_window=_WINDOW_A, max_input_tokens=_MAX_INPUT_A
     ).to_config()
     payload["quota_version"] = "model-quota-v99"
@@ -307,6 +310,7 @@ def test_run_without_a_lock_falls_back_to_the_factory_snapshot() -> None:
 
 def test_export_and_redaction_audit_exclude_sensitive_fields() -> None:
     quota = RunModelQuota(
+                verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
         model_id=_MODEL_A, context_window=_WINDOW_A, max_input_tokens=_MAX_INPUT_A
     )
     exported = export_run_model_quota(quota)
@@ -357,6 +361,7 @@ def test_quota_snapshot_drives_window_and_marks_verified() -> None:
 
 def test_different_output_quotas_reserve_different_space() -> None:
     quota = RunModelQuota(
+                verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
         model_id=_MODEL_A,
         context_window=_WINDOW_A,
         max_input_tokens=_MAX_INPUT_A,
@@ -568,6 +573,7 @@ def test_each_call_records_its_own_versions_and_model() -> None:
         call_contract=contract,
         model_override=_MODEL_A,
         model_quota=RunModelQuota(
+                        verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
             model_id=_MODEL_A, context_window=_WINDOW_A, max_input_tokens=_MAX_INPUT_A
         ),
     )
@@ -578,6 +584,7 @@ def test_each_call_records_its_own_versions_and_model() -> None:
         call_contract=contract,
         model_override=_MODEL_B,
         model_quota=RunModelQuota(
+                        verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
             model_id=_MODEL_B, context_window=_WINDOW_B, max_input_tokens=_MAX_INPUT_B
         ),
     )
@@ -626,6 +633,7 @@ def test_embedding_binding_is_untouched_by_a_run_quota() -> None:
         _context("run-embed"),
         model_override=_MODEL_A,
         model_quota=RunModelQuota(
+                        verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
             model_id=_MODEL_A, context_window=_WINDOW_A, max_input_tokens=_MAX_INPUT_A
         ),
     )
