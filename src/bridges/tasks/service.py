@@ -24,6 +24,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from hashlib import sha256
 
+from bridges.contracts.references import ReferenceTaskContext
 from bridges.contracts.tasks import (
     ConditionOrigin,
     ConditionScope,
@@ -88,6 +89,34 @@ class TaskService:
     def list_events(self, account_id: str, conversation_id: str) -> list[TaskEvent]:
         """会话内任务审计事件（append-only），供 API 与审计消费。"""
         return self._repo.list_events(account_id, conversation_id)
+
+    def current_reference_context(
+        self, account_id: str, conversation_id: str
+    ) -> ReferenceTaskContext | None:
+        """指代解析的任务查询接缝（工单 11/12/15/19 共用）。
+
+        返回当前任务的目标、版本、状态、**全部状态**的条件（含被取代/撤销，
+        供纠正链读取）与当前版本的来源消息；不再扩大账户/会话范围。
+        """
+        task = self._repo.current_task(account_id, conversation_id)
+        if task is None:
+            return None
+        conditions = self._repo.list_conditions(account_id, task.task_id)
+        try:
+            version = self._repo.get_version(
+                account_id, task.task_id, task.current_version
+            )
+            source_message_ids = list(version.source_message_ids)
+        except TaskNotFound:
+            source_message_ids = []
+        return ReferenceTaskContext(
+            task_id=task.task_id,
+            goal=task.goal,
+            version=task.current_version,
+            status=task.status.value,
+            conditions=conditions,
+            source_message_ids=source_message_ids,
+        )
 
     def _build_projection(self, account_id: str, task: TaskRecord) -> TaskProjection:
         return TaskProjection(
