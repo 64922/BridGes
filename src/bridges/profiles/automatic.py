@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 from pydantic import ValidationError
 
@@ -21,10 +21,19 @@ from bridges.contracts.ai import (
     ModelCallStatus,
     ModelRunLock,
 )
+from bridges.contracts.atomic_profile import (
+    AtomicProfileMemoryKind,
+    AtomicProfileMemoryResult,
+    AtomicProfileMemoryStatus,
+)
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import (
+    PROFILE_CONTROLS_VERSION,
     PROFILE_HYBRID_EXPLANATION,
     AutomaticProfileObservation,
+    ProfileAccountControlsProjection,
+    ProfileCorrectionResult,
+    ProfileCorrectionStatus,
     ProfileExtractionAction,
     ProfileExtractionOutcome,
     ProfileExtractionOutput,
@@ -33,8 +42,6 @@ from bridges.contracts.profile_extraction import (
     ProfileExtractionSource,
     ProfileExtractionStatus,
     ProfilePageStatus,
-    ProfileCorrectionResult,
-    ProfileCorrectionStatus,
     ProfilePreprocessResult,
     ProfilePrivacyNotice,
     ProfileStatusProjection,
@@ -52,11 +59,6 @@ from bridges.contracts.profiles import (
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
-from bridges.contracts.atomic_profile import (
-    AtomicProfileMemoryKind,
-    AtomicProfileMemoryResult,
-    AtomicProfileMemoryStatus,
-)
 from bridges.profiles.atomic import (
     AtomicProfileService,
     MemoryDirective,
@@ -95,6 +97,22 @@ PROFILE_REPLAY_QUEUE = "profile-replay-v2"
 PROFILE_REPLAY_SOURCE_HASH_PREFIX = ":replay-v1:"
 PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
+#: 改进工单 07：账户级画像控制表（长期画像使用开关的持久状态）。
+PROFILE_CONTROLS_TABLE = "profile_account_controls"
+#: 控制更新请求两个字段都缺省时的统一错误文案（服务层与 API 层共用）。
+PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE = "至少指定 recording_enabled 或 usage_enabled 之一。"
+
+
+class ProfileUsageState(NamedTuple):
+    """账户级长期画像使用开关的持久状态。
+
+    ``version`` 从 1 起计：每一次真实变化递增，同值重复写入保持不变；
+    从未有持久行时按 ``(True, 0, None)`` 读取（0 表示「从未变更」）。
+    """
+
+    enabled: bool
+    version: int
+    updated_at: datetime | None
 
 # Issue 13 来源守卫稳定名：错误码与观测指标共用同一字面量，改名必须
 # 同步两处，否则"错误码 ↔ 指标"的审计关联会静默漂移。
@@ -282,6 +300,24 @@ class AutomaticProfileRepository(ABC):
         self, account_id: str, normalized_value: str | None = None
     ) -> bool:
         """检查当前账户或内容是否已被用户禁止记录。"""
+
+    @abstractmethod
+    def unblock_recording(self, account_id: str) -> bool:
+        """解除账户级停止记录；返回是否确实移除了账户级阻止。"""
+
+    @abstractmethod
+    def get_profile_usage_state(self, account_id: str) -> ProfileUsageState:
+        """返回账户的长期画像使用开关状态。
+
+        没有持久化行时按默认 ``(True, 0, None)`` 读取：关闭使用是显式的
+        用户控制，默认状态始终允许使用已记录的有效信息。
+        """
+
+    @abstractmethod
+    def set_profile_usage_enabled(
+        self, account_id: str, enabled: bool, now: datetime
+    ) -> ProfileUsageState:
+        """持久化长期画像使用开关；同值重复写入保持序号与时间（幂等）。"""
 
     @abstractmethod
     def delete_observations_for_record(
@@ -670,6 +706,8 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
         self._tombstones: set[tuple[str, str]] = set()
         self._account_recording_blocks: set[str] = set()
         self._content_recording_blocks: set[tuple[str, str]] = set()
+        # Issue 07：账户 → 长期画像使用开关的持久状态。
+        self._profile_usage_states: dict[str, ProfileUsageState] = {}
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -681,6 +719,7 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
             copy.deepcopy(self._tombstones),
             copy.deepcopy(self._account_recording_blocks),
             copy.deepcopy(self._content_recording_blocks),
+            copy.deepcopy(self._profile_usage_states),
         )
         try:
             yield
@@ -693,6 +732,7 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
                 self._tombstones,
                 self._account_recording_blocks,
                 self._content_recording_blocks,
+                self._profile_usage_states,
             ) = snapshot
             raise
 
@@ -811,6 +851,31 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
             for blocked_account, blocked in self._content_recording_blocks
             if blocked_account == account_id
         )
+
+    def unblock_recording(self, account_id: str) -> bool:
+        if account_id not in self._account_recording_blocks:
+            return False
+        self._account_recording_blocks.discard(account_id)
+        return True
+
+    def get_profile_usage_state(self, account_id: str) -> ProfileUsageState:
+        return self._profile_usage_states.get(
+            account_id, ProfileUsageState(enabled=True, version=0, updated_at=None)
+        )
+
+    def set_profile_usage_enabled(
+        self, account_id: str, enabled: bool, now: datetime
+    ) -> ProfileUsageState:
+        current = self.get_profile_usage_state(account_id)
+        if current.enabled == enabled:
+            return current
+        state = ProfileUsageState(
+            enabled=enabled,
+            version=current.version + 1,
+            updated_at=now,
+        )
+        self._profile_usage_states[account_id] = state
+        return state
 
     def delete_observations_for_record(
         self, account_id: str, dimension: FourDimension, normalized_value: str
@@ -1136,6 +1201,57 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
                 is not None
             )
         )
+
+    def unblock_recording(self, account_id: str) -> bool:
+        cursor = self.database.scoped(account_id).execute(
+            "DELETE FROM profile_extraction_privacy_blocks "
+            "WHERE account_id = ? AND scope = 'account'",
+            (account_id,),
+        )
+        return cursor.rowcount > 0
+
+    def get_profile_usage_state(self, account_id: str) -> ProfileUsageState:
+        row = self.database.scoped(account_id).execute(
+            "SELECT profile_usage_enabled, usage_control_version, updated_at "
+            f"FROM {PROFILE_CONTROLS_TABLE} WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        if row is None:
+            return ProfileUsageState(enabled=True, version=0, updated_at=None)
+        return ProfileUsageState(
+            enabled=bool(row["profile_usage_enabled"]),
+            version=int(row["usage_control_version"]),
+            updated_at=self._dt(str(row["updated_at"])),
+        )
+
+    def set_profile_usage_enabled(
+        self, account_id: str, enabled: bool, now: datetime
+    ) -> ProfileUsageState:
+        # 单条原子 upsert：值不变时 WHERE 不命中，序号与时间保持不变（幂等）；
+        # 值变化时序号在既有行上递增，不依赖先读后写的窗口。
+        self.database.scoped(account_id).execute(
+            f"INSERT INTO {PROFILE_CONTROLS_TABLE} "
+            "(account_id, profile_usage_enabled, controls_version, "
+            " usage_control_version, updated_at) "
+            "SELECT ?, ?, ?, 1, ? WHERE ? = 0 OR EXISTS ("
+            f"SELECT 1 FROM {PROFILE_CONTROLS_TABLE} WHERE account_id = ?) "
+            "ON CONFLICT(account_id) DO UPDATE SET "
+            "profile_usage_enabled = excluded.profile_usage_enabled, "
+            f"usage_control_version = {PROFILE_CONTROLS_TABLE}"
+            ".usage_control_version + 1, "
+            "updated_at = excluded.updated_at "
+            "WHERE profile_usage_enabled != excluded.profile_usage_enabled",
+            (
+                account_id, int(enabled), PROFILE_CONTROLS_VERSION,
+                self._iso(now), int(enabled), account_id,
+            ),
+        )
+        state = self.get_profile_usage_state(account_id)
+        if state.enabled != enabled:
+            raise RuntimeError(
+                f"长期画像使用开关写入后未能按原值读回：{account_id}"
+            )
+        return state
 
     def delete_observations_for_record(
         self, account_id: str, dimension: FourDimension, normalized_value: str
@@ -1484,10 +1600,22 @@ class AutomaticProfileService:
         now = _now()
         source_hash = _source_hash(account_id, message_id, content)
         signal_classification = self._classifier.classify(content)
+        # 用户可用引号指定管理对象；只有消息开头的直接命令才去除目标引号
+        # 再检查来源，转述中的命令不因目标可解析而获得管理权限。
+        management_classification = signal_classification
+        if re.match(
+            r"^(?:请|麻烦)?(?:帮我)?(?:记住|忘掉|忘记|删掉|删除)", content.strip()
+        ):
+            management_classification = self._classifier.classify(
+                re.sub(r'[“”"「」『』]', "", content)
+            )
         # Issue 13：来源决策是分类结果的显式、可观测投影；新 run 一律
         # 携带稳定来源，历史行保持 NULL 不做伪造。
         source = self._decide_source(signal_classification)
-        directive = _privacy_directive(content)
+        management_allowed = management_classification.reason_code not in {
+            "quoted_or_relayed_text", "third_party_statement", "hypothetical_or_role_play",
+        }
+        directive = _privacy_directive(content) if management_allowed else None
         if directive is not None:
             scope, normalized_value = directive
             if scope == "content" and normalized_value is None:
@@ -1506,7 +1634,25 @@ class AutomaticProfileService:
                 now=now,
                 reason="用户已停止记录此消息",
             )
-        if self._repository.is_recording_blocked(account_id):
+        existing = self._repository.get_run(
+            account_id, message_id, self.extractor_version, source_hash
+        )
+        # 改进工单 07：先解析并受控执行显式管理意图，再判断普通自动记录
+        # 是否允许。账户级停止记录只阻止「自动新增/更新」；显式「记住/忘掉」
+        # 与明确纠正属于主动管理，在停止记录期间仍即时生效（否则用户要求
+        # 忘掉的信息会因阻止检查先于指令解析而残留）。
+        memory_directive = (
+            parse_memory_directive(content)
+            if self._atomic_profiles is not None
+            and management_allowed
+            else None
+        )
+        recording_blocked = self._repository.is_recording_blocked(account_id)
+        if (
+            recording_blocked
+            and memory_directive is None
+            and signal_classification.category != ProfileSignalCategory.CORRECTION
+        ):
             self._repository.mark_message_tombstone(account_id, message_id)
             return self._blocked_result(
                 account_id=account_id,
@@ -1516,9 +1662,6 @@ class AutomaticProfileService:
                 now=now,
                 reason="用户已停止产生新的记录",
             )
-        existing = self._repository.get_run(
-            account_id, message_id, self.extractor_version, source_hash
-        )
         if self._repository.is_message_tombstoned(account_id, message_id):
             if existing is None:
                 now = _now()
@@ -1558,18 +1701,16 @@ class AutomaticProfileService:
                 committed_record_ids=existing.committed_record_ids,
                 observed_count=existing.observed_count,
             )
-        if self._atomic_profiles is not None:
-            memory_directive = parse_memory_directive(content)
-            if memory_directive is not None:
-                return self._memory_directive_result(
-                    account_id=account_id,
-                    message_id=message_id,
-                    content=content,
-                    source_hash=source_hash,
-                    now=now,
-                    directive=memory_directive,
-                    existing=existing,
-                )
+        if memory_directive is not None:
+            return self._memory_directive_result(
+                account_id=account_id,
+                message_id=message_id,
+                content=content,
+                source_hash=source_hash,
+                now=now,
+                directive=memory_directive,
+                existing=existing,
+            )
         if existing is not None and existing.status in {
             ProfileExtractionStatus.SUCCEEDED,
             ProfileExtractionStatus.EXHAUSTED,
@@ -2759,6 +2900,93 @@ class AutomaticProfileService:
         self, account_id: str | None = None
     ) -> list[ProfileExtractionRetryTask]:
         return self._repository.list_tasks(account_id)
+
+    # ------------------------------------------------------------------
+    # 改进工单 07：账户级画像控制。记录与使用分开持久化——记录开关的
+    # 权威状态是隐私阻止规则（账户级行），使用开关在本票新增的控制表中；
+    # 两个开关组合的行为互相独立。19 的用途切片与回答上下文编译共同读取
+    # ``is_profile_usage_enabled``，17 的队列在重试前复查记录许可。
+    # ------------------------------------------------------------------
+
+    def is_profile_usage_enabled(self, account_id: str) -> bool:
+        """当前账户是否允许回答读取长期画像正文。"""
+
+        return self._repository.get_profile_usage_state(account_id).enabled
+
+    def account_controls(self, account_id: str) -> ProfileAccountControlsProjection:
+        """组合投影当前账户的两个控制开关状态。"""
+
+        usage = self._repository.get_profile_usage_state(account_id)
+        return ProfileAccountControlsProjection(
+            recording_enabled=not self._repository.is_recording_blocked(account_id),
+            usage_enabled=usage.enabled,
+            usage_control_version=usage.version,
+            usage_updated_at=usage.updated_at,
+        )
+
+    def set_account_controls(
+        self,
+        account_id: str,
+        *,
+        recording_enabled: bool | None = None,
+        usage_enabled: bool | None = None,
+    ) -> ProfileAccountControlsProjection:
+        """更新账户级控制开关；至少指定一项，同值写入幂等。
+
+        停止记录写入账户级隐私阻止规则（与聊天指令「不要记录」同一份
+        状态）；重新开启记录移除该账户级阻止（内容级阻止规则不受影响）。
+        关闭/开启使用只改使用开关，从不删除或恢复任何画像条目。
+        """
+
+        if recording_enabled is None and usage_enabled is None:
+            raise ValueError(PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE)
+        now = _now()
+        with self._repository.transaction():
+            if recording_enabled is False:
+                self._repository.block_recording(account_id, None, now)
+            elif recording_enabled is True:
+                self._repository.unblock_recording(account_id)
+            if usage_enabled is not None:
+                self._repository.set_profile_usage_enabled(account_id, usage_enabled, now)
+            controls = self.account_controls(account_id)
+        self._audit_controls_update(
+            account_id,
+            controls=controls,
+            recording_target=recording_enabled,
+            usage_target=usage_enabled,
+        )
+        return controls
+
+    def _audit_controls_update(
+        self,
+        account_id: str,
+        *,
+        controls: ProfileAccountControlsProjection,
+        recording_target: bool | None,
+        usage_target: bool | None,
+    ) -> None:
+        if self._observability is None:
+            return
+        try:
+            self._observability.log_audit(
+                actor_account_id=account_id,
+                action=AuditAction.PROFILE_CONTROLS_UPDATE,
+                result=AuditResult.SUCCESS,
+                reason="profile_controls_update",
+                details={
+                    "recording_target": (
+                        recording_target if recording_target is not None else "unchanged"
+                    ),
+                    "usage_target": (
+                        usage_target if usage_target is not None else "unchanged"
+                    ),
+                    "recording_enabled": controls.recording_enabled,
+                    "usage_enabled": controls.usage_enabled,
+                    "usage_control_version": controls.usage_control_version,
+                },
+            )
+        except Exception:  # noqa: BLE001 - 审计失败不改变已生效的控制状态
+            return
 
 
 def now_plus_hour() -> datetime:

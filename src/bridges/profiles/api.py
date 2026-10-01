@@ -13,7 +13,11 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileItemProjection,
     AtomicProfileMigrationReport,
 )
-from bridges.contracts.profile_extraction import ProfileStatusProjection
+from bridges.contracts.profile_extraction import (
+    ProfileAccountControlsProjection,
+    ProfileAccountControlsUpdateRequest,
+    ProfileStatusProjection,
+)
 from bridges.contracts.profiles import (
     FourDimensionProfileDeleteRequest,
     FourDimensionProfileModifyRequest,
@@ -23,7 +27,10 @@ from bridges.contracts.profiles import (
     ProfileError,
 )
 from bridges.profiles.atomic import AtomicProfileError, AtomicProfileService
-from bridges.profiles.automatic import AutomaticProfileService
+from bridges.profiles.automatic import (
+    PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
+    AutomaticProfileService,
+)
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
     FourDimensionProfileService,
@@ -108,6 +115,53 @@ async def profile_status(
     if observability is not None:
         observability.record_profile_page_status(projection.status.value)
     return projection
+
+
+# 改进工单 07：账户级画像记录/使用控制。聊天指令（「不要记录」）与本路由
+# 读写同一份持久状态；停止记录只阻止自动新增/更新，关闭使用不删除信息，
+# 主动管理始终可用。合同版本随响应返回（profile-controls-v1）。
+
+
+@router.get(
+    "/controls",
+    response_model=ProfileAccountControlsProjection,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ProfileError}},
+)
+async def get_profile_controls(
+    service: AutomaticProfileServiceDep,
+    subject: SubjectDep,
+) -> ProfileAccountControlsProjection:
+    """返回当前账户的自动记录与长期画像使用开关状态。"""
+
+    return service.account_controls(subject.account_id)
+
+
+@router.put(
+    "/controls",
+    response_model=ProfileAccountControlsProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def update_profile_controls(
+    service: AutomaticProfileServiceDep,
+    subject: SubjectDep,
+    request: ProfileAccountControlsUpdateRequest,
+) -> ProfileAccountControlsProjection:
+    """更新当前账户的控制开关；同值重复写入幂等，至少指定一项。"""
+
+    if request.recording_enabled is None and request.usage_enabled is None:
+        raise _profile_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "profile_controls_update_failed",
+            PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
+        )
+    return service.set_account_controls(
+        subject.account_id,
+        recording_enabled=request.recording_enabled,
+        usage_enabled=request.usage_enabled,
+    )
 
 
 @router.patch(

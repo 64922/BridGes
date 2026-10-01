@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 61
+SCHEMA_VERSION = 62
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2800,6 +2800,24 @@ MIGRATIONS: dict[int, list[str]] = {
         ON task_events(account_id, conversation_id, created_at)
         """,
     ],
+    # 改进工单 07：账户级画像控制（长期画像使用开关）。
+    # 「停止自动记录」沿用 profile_extraction_privacy_blocks 的账户级行；
+    # 「长期画像使用」是独立持久状态：关闭使用只阻止回答读取长期画像正文，
+    # 不删除信息、不影响主动管理。列级默认 1 表示「首次变化即序号 1」；
+    # 投影层的 usage_control_version=0 只用于「尚无行=从未变更」的默认读取。
+    # usage_control_version 只在该开关真实变化时递增（同值写入幂等）。
+    62: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_account_controls (
+            account_id TEXT PRIMARY KEY,
+            profile_usage_enabled INTEGER NOT NULL DEFAULT 1
+                CHECK (profile_usage_enabled IN (0, 1)),
+            controls_version TEXT NOT NULL DEFAULT 'profile-controls-v1',
+            usage_control_version INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -2824,6 +2842,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "task_conditions",
     "task_waits",
     "task_events",
+    # 改进工单 07：长期画像使用开关的持久状态；回答切片编译与控制 API 都
+    # 无条件读取，缺失时启动失败关闭而不是静默把使用当作始终开启。
+    "profile_account_controls",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。

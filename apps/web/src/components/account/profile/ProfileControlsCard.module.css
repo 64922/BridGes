@@ -1,0 +1,135 @@
+.card {
+  width: min(880px, 100%);
+  margin: 0 auto;
+  padding: 24px 28px;
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 18px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.lead {
+  margin: 8px 0 4px;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-text-tertiary);
+}
+
+.row:first-of-type {
+  margin-top: 12px;
+}
+
+.copy {
+  max-width: 560px;
+}
+
+.name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.description {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.switch:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.thumb {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--color-text-tertiary);
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.thumb::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  transition: transform 0.15s ease;
+}
+
+.switch[data-state="on"] .thumb {
+  background: var(--color-accent-primary);
+}
+
+.switch[data-state="on"] .thumb::after {
+  transform: translateX(14px);
+}
+
+.switchLabel {
+  font-size: 13px;
+  min-width: 3em;
+  text-align: left;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 12px;
+  color: var(--color-text-primary);
+}
+
+.error button {
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.state {
+  margin: 12px 0 0;
+  color: var(--color-text-tertiary);
+}
+
+@media (max-width: 640px) {
+  .row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

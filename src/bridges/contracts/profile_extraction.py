@@ -250,3 +250,52 @@ class ProfileStatusProjection(BaseModel):
         default=None,
         description="对用户可见的混合策略诚实说明（中文）；不夸大为全模型或全本地。",
     )
+
+
+#: 账户级画像控制合同的版本；控制语义变化时递增，客户端据此识别合同。
+PROFILE_CONTROLS_VERSION = "profile-controls-v1"
+
+
+class ProfileAccountControlsProjection(BaseModel):
+    """账户级画像记录/使用控制状态。
+
+    改进工单 07：自动记录与长期画像使用分开控制——关闭记录只阻止自动
+    新增/更新（主动记住、修改、忘掉、删除始终可用）；关闭使用不删除信息，
+    只停止回答读取长期画像正文。停止记录的持久状态是
+    ``profile_extraction_privacy_blocks`` 的账户级行，这里按「是否开启」
+    组合投影。
+    """
+
+    controls_version: str = Field(
+        default=PROFILE_CONTROLS_VERSION,
+        description="控制合同版本；客户端据此识别字段语义。",
+    )
+    recording_enabled: bool = Field(
+        description="自动记录开关：False 表示已停止自动新增/更新。",
+    )
+    usage_enabled: bool = Field(
+        description="长期画像使用开关：False 表示回答不再读取长期画像正文。",
+    )
+    usage_control_version: int = Field(
+        ge=0,
+        description="使用开关变更序号；0 表示从未变更，同值重复写入不递增。",
+    )
+    usage_updated_at: datetime | None = Field(
+        default=None,
+        description="使用开关最近一次真实变化时间；从未变更为空。",
+    )
+
+
+class ProfileAccountControlsUpdateRequest(BaseModel):
+    """更新账户级画像控制的请求；两个字段都可选，但至少指定一项。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    recording_enabled: bool | None = Field(
+        default=None,
+        description="目标自动记录状态；不传表示不修改。",
+    )
+    usage_enabled: bool | None = Field(
+        default=None,
+        description="目标长期画像使用状态；不传表示不修改。",
+    )
