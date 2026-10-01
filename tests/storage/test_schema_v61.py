@@ -42,6 +42,8 @@ def test_fresh_database_has_task_domain_objects(tmp_path: Path) -> None:
     assert database.initialize() == SCHEMA_VERSION
     assert set(TASK_TABLES) <= _table_names(path)
     assert "current_task_id" in _columns(path, "conversations")
+    # 任务版本快照含结果引用列（任务内容第 2 条「结果引用」）。
+    assert "result_refs_json" in _columns(path, "task_versions")
     # 任务表携带账户列，账户隔离由 scoped() 强制。
     for table in TASK_TABLES:
         assert "account_id" in _columns(path, table), table

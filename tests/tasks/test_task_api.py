@@ -72,16 +72,23 @@ def test_multi_turn_replay_end_to_end(app_env: dict[str, Any]) -> None:
 
     # 轮 1：选购任务，长消息末尾预算。
     first = _turn(
-        client, conversation_id,
-        user_message_id="u1", relation="new", goal="推荐一台笔记本电脑",
+        client,
+        conversation_id,
+        user_message_id="u1",
+        relation="new",
+        goal="推荐一台笔记本电脑",
         conditions=[
             {
-                "kind": "budget", "text": "预算 5,000 元",
-                "source_message_id": "u1", "source_span": "预算 5,000 元",
+                "kind": "budget",
+                "text": "预算 5,000 元",
+                "source_message_id": "u1",
+                "source_span": "预算 5,000 元",
             },
             {
-                "kind": "exclusion", "text": "不要二手",
-                "scope": "conversation", "source_message_id": "u1",
+                "kind": "exclusion",
+                "text": "不要二手",
+                "scope": "conversation",
+                "source_message_id": "u1",
             },
         ],
     )
@@ -91,12 +98,16 @@ def test_multi_turn_replay_end_to_end(app_env: dict[str, Any]) -> None:
 
     # 轮 2：纠正为 3,000，本轮即生效。
     second = _turn(
-        client, conversation_id,
-        user_message_id="u2", relation="revise",
+        client,
+        conversation_id,
+        user_message_id="u2",
+        relation="revise",
         conditions=[
             {
-                "kind": "budget", "text": "预算 3,000 元",
-                "source_message_id": "u2", "source_span": "改成 3,000",
+                "kind": "budget",
+                "text": "预算 3,000 元",
+                "source_message_id": "u2",
+                "source_span": "改成 3,000",
             }
         ],
     )
@@ -104,8 +115,12 @@ def test_multi_turn_replay_end_to_end(app_env: dict[str, Any]) -> None:
 
     # 轮 3：换话题到通勤（两个任务并存），旧任务暂停、预算不携带。
     third = _turn(
-        client, conversation_id,
-        user_message_id="u3", relation="new", goal="校园通勤路线", is_new_topic=True,
+        client,
+        conversation_id,
+        user_message_id="u3",
+        relation="new",
+        goal="校园通勤路线",
+        is_new_topic=True,
     )
     commute_id = third["task"]["task"]["task_id"]
     assert commute_id != shopping_id
@@ -115,8 +130,11 @@ def test_multi_turn_replay_end_to_end(app_env: dict[str, Any]) -> None:
 
     # 轮 4：返回选购，恢复最新有效值 3,000，不复活 5,000。
     fourth = _turn(
-        client, conversation_id,
-        user_message_id="u4", relation="continue", explicit_task_id=shopping_id,
+        client,
+        conversation_id,
+        user_message_id="u4",
+        relation="continue",
+        explicit_task_id=shopping_id,
     )
     assert [c["text"] for c in fourth["task"]["effective_conditions"]] == ["预算 3,000 元"]
     assert fourth["task"]["task"]["status"] == "active"
@@ -124,9 +142,7 @@ def test_multi_turn_replay_end_to_end(app_env: dict[str, Any]) -> None:
     # 两个任务并存：会话内可见两条任务投影。
     listing = client.get(f"/tasks/conversations/{conversation_id}")
     assert listing.status_code == 200
-    assert {item["task"]["task_id"] for item in listing.json()} == {
-        shopping_id, commute_id
-    }
+    assert {item["task"]["task_id"] for item in listing.json()} == {shopping_id, commute_id}
 
     # 版本不可变：选购任务有两个版本。
     versions = client.get(f"/tasks/{shopping_id}/versions")
@@ -144,8 +160,10 @@ def test_plain_chat_does_not_create_task(app_env: dict[str, Any]) -> None:
     _register(client, "2")
     conversation_id = _create_conversation(client)
     result = _turn(
-        client, conversation_id,
-        user_message_id="u1", relation="new",
+        client,
+        conversation_id,
+        user_message_id="u1",
+        relation="new",
     )
     assert result["created"] is False
     assert client.get(f"/tasks/conversations/{conversation_id}").json() == []
@@ -157,8 +175,11 @@ def test_wait_mismatch_then_cancel_releases(app_env: dict[str, Any]) -> None:
     _register(client, "3")
     conversation_id = _create_conversation(client)
     created = _turn(
-        client, conversation_id,
-        user_message_id="u1", relation="new", goal="推荐笔记本",
+        client,
+        conversation_id,
+        user_message_id="u1",
+        relation="new",
+        goal="推荐笔记本",
     )
     task_id = created["task"]["task"]["task_id"]
 
@@ -180,17 +201,24 @@ def test_wait_mismatch_then_cancel_releases(app_env: dict[str, Any]) -> None:
 
     # 换话题后再说「好的」：不误填等待。
     mismatch = _turn(
-        client, conversation_id,
-        user_message_id="u2", relation="continue", explicit_task_id=task_id,
-        answer_fields=[], answer_text="好的",
+        client,
+        conversation_id,
+        user_message_id="u2",
+        relation="continue",
+        explicit_task_id=task_id,
+        answer_fields=[],
+        answer_text="好的",
     )
     assert mismatch["wait_resolution"] in {"none", "rejected"}
     assert mismatch["resolved_wait"] is None
 
     # 取消任务：等待进入终态并释放资源。
     cancelled = _turn(
-        client, conversation_id,
-        user_message_id="u3", relation="cancel", explicit_task_id=task_id,
+        client,
+        conversation_id,
+        user_message_id="u3",
+        relation="cancel",
+        explicit_task_id=task_id,
     )
     assert cancelled["task"]["task"]["status"] == "cancelled"
     waits = client.get(f"/tasks/{task_id}/waits").json()
@@ -217,8 +245,11 @@ def test_account_isolation_and_optimistic_conflict(app_env: dict[str, Any]) -> N
     _register(owner, "4")
     conversation_id = _create_conversation(owner)
     created = _turn(
-        owner, conversation_id,
-        user_message_id="u1", relation="new", goal="推荐笔记本",
+        owner,
+        conversation_id,
+        user_message_id="u1",
+        relation="new",
+        goal="推荐笔记本",
     )
     task_id = created["task"]["task"]["task_id"]
 
@@ -230,9 +261,7 @@ def test_account_isolation_and_optimistic_conflict(app_env: dict[str, Any]) -> N
             "user_message_id": "u2",
             "relation": "revise",
             "expected_version": 0,
-            "conditions": [
-                {"kind": "budget", "text": "预算 3,000 元", "source_message_id": "u2"}
-            ],
+            "conditions": [{"kind": "budget", "text": "预算 3,000 元", "source_message_id": "u2"}],
         },
     )
     assert conflict.status_code == 409
@@ -261,11 +290,12 @@ def test_tasks_survive_process_restart(app_env: dict[str, Any]) -> None:
     _register(client, "6")
     conversation_id = _create_conversation(client)
     created = _turn(
-        client, conversation_id,
-        user_message_id="u1", relation="new", goal="推荐笔记本",
-        conditions=[
-            {"kind": "budget", "text": "预算 5,000 元", "source_message_id": "u1"}
-        ],
+        client,
+        conversation_id,
+        user_message_id="u1",
+        relation="new",
+        goal="推荐笔记本",
+        conditions=[{"kind": "budget", "text": "预算 5,000 元", "source_message_id": "u1"}],
     )
     task_id = created["task"]["task"]["task_id"]
 

@@ -26315,16 +26315,6 @@
               }
             }
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -56248,10 +56238,12 @@
           "continue",
           "revise",
           "pause",
+          "complete",
+          "block",
           "cancel"
         ],
         "title": "TaskRelation",
-        "description": "一轮理解产出的有限任务关系。\n\n``new`` 是「本消息属于新任务」；没有目标也没有条件的普通聊天不创建\n任务（普通聊天保持轻量）。关系由工单 12 的主智能体理解产出，本领域\n只做代码校验与落地。"
+        "description": "一轮理解产出的有限任务关系。\n\n``new`` 是「本消息属于新任务」；没有目标也没有条件的普通聊天不创建\n任务（普通聊天保持轻量）。关系由工单 12 的主智能体理解产出，本领域\n只做代码校验与落地。\n\n``complete`` 与 ``block`` 让 ``completed`` / ``blocked`` 成为可达状态：\n完成任务仍可被后续 ``revise`` 重新激活（任务内容第 7 条「完成目标可\n继续修订」），阻塞任务则不再接收澄清答复。"
       },
       "TaskStatus": {
         "type": "string",
@@ -56311,6 +56303,22 @@
             },
             "type": "array",
             "title": "Conditions"
+          },
+          "revoked_condition_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Revoked Condition Ids",
+            "description": "用户明确撤销的条件 ID；被撤销的值不因话题往返复活。"
+          },
+          "result_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Result Refs",
+            "description": "本版本对应结果的引用（产物/运行 ID），只存引用不存正文。"
           },
           "is_new_topic": {
             "type": "boolean",
@@ -56476,6 +56484,13 @@
             "type": "array",
             "title": "Source Message Ids"
           },
+          "result_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Result Refs"
+          },
           "supersedes_version": {
             "anyOf": [
               {
@@ -56525,7 +56540,7 @@
           "created_at"
         ],
         "title": "TaskVersion",
-        "description": "任务在某次条件确定后的不可变快照。"
+        "description": "任务在某次条件确定后的不可变快照。\n\n``result_refs`` 保存该版本对应结果的引用（产物/运行 ID），只存引用不\n存正文：任务领域拥有写模型，产物由各自模块拥有（任务内容第 2 条\n「结果引用」、跨票接缝第 10 条）。"
       },
       "TaskWait": {
         "properties": {

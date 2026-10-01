@@ -50,13 +50,36 @@ class TaskRelation(StrEnum):
     ``new`` 是「本消息属于新任务」；没有目标也没有条件的普通聊天不创建
     任务（普通聊天保持轻量）。关系由工单 12 的主智能体理解产出，本领域
     只做代码校验与落地。
+
+    ``complete`` 与 ``block`` 让 ``completed`` / ``blocked`` 成为可达状态：
+    完成任务仍可被后续 ``revise`` 重新激活（任务内容第 7 条「完成目标可
+    继续修订」），阻塞任务则不再接收澄清答复。
     """
 
     NEW = "new"
     CONTINUE = "continue"
     REVISE = "revise"
     PAUSE = "pause"
+    COMPLETE = "complete"
+    BLOCK = "block"
     CANCEL = "cancel"
+
+
+class TaskEventKind(StrEnum):
+    """任务审计事件的种类（单一事实源，避免各处各写一份字面量）。"""
+
+    TASK_CREATED = "task_created"
+    VERSION_CREATED = "version_created"
+    TASK_PAUSED = "task_paused"
+    TASK_RESUMED = "task_resumed"
+    TASK_ACTIVATED = "task_activated"
+    TASK_COMPLETED = "task_completed"
+    TASK_BLOCKED = "task_blocked"
+    TASK_CANCELLED = "task_cancelled"
+    CONDITION_REVOKED = "condition_revoked"
+    WAIT_RESOLVED = "wait_resolved"
+    WAITS_SUSPENDED = "waits_suspended"
+    WAITS_EXPIRED = "waits_expired"
 
 
 class ConditionScope(StrEnum):
@@ -140,9 +163,7 @@ class TaskConditionInput(BaseModel):
     source_span: str | None = Field(
         default=None, description="原话范围（可定位的最小片段），无定位时为 null。"
     )
-    replaces: str | None = Field(
-        default=None, description="被本条明示纠正/撤销的旧条件 ID。"
-    )
+    replaces: str | None = Field(default=None, description="被本条明示纠正/撤销的旧条件 ID。")
 
 
 class TaskCondition(BaseModel):
@@ -158,9 +179,7 @@ class TaskCondition(BaseModel):
     status: ConditionStatus
     source_message_id: str
     source_span: str | None = None
-    supersedes_condition_id: str | None = Field(
-        default=None, description="本条取代的旧条件 ID。"
-    )
+    supersedes_condition_id: str | None = Field(default=None, description="本条取代的旧条件 ID。")
     superseded_by: str | None = Field(
         default=None, description="取代本条的新条件 ID；非空即表示本条已失效。"
     )
@@ -169,7 +188,12 @@ class TaskCondition(BaseModel):
 
 
 class TaskVersion(BaseModel):
-    """任务在某次条件确定后的不可变快照。"""
+    """任务在某次条件确定后的不可变快照。
+
+    ``result_refs`` 保存该版本对应结果的引用（产物/运行 ID），只存引用不
+    存正文：任务领域拥有写模型，产物由各自模块拥有（任务内容第 2 条
+    「结果引用」、跨票接缝第 10 条）。
+    """
 
     version_id: str
     task_id: str
@@ -177,6 +201,7 @@ class TaskVersion(BaseModel):
     goal: str
     condition_ids: list[str] = Field(default_factory=list)
     source_message_ids: list[str] = Field(default_factory=list)
+    result_refs: list[str] = Field(default_factory=list)
     supersedes_version: int | None = None
     invalidated_at: datetime | None = None
     invalidation_reason: str | None = None
@@ -252,15 +277,21 @@ class TaskTurnRequest(BaseModel):
         default=None, description="用户明确指代的任务 ID；缺省用会话当前任务。"
     )
     conditions: list[TaskConditionInput] = Field(default_factory=list)
+    revoked_condition_ids: list[str] = Field(
+        default_factory=list,
+        description="用户明确撤销的条件 ID；被撤销的值不因话题往返复活。",
+    )
+    result_refs: list[str] = Field(
+        default_factory=list,
+        description="本版本对应结果的引用（产物/运行 ID），只存引用不存正文。",
+    )
     is_new_topic: bool = Field(
         default=False, description="本消息是否明确开启无关话题（暂停旧任务）。"
     )
     is_profile_command: bool = Field(
         default=False, description="画像命令（记住/忘掉）：不得填旧等待。"
     )
-    is_learning_action: bool = Field(
-        default=False, description="学习阶段动作：不得填旧等待。"
-    )
+    is_learning_action: bool = Field(default=False, description="学习阶段动作：不得填旧等待。")
     expected_version: int | None = Field(
         default=None, description="乐观版本：与当前版本不符时拒绝修订。"
     )

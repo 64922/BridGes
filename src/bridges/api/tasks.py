@@ -60,9 +60,7 @@ class TaskWaitCreateRequest(BaseModel):
     )
     origin_message_id: str = Field(min_length=1, description="提出问题的助手消息 ID。")
     source_message_id: str = Field(min_length=1, description="触发等待的用户消息 ID。")
-    task_id: str | None = Field(
-        default=None, description="目标任务；缺省用会话当前任务。"
-    )
+    task_id: str | None = Field(default=None, description="目标任务；缺省用会话当前任务。")
 
 
 def _get_task_service(request: Request) -> TaskService:
@@ -91,7 +89,6 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 @router.get(
     "/conversations/{conversation_id}",
     response_model=list[TaskProjection],
-    responses={status.HTTP_404_NOT_FOUND: {"model": TaskErrorResponse}},
 )
 def list_conversation_tasks(
     conversation_id: str,
@@ -112,7 +109,7 @@ def list_conversation_task_events(
     service: TaskServiceDep,
 ) -> list[TaskEvent]:
     """列出某会话的任务审计事件（append-only）。"""
-    return service.repository.list_events(subject.account_id, conversation_id)
+    return service.list_events(subject.account_id, conversation_id)
 
 
 @router.get(
@@ -194,6 +191,8 @@ def open_task_wait(
         )
     except TaskNotFound as exc:
         raise _error(status.HTTP_404_NOT_FOUND, "task_not_found", str(exc)) from exc
+    except TaskStateConflict as exc:
+        raise _error(status.HTTP_409_CONFLICT, "task_state_conflict", str(exc)) from exc
     except TaskError as exc:
         raise _error(status.HTTP_400_BAD_REQUEST, "task_error", str(exc)) from exc
 
@@ -224,6 +223,4 @@ def apply_task_turn(
     except TaskNotFound as exc:
         raise _error(status.HTTP_404_NOT_FOUND, "task_not_found", str(exc)) from exc
     except TaskError as exc:
-        raise _error(
-            status.HTTP_400_BAD_REQUEST, "task_error", str(exc)
-        ) from exc
+        raise _error(status.HTTP_400_BAD_REQUEST, "task_error", str(exc)) from exc

@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
+from bridges.chat.repository import ConversationRepository
 from bridges.contracts.tasks import (
     TASK_CONTRACT_VERSION,
     ConditionOrigin,
@@ -32,6 +33,7 @@ from bridges.contracts.tasks import (
     TaskCondition,
     TaskConditionInput,
     TaskEvent,
+    TaskEventKind,
     TaskRecord,
     TaskStatus,
     TaskVersion,
@@ -59,8 +61,7 @@ class TaskVersionConflict(TaskError):  # noqa: N818 - 领域语义异常，命�
         self.expected = expected
         self.current = current
         super().__init__(
-            f"任务 {task_id} 的版本已变化（期望 {expected}，当前 {current}），"
-            "本次修订未提交。"
+            f"任务 {task_id} 的版本已变化（期望 {expected}，当前 {current}），本次修订未提交。"
         )
 
 
@@ -94,10 +95,20 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 
 class TaskRepository:
-    """任务/版本/条件/等待的 SQLite 写模型，全部操作限定在账户内。"""
+    """任务/版本/条件/等待的 SQLite 写模型，全部操作限定在账户内。
 
-    def __init__(self, database: BridgesDatabase) -> None:
+    ``conversations.current_task_id``（会话当前任务指针）属 ``chat/`` 域：
+    本仓库不直写该表，而是经 ``ConversationRepository`` 的小接口写入
+    （见 ``docs/table-owners.md`` 纪律「写路径走属主 repository」）。
+    """
+
+    def __init__(
+        self,
+        database: BridgesDatabase,
+        conversations: ConversationRepository | None = None,
+    ) -> None:
         self._db = database
+        self._conversations = conversations or ConversationRepository(database)
 
     @property
     def database(self) -> BridgesDatabase:
@@ -144,8 +155,8 @@ class TaskRepository:
                         _iso(moment),
                     ),
                 )
-                self._set_current_task_in_transaction(
-                    account_id, conversation_id, task_id
+                self._conversations.set_current_task(
+                    account_id, conversation_id, task_id, in_transaction=True
                 )
         except StorageError:
             raise
@@ -159,8 +170,7 @@ class TaskRepository:
         row = (
             self._db.scoped(account_id)
             .execute(
-                "SELECT * FROM conversation_tasks"
-                " WHERE account_id = ? AND task_id = ?",
+                "SELECT * FROM conversation_tasks WHERE account_id = ? AND task_id = ?",
                 (account_id, task_id),
             )
             .fetchone()
@@ -182,18 +192,10 @@ class TaskRepository:
 
     def current_task(self, account_id: str, conversation_id: str) -> TaskRecord | None:
         """读取会话当前任务指针指向的任务；指针悬空时返回 None。"""
-        row = (
-            self._db.scoped(account_id)
-            .execute(
-                "SELECT current_task_id FROM conversations"
-                " WHERE account_id = ? AND conversation_id = ?",
-                (account_id, conversation_id),
-            )
-            .fetchone()
-        )
-        if row is None or row["current_task_id"] is None:
+        task_id = self._conversations.current_task_id(account_id, conversation_id)
+        if task_id is None:
             return None
-        return self.get_task(account_id, str(row["current_task_id"]))
+        return self.get_task(account_id, task_id)
 
     def set_current_task(
         self,
@@ -203,22 +205,15 @@ class TaskRepository:
         *,
         in_transaction: bool = False,
     ) -> None:
-        """更新会话当前任务指针（单一事实源）。"""
-        with self._tx(in_transaction):
-            self._set_current_task_in_transaction(account_id, conversation_id, task_id)
-
-    def _set_current_task_in_transaction(
-        self, account_id: str, conversation_id: str, task_id: str | None
-    ) -> None:
-        self._db.scoped(account_id).execute(
-            "UPDATE conversations SET current_task_id = ?"
-            " WHERE account_id = ? AND conversation_id = ?",
-            (task_id, account_id, conversation_id),
+        """更新会话当前任务指针（经 ``chat/`` 属主仓库，不直写非己表）。"""
+        self._conversations.set_current_task(
+            account_id,
+            conversation_id,
+            task_id,
+            in_transaction=in_transaction,
         )
 
-    def rebuild_current_pointer(
-        self, account_id: str, conversation_id: str
-    ) -> str | None:
+    def rebuild_current_pointer(self, account_id: str, conversation_id: str) -> str | None:
         """从持久任务重建当前指针（恢复/重建入口）。
 
         取最近更新且未取消的任务；全部已取消时指针清空。用于进程重启或
@@ -282,6 +277,7 @@ class TaskRepository:
         goal: str,
         condition_ids: list[str],
         source_message_ids: list[str],
+        result_refs: list[str] | None = None,
         expected_version: int | None = None,
         now: datetime | None = None,
         in_transaction: bool = False,
@@ -304,9 +300,9 @@ class TaskRepository:
                 self._db.scoped(account_id).execute(
                     "INSERT INTO task_versions"
                     "(version_id, task_id, account_id, version, goal,"
-                    " condition_ids_json, source_message_ids_json,"
+                    " condition_ids_json, source_message_ids_json, result_refs_json,"
                     " supersedes_version, created_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         version_id,
                         task_id,
@@ -315,6 +311,7 @@ class TaskRepository:
                         goal,
                         _json(condition_ids),
                         _json(source_message_ids),
+                        _json(result_refs or []),
                         task.current_version if task.current_version > 0 else None,
                         _iso(moment),
                     ),
@@ -334,8 +331,7 @@ class TaskRepository:
         row = (
             self._db.scoped(account_id)
             .execute(
-                "SELECT * FROM task_versions"
-                " WHERE account_id = ? AND task_id = ? AND version = ?",
+                "SELECT * FROM task_versions WHERE account_id = ? AND task_id = ? AND version = ?",
                 (account_id, task_id, version),
             )
             .fetchone()
@@ -348,8 +344,7 @@ class TaskRepository:
         rows = (
             self._db.scoped(account_id)
             .execute(
-                "SELECT * FROM task_versions"
-                " WHERE account_id = ? AND task_id = ? ORDER BY version",
+                "SELECT * FROM task_versions WHERE account_id = ? AND task_id = ? ORDER BY version",
                 (account_id, task_id),
             )
             .fetchall()
@@ -419,9 +414,7 @@ class TaskRepository:
                     ),
                 )
                 if supersedes is not None:
-                    self._supersede_in_transaction(
-                        account_id, supersedes, condition_id, moment
-                    )
+                    self._supersede_in_transaction(account_id, supersedes, condition_id, moment)
                 created.append(self.get_condition(account_id, condition_id))
             return created
 
@@ -432,8 +425,7 @@ class TaskRepository:
         row = (
             self._db.scoped(account_id)
             .execute(
-                "SELECT * FROM task_conditions"
-                " WHERE account_id = ? AND condition_id = ?",
+                "SELECT * FROM task_conditions WHERE account_id = ? AND condition_id = ?",
                 (account_id, condition_id),
             )
             .fetchone()
@@ -454,9 +446,7 @@ class TaskRepository:
         )
         return [self._condition_from_row(row) for row in rows]
 
-    def list_effective_conditions(
-        self, account_id: str, task_id: str
-    ) -> list[TaskCondition]:
+    def list_effective_conditions(self, account_id: str, task_id: str) -> list[TaskCondition]:
         """任务内仍有效的条件（用户约束与工具事实），草案/线索被排除。
 
         只返回 ``scope='task'`` 的条件；会话范围条件由
@@ -527,13 +517,21 @@ class TaskRepository:
     def _find_effective_condition_by_kind(
         self, account_id: str, task_id: str, kind: str
     ) -> TaskCondition | None:
+        """任务范围内同类别仍有效的条件（不含会话范围，避免跨范围取代）。"""
         row = (
             self._db.scoped(account_id)
             .execute(
                 "SELECT * FROM task_conditions"
-                " WHERE account_id = ? AND task_id = ? AND kind = ? AND status = ?"
+                " WHERE account_id = ? AND task_id = ? AND scope = ? AND kind = ?"
+                " AND status = ?"
                 " ORDER BY created_at DESC, condition_id DESC LIMIT 1",
-                (account_id, task_id, kind, ConditionStatus.EFFECTIVE.value),
+                (
+                    account_id,
+                    task_id,
+                    ConditionScope.TASK.value,
+                    kind,
+                    ConditionStatus.EFFECTIVE.value,
+                ),
             )
             .fetchone()
         )
@@ -599,7 +597,14 @@ class TaskRepository:
         """保存一个澄清等待并让任务进入等待状态（同一事务）。
 
         等待不携带租约：写入即表示执行资源已释放（见工单第 7 条）。
+        已取消或已完成的任务不得再登记等待——否则会悄悄把终态任务
+        恢复为活跃（任务内容第 7 条「已取消目标不悄悄恢复旧等待」）。
         """
+        task = self.get_task(account_id, task_id)
+        if task is None:
+            raise TaskNotFound("任务不存在或不属于当前账户。")
+        if task.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED}:
+            raise TaskStateConflict("该任务已进入终态，不能再登记澄清等待。")
         moment = now or datetime.now(UTC)
         wait_id = _new_id("wait")
         try:
@@ -795,7 +800,7 @@ class TaskRepository:
         *,
         account_id: str,
         conversation_id: str,
-        kind: str,
+        kind: TaskEventKind,
         task_id: str | None = None,
         payload: dict[str, Any] | None = None,
         now: datetime | None = None,
@@ -814,7 +819,7 @@ class TaskRepository:
                     account_id,
                     conversation_id,
                     task_id,
-                    kind,
+                    kind.value,
                     _json(payload or {}),
                     _iso(moment),
                 ),
@@ -824,7 +829,7 @@ class TaskRepository:
                 account_id=account_id,
                 conversation_id=conversation_id,
                 task_id=task_id,
-                kind=kind,
+                kind=kind.value,
                 payload=payload or {},
                 created_at=moment,
             )
@@ -883,10 +888,9 @@ class TaskRepository:
             goal=str(row["goal"]),
             condition_ids=_loads(row["condition_ids_json"], []),
             source_message_ids=_loads(row["source_message_ids_json"], []),
+            result_refs=_loads(row["result_refs_json"], []),
             supersedes_version=(
-                int(row["supersedes_version"])
-                if row["supersedes_version"] is not None
-                else None
+                int(row["supersedes_version"]) if row["supersedes_version"] is not None else None
             ),
             invalidated_at=_parse_dt(row["invalidated_at"]),
             invalidation_reason=row["invalidation_reason"],

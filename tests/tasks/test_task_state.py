@@ -146,15 +146,18 @@ def test_trailing_budget_has_source_and_latest_correction_wins(env) -> None:
     service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u3",
+            conversation_id="conv-1",
+            user_message_id="u3",
             relation=TaskRelation.PAUSE,
         ),
     )
     returned = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u4",
-            relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
+            conversation_id="conv-1",
+            user_message_id="u4",
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=task_id,
         ),
     )
     assert returned.task.task.status == TaskStatus.ACTIVE
@@ -170,17 +173,23 @@ def test_task_conditions_are_isolated_but_conversation_limits_persist(env) -> No
     shopping = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
             conditions=[
                 TaskConditionInput(
-                    kind="budget", text="预算 5,000 元",
-                    source_message_id="u1", source_span="预算 5,000 元",
+                    kind="budget",
+                    text="预算 5,000 元",
+                    source_message_id="u1",
+                    source_span="预算 5,000 元",
                 ),
                 # 用户明示「这个聊天都不要推荐二手」→ 全会话范围。
                 user_condition(
-                    kind="exclusion", text="不要二手",
-                    source_message_id="u1", scope=ConditionScope.CONVERSATION,
+                    kind="exclusion",
+                    text="不要二手",
+                    source_message_id="u1",
+                    scope=ConditionScope.CONVERSATION,
                 ),
             ],
         ),
@@ -190,8 +199,10 @@ def test_task_conditions_are_isolated_but_conversation_limits_persist(env) -> No
     commute = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u2",
-            relation=TaskRelation.NEW, goal="校园通勤路线",
+            conversation_id="conv-1",
+            user_message_id="u2",
+            relation=TaskRelation.NEW,
+            goal="校园通勤路线",
         ),
     )
     commute_id = commute.task.task.task_id
@@ -205,8 +216,10 @@ def test_task_conditions_are_isolated_but_conversation_limits_persist(env) -> No
     returned = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u3",
-            relation=TaskRelation.CONTINUE, explicit_task_id=shopping_id,
+            conversation_id="conv-1",
+            user_message_id="u3",
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=shopping_id,
         ),
     )
     assert [c.text for c in returned.task.effective_conditions] == ["预算 5,000 元"]
@@ -221,16 +234,20 @@ def test_topic_switch_does_not_fill_old_wait_and_cancel_releases(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
     wait = service.open_wait(
-        account, conversation_id="conv-1",
+        account,
+        conversation_id="conv-1",
         question="你的预算大概是多少？",
         missing_fields=["budget"],
-        origin_message_id="a1", source_message_id="u1",
+        origin_message_id="a1",
+        source_message_id="u1",
     )
     assert wait.status == WaitStatus.OPEN
     assert service.projection(account, task_id).task.status == TaskStatus.WAITING
@@ -239,8 +256,11 @@ def test_topic_switch_does_not_fill_old_wait_and_cancel_releases(env) -> None:
     switched = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u2",
-            relation=TaskRelation.NEW, goal="校园通勤路线", is_new_topic=True,
+            conversation_id="conv-1",
+            user_message_id="u2",
+            relation=TaskRelation.NEW,
+            goal="校园通勤路线",
+            is_new_topic=True,
         ),
     )
     assert switched.wait_resolution == WaitResolution.REJECTED
@@ -252,9 +272,12 @@ def test_topic_switch_does_not_fill_old_wait_and_cancel_releases(env) -> None:
     answer = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u3",
-            relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
-            answer_fields=[], answer_text="好的",
+            conversation_id="conv-1",
+            user_message_id="u3",
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=task_id,
+            answer_fields=[],
+            answer_text="好的",
         ),
     )
     assert answer.wait_resolution in {WaitResolution.NONE, WaitResolution.REJECTED}
@@ -265,8 +288,10 @@ def test_topic_switch_does_not_fill_old_wait_and_cancel_releases(env) -> None:
     cancelled = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u4",
-            relation=TaskRelation.CANCEL, explicit_task_id=task_id,
+            conversation_id="conv-1",
+            user_message_id="u4",
+            relation=TaskRelation.CANCEL,
+            explicit_task_id=task_id,
         ),
     )
     assert cancelled.task.task.status == TaskStatus.CANCELLED
@@ -281,22 +306,30 @@ def test_matching_answer_fills_wait_and_restores_active(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
     wait = service.open_wait(
-        account, conversation_id="conv-1",
-        question="你的预算大概是多少？", missing_fields=["budget"],
-        origin_message_id="a1", source_message_id="u1",
+        account,
+        conversation_id="conv-1",
+        question="你的预算大概是多少？",
+        missing_fields=["budget"],
+        origin_message_id="a1",
+        source_message_id="u1",
     )
     answered = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u2",
-            relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
-            answer_fields=["budget"], answer_text="预算 3,000",
+            conversation_id="conv-1",
+            user_message_id="u2",
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=task_id,
+            answer_fields=["budget"],
+            answer_text="预算 3,000",
         ),
     )
     assert answered.wait_resolution == WaitResolution.ACCEPTED
@@ -312,22 +345,30 @@ def test_open_wait_rejects_unmatched_reply_and_stays_open(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
     wait = service.open_wait(
-        account, conversation_id="conv-1",
-        question="你的预算大概是多少？", missing_fields=["budget"],
-        origin_message_id="a1", source_message_id="u1",
+        account,
+        conversation_id="conv-1",
+        question="你的预算大概是多少？",
+        missing_fields=["budget"],
+        origin_message_id="a1",
+        source_message_id="u1",
     )
     reply = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u2",
-            relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
-            answer_fields=[], answer_text="好的",
+            conversation_id="conv-1",
+            user_message_id="u2",
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=task_id,
+            answer_fields=[],
+            answer_text="好的",
         ),
     )
     assert reply.wait_resolution == WaitResolution.REJECTED
@@ -340,23 +381,31 @@ def test_profile_command_and_learning_action_do_not_fill_wait(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
     service.open_wait(
-        account, conversation_id="conv-1",
-        question="你的预算大概是多少？", missing_fields=["budget"],
-        origin_message_id="a1", source_message_id="u1",
+        account,
+        conversation_id="conv-1",
+        question="你的预算大概是多少？",
+        missing_fields=["budget"],
+        origin_message_id="a1",
+        source_message_id="u1",
     )
     for flag in ("is_profile_command", "is_learning_action"):
         result = service.apply_turn(
             account,
             TaskTurnRequest(
-                conversation_id="conv-1", user_message_id="u2",
-                relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
-                answer_fields=["budget"], **{flag: True},
+                conversation_id="conv-1",
+                user_message_id="u2",
+                relation=TaskRelation.CONTINUE,
+                explicit_task_id=task_id,
+                answer_fields=["budget"],
+                **{flag: True},
             ),
         )
         assert result.wait_resolution == WaitResolution.REJECTED
@@ -371,26 +420,32 @@ def test_origin_grading_keeps_proposals_and_inferences_out_of_constraints(env) -
     result = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
             conditions=[
                 TaskConditionInput(
-                    kind="budget", text="预算 5,000 元",
+                    kind="budget",
+                    text="预算 5,000 元",
                     source_message_id="u1",
                     origin=ConditionOrigin.USER_STATED,
                 ),
                 TaskConditionInput(
-                    kind="brand", text="助手建议优先 ThinkPad",
+                    kind="brand",
+                    text="助手建议优先 ThinkPad",
                     source_message_id="a1",
                     origin=ConditionOrigin.ASSISTANT_PROPOSAL,
                 ),
                 TaskConditionInput(
-                    kind="usage", text="推测你可能偏重续航",
+                    kind="usage",
+                    text="推测你可能偏重续航",
                     source_message_id="u1",
                     origin=ConditionOrigin.MODEL_INFERENCE,
                 ),
                 TaskConditionInput(
-                    kind="screen", text="实测屏幕为 14 英寸",
+                    kind="screen",
+                    text="实测屏幕为 14 英寸",
                     source_message_id="tool-1",
                     origin=ConditionOrigin.TOOL_OBSERVATION,
                 ),
@@ -402,9 +457,7 @@ def test_origin_grading_keeps_proposals_and_inferences_out_of_constraints(env) -
     assert set(effective) == {"budget", "screen"}
     assert effective["screen"].origin == ConditionOrigin.TOOL_OBSERVATION
     assert effective["screen"].source_message_id == "tool-1"
-    all_conditions = {c.kind: c for c in service.list_conditions(
-        account, result.task.task.task_id
-    )}
+    all_conditions = {c.kind: c for c in service.list_conditions(account, result.task.task.task_id)}
     assert all_conditions["brand"].status == ConditionStatus.DRAFT
     assert all_conditions["usage"].status == ConditionStatus.CLUE
 
@@ -416,11 +469,13 @@ def test_assistant_proposal_alone_does_not_create_task(env) -> None:
     result = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
+            conversation_id="conv-1",
+            user_message_id="u1",
             relation=TaskRelation.NEW,
             conditions=[
                 TaskConditionInput(
-                    kind="brand", text="助手建议 ThinkPad",
+                    kind="brand",
+                    text="助手建议 ThinkPad",
                     source_message_id="a1",
                     origin=ConditionOrigin.ASSISTANT_PROPOSAL,
                 )
@@ -440,8 +495,10 @@ def test_optimistic_version_conflict_rejects_revision(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
@@ -450,11 +507,15 @@ def test_optimistic_version_conflict_rejects_revision(env) -> None:
         service.apply_turn(
             account,
             TaskTurnRequest(
-                conversation_id="conv-1", user_message_id="u2",
-                relation=TaskRelation.REVISE, expected_version=0,
+                conversation_id="conv-1",
+                user_message_id="u2",
+                relation=TaskRelation.REVISE,
+                expected_version=0,
                 conditions=[
                     TaskConditionInput(
-                        kind="budget", text="预算 3,000 元", source_message_id="u2",
+                        kind="budget",
+                        text="预算 3,000 元",
+                        source_message_id="u2",
                     )
                 ],
             ),
@@ -470,24 +531,30 @@ def test_cancelled_task_cannot_be_continued(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
     service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u2",
-            relation=TaskRelation.CANCEL, explicit_task_id=task_id,
+            conversation_id="conv-1",
+            user_message_id="u2",
+            relation=TaskRelation.CANCEL,
+            explicit_task_id=task_id,
         ),
     )
     with pytest.raises(TaskStateConflict):
         service.apply_turn(
             account,
             TaskTurnRequest(
-                conversation_id="conv-1", user_message_id="u3",
-                relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
+                conversation_id="conv-1",
+                user_message_id="u3",
+                relation=TaskRelation.CONTINUE,
+                explicit_task_id=task_id,
             ),
         )
 
@@ -498,8 +565,10 @@ def test_account_isolation_hides_other_account_tasks(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id
@@ -513,8 +582,10 @@ def test_account_isolation_hides_other_account_tasks(env) -> None:
         service.apply_turn(
             "acct-2",
             TaskTurnRequest(
-                conversation_id="conv-1", user_message_id="u2",
-                relation=TaskRelation.CONTINUE, explicit_task_id=task_id,
+                conversation_id="conv-1",
+                user_message_id="u2",
+                relation=TaskRelation.CONTINUE,
+                explicit_task_id=task_id,
             ),
         )
 
@@ -526,8 +597,10 @@ def test_audit_events_and_pointer_rebuild(env) -> None:
     created = service.apply_turn(
         account,
         TaskTurnRequest(
-            conversation_id="conv-1", user_message_id="u1",
-            relation=TaskRelation.NEW, goal="推荐笔记本",
+            conversation_id="conv-1",
+            user_message_id="u1",
+            relation=TaskRelation.NEW,
+            goal="推荐笔记本",
         ),
     )
     task_id = created.task.task.task_id

@@ -28,6 +28,8 @@ from bridges.contracts.tasks import (
     ConditionScope,
     TaskCondition,
     TaskConditionInput,
+    TaskEvent,
+    TaskEventKind,
     TaskProjection,
     TaskRecord,
     TaskRelation,
@@ -47,9 +49,7 @@ from bridges.tasks.repository import (
 )
 
 #: 可以直接成为用户约束的来源（用户明示 + 工具事实）。
-_BINDING_ORIGINS = frozenset(
-    {ConditionOrigin.USER_STATED, ConditionOrigin.TOOL_OBSERVATION}
-)
+_BINDING_ORIGINS = frozenset({ConditionOrigin.USER_STATED, ConditionOrigin.TOOL_OBSERVATION})
 
 
 class TaskService:
@@ -70,9 +70,7 @@ class TaskService:
             return None
         return self._build_projection(account_id, task)
 
-    def list_projections(
-        self, account_id: str, conversation_id: str
-    ) -> list[TaskProjection]:
+    def list_projections(self, account_id: str, conversation_id: str) -> list[TaskProjection]:
         return [
             self._build_projection(account_id, task)
             for task in self._repo.list_tasks(account_id, conversation_id)
@@ -87,18 +85,18 @@ class TaskService:
     def list_conditions(self, account_id: str, task_id: str) -> list[TaskCondition]:
         return self._repo.list_conditions(account_id, task_id)
 
+    def list_events(self, account_id: str, conversation_id: str) -> list[TaskEvent]:
+        """会话内任务审计事件（append-only），供 API 与审计消费。"""
+        return self._repo.list_events(account_id, conversation_id)
+
     def _build_projection(self, account_id: str, task: TaskRecord) -> TaskProjection:
         return TaskProjection(
             task=task,
-            effective_conditions=self._repo.list_effective_conditions(
-                account_id, task.task_id
-            ),
+            effective_conditions=self._repo.list_effective_conditions(account_id, task.task_id),
             conversation_conditions=self._repo.list_conversation_conditions(
                 account_id, task.conversation_id
             ),
-            open_waits=self._repo.list_waits(
-                account_id, task.task_id, statuses=(WaitStatus.OPEN,)
-            ),
+            open_waits=self._repo.list_waits(account_id, task.task_id, statuses=(WaitStatus.OPEN,)),
         )
 
     # -- 澄清等待 -----------------------------------------------------------
@@ -156,6 +154,10 @@ class TaskService:
             return self._apply_revise(account_id, request, target, moment, events)
         if request.relation == TaskRelation.PAUSE:
             return self._apply_pause(account_id, request, target, moment, events)
+        if request.relation == TaskRelation.COMPLETE:
+            return self._apply_complete(account_id, request, target, moment, events)
+        if request.relation == TaskRelation.BLOCK:
+            return self._apply_block(account_id, request, target, moment, events)
         # CANCEL
         return self._apply_cancel(account_id, request, target, moment, events)
 
@@ -169,30 +171,15 @@ class TaskService:
         moment: datetime,
         events: list[str],
     ) -> TaskTurnResult:
-        conversation_id = request.conversation_id
         paused: list[str] = []
         resolution = WaitResolution.NONE
         reason: str | None = None
         # 换话题：暂停仍活跃的旧任务，并让它的旧等待失去当前激活状态。
         if target is not None and target.status in {TaskStatus.ACTIVE, TaskStatus.WAITING}:
-            with self._repo.database.transaction():
-                self._repo.update_task_status(
-                    account_id, target.task_id, TaskStatus.PAUSED,
-                    now=moment, in_transaction=True,
-                )
-                suspended = self._repo.suspend_open_waits(
-                    account_id, target.task_id, now=moment, in_transaction=True
-                )
-                self._repo.record_event(
-                    account_id=account_id, conversation_id=conversation_id,
-                    task_id=target.task_id, kind="task_paused",
-                    payload={"reason": "new_topic", "suspended_waits": suspended},
-                    now=moment, in_transaction=True,
-                )
+            suspended = self._pause_task(
+                account_id, request, target, moment, events, reason="new_topic"
+            )
             paused.append(target.task_id)
-            events.append("task_paused")
-            if suspended:
-                events.append("waits_suspended")
             if suspended:
                 resolution = WaitResolution.REJECTED
                 reason = "已换话题，旧澄清等待不再接收本轮消息。"
@@ -200,21 +187,27 @@ class TaskService:
         if not self._should_create_task(request):
             # 普通聊天：不创建复杂持久任务。
             return TaskTurnResult(
-                created=False, task=None, paused_task_ids=paused,
-                wait_resolution=resolution, wait_rejection_reason=reason, events=events,
+                created=False,
+                task=None,
+                paused_task_ids=paused,
+                wait_resolution=resolution,
+                wait_rejection_reason=reason,
+                events=events,
             )
 
         goal = (request.goal or "").strip()
-        task, conditions = self._create_task_with_conditions(
-            account_id, request, goal, moment
-        )
-        events.append("task_created")
+        task, conditions = self._create_task_with_conditions(account_id, request, goal, moment)
+        events.append(TaskEventKind.TASK_CREATED.value)
         if conditions:
-            events.append("version_created")
+            events.append(TaskEventKind.VERSION_CREATED.value)
         projection = self._build_projection(account_id, task)
         return TaskTurnResult(
-            created=True, task=projection, paused_task_ids=paused,
-            wait_resolution=resolution, wait_rejection_reason=reason, events=events,
+            created=True,
+            task=projection,
+            paused_task_ids=paused,
+            wait_resolution=resolution,
+            wait_rejection_reason=reason,
+            events=events,
         )
 
     def _apply_continue(
@@ -230,12 +223,10 @@ class TaskService:
             if not self._should_create_task(request):
                 return TaskTurnResult(created=False, task=None, events=events)
             goal = (request.goal or "").strip()
-            task, conditions = self._create_task_with_conditions(
-                account_id, request, goal, moment
-            )
-            events.append("task_created")
+            task, conditions = self._create_task_with_conditions(account_id, request, goal, moment)
+            events.append(TaskEventKind.TASK_CREATED.value)
             if conditions:
-                events.append("version_created")
+                events.append(TaskEventKind.VERSION_CREATED.value)
             return TaskTurnResult(
                 created=True,
                 task=self._build_projection(account_id, task),
@@ -245,41 +236,55 @@ class TaskService:
         if target.status == TaskStatus.CANCELLED:
             raise TaskStateConflict("该任务已取消，请创建新任务，不要续接已取消的目标。")
 
-        # 先尝试匹配并填充等待（只有明确答复、版本匹配且补齐缺失字段才接受）。
-        resolution, resolved_wait, reason = self._try_resolve_wait(
-            account_id, request, target, moment
-        )
-        if resolution == WaitResolution.ACCEPTED:
-            events.append("wait_resolved")
-
-        resumed = False
-        if target.status == TaskStatus.PAUSED:
-            self._repo.update_task_status(
-                account_id, target.task_id, TaskStatus.ACTIVE, now=moment
+        # 等待填充、状态恢复与版本生成在同一事务内完成：任一环节失败
+        # （例如乐观版本冲突）都整体回滚，不留下「等待已解决但版本未写入」
+        # 的半成品。
+        with self._repo.database.transaction():
+            resolution, resolved_wait, reason = self._try_resolve_wait(
+                account_id, request, target, moment, in_transaction=True
             )
-            self._repo.record_event(
-                account_id=account_id, conversation_id=request.conversation_id,
-                task_id=target.task_id, kind="task_resumed", now=moment,
-            )
-            events.append("task_resumed")
-            resumed = True
+            if resolution == WaitResolution.ACCEPTED:
+                events.append(TaskEventKind.WAIT_RESOLVED.value)
 
-        # 附带新条件（或目标变化）时生成新版本；否则沿用当前版本。
-        if request.conditions or (
-            request.goal is not None and request.goal.strip() != target.goal
-        ):
-            self._append_revision(
-                account_id, request, target, moment, expected=request.expected_version
-            )
-            events.append("version_created")
+            if target.status == TaskStatus.PAUSED:
+                self._repo.update_task_status(
+                    account_id,
+                    target.task_id,
+                    TaskStatus.ACTIVE,
+                    now=moment,
+                    in_transaction=True,
+                )
+                self._repo.record_event(
+                    account_id=account_id,
+                    conversation_id=request.conversation_id,
+                    task_id=target.task_id,
+                    kind=TaskEventKind.TASK_RESUMED,
+                    now=moment,
+                    in_transaction=True,
+                )
+                events.append(TaskEventKind.TASK_RESUMED.value)
 
-        del resumed
+            # 附带新条件、撤销或目标变化时生成新版本；否则沿用当前版本。
+            if self._needs_revision(request, target):
+                self._append_revision(
+                    account_id,
+                    request,
+                    target,
+                    moment,
+                    expected=request.expected_version,
+                    in_transaction=True,
+                )
+                events.append(TaskEventKind.VERSION_CREATED.value)
+
         refreshed = self._repo.get_task(account_id, target.task_id)
         assert refreshed is not None
         return TaskTurnResult(
-            created=False, task=self._build_projection(account_id, refreshed),
-            wait_resolution=resolution, resolved_wait=resolved_wait,
-            wait_rejection_reason=reason, events=events,
+            created=False,
+            task=self._build_projection(account_id, refreshed),
+            wait_resolution=resolution,
+            resolved_wait=resolved_wait,
+            wait_rejection_reason=reason,
+            events=events,
         )
 
     def _apply_revise(
@@ -295,29 +300,48 @@ class TaskService:
         if target.status == TaskStatus.CANCELLED:
             raise TaskStateConflict("该任务已取消，不能修订；请创建新任务。")
 
-        resolution, resolved_wait, reason = self._try_resolve_wait(
-            account_id, request, target, moment
-        )
-        if resolution == WaitResolution.ACCEPTED:
-            events.append("wait_resolved")
-
-        self._append_revision(
-            account_id, request, target, moment, expected=request.expected_version
-        )
-        events.append("version_created")
-        # 修订使任务回到活跃（完成/暂停的目标可通过新版本继续）。
-        if target.status in {TaskStatus.PAUSED, TaskStatus.COMPLETED, TaskStatus.WAITING}:
-            self._repo.update_task_status(
-                account_id, target.task_id, TaskStatus.ACTIVE, now=moment
+        # 等待填充、版本生成与状态恢复同事务：版本冲突时不留下已解决的等待。
+        with self._repo.database.transaction():
+            resolution, resolved_wait, reason = self._try_resolve_wait(
+                account_id, request, target, moment, in_transaction=True
             )
-            events.append("task_activated")
+            if resolution == WaitResolution.ACCEPTED:
+                events.append(TaskEventKind.WAIT_RESOLVED.value)
+
+            self._append_revision(
+                account_id,
+                request,
+                target,
+                moment,
+                expected=request.expected_version,
+                in_transaction=True,
+            )
+            events.append(TaskEventKind.VERSION_CREATED.value)
+            # 修订使任务回到活跃（完成/暂停/阻塞的目标可通过新版本继续）。
+            if target.status in {
+                TaskStatus.PAUSED,
+                TaskStatus.BLOCKED,
+                TaskStatus.COMPLETED,
+                TaskStatus.WAITING,
+            }:
+                self._repo.update_task_status(
+                    account_id,
+                    target.task_id,
+                    TaskStatus.ACTIVE,
+                    now=moment,
+                    in_transaction=True,
+                )
+                events.append(TaskEventKind.TASK_ACTIVATED.value)
 
         task = self._repo.get_task(account_id, target.task_id)
         assert task is not None
         return TaskTurnResult(
-            created=False, task=self._build_projection(account_id, task),
-            wait_resolution=resolution, resolved_wait=resolved_wait,
-            wait_rejection_reason=reason, events=events,
+            created=False,
+            task=self._build_projection(account_id, task),
+            wait_resolution=resolution,
+            resolved_wait=resolved_wait,
+            wait_rejection_reason=reason,
+            events=events,
         )
 
     def _apply_pause(
@@ -330,23 +354,98 @@ class TaskService:
     ) -> TaskTurnResult:
         if target is None or target.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED}:
             return TaskTurnResult(created=False, task=None, events=events)
+        self._pause_task(account_id, request, target, moment, events, reason="explicit")
+        task = self._repo.get_task(account_id, target.task_id)
+        assert task is not None
+        return TaskTurnResult(
+            created=False,
+            task=self._build_projection(account_id, task),
+            paused_task_ids=[target.task_id],
+            events=events,
+        )
+
+    def _apply_complete(
+        self,
+        account_id: str,
+        request: TaskTurnRequest,
+        target: TaskRecord | None,
+        moment: datetime,
+        events: list[str],
+    ) -> TaskTurnResult:
+        """把任务标记为已完成；未决等待进入终态并释放资源。
+
+        完成任务仍是会话当前任务：后续 ``revise`` 会把它重新激活并生成
+        新版本（任务内容第 7 条「完成目标可继续修订」）。
+        """
+        if target is None or target.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED}:
+            return TaskTurnResult(created=False, task=None, events=events)
         with self._repo.database.transaction():
             self._repo.update_task_status(
-                account_id, target.task_id, TaskStatus.PAUSED,
-                now=moment, in_transaction=True,
+                account_id,
+                target.task_id,
+                TaskStatus.COMPLETED,
+                now=moment,
+                in_transaction=True,
+            )
+            expired = self._repo.expire_waits(
+                account_id, target.task_id, now=moment, in_transaction=True
+            )
+            self._repo.record_event(
+                account_id=account_id,
+                conversation_id=request.conversation_id,
+                task_id=target.task_id,
+                kind=TaskEventKind.TASK_COMPLETED,
+                payload={"expired_waits": expired},
+                now=moment,
+                in_transaction=True,
+            )
+        events.append(TaskEventKind.TASK_COMPLETED.value)
+        if expired:
+            events.append(TaskEventKind.WAITS_EXPIRED.value)
+        task = self._repo.get_task(account_id, target.task_id)
+        assert task is not None
+        return TaskTurnResult(
+            created=False, task=self._build_projection(account_id, task), events=events
+        )
+
+    def _apply_block(
+        self,
+        account_id: str,
+        request: TaskTurnRequest,
+        target: TaskRecord | None,
+        moment: datetime,
+        events: list[str],
+    ) -> TaskTurnResult:
+        """把任务标记为阻塞；旧等待失去当前激活状态，不再接收答复。"""
+        if target is None or target.status in {
+            TaskStatus.CANCELLED,
+            TaskStatus.COMPLETED,
+            TaskStatus.BLOCKED,
+        }:
+            return TaskTurnResult(created=False, task=None, events=events)
+        with self._repo.database.transaction():
+            self._repo.update_task_status(
+                account_id,
+                target.task_id,
+                TaskStatus.BLOCKED,
+                now=moment,
+                in_transaction=True,
             )
             suspended = self._repo.suspend_open_waits(
                 account_id, target.task_id, now=moment, in_transaction=True
             )
             self._repo.record_event(
-                account_id=account_id, conversation_id=request.conversation_id,
-                task_id=target.task_id, kind="task_paused",
-                payload={"reason": "explicit", "suspended_waits": suspended},
-                now=moment, in_transaction=True,
+                account_id=account_id,
+                conversation_id=request.conversation_id,
+                task_id=target.task_id,
+                kind=TaskEventKind.TASK_BLOCKED,
+                payload={"suspended_waits": suspended},
+                now=moment,
+                in_transaction=True,
             )
-        events.append("task_paused")
+        events.append(TaskEventKind.TASK_BLOCKED.value)
         if suspended:
-            events.append("waits_suspended")
+            events.append(TaskEventKind.WAITS_SUSPENDED.value)
         task = self._repo.get_task(account_id, target.task_id)
         assert task is not None
         return TaskTurnResult(
@@ -365,8 +464,11 @@ class TaskService:
             return TaskTurnResult(created=False, task=None, events=events)
         with self._repo.database.transaction():
             self._repo.update_task_status(
-                account_id, target.task_id, TaskStatus.CANCELLED,
-                now=moment, in_transaction=True,
+                account_id,
+                target.task_id,
+                TaskStatus.CANCELLED,
+                now=moment,
+                in_transaction=True,
             )
             expired = self._repo.expire_waits(
                 account_id, target.task_id, now=moment, in_transaction=True
@@ -377,18 +479,24 @@ class TaskService:
                     account_id, request.conversation_id, None, in_transaction=True
                 )
             self._repo.record_event(
-                account_id=account_id, conversation_id=request.conversation_id,
-                task_id=target.task_id, kind="task_cancelled",
-                payload={"expired_waits": expired}, now=moment, in_transaction=True,
+                account_id=account_id,
+                conversation_id=request.conversation_id,
+                task_id=target.task_id,
+                kind=TaskEventKind.TASK_CANCELLED,
+                payload={"expired_waits": expired},
+                now=moment,
+                in_transaction=True,
             )
-        events.append("task_cancelled")
+        events.append(TaskEventKind.TASK_CANCELLED.value)
         if expired:
-            events.append("waits_expired")
+            events.append(TaskEventKind.WAITS_EXPIRED.value)
         task = self._repo.get_task(account_id, target.task_id)
         assert task is not None
         return TaskTurnResult(
-            created=False, task=self._build_projection(account_id, task),
-            cancelled_task_ids=[target.task_id], events=events,
+            created=False,
+            task=self._build_projection(account_id, task),
+            cancelled_task_ids=[target.task_id],
+            events=events,
         )
 
     # -- 内部工具 -----------------------------------------------------------
@@ -408,6 +516,51 @@ class TaskService:
         if request.goal is not None and request.goal.strip():
             return True
         return any(item.origin in _BINDING_ORIGINS for item in request.conditions)
+
+    def _needs_revision(self, request: TaskTurnRequest, target: TaskRecord) -> bool:
+        """本轮是否需要生成新版本：条件、撤销、结果引用或目标变化。"""
+        return bool(
+            request.conditions
+            or request.revoked_condition_ids
+            or request.result_refs
+            or (request.goal is not None and request.goal.strip() != target.goal)
+        )
+
+    def _pause_task(
+        self,
+        account_id: str,
+        request: TaskTurnRequest,
+        target: TaskRecord,
+        moment: datetime,
+        events: list[str],
+        *,
+        reason: str,
+    ) -> list[str]:
+        """暂停任务并让旧等待失去当前激活状态（同一事务），返回被挂起的等待 ID。"""
+        with self._repo.database.transaction():
+            self._repo.update_task_status(
+                account_id,
+                target.task_id,
+                TaskStatus.PAUSED,
+                now=moment,
+                in_transaction=True,
+            )
+            suspended = self._repo.suspend_open_waits(
+                account_id, target.task_id, now=moment, in_transaction=True
+            )
+            self._repo.record_event(
+                account_id=account_id,
+                conversation_id=request.conversation_id,
+                task_id=target.task_id,
+                kind=TaskEventKind.TASK_PAUSED,
+                payload={"reason": reason, "suspended_waits": suspended},
+                now=moment,
+                in_transaction=True,
+            )
+        events.append(TaskEventKind.TASK_PAUSED.value)
+        if suspended:
+            events.append(TaskEventKind.WAITS_SUSPENDED.value)
+        return suspended
 
     def _create_task_with_conditions(
         self,
@@ -440,15 +593,19 @@ class TaskService:
                 goal=goal,
                 condition_ids=[c.condition_id for c in conditions],
                 source_message_ids=[request.user_message_id],
+                result_refs=request.result_refs,
                 expected_version=0,
                 now=moment,
                 in_transaction=True,
             )
             self._repo.record_event(
-                account_id=account_id, conversation_id=conversation_id,
-                task_id=task.task_id, kind="task_created",
+                account_id=account_id,
+                conversation_id=conversation_id,
+                task_id=task.task_id,
+                kind=TaskEventKind.TASK_CREATED,
                 payload={"source_message_id": request.user_message_id},
-                now=moment, in_transaction=True,
+                now=moment,
+                in_transaction=True,
             )
         refreshed = self._repo.get_task(account_id, task.task_id)
         assert refreshed is not None
@@ -462,12 +619,30 @@ class TaskService:
         moment: datetime,
         *,
         expected: int | None,
+        in_transaction: bool = False,
     ) -> TaskVersion:
         if expected is not None and expected != target.current_version:
             raise TaskVersionConflict(target.task_id, expected, target.current_version)
         new_version = target.current_version + 1
         goal = (request.goal or target.goal).strip()
-        with self._repo.database.transaction():
+
+        def _apply() -> TaskVersion:
+            for condition_id in request.revoked_condition_ids:
+                condition = self._repo.get_condition(account_id, condition_id)
+                if condition.task_id != target.task_id:
+                    raise TaskNotFound("被撤销的条件不属于目标任务。")
+                self._repo.revoke_condition(
+                    account_id, condition_id, now=moment, in_transaction=True
+                )
+                self._repo.record_event(
+                    account_id=account_id,
+                    conversation_id=request.conversation_id,
+                    task_id=target.task_id,
+                    kind=TaskEventKind.CONDITION_REVOKED,
+                    payload={"condition_id": condition_id},
+                    now=moment,
+                    in_transaction=True,
+                )
             created = self._repo.insert_conditions(
                 account_id=account_id,
                 task_id=target.task_id,
@@ -483,20 +658,29 @@ class TaskService:
                 goal=goal,
                 condition_ids=[c.condition_id for c in created],
                 source_message_ids=[request.user_message_id],
+                result_refs=request.result_refs,
                 expected_version=target.current_version,
                 now=moment,
                 in_transaction=True,
             )
             self._repo.record_event(
-                account_id=account_id, conversation_id=request.conversation_id,
-                task_id=target.task_id, kind="version_created",
+                account_id=account_id,
+                conversation_id=request.conversation_id,
+                task_id=target.task_id,
+                kind=TaskEventKind.VERSION_CREATED,
                 payload={
                     "version": version.version,
                     "condition_ids": [c.condition_id for c in created],
                 },
-                now=moment, in_transaction=True,
+                now=moment,
+                in_transaction=True,
             )
-        return version
+            return version
+
+        if in_transaction:
+            return _apply()
+        with self._repo.database.transaction():
+            return _apply()
 
     def _try_resolve_wait(
         self,
@@ -504,15 +688,15 @@ class TaskService:
         request: TaskTurnRequest,
         target: TaskRecord,
         moment: datetime,
+        *,
+        in_transaction: bool = False,
     ) -> tuple[WaitResolution, TaskWait | None, str | None]:
         """尝试把本轮消息填进目标任务的旧等待。
 
         只接受匹配答复：必须是答复类关系、不是新话题/画像命令/学习动作、
         版本与提问时一致，且本轮 ``answer_fields`` 确实补齐了缺失字段。
         """
-        open_waits = self._repo.list_waits(
-            account_id, target.task_id, statuses=(WaitStatus.OPEN,)
-        )
+        open_waits = self._repo.list_waits(account_id, target.task_id, statuses=(WaitStatus.OPEN,))
         if not open_waits:
             return WaitResolution.NONE, None, None
         wait = open_waits[0]
@@ -541,16 +725,20 @@ class TaskService:
             wait_id=wait.wait_id,
             resolved_by_message_id=request.user_message_id,
             now=moment,
+            in_transaction=in_transaction,
         )
         self._repo.record_event(
-            account_id=account_id, conversation_id=request.conversation_id,
-            task_id=target.task_id, kind="wait_resolved",
+            account_id=account_id,
+            conversation_id=request.conversation_id,
+            task_id=target.task_id,
+            kind=TaskEventKind.WAIT_RESOLVED,
             payload={
                 "wait_id": wait.wait_id,
                 "filled_fields": sorted(matched),
                 "resolved_by_message_id": request.user_message_id,
             },
             now=moment,
+            in_transaction=in_transaction,
         )
         return WaitResolution.ACCEPTED, resolved, None
 

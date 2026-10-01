@@ -2710,6 +2710,7 @@ MIGRATIONS: dict[int, list[str]] = {
             goal TEXT NOT NULL,
             condition_ids_json TEXT NOT NULL DEFAULT '[]',
             source_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            result_refs_json TEXT NOT NULL DEFAULT '[]',
             supersedes_version INTEGER,
             invalidated_at TEXT,
             invalidation_reason TEXT,
