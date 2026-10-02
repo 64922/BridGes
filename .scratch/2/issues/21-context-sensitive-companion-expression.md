@@ -77,4 +77,12 @@
   - `ruff check` 改动文件全部通过；`mypy` 改动文件与 main 同名错误逐条一致（20=20，无新增）；复核脚本重生成 `docs/人味化/复核结果.json`（策略版本 v3、新增续接/工具/否定/引语反例）。
 - 状态改 `ready-for-human` 等待人工验收；分支未推送、未合并。
 
+### 2026-10-02：独立验收、修复与合入
+
+- 独立验收（对照票面验收标准与 `docs/人味化/实施方案.md` 的主要任务/材料边界要求）发现并修复 2 项问题（提交 `a544bd0c`）：①「焦虑又请求排查」仍落情绪承接形态，未完成排查主请求；现按显式求助排查请求（“帮我看看这个问题/错误码”等）完成任务形态 `direct_task`，情绪承接只作可选补充；②“关于焦虑的论文”“文章讲焦虑”等文章材料话题仍被推断为用户情绪；现扩展情绪话题词形，并收窄任务请求识别避免“看了一篇文章”等叙述误判为任务。
+- 验收修复后本票测试 45 passed；`tests/chat` 全量 100 failed / 871 passed / 1 xfailed，失败集与 `main@58962ddd` 逐项一致（0 新增失败）；合并树定向回归 143 passed；`tests/profiles` 479 passed / 1 failed（既有时间相关环境失败）；`ruff` 变更文件零诊断；`mypy` 20=20 与基线一致；`docs/人味化/复核结果.json` 重生成（新增两个反例）；实施文档策略版本同步 v3。
+- 合并提交 `2b3dc57c`（解决与 Issue 18 在 `turn.py` 的相邻插入冲突：画像失效复查与工具状态汇总依次保留）已推送到 `origin`（`58962ddd..2b3dc57c`）；合并后 `tests/chat` 100 failed / 874 passed / 1 xfailed，失败集与合并前 main 逐项一致。
+- Issue 工作树 `.worktrees/21-context-sensitive-companion-expression` 与本地分支 `codex/21-context-sensitive-companion-expression` 已删除；`git worktree prune` 无失效记录，其他活跃工作树保留。
+- 详见 [独立验收记录](../acceptance/21-context-sensitive-companion-expression.md)。
+
 
