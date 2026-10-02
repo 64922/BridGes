@@ -2,23 +2,23 @@
   "说明": "实际执行当前仓库纯函数；流式案例使用正式追加式装配器模拟，不是真实浏览器验收。",
   "可绑定片段协议版本": "intent-bound-fragment-v1",
   "流式正文协议版本": "append-only-delta-v1",
-  "策略版本": "global-chat-lightweight-v2",
+  "策略版本": "global-chat-lightweight-v3",
   "形态反例": [
     {
       "输入": "解释焦虑的生理机制",
-      "实际形态": "empathy"
+      "实际形态": "explanation"
     },
     {
       "输入": "我今天很难过，不想听建议，只想聊聊",
-      "实际形态": "advice"
+      "实际形态": "empathy"
     },
     {
       "输入": "写一篇两千字的故事",
-      "实际形态": "compact_default"
+      "实际形态": "direct_task"
     },
     {
       "输入": "他说‘我很焦虑’，帮我翻译成英文",
-      "实际形态": "empathy"
+      "实际形态": "direct_task"
     },
     {
       "输入": "你说得对吗？我觉得这里有问题",
@@ -34,6 +34,34 @@
     },
     {
       "输入": "继续",
+      "实际形态": "compact_default"
+    },
+    {
+      "输入": "继续（承接“写一篇两千字的故事”）",
+      "实际形态": "direct_task"
+    },
+    {
+      "输入": "工具失败（联网超时）",
+      "实际形态": "error_refusal"
+    },
+    {
+      "输入": "工具部分结果（部分命中）",
+      "实际形态": "tool_result"
+    },
+    {
+      "输入": "不用详细讲，简单说一下",
+      "实际形态": "compact_default"
+    },
+    {
+      "输入": "他说‘别追问我了’，这句话是什么意思",
+      "实际形态": "explanation"
+    },
+    {
+      "输入": "焦虑又请求排查（完成任务）",
+      "实际形态": "direct_task"
+    },
+    {
+      "输入": "关于焦虑的论文（话题非情绪）",
       "实际形态": "compact_default"
     }
   ],
@@ -244,7 +272,7 @@
       "level-adapted",
       "concrete-example",
       "scope-limited",
-      "check-understanding"
+      "no-forced-check"
     ],
     "情绪档规则": [
       "answer-first",
@@ -252,9 +280,10 @@
       "structure-optional",
       "no-filler-ending",
       "visible-info-only",
-      "empathy-with-action",
+      "stay-without-forcing",
       "no-mind-reading",
-      "no-parroting"
+      "no-parroting",
+      "honest-disagreement"
     ]
   }
 }

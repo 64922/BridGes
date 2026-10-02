@@ -45,6 +45,11 @@ from bridges.chat.context_compiler import compile_turn_context as _compile_turn_
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.lightweight_policy import (
+    DEFAULT_OUTPUT_TOKENS,
+    continuation_source_text,
+    output_tokens_for_request,
+)
 from bridges.chat.material_reading import collect_photo_refs, plan_photo_reads
 from bridges.chat.repository import (
     ConversationModeLockConflict,
@@ -71,7 +76,6 @@ from bridges.chat.summary import ChatSummaryService
 from bridges.chat.terminal import GenerationTerminal, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
-    CHAT_OUTPUT_TOKENS,
     # STREAM_INTERRUPTED_MESSAGE 在此 re-export，保持既有导入路径不变
     #（定义在 chat/turn.py；读取路径的陈旧收敛已迁入终态 module）。
     STREAM_INTERRUPTED_MESSAGE,  # noqa: F401 - re-export
@@ -2163,16 +2167,37 @@ class ChatService:
             except Exception:  # noqa: BLE001 - 摘要域故障不阻塞本轮回答
                 summaries = []
 
+        def _persisted_output_tokens() -> int | None:
+            # 改进工单 21：已固化的完整策略快照是本轮输出的权威口径（重试/
+            # 恢复与最终载荷 ``max_tokens`` 共用）；旧版完整快照没有输出
+            # 额度字段时按默认额度，与回合层复用旧快照的行为一致。
+            policy = (run.config or {}).get("global_writing_policy")
+            if not isinstance(policy, dict) or policy.get("snapshot_complete") is not True:
+                return None
+            tokens = policy.get("output_tokens")
+            if isinstance(tokens, int) and tokens > 0:
+                return tokens
+            return DEFAULT_OUTPUT_TOKENS
+
         def _compile_turn(
             active_summaries: list[HistorySummary],
         ) -> CompiledTurnContext:
+            # 改进工单 21：输出预留与表达策略同一口径——显式长文/推导任务用
+            # 有界任务上限，续接轮沿用最近相关请求的任务分类；仍受工单 04
+            # 最终载荷门与运行额度约束。
+            output_budget = _persisted_output_tokens()
+            if output_budget is None:
+                output_budget = output_tokens_for_request(
+                    user_message.content,
+                    continuation_source_text(messages, run.user_message_id),
+                )
             return _compile_turn_context(
                 messages=messages,
                 current_user_message_id=run.user_message_id,
                 model_id=quota.model_id,
                 mode=mode,
                 quota=quota,
-                output_tokens=CHAT_OUTPUT_TOKENS,
+                output_tokens=output_budget,
                 system_prompt=system_prompt,
                 evidence=evidence or [],
                 task=task_context,
