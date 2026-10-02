@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypeVar
 
+from bridges.chat.task_materials import ModuleTaskContext
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
 from bridges.resources.contracts import (
@@ -163,15 +164,26 @@ class LearningResourcesService:
         assistant_message_id: str,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
+        module_context: ModuleTaskContext | None = None,
     ) -> ResourcesRunOutcome:
-        """执行一轮资料模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。"""
+        """执行一轮资料模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。
+
+        ``module_context``（工单 15）提供当前任务主题/水平/媒介等有效条件
+        与有来源的相关前文；无任务时才回退最近窗口。
+        """
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise ResourcesModuleError(
                 NODE_PARSE, "message_not_found", "消息不存在或没有访问权限。", retryable=False
             )
         pending = self._pending_wait(repo, account_id, conversation_id)
-        prior = self._prior_user_messages(repo, account_id, conversation_id, user_message_id)
+        prior = (
+            list(module_context.prior_messages)
+            if module_context is not None
+            else self._prior_user_messages(
+                repo, account_id, conversation_id, user_message_id
+            )
+        )
         run = _Run(emit_node)
         parsed = run.node(
             NODE_PARSE,

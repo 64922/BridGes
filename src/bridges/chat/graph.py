@@ -526,6 +526,11 @@ def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
             run_model_id=state.get("run_model_id"),
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            module_context=deps.service.module_task_context(run, PAPER_MODULE_ID),
+            model_quota=deps.service.run_model_quota(run),
+            manifest_sink=lambda manifest: deps.service.audit_module_manifest(
+                run, "paper.summarize", manifest
+            ),
         )
     except PaperModuleError as error:
         raise DailyTurnError(
@@ -608,6 +613,11 @@ def _invoke_github_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
             run_model_id=state.get("run_model_id"),
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            module_context=deps.service.module_task_context(run, GITHUB_MODULE_ID),
+            model_quota=deps.service.run_model_quota(run),
+            manifest_sink=lambda manifest: deps.service.audit_module_manifest(
+                run, "github.insight", manifest
+            ),
         )
     except GithubModuleError as error:
         raise DailyTurnError(
@@ -648,6 +658,9 @@ def _invoke_resources_module(deps: _GraphDeps, state: DailyTurnState) -> dict[st
             assistant_message_id=run.assistant_message_id,
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            module_context=deps.service.module_task_context(
+                run, RESOURCES_MODULE_ID
+            ),
         )
     except ResourcesModuleError as error:
         raise DailyTurnError(
@@ -690,6 +703,7 @@ def _invoke_commute_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str,
             run_model_id=state.get("run_model_id"),
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            module_context=deps.service.module_task_context(run, COMMUTE_MODULE_ID),
         )
     except CommuteSupersededError as error:
         # 迟到结果：本轮不再写交付终态，交给当前持有执行权的执行者收尾。

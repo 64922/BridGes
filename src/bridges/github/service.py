@@ -22,6 +22,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypeVar
 
+from bridges.ai.model_quota import RunModelQuota
+from bridges.ai.payload_budget import CallMaterialManifest
+from bridges.chat.task_materials import ModuleTaskContext
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
 from bridges.contracts.workflows import RunContextEnvelope
@@ -162,8 +165,17 @@ class GithubProjectsService:
         run_model_id: str | None = None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
+        module_context: ModuleTaskContext | None = None,
+        model_quota: RunModelQuota | None = None,
+        manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
     ) -> GithubRunOutcome:
-        """执行一轮 GitHub 项目推荐；终态全部写回同一条助手消息。"""
+        """执行一轮 GitHub 项目推荐；终态全部写回同一条助手消息。
+
+        ``module_context``（工单 15）提供当前任务主题（只含有效条件与
+        有来源的前文），在「指向上一轮」时与论文/仓库锚点一起参与定位；
+        ``model_quota``/``manifest_sink`` 让借鉴角度调用进入同一最终载荷门
+        并把本次调用自己的采用清单交给父图审计。
+        """
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise GithubModuleError(
@@ -173,7 +185,13 @@ class GithubProjectsService:
                 retryable=False,
             )
         waiting = self._pending_wait(repo, account_id, conversation_id)
-        prior = self._prior_context(repo, account_id, conversation_id, user_message_id)
+        prior = self._prior_context(
+            repo,
+            account_id,
+            conversation_id,
+            user_message_id,
+            module_context=module_context,
+        )
         run = _Run(emit_node)
         analysis = run.node(
             NODE_PARSE,
@@ -250,7 +268,11 @@ class GithubProjectsService:
         insights = run.node(
             NODE_PRESENT,
             lambda: self._generate_insights(
-                ranked, run_context=run_context, run_model_id=run_model_id
+                ranked,
+                run_context=run_context,
+                run_model_id=run_model_id,
+                model_quota=model_quota,
+                manifest_sink=manifest_sink,
             ),
         )
         projection = _projection(
@@ -365,6 +387,8 @@ class GithubProjectsService:
         *,
         run_context: RunContextEnvelope | None,
         run_model_id: str | None,
+        model_quota: RunModelQuota | None,
+        manifest_sink: Callable[[CallMaterialManifest], None] | None,
     ) -> InsightOutcome:
         if self._insights is None or not ranked.recommendations:
             return InsightOutcome()
@@ -372,9 +396,15 @@ class GithubProjectsService:
             return InsightOutcome(
                 note="借鉴角度未生成（本轮没有可用的运行上下文），只给证据本身。"
             )
-        return self._insights.generate(
-            run_context, ranked.recommendations, model_id=run_model_id
+        result = self._insights.generate(
+            run_context,
+            ranked.recommendations,
+            model_id=run_model_id,
+            model_quota=model_quota,
         )
+        if result.manifest is not None and manifest_sink is not None:
+            manifest_sink(result.manifest)
+        return result
 
     # -- 恢复与等待 ------------------------------------------------------
 
@@ -406,6 +436,8 @@ class GithubProjectsService:
         account_id: str,
         conversation_id: str,
         user_message_id: str,
+        *,
+        module_context: ModuleTaskContext | None = None,
     ) -> list[GithubContextSource]:
         """已确认的会话前文里的可追溯原词（供「找实现它的项目」指向）。
 
@@ -413,6 +445,11 @@ class GithubProjectsService:
         以及上一轮 GitHub 请求的场景。每条都带回承载它的助手消息 ID，用户
         看到的「前文依据」因此能追溯到具体那条会话记录；普通聊天消息不作为
         依据，避免把无关的一句话当成检索主题。
+
+        工单 15：有当前任务主题时，把它作为**最早**一条依据参与定位——
+        它只包含有效条件（未被取代/撤销）与有来源的原文，显式的论文/仓库
+        锚点仍优先于它；因此普通聊天里先讲过的目标可以续接，而无关旧条件
+        不会污染新任务。
         """
         anchors: list[GithubContextSource] = []
         for message in repo.list_messages(account_id, conversation_id):
@@ -420,7 +457,22 @@ class GithubProjectsService:
                 break
             anchors.extend(_paper_anchors(message))
             anchors.extend(_github_anchors(message))
-        return anchors[-PRIOR_MESSAGES_LOOKBACK:]
+        anchors = anchors[-PRIOR_MESSAGES_LOOKBACK:]
+        if module_context is not None and module_context.topic_hint.strip():
+            anchors.insert(
+                0,
+                GithubContextSource(
+                    kind="task",
+                    label="当前任务主题",
+                    phrase=module_context.topic_hint.strip(),
+                    message_id=(
+                        module_context.source_message_ids[-1]
+                        if module_context.source_message_ids
+                        else None
+                    ),
+                ),
+            )
+        return anchors
 
     # -- 落库 ------------------------------------------------------------
 

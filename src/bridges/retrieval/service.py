@@ -206,12 +206,18 @@ class LayeredRetrievalService:
         *,
         use_knowledge_base: bool,
         decision: RetrievalDecisionProjection | None = None,
+        knowledge_base_query: str | None = None,
+        attachment_query: str | None = None,
     ) -> RetrievalRoundProjection | None:
         """为一条助手消息执行一轮分层检索并固化结果。
 
         返回 None 表示本轮没有可检索作用域（无附件、未归属项目且知识库
         无材料/被关闭），前端不渲染检索卡；其余情况总是返回结构化轮次
         投影，绝不把无命中伪装成成功。
+
+        ``knowledge_base_query``/``attachment_query``（工单 15）是编译期
+        按任务选择出的各域最小查询：知识库与聊天附件分别只用自己的主题/
+        对象/有效条件构造查询；未提供时回退到本轮原文（历史调用兼容）。
         """
         if decision is not None:
             # 新聊天回合的决策控制整个检索副作用；历史直接调用仍走下方兼容路径。
@@ -261,7 +267,7 @@ class LayeredRetrievalService:
             attachment_ids=attachment_ids,
             project_id=project_id,
             use_knowledge_base=use_knowledge_base,
-            query=query,
+            query=knowledge_base_query or query,
         )
         # 没有任何层有已就绪材料时跳过本轮（无检索作用域，不假装成功）。
         if not any(layer["ready_document_ids"] for layer in layers.values()):
@@ -315,7 +321,18 @@ class LayeredRetrievalService:
         # Issue 15：查询向量锁关联到检索 round（round_id 在向量化前生成，
         # 锁与轮次记录共享同一对象标识；无向量化的路径不建锁）。
         round_id = f"rnd-{secrets.token_urlsafe(12)}"
-        cleaned_query = clean_query(query)
+        # 工单 15：知识库与会话附件各自使用按任务选择的最小查询；未提供
+        # 时回退到本轮请求原文，历史直接调用路径行为不变。
+        def _layer_query(layer: RetrievalSourceLayer) -> str:
+            if layer is RetrievalSourceLayer.KNOWLEDGE_BASE and knowledge_base_query:
+                return knowledge_base_query
+            if layer is RetrievalSourceLayer.ATTACHMENT and attachment_query:
+                return attachment_query
+            return query
+
+        cleaned_by_layer: dict[RetrievalSourceLayer, str] = {
+            layer: clean_query(_layer_query(layer)) for layer in _LAYER_ORDER
+        }
         keyword_lists: dict[RetrievalSourceLayer, list[Any]] = {}
         vector_rows: dict[RetrievalSourceLayer, list[dict[str, Any]]] = {}
         layer_search_failed = False
@@ -329,7 +346,7 @@ class LayeredRetrievalService:
                     account_id=account_id,
                     version_id=version_id,
                     document_ids=document_ids,
-                    query=cleaned_query,
+                    query=cleaned_by_layer[layer],
                 )
             except sqlite3.Error:
                 # 单层关键词检索失败不阻塞整轮：该层按索引不可用呈现，
@@ -345,33 +362,49 @@ class LayeredRetrievalService:
             vector_rows[layer] = self._vector_rows(account_id, version_id, document_ids)
 
         search_results: dict[RetrievalSourceLayer, LayerSearchResult] = {}
-        vector_note: str | None = None
-        query_vector: list[float] | None = None
-        # Issue 15：清理后为空的查询不向量化（无内容可检索，不发远端请求、
-        # 不建伪锁），本轮按纯关键词路径处理。
-        if self._embedding is not None and cleaned_query:
-            try:
-                embedded = self._embedding.embed(
-                    account_id,
-                    [cleaned_query],
-                    context=EmbeddingContext(
-                        operation=EmbeddingOperation.RETRIEVAL_QUERY,
-                        run_id=round_id,
-                        object_type="retrieval_round",
-                        object_id=round_id,
-                        project_id=project_id or "default",
-                    ),
-                )
-                query_vector = list(embedded[0]) if embedded else None
-            except EmbeddingError as exc:
-                # GQ-05：向量化调用失败 → 本轮诚实回退关键词检索，并把
-                # 端口给出的可操作原因（全局配置/权限等）呈现给用户。
-                vector_note = f"{_VECTOR_UNAVAILABLE_NOTE}；{exc.message}"
-        if query_vector is None:
-            vector_note = vector_note or _VECTOR_UNAVAILABLE_NOTE
+        # 工单 15：每个不同的按任务查询只向量化一次；清理后为空的查询不
+        # 向量化（无内容可检索，不发远端请求、不建伪锁）。
+        vectors_by_query: dict[str, list[float] | None] = {}
+        notes_by_query: dict[str, str] = {}
+        if self._embedding is not None:
+            for cleaned in dict.fromkeys(
+                cleaned_by_layer[layer]
+                for layer in _LAYER_ORDER
+                if layers[layer]["status"] == RetrievalLayerStatus.OK
+                and layers[layer]["ready_document_ids"]
+            ):
+                if not cleaned:
+                    continue
+                try:
+                    embedded = self._embedding.embed(
+                        account_id,
+                        [cleaned],
+                        context=EmbeddingContext(
+                            operation=EmbeddingOperation.RETRIEVAL_QUERY,
+                            run_id=round_id,
+                            object_type="retrieval_round",
+                            object_id=round_id,
+                            project_id=project_id or "default",
+                        ),
+                    )
+                    vectors_by_query[cleaned] = list(embedded[0]) if embedded else None
+                except EmbeddingError as exc:
+                    # GQ-05：向量化调用失败 → 本轮诚实回退关键词检索，并把
+                    # 端口给出的可操作原因（全局配置/权限等）呈现给用户。
+                    vectors_by_query[cleaned] = None
+                    notes_by_query[cleaned] = f"{_VECTOR_UNAVAILABLE_NOTE}；{exc.message}"
+        layer_vector_notes: dict[RetrievalSourceLayer, str | None] = {}
         for layer in _LAYER_ORDER:
             if layers[layer]["status"] != RetrievalLayerStatus.OK:
                 continue
+            cleaned = cleaned_by_layer[layer]
+            query_vector = vectors_by_query.get(cleaned) if cleaned else None
+            vector_note = (
+                (notes_by_query.get(cleaned) or _VECTOR_UNAVAILABLE_NOTE)
+                if query_vector is None
+                else None
+            )
+            layer_vector_notes[layer] = vector_note
             vector_hits = (
                 search_vectors(
                     vector_rows[layer],
@@ -385,9 +418,7 @@ class LayeredRetrievalService:
                 layer=layer,
                 keyword_hits=keyword_lists.get(layer, []),
                 vector_hits=vector_hits,
-                vector_unavailable_reason=(
-                    vector_note if query_vector is None else None
-                ),
+                vector_unavailable_reason=vector_note,
             )
 
         fused_by_layer: list[tuple[RetrievalSourceLayer, list[FusedCandidate]]] = []
@@ -420,6 +451,10 @@ class LayeredRetrievalService:
             conflicts=conflicts,
         )
         note = _sufficiency_note(sufficiency)
+        vector_note = next(
+            (reason for reason in layer_vector_notes.values() if reason is not None),
+            None,
+        )
         if vector_note is not None:
             note = f"{note}；{vector_note}"
 

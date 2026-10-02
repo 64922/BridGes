@@ -46,6 +46,7 @@ from bridges.chat.reference_resolution import (
     RECOVERED_MAX_MESSAGES,
     resolve_references,
 )
+from bridges.chat.task_materials import select_task_materials
 from bridges.chat.turn import (
     CHAT_OUTPUT_TOKENS,
     history_items,
@@ -208,10 +209,25 @@ class CompiledTurnContext:
     #: 本轮读取计划（工单 14；只含附件/对象/消息 ID、读取范围与内容版本，
     #: 不含原图字节与正文）。消费者（15/学习/日常）据此复用统一来源清单。
     material_read_plan: dict[str, Any] | None = None
+    #: 工单 15 的任务材料选择审计记录（ID、计数与查询指纹；不含查询正文）。
+    material_selection: dict[str, Any] | None = None
+    #: 工单 15 的各域最小查询执行记录（键为 MaterialDomain 值）；只用于
+    #: 进程内检索与检查点恢复，不写审计、不外发公开服务。
+    task_queries: dict[str, str] = field(default_factory=dict)
 
     def model_messages(self) -> list[dict[str, str]]:
         """返回模型就绪消息列表的独立副本（图状态/载荷安全复用）。"""
         return [dict(message) for message in self.messages]
+
+    def execution_record(self) -> dict[str, object]:
+        """执行记录：审计安全的 ``to_record`` 加进程内查询语义。
+
+        查询正文只进图状态（与 ``compiled_messages`` 同一边界），恢复路径
+        复用同一口径；``to_record`` 仍是审计唯一入口，绝不含查询正文。
+        """
+        record = self.to_record()
+        record["task_queries"] = dict(self.task_queries)
+        return record
 
     def to_record(self) -> dict[str, object]:
         """审计记录（只含 ID、版本与计数，不含任何消息正文）。"""
@@ -259,6 +275,11 @@ class CompiledTurnContext:
             "material_read_plan": (
                 dict(self.material_read_plan)
                 if self.material_read_plan is not None
+                else None
+            ),
+            "material_selection": (
+                dict(self.material_selection)
+                if self.material_selection is not None
                 else None
             ),
         }
@@ -718,6 +739,22 @@ def compile_turn_context(
             floor_exceeded = True
             break
 
+    # 工单 15：确定指代解析与预算裁剪之后，产生各域最小查询（只读定位）。
+    # 知识库/附件查询使用解析主题 + 当前有效条件 + 请求自身术语；公开查询
+    # 只含公开主题词；条件正文只进本地查询，审计只留 ID/计数/指纹。
+    selection = select_task_materials(
+        current.content,
+        resolution=resolution,
+        task=task,
+        current_message_id=current_user_message_id,
+        recent_user_texts=[
+            item.content
+            for item in reversed(items[:-1])
+            if item.role == ChatMessageRole.USER
+        ],
+        purpose="answer",
+    )
+
     model_messages: list[dict[str, str]] = [
         {"role": "system", "content": blocks[0]}
     ]
@@ -780,4 +817,6 @@ def compile_turn_context(
         reference_missing_count=len(resolution.missing_requirements),
         image_attachment_ids=image_attachment_ids,
         material_read_plan=plan_record,
+        material_selection=selection.audit_record(),
+        task_queries=dict(selection.queries),
     )

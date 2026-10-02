@@ -70,18 +70,28 @@ def parse_paper_request(
     prior_context: Sequence[str] = (),
     pending: ModuleWaitState | None = None,
     now: datetime | None = None,
+    task_topic_hint: str | None = None,
 ) -> PaperTermAnalysis:
     """解析一轮论文请求；缺失或歧义时返回单一澄清问题。
 
     ``pending`` 非空表示上一轮已提问、本轮 ``content`` 是该问题的回答：解析
     从等待处恢复（原短语与限制沿用等待状态里的记录），而不是把回答当成全新
     请求重新解析。
+
+    ``task_topic_hint``（工单 15）是当前任务快照里的主题提示：本轮原文
+    没有可抽取的主题时用它续接（例如普通聊天里先讲过主题、随后只说
+    「找几篇论文」），仍然只使用有来源的任务条件，不做推测。
     """
     current = now or datetime.now(UTC)
     text = content.strip()
     if pending is not None and pending.kind == "clarification":
         return _resume_from_clarification(text, pending, prior_context=prior_context, now=current)
-    return _parse_fresh(text, prior_context=prior_context, now=current)
+    return _parse_fresh(
+        text,
+        prior_context=prior_context,
+        now=current,
+        task_topic_hint=task_topic_hint,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +100,11 @@ def parse_paper_request(
 
 
 def _parse_fresh(
-    text: str, *, prior_context: Sequence[str], now: datetime
+    text: str,
+    *,
+    prior_context: Sequence[str],
+    now: datetime,
+    task_topic_hint: str | None = None,
 ) -> PaperTermAnalysis:
     constraints = _parse_constraints(text, now=now)
     candidates = _context_candidates(prior_context)
@@ -104,6 +118,9 @@ def _parse_fresh(
             constraints=constraints,
         )
     topic = extract_topic_phrase(text)
+    if topic is None and task_topic_hint:
+        # 工单 15：原文没有主题时用任务快照的主题条件续接（有来源，非推测）。
+        topic = extract_topic_phrase(task_topic_hint)
     if topic is None:
         return _needs_topic(text)
     return _analysis_for_topic(

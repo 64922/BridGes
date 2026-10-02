@@ -22,6 +22,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypeVar
 
+from bridges.ai.model_quota import RunModelQuota
+from bridges.ai.payload_budget import CallMaterialManifest
+from bridges.chat.task_materials import ModuleTaskContext
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
@@ -158,20 +161,40 @@ class PaperSearchService:
         run_model_id: str | None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
+        module_context: ModuleTaskContext | None = None,
+        model_quota: RunModelQuota | None = None,
+        manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
     ) -> PaperRunOutcome:
-        """执行一轮论文模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。"""
+        """执行一轮论文模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。
+
+        ``module_context``（工单 15）是父图按模块声明构建的任务上下文：
+        有任务时优先使用其中**有来源**的相关前文与有效条件（未被取代/
+        撤销的旧条件），无任务时才回退既有最近窗口。``model_quota`` 与
+        ``manifest_sink`` 让本模块自己的概述调用进入同一最终载荷门，并把
+        本次调用自己的采用清单交给父图审计（不以父图早期编译审计代替）。
+        """
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise PaperModuleError(
                 NODE_PARSE, "message_not_found", "消息不存在或没有访问权限。", retryable=False
             )
         pending = self._pending_wait(repo, account_id, conversation_id)
-        prior = self._prior_user_messages(repo, account_id, conversation_id, user_message_id)
+        prior = (
+            list(module_context.prior_messages)
+            if module_context is not None
+            else self._prior_user_messages(
+                repo, account_id, conversation_id, user_message_id
+            )
+        )
+        topic_hint = module_context.topic_hint if module_context is not None else None
         analysis = _Run(emit_node)
         parsed = analysis.node(
             NODE_PARSE,
             lambda: parse_paper_request(
-                user_message.content, prior_context=prior, pending=pending
+                user_message.content,
+                prior_context=prior,
+                pending=pending,
+                task_topic_hint=topic_hint,
             ),
         )
         if parsed.clarification is not None:
@@ -288,6 +311,8 @@ class PaperSearchService:
             outcome,
             run_context=run_context,
             run_model_id=run_model_id,
+            model_quota=model_quota,
+            manifest_sink=manifest_sink,
         )
         stopped = self._stopped(
             repo,
@@ -375,6 +400,8 @@ class PaperSearchService:
         *,
         run_context: RunContextEnvelope,
         run_model_id: str | None,
+        model_quota: RunModelQuota | None,
+        manifest_sink: Callable[[CallMaterialManifest], None] | None,
     ) -> tuple[dict[str, str] | None, str | None, ModelRunLock | None]:
         if self._summarizer is None:
             return None, None, None
@@ -384,7 +411,10 @@ class PaperSearchService:
             recommendations,
             abstracts=abstracts,
             model_id=run_model_id,
+            model_quota=model_quota,
         )
+        if result.manifest is not None and manifest_sink is not None:
+            manifest_sink(result.manifest)
         return result.summaries or None, result.note, result.lock
 
     # -- 恢复与等待 ------------------------------------------------------

@@ -13,6 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from bridges.ai.model_quota import RunModelQuota
+from bridges.ai.payload_budget import (
+    CallMaterialManifest,
+    MaterialCategory,
+    MaterialManifestEntry,
+    estimate_tokens,
+    evaluate_payload_gate,
+)
 from bridges.contracts.ai import ModelCallResult, ModelRunLock
 from bridges.paper.contracts import (
     ROLE_LABELS,
@@ -52,12 +60,18 @@ SUMMARY_JSON_SCHEMA: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class SummaryOutcome:
-    """概述生成结果：按 arxiv_id 的概述、说明与模型锁（供原子落库）。"""
+    """概述生成结果：按 arxiv_id 的概述、说明与模型锁（供原子落库）。
+
+    ``manifest``（工单 15）是本次概述调用自己的采用清单与预算门结果：
+    工具结果（真实候选摘要）加入后重新检查预算，不以父图早期编译审计
+    代替子模块实际输入。
+    """
 
     summaries: dict[str, str] = field(default_factory=dict)
     note: str | None = None
     lock: ModelRunLock | None = None
     dropped: int = 0
+    manifest: CallMaterialManifest | None = None
 
 
 def render_clarification_content(analysis: PaperTermAnalysis) -> str:
@@ -156,18 +170,59 @@ class PaperSummaryGenerator:
         *,
         abstracts: dict[str, str],
         model_id: str | None,
+        model_quota: RunModelQuota | None = None,
     ) -> SummaryOutcome:
         if not papers:
             return SummaryOutcome()
+        user_content = _summary_prompt(papers, abstracts)
+        output_tokens = 1200
         payload = {
             "messages": [
                 {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
-                {"role": "user", "content": _summary_prompt(papers, abstracts)},
+                {"role": "user", "content": user_content},
             ],
             "json_schema": SUMMARY_JSON_SCHEMA,
             "temperature": 0.3,
-            "max_tokens": 1200,
+            "max_tokens": output_tokens,
         }
+        # 工单 15：工具结果（真实候选摘要）加入后，对**本次最终载荷**重新
+        # 执行预算门；超限时不发已知超限请求，只交付真实元数据并如实说明。
+        manifest: CallMaterialManifest | None = None
+        if model_quota is not None:
+            decision = evaluate_payload_gate(
+                payload, quota=model_quota, output_tokens=output_tokens
+            )
+            manifest = CallMaterialManifest(
+                entries=[
+                    MaterialManifestEntry(
+                        material_id="paper.summary.system",
+                        category=MaterialCategory.SYSTEM_RULE.value,
+                        necessity="required",
+                        adopted=True,
+                        reason="概述系统规则与输出契约",
+                        estimated_tokens=estimate_tokens(SUMMARY_SYSTEM_PROMPT),
+                    ),
+                    MaterialManifestEntry(
+                        material_id="paper.summary.candidates",
+                        category=MaterialCategory.RETRIEVAL.value,
+                        necessity="required",
+                        adopted=True,
+                        reason="本轮真实候选的标题、摘要与类别",
+                        estimated_tokens=estimate_tokens(user_content),
+                    ),
+                ],
+                gate=decision,
+                output_tokens=output_tokens,
+                estimated_input_tokens=decision.estimated_input_tokens,
+            )
+            if not decision.within_budget:
+                return SummaryOutcome(
+                    note=(
+                        "中文概述未生成：加入本轮候选证据后的最终载荷超出该模型的"
+                        "输入预算，已闭锁；本轮只给来源元数据与原始摘要依据。"
+                    ),
+                    manifest=manifest,
+                )
         try:
             result: ModelCallResult = self._gateway.invoke(
                 self._capability_name,
@@ -175,14 +230,19 @@ class PaperSummaryGenerator:
                 run_context,
                 payload,
                 model_override=model_id,
+                model_quota=model_quota,
             )
         except Exception:  # noqa: BLE001 - 概述失败不影响真实结果呈现
-            return SummaryOutcome(note="中文概述生成失败（模型调用异常），本轮只给来源元数据。")
+            return SummaryOutcome(
+                note="中文概述生成失败（模型调用异常），本轮只给来源元数据。",
+                manifest=manifest,
+            )
         lock = result.lock
         if result.status.value not in {"success", "degraded"}:
             return SummaryOutcome(
                 note="中文概述未生成（模型能力不可用或失败），本轮只给来源元数据与原始摘要依据。",
                 lock=lock,
+                manifest=manifest,
             )
         allowed = {paper.arxiv_id: paper for paper in papers if paper.arxiv_id}
         summaries: dict[str, str] = {}
@@ -201,7 +261,13 @@ class PaperSummaryGenerator:
         note = None
         if dropped:
             note = f"中文概述中有 {dropped} 条不符合证据约束（标识或长度），已丢弃。"
-        return SummaryOutcome(summaries=summaries, note=note, lock=lock, dropped=dropped)
+        return SummaryOutcome(
+            summaries=summaries,
+            note=note,
+            lock=lock,
+            dropped=dropped,
+            manifest=manifest,
+        )
 
 
 def _summary_prompt(

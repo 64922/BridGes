@@ -31,6 +31,7 @@ from bridges.ai.model_quota import (
     build_run_model_quota,
     resolve_run_quota,
 )
+from bridges.ai.payload_budget import CallMaterialManifest
 from bridges.ai.run_model_config import RunModelConfigProvider, factory_run_model_config
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
@@ -74,6 +75,11 @@ from bridges.chat.selections import (
     selection_key,
 )
 from bridges.chat.summary import ChatSummaryService
+from bridges.chat.task_materials import (
+    MODULE_DECLARATIONS,
+    ModuleTaskContext,
+    build_module_context,
+)
 from bridges.chat.terminal import GenerationTerminal, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
@@ -2282,7 +2288,79 @@ class ChatService:
                 reason="本轮上下文编译记录。",
                 details=record,
             )
-        return compiled.model_messages(), compiled.to_record()
+        # 执行记录（含工单 15 的各域查询）进图状态；审计仍只写 to_record()。
+        return compiled.model_messages(), compiled.execution_record()
+
+    def run_model_quota(self, run: GenerationRunRecord) -> RunModelQuota | None:
+        """本运行锁定的额度快照（与编译/网关同源）；无法验证时返回 None。
+
+        工单 15：模块自身的模型调用（论文概述、GitHub 借鉴角度）与主对话
+        共用同一份运行额度快照，不另读当前配置。
+        """
+        current_snapshot = (
+            self._model_config_provider.snapshot()
+            if self._model_config_provider is not None
+            else None
+        )
+        resolution = resolve_run_quota(run.config, current_snapshot=current_snapshot)
+        return resolution.quota if resolution.resolved else None
+
+    def module_task_context(
+        self, run: GenerationRunRecord, module_id: str
+    ) -> ModuleTaskContext | None:
+        """按模块声明构建任务上下文（只读；构建失败按无上下文处理）。
+
+        工单 15：模块从当前任务快照与有来源的相关前文取上下文，不再各自
+        固定截取最近 6 条用户消息；无任务时由 :func:`build_module_context`
+        回退既有窗口。它不授予任何工具权限，也不读取画像正文。
+        """
+        declaration = MODULE_DECLARATIONS.get(module_id)
+        if declaration is None:
+            return None
+        try:
+            messages = self._repo.list_messages(run.account_id, run.conversation_id)
+            task = (
+                self._tasks.current_reference_context(
+                    run.account_id, run.conversation_id
+                )
+                if self._tasks is not None
+                else None
+            )
+            return build_module_context(
+                declaration=declaration,
+                task=task,
+                messages=[
+                    (message.message_id, message.role.value, message.content)
+                    for message in messages
+                ],
+                current_user_message_id=run.user_message_id,
+            )
+        except Exception:  # noqa: BLE001 - 模块上下文失败不阻断模块执行
+            return None
+
+    def audit_module_manifest(
+        self,
+        run: GenerationRunRecord,
+        call_scope: str,
+        manifest: CallMaterialManifest,
+    ) -> None:
+        """记录子模块模型调用自己的采用清单（工单 15）。
+
+        清单只含材料 ID、类别、必要性、来源版本、读取范围与预算门结果，
+        不含正文；不代替父图编译审计，也不代替调用方自己的运行锁。
+        """
+        if self._observability is None:
+            return
+        record = manifest.to_record()
+        record["call_scope"] = call_scope
+        self._observability.log_audit(
+            actor_account_id=run.account_id,
+            action=AuditAction.PAYLOAD_BUDGET_EVALUATED,
+            result=AuditResult.SUCCESS,
+            object_refs=[run.assistant_message_id],
+            reason="子模块模型调用采用清单。",
+            details=record,
+        )
 
     @property
     def paper_search_service(self) -> PaperSearchService | None:

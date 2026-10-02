@@ -14,6 +14,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from bridges.ai.model_quota import RunModelQuota
+from bridges.ai.payload_budget import (
+    CallMaterialManifest,
+    MaterialCategory,
+    MaterialManifestEntry,
+    estimate_tokens,
+    evaluate_payload_gate,
+)
 from bridges.contracts.ai import ModelCallResult, ModelRunLock
 from bridges.github.contracts import (
     GithubCoverage,
@@ -75,12 +83,17 @@ INSIGHT_JSON_SCHEMA: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class InsightOutcome:
-    """借鉴角度生成结果：按仓库标识的文本、说明与模型锁（供原子落库）。"""
+    """借鉴角度生成结果：按仓库标识的文本、说明与模型锁（供原子落库）。
+
+    ``manifest``（工单 15）是本次调用自己的采用清单与预算门结果：工具
+    结果（真实仓库证据）加入后重新检查预算，不以父图早期审计代替。
+    """
 
     insights: dict[str, str] = field(default_factory=dict)
     note: str | None = None
     lock: ModelRunLock | None = None
     dropped: int = 0
+    manifest: CallMaterialManifest | None = None
 
 
 def render_clarification_content(projection: GithubProjectsProjection) -> str:
@@ -238,18 +251,58 @@ class GithubInsightGenerator:
         recommendations: list[GithubRecommendation],
         *,
         model_id: str | None,
+        model_quota: RunModelQuota | None = None,
     ) -> InsightOutcome:
         if not recommendations:
             return InsightOutcome()
+        user_content = _insight_prompt(recommendations)
+        output_tokens = 900
         payload = {
             "messages": [
                 {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
-                {"role": "user", "content": _insight_prompt(recommendations)},
+                {"role": "user", "content": user_content},
             ],
             "json_schema": INSIGHT_JSON_SCHEMA,
             "temperature": 0.3,
-            "max_tokens": 900,
+            "max_tokens": output_tokens,
         }
+        # 工单 15：工具结果（真实仓库证据）加入后，对最终载荷重新执行预算门。
+        manifest: CallMaterialManifest | None = None
+        if model_quota is not None:
+            decision = evaluate_payload_gate(
+                payload, quota=model_quota, output_tokens=output_tokens
+            )
+            manifest = CallMaterialManifest(
+                entries=[
+                    MaterialManifestEntry(
+                        material_id="github.insight.system",
+                        category=MaterialCategory.SYSTEM_RULE.value,
+                        necessity="required",
+                        adopted=True,
+                        reason="借鉴角度系统规则与输出契约",
+                        estimated_tokens=estimate_tokens(INSIGHT_SYSTEM_PROMPT),
+                    ),
+                    MaterialManifestEntry(
+                        material_id="github.insight.evidence",
+                        category=MaterialCategory.TOOL.value,
+                        necessity="required",
+                        adopted=True,
+                        reason="本轮真实仓库元数据、匹配与读取范围",
+                        estimated_tokens=estimate_tokens(user_content),
+                    ),
+                ],
+                gate=decision,
+                output_tokens=output_tokens,
+                estimated_input_tokens=decision.estimated_input_tokens,
+            )
+            if not decision.within_budget:
+                return InsightOutcome(
+                    note=(
+                        "借鉴角度未生成：加入本轮仓库证据后的最终载荷超出该模型的"
+                        "输入预算，已闭锁；本轮只给证据本身。"
+                    ),
+                    manifest=manifest,
+                )
         try:
             result: ModelCallResult = self._gateway.invoke(
                 self._capability_name,
@@ -257,14 +310,19 @@ class GithubInsightGenerator:
                 run_context,
                 payload,
                 model_override=model_id,
+                model_quota=model_quota,
             )
         except Exception:  # noqa: BLE001 - 归纳失败不影响真实结果呈现
-            return InsightOutcome(note="借鉴角度生成失败（模型调用异常），本轮只给证据本身。")
+            return InsightOutcome(
+                note="借鉴角度生成失败（模型调用异常），本轮只给证据本身。",
+                manifest=manifest,
+            )
         lock = result.lock
         if result.status.value not in {"success", "degraded"}:
             return InsightOutcome(
                 note="借鉴角度未生成（模型能力不可用或失败），本轮只给证据本身。",
                 lock=lock,
+                manifest=manifest,
             )
         allowed = {item.full_name for item in recommendations}
         insights: dict[str, str] = {}
@@ -283,7 +341,13 @@ class GithubInsightGenerator:
         note = None
         if dropped:
             note = f"借鉴角度中有 {dropped} 条不符合证据约束（仓库标识或长度），已丢弃。"
-        return InsightOutcome(insights=insights, note=note, lock=lock, dropped=dropped)
+        return InsightOutcome(
+            insights=insights,
+            note=note,
+            lock=lock,
+            dropped=dropped,
+            manifest=manifest,
+        )
 
 
 def _insight_prompt(recommendations: list[GithubRecommendation]) -> str:
