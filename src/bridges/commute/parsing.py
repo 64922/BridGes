@@ -191,6 +191,14 @@ def parse_commute_request(
             elif awaiting == MISSING_MODE:
                 mode, mode_phrase = resumed.mode, resumed.mode_phrase
                 candidates = resumed.mode_candidates
+            # 任务条件没有的字段才由等待载荷补缺；已确认的任务条件不被旧载荷覆盖。
+            if origin is None and "origin" not in fields:
+                origin, origin_place = resumed.origin_phrase, resumed.origin_place
+            if destination is None and "destination" not in fields:
+                destination = resumed.destination_phrase
+                destination_place = resumed.destination_place
+            if mode is None and not candidates and "mode" not in fields:
+                mode, mode_phrase = resumed.mode, resumed.mode_phrase
         if mode is None and not candidates and "mode" in fields:
             mode, mode_phrase, candidates, _ = detect_mode(fields["mode"])
         effective_origin = origin or fields.get("origin")
