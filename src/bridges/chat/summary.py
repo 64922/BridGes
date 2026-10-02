@@ -25,8 +25,9 @@ import hashlib
 import json
 import re
 import secrets
+import time
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from bridges.ai.model_gateway import ModelGateway
@@ -40,6 +41,7 @@ from bridges.ai.run_model_config import (
 from bridges.chat.budget import RunBudget
 from bridges.chat.context_compiler import CONTEXT_BUDGET_VERSION, estimate_tokens
 from bridges.chat.repository import ConversationRepository, MessageRecord
+from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
 from bridges.contracts.ai import (
     BusinessRef,
     CallContractVersions,
@@ -126,7 +128,7 @@ def _message_record_source(item: MessageRecord) -> SummarySourceMessage:
     )
 
 
-_NUMERIC_TOKEN_RE = re.compile(r"[0-9]+(?:\.[0-9]+)?%?")
+_NUMERIC_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_.])[0-9]+(?:\.[0-9]+)?%?(?![A-Za-z0-9_.])")
 _NEGATION_MARKERS = ("不", "没", "未", "无", "别", "禁止", "取消", "撤销")
 
 
@@ -177,14 +179,17 @@ def validate_summary_output(output: dict[str, Any], source_text: str) -> Summary
         raw_questions, SUMMARY_MAX_OPEN_QUESTIONS, "开放问题"
     )
     generated = "\n".join([text, *clues, *questions])
+    source_numbers = set(_NUMERIC_TOKEN_RE.findall(source_text))
     for token in _NUMERIC_TOKEN_RE.findall(generated):
-        if token not in source_text:
+        if token not in source_numbers:
             raise SummaryRejectedError(f"生成内容出现来源中没有的数值：{token}")
     # 否定保真：生成内容出现否定词、而来源完全没有否定语义时视为改写，拒绝。
     generated_negated = any(marker in generated for marker in _NEGATION_MARKERS)
     source_negated = any(marker in source_text for marker in _NEGATION_MARKERS)
     if generated_negated and not source_negated:
         raise SummaryRejectedError("生成内容出现来源中没有的否定语义。")
+    if source_negated and not generated_negated:
+        raise SummaryRejectedError("生成内容遗漏来源中的否定语义。")
     return SummaryDraft(text=text, object_clues=clues, open_questions=questions)
 
 
@@ -246,10 +251,12 @@ class GatewaySummaryExtractor:
         *,
         model_config_provider: RunModelConfigProvider | None = None,
         lock_recorder: ModelRunLockRecorder | None = None,
+        database: BridgesDatabase | None = None,
     ) -> None:
         self._gateway = gateway
         self._model_config_provider = model_config_provider
         self._lock_recorder = lock_recorder
+        self._database = database
 
     def _resolve_quota(self) -> RunModelQuota:
         snapshot = (
@@ -274,6 +281,24 @@ class GatewaySummaryExtractor:
                 retryable=False,
             )
         budget = RunBudget(run_context.run_id, total_ms=max(1, timeout_ms))
+        if self._database is not None and run_context.workflow_name == "history-summary-sync":
+            ledger = RunBudgetLedgerRepository(self._database)
+            snapshot = ledger.load(run_context.account_id, run_context.run_id)
+            if snapshot is None or not snapshot.active:
+                raise SummaryUnavailableError(
+                    "summary_run_inactive", "主运行预算不可用。", retryable=False
+                )
+            budget = RunBudget(
+                run_context.run_id,
+                deadline_utc=min(
+                    datetime.now(UTC) + timedelta(milliseconds=timeout_ms),
+                    snapshot.plan.deadline_at - timedelta(
+                        milliseconds=snapshot.plan.verify_deliver_reserve_ms
+                    ),
+                ),
+                ledger=ledger,
+                account_id=run_context.account_id,
+            )
         payload = {
             "messages": [
                 {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
@@ -364,13 +389,54 @@ class ConversationSummaryRepository:
 
     # -- 写入 -------------------------------------------------------------
 
-    def save_if_sources_unchanged(self, summary: HistorySummary) -> bool:
+    def generation(self, account_id: str, conversation_id: str) -> int:
+        """持久失效代次，阻止失效发生前启动的生成回写。"""
+        row = self._db.scoped(account_id).execute(
+            "SELECT generation FROM conversation_summary_generations"
+            " WHERE account_id = ? AND conversation_id = ?",
+            (account_id, conversation_id),
+        ).fetchone()
+        return int(row["generation"]) if row is not None else 0
+
+    def reserve_sync_attempt(self, account_id: str, conversation_id: str, run_id: str) -> bool:
+        """每个运行只取得一次同步补齐机会；与停止/冻结预算在同一事务检查。"""
+        ledger = RunBudgetLedgerRepository(self._db)
+        with self._db.transaction():
+            snapshot = ledger.load(account_id, run_id)
+            if snapshot is None or not snapshot.active or not ledger.can_wait_until(
+                account_id, run_id, datetime.now(UTC)
+            ):
+                return False
+            return self._db.scoped(account_id).execute(
+                "INSERT OR IGNORE INTO conversation_summary_sync_attempts"
+                " (account_id, conversation_id, run_id) VALUES (?, ?, ?)",
+                (account_id, conversation_id, run_id),
+            ).rowcount == 1
+
+    def save_if_sources_unchanged(
+        self, summary: HistorySummary, *, expected_generation: int = 0,
+        active_run_id: str | None = None,
+    ) -> bool:
         """来源未变时保存并失效重叠实例；来源已变/被删则丢弃（取消守卫）。
 
         保存与「重读来源 + 指纹核对 + 重叠失效」在同一事务内：生成期间
         来源被修改、会话被删除或并发实例写入都不会产生过期/重叠依据。
         """
         with self._db.transaction():
+            if active_run_id is not None:
+                snapshot = RunBudgetLedgerRepository(self._db).load(
+                    summary.account_id, active_run_id
+                )
+                run = ConversationRepository(self._db).get_generation_run(
+                    summary.account_id, active_run_id
+                )
+                if (snapshot is not None and not snapshot.active) or (
+                    run is not None
+                    and (run.stop_requested or run.status not in {"queued", "running"})
+                ):
+                    return False
+            if self.generation(summary.account_id, summary.conversation_id) != expected_generation:
+                return False
             records = self._message_slice(
                 summary.account_id,
                 summary.conversation_id,
@@ -442,6 +508,15 @@ class ConversationSummaryRepository:
     ) -> int:
         """失效会话的全部有效实例（事实抑制/来源整体失效接缝）。"""
         with self._db.transaction():
+            self._db.scoped(account_id).execute(
+                "INSERT INTO conversation_summary_generations"
+                " (account_id, conversation_id, generation)"
+                " SELECT ?, ?, 1 WHERE EXISTS"
+                " (SELECT 1 FROM conversations WHERE account_id = ? AND conversation_id = ?)"
+                " ON CONFLICT(account_id, conversation_id) DO UPDATE"
+                " SET generation = generation + 1",
+                (account_id, conversation_id, account_id, conversation_id),
+            )
             rows = self._db.scoped(account_id).execute(
                 "SELECT summary_id FROM conversation_summaries"
                 " WHERE account_id = ? AND conversation_id = ? AND status = ?",
@@ -464,6 +539,16 @@ class ConversationSummaryRepository:
         """删除会话全部摘要（会话删除级联；在事务内调用）。"""
         cursor = self._db.scoped(account_id).execute(
             "DELETE FROM conversation_summaries"
+            " WHERE account_id = ? AND conversation_id = ?",
+            (account_id, conversation_id),
+        )
+        self._db.scoped(account_id).execute(
+            "DELETE FROM conversation_summary_sync_attempts"
+            " WHERE account_id = ? AND conversation_id = ?",
+            (account_id, conversation_id),
+        )
+        self._db.scoped(account_id).execute(
+            "DELETE FROM conversation_summary_generations"
             " WHERE account_id = ? AND conversation_id = ?",
             (account_id, conversation_id),
         )
@@ -713,12 +798,30 @@ class ChatSummaryService:
         first_missing = self._first_missing(valid, order_index)
         if boundary - first_missing + 1 < SUMMARY_MIN_NEW_MESSAGES:
             return
+        fingerprint = _fingerprint_records(records[: boundary + 1])
+        generation = self._repository.generation(account_id, conversation_id)
+        # 同一来源边界的重登记不能清零已经耗尽的重试额度。
+        existing = self._db.connection.execute(
+            "SELECT payload_json, status FROM task_claims WHERE queue_name = ? AND task_key = ?",
+            (SUMMARY_QUEUE, conversation_id),
+        ).fetchone()
+        if existing is not None:
+            previous = json.loads(existing["payload_json"] or "{}")
+            if (
+                existing["status"] != "completed"
+                and previous.get("boundary_message_id") == boundary_message_id
+                and previous.get("source_fingerprint") == fingerprint
+                and previous.get("generation") == generation
+            ):
+                return
         self._queue.enqueue(
             SUMMARY_QUEUE,
             conversation_id,
             payload={
                 "account_id": account_id,
                 "boundary_message_id": boundary_message_id,
+                "source_fingerprint": fingerprint,
+                "generation": generation,
             },
         )
 
@@ -732,6 +835,11 @@ class ChatSummaryService:
     ) -> list[HistorySummary]:
         """缓存缺失且确需压缩时的**一次**限时同步补齐；失败返回空列表。"""
         try:
+            ledger = RunBudgetLedgerRepository(self._db)
+            if ledger.load(account_id, run_id) is not None and not (
+                self._repository.reserve_sync_attempt(account_id, conversation_id, run_id)
+            ):
+                return []
             return self._prepare(
                 account_id,
                 conversation_id,
@@ -739,6 +847,7 @@ class ChatSummaryService:
                 timeout_ms=SUMMARY_SYNC_TIMEOUT_MS,
                 max_calls=1,
                 run_id=run_id,
+                synchronous=True,
             )
         except Exception as exc:  # noqa: BLE001 - 补齐失败不阻塞当前请求
             self._audit(
@@ -783,12 +892,16 @@ class ChatSummaryService:
                 run_id=claim.claim_id,
             )
         except SummaryUnavailableError as exc:
-            exhausted = self._queue.requeue(
-                claim,
-                retry_kind=RetryKind.EXPONENTIAL,
-                reason=exc.code,
-                max_attempts=SUMMARY_MAX_ATTEMPTS,
-            )
+            if exc.retryable:
+                exhausted = self._queue.requeue(
+                    claim,
+                    retry_kind=RetryKind.EXPONENTIAL,
+                    reason=exc.code,
+                    max_attempts=SUMMARY_MAX_ATTEMPTS,
+                )
+            else:
+                self._queue.fail(claim, exc.code)
+                exhausted = True
             if exhausted:
                 self._audit(
                     str(account_id),
@@ -823,7 +936,9 @@ class ChatSummaryService:
         timeout_ms: int,
         max_calls: int,
         run_id: str,
+        synchronous: bool = False,
     ) -> list[HistorySummary]:
+        generation = self._repository.generation(account_id, conversation_id)
         records = self._conversations.list_messages(account_id, conversation_id)
         valid = self.valid_summaries(
             account_id, conversation_id, messages=records
@@ -836,7 +951,11 @@ class ChatSummaryService:
             return []
         mode = "sync" if max_calls == 1 else "background"
         prepared: list[HistorySummary] = []
+        deadline = time.monotonic() + timeout_ms / 1000
         for _ in range(max_calls):
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                break
             first_missing = self._first_missing(valid, order_index)
             if first_missing > boundary:
                 break
@@ -847,12 +966,16 @@ class ChatSummaryService:
                 account_id,
                 conversation_id,
                 segment,
-                timeout_ms=timeout_ms,
+                timeout_ms=remaining_ms,
                 run_id=run_id,
+                synchronous=synchronous,
             )
             if summary is None:
                 break
-            if not self._repository.save_if_sources_unchanged(summary):
+            if not self._repository.save_if_sources_unchanged(
+                summary, expected_generation=generation,
+                active_run_id=run_id if synchronous else None,
+            ):
                 self._audit(
                     account_id,
                     AuditAction.HISTORY_SUMMARY_PREPARED,
@@ -908,7 +1031,7 @@ class ChatSummaryService:
             sources.append(_message_record_source(record))
             used_tokens += cost
             last_included = start_index + offset
-        if not sources:
+        if len(sources) < SUMMARY_MIN_NEW_MESSAGES:
             return None
         covered = records[start_index : last_included + 1]
         return _SummarySegment(
@@ -924,17 +1047,19 @@ class ChatSummaryService:
         *,
         timeout_ms: int,
         run_id: str,
+        synchronous: bool = False,
     ) -> HistorySummary | None:
         run_context = RunContextEnvelope(
-            run_id=f"{run_id}:summary",
+            run_id=run_id if synchronous else f"{run_id}:summary",
             account_id=account_id,
             project_id=conversation_id,
-            workflow_name="history-summary",
+            workflow_name="history-summary-sync" if synchronous else "history-summary",
             workflow_version="1",
             object_domain=ObjectDomain.PERSONAL_VAULT,
             submitted_at=datetime.now(UTC),
         )
-        source_text = _render_sources(segment.sources)
+        # 元数据中的消息 ID 不能替原文证明某个数值存在。
+        source_text = "\n".join(source.content for source in segment.sources)
         try:
             extraction = self._extractor.extract(
                 run_context=run_context,
@@ -964,8 +1089,8 @@ class ChatSummaryService:
             covered_message_count=len(segment.records),
             source_fingerprint=_fingerprint_records(segment.records),
             text=draft.text,
-            object_clues=list(draft.object_clues),
-            open_questions=list(draft.open_questions),
+            object_clues=draft.object_clues,
+            open_questions=draft.open_questions,
             input_tokens=extraction.input_tokens,
             output_tokens=extraction.output_tokens,
             created_at=now,

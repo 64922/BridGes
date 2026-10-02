@@ -105,7 +105,7 @@ class GenerationRunExecutor:
         self._max_attempts = max_attempts
         self._profile_extraction = profile_extraction_service
         #: 改进工单 13：回答完成后的有界摘要后台准备（与画像提取同一执行器
-        #: 的辅助 tick；失败只留缺口，不影响生成运行）。
+        #: 的独立循环；失败只留缺口，不影响生成运行）。
         self._summary_service = summary_service
         #: 生成终态 module（Issue 01/02）：执行器只提供标识与兜底结果，
         #: 跨对象提交顺序、判重与重放都在 module 内部。实例由服务持有，
@@ -119,20 +119,15 @@ class GenerationRunExecutor:
     # ------------------------------------------------------------------
 
     def run_tick(self) -> str:
-        """执行一轮：生成运行 tick + 画像提取重试 tick + 摘要准备 tick。
+        """执行生成运行；摘要循环独立，后续回答不等待摘要模型。"""
+        return self._generation_tick()
 
-        生成运行与辅助任务复用同一受监督线程：摘要任务只在生成运行处理完
-        之后领取，确保「回答后后台准备」；辅助任务失败不改变生成终态。
-        """
-        summary = self._generation_tick()
-        if self._summary_service is not None:
-            try:
-                summary_text = self._summary_service.run_tick()
-            except Exception as exc:  # noqa: BLE001 - 辅助任务不终止执行器
-                summary_text = f"chat-summary: 本轮处理出错：{exc}"
-            summary = f"{summary}；{summary_text}"
-            self._last_summary = summary
-        return summary
+    def _summary_tick(self) -> str:
+        assert self._summary_service is not None
+        try:
+            return self._summary_service.run_tick()
+        except Exception as exc:  # noqa: BLE001 - 辅助任务不终止执行器
+            return f"chat-summary: 本轮处理出错：{exc}"
 
     def _generation_tick(self) -> str:
         """执行一轮：先收尸失联运行，再领取一件生成运行并执行到终态。
@@ -195,12 +190,32 @@ class GenerationRunExecutor:
         emit: Callable[[str], None] = print,
     ) -> None:
         """受监督循环：每轮执行一次领取，收到停止信号后平滑退出。"""
-        supervised_loop(
-            tick=self.run_tick,
-            stop=stop or threading.Event(),
-            interval=self._poll_interval,
-            emit=emit,
-        )
+        stop_event = stop or threading.Event()
+        summary_thread = None
+        if self._summary_service is not None:
+            summary_thread = threading.Thread(
+                target=supervised_loop,
+                kwargs={
+                    "tick": self._summary_tick,
+                    "stop": stop_event,
+                    "interval": self._poll_interval,
+                    "emit": emit,
+                },
+                name="chat-summary",
+                daemon=True,
+            )
+            summary_thread.start()
+        try:
+            supervised_loop(
+                tick=self.run_tick,
+                stop=stop_event,
+                interval=self._poll_interval,
+                emit=emit,
+            )
+        finally:
+            stop_event.set()
+            if summary_thread is not None:
+                summary_thread.join(timeout=25)
 
     # ------------------------------------------------------------------
     # 领取与执行

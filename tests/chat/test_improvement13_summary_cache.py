@@ -252,6 +252,161 @@ def test_validate_rejects_fabricated_negation() -> None:
         )
 
 
+def test_validate_rejects_numeric_substring_and_dropped_negation() -> None:
+    with pytest.raises(SummaryRejectedError, match="数值"):
+        validate_summary_output({"summary": "预算是30元"}, "预算是3000元")
+    with pytest.raises(SummaryRejectedError, match="否定"):
+        validate_summary_output({"summary": "可以发送邮件"}, "不要发送邮件")
+
+
+def test_inflight_invalidation_cannot_restore_active_cache(
+    database: BridgesDatabase, conversations: ConversationRepository
+) -> None:
+    records = _seed(conversations)
+    service = ChatSummaryService(
+        database=database,
+        conversation_repository=conversations,
+        extractor=_StubExtractor(
+            on_extract=lambda: service.invalidate_conversation(
+                _ACCOUNT, _CONVERSATION, reason="permission_revoked"
+            )
+        ),
+    )
+    service.schedule_background(_ACCOUNT, _CONVERSATION, boundary_message_id=records[-1].message_id)
+    service.run_tick()
+    assert service.valid_summaries(_ACCOUNT, _CONVERSATION) == []
+    assert ConversationSummaryRepository(database).generation(_ACCOUNT, _CONVERSATION) == 1
+    conversations.delete_conversation(_ACCOUNT, _CONVERSATION)
+    assert (
+        database.connection.execute(
+            "SELECT COUNT(*) FROM conversation_summary_generations"
+        ).fetchone()[0]
+        == 0
+    )
+
+
+def test_single_original_and_permanent_failure_do_not_retry(
+    database: BridgesDatabase, conversations: ConversationRepository
+) -> None:
+    records = _seed(conversations)
+    extractor = _StubExtractor(fail=SummaryUnavailableError("invalid", "永久失败", retryable=False))
+    service = ChatSummaryService(
+        database=database, conversation_repository=conversations, extractor=extractor
+    )
+    assert (
+        service.prepare_sync(
+            _ACCOUNT, _CONVERSATION, boundary_message_id=records[0].message_id, run_id="one"
+        )
+        == []
+    )
+    assert extractor.calls == []
+    service.schedule_background(_ACCOUNT, _CONVERSATION, boundary_message_id=records[-1].message_id)
+    service.run_tick()
+    service.run_tick()
+    assert len(extractor.calls) == 1
+    service.schedule_background(
+        _ACCOUNT, _CONVERSATION, boundary_message_id=records[-1].message_id
+    )
+    service.run_tick()
+    assert len(extractor.calls) == 1  # 重登记相同来源也不恢复永久失败任务。
+
+
+def test_sync_attempt_survives_service_restart_and_cancel(
+    database: BridgesDatabase, conversations: ConversationRepository
+) -> None:
+    from bridges.chat.run_budget_ledger import RunBudgetClass, RunBudgetLedgerRepository
+
+    records = _seed(conversations)
+    ledger = RunBudgetLedgerRepository(database)
+    ledger.ensure_for_run(
+        account_id=_ACCOUNT,
+        run_id="sync-run",
+        conversation_id=_CONVERSATION,
+        budget_class=RunBudgetClass.LIGHTWEIGHT,
+        run_created_at=datetime.now(UTC),
+        now=datetime.now(UTC),
+    )
+    extractor = _StubExtractor(fail=SummaryUnavailableError("timeout", "超时", retryable=True))
+    for _ in range(2):
+        service = ChatSummaryService(
+            database=database, conversation_repository=conversations, extractor=extractor
+        )
+        service.prepare_sync(
+            _ACCOUNT, _CONVERSATION, boundary_message_id=records[-1].message_id, run_id="sync-run"
+        )
+    assert len(extractor.calls) == 1
+    ledger.close(account_id=_ACCOUNT, run_id="sync-run", now=datetime.now(UTC))
+    assert not ConversationSummaryRepository(database).reserve_sync_attempt(
+        _ACCOUNT, _CONVERSATION, "sync-run"
+    )
+    ledger.ensure_for_run(
+        account_id=_ACCOUNT, run_id="cancel-during-summary", conversation_id=_CONVERSATION,
+        budget_class=RunBudgetClass.LIGHTWEIGHT,
+        run_created_at=datetime.now(UTC), now=datetime.now(UTC),
+    )
+    service = ChatSummaryService(
+        database=database, conversation_repository=conversations,
+        extractor=_StubExtractor(on_extract=lambda: ledger.close(
+            account_id=_ACCOUNT, run_id="cancel-during-summary", now=datetime.now(UTC)
+        )),
+    )
+    assert service.prepare_sync(
+        _ACCOUNT, _CONVERSATION, boundary_message_id=records[-1].message_id,
+        run_id="cancel-during-summary",
+    ) == []
+    assert service.valid_summaries(_ACCOUNT, _CONVERSATION) == []
+
+
+def test_gateway_sync_uses_frozen_deadline_and_shared_call_tokens(
+    database: BridgesDatabase, conversations: ConversationRepository
+) -> None:
+    from bridges.chat.run_budget_ledger import RunBudgetClass, RunBudgetLedgerRepository
+    from bridges.contracts.ai import ModelCallStatus
+    from bridges.contracts.projects import ObjectDomain
+    from bridges.contracts.workflows import RunContextEnvelope
+
+    _seed(conversations)
+    ledger = RunBudgetLedgerRepository(database)
+    snapshot = ledger.ensure_for_run(
+        account_id=_ACCOUNT,
+        run_id="gateway-sync",
+        conversation_id=_CONVERSATION,
+        budget_class=RunBudgetClass.LIGHTWEIGHT,
+        run_created_at=datetime.now(UTC) - timedelta(seconds=119),
+        now=datetime.now(UTC),
+    )
+
+    class Gateway:
+        def invoke(self, *args: Any, **kwargs: Any) -> Any:
+            budget = kwargs["budget"]
+            assert budget.has_ledger
+            assert 0 < budget.remaining_ms() <= 1000
+            assert budget.register_model_call("summary-test", purpose="history_summary")
+            budget.record_model_call_result("summary-test", input_tokens=12, output_tokens=3)
+            return SimpleNamespace(
+                status=ModelCallStatus.SUCCESS, output={"summary": "背景"}, lock=None
+            )
+
+    extractor = GatewaySummaryExtractor(Gateway(), database=database)  # type: ignore[arg-type]
+    extractor._resolve_quota = lambda: SimpleNamespace(  # type: ignore[method-assign,return-value]
+        is_verified=True, quota_version="test"
+    )
+    context = RunContextEnvelope(
+        run_id="gateway-sync",
+        account_id=_ACCOUNT,
+        project_id=_CONVERSATION,
+        workflow_name="history-summary-sync",
+        workflow_version="1",
+        object_domain=ObjectDomain.PERSONAL_VAULT,
+        submitted_at=datetime.now(UTC),
+    )
+    extractor.extract(run_context=context, sources=[], timeout_ms=8000)
+    after = ledger.load(_ACCOUNT, context.run_id)
+    assert after is not None
+    assert after.plan.deadline_at == snapshot.plan.deadline_at
+    assert (after.model_calls_used, after.input_tokens_used, after.output_tokens_used) == (1, 12, 3)
+
+
 def test_validate_rejects_oversized_or_malformed_output() -> None:
     source = "任意来源正文。"
     with pytest.raises(SummaryRejectedError):

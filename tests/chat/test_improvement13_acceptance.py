@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -425,16 +426,20 @@ def test_short_conversation_has_no_summary_range(
     assert len(records) == 4
 
 
-def test_summary_task_composition_runs_after_generation_tick(
+def test_slow_summary_does_not_block_generation_loop(
     database: BridgesDatabase, conversations: ConversationRepository
 ) -> None:
-    """执行器每轮在生成 tick 之后单独领取摘要任务（回答后后台准备）。"""
-    calls: list[str] = []
+    """摘要模型停住时，独立生成循环仍能完成下一轮并平滑退出。"""
+    started = threading.Event()
+    release = threading.Event()
+    generated = threading.Event()
+    stop = threading.Event()
 
     class _SummaryStub:
         def run_tick(self) -> str:
-            calls.append("summary")
-            return "chat-summary: 已准备 1 段有界摘要。"
+            started.set()
+            assert release.wait(3)
+            return "chat-summary: 已准备。"
 
     repo = ConversationRepository(database)
     executor = GenerationRunExecutor(
@@ -442,8 +447,24 @@ def test_summary_task_composition_runs_after_generation_tick(
         database,
         summary_service=_SummaryStub(),  # type: ignore[arg-type]
     )
-    assert "chat-summary" in executor.run_tick()
-    assert calls == ["summary"]
+    def generation_tick() -> str:
+        assert started.wait(2)
+        generated.set()
+        stop.set()
+        return "generation: 已完成。"
+
+    executor.run_tick = generation_tick  # type: ignore[method-assign]
+    thread = threading.Thread(
+        target=executor.run_loop, kwargs={"stop": stop, "emit": lambda _: None}
+    )
+    thread.start()
+    try:
+        assert generated.wait(2)
+    finally:
+        release.set()
+        stop.set()
+        thread.join(3)
+    assert not thread.is_alive()
 
 
 # ---------------------------------------------------------------------------
@@ -489,4 +510,7 @@ def test_summary_tables_registered_for_export_and_deletion() -> None:
         "conversations"
     )
     categories = {category.key: category for category in EXPORT_CATEGORIES}
-    assert categories["history_summaries"].tables == ("conversation_summaries",)
+    assert categories["history_summaries"].tables == (
+        "conversation_summaries", "conversation_summary_generations",
+        "conversation_summary_sync_attempts",
+    )

@@ -1499,6 +1499,7 @@ def create_app(
                 model_gateway,
                 model_config_provider=run_model_config,
                 lock_recorder=SqliteModelRunLockRecorder(bridges_database),
+                database=bridges_database,
             ),
             observability=app.state.observability_service,
         )
@@ -1581,7 +1582,7 @@ def create_app(
             app.state.generation_executor_stop.set()
             thread = getattr(app.state, "generation_executor_thread", None)
             if thread is not None:
-                thread.join(timeout=5)
+                thread.join(timeout=30)
 
         app.router.add_event_handler("startup", _start_generation_executor)
         app.router.add_event_handler("shutdown", _stop_generation_executor)

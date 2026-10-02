@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 65
+SCHEMA_VERSION = 66
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2989,6 +2989,23 @@ MIGRATIONS: dict[int, list[str]] = {
         ON conversation_summaries(account_id, conversation_id, status, created_at)
         """,
     ],
+    66: [
+        """
+        CREATE TABLE conversation_summary_generations (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            generation INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (account_id, conversation_id)
+        )
+        """,
+        """
+        CREATE TABLE conversation_summary_sync_attempts (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            run_id TEXT PRIMARY KEY REFERENCES run_budget_ledger(run_id) ON DELETE CASCADE
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3023,6 +3040,8 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 改进工单 13：摘要缓存的读取/失效/删除路径在编译与后台准备中无条件
     # 触达；迁移半执行时启动失败关闭，而不是带着缺表继续服务。
     "conversation_summaries",
+    "conversation_summary_generations",
+    "conversation_summary_sync_attempts",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。

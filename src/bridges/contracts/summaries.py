@@ -21,13 +21,13 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 #: 摘要缓存合同版本（字段或语义变化时递增）。
 SUMMARY_CONTRACT_VERSION = "summary-cache-v1"
 
 #: 摘要实例版本：由哪一版生成口径（提示词 + 校验规则）产出。
-SUMMARY_GENERATOR_VERSION = "summary-gen-v1"
+SUMMARY_GENERATOR_VERSION = "summary-gen-v2"
 
 #: 单条摘要正文最大字符数（有界；不要求每条旧消息留一行）。
 SUMMARY_TEXT_MAX_CHARS = 1200
@@ -42,7 +42,7 @@ SUMMARY_MAX_SOURCE_TOKENS = 6000
 SUMMARY_OUTPUT_TOKENS = 512
 #: 同步限时补齐的调用墙钟上限（毫秒）。
 SUMMARY_SYNC_TIMEOUT_MS = 8000
-#: 后台摘要调用的墙钟上限（毫秒）。
+#: 后台整次摘要任务共享的墙钟上限（毫秒）。
 SUMMARY_BACKGROUND_TIMEOUT_MS = 20000
 #: 后台摘要任务的最大尝试次数（队列重试上限）。
 SUMMARY_MAX_ATTEMPTS = 3
@@ -76,6 +76,8 @@ class HistorySummary(BaseModel):
     修改都会失配，消费者据此失效缓存，绝不把过期依据当作当前事实。
     """
 
+    model_config = ConfigDict(frozen=True)
+
     summary_id: str
     account_id: str
     conversation_id: str
@@ -86,8 +88,8 @@ class HistorySummary(BaseModel):
     covered_message_count: int
     source_fingerprint: str
     text: str
-    object_clues: list[str] = Field(default_factory=list)
-    open_questions: list[str] = Field(default_factory=list)
+    object_clues: tuple[str, ...] = ()
+    open_questions: tuple[str, ...] = ()
     status: SummaryStatus = SummaryStatus.ACTIVE
     invalidated_reason: str | None = None
     invalidated_at: datetime | None = None

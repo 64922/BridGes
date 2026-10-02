@@ -104,6 +104,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "conversation_tasks",
     # 改进工单 13：摘要缓存外键指向 conversations，随会话删除（先于父表）。
     "conversation_summaries",
+    "conversation_summary_generations",
+    "conversation_summary_sync_attempts",
     "messages",
     "conversations",
     # 关联行有 lock_id 外键指向 model_run_locks，必须先删。
@@ -142,7 +144,10 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory(
         "history_summaries",
         "历史摘要缓存",
-        ("conversation_summaries",),
+        (
+            "conversation_summaries", "conversation_summary_generations",
+            "conversation_summary_sync_attempts",
+        ),
         1024,
     ),
     # 工单 08：跨轮任务、不可变版本、有效条件、澄清等待与任务审计。

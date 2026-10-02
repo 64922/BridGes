@@ -25,6 +25,7 @@ def test_upgrade_from_v64_preserves_conversations_and_adds_summaries(tmp_path) -
         )
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
+
     assert SCHEMA_VERSION >= 65
     row = database.scoped("a").execute(
         "SELECT title FROM conversations WHERE conversation_id = ? AND account_id = ?",
@@ -48,4 +49,20 @@ def test_upgrade_from_v64_preserves_conversations_and_adds_summaries(tmp_path) -
         for row in database.connection.execute("PRAGMA index_list(conversation_summaries)")
     }
     assert "idx_conversation_summaries_conversation" in indexes
+    assert database.initialize() == SCHEMA_VERSION
+
+
+def test_upgrade_from_v65_adds_durable_invalidation_generation(tmp_path) -> None:
+    path = tmp_path / "upgrade-65.db"
+    with sqlite3.connect(path) as connection:
+        for version in range(1, 66):
+            for statement in MIGRATIONS[version]:
+                connection.execute(statement)
+        connection.execute("CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        connection.execute("INSERT INTO schema_meta VALUES ('version', '65')")
+    database = BridgesDatabase(path)
+    assert database.initialize() == SCHEMA_VERSION
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM conversation_summary_generations"
+    ).fetchone()[0] == 0
     assert database.initialize() == SCHEMA_VERSION
