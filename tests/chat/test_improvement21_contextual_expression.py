@@ -95,6 +95,29 @@ def test_advice_request_with_emotion_completes_main_request() -> None:
     )
 
 
+def test_emotion_with_investigation_request_completes_task() -> None:
+    """焦虑又请求排查：完成排查主请求，不只做情绪承接。"""
+    text = "我好焦虑，帮我看看这个问题出在哪"
+    assert detect_response_form(text, ChatMode.COMPANION) == ChatResponseForm.DIRECT_TASK
+    snapshot = GlobalWritingPolicyCompiler().compile(
+        ChatMode.COMPANION, user_text=text
+    )
+    assert snapshot.form == ChatResponseForm.DIRECT_TASK
+    assert "task-output-first" in snapshot.rule_ids
+
+
+def test_article_topic_emotion_is_not_user_state() -> None:
+    """文章/论文材料里的情绪是话题，不是用户当前状态，也不触发任务形态。"""
+    assert (
+        detect_response_form("我最近在写一篇关于焦虑的论文", ChatMode.COMPANION)
+        == ChatResponseForm.COMPACT_DEFAULT
+    )
+    assert (
+        detect_response_form("今天看了一篇文章讲焦虑", ChatMode.COMPANION)
+        == ChatResponseForm.COMPACT_DEFAULT
+    )
+
+
 def test_no_advice_boundary_suppresses_advice_route() -> None:
     text = "我今天很难过，不想听建议，只想聊聊"
     assert detect_response_form(text, ChatMode.COMPANION) == ChatResponseForm.EMPATHY
