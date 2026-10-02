@@ -407,6 +407,15 @@ class MainAgentUnderstanding:
                     TaskRelation.CONTINUE if target_task is not None else TaskRelation.NEW,
                     None if target_task is not None else (text or None),
                 )
+            if (
+                not detected
+                and requested_module_id is not None
+                and target_task is not None
+                and not self._is_new_topic(text)
+            ):
+                # 模块提示续接现有任务（如「骑车」回答通勤等待、点击建议绑定
+                # 任务版本）：不新建第二个任务，任务范围才能带上等待来源前文。
+                return TaskRelation.CONTINUE, None
             return TaskRelation.NEW, text or None
         if is_action and has_continue and target_task is not None:
             return TaskRelation.CONTINUE, None
