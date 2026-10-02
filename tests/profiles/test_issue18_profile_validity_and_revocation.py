@@ -256,6 +256,26 @@ def test_long_term_preference_has_no_unified_ttl(harness: _Harness) -> None:
     assert RUN_TEXT in _included_texts(much_later)
 
 
+def test_past_dated_fact_keeps_no_expiry(harness: _Harness) -> None:
+    """写入时已过去的具体日期是历史事件时间，不是期限，事实仍可召回。"""
+
+    text = "我2023年5月1日入职了A公司"
+    item = harness.mirror(text, message_id="m-job", source_at=ANCHOR)
+    assert item is not None
+    assert item.valid_until is None
+    assert item.validity_phrase is None
+    assert text in _included_texts(harness.slice())
+
+
+def test_future_expression_wins_over_past_date(harness: _Harness) -> None:
+    """同句里既有已过去的日期又有「下周」时，取未过去的那个表达。"""
+
+    text = "我2023年5月1日入职，下周有考试"
+    item = harness.mirror(text, message_id="m-mix", source_at=ANCHOR)
+    assert item is not None
+    assert item.valid_until == datetime(2026, 1, 18, 23, 59, 59, tzinfo=UTC)
+
+
 def test_current_scope_statement_is_not_recalled(harness: _Harness) -> None:
     """只适用于提出时那一轮的说法（「这次」）不作为长期信息召回。"""
 
@@ -546,6 +566,26 @@ def test_lifecycle_keyword_without_target_is_written_as_fact(
     item = harness.mirror("作业搞定了", message_id="m-homework", source_at=ANCHOR)
     assert item is not None
     assert item.text == "作业搞定了"
+    assert (
+        harness.reload(goal.profile_item_id).goal_state
+        is AtomicProfileGoalState.ACTIVE
+    )
+
+
+@pytest.mark.parametrize("text", ["搞定了", "终于搞定了", "完成了", "结束了"])
+def test_generic_completion_without_target_is_not_a_signal(text: str) -> None:
+    """通用完成动词没有对象时不知道指哪个目标，不推测为唯一目标完成。"""
+
+    assert parse_goal_lifecycle_signal(text) is None
+
+
+def test_generic_completion_does_not_complete_sole_goal(harness: _Harness) -> None:
+    """只有「考完了/考砸了」能无对象指向目标；「搞定了」不能完成唯一目标。"""
+
+    goal = _mirror_goal(harness)
+    item = harness.mirror("终于搞定了", message_id="m-done-generic", source_at=ANCHOR)
+    assert item is not None
+    assert item.text == "终于搞定了"
     assert (
         harness.reload(goal.profile_item_id).goal_state
         is AtomicProfileGoalState.ACTIVE

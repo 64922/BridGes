@@ -389,7 +389,8 @@ _PAUSE_SIGNAL_PATTERNS = (
 #: 否定信号（不想/别/没/不打算…）：命中的不是变更声明，不改变目标状态。
 _SIGNAL_NEGATION_RE = re.compile(r"(?:不|别|没|莫)\s*(?:(?:想|要|打算|准备|再|用|必|停)\s*)?$")
 _COMPLETE_SIGNAL_RE = re.compile(
-    r"(?P<target>[^，。；;！!？?\s]{0,20}?)(?:考完(?:试)?|考砸|结\s*束|完\s*成|搞\s*定)了"
+    r"(?P<target>[^，。；;！!？?\s]{0,20}?)"
+    r"(?P<verb>考完(?:试)?|考砸|结\s*束|完\s*成|搞\s*定)了"
 )
 _RESUME_SIGNAL_RE = re.compile(
     r"(?:继续|恢复|重新(?:开始|准备)?)\s*(?:准备|备考|学习|接着)?\s*"
@@ -545,9 +546,13 @@ def parse_validity_window(text: str, anchor: datetime) -> ValidityWindow | None:
             (day_after.start(), ValidityWindow(start, end, day_after.group(0)))
         )
 
-    if not candidates:
+    # 已经过去的明示时间（如「2023年5月1日入职」）是历史事件时间，不是有效期：
+    # 来源消息当时就已结束的区间不能把事实判成过期。相对表达在写入时按来源锚
+    # 解析，锚在消息时间上；这里淘汰的只是写入时已经结束的绝对日期。
+    usable = [entry for entry in candidates if entry[1].valid_until > moment]
+    if not usable:
         return None
-    return min(candidates, key=lambda entry: entry[0])[1]
+    return min(usable, key=lambda entry: entry[0])[1]
 
 
 def _clean_lifecycle_target(raw: str | None) -> str:
@@ -590,8 +595,10 @@ def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
     complete = _COMPLETE_SIGNAL_RE.search(normalized)
     if complete is not None and not _is_negated_signal(normalized, complete.start()):
         target = _clean_lifecycle_target(complete.group("target"))
-        phrase = complete.group(0)
-        if target or "了" in phrase:
+        # 「考完了/考砸了」本身只可能指考试目标；「完成了/结束了/搞定了」是
+        # 通用动词，没有对象时不知道指哪个目标，不能推测成唯一目标完成。
+        exam_bound = complete.group("verb").startswith("考")
+        if target or exam_bound:
             candidates.append(
                 (
                     complete.start(),
@@ -1551,6 +1558,16 @@ class AtomicProfileService:
 
         self._revocation_listener = listener
 
+    @staticmethod
+    def _revocation_version_for(items: Iterable[AtomicProfileItem]) -> str:
+        """由一组条目折算撤回版本；编译切片时与切片共用同一份快照。"""
+
+        pairs = [
+            (item.profile_item_id, f"{item.version}:{item.status.value}")
+            for item in items
+        ]
+        return _digest(pairs)[:32]
+
     def revocation_version(self, account_id: str) -> str:
         """账户级撤回版本：任何条目写入/撤回/替代都会改变它。
 
@@ -1558,13 +1575,9 @@ class AtomicProfileService:
         失效。版本由持久条目确定性折算，不新增时钟或计数器状态。
         """
 
-        pairs = [
-            (item.profile_item_id, f"{item.version}:{item.status.value}")
-            for item in self._repository.list_items(
-                account_id, include_withdrawn=True
-            )
-        ]
-        return _digest(pairs)[:32]
+        return self._revocation_version_for(
+            self._repository.list_items(account_id, include_withdrawn=True)
+        )
 
     def is_slice_current(
         self, account_id: str, revocation_version: str | None
@@ -2279,11 +2292,17 @@ class AtomicProfileService:
         """
 
         moment = now or _now()
+        # 撤回版本与切片条目必须取自同一快照：若先列条目再另查版本，「列条目 →
+        # 查版本」之间发生的撤回会让版本看似已更新，而切片仍是旧条目，运行中
+        # 撤回就拦不住。同一快照保证写入要么已反映、要么使版本落后而核对失败。
+        snapshot = self._repository.list_items(account_id, include_withdrawn=True)
         related: list[AtomicProfileItem] = []
         unrelated: list[AtomicProfileItem] = []
         same_turn: list[AtomicProfileItem] = []
         excluded: list[tuple[AtomicProfileItem, str]] = []
-        for item in self.list_items(account_id):
+        for item in snapshot:
+            if item.status != AtomicProfileItemStatus.ACTIVE:
+                continue
             if _is_same_turn_extraction(item, current_user_message_id):
                 same_turn.append(item)
                 continue
@@ -2362,7 +2381,7 @@ class AtomicProfileService:
                 ProfileSensitivityClass.LEARNING,
             ],
             compiled_policy_version=ATOMIC_PROFILE_MIGRATION_VERSION,
-            revocation_version=self.revocation_version(account_id),
+            revocation_version=self._revocation_version_for(snapshot),
             length_budget=MAX_SLICE_ITEMS,
             compiled_at=moment,
         )
