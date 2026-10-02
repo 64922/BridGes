@@ -104,6 +104,7 @@ from bridges.chat import (
 )
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
+from bridges.chat.summary import ChatSummaryService, GatewaySummaryExtractor
 from bridges.tasks.repository import TaskRepository
 from bridges.tasks.service import TaskService
 from bridges.chat.turn import CHAT_CAPABILITY_NAME
@@ -462,6 +463,19 @@ def _amap_web_service_key(app: Any) -> str | None:
     return commute_api.secret_setting(
         getattr(app.state, "settings", None), "amap_web_service_key"
     )
+
+
+def _commute_task_reference(
+    app: Any, account_id: str, conversation_id: str
+) -> tuple[str | None, int | None] | None:
+    """通勤内核提交守卫的任务版本快照（当前任务不存在时为 None）。"""
+    service = getattr(app.state, "task_service", None)
+    if service is None:
+        return None
+    context = service.current_reference_context(account_id, conversation_id)
+    if context is None:
+        return None
+    return (context.task_id, context.version)
 
 
 def _paper_metadata_client() -> httpx.Client:
@@ -1479,7 +1493,14 @@ def create_app(
             key_provider=lambda: _amap_web_service_key(app),
             observability=app.state.observability_service,
         )
-        app.state.commute_service = CommuteService(amap=app.state.commute_amap_client)
+        # 改进工单 10：通勤内核的提交守卫读取当前任务版本（惰性求值：
+        # task_service 在下方创建，调用发生在请求期）。
+        app.state.commute_service = CommuteService(
+            amap=app.state.commute_amap_client,
+            task_version_provider=lambda account_id, conversation_id: (
+                _commute_task_reference(app, account_id, conversation_id)
+            ),
+        )
         app.router.add_event_handler("shutdown", app.state.commute_amap_client.close)
         # 改进工单 08：跨轮任务领域服务。写模型归任务领域仓库（独立账户
         # 域表），API 只做投影；关系由工单 12 的主智能体理解后经
@@ -1487,6 +1508,20 @@ def create_app(
         # 指代解析的任务查询接缝（只读）注入 ChatService。
         app.state.task_service = TaskService(
             TaskRepository(bridges_database)
+        )
+        # 改进工单 13：有界历史摘要缓存 + 回答后有界后台准备。结构化抽取
+        # 走固定能力（模型由运行配置解析并记录运行锁），同步补齐与后台
+        # 任务都受超时/调用次数/队列重试上限约束；失败只留明确缺口。
+        app.state.chat_summary_service = ChatSummaryService(
+            database=bridges_database,
+            conversation_repository=ConversationRepository(bridges_database),
+            extractor=GatewaySummaryExtractor(
+                model_gateway,
+                model_config_provider=run_model_config,
+                lock_recorder=SqliteModelRunLockRecorder(bridges_database),
+                database=bridges_database,
+            ),
+            observability=app.state.observability_service,
         )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
@@ -1522,6 +1557,7 @@ def create_app(
             automatic_profile_service=app.state.automatic_profile_service,
             atomic_profile_service=getattr(app.state, "atomic_profile_service", None),
             task_service=app.state.task_service,
+            summary_service=app.state.chat_summary_service,
         )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。
@@ -1531,6 +1567,7 @@ def create_app(
             app.state.chat_service,
             bridges_database,
             profile_extraction_service=app.state.automatic_profile_service,
+            summary_service=app.state.chat_summary_service,
         )
         app.state.generation_executor_stop = threading.Event()
 
@@ -1565,7 +1602,7 @@ def create_app(
             app.state.generation_executor_stop.set()
             thread = getattr(app.state, "generation_executor_thread", None)
             if thread is not None:
-                thread.join(timeout=5)
+                thread.join(timeout=30)
 
         app.router.add_event_handler("startup", _start_generation_executor)
         app.router.add_event_handler("shutdown", _stop_generation_executor)

@@ -66,6 +66,10 @@ class AuditAction(str, Enum):
     # V2 Issue 03：每轮上下文编译记录（details 只含模型 ID、预算/摘要/
     # 估算版本、窗口与预留计数、采用的原文消息 ID，不含任何消息正文）。
     CONTEXT_COMPILED = "context_compiled"
+    # 改进工单 13：有界历史摘要缓存的准备与失效（details 只含摘要实例 ID、
+    # 覆盖边界、实例版本、用量计数与原因，不含摘要正文与消息正文）。
+    HISTORY_SUMMARY_PREPARED = "history_summary_prepared"
+    HISTORY_SUMMARY_INVALIDATED = "history_summary_invalidated"
     # 改进工单 04：最终载荷预算门与材料清单（details 只含材料 ID/类别/
     # 必要性/版本、采用与排除原因、预算门结果与估算/实际用量，不含正文）。
     PAYLOAD_BUDGET_EVALUATED = "payload_budget_evaluated"

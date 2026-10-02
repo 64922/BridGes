@@ -601,12 +601,31 @@ def test_deleted_old_photo_yields_gap_not_description(
             object_id=draft["object_id"],
             content="这张图里是什么？",
         )
+        from bridges.chat.summary import ConversationSummaryRepository, source_fingerprint
+        from bridges.contracts.summaries import SummarySourceMessage
+        from tests.chat.test_improvement13_summary_cache import _summary
+
+        records = app.state.chat_service._repo.list_messages(account["id"], conversation_id)
+        sources = [
+            SummarySourceMessage(message_id=m.message_id, role=m.role.value, content=m.content)
+            for m in records
+        ]
+        cache = ConversationSummaryRepository(app.state.chat_service._repo.database)
+        summary = _summary(
+            first=records[0].message_id, last=records[-1].message_id, count=len(records),
+            fingerprint=source_fingerprint(sources), account_id=account["id"],
+            conversation_id=conversation_id, text="照片里的旧文字描述。",
+        )
+        assert cache.save_if_sources_unchanged(summary)
+        assert app.state.chat_summary_service.valid_summaries(account["id"], conversation_id)
         app.state.chat_attachment_service.delete(
             account["id"],
             conversation_id,
             draft["object_id"],
             message_id=sent["user_message"]["message_id"],
         )
+        assert app.state.chat_summary_service.valid_summaries(account["id"], conversation_id) == []
+        assert not cache.save_if_sources_unchanged(summary, expected_generation=0)
 
         adapter.payloads.clear()
         final = client.post(
@@ -691,3 +710,192 @@ def test_cross_account_and_unknown_conversation_reads_are_rejected(
         )
         assert (parts, delivered) == ([], [])
         assert gaps
+
+
+def test_collect_multi_photo_history_preserves_message_order(
+    tmp_path: Path, monkeypatch: Any, generation_helpers: dict[str, Any]
+) -> None:
+    """真实附件收集保留同消息照片序号，最近照片是该消息最后一张。"""
+    from bridges.chat.material_reading import collect_photo_refs
+
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        account = _register(client, "i14-order")
+        app.state.chat_service._gateway = _gateway_with(_CapturingAdapter())
+        drafts = [
+            _upload_draft(client, upload_id=f"order-{i}", filename=f"photo-{i}.png").json()
+            for i in range(2)
+        ]
+        conversation_id = _start_conversation(client, app)
+        response = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "看图", "attachment_ids": [d["object_id"] for d in drafts]},
+        )
+        assert response.status_code == 200
+        generation_helpers["drive"](app)
+        service = app.state.chat_service
+        refs = collect_photo_refs(
+            service._repo.list_messages(account["id"], conversation_id),
+            attachments=service._attachments,
+            account_id=account["id"],
+            conversation_id=conversation_id,
+            current_message_id="next",
+            request="第一张图片左下角是什么",
+        )
+        assert [ref.object_id for ref in refs] == [d["object_id"] for d in drafts]
+        plan = plan_photo_reads(
+            request="上一张图片左下角是什么", current_message_id="next", photo_refs=refs
+        )
+        assert plan.reads[0].object_id == drafts[-1]["object_id"]
+
+
+def test_original_segment_selection_precedes_database_limit(tmp_path: Path) -> None:
+    """真实数据库从命中文档中读指定页/文末，不限于检索命中的首段。"""
+    from tests.retrieval.conftest import (
+        add_material,
+        add_user_message,
+        make_retrieval_env,
+        make_storage,
+        seed_conversation,
+    )
+
+    env = make_retrieval_env(make_storage(tmp_path))
+    account = env["account_a"]
+    conversation = seed_conversation(env, account)
+    user = add_user_message(env, account, conversation, "定位命中")
+    object_id = add_material(
+        env,
+        account,
+        "限制.txt",
+        "定位命中：开头说明。",
+        layer="attachment",
+        conversation_id=conversation,
+        user_message_id=user,
+    )
+    db = env["database"].connection
+    row = db.execute(
+        "SELECT ch.* FROM document_chunks ch JOIN document_records r"
+        " ON r.document_id = ch.document_id WHERE r.object_id = ?",
+        (object_id,),
+    ).fetchone()
+    db.execute("UPDATE document_chunks SET page_number = 1 WHERE chunk_id = ?", (row["chunk_id"],))
+    round_ = env["retrieval"].run_round(
+        account,
+        conversation,
+        "assistant-original",
+        user,
+        "定位命中",
+        use_knowledge_base=False,
+    )
+    assert round_ is not None and round_.citations
+    for index, page in enumerate([2, 3, 4, 9], start=1):
+        db.execute(
+            "INSERT INTO document_chunks"
+            " SELECT ?, document_id, account_id, ?, ?, section_title, ?,"
+            " start_offset, end_offset, ?, vector_status, created_at, updated_at"
+            " FROM document_chunks WHERE chunk_id = ?",
+            (
+                f"extra-{index}",
+                index,
+                f"第{page}页：仅限校内",
+                page,
+                f"hash-{page}",
+                row["chunk_id"],
+            ),
+        )
+    rows = env["retrieval"].attachment_original_segments(
+        account,
+        conversation,
+        round_.round_id,
+        page_number=9,
+    )
+    assert len(rows) == 1 and rows[0]["page_number"] == 9
+    rows = env["retrieval"].attachment_original_segments(
+        account,
+        conversation,
+        round_.round_id,
+        tail=True,
+    )
+    assert rows[0]["page_number"] == 9
+    assert len(rows) == 3
+    other = seed_conversation(env, account)
+    assert env["retrieval"].attachment_original_segments(account, other, round_.round_id) == []
+    assert (
+        env["retrieval"].attachment_original_segments(
+            env["account_b"], conversation, round_.round_id
+        )
+        == []
+    )
+    db.execute("UPDATE objects SET status = 'deleted' WHERE object_id = ?", (object_id,))
+    assert (
+        env["retrieval"].attachment_original_segments(account, conversation, round_.round_id) == []
+    )
+
+
+def test_saved_module_excerpt_and_actual_status_enter_compiled_payload() -> None:
+    from bridges.career_plan.contracts import JobReadStatus
+    from bridges.github.contracts import GithubReadmeStatus
+
+    github = _assistant(
+        "github-saved",
+        "仓库列表：\n1. org/a",
+        github_projects={
+            "recommendations": [
+                {
+                    "full_name": "org/a",
+                    "readme_status": GithubReadmeStatus.READ.value,
+                    "readme_excerpt": "保存原文：只允许校内使用",
+                    "files_read": [],
+                }
+            ],
+        },
+    )
+    career = _assistant(
+        "career-saved",
+        "岗位列表",
+        career_plan={
+            "samples": [
+                {
+                    "url": "https://example.test/job",
+                    "read_status": JobReadStatus.ACCESS_RESTRICTED.value,
+                }
+            ],
+        },
+    )
+    compiled = compile_turn_context(
+        messages=[
+            _user("u1", "找仓库"),
+            github,
+            _user("u2", "找岗位"),
+            career,
+            _user("u3", "第一个仓库的 README 写了什么？"),
+        ],
+        current_user_message_id="u3",
+        model_id="qwen-plus",
+        mode=ChatMode.COMPANION,
+    )
+    text = "\n".join(message["content"] for message in compiled.messages)
+    assert "保存原文：只允许校内使用" in text
+    assert "非全文" in text
+    assert "页面访问受限，未取得正文" in text
+
+
+def test_chinese_page_selection_does_not_fall_back() -> None:
+    from bridges.chat.material_reading import file_segment_selector
+
+    assert file_segment_selector("文件第九页末尾条件") == (9, None, False)
+    segments, gaps = select_file_segments([], request="文件第九页", had_attachment_citations=True)
+    assert segments == [] and gaps
+
+
+def test_deleted_photo_does_not_renumber_and_duplicate_ordinals_clarify() -> None:
+    for refs in [
+        [_photo_ref("p2", "m1", 2)],
+        [_photo_ref("p1", "m1", 1), _photo_ref("p2", "m2", 1)],
+    ]:
+        plan = plan_photo_reads(
+            request="第一张图片左下角是什么",
+            current_message_id="next",
+            photo_refs=refs,
+        )
+        assert plan.reads == [] and plan.gaps

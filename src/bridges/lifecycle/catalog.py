@@ -58,6 +58,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     # 必须先于账本行删除。
     "run_budget_entries",
     "run_budget_ledger",
+    # 改进工单 10：持久节点内核（产物/收据/待投递事件，均无外键）。
+    "node_outbox",
+    "node_receipts",
+    "node_artifacts",
     "retrieval_decisions",
     "study_states",
     "image_tasks",
@@ -102,6 +106,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "task_conditions",
     "task_versions",
     "conversation_tasks",
+    # 改进工单 13：摘要缓存外键指向 conversations，随会话删除（先于父表）。
+    "conversation_summaries",
+    "conversation_summary_generations",
+    "conversation_summary_sync_attempts",
     "messages",
     "conversations",
     # 关联行有 lock_id 外键指向 model_run_locks，必须先删。
@@ -135,6 +143,17 @@ class ExportCategory:
 EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("conversations", "对话", ("conversations",), 256),
     ExportCategory("messages", "消息", ("messages",), 1024),
+    # 改进工单 13：有界历史摘要缓存实例（覆盖边界、实例版本与内容均为
+    # 可读派生线索；来源指纹用于复核，不含凭据）。
+    ExportCategory(
+        "history_summaries",
+        "历史摘要缓存",
+        (
+            "conversation_summaries", "conversation_summary_generations",
+            "conversation_summary_sync_attempts",
+        ),
+        1024,
+    ),
     # 工单 08：跨轮任务、不可变版本、有效条件、澄清等待与任务审计。
     ExportCategory(
         "tasks",
@@ -161,6 +180,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "运行预算账本",
         ("run_budget_ledger", "run_budget_entries"),
         256,
+    ),
+    # 改进工单 10：持久节点内核的类型化产物、完成收据与待投递事件
+    # （证据/版本/可信状态整行可读；外箱只含进度遥测，导出无害）。
+    ExportCategory(
+        "node_kernel",
+        "通勤节点产物与收据",
+        ("node_artifacts", "node_receipts", "node_outbox"),
+        512,
     ),
     ExportCategory(
         "chat_attachments",
@@ -353,6 +380,9 @@ def logical_summary(
         "generation_events",
         "run_budget_ledger",
         "run_budget_entries",
+        "node_artifacts",
+        "node_receipts",
+        "node_outbox",
         "graph_checkpoints",
         "graph_checkpoint_writes",
         "retrieval_decisions",

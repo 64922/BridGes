@@ -40,7 +40,7 @@ from bridges.ai.payload_budget import (
 from bridges.ai.payload_budget import (
     estimate_tokens as estimate_tokens,
 )
-from bridges.chat.evidence_scope import module_evidence_scopes
+from bridges.chat.evidence_scope import module_evidence_scopes, saved_evidence_text
 from bridges.chat.material_reading import image_attachment_ids_from_plan
 from bridges.chat.reference_resolution import (
     RECOVERED_MAX_MESSAGES,
@@ -59,6 +59,7 @@ from bridges.contracts.references import (
     ReferenceStatus,
     ReferenceTaskContext,
 )
+from bridges.contracts.summaries import HistorySummary
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -67,8 +68,9 @@ if TYPE_CHECKING:
 
 #: 预算版本（预留常量或预算公式变化时递增；编译记录携带，便于审计复算）。
 CONTEXT_BUDGET_VERSION = "ctx-budget-v1"
-#: 摘要版本（摘要格式或压缩规则变化时递增）。
-SUMMARY_VERSION = "summary-v1"
+#: 摘要版本（摘要格式或压缩规则变化时递增）。工单 13 起较早片段改用
+#: 按来源片段缓存的结构化摘要 + 有界确定性回退（不再是逐条截断行）。
+SUMMARY_VERSION = "summary-v2"
 
 #: 输出预留缺省值：与主对话调用的输出额度 :data:`CHAT_OUTPUT_TOKENS` 同源
 #: （改进工单 03）——单一事实源，避免两处 ``1024`` 漂移。调用方可传
@@ -91,6 +93,13 @@ RECENT_VERBATIM_SHARE = 0.6
 SUMMARY_ENTRY_MAX_CHARS = 160
 #: 预算触底后重做摘要的单条最大字符数。
 SUMMARY_ENTRY_HARD_MAX_CHARS = 60
+#: 缓存摘要块 + 回退行合计的最大渲染字符数（摘要总长度上限：不随历史
+#: 线性增长；超出时先丢弃最旧的缓存块，再压缩回退行）。
+SUMMARY_RENDER_MAX_CHARS = 4000
+#: 无有效缓存时回退行最多保留的条数（优先保留靠近近期的旧消息）。
+SUMMARY_FALLBACK_MAX_ENTRIES = 12
+#: 回退行合计最大字符数（与条数上限共同保证有界）。
+SUMMARY_FALLBACK_MAX_CHARS = 1800
 
 
 def verified_context_window(model_id: str | None) -> int:
@@ -162,6 +171,15 @@ class CompiledTurnContext:
     adopted_message_ids: list[str]
     #: 摘要覆盖的消息 ID 范围（最早, 最晚）；无较早消息时为 None。
     summary_source_range: tuple[str, str] | None
+    #: 较早片段是否全部由**有效缓存实例**覆盖（False 表示存在确定性
+    #: 回退行或明确缺口；调用方据此决定是否限时同步补齐/后台准备）。
+    summary_cache_hit: bool = True
+    #: 本次采用的有效摘要实例 ID（按会话时间序；供审计与复用核对）。
+    summary_instance_ids: list[str] = field(default_factory=list)
+    #: 无缓存覆盖、以确定性截断行临时代替的较早消息条数。
+    summary_fallback_entries: int = 0
+    #: 既无缓存覆盖也未被回退行表示的较早消息条数（明确缺口，不猜测）。
+    summary_omitted_message_count: int = 0
     #: 本轮补回原文的消息 ID。
     recovered_message_ids: list[str] = field(default_factory=list)
     #: 用户引用较早内容但未能完整定位（含部分命中；真缺口见
@@ -222,6 +240,10 @@ class CompiledTurnContext:
                 if self.summary_source_range is not None
                 else None
             ),
+            "summary_cache_hit": self.summary_cache_hit,
+            "summary_instance_ids": list(self.summary_instance_ids),
+            "summary_fallback_entries": self.summary_fallback_entries,
+            "summary_omitted_message_count": self.summary_omitted_message_count,
             "recovered_message_ids": list(self.recovered_message_ids),
             "unresolved_reference": self.unresolved_reference,
             "budget_floor_exceeded": self.budget_floor_exceeded,
@@ -259,12 +281,14 @@ def _pair_history_items(
     配对语义（用户原文总是纳入、助手只取最近一条已完成、按当前轮次
     截断）由 :func:`turn.history_items` 统一实现，避免两处漂移。
     """
-    items = [
-        _TurnItem(item.message_id, item.role, item.content)
-        for item in history_items(
-            messages, until_user_message_id=current_user_message_id
-        )
-    ]
+    records = {message.message_id: message for message in messages}
+    items = []
+    for item in history_items(messages, until_user_message_id=current_user_message_id):
+        content = item.content
+        evidence_text = saved_evidence_text(records[item.message_id])
+        if evidence_text:
+            content += "\n" + evidence_text
+        items.append(_TurnItem(item.message_id, item.role, content))
     if not items or items[-1].message_id != current_user_message_id:
         raise ValueError(
             f"当前用户消息不在会话历史中：{current_user_message_id}"
@@ -284,26 +308,118 @@ def _truncate_for_summary(text: str, max_chars: int) -> str:
     return compact[: max_chars - 1] + "…"
 
 
-def _summary_block(
-    older_items: Sequence[_TurnItem], *, entry_max_chars: int
-) -> tuple[str | None, tuple[str, str] | None]:
-    """较早消息的摘要系统块；返回 (块文本, 来源消息 ID 范围)。"""
-    if not older_items:
-        return None, None
+@dataclass(frozen=True)
+class _OlderSummary:
+    """较早片段的渲染结果（缓存块 + 有界回退行 + 覆盖/缺口计数）。"""
+
+    text: str | None
+    source_range: tuple[str, str] | None
+    cache_hit: bool
+    instance_ids: list[str]
+    fallback_entries: int
+    omitted: int
+
+
+def _fallback_lines(
+    items: Sequence[_TurnItem],
+    *,
+    entry_max_chars: int,
+    max_entries: int,
+    max_chars: int,
+) -> list[str]:
+    """确定性回退行：优先保留靠近近期的旧消息，条数与总字符均有上限。"""
+    selected: list[str] = []
+    used = 0
+    for item in reversed(items):
+        if len(selected) >= max_entries:
+            break
+        line = (
+            f"- [{item.message_id}] "
+            f"{'用户' if item.role == ChatMessageRole.USER else '助手'}："
+            f"{_truncate_for_summary(item.content, entry_max_chars)}"
+        )
+        if selected and used + len(line) > max_chars:
+            break
+        selected.append(line)
+        used += len(line)
+    selected.reverse()
+    return selected
+
+
+def _cached_summary_block(summary: HistorySummary) -> str:
+    """一条有效缓存实例的渲染块（含覆盖边界、实例版本与只读定位说明）。"""
     lines = [
-        f"- [{item.message_id}] "
-        f"{'用户' if item.role == ChatMessageRole.USER else '助手'}："
-        f"{_truncate_for_summary(item.content, entry_max_chars)}"
-        for item in older_items
+        f"【缓存摘要 {summary.summary_id}｜实例版本 {summary.instance_version}"
+        f"｜覆盖消息 {summary.covered_first_message_id} 至 "
+        f"{summary.covered_last_message_id}（共 {summary.covered_message_count} 条）】",
+        summary.text,
     ]
-    block = (
-        f"以下是对较早对话的摘要（摘要版本 {SUMMARY_VERSION}，"
-        f"来源消息 ID：{older_items[0].message_id} 至 "
-        f"{older_items[-1].message_id}）；"
-        "摘要只是线索，回答涉及这些内容时以带 ID 的原始消息原文为准。\n"
-        + "\n".join(lines)
+    if summary.object_clues:
+        lines.append("对象线索：" + "；".join(summary.object_clues))
+    if summary.open_questions:
+        lines.append("开放问题：" + "；".join(summary.open_questions))
+    return "\n".join(lines)
+
+
+def _older_summary(
+    older: Sequence[_TurnItem],
+    summaries: Sequence[HistorySummary],
+    *,
+    entry_max_chars: int,
+) -> _OlderSummary:
+    """较早片段：有效缓存实例优先，未覆盖部分用有界确定性回退行。"""
+    if not older:
+        return _OlderSummary(None, None, True, [], 0, 0)
+    order = {item.message_id: index for index, item in enumerate(older)}
+    candidates: list[tuple[int, int, HistorySummary]] = []
+    for summary in summaries:
+        first = order.get(summary.covered_first_message_id)
+        last = order.get(summary.covered_last_message_id)
+        if first is None or last is None or first > last:
+            continue
+        candidates.append((first, last, summary))
+    candidates.sort(key=lambda item: item[0])
+    accepted: list[tuple[int, int, HistorySummary]] = []
+    for first, last, summary in candidates:
+        if any(not (last < a_first or first > a_last) for a_first, a_last, _ in accepted):
+            continue
+        accepted.append((first, last, summary))
+    # 总长度上限：先丢弃最旧的缓存块；若全部超出则至少保留最新一块。
+    while (
+        len(accepted) > 1
+        and sum(len(_cached_summary_block(item[2])) for item in accepted)
+        > SUMMARY_RENDER_MAX_CHARS
+    ):
+        accepted.pop(0)
+    covered: set[int] = set()
+    for first, last, _ in accepted:
+        covered.update(range(first, last + 1))
+    uncovered = [item for index, item in enumerate(older) if index not in covered]
+    fallback = _fallback_lines(
+        uncovered,
+        entry_max_chars=entry_max_chars,
+        max_entries=SUMMARY_FALLBACK_MAX_ENTRIES,
+        max_chars=SUMMARY_FALLBACK_MAX_CHARS,
     )
-    return block, (older_items[0].message_id, older_items[-1].message_id)
+    header = (
+        f"以下是对较早对话的摘要（摘要版本 {SUMMARY_VERSION}，来源消息 ID："
+        f"{older[0].message_id} 至 {older[-1].message_id}）；"
+        "摘要只是线索，不是用户事实；回答涉及这些内容时必须以带 ID 的原始"
+        "消息原文为准，已被纠正或撤销的值不得作为当前条件。"
+    )
+    parts = [header]
+    parts.extend(_cached_summary_block(item[2]) for item in accepted)
+    if fallback:
+        parts.append("【未覆盖片段（截断回退行，待后台整理）】")
+        parts.extend(fallback)
+    return _OlderSummary(
+        text="\n".join(parts),
+        source_range=(older[0].message_id, older[-1].message_id),
+        cache_hit=len(covered) == len(older),
+        instance_ids=[item[2].summary_id for item in accepted],
+        fallback_entries=len(fallback),
+        omitted=len(uncovered) - len(fallback),
+    )
 
 
 def _recovered_block(
@@ -441,6 +557,7 @@ def compile_turn_context(
     task: ReferenceTaskContext | None = None,
     image_count: int = 0,
     material_read_plan: Mapping[str, Any] | None = None,
+    summaries: Sequence[HistorySummary] = (),
 ) -> CompiledTurnContext:
     """编译一轮普通对话的模型输入上下文（纯函数；详见模块说明）。
 
@@ -464,6 +581,10 @@ def compile_turn_context(
     + 按问题读取的历史原图）。图片成本按实际数量计入统一输入预算，照片轮
     不再绕过编译；``material_read_plan`` 是同一读取计划的脱敏记录（附件/
     对象 ID、读取范围、内容版本），进编译审计与下游来源清单。
+    ``summaries`` 是工单 13 的有效摘要缓存实例（由调用方从摘要域读取并
+    核对来源指纹）；较早片段优先按覆盖范围复用这些实例，未覆盖部分只用
+    **有界**确定性回退行（条数与总字符均封顶），因此摘要总长度不随消息数
+    线性增长。传入空序列时行为等价于「暂无有效缓存」。
     """
     if quota is not None and quota.is_verified:
         # ``is_verified`` 已保证 context_window > 0，但 max_input_tokens 仍可能
@@ -556,9 +677,11 @@ def compile_turn_context(
             ReferenceStatus.PARTIAL,
         }
         ambiguous = resolution.status == ReferenceStatus.AMBIGUOUS
-        summary_text, summary_range = _summary_block(
-            older, entry_max_chars=entry_max_chars
+        older_summary = _older_summary(
+            older, summaries, entry_max_chars=entry_max_chars
         )
+        summary_text = older_summary.text
+        summary_range = older_summary.source_range
         blocks: list[str] = [prompt, *(item.content for item in selected_evidence)]
         if summary_text is not None:
             blocks.append(summary_text)
@@ -640,6 +763,10 @@ def compile_turn_context(
         window_verified=window_verified,
         adopted_message_ids=adopted,
         summary_source_range=summary_range,
+        summary_cache_hit=older_summary.cache_hit,
+        summary_instance_ids=list(older_summary.instance_ids),
+        summary_fallback_entries=older_summary.fallback_entries,
+        summary_omitted_message_count=older_summary.omitted,
         recovered_message_ids=[item.message_id for item in recovered],
         unresolved_reference=unresolved,
         budget_floor_exceeded=floor_exceeded,

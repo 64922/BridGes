@@ -18,6 +18,7 @@ import zipfile
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
 from bridges.chat.attachments_repository import (
@@ -33,6 +34,9 @@ from bridges.ingestion.service import IngestionError, IngestionService, display_
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
+
+if TYPE_CHECKING:
+    from bridges.chat.summary import ChatSummaryService
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENT_COUNT = 10
@@ -190,6 +194,11 @@ class ChatAttachmentService:
         # V2 Issue 06：文件草稿上传即入队解析（解析/索引在后台执行器完成）；
         # 未装配摄取服务时（只读/历史构造）跳过，草稿本身仍可用。
         self._ingestion = ingestion_service
+        self._summaries: ChatSummaryService | None = None
+
+    def set_summary_service(self, service: ChatSummaryService | None) -> None:
+        """接入已有摘要失效服务，删除材料时先撤销会话派生依据。"""
+        self._summaries = service
 
     def conversation_project_id(
         self, account_id: str, conversation_id: str
@@ -375,17 +384,23 @@ class ChatAttachmentService:
         *,
         message_id: str | None = None,
     ) -> None:
-        with self._database.transaction():
+        with self._database.snapshot_lock():
             if not self._attachments.attachment_exists(
                 account_id, conversation_id, object_id, message_id=message_id
             ):
                 raise ChatAttachmentError("attachment_not_found", "附件不存在或没有访问权限。", 404)
-            self._attachments.delete_one(
-                account_id, conversation_id, object_id, message_id=message_id
-            )
-            self._objects.mark_pending_cleanup(
-                account_id, object_id, updated_at=datetime.now(UTC).isoformat()
-            )
+            # 先失效再删来源：即使随后删除失败，缓存也只能从原文重新生成。
+            if self._summaries is not None:
+                self._summaries.invalidate_conversation(
+                    account_id, conversation_id, reason="attachment_deleted"
+                )
+            with self._database.transaction():
+                self._attachments.delete_one(
+                    account_id, conversation_id, object_id, message_id=message_id
+                )
+                self._objects.mark_pending_cleanup(
+                    account_id, object_id, updated_at=datetime.now(UTC).isoformat()
+                )
         self._objects.run_pending_cleanups()
 
     def delete_by_upload_id(

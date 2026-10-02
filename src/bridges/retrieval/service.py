@@ -507,7 +507,9 @@ class LayeredRetrievalService:
         )
 
     def attachment_original_segments(
-        self, account_id: str, conversation_id: str, round_id: str, *, limit: int = 3
+        self, account_id: str, conversation_id: str, round_id: str, *, limit: int = 3,
+        page_number: int | None = None, section_title: str | None = None,
+        tail: bool = False
     ) -> list[dict[str, object]]:
         """读取该轮检索的已解析原文整段（改进工单 14 读取接缝）。
 
@@ -515,7 +517,8 @@ class LayeredRetrievalService:
         后返回空，由调用方如实给缺口，绝不用摘要或旧回答顶替。
         """
         rows = self._repository.attachment_original_segments(
-            account_id, conversation_id, round_id, limit=limit
+            account_id, conversation_id, round_id, limit=limit,
+            page_number=page_number, section_title=section_title, tail=tail
         )
         return [dict(row) for row in rows]
 

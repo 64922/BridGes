@@ -270,32 +270,49 @@ class RetrievalRepository:
         return cast(sqlite3.Row | None, row)
 
     def attachment_original_segments(
-        self, account_id: str, conversation_id: str, round_id: str, *, limit: int = 3
+        self, account_id: str, conversation_id: str, round_id: str, *, limit: int = 3,
+        page_number: int | None = None, section_title: str | None = None,
+        tail: bool = False,
     ) -> list[sqlite3.Row]:
-        """读取该轮检索命中的**已解析原文整段**（改进工单 14）。
+        """从当轮命中附件中定位原文，先定位页码/章节/文末，再限制段数。
 
-        只返回指定账户+会话活跃轮次、活跃文档与活跃对象的原文；删除或权限
-        变化后返回空，由调用方如实给缺口，不许用摘要或旧回答顶替原文。
-        会话域与账户域同时强制，跨会话引用不会被带入。
+        文档及绑定须仍在当前账户和会话内有效；未命中附件不会被额外读取。
         """
+        filters = ""
+        params: list[str | int] = [account_id, conversation_id, round_id]
+        if page_number is not None:
+            filters = " AND ch.page_number = ?"
+            params.append(page_number)
+        elif section_title is not None:
+            filters = " AND instr(ch.section_title, ?) > 0"
+            params.append(section_title)
+        order = "DESC" if tail else "ASC"
+        params.append(limit)
         return list(
             self._database.scoped(account_id).execute(
-                "SELECT c.citation_id, c.object_id, c.filename,"
-                " ch.content, ch.content_hash,"
-                " COALESCE(ch.page_number, c.page_number) AS page_number,"
-                " COALESCE(ch.section_title, c.section_title) AS section_title"
+                "WITH matched AS ("
+                " SELECT c.object_id, MIN(c.rank) AS rank,"
+                " MIN(c.citation_id) AS citation_id, c.filename"
                 " FROM message_citations c"
-                " JOIN document_chunks ch ON ch.chunk_id = c.chunk_id"
-                " AND ch.account_id = c.account_id"
-                " JOIN document_records r ON r.document_id = ch.document_id"
-                " AND r.account_id = c.account_id AND r.status = 'ready'"
-                " JOIN objects o ON o.object_id = r.object_id"
-                " AND o.account_id = c.account_id AND o.status = 'active'"
                 " WHERE c.account_id = ? AND c.conversation_id = ?"
-                " AND c.round_id = ?"
-                " AND c.source_layer = 'attachment'"
-                " ORDER BY c.rank, c.citation_id LIMIT ?",
-                (account_id, conversation_id, round_id, limit),
+                " AND c.round_id = ? AND c.source_layer = 'attachment'"
+                " GROUP BY c.object_id)"
+                " SELECT m.citation_id || ':' || ch.chunk_id AS citation_id,"
+                " m.object_id, m.filename, ch.content, ch.content_hash,"
+                " ch.page_number, ch.section_title"
+                " FROM matched m"
+                " JOIN document_records r ON r.object_id = m.object_id"
+                " AND r.account_id = ? AND r.status = 'ready'"
+                " JOIN document_chunks ch ON ch.document_id = r.document_id"
+                " AND ch.account_id = r.account_id"
+                " JOIN objects o ON o.object_id = r.object_id"
+                " AND o.account_id = r.account_id AND o.status = 'active'"
+                " WHERE EXISTS (SELECT 1 FROM chat_attachments a"
+                " WHERE a.object_id = r.object_id AND a.account_id = r.account_id"
+                " AND a.conversation_id = ? AND a.status = 'bound')"
+                + filters
+                + f" ORDER BY m.rank, ch.chunk_index {order}, ch.chunk_id LIMIT ?",
+                (*params[:3], account_id, conversation_id, *params[3:]),
             ).fetchall()
         )
 

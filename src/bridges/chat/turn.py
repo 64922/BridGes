@@ -73,6 +73,7 @@ from bridges.chat.material_reading import (
     FileSegment,
     MaterialRead,
     MaterialReadKind,
+    file_segment_selector,
     is_file_detail_request,
     material_read_gaps_from_record,
     material_reads_from_record,
@@ -6383,9 +6384,11 @@ class TurnOrchestrator:
         ]
         if not attachment_citations:
             return [], []
+        page, section, tail = file_segment_selector(request)
         try:
             rows = self._retrieval.attachment_original_segments(
-                account_id, conversation_id, retrieval_round.round_id
+                account_id, conversation_id, retrieval_round.round_id,
+                page_number=page, section_title=section, tail=tail,
             )
         except Exception:  # noqa: BLE001 - 读取失败如实降级为缺口，不阻断回答
             return [], ["附件原文读取失败（本地检索暂不可用），本轮未取得原文。"]

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from bridges.chat.repository import MessageRecord
 
 #: 读取计划合同版本（字段或选择语义变化时递增；编译记录与清单携带）。
-MATERIAL_READ_VERSION = "material-read-v1"
+MATERIAL_READ_VERSION = "material-read-v2"
 
 #: 单轮最多重新读取的历史原图数量（当前轮照片不受此上限约束，仍受附件上限）。
 MAX_REFERENCED_PHOTOS = 1
@@ -174,7 +174,7 @@ _ORDINAL_RE = re.compile(r"第([一二三四五六七八九十两\d]+)张")
 _PREVIOUS_PHOTO_RE = re.compile(
     r"上一?张|前一张|刚才那|之前那|最后一张|那张图|那张照片|那张图片"
 )
-_PARSED_PAGE_RE = re.compile(r"第\s*(\d+)\s*页")
+_PARSED_PAGE_RE = re.compile(r"第\s*([一二三四五六七八九十两\d]+)\s*页")
 _PARSED_SECTION_RE = re.compile(r"(?:章节|第[一二三四五六七八九十]+节)[:：]?\s*([^\s，。；、]+)")
 #: 附件末尾限定条件追问词（按页码序取最后的已解析整段）。
 _PARSED_TAIL_RE = re.compile(r"末尾|最后|结尾|末页|文末|落款")
@@ -231,7 +231,7 @@ def plan_photo_reads(
     选择规则（确定性、只读；不产生新用户条件）：
 
     - 当前轮绑定的照片全部进入本轮（附件数量上限由绑定层保证）；
-    - 问题明确指向视觉细节时，按「第 N 张」序数或「上一张/那张」定位一张
+    - 问题明确指向视觉细节时，按唯一消息内序数或「上一张/那张」定位一张
       同会话历史原图；无法定位或原图已不在可读范围时给出具体缺口；
     - 问题不需要视觉细节时不额外读取历史原图，避免偷偷扩大读取范围。
     """
@@ -260,6 +260,9 @@ def plan_photo_reads(
     if not is_visual_detail_request(request):
         return MaterialReadPlan(reads=reads, gaps=gaps)
     if not historical:
+        ordinal = _parse_ordinal(request)
+        if ordinal is not None and any(ref.ordinal == ordinal for ref in current):
+            return MaterialReadPlan(reads=reads, gaps=gaps)
         if not current or _PREVIOUS_PHOTO_RE.search(request) or _ORDINAL_RE.search(request):
             gaps.append(
                 "本会话没有可读取的更早原图（更早照片可能已删除、不可读或"
@@ -270,14 +273,16 @@ def plan_photo_reads(
     targets: list[PhotoRef] = []
     ordinal = _parse_ordinal(request)
     if ordinal is not None:
-        if 1 <= ordinal <= len(ordered):
-            candidate = ordered[ordinal - 1]
+        # ordinal 属于绑定消息，不能按删除后压缩的可读列表位置重新编号。
+        candidates = [ref for ref in ordered if ref.ordinal == ordinal]
+        if len(candidates) == 1:
+            candidate = candidates[0]
             if candidate.message_id != current_message_id:
                 targets = [candidate]
         else:
             gaps.append(
-                f"本会话没有第 {ordinal} 张照片的原图（序号对不上或更早照片"
-                "已删除）；不得用旧助手描述代替看图。"
+                f"无法唯一定位第 {ordinal} 张照片的原图（序号在多个消息中重复，"
+                "或目标已删除/不在有界扫描范围）；请指定来源消息，不得用旧助手描述代替看图。"
             )
             return MaterialReadPlan(reads=reads, gaps=gaps)
     elif _PREVIOUS_PHOTO_RE.search(request) or not current:
@@ -347,7 +352,7 @@ def collect_photo_refs(
     if not is_visual_detail_request(request):
         return refs
     seen = 0
-    historical: list[PhotoRef] = []
+    historical_groups: list[list[PhotoRef]] = []
     for message in reversed(messages):
         if seen >= PHOTO_SCAN_MESSAGE_LIMIT:
             break
@@ -358,9 +363,9 @@ def collect_photo_refs(
         seen += 1
         before = len(refs)
         collect(message.message_id)
-        historical.extend(refs[before:])
-    # 历史按会话时间序（reversed 之后反转回来），当前轮固定在最后。
-    historical.reverse()
+        historical_groups.append(refs[before:])
+    # 只反转消息顺序，保留每条消息内附件的 ordinal 顺序。
+    historical = [ref for group in reversed(historical_groups) for ref in group]
     current = [ref for ref in refs if ref.message_id == current_message_id]
     return [*historical, *current]
 
@@ -406,6 +411,17 @@ def read_photo_payloads(
     return parts, delivered, gaps
 
 
+def file_segment_selector(request: str) -> tuple[int | None, str | None, bool]:
+    """提取页码、章节或文末定位，让数据库在限量前选择目标原文。"""
+    page = _PARSED_PAGE_RE.search(request)
+    if page is not None:
+        return _parse_chinese_number(page.group(1)), None, False
+    section = _PARSED_SECTION_RE.search(request)
+    if section is not None:
+        return None, section.group(1), False
+    return None, None, bool(_PARSED_TAIL_RE.search(request))
+
+
 def select_file_segments(
     rows: Iterable[Mapping[str, Any]],
     *,
@@ -445,7 +461,7 @@ def select_file_segments(
         return [], []
     page_match = _PARSED_PAGE_RE.search(request)
     if page_match is not None:
-        page = int(page_match.group(1))
+        page = _parse_chinese_number(page_match.group(1))
         matched = [item for item in segments if item.page_number == page]
         if matched:
             return matched[:limit], []
