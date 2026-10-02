@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import secrets
 import time
@@ -77,6 +78,8 @@ from bridges.runtime.queue import (
     TaskQueue,
 )
 from bridges.storage.database import BridgesDatabase
+
+logger = logging.getLogger(__name__)
 
 #: 后台摘要队列名（复用 Issue 43 统一领取契约与租约恢复）。
 SUMMARY_QUEUE = "chat_summary"
@@ -751,6 +754,41 @@ class ChatSummaryService:
                 details={"reason": reason, "invalidated_count": count},
             )
         return count
+
+    def on_profile_revocation(
+        self, account_id: str, *, message_ids: list[str], reason: str
+    ) -> None:
+        """画像撤回传播（工单 18）：按来源消息定位会话并失效其历史摘要。
+
+        删除/忘掉/纠正撤回了哪些来源消息，就失效哪些会话的摘要实例；
+        已经发往云端的上下文无法收回，本钩子只保证后续调用不再复用包含
+        被撤回事实的摘要。消息定位不到时跳过（无来源可定位的旧摘要不动），
+        单条失败不中断其余会话。
+        """
+
+        conversation_ids: list[str] = []
+        for message_id in message_ids:
+            try:
+                record = self._conversations.get_message(account_id, message_id)
+            except Exception:  # noqa: BLE001 - 传播失败可安全重试，不推翻撤回
+                logger.warning(
+                    "画像撤回传播定位消息失败：%s", message_id, exc_info=True
+                )
+                continue
+            if record is None:
+                continue
+            if record.conversation_id not in conversation_ids:
+                conversation_ids.append(record.conversation_id)
+        for conversation_id in conversation_ids:
+            try:
+                self.invalidate_conversation(account_id, conversation_id, reason=reason)
+            except Exception:  # noqa: BLE001 - 同上：撤回已生效，传播尽力而为
+                logger.warning(
+                    "画像撤回传播失效摘要失败：%s / %s",
+                    conversation_id,
+                    reason,
+                    exc_info=True,
+                )
 
     def _invalidity(
         self,

@@ -1523,6 +1523,11 @@ def create_app(
             ),
             observability=app.state.observability_service,
         )
+        # 工单 18：删除/忘掉/纠正撤回来源后，按依赖失效依赖该事实的历史
+        # 摘要——已发往云端的上下文无法收回，钩子只阻止后续调用继续复用。
+        app.state.atomic_profile_service.set_revocation_listener(
+            app.state.chat_summary_service
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,

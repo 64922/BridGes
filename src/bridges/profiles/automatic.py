@@ -62,8 +62,10 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.atomic import (
     AtomicProfileService,
+    GoalLifecycleOutcome,
     MemoryDirective,
     parse_fact_identity,
+    parse_goal_lifecycle_signal,
     parse_memory_directive,
 )
 from bridges.profiles.commit import ProfileCommit, ProfileRecordSubmission
@@ -1660,10 +1662,53 @@ class AutomaticProfileService:
             and management_allowed
             else None
         )
+        # 改进工单 18：明确的暂停/完成/恢复信号是目标生命周期变更，与「记住/
+        # 忘掉」同属用户主动管理，在停止记录期间仍可生效。只在消息尚未终态
+        # 记账时解析一次，重放不重复改状态。
+        lifecycle_signal = (
+            parse_goal_lifecycle_signal(content)
+            if self._atomic_profiles is not None
+            and management_allowed
+            and memory_directive is None
+            and (
+                existing is None
+                or existing.status
+                not in {
+                    ProfileExtractionStatus.SUCCEEDED,
+                    ProfileExtractionStatus.EXHAUSTED,
+                    ProfileExtractionStatus.PENDING,
+                }
+            )
+            else None
+        )
         recording_blocked = self._repository.is_recording_blocked(account_id)
+        if recording_blocked and lifecycle_signal is not None:
+            # 停止记录期间明确的暂停/完成/恢复仍即时生效；只有确实改到目标
+            # 才算处理完成。没有可对账目标时撤销信号，按下方普通阻止处理，
+            # 不给这条消息留下「未阻止也未落墓碑」的空档。
+            atomic = self._atomic_profiles
+            assert atomic is not None
+            outcome = atomic.apply_lifecycle_signal(
+                account_id,
+                content,
+                source_message_id=message_id,
+                source_at=now,
+            )
+            if outcome is not None:
+                return self._lifecycle_result(
+                    account_id=account_id,
+                    message_id=message_id,
+                    content=content,
+                    source_hash=source_hash,
+                    now=now,
+                    outcome=outcome,
+                    existing=existing,
+                )
+            lifecycle_signal = None
         if (
             recording_blocked
             and memory_directive is None
+            and lifecycle_signal is None
             and signal_classification.category != ProfileSignalCategory.CORRECTION
         ):
             self._repository.mark_message_tombstone(account_id, message_id)
@@ -1724,6 +1769,25 @@ class AutomaticProfileService:
                 directive=memory_directive,
                 existing=existing,
             )
+        if lifecycle_signal is not None:
+            atomic = self._atomic_profiles
+            assert atomic is not None
+            outcome = atomic.apply_lifecycle_signal(
+                account_id,
+                content,
+                source_message_id=message_id,
+                source_at=now,
+            )
+            if outcome is not None:
+                return self._lifecycle_result(
+                    account_id=account_id,
+                    message_id=message_id,
+                    content=content,
+                    source_hash=source_hash,
+                    now=now,
+                    outcome=outcome,
+                    existing=existing,
+                )
         if existing is not None and existing.status in {
             ProfileExtractionStatus.SUCCEEDED,
             ProfileExtractionStatus.EXHAUSTED,
@@ -1813,6 +1877,7 @@ class AutomaticProfileService:
                     now=now,
                     signal_classification=signal_classification,
                     source=source,
+                    source_at=now,
                 )
                 run.status = ProfileExtractionStatus.SUCCEEDED
                 run.attempts += 1
@@ -2103,6 +2168,55 @@ class AutomaticProfileService:
         self._audit_outcome(run, result=AuditResult.SUCCESS, reason="memory_directive")
         return ProfilePreprocessResult(run=run, memory=memory)
 
+    def _lifecycle_result(
+        self,
+        *,
+        account_id: str,
+        message_id: str,
+        content: str,
+        source_hash: str,
+        now: datetime,
+        outcome: GoalLifecycleOutcome,
+        existing: ProfileExtractionRun | None,
+    ) -> ProfilePreprocessResult:
+        """记录一次已生效的目标生命周期变更（暂停/完成/恢复）。"""
+
+        run = existing or ProfileExtractionRun(
+            extraction_id=_stable_id(
+                "profile-extract",
+                account_id,
+                message_id,
+                self.extractor_version,
+                source_hash,
+            ),
+            account_id=account_id,
+            message_id=message_id,
+            extractor_version=self.extractor_version,
+            source_hash=source_hash,
+            source_snapshot=content,
+            status=ProfileExtractionStatus.SUCCEEDED,
+            outcome=ProfileExtractionOutcome.SUCCEEDED_LIFECYCLE_SIGNAL,
+            attempts=1,
+            source=ProfileExtractionSource.LOCAL_RULE,
+            created_at=now,
+            updated_at=now,
+        )
+        run.status = ProfileExtractionStatus.SUCCEEDED
+        run.outcome = ProfileExtractionOutcome.SUCCEEDED_LIFECYCLE_SIGNAL
+        run.attempts = max(1, run.attempts)
+        run.last_error = None
+        # 生命周期判定是纯本地规则；即便复用了一次失败尝试的运行记录，也不
+        # 能把来源标成 Qwen（那会要求模型锁证据，而本次没有真实模型调用）。
+        run.source = ProfileExtractionSource.LOCAL_RULE
+        run.updated_at = now
+        self._repository.save_run(run)
+        self._audit_outcome(
+            run,
+            result=AuditResult.SUCCESS,
+            reason=f"goal_{outcome.kind.value}",
+        )
+        return ProfilePreprocessResult(run=run)
+
     def _extract_once(
         self,
         *,
@@ -2317,8 +2431,12 @@ class AutomaticProfileService:
             return self._exhaust_task(task, run, "profile_extraction_source_invalidated")
         if self._repository.is_recording_blocked(task.account_id):
             return self._exhaust_task(task, run, "profile_extraction_privacy_blocked")
+        current_message = (
+            self._message_reader(task.account_id, task.message_id)
+            if self._message_reader is not None
+            else None
+        )
         if self._message_reader is not None:
-            current_message = self._message_reader(task.account_id, task.message_id)
             if current_message is None:
                 return self._exhaust_task(
                     task, run, "profile_extraction_source_invalidated"
@@ -2329,6 +2447,7 @@ class AutomaticProfileService:
                 return self._exhaust_task(
                     task, run, "profile_extraction_privacy_blocked"
                 )
+        source_at = getattr(current_message, "created_at", None)
         task.status = ProfileExtractionStatus.RUNNING
         task.attempts = attempt
         task.updated_at = _now()
@@ -2424,6 +2543,9 @@ class AutomaticProfileService:
                         # 纠正过的记录改回旧值；普通重试保持既有证据阶梯。
                         from_replay=PROFILE_REPLAY_SOURCE_HASH_PREFIX
                         in task.source_hash,
+                        # 工单 18：期限以原消息时间为锚，后台重试不会把
+                        # 「下周考试」按重试当天重新解释。
+                        source_at=source_at,
                     )
                 task.status = ProfileExtractionStatus.SUCCEEDED
                 task.last_error = None
@@ -2551,6 +2673,7 @@ class AutomaticProfileService:
         signal_classification: ProfileSignalClassification,
         source: ProfileExtractionSource,
         from_replay: bool = False,
+        source_at: datetime | None = None,
     ) -> tuple[list[str], int]:
         observed_count = 0
         submissions: list[ProfileRecordSubmission] = []
@@ -2666,9 +2789,15 @@ class AutomaticProfileService:
             )
         # Issue 04：四维记录与原子镜像由提交 module 在同一事务里成对写入。
         # 镜像不写入（用户已删除同键条目或已改成别的正文）是正常结果，不算
-        # 提交失败，因此这里只回报真正落库的记录标识。
+        # 提交失败，因此这里只回报真正落库的记录标识。工单 18：来源消息时间
+        # 作为相对时间的锚随提交传入，后台重试不会按重试当天重解释期限。
         return (
-            self._commit.write_records(account_id, submissions, from_replay=from_replay),
+            self._commit.write_records(
+                account_id,
+                submissions,
+                from_replay=from_replay,
+                source_at=source_at,
+            ),
             observed_count,
         )
 

@@ -52,6 +52,7 @@ import logging
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
@@ -172,6 +173,7 @@ class ProfileCommit:
         submissions: Iterable[ProfileRecordSubmission],
         *,
         from_replay: bool = False,
+        source_at: datetime | None = None,
     ) -> list[str]:
         """按顺序写入四维记录并立刻镜像原子条目，返回去重后的记录标识。
 
@@ -179,6 +181,8 @@ class ProfileCommit:
 
         ``from_replay`` 标记本次写入来自旧消息重放，四维仓库据此保护用户
         纠正过的记录不被改回旧值；新消息的自动写入保持既有证据阶梯。
+        ``source_at`` 是来源消息的原始时间，作为「下周/下个月」这类相对
+        时间的锚；缺省时镜像按写入当天锚定（前台首次处理仍显式传入）。
 
         镜像不写入是正常结果，不是系统失败：正文为空、用户已把该条目改成
         别的正文时，镜像按用户权威跳过，本方法照常返回该记录标识（调用方
@@ -208,6 +212,7 @@ class ProfileCommit:
                     record,
                     evidence_message_id=submission.evidence_message_id,
                     fact_text=submission.fact_text,
+                    source_at=source_at,
                 )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids))
