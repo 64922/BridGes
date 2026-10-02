@@ -28693,6 +28693,16 @@
         "title": "AssignRoleRequest",
         "description": "分配独立复核者或平台发行者。"
       },
+      "AtomicProfileGoalState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "paused",
+          "completed"
+        ],
+        "title": "AtomicProfileGoalState",
+        "description": "目标生命周期标记（改进工单 18；只按用户明确信号变化）。\n\n暂停/完成的目标停止作为当前目标使用，但保留正文、来源与法定期限；\n``ACTIVE`` 是其余事实的默认状态。"
+      },
       "AtomicProfileItemDeleteRequest": {
         "properties": {
           "version": {
@@ -28807,6 +28817,49 @@
             ],
             "title": "Supersedes Id",
             "description": "本条替代的旧条目标识；可为空。"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From",
+            "description": "有效期起点；没有明示时间时为空。"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until",
+            "description": "有效期终点；到点后不再用于回答。"
+          },
+          "validity_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Phrase",
+            "description": "原文明示的时间表达，供页面按需展示与核对。"
+          },
+          "goal_state": {
+            "$ref": "#/components/schemas/AtomicProfileGoalState",
+            "description": "目标生命周期标记；普通事实恒为 active。",
+            "default": "active"
           }
         },
         "type": "object",

@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 66
+SCHEMA_VERSION = 67
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3113,6 +3113,36 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # 改进工单 18：画像有效期、来源时间锚与目标生命周期。
+    # - valid_from / valid_until：把原文明示的时间（如「下周」）在写入时按
+    #   来源消息时间解析为绝对区间；到点后不再注入。未明示期限的行保持 NULL，
+    #   不设统一 TTL，长期偏好不因时间流逝被清掉。
+    # - validity_anchor_at / validity_phrase：来源时间锚与原时间表达，供审计
+    #   核对相对时间没有被按使用当天重解释。
+    # - goal_state：目标暂停/完成标记；只按用户明确信号变化，暂停/完成停止
+    #   作为当前目标使用，正文、来源与期限仍保留。
+    67: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN valid_from TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN valid_until TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN validity_anchor_at TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN validity_phrase TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN goal_state TEXT NOT NULL DEFAULT 'active'
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3191,6 +3221,11 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "updated_at",
         "user_edited_at",
         "migration_run_id",
+        "valid_from",
+        "valid_until",
+        "validity_anchor_at",
+        "validity_phrase",
+        "goal_state",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -3235,6 +3270,11 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "evidence_quote",
         "supersedes_id",
         "superseded_by_id",
+        "valid_from",
+        "valid_until",
+        "validity_anchor_at",
+        "validity_phrase",
+        "goal_state",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
 }

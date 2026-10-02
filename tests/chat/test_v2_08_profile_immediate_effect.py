@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -91,10 +92,41 @@ class _CapturingStreamAdapter:
         yield StreamChunk(kind="done")
 
 
+class _HookedConversationRepository(ConversationRepository):
+    """在「本次上下文说明」首次落库时注入一次回调（模拟运行中撤回）。"""
+
+    def __init__(
+        self, database: BridgesDatabase, hook: Callable[[], None] | None
+    ) -> None:
+        super().__init__(database)
+        self._hook = hook
+
+    def update_message_context_note(
+        self,
+        account_id: str,
+        message_id: str,
+        context_note: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        updated = super().update_message_context_note(
+            account_id, message_id, context_note, updated_at
+        )
+        hook, self._hook = self._hook, None
+        if hook is not None:
+            hook()
+        return updated
+
+
 class _Env:
     """被测组合：聊天 + 四维记录 + 自动抽取 + 原子列表（生产接线同形）。"""
 
-    def __init__(self, tmp_path: Path, account: str = ACCOUNT) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        account: str = ACCOUNT,
+        *,
+        on_context_note: Callable[[], None] | None = None,
+    ) -> None:
         self.account = account
         self.path = tmp_path / f"bridges-{account}.db"
         database = BridgesDatabase(self.path)
@@ -119,7 +151,7 @@ class _Env:
         gateway.register_adapter("qwen_text_chat", "1", self.adapter)
         self.observability = ObservabilityService()
         self.chat = ChatService(
-            repository=ConversationRepository(database),
+            repository=_HookedConversationRepository(database, on_context_note),
             gateway=gateway,
             profile_service=ProfileService(repository=InMemoryProfileRepository()),
             automatic_profile_service=self.automatic,
@@ -371,3 +403,45 @@ def test_atomic_items_stay_account_scoped_through_the_turn(
     assert other.system_blocks(_SLICE_MARKER) == []
     assert other_final.context_note is not None
     assert other_final.context_note.state == ContextNoteState.EMPTY
+
+
+def test_expired_relative_window_never_enters_model_payload(tmp_path: Path) -> None:
+    """过期的「下周」窗口只影响召回，不删除条目也不进入模型载荷。"""
+
+    env = _Env(tmp_path)
+    env.atomic.remember(
+        ACCOUNT,
+        "我下周有考试",
+        source_message_id="m-old",
+        source_at=datetime(2025, 1, 6, tzinfo=UTC),
+    )
+    _, assistant = env.start("帮我准备考试")
+    final = env.run(assistant)
+
+    assert env.system_blocks(_SLICE_MARKER) == []
+    assert final.context_note is not None
+    assert final.context_note.state == ContextNoteState.EMPTY
+    # 信息仍在列表里：期限只阻止召回，不是删除。
+    assert env.items() == ["我下周有考试"]
+
+
+def test_revocation_between_compile_and_call_blocks_stale_slice(
+    tmp_path: Path,
+) -> None:
+    """编译之后、模型调用之前发生删除：陈旧切片不进入载荷且披露降级。"""
+
+    env: _Env
+
+    def revoke() -> None:
+        item = env.atomic.projections(ACCOUNT)[0]
+        env.atomic.delete_item(ACCOUNT, item.profile_item_id, item.version)
+
+    env = _Env(tmp_path, on_context_note=revoke)
+    env.atomic.remember(ACCOUNT, STUDY_TEXT, source_message_id="m-study")
+    _, assistant = env.start("我在准备雅思考试，帮我安排复习")
+    final = env.run(assistant)
+
+    assert env.system_blocks(_SLICE_MARKER) == []
+    assert final.context_note is not None
+    assert final.context_note.state == ContextNoteState.EMPTY
+    assert env.items() == []

@@ -499,6 +499,40 @@ def test_repository_invalidate_and_delete_are_account_scoped(
     assert repo.delete_for_conversation(_ACCOUNT, _CONVERSATION) == 1
 
 
+def test_profile_revocation_propagates_to_conversation_summaries(
+    database: BridgesDatabase, conversations: ConversationRepository
+) -> None:
+    """工单 18：按撤回的来源消息定位会话并失效依赖摘要，重复传播幂等。"""
+
+    records = _seed(conversations, exchanges=2)
+    repo = ConversationSummaryRepository(database)
+    fingerprint = source_fingerprint(
+        [
+            SummarySourceMessage(
+                message_id=item.message_id,
+                role=item.role.value,
+                content=item.content,
+            )
+            for item in records
+        ]
+    )
+    item = _summary(first="m000", last="m003", count=4, fingerprint=fingerprint)
+    assert repo.save_if_sources_unchanged(item)
+    service = ChatSummaryService(
+        database=database,
+        conversation_repository=conversations,
+        extractor=_StubExtractor(),
+    )
+
+    service.on_profile_revocation(_ACCOUNT, message_ids=["m001"], reason="deleted")
+    assert repo.list_active(_ACCOUNT, _CONVERSATION) == []
+
+    # 定位不到的消息与重复传播不报错、不产生新实例。
+    service.on_profile_revocation(_ACCOUNT, message_ids=["missing"], reason="deleted")
+    service.on_profile_revocation(_ACCOUNT, message_ids=["m001"], reason="deleted")
+    assert repo.list_active(_ACCOUNT, _CONVERSATION) == []
+
+
 # ---------------------------------------------------------------------------
 # 服务：短对话不调用 / 分段准备 / 缓存复用 / 失效 / 守卫 / 上限
 # ---------------------------------------------------------------------------

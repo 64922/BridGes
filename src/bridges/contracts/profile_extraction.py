@@ -68,6 +68,7 @@ class ProfileExtractionOutcome(StrEnum):
     SUCCEEDED_CORRECTION_UNRESOLVED = "succeeded_correction_unresolved"
     SUCCEEDED_CORRECTION_NO_ACTIVE = "succeeded_correction_no_active"
     SUCCEEDED_MEMORY_DIRECTIVE = "succeeded_memory_directive"
+    SUCCEEDED_LIFECYCLE_SIGNAL = "succeeded_lifecycle_signal"
     CORRECTION_FAILED = "correction_failed"
     PENDING_RETRY = "pending_retry"
     PERMANENT_FAILURE = "permanent_failure"

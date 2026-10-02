@@ -65,6 +65,18 @@ class AtomicProfileFactScope(StrEnum):
     CURRENT = "current"
 
 
+class AtomicProfileGoalState(StrEnum):
+    """目标生命周期标记（改进工单 18；只按用户明确信号变化）。
+
+    暂停/完成的目标停止作为当前目标使用，但保留正文、来源与法定期限；
+    ``ACTIVE`` 是其余事实的默认状态。
+    """
+
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+
+
 class AtomicProfileFactIdentity(BaseModel):
     """一条完整事实的主体/关系/对象/范围身份（内部合同，不进入页面）。"""
 
@@ -180,6 +192,23 @@ class AtomicProfileItem(BaseModel):
     superseded_by_id: str | None = Field(
         default=None, description="本条被哪条新版本替代；活动条目为空。"
     )
+    valid_from: datetime | None = Field(
+        default=None, description="有效期起点；没有明示时间时为空。"
+    )
+    valid_until: datetime | None = Field(
+        default=None,
+        description="有效期终点；到点后不再注入。没有明示期限时为空，不设统一 TTL。",
+    )
+    validity_anchor_at: datetime | None = Field(
+        default=None, description="相对时间的来源消息时间锚；没有时间表达时为空。"
+    )
+    validity_phrase: str | None = Field(
+        default=None, max_length=100, description="原文明示的时间表达，供审计核对。"
+    )
+    goal_state: AtomicProfileGoalState = Field(
+        default=AtomicProfileGoalState.ACTIVE,
+        description="目标生命周期标记；普通事实恒为 active。",
+    )
     source_record_id: str | None = Field(
         default=None, description="产生该条目的四维记录标识，可为空。"
     )
@@ -205,6 +234,30 @@ class AtomicProfileItem(BaseModel):
     )
 
 
+class AtomicProfileTombstoneEntry(BaseModel):
+    """墓碑/被替代版本的审计投影（工单 18）：只含标识与状态，不含正文。
+
+    删除墓碑与被替代版本的正文已在条目里清空或退休，本投影回答「哪条事实被
+    撤回/替代、抑制的是哪个事实身份、来源在哪」，供账户导出、墓碑审计和
+    撤回传播核对使用。
+    """
+
+    profile_item_id: str = Field(description="稳定的原子条目标识。")
+    status: AtomicProfileItemStatus = Field(description="withdrawn 或 superseded。")
+    fact_relation: AtomicProfileFactRelation = Field(description="事实关系/属性槽。")
+    fact_scope: AtomicProfileFactScope = Field(description="事实适用范围。")
+    has_fact_suppression: bool = Field(
+        description="是否保留事实身份抑制键（普通近义提及不得复活）。"
+    )
+    superseded_by_id: str | None = Field(
+        default=None, description="被哪条新版本替代；删除墓碑为空。"
+    )
+    source_message_ids: list[str] = Field(
+        default_factory=list, description="旧证据来源消息标识；不含正文。"
+    )
+    updated_at: datetime = Field(description="最近一次状态变化时间。")
+
+
 class AtomicProfileItemProjection(BaseModel):
     """原子画像页面投影：无类别、无分组、无内部哈希。"""
 
@@ -226,6 +279,19 @@ class AtomicProfileItemProjection(BaseModel):
     )
     supersedes_id: str | None = Field(
         default=None, description="本条替代的旧条目标识；可为空。"
+    )
+    valid_from: datetime | None = Field(
+        default=None, description="有效期起点；没有明示时间时为空。"
+    )
+    valid_until: datetime | None = Field(
+        default=None, description="有效期终点；到点后不再用于回答。"
+    )
+    validity_phrase: str | None = Field(
+        default=None, description="原文明示的时间表达，供页面按需展示与核对。"
+    )
+    goal_state: AtomicProfileGoalState = Field(
+        default=AtomicProfileGoalState.ACTIVE,
+        description="目标生命周期标记；普通事实恒为 active。",
     )
 
 
@@ -311,6 +377,7 @@ __all__ = [
     "AtomicProfileFactIdentity",
     "AtomicProfileFactRelation",
     "AtomicProfileFactScope",
+    "AtomicProfileGoalState",
     "AtomicProfileItem",
     "AtomicProfileItemDeleteRequest",
     "AtomicProfileItemModifyRequest",
@@ -323,5 +390,6 @@ __all__ = [
     "AtomicProfileMigrationStatus",
     "AtomicProfileReconciliationEntry",
     "AtomicProfileReconciliationOutcome",
+    "AtomicProfileTombstoneEntry",
     "AtomicProfileWriteOrigin",
 ]
