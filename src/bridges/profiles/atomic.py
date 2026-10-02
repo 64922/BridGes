@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import calendar
 import copy
 import hashlib
 import json
@@ -33,13 +34,17 @@ import secrets
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
+from typing import Protocol
 
 from bridges.contracts.atomic_profile import (
     AtomicProfileFactIdentity,
     AtomicProfileFactRelation,
     AtomicProfileFactScope,
+    AtomicProfileGoalState,
     AtomicProfileItem,
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
@@ -51,6 +56,7 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMigrationStatus,
     AtomicProfileReconciliationEntry,
     AtomicProfileReconciliationOutcome,
+    AtomicProfileTombstoneEntry,
     AtomicProfileWriteOrigin,
 )
 from bridges.contracts.profiles import (
@@ -347,6 +353,282 @@ def parse_memory_directive(content: str) -> MemoryDirective | None:
     return MemoryDirective(kind, target)
 
 
+#: 明示时间表达在写入时按来源消息时间锚解析一次（工单 18）：之后一律以绝对
+#: 区间判定，使用当天不再重解释「下周」；没有时间表达就不设期限，不编造日期。
+_VALIDITY_DATE_RE = re.compile(
+    r"(?P<year>\d{4})\s*[年\-/]\s*(?P<month>\d{1,2})\s*[月\-/]\s*(?P<day>\d{1,2})\s*日?"
+)
+_VALIDITY_OFFSET_RE = re.compile(r"(?P<count>\d{1,3})\s*(?P<unit>天|日|周|个?月)\s*后")
+_VALIDITY_NEXT_WEEK_RE = re.compile(r"下(?:个)?(?:周|星期)")
+_VALIDITY_THIS_WEEK_RE = re.compile(r"(?:本|这)(?:个)?(?:周|星期)")
+_VALIDITY_NEXT_MONTH_RE = re.compile(r"下(?:个)?月")
+_VALIDITY_TOMORROW_RE = re.compile(r"明天")
+_VALIDITY_DAY_AFTER_TOMORROW_RE = re.compile(r"后天")
+
+#: 目标生命周期信号（工单 18）：只按用户明确表达变更，不根据行为推断。
+_LIFECYCLE_TARGET_NOISE = (
+    "我的",
+    "我",
+    "自己",
+    "已经",
+    "现在",
+    "目前",
+    "终于",
+    "马上",
+    "就",
+    "也",
+    "都",
+    "要",
+    "准备",
+    "开始",
+)
+_PAUSE_SIGNAL_PATTERNS = (
+    re.compile(r"(?:暂时|暂|先)\s*不\s*(?P<target>[^，。；;！!？?\s]{1,20})"),
+    re.compile(r"暂停\s*(?P<target>[^，。；;！!？?\s]{1,20})"),
+)
+#: 否定信号（不想/别/没/不打算…）：命中的不是变更声明，不改变目标状态。
+_SIGNAL_NEGATION_RE = re.compile(r"(?:不|别|没|莫)\s*(?:(?:想|要|打算|准备|再|用|必|停)\s*)?$")
+_COMPLETE_SIGNAL_RE = re.compile(
+    r"(?P<target>[^，。；;！!？?\s]{0,20}?)"
+    r"(?P<verb>考完(?:试)?|考砸|结\s*束|完\s*成|搞\s*定)了"
+)
+_RESUME_SIGNAL_RE = re.compile(
+    r"(?:继续|恢复|重新(?:开始|准备)?)\s*(?:准备|备考|学习|接着)?\s*"
+    r"(?P<target>[^，。；;！!？?]{0,20})"
+)
+
+
+@dataclass(frozen=True)
+class ValidityWindow:
+    """一段按来源消息时间锚解析出的绝对有效期。"""
+
+    valid_from: datetime
+    valid_until: datetime
+    phrase: str
+
+
+class GoalLifecycleKind(StrEnum):
+    """目标生命周期信号类型。"""
+
+    PAUSE = "pause"
+    COMPLETE = "complete"
+    RESUME = "resume"
+
+
+@dataclass(frozen=True)
+class GoalLifecycleSignal:
+    """一条明确的目标生命周期信号及其对象。"""
+
+    kind: GoalLifecycleKind
+    target: str
+    #: 信号本身只可能指目标（如「考完了」）：没有对象时按唯一目标处理。
+    target_implied: bool = False
+
+
+@dataclass(frozen=True)
+class GoalLifecycleOutcome:
+    """一次目标生命周期变更的结果（不含正文）。"""
+
+    kind: GoalLifecycleKind
+    matched_count: int
+
+
+def _as_aware(anchor: datetime) -> datetime:
+    return anchor if anchor.tzinfo is not None else anchor.replace(tzinfo=UTC)
+
+
+def _day_bounds(day: datetime) -> tuple[datetime, datetime]:
+    start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, start + timedelta(days=1) - timedelta(seconds=1)
+
+
+def _week_bounds(anchor: datetime, *, weeks_ahead: int) -> tuple[datetime, datetime]:
+    start = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
+    monday = start - timedelta(days=start.weekday()) + timedelta(weeks=weeks_ahead)
+    return monday, monday + timedelta(days=7) - timedelta(seconds=1)
+
+
+def _add_months(anchor: datetime, months: int) -> datetime:
+    month_index = anchor.month - 1 + months
+    year = anchor.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(anchor.day, calendar.monthrange(year, month)[1])
+    return anchor.replace(year=year, month=month, day=day)
+
+
+def _month_bounds(anchor: datetime, *, months_ahead: int) -> tuple[datetime, datetime]:
+    first = anchor.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    start = _add_months(first, months_ahead)
+    next_start = _add_months(first, months_ahead + 1)
+    return start, next_start - timedelta(seconds=1)
+
+
+def parse_validity_window(text: str, anchor: datetime) -> ValidityWindow | None:
+    """把原文明示的时间表达解析为绝对有效期；没有明示时间时返回空。
+
+    相对时间以 ``anchor``（来源消息时间）为锚，解析一次后落库为绝对区间，
+    使用当天不再重解释；没有给年份的日期不猜测年份。未明示期限（如长期偏好）
+    不设统一 TTL。
+    """
+
+    normalized = normalize_text(text)
+    if not normalized:
+        return None
+    moment = _as_aware(anchor)
+    candidates: list[tuple[int, ValidityWindow]] = []
+
+    date_match = _VALIDITY_DATE_RE.search(normalized)
+    if date_match is not None:
+        try:
+            start: datetime | None = datetime(
+                int(date_match.group("year")),
+                int(date_match.group("month")),
+                int(date_match.group("day")),
+                tzinfo=moment.tzinfo,
+            )
+        except ValueError:
+            start = None
+        if start is not None:
+            end = start + timedelta(days=1) - timedelta(microseconds=1)
+            candidates.append(
+                (date_match.start(), ValidityWindow(start, end, date_match.group(0)))
+            )
+
+    offset_match = _VALIDITY_OFFSET_RE.search(normalized)
+    if offset_match is not None:
+        count = int(offset_match.group("count"))
+        unit = offset_match.group("unit")
+        if unit in {"天", "日"}:
+            _, end = _day_bounds(moment + timedelta(days=count))
+        elif unit == "周":
+            _, end = _day_bounds(moment + timedelta(weeks=count))
+        else:
+            _, end = _day_bounds(_add_months(moment, count))
+        candidates.append(
+            (
+                offset_match.start(),
+                ValidityWindow(moment, end, offset_match.group(0)),
+            )
+        )
+
+    next_week = _VALIDITY_NEXT_WEEK_RE.search(normalized)
+    if next_week is not None:
+        start, end = _week_bounds(moment, weeks_ahead=1)
+        candidates.append(
+            (next_week.start(), ValidityWindow(start, end, next_week.group(0)))
+        )
+
+    this_week = _VALIDITY_THIS_WEEK_RE.search(normalized)
+    if this_week is not None:
+        start, end = _week_bounds(moment, weeks_ahead=0)
+        candidates.append(
+            (this_week.start(), ValidityWindow(start, end, this_week.group(0)))
+        )
+
+    next_month = _VALIDITY_NEXT_MONTH_RE.search(normalized)
+    if next_month is not None:
+        start, end = _month_bounds(moment, months_ahead=1)
+        candidates.append(
+            (next_month.start(), ValidityWindow(start, end, next_month.group(0)))
+        )
+
+    tomorrow = _VALIDITY_TOMORROW_RE.search(normalized)
+    if tomorrow is not None:
+        start, end = _day_bounds(moment + timedelta(days=1))
+        candidates.append(
+            (tomorrow.start(), ValidityWindow(start, end, tomorrow.group(0)))
+        )
+
+    day_after = _VALIDITY_DAY_AFTER_TOMORROW_RE.search(normalized)
+    if day_after is not None:
+        start, end = _day_bounds(moment + timedelta(days=2))
+        candidates.append(
+            (day_after.start(), ValidityWindow(start, end, day_after.group(0)))
+        )
+
+    # 已经过去的明示时间（如「2023年5月1日入职」）是历史事件时间，不是有效期：
+    # 来源消息当时就已结束的区间不能把事实判成过期。相对表达在写入时按来源锚
+    # 解析，锚在消息时间上；这里淘汰的只是写入时已经结束的绝对日期。
+    usable = [entry for entry in candidates if entry[1].valid_until > moment]
+    if not usable:
+        return None
+    return min(usable, key=lambda entry: entry[0])[1]
+
+
+def _clean_lifecycle_target(raw: str | None) -> str:
+    value = normalize_text(raw or "")
+    changed = True
+    while changed and value:
+        changed = False
+        for token in _LIFECYCLE_TARGET_NOISE:
+            if value.startswith(token):
+                value = value[len(token) :].lstrip("的了")
+                changed = True
+    return value.strip("的了，。；;！!？? ")
+
+
+def _is_negated_signal(normalized: str, start: int) -> bool:
+    """信号前紧邻否定词（不想继续/别暂停/没考完）：不是变更声明。"""
+
+    prefix = normalized[max(0, start - 6) : start]
+    return _SIGNAL_NEGATION_RE.search(prefix) is not None
+
+
+def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
+    """解析明确的暂停/完成/恢复信号；普通陈述或否定变更不在这里处理。"""
+
+    normalized = normalize_text(text)
+    if not normalized:
+        return None
+    candidates: list[tuple[int, GoalLifecycleSignal]] = []
+
+    for pattern in _PAUSE_SIGNAL_PATTERNS:
+        match = pattern.search(normalized)
+        if match is None or _is_negated_signal(normalized, match.start()):
+            continue
+        target = _clean_lifecycle_target(match.group("target"))
+        if target:
+            candidates.append(
+                (match.start(), GoalLifecycleSignal(GoalLifecycleKind.PAUSE, target))
+            )
+
+    complete = _COMPLETE_SIGNAL_RE.search(normalized)
+    if complete is not None and not _is_negated_signal(normalized, complete.start()):
+        target = _clean_lifecycle_target(complete.group("target"))
+        # 「考完了/考砸了」本身只可能指考试目标；「完成了/结束了/搞定了」是
+        # 通用动词，没有对象时不知道指哪个目标，不能推测成唯一目标完成。
+        exam_bound = complete.group("verb").startswith("考")
+        if target or exam_bound:
+            candidates.append(
+                (
+                    complete.start(),
+                    GoalLifecycleSignal(
+                        GoalLifecycleKind.COMPLETE,
+                        target,
+                        target_implied=not target,
+                    ),
+                )
+            )
+
+    resume = _RESUME_SIGNAL_RE.search(normalized)
+    if resume is not None and not _is_negated_signal(normalized, resume.start()):
+        target = _clean_lifecycle_target(resume.group("target"))
+        candidates.append(
+            (
+                resume.start(),
+                GoalLifecycleSignal(
+                    GoalLifecycleKind.RESUME,
+                    target,
+                    target_implied=not target,
+                ),
+            )
+        )
+
+    if not candidates:
+        return None
+    return min(candidates, key=lambda entry: entry[0])[1]
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -421,6 +703,93 @@ def _is_same_turn_extraction(
     return current_user_message_id in item.source_message_ids
 
 
+#: 可靠度门禁的稳定排除原因：聊天侧据此决定是否提示「需要确认」。
+RECALL_LOW_CONFIDENCE_REASON = "可靠程度不足，暂不用于当前回答"
+
+
+def _recall_exclusion(item: AtomicProfileItem, now: datetime) -> str | None:
+    """召回前的有效性检查（工单 18）：返回排除原因或 ``None``。
+
+    已撤回/被替代、仅适用于当时那轮、目标暂停/完成、过期、可靠度不足（且
+    不是用户明确编辑）的条目一律不进入本轮切片。用户编辑的权威独立于自动
+    可靠度：用户改过的条目即使沿用了旧档位也可召回。
+    """
+
+    if item.status != AtomicProfileItemStatus.ACTIVE:
+        return "已撤回或失效，不再用于当前回答"
+    if item.fact_scope == AtomicProfileFactScope.CURRENT:
+        return "仅适用于提出时的那一轮，不作为长期信息"
+    if item.goal_state == AtomicProfileGoalState.PAUSED:
+        return "目标已暂停，不再作为当前目标使用"
+    if item.goal_state == AtomicProfileGoalState.COMPLETED:
+        return "目标已完成，不再作为当前目标使用"
+    if item.valid_until is not None and item.valid_until <= now:
+        return "已过期，不再用于当前回答"
+    if not is_recallable_confidence(item.confidence) and item.user_edited_at is None:
+        return RECALL_LOW_CONFIDENCE_REASON
+    return None
+
+
+#: 近义撤回抑制只作用于「同一关系槽、可被普通提及再次表达」的事实；单值
+#: 属性槽（年级/专业/身份）的明确变化有替代语义，不在此列。
+_SYNONYM_SCOPED_RELATIONS = frozenset(
+    {
+        AtomicProfileFactRelation.INTEREST,
+        AtomicProfileFactRelation.LEARNING,
+        AtomicProfileFactRelation.RESEARCH,
+        AtomicProfileFactRelation.GOAL,
+    }
+)
+#: 无法语义裁决时按字符重合判断「不确定近义」：达到阈值就暂缓自动写入。
+_SYNONYM_CHAR_OVERLAP = 0.5
+
+
+def _char_overlap(left: str, right: str) -> float:
+    left_chars = set(normalize_text(left).casefold())
+    right_chars = set(normalize_text(right).casefold())
+    if not left_chars or not right_chars:
+        return 0.0
+    return len(left_chars & right_chars) / min(len(left_chars), len(right_chars))
+
+
+def _is_near_synonym(left: str, right: str) -> bool:
+    """确定性近义候选判据：包含关系或字符重合达到阈值。"""
+
+    left_value = normalize_text(left).casefold()
+    right_value = normalize_text(right).casefold()
+    if not left_value or not right_value:
+        return False
+    if left_value in right_value or right_value in left_value:
+        return True
+    return _char_overlap(left_value, right_value) >= _SYNONYM_CHAR_OVERLAP
+
+
+def _is_goal_mention(left: str, right: str) -> bool:
+    """目标定位用严格判据：相等或包含，不用字符重合。
+
+    目标名常共用一个字（考研/考公/考编），按字符重合定位会把「暂时不考公」
+    误伤成「考研」，因此目标只承认相等与包含。
+    """
+
+    left_value = normalize_text(left).casefold()
+    right_value = normalize_text(right).casefold()
+    if not left_value or not right_value:
+        return False
+    return left_value == right_value or left_value in right_value or right_value in left_value
+
+
+class ProfileRevocationListener(Protocol):
+    """撤回传播的消费方接缝（工单 18）。
+
+    删除/忘掉/纠正提交后由原子画像服务调用；实现方按来源消息定位会话，
+    失效依赖该事实的摘要等派生物。监听方失败不影响用户可见的撤回结果。
+    """
+
+    def on_profile_revocation(
+        self, account_id: str, *, message_ids: list[str], reason: str
+    ) -> None: ...
+
+
 def _item_from_record(
     account_id: str,
     record: FourDimensionProfileRecord,
@@ -433,6 +802,9 @@ def _item_from_record(
     # 旧维度不证明具体关系：裸值按陈述迁入，不能猜成喜欢或正在学习。
     identity = parse_fact_identity(text)
     source = evidence_message_id or record.evidence_message_id
+    # 迁移沿用旧记录的首次稳定时间作相对时间的来源锚（工单 18）：一年前的
+    # 「下周考试」迁入时即解析为当时的下周，不再按迁移当天重解释。
+    validity = parse_validity_window(text, record.first_stable_recorded_at)
     return AtomicProfileItem(
         profile_item_id=_new_item_id(),
         owner_account_id=account_id,
@@ -444,6 +816,10 @@ def _item_from_record(
         fact_scope=identity.scope,
         fact_key=fact_identity_key(account_id, identity),
         evidence_quote=record.evidence_quote,
+        valid_from=validity.valid_from if validity else None,
+        valid_until=validity.valid_until if validity else None,
+        validity_anchor_at=record.first_stable_recorded_at if validity else None,
+        validity_phrase=validity.phrase if validity else None,
         source_record_id=record.record_id,
         source_message_ids=[source] if source else [],
         topic_hint=record.dimension.value,
@@ -479,6 +855,21 @@ def _apply_fact_identity(
     item.fact_object = identity.object
     item.fact_scope = identity.scope
     item.fact_key = fact_identity_key(account_id, identity)
+
+
+def _apply_validity(
+    item: AtomicProfileItem,
+    window: ValidityWindow | None,
+    anchor: datetime,
+) -> None:
+    """把新解析出的期限写到条目上；没有新时间表达时保留原期限。"""
+
+    if window is None:
+        return
+    item.valid_from = window.valid_from
+    item.valid_until = window.valid_until
+    item.validity_anchor_at = anchor
+    item.validity_phrase = window.phrase
 
 
 def _identity_for_item(item: AtomicProfileItem) -> AtomicProfileFactIdentity:
@@ -773,6 +1164,31 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 if row["evidence_quote"] is not None  # type: ignore[index]
                 else None
             ),
+            valid_from=(
+                SqliteAtomicProfileRepository._dt(str(row["valid_from"]))  # type: ignore[index]
+                if row["valid_from"] is not None  # type: ignore[index]
+                else None
+            ),
+            valid_until=(
+                SqliteAtomicProfileRepository._dt(str(row["valid_until"]))  # type: ignore[index]
+                if row["valid_until"] is not None  # type: ignore[index]
+                else None
+            ),
+            validity_anchor_at=(
+                SqliteAtomicProfileRepository._dt(
+                    str(row["validity_anchor_at"])  # type: ignore[index]
+                )
+                if row["validity_anchor_at"] is not None  # type: ignore[index]
+                else None
+            ),
+            validity_phrase=(
+                str(row["validity_phrase"])  # type: ignore[index]
+                if row["validity_phrase"] is not None  # type: ignore[index]
+                else None
+            ),
+            goal_state=AtomicProfileGoalState(
+                str(row["goal_state"])  # type: ignore[index]
+            ),
             supersedes_id=(
                 str(row["supersedes_id"])  # type: ignore[index]
                 if row["supersedes_id"] is not None  # type: ignore[index]
@@ -824,15 +1240,22 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "INSERT INTO profile_items ("
             "profile_item_id, account_id, text, identity_key, fact_subject, "
             "fact_relation, fact_object, fact_scope, fact_key, evidence_quote, "
+            "valid_from, valid_until, validity_anchor_at, validity_phrase, goal_state, "
             "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, topic_hint, status, write_origin, confidence, "
             "version, created_at, updated_at, user_edited_at, migration_run_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            "?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
             "fact_scope = excluded.fact_scope, fact_key = excluded.fact_key, "
             "evidence_quote = excluded.evidence_quote, "
+            "valid_from = excluded.valid_from, "
+            "valid_until = excluded.valid_until, "
+            "validity_anchor_at = excluded.validity_anchor_at, "
+            "validity_phrase = excluded.validity_phrase, "
+            "goal_state = excluded.goal_state, "
             "supersedes_id = excluded.supersedes_id, "
             "superseded_by_id = excluded.superseded_by_id, "
             "source_record_id = excluded.source_record_id, "
@@ -854,6 +1277,11 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 item.fact_scope.value,
                 item.fact_key,
                 item.evidence_quote,
+                self._iso(item.valid_from) if item.valid_from else None,
+                self._iso(item.valid_until) if item.valid_until else None,
+                self._iso(item.validity_anchor_at) if item.validity_anchor_at else None,
+                item.validity_phrase,
+                item.goal_state.value,
                 item.supersedes_id,
                 item.superseded_by_id,
                 item.source_record_id,
@@ -1112,6 +1540,9 @@ class AtomicProfileService:
     ) -> None:
         self._four_dimensions = four_dimensions
         self._repository = repository
+        # 改进工单 18：撤回传播的消费方（摘要等派生物失效）在组合根注入；
+        # 未注入时撤回本身照常成立，只是没有下游通知。
+        self._revocation_listener: ProfileRevocationListener | None = None
         # Issue 05：用户权威操作的跨记录顺序（墓碑先落地、再撤回来源）由
         # 提交 module 归属；自动提取编排器注入同一个实例时，两侧共用同一
         # 份提交规则。未注入时自建只挂载跨记录两方的实例。
@@ -1119,6 +1550,43 @@ class AtomicProfileService:
             records=four_dimensions,
             items=self,
         )
+
+    def set_revocation_listener(
+        self, listener: ProfileRevocationListener | None
+    ) -> None:
+        """挂载/替换撤回传播监听（组合根在摘要服务就绪后注入）。"""
+
+        self._revocation_listener = listener
+
+    @staticmethod
+    def _revocation_version_for(items: Iterable[AtomicProfileItem]) -> str:
+        """由一组条目折算撤回版本；编译切片时与切片共用同一份快照。"""
+
+        pairs = [
+            (item.profile_item_id, f"{item.version}:{item.status.value}")
+            for item in items
+        ]
+        return _digest(pairs)[:32]
+
+    def revocation_version(self, account_id: str) -> str:
+        """账户级撤回版本：任何条目写入/撤回/替代都会改变它。
+
+        编译切片时捕获该值；后续调用或复用前重新核对，撤回后旧切片立即
+        失效。版本由持久条目确定性折算，不新增时钟或计数器状态。
+        """
+
+        return self._revocation_version_for(
+            self._repository.list_items(account_id, include_withdrawn=True)
+        )
+
+    def is_slice_current(
+        self, account_id: str, revocation_version: str | None
+    ) -> bool:
+        """切片编译时捕获的撤回版本是否仍然一致；空值视为无版本约束。"""
+
+        if revocation_version is None:
+            return True
+        return self.revocation_version(account_id) == revocation_version
 
     def transaction(self) -> AbstractContextManager[None]:
         """为批量提交暴露原子仓库的事务边界。
@@ -1156,6 +1624,12 @@ class AtomicProfileService:
             evidence_quote=item.evidence_quote,
             write_origin=item.write_origin,
             supersedes_id=item.supersedes_id,
+            # 工单 18：页面按需展示明示期限与目标状态（长期偏好两项都为空/
+            # active，不因没有 TTL 被误读为已过期）。
+            valid_from=item.valid_from,
+            valid_until=item.valid_until,
+            validity_phrase=item.validity_phrase,
+            goal_state=item.goal_state,
         )
 
     # -- 用户操作 ---------------------------------------------------------
@@ -1181,6 +1655,7 @@ class AtomicProfileService:
             previous_key = item.identity_key
             previous_text = item.text
             previous_fact_key = item.fact_key
+            previous_sources = list(item.source_message_ids)
             identity = parse_fact_identity(
                 text, dimension=_dimension_hint(item.topic_hint)
             )
@@ -1203,6 +1678,7 @@ class AtomicProfileService:
                     raise AtomicProfileError(
                         "已存在内容相同的信息，请先删除其中一条。"
                     )
+            now = _now()
             item.text = text
             item.identity_key = key
             _apply_fact_identity(item, identity, account_id)
@@ -1210,11 +1686,20 @@ class AtomicProfileService:
                 # 用户页面编辑是独立主动来源，不是聊天原话证据：换值后不保留
                 # 旧值的原话引用，避免把用户新写的正文伪称为聊天里说过。
                 item.evidence_quote = None
+            # 用户编辑里明示的新期限以本次编辑时间为锚更新；没有时间表达时
+            # 保留原期限（用户改措辞不等于取消期限，也不自动续期）。
+            window = parse_validity_window(text, now)
+            if window is not None:
+                item.valid_from = window.valid_from
+                item.valid_until = window.valid_until
+                item.validity_anchor_at = now
+                item.validity_phrase = window.phrase
             item.version += 1
-            item.updated_at = _now()
-            item.user_edited_at = item.updated_at
+            item.updated_at = now
+            item.user_edited_at = now
             item.write_origin = AtomicProfileWriteOrigin.USER
             saved = self._repository.save_item(item)
+            revoked: list[AtomicProfileItem] = []
             if key != previous_key or new_fact_key != previous_fact_key:
                 # 旧正文转为抑制键：用户改掉的值不会因为旧消息或旧记录再次
                 # 被抽取而作为新条目回来（用户编辑优先于自动提取）。旧事实
@@ -1226,7 +1711,14 @@ class AtomicProfileService:
                     topic_hint=item.topic_hint,
                     suppress_fact_identity=new_fact_key != previous_fact_key,
                 )
-            return saved
+                revoked = [
+                    saved.model_copy(update={"source_message_ids": previous_sources})
+                ]
+        if revoked:
+            # 用户纠正改变事实身份：依赖旧值的切片与摘要按依赖失效。通知在
+            # 事务提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
+            self._notify_revocation(account_id, revoked, reason="edited")
+        return saved
 
     def delete_item(self, account_id: str, item_id: str, version: int) -> None:
         """删除条目：条目先转墓碑，再撤回底层记录。
@@ -1244,6 +1736,9 @@ class AtomicProfileService:
             if version != item.version:
                 raise AtomicProfileError("版本冲突，请刷新后重试。")
             self._write_tombstone(item)
+        # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
+        # 上下文无法收回，通知只阻止后续调用继续使用）。
+        self._notify_revocation(account_id, [item], reason="deleted")
         # 撤回在墓碑边界之外逐条执行（见提交 module）；失败如实上抛，
         # 已提交的墓碑保持有效。
         outcome = self.withdraw_item_sources(account_id, [item])[0]
@@ -1258,18 +1753,39 @@ class AtomicProfileService:
         text: str,
         *,
         source_message_id: str | None = None,
+        source_at: datetime | None = None,
     ) -> AtomicProfileItem:
-        """用户明确要求记住：本轮立即成为用户权威条目，并解除同键墓碑。"""
+        """用户明确要求记住：本轮立即成为用户权威条目，并解除同键墓碑。
+
+        ``source_at`` 是来源消息时间：相对时间（如「下周」）以它为锚解析成
+        绝对有效期；未提供时用当前时间，绝不按以后的使用当天重解释。
+        """
 
         normalized = normalize_text(text)
         if not normalized or len(normalized) > _MAX_ITEM_TEXT_LENGTH:
             raise AtomicProfileError("画像内容不合法。")
+        now = _now()
+        anchor = _as_aware(source_at) if source_at is not None else now
+        # 明确的暂停/完成/恢复信号先改变现有目标的生命周期；没有可对账的
+        # 目标时按普通事实保存（用户说的是明确记住，不丢弃内容）。
+        signal = parse_goal_lifecycle_signal(normalized)
+        if signal is not None:
+            applied = self._apply_goal_lifecycle(
+                account_id,
+                signal,
+                text=normalized,
+                source_at=anchor,
+                source_message_id=source_message_id,
+                now=now,
+            )
+            if applied is not None:
+                return applied[0]
         record = self._record_for_user_text(account_id, normalized)
         dimension = record.dimension if record is not None else None
         identity = parse_fact_identity(normalized, dimension=dimension)
         key = identity_key(account_id, normalized)
         fact_key = fact_identity_key(account_id, identity)
-        now = _now()
+        window = parse_validity_window(normalized, anchor)
         with self._repository.transaction():
             existing = self._repository.find_item_by_identity(account_id, key)
             if existing is None:
@@ -1284,57 +1800,78 @@ class AtomicProfileService:
                         or source_message_id in existing.source_message_ids
                     )
                 ):
-                    self._reconcile_explicit_change(account_id, normalized, existing)
-                    return existing
-                if existing.text != normalized:
-                    # 用户写入新正文：旧原话不再对应当前事实，不伪称来源。
-                    existing.evidence_quote = None
-                existing.text = normalized
-                existing.identity_key = key
-                existing.status = AtomicProfileItemStatus.ACTIVE
-                existing.superseded_by_id = None
-                _apply_fact_identity(existing, identity, account_id)
-                existing.write_origin = AtomicProfileWriteOrigin.USER
-                existing.confidence = FourDimensionConfidence.HIGH
-                existing.user_edited_at = now
-                existing.updated_at = now
-                existing.version += 1
-                existing.migration_run_id = None
-                if source_message_id is not None:
-                    existing.source_message_ids = list(
-                        dict.fromkeys([*existing.source_message_ids, source_message_id])
+                    superseded_items = self._reconcile_explicit_change(
+                        account_id, normalized, existing
                     )
-                if existing.source_record_id is None and record is not None:
-                    existing.source_record_id = record.record_id
-                    existing.topic_hint = record.dimension.value
-                saved = self._repository.save_item(existing)
-                self._reconcile_explicit_change(account_id, normalized, saved)
-                return saved
-            item = AtomicProfileItem(
-                profile_item_id=_new_item_id(),
-                owner_account_id=account_id,
-                text=normalized,
-                identity_key=key,
-                fact_subject=identity.subject,
-                fact_relation=identity.relation,
-                fact_object=identity.object,
-                fact_scope=identity.scope,
-                fact_key=fact_key,
-                source_record_id=record.record_id if record is not None else None,
-                source_message_ids=[source_message_id] if source_message_id else [],
-                topic_hint=record.dimension.value if record is not None else None,
-                status=AtomicProfileItemStatus.ACTIVE,
-                write_origin=AtomicProfileWriteOrigin.USER,
-                confidence=FourDimensionConfidence.HIGH,
-                version=1,
-                created_at=now,
-                updated_at=now,
-                user_edited_at=now,
-                migration_run_id=None,
+                    saved = existing
+                else:
+                    if existing.text != normalized:
+                        # 用户写入新正文：旧原话不再对应当前事实，不伪称来源。
+                        existing.evidence_quote = None
+                    existing.text = normalized
+                    existing.identity_key = key
+                    existing.status = AtomicProfileItemStatus.ACTIVE
+                    existing.superseded_by_id = None
+                    existing.goal_state = AtomicProfileGoalState.ACTIVE
+                    _apply_fact_identity(existing, identity, account_id)
+                    _apply_validity(existing, window, anchor)
+                    existing.write_origin = AtomicProfileWriteOrigin.USER
+                    existing.confidence = FourDimensionConfidence.HIGH
+                    existing.user_edited_at = now
+                    existing.updated_at = now
+                    existing.version += 1
+                    existing.migration_run_id = None
+                    if source_message_id is not None:
+                        existing.source_message_ids = list(
+                            dict.fromkeys(
+                                [*existing.source_message_ids, source_message_id]
+                            )
+                        )
+                    if existing.source_record_id is None and record is not None:
+                        existing.source_record_id = record.record_id
+                        existing.topic_hint = record.dimension.value
+                    saved = self._repository.save_item(existing)
+                    superseded_items = self._reconcile_explicit_change(
+                        account_id, normalized, saved
+                    )
+            else:
+                item = AtomicProfileItem(
+                    profile_item_id=_new_item_id(),
+                    owner_account_id=account_id,
+                    text=normalized,
+                    identity_key=key,
+                    fact_subject=identity.subject,
+                    fact_relation=identity.relation,
+                    fact_object=identity.object,
+                    fact_scope=identity.scope,
+                    fact_key=fact_key,
+                    valid_from=window.valid_from if window else None,
+                    valid_until=window.valid_until if window else None,
+                    validity_anchor_at=anchor if window else None,
+                    validity_phrase=window.phrase if window else None,
+                    source_record_id=record.record_id if record is not None else None,
+                    source_message_ids=[source_message_id] if source_message_id else [],
+                    topic_hint=record.dimension.value if record is not None else None,
+                    status=AtomicProfileItemStatus.ACTIVE,
+                    write_origin=AtomicProfileWriteOrigin.USER,
+                    confidence=FourDimensionConfidence.HIGH,
+                    version=1,
+                    created_at=now,
+                    updated_at=now,
+                    user_edited_at=now,
+                    migration_run_id=None,
+                )
+                saved = self._repository.save_item(item)
+                superseded_items = self._reconcile_explicit_change(
+                    account_id, normalized, saved
+                )
+        if superseded_items:
+            # 明确收回/替代也是撤回：依赖旧事实的切片与摘要按依赖失效。通知
+            # 在事务提交后发出——摘要失效自有事务，事务内通知会嵌套失败。
+            self._notify_revocation(
+                account_id, superseded_items, reason="superseded"
             )
-            saved = self._repository.save_item(item)
-            self._reconcile_explicit_change(account_id, normalized, saved)
-            return saved
+        return saved
 
     def forget(self, account_id: str, target: str) -> AtomicProfileMemoryResult:
         """用户明确要求忘掉：删除命中的活动条目；没找到就如实返回未完成。"""
@@ -1372,6 +1909,9 @@ class AtomicProfileService:
         with self._profile_commit.transaction():
             for item in matched:
                 self._write_tombstone(item)
+        # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
+        # 上下文无法收回，通知只阻止后续调用继续使用）。
+        self._notify_revocation(account_id, matched, reason="forgotten")
         # 墓碑已提交：用户可见的删除在本轮成立。来源撤回逐条隔离——部分
         # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
         # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
@@ -1381,6 +1921,138 @@ class AtomicProfileService:
             status=AtomicProfileMemoryStatus.FORGOTTEN,
             matched_count=len(matched),
         )
+
+    # -- 目标生命周期（工单 18） ------------------------------------------
+
+    def apply_lifecycle_signal(
+        self,
+        account_id: str,
+        text: str,
+        *,
+        source_message_id: str | None = None,
+        source_at: datetime | None = None,
+    ) -> GoalLifecycleOutcome | None:
+        """按用户明确信号暂停/完成/恢复目标；没有信号或没有可对账目标时为空。"""
+
+        normalized = normalize_text(text)
+        if not normalized:
+            return None
+        signal = parse_goal_lifecycle_signal(normalized)
+        if signal is None:
+            return None
+        now = _now()
+        anchor = _as_aware(source_at) if source_at is not None else now
+        applied = self._apply_goal_lifecycle(
+            account_id,
+            signal,
+            text=normalized,
+            source_at=anchor,
+            source_message_id=source_message_id,
+            now=now,
+        )
+        if applied is None:
+            return None
+        return GoalLifecycleOutcome(kind=signal.kind, matched_count=len(applied))
+
+    def _apply_goal_lifecycle(
+        self,
+        account_id: str,
+        signal: GoalLifecycleSignal,
+        *,
+        text: str,
+        source_at: datetime,
+        source_message_id: str | None,
+        now: datetime,
+    ) -> list[AtomicProfileItem] | None:
+        """把一条生命周期信号落到对账得到的目标条目上。"""
+
+        goals = [
+            item
+            for item in self._repository.list_items(account_id)
+            if item.fact_relation == AtomicProfileFactRelation.GOAL
+        ]
+        matched = self._match_goal_targets(goals, signal)
+        if not matched:
+            return None
+        window = parse_validity_window(text, source_at)
+        changed: list[AtomicProfileItem] = []
+        with self._repository.transaction():
+            for item in matched:
+                if signal.kind is GoalLifecycleKind.PAUSE:
+                    if item.goal_state == AtomicProfileGoalState.COMPLETED:
+                        continue
+                    item.goal_state = AtomicProfileGoalState.PAUSED
+                elif signal.kind is GoalLifecycleKind.COMPLETE:
+                    item.goal_state = AtomicProfileGoalState.COMPLETED
+                else:
+                    # 恢复解除暂停；已过期目标不会仅凭「继续」续期——期限只有
+                    # 新日期才更新，过期条目仍被召回门以「已过期」排除。
+                    item.goal_state = AtomicProfileGoalState.ACTIVE
+                    _apply_validity(item, window, source_at)
+                item.updated_at = now
+                item.version += 1
+                if source_message_id is not None:
+                    item.source_message_ids = list(
+                        dict.fromkeys([*item.source_message_ids, source_message_id])
+                    )
+                self._repository.save_item(item)
+                changed.append(item)
+        return changed or None
+
+    @staticmethod
+    def _match_goal_targets(
+        goals: list[AtomicProfileItem], signal: GoalLifecycleSignal
+    ) -> list[AtomicProfileItem]:
+        """按对象定位目标；信号没有对象时只处理唯一的候选，避免误改。"""
+
+        if signal.target:
+            return [
+                item
+                for item in goals
+                if _is_goal_mention(item.fact_object or item.text, signal.target)
+            ]
+        if signal.kind is GoalLifecycleKind.RESUME:
+            paused = [
+                item
+                for item in goals
+                if item.goal_state == AtomicProfileGoalState.PAUSED
+            ]
+            if len(paused) == 1:
+                return paused
+            # 「到期 → 继续」：没有暂停中的目标时，唯一的活动目标可作为
+            # 恢复对象，但不会延长已过的期限。
+            active = [
+                item
+                for item in goals
+                if item.goal_state == AtomicProfileGoalState.ACTIVE
+            ]
+            return active if len(active) == 1 else []
+        active = [
+            item for item in goals if item.goal_state == AtomicProfileGoalState.ACTIVE
+        ]
+        return active if len(active) == 1 else []
+
+    def tombstone_audit(self, account_id: str) -> list[AtomicProfileTombstoneEntry]:
+        """墓碑/被替代版本的审计投影（不含正文；账户作用域）。"""
+
+        entries: list[AtomicProfileTombstoneEntry] = []
+        for item in self._repository.list_items(account_id, include_withdrawn=True):
+            if item.status == AtomicProfileItemStatus.ACTIVE:
+                continue
+            entries.append(
+                AtomicProfileTombstoneEntry(
+                    profile_item_id=item.profile_item_id,
+                    status=item.status,
+                    fact_relation=item.fact_relation,
+                    fact_scope=item.fact_scope,
+                    has_fact_suppression=bool(item.fact_key),
+                    superseded_by_id=item.superseded_by_id,
+                    source_message_ids=list(item.source_message_ids),
+                    updated_at=item.updated_at,
+                )
+            )
+        entries.sort(key=lambda entry: entry.updated_at, reverse=True)
+        return entries
 
     # -- 来源撤回与恢复 ---------------------------------------------------
 
@@ -1431,6 +2103,7 @@ class AtomicProfileService:
         *,
         evidence_message_id: str | None = None,
         fact_text: str | None = None,
+        source_at: datetime | None = None,
     ) -> AtomicProfileItem | None:
         """把一条四维记录镜像成原子条目（事实身份写入）。
 
@@ -1442,16 +2115,52 @@ class AtomicProfileService:
         ``fact_text`` 是抽取侧提供的完整事实正文（关系会从 ``record.content``
         中丢失时使用，如「喜欢 Python」与「正在学习 Python」）；缺失时沿用
         来源记录正文，绝不伪造原话。
+
+        工单 18 补充：明确的生命周期信号（「暂时不考研」「考完了」「继续准备」）
+        只改变已对账目标的状态，不写成新事实；与已撤回事实近义、身份又无法
+        确定的自动新说法暂缓写入（明确重新记住走 :meth:`remember`）；明示
+        时间按 ``source_at`` 来源消息时间锚解析为绝对有效期。
         """
 
         text = normalize_text(fact_text or record.content)
         if not text or len(text) > _MAX_ITEM_TEXT_LENGTH:
             return None
+        now = _now()
+        anchor = _as_aware(source_at) if source_at is not None else now
+        signal = parse_goal_lifecycle_signal(text)
+        if signal is not None:
+            applied = self._apply_goal_lifecycle(
+                account_id,
+                signal,
+                text=text,
+                source_at=anchor,
+                source_message_id=evidence_message_id,
+                now=now,
+            )
+            if applied:
+                return applied[0]
+            # 没有可对账目标：不作为生命周期信号消化，按普通事实继续写入
+            # （「作业搞定了」是状态描述，不是对既有目标的完成声明）。
         identity = parse_fact_identity(text, dimension=record.dimension)
         key = identity_key(account_id, text)
         fact_key = fact_identity_key(account_id, identity)
         evidence_quote = normalize_text(record.evidence_quote or "") or None
-        now = _now()
+        window = parse_validity_window(text, anchor)
+        if not self._has_active_identity(account_id, fact_key, key):
+            _suppressed = self._find_related_suppression(account_id, identity)
+            if _suppressed is not None:
+                # 不确定近义候选暂缓写入和长期使用（R06）：只留原运行审计，
+                # 不把该值作为长期事实写回；明确重新记住才恢复指定范围。
+                logger.info(
+                    "atomic_profile_near_synonym_deferred",
+                    extra={
+                        "account_id": account_id,
+                        "source_record_id": record.record_id,
+                        "suppressed_item_id": _suppressed.profile_item_id,
+                    },
+                )
+                return None
+        superseded_items: list[AtomicProfileItem] = []
         with self._repository.transaction():
             predecessor: AtomicProfileItem | None = None
             by_source = self._repository.find_item_by_source(account_id, record.record_id)
@@ -1470,6 +2179,8 @@ class AtomicProfileService:
                             identity=identity,
                             evidence_message_id=evidence_message_id,
                             evidence_quote=evidence_quote,
+                            validity=window,
+                            anchor=anchor,
                             now=now,
                         )
                     )
@@ -1494,6 +2205,8 @@ class AtomicProfileService:
                     identity=identity,
                     evidence_message_id=evidence_message_id,
                     evidence_quote=evidence_quote,
+                    validity=window,
+                    anchor=anchor,
                     now=now,
                 )
                 if predecessor is not None and merged.supersedes_id is None:
@@ -1520,6 +2233,10 @@ class AtomicProfileService:
                 fact_key=fact_key,
                 # 原话只来自本次来源记录：旧版本的原话不对应新值，绝不继承。
                 evidence_quote=evidence_quote,
+                valid_from=window.valid_from if window else None,
+                valid_until=window.valid_until if window else None,
+                validity_anchor_at=anchor if window else None,
+                validity_phrase=window.phrase if window else None,
                 supersedes_id=(
                     predecessor.profile_item_id if predecessor is not None else None
                 ),
@@ -1539,8 +2256,16 @@ class AtomicProfileService:
             )
             item.source_message_ids = list(dict.fromkeys(item.source_message_ids))
             saved = self._repository.save_item(item)
-            self._reconcile_explicit_change(account_id, text, saved)
-            return saved
+            superseded_items = self._reconcile_explicit_change(
+                account_id, text, saved
+            )
+        if superseded_items:
+            # 自动写入的明确收回/替代同样是撤回：依赖失效在事务提交后发出，
+            # 避免摘要失效各自的事务与本事务嵌套。
+            self._notify_revocation(
+                account_id, superseded_items, reason="superseded"
+            )
+        return saved
 
     # -- 切片 -------------------------------------------------------------
 
@@ -1552,6 +2277,7 @@ class AtomicProfileService:
         current_question: str | None = None,
         project_id: str | None = None,
         current_user_message_id: str | None = None,
+        now: datetime | None = None,
     ) -> ProfileSlice:
         """只把当前任务必要的少量条目编译成本轮切片。
 
@@ -1559,14 +2285,30 @@ class AtomicProfileService:
         出的条目下一轮才生效（设计口径「普通异步提取从下一轮生效」），因此带
         着本轮证据的自动条目这一轮先排除；用户明确「记住」的条目不受影响，
         必须本轮就能用。
+
+        工单 18：召回前先过有效性门——已撤回/被替代、仅适用于当时那轮、
+        目标暂停/完成、过期、可靠度不足（且非用户编辑）的条目只记录排除
+        原因，不进入本轮上下文；``now`` 供测试与控制面提供可控时钟。
         """
 
+        moment = now or _now()
+        # 撤回版本与切片条目必须取自同一快照：若先列条目再另查版本，「列条目 →
+        # 查版本」之间发生的撤回会让版本看似已更新，而切片仍是旧条目，运行中
+        # 撤回就拦不住。同一快照保证写入要么已反映、要么使版本落后而核对失败。
+        snapshot = self._repository.list_items(account_id, include_withdrawn=True)
         related: list[AtomicProfileItem] = []
         unrelated: list[AtomicProfileItem] = []
         same_turn: list[AtomicProfileItem] = []
-        for item in self.list_items(account_id):
+        excluded: list[tuple[AtomicProfileItem, str]] = []
+        for item in snapshot:
+            if item.status != AtomicProfileItemStatus.ACTIVE:
+                continue
             if _is_same_turn_extraction(item, current_user_message_id):
                 same_turn.append(item)
+                continue
+            reason = _recall_exclusion(item, moment)
+            if reason is not None:
+                excluded.append((item, reason))
                 continue
             (
                 related
@@ -1586,6 +2328,7 @@ class AtomicProfileService:
                 value_or_rule=item.text,
                 inclusion_reason="与你当前任务相关的已记住信息",
                 sensitivity_class=_sensitivity_for(item),
+                expires_at=item.valid_until,
             )
             for item in related[:MAX_SLICE_ITEMS]
         ]
@@ -1594,10 +2337,19 @@ class AtomicProfileService:
                 assertion_id=item.profile_item_id,
                 dimension="",
                 value_or_rule=item.text,
+                exclusion_reason=reason,
+            )
+            for item, reason in excluded
+        ]
+        unused.extend(
+            UnusedSliceItem(
+                assertion_id=item.profile_item_id,
+                dimension="",
+                value_or_rule=item.text,
                 exclusion_reason="与当前问题无关",
             )
             for item in unrelated
-        ]
+        )
         unused.extend(
             UnusedSliceItem(
                 assertion_id=item.profile_item_id,
@@ -1629,8 +2381,9 @@ class AtomicProfileService:
                 ProfileSensitivityClass.LEARNING,
             ],
             compiled_policy_version=ATOMIC_PROFILE_MIGRATION_VERSION,
+            revocation_version=self._revocation_version_for(snapshot),
             length_budget=MAX_SLICE_ITEMS,
-            compiled_at=_now(),
+            compiled_at=moment,
         )
 
     # -- 迁移 -------------------------------------------------------------
@@ -1677,8 +2430,18 @@ class AtomicProfileService:
                 failing_record_id = None
                 # 新形态并存、逐步迁移、最后收敛：旧版本已写入的原子条目在
                 # 本批次补齐事实身份（不伪造原话，墓碑无正文则保持文本键），
+                # 并按自身创建时间锚补齐明示期限（不重解释、不编造日期），
                 # 重复执行幂等；补齐失败与逐条迁移同受外层事务保护。
                 backfilled = self._backfill_item_identities(account_id)
+                validity_backfilled = self._backfill_item_validity(account_id)
+                if validity_backfilled:
+                    logger.info(
+                        "atomic_profile_validity_backfilled",
+                        extra={
+                            "account_id": account_id,
+                            "count": validity_backfilled,
+                        },
+                    )
                 report = AtomicProfileMigrationReport(
                     run_id=run_id,
                     owner_account_id=account_id,
@@ -1850,6 +2613,31 @@ class AtomicProfileService:
             count += 1
         return count
 
+    def _backfill_item_validity(self, account_id: str) -> int:
+        """为既有条目按自身创建时间锚补齐期限；幂等，不重解释、不编造日期。
+
+        升级前写入的「下周考试」等条目没有绝对期限。本方法只在正文确有时
+        间表达时，用条目创建时间（即当时的来源锚）解析一次并落库；此后按绝
+        对区间判定，不再按使用当天重解释。无时间表达的长期偏好保持无期限。
+        """
+
+        count = 0
+        for item in self._repository.list_items(account_id, include_withdrawn=True):
+            if item.validity_anchor_at is not None or item.valid_until is not None:
+                continue
+            if not normalize_text(item.text):
+                continue
+            window = parse_validity_window(item.text, item.created_at)
+            if window is None:
+                continue
+            item.valid_from = window.valid_from
+            item.valid_until = window.valid_until
+            item.validity_anchor_at = item.created_at
+            item.validity_phrase = window.phrase
+            self._repository.save_item(item)
+            count += 1
+        return count
+
     def rollback_migration(
         self, account_id: str, run_id: str
     ) -> AtomicProfileMigrationReport:
@@ -1965,19 +2753,23 @@ class AtomicProfileService:
 
     def _reconcile_explicit_change(
         self, account_id: str, text: str, item: AtomicProfileItem
-    ) -> list[str]:
+    ) -> list[AtomicProfileItem]:
         """明确变更的对账：单值属性槽换值与「明确收回 + 转向」只替代对应事实。
 
-        返回被替代的旧条目标识。普通追加（不同对象、不同目标）不经过这里，
-        因此「新增六级不覆盖考研」。被替代版本保留在仓库中，供对账与审计。
+        返回被替代的旧条目（含正文与来源），供调用方在事务提交后发出撤回
+        通知——通知消费方各自持有事务，在事务内发出会嵌套失败。普通追加
+        （不同对象、不同目标）不经过这里，因此「新增六级不覆盖考研」。被
+        替代版本保留在仓库中，供对账与审计。
         """
 
         identity = _identity_for_item(item)
         superseded: list[str] = []
+        superseded_items: list[AtomicProfileItem] = []
         if identity.relation.is_single_valued:
             for old in self._active_slot_conflicts(account_id, item, identity):
                 self._supersede_item(old, item.profile_item_id)
                 superseded.append(old.profile_item_id)
+                superseded_items.append(old)
         negated, _replacement = parse_explicit_change(text)
         if negated:
             # 明确收回（可带转向）：只替代对象完全一致的旧事实。用精确相等而
@@ -1987,9 +2779,9 @@ class AtomicProfileService:
             targets = {
                 fact_identity_key(
                     account_id,
-                    parse_fact_identity(value, dimension=FourDimension.STAGE_GOAL).model_copy(
-                        update={"scope": identity.scope}
-                    ),
+                    parse_fact_identity(
+                        value, dimension=FourDimension.STAGE_GOAL
+                    ).model_copy(update={"scope": identity.scope}),
                 )
                 for value in negated
                 if value
@@ -2000,10 +2792,11 @@ class AtomicProfileService:
                 if old.fact_key and old.fact_key in targets:
                     self._supersede_item(old, item.profile_item_id)
                     superseded.append(old.profile_item_id)
+                    superseded_items.append(old)
         if superseded and item.supersedes_id is None:
             item.supersedes_id = superseded[0]
             self._repository.save_item(item)
-        return superseded
+        return superseded_items
 
     def _active_slot_conflicts(
         self,
@@ -2032,9 +2825,15 @@ class AtomicProfileService:
         identity: AtomicProfileFactIdentity | None = None,
         evidence_message_id: str | None,
         evidence_quote: str | None = None,
+        validity: ValidityWindow | None = None,
+        anchor: datetime | None = None,
         now: datetime,
     ) -> AtomicProfileItem:
-        """同一事实再次出现：补充来源、证据与把握度，不产生副本。"""
+        """同一事实再次出现：补充来源、证据与把握度，不产生副本。
+
+        生命周期状态与旧期限不因普通补证据被重置；只有本次原文明示新期限
+        时才按新锚更新。
+        """
 
         resolved_text = normalize_text(text or record.content)
         resolved_identity = identity or parse_fact_identity(
@@ -2051,6 +2850,8 @@ class AtomicProfileService:
         _apply_fact_identity(item, resolved_identity, item.owner_account_id)
         if evidence_quote:
             item.evidence_quote = evidence_quote
+        if validity is not None:
+            _apply_validity(item, validity, anchor or now)
         item.version += 1
         item.updated_at = now
         if is_recallable_confidence(record.confidence) and confidence_rank(
@@ -2058,6 +2859,86 @@ class AtomicProfileService:
         ) > confidence_rank(item.confidence):
             item.confidence = record.confidence
         return item
+
+    def _has_active_identity(
+        self, account_id: str, fact_key: str, text_key: str
+    ) -> bool:
+        """账户下是否已有同事实身份或同正文的活动条目（决定是否新建事实）。"""
+
+        fact_hit = self._repository.find_item_by_fact_key(account_id, fact_key)
+        if fact_hit is not None and fact_hit.status == AtomicProfileItemStatus.ACTIVE:
+            return True
+        text_hit = self._repository.find_item_by_identity(account_id, text_key)
+        return text_hit is not None and text_hit.status == AtomicProfileItemStatus.ACTIVE
+
+    def _find_related_suppression(
+        self, account_id: str, identity: AtomicProfileFactIdentity
+    ) -> AtomicProfileItem | None:
+        """找同一关系/范围内的近义撤回墓碑（不确定身份不得自动恢复）。"""
+
+        if identity.relation not in _SYNONYM_SCOPED_RELATIONS:
+            return None
+        for item in self._repository.list_items(account_id, include_withdrawn=True):
+            if item.status != AtomicProfileItemStatus.WITHDRAWN:
+                continue
+            if (
+                item.fact_subject != identity.subject
+                or item.fact_relation != identity.relation
+                or item.fact_scope != identity.scope
+            ):
+                continue
+            if not item.fact_object:
+                continue
+            if item.fact_object.casefold() == identity.object.casefold():
+                continue
+            if identity.relation is AtomicProfileFactRelation.GOAL:
+                # 目标只承认相等/包含：考研与考公共用一个字，不是近义替换。
+                matched = _is_goal_mention(item.fact_object, identity.object)
+            else:
+                matched = _is_near_synonym(item.fact_object, identity.object)
+            if matched:
+                return item
+        return None
+
+    def _notify_revocation(
+        self,
+        account_id: str,
+        items: Iterable[AtomicProfileItem],
+        *,
+        reason: str,
+    ) -> None:
+        """撤回提交后通知消费方（摘要等派生依据失效）；失败不回收撤回结果。
+
+        已发送给模型的上下文无法收回：通知只用于阻止后续调用继续使用旧
+        依据，不宣称物理删除；没有来源消息或没有挂载监听时静默跳过。
+        """
+
+        listener = self._revocation_listener
+        if listener is None:
+            return
+        message_ids = list(
+            dict.fromkeys(
+                message_id
+                for item in items
+                for message_id in item.source_message_ids
+                if message_id
+            )
+        )
+        if not message_ids:
+            return
+        try:
+            listener.on_profile_revocation(
+                account_id, message_ids=message_ids, reason=reason
+            )
+        except Exception as exc:  # noqa: BLE001 - 传播失败不回收已完成的撤回
+            logger.warning(
+                "atomic_profile_revocation_listener_failed",
+                extra={
+                    "account_id": account_id,
+                    "reason": reason,
+                    "error": str(exc),
+                },
+            )
 
     def _record_for_user_text(
         self, account_id: str, text: str

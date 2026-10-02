@@ -143,7 +143,10 @@ from bridges.learning.progress import TeachingProgressService
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
-from bridges.profiles.atomic import AtomicProfileService
+from bridges.profiles.atomic import (
+    RECALL_LOW_CONFIDENCE_REASON,
+    AtomicProfileService,
+)
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
@@ -3354,18 +3357,22 @@ class TurnOrchestrator:
                 # Issue 02：画像前移 —— 在证据门短路判定之前编译最小画像
                 # 切片，拒绝/降级分支都披露「本次上下文说明」；降级分支在
                 # 下方共用本次编译结果注入模型，拒绝分支只披露不注入。
-                context_note, profile_context, profile_items, profile_slice_id = (
-                    self._compile_profile_slice(
-                        account_id,
-                        conversation_id,
-                        assistant_message_id,
-                        mode,
-                        use_profile=use_profile,
-                        retrieval_round=retrieval_round,
-                        web_search_projection=web_search_projection,
-                        arxiv_search_projection=arxiv_search_projection,
-                        context_budget=context_budget,
-                    )
+                (
+                    context_note,
+                    profile_context,
+                    profile_items,
+                    profile_slice_id,
+                    profile_revocation_version,
+                ) = self._compile_profile_slice(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    mode,
+                    use_profile=use_profile,
+                    retrieval_round=retrieval_round,
+                    web_search_projection=web_search_projection,
+                    arxiv_search_projection=arxiv_search_projection,
+                    context_budget=context_budget,
                 )
                 study_profile_compiled = True
                 if context_note is not None:
@@ -3849,28 +3856,58 @@ class TurnOrchestrator:
             # 判定之前编译（拒绝/降级分支共用），此处只为其余模式编译。
             if paper_route:
                 # 论文搜索的模型上下文只允许公开 arXiv 结果，不注入账户画像。
-                context_note, profile_context, profile_items, profile_slice_id = (
-                    None,
-                    None,
-                    [],
-                    None,
-                )
+                (
+                    context_note,
+                    profile_context,
+                    profile_items,
+                    profile_slice_id,
+                    profile_revocation_version,
+                ) = (None, None, [], None, None)
             elif not study_profile_compiled:
-                context_note, profile_context, profile_items, profile_slice_id = (
-                    self._compile_profile_slice(
-                        account_id,
-                        conversation_id,
-                        assistant_message_id,
-                        mode,
-                        use_profile=use_profile,
-                        retrieval_round=retrieval_round,
-                        web_search_projection=web_search_projection,
-                        arxiv_search_projection=arxiv_search_projection,
-                        context_budget=context_budget,
-                    )
+                (
+                    context_note,
+                    profile_context,
+                    profile_items,
+                    profile_slice_id,
+                    profile_revocation_version,
+                ) = self._compile_profile_slice(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    mode,
+                    use_profile=use_profile,
+                    retrieval_round=retrieval_round,
+                    web_search_projection=web_search_projection,
+                    arxiv_search_projection=arxiv_search_projection,
+                    context_budget=context_budget,
                 )
                 if context_note is not None:
                     thinking = context_note_thinking(thinking, context_note)
+            if not self._profile_slice_still_current(
+                account_id, profile_revocation_version
+            ):
+                # 工单 18：编译之后、发送之前发生撤回/失效（删除、忘掉、编辑
+                # 或期限到期）。陈旧切片不得进入写作策略与模型载荷；披露如实
+                # 降级为「未使用」。已发往云端的上下文无法收回，本检查只阻止
+                # 后续调用继续使用旧切片。
+                profile_context = None
+                profile_items = []
+                if context_note is not None:
+                    context_note = self._persist_context_note(
+                        account_id,
+                        assistant_message_id,
+                        context_note.model_copy(
+                            update={
+                                "state": ContextNoteState.EMPTY,
+                                "profile_item_count": 0,
+                                "note": (
+                                    f"本轮编译{_PROFILE_CONTEXT_LABEL}后、发送前相关记录"
+                                    "已被删除或失效，因此没有使用这些信息；回答只基于"
+                                    "当前对话与任务材料。"
+                                ),
+                            }
+                        ),
+                    )
             writing_policy = self._compile_writing_policy(
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
@@ -5170,21 +5207,48 @@ class TurnOrchestrator:
             return
         # 最小画像切片编译与「本次上下文说明」披露：模型提示词由编排服务
         # 自行组装（这里只复用编译/披露/审计，切片上下文不在本路径注入）。
-        context_note, profile_context, profile_items, profile_slice_id = (
-            self._compile_profile_slice(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                mode,
-                use_profile=use_profile,
-                retrieval_round=retrieval_round,
-                web_search_projection=web_search_projection,
-                arxiv_search_projection=arxiv_search_projection,
-                context_budget=context_budget,
-            )
+        (
+            context_note,
+            profile_context,
+            profile_items,
+            profile_slice_id,
+            profile_revocation_version,
+        ) = self._compile_profile_slice(
+            account_id,
+            conversation_id,
+            assistant_message_id,
+            mode,
+            use_profile=use_profile,
+            retrieval_round=retrieval_round,
+            web_search_projection=web_search_projection,
+            arxiv_search_projection=arxiv_search_projection,
+            context_budget=context_budget,
         )
         if context_note is not None:
             thinking = context_note_thinking(thinking, context_note)
+        if not self._profile_slice_still_current(
+            account_id, profile_revocation_version
+        ):
+            # 工单 18：编译之后、技能编排（内含模型调用）之前发生撤回/失效，
+            # 旧切片不进入编排参数与载荷，披露如实降级为「未使用」。
+            profile_context = None
+            profile_items = []
+            if context_note is not None:
+                context_note = self._persist_context_note(
+                    account_id,
+                    assistant_message_id,
+                    context_note.model_copy(
+                        update={
+                            "state": ContextNoteState.EMPTY,
+                            "profile_item_count": 0,
+                            "note": (
+                                f"本轮编译{_PROFILE_CONTEXT_LABEL}后、发送前相关记录"
+                                "已被删除或失效，因此没有使用这些信息；回答只基于"
+                                "当前对话与任务材料。"
+                            ),
+                        }
+                    ),
+                )
         writing_policy = self._compile_writing_policy(
             account_id=account_id,
             assistant_message_id=assistant_message_id,
@@ -5918,6 +5982,7 @@ class TurnOrchestrator:
         str | None,
         list[ProfileSliceItem],
         str | None,
+        str | None,
     ]:
         """编译本轮最小画像切片并落库上下文说明披露。
 
@@ -5945,7 +6010,7 @@ class TurnOrchestrator:
             or self._profiles
         )
         if profile_service is None:
-            return None, None, [], None
+            return None, None, [], None, None
         if not use_profile:
             self._audit_slice_usage(
                 account_id,
@@ -5974,6 +6039,7 @@ class TurnOrchestrator:
                 ),
                 None,
                 [],
+                None,
                 None,
             )
         # 改进工单 07：长期画像使用开关关闭时不读取任何长期画像正文（原子
@@ -6011,6 +6077,7 @@ class TurnOrchestrator:
                 ),
                 None,
                 [],
+                None,
                 None,
             )
         try:
@@ -6122,9 +6189,10 @@ class TurnOrchestrator:
                 None,
                 [],
                 None,
+                None,
             )
         requires_confirmation = any(
-            item.exclusion_reason == "可靠程度不足，暂不用于当前回答"
+            item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON
             for item in profile_slice.unused_items
         )
         profile_context, profile_items = profile_block_within_budget(
@@ -6165,7 +6233,22 @@ class TurnOrchestrator:
             profile_context,
             profile_items,
             profile_slice.slice_id,
+            profile_slice.revocation_version,
         )
+
+    def _profile_slice_still_current(
+        self, account_id: str, revocation_version: str | None
+    ) -> bool:
+        """切片编译后到发送前是否仍未被撤回/失效（工单 18）。
+
+        撤回发生在本轮编译之后、模型调用之前时，旧切片不得进入载荷；已发出
+        的云端上下文无法收回，检查只阻止后续调用继续使用。非原子画像服务
+        没有撤回版本，按「不检查」处理。
+        """
+
+        if revocation_version is None or self._atomic_profiles is None:
+            return True
+        return self._atomic_profiles.is_slice_current(account_id, revocation_version)
 
     def _compile_writing_policy(
         self,

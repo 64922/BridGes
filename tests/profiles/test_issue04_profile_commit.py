@@ -107,6 +107,7 @@ class _MirrorFailsOnce(AtomicProfileService):
         *,
         evidence_message_id: str | None = None,
         fact_text: str | None = None,
+        source_at: datetime | None = None,
     ) -> AtomicProfileItem | None:
         self.calls += 1
         if self.calls == self.fail_at:
@@ -116,6 +117,7 @@ class _MirrorFailsOnce(AtomicProfileService):
             record,
             evidence_message_id=evidence_message_id,
             fact_text=fact_text,
+            source_at=source_at,
         )
 
 

@@ -7342,6 +7342,15 @@ export interface components {
             person_id: string;
         };
         /**
+         * AtomicProfileGoalState
+         * @description 目标生命周期标记（改进工单 18；只按用户明确信号变化）。
+         *
+         *     暂停/完成的目标停止作为当前目标使用，但保留正文、来源与法定期限；
+         *     ``ACTIVE`` 是其余事实的默认状态。
+         * @enum {string}
+         */
+        AtomicProfileGoalState: "active" | "paused" | "completed";
+        /**
          * AtomicProfileItemDeleteRequest
          * @description 删除确认的乐观锁请求。
          */
@@ -7416,6 +7425,26 @@ export interface components {
              * @description 本条替代的旧条目标识；可为空。
              */
             supersedes_id?: string | null;
+            /**
+             * Valid From
+             * @description 有效期起点；没有明示时间时为空。
+             */
+            valid_from?: string | null;
+            /**
+             * Valid Until
+             * @description 有效期终点；到点后不再用于回答。
+             */
+            valid_until?: string | null;
+            /**
+             * Validity Phrase
+             * @description 原文明示的时间表达，供页面按需展示与核对。
+             */
+            validity_phrase?: string | null;
+            /**
+             * @description 目标生命周期标记；普通事实恒为 active。
+             * @default active
+             */
+            goal_state: components["schemas"]["AtomicProfileGoalState"];
         };
         /**
          * AtomicProfileMigrationReport

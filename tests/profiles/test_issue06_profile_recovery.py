@@ -13,6 +13,7 @@ SQLite 两种 adapter 在故障、恢复、重放与历史迁移上给出同一�
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,7 @@ class _MirrorFailsOnce(AtomicProfileService):
         *,
         evidence_message_id: str | None = None,
         fact_text: str | None = None,
+        source_at: datetime | None = None,
     ) -> AtomicProfileItem | None:
         self.calls += 1
         if self.calls == self.fail_at:
@@ -150,6 +152,7 @@ class _MirrorFailsOnce(AtomicProfileService):
             record,
             evidence_message_id=evidence_message_id,
             fact_text=fact_text,
+            source_at=source_at,
         )
 
 

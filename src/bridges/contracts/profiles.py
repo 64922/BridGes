@@ -696,6 +696,13 @@ class ProfileSlice(BaseModel):
         default="slice-1.0",
         description="Version of the slice compilation policy used.",
     )
+    revocation_version: str | None = Field(
+        default=None,
+        description=(
+            "改进工单 18：编译时的画像撤回版本；复用或继续调用前核对"
+            "当前版本是否仍一致，撤回后旧切片不得再用。"
+        ),
+    )
     length_budget: int = Field(
         default=6,
         ge=0,
