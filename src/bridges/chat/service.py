@@ -45,6 +45,7 @@ from bridges.chat.context_compiler import compile_turn_context as _compile_turn_
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.material_reading import collect_photo_refs, plan_photo_reads
 from bridges.chat.repository import (
     ConversationModeLockConflict,
     ConversationRecord,
@@ -324,6 +325,8 @@ class ChatService:
         #: 改进工单 13：有界历史摘要缓存与后台准备（按来源片段复用/失效）。
         #: 未装配时编译器只用有界确定性回退行，不长出摘要调用。
         self._summaries = summary_service
+        if self._attachments is not None:
+            self._attachments.set_summary_service(summary_service)
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -2076,8 +2079,9 @@ class ChatService:
         编译记录只含 ID、版本与计数，供后续材料（V2 Issue 08 的画像块）按同一
         份预算裁剪剩余输入空间。
 
-        当前轮绑定照片附件时仍验证并冻结模型额度，然后返回 ``None``，
-        由多模态路径组装图片部件；最终载荷预算由工单 04 接入。
+        当前轮绑定照片附件时（改进工单 14）同样走本编译：照片与按问题读取的
+        历史原图以实际图片部件与数量进入统一输入预算，读取计划随编译记录
+        落库；原图字节不进检查点，由回合层按计划读取一次。
         """
         user_message = self._repo.get_message(run.account_id, run.user_message_id)
         if user_message is None:
@@ -2122,12 +2126,25 @@ class ChatService:
             if not self._repo.update_generation_config(run.account_id, run.run_id, config):
                 raise ChatDomainError("run_not_active", "本轮已结束，无法补齐模型额度。", 409)
             run.config = config
-        if self._attachments is not None:
-            bound = self._attachments.list_for_message(
-                run.account_id, run.conversation_id, run.user_message_id
-            )
-            if any(attachment.media_type in PHOTO_MEDIA_TYPES for attachment in bound):
-                return None, None
+        # 改进工单 14：照片轮不再绕过编译。当前照片与按问题读取的历史原图
+        # 以实际图片部件与数量进入统一输入预算；这里只读附件引用做计划，
+        # 不下载、不储存原图（原图字节由回合层按计划读取一次）。
+        messages = self._repo.list_messages(
+            run.account_id, run.conversation_id
+        )
+        photo_refs = collect_photo_refs(
+            messages,
+            attachments=self._attachments,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            current_message_id=run.user_message_id,
+            request=user_message.content,
+        )
+        read_plan = plan_photo_reads(
+            request=user_message.content,
+            current_message_id=run.user_message_id,
+            photo_refs=photo_refs,
+        )
         # 改进工单 11：指代解析的任务查询接缝（只读；工单 08 的任务领域）。
         task_context = (
             self._tasks.current_reference_context(
@@ -2145,7 +2162,6 @@ class ChatService:
                 )
             except Exception:  # noqa: BLE001 - 摘要域故障不阻塞本轮回答
                 summaries = []
-        messages = self._repo.list_messages(run.account_id, run.conversation_id)
 
         def _compile_turn(
             active_summaries: list[HistorySummary],
@@ -2161,6 +2177,8 @@ class ChatService:
                 evidence=evidence or [],
                 task=task_context,
                 summaries=active_summaries,
+                image_count=read_plan.image_count(),
+                material_read_plan=read_plan.to_record(),
             )
 
         compiled = _compile_turn(summaries)
