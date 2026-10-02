@@ -104,6 +104,7 @@ from bridges.chat import (
 )
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
+from bridges.chat.summary import ChatSummaryService, GatewaySummaryExtractor
 from bridges.tasks.repository import TaskRepository
 from bridges.tasks.service import TaskService
 from bridges.chat.turn import CHAT_CAPABILITY_NAME
@@ -1508,6 +1509,20 @@ def create_app(
         app.state.task_service = TaskService(
             TaskRepository(bridges_database)
         )
+        # 改进工单 13：有界历史摘要缓存 + 回答后有界后台准备。结构化抽取
+        # 走固定能力（模型由运行配置解析并记录运行锁），同步补齐与后台
+        # 任务都受超时/调用次数/队列重试上限约束；失败只留明确缺口。
+        app.state.chat_summary_service = ChatSummaryService(
+            database=bridges_database,
+            conversation_repository=ConversationRepository(bridges_database),
+            extractor=GatewaySummaryExtractor(
+                model_gateway,
+                model_config_provider=run_model_config,
+                lock_recorder=SqliteModelRunLockRecorder(bridges_database),
+                database=bridges_database,
+            ),
+            observability=app.state.observability_service,
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1542,6 +1557,7 @@ def create_app(
             automatic_profile_service=app.state.automatic_profile_service,
             atomic_profile_service=getattr(app.state, "atomic_profile_service", None),
             task_service=app.state.task_service,
+            summary_service=app.state.chat_summary_service,
         )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。
@@ -1551,6 +1567,7 @@ def create_app(
             app.state.chat_service,
             bridges_database,
             profile_extraction_service=app.state.automatic_profile_service,
+            summary_service=app.state.chat_summary_service,
         )
         app.state.generation_executor_stop = threading.Event()
 
@@ -1585,7 +1602,7 @@ def create_app(
             app.state.generation_executor_stop.set()
             thread = getattr(app.state, "generation_executor_thread", None)
             if thread is not None:
-                thread.join(timeout=5)
+                thread.join(timeout=30)
 
         app.router.add_event_handler("startup", _start_generation_executor)
         app.router.add_event_handler("shutdown", _stop_generation_executor)

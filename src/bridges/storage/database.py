@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 65
+SCHEMA_VERSION = 66
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3063,6 +3063,56 @@ MIGRATIONS: dict[int, list[str]] = {
         ON node_outbox(account_id, run_id, delivered_at)
         """,
     ],
+    # 改进工单 13：有界历史摘要的按来源片段缓存。每条实例覆盖一段连续、
+     # 已完成的原始消息（边界消息 ID + 条数 + 来源指纹）；来源删除/修改/
+     # 生成口径变化即失效（行保留供审计，不再复用）。摘要是派生线索，
+     # 不是用户事实；原始消息仍是权威源。表属主 chat/（摘要域仓库）。
+    66: [
+        """
+        CREATE TABLE conversation_summaries (
+            summary_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL
+                REFERENCES conversations(conversation_id),
+            contract_version TEXT NOT NULL,
+            instance_version TEXT NOT NULL,
+            covered_first_message_id TEXT NOT NULL,
+            covered_last_message_id TEXT NOT NULL,
+            covered_message_count INTEGER NOT NULL,
+            source_fingerprint TEXT NOT NULL,
+            summary_text TEXT NOT NULL,
+            object_clues_json TEXT NOT NULL DEFAULT '[]',
+            open_questions_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'invalidated')),
+            invalidated_reason TEXT,
+            invalidated_at TEXT,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_conversation_summaries_conversation
+        ON conversation_summaries(account_id, conversation_id, status, created_at)
+        """,
+        """
+        CREATE TABLE conversation_summary_generations (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            generation INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (account_id, conversation_id)
+        )
+        """,
+        """
+        CREATE TABLE conversation_summary_sync_attempts (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            run_id TEXT PRIMARY KEY REFERENCES run_budget_ledger(run_id) ON DELETE CASCADE
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3099,6 +3149,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "node_artifacts",
     "node_receipts",
     "node_outbox",
+    "conversation_summaries",
+    "conversation_summary_generations",
+    "conversation_summary_sync_attempts",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。

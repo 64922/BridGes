@@ -40,7 +40,7 @@ from bridges.chat.attachments import (
     ChatAttachmentError,
     ChatAttachmentService,
 )
-from bridges.chat.context_compiler import ContextEvidence
+from bridges.chat.context_compiler import CompiledTurnContext, ContextEvidence
 from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
@@ -66,6 +66,7 @@ from bridges.chat.selections import (
     SelectionResolution,
     selection_key,
 )
+from bridges.chat.summary import ChatSummaryService
 from bridges.chat.terminal import GenerationTerminal, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
@@ -137,6 +138,7 @@ from bridges.contracts.profile_extraction import (
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.summaries import HistorySummary
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
@@ -283,6 +285,7 @@ class ChatService:
         commute_service: CommuteService | None = None,
         github_projects_service: GithubProjectsService | None = None,
         task_service: TaskService | None = None,
+        summary_service: ChatSummaryService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -318,6 +321,9 @@ class ChatService:
         #: 读取当前任务快照供指代解析定位条件与纠正关系；未装配时解析只用
         #: 会话原文（任务条件仍由 Issue 08 的写模型拥有）。
         self._tasks = task_service
+        #: 改进工单 13：有界历史摘要缓存与后台准备（按来源片段复用/失效）。
+        #: 未装配时编译器只用有界确定性回退行，不长出摘要调用。
+        self._summaries = summary_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
         self._teaching_progress = teaching_progress_service or TeachingProgressService(
@@ -2130,19 +2136,59 @@ class ChatService:
             if self._tasks is not None
             else None
         )
-        compiled = _compile_turn_context(
-            messages=self._repo.list_messages(
-                run.account_id, run.conversation_id
-            ),
-            current_user_message_id=run.user_message_id,
-            model_id=quota.model_id,
-            mode=mode,
-            quota=quota,
-            output_tokens=CHAT_OUTPUT_TOKENS,
-            system_prompt=system_prompt,
-            evidence=evidence or [],
-            task=task_context,
-        )
+        # 改进工单 13：有效摘要缓存实例（只读；来源指纹已在摘要域核对）。
+        summaries: list[HistorySummary] = []
+        if self._summaries is not None:
+            try:
+                summaries = self._summaries.valid_summaries(
+                    run.account_id, run.conversation_id
+                )
+            except Exception:  # noqa: BLE001 - 摘要域故障不阻塞本轮回答
+                summaries = []
+        messages = self._repo.list_messages(run.account_id, run.conversation_id)
+
+        def _compile_turn(
+            active_summaries: list[HistorySummary],
+        ) -> CompiledTurnContext:
+            return _compile_turn_context(
+                messages=messages,
+                current_user_message_id=run.user_message_id,
+                model_id=quota.model_id,
+                mode=mode,
+                quota=quota,
+                output_tokens=CHAT_OUTPUT_TOKENS,
+                system_prompt=system_prompt,
+                evidence=evidence or [],
+                task=task_context,
+                summaries=active_summaries,
+            )
+
+        compiled = _compile_turn(summaries)
+        # 改进工单 13：缓存缺失且确需压缩时，本轮只做**一次**限时同步补齐
+        # （失败/超时立即回退到有界回退行，不无限等待）；随后把后续片段
+        # 登记为回答后的后台准备。新请求与最新纠正始终以原文为准，不等缓存。
+        if self._summaries is not None and compiled.summary_source_range is not None:
+            boundary_message_id = compiled.summary_source_range[1]
+            try:
+                if not compiled.summary_cache_hit:
+                    prepared = self._summaries.prepare_sync(
+                        run.account_id,
+                        run.conversation_id,
+                        boundary_message_id=boundary_message_id,
+                        run_id=run.run_id,
+                    )
+                    if prepared:
+                        summaries = self._summaries.valid_summaries(
+                            run.account_id, run.conversation_id
+                        )
+                        compiled = _compile_turn(summaries)
+                self._summaries.schedule_background(
+                    run.account_id,
+                    run.conversation_id,
+                    boundary_message_id=boundary_message_id,
+                )
+            except Exception:  # noqa: BLE001 - 后台准备失败只留缺口，不阻塞回答
+                pass
         if self._observability is not None:
             record = compiled.to_record()
             record["quota_compat_applied"] = resolution.compat_applied
