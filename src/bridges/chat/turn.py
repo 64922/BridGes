@@ -94,6 +94,11 @@ from bridges.chat.run_budget_ledger import (
 )
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.chat.stream_protection import StreamProtectionAssembler
+from bridges.chat.task_materials import (
+    MaterialDomain,
+    public_query_from_context,
+    record_queries,
+)
 from bridges.contracts.ai import CallContractVersions, ModelRunLock
 from bridges.contracts.career import (
     CareerPlanningProcessState,
@@ -169,7 +174,7 @@ from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
-from bridges.web_search.service import WebSearchService
+from bridges.web_search.service import SearchPlan, WebSearchService
 
 #: 核心对话能力的固定绑定（ADR-0009 固定模型矩阵）。
 CHAT_CAPABILITY_NAME = "qwen_text_chat"
@@ -275,6 +280,25 @@ _SEARCH_CANCELLED = object()
 #: 搜索提供方截止后、PUBLIC_SEARCH 硬截止前仍未形成可消费投影的占位。
 _SEARCH_PROVIDER_TIMEOUT = object()
 _UNVERIFIED_TEACHING_PREFIX = "本轮未联网核实："
+
+
+def _plan_task_web_search(
+    service: WebSearchService, original: str, public_query: str, mode: ChatMode
+) -> SearchPlan:
+    """原文只在本地裁决触发；网络计划采用任务公开词，保留时效与审计。"""
+    trigger = service.plan(original, mode)
+    if not trigger.should_search or not public_query:
+        return replace(
+            trigger, should_search=False, query="", queries=(), query_hash="", plan_id=""
+        )
+    minimal = service.plan(public_query, mode, force=True)
+    return replace(
+        minimal, reason=trigger.reason, original_query_hash=trigger.original_query_hash,
+        freshness_window_seconds=trigger.freshness_window_seconds, plan_id="",
+        deleted_categories=tuple(sorted(set(
+            trigger.deleted_categories + minimal.deleted_categories
+        ))),
+    )
 
 
 def _initial_web_search_projection(
@@ -3309,6 +3333,7 @@ class TurnOrchestrator:
                         use_knowledge_base=use_knowledge_base,
                         thinking=thinking,
                         stop_event=stop_event,
+                        context_budget=context_budget,
                     )
                     budget.exit(
                         RunStage.LOCAL_RETRIEVAL,
@@ -3347,13 +3372,18 @@ class TurnOrchestrator:
                     search_stop_event = _SearchStopEvent(stop_event)
                     search_deadline = budget.absolute_deadline()
                     search_stage_deadline = budget.absolute_deadline()
+                    # 工单 15：公开来源只接收按任务选择的最小公开查询词。
+                    public_query = public_query_from_context(
+                        context_budget, round_query
+                    )
                     if (
                         required_search.value in {"arxiv", "both"}
                         and self._arxiv_search is not None
+                        and public_query
                         and arxiv_search_projection is None
                     ):
                         arxiv_plan = self._arxiv_search.plan(
-                            round_query, mode, force=True
+                            public_query, mode, force=True
                         )
                         calls.append(
                             (
@@ -3372,10 +3402,11 @@ class TurnOrchestrator:
                         required_search.value in {"tavily", "duckduckgo", "both"}
                         and self._web_search is not None
                         and web_search_allowed
+                        and public_query
                         and web_search_projection is None
                     ):
                         search_plan = self._web_search.plan(
-                            round_query, mode, force=True
+                            public_query, mode, force=True
                         )
                         loading = _initial_web_search_projection(
                             self._web_search, search_plan
@@ -3706,6 +3737,9 @@ class TurnOrchestrator:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
+                # 工单 15：公开来源只接收按任务选择的最小公开查询词（无选择
+                # 时先在本地提取公开术语，保留空查询以避免外发私人原文）。
+                public_query = public_query_from_context(context_budget, round_query)
                 mode_for_plan = (
                     ChatMode(conversation.mode)
                     if conversation is not None
@@ -3726,6 +3760,7 @@ class TurnOrchestrator:
                     if (
                         paper_route
                         and self._arxiv_search is not None
+                        and public_query
                         and arxiv_search_projection is None
                     ):
                         paper_arxiv_planned = self._arxiv_search.plan_from_route(route)  # type: ignore[arg-type]
@@ -3752,7 +3787,9 @@ class TurnOrchestrator:
                         and not paper_route
                         and web_search_projection is None
                     ):
-                        paper_web_planned = self._web_search.plan(round_query, mode_for_plan)
+                        paper_web_planned = _plan_task_web_search(
+                            self._web_search, round_query, public_query, mode_for_plan
+                        )
                         if paper_web_planned.should_search:
                             paper_search_plan = paper_web_planned
                             loading = _initial_web_search_projection(
@@ -4000,7 +4037,8 @@ class TurnOrchestrator:
                     ),
                 )
                 return
-            # 生成前执行一轮分层检索：查询文本取所属用户消息正文；检索
+            # 生成前执行一轮分层检索：查询文本优先取编译期按任务选择的
+            # 最小查询（工单 15），无选择时回退所属用户消息正文；检索
             # 结果固化到消息投影（引用展示数据不漂移），并注入最小上下文。
             if retrieval_round is None and not paper_route:
                 messages = self._repo.list_messages(account_id, conversation_id)
@@ -4020,6 +4058,7 @@ class TurnOrchestrator:
                         use_knowledge_base=use_knowledge_base,
                         thinking=thinking,
                         stop_event=stop_event,
+                        context_budget=context_budget,
                     )
                     budget.exit(
                         RunStage.LOCAL_RETRIEVAL,
@@ -5183,17 +5222,23 @@ class TurnOrchestrator:
         use_knowledge_base: bool,
         thinking: ChatThinkingSummary,
         stop_event: threading.Event,
+        context_budget: dict[str, Any] | None = None,
     ) -> tuple[ChatThinkingSummary, RetrievalRoundProjection | None]:
-        """一轮分层检索：全部编排路径共用这一个实现。
+        """一轮知识库检索：全部编排路径共用这一个实现。
 
         未挂载检索服务或已收到停止信号时返回 ``(thinking, None)``——
         调用方无须重复「None 检查 + 停止检查」，行为与既有各路径一致。
+
+        ``context_budget`` 是同一编译记录（工单 15）：其中的各域最小查询
+        让知识库与会话附件按解析主题/对象与当前有效条件检索，而不是用
+        「第二个有什么区别」这类空指代原文。
         """
         if self._retrieval is None or stop_event.is_set():
             return thinking, None
         decision = self._retrieval.decision_projection(
             account_id, assistant_message_id
         )
+        queries = record_queries(context_budget)
         retrieval_round = self._retrieval.run_round(
             account_id,
             conversation_id,
@@ -5202,6 +5247,10 @@ class TurnOrchestrator:
             round_query,
             use_knowledge_base=use_knowledge_base,
             decision=decision,
+            knowledge_base_query=queries.get(MaterialDomain.KNOWLEDGE_BASE.value),
+            attachment_query=queries.get(
+                MaterialDomain.CONVERSATION_ATTACHMENT.value
+            ),
         )
         if retrieval_round is None:
             return thinking, None
@@ -5309,6 +5358,7 @@ class TurnOrchestrator:
                 use_knowledge_base=career_use_knowledge_base,
                 thinking=thinking,
                 stop_event=stop_event,
+                context_budget=context_budget,
             )
             budget.exit(
                 RunStage.LOCAL_RETRIEVAL,
@@ -5347,8 +5397,12 @@ class TurnOrchestrator:
             search_stage_deadline = budget.absolute_deadline()
             search_plan = None
             arxiv_plan = None
-            if self._web_search is not None:
-                career_web_planned = self._web_search.plan(intent, mode)
+            # 工单 15：公开来源只接收按任务选择的最小公开查询词。
+            career_public_query = public_query_from_context(context_budget, intent)
+            if self._web_search is not None and career_public_query:
+                career_web_planned = _plan_task_web_search(
+                    self._web_search, intent, career_public_query, mode
+                )
                 if career_web_planned.should_search:
                     search_plan = career_web_planned
                     calls.append(
@@ -5364,9 +5418,12 @@ class TurnOrchestrator:
                             ),
                         )
                     )
-            if self._arxiv_search is not None:
-                career_arxiv_planned = self._arxiv_search.plan(intent, mode)
-                if career_arxiv_planned.should_search:
+            if self._arxiv_search is not None and career_public_query:
+                career_arxiv_trigger = self._arxiv_search.plan(intent, mode)
+                if career_arxiv_trigger.should_search:
+                    career_arxiv_planned = self._arxiv_search.plan(
+                        career_public_query, mode, force=True
+                    )
                     arxiv_plan = career_arxiv_planned
                     calls.append(
                         (

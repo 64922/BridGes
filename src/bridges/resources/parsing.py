@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from bridges.contracts.modules import ModuleWaitState
 from bridges.resources.contracts import (
@@ -31,6 +32,10 @@ from bridges.resources.lexicon import (
     TERM_ENGLISH,
     TOPIC_STOPWORDS,
 )
+
+if TYPE_CHECKING:
+    from bridges.chat.task_materials import ModuleTaskContext
+
 
 #: 澄清后恢复时读取的原词键（等待状态 ``context`` 的稳定字段名）。
 PENDING_ORIGINAL_PHRASE = "original_phrase"
@@ -75,6 +80,7 @@ def parse_resources_request(
     *,
     prior_context: Sequence[str] = (),
     pending: ModuleWaitState | None = None,
+    module_context: ModuleTaskContext | None = None,
 ) -> ResourcesTermAnalysis:
     """解析一轮资料请求；缺少层次且它影响推荐时返回唯一的一个澄清问题。
 
@@ -83,6 +89,28 @@ def parse_resources_request(
     全新的资料请求。
     """
     text = content.strip()
+    if module_context is not None and module_context.used_task_scope:
+        # 有效字段提供续接语义，来源原文只作背景，不能复活撤销条件。
+        fields = {
+            condition.kind: condition.text for condition in module_context.effective_conditions
+        }
+        term = (
+            extract_topic_phrase(module_context.topic_hint)
+            if (
+                (pending is not None and pending.kind == "clarification")
+                or text.strip(" ，。！？") in {"继续", "继续推荐", "接着", "再推荐", "继续解释"}
+            )
+            else extract_topic_phrase(text) or extract_topic_phrase(module_context.topic_hint)
+        )
+        goal = detect_goal(text) or detect_goal(fields.get("goal", ""))
+        level, basis = detect_level(text)
+        if level is None and "level" in fields:
+            level, basis = detect_level(fields["level"])
+        if term is None:
+            return _needs_topic(goal=goal)
+        if level is None and not _defers_level(text):
+            return _needs_level(term, goal=goal)
+        return _analysis_for_term(term, goal=goal, level=level, level_basis=basis)
     if pending is not None and pending.kind == "clarification":
         return _resume_from_clarification(text, pending, prior_context=prior_context)
     return _parse_fresh(text, prior_context=prior_context)

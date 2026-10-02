@@ -12,7 +12,7 @@ GitHub 请求的场景），并把来源模块、原词与前文消息 ID 一起
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bridges.contracts.modules import ModuleWaitState
 from bridges.github.contracts import (
@@ -28,6 +28,10 @@ from bridges.github.lexicon import (
     wants_whole_idea,
 )
 
+if TYPE_CHECKING:
+    from bridges.chat.task_materials import EffectiveCondition
+
+
 #: 澄清问题的恢复载荷键（随消息持久化，跨会话重开仍然有效）。
 PENDING_ORIGINAL_REQUEST = "original_request"
 
@@ -42,6 +46,7 @@ def parse_github_request(
     *,
     prior_context: Sequence[GithubContextSource] = (),
     pending: ModuleWaitState | None = None,
+    task_conditions: Sequence[EffectiveCondition] = (),
 ) -> GithubIdeaAnalysis:
     """解析一轮 GitHub 项目请求；缺失主题或指代不明时返回单一澄清问题。
 
@@ -77,7 +82,7 @@ def parse_github_request(
         # 指向就变成了另一件事），检索词因此可追溯到具体那条消息。
         scenario = anchor.phrase.strip()
         whole = wants_whole_idea(anchor.phrase)
-        return GithubIdeaAnalysis(
+        analysis = GithubIdeaAnalysis(
             original_request=original_request,
             scenario=scenario,
             features=[scenario],
@@ -86,17 +91,30 @@ def parse_github_request(
             component_terms=[] if whole else [scenario],
             context_source=anchor,
         )
+    else:
+        scenario = extract_scenario(source_text)
+        whole = wants_whole_idea(source_text)
+        analysis = GithubIdeaAnalysis(
+            original_request=original_request,
+            scenario=scenario,
+            features=extract_features(source_text, scenario=scenario),
+            tech_terms=extract_tech_terms(source_text),
+            whole_idea=whole,
+            component_terms=[] if whole else [scenario],
+        )
+    for condition in task_conditions:
+        if condition.kind in {"feature", "requirement"}:
+            # 要点会成为公开查询；本地任务条件的私人段落不能进入网络参数。
+            from bridges.chat.task_materials import public_query_from_context
 
-    scenario = extract_scenario(source_text)
-    whole = wants_whole_idea(source_text)
-    return GithubIdeaAnalysis(
-        original_request=original_request,
-        scenario=scenario,
-        features=extract_features(source_text, scenario=scenario),
-        tech_terms=extract_tech_terms(source_text),
-        whole_idea=whole,
-        component_terms=[] if whole else [scenario],
-    )
+            public_term = public_query_from_context(None, condition.text)
+            if public_term and public_term not in analysis.features:
+                analysis.features.append(public_term)
+        elif condition.kind == "tech":
+            for term in extract_tech_terms(condition.text):
+                if term not in analysis.tech_terms:
+                    analysis.tech_terms.append(term)
+    return analysis
 
 
 def pending_payload(analysis: GithubIdeaAnalysis) -> dict[str, Any]:

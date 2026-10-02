@@ -403,6 +403,29 @@ class CallMaterialManifest:
         }
 
 
+def evaluate_call_manifest(
+    payload: Mapping[str, Any],
+    *,
+    quota: RunModelQuota | None,
+    output_tokens: int,
+    entries: Sequence[MaterialManifestEntry],
+) -> CallMaterialManifest:
+    """对子模块最终载荷执行预算门并装配脱敏清单；无额度时返回闭锁裁决。
+
+    工单 15：论文概述、GitHub 借鉴角度等工具结果后的模型调用共用本入口，
+    不各自复制预算门与清单装配（``.scratch/2/README.md`` 接缝表：
+    「消费者不复制预算器，门后不得追加材料」）。调用方按门结果决定是否
+    发起调用；超限时只交付真实证据并如实说明。
+    """
+    decision = evaluate_payload_gate(payload, quota=quota, output_tokens=output_tokens)
+    return CallMaterialManifest(
+        entries=list(entries),
+        gate=decision,
+        output_tokens=output_tokens,
+        estimated_input_tokens=decision.estimated_input_tokens,
+    )
+
+
 def redaction_audit() -> dict[str, Any]:
     """脱敏审计声明：材料清单合同保证不携带的敏感字段与保证内容。"""
     return {

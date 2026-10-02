@@ -63,6 +63,7 @@ from bridges.kernel.repository import NodeKernelRepository
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
+    from bridges.chat.task_materials import ModuleTaskContext
 
 #: 澄清等待状态的类型标识（等待合同的一部分）。
 WAIT_KIND_CLARIFICATION = "clarification"
@@ -134,8 +135,13 @@ class CommuteService:
         run_model_id: str | None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
+        module_context: ModuleTaskContext | None = None,
     ) -> CommuteRunOutcome:
-        """执行一轮通勤模块：持久节点内核执行，结果统一提交回同一消息。"""
+        """执行一轮通勤模块：持久节点内核执行，结果统一提交回同一消息。
+
+        ``module_context``（工单 15）提供当前任务的已确认起终点/方式条件与
+        有来源的相关前文；无任务时才回退最近窗口。
+        """
         # 通勤不调用模型：本轮模型锁与本模块无关（签名保持一致）。
         del run_model_id
         user_message = repo.get_message(account_id, user_message_id)
@@ -144,8 +150,12 @@ class CommuteService:
                 NODE_PARSE, "message_not_found", "消息不存在或没有访问权限。", retryable=False
             )
         pending = self._pending_wait(repo, account_id, conversation_id)
-        prior = self._prior_user_messages(
-            repo, account_id, conversation_id, user_message_id
+        prior = (
+            list(module_context.prior_messages)
+            if module_context is not None
+            else self._prior_user_messages(
+                repo, account_id, conversation_id, user_message_id
+            )
         )
         run_id = run_context.run_id
         budget = self._load_budget(repo, account_id, run_id)
@@ -165,6 +175,7 @@ class CommuteService:
             amap=self._amap,
             clock=self._clock,
             prior_context=prior,
+            module_context=module_context,
             pending_wait=pending,
             budget=budget,
             stop_event=stop_event,

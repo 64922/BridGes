@@ -64,6 +64,7 @@ from bridges.kernel.registry import RecipeRegistry
 
 if TYPE_CHECKING:
     from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
+    from bridges.chat.task_materials import ModuleTaskContext
 
 #: 未实测校内道路与楼门可通行性时的固定局限说明（随每条结果展示）。
 FIELD_TEST_LIMITATION = (
@@ -527,6 +528,7 @@ class CommuteNodeFlow:
         amap: Any,
         clock: Callable[[], datetime],
         prior_context: Sequence[str] = (),
+        module_context: ModuleTaskContext | None = None,
         pending_wait: Any = None,
         budget: CommuteBudget | None = None,
         stop_event: Event | None = None,
@@ -536,6 +538,7 @@ class CommuteNodeFlow:
         self._clock = clock
         self._solve_time = clock()
         self._prior_context = tuple(prior_context)
+        self._module_context = module_context
         self._pending_wait = pending_wait
         self._budget = budget
         self._stop_event = stop_event
@@ -543,6 +546,11 @@ class CommuteNodeFlow:
 
     @property
     def prior_digest(self) -> str | None:
+        if self._module_context is not None and self._module_context.used_task_scope:
+            return _digest([
+                (condition.condition_id, condition.kind, condition.text)
+                for condition in self._module_context.effective_conditions
+            ])
         return _digest(list(self._prior_context)) if self._prior_context else None
 
     @property
@@ -593,6 +601,7 @@ class CommuteNodeFlow:
             invocation.inputs.user_content,
             prior_context=self._prior_context,
             pending=self._pending_wait,
+            module_context=self._module_context,
         )
         payload: dict[str, Any] = {"analysis": analysis.model_dump(mode="json")}
         if analysis.clarification is not None:

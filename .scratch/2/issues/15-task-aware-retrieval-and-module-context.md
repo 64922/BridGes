@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — 守住最终模型载荷预算与材料权威边界；11 — 解析任务指代并补回必要原文；14 — 统一照片预算与旧附件、原图、证据读取
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -39,15 +39,37 @@
 
 ## 验收标准
 
-- [ ] “第二个有什么区别”“继续解释”使用解析对象发起正确本地查询，末尾条件与最新纠正保留。
-- [ ] 普通聊天→论文→GitHub 的同一目标可共享主题，无关旧条件不污染新任务。
-- [ ] 公开请求参数含最小查询且不含私人历史/画像/简历；用户禁用来源时不调用。
-- [ ] 模块实际采用清单与最终载荷一致；工具结果再加入后重新检查预算。
-- [ ] 当前附件、全局知识库与两账户作用域测试通过，不因材料采用取得新工具授权。
+- [x] “第二个有什么区别”“继续解释”使用解析对象发起正确本地查询，末尾条件与最新纠正保留。
+- [x] 普通聊天→论文→GitHub 的同一目标可共享主题，无关旧条件不污染新任务。
+- [x] 公开请求参数含最小查询且不含私人历史/画像/简历；用户禁用来源时不调用。
+- [x] 模块实际采用清单与最终载荷一致；工具结果再加入后重新检查预算。
+- [x] 当前附件、全局知识库与两账户作用域测试通过，不因材料采用取得新工具授权。
 
 ## 验证与交付证据
 
 固定语料和捕获工具参数测试跨轮检索与模块材料选择，真实召回效果在 40 评测。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+### 2026-10-02：实现与验证（待独立验收）
+
+实施提交：`38e60031`（实现）与 `d16c5916`（独立评审修复），分支 `codex/15-task-aware-retrieval-and-module-context`（worktree 同号）。
+
+- 新增 `bridges.chat.task_materials`（合同 `task-materials-v1`、`module-context-v1`）：确定性任务材料选择入口。知识库/会话附件/画像/公开检索各有最小查询，使用解析对象（结果列表/列表项标签）与当前有效条件；被取代/撤销/草案/线索条件只记排除 ID、不进查询；只有请求与任务都没有主题时才用最近少量消歧前文（`used_continuation_fallback`）。任务锚点的内部标签（`任务 {id}（版本 {n}）`）不作为主题词，避免纯续接把任务 ID 带进本地与公开查询。
+- `chat.context_compiler`：预算裁剪后产出选择；`to_record()` 只含 ID/计数/查询指纹（审计唯一入口），`execution_record()` 加各域查询文本；`chat.service.compile_turn_context` 返回执行记录进图状态/检查点，审计仍走 `to_record()`；新增 `run_model_quota`、`module_task_context`、`audit_module_manifest`。
+- `retrieval.service.run_round` 新增 `knowledge_base_query`/`attachment_query`：知识库与会话附件各用自己的最小查询，不同查询只向量化一次；授权不受材料采用影响（`use_knowledge_base` 仍只在用户禁用/决策处裁决）；账户/会话作用域不变。`chat.turn` 四处公开检索改用编译期最小公开查询，缺失时回退原文（与既有旧检查点行为一致）。
+- 模块上下文：`MODULE_DECLARATIONS`（paper_search/github_projects/learning_resources/commute）声明任务字段、背景与证据范围；`build_module_context` 有任务时只取当前消息之前的任务来源/主题命中前文，条数以 `lookback` 封顶，实际采用的前文 ID 进 `source_message_ids`；无任务回退最近窗口。paper/github/resources/commute 接线，GitHub 任务来源锚点排在显式论文/仓库锚点之后。
+- 子模块预算：新增 `payload_budget.evaluate_call_manifest` 共同入口（门 + 脱敏清单装配），论文概述与 GitHub 借鉴角度在工具结果加入后按各自最终载荷重新过门，超限闭锁不发调用并如实说明；`audit_module_manifest` 记录调用域、清单与门结果。无新表/迁移；无新审计正文。
+- 独立评审（Standards + Spec 双轴，`main...HEAD`）：修复任务锚点污染查询、模块上下文无界/当前消息之后消息、采用前文未进来源清单、paper/github 复制预算器、`compile_turn_context` 文档与执行记录矛盾、`_run_retrieval` 退役术语；删除三处无调用者的投机导出/方法。
+- 新增 `tests/chat/test_improvement15_task_materials.py` 19 项：指代/有效条件/指代词剥离、公开查询排除条件与内部任务标识、审计无正文、模块上下文任务来源过滤与有界/截止当前消息、编译集成（审计 vs 执行记录）、检索各域查询与 `USER_DISABLED` 不放开知识库、两账户作用域、论文任务主题续接、GitHub 任务锚点逐字照抄、论文/GitHub 最终载荷门超限闭锁与清单记录。
+- 验证（conda `agent`，Python 3.11.15）：新测试 19 passed；`tests/paper`+`tests/github`+`tests/retrieval` 163 passed / 2 failed（两个退役项目入口失败在 main 基线逐项复现）；`tests/chat`+`tests/resources`+`tests/commute` 失败名单与基线 worktree 逐名一致（100 failed，既有失败），新增 19 项全过；其余套件与基线失败/错误名单逐名一致（162 failed / 9 errors）。ruff 变更文件全部通过；mypy `src` 98 errors / 20 files，与基线一致，无新增。
+- 已知限制：tieba/career_plan 节点仍用固定窗口，等待其消费者票据按声明逐步接入；旧检查点没有编译期查询时公开检索回退原文（既有行为）；任务处于 paused/blocked 时条件是否继续参与由任务关系票据裁决，本票未改动；真实模型召回与概述质量按评测票验证。详细未决项由独立验收复核。
+
+
+
+### 2026-10-02：用户授权独立验收与合入
+
+- 原交付发现公开查询/任务续接、模块条件实际采用、旧任务锚点、循环导入及预算清单缺口；均已修复。合同升级 task-materials-v2 / module-context-v2。
+- 最新验收 52 passed；最终关联组合 215 passed / 2 failed（main 已逐项复现）；完整聊天/资料/通勤失败集与 main 的 100 项逐项一致，无新增类型错误。
+- 验收通过；本次用户已授权合并、代理推送与清理。详细发现、修复与限制见[独立验收记录](../acceptance/15-task-aware-retrieval-and-module-context.md)。
 

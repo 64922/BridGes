@@ -10,10 +10,20 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from bridges.ai.model_quota import RunModelQuota
+from bridges.ai.payload_budget import (
+    CallMaterialManifest,
+    MaterialCategory,
+    MaterialManifestEntry,
+    estimate_tokens,
+    evaluate_call_manifest,
+)
 from bridges.contracts.ai import ModelCallResult, ModelRunLock
 from bridges.github.contracts import (
     GithubCoverage,
@@ -75,12 +85,17 @@ INSIGHT_JSON_SCHEMA: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class InsightOutcome:
-    """借鉴角度生成结果：按仓库标识的文本、说明与模型锁（供原子落库）。"""
+    """借鉴角度生成结果：按仓库标识的文本、说明与模型锁（供原子落库）。
+
+    ``manifest``（工单 15）是本次调用自己的采用清单与预算门结果：工具
+    结果（真实仓库证据）加入后重新检查预算，不以父图早期审计代替。
+    """
 
     insights: dict[str, str] = field(default_factory=dict)
     note: str | None = None
     lock: ModelRunLock | None = None
     dropped: int = 0
+    manifest: CallMaterialManifest | None = None
 
 
 def render_clarification_content(projection: GithubProjectsProjection) -> str:
@@ -238,18 +253,90 @@ class GithubInsightGenerator:
         recommendations: list[GithubRecommendation],
         *,
         model_id: str | None,
+        model_quota: RunModelQuota | None = None,
     ) -> InsightOutcome:
         if not recommendations:
             return InsightOutcome()
+        user_content = _insight_prompt(recommendations)
+        output_tokens = 900
         payload = {
             "messages": [
                 {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
-                {"role": "user", "content": _insight_prompt(recommendations)},
+                {"role": "user", "content": user_content},
             ],
             "json_schema": INSIGHT_JSON_SCHEMA,
             "temperature": 0.3,
-            "max_tokens": 900,
+            "max_tokens": output_tokens,
         }
+        schema_text = json.dumps(INSIGHT_JSON_SCHEMA, ensure_ascii=False, sort_keys=True)
+        # 工单 15：工具结果（真实仓库证据）加入后，对最终载荷重新执行预算门
+        # （共用 payload_budget 的调用入口，不复制预算器）；超限时只交付证据。
+        manifest = evaluate_call_manifest(
+            payload,
+            quota=model_quota,
+            output_tokens=output_tokens,
+            entries=[
+                MaterialManifestEntry(
+                    material_id="github.insight.system",
+                    category=MaterialCategory.SYSTEM_RULE.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="借鉴角度系统规则与输出契约",
+                    estimated_tokens=estimate_tokens(INSIGHT_SYSTEM_PROMPT),
+                    source_version="sha256:"
+                    + hashlib.sha256(INSIGHT_SYSTEM_PROMPT.encode()).hexdigest(),
+                    read_range="完整系统规则",
+                ),
+                MaterialManifestEntry(
+                    material_id="github.insight.schema",
+                    category=MaterialCategory.SYSTEM_RULE.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="结构化输出契约",
+                    estimated_tokens=estimate_tokens(schema_text),
+                    source_version="sha256:" + hashlib.sha256(schema_text.encode()).hexdigest(),
+                    read_range="完整 JSON Schema",
+                ),
+                MaterialManifestEntry(
+                    material_id="github.insight.evidence",
+                    category=MaterialCategory.SYSTEM_RULE.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="候选列表请求与输出格式封装，候选另逐项记录",
+                    read_range="候选列表首尾指令",
+                    estimated_tokens=estimate_tokens(_insight_prompt([])),
+                    source_version="sha256:"
+                    + hashlib.sha256(_insight_prompt([]).encode()).hexdigest(),
+                ),
+                *[
+                    MaterialManifestEntry(
+                        material_id=f"github:{item.full_name}",
+                        category=MaterialCategory.TOOL.value,
+                        necessity="required",
+                        adopted=True,
+                        reason="本轮真实候选的实际发送切片",
+                        estimated_tokens=estimate_tokens(_insight_candidate(item)),
+                        source_version="sha256:"
+                        + hashlib.sha256(_insight_candidate(item).encode()).hexdigest(),
+                        read_range=(
+                            "覆盖、简介、话题、匹配、证据等级、许可、维护；"
+                            f"README字符[0:{min(600, len(item.readme_excerpt or ''))}]；"
+                            "文件路径；"
+                            f"路径核对前{min(5, len(item.implementation_checks))}项"
+                        ),
+                    )
+                    for item in recommendations
+                ],
+            ],
+        )
+        if not manifest.gate.within_budget:
+            return InsightOutcome(
+                note=(
+                    "借鉴角度未生成：加入本轮仓库证据后的最终载荷超出该模型的"
+                    "输入预算或额度无法验证，已闭锁；本轮只给证据本身。"
+                ),
+                manifest=manifest,
+            )
         try:
             result: ModelCallResult = self._gateway.invoke(
                 self._capability_name,
@@ -257,14 +344,19 @@ class GithubInsightGenerator:
                 run_context,
                 payload,
                 model_override=model_id,
+                model_quota=model_quota,
             )
         except Exception:  # noqa: BLE001 - 归纳失败不影响真实结果呈现
-            return InsightOutcome(note="借鉴角度生成失败（模型调用异常），本轮只给证据本身。")
+            return InsightOutcome(
+                note="借鉴角度生成失败（模型调用异常），本轮只给证据本身。",
+                manifest=manifest,
+            )
         lock = result.lock
         if result.status.value not in {"success", "degraded"}:
             return InsightOutcome(
                 note="借鉴角度未生成（模型能力不可用或失败），本轮只给证据本身。",
                 lock=lock,
+                manifest=manifest,
             )
         allowed = {item.full_name for item in recommendations}
         insights: dict[str, str] = {}
@@ -283,36 +375,47 @@ class GithubInsightGenerator:
         note = None
         if dropped:
             note = f"借鉴角度中有 {dropped} 条不符合证据约束（仓库标识或长度），已丢弃。"
-        return InsightOutcome(insights=insights, note=note, lock=lock, dropped=dropped)
+        return InsightOutcome(
+            insights=insights,
+            note=note,
+            lock=lock,
+            dropped=dropped,
+            manifest=manifest,
+        )
+
+
+def _insight_candidate(item: GithubRecommendation) -> str:
+    """候选实际发送切片，供提示词与脱敏清单共用。"""
+    lines: list[str] = []
+    lines.append(f"- full_name: {item.full_name}")
+    lines.append(f"  覆盖范围: {COVERAGE_LABELS[item.coverage]}（{item.coverage_note}）")
+    lines.append(f"  项目介绍: {item.description or '上游没有给出简介'}")
+    lines.append(f"  话题: {'、'.join(item.topics) or '无'}")
+    lines.append(
+        "  功能匹配: "
+        + "；".join(
+            f"{match.feature}={'命中' if match.matched else '未命中'}"
+            for match in item.feature_matches
+        )
+    )
+    lines.append("  证据等级: " + "、".join(EVIDENCE_LABELS[kind] for kind in item.evidence_kinds))
+    if item.readme_excerpt:
+        lines.append(f"  README 片段: {item.readme_excerpt[:600]}")
+    if item.files_read:
+        lines.append(f"  已读文件: {'、'.join(entry.path for entry in item.files_read)}")
+    lines.append(f"  已读路径核对: {_checks_brief(item)}")
+    lines.append(f"  许可: {item.license.spdx_id or item.license.name or '未见许可'}")
+    lines.append(
+        f"  维护: {'已归档' if item.maintenance.archived else '未归档'}，"
+        f"可运行线索 {'、'.join(item.maintenance.runnable_hints) or '未读到'}"
+    )
+    return "\n".join(lines)
 
 
 def _insight_prompt(recommendations: list[GithubRecommendation]) -> str:
     lines = ["请为下列仓库各写一句中文「可借鉴角度」（只依据给出的证据）："]
     for item in recommendations:
-        lines.append(f"- full_name: {item.full_name}")
-        lines.append(f"  覆盖范围: {COVERAGE_LABELS[item.coverage]}（{item.coverage_note}）")
-        lines.append(f"  项目介绍: {item.description or '上游没有给出简介'}")
-        lines.append(f"  话题: {'、'.join(item.topics) or '无'}")
-        lines.append(
-            "  功能匹配: "
-            + "；".join(
-                f"{match.feature}={'命中' if match.matched else '未命中'}"
-                for match in item.feature_matches
-            )
-        )
-        lines.append(
-            "  证据等级: " + "、".join(EVIDENCE_LABELS[kind] for kind in item.evidence_kinds)
-        )
-        if item.readme_excerpt:
-            lines.append(f"  README 片段: {item.readme_excerpt[:600]}")
-        if item.files_read:
-            lines.append(f"  已读文件: {'、'.join(entry.path for entry in item.files_read)}")
-        lines.append(f"  已读路径核对: {_checks_brief(item)}")
-        lines.append(f"  许可: {item.license.spdx_id or item.license.name or '未见许可'}")
-        lines.append(
-            f"  维护: {'已归档' if item.maintenance.archived else '未归档'}，"
-            f"可运行线索 {'、'.join(item.maintenance.runnable_hints) or '未读到'}"
-        )
+        lines.append(_insight_candidate(item))
     lines.append('输出 JSON：{"insights": [{"full_name": "...", "insight_zh": "..."}]}')
     return "\n".join(lines)
 
