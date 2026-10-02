@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from bridges.commute.contracts import (
     MISSING_DESTINATION,
@@ -43,6 +44,10 @@ from bridges.commute.lexicon import (
     UNLOCATABLE_MARKERS,
 )
 from bridges.contracts.modules import ModuleWaitState
+
+if TYPE_CHECKING:
+    from bridges.chat.task_materials import ModuleTaskContext
+
 
 #: 等待状态恢复载荷的稳定字段名（``ModuleWaitState.context`` 的键）。
 PENDING_AWAITING = "awaiting"
@@ -155,6 +160,7 @@ def parse_commute_request(
     *,
     prior_context: Sequence[str] = (),
     pending: ModuleWaitState | None = None,
+    module_context: ModuleTaskContext | None = None,
 ) -> CommuteRequestAnalysis:
     """解析一轮通勤请求；缺失或含糊时返回单一澄清问题。
 
@@ -164,6 +170,43 @@ def parse_commute_request(
     则按全新请求解析，旧等待随之作废。
     """
     text = content.strip()
+    if module_context is not None and module_context.used_task_scope:
+        fields = {
+            condition.kind: condition.text for condition in module_context.effective_conditions
+        }
+        mode, mode_phrase, candidates, without_mode = detect_mode(text)
+        origin, destination = extract_places(without_mode)
+        origin_place = destination_place = None
+        if pending is not None and pending.kind == "clarification":
+            resumed = _resume_from_clarification(text, pending, prior_context=())
+            awaiting = str(pending.context.get(PENDING_AWAITING) or "")
+            # 等待仅提供本轮答复的字段；其余旧载荷不能盖过有效任务状态。
+            if awaiting in {MISSING_ORIGIN, MISSING_ORIGIN_UNLOCATABLE, MISSING_ORIGIN_CHOICE}:
+                origin, origin_place = resumed.origin_phrase, resumed.origin_place
+            elif awaiting in {
+                MISSING_DESTINATION, MISSING_DESTINATION_UNLOCATABLE, MISSING_DESTINATION_CHOICE
+            }:
+                destination = resumed.destination_phrase
+                destination_place = resumed.destination_place
+            elif awaiting == MISSING_MODE:
+                mode, mode_phrase = resumed.mode, resumed.mode_phrase
+                candidates = resumed.mode_candidates
+        if mode is None and not candidates and "mode" in fields:
+            mode, mode_phrase, candidates, _ = detect_mode(fields["mode"])
+        effective_origin = origin or fields.get("origin")
+        effective_destination = destination or fields.get("destination")
+        return _analysis(
+            raw_text=text,
+            mode=mode,
+            mode_phrase=mode_phrase,
+            mode_candidates=candidates,
+            origin_phrase=effective_origin,
+            destination_phrase=effective_destination,
+            origin_place=(origin_place if effective_origin == origin else None),
+            destination_place=(
+                destination_place if effective_destination == destination else None
+            ),
+        )
     if pending is not None and pending.kind == "clarification":
         return _resume_from_clarification(text, pending, prior_context=prior_context)
     return _parse_fresh(text, prior_context=prior_context)

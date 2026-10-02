@@ -409,16 +409,14 @@ def evaluate_call_manifest(
     quota: RunModelQuota | None,
     output_tokens: int,
     entries: Sequence[MaterialManifestEntry],
-) -> CallMaterialManifest | None:
-    """对子模块**最终**载荷执行预算门并装配脱敏清单；无额度快照时返回 None。
+) -> CallMaterialManifest:
+    """对子模块最终载荷执行预算门并装配脱敏清单；无额度时返回闭锁裁决。
 
     工单 15：论文概述、GitHub 借鉴角度等工具结果后的模型调用共用本入口，
     不各自复制预算门与清单装配（``.scratch/2/README.md`` 接缝表：
     「消费者不复制预算器，门后不得追加材料」）。调用方按门结果决定是否
     发起调用；超限时只交付真实证据并如实说明。
     """
-    if quota is None:
-        return None
     decision = evaluate_payload_gate(payload, quota=quota, output_tokens=output_tokens)
     return CallMaterialManifest(
         entries=list(entries),

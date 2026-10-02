@@ -221,7 +221,7 @@ def test_public_query_excludes_conditions_history_and_profile() -> None:
         current_message_id="m3",
     )
     public = selection.query_for(MaterialDomain.PUBLIC_SEARCH)
-    assert "注意力机制论文" in public
+    assert "注意力机制" in public
     assert "预算" not in public
     assert "3000" not in public
     assert "5000" not in public
@@ -277,7 +277,7 @@ def test_continuation_with_task_anchor_never_queries_internal_task_ids() -> None
     assert "版本" not in local
     assert "task-15" not in public
     assert "版本" not in public
-    assert public == ""  # 条件与内部任务标签都不进公开查询
+    assert public == "注意力机制"  # 有效主题进入查询，私人条件不进入
 
 
 def test_superseded_revoked_and_draft_conditions_are_excluded() -> None:
@@ -327,7 +327,9 @@ def test_public_query_from_context_prefers_selection_query() -> None:
 def test_module_context_uses_task_sources_and_skips_unrelated_window() -> None:
     task = _task(
         _condition("c-topic", "topic", "注意力机制", ConditionStatus.EFFECTIVE),
-        _condition("c-sup", "topic", "无关的旧话题", ConditionStatus.SUPERSEDED),
+        _condition(
+            "c-sup", "topic", "无关的旧话题", ConditionStatus.SUPERSEDED, source_message_id="m0"
+        ),
     )
     context = build_module_context(
         declaration=MODULE_DECLARATIONS["paper_search"],
@@ -726,3 +728,138 @@ def test_github_insight_records_manifest_after_tool_evidence() -> None:
     assert outcome.manifest is not None
     assert outcome.manifest.gate.within_budget is True
     assert "github.insight.evidence" in outcome.manifest.adopted_ids
+
+
+def test_goal_only_continuation_ignores_unrelated_recent_topic() -> None:
+    selection = select_task_materials(
+        "继续解释", task=_task(goal="注意力机制"),
+        recent_user_texts=["我的简历：私人经历 machine-learning"],
+    )
+    assert "注意力机制" in selection.query_for(MaterialDomain.KNOWLEDGE_BASE)
+    assert selection.query_for(MaterialDomain.PUBLIC_SEARCH) == "注意力机制"
+    assert not selection.used_continuation_fallback
+
+
+def test_public_query_never_exports_disambiguation_history_or_empty_fallback() -> None:
+    selection = select_task_materials(
+        "继续解释", recent_user_texts=["CV: private-name 13800138000 machine-learning"],
+    )
+    assert selection.query_for(MaterialDomain.PUBLIC_SEARCH) == ""
+    assert public_query_from_context(
+        {"task_queries": dict(selection.queries)}, "私人原文"
+    ) == ""
+    assert "private-name" not in public_query_from_context({}, "CV: private-name 13800138000")
+
+
+def test_public_query_scrubs_private_request_before_clipping() -> None:
+    selection = select_task_materials(
+        "搜索注意力机制。我的简历：private-name 13800138000。邮箱：a@private.example。"
+    )
+    public = selection.query_for(MaterialDomain.PUBLIC_SEARCH)
+    assert "注意力机制" in public
+    assert "private" not in public
+    assert "13800138000" not in public
+
+
+def test_module_background_cannot_reintroduce_revoked_conditions() -> None:
+    task = _task(
+        _condition(
+            "topic", "topic", "注意力机制", ConditionStatus.EFFECTIVE, source_message_id="m0"
+        ),
+        _condition("old", "year", "2020 年", ConditionStatus.REVOKED, source_message_id="m1"),
+        _condition("new", "year", "2024 年以后", ConditionStatus.EFFECTIVE, source_message_id="m2"),
+    )
+    context = build_module_context(
+        declaration=MODULE_DECLARATIONS["paper_search"], task=task,
+        messages=[("m0", "user", "注意力机制"), ("m1", "user", "注意力机制 2020 年"),
+                  ("m2", "user", "改成 2024 年以后"), ("m3", "user", "找几篇论文")],
+        current_user_message_id="m3",
+    )
+    assert not any("2020" in message for message in context.prior_messages)
+    assert "m1" not in context.source_message_ids
+
+
+def test_module_source_manifest_excludes_future_and_unused_sources() -> None:
+    task = _task(_condition(
+        "future", "year", "2024 年", ConditionStatus.EFFECTIVE, source_message_id="future"
+    ))
+    context = build_module_context(
+        declaration=MODULE_DECLARATIONS["paper_search"], task=task,
+        messages=[("m1", "user", "主题"), ("current", "user", "找论文"),
+                  ("future", "user", "2024 年")], current_user_message_id="current",
+    )
+    assert "future" not in context.source_message_ids
+
+
+def test_local_query_keeps_latest_condition_after_long_object_label() -> None:
+    task = _task(
+        _condition("old-effective", "requirement", "旧条件" * 30, ConditionStatus.EFFECTIVE),
+        _condition("latest", "year", "2024 年以后", ConditionStatus.EFFECTIVE),
+    )
+    resolution = _resolution_with_item("注意力机制" * 30)
+    resolution.task = None
+    selection = select_task_materials(
+        "第二个有什么区别", resolution=resolution, task=task,
+    )
+    assert "2024 年以后" in selection.query_for(MaterialDomain.KNOWLEDGE_BASE)
+
+
+def test_local_query_preserves_current_request_tail_condition() -> None:
+    selection = select_task_materials("注意力机制" + "背景说明" * 100 + "最终只找2024年以后的综述")
+    assert "2024年以后的综述" in selection.query_for(MaterialDomain.KNOWLEDGE_BASE)
+
+
+def test_local_query_preserves_long_effective_condition_tail() -> None:
+    selection = select_task_materials(
+        "继续解释", task=_task(_condition(
+            "latest", "requirement", "背景说明" * 100 + "仅限2024年以后的论文",
+            ConditionStatus.EFFECTIVE,
+        )),
+    )
+    assert "2024年以后的论文" in selection.query_for(MaterialDomain.KNOWLEDGE_BASE)
+
+
+def test_public_minimal_query_preserves_explicit_search_trigger() -> None:
+    from bridges.chat.turn import _plan_task_web_search
+    from bridges.web_search.service import LocalQueryPlanner
+
+    public = select_task_materials("搜索 Transformer").query_for(MaterialDomain.PUBLIC_SEARCH)
+    planner = LocalQueryPlanner()
+    plan = _plan_task_web_search(planner, "搜索 Transformer", public, ChatMode.COMPANION)
+    assert plan.should_search
+    assert plan.query == "Transformer"
+    assert "明确要求" in plan.reason
+    no_trigger = _plan_task_web_search(planner, "Transformer", public, ChatMode.COMPANION)
+    empty_query = _plan_task_web_search(planner, "搜索 Transformer", "", ChatMode.COMPANION)
+    assert not no_trigger.should_search
+    assert not empty_query.should_search
+
+
+def test_public_module_topic_hint_excludes_private_goal_segments() -> None:
+    task = _task(goal="注意力机制。简历：private-name 13800138000。")
+    for module in ("paper_search", "github_projects", "learning_resources"):
+        context = build_module_context(
+            declaration=MODULE_DECLARATIONS[module], task=task,
+            messages=[("m1", "user", task.goal), ("m2", "user", "继续")],
+            current_user_message_id="m2",
+        )
+        assert context.topic_hint == "注意力机制"
+        assert "private-name" in context.task_goal  # 私人目标仅留本地
+
+
+def test_github_task_requirements_do_not_export_private_segments() -> None:
+    from bridges.chat.task_materials import EffectiveCondition
+    from bridges.github.contracts import GithubContextSource
+    from bridges.github.searching import plan_queries
+
+    parsed = parse_github_request(
+        "找实现它的项目",
+        prior_context=[GithubContextSource(kind="task", label="当前任务", phrase="校园地图")],
+        task_conditions=[EffectiveCondition(
+            "required", "requirement", "路线规划。简历：private-name 13800138000。", "m1"
+        )],
+    )
+    queries = " ".join(plan_queries(parsed))
+    assert "路线规划" in queries
+    assert "private" not in queries
+    assert "13800138000" not in queries

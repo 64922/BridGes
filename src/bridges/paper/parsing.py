@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from bridges.contracts.modules import ModuleWaitState
 from bridges.paper.contracts import (
@@ -39,6 +40,10 @@ from bridges.paper.lexicon import (
     AmbiguousTerm,
     TermContext,
 )
+
+if TYPE_CHECKING:
+    from bridges.chat.task_materials import EffectiveCondition
+
 
 #: 澄清后恢复时读取的原词键（等待状态 ``context`` 的稳定字段名）。
 PENDING_ORIGINAL_PHRASE = "original_phrase"
@@ -71,6 +76,7 @@ def parse_paper_request(
     pending: ModuleWaitState | None = None,
     now: datetime | None = None,
     task_topic_hint: str | None = None,
+    task_conditions: Sequence[EffectiveCondition] | None = None,
 ) -> PaperTermAnalysis:
     """解析一轮论文请求；缺失或歧义时返回单一澄清问题。
 
@@ -85,13 +91,29 @@ def parse_paper_request(
     current = now or datetime.now(UTC)
     text = content.strip()
     if pending is not None and pending.kind == "clarification":
-        return _resume_from_clarification(text, pending, prior_context=prior_context, now=current)
-    return _parse_fresh(
-        text,
-        prior_context=prior_context,
-        now=current,
-        task_topic_hint=task_topic_hint,
-    )
+        parsed = _resume_from_clarification(text, pending, prior_context=prior_context, now=current)
+    else:
+        parsed = _parse_fresh(
+            text,
+            prior_context=prior_context,
+            now=current,
+            task_topic_hint=task_topic_hint,
+        )
+    # 有效快照补齐续接条件；本轮明确纠正优先，旧等待限制不复活。
+    if task_conditions is not None:
+        parsed.constraints = _parse_constraints(text, now=current)
+    for condition in task_conditions or ():
+        if condition.kind in {"year", "time"} and (
+            parsed.constraints.year_from is None and parsed.constraints.year_to is None
+        ):
+            parsed.constraints.year_from, parsed.constraints.year_to = _parse_years(
+                condition.text, now=current
+            )
+        elif condition.kind == "paper_type" and not any(
+            hint in text.lower() for hint in (*SURVEY_HINTS, "原创", "研究论文")
+        ):
+            parsed.constraints.prefer_survey = _parse_intent(condition.text.lower())[1]
+    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +140,11 @@ def _parse_fresh(
             constraints=constraints,
         )
     topic = extract_topic_phrase(text)
+    if task_topic_hint and text.strip(" ，。！？") in {"继续", "继续解释", "接着", "再找几篇"}:
+        topic = None
     if topic is None and task_topic_hint:
         # 工单 15：原文没有主题时用任务快照的主题条件续接（有来源，非推测）。
-        topic = extract_topic_phrase(task_topic_hint)
+        topic = task_topic_hint.strip()
     if topic is None:
         return _needs_topic(text)
     return _analysis_for_topic(

@@ -165,7 +165,7 @@ from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
-from bridges.web_search.service import WebSearchService
+from bridges.web_search.service import SearchPlan, WebSearchService
 
 #: 核心对话能力的固定绑定（ADR-0009 固定模型矩阵）。
 CHAT_CAPABILITY_NAME = "qwen_text_chat"
@@ -271,6 +271,25 @@ _SEARCH_CANCELLED = object()
 #: 搜索提供方截止后、PUBLIC_SEARCH 硬截止前仍未形成可消费投影的占位。
 _SEARCH_PROVIDER_TIMEOUT = object()
 _UNVERIFIED_TEACHING_PREFIX = "本轮未联网核实："
+
+
+def _plan_task_web_search(
+    service: WebSearchService, original: str, public_query: str, mode: ChatMode
+) -> SearchPlan:
+    """原文只在本地裁决触发；网络计划采用任务公开词，保留时效与审计。"""
+    trigger = service.plan(original, mode)
+    if not trigger.should_search or not public_query:
+        return replace(
+            trigger, should_search=False, query="", queries=(), query_hash="", plan_id=""
+        )
+    minimal = service.plan(public_query, mode, force=True)
+    return replace(
+        minimal, reason=trigger.reason, original_query_hash=trigger.original_query_hash,
+        freshness_window_seconds=trigger.freshness_window_seconds, plan_id="",
+        deleted_categories=tuple(sorted(set(
+            trigger.deleted_categories + minimal.deleted_categories
+        ))),
+    )
 
 
 def _initial_web_search_projection(
@@ -3246,6 +3265,7 @@ class TurnOrchestrator:
                     if (
                         required_search.value in {"arxiv", "both"}
                         and self._arxiv_search is not None
+                        and public_query
                         and arxiv_search_projection is None
                     ):
                         arxiv_plan = self._arxiv_search.plan(
@@ -3267,6 +3287,7 @@ class TurnOrchestrator:
                     if (
                         required_search.value in {"tavily", "duckduckgo", "both"}
                         and self._web_search is not None
+                        and public_query
                         and web_search_projection is None
                     ):
                         search_plan = self._web_search.plan(
@@ -3597,7 +3618,7 @@ class TurnOrchestrator:
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
                 # 工单 15：公开来源只接收按任务选择的最小公开查询词（无选择
-                # 时回退原文，仍经既有本地脱敏规划器）。
+                # 时先在本地提取公开术语，保留空查询以避免外发私人原文）。
                 public_query = public_query_from_context(context_budget, round_query)
                 mode_for_plan = (
                     ChatMode(conversation.mode)
@@ -3619,6 +3640,7 @@ class TurnOrchestrator:
                     if (
                         paper_route
                         and self._arxiv_search is not None
+                        and public_query
                         and arxiv_search_projection is None
                     ):
                         paper_arxiv_planned = self._arxiv_search.plan_from_route(route)  # type: ignore[arg-type]
@@ -3644,7 +3666,9 @@ class TurnOrchestrator:
                         and not paper_route
                         and web_search_projection is None
                     ):
-                        paper_web_planned = self._web_search.plan(public_query, mode_for_plan)
+                        paper_web_planned = _plan_task_web_search(
+                            self._web_search, round_query, public_query, mode_for_plan
+                        )
                         if paper_web_planned.should_search:
                             paper_search_plan = paper_web_planned
                             loading = _initial_web_search_projection(
@@ -5213,8 +5237,10 @@ class TurnOrchestrator:
             arxiv_plan = None
             # 工单 15：公开来源只接收按任务选择的最小公开查询词。
             career_public_query = public_query_from_context(context_budget, intent)
-            if self._web_search is not None:
-                career_web_planned = self._web_search.plan(career_public_query, mode)
+            if self._web_search is not None and career_public_query:
+                career_web_planned = _plan_task_web_search(
+                    self._web_search, intent, career_public_query, mode
+                )
                 if career_web_planned.should_search:
                     search_plan = career_web_planned
                     calls.append(
@@ -5230,11 +5256,12 @@ class TurnOrchestrator:
                             ),
                         )
                     )
-            if self._arxiv_search is not None:
-                career_arxiv_planned = self._arxiv_search.plan(
-                    career_public_query, mode
-                )
-                if career_arxiv_planned.should_search:
+            if self._arxiv_search is not None and career_public_query:
+                career_arxiv_trigger = self._arxiv_search.plan(intent, mode)
+                if career_arxiv_trigger.should_search:
+                    career_arxiv_planned = self._arxiv_search.plan(
+                        career_public_query, mode, force=True
+                    )
                     arxiv_plan = career_arxiv_planned
                     calls.append(
                         (

@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, TypeVar
 
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import CallMaterialManifest
-from bridges.chat.task_materials import ModuleTaskContext
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
 from bridges.contracts.workflows import RunContextEnvelope
@@ -63,6 +62,7 @@ from bridges.github.searching import (
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
+    from bridges.chat.task_materials import ModuleTaskContext
 
 NODE_PARSE = "github.parse"
 NODE_SEARCH = "github.search"
@@ -198,6 +198,11 @@ class GithubProjectsService:
             lambda: parse_github_request(
                 user_message.content,
                 prior_context=prior,
+                task_conditions=(
+                    module_context.effective_conditions
+                    if module_context is not None and module_context.used_task_scope
+                    else ()
+                ),
                 pending=waiting,
             ),
         )
@@ -452,9 +457,19 @@ class GithubProjectsService:
         不会污染新任务。
         """
         anchors: list[GithubContextSource] = []
+        last_user_message_id: str | None = None
         for message in repo.list_messages(account_id, conversation_id):
             if message.message_id == user_message_id:
                 break
+            if getattr(message, "role", None) == "user":
+                last_user_message_id = message.message_id
+            if (
+                module_context is not None
+                and module_context.used_task_scope
+                and message.message_id not in module_context.source_message_ids
+                and last_user_message_id not in module_context.source_message_ids
+            ):
+                continue
             anchors.extend(_paper_anchors(message))
             anchors.extend(_github_anchors(message))
         anchors = anchors[-PRIOR_MESSAGES_LOOKBACK:]

@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypeVar
 
-from bridges.chat.task_materials import ModuleTaskContext
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
 from bridges.resources.contracts import (
@@ -56,6 +55,7 @@ from bridges.resources.sources import (
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
+    from bridges.chat.task_materials import ModuleTaskContext
 
 #: 本轮子图节点名（进度事件与失败定位使用；父图节点仍是 invoke_subgraph_or_chat）。
 #: 与编排合同一致：解析 → 两条检索 → 排序 → 生成，不含独立的计划节点。
@@ -188,7 +188,10 @@ class LearningResourcesService:
         parsed = run.node(
             NODE_PARSE,
             lambda: parse_resources_request(
-                user_message.content, prior_context=prior, pending=pending
+                user_message.content,
+                prior_context=prior,
+                pending=pending,
+                module_context=module_context,
             ),
         )
         if parsed.clarification is not None:

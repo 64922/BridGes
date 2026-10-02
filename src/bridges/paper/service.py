@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, TypeVar
 
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import CallMaterialManifest
-from bridges.chat.task_materials import ModuleTaskContext
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
@@ -57,6 +56,7 @@ from bridges.paper.sources import (
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
+    from bridges.chat.task_materials import ModuleTaskContext
 
 #: 本轮子图节点名（进度事件与失败定位使用；父图节点仍是 invoke_subgraph_or_chat）。
 NODE_PARSE = "paper.parse"
@@ -180,7 +180,14 @@ class PaperSearchService:
             )
         pending = self._pending_wait(repo, account_id, conversation_id)
         prior = (
-            list(module_context.prior_messages)
+            (
+                [
+                    condition.text for condition in module_context.effective_conditions
+                    if condition.kind in {"domain", "topic"}
+                ]
+                if module_context.used_task_scope
+                else list(module_context.prior_messages)
+            )
             if module_context is not None
             else self._prior_user_messages(
                 repo, account_id, conversation_id, user_message_id
@@ -195,6 +202,11 @@ class PaperSearchService:
                 prior_context=prior,
                 pending=pending,
                 task_topic_hint=topic_hint,
+                task_conditions=(
+                    module_context.effective_conditions
+                    if module_context is not None and module_context.used_task_scope
+                    else None
+                ),
             ),
         )
         if parsed.clarification is not None:

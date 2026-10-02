@@ -42,7 +42,7 @@
 | [12](issues/12-main-agent-hybrid-entry-and-task-relations.md) | 主智能体理解混合入口与跨轮任务关系 | [01](issues/01-confirmed-contracts-and-expand-migration.md)、[04](issues/04-final-payload-budget-and-data-boundary.md)、[08](issues/08-source-bound-task-state-and-waits.md)、[09](issues/09-shared-persistent-run-budget.md)、[10](issues/10-resumable-commute-kernel-pilot.md)、[11](issues/11-reference-resolution-and-original-recovery.md) | ready-for-agent |
 | [13](issues/13-bounded-summary-cache.md) | 后台生成有界摘要并按来源缓存 | [04](issues/04-final-payload-budget-and-data-boundary.md)、[08](issues/08-source-bound-task-state-and-waits.md)、[09](issues/09-shared-persistent-run-budget.md)、[11](issues/11-reference-resolution-and-original-recovery.md) | ready-for-agent |
 | [14](issues/14-multimodal-and-saved-evidence-reuse.md) | 统一照片预算与旧附件、原图、证据读取 | [04](issues/04-final-payload-budget-and-data-boundary.md)、[11](issues/11-reference-resolution-and-original-recovery.md) | ready-for-agent |
-| [15](issues/15-task-aware-retrieval-and-module-context.md) | 按解析任务选择检索材料与模块上下文 | [04](issues/04-final-payload-budget-and-data-boundary.md)、[11](issues/11-reference-resolution-and-original-recovery.md)、[14](issues/14-multimodal-and-saved-evidence-reuse.md) | ready-for-agent |
+| [15](issues/15-task-aware-retrieval-and-module-context.md) | 按解析任务选择检索材料与模块上下文 | [04](issues/04-final-payload-budget-and-data-boundary.md)、[11](issues/11-reference-resolution-and-original-recovery.md)、[14](issues/14-multimodal-and-saved-evidence-reuse.md) | ready-for-human |
 | [16](issues/16-atomic-fact-identity-and-coexistence.md) | 以完整事实身份保存画像并处理并存更新 | [02](issues/02-profile-specification-decisions.md)、[07](issues/07-profile-controls-and-immediate-commands.md) | ready-for-agent |
 | [17](issues/17-asynchronous-evidence-based-profile-extraction.md) | 回答后异步提取有精确证据的完整事实 | [02](issues/02-profile-specification-decisions.md)、[03](issues/03-model-quota-and-call-snapshots.md)、[04](issues/04-final-payload-budget-and-data-boundary.md)、[16](issues/16-atomic-fact-identity-and-coexistence.md) | ready-for-agent |
 | [18](issues/18-profile-validity-and-semantic-revocation.md) | 治理画像范围、有效期和语义撤回传播 | [02](issues/02-profile-specification-decisions.md)、[07](issues/07-profile-controls-and-immediate-commands.md)、[16](issues/16-atomic-fact-identity-and-coexistence.md) | ready-for-agent |
@@ -118,3 +118,4 @@
 ## 本次拆票检查
 
 在 conda `agent` 环境完成文档检查：43 张编号连续、每票必需字段/验收完整；依赖顺序合法且无环，43 的传递前置覆盖其余 42 张；所有画像实现通过依赖等待 02；21 个源文件均有覆盖映射并成为相关票必读资料；127 条需求映射、41 项逐项选择与 39 个工作流场景均登记，1303 个本地链接有效。各票约 3.4–5.1 KB。以上是票据结构和覆盖对照检查，实施与真实效果的验收由各票后续执行。
+

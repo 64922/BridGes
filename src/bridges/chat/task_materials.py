@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -36,11 +37,12 @@ from bridges.contracts.references import (
     ReferenceTaskContext,
 )
 from bridges.contracts.tasks import ConditionStatus
+from bridges.web_search.service import LocalQueryPlanner
 
 #: 本模块的选择合同版本（字段或口径变化时递增）。
-TASK_MATERIALS_VERSION = "task-materials-v1"
+TASK_MATERIALS_VERSION = "task-materials-v2"
 #: 模块上下文合同版本。
-MODULE_CONTEXT_VERSION = "module-context-v1"
+MODULE_CONTEXT_VERSION = "module-context-v2"
 
 #: 单条本地查询的最大字符数（与检索清洗上限同量级，保持最小查询）。
 LOCAL_QUERY_MAX_CHARS = 160
@@ -147,15 +149,30 @@ def record_queries(context_budget: Mapping[str, Any] | None) -> Mapping[str, str
     queries = context_budget.get("task_queries")
     if not isinstance(queries, Mapping):
         return {}
-    return {str(key): str(value) for key, value in queries.items() if value}
+    return {str(key): value for key, value in queries.items() if isinstance(value, str)}
 
 
 def public_query_from_context(
     context_budget: Mapping[str, Any] | None, fallback: str
 ) -> str:
-    """公开检索查询：优先按任务选择的最小公开词，否则回退调用方原文。"""
-    query = record_queries(context_budget).get(MaterialDomain.PUBLIC_SEARCH.value, "")
-    return query or fallback
+    """公开检索查询：保留编译期空查询，旧检查点也先提取公开术语。"""
+    queries = record_queries(context_budget)
+    if MaterialDomain.PUBLIC_SEARCH.value in queries:
+        return queries[MaterialDomain.PUBLIC_SEARCH.value]
+    # 旧检查点也先在本地提取公开术语，不把原文当作安全查询。
+    return _public_query(fallback)
+
+
+def _public_query(text: str) -> str:
+    """复用本地公开术语规范化；先排除简历、书页及身份段落再限长。"""
+    text = re.sub(
+        r"(?:简历|履历|书页|个人经历|工作经历|教育经历|\bCV\b|\bresume\b)[^。！？；;\n]*[。！？；;]?",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    query = LocalQueryPlanner().plan(text, force=True).query
+    return "" if query == "公开信息" else _clip(query, PUBLIC_QUERY_MAX_CHARS)
 
 
 def _fingerprint(queries: Mapping[str, str]) -> str:
@@ -176,6 +193,15 @@ def _request_topic(request: str) -> tuple[str, ...]:
 def _clip(text: str, limit: int) -> str:
     compact = " ".join(text.split())
     return compact if len(compact) <= limit else compact[: limit - 1] + "…"
+
+
+def _query_excerpt(text: str, limit: int) -> str:
+    """查询节选保留开头主题和末尾限定；完整原文仍由任务快照持有。"""
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    head = limit // 2
+    return compact[:head] + "…" + compact[-(limit - head - 1):]
 
 
 def _conditions_from_task(
@@ -238,7 +264,12 @@ def _topic_terms_from_resolution(
     if resolution is None:
         return ()
     terms: list[str] = []
+    has_item = any(
+        anchor.adopted and anchor.kind is AnchorKind.LIST_ITEM for anchor in resolution.anchors
+    )
     for anchor in resolution.anchors:
+        if has_item and anchor.kind is AnchorKind.RESULT_LIST:
+            continue
         if not anchor.adopted or anchor.kind not in {
             AnchorKind.LIST_ITEM,
             AnchorKind.RESULT_LIST,
@@ -269,7 +300,14 @@ def select_task_materials(
     topic_terms = _topic_terms_from_resolution(resolution)
     effective, excluded = _conditions_from_task(resolution, task)
     used_fallback = False
-    if not topic_terms and not own_terms and not effective:
+    task_goal = resolution.task.goal if resolution is not None and resolution.task else (
+        task.goal if task is not None else ""
+    )
+    if not topic_terms:
+        topic_terms = tuple(
+            condition.text for condition in effective if condition.kind in {"topic", "scenario"}
+        ) or ((task_goal,) if task_goal else ())
+    if not topic_terms and not own_terms and not task_goal and not effective:
         # 请求只有指代且没有任务条件：允许用最近的少量消歧前文定位主题。
         for text in recent_user_texts:
             fallback = _request_topic(text)
@@ -297,9 +335,15 @@ def select_task_materials(
     request_part = " ".join(own_terms)
     topic_part = " ".join(topic_terms)
     condition_part = " ".join(
-        _clip(condition.text, CONDITION_TERM_MAX_CHARS) for condition in effective
+        _query_excerpt(condition.text, CONDITION_TERM_MAX_CHARS)
+        for condition in reversed(effective)
     )
-    local_parts = [part for part in (topic_part, condition_part, request_part) if part]
+    # 为对象和本轮纠正分别留空间，条件按最新顺序优先；避免前文长标签
+    # 挤掉末尾纠正。完整有效条件仍保存在选择结果，不把查询当作条件权威。
+    request_query = _query_excerpt(request_part, 40)
+    local_parts = [
+        part for part in (_clip(topic_part, 40), request_query, condition_part) if part
+    ]
     profile_parts = [part for part in (topic_part, request_part) if part]
     public_parts = [part for part in (topic_part, request_part) if part]
     queries = {
@@ -308,8 +352,8 @@ def select_task_materials(
             " ".join(local_parts), LOCAL_QUERY_MAX_CHARS
         ),
         MaterialDomain.PROFILE.value: _clip(" ".join(profile_parts), LOCAL_QUERY_MAX_CHARS),
-        MaterialDomain.PUBLIC_SEARCH.value: _clip(
-            " ".join(public_parts), PUBLIC_QUERY_MAX_CHARS
+        MaterialDomain.PUBLIC_SEARCH.value: (
+            _public_query("。".join(public_parts)) if not used_fallback else ""
         ),
     }
     return TaskMaterialSelection(
@@ -465,7 +509,12 @@ def build_module_context(
     topic_needles.extend(condition.text for condition in effective)
     topic_needles = [needle for needle in topic_needles if needle]
     source_ids: set[str] = set()
+    excluded_source_ids: set[str] = set()
     if task is not None:
+        excluded_source_ids.update(
+            condition.source_message_id for condition in task.conditions
+            if condition.condition_id in excluded
+        )
         source_ids.update(task.source_message_ids)
         source_ids.update(condition.source_message_id for condition in effective)
     # 只取当前消息之前、且属于任务来源或命中任务主题/条件的前文；条数仍以
@@ -477,32 +526,40 @@ def build_module_context(
             break
         if role != "user" or not content.strip():
             continue
+        # 原文中被撤销/取代或不属本模块的条件不可绕回背景再次生效。
+        if message_id in excluded_source_ids:
+            continue
         if task is not None and not (
             message_id in source_ids or _mentions(content, topic_needles)
         ):
             continue
         prior.append(content)
         adopted_prior_ids.append(message_id)
-    prior = prior[-declaration.lookback :]
-    adopted_prior_ids = adopted_prior_ids[-declaration.lookback :]
+    limit = max(0, declaration.lookback)
+    prior = prior[-limit:] if limit else []
+    adopted_prior_ids = adopted_prior_ids[-limit:] if limit else []
     topic_hint = ""
     for effective_condition in effective:
         if effective_condition.kind in {"topic", "scenario"} and effective_condition.text.strip():
             topic_hint = effective_condition.text.strip()
             break
-    if not topic_hint and effective:
-        topic_hint = effective[0].text.strip()
     if not topic_hint and task is not None:
         topic_hint = task.goal.strip()
+    if declaration.purpose in {"paper", "github", "resources"}:
+        # 主题提示会进入公开模块查询，任务目标里的私人段落只留在本地。
+        topic_hint = _public_query(topic_hint)
     adopted_source_ids = list(adopted_prior_ids)
+    condition_source_ids = {condition.source_message_id for condition in effective}
     for message_id, role, content in messages:
         if (
             role == "user"
-            and message_id in source_ids
+            and message_id in condition_source_ids
             and content.strip()
             and message_id not in adopted_source_ids
         ):
             adopted_source_ids.append(message_id)
+        if message_id == current_user_message_id:
+            break
     return ModuleTaskContext(
         version=MODULE_CONTEXT_VERSION,
         module_id=declaration.module_id,

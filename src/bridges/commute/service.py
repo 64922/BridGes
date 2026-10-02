@@ -19,7 +19,6 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from bridges.chat.task_materials import ModuleTaskContext
 from bridges.commute.contracts import (
     MISSING_DESTINATION_CHOICE,
     MISSING_ORIGIN_CHOICE,
@@ -64,6 +63,7 @@ from bridges.kernel.repository import NodeKernelRepository
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
+    from bridges.chat.task_materials import ModuleTaskContext
 
 #: 澄清等待状态的类型标识（等待合同的一部分）。
 WAIT_KIND_CLARIFICATION = "clarification"
@@ -175,6 +175,7 @@ class CommuteService:
             amap=self._amap,
             clock=self._clock,
             prior_context=prior,
+            module_context=module_context,
             pending_wait=pending,
             budget=budget,
             stop_event=stop_event,

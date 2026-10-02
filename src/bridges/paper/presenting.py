@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -185,6 +187,7 @@ class PaperSummaryGenerator:
             "temperature": 0.3,
             "max_tokens": output_tokens,
         }
+        schema_text = json.dumps(SUMMARY_JSON_SCHEMA, ensure_ascii=False, sort_keys=True)
         # 工单 15：工具结果（真实候选摘要）加入后，对**本次最终载荷**重新
         # 执行预算门（共用 payload_budget 的调用入口，不复制预算器）；
         # 超限时不发已知超限请求，只交付真实元数据并如实说明。
@@ -200,22 +203,55 @@ class PaperSummaryGenerator:
                     adopted=True,
                     reason="概述系统规则与输出契约",
                     estimated_tokens=estimate_tokens(SUMMARY_SYSTEM_PROMPT),
+                    source_version="sha256:"
+                    + hashlib.sha256(SUMMARY_SYSTEM_PROMPT.encode()).hexdigest(),
+                    read_range="完整系统规则",
+                ),
+                MaterialManifestEntry(
+                    material_id="paper.summary.schema",
+                    category=MaterialCategory.SYSTEM_RULE.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="结构化输出契约",
+                    estimated_tokens=estimate_tokens(schema_text),
+                    source_version="sha256:" + hashlib.sha256(schema_text.encode()).hexdigest(),
+                    read_range="完整 JSON Schema",
                 ),
                 MaterialManifestEntry(
                     material_id="paper.summary.candidates",
-                    category=MaterialCategory.RETRIEVAL.value,
+                    category=MaterialCategory.SYSTEM_RULE.value,
                     necessity="required",
                     adopted=True,
-                    reason="本轮真实候选的标题、摘要与类别",
-                    estimated_tokens=estimate_tokens(user_content),
+                    reason="候选列表请求与输出格式封装，候选另逐项记录",
+                    read_range="候选列表首尾指令",
+                    estimated_tokens=estimate_tokens(_summary_prompt([], {})),
+                    source_version="sha256:"
+                    + hashlib.sha256(_summary_prompt([], {}).encode()).hexdigest(),
                 ),
+                *[
+                    MaterialManifestEntry(
+                        material_id=f"arxiv:{paper.arxiv_id}" if paper.arxiv_id else paper.abs_url,
+                        category=MaterialCategory.TOOL.value,
+                        necessity="required",
+                        adopted=True,
+                        reason="本轮真实候选的实际发送切片",
+                        estimated_tokens=estimate_tokens(_summary_candidate(paper, abstracts)),
+                        source_version="sha256:"
+                        + hashlib.sha256(_summary_candidate(paper, abstracts).encode()).hexdigest(),
+                        read_range=(
+                            "标题、类别；摘要字符[0:"
+                            f"{len((abstracts.get(paper.arxiv_id or '') or '').strip()[:1200])}]"
+                        ),
+                    )
+                    for paper in papers
+                ],
             ],
         )
-        if manifest is not None and not manifest.gate.within_budget:
+        if not manifest.gate.within_budget:
             return SummaryOutcome(
                 note=(
                     "中文概述未生成：加入本轮候选证据后的最终载荷超出该模型的"
-                    "输入预算，已闭锁；本轮只给来源元数据与原始摘要依据。"
+                    "输入预算或额度无法验证，已闭锁；本轮只给来源元数据与原始摘要依据。"
                 ),
                 manifest=manifest,
             )
@@ -266,15 +302,20 @@ class PaperSummaryGenerator:
         )
 
 
-def _summary_prompt(
-    papers: list[PaperRecommendation], abstracts: dict[str, str]
-) -> str:
+def _summary_candidate(paper: PaperRecommendation, abstracts: dict[str, str]) -> str:
+    """候选实际发送切片，供提示词与脱敏清单共用。"""
+    lines: list[str] = []
+    lines.append(f"- arxiv_id: {paper.arxiv_id}")
+    lines.append(f"  标题: {paper.title}")
+    lines.append(f"  类别: {paper.primary_category or '未标注'}")
+    abstract = (abstracts.get(paper.arxiv_id or "") or "").strip()
+    lines.append(f"  摘要: {abstract[:1200] if abstract else '来源未返回摘要'}")
+    return "\n".join(lines)
+
+
+def _summary_prompt(papers: list[PaperRecommendation], abstracts: dict[str, str]) -> str:
     lines = ["请为下列论文各写一句中文概述（只依据给出的标题与摘要）："]
     for paper in papers:
-        lines.append(f"- arxiv_id: {paper.arxiv_id}")
-        lines.append(f"  标题: {paper.title}")
-        lines.append(f"  类别: {paper.primary_category or '未标注'}")
-        abstract = (abstracts.get(paper.arxiv_id or "") or "").strip()
-        lines.append(f"  摘要: {abstract[:1200] if abstract else '来源未返回摘要'}")
+        lines.append(_summary_candidate(paper, abstracts))
     lines.append('输出 JSON：{"summaries": [{"arxiv_id": "...", "summary_zh": "..."}]}')
     return "\n".join(lines)
