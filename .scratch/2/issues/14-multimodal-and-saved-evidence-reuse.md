@@ -92,3 +92,5 @@
 - 本次验证：相关聊天/照片/指代/预算/摘要/停止回归 159 passed；架构检查 23 passed；包含全部 retrieval 的前一组扩大回归 201 passed / 2 failed，两个退役项目文件入口失败在当前 main 上逐项复现。ruff 改动文件通过；mypy 6 项错误与当前 main 的 6 项逐条一致（行号有偏移），没有新增。
 - 新增回归覆盖多图真实收集顺序、删除不重编号、重复序号歧义、数据库未命中目标页/真正文末、中文页码、保存摘录进入模型、其他模块范围接线；强化原图删除测试，验证旧摘要失效及在途旧代际保存被拒。
 - 验收结论：通过，可合入 main；保留 `ready-for-human` 作为仓库既有分诊状态，完成证据以本记录及 acceptance 文件为准。
+
+- 最终交付：验收修复/冲突解决 `28d6ce75`，main 合并 `8a1723c7` 已推送 origin；本地 Issue 分支、worktree 登记及物理目录均已删除，Windows 缓存 ACL 经 UAC 管理员清理后核验无残留，prune 无失效记录。详见 `.scratch/2/acceptance/14-multimodal-and-saved-evidence-reuse.md`。
