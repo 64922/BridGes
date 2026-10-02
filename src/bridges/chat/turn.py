@@ -122,6 +122,10 @@ from bridges.contracts.humanizer import HumanizerSkillInput
 from bridges.contracts.image import ImageTaskKind
 from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.profile_adoption import (
+    AdoptedProfileItem,
+    AdoptedProfileSlice,
+)
 from bridges.contracts.profiles import (
     FOUR_DIMENSION_LABELS,
     PROFILE_DIMENSION_LABELS,
@@ -154,6 +158,10 @@ from bridges.profiles.atomic import (
 )
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
+from bridges.profiles.purpose import (
+    application_summary,
+    build_purpose,
+)
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
@@ -1620,6 +1628,92 @@ def profile_block_within_budget(
         requires_confirmation=requires_confirmation,
     )
     return rendered, items
+
+
+#: 采用条目的用途标签：让模型知道这条信息用于哪个回答决策，而不是一句模糊偏好。
+_ADOPTED_LABELS: tuple[tuple[str, str], ...] = (
+    ("expression_", "默认表达偏好"),
+    ("explanation_order", "默认表达偏好"),
+    ("address", "默认称呼"),
+    ("plan_time_budget", "现实时间/资源约束"),
+    ("plan_focus", "当前目标"),
+    ("recommendation_scope", "当前目标与资源"),
+    ("plan_level", "用户背景（来自自述）"),
+    ("explanation_start", "用户背景（来自自述）"),
+)
+
+
+def _adopted_item_label(item: AdoptedProfileItem) -> str:
+    """把决策标签折算为中文用途标签；未知标签回退为相关已记住信息。"""
+
+    for decision, label in _ADOPTED_LABELS:
+        if any(
+            applicable == decision or applicable.startswith(decision)
+            for applicable in item.applicable_to
+        ):
+            return label
+    return "相关已记住信息"
+
+
+def adopted_profile_context(
+    adopted: AdoptedProfileSlice, *, requires_confirmation: bool = False
+) -> str:
+    """构造注入模型的用途明确画像块（完整事实、条件与“本轮应用”）。
+
+    与旧渲染的固定标记保持一致，便于披露与评测复用；原子条目不携带类别，
+    “本轮应用”由用途与采用条目确定性编译，不新增模型调用。
+    """
+
+    lines = [
+        "以下是本轮为你参考的已授权信息（仅包含与你当前任务相关的少量内容；"
+        "只能据此回答，不得推断或声称知道更多未提供的信息）。如果用户问你记得什么，"
+        "请只用日常语言概括相关要点，不要提及系统内部的分类或格式："
+    ]
+    if requires_confirmation:
+        lines.append(
+            "如果当前问题需要关于用户的信息而这里没有足够依据，请直接向用户确认，"
+            "不要自行补全。"
+        )
+    for index, item in enumerate(adopted.adopted_items, start=1):
+        line = (
+            f"[{index}]（{_adopted_item_label(item)}）{item.fact_text}。"
+            f"用途：{item.adoption_reason}"
+        )
+        if item.conditions:
+            line += "；适用条件：" + "；".join(item.conditions)
+        if item.is_default:
+            line += "；这是长期默认偏好，本轮明确要求优先"
+        lines.append(line)
+    summary = application_summary(adopted.purpose, adopted.adopted_items)
+    if summary:
+        lines.append(summary)
+    return "\n".join(lines)
+
+
+def adopted_profile_block_within_budget(
+    adopted: AdoptedProfileSlice,
+    *,
+    requires_confirmation: bool = False,
+    remaining_tokens: int | None = None,
+) -> tuple[AdoptedProfileSlice, str | None, list[ProfileSliceItem]]:
+    """按剩余输入预算整条裁剪采用条目；预算不足时整条排除，不截断正文。"""
+
+    if remaining_tokens is not None:
+        kept: list[AdoptedProfileItem] = []
+        used = 0
+        for item in adopted.adopted_items:
+            cost = estimate_tokens(item.fact_text) + _PROFILE_ITEM_RENDER_TOKENS
+            if used + cost > remaining_tokens:
+                break
+            kept.append(item)
+            used += cost
+        adopted = adopted.with_items(kept)
+    if not adopted.adopted_items and not requires_confirmation:
+        return adopted, None, []
+    rendered = adopted_profile_context(
+        adopted, requires_confirmation=requires_confirmation
+    )
+    return adopted, rendered, adopted.to_profile_slice().included_items
 
 
 def profile_correction_context(metadata: dict[str, Any] | None) -> str | None:
@@ -3466,6 +3560,11 @@ class TurnOrchestrator:
                     web_search_projection=web_search_projection,
                     arxiv_search_projection=arxiv_search_projection,
                     context_budget=context_budget,
+                    learning_stage=(
+                        teaching_projection.level_assumption
+                        if teaching_projection is not None
+                        else None
+                    ),
                 )
                 study_profile_compiled = True
                 if context_note is not None:
@@ -3973,6 +4072,11 @@ class TurnOrchestrator:
                     web_search_projection=web_search_projection,
                     arxiv_search_projection=arxiv_search_projection,
                     context_budget=context_budget,
+                    learning_stage=(
+                        teaching_projection.level_assumption
+                        if teaching_projection is not None
+                        else None
+                    ),
                 )
                 if context_note is not None:
                     thinking = context_note_thinking(thinking, context_note)
@@ -6090,6 +6194,7 @@ class TurnOrchestrator:
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
         context_budget: dict[str, Any] | None = None,
+        learning_stage: str | None = None,
     ) -> tuple[
         ContextNoteProjection | None,
         str | None,
@@ -6109,6 +6214,11 @@ class TurnOrchestrator:
         V2 Issue 08：挂载原子画像时以无类别的原子列表为准（四维记录只作为
         迁移与冲突消解的内部来源），并按 ``context_budget`` 的剩余输入预算
         裁剪本轮画像块——画像材料与编译器共用同一预算口径，超限时先裁它。
+
+        改进工单 19：原子画像先编译唯一的用途明确采用快照（任务/模式/模块/
+        学习阶段），默认表达偏好跨主题适用、背景/目标/约束按任务召回，本轮
+        明确要求覆盖默认；整条采用或整条排除，不截断正文。模型输入以同一
+        快照渲染，审计采用条数与实际注入一致。
         """
         now = datetime.now(UTC)
         material_categories = self._material_categories(
@@ -6193,20 +6303,30 @@ class TurnOrchestrator:
                 None,
                 None,
             )
+        atomic_adopted: AdoptedProfileSlice | None = None
         try:
             if self._atomic_profiles is not None:
                 current_messages = self._repo.list_messages(account_id, conversation_id)
                 current_user_message = owner_user_message(
                     current_messages, assistant_message_id
                 )
-                profile_slice = self._atomic_profiles.compile_chat_slice(
+                query = (
+                    current_user_message.content
+                    if current_user_message is not None
+                    else None
+                )
+                atomic_adopted = self._atomic_profiles.compile_adopted_slice(
                     account_id,
                     run_id=assistant_message_id,
-                    project_id=conversation_id,
-                    current_question=(
-                        current_user_message.content
-                        if current_user_message is not None
-                        else None
+                    purpose=build_purpose(
+                        mode=mode.value,
+                        query=query,
+                        module_id=(
+                            current_user_message.module_id
+                            if current_user_message is not None
+                            else None
+                        ),
+                        learning_stage=learning_stage,
                     ),
                     # 本轮刚自动整理出的条目下一轮才生效（V2 Issue 08）。
                     current_user_message_id=(
@@ -6247,7 +6367,8 @@ class TurnOrchestrator:
                     project_id=conversation_id,
                 )
             if (
-                self._four_dimension_profiles is None
+                self._atomic_profiles is None
+                and self._four_dimension_profiles is None
                 and self._automatic_profiles is not None
                 and self._profiles is not None
             ):
@@ -6303,6 +6424,59 @@ class TurnOrchestrator:
                 [],
                 None,
                 None,
+            )
+        if atomic_adopted is not None:
+            adopted_requires_confirmation = any(
+                item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON
+                for item in atomic_adopted.excluded_items
+            )
+            adopted_before_budget = len(atomic_adopted.adopted_items)
+            atomic_adopted, profile_context, profile_items = (
+                adopted_profile_block_within_budget(
+                    atomic_adopted,
+                    requires_confirmation=adopted_requires_confirmation,
+                    remaining_tokens=_remaining_input_tokens(context_budget),
+                )
+            )
+            dropped_for_budget = adopted_before_budget - len(profile_items)
+            self._audit_slice_usage(
+                account_id,
+                mode=mode.value,
+                enabled=True,
+                slice_id=atomic_adopted.slice_id,
+                item_count=len(profile_items),
+                excluded_count=len(atomic_adopted.excluded_items)
+                + dropped_for_budget,
+                material_categories=material_categories,
+            )
+            context_note = ContextNoteProjection(
+                state=(
+                    ContextNoteState.READY
+                    if profile_items
+                    else ContextNoteState.EMPTY
+                ),
+                profile_enabled=True,
+                mode=mode,
+                used_at=now,
+                profile_item_count=len(profile_items),
+                material_categories=material_categories,
+                note=(
+                    context_note_ready_text(profile_items)
+                    if profile_items
+                    else (
+                        f"本轮没有与你当前任务匹配的{_PROFILE_CONTEXT_LABEL}，"
+                        "因此没有使用额外背景。"
+                    )
+                ),
+            )
+            return (
+                self._persist_context_note(
+                    account_id, assistant_message_id, context_note
+                ),
+                profile_context,
+                profile_items,
+                atomic_adopted.slice_id,
+                atomic_adopted.revocation_version,
             )
         requires_confirmation = any(
             item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON

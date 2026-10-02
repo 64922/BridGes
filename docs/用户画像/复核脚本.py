@@ -22,6 +22,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
 )
+from bridges.profiles.purpose import build_purpose
 from bridges.profiles.signals import ProfileSignalClassifier
 
 
@@ -228,5 +229,64 @@ for number, text in enumerate(
 ):
     ingest(automatic, text, number)
 results["逐片段反例（本地规则）"] = texts(atomic)
+
+# ---------------------------------------------------------------------------
+# 改进工单 19：用途明确的完整采用快照（确定性规则，不调用模型）。
+# ---------------------------------------------------------------------------
+
+
+def adopted_view(atomic, question):
+    """按用途编译采用快照并给出复核视图（正文、用途、条件、排除原因）。"""
+
+    adopted = atomic.compile_adopted_slice(
+        "audit-user",
+        run_id="audit-adopt",
+        purpose=build_purpose(mode="daily", query=question),
+    )
+    return {
+        "问题": question,
+        "任务种类": adopted.purpose.task_kind.value,
+        "本轮明确要求": adopted.purpose.explicit_request,
+        "采用": [
+            {
+                "正文": item.fact_text,
+                "用途": item.adoption_reason,
+                "决策": list(item.applicable_to),
+                "条件": list(item.conditions),
+            }
+            for item in adopted.adopted_items
+        ],
+        "排除": [
+            {"正文": item.fact_text, "原因": item.exclusion_reason}
+            for item in adopted.excluded_items
+        ],
+    }
+
+
+_, _, atomic, _ = services()
+atomic.remember("audit-user", "我习惯先看例子再看公式")
+atomic.remember("audit-user", "我平时喜欢跑步")
+results["工单19：跨词面偏好与无关爱好"] = adopted_view(atomic, "解释贝叶斯定理")
+
+_, _, atomic, _ = services()
+atomic.remember("audit-user", "我每天只有30分钟学习时间")
+atomic.remember("audit-user", "我喜欢简短回答")
+view = adopted_view(atomic, "帮我安排复习计划，请详细展开")
+view["长期值保留"] = texts(atomic)
+results["工单19：约束召回与本轮覆盖"] = view
+
+_, _, atomic, _ = services()
+prefix = "学习讲解时先给一个完整直观的例子并说明具体条件。" * 4
+item = atomic.remember("audit-user", prefix + "但考试冲刺时不要使用这种方式。")
+adopted = atomic.compile_adopted_slice(
+    "audit-user",
+    run_id="audit-full-text",
+    purpose=build_purpose(mode="daily", query="学习讲解"),
+)
+results["工单19：整条采用不截断"] = {
+    "完整长度": len(item.text),
+    "采用长度": [len(entry.fact_text) for entry in adopted.adopted_items],
+    "正文一致": all(entry.fact_text == item.text for entry in adopted.adopted_items),
+}
 
 print(json.dumps(results, ensure_ascii=False, indent=2))

@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — 守住最终模型载荷预算与材料权威边界；11 — 解析任务指代并补回必要原文；16 — 以完整事实身份保存画像并处理并存更新；18 — 治理画像范围、有效期和语义撤回传播
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -53,4 +53,42 @@
 固定模型输入对比有/无/错/过时画像，检查采用条目与具体应用决策；真实回答效果在 41 验证。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+## 实施记录（2026-10-02）
+
+**分支/合同版本：** 分支 `codex/19-purpose-aware-profile-slice`，基点 `main@2c003eed`；无数据库迁移（无新增持久状态）；开发和测试使用 conda `agent`（Windows，Python 3.11.15，UTF-8）。
+
+### 实现说明
+
+- **唯一采用快照**：`AtomicProfileService.compile_adopted_slice` 一次读取当前账户活动条目（含撤回状态），按同轮排除（本轮刚整理下一轮生效）→ 有效性门（工单 18 的撤回/暂停/完成/过期/低把握度）→ 用途规则（tier 0）或词面相关（tier 1）→ 本轮明确要求覆盖的筛选顺序，产出携带采用/排除原因、适用条件、冻结 `revocation_version` 的 `AdoptedProfileSlice`；同轮不重查仓库，删除/纠正/撤回后下一次调用自然重筛。
+- **可解释用途规则**：新增 `profiles/purpose.py`（确定性、无模型调用）——任务种类（解释/计划/推荐/练习/复盘/普通）、明确要求签名（detailed/concise/answer_only/conclusion_first/example_first）、跨主题表达偏好标签、现实资源约束与背景/目标的适用决策；默认表达偏好不要求与学科问题共享字词，背景/目标/约束按任务召回，无关爱好只走词面。
+- **排序与整条采用**：按（任务作用 tier、来源权威、时效、证据充分度）排序，`MAX_SLICE_ITEMS=4` 内整条采用；超限或预算不足整条排除，不硬截 80 字、不强塞第一条；`requires_confirmation` 沿用低把握度排除原因。
+- **生成前接入**：`chat/turn.py` 的原子画像分支改为调用 `compile_adopted_slice`，用途由 `mode` + 本轮用户原文 + 消息模块 + 教学阶段提示确定性推导；模型块新增逐条「用途」「适用条件」「长期默认偏好」与「本轮应用」说明，保留既有固定标记且不出现内部类别；审计 `item_count` 与实际注入条目数一致。
+- **覆盖语义**：本轮明确要求命中默认偏好标签时整条不采用（只影响本轮，不写回长期值）；专业/年级等自述只作为讲解起点，不生成掌握程度标签（生成链提示「不推断未提供的掌握程度」）。
+
+### 接口/合同变化
+
+- 新增合同：`src/bridges/contracts/profile_adoption.py` 的 `ProfileTaskKind`、`ProfileSlicePurpose`、`AdoptedProfileItem`（完整事实、适用决策、采用原因、条件、是否默认、期限）、`ProfileSliceExclusion`、`AdoptedProfileSlice`（`select_subset`、`with_items`、`to_profile_slice`）。
+- 新增服务方法：`AtomicProfileService.compile_adopted_slice(account_id, *, run_id, purpose=None, current_user_message_id=None, now=None)`；既有 `compile_chat_slice` 增加 `purpose` 可选参数并改为同一采用快照的折算视图，旧调用方行为兼容。
+- 聊天接线新增 `adopted_profile_context` 与 `adopted_profile_block_within_budget`（整条预算裁剪，`_remaining_input_tokens` 与工单 04 共用口径）；无 OpenAPI/数据库/持久状态变化，无需迁移或导出变更。
+
+### 跨票接缝
+
+- **22/29**：唯一采用对象是公开的 `AdoptedProfileSlice` + `compile_adopted_slice`；同轮后续节点从编排持有的同一冻结快照 `select_subset` 取子集（阶段一由 `profile_items` 传递同一快照折算），不得各自重编；用途语义与决策标签由 `ProfileSlicePurpose`/`applicable_to` 提供。
+- **15**：查询入口（任务指代/原文恢复）与用途推导共享本轮用户原文；模块/学习阶段作为用途提示传入，选择规则可后续扩展。
+- **04**：预算口径复用 `_remaining_input_tokens`，超预算整条排除；**41**：若实测需要语义/向量检索，扩展点在 `purpose.applicability` 规则层，合同不变。
+
+### 验证结果
+
+- 新增本票测试：`tests/profiles/test_issue19_purpose_aware_slice.py` 13 项 + `tests/chat/test_improvement19_purpose_aware_slice.py` 5 项，共 **18 passed**（覆盖贝叶斯跨词面偏好、背景/约束按任务召回、跑步排除、30 分钟约束与详细覆盖、完整条件保留、预算整条排除、关画像不读正文、采用清单与审计/模型输入一致、同轮冻结与删除重筛、账户隔离）。
+- 回归：`tests/profiles` **510 passed / 1 failed**；`tests/chat` 画像相关子集 **28 passed / 1 failed**；两项失败（`test_chat_correction_uses_latest_record_and_is_idempotent`、`test_study_mode_injects_only_expected_slice`）在 `main@2c003eed` 独立复跑同名同因，属既有环境失败。
+- `tests/chat` 全目录 **100 failed / 879 passed / 1 xfailed**，失败数与 main 基线一致（100），无受改文件新增失败；全量串行 `pytest`（4854 项）**269 failed / 4543 passed / 39 skipped / 1 xfailed / 2 errors**，失败集中在环境相关的既有类别（MCP/插件/生命周期/集成 CLI 等）；抽查 `tests/mcp`、`tests/plugins`、`tests/learning_projects`、`tests/retirement`、`tests/integration` 的代表性失败在 `main@2c003eed` 临时工作树逐一同名复现，均与本次变更无关；`mypy src` **98 errors** 与 main 基线一致；变更文件 ruff 零诊断；`docs/用户画像/复核脚本.py` 新增工单 19 探针运行通过并输出采用/排除/条件/长期值保留结果。
+- 双轴 code-review：Standards 轴发现的未使用导出/死参已修正（删除 `DECISION_TOPIC_REFERENCE`、`is_expression_preference`、`preference_labels`、`adoption_reason` 死分支与未接线 `module_id` 参数）；Spec 轴复核的接缝与验收项见上。
+
+### 验收边界
+
+- 本轮明确要求与默认偏好的覆盖按条目粒度执行；同条条目内部分决策被覆盖、部分保留（如「先看例子再看公式」遇「详细展开」）由 22 统一表达采用票在决策粒度处理。
+- 撤回发生在编译后、模型调用前时，披露如实降级但已记录审计计数不重写（工单 18 既有边界，本票未扩大改动面）。
+- `module_id`/`learning_stage` 目前作为用途提示随快照冻结，尚未被选择规则消费；41 实测前不引入语义检索。
+- 确定性规则与桩只证明机制；真实模型抽取与回答体验按 17/41 评测票验证。异步提取按设计不等待，本轮刚整理条目下一轮生效。
 

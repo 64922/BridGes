@@ -59,6 +59,12 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileTombstoneEntry,
     AtomicProfileWriteOrigin,
 )
+from bridges.contracts.profile_adoption import (
+    AdoptedProfileItem,
+    AdoptedProfileSlice,
+    ProfileSliceExclusion,
+    ProfileSlicePurpose,
+)
 from bridges.contracts.profiles import (
     FourDimension,
     FourDimensionConfidence,
@@ -75,6 +81,14 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
     is_recallable_confidence,
+)
+from bridges.profiles.purpose import (
+    adoption_reason,
+    applicability,
+    build_purpose,
+    constraint_conditions,
+    expression_preference_tags,
+    is_overridden,
 )
 from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
@@ -679,18 +693,6 @@ def _item_matches_question(text: str, current_question: str | None) -> bool:
     )
 
 
-def _sensitivity_for(item: AtomicProfileItem) -> ProfileSensitivityClass:
-    """切片敏感度档位：学习相关条目按学习类材料标注，其余按偏好。"""
-
-    if item.topic_hint in {
-        FourDimension.ACADEMIC_STATUS.value,
-        FourDimension.KNOWLEDGE_INTEREST.value,
-        FourDimension.STAGE_GOAL.value,
-    }:
-        return ProfileSensitivityClass.LEARNING
-    return ProfileSensitivityClass.PREFERENCE
-
-
 def _is_same_turn_extraction(
     item: AtomicProfileItem, current_user_message_id: str | None
 ) -> bool:
@@ -728,6 +730,64 @@ def _recall_exclusion(item: AtomicProfileItem, now: datetime) -> str | None:
     if not is_recallable_confidence(item.confidence) and item.user_edited_at is None:
         return RECALL_LOW_CONFIDENCE_REASON
     return None
+
+
+@dataclass(frozen=True)
+class _AdoptedCandidate:
+    """用途选择阶段的一条候选（排序前的内部结构）。"""
+
+    item: AtomicProfileItem
+    tier: int
+    decisions: tuple[str, ...]
+    reason: str
+    conditions: tuple[str, ...]
+    is_default: bool
+
+
+def _authority_rank(item: AtomicProfileItem) -> int:
+    """来源权威排序：用户编辑/明确记住的条目优先于自动条目。"""
+
+    if item.user_edited_at is not None or (
+        item.write_origin == AtomicProfileWriteOrigin.USER
+    ):
+        return 0
+    return 1
+
+
+def _slice_sensitivity_for(
+    relation: AtomicProfileFactRelation,
+) -> ProfileSensitivityClass:
+    """按事实关系标注切片敏感度：学习/目标类按学习材料，其余按偏好。"""
+
+    if relation in {
+        AtomicProfileFactRelation.IDENTITY,
+        AtomicProfileFactRelation.GRADE,
+        AtomicProfileFactRelation.MAJOR,
+        AtomicProfileFactRelation.LEARNING,
+        AtomicProfileFactRelation.RESEARCH,
+        AtomicProfileFactRelation.GOAL,
+    }:
+        return ProfileSensitivityClass.LEARNING
+    return ProfileSensitivityClass.PREFERENCE
+
+
+def _adopted_item(candidate: _AdoptedCandidate) -> AdoptedProfileItem:
+    """把排序后的候选折算为采用合同的完整事实条目。"""
+
+    item = candidate.item
+    return AdoptedProfileItem(
+        profile_item_id=item.profile_item_id,
+        version=item.version,
+        fact_text=item.text,
+        relation=item.fact_relation,
+        scope=item.fact_scope,
+        source_authority=item.write_origin.value,
+        expires_at=item.valid_until,
+        applicable_to=list(candidate.decisions),
+        adoption_reason=candidate.reason,
+        conditions=list(candidate.conditions),
+        is_default=candidate.is_default,
+    )
 
 
 #: 近义撤回抑制只作用于「同一关系槽、可被普通提及再次表达」的事实；单值
@@ -2278,8 +2338,9 @@ class AtomicProfileService:
         project_id: str | None = None,
         current_user_message_id: str | None = None,
         now: datetime | None = None,
+        purpose: ProfileSlicePurpose | None = None,
     ) -> ProfileSlice:
-        """只把当前任务必要的少量条目编译成本轮切片。
+        """只把当前任务必要的少量条目编译成本轮切片（用途感知）。
 
         ``current_user_message_id`` 是本轮用户消息：本轮刚由普通消息自动整理
         出的条目下一轮才生效（设计口径「普通异步提取从下一轮生效」），因此带
@@ -2289,87 +2350,43 @@ class AtomicProfileService:
         工单 18：召回前先过有效性门——已撤回/被替代、仅适用于当时那轮、
         目标暂停/完成、过期、可靠度不足（且非用户编辑）的条目只记录排除
         原因，不进入本轮上下文；``now`` 供测试与控制面提供可控时钟。
+
+        改进工单 19：``purpose`` 缺省时从当前问题确定性推导任务种类；
+        跨主题默认表达偏好不要求共享字词，背景/目标/约束按任务召回，
+        无关爱好不注入。返回的既有 ``ProfileSlice`` 只是采用快照的渲染
+        折算，生成链以 :meth:`compile_adopted_slice` 的同一快照为准。
         """
 
-        moment = now or _now()
-        # 撤回版本与切片条目必须取自同一快照：若先列条目再另查版本，「列条目 →
-        # 查版本」之间发生的撤回会让版本看似已更新，而切片仍是旧条目，运行中
-        # 撤回就拦不住。同一快照保证写入要么已反映、要么使版本落后而核对失败。
-        snapshot = self._repository.list_items(account_id, include_withdrawn=True)
-        related: list[AtomicProfileItem] = []
-        unrelated: list[AtomicProfileItem] = []
-        same_turn: list[AtomicProfileItem] = []
-        excluded: list[tuple[AtomicProfileItem, str]] = []
-        for item in snapshot:
-            if item.status != AtomicProfileItemStatus.ACTIVE:
-                continue
-            if _is_same_turn_extraction(item, current_user_message_id):
-                same_turn.append(item)
-                continue
-            reason = _recall_exclusion(item, moment)
-            if reason is not None:
-                excluded.append((item, reason))
-                continue
-            (
-                related
-                if _item_matches_question(item.text, current_question)
-                else unrelated
-            ).append(item)
-        related.sort(
-            key=lambda item: (confidence_rank(item.confidence), item.updated_at),
-            reverse=True,
+        adopted = self.compile_adopted_slice(
+            account_id,
+            purpose=purpose
+            or build_purpose(mode="companion", query=current_question),
+            run_id=run_id,
+            current_user_message_id=current_user_message_id,
+            now=now,
         )
-        # 原子条目对模型也不带类别：内部 topic_hint 只用于迁移对账，页面、
-        # 切片渲染与披露说明都按无类别呈现（模型不得复述系统内部标签）。
         included = [
             ProfileSliceItem(
-                assertion_id=item.profile_item_id,
+                assertion_id=entry.profile_item_id,
                 dimension="",
-                value_or_rule=item.text,
-                inclusion_reason="与你当前任务相关的已记住信息",
-                sensitivity_class=_sensitivity_for(item),
-                expires_at=item.valid_until,
+                value_or_rule=entry.fact_text,
+                inclusion_reason=entry.adoption_reason,
+                sensitivity_class=_slice_sensitivity_for(entry.relation),
+                expires_at=entry.expires_at,
             )
-            for item in related[:MAX_SLICE_ITEMS]
+            for entry in adopted.adopted_items
         ]
         unused = [
             UnusedSliceItem(
-                assertion_id=item.profile_item_id,
+                assertion_id=entry.profile_item_id,
                 dimension="",
-                value_or_rule=item.text,
-                exclusion_reason=reason,
+                value_or_rule=entry.fact_text,
+                exclusion_reason=entry.exclusion_reason,
             )
-            for item, reason in excluded
+            for entry in adopted.excluded_items
         ]
-        unused.extend(
-            UnusedSliceItem(
-                assertion_id=item.profile_item_id,
-                dimension="",
-                value_or_rule=item.text,
-                exclusion_reason="与当前问题无关",
-            )
-            for item in unrelated
-        )
-        unused.extend(
-            UnusedSliceItem(
-                assertion_id=item.profile_item_id,
-                dimension="",
-                value_or_rule=item.text,
-                exclusion_reason="超出本轮最小切片预算",
-            )
-            for item in related[MAX_SLICE_ITEMS:]
-        )
-        unused.extend(
-            UnusedSliceItem(
-                assertion_id=item.profile_item_id,
-                dimension="",
-                value_or_rule=item.text,
-                exclusion_reason="本轮刚整理，下一轮才使用",
-            )
-            for item in same_turn
-        )
         return ProfileSlice(
-            slice_id=_stable_id("slice", account_id, run_id),
+            slice_id=adopted.slice_id,
             owner_account_id=account_id,
             run_id=run_id,
             purpose="chat:atomic",
@@ -2381,6 +2398,139 @@ class AtomicProfileService:
                 ProfileSensitivityClass.LEARNING,
             ],
             compiled_policy_version=ATOMIC_PROFILE_MIGRATION_VERSION,
+            revocation_version=adopted.revocation_version,
+            length_budget=adopted.length_budget,
+            compiled_at=adopted.compiled_at,
+        )
+
+    def compile_adopted_slice(
+        self,
+        account_id: str,
+        *,
+        run_id: str,
+        purpose: ProfileSlicePurpose | None = None,
+        current_user_message_id: str | None = None,
+        now: datetime | None = None,
+    ) -> AdoptedProfileSlice:
+        """生成前编译唯一的采用快照（改进工单 19）。
+
+        一次读取当轮已提交的有效条目并冻结：只包含活动、未删除、未过期、
+        证据充分且范围适用的条目；本轮刚自动整理出的条目下一轮才生效，不
+        等待后台新提取。采用结果、排除原因、适用条件与撤回版本都进入同一
+        对象，同轮后续节点只能 :meth:`AdoptedProfileSlice.select_subset`。
+        """
+
+        moment = now or _now()
+        effective = purpose or build_purpose(mode="companion")
+        query = effective.query if effective.query is not None else None
+        # 条目与撤回版本取自同一快照：编译中途发生的撤回要么已反映、要么
+        # 使版本落后而在发送前被 `is_slice_current` 拦下（工单 18）。
+        snapshot = self._repository.list_items(account_id, include_withdrawn=True)
+        candidates: list[_AdoptedCandidate] = []
+        exclusions: list[ProfileSliceExclusion] = []
+        same_turn_reason = "本轮刚整理，下一轮才使用"
+        unrelated_reason = "与当前问题无关"
+        overridden_reason = "本轮明确要求优先，默认偏好本轮不采用"
+        for item in snapshot:
+            if item.status != AtomicProfileItemStatus.ACTIVE:
+                continue
+            if _is_same_turn_extraction(item, current_user_message_id):
+                exclusions.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.text,
+                        exclusion_reason=same_turn_reason,
+                    )
+                )
+                continue
+            gate_reason = _recall_exclusion(item, moment)
+            if gate_reason is not None:
+                exclusions.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.text,
+                        exclusion_reason=gate_reason,
+                    )
+                )
+                continue
+            tags = expression_preference_tags(item.text)
+            decisions = tuple(
+                applicability(
+                    relation=item.fact_relation,
+                    text=item.text,
+                    task_kind=effective.task_kind,
+                )
+            )
+            topic_matched = _item_matches_question(item.text, query)
+            if decisions:
+                tier = 0
+            elif topic_matched:
+                tier = 1
+            else:
+                exclusions.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.text,
+                        exclusion_reason=unrelated_reason,
+                    )
+                )
+                continue
+            if tags and is_overridden(tags, effective.explicit_request):
+                # 本轮明确要求优先：只影响本轮默认值，不写回长期画像。
+                exclusions.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.text,
+                        exclusion_reason=overridden_reason,
+                    )
+                )
+                continue
+            candidates.append(
+                _AdoptedCandidate(
+                    item=item,
+                    tier=tier,
+                    decisions=decisions,
+                    reason=adoption_reason(
+                        relation=item.fact_relation,
+                        text=item.text,
+                        task_kind=effective.task_kind,
+                    ),
+                    conditions=tuple(
+                        constraint_conditions(
+                            text=item.text,
+                            task_kind=effective.task_kind,
+                            has_explicit_expiry=item.valid_until is not None,
+                        )
+                    ),
+                    is_default=bool(tags),
+                )
+            )
+        # 排序：任务作用（直接可用的规则 > 词面相关）→ 来源权威（用户优先）
+        # → 时效（新者优先）→ 证据充分度。整条采用，不做 80 字机械截断。
+        candidates.sort(
+            key=lambda candidate: (
+                candidate.tier,
+                _authority_rank(candidate.item),
+                -candidate.item.updated_at.timestamp(),
+                -confidence_rank(candidate.item.confidence),
+            )
+        )
+        adopted = candidates[:MAX_SLICE_ITEMS]
+        for candidate in candidates[MAX_SLICE_ITEMS:]:
+            exclusions.append(
+                ProfileSliceExclusion(
+                    profile_item_id=candidate.item.profile_item_id,
+                    fact_text=candidate.item.text,
+                    exclusion_reason="超出本轮最小切片预算",
+                )
+            )
+        return AdoptedProfileSlice(
+            slice_id=_stable_id("slice", account_id, run_id),
+            owner_account_id=account_id,
+            run_id=run_id,
+            purpose=effective,
+            adopted_items=[_adopted_item(candidate) for candidate in adopted],
+            excluded_items=exclusions,
             revocation_version=self._revocation_version_for(snapshot),
             length_budget=MAX_SLICE_ITEMS,
             compiled_at=moment,
