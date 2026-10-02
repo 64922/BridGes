@@ -269,6 +269,36 @@ class RetrievalRepository:
         ).fetchone()
         return cast(sqlite3.Row | None, row)
 
+    def attachment_original_segments(
+        self, account_id: str, conversation_id: str, round_id: str, *, limit: int = 3
+    ) -> list[sqlite3.Row]:
+        """读取该轮检索命中的**已解析原文整段**（改进工单 14）。
+
+        只返回指定账户+会话活跃轮次、活跃文档与活跃对象的原文；删除或权限
+        变化后返回空，由调用方如实给缺口，不许用摘要或旧回答顶替原文。
+        会话域与账户域同时强制，跨会话引用不会被带入。
+        """
+        return list(
+            self._database.scoped(account_id).execute(
+                "SELECT c.citation_id, c.object_id, c.filename,"
+                " ch.content, ch.content_hash,"
+                " COALESCE(ch.page_number, c.page_number) AS page_number,"
+                " COALESCE(ch.section_title, c.section_title) AS section_title"
+                " FROM message_citations c"
+                " JOIN document_chunks ch ON ch.chunk_id = c.chunk_id"
+                " AND ch.account_id = c.account_id"
+                " JOIN document_records r ON r.document_id = ch.document_id"
+                " AND r.account_id = c.account_id AND r.status = 'ready'"
+                " JOIN objects o ON o.object_id = r.object_id"
+                " AND o.account_id = c.account_id AND o.status = 'active'"
+                " WHERE c.account_id = ? AND c.conversation_id = ?"
+                " AND c.round_id = ?"
+                " AND c.source_layer = 'attachment'"
+                " ORDER BY c.rank, c.citation_id LIMIT ?",
+                (account_id, conversation_id, round_id, limit),
+            ).fetchall()
+        )
+
     # ------------------------------------------------------------------
     # 检索域读面（Issue 45 收编：索引/文档/对象的只读查询收进属主仓库）
     # ------------------------------------------------------------------
