@@ -1,17 +1,13 @@
-"""通勤子图编排：``route.parse → route.resolve → route.request → route.buffer → route.present``。
+"""通勤子图编排：七节点配方由持久节点内核执行（改进工单 10）。
 
-本切片复用论文模块（Issue 11）建立的同一套合同，不另起一套语义：
+模块不再把解析、定位、校验、路线、缓冲、核验与呈现包在一个黑盒函数
+里：配方与节点定义在 :mod:`bridges.commute.kernel`，每个节点在自己的
+事务中提交类型化产物与完成收据，恢复先读收据（地点成功而路线失败时
+只重跑路线及其下游），方式变更复用定位并使路线/时间产物失效。本模块
+只负责把内核结果翻译成既有消息投影，并复用既有终态收敛路径统一提交。
 
-1. **证据合同**：每次高德调用产出 ``ModuleQueryRecord``（查询/证据/时间/错误），
-   外部只发送最小检索词与坐标，用户私有材料不进请求；
-2. **等待合同**：缺失或含糊只问一项，提问随助手消息落库（``ModuleWaitState``），
-   下一轮从该处恢复并读取权威记录与实际回复，不靠内存协程跨请求存活；
-3. **失败与停止合同**：查询有超时、有限重试与取消；失败保留实际检索词与真实
-   分类、可重试；用户停止在正在进行的路线请求处生效，未开始的步骤不再执行，
-   终态（含已发出的查询）写回同一条消息。
-
-与论文模块的差异只有一个：通勤**不调用模型**，正文完全由高德返回的证据渲染，
-因此不存在用模型记忆补路线的路径（``run_model_id`` 仅保持调用签名一致）。
+通勤不调用模型：正文完全来自高德返回的证据与确定性计算，不存在用
+模型记忆补路线的路径（``run_model_id`` 仅保持调用签名一致）。
 """
 
 from __future__ import annotations
@@ -19,59 +15,54 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, TypeVar
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
-from bridges.commute.buffer import evaluate_break_buffer
 from bridges.commute.contracts import (
     MISSING_DESTINATION_CHOICE,
     MISSING_ORIGIN_CHOICE,
     MODE_LABELS,
     CommuteClarification,
-    CommuteMode,
     CommutePlace,
-    CommutePlaceRole,
+    CommutePlaceCandidate,
     CommuteRequestAnalysis,
     CommuteRouteProjection,
     CommuteRouteStatus,
-    CommuteRouteStep,
 )
-from bridges.commute.parsing import parse_commute_request, pending_payload
+from bridges.commute.kernel import (
+    COMMUTE_GATE_HANDLERS,
+    COMMUTE_NODE_LABELS,
+    NODE_BUFFER,
+    NODE_PARSE,
+    NODE_PRESENT,
+    NODE_REQUEST,
+    NODE_RESOLVE,
+    NODE_VALIDATE,
+    NODE_VERIFY,
+    ROUTE_DEADLINE_SECONDS,
+    CommuteBudget,
+    CommuteNodeFlow,
+    build_commute_recipe,
+    commute_recipe_registry,
+)
+from bridges.commute.parsing import pending_payload
 from bridges.commute.presenting import status_content
-from bridges.commute.resolving import PlaceResolution, resolve_place
-from bridges.commute.sources import (
-    SNAP_LIMIT_METERS,
-    CommuteAmapPort,
-    RouteOutcome,
-    RoutePath,
-    coordinates_distance_meters,
-)
+from bridges.commute.sources import CommuteAmapPort
 from bridges.contracts.chat import ChatMessageStatus
-from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
+from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.kernel.contracts import (
+    KernelResult,
+    KernelStatus,
+    RecipeInputs,
+)
+from bridges.kernel.executor import NodeKernel
+from bridges.kernel.guard import RunCommitGuard
+from bridges.kernel.repository import NodeKernelRepository
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
-
-#: 本轮子图节点名（进度事件与失败定位使用；父图节点仍是 invoke_subgraph_or_chat）。
-NODE_PARSE = "route.parse"
-NODE_RESOLVE = "route.resolve"
-NODE_REQUEST = "route.request"
-NODE_BUFFER = "route.buffer"
-NODE_PRESENT = "route.present"
-
-#: 节点的用户可读中文名（父图失败信息按此标注真实失败位置）。
-COMMUTE_NODE_LABELS: dict[str, str] = {
-    NODE_PARSE: "理解通勤请求",
-    NODE_RESOLVE: "定位起终点",
-    NODE_REQUEST: "查询高德路线",
-    NODE_BUFFER: "计算课间缓冲",
-    NODE_PRESENT: "整理路线结果",
-}
-
-#: 单轮外部调用的墙钟预算（秒）：超时如实失败，绝不无限等待上游。
-ROUTE_DEADLINE_SECONDS = 20.0
 
 #: 澄清等待状态的类型标识（等待合同的一部分）。
 WAIT_KIND_CLARIFICATION = "clarification"
@@ -80,11 +71,6 @@ COMMUTE_MODULE_ID = "commute"
 
 #: 父图运行表的等待原因（可观测的持久化等待状态）。
 WAIT_REASON_CLARIFICATION = "commute_clarification"
-
-#: 未实测校内道路与楼门可通行性时的固定局限说明（随每条结果展示）。
-FIELD_TEST_LIMITATION = (
-    "校内小路与楼门可通行性需按代表性地点实测；本轮结论只依据高德返回的道路结果。"
-)
 
 
 class CommuteModuleError(Exception):
@@ -98,6 +84,10 @@ class CommuteModuleError(Exception):
         self.code = code
         self.message = message
         self.retryable = retryable
+
+
+class CommuteSupersededError(Exception):
+    """迟到结果：租约/版本/消息归属已变化，本轮不写任何交付终态。"""
 
 
 @dataclass(frozen=True)
@@ -118,10 +108,17 @@ class CommuteService:
         amap: CommuteAmapPort,
         clock: Callable[[], datetime] | None = None,
         deadline_seconds: float = ROUTE_DEADLINE_SECONDS,
+        task_version_provider: Callable[
+            [str, str], tuple[str | None, int | None] | None
+        ]
+        | None = None,
     ) -> None:
         self._amap = amap
         self._clock = clock or (lambda: datetime.now(UTC))
         self._deadline_seconds = deadline_seconds
+        self._task_version_provider = task_version_provider
+        self._registry = commute_recipe_registry()
+        self._recipe = build_commute_recipe()
 
     # -- 对外入口 --------------------------------------------------------
 
@@ -138,325 +135,391 @@ class CommuteService:
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
     ) -> CommuteRunOutcome:
-        """执行一轮通勤模块；终态（完成/澄清/失败/停止）全部写回同一消息。"""
-        # 通勤不调用模型：本轮模型锁与上下文编译与本模块无关（签名保持一致，
-        # 父图因此可以用同一段派发代码调用六个模块）。
-        del run_context, run_model_id
+        """执行一轮通勤模块：持久节点内核执行，结果统一提交回同一消息。"""
+        # 通勤不调用模型：本轮模型锁与本模块无关（签名保持一致）。
+        del run_model_id
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise CommuteModuleError(
                 NODE_PARSE, "message_not_found", "消息不存在或没有访问权限。", retryable=False
             )
         pending = self._pending_wait(repo, account_id, conversation_id)
-        prior = self._prior_user_messages(repo, account_id, conversation_id, user_message_id)
-        progress = _Run(emit_node)
-        analysis = progress.node(
-            NODE_PARSE,
-            lambda: parse_commute_request(
-                user_message.content, prior_context=prior, pending=pending
-            ),
+        prior = self._prior_user_messages(
+            repo, account_id, conversation_id, user_message_id
         )
-        if analysis.clarification is not None:
-            return self._persist_clarification(
-                repo,
+        run_id = run_context.run_id
+        budget = self._load_budget(repo, account_id, run_id)
+        task_ref = self._current_task_ref(account_id, conversation_id)
+        guard = RunCommitGuard(
+            repo,
+            account_id=account_id,
+            run_id=run_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            task_ref=task_ref,
+            task_version_provider=self._task_version_provider,
+            stop_event=stop_event,
+            clock=self._clock,
+        )
+        flow = CommuteNodeFlow(
+            amap=self._amap,
+            clock=self._clock,
+            prior_context=prior,
+            pending_wait=pending,
+            budget=budget,
+            stop_event=stop_event,
+            deadline_seconds=self._deadline_seconds,
+        )
+        kernel = NodeKernel(
+            registry=self._registry,
+            repository=NodeKernelRepository(repo.database),
+            guard=guard,
+            gates=COMMUTE_GATE_HANDLERS,
+            runner=flow.run_node,
+            clock=self._clock,
+        )
+        result = kernel.execute(
+            recipe=self._recipe,
+            inputs=RecipeInputs(
                 account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                analysis=analysis,
-                clarification=analysis.clarification,
+                conversation_id=conversation_id,
+                run_id=run_id,
+                user_message_id=user_message_id,
+                user_content=user_message.content,
+                task_id=task_ref[0] if task_ref is not None else None,
+                task_version=task_ref[1] if task_ref is not None else None,
+                wait_identity=self._wait_identity(pending),
+                artifacts={},
+                prior_digest=flow.prior_digest,
+                buffer_snapshot=flow.buffer_snapshot,
+            ),
+            remaining_budget_ms=(
+                budget.remaining_work_ms() if budget is not None else None
+            ),
+            event_sink=emit_node,
+            stop_event=stop_event,
+        )
+        # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
+        with NodeKernelRepository(repo.database).transaction():
+            decision = guard.verify()
+            if not decision.ok:
+                if decision.code != "run_stopped":
+                    raise CommuteSupersededError(decision.code)
+                result = replace(result, status=KernelStatus.STOPPED)
+            try:
+                return self._deliver(
+                    repo,
+                    account_id=account_id,
+                    assistant_message_id=assistant_message_id,
+                    result=result,
+                    stop_event=stop_event,
+                )
+            except CommuteModuleError as error:
+                # 失败投影提交后，再通知父图收敛错误，避免异常回滚投影。
+                delivery_error = error
+        raise delivery_error
+
+    # -- 交付（既有终态收敛路径） ----------------------------------------
+
+    def _deliver(
+        self,
+        repo: ConversationRepository,
+        *,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+        stop_event: threading.Event | None,
+    ) -> CommuteRunOutcome:
+        if result.status is KernelStatus.COMPLETED:
+            return self._deliver_success(
+                repo, account_id, assistant_message_id, result
             )
-        deadline = time.monotonic() + self._deadline_seconds
-        origin_resolution, destination_resolution = progress.node(
-            NODE_RESOLVE,
-            lambda: self._locate(
-                account_id=account_id,
-                analysis=analysis,
-                deadline=deadline,
-                stop_event=stop_event,
-            ),
-        )
-        records = list(origin_resolution.records)
-        if origin_resolution.cancelled or (
-            destination_resolution is not None and destination_resolution.cancelled
+        if result.status is KernelStatus.NEEDS_INPUT:
+            return self._deliver_clarification(
+                repo, account_id, assistant_message_id, result
+            )
+        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
+            stop_event is not None and stop_event.is_set()
         ):
-            return self._persist_stopped(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                analysis=analysis,
-                origin=origin_resolution.place,
-                destination=(
-                    destination_resolution.place
-                    if destination_resolution is not None
-                    else analysis.destination_place
-                ),
-                queries=records,
+            # INVALIDATED 只出现在取消路径（停止或取消的外部调用）：按既有
+            # 停止合同收敛，绝不当作可重试失败。
+            return self._deliver_stopped(
+                repo, account_id, assistant_message_id, result
             )
-        failure = origin_resolution.failure or (
-            destination_resolution.failure if destination_resolution is not None else None
+        if result.status is KernelStatus.REJECTED:
+            raise CommuteSupersededError(
+                result.rejection_code or "generation_superseded"
+            )
+        return self._deliver_failure(
+            repo, account_id, assistant_message_id, result
         )
-        if failure is not None:
-            self._fail(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                node=NODE_RESOLVE,
-                analysis=analysis,
-                queries=records,
-                origin=origin_resolution.place,
-                code=failure.error_code or "amap_place_failed",
-                message=failure.error_message or "高德地点检索失败，请稍后重试。",
-                retryable=failure.retryable,
-            )
-        if origin_resolution.clarification is not None:
-            return self._persist_clarification(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                analysis=analysis,
-                clarification=origin_resolution.clarification,
-                queries=records,
-                origin_candidate_query=origin_resolution.used_query,
-            )
-        origin = origin_resolution.place
-        destination = analysis.destination_place
-        if destination_resolution is not None:
-            records.extend(destination_resolution.records)
-            if destination_resolution.clarification is not None:
-                return self._persist_clarification(
-                    repo,
-                    account_id=account_id,
-                    assistant_message_id=assistant_message_id,
-                    analysis=analysis,
-                    clarification=destination_resolution.clarification,
-                    origin=origin,
-                    queries=records,
-                    destination_candidate_query=destination_resolution.used_query,
-                )
-            destination = destination_resolution.place
-        mode = analysis.mode
-        if origin is None or destination is None or mode is None:
-            # 结构上不可达：缺项在解析阶段就已澄清。保守收敛为失败而不是猜。
-            self._fail(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                node=NODE_RESOLVE,
-                analysis=analysis,
-                queries=records,
-                code="commute_request_incomplete",
-                message="起点、终点或方式尚未确定，无法规划路线。",
-                retryable=False,
-            )
-        assert origin is not None and destination is not None and mode is not None
-        if origin.location and origin.location == destination.location:
-            return self._persist_clarification(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                analysis=analysis,
-                clarification=CommuteClarification(
-                    question=(
-                        f"起点和终点都定位到「{origin.name}」同一个地点，无法规划路线；"
-                        "请告诉我另一个校内地点（例如「图书馆」「南门」）？"
-                    ),
-                    missing="destination",
-                    role=CommutePlaceRole.DESTINATION,
-                ),
-                origin=origin,
-                destination=destination,
-                queries=records,
-            )
 
-        def request() -> RouteOutcome:
-            return self._amap.route(
-                account_id,
-                mode,
-                origin=origin.location,
-                destination=destination.location,
-                origin_name=origin.name,
-                destination_name=destination.name,
-                deadline=deadline,
-                stop_event=stop_event,
+    def _deliver_success(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CommuteRunOutcome:
+        artifact = result.delivery
+        if artifact is None or artifact.node != NODE_PRESENT:
+            raise CommuteModuleError(
+                NODE_PRESENT,
+                "commute_delivery_missing",
+                "通勤结果没有形成待交付产物，本轮未提交。",
+                retryable=True,
             )
-
-        outcome = progress.node(NODE_REQUEST, request)
-        record = outcome.record
-        if record is not None:
-            records.append(record)
-            if record.status is ModuleQueryStatus.CANCELLED:
-                return self._persist_stopped(
-                    repo,
-                    account_id=account_id,
-                    assistant_message_id=assistant_message_id,
-                    analysis=analysis,
-                    origin=origin,
-                    destination=destination,
-                    queries=records,
-                )
-        if outcome.path is None:
-            self._fail(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                node=NODE_REQUEST,
-                analysis=analysis,
-                origin=origin,
-                destination=destination,
-                queries=records,
-                code=(record.error_code if record is not None else None)
-                or "amap_route_unavailable",
-                message=(
-                    record.error_message
-                    if record is not None and record.error_message
-                    else f"高德没有返回{MODE_LABELS[mode]}的可用路线。"
-                ),
-                retryable=record.retryable if record is not None else True,
-            )
-        assert outcome.path is not None
-        path = outcome.path
-        buffer = progress.node(NODE_BUFFER, lambda: evaluate_break_buffer(now=self._clock()))
-        notes = self._limitations(
-            analysis=analysis, origin=origin, destination=destination, mode=mode, path=path
+        projection = CommuteRouteProjection.model_validate(
+            artifact.payload["projection"]
         )
-        suggested_total = path.duration_seconds + buffer.added_minutes * 60
-        path_verified = len(path.polyline) >= 2
-        if not path_verified:
-            notes.insert(
-                0,
-                "高德未返回路径点，本轮不绘制任何路线线，只展示已证实的地点、距离与耗时。",
+        now = datetime.now(UTC)
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            projection=projection,
+            content=status_content(projection),
+            now=now,
+        )
+        return CommuteRunOutcome(
+            status=projection.status, queries=list(projection.queries)
+        )
+
+    def _deliver_clarification(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CommuteRunOutcome:
+        analysis = self._analysis(result)
+        clarification, owner_payload = self._clarification(result)
+        if clarification is None or analysis is None:
+            raise CommuteModuleError(
+                NODE_PARSE,
+                "commute_clarification_missing",
+                "通勤澄清状态缺少恢复载荷，本轮未提交。",
+                retryable=True,
             )
+        origin, destination = self._places(result)
+        queries = self._queries(result)
+        origin_candidates: Sequence[CommutePlaceCandidate] = (
+            clarification.candidates
+            if clarification.missing == MISSING_ORIGIN_CHOICE
+            else ()
+        )
+        destination_candidates: Sequence[CommutePlaceCandidate] = (
+            clarification.candidates
+            if clarification.missing == MISSING_DESTINATION_CHOICE
+            else ()
+        )
+        now = datetime.now(UTC)
         projection = CommuteRouteProjection(
-            status=(
-                CommuteRouteStatus.SUCCESS
-                if path_verified
-                else CommuteRouteStatus.UNVERIFIED
-            ),
-            mode=mode,
-            mode_label=MODE_LABELS[mode],
+            status=CommuteRouteStatus.CLARIFICATION,
+            mode=analysis.mode,
+            mode_label=MODE_LABELS[analysis.mode] if analysis.mode is not None else None,
             mode_phrase=analysis.mode_phrase,
             origin=origin,
             destination=destination,
-            distance_m=path.distance_m,
-            base_duration_seconds=path.duration_seconds,
-            suggested_total_seconds=suggested_total,
-            steps=[
-                CommuteRouteStep(
-                    index=index,
-                    instruction=step.instruction,
-                    road_name=step.road_name,
-                    distance_m=step.distance_m,
-                )
-                for index, step in enumerate(path.steps, start=1)
-            ],
-            polyline=list(path.polyline),
-            path_verified=path_verified,
-            buffer=buffer,
-            queries=records,
-            evidence_notes=notes,
-            resolved_at=datetime.now(UTC),
-        )
-        progress.node(
-            NODE_PRESENT,
-            lambda: self._finalize(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                status=ChatMessageStatus.DONE,
-                projection=projection,
-                content=status_content(projection),
-                now=datetime.now(UTC),
+            origin_candidates=list(origin_candidates),
+            destination_candidates=list(destination_candidates),
+            queries=queries,
+            pending=ModuleWaitState(
+                module_id=COMMUTE_MODULE_ID,
+                kind=WAIT_KIND_CLARIFICATION,
+                question=clarification.question,
+                origin_message_id=assistant_message_id,
+                context=pending_payload(
+                    analysis,
+                    awaiting=clarification.missing,
+                    origin_candidates=origin_candidates,
+                    destination_candidates=destination_candidates,
+                    origin_candidate_query=_optional_str(
+                        owner_payload.get("origin_candidate_query")
+                    ),
+                    destination_candidate_query=_optional_str(
+                        owner_payload.get("destination_candidate_query")
+                    ),
+                ),
+                created_at=now,
             ),
         )
-        return CommuteRunOutcome(status=projection.status, queries=records)
-
-    # -- 节点实现 --------------------------------------------------------
-
-    def _locate(
-        self,
-        *,
-        account_id: str,
-        analysis: CommuteRequestAnalysis,
-        deadline: float,
-        stop_event: threading.Event | None,
-    ) -> tuple[PlaceResolution, PlaceResolution | None]:
-        """解析起终点：已选定的一侧直接沿用，未解析的一侧才查高德 POI。"""
-        origin = PlaceResolution(place=analysis.origin_place)
-        if analysis.origin_place is None:
-            assert analysis.origin_phrase is not None
-            origin = resolve_place(
-                CommutePlaceRole.ORIGIN,
-                analysis.origin_phrase,
-                resolver=self._amap,
-                account_id=account_id,
-                deadline=deadline,
-                stop_event=stop_event,
-            )
-        if origin.cancelled or origin.clarification is not None:
-            return origin, None
-        if analysis.destination_place is not None:
-            return origin, PlaceResolution(place=analysis.destination_place)
-        assert analysis.destination_phrase is not None
-        destination = resolve_place(
-            CommutePlaceRole.DESTINATION,
-            analysis.destination_phrase,
-            resolver=self._amap,
+        self._finalize(
+            repo,
             account_id=account_id,
-            deadline=deadline,
-            stop_event=stop_event,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            projection=projection,
+            content=clarification.question,
+            now=now,
         )
-        return origin, destination
+        return CommuteRunOutcome(
+            status=CommuteRouteStatus.CLARIFICATION,
+            wait_reason=WAIT_REASON_CLARIFICATION,
+            queries=queries,
+        )
 
-    def _limitations(
+    def _deliver_stopped(
         self,
-        *,
-        analysis: CommuteRequestAnalysis,
-        origin: CommutePlace,
-        destination: CommutePlace,
-        mode: CommuteMode,
-        path: RoutePath,
-    ) -> list[str]:
-        """证据边界：方式隔离、吸附距离、候选沿用的来源与实测缺口。"""
-        notes = [
-            f"距离与耗时来自高德{MODE_LABELS[mode]}路线接口，不与其他方式混用。",
-            f"地点坐标来自高德 POI 检索（起点实际检索词：{origin.query}；"
-            f"终点实际检索词：{destination.query}）。",
-            f"路线方案数 {path.plan_count}，采用高德返回的第 1 条。",
-            FIELD_TEST_LIMITATION,
-        ]
-        for place in (origin, destination):
-            snapped = (
-                path.snapped_origin
-                if place.role is CommutePlaceRole.ORIGIN
-                else path.snapped_destination
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CommuteRunOutcome:
+        analysis = self._analysis(result)
+        origin, destination = self._places(result)
+        queries = self._queries(result)
+        now = datetime.now(UTC)
+        projection = CommuteRouteProjection(
+            status=CommuteRouteStatus.STOPPED,
+            mode=analysis.mode if analysis is not None else None,
+            mode_label=(
+                MODE_LABELS[analysis.mode]
+                if analysis is not None and analysis.mode is not None
+                else None
+            ),
+            mode_phrase=analysis.mode_phrase if analysis is not None else None,
+            origin=origin,
+            destination=destination,
+            queries=queries,
+            resolved_at=now,
+        )
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.STOPPED,
+            projection=projection,
+            content=status_content(projection),
+            now=now,
+        )
+        return CommuteRunOutcome(status=CommuteRouteStatus.STOPPED, queries=queries)
+
+    def _deliver_failure(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CommuteRunOutcome:
+        analysis = self._analysis(result)
+        origin, destination = self._places(result)
+        queries = self._queries(result)
+        failure = result.failure
+        node = failure.node if failure is not None else NODE_VERIFY
+        code = (failure.code if failure is not None else "") or "commute_failed"
+        message = (
+            failure.message if failure is not None and failure.message else ""
+        ) or "校园通勤失败，请稍后重试。"
+        retryable = failure.retryable if failure is not None else True
+        now = datetime.now(UTC)
+        projection = CommuteRouteProjection(
+            status=CommuteRouteStatus.ERROR,
+            mode=analysis.mode if analysis is not None else None,
+            mode_label=(
+                MODE_LABELS[analysis.mode]
+                if analysis is not None and analysis.mode is not None
+                else None
+            ),
+            mode_phrase=analysis.mode_phrase if analysis is not None else None,
+            origin=origin,
+            destination=destination,
+            queries=queries,
+            evidence_notes=self._query_notes(queries),
+            resolved_at=now,
+            error_code=code,
+            error_message=message,
+            retryable=retryable,
+        )
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.ERROR,
+            projection=projection,
+            content=status_content(projection),
+            now=now,
+        )
+        raise CommuteModuleError(node, code, message, retryable=retryable)
+
+    # -- 内核结果读取 -----------------------------------------------------
+
+    def _analysis(self, result: KernelResult) -> CommuteRequestAnalysis | None:
+        artifact = result.artifact(NODE_PARSE)
+        if artifact is None:
+            return None
+        analysis = artifact.payload.get("analysis")
+        if not isinstance(analysis, dict):
+            return None
+        return CommuteRequestAnalysis.model_validate(analysis)
+
+    def _places(
+        self, result: KernelResult
+    ) -> tuple[CommutePlace | None, CommutePlace | None]:
+        for node in (NODE_VALIDATE, NODE_RESOLVE):
+            artifact = result.artifact(node)
+            if artifact is None:
+                continue
+            origin = artifact.payload.get("origin")
+            destination = artifact.payload.get("destination")
+            if origin is None and destination is None:
+                continue
+            return (
+                CommutePlace.model_validate(origin) if origin else None,
+                CommutePlace.model_validate(destination) if destination else None,
             )
-            distance = coordinates_distance_meters(place.location, snapped)
-            if distance is not None and distance > SNAP_LIMIT_METERS:
-                label = "起点" if place.role is CommutePlaceRole.ORIGIN else "终点"
-                notes.append(
-                    f"高德把{label}吸附到约 {round(distance)} 米外的道路点"
-                    f"（原 POI 坐标 {place.location}），该楼门可能不在可通行道路旁，"
-                    f"路线端点以高德吸附结果为准（{MODE_LABELS[mode]}）。"
+        return None, None
+
+    def _queries(self, result: KernelResult) -> list[ModuleQueryRecord]:
+        queries: list[ModuleQueryRecord] = []
+        resolve = result.artifact(NODE_RESOLVE)
+        if resolve is not None:
+            queries.extend(
+                ModuleQueryRecord.model_validate(item)
+                for item in resolve.payload.get("queries", [])
+            )
+        request = result.artifact(NODE_REQUEST)
+        if request is not None and request.payload.get("record") is not None:
+            queries.append(
+                ModuleQueryRecord.model_validate(request.payload["record"])
+            )
+        return queries
+
+    def _clarification(
+        self, result: KernelResult
+    ) -> tuple[CommuteClarification | None, dict[str, Any]]:
+        parse = result.artifact(NODE_PARSE)
+        if parse is not None:
+            analysis = parse.payload.get("analysis") or {}
+            raw = analysis.get("clarification")
+            if isinstance(raw, dict):
+                return CommuteClarification.model_validate(raw), {}
+        for node in (NODE_RESOLVE, NODE_VALIDATE):
+            artifact = result.artifact(node)
+            if artifact is None:
+                continue
+            raw = artifact.payload.get("clarification")
+            if isinstance(raw, dict):
+                return (
+                    CommuteClarification.model_validate(raw),
+                    dict(artifact.payload),
                 )
-        if analysis.origin_place is not None:
-            notes.append(
-                f"起点「{origin.name}」沿用上一轮候选选择，坐标来自当时的高德 POI 返回。"
-            )
-        if analysis.destination_place is not None:
-            notes.append(
-                f"终点「{destination.name}」沿用上一轮候选选择，坐标来自当时的高德 POI 返回。"
-            )
-        return notes
+        return None, {}
 
     # -- 恢复与等待 ------------------------------------------------------
 
     def _pending_wait(
-        self, repo: ConversationRepository, account_id: str, conversation_id: str
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        conversation_id: str,
     ) -> ModuleWaitState | None:
         """本会话最近一条通勤消息的等待状态（唯一权威来源）。
 
-        只有最后一条带通勤投影的消息能代表当前等待：它若已经完成、未验证、失败
-        或停止，上一轮的澄清问题就已被这轮结果取代——下一条消息按全新请求解析，
-        不再从更早的历史里翻出旧等待（否则用户的新请求会被静默改写）。
+        只有最后一条带通勤投影的消息能代表当前等待：它若已经完成、未验证、
+        失败或停止，上一轮的澄清问题就已被这轮结果取代——下一条消息按全新
+        请求解析，不再从更早的历史里翻出旧等待。
         """
         for message in reversed(repo.list_messages(account_id, conversation_id)):
             projection = message.commute_route
@@ -485,146 +548,44 @@ class CommuteService:
                 prior.append(message.content)
         return prior[-6:]
 
+    def _wait_identity(self, pending: ModuleWaitState | None) -> str | None:
+        if pending is None:
+            return None
+        return (
+            f"{pending.module_id}:{pending.kind}:{pending.origin_message_id}:"
+            f"{pending.created_at.isoformat()}"
+        )
+
+    def _current_task_ref(
+        self, account_id: str, conversation_id: str
+    ) -> tuple[str | None, int | None] | None:
+        if self._task_version_provider is None:
+            return None
+        return self._task_version_provider(account_id, conversation_id)
+
+    def _load_budget(
+        self, repo: ConversationRepository, account_id: str, run_id: str
+    ) -> CommuteBudget | None:
+        """从持久账本加载共享预算（缺失行时按无预算模式保留本地截止）。"""
+        # 局部导入：chat 包（预算账本属主）在模块级导入会与父图形成循环。
+        from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
+
+        ledger = RunBudgetLedgerRepository(repo.database)
+        snapshot = ledger.load(account_id, run_id)
+        if snapshot is None:
+            return None
+        ledger.recover_external_calls(account_id, run_id, now=datetime.now(UTC))
+        work_deadline = snapshot.plan.deadline_at - timedelta(
+            milliseconds=snapshot.plan.verify_deliver_reserve_ms
+        )
+        return CommuteBudget(
+            ledger=ledger,
+            account_id=account_id,
+            run_id=run_id,
+            work_deadline=work_deadline,
+        )
+
     # -- 落库 ------------------------------------------------------------
-
-    def _persist_clarification(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        analysis: CommuteRequestAnalysis,
-        clarification: CommuteClarification,
-        origin: CommutePlace | None = None,
-        destination: CommutePlace | None = None,
-        queries: Sequence[ModuleQueryRecord] = (),
-        origin_candidate_query: str | None = None,
-        destination_candidate_query: str | None = None,
-    ) -> CommuteRunOutcome:
-        now = datetime.now(UTC)
-        origin_candidates = (
-            clarification.candidates
-            if clarification.missing == MISSING_ORIGIN_CHOICE
-            else []
-        )
-        destination_candidates = (
-            clarification.candidates
-            if clarification.missing == MISSING_DESTINATION_CHOICE
-            else []
-        )
-        projection = CommuteRouteProjection(
-            status=CommuteRouteStatus.CLARIFICATION,
-            mode=analysis.mode,
-            mode_label=MODE_LABELS[analysis.mode] if analysis.mode is not None else None,
-            mode_phrase=analysis.mode_phrase,
-            origin=origin,
-            destination=destination,
-            origin_candidates=list(origin_candidates),
-            destination_candidates=list(destination_candidates),
-            queries=list(queries),
-            pending=ModuleWaitState(
-                module_id=COMMUTE_MODULE_ID,
-                kind=WAIT_KIND_CLARIFICATION,
-                question=clarification.question,
-                origin_message_id=assistant_message_id,
-                context=pending_payload(
-                    analysis,
-                    awaiting=clarification.missing,
-                    origin_candidates=origin_candidates,
-                    destination_candidates=destination_candidates,
-                    origin_candidate_query=origin_candidate_query,
-                    destination_candidate_query=destination_candidate_query,
-                ),
-                created_at=now,
-            ),
-        )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            projection=projection,
-            content=clarification.question,
-            now=now,
-        )
-        return CommuteRunOutcome(
-            status=CommuteRouteStatus.CLARIFICATION,
-            wait_reason=WAIT_REASON_CLARIFICATION,
-            queries=list(queries),
-        )
-
-    def _persist_stopped(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        analysis: CommuteRequestAnalysis,
-        origin: CommutePlace | None = None,
-        destination: CommutePlace | None = None,
-        queries: Sequence[ModuleQueryRecord] = (),
-    ) -> CommuteRunOutcome:
-        now = datetime.now(UTC)
-        projection = CommuteRouteProjection(
-            status=CommuteRouteStatus.STOPPED,
-            mode=analysis.mode,
-            mode_label=MODE_LABELS[analysis.mode] if analysis.mode is not None else None,
-            mode_phrase=analysis.mode_phrase,
-            origin=origin,
-            destination=destination,
-            queries=list(queries),
-            resolved_at=now,
-        )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.STOPPED,
-            projection=projection,
-            content=status_content(projection),
-            now=now,
-        )
-        return CommuteRunOutcome(
-            status=CommuteRouteStatus.STOPPED, queries=list(queries)
-        )
-
-    def _fail(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        node: str,
-        analysis: CommuteRequestAnalysis,
-        queries: Sequence[ModuleQueryRecord] = (),
-        origin: CommutePlace | None = None,
-        destination: CommutePlace | None = None,
-        code: str | None = None,
-        message: str | None = None,
-        retryable: bool = True,
-    ) -> None:
-        """写回真实失败状态（实际检索词与分类），再抛出以便父图标注节点位置。"""
-        error_code = code or "commute_failed"
-        error_message = message or "校园通勤失败，请稍后重试。"
-        now = datetime.now(UTC)
-        projection = CommuteRouteProjection(
-            status=CommuteRouteStatus.ERROR,
-            mode=analysis.mode,
-            mode_label=MODE_LABELS[analysis.mode] if analysis.mode is not None else None,
-            mode_phrase=analysis.mode_phrase,
-            origin=origin,
-            destination=destination,
-            queries=list(queries),
-            evidence_notes=self._query_notes(queries),
-            resolved_at=now,
-            error_code=error_code,
-            error_message=error_message,
-            retryable=retryable,
-        )
-        repo.update_message_commute_route(
-            account_id, assistant_message_id, projection.model_dump(mode="json"), now
-        )
-        raise CommuteModuleError(node, error_code, error_message, retryable=retryable)
 
     def _query_notes(self, queries: Sequence[ModuleQueryRecord]) -> list[str]:
         notes = [
@@ -645,10 +606,6 @@ class CommuteService:
         content: str,
         now: datetime,
     ) -> None:
-        # 正文只能在 streaming 期间写入（流式增量接口的守卫），因此先写正文
-        # 再收敛终态；终态与通勤投影在同一事务内提交（finalize_message）。
-        if content:
-            repo.update_message_content(account_id, assistant_message_id, content, now)
         # 局部导入：模块子图与 chat 服务互相引用（父图调用子图、子图复用消息
         # 终态收敛），模块级导入会形成包级循环。
         from bridges.chat.turn import finalize_message
@@ -665,21 +622,28 @@ class CommuteService:
             started=time.monotonic(),
             now=now,
             commute_route=projection.model_dump(mode="json"),
+            final_content=content,
         )
 
 
-T = TypeVar("T")
+def _optional_str(value: object) -> str | None:
+    return str(value) if isinstance(value, str) else None
 
 
-class _Run:
-    """节点进度发射器：只对真实开始/完成的节点发 started/completed 与耗时。"""
-
-    def __init__(self, emit_node: Callable[[str, str, int | None], None]) -> None:
-        self._emit = emit_node
-
-    def node(self, name: str, body: Callable[[], T]) -> T:
-        self._emit(name, "started", None)
-        started = time.monotonic()
-        result = body()
-        self._emit(name, "completed", max(1, int((time.monotonic() - started) * 1000)))
-        return result
+__all__ = [
+    "COMMUTE_MODULE_ID",
+    "COMMUTE_NODE_LABELS",
+    "NODE_BUFFER",
+    "NODE_PARSE",
+    "NODE_PRESENT",
+    "NODE_REQUEST",
+    "NODE_RESOLVE",
+    "NODE_VALIDATE",
+    "NODE_VERIFY",
+    "WAIT_KIND_CLARIFICATION",
+    "WAIT_REASON_CLARIFICATION",
+    "CommuteModuleError",
+    "CommuteRunOutcome",
+    "CommuteService",
+    "CommuteSupersededError",
+]

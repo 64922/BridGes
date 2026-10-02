@@ -279,6 +279,9 @@ class GenerationRunExecutor:
         )
         heartbeat.start()
         started = time.monotonic()
+        # 父图使用本模块的上下文函数，运行时导入避免包级循环。
+        from bridges.chat.graph import DailyGraphSuperseded
+
         try:
             # V2 Issue 02：本轮经日常 LangGraph 父图执行（固定节点链 +
             # 检查点持久化 + 可取消节点边界）。事件（node 进度与编排管线
@@ -290,10 +293,25 @@ class GenerationRunExecutor:
                 ),
                 stop_event=stop_event,
             )
+        except DailyGraphSuperseded:
+            self._last_summary = f"generation: 运行 {run_id} 的提交条件已失效，本轮不收敛。"
+            return
         finally:
             heartbeat.stop()
             heartbeat.join(timeout=STOP_POLL_SECONDS + 0.5)
             self._service._lifecycle.unregister(run.assistant_message_id)  # noqa: SLF001
+        current = self._repo.get_generation_run(account_id, run_id)
+        if (
+            current is not None
+            and current.lease_owner is not None
+            and current.lease_owner != self._worker_name
+        ):
+            # 执行租约已转移给其他执行者：旧执行者不再收敛本条消息/运行，
+            # 也不确认队列（新执行者持有领取记录），迟到结果由内核守卫与
+            # 这里双重拒绝。租约已被清空（本回合内部已收敛终态）不在此列，
+            # 正常走幂等收尾以关闭预算账本并确认队列。
+            self._last_summary = f"generation: 运行 {run_id} 租约已转移，本轮不收敛。"
+            return
         duration_ms = max(1, int((time.monotonic() - started) * 1000))
         # 共同终态 module（Issue 01）：结果从已提交消息派生，终态事件与运行
         # 状态按固定顺序补齐；turn 的停止/空产出路径不发终态事件，残留

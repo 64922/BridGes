@@ -10,7 +10,7 @@ import json
 import math
 import secrets
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -943,7 +943,9 @@ class ConversationRepository:
         effective_run_lock_id = run_lock_id
         if lock is not None:
             effective_run_lock_id = lock.lock_id
-        with self._db.transaction():
+        with self._db.snapshot_lock(), (
+            nullcontext() if self._db.connection.in_transaction else self._db.transaction()
+        ):
             if lock is not None:
                 # 调用序号取消息的 attempt_number：同一 run 的重试按尝试顺序
                 # 稳定编号，投影/发布门可按 attempt ordinal 排序全部锁。

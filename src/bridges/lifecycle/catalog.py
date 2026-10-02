@@ -58,6 +58,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     # 必须先于账本行删除。
     "run_budget_entries",
     "run_budget_ledger",
+    # 改进工单 10：持久节点内核（产物/收据/待投递事件，均无外键）。
+    "node_outbox",
+    "node_receipts",
+    "node_artifacts",
     "retrieval_decisions",
     "study_states",
     "image_tasks",
@@ -161,6 +165,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "运行预算账本",
         ("run_budget_ledger", "run_budget_entries"),
         256,
+    ),
+    # 改进工单 10：持久节点内核的类型化产物、完成收据与待投递事件
+    # （证据/版本/可信状态整行可读；外箱只含进度遥测，导出无害）。
+    ExportCategory(
+        "node_kernel",
+        "通勤节点产物与收据",
+        ("node_artifacts", "node_receipts", "node_outbox"),
+        512,
     ),
     ExportCategory(
         "chat_attachments",
@@ -353,6 +365,9 @@ def logical_summary(
         "generation_events",
         "run_budget_ledger",
         "run_budget_entries",
+        "node_artifacts",
+        "node_receipts",
+        "node_outbox",
         "graph_checkpoints",
         "graph_checkpoint_writes",
         "retrieval_decisions",

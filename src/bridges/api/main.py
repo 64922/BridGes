@@ -464,6 +464,19 @@ def _amap_web_service_key(app: Any) -> str | None:
     )
 
 
+def _commute_task_reference(
+    app: Any, account_id: str, conversation_id: str
+) -> tuple[str | None, int | None] | None:
+    """通勤内核提交守卫的任务版本快照（当前任务不存在时为 None）。"""
+    service = getattr(app.state, "task_service", None)
+    if service is None:
+        return None
+    context = service.current_reference_context(account_id, conversation_id)
+    if context is None:
+        return None
+    return (context.task_id, context.version)
+
+
 def _paper_metadata_client() -> httpx.Client:
     """论文元数据补充的共享客户端（独立短超时；不承载账户凭据）。"""
     return httpx.Client(timeout=ENRICH_TIMEOUT_SECONDS)
@@ -1479,7 +1492,14 @@ def create_app(
             key_provider=lambda: _amap_web_service_key(app),
             observability=app.state.observability_service,
         )
-        app.state.commute_service = CommuteService(amap=app.state.commute_amap_client)
+        # 改进工单 10：通勤内核的提交守卫读取当前任务版本（惰性求值：
+        # task_service 在下方创建，调用发生在请求期）。
+        app.state.commute_service = CommuteService(
+            amap=app.state.commute_amap_client,
+            task_version_provider=lambda account_id, conversation_id: (
+                _commute_task_reference(app, account_id, conversation_id)
+            ),
+        )
         app.router.add_event_handler("shutdown", app.state.commute_amap_client.close)
         # 改进工单 08：跨轮任务领域服务。写模型归任务领域仓库（独立账户
         # 域表），API 只做投影；关系由工单 12 的主智能体理解后经
