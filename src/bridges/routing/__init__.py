@@ -1,6 +1,7 @@
 """聊天自然语言能力路由。"""
 
 from bridges.routing.contracts import (
+    MODULE_CAPABILITIES,
     PAPER_QUERY_VERSION,
     CapabilityRoute,
     MainCapability,
@@ -23,6 +24,7 @@ __all__ = [
     "CapabilityRouteRegistry",
     "CapabilityRouteRegistryError",
     "MainCapability",
+    "MODULE_CAPABILITIES",
     "NaturalLanguageRouter",
     "PAPER_QUERY_VERSION",
     "PaperSearchConstraints",

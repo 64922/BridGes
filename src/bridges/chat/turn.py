@@ -2765,6 +2765,7 @@ class TurnOrchestrator:
         model_override: str | None = None,
         model_quota: RunModelQuota | None = None,
         context_budget: dict[str, Any] | None = None,
+        web_search_allowed: bool = True,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
@@ -3370,6 +3371,7 @@ class TurnOrchestrator:
                     if (
                         required_search.value in {"tavily", "duckduckgo", "both"}
                         and self._web_search is not None
+                        and web_search_allowed
                         and web_search_projection is None
                     ):
                         search_plan = self._web_search.plan(
@@ -3746,6 +3748,7 @@ class TurnOrchestrator:
                         self._web_search is not None
                         and route is not None
                         and route.web_search_allowed
+                        and web_search_allowed
                         and not paper_route
                         and web_search_projection is None
                     ):

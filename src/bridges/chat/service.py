@@ -17,6 +17,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -74,7 +75,7 @@ from bridges.chat.selections import (
     selection_key,
 )
 from bridges.chat.summary import ChatSummaryService
-from bridges.chat.terminal import GenerationTerminal, stopped_outcome
+from bridges.chat.terminal import GenerationTerminal, internal_error_outcome, stopped_outcome
 from bridges.chat.turn import (
     CHAT_MODE,
     # STREAM_INTERRUPTED_MESSAGE 在此 re-export，保持既有导入路径不变
@@ -92,6 +93,7 @@ from bridges.chat.turn import (
     result_summary,
     user_facing_error,  # noqa: F401 - re-export
 )
+from bridges.chat.understanding import MainAgentUnderstanding, task_turn_request
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
 from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
@@ -145,10 +147,17 @@ from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.summaries import HistorySummary
+from bridges.contracts.tasks import TaskRecord, TaskRelation, TaskTurnRequest, TaskWait
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
+)
+from bridges.contracts.understanding import (
+    UNDERSTANDING_CONTRACT_VERSION,
+    MainUnderstanding,
+    RouteSource,
+    understanding_from_snapshot,
 )
 from bridges.contracts.video import VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
@@ -160,6 +169,7 @@ from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.paper.service import PaperSearchService
+from bridges.paper.suggestion import PAPER_REQUEST_HINTS
 from bridges.profiles.atomic import AtomicProfileService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
@@ -169,7 +179,13 @@ from bridges.resources.contracts import LearningResourcesProjection
 from bridges.resources.service import LearningResourcesService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
-from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
+from bridges.routing import (
+    MODULE_CAPABILITIES,
+    CapabilityRoute,
+    MainCapability,
+    NaturalLanguageRouter,
+    RouteStatus,
+)
 from bridges.storage.errors import StorageError
 from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository, StudyWorkflow
 from bridges.tieba.contracts import TiebaResearchProjection
@@ -360,6 +376,9 @@ class ChatService:
         self._writing_policy = writing_policy_compiler or GlobalWritingPolicyCompiler()
         #: 新聊天自然语言主能力路由；结果在消息上持久化后才允许外部调用。
         self._router = NaturalLanguageRouter()
+        #: 改进工单 12：确定性主理解（一次判定轻量/任务关系/硬条件/实际
+        #: 路由来源），不调用模型、不执行检索，普通聊天保持一次生成。
+        self._understanding = MainAgentUnderstanding()
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
         #: 回合编排深模块（Issue 42）：生成管线（模式路由/检索/切片编译/
@@ -851,11 +870,25 @@ class ChatService:
                     "当前阶段请上传本节书页，或重试尚未完成的识别与预习。",
                     422,
                 )
+        user_message_id = secrets.token_urlsafe(16)
+        understanding = self._understand_turn(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            content=content,
+            mode=mode,
+            module_id=module_id,
+            messages=existing,
+        )
         capability_route = self._route_for_turn(
+            content=content,
+            requested_module_id=module_id,
+            understanding=understanding,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
         )
+        effective_module_id = self._effective_module_id(capability_route)
         (
             user_message,
             assistant_message,
@@ -873,8 +906,10 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
-            module_id=module_id,
+            module_id=effective_module_id,
             idempotency_key=idempotency_key,
+            understanding=understanding,
+            user_message_id=user_message_id,
         )
         try:
             self._repo.insert_generation_turn(
@@ -909,6 +944,15 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             now=now,
+        )
+        # 改进工单 12：关系落地在消息存在后进行（失败收敛为可重试错误）。
+        self._apply_task_understanding(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            user_message_id=user_message.message_id,
+            assistant_message_id=assistant_message.message_id,
+            content=content,
+            understanding=understanding,
         )
         self._ensure_retrieval_decision(
             account_id=account_id,
@@ -991,30 +1035,121 @@ class ChatService:
         )
         return image_payload, video_payload, mcp_call_payload
 
+    def _understand_turn(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        user_message_id: str,
+        content: str,
+        mode: ChatMode,
+        module_id: str | None,
+        messages: list[MessageRecord] | None = None,
+    ) -> MainUnderstanding:
+        """一次确定性主理解：轻量/关系/硬条件/缺项/实际路由来源。
+
+        只读当前任务快照与会话原文；不调用模型、不执行检索、不写状态。
+        未装配任务领域时按无任务处理（普通聊天仍保持轻量）。
+        """
+
+        task_context = None
+        tasks: list[TaskRecord] = []
+        open_waits: list[TaskWait] = []
+        if self._tasks is not None:
+            task_context = self._tasks.current_reference_context(
+                account_id, conversation_id
+            )
+            projections = self._tasks.list_projections(account_id, conversation_id)
+            tasks = [item.task for item in projections]
+            open_waits = [wait for item in projections for wait in item.open_waits]
+        if messages is None:
+            messages = self._repo.list_messages(account_id, conversation_id)
+        return self._understanding.understand(
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            content=content,
+            mode=mode,
+            requested_module_id=module_id,
+            task_context=task_context,
+            tasks=tasks,
+            open_waits=open_waits,
+            messages=messages,
+        )
+
+    @staticmethod
+    def _effective_module_id(route: CapabilityRoute) -> str | None:
+        """实际派发模块：以校验后的路由快照为准，避免识别误报落库。"""
+
+        if route.module_id is not None:
+            return route.module_id
+        if route.is_paper_search:
+            return "paper"
+        return None
+
+    @staticmethod
+    def _route_metadata(
+        understanding: MainUnderstanding | None,
+        requested_module_id: str | None,
+    ) -> dict[str, Any]:
+        """路由快照的请求提示/实际来源/能力列表元数据。"""
+
+        if understanding is None:
+            return {"requested_module_id": requested_module_id}
+        return {
+            "requested_module_id": (
+                understanding.requested_module_id or requested_module_id
+            ),
+            "route_source": understanding.route_source.value,
+            "capability_list": list(understanding.capability_list),
+            "understanding_version": UNDERSTANDING_CONTRACT_VERSION,
+        }
+
+    @staticmethod
+    def _route_flags(understanding: MainUnderstanding | None) -> tuple[bool, bool]:
+        """联网/知识库开关（硬条件单一事实源在理解合同）。"""
+
+        if understanding is None:
+            return True, True
+        return not understanding.blocks_network, not understanding.blocks_knowledge_base
+
     def _route_for_turn(
         self,
         *,
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
+        content: str = "",
+        requested_module_id: str | None = None,
+        understanding: MainUnderstanding | None = None,
     ) -> CapabilityRoute:
-        """显式结构化载荷可选专用处理；普通文本始终走日常对话。
+        """显式载荷优先；否则按正文理解的实际路由构建快照。
 
         V2 issue 04：SKILL 载荷在扩展载荷门一律拒绝，不再有人味化路由。
+        改进工单 12：正文明确的单模块意图直达（论文/生涯经统一路由器
+        编译可执行计划，其余模块走登记能力）；硬条件收紧联网/本地材料
+        开关；歧义只产出一次澄清路由，不先检索猜测领域。
         """
-        explicit_capability = None
-        reason = None
+
+        metadata = self._route_metadata(understanding, requested_module_id)
+        web_allowed, kb_allowed = self._route_flags(understanding)
         if image_payload is not None:
-            explicit_capability = MainCapability.IMAGE
-            reason = "已提交图片能力载荷"
-        elif video_payload is not None:
+            return CapabilityRoute(
+                status=RouteStatus.MATCHED,
+                main_capability=MainCapability.IMAGE,
+                confidence=1.0,
+                reason="已提交图片能力载荷",
+                knowledge_base_allowed=False,
+                web_search_allowed=False,
+                **metadata,
+            )
+        if video_payload is not None:
             payload = VideoRequestPayload.model_validate(video_payload)
             return self._router.route_explicit_video(
                 payload.prompt,
                 aspect_ratio=payload.aspect_ratio,
                 duration_seconds=payload.duration_seconds,
-            )
-        elif mcp_call_payload is not None:
+            ).model_copy(update=metadata)
+        if mcp_call_payload is not None:
             return CapabilityRoute(
                 status=RouteStatus.ORDINARY,
                 main_capability=MainCapability.ORDINARY_CHAT,
@@ -1022,22 +1157,83 @@ class ChatService:
                 reason="已提交显式 MCP 调用载荷",
                 knowledge_base_allowed=False,
                 web_search_allowed=False,
+                **metadata,
             )
-        if explicit_capability is None:
+        if understanding is not None and understanding.clarification_question:
             return CapabilityRoute(
-                status=RouteStatus.ORDINARY,
-                main_capability=MainCapability.ORDINARY_CHAT,
+                status=RouteStatus.CLARIFY,
+                main_capability=MainCapability.CLARIFICATION,
                 confidence=1.0,
-                reason="未选择专用模块，按日常对话处理。",
+                reason=understanding.reason,
+                clarification_question=understanding.clarification_question,
+                knowledge_base_allowed=False,
                 web_search_allowed=False,
+                **metadata,
             )
+        module = understanding.actual_module_id if understanding is not None else None
+        if module == "paper":
+            classified = self._router.classify(content)
+            if classified.is_paper_search or classified.status in {
+                RouteStatus.CLARIFY,
+                RouteStatus.REJECTED,
+            }:
+                return classified.model_copy(update=metadata)
+        if module == "career":
+            classified = self._router.classify(content)
+            if classified.is_career:
+                return classified.model_copy(
+                    update={**metadata, "module_id": "career"}
+                )
+            if classified.status in {RouteStatus.CLARIFY, RouteStatus.REJECTED}:
+                return classified.model_copy(update=metadata)
+        if module is not None and module != "paper" and module in MODULE_CAPABILITIES:
+            return CapabilityRoute(
+                status=RouteStatus.MATCHED,
+                main_capability=MODULE_CAPABILITIES[module],
+                confidence=1.0,
+                reason=(
+                    understanding.reason
+                    if understanding is not None
+                    else f"按显式模块 {module} 启动。"
+                ),
+                knowledge_base_allowed=kb_allowed,
+                web_search_allowed=web_allowed,
+                module_id=module,
+                **metadata,
+            )
+        learning_turn = (
+            understanding is not None
+            and understanding.route_source == RouteSource.LEARNING_STRATEGY
+        )
+        if (
+            module is None
+            and content
+            and not learning_turn
+            and any(hint.lower() in content.lower() for hint in PAPER_REQUEST_HINTS)
+        ):
+            # 明确论文请求但主题含糊（如「给我找几篇论文」）：只问必要问题，
+            # 不派发模块、不先检索猜测领域。
+            classified = self._router.classify(content)
+            if classified.status in {
+                RouteStatus.CLARIFY,
+                RouteStatus.REJECTED,
+            } and classified.main_capability in {
+                MainCapability.PAPER_SEARCH,
+                MainCapability.CLARIFICATION,
+            }:
+                return classified.model_copy(update=metadata)
         return CapabilityRoute(
-            status=RouteStatus.MATCHED,
-            main_capability=explicit_capability,
+            status=RouteStatus.ORDINARY,
+            main_capability=MainCapability.ORDINARY_CHAT,
             confidence=1.0,
-            reason=reason or "已提交显式能力载荷",
-            knowledge_base_allowed=False,
-            web_search_allowed=False,
+            reason=(
+                understanding.reason
+                if understanding is not None
+                else "未识别到明确能力意图，按日常对话处理。"
+            ),
+            knowledge_base_allowed=kb_allowed,
+            web_search_allowed=web_allowed,
+            **metadata,
         )
 
     def _assemble_generation_records(
@@ -1056,18 +1252,23 @@ class ChatService:
         now: datetime,
         module_id: str | None = None,
         idempotency_key: str | None = None,
+        understanding: MainUnderstanding | None = None,
+        user_message_id: str | None = None,
     ) -> tuple[MessageRecord, MessageRecord, GenerationRunRecord, dict[str, Any]]:
         """组装一轮的用户消息、助手占位、queued 运行与 started 载荷。
 
         供续轮（``start_generation``）与原子首轮（``start_first_turn``）
         共用；调用方负责事务写入与幂等语义。运行创建即视为"活跃"，
         读取收敛不会误伤（判定源为运行表）。V2 Issue 02：``module_id``
-        随用户消息持久化；运行记录写入图版本与幂等键。
+        随用户消息持久化；运行记录写入图版本与幂等键。改进工单 12：
+        ``understanding`` 随运行配置持久化（审计/恢复读取同一份理解），
+        ``user_message_id`` 允许调用方预生成以便理解产出引用同一消息 ID。
         """
         thinking = initial_thinking(mode).model_dump(mode="json")
         web_search = (
             self._web_search.initial_projection(self._web_search.plan(content, mode))
             if self._web_search is not None
+            and route.web_search_allowed
             and not route.is_paper_search
             and route.status not in {RouteStatus.CLARIFY, RouteStatus.REJECTED}
             else None
@@ -1082,7 +1283,11 @@ class ChatService:
         )
         teaching = None
         user_message = MessageRecord(
-            message_id=secrets.token_urlsafe(16),
+            message_id=(
+                user_message_id
+                if user_message_id is not None
+                else secrets.token_urlsafe(16)
+            ),
             conversation_id=conversation_id,
             account_id=account_id,
             role=ChatMessageRole.USER,
@@ -1130,6 +1335,8 @@ class ChatService:
             "use_knowledge_base": use_knowledge_base,
             "use_profile": use_profile,
         }
+        if understanding is not None:
+            run_config["understanding"] = understanding.model_dump(mode="json")
         # V2 Issue 09 + 改进工单 03：本轮启动时锁定主模型 ID 与完整额度快照。
         self._apply_run_model_lock(run_config)
         if (
@@ -1172,6 +1379,209 @@ class ChatService:
             message=assistant_message,
         )
         return user_message, assistant_message, run_record, started_payload
+
+    def _apply_task_understanding(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        user_message_id: str,
+        assistant_message_id: str,
+        content: str,
+        understanding: MainUnderstanding | None,
+    ) -> None:
+        """把一次理解的关系落地为任务状态（普通聊天不触碰任务）。
+
+        关系落地失败（并发版本冲突/终态冲突）时把本轮消息如实收敛为可
+        重试错误，绝不静默吞掉用户的修改或伪造成功。澄清问题在任务上
+        登记等待（绑定版本），答复由下一次理解补齐字段并解决等待。
+        """
+
+        if self._tasks is None or understanding is None:
+            return
+        if understanding.task_relation is None:
+            return
+        from bridges.tasks.repository import TaskError  # 运行时任务领域依赖
+
+        request = task_turn_request(
+            understanding,
+            conversation_id=conversation_id,
+            answer_text=content if understanding.answer_fields else None,
+        )
+        if request is None:
+            return
+        try:
+            result = self._tasks.apply_turn(account_id, request)
+        except TaskError as exc:
+            run = self._repo.get_run_by_message(account_id, assistant_message_id)
+            self.terminal.converge(
+                account_id,
+                run.run_id if run is not None else None,
+                assistant_message_id,
+                fallback=internal_error_outcome(),
+            )
+            raise ChatDomainError(
+                "task_state_conflict",
+                "任务状态已变化，请刷新后基于最新条件重试。",
+                409,
+            ) from exc
+        if not understanding.clarification_question or not understanding.missing_fields:
+            return
+        task_id = (
+            result.task.task.task_id
+            if result.task is not None
+            else understanding.target_task_id
+        )
+        if task_id is None:
+            return
+        try:
+            self._tasks.open_wait(
+                account_id,
+                conversation_id=conversation_id,
+                question=understanding.clarification_question,
+                missing_fields=list(understanding.missing_fields),
+                origin_message_id=assistant_message_id,
+                source_message_id=user_message_id,
+                task_id=task_id,
+            )
+        except TaskError:
+            logger.warning(
+                "澄清等待登记失败：task_id=%s user_message_id=%s",
+                task_id,
+                user_message_id,
+                exc_info=True,
+            )
+
+    def _override_route_for_module(
+        self,
+        route: CapabilityRoute | None,
+        content: str,
+        module_id: str,
+        understanding: MainUnderstanding | None = None,
+    ) -> CapabilityRoute:
+        """点击建议启动模块：另存实际路由来源，不改写原消息标识。
+
+        原消息正文的硬条件（不要联网/只查论文等）仍然生效，不得因点击
+        建议而放宽。
+        """
+
+        metadata: dict[str, Any] = {
+            "requested_module_id": module_id,
+            "route_source": RouteSource.SUGGESTION_CLICK.value,
+            "capability_list": [module_id],
+            "understanding_version": UNDERSTANDING_CONTRACT_VERSION,
+        }
+        web_allowed, kb_allowed = self._route_flags(understanding)
+        flags: dict[str, Any] = {
+            "web_search_allowed": web_allowed,
+            "knowledge_base_allowed": kb_allowed,
+        }
+        if module_id == "paper":
+            classified = self._router.classify(content)
+            if classified.is_paper_search or classified.status in {
+                RouteStatus.CLARIFY,
+                RouteStatus.REJECTED,
+            }:
+                return classified.model_copy(update={**metadata, **flags})
+        if module_id == "career":
+            classified = self._router.classify(content)
+            if classified.is_career:
+                return classified.model_copy(
+                    update={**metadata, "module_id": "career", **flags}
+                )
+        if module_id != "paper" and module_id in MODULE_CAPABILITIES:
+            return CapabilityRoute(
+                status=RouteStatus.MATCHED,
+                main_capability=MODULE_CAPABILITIES[module_id],
+                confidence=1.0,
+                reason="用户点击建议启动模块（原消息标识不改写）。",
+                module_id=module_id,
+                knowledge_base_allowed=kb_allowed,
+                web_search_allowed=web_allowed,
+                **metadata,
+            )
+        if route is None:
+            return CapabilityRoute(
+                status=RouteStatus.ORDINARY,
+                main_capability=MainCapability.ORDINARY_CHAT,
+                confidence=1.0,
+                reason="用户点击建议启动模块（原消息标识不改写）。",
+                knowledge_base_allowed=kb_allowed,
+                web_search_allowed=web_allowed,
+                **metadata,
+            )
+        return route.model_copy(update={**metadata, **flags})
+
+    def _bind_suggestion_to_task(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        user_message_id: str,
+        content: str,
+    ) -> None:
+        """把「点击建议」绑定到当前任务版本（不改写原消息、不新建任务）。"""
+
+        if self._tasks is None:
+            return
+        context = self._tasks.current_reference_context(account_id, conversation_id)
+        if context is None:
+            return
+        from bridges.tasks.repository import TaskError
+
+        projections = self._tasks.list_projections(account_id, conversation_id)
+        open_capability = any(
+            "capability" in wait.missing_fields
+            for item in projections
+            for wait in item.open_waits
+        )
+        request = TaskTurnRequest(
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            relation=TaskRelation.CONTINUE,
+            explicit_task_id=context.task_id,
+            expected_version=context.version,
+            answer_fields=["capability"] if open_capability else [],
+            answer_text=content if open_capability else None,
+        )
+        try:
+            self._tasks.apply_turn(account_id, request)
+        except TaskError as exc:
+            raise ChatDomainError(
+                "task_state_conflict",
+                "任务状态已变化，请刷新后基于最新条件重试。",
+                409,
+            ) from exc
+
+    def _pause_task_for_stop(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        source_message_id: str,
+    ) -> None:
+        """停止当前运行即暂停任务；任务领域未装配或无可暂停任务时静默跳过。"""
+
+        if self._tasks is None:
+            return
+        context = self._tasks.current_reference_context(account_id, conversation_id)
+        if context is None or context.status not in {"active", "waiting"}:
+            return
+        from bridges.tasks.repository import TaskError
+
+        request = TaskTurnRequest(
+            conversation_id=conversation_id,
+            user_message_id=source_message_id,
+            relation=TaskRelation.PAUSE,
+            explicit_task_id=context.task_id,
+            expected_version=context.version,
+        )
+        try:
+            self._tasks.apply_turn(account_id, request)
+        except TaskError:
+            logger.warning(
+                "停止生成时暂停任务失败：task_id=%s", context.task_id, exc_info=True
+            )
 
     def _process_profile_effects(
         self,
@@ -1377,11 +1787,25 @@ class ChatService:
             self._validate_draft_attachments(
                 account_id, attachment_ids, photos_only=mode == ChatMode.STUDY,
             )
+        target_conversation_id = conversation_id or secrets.token_urlsafe(16)
+        user_message_id = secrets.token_urlsafe(16)
+        understanding = self._understand_turn(
+            account_id=account_id,
+            conversation_id=target_conversation_id,
+            user_message_id=user_message_id,
+            content=content,
+            mode=mode,
+            module_id=module_id,
+        )
         capability_route = self._route_for_turn(
+            content=content,
+            requested_module_id=module_id,
+            understanding=understanding,
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
         )
+        effective_module_id = self._effective_module_id(capability_route)
         # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
         if content:
             title = (
@@ -1389,7 +1813,6 @@ class ChatService:
             )
         else:
             title = "照片消息"
-        target_conversation_id = conversation_id or secrets.token_urlsafe(16)
         (
             user_message,
             assistant_message,
@@ -1407,7 +1830,9 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
-            module_id=module_id,
+            module_id=effective_module_id,
+            understanding=understanding,
+            user_message_id=user_message_id,
         )
         created_id, created, conflict_not_empty = self._repo.insert_first_turn(
             account_id=account_id,
@@ -1486,6 +1911,15 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             now=now,
+        )
+        # 改进工单 12：关系落地在消息存在后进行（失败收敛为可重试错误）。
+        self._apply_task_understanding(
+            account_id=account_id,
+            conversation_id=created_id,
+            user_message_id=user_message.message_id,
+            assistant_message_id=assistant_message.message_id,
+            content=content,
+            understanding=understanding,
         )
         self._process_profile_effects(
             account_id=account_id,
@@ -1624,6 +2058,15 @@ class ChatService:
             if model_quota is not None
             else None
         )
+        # 改进工单 12：正文硬条件（不要联网/只用本地/只查论文）进入生成门禁；
+        # 学习模式的强制补搜索同样受该门禁约束，语义扩展不得放宽。
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        understanding = understanding_from_snapshot(
+            (run.config or {}).get("understanding") if run is not None else None
+        )
+        web_search_allowed = (
+            understanding is None or not understanding.blocks_network
+        )
         yield from self._turn.stream_turn(
             account_id,
             conversation_id,
@@ -1637,6 +2080,7 @@ class ChatService:
             model_override=model_id,
             model_quota=quota,
             context_budget=context_budget,
+            web_search_allowed=web_search_allowed,
         )
         # 改进工单 17：不在执行器后台链路上的直接编排（测试/脚本）同样
         # 只在回答正常完成后登记普通画像提取；调度幂等，后台执行器路径
@@ -1701,6 +2145,12 @@ class ChatService:
             self._repo.request_generation_stop(account_id, run.run_id)
             RunBudgetLedgerRepository(self._repo.database).close(
                 account_id=account_id, run_id=run.run_id, now=datetime.now(UTC)
+            )
+            # 改进工单 12：停止当前运行即暂停当前任务（可续接，不清条件）。
+            self._pause_task_for_stop(
+                account_id=account_id,
+                conversation_id=conversation_id,
+                source_message_id=message_id,
             )
             entry = self._lifecycle.signal_and_started(message_id)
             if entry is not None:
@@ -1920,6 +2370,7 @@ class ChatService:
             )
             if self._web_search is not None
             and route is not None
+            and route.web_search_allowed
             and not route.is_paper_search
             and route.status not in {RouteStatus.CLARIFY, RouteStatus.REJECTED}
             else None
@@ -1970,6 +2421,12 @@ class ChatService:
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
         run_id = secrets.token_urlsafe(16)
         previous_run = self._repo.get_run_by_message(account_id, message_id)
+        previous_config = previous_run.config if previous_run is not None else None
+        # 改进工单 12：理解快照随重试沿用——原消息的硬条件（不要联网等）
+        # 不因重试或点击建议而放宽。
+        understanding_snapshot = understanding_from_snapshot(
+            (previous_config or {}).get("understanding")
+        )
         module_override: str | None = None
         if module_id is not None:
             # V2 Issue 11：点击建议一键启动论文模块——只在逐消息无模块时
@@ -1985,7 +2442,22 @@ class ChatService:
                     409,
                 )
             module_override = module_id
-        previous_config = previous_run.config if previous_run is not None else None
+        if module_override is not None:
+            # 改进工单 12：点击建议另存实际路由来源，并绑定当前任务版本；
+            # 原用户消息的 module_id 不改写，历史不被冒充为首次选择。
+            route = self._override_route_for_module(
+                route, owner.content, module_override, understanding_snapshot
+            )
+            if route is not None:
+                new_attempt = replace(
+                    new_attempt, route=route.model_dump(mode="json")
+                )
+            self._bind_suggestion_to_task(
+                account_id=account_id,
+                conversation_id=conversation_id,
+                user_message_id=owner.message_id,
+                content=owner.content,
+            )
         policy_snapshot = (previous_config or {}).get("global_writing_policy")
         if (
             policy_snapshot is None
@@ -2001,6 +2473,8 @@ class ChatService:
         }
         if module_override is not None:
             run_config["module_id"] = module_override
+        if understanding_snapshot is not None:
+            run_config["understanding"] = understanding_snapshot.model_dump(mode="json")
         # V2 Issue 09 + 改进工单 03：重试尝试沿用本轮启动时的模型与额度快照。
         self._apply_run_model_lock(run_config, previous_config=previous_config)
         if policy_snapshot is not None:

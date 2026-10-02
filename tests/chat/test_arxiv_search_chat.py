@@ -103,7 +103,9 @@ def _service(
     )
 
 
-def test_paper_prompt_without_module_stays_ordinary(tmp_path: Path) -> None:
+def test_paper_prompt_dispatches_module_and_scrubs_private_text(tmp_path: Path) -> None:
+    """工单 12：正文明确论文意图直达模块；查询只含脱敏后的最小词组。"""
+
     client = _FakeArxivClient()
     adapter = _CapturingAdapter()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
@@ -114,9 +116,9 @@ def test_paper_prompt_without_module_stays_ordinary(tmp_path: Path) -> None:
         "请找近三年量子纠错论文。私人文档：内部代号蓝鲸，密码=secret-123。",
     )
 
-    assert assistant.route is not None
-    assert assistant.route.main_capability.value == "ordinary_chat"
-    assert assistant.arxiv_search is None
+    assert user.module_id == "paper"
+    assert assistant.route is not None and assistant.route.is_paper_search
+    assert assistant.arxiv_search is not None
     events = list(
         service.stream_generation(
             "alice",
@@ -129,13 +131,18 @@ def test_paper_prompt_without_module_stays_ordinary(tmp_path: Path) -> None:
     final = service.message_projection("alice", assistant.message_id)
 
     assert final is not None and final.status.value == "done"
-    assert final.arxiv_search is None
-    assert client.queries == []
-    assert adapter.payloads
+    assert final.arxiv_search is not None
+    assert final.arxiv_search.status.value == "success"
+    assert client.queries and "内部代号蓝鲸" not in client.queries[0]
+    assert "secret-123" not in client.queries[0]
+    model_context = str(adapter.payloads[0])
+    assert "Quantum Error Correction with Structured Codes" in model_context
     assert any(event.kind == "done" for event in events)
 
 
-def test_empty_arxiv_results_do_not_affect_unselected_ordinary_chat(tmp_path: Path) -> None:
+def test_empty_arxiv_results_fail_closed_without_model_fallback(tmp_path: Path) -> None:
+    """论文模块空结果如实失败：不调用模型、不编造来源。"""
+
     adapter = _CapturingAdapter()
     client = _FakeArxivClient([])
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
@@ -155,14 +162,17 @@ def test_empty_arxiv_results_do_not_affect_unselected_ordinary_chat(tmp_path: Pa
     )
     final = service.message_projection("alice", assistant.message_id)
 
-    assert final is not None and final.status.value == "done"
-    assert final.arxiv_search is None
-    assert client.queries == []
-    assert adapter.payloads
-    assert events[-1].kind == "done"
+    assert final is not None and final.status.value == "error"
+    assert final.error_code == "arxiv_no_results"
+    assert final.arxiv_search is not None and final.arxiv_search.status.value == "empty"
+    assert client.queries
+    assert adapter.payloads == []
+    assert events[-1].kind == "error"
 
 
-def test_ordinary_answer_does_not_require_arxiv_citations(tmp_path: Path) -> None:
+def test_paper_answer_without_citation_is_rejected(tmp_path: Path) -> None:
+    """论文路由的答案必须带真实论文引用；无引用视为核验失败。"""
+
     adapter = _CapturingAdapter(answer="没有明确 arXiv 来源的回答。")
     client = _FakeArxivClient()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
@@ -182,10 +192,10 @@ def test_ordinary_answer_does_not_require_arxiv_citations(tmp_path: Path) -> Non
     )
     final = service.message_projection("alice", assistant.message_id)
 
-    assert final is not None and final.status.value == "done"
-    assert final.arxiv_search is None
-    assert client.queries == []
-    assert events[-1].kind == "done"
+    assert final is not None and final.status.value == "error"
+    assert final.error_code == "arxiv_citation_invalid"
+    assert client.queries
+    assert events[-1].kind == "error"
 
 
 class _RateLimitArxivClient(_FakeArxivClient):
@@ -206,10 +216,11 @@ class _RateLimitArxivClient(_FakeArxivClient):
         )
 
 
-def test_unselected_paper_prompt_retries_as_ordinary_chat(
+def test_paper_prompt_retry_keeps_route_and_failure_state(
     tmp_path: Path,
 ) -> None:
-    """未选择论文模块时，重试普通消息也不会触发 arXiv。"""
+    """论文路由的重试沿用同一路由与失败状态，不静默降级为普通聊天。"""
+
     client = _RateLimitArxivClient()
     adapter = _CapturingAdapter()
     service = _service(tmp_path, ArxivSearchService(client=client), adapter)
@@ -228,14 +239,16 @@ def test_unselected_paper_prompt_retries_as_ordinary_chat(
         )
     )
     first_final = service.message_projection("alice", first.message_id)
-    assert first_final is not None and first_final.status.value == "done"
-    assert first_final.arxiv_search is None
-    assert first_events[-1].kind == "done"
-    assert client.queries == []
+    assert first_final is not None and first_final.status.value == "error"
+    assert first_final.error_code == "arxiv_rate_limit"
+    assert first_final.arxiv_search is not None
+    assert first_events[-1].kind == "error"
+    assert len(client.queries) == 1
 
     _, retry, _ = service.retry_generation(
         "alice", conversation.conversation_id, first.message_id
     )
+    assert retry.route is not None and retry.route.is_paper_search
     retry_events = list(
         service.stream_generation(
             "alice",
@@ -247,7 +260,7 @@ def test_unselected_paper_prompt_retries_as_ordinary_chat(
     )
     retry_final = service.message_projection("alice", retry.message_id)
 
-    assert retry_final is not None and retry_final.status.value == "done"
-    assert retry_final.arxiv_search is None
-    assert client.queries == []
-    assert retry_events[-1].kind == "done"
+    assert retry_final is not None and retry_final.status.value == "error"
+    assert retry_final.error_code == "arxiv_rate_limit"
+    assert retry_events[-1].kind == "error"
+    assert len(client.queries) == 1
