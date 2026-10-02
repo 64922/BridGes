@@ -3116,7 +3116,7 @@ class AutomaticProfileService:
             }
             explicit_self_statement = self._is_explicit_self_statement(
                 content, signal_classification
-            )
+            ) or self._candidate_is_explicit_fact(item, content)
             if not explicit_self_statement and len(unique_messages) < 2:
                 continue
             if self._repository.is_message_tombstoned(account_id, message_id):
@@ -3311,7 +3311,49 @@ class AutomaticProfileService:
         }:
             # 模糊/行为候选保留观察：不自动晋升偏好或能力。
             return ProfileExtractionAction.OBSERVE
+        # 改进工单 17 第 8 条：本地词表未命中的明确偏好/约束（「以后先给
+        # 结论」「每天 30 分钟」）由语义模型提候选；候选在精确区间上通过
+        # 主体、否定、时间与取值校验即可提交，不被旧的 no_signal 分类
+        # 整批否决。候选文本自身必须是可复用偏好/约束，避免把无关片段
+        # 的模型猜测写成用户事实。
+        if self._semantic_candidate_is_explicit(segment, item):
+            return item.action
         return ProfileExtractionAction.IGNORE
+
+    def _semantic_candidate_is_explicit(
+        self, segment: str, item: ProfileExtractionItem
+    ) -> bool:
+        """模型候选在精确区间上是否构成明确偏好/约束（工单 17 第 8 条）。"""
+
+        candidate_text = f"{item.fact_text or ''} {item.normalized_value}"
+        if not self._classifier.has_reusable_signal(candidate_text):
+            return False
+        if not self._evidence_supports_candidate(segment, item):
+            return False
+        return self._value_supported_by_span(segment, item)
+
+    def _candidate_is_explicit_fact(
+        self, item: ProfileExtractionItem, content: str
+    ) -> bool:
+        """有精确区间的语义创建候选按明确事实计入写入阶梯（工单 17）。"""
+
+        if item.action not in {
+            ProfileExtractionAction.CREATE,
+            ProfileExtractionAction.UPDATE,
+        }:
+            return False
+        evidence = self._candidate_evidence_span(item, content)
+        if evidence is None:
+            return False
+        segment, classification = evidence
+        if classification.reason_code in HARD_FORBIDDEN_REASONS:
+            return False
+        if classification.category in {
+            ProfileSignalCategory.BEHAVIOR_OBSERVATION,
+            ProfileSignalCategory.AMBIGUOUS,
+        }:
+            return False
+        return self._semantic_candidate_is_explicit(segment, item)
 
     @staticmethod
     def _value_supported_by_span(segment: str, item: ProfileExtractionItem) -> bool:

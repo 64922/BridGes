@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from bridges.chat.lightweight_policy import ChatLightweightPolicyCompiler
+from bridges.contracts.profile_extraction import ProfileExtractionOutput
 from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
 from bridges.profiles.adapters import InMemoryProfileRepository
 from bridges.profiles.atomic import AtomicProfileService, InMemoryAtomicProfileRepository
@@ -145,5 +146,87 @@ results["停止记录后忘掉"] = {
     "指令结果": result.memory.model_dump(mode="json") if result.memory else None,
     "剩余条目": texts(atomic),
 }
+
+# ---------------------------------------------------------------------------
+# 改进工单 17：逐事实反例与语义候选门禁（确定性替身，不代表真实模型质量）。
+# ---------------------------------------------------------------------------
+
+
+def candidate(value, start, end, fact_text):
+    """构造一条带精确码点半开区间的确定性候选。"""
+    return {
+        "dimension": "knowledge_interest",
+        "normalized_value": value,
+        "fact_text": fact_text,
+        "evidence_ref": "m-1",
+        "reliability": 0.99,
+        "action": "create",
+        "evidence_start": start,
+        "evidence_end": end,
+    }
+
+
+class _FixedCandidateExtractor:
+    """固定返回给定候选，仅用于复核提交门禁，不模拟模型抽取质量。"""
+
+    version = "audit-fixed-candidates-v1"
+
+    def __init__(self, items):
+        self.items = items
+
+    def extract(self, **_):
+        return ProfileExtractionOutput.model_validate({"items": self.items})
+
+
+def ingest_candidates(text, items):
+    four, _, atomic, _ = services()
+    automatic = AutomaticProfileService(
+        four_dimension_service=four,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=_FixedCandidateExtractor(items),
+        atomic_profile_service=atomic,
+    )
+    result = automatic.preprocess_message(
+        "audit-user", conversation_id="audit-chat", message_id="m-1",
+        content=text, run_id="r-1", mode="daily",
+    )
+    return {"运行": result.run.outcome.value, "条目": texts(atomic)}
+
+
+preference = "以后先给结论"
+results["逐事实反例：语义偏好候选"] = {
+    "消息": preference,
+    "精确区间支持": ingest_candidates(
+        preference, [candidate("先给结论", 0, len(preference), preference)]
+    ),
+    "无关取值": ingest_candidates(
+        preference, [candidate("摄影", 0, len(preference), "以后给结论加摄影图")]
+    ),
+}
+constraint = "我每天学习 30 分钟"
+results["逐事实反例：时间约束候选"] = {
+    "消息": constraint,
+    "保留时间": ingest_candidates(
+        constraint, [candidate("每天学习 30 分钟", 0, len(constraint), "每天学习 30 分钟")]
+    ),
+    "丢弃时间": ingest_candidates(
+        constraint, [candidate("30 分钟学习", 0, len(constraint), None)]
+    ),
+}
+results["语义预检放行"] = [
+    {
+        "原文": text,
+        "整消息分类": classifier.classify(text).category.value,
+        "抽取分类": classifier.extraction_classification(text).category.value,
+        "可复用信号": classifier.has_reusable_signal(text),
+    }
+    for text in ["以后先给结论", "我每天学习 30 分钟", "今天天气不错"]
+]
+_, _, atomic, automatic = services()
+for number, text in enumerate(
+    ["我不喜欢长篇回答", "我喜欢跑步，我朋友喜欢摄影", "我最近焦虑，想学习 Transformer"], 1
+):
+    ingest(automatic, text, number)
+results["逐片段反例（本地规则）"] = texts(atomic)
 
 print(json.dumps(results, ensure_ascii=False, indent=2))

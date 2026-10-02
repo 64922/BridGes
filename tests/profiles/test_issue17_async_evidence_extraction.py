@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.service import ChatService
+from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.profile_extraction import (
     ProfileExtractionOutput,
@@ -16,6 +17,7 @@ from bridges.contracts.profiles import FourDimension
 from bridges.profiles import (
     AutomaticProfileService,
     FourDimensionProfileService,
+    GatewayAutomaticProfileExtractor,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     RuleBasedAutomaticProfileExtractor,
@@ -393,6 +395,142 @@ def test_dropped_time_constraint_is_not_written_as_a_stable_fact() -> None:
     assert dimensions.list_records(ACCOUNT) == []
 
 
+def test_semantic_preference_candidate_is_written_with_precise_span() -> None:
+    """「以后先给结论」本地词表未命中：精确区间支持的语义候选可提交（任务 5/8）。"""
+
+    content = "以后先给结论"
+    extractor = _RecordingExtractor(
+        _output(
+            [
+                _item(
+                    message_id="message-1",
+                    value="先给结论",
+                    start=0,
+                    end=len(content),
+                    fact_text="以后先给结论",
+                )
+            ]
+        )
+    )
+    dimensions, service = _services(extractor)
+
+    result = service.preprocess_message(
+        ACCOUNT,
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    records = dimensions.list_records(ACCOUNT)
+    assert [(record.dimension, record.content) for record in records] == [
+        (FourDimension.KNOWLEDGE_INTEREST, "先给结论")
+    ]
+    assert records[0].evidence_quote == "以后先给结论"
+
+
+def test_semantic_time_constraint_candidate_keeps_explicit_time() -> None:
+    """「每天 30 分钟」语义候选保留原文明示时间时可写入（任务 5）。"""
+
+    content = "我每天学习 30 分钟"
+    extractor = _RecordingExtractor(
+        _output(
+            [
+                _item(
+                    message_id="message-1",
+                    value="每天学习 30 分钟",
+                    start=0,
+                    end=len(content),
+                    fact_text="每天学习 30 分钟",
+                )
+            ]
+        )
+    )
+    dimensions, service = _services(extractor)
+
+    result = service.preprocess_message(
+        ACCOUNT,
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    assert [record.content for record in dimensions.list_records(ACCOUNT)] == [
+        "每天学习 30 分钟"
+    ]
+
+
+def test_semantic_candidate_unrelated_value_is_not_written() -> None:
+    """语义候选的规范值必须真实出现在精确区间，无关值零写入。"""
+
+    content = "以后先给结论"
+    extractor = _RecordingExtractor(
+        _output(
+            [
+                _item(
+                    message_id="message-1",
+                    value="摄影",
+                    start=0,
+                    end=len(content),
+                    fact_text="以后给结论加一张摄影图",
+                )
+            ]
+        )
+    )
+    dimensions, service = _services(extractor)
+
+    result = service.preprocess_message(
+        ACCOUNT,
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    assert dimensions.list_records(ACCOUNT) == []
+
+
+def test_semantic_candidate_on_unrelated_fragment_is_not_written() -> None:
+    """混合消息里语义候选落在与偏好无关的片段上时零写入（主体守卫）。"""
+
+    content = "以后先给结论，老王在研究量子计算"
+    fragment = "老王在研究量子计算"
+    start = content.index(fragment)
+    extractor = _RecordingExtractor(
+        _output(
+            [
+                _item(
+                    message_id="message-1",
+                    value="量子计算",
+                    start=start,
+                    end=start + len(fragment),
+                    fact_text=fragment,
+                )
+            ]
+        )
+    )
+    dimensions, service = _services(extractor)
+
+    result = service.preprocess_message(
+        ACCOUNT,
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content=content,
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    assert dimensions.list_records(ACCOUNT) == []
+
+
 def test_fabricated_span_is_a_non_retryable_contract_failure() -> None:
     """区间越界/无真实片段是合同错误，失败关闭而不是凭空写入。"""
 
@@ -456,6 +594,48 @@ def test_observation_candidate_with_precise_span_stays_observation() -> None:
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
     assert result.observed_count == 1
     assert dimensions.list_records(ACCOUNT) == []
+
+
+class _CapturingGateway:
+    """捕获画像抽取调用载荷的最小网关替身。"""
+
+    def __init__(self, output: dict[str, Any]) -> None:
+        self.payloads: list[dict[str, Any]] = []
+        self._output = output
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        self.payloads.append(kwargs["payload"])
+        return SimpleNamespace(
+            lock=None,
+            status=ModelCallStatus.SUCCESS,
+            output=self._output,
+            error_code=None,
+            error_message=None,
+        )
+
+
+def test_gateway_neighbors_are_reference_only() -> None:
+    """邻近用户原文只作回指线索，与当前消息分开标注（任务 3）。"""
+
+    gateway = _CapturingGateway({"items": []})
+    extractor = GatewayAutomaticProfileExtractor(
+        cast(Any, gateway),
+        neighbor_reader=lambda account_id, conversation_id, message_id: ["我喜欢跑步"],
+    )
+
+    extractor.extract(
+        account_id=ACCOUNT,
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="这个专业怎么样",
+        run_id="run-1",
+    )
+
+    messages = gateway.payloads[0]["messages"]
+    assert messages[-1] == {"role": "user", "content": "这个专业怎么样"}
+    reference = messages[1]
+    assert "不得作为事实证据" in reference["content"]
+    assert "我喜欢跑步" in reference["content"]
 
 
 def test_executor_schedules_only_after_done_terminal() -> None:
