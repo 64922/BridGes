@@ -26,6 +26,7 @@ from bridges.chat.lightweight_policy import (
     ChatLightweightPolicyCompiler,
     ChatLightweightPolicySnapshot,
     ChatResponseForm,
+    ToolOutcome,
 )
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.expression_task import ExpressionTaskContract
@@ -94,6 +95,8 @@ class GlobalWritingPolicyCompiler:
         tool_result: bool = False,
         refusal: bool = False,
         lesson: bool = False,
+        continuation_text: str = "",
+        tool_outcome: ToolOutcome = ToolOutcome.NONE,
         existing_snapshot: GlobalWritingPolicySnapshot | dict[str, Any] | None = None,
     ) -> GlobalWritingPolicySnapshot:
         """编译策略；完整已有快照优先，保证重试不受热更新影响。"""
@@ -119,6 +122,8 @@ class GlobalWritingPolicyCompiler:
             tool_result=tool_result,
             refusal=refusal,
             lesson=lesson,
+            continuation_text=continuation_text,
+            tool_outcome=tool_outcome,
             existing_snapshot=existing_snapshot,
         )
         return self._append_custom_instruction(snapshot)
@@ -182,5 +187,6 @@ __all__ = [
     "ProtectionIntent",
     "SAFE_BASELINE_POLICY_VERSION",
     "ChatResponseForm",
+    "ToolOutcome",
     "restore_protected_regions",
 ]

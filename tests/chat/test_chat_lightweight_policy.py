@@ -268,7 +268,7 @@ def test_compile_snapshot_rule_ids_cover_global_and_form_rules() -> None:
 
     assert snapshot.form == ChatResponseForm.EMPATHY
     assert "visible-info-only" in snapshot.rule_ids
-    assert "empathy-with-action" in snapshot.rule_ids
+    assert "stay-without-forcing" in snapshot.rule_ids
     assert "no-mind-reading" in snapshot.rule_ids
     assert "no-parroting" in snapshot.rule_ids
 

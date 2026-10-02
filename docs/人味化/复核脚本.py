@@ -10,6 +10,9 @@ Issue 05 起保护区复核改为按保留意图的精确绑定：多片段/换�
 Issue 06 起流式案例改用正式追加式装配器（``StreamProtectionAssembler``）
 模拟：同一 delta 序列同时驱动前端累加与落库正文，受保护片段闭合前暂缓，
 不再出现「整段正文当伪增量重发」。真实浏览器生命周期验收由 e2e 承担。
+
+改进工单 21 起形态反例补充续接（“继续”沿用上一轮详细任务）与工具失败/
+部分结果两档，用于复核有分寸表达的任务承接与如实降级。
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from bridges.chat.fact_protection import (
 )
 from bridges.chat.lightweight_policy import (
     ChatLightweightPolicyCompiler,
+    ToolOutcome,
     detect_response_form,
 )
 from bridges.chat.stream_protection import (
@@ -49,9 +53,25 @@ def main() -> None:
         "谢谢你，刚才的方法帮我解决了",
         "继续",
     )
+    form_cases = [(question, question, {}) for question in questions] + [
+        # 改进工单 21：续接沿用上一轮真实任务，工具失败/部分结果如实降级；
+        # 否定句式与引语不冒充本轮强限制。
+        (
+            "继续（承接“写一篇两千字的故事”）",
+            "继续",
+            {"continuation_text": "写一篇两千字的故事"},
+        ),
+        ("工具失败（联网超时）", "你好", {"tool_outcome": ToolOutcome.ERROR}),
+        ("工具部分结果（部分命中）", "你好", {"tool_outcome": ToolOutcome.PARTIAL}),
+        ("不用详细讲，简单说一下", "不用详细讲，简单说一下", {}),
+        ("他说‘别追问我了’，这句话是什么意思", "他说‘别追问我了’，这句话是什么意思", {}),
+    ]
     forms = [
-        {"输入": question, "实际形态": detect_response_form(question, ChatMode.COMPANION).value}
-        for question in questions
+        {
+            "输入": label,
+            "实际形态": detect_response_form(text, ChatMode.COMPANION, **options).value,
+        }
+        for label, text, options in form_cases
     ]
     protection_cases = (
         ("多片段恢复", "甲 10 ms；乙 20 ms", "甲 11 ms；乙 21 ms"),

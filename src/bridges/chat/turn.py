@@ -69,6 +69,11 @@ from bridges.chat.global_writing_policy import (
     GlobalWritingPolicySnapshot,
 )
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.lightweight_policy import (
+    DEFAULT_OUTPUT_TOKENS,
+    ToolOutcome,
+    continuation_source_text,
+)
 from bridges.chat.material_reading import (
     FileSegment,
     MaterialRead,
@@ -81,7 +86,7 @@ from bridges.chat.material_reading import (
     read_photo_payloads,
     select_file_segments,
 )
-from bridges.chat.repository import ConversationRepository, GenerationRunRecord, MessageRecord
+from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.chat.run_budget_ledger import (
     RUN_BUDGET_INITIALS,
     RunBudgetLedgerRepository,
@@ -160,8 +165,96 @@ CHAT_CAPABILITY_VERSION = "1"
 
 #: 主生成调用的输出额度（token）。上下文编译的输入预算与模型载荷的
 #: ``max_tokens`` 共用同一值（改进工单 03）：不同输出额度的调用预留不同空间，
-#: 不再把 1,024 当成全局唯一假设。
-CHAT_OUTPUT_TOKENS = 1024
+#: 不再把 1,024 当成全局唯一假设。改进工单 21 起，显式长文/推导任务使用
+#: 策略快照里的有界任务上限（仍受工单 04 的最终载荷门约束）。
+#: 单一事实源在轻量策略模块，这里保留既有公开名作为兼容别名。
+CHAT_OUTPUT_TOKENS = DEFAULT_OUTPUT_TOKENS
+
+
+def turn_tool_outcome(
+    *,
+    retrieval_round: RetrievalRoundProjection | None = None,
+    web_search_projection: WebSearchProjection | None = None,
+    arxiv_search_projection: ArxivSearchProjection | None = None,
+    material_gaps: Sequence[str] = (),
+) -> ToolOutcome:
+    """按本轮实际工具状态汇总表达策略信号（改进工单 21）。
+
+    只读真实投影：错误（超时/连接/权限拒绝/读取失败）→ ``ERROR``，部分结果
+    （部分命中、空结果、证据不足、来源冲突、陈旧缓存回退）→ ``PARTIAL``，
+    成功 → ``SUCCESS``；本轮没有触发工具时保持 ``NONE``。不猜测工具结果，
+    也不预判尚未发生的模型拒答。
+    """
+    has_error = False
+    has_partial = False
+    has_success = False
+    if web_search_projection is not None:
+        web_status = web_search_projection.status
+        if web_status in {
+            WebSearchStatus.ERROR,
+            WebSearchStatus.FETCH_ERROR,
+            WebSearchStatus.PERMISSION,
+            WebSearchStatus.RECOVERY,
+        }:
+            has_error = True
+        elif web_status in {
+            WebSearchStatus.PARTIAL,
+            WebSearchStatus.EMPTY,
+            WebSearchStatus.EVIDENCE_INSUFFICIENT,
+            WebSearchStatus.SOURCE_CONFLICT,
+        }:
+            has_partial = True
+        elif web_status is WebSearchStatus.SUCCESS:
+            has_success = True
+    if arxiv_search_projection is not None:
+        arxiv_status = arxiv_search_projection.status
+        if arxiv_status in {ArxivSearchStatus.ERROR, ArxivSearchStatus.PERMISSION}:
+            has_error = True
+        elif arxiv_status is ArxivSearchStatus.SUCCESS:
+            # 过期缓存回退不是最新结果：按部分结果如实说明。
+            if arxiv_search_projection.stale:
+                has_partial = True
+            else:
+                has_success = True
+        elif arxiv_status is ArxivSearchStatus.EMPTY:
+            has_partial = True
+    if retrieval_round is not None:
+        statuses = {layer.status for layer in retrieval_round.layers}
+        if statuses & {
+            RetrievalLayerStatus.TIMEOUT,
+            RetrievalLayerStatus.INDEX_CORRUPT,
+        }:
+            has_error = True
+        elif RetrievalLayerStatus.OK in statuses:
+            has_success = True
+    if material_gaps:
+        has_error = True
+    if has_error:
+        return ToolOutcome.ERROR
+    if has_partial:
+        return ToolOutcome.PARTIAL
+    if has_success:
+        return ToolOutcome.SUCCESS
+    return ToolOutcome.NONE
+
+
+def turn_tool_refusal(
+    *,
+    web_search_projection: WebSearchProjection | None = None,
+    arxiv_search_projection: ArxivSearchProjection | None = None,
+) -> bool:
+    """有策略依据的拒答信号：仅限工具/权限明确拒绝。
+
+    工具凭据/权限被拒（如搜索提供方 401/403 或 arXiv 权限错误）属于有依据
+    的拒答，可以进入错误/拒答表达；模型自身尚未发生的拒答不得在生成前假定。
+    """
+    return (
+        web_search_projection is not None
+        and web_search_projection.status is WebSearchStatus.PERMISSION
+    ) or (
+        arxiv_search_projection is not None
+        and arxiv_search_projection.status is ArxivSearchStatus.PERMISSION
+    )
 
 #: 并行公开搜索超时占位（预算到期未完成的结果；调用方按降级处理）。
 _SEARCH_TIMEOUT = object()
@@ -3871,6 +3964,18 @@ class TurnOrchestrator:
                 )
                 if context_note is not None:
                     thinking = context_note_thinking(thinking, context_note)
+            # 改进工单 21：按本轮实际工具状态与有依据的拒绝信号编译表达策略；
+            # 未发生的模型拒答不在这里假定，工具失败/部分结果必须如实说明。
+            tool_outcome = turn_tool_outcome(
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+                material_gaps=[
+                    *material_read_gaps_from_record(context_budget),
+                    *photo_read_gaps,
+                    *file_gaps,
+                ],
+            )
             writing_policy = self._compile_writing_policy(
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
@@ -3885,9 +3990,17 @@ class TurnOrchestrator:
                 # Issue 07：只有真实课时任务（teaching 合同已加载）才启用
                 # 学习课时形态；普通短问不因学习模式自动加载教学结构。
                 lesson=teaching_projection is not None,
+                tool_outcome=tool_outcome,
+                refusal=turn_tool_refusal(
+                    web_search_projection=web_search_projection,
+                    arxiv_search_projection=arxiv_search_projection,
+                ),
             )
             if writing_policy.profile_context is not None:
                 profile_context = writing_policy.profile_context
+            # 改进工单 21：输出预留取本任务的有界额度（默认 1024，显式长文
+            # 任务为策略快照里的任务上限）；最终载荷门据此重算输入上界。
+            output_tokens = writing_policy.output_tokens
             correction_context = self._profile_correction_context(
                 account_id, assistant_message_id
             )
@@ -3932,7 +4045,7 @@ class TurnOrchestrator:
                 payload, material_manifest = assemble_payload_within_budget(
                     history,
                     quota=model_quota,
-                    output_tokens=CHAT_OUTPUT_TOKENS,
+                    output_tokens=output_tokens,
                     tools_context=tools_context,
                     retrieval_round=retrieval_round,
                     attachment_note=attachment_note,
@@ -3963,7 +4076,7 @@ class TurnOrchestrator:
                     profile_correction_context=correction_context,
                     profile_memory_context=memory_context,
                     writing_policy=writing_policy,
-                    output_tokens=CHAT_OUTPUT_TOKENS,
+                    output_tokens=output_tokens,
                 )
                 material_manifest = None
             if material_manifest is not None:
@@ -6178,17 +6291,32 @@ class TurnOrchestrator:
         profile_context: str | None,
         profile_failed: bool,
         lesson: bool = False,
+        tool_outcome: ToolOutcome = ToolOutcome.NONE,
+        refusal: bool = False,
     ) -> GlobalWritingPolicySnapshot:
         """编译并保存本次运行唯一的全局表达策略快照。
 
         Issue 07：以当前轮用户正文做确定性形态路由（不调用模型）；
-        重试回传已有完整快照时原样复用，不重新编译形态或规则。
+        改进工单 21：读取同账户会话内最近一条实质用户请求作为续接/纠正的
+        形态依据（只做本地分类，不复制历史进提示词），并接入实际工具状态
+        与有依据的拒答信号；重试回传已有完整快照时原样复用，不重新编译
+        形态或规则。
         """
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
         existing_data = (
             (run.config or {}).get("global_writing_policy") if run is not None else None
         )
-        user_text = self._owner_user_content(account_id, run, assistant_message_id)
+        user_text = ""
+        continuation_text = ""
+        if run is not None:
+            messages = self._repo.list_messages(account_id, run.conversation_id)
+            owner = owner_user_message(messages, assistant_message_id)
+            if owner is not None:
+                user_text = owner.content
+                # 只有当前请求带续接/纠正信号时编译器才会使用它。
+                continuation_text = continuation_source_text(
+                    messages, owner.message_id
+                )
         try:
             snapshot = self._writing_policy.compile(
                 mode,
@@ -6198,6 +6326,9 @@ class TurnOrchestrator:
                 profile_context=profile_context,
                 profile_failed=profile_failed,
                 lesson=lesson,
+                continuation_text=continuation_text,
+                tool_outcome=tool_outcome,
+                refusal=refusal,
                 existing_snapshot=existing_data,
             )
         except Exception:  # noqa: BLE001 - 编译失败必须静默回退安全基线
@@ -6207,19 +6338,6 @@ class TurnOrchestrator:
             config["global_writing_policy"] = snapshot.model_dump(mode="json")
             self._repo.update_generation_config(account_id, run.run_id, config)
         return snapshot
-
-    def _owner_user_content(
-        self,
-        account_id: str,
-        run: GenerationRunRecord | None,
-        assistant_message_id: str,
-    ) -> str:
-        """返回当前轮用户消息正文（形态路由输入）；缺失时为空串。"""
-        if run is None:
-            return ""
-        messages = self._repo.list_messages(account_id, run.conversation_id)
-        owner = owner_user_message(messages, assistant_message_id)
-        return owner.content if owner is not None else ""
 
     def _profile_correction_context(
         self, account_id: str, assistant_message_id: str
