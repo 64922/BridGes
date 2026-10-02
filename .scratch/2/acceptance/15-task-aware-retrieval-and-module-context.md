@@ -46,3 +46,12 @@
 - 最终冻结代码组合（52 项工单验收 + 论文/GitHub/检索）：215 passed / 2 failed，仍仅两个 main 已复现的退役入口失败。
 - 验收结论：原交付存在阻断缺陷；经本次修复后，票面确定性验收通过，可合入 main。无新增基线失败或类型错误。
 
+## 合入与清理（2026-10-02）
+
+- 合入顺序：main 先同步到 `3b297ad5`（Issue 12 首次合入），再合入本票分支为 `5d95d7c3 merge: 验收合入 Issue 15 任务感知检索与模块上下文`；随后 `d3a3861c` 并入 Issue 12 验收修复。
+- 冲突解决：`src/bridges/chat/service.py` 导入块取并集（`task_materials` 与 `terminal`/`internal_error_outcome` 并存）；`src/bridges/chat/turn.py` 公开检索条件保留 `web_search_allowed and public_query`。
+- 合并后回归：`tests/commute/test_commute_module_flow.py` 出现 5 项本票合并引入的失败（缺方式/缺起点续答、POI 候选选择、失败轮后旧等待）；`main@3b297ad5` 同文件仅 2 项既有失败（普通聊天建议、未接入模块拒绝，随后由 `d3a3861c` 修复）。根因：任务作用域恢复时，任务条件未覆盖的已确认起终点/方式被丢弃，未从等待载荷补缺。
+- 修复 `395e255d fix(commute): 任务感知解析下等待恢复补齐任务未覆盖的已确认字段`（`src/bridges/commute/parsing.py` 8 行）。修复后目标组合 239 passed：`tests/commute` 全文 20 passed；Issue 15 三项验收 52 passed；Issue 12/重放/路由相关 167 passed。
+- 推送：`origin main` `3b297ad5 → 395e255d`（经本机代理 `127.0.0.1:7890`）。
+- 清理：删除 worktree `.worktrees/15-task-aware-retrieval-and-module-context` 与分支 `codex/15-task-aware-retrieval-and-module-context`、临时基线 worktree `.worktrees/tmp-baseline-102`；`git worktree prune` 后仅剩主工作树与 Issue 12 工作树。
+

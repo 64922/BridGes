@@ -72,4 +72,6 @@
 - 原交付发现公开查询/任务续接、模块条件实际采用、旧任务锚点、循环导入及预算清单缺口；均已修复。合同升级 task-materials-v2 / module-context-v2。
 - 最新验收 52 passed；最终关联组合 215 passed / 2 failed（main 已逐项复现）；完整聊天/资料/通勤失败集与 main 的 100 项逐项一致，无新增类型错误。
 - 验收通过；本次用户已授权合并、代理推送与清理。详细发现、修复与限制见[独立验收记录](../acceptance/15-task-aware-retrieval-and-module-context.md)。
+- 已合入 main：`5d95d7c3`（冲突取并集：service 导入与 turn 公开检索条件）；合并后通勤回归 5 项由 `395e255d` 修复（任务条件未覆盖的起终点/方式由等待载荷补缺），目标组合 239 passed。
+- 已推送 `origin main`（`3b297ad5 → 395e255d`，经本机代理），删除本票 worktree/分支与临时基线 worktree，`worktree prune` 完成。
 
