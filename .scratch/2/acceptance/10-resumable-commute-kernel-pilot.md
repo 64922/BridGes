@@ -40,4 +40,8 @@
 
 ## 合并与清理
 
-待记录实际合并提交、远端同步和清理结果。
+- 验收修正提交 `5a265937`，主线合并提交 `7621f1c6`；使用 `--no-ff` 合并，无冲突。
+- 合并后在 main 再跑核心专项，135 passed（52.63 秒）。
+- 已成功推送 `origin/main`（`https://github.com/64922/BridGes.git`）；通过本机已有 FlClash 代理完成 Git 网络操作，未修改仓库或系统代理设置。
+- 已先删除 `.worktrees/10-resumable-commute-kernel-pilot`，确认目录不存在，再以 `git branch -d` 删除已合并分支 `codex/10-resumable-commute-kernel-pilot`。
+- 已执行 `git worktree prune --dry-run --verbose` 和 `git worktree prune --verbose`，无失效登记。最终保留主工作树及仍有效的 Issue 13、14 工作树。
