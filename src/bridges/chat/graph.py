@@ -8,9 +8,8 @@
 
 - 本切片让**无模块普通聊天**走通整条链；模块子图自 Issue 11 起逐个接入
   ``invoke_subgraph_or_chat`` 的分派分支。
-- ``select_explicit_module`` 只读随用户消息持久化、经服务端枚举校验的
-  ``module_id`` 派发，模型不得从正文改写（本切片显式拒绝未接入模块，
-  绝不悄悄降级为普通对话）。
+- ``select_explicit_module`` 按版本化实际路由派发；历史消息仍读取原
+  ``module_id``。请求模块提示保持原样，真正调用前再次核验硬条件和任务。
 - 节点进度只对应实际开始或完成的步骤：``node`` 事件在节点体执行前发
   started、成功返回后发 completed；失败节点只有 started 与随后携带
   节点位置的 error 事件。
@@ -61,6 +60,10 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatStreamNodeData,
 )
+from bridges.contracts.tasks import TaskRelation, TaskStatus
+from bridges.contracts.understanding import (
+    understanding_from_snapshot,
+)
 from bridges.github.service import (
     GITHUB_MODULE_ID,
     GITHUB_NODE_LABELS,
@@ -79,6 +82,7 @@ from bridges.resources.service import (
     ResourcesModuleError,
 )
 from bridges.resources.suggestion import detect_resources_suggestion
+from bridges.routing.contracts import MODULE_CAPABILITIES, RouteStatus
 from bridges.tieba.service import (
     TIEBA_MODULE_ID,
     TIEBA_NODE_LABELS,
@@ -184,7 +188,7 @@ class DailyTurnState(TypedDict, total=False):
     run_id: str
     user_message_id: str
     assistant_message_id: str
-    #: 随用户消息持久化的服务端校验值（validate_turn 从仓库读取后写回）。
+    #: 持久化路由中的实际模块；旧消息读取历史提示。
     module_id: str | None
     mode: str
     use_knowledge_base: bool
@@ -390,8 +394,19 @@ def _node_validate_turn(
             "消息不存在或没有访问权限。",
             retryable=False,
         )
+    route = assistant.route or {}
     module_id = user_message.module_id
-    if module_id is None:
+    if route.get("understanding_version"):
+        module_id = route.get("module_id")
+        if module_id is None:
+            module_id = next(
+                (key for key, value in MODULE_CAPABILITIES.items()
+                 if value.value == route.get("main_capability")),
+                None,
+            )
+        if route.get("status") in {RouteStatus.CLARIFY, RouteStatus.REJECTED}:
+            module_id = None
+    elif module_id is None:
         # 用户点击建议启动（服务端在重试路径写入显式模块覆盖）：仍按枚举
         # 校验，且只在逐消息没有模块时生效——历史消息标识不被改写。
         override = (run.config or {}).get(RUN_CONFIG_MODULE_ID)
@@ -438,7 +453,7 @@ def _node_compile_context(
 def _node_select_explicit_module(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
-    """显式模块派发：只读服务端校验并随消息持久化的 module_id。"""
+    """按已校验实际模块派发；旧消息保留原显式模块语义。"""
     deps: _GraphDeps = config["configurable"]["deps"]
     module_id = state.get("module_id")
     if module_id is not None and module_id not in AVAILABLE_MODULE_IDS:
@@ -461,6 +476,55 @@ def _node_invoke_subgraph_or_chat(
     """按显式派发调用子图；无模块时走普通对话（事件实时透传给订阅端）。"""
     deps: _GraphDeps = config["configurable"]["deps"]
     dispatch = state.get("module_dispatch")
+    # 在真正调用前重读持久快照，租约从旧检查点恢复也不能绕过门禁。
+    run = deps.run
+    assistant = deps.repo.get_message(run.account_id, run.assistant_message_id)
+    route = assistant.route if assistant is not None and assistant.route else {}
+    understanding = understanding_from_snapshot((run.config or {}).get("understanding"))
+    if route.get("understanding_version"):
+        dispatch = route.get("module_id") or next(
+            (key for key, value in MODULE_CAPABILITIES.items()
+             if value.value == route.get("main_capability")),
+            "chat",
+        )
+    if route.get("status") in {RouteStatus.CLARIFY, RouteStatus.REJECTED} or (
+        understanding is not None
+        and understanding.task_relation in {TaskRelation.PAUSE, TaskRelation.CANCEL}
+    ):
+        dispatch = "chat"
+    if dispatch in AVAILABLE_MODULE_IDS:
+        conversation = deps.repo.get_conversation(run.account_id, run.conversation_id)
+        if conversation is None or conversation.mode != "companion":
+            raise DailyTurnError(
+                NODE_INVOKE_SUBGRAPH_OR_CHAT, "module_mode_conflict",
+                "学习模式不能启动日常模块。", retryable=False,
+            )
+        if understanding is not None and understanding.blocks_network:
+            raise DailyTurnError(
+                NODE_INVOKE_SUBGRAPH_OR_CHAT, "network_not_allowed",
+                "本轮要求不联网，不能启动需要外部检索的模块。", retryable=False,
+            )
+        if understanding is not None and not understanding.allows_module(dispatch):
+            raise DailyTurnError(
+                NODE_INVOKE_SUBGRAPH_OR_CHAT, "source_not_allowed",
+                "所选模块不符合本轮限定的资料来源。", retryable=False,
+            )
+        binding = (run.config or {}).get("task_binding")
+        if isinstance(binding, dict):
+            tasks = getattr(deps.service, "_tasks", None)
+            projection = tasks.projection(run.account_id, binding.get("task_id")) if tasks else None
+            if (
+                projection is None
+                or projection.task.conversation_id != run.conversation_id
+                or projection.task.current_version != binding.get("version")
+                or projection.task.status in {
+                    TaskStatus.PAUSED, TaskStatus.CANCELLED, TaskStatus.COMPLETED,
+                }
+            ):
+                raise DailyTurnError(
+                    NODE_INVOKE_SUBGRAPH_OR_CHAT, "task_state_conflict",
+                    "任务状态或版本已变化，请基于最新任务重试。", retryable=False,
+                )
     if dispatch == PAPER_MODULE_ID:
         return _invoke_paper_module(deps, state)
     if dispatch == TIEBA_MODULE_ID:
@@ -727,6 +791,11 @@ def _invoke_career_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
     分析完全由真实岗位证据渲染，不调用模型（因此不传模型 ID）。
     """
     run = deps.run
+    understanding = understanding_from_snapshot((run.config or {}).get("understanding"))
+    request_options = {}
+    if understanding is not None and {"direction", "stage"} & set(understanding.answer_fields):
+        # 主理解补齐的目标用于本次解析，历史用户正文保持原样。
+        request_options["request_text"] = understanding.goal
     service = getattr(deps.service, "career_plan_service", None)
     if service is None:
         raise DailyTurnError(
@@ -748,6 +817,7 @@ def _invoke_career_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
             assistant_message_id=run.assistant_message_id,
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            **request_options,
         )
     except CareerModuleError as error:
         raise DailyTurnError(

@@ -24,6 +24,8 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
+from bridges.career.intake import assess_intake
+from bridges.career.intent import is_study_planning_request
 from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.reference_resolution import resolve_references
 from bridges.commute.suggestion import detect_commute_suggestion
@@ -42,6 +44,7 @@ from bridges.contracts.tasks import (
     TaskStatus,
     TaskTurnRequest,
     TaskWait,
+    WaitStatus,
 )
 from bridges.contracts.understanding import (
     UNDERSTANDING_CONTRACT_VERSION,
@@ -51,9 +54,9 @@ from bridges.contracts.understanding import (
     RouteSource,
 )
 from bridges.github.suggestion import detect_github_suggestion
-from bridges.paper.suggestion import detect_paper_suggestion
+from bridges.paper.suggestion import PAPER_REQUEST_HINTS, detect_paper_suggestion
 from bridges.resources.suggestion import detect_resources_suggestion
-from bridges.routing import NaturalLanguageRouter
+from bridges.routing import NaturalLanguageRouter, RouteStatus
 from bridges.tieba.suggestion import detect_tieba_suggestion
 
 #: 正文模块识别器：按既有建议优先级排列（论文最先，职业最后），命中即止
@@ -167,6 +170,12 @@ _META_REPLY_RE = re.compile(
     r"^(?:好的?|好嘞|嗯+|哦+|收到|行|可以|谢谢|多谢|哈哈+|ok|OK)[。！!~～]?$"
 )
 _TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}|[\u4e00-\u9fff]{2,}")
+_QUOTED_RE = re.compile(r'“[^”]*”|「[^」]*」|『[^』]*』|"[^"]*"|‘[^’]*’')
+_NON_ACTION_RE = re.compile(
+    r"(?:不要|别|不用|不想|不必|不能)(?:再)?(?:取消|暂停|继续|改|换)|"
+    r"如果|假如|假设|要是|他说|她说|提到|引用"
+)
+_RESTART_RE = re.compile(r"重新(?:开始|发起|查|找)|重来|再来一次")
 
 
 class MainAgentUnderstanding:
@@ -219,17 +228,34 @@ class MainAgentUnderstanding:
             task_context=task_context,
             resolution=resolution,
         )
+        matching_waits = [
+            wait for wait in open_waits
+            if target_task is not None
+            and wait.task_id == target_task.task_id
+            and wait.expected_version == target_task.current_version
+            and wait.status == WaitStatus.OPEN
+        ]
         answer_fields = self._answer_fields(
-            text=text, open_waits=open_waits, detected=detected, resolution=resolution
+            text=text,
+            open_waits=([] if profile_command or self._is_new_topic(text) else matching_waits),
+            detected=detected,
+            resolution=resolution,
         )
         relation, goal = self._relation(
             text=text,
             detected=detected,
             requested_module_id=requested_module_id,
             target_task=target_task,
-            has_task_context=task_context is not None,
             answering=bool(answer_fields),
         )
+        if answer_fields and target_task is not None:
+            relation = TaskRelation.CONTINUE
+            if "topic" in answer_fields:
+                detected = ["paper"]
+                goal = text
+            elif {"direction", "stage"} & set(answer_fields):
+                detected = ["career"]
+                goal = f"{target_task.goal}；{text}"
         touches_task = relation in {
             TaskRelation.CONTINUE,
             TaskRelation.REVISE,
@@ -258,6 +284,33 @@ class MainAgentUnderstanding:
             requested_module_id=requested_module_id,
             resolution=resolution,
         )
+        classification_text = goal if "career" in detected and goal else text
+        if requested_module_id == "career" and not detected:
+            classification_text = f"职业规划：{classification_text}"
+        classified = self._router.classify(classification_text)
+        if (
+            clarification is None
+            and not answer_fields
+            and classified.status == RouteStatus.CLARIFY
+            and classified.error_code in {"paper_empty_query", "paper_ambiguous_query"}
+            and any(hint.lower() in text.lower() for hint in PAPER_REQUEST_HINTS)
+        ):
+            clarification = classified.clarification_question
+            missing = ["topic"]
+            if relation is None:
+                relation, goal = TaskRelation.NEW, text
+        if (
+            clarification is None
+            and classified.is_career
+            and not is_study_planning_request(text)
+            and classified.career_contract is not None
+            and classified.career_contract.open_questions
+        ):
+            intake = assess_intake(goal or text)
+            clarification = intake.question
+            missing = [intake.missing_dimension] if intake.missing_dimension else []
+            if relation is None:
+                relation, goal = TaskRelation.NEW, text
         actual_module, route_source, reason = self._route(
             detected=detected,
             requested_module_id=requested_module_id,
@@ -334,16 +387,19 @@ class MainAgentUnderstanding:
         detected: Sequence[str],
         requested_module_id: str | None,
         target_task: TaskRecord | None,
-        has_task_context: bool,
         answering: bool = False,
     ) -> tuple[TaskRelation | None, str | None]:
-        if target_task is not None and self._matches(text, _CANCEL_PATTERNS):
+        action_text = _QUOTED_RE.sub("", text)
+        is_action = not _NON_ACTION_RE.search(action_text)
+        if target_task is not None and is_action and self._matches(action_text, _CANCEL_PATTERNS):
             return TaskRelation.CANCEL, None
-        if target_task is not None and self._matches(text, _PAUSE_PATTERNS):
+        if target_task is not None and is_action and self._matches(action_text, _PAUSE_PATTERNS):
             return TaskRelation.PAUSE, None
-        if target_task is not None and self._matches(text, _REVISE_PATTERNS):
+        if target_task is not None and is_action and self._matches(action_text, _REVISE_PATTERNS):
             return TaskRelation.REVISE, None
-        has_continue = any(marker in text for marker in _CONTINUE_MARKERS)
+        if is_action and _RESTART_RE.search(action_text):
+            return TaskRelation.NEW, text
+        has_continue = any(marker in action_text for marker in _CONTINUE_MARKERS)
         if detected or requested_module_id:
             if answering or (has_continue and target_task is not None):
                 # 补齐旧澄清/继续旧任务的单模块请求：同一任务推进，不新建。
@@ -352,19 +408,11 @@ class MainAgentUnderstanding:
                     None if target_task is not None else (text or None),
                 )
             return TaskRelation.NEW, text or None
-        if has_continue and target_task is not None:
+        if is_action and has_continue and target_task is not None:
             return TaskRelation.CONTINUE, None
         if self._is_new_topic(text):
             # 明确换话题：暂停旧任务的信号交给任务领域（NEW + is_new_topic）。
             return TaskRelation.NEW, None
-        if (
-            has_task_context
-            and self._looks_like_task_goal(text)
-            and (target_task is None or target_task.status != TaskStatus.PAUSED)
-        ):
-            # 无模块但表达了可续接的目标（例如「预算改成三千」之外的补充）；
-            # 已暂停的任务必须由明确续接标记或等待作答唤醒，无关长消息不复活它。
-            return TaskRelation.CONTINUE, None
         return None, None
 
     @staticmethod
@@ -579,6 +627,19 @@ class MainAgentUnderstanding:
             answered.append("year")
         if "goal" in missing and self._looks_like_task_goal(text):
             answered.append("goal")
+        if "direction" in missing and assess_intake(text).missing_dimension != "direction":
+            answered.append("direction")
+        if "stage" in missing and assess_intake(f"数据分析；{text}").enough:
+            answered.append("stage")
+        if (
+            "topic" in missing
+            and not detected
+            and len(text) >= 2
+            and len(text) <= 80
+            and not _META_REPLY_RE.fullmatch(text)
+            and not re.search(r"[？?]|天气|心情|取消|暂停|换个话题", text)
+        ):
+            answered.append("topic")
         return answered
 
     # -- 基础工具 --------------------------------------------------------

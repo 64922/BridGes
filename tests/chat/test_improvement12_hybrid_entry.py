@@ -403,7 +403,8 @@ def test_module_intent_creates_task_with_goal(tmp_path: Path) -> None:
         "alice", conversation.conversation_id, "推荐几本机器学习的入门教材"
     )
 
-    assert user.module_id == "resources"
+    assert user.module_id is None
+    assert assistant.route.module_id == "resources"
     assert assistant.route is not None
     task = _current_task(tasks, "alice", conversation.conversation_id)
     assert task.task.goal == "推荐几本机器学习的入门教材"
@@ -594,7 +595,7 @@ def test_paused_task_not_revived_by_unrelated_message(tmp_path: Path) -> None:
 
 
 def test_retry_keeps_understanding_snapshot_and_hard_conditions(tmp_path: Path) -> None:
-    service, _ = _chat_service(tmp_path)
+    service, tasks = _chat_service(tmp_path)
     conversation = service.create_conversation("alice")
 
     _, assistant, _ = service.start_generation(
@@ -615,6 +616,9 @@ def test_retry_keeps_understanding_snapshot_and_hard_conditions(tmp_path: Path) 
         item["kind"] for item in run.config["understanding"]["hard_conditions"]
     }
     assert "no_network" in kinds
+    task = _current_task(tasks, "alice", conversation.conversation_id)
+    condition = next(item for item in task.effective_conditions if item.kind == "no_network")
+    assert condition.source_message_id == run.user_message_id
 
 
 def test_study_route_does_not_fall_back_to_paper_clarify(tmp_path: Path) -> None:
@@ -659,6 +663,9 @@ def test_suggestion_click_retry_records_actual_route_source(tmp_path: Path) -> N
     assert retry.route.requested_module_id == "github"
     assert retry.route.module_id == "github"
     assert service._repo.get_message("alice", assistant.message_id).module_id is None  # noqa: SLF001
+    projection = _current_task(tasks, "alice", conversation.conversation_id)
+    run = service._repo.get_run_by_message("alice", retry.message_id)  # noqa: SLF001
+    assert run.config["task_binding"]["task_id"] == projection.task.task_id
 
 
 def test_understanding_snapshot_export_and_deletion_contract(tmp_path: Path) -> None:

@@ -116,7 +116,8 @@ def test_paper_prompt_dispatches_module_and_scrubs_private_text(tmp_path: Path) 
         "请找近三年量子纠错论文。私人文档：内部代号蓝鲸，密码=secret-123。",
     )
 
-    assert user.module_id == "paper"
+    assert user.module_id is None
+    assert assistant.route.module_id == "paper"
     assert assistant.route is not None and assistant.route.is_paper_search
     assert assistant.arxiv_search is not None
     events = list(

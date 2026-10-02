@@ -49,7 +49,8 @@ def test_body_intent_paper_request_dispatches_and_searches(tmp_path: Path) -> No
         "Find at most 3 papers about quantum error correction.",
     )
 
-    assert user.module_id == "paper"
+    assert user.module_id is None
+    assert assistant.route.module_id == "paper"
     assert user.route is not None and user.route == assistant.route
     assert assistant.route is not None
     assert assistant.route.is_paper_search

@@ -161,6 +161,8 @@ from bridges.contracts.teaching_progress import (
 )
 from bridges.contracts.understanding import (
     UNDERSTANDING_CONTRACT_VERSION,
+    HardCondition,
+    HardConditionKind,
     MainUnderstanding,
     RouteSource,
     understanding_from_snapshot,
@@ -894,7 +896,6 @@ class ChatService:
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
         )
-        effective_module_id = self._effective_module_id(capability_route)
         (
             user_message,
             assistant_message,
@@ -912,7 +913,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
-            module_id=effective_module_id,
+            module_id=module_id,
             idempotency_key=idempotency_key,
             understanding=understanding,
             user_message_id=user_message_id,
@@ -1070,7 +1071,7 @@ class ChatService:
             open_waits = [wait for item in projections for wait in item.open_waits]
         if messages is None:
             messages = self._repo.list_messages(account_id, conversation_id)
-        return self._understanding.understand(
+        understanding = self._understanding.understand(
             conversation_id=conversation_id,
             user_message_id=user_message_id,
             content=content,
@@ -1081,16 +1082,22 @@ class ChatService:
             open_waits=open_waits,
             messages=messages,
         )
-
-    @staticmethod
-    def _effective_module_id(route: CapabilityRoute) -> str | None:
-        """实际派发模块：以校验后的路由快照为准，避免识别误报落库。"""
-
-        if route.module_id is not None:
-            return route.module_id
-        if route.is_paper_search:
-            return "paper"
-        return None
+        # 本轮条件保留自己的来源；续接时继承有效条件仅供执行门禁使用。
+        projection = next(
+            (item for item in projections
+             if item.task.task_id == understanding.target_task_id),
+            None,
+        ) if self._tasks is not None else None
+        if projection is not None:
+            new_kinds = {item.kind.value for item in understanding.hard_conditions}
+            understanding.effective_hard_conditions = [
+                HardCondition(kind=HardConditionKind(item.kind), text=item.text,
+                              source_span=item.source_span)
+                for item in projection.effective_conditions
+                if item.kind in HardConditionKind._value2member_map_
+                and item.kind not in new_kinds
+            ]
+        return understanding
 
     @staticmethod
     def _route_metadata(
@@ -1178,17 +1185,37 @@ class ChatService:
             )
         module = understanding.actual_module_id if understanding is not None else None
         if module == "paper":
-            classified = self._router.classify(content)
+            paper_request = (
+                f"找关于{understanding.goal}的论文"
+                if understanding is not None and "topic" in understanding.answer_fields
+                else content
+            )
+            classified = self._router.classify(paper_request)
             if classified.is_paper_search or classified.status in {
                 RouteStatus.CLARIFY,
                 RouteStatus.REJECTED,
             }:
-                return classified.model_copy(update=metadata)
+                return classified.model_copy(update={
+                    **metadata, "module_id": "paper" if classified.is_paper_search else None,
+                    "web_search_allowed": classified.web_search_allowed and web_allowed,
+                    "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
+                })
         if module == "career":
-            classified = self._router.classify(content)
+            career_request = (
+                understanding.goal if understanding is not None
+                and {"direction", "stage"} & set(understanding.answer_fields)
+                and understanding.goal else content
+            )
+            classified = self._router.classify(career_request)
+            if classified.status == RouteStatus.ORDINARY:
+                classified = self._router.classify(f"职业规划：{career_request}")
             if classified.is_career:
                 return classified.model_copy(
-                    update={**metadata, "module_id": "career"}
+                    update={
+                        **metadata, "module_id": "career",
+                        "web_search_allowed": classified.web_search_allowed and web_allowed,
+                        "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
+                    }
                 )
             if classified.status in {RouteStatus.CLARIFY, RouteStatus.REJECTED}:
                 return classified.model_copy(update=metadata)
@@ -1238,7 +1265,13 @@ class ChatService:
                 else "未识别到明确能力意图，按日常对话处理。"
             ),
             knowledge_base_allowed=kb_allowed,
-            web_search_allowed=web_allowed,
+            web_search_allowed=web_allowed and not (
+                understanding is not None and any(
+                    item.kind == HardConditionKind.SOURCE_RESTRICTION
+                    for item in [*understanding.hard_conditions,
+                                 *understanding.effective_hard_conditions]
+                )
+            ),
             **metadata,
         )
 
@@ -1431,6 +1464,15 @@ class ChatService:
                 "任务状态已变化，请刷新后基于最新条件重试。",
                 409,
             ) from exc
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        if run is not None and result.task is not None:
+            self._repo.update_generation_config(account_id, run.run_id, {
+                **(run.config or {}),
+                "task_binding": {
+                    "task_id": result.task.task.task_id,
+                    "version": result.task.task.current_version,
+                },
+            })
         if not understanding.clarification_question or not understanding.missing_fields:
             return
         task_id = (
@@ -1450,13 +1492,14 @@ class ChatService:
                 source_message_id=user_message_id,
                 task_id=task_id,
             )
-        except TaskError:
-            logger.warning(
-                "澄清等待登记失败：task_id=%s user_message_id=%s",
-                task_id,
-                user_message_id,
-                exc_info=True,
+        except TaskError as exc:
+            self.terminal.converge(
+                account_id, run.run_id if run is not None else None,
+                assistant_message_id, fallback=internal_error_outcome(),
             )
+            raise ChatDomainError(
+                "task_state_conflict", "澄清等待未能保存，请刷新后重试。", 409,
+            ) from exc
 
     def _override_route_for_module(
         self,
@@ -1488,9 +1531,16 @@ class ChatService:
                 RouteStatus.CLARIFY,
                 RouteStatus.REJECTED,
             }:
-                return classified.model_copy(update={**metadata, **flags})
+                return classified.model_copy(update={
+                    **metadata, **flags,
+                    "module_id": "paper" if classified.is_paper_search else None,
+                    "web_search_allowed": classified.web_search_allowed and web_allowed,
+                    "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
+                })
         if module_id == "career":
             classified = self._router.classify(content)
+            if classified.status == RouteStatus.ORDINARY:
+                classified = self._router.classify(f"职业规划：{content}")
             if classified.is_career:
                 return classified.model_copy(
                     update={**metadata, "module_id": "career", **flags}
@@ -1525,28 +1575,50 @@ class ChatService:
         conversation_id: str,
         user_message_id: str,
         content: str,
-    ) -> None:
-        """把「点击建议」绑定到当前任务版本（不改写原消息、不新建任务）。"""
+        binding: dict[str, Any] | None,
+        understanding: MainUnderstanding | None,
+    ) -> dict[str, Any] | None:
+        """建议沿用原轮任务；普通消息的首次点击建立独立任务版本。"""
 
         if self._tasks is None:
-            return
-        context = self._tasks.current_reference_context(account_id, conversation_id)
-        if context is None:
-            return
+            return None
         from bridges.tasks.repository import TaskError
 
-        projections = self._tasks.list_projections(account_id, conversation_id)
+        if binding is None:
+            request = task_turn_request(understanding.model_copy(update={
+                "user_message_id": user_message_id, "task_relation": TaskRelation.NEW,
+                "goal": content, "target_task_id": None, "expected_task_version": None,
+                "answer_fields": [],
+            }), conversation_id=conversation_id) if understanding is not None else None
+            if request is not None and understanding is not None:
+                for condition in request.conditions:
+                    condition.source_message_id = understanding.user_message_id
+            result = self._tasks.apply_turn(account_id, request or TaskTurnRequest(
+                conversation_id=conversation_id, user_message_id=user_message_id,
+                relation=TaskRelation.NEW, goal=content,
+            ))
+            if result.task is None:
+                return None
+            return {"task_id": result.task.task.task_id,
+                    "version": result.task.task.current_version}
+
+        projection = self._tasks.projection(account_id, binding["task_id"])
+        if (projection is None or projection.task.conversation_id != conversation_id
+                or projection.task.current_version != binding["version"]
+                or projection.task.status.value in {"cancelled", "completed", "paused"}):
+            raise ChatDomainError(
+                "task_state_conflict", "该建议对应的任务已变化，请基于当前任务重新发起。", 409,
+            )
         open_capability = any(
             "capability" in wait.missing_fields
-            for item in projections
-            for wait in item.open_waits
+            for wait in projection.open_waits
         )
         request = TaskTurnRequest(
             conversation_id=conversation_id,
             user_message_id=user_message_id,
             relation=TaskRelation.CONTINUE,
-            explicit_task_id=context.task_id,
-            expected_version=context.version,
+            explicit_task_id=projection.task.task_id,
+            expected_version=projection.task.current_version,
             answer_fields=["capability"] if open_capability else [],
             answer_text=content if open_capability else None,
         )
@@ -1558,6 +1630,7 @@ class ChatService:
                 "任务状态已变化，请刷新后基于最新条件重试。",
                 409,
             ) from exc
+        return binding
 
     def _pause_task_for_stop(
         self,
@@ -1811,7 +1884,6 @@ class ChatService:
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
         )
-        effective_module_id = self._effective_module_id(capability_route)
         # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
         if content:
             title = (
@@ -1836,7 +1908,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
-            module_id=effective_module_id,
+            module_id=module_id,
             understanding=understanding,
             user_message_id=user_message_id,
         )
@@ -2073,6 +2145,8 @@ class ChatService:
         web_search_allowed = (
             understanding is None or not understanding.blocks_network
         )
+        if understanding is not None and understanding.blocks_knowledge_base:
+            use_knowledge_base = False
         yield from self._turn.stream_turn(
             account_id,
             conversation_id,
@@ -2348,7 +2422,8 @@ class ChatService:
         )
         now = datetime.now(UTC)
         mode = ChatMode(record.mode)
-        route = capability_route_from(owner.route)
+        # 后续重试沿用该尝试的实际路由，不能退回首次消息的建议/澄清。
+        route = capability_route_from(message.route or owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None
         reusable_web_search: WebSearchProjection | None = None
         for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
@@ -2427,7 +2502,7 @@ class ChatService:
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
         run_id = secrets.token_urlsafe(16)
         previous_run = self._repo.get_run_by_message(account_id, message_id)
-        previous_config = previous_run.config if previous_run is not None else None
+        previous_config = (previous_run.config or {}) if previous_run is not None else {}
         # 改进工单 12：理解快照随重试沿用——原消息的硬条件（不要联网等）
         # 不因重试或点击建议而放宽。
         understanding_snapshot = understanding_from_snapshot(
@@ -2458,11 +2533,13 @@ class ChatService:
                 new_attempt = replace(
                     new_attempt, route=route.model_dump(mode="json")
                 )
-            self._bind_suggestion_to_task(
+            previous_config["task_binding"] = self._bind_suggestion_to_task(
                 account_id=account_id,
                 conversation_id=conversation_id,
-                user_message_id=owner.message_id,
+                user_message_id=new_attempt.message_id,
                 content=owner.content,
+                binding=(previous_config or {}).get("task_binding"),
+                understanding=understanding_snapshot,
             )
         policy_snapshot = (previous_config or {}).get("global_writing_policy")
         if (
@@ -2479,8 +2556,12 @@ class ChatService:
         }
         if module_override is not None:
             run_config["module_id"] = module_override
+        elif (previous_config or {}).get("module_id") is not None:
+            run_config["module_id"] = previous_config["module_id"]
         if understanding_snapshot is not None:
             run_config["understanding"] = understanding_snapshot.model_dump(mode="json")
+        if (previous_config or {}).get("task_binding") is not None:
+            run_config["task_binding"] = previous_config["task_binding"]
         # V2 Issue 09 + 改进工单 03：重试尝试沿用本轮启动时的模型与额度快照。
         self._apply_run_model_lock(run_config, previous_config=previous_config)
         if policy_snapshot is not None:
@@ -2920,6 +3001,10 @@ class ChatService:
             has_video=video_payload is not None,
             has_mcp=mcp_call_payload is not None,
         )
+        assistant = self._repo.get_message(account_id, assistant_message_id)
+        actual_route = capability_route_from(assistant.route) if assistant is not None else None
+        if actual_route is not None and not actual_route.knowledge_base_allowed:
+            use_knowledge_base = False
         self._retrieval.ensure_decision(
             account_id,
             conversation_id,

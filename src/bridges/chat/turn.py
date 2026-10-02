@@ -3759,6 +3759,7 @@ class TurnOrchestrator:
                     paper_search_stage_deadline = budget.absolute_deadline()
                     if (
                         paper_route
+                        and web_search_allowed
                         and self._arxiv_search is not None
                         and public_query
                         and arxiv_search_projection is None

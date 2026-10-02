@@ -103,6 +103,7 @@ class MainUnderstanding(BaseModel):
     reason: str = Field(min_length=1, max_length=240, description="简短路由理由。")
     goal: str | None = Field(default=None, max_length=2_000, description="本轮目标原话（若有）。")
     hard_conditions: list[HardCondition] = Field(default_factory=list, max_length=8)
+    effective_hard_conditions: list[HardCondition] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list, max_length=8)
     task_relation: TaskRelation | None = Field(
         default=None, description="跨轮任务关系；None 表示普通聊天。"
@@ -130,7 +131,7 @@ class MainUnderstanding(BaseModel):
 
         return any(
             item.kind in {HardConditionKind.NO_NETWORK, HardConditionKind.LOCAL_ONLY}
-            for item in self.hard_conditions
+            for item in [*self.hard_conditions, *self.effective_hard_conditions]
         )
 
     @property
@@ -140,8 +141,23 @@ class MainUnderstanding(BaseModel):
         return any(
             item.kind
             in {HardConditionKind.SOURCE_RESTRICTION, HardConditionKind.NO_LOCAL}
-            for item in self.hard_conditions
+            for item in [*self.hard_conditions, *self.effective_hard_conditions]
         )
+
+    def allows_module(self, module_id: str) -> bool:
+        """指定来源限制同时约束自动派发与建议点击。"""
+        for item in [*self.hard_conditions, *self.effective_hard_conditions]:
+            if item.kind != HardConditionKind.SOURCE_RESTRICTION:
+                continue
+            text = item.text.lower()
+            source = (
+                "paper" if any(word in text for word in ("论文", "文献", "研究文章"))
+                else "tieba" if any(word in text for word in ("贴吧", "吧里", "吧内"))
+                else "github"
+            )
+            if module_id != source:
+                return False
+        return True
 
 
 def understanding_from_snapshot(document: object) -> MainUnderstanding | None:

@@ -350,7 +350,7 @@ def test_ordinary_text_persists_without_auto_selecting_legacy_modules(
         "找几篇 Transformer 论文": "paper",
         "润色这段文章，让它更自然": "ordinary",
         "生成一张小猫图片": "ordinary",
-        "帮我规划职业方向": "ordinary",
+        "帮我规划职业方向": "clarify",
     }
     for index, (prompt, expected) in enumerate(prompts.items()):
         status, body = _first_turn(
@@ -363,7 +363,12 @@ def test_ordinary_text_persists_without_auto_selecting_legacy_modules(
             assert user_message["route"]["status"] == "matched"
             assert user_message["route"]["main_capability"] == "paper_search"
             assert user_message["route"]["route_source"] == "body_intent"
-            assert user_message["module_id"] == "paper"
+            assert user_message["module_id"] is None
+            assert user_message["route"]["module_id"] == "paper"
+        elif expected == "clarify":
+            assert user_message["route"]["status"] == "clarify"
+            assert user_message["route"]["clarification_question"]
+            assert user_message["module_id"] is None
         else:
             assert user_message["route"]["status"] == "ordinary"
             assert user_message["route"]["main_capability"] == "ordinary_chat"
