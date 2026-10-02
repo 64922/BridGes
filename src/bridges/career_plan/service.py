@@ -163,6 +163,7 @@ class CareerPlanService:
         assistant_message_id: str,
         run_context: object | None = None,
         run_model_id: str | None = None,
+        request_text: str | None = None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
     ) -> CareerRunOutcome:
@@ -181,7 +182,7 @@ class CareerPlanService:
         analysis = run.node(
             NODE_PARSE,
             lambda: parse_career_request(
-                user_message.content,
+                request_text if request_text is not None else user_message.content,
                 pending=None if waiting is None else dict(waiting.context),
             ),
         )

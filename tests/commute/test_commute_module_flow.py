@@ -657,10 +657,10 @@ def test_far_snapping_is_reported_as_a_limitation(
                for note in route["evidence_notes"])
 
 
-def test_plain_chat_suggests_commute_without_any_external_call(
+def test_plain_chat_starts_commute_with_real_route_call(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """普通聊天里的明显通勤请求只给一键建议，点击后以原文显式派发。"""
+    """明确通勤正文直启并实际请求路线，保留原消息无模块提示。"""
     _register(client)
     fake = _install_commute(sqlite_app, _FakeAmap())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
@@ -668,31 +668,19 @@ def test_plain_chat_suggests_commute_without_any_external_call(
     created = _send(client, conversation_id, "从南区骑车到图书馆怎么走")
     assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
 
-    suggestion = assistant["module_suggestion"]
-    assert suggestion is not None
-    assert suggestion["module_id"] == "commute"
-    assert suggestion["label"] == "使用校园通勤"
-    assert suggestion["text"] == "从南区骑车到图书馆怎么走"
-    assert assistant["commute_route"] is None
-    assert fake.place_calls == [], "建议本身绝不发起外部请求"
-    assert fake.route_calls == []
-
-    dispatched = client.post(
-        f"/chat/conversations/{conversation_id}/messages/{assistant['message_id']}/retry",
-        json={"module_id": "commute"},
-    )
-    assert dispatched.status_code == 200, dispatched.text
-    assert (
-        dispatched.json()["user_message"]["message_id"] == created["user_message"]["message_id"]
-    )
-    generation_helpers["drive"](sqlite_app)
+    assert created["user_message"]["module_id"] is None
+    assert assistant["route"]["module_id"] == "commute"
+    assert assistant["route"]["route_source"] == "body_intent"
+    assert assistant["commute_route"]["status"] == "success"
+    assert fake.place_calls
+    assert fake.route_calls
     final = client.get(f"/chat/conversations/{conversation_id}").json()
     users = [m for m in final["messages"] if m["role"] == "user"]
-    assert len(users) == 1, "点击建议不得重复写用户消息"
+    assert len(users) == 1
     assert users[0]["module_id"] is None, "历史模块标识不被改写"
     latest = [m for m in final["messages"] if m["role"] == "assistant"][-1]
     assert latest["commute_route"]["status"] == "success"
-    assert fake.route_calls, "点击建议后确实规划路线"
+    assert fake.route_calls, "正文明确请求后确实规划路线"
 
 
 def test_modules_not_yet_available_are_still_rejected(
@@ -712,7 +700,7 @@ def test_modules_not_yet_available_are_still_rejected(
     _install_commute(sqlite_app, _FakeAmap())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
+    _send(client, conversation_id, "我是应届生，帮我规划数据分析职业方向", module_id="career")
     assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
 
     assert assistant["status"] == "error"

@@ -160,7 +160,8 @@ def test_module_dispatch_failure_marks_location_and_retry(
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="帮我规划一下职业方向", module_id="career"
+        client, conversation_id, content="我是应届生，帮我规划数据分析职业方向",
+        module_id="career"
     )
     message_id = created["assistant_message"]["message_id"]
 
@@ -429,7 +430,8 @@ def test_retry_idempotency_reuses_run(
     sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="帮我规划一下职业方向", module_id="career"
+        client, conversation_id, content="我是应届生，帮我规划数据分析职业方向",
+        module_id="career"
     )
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)

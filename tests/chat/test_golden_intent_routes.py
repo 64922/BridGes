@@ -236,7 +236,8 @@ def test_body_intent_paper_request_dispatches_module(
         "alice", conversation.conversation_id, content
     )
 
-    assert user.module_id == "paper"
+    assert user.module_id is None
+    assert assistant.route.module_id == "paper"
     assert assistant.route is not None
     assert assistant.route.is_paper_search
     assert assistant.route.status == RouteStatus.MATCHED
