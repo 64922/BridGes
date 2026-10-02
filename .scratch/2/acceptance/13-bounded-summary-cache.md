@@ -36,4 +36,6 @@
 - 集成主线 `7062e5a0`（工单 10 已验收合入）。解决 `docs/table-owners.md` 和 `storage/database.py` 内容冲突：保留工单 10 的 v65 原脚本，本票三张表统一放入 v66，完整性表/索引清单包含双方；摘要迁移测试改名 `test_schema_v66.py`，保留主线 `test_schema_v65.py`。
 - 合并结果的摘要、v65/v66 迁移、节点内核及通勤恢复组合回归：**58 passed**；警告仅为 main pytest 缓存目录不可写。
 - 核心修改 ruff 与 mypy 静态检查通过；整份数据库文件 ruff 仍有主线既有 1671 行长行，未改动该无关代码。`git diff --check` 通过。
-- 修复提交 `8d7a0c0`；合并提交及远端状态在执行后补记。
+- 修复提交 `8d7a0c0`；合并提交 `e7197892` 已成功推送，`ls-remote origin refs/heads/main` 与本地 HEAD 完全一致。
+- 本地 Issue 分支已删除；工作树登记已移除，`git worktree prune --dry-run --verbose` 与正式 prune 未发现失效记录。其他活跃工作树保留。
+- 物理目录清理遇到测试缓存目录的 Windows ACL 拒绝访问；用户确认系统 UAC 后，管理员清理成功。`Test-Path .worktrees/13-bounded-summary-cache` 为 False；目录、本地分支、工作树登记均已删除，失效记录 prune 完成。
