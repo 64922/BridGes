@@ -234,11 +234,22 @@ def estimate_messages_tokens(messages: Sequence[Mapping[str, Any]]) -> int:
 
 
 def estimate_payload_tokens(payload: Mapping[str, Any]) -> int:
-    """估算一次最终模型载荷的输入成本（只计输入侧，不计输出预留）。"""
+    """估算一次最终模型载荷的输入成本（只计输入侧，不计输出预留）。
+
+    聊天路径按实际消息与多模态内容部件计数；无 ``messages`` 的直接调用
+    （如学习的整页 OCR/视觉载荷）按 ``image_base64`` 图片成本与 ``prompt``
+    文本估算——照片载荷不因未走消息封装而绕过预算门。
+    """
     messages = payload.get("messages")
-    if not isinstance(messages, Sequence):
-        return 0
-    return estimate_messages_tokens(messages)
+    if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
+        return estimate_messages_tokens(messages)
+    tokens = 0
+    if isinstance(payload.get("image_base64"), str):
+        tokens += IMAGE_PART_COST_TOKENS
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str):
+        tokens += estimate_tokens(prompt)
+    return tokens
 
 
 def payload_input_upper_bound(

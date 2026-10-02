@@ -19,6 +19,7 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
 from bridges.web_search.contracts import WebSearchResult
 from bridges.web_search.service import WebSearchService
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _chat_capability() -> CapabilityRecord:
@@ -152,6 +153,7 @@ def test_first_round_is_complete_overview_without_legacy_state_machine(
     adapter = _CapturingStreamAdapter()
     service, _ = _make_service(tmp_path, client, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     _, final, events = _send(service, conversation.conversation_id, "我想学习 Transformer")
 
@@ -180,6 +182,7 @@ def test_follow_up_reuses_goal_and_appends_only_lightweight_topic_progress(
     adapter = _CapturingStreamAdapter()
     service, repository = _make_service(tmp_path, client, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     _, first, _ = _send(service, conversation.conversation_id, "我想学习 Transformer")
     first_teaching = _teaching(first)
@@ -209,6 +212,7 @@ def test_missing_goal_asks_for_goal_without_search_or_model(tmp_path: Path) -> N
     adapter = _CapturingStreamAdapter()
     service, _ = _make_service(tmp_path, client, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     _, final, _ = _send(service, conversation.conversation_id, "我想学一下")
 
@@ -250,6 +254,13 @@ def test_irrelevant_image_never_becomes_teaching_source(tmp_path: Path) -> None:
     env["ingestion"].process_pending()
 
     conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    seed_recognized_study_state(
+        service,
+        account,
+        conversation.conversation_id,
+        object_id=stored.object_id,
+        text="与 Transformer 无关的照片内容。",
+    )
     _, final, _ = _send(
         service,
         conversation.conversation_id,

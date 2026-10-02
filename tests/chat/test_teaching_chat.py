@@ -40,6 +40,15 @@ from bridges.web_search.contracts import (
     WebSearchStatus,
 )
 from bridges.web_search.service import WebSearchService
+from tests.chat.study_state_fixtures import seed_recognized_study_state
+
+
+def _study_conversation(service: ChatService, account_id: str = "alice") -> Any:
+    """创建学习会话并写入合法识别阶段证据，避免被前置书页门拦截。"""
+
+    conversation = service.create_conversation(account_id, mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, account_id, conversation.conversation_id)
+    return conversation
 
 
 class _FallbackAdapter:
@@ -103,7 +112,7 @@ def test_study_mode_marks_unverified_fallback_and_calls_model_without_evidence(
         repository=ConversationRepository(database),
         gateway=gateway,
     )
-    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    conversation = _study_conversation(service)
     _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "解释量子纠缠"
     )
@@ -201,7 +210,7 @@ def test_study_mode_challenge_is_persisted_as_provider_blocked_without_citations
         gateway=gateway,
         web_search_service=web_search,
     )
-    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    conversation = _study_conversation(service)
     _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "解释量子纠缠"
     )
@@ -275,7 +284,7 @@ def test_study_mode_search_failure_does_not_advance_plan_or_lesson(
         gateway=gateway,
         web_search_service=web_search,
     )
-    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    conversation = _study_conversation(service)
     _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "我想学习Transformer架构"
     )
@@ -372,7 +381,7 @@ def test_study_mode_retry_success_advances_plan_and_lesson_after_real_sources(
         gateway=gateway,
         web_search_service=web_search,
     )
-    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    conversation = _study_conversation(service)
     _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "我想学习Transformer架构的相关知识"
     )
@@ -469,7 +478,7 @@ def test_study_mode_normal_results_provide_verified_source_and_bindable_citation
         gateway=gateway,
         web_search_service=web_search,
     )
-    conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    conversation = _study_conversation(service)
     _, assistant, _ = service.start_generation(
         "alice", conversation.conversation_id, "我想学习Transformer架构的相关知识"
     )
@@ -682,7 +691,7 @@ def test_study_mode_insufficient_coverage_with_search_failure_degrades_with_loca
         retrieval=env["retrieval"],
         client=_AlwaysTimeoutClient(),
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
 
     final, _events = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
@@ -739,7 +748,7 @@ def test_study_mode_insufficient_coverage_reloads_terminal_and_keeps_search_atte
         retrieval=env["retrieval"],
         client=_AlwaysTimeoutClient(),
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )
@@ -792,7 +801,7 @@ def test_study_mode_degraded_turn_compiles_and_injects_profile_slice(
         client=_AlwaysTimeoutClient(),
         profiles=profiles,
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )
@@ -846,7 +855,7 @@ def test_study_mode_degraded_network_reference_fires_invariant_audit(
         web_search_service=WebSearchService(client=_AlwaysTimeoutClient()),
         observability_service=observability,
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )
@@ -880,7 +889,7 @@ def test_study_mode_degraded_turn_without_profile_keeps_beginner_fallback(
         retrieval=env["retrieval"],
         client=_AlwaysTimeoutClient(),
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )
@@ -921,7 +930,7 @@ def test_study_mode_degraded_turn_with_profile_disabled_keeps_contract(
         client=_AlwaysTimeoutClient(),
         profiles=profiles,
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service,
         account,
@@ -979,7 +988,7 @@ def test_study_mode_conflict_keeps_rejection_without_model_call_but_discloses_pr
         client=_AlwaysTimeoutClient(),
         profiles=profiles,
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )
@@ -1038,7 +1047,7 @@ def test_study_mode_insufficient_coverage_all_search_failure_modes_degrades(
             else WebSearchService(client=clients[mode])  # type: ignore[arg-type]
         ),
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )
@@ -1077,7 +1086,7 @@ def test_study_mode_degraded_retry_creates_distinguishable_new_attempt(
         retrieval=env["retrieval"],
         client=_AlwaysTimeoutClient(),
     )
-    conversation = service.create_conversation(account, mode=ChatMode.STUDY)
+    conversation = _study_conversation(service, account)
     final, _ = _send_study(
         service, account, conversation.conversation_id, "我想学习热力学第二定律"
     )

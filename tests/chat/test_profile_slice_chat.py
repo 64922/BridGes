@@ -44,6 +44,7 @@ from bridges.observability.service import ObservabilityService
 from bridges.profiles import ProfileService
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.storage.database import BridgesDatabase
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _context(run_id: str = "run-1") -> RunContextEnvelope:
@@ -289,6 +290,9 @@ def test_study_mode_injects_only_expected_slice(study_env: dict[str, Any]) -> No
     )
     conversation = study_env["chat"].create_conversation(
         study_env["account"], mode=ChatMode.STUDY
+    )
+    seed_recognized_study_state(
+        study_env["chat"], study_env["account"], conversation.conversation_id
     )
     _, final = _send(study_env, conversation.conversation_id, "请讲解洛必达法则")
 

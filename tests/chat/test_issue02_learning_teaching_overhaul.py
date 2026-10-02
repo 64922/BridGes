@@ -17,6 +17,7 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
 from bridges.web_search.contracts import WebSearchResult
 from bridges.web_search.service import WebSearchService
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _capability() -> CapabilityRecord:
@@ -108,6 +109,7 @@ def test_首响直接全面介绍且终态只写轻量学习进度(tmp_path: Pat
     adapter = _Adapter()
     service = _service(tmp_path, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final = _send(
         service,
@@ -137,6 +139,7 @@ def test_追问复用目标并把新主题追加到可恢复进度(tmp_path: Pat
     adapter = _Adapter()
     service = _service(tmp_path, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
     _send(service, conversation.conversation_id, "我想学习卷积神经网络的基础知识", "run-issue02-1")
 
     final = _send(service, conversation.conversation_id, "我想知道感受野", "run-issue02-2")

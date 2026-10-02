@@ -29,6 +29,7 @@ from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus, ChatMode
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _context(run_id: str = "run-1") -> RunContextEnvelope:
@@ -949,6 +950,7 @@ def test_stopped_generation_keeps_steps_with_chinese_quality(service: ChatServic
 
 def test_study_mode_initial_thinking_mentions_learning_contract(service: ChatService) -> None:
     created = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", created.conversation_id)
     _, assistant = _start(service, created.conversation_id, "讲解一个概念")
     service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="回答")])
     list(

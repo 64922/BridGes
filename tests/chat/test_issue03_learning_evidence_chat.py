@@ -24,7 +24,7 @@ from bridges.web_search.contracts import (
     WebSearchStatus,
 )
 from bridges.web_search.service import WebSearchService
-
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 NOW = datetime(2026, 8, 12, tzinfo=UTC)
 
@@ -148,6 +148,7 @@ def test_chat_只把已接受来源放进模型上下文并推进一次进度(tm
         ],
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final = _send(service, conversation.conversation_id, "我想学习Transformer架构的相关知识")
 
@@ -192,6 +193,7 @@ def test_chat_cnn_source_is_accepted_from_the_learning_goal(tmp_path: Path) -> N
         ],
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final = _send(
         service,
@@ -232,6 +234,7 @@ def test_chat_搜索成功但无覆盖时不伪造引用也不写入学习进度
         ],
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final = _send(service, conversation.conversation_id, "我想学习Transformer架构的相关知识")
 
@@ -270,6 +273,7 @@ def test_chat_覆盖裁决审计只记录脱敏计数(tmp_path: Path) -> None:
         observability,
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     _send(service, conversation.conversation_id, "我想学习Transformer架构的相关知识")
 
@@ -343,6 +347,7 @@ def test_chat_arxiv_and_web_parallel_reloadable_with_single_terminal(
         arxiv_search_service=ArxivSearchService(client=_PaperClient()),
     )
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
     user, assistant, _ = service.start_generation(
         "alice",
         conversation.conversation_id,
