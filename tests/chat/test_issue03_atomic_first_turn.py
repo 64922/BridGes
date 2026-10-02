@@ -344,26 +344,32 @@ def test_message_request_rejects_mode_tampering_and_invalid_module(
 def test_ordinary_text_persists_without_auto_selecting_legacy_modules(
     client: TestClient,
 ) -> None:
-    """未选模块的普通文字只保存为普通日常消息，不按正文启动旧能力。"""
+    """正文明确论文意图直达模块；退役/含糊请求保持普通日常消息。"""
     _register(client)
-    prompts = [
-        "找几篇 Transformer 论文",
-        "润色这段文章，让它更自然",
-        "生成一张小猫图片",
-        "帮我规划职业方向",
-    ]
-    for index, prompt in enumerate(prompts):
+    prompts: dict[str, str] = {
+        "找几篇 Transformer 论文": "paper",
+        "润色这段文章，让它更自然": "ordinary",
+        "生成一张小猫图片": "ordinary",
+        "帮我规划职业方向": "ordinary",
+    }
+    for index, (prompt, expected) in enumerate(prompts.items()):
         status, body = _first_turn(
             client,
             {"content": prompt, "idempotency_key": f"ordinary-route-{index:03d}"},
         )
         assert status == 201, body
         user_message = body["user_message"]
-        assert user_message["route"]["status"] == "ordinary"
-        assert user_message["route"]["main_capability"] == "ordinary_chat"
+        if expected == "paper":
+            assert user_message["route"]["status"] == "matched"
+            assert user_message["route"]["main_capability"] == "paper_search"
+            assert user_message["route"]["route_source"] == "body_intent"
+            assert user_message["module_id"] == "paper"
+        else:
+            assert user_message["route"]["status"] == "ordinary"
+            assert user_message["route"]["main_capability"] == "ordinary_chat"
+            assert user_message["module_id"] is None
         assert user_message["skill"] is None
         assert user_message["image"] is None
-        assert body["assistant_message"]["arxiv_search"] is None
 
 
 def test_first_turn_reuses_existing_empty_conversation(client: TestClient) -> None:

@@ -17,6 +17,16 @@ from bridges.video.constants import (
 
 ROUTE_CONTRACT_VERSION = "2026.08.09"
 PAPER_QUERY_VERSION = "2026.08.12"
+
+
+def _chat_module_values() -> frozenset[str]:
+    """显式模块 ID 集合；延迟导入避免 contracts.chat → routing 的循环。"""
+
+    from bridges.contracts.chat import CHAT_MODULE_VALUES
+
+    return CHAT_MODULE_VALUES
+
+
 RemovedQueryCategory = Literal[
     "instruction_scaffold",
     "code",
@@ -37,6 +47,23 @@ class MainCapability(StrEnum):
     IMAGE = "image"
     VIDEO = "video"
     CAREER = "career"
+    # 工单 12：正文明确单模块直启时，路由快照记录实际模块能力；这些能力
+    # 不携带额外可执行计划（参数由对应模块自行解析），因此不属于重预算。
+    COMMUTE = "commute"
+    RESOURCES = "resources"
+    TIEBA = "tieba"
+    GITHUB = "github"
+
+
+#: 登记模块 → 主能力（工单 12：理解与路由快照共用一份映射）。
+MODULE_CAPABILITIES: dict[str, MainCapability] = {
+    "paper": MainCapability.PAPER_SEARCH,
+    "commute": MainCapability.COMMUTE,
+    "resources": MainCapability.RESOURCES,
+    "tieba": MainCapability.TIEBA,
+    "career": MainCapability.CAREER,
+    "github": MainCapability.GITHUB,
+}
 
 
 class RouteStatus(StrEnum):
@@ -133,6 +160,16 @@ class CapabilityRoute(BaseModel):
     knowledge_base_allowed: bool = True
     web_search_allowed: bool = True
     side_effects: list[str] = Field(default_factory=list, max_length=8)
+    #: 工单 12：实际生效的模块（代码校验后）；``None`` 表示不派发模块。
+    module_id: str | None = Field(default=None, max_length=40)
+    #: 请求携带的模块提示（历史标识，不重写）；正文优先于该字段。
+    requested_module_id: str | None = Field(default=None, max_length=40)
+    #: 实际路由来源（RouteSource 值），与请求提示分开记录。
+    route_source: str | None = Field(default=None, max_length=40)
+    #: 本次理解关联的能力列表（模块 ID，按实际路由）。
+    capability_list: list[str] = Field(default_factory=list, max_length=8)
+    #: 生成该路由快照的主理解合同版本（审计与跨版本读取）。
+    understanding_version: str | None = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
     def validate_capability_payload(self) -> CapabilityRoute:
@@ -163,6 +200,15 @@ class CapabilityRoute(BaseModel):
             raise ValueError("澄清或拒绝路由必须有可操作反馈。")
         if self.status == RouteStatus.MATCHED and self.clarification_question:
             raise ValueError("已命中路由不能同时要求澄清。")
+        for module_id in (self.module_id, self.requested_module_id):
+            if module_id is not None and module_id not in _chat_module_values():
+                raise ValueError("模块 ID 必须是已登记的显式模块。")
+        if self.capability_list:
+            unknown = [
+                item for item in self.capability_list if item not in _chat_module_values()
+            ]
+            if unknown:
+                raise ValueError("能力列表只能是已登记的显式模块。")
         return self
 
     @property

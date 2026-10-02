@@ -25,7 +25,11 @@ def review_intent(text: str) -> Literal["start", "pause", "tutor"] | None:
         text,
     ):
         return "start"
-    if text in {"暂停复盘", "暂停复盘回辅导", "回到辅导", "回辅导", "先回辅导"}:
+    if re.fullmatch(
+        r"(?:先)?(?:暂停|停)(?:一下)?复盘(?:回辅导)?(?:吧)?"
+        r"|(?:先)?回(?:到)?辅导(?:吧)?",
+        text,
+    ):
         return "pause"
     if re.match(
         r"(?:暂停复盘|先回辅导)?(?:我想|我需要)?(?:请|麻烦|能不能|可以)?"

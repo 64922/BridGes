@@ -5,10 +5,10 @@
 CapabilityRoute），而非仅断言函数返回值；生涯语句额外走一次流式分支的
 现场重判（``turn.py`` 的 ``is_career_intent`` 二次判定）。
 
-- 正例：人味化 / 生涯规划 / 论文搜索三类用户点名语句原句 + 近似变体
-  （含前端建议卡文案「帮我排一下研究生三年的学习优先级」）；
-- 负例：论文内容问答、文章评价、学习计划之外的事、非发展语境「规划」
-  等必须保持普通聊天，不被新词项劫持；
+- 正例：论文搜索三类用户点名语句原句 + 近似变体（工单 12 起正文明确
+  单模块意图直接启动登记能力）；
+- 负例：论文内容问答、含糊规划/课程安排、退役人味化、视频图片文本等
+  必须保持普通聊天，不被词项劫持、不先检索猜测领域；
 - 防护回归：复合任务 CLARIFY、图片/视频优先级、``route.is_paper_search``
   降级语义不回归。
 """
@@ -169,23 +169,33 @@ def _assert_persisted_route_snapshot(service: Any, assistant: Any) -> None:
     )
 
 
-SPECIALTY_REQUESTS_WITHOUT_SELECTION: tuple[str, ...] = (
+STAY_ORDINARY_REQUESTS: tuple[str, ...] = (
     *GOLDEN_HUMANIZER,
-    *GOLDEN_CAREER,
-    *GOLDEN_PAPER,
-    "帮我规划职业方向，顺便润色一下简历",
-    "帮我规划职业方向，顺便把这篇稿子改得自然一点",
-    "生成一个关于春天的短视频",
+    "给我规划一下我的学习任务",
+    FRONTEND_CAREER_SUGGESTION,
+    "帮我安排一下复习任务",
+    "给我规划一下考研的复习安排",
+    "帮我规划一下这学期的课程安排",
+    "今天帮我安排一下学习计划之外的事",
+    "帮我制定一个机器学习学习计划",
+    "帮我规划一下周末去爬山的路线",
+    "考研英语怎么复习",
+    "这篇论文讲了什么",
+    "你觉得这篇文章哪里写得不好",
     "帮我改写这篇论文",
+    "生成一个关于春天的短视频",
     "生成一张小猫图片",
 )
 
+BODY_INTENT_PAPER_REQUESTS: tuple[str, ...] = (*GOLDEN_PAPER,)
 
-@pytest.mark.parametrize("content", SPECIALTY_REQUESTS_WITHOUT_SELECTION)
-def test_unselected_specialty_requests_stay_ordinary(
+
+@pytest.mark.parametrize("content", STAY_ORDINARY_REQUESTS)
+def test_ambiguous_or_retired_requests_stay_ordinary(
     tmp_path: Path, content: str
 ) -> None:
-    """正文表达专用能力意图时，未显式选择模块仍走日常对话。"""
+    """含糊规划/内容讨论/退役与显式载荷能力不直启：保持普通聊天。"""
+
     service = _chat_service(tmp_path)
     conversation = service.create_conversation("alice")
 
@@ -194,6 +204,7 @@ def test_unselected_specialty_requests_stay_ordinary(
     )
 
     assert user.skill is None
+    assert user.module_id is None
     assert user.route == assistant.route
     assert assistant.route is not None
     assert assistant.route.main_capability == MainCapability.ORDINARY_CHAT
@@ -209,6 +220,60 @@ def test_unselected_specialty_requests_stay_ordinary(
             until_user_message_id=user.message_id,
         )
     )
+    assert events[-1].kind == "done"
+
+
+@pytest.mark.parametrize("content", BODY_INTENT_PAPER_REQUESTS)
+def test_body_intent_paper_request_dispatches_module(
+    tmp_path: Path, content: str
+) -> None:
+    """正文明确论文意图直达论文模块：正文优先，提示只作历史标识。"""
+
+    service = _chat_service(tmp_path)
+    conversation = service.create_conversation("alice")
+
+    user, assistant, _ = service.start_generation(
+        "alice", conversation.conversation_id, content
+    )
+
+    assert user.module_id == "paper"
+    assert assistant.route is not None
+    assert assistant.route.is_paper_search
+    assert assistant.route.status == RouteStatus.MATCHED
+    assert assistant.route.route_source == "body_intent"
+    assert assistant.route.requested_module_id is None
+    assert assistant.route.capability_list == ["paper"]
+    _assert_persisted_route_snapshot(service, assistant)
+
+
+def test_career_humanizer_conflict_clarifies_at_send_time(tmp_path: Path) -> None:
+    """复合任务在发送时也只澄清一次，不先执行任何一侧。"""
+
+    service = _chat_service(tmp_path)
+    conversation = service.create_conversation("alice")
+
+    user, assistant, _ = service.start_generation(
+        "alice",
+        conversation.conversation_id,
+        "帮我规划职业方向，顺便润色一下简历",
+    )
+
+    assert assistant.route is not None
+    assert assistant.route.status == RouteStatus.CLARIFY
+    assert assistant.route.clarification_question
+    _assert_persisted_route_snapshot(service, assistant)
+    events = list(
+        service.stream_generation(
+            "alice",
+            conversation.conversation_id,
+            assistant.message_id,
+            _context(),
+            until_user_message_id=user.message_id,
+        )
+    )
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert final.content == assistant.route.clarification_question
     assert events[-1].kind == "done"
 
 
