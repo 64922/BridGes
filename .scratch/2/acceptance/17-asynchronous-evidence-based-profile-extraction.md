@@ -30,3 +30,11 @@
 - 未向网关模型提供已存事实的标识/有效性（任务 3 表述为“只提供标识/有效性”的上界）；补证/更新由提交层的完整事实身份（Issue 16）完成，回指只使用邻近用户原文，邻近内容不进入事实证据（新增测试锁定该边界）。
 - 永久失败保留一条 EXHAUSTED 重试任务记账，属异步调度的审计语义，不会被再次执行。
 - JavaScript 真实模型抽取质量、成本参数与体验由 41 评测，不构成本票机制验收的通过证据。
+
+## 合入与清理（2026-10-02）
+
+- 分支先接入 `main@58962ddd`（Issue 18）与 `main@2b3dc57c`/`0af74c80`（Issue 21）；合并冲突仅 `src/bridges/profiles/automatic.py`（Issue 17 已删除的旧内联提取片段），按保留重构结构、移植 Issue 18 生命周期与 `source_at` 改动解决。
+- 合并后回归：issue17 18 passed；`tests/profiles` 497 passed / 1 failed（时钟平局，`main@2b3dc57c` 同样失败）；`tests/chat` 874 passed / 100 failed / 1 xfailed，失败名单与 `main@2b3dc57c` 逐名一致；`tests/api`+`contracts`+`runtime`+`observability`+`ai`+`storage` 427 passed / 5 failed / 2 skipped，失败名单与基线一致；mypy 98 errors / 20 files 按文件计数一致；ruff 变更文件与基线一致。
+- 已以 `--no-ff` 合入 main：`47dece1d merge: 验收合入 Issue 17 异步证据画像提取`；合并树与已验证分支树一致（tree `275f754e`）。
+- 清理：删除 worktree `.worktrees/17-async-profile-extraction`、分支 `codex/issue-17-asynchronous-evidence-based-profile-extraction` 与验收 `baseline-check` worktree；`git worktree prune` 后仅剩主工作树。
+- 推送：`github.com:443` 持续不可达，多次重试 `git push origin main` 失败；待网络恢复后重推。

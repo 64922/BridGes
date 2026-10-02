@@ -92,3 +92,6 @@
 - 补足票面要求的复核脚本扩展（语义候选正反例、逐片段反例）与 5 项验收回归；新增测试合计 18 passed。
 - `tests/profiles` 429 passed / 1 failed（Windows 时钟平局，基线同样失败）；`tests/chat` 与 `tests/api`+`contracts`+`runtime`+`observability`+`ai` 失败名单与基线逐名一致；mypy 与基线一致。详见[独立验收记录](../acceptance/17-asynchronous-evidence-based-profile-extraction.md)。
 - 用户已授权合并、推送与清理；合入与清理结果追加在验收记录中。
+- 合入前先同步 `main@0af74c80`（含 Issue 18、Issue 21）；唯一冲突 `src/bridges/profiles/automatic.py` 按保留工单 17 重构结构处理，并确认 Issue 18 的 `_lifecycle_result`、`source_at` 锚点已并入重构后的执行核心。
+- 合并后回归与 `main@2b3dc57c` 对账：`tests/chat` 失败名单逐名一致；`tests/profiles` 仅剩既有时钟平局失败；杂项套件 5 项失败名单一致；mypy/ruff 与基线一致。
+- 已合入 main（`47dece1d`，`--no-ff`）并清理 worktree 与分支；`git push` 因 `github.com:443` 不可达暂未完成，待网络恢复重推。
