@@ -172,6 +172,19 @@ from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
+from bridges.state_copy import (
+    CHAT_ERROR_TEMPLATES,
+    DEFAULT_ERROR_MESSAGE,
+    ROUTE_REJECTED_FALLBACK_TEXT,
+    STREAM_INTERRUPTED_TEXT,
+    THINKING_BUDGET_WARNING_TEXT,
+    THINKING_DONE_QUALITY_TEXT,
+    THINKING_FAILED_FALLBACK_TEXT,
+    THINKING_STOPPED_QUALITY_TEXT,
+    WEB_SEARCH_CANCELLED_TEXT,
+    WEB_SEARCH_INTERNAL_TEXT,
+    WEB_SEARCH_STAGE_TIMEOUT_TEXT,
+)
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import SearchPlan, WebSearchService
@@ -363,7 +376,7 @@ def _web_search_projection_from_result(
                 "status": WebSearchStatus.CANCELLED,
                 "searched_at": datetime.now(UTC),
                 "error_code": "web_search_cancelled",
-                "error_message": "已取消本轮联网搜索。",
+                "error_message": WEB_SEARCH_CANCELLED_TEXT,
                 "can_retry": False,
                 "can_cancel": False,
             }
@@ -374,7 +387,7 @@ def _web_search_projection_from_result(
                 "status": WebSearchStatus.ERROR,
                 "searched_at": datetime.now(UTC),
                 "error_code": "web_search_stage_timeout",
-                "error_message": "公网搜索阶段超时，未形成有效投影，请重试。",
+                "error_message": WEB_SEARCH_STAGE_TIMEOUT_TEXT,
                 "can_retry": True,
                 "can_cancel": False,
             }
@@ -415,7 +428,7 @@ def _web_search_projection_from_result(
             "status": WebSearchStatus.ERROR,
             "searched_at": datetime.now(UTC),
             "error_code": "web_search_internal",
-            "error_message": "公网搜索服务发生内部异常，请重试。",
+            "error_message": WEB_SEARCH_INTERNAL_TEXT,
             "can_retry": False,
             "can_cancel": False,
         }
@@ -673,83 +686,15 @@ def history_items(
     return items
 
 
-#: 生成失败/断流时向用户展示的中文说明（稳定错误码 → 可操作提示）。
-STREAM_INTERRUPTED_MESSAGE = "连接中断，已保留已接收内容，可点击重试。"
+#: 生成失败/断流时向用户展示的中文说明（固定文案注册表为唯一来源）。
+STREAM_INTERRUPTED_MESSAGE = STREAM_INTERRUPTED_TEXT
+#: 路由拒绝且没有澄清问句时的兜底说明（恢复方式是调整请求）。
+ROUTE_REJECTED_FALLBACK_MESSAGE = ROUTE_REJECTED_FALLBACK_TEXT
 
 #: 稳定错误码 → 可操作中文提示（绝不输出供应商原文或调试字段）。
-#: Issue 03：模型调用类稳定码（rate_limit/transient/region_*/auth_error/
-#: provider_rejected/empty_response/... 与 client_error_<status> 形态）
-#: 以 ``bridges.ai.errors.MODEL_CALL_ERROR_MESSAGES_ZH`` 为唯一来源，
-#: 本表只保留聊天链路领域码。
-_ERROR_MESSAGES: dict[str, str] = {
-    # Issue 02：后台执行器失联且无恢复预算时的明确可重试终态。
-    "generation_worker_lost": "生成进程意外退出，已保留已接收内容，可点击重试。",
-    "stream_interrupted": STREAM_INTERRUPTED_MESSAGE,
-    "unregistered_capability": "核心对话能力未就绪，请稍后重试。",
-    "capability_not_verified": "核心对话能力未通过验证，请检查启动服务的全局百炼配置与权限。",
-    "no_adapter": "核心对话能力未就绪（缺少适配器），请检查服务配置。",
-    "internal_error": "生成过程出现内部错误，请重试。",
-    "web_search_timeout": "联网搜索超时，请重试。",
-    "web_search_rate_limit": "公网搜索请求过于频繁，请稍后重试。",
-    "web_search_offline": "当前无法连接公网搜索，请检查网络后重试。",
-    "web_search_permission": "当前网络未允许访问公网搜索，请检查网络权限后重试。",
-    "web_search_parse": "搜索结果暂时无法解析，请重试。",
-    "web_search_request": "公网搜索请求未完成，请重试。",
-    "web_search_fallback_credentials": "备用公网搜索凭据未配置，请联系管理员。",
-    "web_search_fallback_timeout": "备用公网搜索超时，请稍后重试。",
-    "web_search_fallback_rate_limit": "备用公网搜索请求过于频繁，请稍后重试。",
-    "web_search_fallback_dns": "无法解析备用公网搜索地址，请稍后重试。",
-    "web_search_fallback_offline": "当前无法连接备用公网搜索，请检查网络后重试。",
-    "web_search_fallback_connect": "当前无法连接备用公网搜索，请稍后重试。",
-    "web_search_fallback_permission": "备用公网搜索权限未通过，请联系管理员。",
-    "web_search_fallback_parse": "备用公网搜索结果暂时无法解析，请稍后重试。",
-    "web_search_fallback_request": "备用公网搜索请求未完成，请稍后重试。",
-    "web_search_fallback_provider": "备用公网搜索提供方暂时不可用，请稍后重试。",
-    "web_search_fallback_redirect": "备用公网搜索来源地址不安全，已拒绝处理。",
-    "web_search_fallback_response_too_large": "备用公网搜索响应过大，已拒绝处理。",
-    "web_search_fallback_not_configured": "备用公网搜索尚未配置，请稍后重试。",
-    "web_search_fallback_not_started": "本轮公网阶段预算不足，未启动备用搜索，请稍后重试。",
-    "web_search_all_providers_failed": "主用与备用公网搜索均未完成，请稍后重试。",
-    "web_search_provider_challenge": (
-        "搜索提供方（Tavily）暂时受阻，请等待冷却后显式重试；"
-        "系统不会在本轮自动重复请求。"
-    ),
-    "web_search_configuration": (
-        "搜索凭据无效（Tavily API Key 未通过校验），请检查凭据配置。"
-    ),
-    "web_search_credentials": (
-        "未配置搜索凭据（Tavily API Key），联网搜索暂不可用。"
-    ),
-    "web_search_evidence_insufficient": "搜索页面没有可安全引用的公开来源，请稍后重试。",
-    "web_search_no_results": "没有找到可核实的公开网页结果，请修改问题后重试。",
-    "web_search_citation_invalid": "联网回答缺少可核实引用，请重试。",
-    "fact_protection_inconsistent": "回答未能可靠保留要求的事实片段或引用，请重试。",
-    "arxiv_timeout": "arXiv 搜索超时，请重试。",
-    "arxiv_rate_limit": "arXiv 请求过于频繁，请稍后重试。",
-    "arxiv_offline": "当前无法连接 arXiv，请检查网络后重试。",
-    "arxiv_permission": "当前网络未允许访问 arXiv，请检查网络权限后重试。",
-    "arxiv_parse": "arXiv 返回内容损坏，无法解析，请重试。",
-    "arxiv_request": "arXiv 搜索请求未完成，请重试。",
-    "arxiv_startup": "arXiv 搜索服务启动失败，请重试。",
-    # Issue 05：worker 启动握手与中途退出的独立错误分类。
-    "arxiv_handshake": "arXiv 搜索服务启动失败，请重试。",
-    "arxiv_worker_exit": "arXiv 搜索服务进程已退出，请重试。",
-    "arxiv_internal": "arXiv 搜索服务异常，请重试。",
-    "arxiv_cancelled": "已取消本轮论文搜索。",
-    "arxiv_no_results": "没有找到匹配的 arXiv 论文，请调整领域或约束后重试。",
-    "arxiv_no_relevant_results": "没有找到与主题相关的 arXiv 论文，请调整领域或约束后重试。",
-    "arxiv_citation_invalid": "论文回答缺少可核实的 arXiv 引用，请重试。",
-    # Issue 07：humanizer 独有错误码不在此映射——其错误消息由编排服务
-    # 构造（含冲突项与恢复方式的中文可操作说明），命中映射会吞掉详情；
-    # 未命中时 executor 以服务消息为兜底（错误文案仍不泄漏内部 prompt）。
-    "skill_unavailable": "SKILL 能力暂不可用，请稍后重试。",
-    "budget_exceeded": "本次生成超过时延预算，已停止继续执行；请重试（输入已保留）。",
-    # 改进工单 04：最终载荷超出模型输入预算时的明确受限结果（不发送超限载荷）。
-    "payload_budget_exceeded": (
-        "本轮需要的材料超出当前模型的输入额度，无法在不丢失关键条件的情况下"
-        "完整作答。请缩小问题范围、减少附件或缩短材料后重试。"
-    ),
-}
+#: 唯一来源是 ``bridges.state_copy`` 的固定文案注册表：聊天链路领域码、
+#: 父图节点错误与模型调用类稳定码分别登记中文模板、真实失败类别与恢复方式。
+_ERROR_MESSAGES: dict[str, str] = CHAT_ERROR_TEMPLATES
 
 #: 用户点击重试后有望成功的错误码（限流/瞬时故障/断流/内部错误）。
 #: Issue 03：region_dns/region_proxy/region_tls 与 region_error 同为
@@ -823,7 +768,7 @@ def user_facing_error(error_code: str | None, fallback: str | None = None) -> st
     """
     if error_code in _ERROR_MESSAGES:
         return _ERROR_MESSAGES[error_code]
-    default = fallback or "生成过程出现内部错误，请重试。"
+    default = fallback or DEFAULT_ERROR_MESSAGE
     return user_facing_model_error(error_code, default)
 
 
@@ -896,7 +841,7 @@ def _truncate_text(text: str, max_chars: int) -> str:
 
 def done_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummary:
     """完成时的摘要：质量检查结论（耗时由消息 duration_ms 呈现）。"""
-    return thinking.model_copy(update={"quality": ["回答已完整生成并保存"]})
+    return thinking.model_copy(update={"quality": [THINKING_DONE_QUALITY_TEXT]})
 
 
 def failed_thinking(
@@ -905,25 +850,19 @@ def failed_thinking(
     """失败/断流/内部错误时的摘要：保留已完成步骤并给出中文质量结论。"""
     return thinking.model_copy(
         update={
-            "quality": [user_facing_error(error_code, "生成失败，已保留已完成部分。")]
+            "quality": [user_facing_error(error_code, THINKING_FAILED_FALLBACK_TEXT)]
         }
     )
 
 
 def stopped_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummary:
     """用户停止时的摘要：保留已完成步骤并给出中文质量结论。"""
-    return thinking.model_copy(update={"quality": ["已停止生成，保留已生成内容。"]})
+    return thinking.model_copy(update={"quality": [THINKING_STOPPED_QUALITY_TEXT]})
 
 
 def budget_warning_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummary:
     """预算受限交付时的摘要：已交付草稿，重试可获得更完整回答（Issue 06）。"""
-    return thinking.model_copy(
-        update={
-            "quality": [
-                "回答已交付（受时延预算限制，内容可能不完整）；重试可获得更完整回答。"
-            ]
-        }
-    )
+    return thinking.model_copy(update={"quality": [THINKING_BUDGET_WARNING_TEXT]})
 
 
 # ---------------------------------------------------------------------------
@@ -2985,7 +2924,7 @@ class TurnOrchestrator:
                 RouteStatus.REJECTED,
             }:
                 feedback = route.clarification_question or (
-                    "请求未通过参数校验，请调整后重试。"
+                    ROUTE_REJECTED_FALLBACK_MESSAGE
                 )
                 route_error = route.error_code or "route_rejected"
                 if route.status == RouteStatus.CLARIFY:

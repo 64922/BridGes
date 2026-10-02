@@ -194,6 +194,10 @@ from bridges.routing import (
     NaturalLanguageRouter,
     RouteStatus,
 )
+from bridges.state_copy import (
+    WAIT_DELETE_IN_PROGRESS_TEXT,
+    WAIT_GENERATION_IN_PROGRESS_TEXT,
+)
 from bridges.storage.errors import StorageError
 from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository, StudyWorkflow
 from bridges.tieba.contracts import TiebaResearchProjection
@@ -721,7 +725,7 @@ class ChatService:
             for message in self._repo.list_messages(account_id, conversation_id)
         ):
             raise ChatDomainError(
-                "generation_in_progress", "回答仍在生成中，请先停止后再删除。", 409
+                "generation_in_progress", WAIT_DELETE_IN_PROGRESS_TEXT, 409
             )
         deleted = self._repo.delete_conversation(account_id, conversation_id)
         if deleted != 1:
@@ -856,7 +860,7 @@ class ChatService:
         if any(message.status == ChatMessageStatus.STREAMING for message in existing):
             raise ChatDomainError(
                 "generation_in_progress",
-                "上一轮回答仍在生成中，请先停止或等待完成。",
+                WAIT_GENERATION_IN_PROGRESS_TEXT,
                 409,
             )
         # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
@@ -2369,7 +2373,7 @@ class ChatService:
         if any(m.status == ChatMessageStatus.STREAMING for m in existing):
             raise ChatDomainError(
                 "generation_in_progress",
-                "上一轮回答仍在生成中，请先停止或等待完成。",
+                WAIT_GENERATION_IN_PROGRESS_TEXT,
                 409,
             )
         owner = owner_user_message(existing, message_id)

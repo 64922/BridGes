@@ -4,7 +4,7 @@
 
 **Blocked by:** 21 — 按任务、边界与前文适配有分寸表达
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P2
 
@@ -39,15 +39,37 @@
 
 ## 验收标准
 
-- [ ] 每个用户可见来源都有对应文案/生成策略，成功/部分/失败/空/停止逐项可验证。
-- [ ] 路线、引用、价格、时间、岗位和题目状态在模板调整前后语义与数据一致。
-- [ ] 错误只承诺真实可用恢复能力，不伪装成功，不固定追加建议/问题。
-- [ ] 无人味化额外调用，机器字段与内部分析未被改写。
-- [ ] 正式桌面页面展示的中文文本与真实服务状态相符。
+- [x] 每个用户可见来源都有对应文案/生成策略，成功/部分/失败/空/停止逐项可验证。
+- [x] 路线、引用、价格、时间、岗位和题目状态在模板调整前后语义与数据一致。
+- [x] 错误只承诺真实可用恢复能力，不伪装成功，不固定追加建议/问题。
+- [x] 无人味化额外调用，机器字段与内部分析未被改写。
+- [x] 正式桌面页面展示的中文文本与真实服务状态相符。
 
 ## 验证与交付证据
 
 状态矩阵驱动模板/正式页面检查，对确定性数据做前后比较；最终消费者完整性在 38、43 检查。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+## 执行与验收记录
+
+### 2026-10-03：实现与两轴评审修复
+
+- 交付分支 `codex/23-natural-state-copy-and-templates`（工作树 `.worktrees/23-natural-state-copy-and-templates`，基点 main `bd014bd6`）；阻塞票 21 `2b3dc57c` 经 `git merge-base --is-ancestor` 核对已带入 main。
+- 环境：Windows + conda `agent`（Python 3.11.15）；确定性替身只证明机制，真实模型体验与外部可得性按评测票 39/40/42 验证。
+- 新包 `src/bridges/state_copy/`（版本 `state-copy-v1`，纯数据与确定性渲染，不发起模型调用）：
+  - `types.py`：`CopyCategory`（澄清/进度/等待/停止/错误/空/部分/降级/模块/学习）、`CopyStrategy`（固定模板/确定性渲染/模型适配）、`FailureClass`（未读取、不支持、未配置、限流/超时、不可核实、不可达、内部、状态冲突、停止）、`RecoveryAction`（重试/等待/重配/调整请求/刷新状态/无）、`CopyEntry`、`ErrorTemplate`（`shared` 共享模型码、`contextual` 携带上下文的领域码）。
+  - `catalog.py`：152 条登记（错误 82 条＝聊天映射 62＋共享 14＋上下文型 6，公共模板与六模块/学习清单 70 条）；模块/学习条目只登记既有渲染器路径与真实状态，不虚构未落地的状态。
+  - `registry.py`：`STATE_COPY_REGISTRY`、`render_state_copy`、`state_copy_manifest`（每条含 version/path/category/owner/strategy/states/text/renderer/note）、`validate_state_copy_registry`（重复路径、类别/状态/失败类别覆盖缺口一次报全）、检索充足性文案由注册表派生。
+  - `error_taxonomy.py`：`error_template` / `error_failure_class` / `error_recovery` / `client_error_<status>` 动态模板。
+- 错误文案与分类（任务 3）：不可达（离线/连接/DNS/提供方不可用）与限流/超时分开；补登 `web_search_provider/connect/dns/quota/contract/redirect/response_too_large/source_conflict/cancelled/stage_timeout/internal` 等聊天与公网搜索码；`unregistered_capability` 改为「核心对话能力未就绪，请联系管理员。」；主/备权限失败统一为 `NOT_CONFIGURED/RECONFIGURE`；领域多变体文案（同一码在不同提供方/上下文的措辞）按主路径真实字面量登记，变体收敛留给 24–36 接入注册表时一并处理。
+- 接线：`ai/errors.py`（共享模型码由注册表派生）、`chat/turn.py`（`_ERROR_MESSAGES`、断流/路由拒绝/思考摘要、公网搜索取消/阶段超时/内部异常改注册表常量）、`chat/terminal.py`（停止文案）、`chat/graph.py`（节点失败按错误码真实恢复方式渲染：重试/等待/调整/联系管理员；无恢复方式不追加伪承诺；点击重试仍以真实 `retryable` 为准）、`chat/understanding.py`、`routing/service.py`、`chat/service.py`（等待文案）、`retrieval/service.py`、`web_search/service.py`；`CONTEXT.md` 补「固定状态文案注册表」术语。范围边界：领域模板由 24–36 按实际状态落地，前端投影由 38 完成。
+- 两轴评审（标准＋规格并行子代理）发现与处置：①公网搜索取消/阶段超时/内部异常未登记 → 已登记并在 turn/service 接线为单一来源；②注册表 15 处领域文案与真实字面量不一致 → 对齐主路径字面量（credentials/permission/dns/offline/connect/parse/request/redirect、configuration、challenge、evidence/no_results）；③离线误标 `RATE_LIMIT_TIMEOUT` → 新增 `UNAVAILABLE` 并重分类离线/连接/DNS/提供方不可用/`region_error`/`transient`；④节点失败固定追加「请调整后重试」与 `NONE/REFRESH_STATE` 登记冲突 → 按真实恢复方式渲染，无恢复方式不追加；⑤`unregistered_capability` 措辞对终端用户不可执行 → 改「请联系管理员」；⑥主/备 permission 分类不一致 → 统一；⑦CONTEXT.md 词汇缺口 → 已补术语。未采纳（记录为判断项）：`_RETRYABLE_CODES` 与注册表 `recovery` 强制合一（前者是聊天终态 UI 投影、后者是语义与跨端恢复描述，收敛属 38 前端投影票）；未登记的既有死码（`humanizer_*` 等）清理；多变体领域文案 1:1 收敛（见上）；`states` 由裸字符串改枚举（渲染器状态由领域所有，改动面超出本票）；`_error` 辅助函数、catalog 集中登记、`state_copy` 命名均判为可接受设计取舍。模块分状态缺口（github/tieba 无 partial、career 无 failure、commute 无 clarification/empty/partial）属领域模块当前无对应渲染器，未虚构登记，由 24–36 按实际状态补。
+- 验证：
+  - 新增 `tests/state_copy/` 22 项（注册表结构/清单/分类与恢复真实性/接线/公网搜索投影），全部通过。
+  - 定向回归（state_copy、routing、ai、web_search、retrieval、聊天错误映射/终端/改进 12/21/V2 持久运行）：531 passed / 2 skipped；2 项 `tests/retrieval` 失败为 main 既有退役来源失败（聊天附件/项目文件已退役），非本票引入。
+  - 全量（排除 `tests/integration/test_runtime_smoke.py`，本机在 main 与分支同样挂起）：分支 `272 failed / 4725 passed / 39 skipped / 1 xfailed`；main 同命令 `272 failed / 4703 passed`；失败集逐项一致（0 新增失败，+22 为本票新增用例）。
+  - `ruff check` 变更文件 17 条诊断均为 main 同名既有（routing E501/N818、graph N818），0 新增；`mypy` 21 条与 main 基线逐条一致（0 新增）。
+- 已知限制：多变体领域文案在注册表中按主路径字面量登记，完全收敛待领域票据接入；错误类别与恢复方式已登记但终端 UI 的点击重试投影仍由 `_RETRYABLE_CODES` 决定；真实模型体验与公网搜索外部可得性分别按评测票验证。
+- 状态改 `ready-for-human` 等待人工验收；分支未推送、未合并。
 

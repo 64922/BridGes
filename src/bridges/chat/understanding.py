@@ -57,6 +57,12 @@ from bridges.github.suggestion import detect_github_suggestion
 from bridges.paper.suggestion import PAPER_REQUEST_HINTS, detect_paper_suggestion
 from bridges.resources.suggestion import detect_resources_suggestion
 from bridges.routing import NaturalLanguageRouter, RouteStatus
+from bridges.state_copy import (
+    CLARIFICATION_REFERENCE_AMBIGUITY_TEXT,
+    CLARIFICATION_TASK_AMBIGUITY_TEXT,
+    CLARIFICATION_TASK_HISTORY_AMBIGUITY_TEXT,
+    render_state_copy,
+)
 from bridges.tieba.suggestion import detect_tieba_suggestion
 
 #: 正文模块识别器：按既有建议优先级排列（论文最先，职业最后），命中即止
@@ -450,8 +456,8 @@ class MainAgentUnderstanding:
             if len(matched) == 1:
                 return matched[0], None
             if len(matched) > 1:
-                return None, "找到多个同样合理的任务，需要确认是哪一个。"
-            return None, "找到多个历史任务，需要确认继续哪一个。"
+                return None, CLARIFICATION_TASK_AMBIGUITY_TEXT
+            return None, CLARIFICATION_TASK_HISTORY_AMBIGUITY_TEXT
         current = (
             next(
                 (task for task in candidates if task.task_id == task_context.task_id),
@@ -470,7 +476,7 @@ class MainAgentUnderstanding:
             if len(matched) == 1:
                 return matched[0], None
             if resolution.status == ReferenceStatus.AMBIGUOUS:
-                return None, "指代的对象不唯一，需要确认。"
+                return None, CLARIFICATION_REFERENCE_AMBIGUITY_TEXT
         return None, None
 
     @staticmethod
@@ -497,7 +503,10 @@ class MainAgentUnderstanding:
             return ambiguity, ["task"]
         if len(detected) > 1 and requested_module_id not in detected:
             names = "、".join(detected)
-            return f"这条消息包含多个任务（{names}）；本轮先执行哪一个？", ["capability"]
+            return (
+                render_state_copy("chat.clarification.multiple_tasks", names=names),
+                ["capability"],
+            )
         if resolution.status == ReferenceStatus.AMBIGUOUS and resolution.clarification:
             return resolution.clarification.question, ["reference"]
         return None, []
