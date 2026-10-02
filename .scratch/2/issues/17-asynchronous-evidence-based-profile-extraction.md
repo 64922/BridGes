@@ -94,4 +94,4 @@
 - 用户已授权合并、推送与清理；合入与清理结果追加在验收记录中。
 - 合入前先同步 `main@0af74c80`（含 Issue 18、Issue 21）；唯一冲突 `src/bridges/profiles/automatic.py` 按保留工单 17 重构结构处理，并确认 Issue 18 的 `_lifecycle_result`、`source_at` 锚点已并入重构后的执行核心。
 - 合并后回归与 `main@2b3dc57c` 对账：`tests/chat` 失败名单逐名一致；`tests/profiles` 仅剩既有时钟平局失败；杂项套件 5 项失败名单一致；mypy/ruff 与基线一致。
-- 已合入 main（`47dece1d`，`--no-ff`）并清理 worktree 与分支；`git push` 因 `github.com:443` 不可达暂未完成，待网络恢复重推。
+- 已合入 main（`47dece1d`，`--no-ff`）并清理 worktree 与分支；推送经系统代理 `127.0.0.1:7890` 成功（`0af74c80..39330825`）。

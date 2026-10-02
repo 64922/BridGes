@@ -37,4 +37,4 @@
 - 合并后回归：issue17 18 passed；`tests/profiles` 497 passed / 1 failed（时钟平局，`main@2b3dc57c` 同样失败）；`tests/chat` 874 passed / 100 failed / 1 xfailed，失败名单与 `main@2b3dc57c` 逐名一致；`tests/api`+`contracts`+`runtime`+`observability`+`ai`+`storage` 427 passed / 5 failed / 2 skipped，失败名单与基线一致；mypy 98 errors / 20 files 按文件计数一致；ruff 变更文件与基线一致。
 - 已以 `--no-ff` 合入 main：`47dece1d merge: 验收合入 Issue 17 异步证据画像提取`；合并树与已验证分支树一致（tree `275f754e`）。
 - 清理：删除 worktree `.worktrees/17-async-profile-extraction`、分支 `codex/issue-17-asynchronous-evidence-based-profile-extraction` 与验收 `baseline-check` worktree；`git worktree prune` 后仅剩主工作树。
-- 推送：`github.com:443` 持续不可达，多次重试 `git push origin main` 失败；待网络恢复后重推。
+- 推送：Git 不读取 Windows 系统代理，最初直连 `github.com:443` 失败；改走系统代理 `127.0.0.1:7890` 后 `git push origin main` 成功（`0af74c80..39330825`）。
