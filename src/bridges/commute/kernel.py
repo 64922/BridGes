@@ -534,6 +534,7 @@ class CommuteNodeFlow:
     ) -> None:
         self._amap = amap
         self._clock = clock
+        self._solve_time = clock()
         self._prior_context = tuple(prior_context)
         self._pending_wait = pending_wait
         self._budget = budget
@@ -547,7 +548,7 @@ class CommuteNodeFlow:
     @property
     def buffer_snapshot(self) -> str:
         """求解时间快照（分钟粒度，Asia/Shanghai）：缓冲输入键的一部分。"""
-        moment = self._clock().astimezone(ZoneInfo(CAMPUS_TIMEZONE))
+        moment = self._solve_time.astimezone(ZoneInfo(CAMPUS_TIMEZONE))
         return moment.replace(second=0, microsecond=0).isoformat()
 
     # -- 节点执行体 -------------------------------------------------------
@@ -848,7 +849,7 @@ class CommuteNodeFlow:
             status=NodeReceiptStatus.COMPLETED,
             # 方式或地点确定后，旧的路线/时间/呈现产物按输入键失效；
             # 定位产物不在失效列表，因此方式变更复用定位。
-            invalidate_nodes=ROUTE_DEPENDENT_NODES,
+            invalidate_nodes=(NODE_VALIDATE, *ROUTE_DEPENDENT_NODES),
         )
 
     def _run_request(self, invocation: NodeInvocation) -> NodeExecution:
@@ -974,7 +975,7 @@ class CommuteNodeFlow:
         )
 
     def _run_buffer(self, invocation: NodeInvocation) -> NodeExecution:
-        buffer = evaluate_break_buffer(now=self._clock())
+        buffer = evaluate_break_buffer(now=self._solve_time)
         return NodeExecution(
             artifact=self._artifact(
                 invocation,
@@ -1096,7 +1097,7 @@ class CommuteNodeFlow:
             "queries": [item.model_dump(mode="json") for item in queries],
             "evidence_notes": verify.get("limitations", []),
             "pending": None,
-            "resolved_at": self._clock().isoformat(),
+            "resolved_at": self._solve_time.isoformat(),
             "error_code": None,
             "error_message": None,
             "retryable": False,
@@ -1255,6 +1256,5 @@ class CommuteNodeFlow:
                 f"终点「{destination.name}」沿用上一轮候选选择，坐标来自当时的高德 POI 返回。"
             )
         return notes, snap_far
-
 
 

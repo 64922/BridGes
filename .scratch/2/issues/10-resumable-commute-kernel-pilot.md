@@ -77,3 +77,9 @@
   - `mypy src`：98 条错误/35 条唯一信息，与 main 集合逐条一致（既有 `graph.add_node`/`api.main` 健康投影问题）；kernel/commute/run_executor 无错误。`ruff check` kernel/commute/run_executor/新测试全过；`graph.py` 新增 `DailyGraphSuperseded` 的 N818 与同文件既有 `DailyGraphStop` 一致。
 - 限制：本票只证明确定性机制（固定高德响应与确定性执行），真实高德可得性/限流体验由 42 实测；持久节点内核目前服务于通勤试点，其他领域迁移与统一检查点引用按 24–36。交付前校验与消息终态守卫之间仍有跨层窗口，由执行器租约复核与终态“最多一次”守卫兜底。
 - 状态改 `ready-for-human` 等待人工验收；分支已提交、未推送、未合并。
+
+### 2026-10-02：用户授权独立验收
+
+- 已独立验收并修复合同版本复用、历史产物覆盖、方式回切失效、求解时间快照和最终交付守卫窗口；新增七个回归参数实例并扩展方式回切测试。
+- 最终核心 135 passed；扩大回归分支 1047 passed / 105 failed / 1 xfailed，主线 1020 passed / 106 failed / 1 xfailed，分支失败均为主线既有失败，无新增失败。
+- 六项验收标准按确定性路径确认通过；用户已授权合并、推送及清理。历史交付记录保留，本次修正与证据以[独立验收记录](../acceptance/10-resumable-commute-kernel-pilot.md)为准。

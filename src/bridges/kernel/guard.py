@@ -82,15 +82,11 @@ class RunCommitGuard:
     def verify(self) -> CommitDecision:
         """提交前校验；必须在写事务内调用。"""
         now = self._clock()
-        if self._stop_event is not None and self._stop_event.is_set():
-            return CommitDecision(False, "run_stopped", "用户已停止本轮生成。")
         run = self._scope.get_generation_run(self._account_id, self._run_id)
         if run is None:
             return CommitDecision(False, "run_missing", "本轮运行已不存在。")
         if run.status not in {"queued", "running"}:
             return CommitDecision(False, "run_terminal", "本轮运行已收敛，迟到结果被拒绝。")
-        if run.stop_requested:
-            return CommitDecision(False, "run_stopped", "用户已停止本轮生成。")
         if self._lease_owner is not None:
             if run.lease_owner != self._lease_owner:
                 return CommitDecision(
@@ -113,4 +109,9 @@ class RunCommitGuard:
                 return CommitDecision(
                     False, "task_version_changed", "任务版本已变化，迟到结果被拒绝。"
                 )
+        # 停止也只能由仍拥有租约且版本有效的执行者收敛。
+        if run.stop_requested or (
+            self._stop_event is not None and self._stop_event.is_set()
+        ):
+            return CommitDecision(False, "run_stopped", "用户已停止本轮生成。")
         return CommitDecision(True)

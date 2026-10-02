@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -299,6 +300,63 @@ def test_registry_rejects_unknown_capability_and_gate() -> None:
     )
     with pytest.raises(RecipeValidationError, match="unknown_gate"):
         registry.register(unknown_gate)
+
+
+def test_contract_upgrade_reruns_nodes_and_preserves_old_receipts(
+    database: BridgesDatabase,
+) -> None:
+    """相同输入升级配方/能力后不得复用旧版本，并保留原完成证明。"""
+    _seed(database)
+    runner = _Runner()
+    _execute(_kernel(database, runner))
+    repository = NodeKernelRepository(database)
+    old_receipts = repository.list_receipts(ACCOUNT, RUN)
+    upgraded = replace(_recipe(), recipe_version="v2", nodes=tuple(
+        replace(spec, capability_version=f"{spec.name}-v2") for spec in _recipe().nodes
+    ))
+
+    def run(invocation: NodeInvocation) -> NodeExecution:
+        execution = runner(invocation)
+        return replace(execution, artifact=replace(execution.artifact, recipe_version="v2"))
+
+    runner.calls.clear()
+    result = _kernel(database, run).execute(recipe=upgraded, inputs=_inputs())
+    assert result.status is KernelStatus.COMPLETED
+    assert runner.calls == ["a", "b", "c"]
+    assert all(item.recipe_version == "v2" for item in result.artifacts)
+    assert len(repository.list_receipts(ACCOUNT, RUN)) == 6
+    assert repository.list_receipts(ACCOUNT, RUN)[:3] == old_receipts
+    runner.calls.clear()
+    _kernel(database, run).execute(recipe=upgraded, inputs=_inputs())
+    assert runner.calls == []
+
+
+def test_recomputation_preserves_payload_referenced_by_old_receipt(
+    database: BridgesDatabase,
+) -> None:
+    """失效后的重新计算保存新版本，旧收据继续指向旧内容。"""
+    _seed(database)
+    first = _execute(_kernel(database, _Runner()))
+    repository = NodeKernelRepository(database)
+    old = first.artifacts[0]
+    old_receipt = repository.list_receipts(ACCOUNT, RUN)[0]
+    with repository.transaction():
+        repository.invalidate_node_artifacts(ACCOUNT, CONVERSATION, ("a",), now=NOW)
+
+    def changed(invocation: NodeInvocation) -> NodeExecution:
+        return NodeExecution(
+            artifact=_artifact(invocation, payload={"response": "新的外部结果"}),
+            verdict=QualityVerdict.PASS, status=NodeReceiptStatus.COMPLETED,
+        )
+
+    result = _execute(_kernel(database, changed))
+    assert result.status is KernelStatus.COMPLETED
+    assert result.artifacts[0].artifact_id != old.artifact_id
+    preserved = repository.get_artifact(ACCOUNT, old_receipt.artifact_id)
+    assert preserved is not None
+    assert preserved.payload == old.payload
+    assert preserved.content_hash == old.content_hash
+    assert preserved.trust_state is ArtifactTrust.INVALIDATED
 
 
 def test_registry_rejects_skipped_prerequisite_and_cycle() -> None:

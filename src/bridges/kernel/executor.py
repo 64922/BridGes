@@ -14,13 +14,16 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
+from hashlib import sha256
 
 from bridges.kernel.contracts import (
+    ARTIFACT_SCHEMA_VERSION,
     ArtifactTrust,
     KernelFailure,
     KernelResult,
@@ -30,6 +33,7 @@ from bridges.kernel.contracts import (
     NodeInvocation,
     NodeReceipt,
     NodeReceiptStatus,
+    NodeSpec,
     NodeState,
     PendingNodeEvent,
     QualityGateResult,
@@ -114,14 +118,24 @@ class NodeKernel:
                 buffer_snapshot=inputs.buffer_snapshot,
             )
             input_key = spec.input_key(key_inputs)
+            # 收据按实际合同区分，避免升级后命中不可覆盖的旧完成收据。
+            receipt_key = sha256(json.dumps([
+                input_key, recipe.recipe_id, recipe.recipe_version,
+                spec.capability_version, ARTIFACT_SCHEMA_VERSION, spec.artifact_type,
+                spec.required_gates, spec.optional_gates,
+            ]).encode()).hexdigest()
             receipt = self._repository.load_receipt(
-                inputs.account_id, inputs.run_id, spec.name, input_key
+                inputs.account_id, inputs.run_id, spec.name, receipt_key
             )
             reused = self._reuse_from_receipt(receipt, spec.name)
+            if reused is not None and not self._compatible(reused, recipe, spec):
+                reused = None
             if reused is None:
                 # 跨运行恢复：收据是运行内的事实，产物按会话与输入键持久；
                 # 地点成功而路线失败的重试据此跳过解析/定位，只重跑路线及下游。
                 reused = self._reuse_from_artifact(inputs, spec.name, input_key)
+                if reused is not None and not self._compatible(reused, recipe, spec):
+                    reused = None
             if reused is not None:
                 artifacts[spec.name] = reused
                 states.append(
@@ -181,15 +195,20 @@ class NodeKernel:
                         except_artifact_ids=(artifact.artifact_id,),
                         now=self._clock(),
                     )
+                # 同一运行内失效后重算也保留旧完成证明，另记新的产物版本收据。
+                commit_key = receipt_key
+                if receipt is not None and receipt.status is NodeReceiptStatus.COMPLETED:
+                    commit_key = sha256(
+                        f"{receipt_key}:{artifact.artifact_id}".encode()
+                    ).hexdigest()
                 receipt_record = self._commit_receipt(
-                    inputs, spec.name, input_key, execution, duration_ms
+                    inputs, spec.name, commit_key, execution, duration_ms
                 )
                 completion_event = PendingNodeEvent(
                     kind="node_completed",
                     payload={"duration_ms": duration_ms},
                 )
-                # 失效事实随收据进入外箱（审计/导出可读）：同输入重跑会原位
-                # 更新产物行，失效轨迹不能只留在被覆盖的产物行里。
+                # 失效事实随收据进入外箱，旧产物版本同时保留供审计和导出。
                 invalidation_events = (
                     (
                         PendingNodeEvent(
@@ -264,6 +283,17 @@ class NodeKernel:
 
     # ------------------------------------------------------------------
 
+    def _compatible(
+        self, artifact: NodeArtifact, recipe: RecipeDefinition, spec: NodeSpec
+    ) -> bool:
+        return (
+            artifact.recipe_id == recipe.recipe_id
+            and artifact.recipe_version == recipe.recipe_version
+            and artifact.capability_version == spec.capability_version
+            and artifact.schema_version == ARTIFACT_SCHEMA_VERSION
+            and artifact.artifact_type == spec.artifact_type
+        )
+
     def _reuse_from_receipt(
         self, receipt: NodeReceipt | None, node: str
     ) -> NodeArtifact | None:
@@ -275,6 +305,8 @@ class NodeKernel:
         if artifact is None or artifact.node != node:
             return None
         if not artifact.reusable or not artifact.verify_hash():
+            return None
+        if receipt.output_key != output_identity(artifact.content_hash, receipt.quality_verdict):
             return None
         return artifact
 

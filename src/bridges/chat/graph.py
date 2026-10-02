@@ -912,7 +912,7 @@ def run_daily_turn(
         deps.converge_stopped()
     except DailyGraphSuperseded:
         # 执行权已转移：消息与运行终态由当前执行者收敛，本轮不再写终态。
-        pass
+        raise
     except DailyTurnError as error:
         deps.converge_error(error)
     except Exception as exc:  # noqa: BLE001 - 未知异常同样收敛为可重试失败

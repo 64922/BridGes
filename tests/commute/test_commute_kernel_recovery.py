@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.commute.contracts import CommuteMode
+from bridges.commute.service import CommuteService
 from bridges.contracts.modules import ModuleQueryStatus
+from bridges.kernel.executor import NodeKernel
 from bridges.kernel.repository import NodeKernelRepository
 from tests.chat.test_chat_api import _create_conversation, _register
 from tests.commute.test_commute_module_flow import (
@@ -168,3 +171,83 @@ def test_mode_change_reuses_places_and_invalidates_old_route(
     by_mode = {item.payload["mode"]: item for item in requests}
     assert by_mode[CommuteMode.WALKING.value].trust_state.value == "invalidated"
     assert by_mode[CommuteMode.BICYCLING.value].trust_state.value == "qualified"
+
+    # 切回历史方式也必须失效刚才的路线，而非跳过历史 validate 的失效逻辑。
+    _send(client, conversation_id, "从南区步行到图书馆", module_id="commute")
+    walking_again = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert walking_again["commute_route"]["mode"] == "walking"
+    assert fake.place_calls == place_calls
+    artifacts = repository.list_artifacts(account_id, conversation_id)
+    assert all(item.trust_state.value == "invalidated" for item in artifacts
+               if item.node == "route.request" and item.payload["mode"] == "bicycling")
+    assert len(fake.route_calls) == 3
+
+
+@pytest.mark.parametrize("change", ["lease", "version", "stop", "lease_and_stop"])
+def test_change_after_kernel_verification_cannot_deliver_old_success(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    """在内核已返回之后改变提交条件，验证交付事务内的再次核验。"""
+    _register(client)
+    fake = _install_commute(sqlite_app, _FakeAmap())
+    current = [("task-test", 1)]
+    sqlite_app.state.commute_service._task_version_provider = lambda *_: current[0]
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, "从南区步行到图书馆", module_id="commute")
+    original = NodeKernel.execute
+
+    def execute(self: NodeKernel, **kwargs: Any) -> Any:
+        result = original(self, **kwargs)
+        if change == "version":
+            current[0] = ("task-test", 2)
+        if "lease" in change:
+            database = sqlite_app.state.bridges_database
+            with database.transaction():
+                database.connection.execute(
+                    "UPDATE generation_runs SET lease_owner = 'other-worker' WHERE run_id = ?",
+                    (kwargs["inputs"].run_id,),
+                )
+        if "stop" in change:
+            kwargs["stop_event"].set()
+        return result
+
+    monkeypatch.setattr(NodeKernel, "execute", execute)
+    # 只执行一次：转租约/换版本的运行应留给有效执行者，不再继续驱动。
+    sqlite_app.state.generation_executor.run_tick()
+    message = [m for m in client.get(f"/chat/conversations/{conversation_id}").json()["messages"]
+               if m["role"] == "assistant"][-1]
+    assert fake.route_calls
+    if change == "stop":
+        assert message["status"] == "stopped"
+        assert message["commute_route"]["status"] == "stopped"
+    else:
+        assert message["status"] == "streaming"
+        assert message.get("commute_route") is None
+        assert message["content"] == ""
+
+
+def test_route_crossing_peak_boundary_uses_captured_solve_time(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """07:39 开始、路线在 07:40 返回，输入键和缓冲仍使用同一快照。"""
+    _register(client)
+    fake = _FakeAmap()
+    moment = [datetime(2026, 9, 25, 23, 39, tzinfo=UTC)]
+    service = CommuteService(amap=fake, clock=lambda: moment[0])
+    sqlite_app.state.chat_service._commute = service
+    original = fake.route
+
+    def route(*args: Any, **kwargs: Any) -> Any:
+        moment[0] += timedelta(minutes=1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(fake, "route", route)
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, "从南区步行到图书馆", module_id="commute")
+    message = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    projection = message["commute_route"]
+    assert projection["status"] == "success"
+    assert projection["buffer"]["added_minutes"] == 0
+    assert datetime.fromisoformat(projection["resolved_at"]).minute == 39

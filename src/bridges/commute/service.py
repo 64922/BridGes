@@ -15,7 +15,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -199,13 +199,25 @@ class CommuteService:
             event_sink=emit_node,
             stop_event=stop_event,
         )
-        return self._deliver(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            result=result,
-            stop_event=stop_event,
-        )
+        # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
+        with NodeKernelRepository(repo.database).transaction():
+            decision = guard.verify()
+            if not decision.ok:
+                if decision.code != "run_stopped":
+                    raise CommuteSupersededError(decision.code)
+                result = replace(result, status=KernelStatus.STOPPED)
+            try:
+                return self._deliver(
+                    repo,
+                    account_id=account_id,
+                    assistant_message_id=assistant_message_id,
+                    result=result,
+                    stop_event=stop_event,
+                )
+            except CommuteModuleError as error:
+                # 失败投影提交后，再通知父图收敛错误，避免异常回滚投影。
+                delivery_error = error
+        raise delivery_error
 
     # -- 交付（既有终态收敛路径） ----------------------------------------
 
@@ -420,8 +432,14 @@ class CommuteService:
             error_message=message,
             retryable=retryable,
         )
-        repo.update_message_commute_route(
-            account_id, assistant_message_id, projection.model_dump(mode="json"), now
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.ERROR,
+            projection=projection,
+            content=status_content(projection),
+            now=now,
         )
         raise CommuteModuleError(node, code, message, retryable=retryable)
 
@@ -588,10 +606,6 @@ class CommuteService:
         content: str,
         now: datetime,
     ) -> None:
-        # 正文只能在 streaming 期间写入（流式增量接口的守卫），因此先写正文
-        # 再收敛终态；终态与通勤投影在同一事务内提交（finalize_message）。
-        if content:
-            repo.update_message_content(account_id, assistant_message_id, content, now)
         # 局部导入：模块子图与 chat 服务互相引用（父图调用子图、子图复用消息
         # 终态收敛），模块级导入会形成包级循环。
         from bridges.chat.turn import finalize_message
@@ -608,6 +622,7 @@ class CommuteService:
             started=time.monotonic(),
             now=now,
             commute_route=projection.model_dump(mode="json"),
+            final_content=content,
         )
 
 

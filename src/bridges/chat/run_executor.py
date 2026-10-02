@@ -279,6 +279,9 @@ class GenerationRunExecutor:
         )
         heartbeat.start()
         started = time.monotonic()
+        # 父图使用本模块的上下文函数，运行时导入避免包级循环。
+        from bridges.chat.graph import DailyGraphSuperseded
+
         try:
             # V2 Issue 02：本轮经日常 LangGraph 父图执行（固定节点链 +
             # 检查点持久化 + 可取消节点边界）。事件（node 进度与编排管线
@@ -290,6 +293,9 @@ class GenerationRunExecutor:
                 ),
                 stop_event=stop_event,
             )
+        except DailyGraphSuperseded:
+            self._last_summary = f"generation: 运行 {run_id} 的提交条件已失效，本轮不收敛。"
+            return
         finally:
             heartbeat.stop()
             heartbeat.join(timeout=STOP_POLL_SECONDS + 0.5)

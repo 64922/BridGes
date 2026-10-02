@@ -72,7 +72,7 @@ class NodeKernelRepository:
     ) -> NodeArtifact | None:
         row = self._db.scoped(account_id).execute(
             "SELECT * FROM node_artifacts WHERE account_id = ?"
-            " AND conversation_id = ? AND node = ? AND input_key = ?",
+            " AND conversation_id = ? AND node = ? AND input_key = ? ORDER BY rowid DESC LIMIT 1",
             (account_id, conversation_id, node, input_key),
         ).fetchone()
         return _artifact_from_row(row) if row is not None else None
@@ -93,12 +93,7 @@ class NodeKernelRepository:
         return [_artifact_from_row(row) for row in rows]
 
     def save_artifact(self, artifact: NodeArtifact) -> None:
-        """落盘一个产物；同一身份（账户/会话/节点/输入键）原位更新。
-
-        产物身份由输入键决定：同一个输入重放时保留同一行，绝不产生
-        重复的“同一输入、多份产物”。旧租约与停止后的迟到写入由提交
-        守卫在同一事务内先拒绝。
-        """
+        """保存不可变产物版本；失效后重新执行保留旧载荷与收据引用。"""
         self._db.scoped(artifact.account_id).execute(
             """
             INSERT INTO node_artifacts (
@@ -109,22 +104,7 @@ class NodeKernelRepository:
                 requirement_coverage_json, unconfirmed_json, error_json,
                 payload_json, content_hash, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(artifact_id) DO UPDATE SET
-                run_id = excluded.run_id,
-                task_id = excluded.task_id,
-                task_version = excluded.task_version,
-                recipe_id = excluded.recipe_id,
-                recipe_version = excluded.recipe_version,
-                trust_state = excluded.trust_state,
-                input_deps_json = excluded.input_deps_json,
-                source_refs_json = excluded.source_refs_json,
-                read_scope = excluded.read_scope,
-                requirement_coverage_json = excluded.requirement_coverage_json,
-                unconfirmed_json = excluded.unconfirmed_json,
-                error_json = excluded.error_json,
-                payload_json = excluded.payload_json,
-                content_hash = excluded.content_hash,
-                updated_at = excluded.updated_at
+            ON CONFLICT(artifact_id) DO NOTHING
             """,
             (
                 artifact.artifact_id,
@@ -165,7 +145,7 @@ class NodeKernelRepository:
     ) -> list[str]:
         """显式失效指定节点的历史产物（方式变更使路线/时间失效）。
 
-        只失效仍可复用的产物，不做删除；同输入重跑会原位更新该行，失效
+        只失效仍可复用的产物，不做删除；同输入重跑保存新版本，失效
         轨迹由执行内核随收据写入的外箱事件（``node_artifacts_invalidated``）
         保留供审计与兼容解释。返回本次真正失效的产物 ID。
         """

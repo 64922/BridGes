@@ -13,6 +13,7 @@ from datetime import datetime
 from enum import StrEnum
 from hashlib import sha256
 from typing import Any
+from uuid import uuid4
 
 #: 内核合同版本（配方、产物、收据与提交守卫共同解释该版本）。
 KERNEL_CONTRACT_VERSION = "node-kernel-v1"
@@ -149,12 +150,6 @@ class NodeArtifact:
     updated_at: datetime
 
     @staticmethod
-    def identity_id(account_id: str, conversation_id: str, node: str, input_key: str) -> str:
-        """产物身份：同一账户/会话/节点/输入键只保留一个产物行。"""
-        material = f"{account_id}\x1f{conversation_id}\x1f{node}\x1f{input_key}"
-        return "art_" + sha256(material.encode("utf-8")).hexdigest()[:32]
-
-    @staticmethod
     def hash_payload(payload: Mapping[str, Any]) -> str:
         material = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return sha256(material.encode("utf-8")).hexdigest()
@@ -185,7 +180,7 @@ class NodeArtifact:
         now: datetime,
     ) -> NodeArtifact:
         return cls(
-            artifact_id=cls.identity_id(account_id, conversation_id, node, input_key),
+            artifact_id="art_" + uuid4().hex,
             account_id=account_id,
             conversation_id=conversation_id,
             run_id=run_id,

@@ -2959,7 +2959,7 @@ MIGRATIONS: dict[int, list[str]] = {
     # 提交类型化产物、输入依赖/哈希、质量裁决、完成收据与待投递事件；
     # 恢复先读完成收据——已完成的节点回填产物引用、不重复本地效果，
     # 未完成的节点安全重试；图检查点只保存引用。
-    # - node_artifacts：按 (account, conversation, node, input_key) 唯一的
+    # - node_artifacts：按 (account, conversation, node, input_key) 查找版本化的
     #   不可变产物身份；可信状态独立于运行状态（草稿/证据已绑定/合格/
     #   冲突/失效）；输入依赖与内容哈希用于复用与失效定位。
     # - node_receipts：节点局部事务的完成收据；按 (account, run, node,
@@ -2999,7 +2999,7 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
         """
-        CREATE UNIQUE INDEX idx_node_artifacts_identity
+        CREATE INDEX idx_node_artifacts_identity
         ON node_artifacts(account_id, conversation_id, node, input_key)
         """,
         """
