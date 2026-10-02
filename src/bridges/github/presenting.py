@@ -20,7 +20,7 @@ from bridges.ai.payload_budget import (
     MaterialCategory,
     MaterialManifestEntry,
     estimate_tokens,
-    evaluate_payload_gate,
+    evaluate_call_manifest,
 )
 from bridges.contracts.ai import ModelCallResult, ModelRunLock
 from bridges.github.contracts import (
@@ -266,43 +266,39 @@ class GithubInsightGenerator:
             "temperature": 0.3,
             "max_tokens": output_tokens,
         }
-        # 工单 15：工具结果（真实仓库证据）加入后，对最终载荷重新执行预算门。
-        manifest: CallMaterialManifest | None = None
-        if model_quota is not None:
-            decision = evaluate_payload_gate(
-                payload, quota=model_quota, output_tokens=output_tokens
+        # 工单 15：工具结果（真实仓库证据）加入后，对最终载荷重新执行预算门
+        # （共用 payload_budget 的调用入口，不复制预算器）；超限时只交付证据。
+        manifest = evaluate_call_manifest(
+            payload,
+            quota=model_quota,
+            output_tokens=output_tokens,
+            entries=[
+                MaterialManifestEntry(
+                    material_id="github.insight.system",
+                    category=MaterialCategory.SYSTEM_RULE.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="借鉴角度系统规则与输出契约",
+                    estimated_tokens=estimate_tokens(INSIGHT_SYSTEM_PROMPT),
+                ),
+                MaterialManifestEntry(
+                    material_id="github.insight.evidence",
+                    category=MaterialCategory.TOOL.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="本轮真实仓库元数据、匹配与读取范围",
+                    estimated_tokens=estimate_tokens(user_content),
+                ),
+            ],
+        )
+        if manifest is not None and not manifest.gate.within_budget:
+            return InsightOutcome(
+                note=(
+                    "借鉴角度未生成：加入本轮仓库证据后的最终载荷超出该模型的"
+                    "输入预算，已闭锁；本轮只给证据本身。"
+                ),
+                manifest=manifest,
             )
-            manifest = CallMaterialManifest(
-                entries=[
-                    MaterialManifestEntry(
-                        material_id="github.insight.system",
-                        category=MaterialCategory.SYSTEM_RULE.value,
-                        necessity="required",
-                        adopted=True,
-                        reason="借鉴角度系统规则与输出契约",
-                        estimated_tokens=estimate_tokens(INSIGHT_SYSTEM_PROMPT),
-                    ),
-                    MaterialManifestEntry(
-                        material_id="github.insight.evidence",
-                        category=MaterialCategory.TOOL.value,
-                        necessity="required",
-                        adopted=True,
-                        reason="本轮真实仓库元数据、匹配与读取范围",
-                        estimated_tokens=estimate_tokens(user_content),
-                    ),
-                ],
-                gate=decision,
-                output_tokens=output_tokens,
-                estimated_input_tokens=decision.estimated_input_tokens,
-            )
-            if not decision.within_budget:
-                return InsightOutcome(
-                    note=(
-                        "借鉴角度未生成：加入本轮仓库证据后的最终载荷超出该模型的"
-                        "输入预算，已闭锁；本轮只给证据本身。"
-                    ),
-                    manifest=manifest,
-                )
         try:
             result: ModelCallResult = self._gateway.invoke(
                 self._capability_name,

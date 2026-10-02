@@ -238,6 +238,48 @@ def test_continuation_without_task_uses_recent_disambiguation_text() -> None:
     assert "梯度下降" in selection.query_for(MaterialDomain.KNOWLEDGE_BASE)
 
 
+def test_continuation_with_task_anchor_never_queries_internal_task_ids() -> None:
+    resolution = ReferenceResolution(
+        task=ReferenceTaskBrief(
+            task_id="task-15",
+            goal="研究注意力机制",
+            version=2,
+            status="active",
+            conditions=[
+                TaskBriefCondition(
+                    condition_id="c-topic",
+                    kind="topic",
+                    text="注意力机制",
+                    status="effective",
+                    effective=True,
+                    source_message_id="m1",
+                )
+            ],
+        ),
+        anchors=[
+            ReferenceAnchor(
+                anchor_id="task:task-15",
+                kind=AnchorKind.TASK,
+                label="任务 task-15（版本 2）",
+                message_ids=["m1"],
+                adopted=True,
+            )
+        ],
+        adopted_message_ids=["m1"],
+    )
+    selection = select_task_materials(
+        "继续解释", resolution=resolution, current_message_id="m2"
+    )
+    local = selection.query_for(MaterialDomain.KNOWLEDGE_BASE)
+    public = selection.query_for(MaterialDomain.PUBLIC_SEARCH)
+    assert "注意力机制" in local
+    assert "task-15" not in local
+    assert "版本" not in local
+    assert "task-15" not in public
+    assert "版本" not in public
+    assert public == ""  # 条件与内部任务标签都不进公开查询
+
+
 def test_superseded_revoked_and_draft_conditions_are_excluded() -> None:
     task = _task(
         _condition("c-keep", "topic", "注意力机制", ConditionStatus.EFFECTIVE),
@@ -268,8 +310,7 @@ def test_selection_audit_record_contains_no_query_or_condition_text() -> None:
     assert "预算不超过 3000 元" not in serialized
     assert "第二个" not in serialized
     assert record["query_fingerprint"]
-    execution = selection.execution_record()
-    assert "注意力机制论文" in execution["queries"]["knowledge_base"]
+    assert "注意力机制论文" in selection.queries[MaterialDomain.KNOWLEDGE_BASE.value]
 
 
 def test_public_query_from_context_prefers_selection_query() -> None:
@@ -323,6 +364,34 @@ def test_module_context_without_task_falls_back_to_recent_window() -> None:
     assert context.prior_messages == ("第一条", "第二条")
     assert context.used_task_scope is False
     assert context.topic_hint == ""
+
+
+def test_module_context_bounds_task_prior_and_records_adopted_sources() -> None:
+    declaration = MODULE_DECLARATIONS["paper_search"]
+    task = _task(
+        _condition("c-topic", "topic", "注意力机制", ConditionStatus.EFFECTIVE),
+    )
+    messages = [
+        ("m1", "user", "我在研究注意力机制的背景"),
+        *[
+            (f"u{index}", "user", f"注意力机制相关要点 {index}")
+            for index in range(1, 9)
+        ],
+        ("m10", "user", "现在继续"),
+        ("m11", "user", "注意力机制在当前消息之后"),
+    ]
+    context = build_module_context(
+        declaration=declaration,
+        task=task,
+        messages=messages,
+        current_user_message_id="m10",
+    )
+    assert len(context.prior_messages) == declaration.lookback
+    assert context.prior_messages[-1] == "注意力机制相关要点 8"
+    assert "注意力机制在当前消息之后" not in context.prior_messages
+    assert "m11" not in context.source_message_ids
+    assert "u8" in context.source_message_ids  # 实际采用的前文 ID 进来源清单
+    assert "u2" not in context.source_message_ids  # 超出 lookback 的不留痕
 
 
 def test_paper_parse_uses_task_topic_hint_when_request_has_no_topic() -> None:

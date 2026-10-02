@@ -124,21 +124,6 @@ class TaskMaterialSelection:
         """返回某域的最小查询；无内容时返回空串（调用方回退原文）。"""
         return self.queries.get(domain.value, "")
 
-    def execution_record(self) -> dict[str, Any]:
-        """执行记录（含查询文本；只进进程内状态与检查点，不进审计）。"""
-        return {
-            "version": self.version,
-            "purpose": self.purpose,
-            "queries": dict(self.queries),
-            "topic_terms": list(self.topic_terms),
-            "effective_condition_ids": [c.condition_id for c in self.effective_conditions],
-            "excluded_condition_ids": list(self.excluded_condition_ids),
-            "adopted_object_ids": list(self.adopted_object_ids),
-            "source_message_ids": list(self.source_message_ids),
-            "request_has_own_topic": self.request_has_own_topic,
-            "used_continuation_fallback": self.used_continuation_fallback,
-        }
-
     def audit_record(self) -> dict[str, Any]:
         """审计记录（只含 ID、计数与查询指纹，不含任何查询/条件正文）。"""
         return {
@@ -179,8 +164,8 @@ def _fingerprint(queries: Mapping[str, str]) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def request_terms(request: str) -> tuple[str, ...]:
-    """剥离指代/续接词后的请求自身主题词；空表示请求只有指代。"""
+def _request_topic(request: str) -> tuple[str, ...]:
+    """剥离指代/续接词后的请求自身主题；空元组表示请求只有指代。"""
     stripped = request
     for word in sorted(_ANAPHORA_TERMS, key=len, reverse=True):
         stripped = stripped.replace(word, " ")
@@ -245,7 +230,11 @@ def _conditions_from_task(
 def _topic_terms_from_resolution(
     resolution: ReferenceResolution | None,
 ) -> tuple[str, ...]:
-    """从解析锚点提取紧凑主题词（结果对象/任务/条件的短标签）。"""
+    """从解析锚点提取紧凑主题词（结果列表/列表项的短标签）。
+
+    任务锚点的标签是内部标识（``任务 {id}（版本 {n}）``），不是用户主题，
+    因此不作为查询词——否则纯续接会把任务 ID 带进本地与公开查询。
+    """
     if resolution is None:
         return ()
     terms: list[str] = []
@@ -253,7 +242,6 @@ def _topic_terms_from_resolution(
         if not anchor.adopted or anchor.kind not in {
             AnchorKind.LIST_ITEM,
             AnchorKind.RESULT_LIST,
-            AnchorKind.TASK,
         }:
             continue
         label = anchor.label.strip()
@@ -277,14 +265,14 @@ def select_task_materials(
     请求本身没有主题时作为**少量消歧前文**回退；它只在本进程参与查询
     构造，不写审计、不外发。
     """
-    own_terms = request_terms(request)
+    own_terms = _request_topic(request)
     topic_terms = _topic_terms_from_resolution(resolution)
     effective, excluded = _conditions_from_task(resolution, task)
     used_fallback = False
     if not topic_terms and not own_terms and not effective:
         # 请求只有指代且没有任务条件：允许用最近的少量消歧前文定位主题。
         for text in recent_user_texts:
-            fallback = request_terms(text)
+            fallback = _request_topic(text)
             if fallback:
                 topic_terms = fallback
                 used_fallback = True
@@ -338,13 +326,6 @@ def select_task_materials(
         queries=queries,
         used_continuation_fallback=used_fallback,
     )
-
-
-def public_query_for_selection(selection: TaskMaterialSelection | None) -> str:
-    """公开检索的最小查询（只含解析主题与请求自身术语，无私人条件/历史）。"""
-    if selection is None:
-        return ""
-    return selection.query_for(MaterialDomain.PUBLIC_SEARCH)
 
 
 # ---------------------------------------------------------------------------
@@ -487,22 +468,23 @@ def build_module_context(
     if task is not None:
         source_ids.update(task.source_message_ids)
         source_ids.update(condition.source_message_id for condition in effective)
+    # 只取当前消息之前、且属于任务来源或命中任务主题/条件的前文；条数仍以
+    # ``lookback`` 封顶（有来源且有界），当前消息之后的消息绝不进入模块上下文。
     prior: list[str] = []
-    if task is not None:
-        for message_id, role, content in messages:
-            if message_id == current_user_message_id:
-                continue
-            if role != "user" or not content.strip():
-                continue
-            if message_id in source_ids or _mentions(content, topic_needles):
-                prior.append(content)
-    else:
-        for message_id, role, content in messages:
-            if message_id == current_user_message_id:
-                continue
-            if role == "user" and content.strip():
-                prior.append(content)
-        prior = prior[-declaration.lookback :]
+    adopted_prior_ids: list[str] = []
+    for message_id, role, content in messages:
+        if message_id == current_user_message_id:
+            break
+        if role != "user" or not content.strip():
+            continue
+        if task is not None and not (
+            message_id in source_ids or _mentions(content, topic_needles)
+        ):
+            continue
+        prior.append(content)
+        adopted_prior_ids.append(message_id)
+    prior = prior[-declaration.lookback :]
+    adopted_prior_ids = adopted_prior_ids[-declaration.lookback :]
     topic_hint = ""
     for effective_condition in effective:
         if effective_condition.kind in {"topic", "scenario"} and effective_condition.text.strip():
@@ -512,6 +494,15 @@ def build_module_context(
         topic_hint = effective[0].text.strip()
     if not topic_hint and task is not None:
         topic_hint = task.goal.strip()
+    adopted_source_ids = list(adopted_prior_ids)
+    for message_id, role, content in messages:
+        if (
+            role == "user"
+            and message_id in source_ids
+            and content.strip()
+            and message_id not in adopted_source_ids
+        ):
+            adopted_source_ids.append(message_id)
     return ModuleTaskContext(
         version=MODULE_CONTEXT_VERSION,
         module_id=declaration.module_id,
@@ -522,23 +513,10 @@ def build_module_context(
         effective_conditions=effective,
         excluded_condition_ids=excluded,
         prior_messages=tuple(prior),
-        source_message_ids=tuple(
-            message_id
-            for message_id, role, content in messages
-            if role == "user" and message_id in source_ids and content.strip()
-        )
-        if task is not None
-        else (),
+        source_message_ids=tuple(adopted_source_ids),
         evidence_scope=declaration.evidence_scope,
         used_task_scope=task is not None,
     )
-
-
-def effective_conditions_from_task(
-    task: ReferenceTaskContext | None,
-) -> tuple[tuple[EffectiveCondition, ...], tuple[str, ...]]:
-    """公共助手：从任务快照分离有效条件与排除条件 ID（供模块消费者复用）。"""
-    return _conditions_from_task(None, task)
 
 
 __all__ = [
@@ -554,10 +532,7 @@ __all__ = [
     "ModuleTaskContext",
     "TaskMaterialSelection",
     "build_module_context",
-    "effective_conditions_from_task",
-    "public_query_for_selection",
     "public_query_from_context",
     "record_queries",
-    "request_terms",
     "select_task_materials",
 ]

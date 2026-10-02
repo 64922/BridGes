@@ -19,7 +19,7 @@ from bridges.ai.payload_budget import (
     MaterialCategory,
     MaterialManifestEntry,
     estimate_tokens,
-    evaluate_payload_gate,
+    evaluate_call_manifest,
 )
 from bridges.contracts.ai import ModelCallResult, ModelRunLock
 from bridges.paper.contracts import (
@@ -186,43 +186,39 @@ class PaperSummaryGenerator:
             "max_tokens": output_tokens,
         }
         # 工单 15：工具结果（真实候选摘要）加入后，对**本次最终载荷**重新
-        # 执行预算门；超限时不发已知超限请求，只交付真实元数据并如实说明。
-        manifest: CallMaterialManifest | None = None
-        if model_quota is not None:
-            decision = evaluate_payload_gate(
-                payload, quota=model_quota, output_tokens=output_tokens
+        # 执行预算门（共用 payload_budget 的调用入口，不复制预算器）；
+        # 超限时不发已知超限请求，只交付真实元数据并如实说明。
+        manifest = evaluate_call_manifest(
+            payload,
+            quota=model_quota,
+            output_tokens=output_tokens,
+            entries=[
+                MaterialManifestEntry(
+                    material_id="paper.summary.system",
+                    category=MaterialCategory.SYSTEM_RULE.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="概述系统规则与输出契约",
+                    estimated_tokens=estimate_tokens(SUMMARY_SYSTEM_PROMPT),
+                ),
+                MaterialManifestEntry(
+                    material_id="paper.summary.candidates",
+                    category=MaterialCategory.RETRIEVAL.value,
+                    necessity="required",
+                    adopted=True,
+                    reason="本轮真实候选的标题、摘要与类别",
+                    estimated_tokens=estimate_tokens(user_content),
+                ),
+            ],
+        )
+        if manifest is not None and not manifest.gate.within_budget:
+            return SummaryOutcome(
+                note=(
+                    "中文概述未生成：加入本轮候选证据后的最终载荷超出该模型的"
+                    "输入预算，已闭锁；本轮只给来源元数据与原始摘要依据。"
+                ),
+                manifest=manifest,
             )
-            manifest = CallMaterialManifest(
-                entries=[
-                    MaterialManifestEntry(
-                        material_id="paper.summary.system",
-                        category=MaterialCategory.SYSTEM_RULE.value,
-                        necessity="required",
-                        adopted=True,
-                        reason="概述系统规则与输出契约",
-                        estimated_tokens=estimate_tokens(SUMMARY_SYSTEM_PROMPT),
-                    ),
-                    MaterialManifestEntry(
-                        material_id="paper.summary.candidates",
-                        category=MaterialCategory.RETRIEVAL.value,
-                        necessity="required",
-                        adopted=True,
-                        reason="本轮真实候选的标题、摘要与类别",
-                        estimated_tokens=estimate_tokens(user_content),
-                    ),
-                ],
-                gate=decision,
-                output_tokens=output_tokens,
-                estimated_input_tokens=decision.estimated_input_tokens,
-            )
-            if not decision.within_budget:
-                return SummaryOutcome(
-                    note=(
-                        "中文概述未生成：加入本轮候选证据后的最终载荷超出该模型的"
-                        "输入预算，已闭锁；本轮只给来源元数据与原始摘要依据。"
-                    ),
-                    manifest=manifest,
-                )
         try:
             result: ModelCallResult = self._gateway.invoke(
                 self._capability_name,

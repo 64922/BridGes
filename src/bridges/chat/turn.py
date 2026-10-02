@@ -5038,7 +5038,7 @@ class TurnOrchestrator:
         stop_event: threading.Event,
         context_budget: dict[str, Any] | None = None,
     ) -> tuple[ChatThinkingSummary, RetrievalRoundProjection | None]:
-        """一轮分层检索：全部编排路径共用这一个实现。
+        """一轮知识库检索：全部编排路径共用这一个实现。
 
         未挂载检索服务或已收到停止信号时返回 ``(thinking, None)``——
         调用方无须重复「None 检查 + 停止检查」，行为与既有各路径一致。
