@@ -41,12 +41,12 @@
 
 ## 验收标准
 
-- [ ] 贝叶斯问题可取入门基础和先例后公式偏好，无词面交集仍适用；跑步爱好默认不注入。
-- [ ] 每天 30 分钟约束产生可执行计划，本轮详细推导覆盖简短默认且不改长期值。
-- [ ] 完整尾部条件保留，放不下整条排除，必要条件无法容纳时遵循 04。
-- [ ] 异步未完成不等待，同轮版本固定；删除后的下一次调用重新筛选有效信息。
-- [ ] 自述基础与答题证据分开，关画像不读取正文，采用清单与模型输入一致。
-- [ ] 账户隔离、切片恢复/缓存失效和无画像安全基线通过。
+- [x] 贝叶斯问题可取入门基础和先例后公式偏好，无词面交集仍适用；跑步爱好默认不注入。
+- [x] 每天 30 分钟约束产生可执行计划，本轮详细推导覆盖简短默认且不改长期值。
+- [x] 完整尾部条件保留，放不下整条排除，必要条件无法容纳时遵循 04。
+- [x] 异步未完成不等待，同轮版本固定；删除后的下一次调用重新筛选有效信息。
+- [x] 自述基础与答题证据分开，关画像不读取正文，采用清单与模型输入一致。
+- [x] 账户隔离、切片恢复/缓存失效和无画像安全基线通过。
 
 ## 验证与交付证据
 
@@ -56,7 +56,7 @@
 
 ## 实施记录（2026-10-02）
 
-**分支/合同版本：** 分支 `codex/19-purpose-aware-profile-slice`，基点 `main@2c003eed`；无数据库迁移（无新增持久状态）；开发和测试使用 conda `agent`（Windows，Python 3.11.15，UTF-8）。
+**分支/合同版本：** 分支 `codex/19-purpose-aware-profile-slice`，基点 `main@2c003eed`；无数据库迁移（验收修复后复用既有 generation_runs.config_json 保存版本化最小采用快照）；开发和测试使用 conda `agent`（Windows，Python 3.11.15，UTF-8）。
 
 ### 实现说明
 
@@ -70,7 +70,7 @@
 
 - 新增合同：`src/bridges/contracts/profile_adoption.py` 的 `ProfileTaskKind`、`ProfileSlicePurpose`、`AdoptedProfileItem`（完整事实、适用决策、采用原因、条件、是否默认、期限）、`ProfileSliceExclusion`、`AdoptedProfileSlice`（`select_subset`、`with_items`、`to_profile_slice`）。
 - 新增服务方法：`AtomicProfileService.compile_adopted_slice(account_id, *, run_id, purpose=None, current_user_message_id=None, now=None)`；既有 `compile_chat_slice` 增加 `purpose` 可选参数并改为同一采用快照的折算视图，旧调用方行为兼容。
-- 聊天接线新增 `adopted_profile_context` 与 `adopted_profile_block_within_budget`（整条预算裁剪，`_remaining_input_tokens` 与工单 04 共用口径）；无 OpenAPI/数据库/持久状态变化，无需迁移或导出变更。
+- 聊天接线新增 `adopted_profile_context` 与 `adopted_profile_block_within_budget`（整条预算裁剪，`_remaining_input_tokens` 与工单 04 共用口径）；无 OpenAPI/数据库表变化；验收修复在既有运行配置保存 purpose-slice-1.1 快照，复用运行记录的备份、导出、账户/会话删除与失败恢复。
 
 ### 跨票接缝
 
@@ -85,10 +85,12 @@
 - `tests/chat` 全目录 **100 failed / 879 passed / 1 xfailed**，失败数与 main 基线一致（100），无受改文件新增失败；全量串行 `pytest`（4854 项）**269 failed / 4543 passed / 39 skipped / 1 xfailed / 2 errors**，失败集中在环境相关的既有类别（MCP/插件/生命周期/集成 CLI 等）；抽查 `tests/mcp`、`tests/plugins`、`tests/learning_projects`、`tests/retirement`、`tests/integration` 的代表性失败在 `main@2c003eed` 临时工作树逐一同名复现，均与本次变更无关；`mypy src` **98 errors** 与 main 基线一致；变更文件 ruff 零诊断；`docs/用户画像/复核脚本.py` 新增工单 19 探针运行通过并输出采用/排除/条件/长期值保留结果。
 - 双轴 code-review：Standards 轴发现的未使用导出/死参已修正（删除 `DECISION_TOPIC_REFERENCE`、`is_expression_preference`、`preference_labels`、`adoption_reason` 死分支与未接线 `module_id` 参数）；Spec 轴复核的接缝与验收项见上。
 
-### 验收边界
+### 独立验收（2026-10-02）
 
-- 本轮明确要求与默认偏好的覆盖按条目粒度执行；同条条目内部分决策被覆盖、部分保留（如「先看例子再看公式」遇「详细展开」）由 22 统一表达采用票在决策粒度处理。
-- 撤回发生在编译后、模型调用前时，披露如实降级但已记录审计计数不重写（工单 18 既有边界，本票未扩大改动面）。
-- `module_id`/`learning_stage` 目前作为用途提示随快照冻结，尚未被选择规则消费；41 实测前不引入语义检索。
-- 确定性规则与桩只证明机制；真实模型抽取与回答体验按 17/41 评测票验证。异步提取按设计不等待，本轮刚整理条目下一轮生效。
+原交付未达标，独立审查发现用途相关性、撤回重试、冻结版本、真实预算与不可变性缺口；修复后验收通过。详见 [独立验收记录](../acceptance/19-purpose-aware-profile-slice.md)，本节及验收记录取代原交付报告中的验收边界。
 
+- 明示学科/活动的背景、目标及资源约束经可解释主题规则筛选；通用表达偏好跨主题，通用时间约束用于计划。详细推导只覆盖简短默认，保留兼容的先例后公式。
+- purpose-slice-1.1 的嵌套对象和集合不可变。同轮/正常重试从裁剪前已提交快照重选预算子集，后台新增不影响它；删除、纠正、替代、到期或缓存损坏则重编。旧表达策略不得恢复失效正文。
+- 预算覆盖完整渲染块，含用途、条件和摘要；每条整条采用/排除，超长条目不阻挡后续可容纳条目，预算排除有原因。必要现实约束不足时按 04 闭锁，重试不绕过；最终裁剪与撤回后同步披露和最终审计。
+- 快照保存在既有运行配置，不新增表；只存采用正文、用途语义、版本标识和排除原因，不存未采用正文或重复用户原文。旧运行无快照可重编，损坏快照可恢复。既有备份/导出/删除路径覆盖此配置。
+- 22/29 的 AdoptedProfileSlice.select_subset 接缝保留；既有消费者仍用最终采用子集的 ProfileSliceItem 折算。module_id/learning_stage 参加显式主题规则；规则不能证明所有语义场景，真实抽取/回答效果仍由 41 验证。

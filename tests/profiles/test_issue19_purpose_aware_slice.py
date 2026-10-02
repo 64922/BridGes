@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from pydantic import ValidationError
+
 from bridges.contracts.atomic_profile import (
     AtomicProfileFactRelation,
     AtomicProfileItemStatus,
@@ -135,9 +138,7 @@ def test_compile_chat_slice_is_purpose_aware_and_keeps_legacy_no_question_mode()
     )
     included = {item.value_or_rule for item in slice_.included_items}
     assert included == {"我正在学习概率", "我喜欢先看例子再看公式"}
-    reasons = {
-        item.value_or_rule: item.exclusion_reason for item in slice_.unused_items
-    }
+    reasons = {item.value_or_rule: item.exclusion_reason for item in slice_.unused_items}
     assert reasons["我喜欢跑步"] == "与当前问题无关"
 
     # 没有当前问题时保持原行为：全部有效条目进入候选（零条也合法）。
@@ -240,10 +241,8 @@ def test_same_turn_snapshot_is_frozen_for_later_nodes():
     # 生成中途后台完成了一次新提取：不重新查询，采用结果不变。
     service.remember(ALICE, "我现在也喜欢用图示", source_message_id="m-late")
     assert _adopted_texts(slice_) == ["我正在学习概率"]
-    assert slice_.select_subset() == slice_.adopted_items
-    selectable = {
-        item.fact_text for item in slice_.select_subset("explanation_start")
-    }
+    assert slice_.select_subset() == list(slice_.adopted_items)
+    selectable = {item.fact_text for item in slice_.select_subset("explanation_start")}
     assert "我正在学习概率" in selectable
 
     # 冻结版本与当前版本分开：新提取使旧切片可被判定为过期，由调用方重编译。
@@ -274,10 +273,8 @@ def test_same_turn_automatic_extraction_waits_for_next_turn():
         current_user_message_id="message-1",
         now=ANCHOR,
     )
-    assert this_turn.adopted_items == []
-    assert all(
-        "下一轮" in item.exclusion_reason for item in this_turn.excluded_items
-    )
+    assert this_turn.adopted_items == ()
+    assert all("下一轮" in item.exclusion_reason for item in this_turn.excluded_items)
 
     next_turn = service.compile_adopted_slice(
         ALICE,
@@ -298,14 +295,11 @@ def test_deletion_is_rescreened_on_the_next_compilation():
     assert _adopted_texts(first) == ["我正在学习概率"]
 
     service.delete_item(ALICE, item.profile_item_id, item.version)
-    assert (
-        service.get_item(ALICE, item.profile_item_id).status
-        is AtomicProfileItemStatus.WITHDRAWN
-    )
+    assert service.get_item(ALICE, item.profile_item_id).status is AtomicProfileItemStatus.WITHDRAWN
     second = service.compile_adopted_slice(
         ALICE, purpose=_purpose("解释贝叶斯定理"), run_id="assistant-2"
     )
-    assert second.adopted_items == []
+    assert second.adopted_items == ()
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +312,8 @@ def test_empty_profile_yields_zero_adopted_items_safely():
     slice_ = service.compile_adopted_slice(
         ALICE, purpose=_purpose("解释贝叶斯定理"), run_id="assistant-1"
     )
-    assert slice_.adopted_items == []
-    assert slice_.excluded_items == []
+    assert slice_.adopted_items == ()
+    assert slice_.excluded_items == ()
 
 
 def test_adopted_slice_is_account_isolated():
@@ -366,7 +360,63 @@ def test_expired_item_is_excluded_with_reason():
         run_id="assistant-1",
         now=ANCHOR,
     )
-    assert slice_.adopted_items == []
-    assert any(
-        "已过期" in item.exclusion_reason for item in slice_.excluded_items
+    assert slice_.adopted_items == ()
+    assert any("已过期" in item.exclusion_reason for item in slice_.excluded_items)
+
+
+def test_unrelated_subject_background_and_goal_are_not_adopted():
+    service = _atomic()
+    service.remember(ALICE, "我正在学习概率")
+    service.remember(ALICE, "我的目标是通过雅思考试")
+    for query in ("详细解释植物光合作用", "制定跑步训练计划"):
+        snapshot = service.compile_adopted_slice(ALICE, run_id=query, purpose=_purpose(query))
+        assert not snapshot.adopted_items
+        assert len(snapshot.excluded_items) == 2
+
+
+def test_detailed_explanation_keeps_compatible_example_first_preference():
+    service = _atomic()
+    service.remember(ALICE, "我习惯先看例子再看公式")
+    snapshot = service.compile_adopted_slice(
+        ALICE, run_id="detailed", purpose=_purpose("详细解释贝叶斯定理")
     )
+    assert _adopted_texts(snapshot) == ["我习惯先看例子再看公式"]
+
+
+def test_adopted_snapshot_and_nested_items_are_immutable():
+    service = _atomic()
+    service.remember(ALICE, "我喜欢简短回答")
+    snapshot = service.compile_adopted_slice(
+        ALICE, run_id="immutable", purpose=_purpose("解释概率")
+    )
+    with pytest.raises(ValidationError):
+        snapshot.select_subset()[0].fact_text = "被改写"
+    with pytest.raises(ValidationError):
+        snapshot.purpose.query = "其他任务"
+    assert isinstance(snapshot.adopted_items, tuple)
+    assert isinstance(snapshot.adopted_items[0].applicable_to, tuple)
+
+
+def test_late_addition_preserves_snapshot_but_deletion_invalidates_it():
+    service = _atomic()
+    item = service.remember(ALICE, "我喜欢简短回答")
+    snapshot = service.compile_adopted_slice(ALICE, run_id="frozen", purpose=_purpose("解释概率"))
+    service.remember(ALICE, "我喜欢跑步")
+    assert service.is_adopted_slice_current(ALICE, snapshot)
+    assert not service.is_adopted_slice_current(BOB, snapshot)
+    service.delete_item(ALICE, item.profile_item_id, item.version)
+    assert not service.is_adopted_slice_current(ALICE, snapshot)
+
+
+def test_activity_specific_constraint_is_not_a_general_time_budget():
+    service = _atomic()
+    text = "我每周只能跑步两小时"
+    service.remember(ALICE, text)
+    unrelated = service.compile_adopted_slice(
+        ALICE, run_id="english", purpose=_purpose("制定雅思学习计划")
+    )
+    related = service.compile_adopted_slice(
+        ALICE, run_id="running", purpose=_purpose("制定马拉松训练计划")
+    )
+    assert not unrelated.adopted_items
+    assert _adopted_texts(related) == [text]

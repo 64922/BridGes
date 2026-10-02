@@ -2005,6 +2005,9 @@ class ChatService:
         self._apply_run_model_lock(run_config, previous_config=previous_config)
         if policy_snapshot is not None:
             run_config["global_writing_policy"] = policy_snapshot
+        adopted_profile_slice = (previous_config or {}).get("adopted_profile_slice")
+        if isinstance(adopted_profile_slice, dict):
+            run_config["adopted_profile_slice"] = dict(adopted_profile_slice)
         profile_correction = (previous_config or {}).get("profile_correction")
         if isinstance(profile_correction, dict):
             run_config["profile_correction"] = dict(profile_correction)

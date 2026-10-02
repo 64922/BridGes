@@ -88,7 +88,10 @@ from bridges.profiles.purpose import (
     build_purpose,
     constraint_conditions,
     expression_preference_tags,
+    has_task_topic,
     is_overridden,
+    is_resource_constraint,
+    task_topic_matches,
 )
 from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
@@ -783,9 +786,9 @@ def _adopted_item(candidate: _AdoptedCandidate) -> AdoptedProfileItem:
         scope=item.fact_scope,
         source_authority=item.write_origin.value,
         expires_at=item.valid_until,
-        applicable_to=list(candidate.decisions),
+        applicable_to=candidate.decisions,
         adoption_reason=candidate.reason,
-        conditions=list(candidate.conditions),
+        conditions=candidate.conditions,
         is_default=candidate.is_default,
     )
 
@@ -1657,6 +1660,29 @@ class AtomicProfileService:
 
         return self._repository.transaction()
 
+    def is_adopted_slice_current(
+        self, account_id: str, adopted: AdoptedProfileSlice, *, now: datetime | None = None
+    ) -> bool:
+        """只核对冻结版本中的条目；新增不改变本轮，删除/纠正/到期使其失效。"""
+
+        if (
+            adopted.owner_account_id != account_id
+            or adopted.compiled_policy_version != "purpose-slice-1.1"
+        ):
+            return False
+        snapshot = self._repository.list_items(account_id, include_withdrawn=True)
+        current = {item.profile_item_id: item for item in snapshot}
+        for item_id, version, status in adopted.snapshot_versions:
+            item = current.get(item_id)
+            if item is None or (item.version, item.status.value) != (version, status):
+                return False
+        moment = now or _now()
+        return all(
+            entry.profile_item_id in current
+            and _recall_exclusion(current[entry.profile_item_id], moment) is None
+            for entry in adopted.adopted_items
+        )
+
     # -- 读 ---------------------------------------------------------------
 
     def list_items(self, account_id: str) -> list[AtomicProfileItem]:
@@ -2462,6 +2488,17 @@ class AtomicProfileService:
                 )
             )
             topic_matched = _item_matches_question(item.text, query)
+            generic_constraint = is_resource_constraint(item.text) and not has_task_topic(item.text)
+            if decisions and not tags and not generic_constraint:
+                # 学科背景和具体目标需有主题依据；年级等通用背景除外。
+                generic_background = item.fact_relation in {
+                    AtomicProfileFactRelation.IDENTITY,
+                    AtomicProfileFactRelation.GRADE,
+                } and not has_task_topic(item.text)
+                if not (
+                    generic_background or topic_matched or task_topic_matches(item.text, effective)
+                ):
+                    decisions = ()
             if decisions:
                 tier = 0
             elif topic_matched:
@@ -2529,8 +2566,11 @@ class AtomicProfileService:
             owner_account_id=account_id,
             run_id=run_id,
             purpose=effective,
-            adopted_items=[_adopted_item(candidate) for candidate in adopted],
-            excluded_items=exclusions,
+            adopted_items=tuple(_adopted_item(candidate) for candidate in adopted),
+            excluded_items=tuple(exclusions),
+            snapshot_versions=tuple(
+                (item.profile_item_id, item.version, item.status.value) for item in snapshot
+            ),
             revocation_version=self._revocation_version_for(snapshot),
             length_budget=MAX_SLICE_ITEMS,
             compiled_at=moment,

@@ -17,8 +17,11 @@ import pytest
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.ai.model_quota import QuotaVerificationBasis, RunModelQuota
+from bridges.ai.payload_budget import estimate_payload_tokens, estimate_tokens
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService
+from bridges.chat.turn import adopted_profile_block_within_budget, adopted_profile_context
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
 from bridges.contracts.chat import ChatMessageStatus, ContextNoteState
 from bridges.contracts.observability import AuditAction
@@ -38,6 +41,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
 )
+from bridges.profiles.purpose import build_purpose
 from bridges.profiles.service import ProfileService
 from bridges.storage.database import BridgesDatabase
 
@@ -102,9 +106,7 @@ class _Env:
             source_repository=InMemoryProfileRepository(),
             repository=InMemoryFourDimensionProfileRepository(),
         )
-        self.atomic = AtomicProfileService(
-            self.four_dimensions, InMemoryAtomicProfileRepository()
-        )
+        self.atomic = AtomicProfileService(self.four_dimensions, InMemoryAtomicProfileRepository())
         self.automatic = AutomaticProfileService(
             four_dimension_service=self.four_dimensions,
             repository=InMemoryAutomaticProfileRepository(),
@@ -125,20 +127,14 @@ class _Env:
             atomic_profile_service=self.atomic,
             observability_service=self.observability,
         )
-        self.conversation_id = self.chat.create_conversation(
-            self.account
-        ).conversation_id
+        self.conversation_id = self.chat.create_conversation(self.account).conversation_id
         self.turn = 0
 
     def remember(self, text: str, source_message_id: str) -> None:
-        self.atomic.remember(
-            self.account, text, source_message_id=source_message_id
-        )
+        self.atomic.remember(self.account, text, source_message_id=source_message_id)
 
     def ask(self, content: str, **kwargs: Any) -> Any:
-        user, assistant, _ = self.chat.start_generation(
-            self.account, self.conversation_id, content
-        )
+        user, assistant, _ = self.chat.start_generation(self.account, self.conversation_id, content)
         self.turn += 1
         list(
             self.chat.stream_generation(
@@ -158,9 +154,7 @@ class _Env:
         return self.adapter.payloads[-1]
 
     def payload_text(self) -> str:
-        return "\n".join(
-            message["content"] for message in self.payload()["messages"]
-        )
+        return "\n".join(message["content"] for message in self.payload()["messages"])
 
     def slice_blocks(self) -> list[str]:
         return [
@@ -207,7 +201,7 @@ def test_background_by_purpose_and_hobby_excluded(env: _Env) -> None:
 
     env.remember(BACKGROUND, "m-bg")
     env.remember(HOBBY, "m-hobby")
-    final = env.ask("帮我安排雅思考试的复习计划")
+    final = env.ask("帮我安排概率考试的复习计划")
 
     blocks = env.slice_blocks()
     assert len(blocks) == 1
@@ -268,10 +262,153 @@ def test_disabled_usage_does_not_read_long_term_content(env: _Env) -> None:
 
     env.remember(BACKGROUND, "m-bg")
     env.automatic.set_account_controls(ACCOUNT, usage_enabled=False)
-    final = env.ask("帮我安排雅思考试的复习计划")
+    final = env.ask("帮我安排概率考试的复习计划")
 
     assert env.slice_blocks() == []
     assert "数学基础比较薄弱" not in env.payload_text()
     assert final.context_note is not None
     assert final.context_note.state == ContextNoteState.OFF
     assert final.context_note.profile_item_count == 0
+
+
+def test_budget_counts_rendered_purpose_conditions_and_summary(env: _Env) -> None:
+    env.remember(CONSTRAINT, "m-time")
+    snapshot = env.atomic.compile_adopted_slice(
+        ACCOUNT, run_id="budget", purpose=build_purpose(mode="companion", query="制定学习计划")
+    )
+    full_cost = estimate_tokens(adopted_profile_context(snapshot))
+    trimmed, block, items = adopted_profile_block_within_budget(
+        snapshot, remaining_tokens=full_cost - 1
+    )
+    assert block is None
+    assert items == []
+    assert trimmed.adopted_items == ()
+    assert trimmed.excluded_items[-1].fact_text == CONSTRAINT
+    assert "模型输入预算" in trimmed.excluded_items[-1].exclusion_reason
+    exact, block, items = adopted_profile_block_within_budget(snapshot, remaining_tokens=full_cost)
+    assert exact.adopted_items == snapshot.adopted_items
+    assert block is not None and estimate_tokens(block) == full_cost
+    assert len(items) == 1
+
+
+def test_budget_skips_large_item_and_keeps_later_complete_item(env: _Env) -> None:
+    env.remember(BREVITY, "m-short")
+    large_text = "我喜欢详细回答，" + "必须完整保留的条件" * 40
+    env.remember(large_text, "m-large")
+    snapshot = env.atomic.compile_adopted_slice(
+        ACCOUNT, run_id="budget", purpose=build_purpose(mode="companion", query="解释贝叶斯")
+    )
+    short = snapshot.with_items(
+        [item for item in snapshot.adopted_items if item.fact_text == BREVITY]
+    )
+    cost = estimate_tokens(adopted_profile_context(short))
+    trimmed, block, items = adopted_profile_block_within_budget(snapshot, remaining_tokens=cost)
+    assert [item.fact_text for item in trimmed.adopted_items] == [BREVITY]
+    assert block is not None and large_text not in block
+    assert len(items) == 1
+    assert [item.fact_text for item in trimmed.excluded_items] == [large_text]
+
+
+def _retry(env: _Env, message_id: str, **kwargs: Any) -> Any:
+    _, assistant, _ = env.chat.retry_generation(ACCOUNT, env.conversation_id, message_id)
+    list(
+        env.chat.stream_generation(
+            ACCOUNT, env.conversation_id, assistant.message_id, _context("retry-run"), **kwargs
+        )
+    )
+    return env.chat.message_projection(ACCOUNT, assistant.message_id)
+
+
+def test_retry_reuses_frozen_adoption_after_background_addition(env: _Env) -> None:
+    env.remember(PREFERENCE, "m-pref")
+    final = env.ask("解释贝叶斯定理")
+    original = env.slice_blocks()[0]
+    env.remember(BREVITY, "m-late")
+    retried = _retry(env, final.message_id)
+    assert retried is not None and retried.status == ChatMessageStatus.DONE
+    assert env.slice_blocks() == [original]
+    assert BREVITY not in env.payload_text()
+    assert env.slice_audits()[-1].details["item_count"] == 1
+
+
+def test_retry_after_deletion_never_restores_old_policy_profile(env: _Env) -> None:
+    env.remember(PREFERENCE, "m-pref")
+    final = env.ask("解释贝叶斯定理")
+    item = env.atomic.list_items(ACCOUNT)[0]
+    env.atomic.delete_item(ACCOUNT, item.profile_item_id, item.version)
+    retried = _retry(env, final.message_id)
+    assert retried is not None and retried.status == ChatMessageStatus.DONE
+    assert env.slice_blocks() == []
+    assert PREFERENCE not in env.payload_text()
+    assert env.slice_audits()[-1].details["item_count"] == 0
+    assert retried.context_note is not None
+    assert retried.context_note.profile_item_count == 0
+
+
+def test_final_gate_drop_matches_disclosure_and_audit(env: _Env) -> None:
+    env.remember(PREFERENCE, "m-pref")
+    final = env.ask("解释贝叶斯定理")
+    base = dict(env.payload())
+    base["messages"] = [
+        message for message in base["messages"] if _SLICE_MARKER not in message["content"]
+    ]
+    quota = RunModelQuota(
+        model_id="qwen3.7-plus-2026-05-26",
+        context_window=100000,
+        max_input_tokens=estimate_payload_tokens(base) + 30,
+        verification_basis=QuotaVerificationBasis.SETTINGS_ACTIVATION,
+    )
+    retried = _retry(env, final.message_id, model_quota=quota.model_dump(mode="json"))
+    assert retried is not None and retried.status == ChatMessageStatus.DONE
+    assert env.slice_blocks() == []
+    assert retried.context_note is not None and retried.context_note.profile_item_count == 0
+    assert env.slice_audits()[-1].details["item_count"] == 0
+
+
+def test_required_constraint_budget_failure_stays_closed_on_retry(env: _Env) -> None:
+    env.remember(CONSTRAINT, "m-time")
+    _, assistant, _ = env.chat.start_generation(ACCOUNT, env.conversation_id, "制定学习计划")
+    list(
+        env.chat.stream_generation(
+            ACCOUNT,
+            env.conversation_id,
+            assistant.message_id,
+            _context("limited"),
+            context_budget={"input_budget_tokens": 100, "input_token_estimate": 100},
+        )
+    )
+    final = env.chat.message_projection(ACCOUNT, assistant.message_id)
+    assert final is not None and final.status == ChatMessageStatus.ERROR
+    assert final.error_code == "payload_budget_exceeded"
+    retried = _retry(
+        env,
+        final.message_id,
+        context_budget={"input_budget_tokens": 100, "input_token_estimate": 100},
+    )
+    assert retried is not None and retried.error_code == "payload_budget_exceeded"
+    assert env.adapter.payloads == []
+    recovered = _retry(env, retried.message_id)
+    assert recovered is not None and recovered.status == ChatMessageStatus.DONE
+    assert CONSTRAINT in env.slice_blocks()[0]
+
+
+def test_saved_slice_round_trip_and_corrupt_cache_recovery(env: _Env) -> None:
+    from bridges.contracts.profile_adoption import AdoptedProfileSlice
+
+    env.remember(PREFERENCE, "m-pref")
+    env.remember(HOBBY, "m-hobby")
+    final = env.ask("解释贝叶斯定理")
+    run = env.chat._repo.get_run_by_message(ACCOUNT, final.message_id)
+    assert run is not None
+    config = dict(run.config or {})
+    restored = AdoptedProfileSlice.model_validate(config["adopted_profile_slice"])
+    assert restored.compiled_policy_version == "purpose-slice-1.1"
+    assert restored.purpose.query is None
+    assert [item.fact_text for item in restored.select_subset()] == [PREFERENCE]
+    assert all(item.fact_text == "" for item in restored.excluded_items)
+    config["adopted_profile_slice"] = {"compiled_policy_version": "broken"}
+    env.chat._repo.update_generation_config(ACCOUNT, run.run_id, config)
+    retried = _retry(env, final.message_id)
+    assert retried is not None and retried.status == ChatMessageStatus.DONE
+    assert PREFERENCE in env.slice_blocks()[0]
+    assert HOBBY not in env.slice_blocks()[0]

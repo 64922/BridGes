@@ -157,7 +157,7 @@ _PRIORITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 #: 本轮明确要求覆盖的默认偏好标签。
 _OVERRIDES: dict[str, frozenset[str]] = {
-    "detailed": frozenset({PREF_BREVITY, PREF_EXAMPLE_FIRST}),
+    "detailed": frozenset({PREF_BREVITY}),
     "answer_only": frozenset({PREF_DETAIL, PREF_EXAMPLE_FIRST, PREF_FORMULA}),
     "concise": frozenset({PREF_DETAIL}),
     "conclusion_first": frozenset({PREF_EXAMPLE_FIRST}),
@@ -258,6 +258,36 @@ def build_purpose(
     )
 
 
+_SUBJECT_RULES: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"数学|概率|统计|贝叶斯|代数|微积分|金融|bayes|statistics",
+        r"英语|英文|雅思|托福|四级|六级|外语|english|ielts|toefl",
+        r"物理|力学|电磁|量子|相对论|physics",
+        r"化学|有机|无机|chemistry",
+        r"生物|植物|光合|细胞|遗传|biology",
+        r"编程|程序|软件|计算机|算法|python|javascript|代码",
+        r"跑步|马拉松|运动|训练|健身",
+        r"职业|岗位|求职|招聘|就业|简历|面试",
+    )
+)
+
+
+def task_topic_matches(text: str, purpose: ProfileSlicePurpose) -> bool:
+    """按显式主题规则补充跨词面的任务相关性，不把任务种类当主题。"""
+
+    task_text = " ".join(
+        value for value in (purpose.query, purpose.module_id, purpose.learning_stage) if value
+    )
+    return any(rule.search(text) and rule.search(task_text) for rule in _SUBJECT_RULES)
+
+
+def has_task_topic(text: str) -> bool:
+    """是否明示已识别主题；通用时间/经费约束不带学科或活动主题。"""
+
+    return any(rule.search(text) for rule in _SUBJECT_RULES)
+
+
 def applicability(
     *,
     relation: AtomicProfileFactRelation,
@@ -334,14 +364,8 @@ def application_summary(
     parts: list[str] = []
     relations = {item.relation for item in adopted}
     decisions = {decision for item in adopted for decision in item.applicable_to}
-    tags = {
-        tag
-        for item in adopted
-        for tag in expression_preference_tags(item.fact_text)
-    }
-    if purpose.task_kind in _BACKGROUND_KINDS and (
-        relations & _BACKGROUND_RELATIONS
-    ):
+    tags = {tag for item in adopted for tag in expression_preference_tags(item.fact_text)}
+    if purpose.task_kind in _BACKGROUND_KINDS and (relations & _BACKGROUND_RELATIONS):
         parts.append("按用户自述的基础选择解释起点，不推断未提供的掌握程度")
     if DECISION_PLAN_TIME in decisions:
         parts.append("按已声明的时间与资源约束安排可执行步骤")
@@ -383,5 +407,7 @@ __all__ = [
     "expression_preference_tags",
     "is_overridden",
     "is_resource_constraint",
+    "has_task_topic",
     "preference_decisions",
+    "task_topic_matches",
 ]

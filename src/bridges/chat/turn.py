@@ -125,6 +125,7 @@ from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_adoption import (
     AdoptedProfileItem,
     AdoptedProfileSlice,
+    ProfileSliceExclusion,
 )
 from bridges.contracts.profiles import (
     FOUR_DIMENSION_LABELS,
@@ -1700,19 +1701,32 @@ def adopted_profile_block_within_budget(
 
     if remaining_tokens is not None:
         kept: list[AdoptedProfileItem] = []
-        used = 0
+        excluded = list(adopted.excluded_items)
         for item in adopted.adopted_items:
-            cost = estimate_tokens(item.fact_text) + _PROFILE_ITEM_RENDER_TOKENS
-            if used + cost > remaining_tokens:
-                break
+            candidate = adopted.with_items([*kept, item])
+            rendered = adopted_profile_context(
+                candidate, requires_confirmation=requires_confirmation
+            )
+            if estimate_tokens(rendered) > remaining_tokens:
+                excluded.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.fact_text,
+                        exclusion_reason="超出本轮模型输入预算，整条不采用",
+                    )
+                )
+                continue
             kept.append(item)
-            used += cost
-        adopted = adopted.with_items(kept)
+        adopted = adopted.model_copy(
+            update={"adopted_items": tuple(kept), "excluded_items": tuple(excluded)}
+        )
     if not adopted.adopted_items and not requires_confirmation:
         return adopted, None, []
     rendered = adopted_profile_context(
         adopted, requires_confirmation=requires_confirmation
     )
+    if remaining_tokens is not None and estimate_tokens(rendered) > remaining_tokens:
+        return adopted, None, []
     return adopted, rendered, adopted.to_profile_slice().included_items
 
 
@@ -2080,6 +2094,7 @@ def _material_blocks(
     arxiv_search_projection: ArxivSearchProjection | None,
     teaching_projection: TeachingTurnProjection | None,
     profile_context: str | None,
+    profile_required: bool = False,
     profile_correction_context: str | None,
     profile_memory_context: str | None,
 ) -> list[PayloadBlock]:
@@ -2120,7 +2135,7 @@ def _material_blocks(
             PayloadBlock(
                 "profile",
                 MaterialCategory.PROFILE.value,
-                MaterialNecessity.OPTIONAL,
+                MaterialNecessity.REQUIRED if profile_required else MaterialNecessity.OPTIONAL,
                 profile_context,
             )
         )
@@ -2310,6 +2325,7 @@ def _assemble(
     arxiv_search_projection: ArxivSearchProjection | None = None,
     teaching_projection: TeachingTurnProjection | None = None,
     profile_context: str | None = None,
+    profile_required: bool = False,
     profile_correction_context: str | None = None,
     profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
@@ -2329,6 +2345,7 @@ def _assemble(
         arxiv_search_projection=arxiv_search_projection,
         teaching_projection=teaching_projection,
         profile_context=profile_context,
+        profile_required=profile_required,
         profile_correction_context=profile_correction_context,
         profile_memory_context=profile_memory_context,
     )
@@ -2499,6 +2516,7 @@ def assemble_payload_within_budget(
     arxiv_search_projection: ArxivSearchProjection | None = None,
     teaching_projection: TeachingTurnProjection | None = None,
     profile_context: str | None = None,
+    profile_required: bool = False,
     profile_correction_context: str | None = None,
     profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
@@ -2522,6 +2540,7 @@ def assemble_payload_within_budget(
         arxiv_search_projection=arxiv_search_projection,
         teaching_projection=teaching_projection,
         profile_context=profile_context,
+        profile_required=profile_required,
         profile_correction_context=profile_correction_context,
         profile_memory_context=profile_memory_context,
         writing_policy=writing_policy,
@@ -4081,12 +4100,23 @@ class TurnOrchestrator:
                 if context_note is not None:
                     thinking = context_note_thinking(thinking, context_note)
             if not self._profile_slice_still_current(
-                account_id, profile_revocation_version
+                account_id, profile_revocation_version, assistant_message_id
             ):
                 # 工单 18：编译之后、发送之前发生撤回/失效（删除、忘掉、编辑
                 # 或期限到期）。陈旧切片不得进入写作策略与模型载荷；披露如实
                 # 降级为「未使用」。已发往云端的上下文无法收回，本检查只阻止
                 # 后续调用继续使用旧切片。
+                self._audit_slice_usage(
+                    account_id,
+                    mode=mode.value,
+                    enabled=True,
+                    slice_id=profile_slice_id,
+                    item_count=0,
+                    excluded_count=len(profile_items),
+                    material_categories=self._material_categories(
+                        retrieval_round, web_search_projection, arxiv_search_projection
+                    ),
+                )
                 profile_context = None
                 profile_items = []
                 if context_note is not None:
@@ -4196,6 +4226,10 @@ class TurnOrchestrator:
                     arxiv_search_projection=arxiv_search_projection,
                     teaching_projection=teaching_projection,
                     profile_context=profile_context,
+                    profile_required=any(
+                        item.inclusion_reason == "与当前任务相关的现实约束"
+                        for item in profile_items
+                    ),
                     profile_correction_context=correction_context,
                     profile_memory_context=memory_context,
                     writing_policy=writing_policy,
@@ -4224,6 +4258,27 @@ class TurnOrchestrator:
                 self._audit_material_manifest(
                     account_id, assistant_message_id, material_manifest
                 )
+                if profile_context and "profile" not in material_manifest.adopted_ids:
+                    self._audit_slice_usage(
+                        account_id,
+                        mode=mode.value,
+                        enabled=True,
+                        slice_id=profile_slice_id,
+                        item_count=0,
+                        excluded_count=len(profile_items),
+                        material_categories=self._material_categories(
+                            retrieval_round, web_search_projection, arxiv_search_projection
+                        ),
+                    )
+                    if context_note is not None:
+                        context_note = self._persist_context_note(
+                            account_id, assistant_message_id,
+                            context_note.model_copy(update={
+                                "state": ContextNoteState.EMPTY,
+                                "profile_item_count": 0,
+                                "note": "最终输入预算不足，本轮未使用额外画像背景。",
+                            }),
+                        )
             if compile_floor_exceeded or (
                 material_manifest is not None
                 and not material_manifest.gate.within_budget
@@ -5444,10 +5499,21 @@ class TurnOrchestrator:
         if context_note is not None:
             thinking = context_note_thinking(thinking, context_note)
         if not self._profile_slice_still_current(
-            account_id, profile_revocation_version
+            account_id, profile_revocation_version, assistant_message_id
         ):
             # 工单 18：编译之后、技能编排（内含模型调用）之前发生撤回/失效，
             # 旧切片不进入编排参数与载荷，披露如实降级为「未使用」。
+            self._audit_slice_usage(
+                account_id,
+                mode=mode.value,
+                enabled=True,
+                slice_id=profile_slice_id,
+                item_count=0,
+                excluded_count=len(profile_items),
+                material_categories=self._material_categories(
+                    retrieval_round, web_search_projection, arxiv_search_projection
+                ),
+            )
             profile_context = None
             profile_items = []
             if context_note is not None:
@@ -6315,26 +6381,41 @@ class TurnOrchestrator:
                     if current_user_message is not None
                     else None
                 )
-                atomic_adopted = self._atomic_profiles.compile_adopted_slice(
-                    account_id,
-                    run_id=assistant_message_id,
-                    purpose=build_purpose(
-                        mode=mode.value,
-                        query=query,
-                        module_id=(
-                            current_user_message.module_id
+                run = self._repo.get_run_by_message(account_id, assistant_message_id)
+                saved = (run.config or {}).get("adopted_profile_slice") if run else None
+                if isinstance(saved, dict):
+                    try:
+                        atomic_adopted = AdoptedProfileSlice.model_validate(saved)
+                    except ValidationError:
+                        atomic_adopted = None
+                    if (
+                        atomic_adopted is not None
+                        and not self._atomic_profiles.is_adopted_slice_current(
+                            account_id, atomic_adopted
+                        )
+                    ):
+                        atomic_adopted = None
+                if atomic_adopted is None:
+                    atomic_adopted = self._atomic_profiles.compile_adopted_slice(
+                        account_id,
+                        run_id=assistant_message_id,
+                        purpose=build_purpose(
+                            mode=mode.value,
+                            query=query,
+                            module_id=(
+                                current_user_message.module_id
+                                if current_user_message is not None
+                                else None
+                            ),
+                            learning_stage=learning_stage,
+                        ),
+                        # 本轮刚自动整理出的条目下一轮才生效（V2 Issue 08）。
+                        current_user_message_id=(
+                            current_user_message.message_id
                             if current_user_message is not None
                             else None
                         ),
-                        learning_stage=learning_stage,
-                    ),
-                    # 本轮刚自动整理出的条目下一轮才生效（V2 Issue 08）。
-                    current_user_message_id=(
-                        current_user_message.message_id
-                        if current_user_message is not None
-                        else None
-                    ),
-                )
+                    )
             elif self._four_dimension_profiles is not None:
                 profile_slice = self._four_dimension_profiles.compile_chat_slice(
                     account_id,
@@ -6430,7 +6511,11 @@ class TurnOrchestrator:
                 item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON
                 for item in atomic_adopted.excluded_items
             )
-            adopted_before_budget = len(atomic_adopted.adopted_items)
+            required_ids = {
+                item.profile_item_id for item in atomic_adopted.adopted_items
+                if "plan_time_budget" in item.applicable_to
+            }
+            compiled_adopted = atomic_adopted
             atomic_adopted, profile_context, profile_items = (
                 adopted_profile_block_within_budget(
                     atomic_adopted,
@@ -6438,15 +6523,33 @@ class TurnOrchestrator:
                     remaining_tokens=_remaining_input_tokens(context_budget),
                 )
             )
-            dropped_for_budget = adopted_before_budget - len(profile_items)
+            if context_budget is not None and any(
+                item.profile_item_id in required_ids
+                and item.exclusion_reason == "超出本轮模型输入预算，整条不采用"
+                for item in atomic_adopted.excluded_items
+            ):
+                context_budget["budget_floor_exceeded"] = True
+            run = self._repo.get_run_by_message(account_id, assistant_message_id)
+            if run is not None:
+                config = dict(run.config or {})
+                # 复用既有运行配置的备份/导出/删除路径，只保存采用正文；不保存
+                # 未采用正文和重复的用户请求。规则版本随合同保存，旧运行缺省重编。
+                stored = compiled_adopted.model_copy(update={
+                    "purpose": compiled_adopted.purpose.model_copy(update={"query": None}),
+                    "excluded_items": tuple(
+                        item.model_copy(update={"fact_text": ""})
+                        for item in compiled_adopted.excluded_items
+                    ),
+                })
+                config["adopted_profile_slice"] = stored.model_dump(mode="json")
+                self._repo.update_generation_config(account_id, run.run_id, config)
             self._audit_slice_usage(
                 account_id,
                 mode=mode.value,
                 enabled=True,
                 slice_id=atomic_adopted.slice_id,
                 item_count=len(profile_items),
-                excluded_count=len(atomic_adopted.excluded_items)
-                + dropped_for_budget,
+                excluded_count=len(atomic_adopted.excluded_items),
                 material_categories=material_categories,
             )
             context_note = ContextNoteProjection(
@@ -6524,7 +6627,10 @@ class TurnOrchestrator:
         )
 
     def _profile_slice_still_current(
-        self, account_id: str, revocation_version: str | None
+        self,
+        account_id: str,
+        revocation_version: str | None,
+        assistant_message_id: str | None = None,
     ) -> bool:
         """切片编译后到发送前是否仍未被撤回/失效（工单 18）。
 
@@ -6535,6 +6641,13 @@ class TurnOrchestrator:
 
         if revocation_version is None or self._atomic_profiles is None:
             return True
+        if assistant_message_id is not None:
+            run = self._repo.get_run_by_message(account_id, assistant_message_id)
+            saved = (run.config or {}).get("adopted_profile_slice") if run else None
+            if isinstance(saved, dict):
+                return self._atomic_profiles.is_adopted_slice_current(
+                    account_id, AdoptedProfileSlice.model_validate(saved)
+                )
         return self._atomic_profiles.is_slice_current(account_id, revocation_version)
 
     def _compile_writing_policy(
@@ -6563,6 +6676,13 @@ class TurnOrchestrator:
         existing_data = (
             (run.config or {}).get("global_writing_policy") if run is not None else None
         )
+        if (
+            isinstance(existing_data, dict)
+            and existing_data.get("profile_context") != profile_context
+        ):
+            # 正常重试复用策略；删除、纠正、关闭或预算变化时重新绑定真实采用
+            # 结果，不能让旧策略快照把已经失效的正文重新带回模型输入。
+            existing_data = None
         user_text = ""
         continuation_text = ""
         if run is not None:
