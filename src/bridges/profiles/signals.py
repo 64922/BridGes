@@ -33,6 +33,21 @@ class ProfileCorrectionIntent:
 
 
 @dataclass(frozen=True, slots=True)
+class SegmentClassification:
+    """一条消息内部片段（分句）的分类与原始区间。
+
+    改进工单 17：混合消息不再因某一片段（第三方、敏感、一次性情绪）被整句
+    丢弃；逐片段检查后，合规片段仍可参与抽取。区间是原消息的 Unicode 码点
+    半开区间 ``[start, end)``。
+    """
+
+    start: int
+    end: int
+    text: str
+    classification: ProfileSignalClassification
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileSignalClassification:
     """分类结果及其稳定原因码。"""
 
@@ -78,6 +93,17 @@ _THIRD_PARTY = re.compile(
 )
 _HYPOTHETICAL = re.compile(r"(?:假设|假如|如果|设想|模拟|扮演|角色扮演)")
 _NEGATION = re.compile(r"(?:不想|不喜欢|不要|别|不是|没有|无需|不再|拒绝|避免)")
+#: 自我指向的否定偏好（「我不喜欢长篇回答」）是合法可复用事实；它与
+#: 「我不想学习 X」等否定意图不同，后者仍按否定陈述保持禁止。
+_PREFERENCE_NEGATION = re.compile(r"我(?:现在|目前)?不(?:太)?(?:喜欢|爱|偏好)")
+#: 改进工单 17 的可复用信号预检：本地规则覆盖不到的明确偏好与约束
+#: （「以后先给结论」「每天 30 分钟」）交给语义模型提出候选，而不是整句跳过。
+_REUSABLE_PREFERENCE = re.compile(
+    r"(?:以后|之后|下次|今后|平时|每次)[^。！？!?；;\n]{0,40}?"
+    r"(?:先|再|别|不用|不要|尽量|多|少|只)"
+    r"|(?:每天|每周|每轮)[^。！？!?；;\n]{0,20}(?:分钟|小时|时间|道题|篇)"
+    r"|(?:先|再)(?:给|讲|说|写|列|画|用)"
+)
 _SENSITIVE = re.compile(
     r"(?:焦虑|抑郁|情绪|健康|疾病|病史|诊断|人格|心理|性格|政治|宗教|"
     r"佛教|基督教|伊斯兰教|道教|天主教|犹太教|糖尿病|癌症|高血压|"
@@ -88,6 +114,7 @@ _SENSITIVE = re.compile(
 _EXPLICIT_PROFILE = re.compile(
     r"(?:^|[，。；：:,\s])(?:"
     r"我(?:的|目前|现在|对|喜欢|计划|打算|想|要|准备|正在|在|是|在读|就读|研究)"
+    r"|我(?:现在|目前)?不(?:太)?(?:喜欢|爱|偏好)"
     r"|(?:给|帮)我规划)"
 )
 _CORRECTION_MARKER = re.compile(
@@ -132,6 +159,12 @@ _HIGH_LEARNING = re.compile(
     r"^(?!(?:如何|怎么|为什么|什么是))"
     r"(?:(?:想|要|准备|正在|在)\s*)?(?:学(?:习)?|研究)\s*\S+"
 )
+#: 改进工单 17：同一消息内承前省略主语的并列自述（「我喜欢跑步，也喜欢
+#: 爬山」）。只认显式并列词开头，不把裸「喜欢 X」晋升为自述。
+_ELIDED_SELF = re.compile(
+    r"^(?:我\s*)?(?:也|还|又|同时)\s*"
+    r"(?:(?:很|比较|特别)?(?:喜欢|爱)|(?:(?:想|要|准备|正在|在)\s*)?学(?:习)?|研究)"
+)
 _QUESTION_LIKE = re.compile(
     r"^(?:(?:目前|现在)?(?:大[一二三四]|研[一二三]|本科(?:生)?|研究生|"
     r"硕士(?:生)?|博士(?:生)?|大学生|学生|目标|计划|打算|规划)?"
@@ -141,6 +174,18 @@ _QUESTION_LIKE = re.compile(
 _BEHAVIOR_PREFIX = re.compile(
     r"^(?:找|搜索|查找|检索|查|看|阅读|推荐|了解|介绍|什么是|"
     r"如何|怎么|为什么|能否|请问)\s*\S+"
+)
+#: 改进工单 17：混合消息逐片段检查的切分边界（句子与分句）。
+_SEGMENT_DELIMITERS = re.compile(r"[。！？!?；;\n，,]+")
+#: 即使片段内出现合规词语也不能作为用户事实的硬禁止原因；这些片段只能
+#: 被丢弃，不能降级成观察，也不能因整消息分类而否决其他合规片段。
+HARD_FORBIDDEN_REASONS = frozenset(
+    {
+        "quoted_or_relayed_text",
+        "hypothetical_or_role_play",
+        "third_party_statement",
+        "sensitive_content",
+    }
 )
 
 
@@ -199,6 +244,12 @@ class ProfileSignalClassifier:
                 "subject_omitted_academic_statement",
                 0.95,
             )
+        if _ELIDED_SELF.search(text):
+            return self._result(
+                ProfileSignalCategory.HIGH_CONFIDENCE_SELF,
+                "elided_subject_self_statement",
+                0.95,
+            )
         if _HIGH_GOAL.search(text) or _HIGH_LEARNING.search(text):
             return self._result(
                 ProfileSignalCategory.HIGH_CONFIDENCE_SELF,
@@ -230,6 +281,101 @@ class ProfileSignalClassifier:
             correction_intent=correction_intent,
         )
 
+    def classify_segments(self, content: str) -> list[SegmentClassification]:
+        """按分句切分消息并逐片段分类（改进工单 17）。
+
+        混合消息（第三方、引用、敏感片段与合规自述并存）不再整句丢弃：
+        每个片段保留原消息码点区间，抽取与验证按片段决定写不写。
+        """
+
+        segments: list[SegmentClassification] = []
+        position = 0
+        for match in _SEGMENT_DELIMITERS.finditer(content):
+            self._append_segment(segments, content, position, match.start())
+            position = match.end()
+        self._append_segment(segments, content, position, len(content))
+        return segments
+
+    def _append_segment(
+        self,
+        segments: list[SegmentClassification],
+        content: str,
+        start: int,
+        end: int,
+    ) -> None:
+        text = content[start:end]
+        if not text.strip():
+            return
+        segments.append(
+            SegmentClassification(
+                start=start,
+                end=end,
+                text=text,
+                classification=self.classify(text),
+            )
+        )
+
+    def has_reusable_signal(self, content: str) -> bool:
+        """本地预检：消息是否含任何可复用画像信号（允许混合内容）。
+
+        整消息分类可处理、任一片段可处理，或出现本地规则覆盖不到的明确
+        偏好/约束表达时为真；纯问候、纯工具命令、仅第三方/引用/敏感内容
+        仍可整条跳过，不要求每条消息调用模型。
+        """
+
+        if self.classify(content).should_process:
+            return True
+        if any(
+            segment.classification.should_process
+            for segment in self.classify_segments(content)
+        ):
+            return True
+        return bool(_REUSABLE_PREFERENCE.search(content))
+
+    def extraction_classification(self, content: str) -> ProfileSignalClassification:
+        """给出抽取实际使用的有效分类（整消息优先，其次合规片段）。
+
+        ``classify`` 的整消息结果保留给既有投影与审计；抽取路径用本方法，
+        避免旧的整消息禁止标签否决所有有效片段。片段命中按自述 > 模糊 >
+        行为观察的优先级选择，并在原因码上保留 ``|segment`` 标记。
+        """
+
+        whole = self.classify(content)
+        if whole.should_process:
+            return whole
+        priority = {
+            ProfileSignalCategory.EXPLICIT_SELF: 0,
+            ProfileSignalCategory.HIGH_CONFIDENCE_SELF: 1,
+            ProfileSignalCategory.AMBIGUOUS: 2,
+            ProfileSignalCategory.BEHAVIOR_OBSERVATION: 3,
+        }
+        best: ProfileSignalClassification | None = None
+        best_rank = len(priority)
+        for segment in self.classify_segments(content):
+            classification = segment.classification
+            if not classification.should_process:
+                continue
+            rank = priority.get(classification.category, len(priority))
+            if rank < best_rank:
+                best = classification
+                best_rank = rank
+        if best is not None:
+            return ProfileSignalClassification(
+                category=best.category,
+                reason_code=f"{best.reason_code}|segment",
+                confidence=best.confidence,
+                strategy_version=best.strategy_version,
+                correction_intent=best.correction_intent,
+            )
+        if _REUSABLE_PREFERENCE.search(content):
+            return ProfileSignalClassification(
+                category=ProfileSignalCategory.AMBIGUOUS,
+                reason_code="semantic_profile_candidate",
+                confidence=0.5,
+                strategy_version=self.version,
+            )
+        return whole
+
     @staticmethod
     def _forbidden_reason(text: str) -> str | None:
         if _QUOTED_CONTEXT.search(text):
@@ -239,7 +385,8 @@ class ProfileSignalClassifier:
         if _THIRD_PARTY.search(text):
             return "third_party_statement"
         if _NEGATION.search(text) and not (
-            _CORRECTION_NEGATED_REPLACEMENT.search(text)
+            _PREFERENCE_NEGATION.search(text)
+            or _CORRECTION_NEGATED_REPLACEMENT.search(text)
             or _CORRECTION_DISINTERESTED_REPLACEMENT.search(text)
         ):
             return "negated_statement"
@@ -346,8 +493,10 @@ class ProfileSignalClassifier:
 
 __all__ = [
     "PROFILE_SIGNAL_CLASSIFIER_VERSION",
+    "HARD_FORBIDDEN_REASONS",
     "ProfileSignalCategory",
     "ProfileSignalClassification",
     "ProfileCorrectionIntent",
     "ProfileSignalClassifier",
+    "SegmentClassification",
 ]

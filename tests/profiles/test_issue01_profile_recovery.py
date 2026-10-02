@@ -586,6 +586,9 @@ def test_automatic_extraction_still_mirrors_after_repair(
         json={"content": "我的目标是今年通过雅思考试"},
     )
     assert created.status_code == 200, created.text
+    # 改进工单 17：普通抽取在回答正常完成后由可恢复队列异步执行；
+    # 测试显式驱动一次 worker，验证修复后的库上队列仍能镜像。
+    app.state.generation_executor.run_tick()
 
     items = client.get("/profiles/items").json()
     assert [item["text"] for item in items] == ["今年通过雅思考试"]
@@ -667,6 +670,9 @@ def test_exhausted_extraction_is_re_armed_only_after_the_cause_is_confirmed(
         json={"content": "我的目标是今年通过雅思考试"},
     )
     assert created.status_code == 200, created.text
+    # 改进工单 17：先让回答正常完成并登记异步抽取任务，再驱动失败重试
+    # 直到耗尽；缺表注入在抽取提交时才被触发。
+    app.state.generation_executor.run_tick()
     for _ in range(4):
         service.run_retry_tick()
         row = database.connection.execute(

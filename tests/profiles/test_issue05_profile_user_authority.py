@@ -348,9 +348,10 @@ def test_correction_retry_mirrors_the_atomic_item(harness: _Harness) -> None:
     assert goal_record.content == CORRECTED_TEXT
     # 重试与首次处理一致：来源已改，用户可见条目同步更新。
     assert _stage_goal_item(harness).text == CORRECTED_TEXT
-    assert [task.status for task in harness.service.list_retry_tasks(ACCOUNT)] == [
-        ProfileExtractionStatus.SUCCEEDED
-    ]
+    # 改进工单 17：成功抽取也留有调度任务记账；关键是不残留失败或待处理。
+    assert {
+        task.status for task in harness.service.list_retry_tasks(ACCOUNT)
+    } == {ProfileExtractionStatus.SUCCEEDED}
 
 
 def test_correction_keeps_user_edited_item(harness: _Harness) -> None:
