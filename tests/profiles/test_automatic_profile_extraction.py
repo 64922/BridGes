@@ -644,7 +644,6 @@ def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> No
         "我不想学习 Transformer",
         "角色扮演：我想学习 Transformer",
         "引用：我想学习 Transformer",
-        "我最近焦虑，想学习 Transformer",
         "我想学习政治",
         "我喜欢佛教",
         "我对糖尿病感兴趣",
@@ -675,6 +674,36 @@ def test_forbidden_subject_omission_variants_never_write_profile(
     assert result.run.status == "succeeded"
     assert result.observed_count == 0
     assert target_service.list_records("account-alice") == []
+
+
+def test_mixed_sensitive_and_clean_fragments_write_only_clean_fragment() -> None:
+    """改进工单 17：混合消息逐片段判定，合规片段可写入，敏感片段零写入。"""
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我最近焦虑，想学习 Transformer",
+        run_id="run-1",
+        mode="study",
+    )
+
+    assert result.run.status == "succeeded"
+    records = target_service.list_records("account-alice")
+    assert [(record.dimension, record.content) for record in records] == [
+        (FourDimension.KNOWLEDGE_INTEREST, "Transformer")
+    ]
+    assert "焦虑" not in (records[0].evidence_quote or "")
+    assert "想学习 Transformer" in (records[0].evidence_quote or "")
 
 
 def test_submission_validation_reuses_precheck_classification() -> None:
@@ -729,8 +758,10 @@ def test_submission_validation_reuses_precheck_classification() -> None:
     assert extractor.classifications[0].category == (
         ProfileSignalCategory.BEHAVIOR_OBSERVATION
     )
-    assert result.run.status == "exhausted"
-    assert result.run.last_error == "profile_extraction_self_statement_missing"
+    # 改进工单 17：行为分类消息里的候选只保留观察，不再整条消息失败关闭。
+    assert result.run.status == "succeeded"
+    assert result.run.last_error is None
+    assert result.observed_count == 1
     assert target_service.list_records("account-alice") == []
 
 

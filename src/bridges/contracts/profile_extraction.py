@@ -35,11 +35,15 @@ PROFILE_SOURCE_LABELS: dict[ProfileExtractionSource, str] = {
 }
 
 #: 画像页面/首次说明使用的诚实混合策略说明；禁止夸大为"全部由 Qwen
-#: 生成"或"完全不使用模型"。
+#: 生成"或"完全不使用模型"。改进工单 17：普通提取只在回答正常完成后异步
+#: 入队，模型调用在写事务外进行；每次真实调用保留运行锁与调用版本合同，
+#: 成本与调用计数按有界重试记录在既有审计里。
 PROFILE_HYBRID_EXPLANATION = (
     "自动画像采用混合整理：明确的自我描述、学习目标、行为观察与更正由本机"
     "规则识别，不会调用模型；含义不够明确的表述可能使用全局配置的 Qwen "
-    "辅助识别。你可以随时查看、修改、撤回或关闭自动记录。"
+    "辅助识别。普通整理只在回答正常完成后异步进行，调用在写事务外完成，"
+    "每次真实调用保留可审计的运行锁与调用版本。你可以随时查看、修改、"
+    "撤回或关闭自动记录。"
 )
 
 
@@ -140,6 +144,20 @@ class ProfileExtractionItem(BaseModel):
             "用原句片段补齐；模型候选按 17 提供完整事实。缺失时沿用以来源记录"
             "正文为事实正文的旧行为，不伪造原话。"
         ),
+    )
+    evidence_start: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "改进工单 17：支持原话在用户消息中的 Unicode 码点半开区间起点"
+            "[start, end)。有区间时按精确证据验证主体、关系、否定与时间；"
+            "缺失时退回旧的整消息证据检查。"
+        ),
+    )
+    evidence_end: int | None = Field(
+        default=None,
+        ge=0,
+        description="精确原话区间终点（半开区间，与 evidence_start 成对出现）。",
     )
 
     @field_validator("normalized_value", "evidence_ref", mode="before")

@@ -435,10 +435,12 @@ def test_retry_does_not_revive_a_deleted_fact(harness: _Harness) -> None:
     # 被删的事实不复活；同批次的其他事实留在删除前的状态，没有被部分提交。
     assert {item.text for item in harness.items()} == {STATUS_TEXT}
     assert [item.source_message_ids for item in harness.items()] == [["message-1"]]
-    # 删除后的再次提取无法复活的事实落到「重试耗尽」，不是成功。
-    assert [task.status for task in harness.tasks()] == [
-        ProfileExtractionStatus.EXHAUSTED
-    ]
+    # 删除后的再次提取无法复活的事实落到「重试耗尽」，不是成功；先前
+    # 正常完成的消息只留下成功的任务记账（改进工单 17 的异步调度）。
+    assert {task.status for task in harness.tasks()} == {
+        ProfileExtractionStatus.SUCCEEDED,
+        ProfileExtractionStatus.EXHAUSTED,
+    }
     runs = {run.message_id: run for run in harness.state.list_runs(ACCOUNT)}
     assert runs["message-2"].status == ProfileExtractionStatus.EXHAUSTED
     assert runs["message-2"].outcome.value == "permanent_failure"

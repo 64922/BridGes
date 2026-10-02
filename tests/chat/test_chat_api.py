@@ -880,7 +880,7 @@ def test_second_account_cannot_read_thinking_summary(
 
 
 def test_issue06_chat_messages_populate_current_account_profile(
-    client: TestClient, sqlite_app: Any
+    client: TestClient, sqlite_app: Any, generation_helpers: dict[str, Any]
 ) -> None:
     _register(client, "61")
     messages = (
@@ -892,6 +892,9 @@ def test_issue06_chat_messages_populate_current_account_profile(
     for content in messages:
         conversation_id = _create_conversation(client)
         _send(client, conversation_id, content)
+    # 改进工单 17：普通抽取在回答正常完成后由可恢复队列异步执行；
+    # 测试驱动 worker 直到没有待处理运行与画像任务。
+    generation_helpers["drive"](sqlite_app)
 
     profile = client.get("/profiles/four-dimensions")
     assert profile.status_code == 200, profile.text

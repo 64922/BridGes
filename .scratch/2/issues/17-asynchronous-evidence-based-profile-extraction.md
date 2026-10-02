@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — 补齐画像剩余规格与验收决策；03 — 锁定完整模型额度与每次调用版本；04 — 守住最终模型载荷预算与材料权威边界；16 — 以完整事实身份保存画像并处理并存更新
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -53,3 +53,42 @@
 确定性候选与阻塞模拟验证时序/事务/并发，复核脚本扩展逐事实反例；真实抽取质量由 41 评测。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+## 实施记录（2026-10-02）
+
+分支 `codex/issue-17-asynchronous-evidence-based-profile-extraction`，基点 `main@83c27f2f`；worktree `D:\BridGes\.worktrees\17-async-profile-extraction`。开发与验证均在 conda `agent` 环境。
+
+### 实现说明
+
+- **回答后异步提取**：`process_synchronous_controls` 先落控制指令；普通提取改为 `schedule_message_extraction`（以账号 + 消息 + 抽取器版本 + 原文哈希为幂等键）登记 PENDING 任务，由 worker `run_retry_tick` 领取执行。生成执行器在 `_run_turn` 收敛与 `recover_committed_result` 只在回答 `DONE` 时登记；`ChatService.stream_generation` 对直接编排路径同样在消息 `DONE` 后登记。失败/停止终态不登记，不阻塞本轮或下一轮。
+- **同步入口保留**：`preprocess_message` 仍同步执行一次（基线语义与既有测试接缝），调度账目不放在写入同一事务，模型调用在写事务外。
+- **逐候选证据**：`ProfileExtractionItem` 新增可选 `evidence_start/evidence_end`（合同仍为 `profile-extraction-v2`，调用合同 `input_schema_version=profile-message-v2`）；`classify_segments`/`extraction_classification`/`has_reusable_signal` 支持混合消息；`_resolve_candidate_action` 按片段的确定性分类决定写入/观察/零写入，并核对否定、原文时间与「规范值真实出现在精确区间」。无区间的历史抽取器保持基线信任模式，仅精确区间候选执行值支持检查。
+- **事务与复核**：模型调用在写事务外；提交在 `_commit.transaction()` 短事务内先 `_recheck_source_before_commit`（run 终态、墓碑、原文哈希、记录许可、抽取器版本），再落四维与原子镜像；失败按可重试/永久分类，有界重试后任务落 EXHAUSTED 留审计。attempt 序号修正为首轮 1、重试递增，消息重试不重复证据计数。
+- **覆盖情况**：一条消息可零/多条事实（多个爱好分别成事实）；否定偏好保留完整分句（「我不喜欢长篇回答」零写成肯定值）；承前省略主语（「我喜欢跑步，也喜欢爬山」）识别；第三方/引用/敏感片段零写入而同一消息合规片段可写；「以后先结论」「每天 30 分钟」由本地预检放行给语义模型候选。
+- **模型调用合同**：prompt/recipe/context/quality/estimate/quota 版本随调用上报；邻近用户原文只作回指线索，不提供已存事实内容，回指不进入事实证据。
+
+### 版本与接口变化
+
+- 新增 `PROFILE_EXTRACTION_PROMPT_VERSION`、`PROFILE_EXTRACTION_RECIPE_VERSION`、`PROFILE_EXTRACTION_CONTEXT_VERSION`、`PROFILE_EXTRACTION_QUALITY_POLICY_VERSION`、`PROFILE_EXTRACTION_MAX_NEIGHBORS`。
+- `ProfileExtractionItem` 增加可选区间字段，向后兼容 v1/v2 输出合同；未改 `output_contract` 与 `AUTOMATIC_EXTRACTOR_VERSION`（避免无谓重抽）。
+
+### 验证结果
+
+- 新增 `tests/profiles/test_issue17_async_evidence_extraction.py` 13 项：异步登记幂等与 worker 领取、模型调用在写事务外、精确区间写入、否定/丢失时间/值不受支持零写入、混合多事实、用户+朋友省略主语、伪造区间合同失败、执行器与服务仅 `DONE` 登记、抽取器版本变化丢弃迟到结果。
+- `tests/profiles`：424 passed / 1 failed。唯一失败 `test_chat_correction_uses_latest_record_and_is_idempotent` 在基线 worktree 独立复跑同样失败（Windows 时钟精度平局），与本票无关。
+- `tests/chat`：100 failed / 826 passed / 1 xfailed；失败名单与基线 worktree 逐名 diff 一致（既存失败）。
+- `tests/api`+`contracts`+`runtime`+`observability`+`ai`：323 passed / 5 failed；5 项在基线 worktree 同样失败（进程锁与 CLI 帮助等 Windows 环境问题）。
+- mypy `src`：98 errors / 20 files，与基线一致；ruff 变更文件零新增诊断（automatic.py 13 处 E501 及各文件既存 I001/E402 为基线）。
+- 真实模型抽取质量未在本票验收，按 41 评测执行。
+
+### 已知限制
+
+- 抽取器版本只在任务领取与最终提交两处复核；领取与提交之间升级会失败关闭并留 EXHAUSTED 任务记录（新的调度按新版本重抽）。
+- 未向网关模型提供已存事实标识/有效性：回指仅用邻近用户原文；「补证/更新」由提交层的完整事实身份（Issue 16）完成，符合任务 3 的边界表述。
+
+### 2026-10-02：用户授权独立验收与合入
+
+- 独立验收发现 P1 缺陷并修复：语义模型对「以后先给结论」「每天 30 分钟」等本地词表未命中的明确偏好/约束提候选时，会被旧确定性分类整批否决（片段 `no_signal` → `IGNORE`，写入与观察均不可达）。修复后，带精确区间的语义创建/更新候选在片段非硬禁止、非行为/模糊、候选文本通过可复用偏好/约束预检且证据支持取值/否定/时间时按明确事实提交；无关片段候选仍零写入。
+- 补足票面要求的复核脚本扩展（语义候选正反例、逐片段反例）与 5 项验收回归；新增测试合计 18 passed。
+- `tests/profiles` 429 passed / 1 failed（Windows 时钟平局，基线同样失败）；`tests/chat` 与 `tests/api`+`contracts`+`runtime`+`observability`+`ai` 失败名单与基线逐名一致；mypy 与基线一致。详见[独立验收记录](../acceptance/17-asynchronous-evidence-based-profile-extraction.md)。
+- 用户已授权合并、推送与清理；合入与清理结果追加在验收记录中。

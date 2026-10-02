@@ -189,6 +189,9 @@ def test_sqlite_composition_extracts_mirrors_and_deletes_in_one_pass(
         json={"content": "我的目标是今年通过雅思考试"},
     )
     assert created.status_code == 200, created.text
+    # 改进工单 17：普通抽取在回答正常完成后由可恢复队列异步执行，
+    # 测试显式驱动一次 worker 再读取镜像结果。
+    sqlite_app.state.generation_executor.run_tick()
 
     items = client.get("/profiles/items").json()
     assert [item["text"] for item in items] == ["今年通过雅思考试"]

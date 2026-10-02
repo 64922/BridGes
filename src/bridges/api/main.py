@@ -5,7 +5,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -202,6 +202,7 @@ from bridges.persistence import (
 )
 from bridges.plugins.service import PluginService
 from bridges.profiles import (
+    PROFILE_EXTRACTION_MAX_NEIGHBORS,
     AtomicProfileService,
     AutomaticProfileService,
     FourDimensionContractGate,
@@ -481,6 +482,26 @@ def _commute_task_reference(
 def _paper_metadata_client() -> httpx.Client:
     """论文元数据补充的共享客户端（独立短超时；不承载账户凭据）。"""
     return httpx.Client(timeout=ENRICH_TIMEOUT_SECONDS)
+
+
+def _profile_neighbor_reader(
+    repository: ConversationRepository,
+) -> Callable[[str, str, str], list[str]]:
+    """读取当前消息之前的邻近用户原文，仅供画像抽取解析回指。"""
+
+    def read(account_id: str, conversation_id: str, message_id: str) -> list[str]:
+        neighbors: list[str] = []
+        for message in reversed(repository.list_messages(account_id, conversation_id)):
+            if message.message_id == message_id:
+                break
+            role = getattr(message.role, "value", message.role)
+            if role == "user" and message.content.strip():
+                neighbors.append(message.content)
+            if len(neighbors) >= PROFILE_EXTRACTION_MAX_NEIGHBORS:
+                break
+        return list(reversed(neighbors))
+
+    return read
 
 
 def _github_api_client() -> httpx.Client:
@@ -1232,18 +1253,32 @@ def create_app(
     app.state.four_dimension_profile_service.set_observation_delete_callback(
         automatic_profile_repository.delete_observations_for_record
     )
+    profile_conversation_repository = (
+        ConversationRepository(profile_database) if profile_database is not None else None
+    )
     automatic_profile_extractor = (
         RuleBasedAutomaticProfileExtractor()
         if settings is not None and settings.environment.lower() == "test"
-        else GatewayAutomaticProfileExtractor(model_gateway)
+        else GatewayAutomaticProfileExtractor(
+            model_gateway,
+            # 改进工单 03/04：画像提取调用与主对话/摘要共用运行配置额度快照
+            # 与每次调用版本合同。
+            model_config_provider=run_model_config,
+            # 改进工单 17：必要邻近用户原文只用于解析回指。
+            neighbor_reader=(
+                _profile_neighbor_reader(profile_conversation_repository)
+                if profile_conversation_repository is not None
+                else None
+            ),
+        )
     )
     app.state.automatic_profile_service = AutomaticProfileService(
         four_dimension_service=app.state.four_dimension_profile_service,
         repository=automatic_profile_repository,
         extractor=automatic_profile_extractor,
         message_reader=(
-            ConversationRepository(profile_database).get_message
-            if profile_database is not None
+            profile_conversation_repository.get_message
+            if profile_conversation_repository is not None
             else None
         ),
         observability_service=app.state.observability_service,

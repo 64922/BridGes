@@ -18,6 +18,7 @@ from bridges.profiles.four_dimensions import (
 from bridges.profiles.automatic import (
     AUTOMATIC_EXTRACTOR_VERSION,
     PROFILE_CORRECTION_RULES_VERSION,
+    PROFILE_EXTRACTION_MAX_NEIGHBORS,
     PROFILE_REPLAY_QUEUE,
     AutomaticProfileError,
     AutomaticProfileService,
@@ -68,6 +69,7 @@ __all__ = [
     "AUTOMATIC_EXTRACTOR_VERSION",
     "PROFILE_REPLAY_QUEUE",
     "PROFILE_CORRECTION_RULES_VERSION",
+    "PROFILE_EXTRACTION_MAX_NEIGHBORS",
     "AutomaticProfileError",
     "AutomaticProfileService",
     "GatewayAutomaticProfileExtractor",

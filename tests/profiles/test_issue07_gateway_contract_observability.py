@@ -349,7 +349,11 @@ def test_permanent_profile_failure_does_not_create_retry_task(error_code: str) -
 
     assert result.run.status == ProfileExtractionStatus.EXHAUSTED
     assert result.run.outcome == ProfileExtractionOutcome.PERMANENT_FAILURE
-    assert service.list_retry_tasks("account-1") == []
+    # 改进工单 17：异步调度先登记可恢复任务；永久失败后不留待重试任务，
+    # 只保留终态记账，不会被再次执行。
+    assert [
+        task.status for task in service.list_retry_tasks("account-1")
+    ] == [ProfileExtractionStatus.EXHAUSTED]
     assert service.profile_status("account-1").status == "failed"
     assert gateway.calls == 1
     metrics = observability.profile_metrics_snapshot()

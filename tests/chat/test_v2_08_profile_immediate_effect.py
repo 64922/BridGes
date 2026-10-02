@@ -185,6 +185,9 @@ class _Env:
                 **kwargs,
             )
         )
+        # 改进工单 17：普通抽取在回答正常完成后由可恢复队列异步执行；
+        # 测试与生产 worker 同形，回答终态后驱动一次画像任务。
+        self.automatic.run_retry_tick()
         final = self.chat.message_projection(self.account, assistant.message_id)
         assert final is not None and final.status == ChatMessageStatus.DONE
         return final
@@ -301,12 +304,13 @@ def test_automatic_extraction_mirrors_into_the_atomic_list(env: _Env) -> None:
 
     user, assistant = env.start(GOAL_MESSAGE)
 
+    # 设计口径：普通提取在回答正常完成后异步执行，本轮不把它塞进上下文。
+    final = env.run(assistant)
+
     projection = env.atomic.projections(ACCOUNT)[0]
     assert projection.text == GOAL_ITEM
     assert projection.source_message_ids == [user.message_id]
     assert projection.write_origin.value == "automatic"
-    # 设计口径：普通异步提取下一轮生效，本轮不把它塞进上下文。
-    final = env.run(assistant)
     assert env.system_blocks(_SLICE_MARKER) == []
     assert final.context_note is not None
     assert final.context_note.state == ContextNoteState.EMPTY

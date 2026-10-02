@@ -12,6 +12,7 @@ error / stopped）、用户级重试（每次重试新建助手尝试，历史�
 from __future__ import annotations
 
 import contextlib
+import logging
 import secrets
 import threading
 import time
@@ -179,6 +180,8 @@ from bridges.web_search.service import WebSearchService
 if TYPE_CHECKING:
     # 工单 11 的任务查询接缝：只用于类型标注，运行时不引入任务领域依赖。
     from bridges.tasks.service import TaskService
+
+logger = logging.getLogger(__name__)
 
 #: 由首条用户消息推导对话标题的最大长度。
 _TITLE_MAX = 24
@@ -1190,7 +1193,10 @@ class ChatService:
         """
         if self._automatic_profiles is not None:
             try:
-                result = self._automatic_profiles.preprocess_message(
+                # 改进工单 17：回答前只同步处理显式控制（停止记录、记住/
+                # 忘掉、明确纠正）；普通自然表达的提取由回答正常完成后的
+                # 可恢复队列异步执行，不在提交前调用模型。
+                result = self._automatic_profiles.process_synchronous_controls(
                     account_id,
                     conversation_id=conversation_id,
                     message_id=user_message_id,
@@ -1198,11 +1204,11 @@ class ChatService:
                     run_id=run_id,
                     mode=mode.value,
                 )
-                if result.correction is not None:
+                if result is not None and result.correction is not None:
                     self._persist_profile_correction_result(
                         account_id, run_id, result.correction
                     )
-                if result.memory is not None:
+                if result is not None and result.memory is not None:
                     self._persist_profile_memory_result(
                         account_id, run_id, result.memory
                     )
@@ -1632,6 +1638,39 @@ class ChatService:
             model_quota=quota,
             context_budget=context_budget,
         )
+        # 改进工单 17：不在执行器后台链路上的直接编排（测试/脚本）同样
+        # 只在回答正常完成后登记普通画像提取；调度幂等，后台执行器路径
+        # 由执行器自行登记也不会重复计数。
+        self._schedule_profile_extraction_after_turn(
+            account_id, assistant_message_id
+        )
+
+    def _schedule_profile_extraction_after_turn(
+        self, account_id: str, assistant_message_id: str
+    ) -> None:
+        """回答正常完成后登记普通画像提取任务（改进工单 17）。"""
+
+        if self._automatic_profiles is None:
+            return
+        message = self._repo.get_message(account_id, assistant_message_id)
+        if message is None or message.status != ChatMessageStatus.DONE:
+            return
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        if run is None:
+            return
+        user_message = self._repo.get_message(account_id, run.user_message_id)
+        if user_message is None:
+            return
+        try:
+            self._automatic_profiles.schedule_message_extraction(
+                account_id,
+                conversation_id=run.conversation_id,
+                message_id=run.user_message_id,
+                content=user_message.content,
+                run_id=run.run_id,
+            )
+        except Exception:  # noqa: BLE001 - 辅助入队不终止生成流
+            logger.exception("画像提取任务登记失败：run_id=%s", run.run_id)
 
     def stop_generation(
         self, account_id: str, conversation_id: str, message_id: str

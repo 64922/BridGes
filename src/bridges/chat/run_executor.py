@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
 from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
-from bridges.chat.terminal import internal_error_outcome, stopped_outcome
+from bridges.chat.terminal import TerminalCommit, internal_error_outcome, stopped_outcome
 from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatRunStatus,
@@ -41,7 +41,7 @@ from bridges.runtime.queue import Claim, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
 if TYPE_CHECKING:
-    from bridges.chat.repository import ConversationRepository
+    from bridges.chat.repository import ConversationRepository, GenerationRunRecord
     from bridges.chat.service import ChatService
     from bridges.chat.summary import ChatSummaryService
     from bridges.profiles.automatic import AutomaticProfileService
@@ -288,6 +288,9 @@ class GenerationRunExecutor:
             RunBudgetLedgerRepository(self._database).close(
                 account_id=account_id, run_id=run_id, now=datetime.now(UTC)
             )
+            # 改进工单 17：崩溃恢复补齐终态时，仅对正常完成结果补登画像
+            # 提取任务（幂等：已有 run/task 不会被重复计数）。
+            self._schedule_profile_extraction(account_id, run, committed)
             self._last_summary = (
                 f"generation: 运行 {run_id} 结果已提交"
                 f"（{committed.outcome.status.value}），只补齐终态。"
@@ -359,6 +362,9 @@ class GenerationRunExecutor:
             fallback=internal_error_outcome(),
             run_duration_ms=duration_ms,
         )
+        # 改进工单 17：只在回答正常完成后登记普通画像提取；失败/停止终态
+        # 不创建普通自动提取（R03），主动管理与控制指令不受影响。
+        self._schedule_profile_extraction(account_id, run, commit)
         # 改进工单 09：运行进入终态即关闭预算账本（只读封存）；租约恢复
         # 重跑在收敛前读取的是同一账本行——截止与已耗计数不因恢复重置。
         RunBudgetLedgerRepository(self._database).close(
@@ -379,6 +385,40 @@ class GenerationRunExecutor:
     # ------------------------------------------------------------------
     # 事件持久化
     # ------------------------------------------------------------------
+
+    def _schedule_profile_extraction(
+        self, account_id: str, run: GenerationRunRecord, commit: TerminalCommit
+    ) -> None:
+        """回答正常完成后登记普通画像提取任务（改进工单 17）。
+
+        失败/停止终态不提取；调度本身失败只记录摘要，不影响已完成的回答
+        与运行终态，后台重试队列的恢复接缝保持不变。
+        """
+
+        if self._profile_extraction is None:
+            return
+        if commit.outcome.status != ChatMessageStatus.DONE:
+            return
+        user_message_id = run.user_message_id
+        conversation_id = run.conversation_id
+        run_id = run.run_id
+        if not user_message_id or not conversation_id or not run_id:
+            return
+        message = self._repo.get_message(account_id, user_message_id)
+        if message is None:
+            return
+        try:
+            self._profile_extraction.schedule_message_extraction(
+                account_id,
+                conversation_id=conversation_id,
+                message_id=user_message_id,
+                content=message.content,
+                run_id=run_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - 辅助入队不终止生成执行器
+            self._last_summary = (
+                f"{self._last_summary}；profile-extraction: 登记失败：{exc}"
+            )
 
     def _persist_event(
         self, account_id: str, run_id: str, message_id: str, event: StreamEvent
