@@ -1,0 +1,18 @@
+[
+  "CareerAnalysis",
+  "CareerPlanProjection",
+  "CareerRejectedSample",
+  "JobSample",
+  "LearningResourcesProjection",
+  "PaperIdentity",
+  "PaperReadScope",
+  "PaperRecommendation",
+  "PaperRequirementEvidence",
+  "PaperSearchProjection",
+  "ResourceEvidenceLevel",
+  "ResourceItem",
+  "ResourceMedia",
+  "ResourceRole",
+  "ResourcesGoalKind",
+  "SalaryInterval"
+]

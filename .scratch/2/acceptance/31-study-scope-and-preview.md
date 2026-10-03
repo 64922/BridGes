@@ -73,4 +73,11 @@ $env:PYTHONUTF8='1'
 
 ## 合并、推送与清理
 
-合并前通过用户既有代理 `http://127.0.0.1:7890` fetch origin，当时远端与本地 main 均为 68357a20。使用命令级代理，不改持久配置。最终执行结果在完成后追加。
+合并前通过用户既有代理 `http://127.0.0.1:7890` fetch origin，当时远端与基线一致为 68357a20；本地 main 已由并行的工单 28 收尾推进到 `72163cd7`。main 上工单 28 的改动与本票无文件重叠，`git merge --no-ff codex/31-study-scope-and-preview` 无冲突，合并提交 `9d2b31bf`（父 `72163cd7` 与 `21f16543`）。使用命令级代理，不改持久配置。
+
+执行结果（主工作区，conda agent，`PYTHONUTF8=1`）：
+
+- 本票核心 3 文件 **20 passed**；学习全链路 8 文件 **109 passed**；`tests/kernel tests/contracts tests/workflows tests/architecture` **69 passed / 1 failed**，唯一失败仍为 `test_committed_openapi_matches_current_api`。
+- OpenAPI 漂移比对：合并前 main `72163cd7` 与合并后主工作区的漂移集合逐项一致（均为 16 项 schema：11 项既有资源/论文 schema 加 5 项工单 28 职业 schema），本合并新增 0 项。证据：[31-merge-openapi-drift.json](../validation/31-merge-openapi-drift.json)、[31-premerge-openapi-drift.json](../validation/31-premerge-openapi-drift.json)。
+- 推送：并行的工单 28 收尾已将含本合并提交的 main 推送为 `0e8e22c5`；本记录与证据提交后再次经 `http://127.0.0.1:7890` 代理推送，`git rev-parse main` 与 `git ls-remote origin refs/heads/main` 核对一致。
+- 清理：确认 Issue 工作树无未提交改动（HEAD `21f16543`）后删除 `D:\BridGes\.worktrees\31-study-scope-and-preview` 与本地分支 `codex/31-study-scope-and-preview`；`git worktree prune --verbose` 无额外失效记录。工单 27 工作树与分支、工单 24/25 未跟踪验证文件均保留；工单 28 工作树与分支由其自身收尾流程清理，本票未触碰。
