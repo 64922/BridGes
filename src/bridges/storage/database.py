@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 67
+SCHEMA_VERSION = 68
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3143,6 +3143,29 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN goal_state TEXT NOT NULL DEFAULT 'active'
         """,
     ],
+    # 改进工单 20：画像依据反馈。四类反馈（事实记错/过期/范围不适用/
+    # 回答没执行偏好）按账户与条目持久化；反馈本身不修改也不删除条目，
+    # 只作为用户判断的记录与后续改进依据。同一账户对同一条目的同一类别
+    # 幂等（唯一约束），重复提交返回既有记录；note 只存用户补充说明，
+    # 不复制画像正文。
+    68: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_item_feedback (
+            feedback_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            profile_item_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            note TEXT,
+            item_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, profile_item_id, kind)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_item_feedback_item
+            ON profile_item_feedback(account_id, profile_item_id, created_at)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3160,6 +3183,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "profile_items",
     "profile_item_migrations",
     "profile_item_migration_records",
+    # 改进工单 20：画像依据反馈；展开面板与反馈提交都无条件读取，迁移
+    # 半执行时须在启动阶段失败关闭。
+    "profile_item_feedback",
     # 工单 08：任务路由在启动装配后无条件查询这五张表；迁移半执行时须在
     # 启动阶段失败关闭，而不是让任务接口持续 500。
     "conversation_tasks",
@@ -3191,6 +3217,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_profile_items_account_status",
     "idx_profile_items_account_fact_key",
     "idx_profile_item_migrations_account",
+    "idx_profile_item_feedback_item",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3253,6 +3280,15 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "reason_code",
         "profile_item_id",
         "recorded_at",
+    }),
+    "profile_item_feedback": frozenset({
+        "feedback_id",
+        "account_id",
+        "profile_item_id",
+        "kind",
+        "note",
+        "item_version",
+        "created_at",
     }),
 }
 

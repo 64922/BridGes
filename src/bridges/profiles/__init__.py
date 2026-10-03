@@ -33,6 +33,8 @@ from bridges.profiles.atomic import (
     AtomicProfileRepository,
     AtomicProfileService,
     InMemoryAtomicProfileRepository,
+    ProfileEvidenceSourceReader,
+    ProfileSourceMessage,
     SqliteAtomicProfileRepository,
 )
 from bridges.contracts.profile_extraction import ProfileExtractionOutput
@@ -81,6 +83,8 @@ __all__ = [
     "AtomicProfileRepository",
     "AtomicProfileService",
     "InMemoryAtomicProfileRepository",
+    "ProfileEvidenceSourceReader",
+    "ProfileSourceMessage",
     "SqliteAtomicProfileRepository",
     "ProfileExtractionOutput",
     "PROFILE_SIGNAL_CLASSIFIER_VERSION",

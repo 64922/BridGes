@@ -300,7 +300,8 @@ def test_single_valued_slot_replacement_keeps_history_traceable() -> None:
     projection = next(
         entry for entry in atomic.projections(ACCOUNT) if entry.text == "大三"
     )
-    assert projection.evidence_quote == "我现在大三了"
+    # 列表只展示事实；原话由按需依据接口校验可读来源后返回。
+    assert projection.evidence_quote is None
     assert projection.supersedes_id == old.profile_item_id
 
 
