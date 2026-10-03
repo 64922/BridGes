@@ -1,8 +1,17 @@
-"""普通聊天轻量有人味策略（人味化改造 Issue 07，改进工单 21 升级 v3）。
+"""普通聊天轻量有人味策略（人味化改造 Issue 07，改进工单 21 v3，工单 22 v4）。
 
 该模块重建普通聊天的全局轻量表达策略：不再把文章清洗规则、全量方法规则
 块或通用黑名单注入每次回答，而是根据当前轮意图、固定对话模式、回答形态
 和允许的最小画像切片，每轮只编译少量高优先级正向规则。
+
+改进工单 22 起，画像输入统一为 19 的用途明确采用快照
+（:class:`~bridges.contracts.profile_adoption.AdoptedProfileSlice`）：
+
+- 移除旧维度白名单假设；无类别原子条目按采用结果进入策略，不再被
+  ``dimension=""`` 丢掉，也不再出现「已注入画像却声称没有画像」的矛盾；
+- 从已采用的完整条目编译少量篇幅/结构/称呼/专业程度约束，偏好原句不会
+  成为高权限指令；采用来源、撤回版本与条目数随快照元数据保留；
+- 同轮后续调用复用同一策略/画像快照，删除或撤回后下一次调用重编译。
 
 改进工单 21 起按「任务、边界与前文」适配表达：
 
@@ -41,15 +50,38 @@ from bridges.contracts.expression_task import (
     ExpressionTaskContract,
     Surface,
 )
+from bridges.contracts.profile_adoption import AdoptedProfileSlice
 from bridges.contracts.profiles import ProfileSliceItem
 from bridges.expression_task.contract_compiler import (
     CompileRequest,
     compile_task_contract,
 )
+from bridges.profiles.purpose import (
+    DECISION_ADDRESS,
+    DECISION_EXPLANATION_START,
+    DECISION_EXPRESSION_FORMAT,
+    DECISION_EXPRESSION_LENGTH,
+    DECISION_EXPRESSION_ORDER,
+    DECISION_EXPRESSION_TONE,
+    DECISION_PLAN_FOCUS,
+    DECISION_PLAN_LEVEL,
+    DECISION_PLAN_TIME,
+    DECISION_RECOMMENDATION_SCOPE,
+    PREF_ADDRESS,
+    PREF_BREVITY,
+    PREF_CONCLUSION_FIRST,
+    PREF_DETAIL,
+    PREF_EXAMPLE_FIRST,
+    PREF_FORMAT,
+    PREF_FORMULA,
+    PREF_TONE,
+    expression_preference_tags,
+)
 
-#: 当前轻量策略版本（改进工单 21：显式交流边界、引用/续接适配与有界长文）。
-#: 重试回传旧快照时版本保持旧值（快照优先，不重编译）。
-GLOBAL_CHAT_LIGHTWEIGHT_VERSION = "global-chat-lightweight-v3"
+#: 当前轻量策略版本（改进工单 22：消费用途明确采用快照、移除旧维度白名单）。
+#: 重试回传旧快照时版本保持旧值（快照优先，不重编译）；旧版快照字段缺省
+#: 时按默认值反序列化，原样复用。
+GLOBAL_CHAT_LIGHTWEIGHT_VERSION = "global-chat-lightweight-v4"
 #: 安全基线版本（资源缺失或画像不可用时使用，值保持不变以兼容旧快照）。
 SAFE_BASELINE_POLICY_VERSION = "global-humanized-writing-safe-baseline-v1"
 GLOBAL_CHAT_LIGHTWEIGHT_SOURCE = (
@@ -65,17 +97,157 @@ EXTENDED_OUTPUT_TOKENS = 2048
 
 _DEFAULT_RESOURCE = object()
 
-#: 允许进入表达策略的最小画像维度：称呼、篇幅、专业程度与表达偏好
-#: （Issue 07 AC9 封闭清单）。其余维度（兴趣、阶段目标、情绪、经历等）
-#: 不得影响回答表达。无类别原子画像的统一采用属改进工单 22。
-_ALLOWED_PROFILE_DIMENSIONS = frozenset(
-    {
-        "basic_information",
-        "academic_status",
-        "expression_habit",
-    }
-)
+#: 兼容路径（没有采用快照时）允许进入表达策略的画像值上限。原子画像的
+#: 适用性由 19 的采用快照决定，这里只兜住旧调用方直接传入的条目。
 _MAX_PROFILE_ITEMS = 6
+
+#: 单轮从采用快照编译的表达约束上限；保持「少量」，其余事实由画像数据块
+#: 承载（同一快照渲染），不把全部无类别条目直接放行成指令。
+_MAX_ADOPTED_RULES = 4
+
+#: 采用条目的表达偏好标签 → 通用确定性约束。篇幅/顺序类偏好编译为通用
+#: 规则，不把偏好原句注入为高权限指令。
+_ADOPTED_PREFERENCE_RULES: dict[str, tuple[str, str]] = {
+    PREF_BREVITY: (
+        "adopted-brevity-default",
+        "用户长期偏好简短直接：默认只给必要内容；用户本轮明确要求详细时按本轮要求展开。",
+    ),
+    PREF_DETAIL: (
+        "adopted-detail-default",
+        "用户长期偏好详细：默认给出必要步骤与推导；用户本轮明确要求简短时按本轮要求。",
+    ),
+    PREF_EXAMPLE_FIRST: (
+        "adopted-example-first",
+        "用户长期偏好例子优先：解释概念时先用直观例子，再引入公式或定义。",
+    ),
+    PREF_CONCLUSION_FIRST: (
+        "adopted-conclusion-first",
+        "用户长期偏好先给结论：先给结论或答案，再补充原理与推导。",
+    ),
+    PREF_FORMULA: (
+        "adopted-formula",
+        "用户长期偏好保留公式：涉及计算或推导时保留必要公式与推导，不因简洁省略。",
+    ),
+}
+
+#: 必须带原句才有意义的偏好（按数据口吻注入，不作系统指令）。
+_ADOPTED_FACT_RULES: dict[str, tuple[str, str]] = {
+    PREF_TONE: (
+        "adopted-tone",
+        "用户声明的语气偏好：{fact}。按其偏好表达，但仍须服从事实与任务合同。",
+    ),
+    PREF_FORMAT: (
+        "adopted-format",
+        "用户声明的结构偏好：{fact}。结构确实有助于理解时按其偏好组织。",
+    ),
+    PREF_ADDRESS: (
+        "adopted-address",
+        "用户声明的称呼方式：{fact}。需要称呼用户时按此称呼。",
+    ),
+}
+
+#: 采用条目决策标签 → 事实型约束（背景、现实约束与目标）。每条条目最多
+#: 编译其中一条；条件（如「无期限先确认」）随对应规则进入提示词。
+_ADOPTED_DECISION_RULES: tuple[tuple[str, str, str], ...] = (
+    (
+        DECISION_PLAN_TIME,
+        "adopted-reality-constraint",
+        "用户声明的现实时间/资源约束：{fact}。制定计划或建议时按它安排可执行步骤。",
+    ),
+    (
+        DECISION_PLAN_FOCUS,
+        "adopted-goal",
+        "用户声明的当前目标：{fact}。围绕它组织重点与先后顺序。",
+    ),
+    (
+        DECISION_RECOMMENDATION_SCOPE,
+        "adopted-recommendation-scope",
+        "与当前推荐任务相关的用户目标与约束：{fact}。",
+    ),
+    (
+        DECISION_EXPLANATION_START,
+        "adopted-background",
+        "用户自述背景（仅作讲解起点与例子选择）：{fact}；不推断未提供的掌握程度。",
+    ),
+    (
+        DECISION_PLAN_LEVEL,
+        "adopted-background",
+        "用户自述背景（仅作讲解起点与例子选择）：{fact}；不推断未提供的掌握程度。",
+    ),
+)
+
+#: 偏好编译顺序（与用途决策标签的对应关系保持显式）。
+_PREF_RULE_ORDER: tuple[str, ...] = (
+    PREF_BREVITY,
+    PREF_DETAIL,
+    PREF_EXAMPLE_FIRST,
+    PREF_CONCLUSION_FIRST,
+    PREF_FORMULA,
+    PREF_FORMAT,
+    PREF_TONE,
+    PREF_ADDRESS,
+)
+_PREF_TAG_DECISIONS: dict[str, str] = {
+    PREF_BREVITY: DECISION_EXPRESSION_LENGTH,
+    PREF_DETAIL: DECISION_EXPRESSION_LENGTH,
+    PREF_EXAMPLE_FIRST: DECISION_EXPRESSION_ORDER,
+    PREF_CONCLUSION_FIRST: DECISION_EXPRESSION_ORDER,
+    PREF_FORMULA: DECISION_EXPRESSION_ORDER,
+    PREF_FORMAT: DECISION_EXPRESSION_FORMAT,
+    PREF_TONE: DECISION_EXPRESSION_TONE,
+    PREF_ADDRESS: DECISION_ADDRESS,
+}
+#: 携带适用条件的决策（现实约束/目标无期限时先确认仍有效）。
+_CONDITIONAL_DECISIONS = frozenset(
+    {DECISION_PLAN_TIME, DECISION_PLAN_FOCUS, DECISION_RECOMMENDATION_SCOPE}
+)
+
+
+def compile_adopted_expression_rules(
+    adopted: AdoptedProfileSlice,
+) -> tuple[tuple[tuple[str, str], ...], tuple[str, ...]]:
+    """从采用快照编译少量表达约束。
+
+    返回 ``(规则序列, 实际进入规则的决策标签)``；规则正文只含中文与
+    「用户声明/自述」数据口吻，不把偏好原句变成高权限系统指令。来源与
+    撤回由调用方通过快照元数据（切片标识、撤回版本）保留。
+    """
+
+    rules: list[tuple[str, str]] = []
+    decisions: list[str] = []
+    seen_rules: set[str] = set()
+    seen_decisions: set[str] = set()
+
+    def add(rule_id: str, text: str, decision: str) -> None:
+        if rule_id in seen_rules or len(rules) >= _MAX_ADOPTED_RULES:
+            return
+        rules.append((rule_id, text))
+        seen_rules.add(rule_id)
+        if decision not in seen_decisions:
+            seen_decisions.add(decision)
+            decisions.append(decision)
+
+    for item in adopted.adopted_items:
+        tags = expression_preference_tags(item.fact_text)
+        for tag in _PREF_RULE_ORDER:
+            if tag not in tags:
+                continue
+            if tag in _ADOPTED_PREFERENCE_RULES:
+                rule_id, text = _ADOPTED_PREFERENCE_RULES[tag]
+            else:
+                rule_id, template = _ADOPTED_FACT_RULES[tag]
+                text = template.format(fact=item.fact_text)
+            add(rule_id, text, _PREF_TAG_DECISIONS[tag])
+        item_decisions = set(item.applicable_to)
+        for decision, rule_id, template in _ADOPTED_DECISION_RULES:
+            if decision not in item_decisions:
+                continue
+            text = template.format(fact=item.fact_text)
+            if item.conditions and decision in _CONDITIONAL_DECISIONS:
+                text += "适用条件：" + "；".join(item.conditions) + "。"
+            add(rule_id, text, decision)
+            break
+    return tuple(rules), tuple(decisions)
 
 #: 受保护区固定句（渲染与安全基线共用，避免字面漂移）。
 _PROTECTED_REGIONS_STATEMENT = (
@@ -701,6 +873,13 @@ class ChatLightweightPolicySnapshot(BaseModel):
     profile_items: tuple[str, ...] = Field(
         default_factory=tuple, description="允许影响表达的画像切片值的最小快照。"
     )
+    profile_decisions: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="实际编译进本轮表达的画像决策标签（不含正文）。",
+    )
+    profile_revocation_version: str | None = Field(
+        default=None, description="绑定的采用快照撤回版本；无原子采用时为空。"
+    )
     profile_context: str | None = Field(
         default=None, description="本轮最小画像提示片段，用于同一策略快照重试。"
     )
@@ -736,6 +915,8 @@ class ChatLightweightPolicySnapshot(BaseModel):
             "contract_version_hash": self.contract_version_hash,
             "profile_slice_id": self.profile_slice_id,
             "profile_item_count": len(self.profile_items),
+            "profile_decisions": list(self.profile_decisions),
+            "profile_revocation_version": self.profile_revocation_version,
             "snapshot_complete": self.snapshot_complete,
             "fallback_reason": self.fallback_reason,
             "degradation_reason": self.degradation_reason,
@@ -763,14 +944,18 @@ def _validate_contract(contract: ExpressionTaskContract) -> None:
         raise ValueError("表达任务契约快照哈希不一致，拒绝编译轻量策略。")
 
 
-def _allowed_profile_values(
+def _profile_values(
     profile_items: Sequence[ProfileSliceItem],
 ) -> tuple[str, ...]:
-    """只保留允许维度的画像值，其余维度不进入表达策略。"""
+    """旧调用方的兼容路径：非空画像值进入策略，不再按旧维度白名单过滤。
+
+    适用性由 19 的用途明确采用快照决定（:func:`compile_adopted_expression_rules`）；
+    原子条目的 ``dimension`` 为空，不能作为是否采用的依据。
+    """
     values: list[str] = []
     for item in profile_items:
         value = (item.value_or_rule or "").strip()
-        if not value or item.dimension not in _ALLOWED_PROFILE_DIMENSIONS:
+        if not value:
             continue
         values.append(value)
     return tuple(values[:_MAX_PROFILE_ITEMS])
@@ -803,6 +988,7 @@ class ChatLightweightPolicyCompiler:
         *,
         user_text: str = "",
         expression_contract: ExpressionTaskContract | None = None,
+        adopted_slice: AdoptedProfileSlice | None = None,
         profile_slice_id: str | None = None,
         profile_items: Sequence[ProfileSliceItem] = (),
         profile_context: str | None = None,
@@ -815,7 +1001,13 @@ class ChatLightweightPolicyCompiler:
         tool_outcome: ToolOutcome = ToolOutcome.NONE,
         existing_snapshot: ChatLightweightPolicySnapshot | dict[str, Any] | None = None,
     ) -> ChatLightweightPolicySnapshot:
-        """编译策略；完整已有快照优先，保证重试不受热更新影响。"""
+        """编译策略；完整已有快照优先，保证重试不受热更新影响。
+
+        ``adopted_slice`` 是 19 的唯一采用快照：提供时，策略的画像约束、
+        条目数、切片标识与撤回版本全部从它折算，同轮后续节点不再各自
+        判断画像可用性；缺省时保留旧调用方的 ``profile_items`` 兼容路径
+        （不再按旧维度白名单过滤）。
+        """
         if existing_snapshot is not None:
             snapshot = (
                 existing_snapshot
@@ -845,7 +1037,22 @@ class ChatLightweightPolicyCompiler:
             )
             contract = compiled.contract
 
-        values = _allowed_profile_values(profile_items)
+        if adopted_slice is not None:
+            # 同一采用快照：画像值、决策标签、切片标识与撤回版本一起折算，
+            # 避免策略与画像数据块分别宣布相反的采用状态。
+            values = tuple(item.fact_text for item in adopted_slice.adopted_items)
+            profile_slice_id = adopted_slice.slice_id
+            profile_revocation_version = adopted_slice.revocation_version
+            adopted_rules, profile_decisions = compile_adopted_expression_rules(
+                adopted_slice
+            )
+            has_adopted_items = bool(values)
+        else:
+            values = _profile_values(profile_items)
+            adopted_rules = ()
+            profile_decisions = ()
+            profile_revocation_version = None
+            has_adopted_items = False
         classification = _classify_text(user_text, continuation_text)
         constraints = list(classification.constraints)
         if tool_outcome is ToolOutcome.PARTIAL and "partial_results" not in constraints:
@@ -866,7 +1073,12 @@ class ChatLightweightPolicyCompiler:
         constraint_rules = tuple(
             CONSTRAINT_RULES[name] for name in ordered_constraints
         )
-        rules = (*constraint_rules, *GLOBAL_DEFAULT_RULES, *FORM_RULES[form])
+        rules = (
+            *constraint_rules,
+            *adopted_rules,
+            *GLOBAL_DEFAULT_RULES,
+            *FORM_RULES[form],
+        )
         degradation = None
         if form == ChatResponseForm.COMPACT_DEFAULT and user_text.strip():
             degradation = "low_confidence_compact_default"
@@ -883,13 +1095,22 @@ class ChatLightweightPolicyCompiler:
             contract_version_hash=contract.version_hash,
             profile_slice_id=profile_slice_id,
             profile_items=values,
+            profile_decisions=profile_decisions,
+            profile_revocation_version=profile_revocation_version,
             profile_context=profile_context,
             snapshot_complete=True,
             fallback_reason=None,
             degradation_reason=degradation,
             source_record=GLOBAL_CHAT_LIGHTWEIGHT_SOURCE,
             system_block=self._render(
-                mode_value, form, constraint_rules, GLOBAL_DEFAULT_RULES + FORM_RULES[form], values
+                mode_value,
+                form,
+                constraint_rules,
+                adopted_rules,
+                GLOBAL_DEFAULT_RULES + FORM_RULES[form],
+                values if adopted_slice is None else (),
+                has_adopted_items=has_adopted_items,
+                has_profile_context=profile_context is not None,
             ),
         )
 
@@ -906,6 +1127,7 @@ class ChatLightweightPolicyCompiler:
             system_block=self._render(
                 mode_value,
                 ChatResponseForm.COMPACT_DEFAULT,
+                (),
                 (),
                 GLOBAL_DEFAULT_RULES,
                 (),
@@ -945,10 +1167,19 @@ class ChatLightweightPolicyCompiler:
         mode: str,
         form: ChatResponseForm,
         constraint_rules: Sequence[tuple[str, str]],
+        adopted_rules: Sequence[tuple[str, str]],
         default_rules: Sequence[tuple[str, str]],
         profile_items: tuple[str, ...],
+        *,
+        has_adopted_items: bool = False,
+        has_profile_context: bool = False,
     ) -> str:
-        """渲染为只含中文规则与边界的中文表达合同（无内部方法 ID）。"""
+        """渲染为只含中文规则与边界的中文表达合同（无内部方法 ID）。
+
+        ``adopted_rules`` 是同一采用快照编译的长期默认约束；有采用条目时
+        不再渲染「没有可用画像信息」，也不重复倾倒偏好原句——完整事实由
+        画像数据块承载，两个块来自同一快照，不会互相矛盾。
+        """
         constraint_lines = (
             "\n".join(
                 f"{index}. {text}" for index, (_, text) in enumerate(constraint_rules, 1)
@@ -956,15 +1187,39 @@ class ChatLightweightPolicyCompiler:
             if constraint_rules
             else "本轮没有额外强制限制，按默认规则完成任务。"
         )
+        adopted_section = (
+            "\n本轮采用的长期画像默认（低于用户本轮明确要求与任务合同）：\n"
+            + "\n".join(
+                f"{index}. {text}"
+                for index, (_, text) in enumerate(adopted_rules, 1)
+            )
+            if adopted_rules
+            else ""
+        )
         rule_lines = "\n".join(
             f"{index}. {text}" for index, (_, text) in enumerate(default_rules, 1)
         )
-        profile = (
-            "\n允许使用的当前账户画像信息（只影响称呼、篇幅、专业程度与表达偏好）：\n"
-            + "\n".join(f"- {value}" for value in profile_items)
-            if profile_items
-            else "\n本轮没有可用画像信息，不得自行推断用户经历、身份、人格或偏好。"
-        )
+        if has_adopted_items:
+            profile = (
+                ""
+                if adopted_rules
+                else (
+                    "\n本轮有已采用的用户画像信息（见本轮画像数据块），"
+                    "只在相关时自然使用；不得推断未提供的经历、身份、人格或偏好。"
+                )
+            )
+        elif profile_items:
+            profile = (
+                "\n允许使用的当前账户画像信息（只影响称呼、篇幅、专业程度与表达偏好）：\n"
+                + "\n".join(f"- {value}" for value in profile_items)
+            )
+        elif has_profile_context:
+            profile = (
+                "\n本轮画像采用结果以对话中的画像数据块为准；"
+                "不得推断未提供的经历、身份、人格或偏好。"
+            )
+        else:
+            profile = "\n本轮没有可用画像信息，不得自行推断用户经历、身份、人格或偏好。"
         return (
             "【全局轻量有人味表达策略】\n"
             f"策略版本：{self._version}｜"
@@ -972,6 +1227,7 @@ class ChatLightweightPolicyCompiler:
             f"{_STRICT_PRIORITY_STATEMENT}\n"
             "本轮明确要求：\n"
             f"{constraint_lines}\n"
+            f"{adopted_section}"
             "默认表达规则：\n"
             f"{rule_lines}\n"
             f"{_PRIORITY_STATEMENT}\n"
@@ -995,6 +1251,7 @@ __all__ = [
     "FORM_RULES",
     "GLOBAL_DEFAULT_RULES",
     "ToolOutcome",
+    "compile_adopted_expression_rules",
     "continuation_source_text",
     "detect_response_form",
     "detect_turn_constraints",

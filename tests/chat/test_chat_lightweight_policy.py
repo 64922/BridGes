@@ -320,7 +320,13 @@ def test_compile_internal_contract_keeps_snapshot_bound() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_compile_limits_profile_to_allowed_dimensions() -> None:
+def test_compile_legacy_profile_items_are_not_dimension_filtered() -> None:
+    """改进工单 22：兼容路径不再按旧四维白名单丢弃条目。
+
+    相关性与用途过滤由改进工单 19 的采用快照承担（见 22 的专项测试）；
+    未启用原子画像的退化环境保留全部非空条目，不再静默丢维度。
+    """
+
     snapshot = GlobalWritingPolicyCompiler().compile(
         ChatMode.COMPANION,
         user_text="什么是黑洞？",
@@ -339,13 +345,13 @@ def test_compile_limits_profile_to_allowed_dimensions() -> None:
     assert snapshot.profile_items == (
         "用户偏好称呼：小宇",
         "本科在读，专业是物理",
+        "喜欢用天文例子理解概念",
         "回答喜欢简短直接",
+        "喜欢打羽毛球",
+        "最近目标是通过期中考试",
     )
-    # 知识兴趣、爱好、阶段目标与情绪维度不在 AC9 封闭清单内，不得影响表达。
-    assert "喜欢用天文例子理解概念" not in snapshot.system_block
-    assert "喜欢打羽毛球" not in snapshot.system_block
-    assert "通过期中考试" not in snapshot.system_block
-    assert "情绪有时焦虑" not in snapshot.system_block
+    # 兼容路径仍受条目上限约束（第 7 条不进入策略）。
+    assert len(snapshot.profile_items) == 6
     assert "assertion-" not in snapshot.system_block
 
 
