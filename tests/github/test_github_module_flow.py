@@ -13,10 +13,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai.adapters import StreamChunk
@@ -40,23 +38,6 @@ WHOLE_QUERY = "校园二手书交换"
 AGENT_REQUEST = "给我推荐几个智能体项目"
 AGENT_QUERY = "智能体"
 AGENT_README = "多智能体协作框架：多个智能体分工完成同一项复杂任务。"
-
-
-@pytest.fixture
-def sqlite_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    from bridges.api.main import create_app
-    from bridges.config import get_settings
-
-    monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
-    monkeypatch.setenv("BRIDGES_SECRET_KEY", "api-test-secret-key")
-    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
-    get_settings.cache_clear()
-    return create_app()
-
-
-@pytest.fixture
-def client(sqlite_app: Any) -> TestClient:
-    return TestClient(sqlite_app)
 
 
 class _SilentAdapter:
@@ -297,7 +278,10 @@ def test_explicit_dispatch_recommends_grounded_repositories(
                     GithubFileRead(
                         path="src/books/publish.py",
                         kind="file",
-                        excerpt="def publish_book(request):  # 发布想卖的书",
+                        excerpt=(
+                            "def publish_book(request):  # 发布想卖的书\n"
+                            "    return request['book']"
+                        ),
                     )
                 ],
             ),

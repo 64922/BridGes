@@ -54,10 +54,129 @@ class GithubEvidenceKind(StrEnum):
 
 
 class GithubCoverage(StrEnum):
-    """一个推荐仓库相对用户 idea 的覆盖范围。"""
+    """一个推荐仓库相对用户 idea 的覆盖范围。
+
+    ``WHOLE`` 只要求**全部必要功能**都有文档自述或静态实现依据；可选项
+    命中数与 star 数都不能把它推成整体候选（改进工单 26）。
+    """
 
     WHOLE = "whole"
     COMPONENT = "component"
+
+
+class GithubRequirementKind(StrEnum):
+    """证据矩阵里一行的需求类别（必要/可选/用户约束）。"""
+
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    CONSTRAINT = "constraint"
+
+
+class GithubSupportLevel(StrEnum):
+    """一项需求在本轮真实证据里的支持层次（越低越弱）。
+
+    - ``documented``：只有文档自述（README 或 API 元数据）支持；
+    - ``static_implementation``：实际读取到的实现文件/目录支持（静态证据，
+      不等于程序已经运行验证）；
+    - ``unconfirmed``：本轮没有取得足以判断的证据（未读、被额度挡住或
+      运行条件无法在静态读取中验证）；
+    - ``unsupported``：已取得的证据明确没有支持该项。
+    """
+
+    DOCUMENTED = "documented"
+    STATIC_IMPLEMENTATION = "static_implementation"
+    UNCONFIRMED = "unconfirmed"
+    UNSUPPORTED = "unsupported"
+
+
+class GithubVersionEvidence(BaseModel):
+    """一条证据对应的版本或取得时间（提交版本优先，取不到就如实降级）。
+
+    ``commit_sha`` 是读取证据时观察到的默认分支提交；上游没给或额度不够时
+    为 None，此时 ``source`` 说明版本依据来自内容指纹（README/文件 blob
+    sha）还是单纯的取得时间。任何断言都必须能指回其中一个。
+    """
+
+    commit_sha: str | None = Field(default=None, description="默认分支提交 SHA；未取得为 None。")
+    ref: str | None = Field(default=None, description="提交所在分支名；未知为 None。")
+    source: str = Field(
+        default="fetch_time",
+        description="commit_api／readme_blob／file_blob／fetch_time：版本依据的真实来源。",
+    )
+    obtained_at: datetime = Field(description="证据取得时间（UTC）。")
+    note: str = Field(description="面向用户的中文说明（版本依据与限制）。")
+
+
+class GithubSourceKind(StrEnum):
+    """矩阵一行的来源类别（与证据等级同名，便于渲染与校验）。"""
+
+    METADATA = "metadata"
+    README = "readme"
+    IMPLEMENTATION_FILE = "implementation_file"
+
+
+class GithubRequirementSource(BaseModel):
+    """矩阵一行可核对的来源定位（链接/路径、版本、读取范围与原文片段）。"""
+
+    kind: GithubSourceKind | None = Field(
+        default=None, description="来源类别：readme／metadata／implementation_file。"
+    )
+    locator: str | None = Field(
+        default=None, description="来源定位：文件路径、README 链接或仓库标识。"
+    )
+    read_range: str | None = Field(
+        default=None, description="实际读取范围（例如「README 正文，前 6000 字符」）。"
+    )
+    excerpt: str | None = Field(default=None, description="支持该行的真实原文片段（已截断）。")
+    commit_sha: str | None = Field(default=None, description="证据对应的提交 SHA；未知为 None。")
+    obtained_at: datetime | None = Field(default=None, description="该来源的取得时间。")
+
+
+class GithubConstraintSet(BaseModel):
+    """用户原文里的技术/许可/运行限制（逐字保留，不改写）。"""
+
+    technical: list[str] = Field(default_factory=list, description="技术条件原词（语言、框架等）。")
+    license: list[str] = Field(default_factory=list, description="许可条件原词（MIT、可商用等）。")
+    runtime: list[str] = Field(default_factory=list, description="运行条件原词（能跑、可部署等）。")
+    excluded: list[str] = Field(
+        default_factory=list, description="用户明确排除的词（条件 kind=exclusion 的原话）。"
+    )
+
+
+class GithubRequirementInput(BaseModel):
+    """可接收的类型化需求来源（既定论文标识或岗位需求产物）。
+
+    跨模块触发由工单 37 校验；本模块只接受已经形成的产物引用，并在
+    ``identity_confirmed`` 为假时**不宣称**仓库对应那份论文/岗位。
+    """
+
+    kind: str = Field(description="来源类别：paper／job（扩展来源用稳定短名）。")
+    label: str = Field(description="面向用户的中文说明，例如「选定的论文」。")
+    identifier: str | None = Field(default=None, description="稳定标识（arXiv ID、样本 ID 等）。")
+    phrase: str = Field(default="", description="需求原词（用于检索与展示，逐字保留）。")
+    identity_confirmed: bool = Field(
+        default=False, description="产物身份是否已经确认；未确认时不得宣称对应实现。"
+    )
+    source_ref: str | None = Field(default=None, description="来源产物引用（产物/消息 ID）。")
+    identity_note: str | None = Field(
+        default=None, description="身份确认状态的说明（缺口或确认依据）。"
+    )
+
+
+class GithubSearchPlan(BaseModel):
+    """``github.plan`` 的检索计划：整体优先或组件策略、登记查询与核查要求。"""
+
+    strategy: str = Field(description="whole_first／component：先查整体还是只查组件。")
+    queries: list[str] = Field(
+        default_factory=list, description="有界的实际查询词（原词逐字保留）。"
+    )
+    check_requirements: list[str] = Field(
+        default_factory=list, description="本轮重点核查要求的中文说明（例如需要实现文件证据）。"
+    )
+    implementation_required: bool = Field(
+        default=False, description="必要功能是否要求实现证据（用户要代码/要能跑时为真）。"
+    )
+    rationale: str = Field(description="中文说明：为什么这样规划和核查。")
 
 
 class GithubReadmeStatus(StrEnum):
@@ -109,8 +228,23 @@ class GithubIdeaAnalysis(BaseModel):
     features: list[str] = Field(
         default_factory=list, description="必要功能（原文分段，逐字保留）。"
     )
+    optional_features: list[str] = Field(
+        default_factory=list,
+        description="可选功能（原文里明确非必需的要求；可选项不作为匹配门）。",
+    )
     tech_terms: list[str] = Field(
         default_factory=list, description="可选技术词（原文里的拉丁串或登记技术词）。"
+    )
+    constraints: GithubConstraintSet = Field(
+        default_factory=GithubConstraintSet,
+        description="用户原文里的技术/许可/运行限制（逐字保留）。",
+    )
+    requirement_source: GithubRequirementInput | None = Field(
+        default=None,
+        description="本轮需求来自既定的类型化产物（选定论文/岗位需求）时的引用。",
+    )
+    implementation_required: bool = Field(
+        default=False, description="用户明确要求实现证据时，文档自述不能满足必要功能。"
     )
     whole_idea: bool = Field(
         default=True, description="用户要的是完整产品 idea（False 表示只要某个组件）。"
@@ -215,17 +349,35 @@ class GithubMaintenanceEvidence(BaseModel):
 
 
 class GithubFeatureMatch(BaseModel):
-    """一条「idea 要点 → 仓库证据」的匹配判定（含证据类型与原文片段）。"""
+    """一条「需求 → 仓库证据」的矩阵行（含支持层次、来源与原文片段）。
 
-    feature: str = Field(description="用户 idea 里的必要功能原词。")
+    ``matched`` 与 ``evidence_kind`` 保持旧字段语义（向下兼容历史投影）；
+    新字段 ``support_level`` 给出文档自述／静态实现／未确认／未支持四档，
+    ``sources`` 给出可查的来源定位与读取范围。
+    """
+
+    feature: str = Field(description="用户 idea 里的需求原词。")
+    kind: GithubRequirementKind = Field(
+        default=GithubRequirementKind.REQUIRED, description="必要功能、可选功能或用户约束。"
+    )
     matched: bool = Field(description="是否在该仓库的已取得证据里真实出现。")
     evidence_kind: GithubEvidenceKind | None = Field(
         default=None, description="命中证据的等级；未命中为 None。"
+    )
+    support_level: GithubSupportLevel | None = Field(
+        default=None,
+        description="支持层次：documented／static_implementation／unconfirmed／unsupported。",
     )
     matched_terms: list[str] = Field(
         default_factory=list, description="在证据文本里真实命中的关键词。"
     )
     evidence: str = Field(description="命中的真实文本片段或未命中的中文说明。")
+    sources: list[GithubRequirementSource] = Field(
+        default_factory=list, description="支持或否定该行的来源定位（链接/路径、版本与读取范围）。"
+    )
+    runtime_required: bool = Field(
+        default=False, description="该行是否要求实际运行证据（静态读取永远不能满足）。"
+    )
 
 
 class GithubRepositoryEvidence(BaseModel):
@@ -251,8 +403,14 @@ class GithubRepositoryEvidence(BaseModel):
     license: GithubLicenseCheck = Field(description="许可证据。")
     readme_status: GithubReadmeStatus = Field(description="README 的真实取得状态。")
     readme_url: str | None = Field(default=None, description="README 页面链接。")
+    readme_sha: str | None = Field(
+        default=None, description="README 的 blob 内容指纹（上游返回；未取得为 None）。"
+    )
     readme_text: str | None = Field(
         default=None, description="本轮取得并截断的 README 正文（内部匹配与归纳用）。"
+    )
+    version: GithubVersionEvidence | None = Field(
+        default=None, description="本轮证据的版本依据（提交版本或取得时间）。"
     )
     files_read: list[GithubFileRead] = Field(
         default_factory=list, description="实际读取到的实现文件／目录。"
@@ -286,9 +444,20 @@ class GithubRecommendation(BaseModel):
     topics: list[str] = Field(default_factory=list, description="元数据里的话题标签。")
     language: str | None = Field(default=None, description="元数据里的主要语言。")
     feature_matches: list[GithubFeatureMatch] = Field(
-        default_factory=list, description="逐条要点的匹配判定。"
+        default_factory=list, description="逐条需求的矩阵行（必要、可选与约束）。"
     )
-    matched_feature_count: int = Field(default=0, description="命中的要点数。")
+    matched_feature_count: int = Field(default=0, description="命中的必要要点数（可选项不计）。")
+    required_feature_count: int = Field(default=0, description="必要功能总数。")
+    required_supported_count: int = Field(
+        default=0, description="必要功能里达到文档自述或静态实现的总数。"
+    )
+    runtime_verified: bool = Field(
+        default=False, description="是否取得实际运行证据；静态读取不置为真。"
+    )
+    version: GithubVersionEvidence | None = Field(
+        default=None, description="该仓库证据的版本依据（提交版本或取得时间）。"
+    )
+    matrix_note: str = Field(default="", description="覆盖判定依据的中文说明（必要功能视角）。")
     evidence_kinds: list[GithubEvidenceKind] = Field(
         default_factory=list, description="本轮真实取得的证据等级（去重、弱→强）。"
     )
@@ -341,13 +510,25 @@ class GithubProjectsProjection(BaseModel):
     scenario: str = Field(description="核心用户场景（来自原文）。")
     original_request: str = Field(description="用户本轮原文，逐字保留。")
     features: list[str] = Field(default_factory=list, description="必要功能原词。")
+    optional_features: list[str] = Field(
+        default_factory=list, description="可选功能原词（不参与整体/组件判定）。"
+    )
     tech_terms: list[str] = Field(default_factory=list, description="可选技术词。")
+    constraints: GithubConstraintSet = Field(
+        default_factory=GithubConstraintSet, description="用户原文里的技术/许可/运行限制。"
+    )
     whole_idea: bool = Field(default=True, description="是否要找完整产品。")
     component_terms: list[str] = Field(
         default_factory=list, description="用户明说要找的组件能力原词。"
     )
     context_source: GithubContextSource | None = Field(
         default=None, description="idea 来自前文时的可追溯依据（AC5 的关联原话）。"
+    )
+    requirement_source: GithubRequirementInput | None = Field(
+        default=None, description="需求来自既定类型化产物（选定论文/岗位需求）时的引用。"
+    )
+    identity_note: str | None = Field(
+        default=None, description="需求来源身份确认状态的中文说明；身份未确认时必须写明。"
     )
     queries: list[ModuleQueryRecord] = Field(
         default_factory=list, description="每次外部调用的统一记录（查询词/条数/时间/错误）。"

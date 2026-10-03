@@ -41100,6 +41100,45 @@
         "title": "GenreElementRole",
         "description": "Role of a genre-specific structural element within a draft.\n\nPopular science and lecture script genres expose their required sections as\nfirst-class, auditable elements so users can verify that analogies, analogy\nboundaries, learning objectives and comprehension checks are present and\ndistinct. Research report and paper-assist genres add observation,\nanalysis, interpretation, limitation, next-step and author-assistance\nelements (T027)."
       },
+      "GithubConstraintSet": {
+        "properties": {
+          "technical": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Technical",
+            "description": "技术条件原词（语言、框架等）。"
+          },
+          "license": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "License",
+            "description": "许可条件原词（MIT、可商用等）。"
+          },
+          "runtime": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Runtime",
+            "description": "运行条件原词（能跑、可部署等）。"
+          },
+          "excluded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded",
+            "description": "用户明确排除的词（条件 kind=exclusion 的原话）。"
+          }
+        },
+        "type": "object",
+        "title": "GithubConstraintSet",
+        "description": "用户原文里的技术/许可/运行限制（逐字保留，不改写）。"
+      },
       "GithubContextSource": {
         "properties": {
           "kind": {
@@ -41146,7 +41185,7 @@
           "component"
         ],
         "title": "GithubCoverage",
-        "description": "一个推荐仓库相对用户 idea 的覆盖范围。"
+        "description": "一个推荐仓库相对用户 idea 的覆盖范围。\n\n``WHOLE`` 只要求**全部必要功能**都有文档自述或静态实现依据；可选项\n命中数与 star 数都不能把它推成整体候选（改进工单 26）。"
       },
       "GithubEvidenceKind": {
         "type": "string",
@@ -41163,7 +41202,12 @@
           "feature": {
             "type": "string",
             "title": "Feature",
-            "description": "用户 idea 里的必要功能原词。"
+            "description": "用户 idea 里的需求原词。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/GithubRequirementKind",
+            "description": "必要功能、可选功能或用户约束。",
+            "default": "required"
           },
           "matched": {
             "type": "boolean",
@@ -41181,6 +41225,17 @@
             ],
             "description": "命中证据的等级；未命中为 None。"
           },
+          "support_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GithubSupportLevel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "支持层次：documented／static_implementation／unconfirmed／unsupported。"
+          },
           "matched_terms": {
             "items": {
               "type": "string"
@@ -41193,6 +41248,20 @@
             "type": "string",
             "title": "Evidence",
             "description": "命中的真实文本片段或未命中的中文说明。"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/GithubRequirementSource"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "支持或否定该行的来源定位（链接/路径、版本与读取范围）。"
+          },
+          "runtime_required": {
+            "type": "boolean",
+            "title": "Runtime Required",
+            "description": "该行是否要求实际运行证据（静态读取永远不能满足）。",
+            "default": false
           }
         },
         "type": "object",
@@ -41202,7 +41271,7 @@
           "evidence"
         ],
         "title": "GithubFeatureMatch",
-        "description": "一条「idea 要点 → 仓库证据」的匹配判定（含证据类型与原文片段）。"
+        "description": "一条「需求 → 仓库证据」的矩阵行（含支持层次、来源与原文片段）。\n\n``matched`` 与 ``evidence_kind`` 保持旧字段语义（向下兼容历史投影）；\n新字段 ``support_level`` 给出文档自述／静态实现／未确认／未支持四档，\n``sources`` 给出可查的来源定位与读取范围。"
       },
       "GithubFileRead": {
         "properties": {
@@ -41505,6 +41574,14 @@
             "title": "Features",
             "description": "必要功能原词。"
           },
+          "optional_features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Optional Features",
+            "description": "可选功能原词（不参与整体/组件判定）。"
+          },
           "tech_terms": {
             "items": {
               "type": "string"
@@ -41512,6 +41589,10 @@
             "type": "array",
             "title": "Tech Terms",
             "description": "可选技术词。"
+          },
+          "constraints": {
+            "$ref": "#/components/schemas/GithubConstraintSet",
+            "description": "用户原文里的技术/许可/运行限制。"
           },
           "whole_idea": {
             "type": "boolean",
@@ -41537,6 +41618,29 @@
               }
             ],
             "description": "idea 来自前文时的可追溯依据（AC5 的关联原话）。"
+          },
+          "requirement_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GithubRequirementInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "需求来自既定类型化产物（选定论文/岗位需求）时的引用。"
+          },
+          "identity_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Note",
+            "description": "需求来源身份确认状态的中文说明；身份未确认时必须写明。"
           },
           "queries": {
             "items": {
@@ -41773,13 +41877,48 @@
             },
             "type": "array",
             "title": "Feature Matches",
-            "description": "逐条要点的匹配判定。"
+            "description": "逐条需求的矩阵行（必要、可选与约束）。"
           },
           "matched_feature_count": {
             "type": "integer",
             "title": "Matched Feature Count",
-            "description": "命中的要点数。",
+            "description": "命中的必要要点数（可选项不计）。",
             "default": 0
+          },
+          "required_feature_count": {
+            "type": "integer",
+            "title": "Required Feature Count",
+            "description": "必要功能总数。",
+            "default": 0
+          },
+          "required_supported_count": {
+            "type": "integer",
+            "title": "Required Supported Count",
+            "description": "必要功能里达到文档自述或静态实现的总数。",
+            "default": 0
+          },
+          "runtime_verified": {
+            "type": "boolean",
+            "title": "Runtime Verified",
+            "description": "是否取得实际运行证据；静态读取不置为真。",
+            "default": false
+          },
+          "version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GithubVersionEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "该仓库证据的版本依据（提交版本或取得时间）。"
+          },
+          "matrix_note": {
+            "type": "string",
+            "title": "Matrix Note",
+            "description": "覆盖判定依据的中文说明（必要功能视角）。",
+            "default": ""
           },
           "evidence_kinds": {
             "items": {
@@ -41927,6 +42066,237 @@
         ],
         "title": "GithubRejectedRepository",
         "description": "被检索到但没有纳入推荐的仓库与理由（留下痕迹，不静默丢弃）。"
+      },
+      "GithubRequirementInput": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "来源类别：paper／job（扩展来源用稳定短名）。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "面向用户的中文说明，例如「选定的论文」。"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier",
+            "description": "稳定标识（arXiv ID、样本 ID 等）。"
+          },
+          "phrase": {
+            "type": "string",
+            "title": "Phrase",
+            "description": "需求原词（用于检索与展示，逐字保留）。",
+            "default": ""
+          },
+          "identity_confirmed": {
+            "type": "boolean",
+            "title": "Identity Confirmed",
+            "description": "产物身份是否已经确认；未确认时不得宣称对应实现。",
+            "default": false
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref",
+            "description": "来源产物引用（产物/消息 ID）。"
+          },
+          "identity_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Note",
+            "description": "身份确认状态的说明（缺口或确认依据）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "label"
+        ],
+        "title": "GithubRequirementInput",
+        "description": "可接收的类型化需求来源（既定论文标识或岗位需求产物）。\n\n跨模块触发由工单 37 校验；本模块只接受已经形成的产物引用，并在\n``identity_confirmed`` 为假时**不宣称**仓库对应那份论文/岗位。"
+      },
+      "GithubRequirementKind": {
+        "type": "string",
+        "enum": [
+          "required",
+          "optional",
+          "constraint"
+        ],
+        "title": "GithubRequirementKind",
+        "description": "证据矩阵里一行的需求类别（必要/可选/用户约束）。"
+      },
+      "GithubRequirementSource": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GithubSourceKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "来源类别：readme／metadata／implementation_file。"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator",
+            "description": "来源定位：文件路径、README 链接或仓库标识。"
+          },
+          "read_range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Range",
+            "description": "实际读取范围（例如「README 正文，前 6000 字符」）。"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt",
+            "description": "支持该行的真实原文片段（已截断）。"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha",
+            "description": "证据对应的提交 SHA；未知为 None。"
+          },
+          "obtained_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obtained At",
+            "description": "该来源的取得时间。"
+          }
+        },
+        "type": "object",
+        "title": "GithubRequirementSource",
+        "description": "矩阵一行可核对的来源定位（链接/路径、版本、读取范围与原文片段）。"
+      },
+      "GithubSourceKind": {
+        "type": "string",
+        "enum": [
+          "metadata",
+          "readme",
+          "implementation_file"
+        ],
+        "title": "GithubSourceKind",
+        "description": "矩阵一行的来源类别（与证据等级同名，便于渲染与校验）。"
+      },
+      "GithubSupportLevel": {
+        "type": "string",
+        "enum": [
+          "documented",
+          "static_implementation",
+          "unconfirmed",
+          "unsupported"
+        ],
+        "title": "GithubSupportLevel",
+        "description": "一项需求在本轮真实证据里的支持层次（越低越弱）。\n\n- ``documented``：只有文档自述（README 或 API 元数据）支持；\n- ``static_implementation``：实际读取到的实现文件/目录支持（静态证据，\n  不等于程序已经运行验证）；\n- ``unconfirmed``：本轮没有取得足以判断的证据（未读、被额度挡住或\n  运行条件无法在静态读取中验证）；\n- ``unsupported``：已取得的证据明确没有支持该项。"
+      },
+      "GithubVersionEvidence": {
+        "properties": {
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha",
+            "description": "默认分支提交 SHA；未取得为 None。"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref",
+            "description": "提交所在分支名；未知为 None。"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "commit_api／readme_blob／file_blob／fetch_time：版本依据的真实来源。",
+            "default": "fetch_time"
+          },
+          "obtained_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Obtained At",
+            "description": "证据取得时间（UTC）。"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "面向用户的中文说明（版本依据与限制）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "obtained_at",
+          "note"
+        ],
+        "title": "GithubVersionEvidence",
+        "description": "一条证据对应的版本或取得时间（提交版本优先，取不到就如实降级）。\n\n``commit_sha`` 是读取证据时观察到的默认分支提交；上游没给或额度不够时\n为 None，此时 ``source`` 说明版本依据来自内容指纹（README/文件 blob\nsha）还是单纯的取得时间。任何断言都必须能指回其中一个。"
       },
       "GrantPermission": {
         "type": "string",
@@ -55625,6 +55995,21 @@
             ],
             "title": "Source",
             "default": "photo"
+          },
+          "recognition_path": {
+            "type": "string",
+            "enum": [
+              "ocr",
+              "vision",
+              "user"
+            ],
+            "title": "Recognition Path",
+            "default": "vision"
+          },
+          "interpretation": {
+            "type": "string",
+            "title": "Interpretation",
+            "default": ""
           }
         },
         "type": "object",
@@ -55692,6 +56077,13 @@
             },
             "type": "array",
             "title": "Unclear"
+          },
+          "recognition_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recognition Paths"
           }
         },
         "type": "object",
@@ -56048,6 +56440,13 @@
                 "type": "null"
               }
             ]
+          },
+          "pending_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending Object Ids"
           }
         },
         "type": "object",
@@ -56121,6 +56520,21 @@
           "reason": {
             "type": "string",
             "title": "Reason"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unclear",
+              "critical_symbol",
+              "dual_path_mismatch"
+            ],
+            "title": "Kind",
+            "default": "unclear"
+          },
+          "critical": {
+            "type": "boolean",
+            "title": "Critical",
+            "default": false
           }
         },
         "type": "object",

@@ -350,9 +350,11 @@ class ConversationRepository:
         """删除会话及其消息/模式事件；跨账户目标返回 0。"""
         from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
         from bridges.chat.summary import ConversationSummaryRepository
+        from bridges.kernel.repository import NodeKernelRepository
         from bridges.tasks.repository import TaskRepository
 
         with self._db.transaction():
+            NodeKernelRepository(self._db).delete_for_conversation(account_id, conversation_id)
             RunBudgetLedgerRepository(self._db).delete_for_conversation(account_id, conversation_id)
             TaskRepository(self._db, self).delete_for_conversation(account_id, conversation_id)
             # 改进工单 13：摘要缓存是会话的派生状态，随会话删除（外键指向

@@ -49,6 +49,21 @@ class NodeKernelRepository:
     def __init__(self, database: BridgesDatabase) -> None:
         self._db = database
 
+    def delete_for_conversation(self, account_id: str, conversation_id: str) -> None:
+        """由会话属主调用：清理本账户会话的节点产物、收据及外箱。"""
+        with self.transaction():
+            self._db.scoped(account_id).execute(
+                "DELETE FROM node_outbox WHERE account_id = ? AND receipt_id IN "
+                "(SELECT receipt_id FROM node_receipts "
+                "WHERE account_id = ? AND conversation_id = ?)",
+                (account_id, account_id, conversation_id),
+            )
+            for table in ("node_receipts", "node_artifacts"):
+                self._db.scoped(account_id).execute(
+                    f"DELETE FROM {table} WHERE account_id = ? AND conversation_id = ?",
+                    (account_id, conversation_id),
+                )
+
     @contextmanager
     def transaction(self) -> Iterator[None]:
         """持有连接锁，组合操作并入外层事务（提交守卫与写入同事务）。"""

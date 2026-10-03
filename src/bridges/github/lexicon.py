@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 #: 上游主机与接口（写入查询记录时用的来源名）。
 GITHUB_HOST = "github.com"
@@ -205,6 +206,86 @@ TECH_TERMS: tuple[str, ...] = (
     "小程序",
 )
 
+#: 许可条件词：命中即成为「许可限制」矩阵行（逐字保留原文形态）。
+LICENSE_TERMS: tuple[str, ...] = (
+    "MIT",
+    "Apache",
+    "Apache-2.0",
+    "GPL",
+    "LGPL",
+    "AGPL",
+    "BSD",
+    "MPL",
+    "Unlicense",
+    "CC0",
+    "CC-BY",
+)
+
+#: 复用条件短语：用户明确要求可复用/可商用时的原话线索。
+LICENSE_REUSE_HINTS: tuple[str, ...] = (
+    "可商用",
+    "允许商用",
+    "免费商用",
+    "可自由复用",
+    "允许复用",
+    "开源许可",
+    "开源协议",
+    "许可证",
+    "license",
+)
+
+#: 运行限制词：命中即代表要求实际运行证据（静态读取永不满足）。
+RUNTIME_HINTS: tuple[str, ...] = (
+    "能跑",
+    "跑得起来",
+    "跑起来",
+    "可运行",
+    "能运行",
+    "运行起来",
+    "可部署",
+    "能部署",
+    "部署起来",
+    "可执行",
+    "能执行",
+    "开箱即用",
+    "直接运行",
+    "能启动",
+    "可启动",
+    "能安装",
+    "可安装",
+)
+
+#: 实现证据词：用户明确要看实现/源码时，必要功能需要静态实现依据。
+IMPLEMENTATION_HINTS: tuple[str, ...] = (
+    "实现",
+    "源码",
+    "源代码",
+    "代码",
+    "内部实现",
+    "架构",
+    "怎么写的",
+    "怎么实现",
+)
+
+#: 可选功能标记：命中即为可选功能，不参与整体/组件判定与匹配门。
+OPTIONAL_HINTS: tuple[str, ...] = (
+    "最好",
+    "可选",
+    "可要可不要",
+    "加分项",
+    "锦上添花",
+    "有则更好",
+    "如果有的话",
+    "如果方便",
+    "非必需",
+    "非必须",
+    "不是必须",
+    "不强制",
+)
+
+#: 排除条件的前缀（原文里明确不要的词，作为硬条件保留）。
+_EXCLUSION_PREFIX = re.compile(r"(?:不要|不用|别用|排除|拒绝|非)\s*([^\s，,。；;、]+)")
+
 #: 必要功能的切分符（只按用户自己的分段切，不重写措辞）。
 _FEATURE_SEPARATORS = re.compile(
     r"[、，,；;。\n\r]+|(?:并且|同时|还要|还有|以及|然后|并且可以|又可以|也可)"
@@ -212,9 +293,6 @@ _FEATURE_SEPARATORS = re.compile(
 
 #: 有意义的连续短语长度下限（短于此的碎段不算要点）。
 MIN_FEATURE_CHARS = 2
-
-#: 必要功能条目上限（有界，避免把整段话当要点列表）。
-MAX_FEATURES = 6
 
 #: 核心场景的长度上限（超出即截断，检索词有界）。
 MAX_SCENARIO_CHARS = 60
@@ -391,8 +469,6 @@ def extract_features(text: str, *, scenario: str) -> list[str]:
         if cleaned == scenario or cleaned in features:
             continue
         features.append(cleaned)
-        if len(features) >= MAX_FEATURES:
-            break
     if not features and scenario:
         features = [scenario]
     return features
@@ -413,6 +489,100 @@ def extract_tech_terms(text: str) -> list[str]:
             continue
         found.append(value)
     return found[:MAX_TECH_TERMS]
+
+
+def extract_optional_features(
+    text: str, *, scenario: str, required: Sequence[str]
+) -> list[str]:
+    """抽取可选功能：带「最好/可选/加分」等标记的分段，与必要功能同法清洗。
+
+    可选项只用于补充说明或排序参考，绝不参与整体/组件判定与匹配门；原文措辞
+    逐字保留（只剥意图词与结尾助词，和必要功能同一套规则）。
+    """
+    optional: list[str] = []
+    del required
+    for segment in _FEATURE_SEPARATORS.split(text):
+        cleaned = strip_intent_words(_normalize(segment))
+        if len(cleaned) < MIN_FEATURE_CHARS or cleaned == scenario:
+            continue
+        if not any(hint in cleaned for hint in OPTIONAL_HINTS):
+            continue
+        if cleaned in optional:
+            continue
+        optional.append(cleaned)
+    return optional
+
+
+#: 明确技术条件的前缀：只有「用/基于/必须是 X」这类句式才算硬条件，
+#: 普通提及（「AI 记账」）仍然只是可选技术词。
+_TECH_CONSTRAINT = re.compile(
+    r"(?:用|基于|必须是|必须用|采用)\s*([A-Za-z][A-Za-z0-9.+#-]{1,24})"
+)
+
+
+def extract_tech_constraints(text: str) -> list[str]:
+    """抽取明确的技术条件原词（「用 Python 写」里的 Python）。"""
+    found: list[str] = []
+    for match in _TECH_CONSTRAINT.finditer(text):
+        value = match.group(1)
+        if value not in found:
+            found.append(value)
+    return found
+
+
+def extract_license_terms(text: str) -> list[str]:
+    """抽取许可条件原词：登记许可名（保留标准写法）+ 复用条件短语。
+
+    「LGPL」里含「GPL」这类子串包含只保留最长的具体许可名，否则用户要
+    LGPL/AGPL 会被登记成 GPL 条件，宽松许可的仓库也过不了核对。
+    """
+    lowered = text.lower()
+    hits = [term for term in LICENSE_TERMS if term.lower() in lowered]
+    found = [
+        term
+        for term in hits
+        if not any(term != other and term.lower() in other.lower() for other in hits)
+    ]
+    for hint in LICENSE_REUSE_HINTS:
+        if hint in text and hint not in found:
+            found.append(hint)
+    return found
+
+
+def extract_runtime_terms(text: str) -> list[str]:
+    """抽取运行条件原词（按出现位置排序；同一含义只保留最先出现的写法）。"""
+    hits: list[tuple[int, str]] = []
+    for hint in RUNTIME_HINTS:
+        index = text.find(hint)
+        if index < 0 or any(hint in existing or existing in hint for _, existing in hits):
+            continue
+        hits.append((index, hint))
+    return [hint for _, hint in sorted(hits, key=lambda item: item[0])]
+
+
+def extract_excluded_terms(text: str) -> list[str]:
+    """抽取用户明确排除的原词（「不要 X」「排除 X」的 X，逐字保留）。
+
+    「非必需」「非必须」是可选标记而不是排除条件（前缀「非」会误吞中间
+    的「必需」），整词命中可选标记时跳过，交给可选功能抽取处理。
+    """
+    excluded: list[str] = []
+    for match in _EXCLUSION_PREFIX.finditer(text):
+        phrase = match.group(0).strip()
+        value = match.group(1).strip(_EDGE_CHARS)
+        if phrase in OPTIONAL_HINTS or value in OPTIONAL_HINTS:
+            continue
+        if len(value) < 2 or value in excluded:
+            continue
+        excluded.append(value)
+    return excluded
+
+
+def wants_implementation_evidence(text: str) -> bool:
+    """用户是否要求实现依据：明确看实现/源码，或要求程序能跑起来。"""
+    return any(hint in text for hint in IMPLEMENTATION_HINTS) or any(
+        hint in text for hint in RUNTIME_HINTS
+    )
 
 
 def wants_whole_idea(text: str) -> bool:

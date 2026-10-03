@@ -23,6 +23,7 @@ import base64
 import binascii
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from threading import Event
@@ -37,6 +38,7 @@ from bridges.github.contracts import (
     GithubReadmeStatus,
     GithubRepositoryCandidate,
     GithubRepositoryEvidence,
+    GithubVersionEvidence,
 )
 from bridges.github.lexicon import INSPECT_SOURCE
 from bridges.github.searching import query_record
@@ -187,6 +189,7 @@ class _ReadmeRead:
     status: GithubReadmeStatus
     url: str | None
     text: str | None
+    sha: str | None = None
 
 
 class GithubRepositoryReader:
@@ -210,6 +213,8 @@ class GithubRepositoryReader:
         *,
         stop_event: Event | None = None,
         deadline: float | None = None,
+        requirements: Sequence[str] = (),
+        resume_evidence: Sequence[GithubRepositoryEvidence] = (),
     ) -> InspectionOutcome:
         """两遍读取：先把「足以判断相关性」的 README 取齐，再做额外文件核查。
 
@@ -218,12 +223,23 @@ class GithubRepositoryReader:
         用尽时，已经读到的 README 一律如实带回（不能因为后面读不到就把前面读到
         的丢掉），没做完额外核查的候选带上 ``deep_checks`` 的真实原因由投影如实
         说明；额度用尽后不再外发任何请求。
+
+        ``resume_evidence`` 是上一轮读取留下的真实证据（重试只补缺口）：
+        额外核查已完成的候选直接复用、不再外发；只读到 README 的候选复用
+        README 正文，只补根目录/许可/实现文件的缺口。没有证据的新候选照常读取。
         """
+        resumed = {item.full_name: item for item in resume_evidence}
         records: list[ModuleQueryRecord] = []
         reads: list[_ReadmeRead] = []
+        collected: dict[str, GithubRepositoryEvidence] = {}
         deep_checks = GithubDeepCheckStatus.DONE
         reset_at: datetime | None = None
         for candidate in candidates[:INSPECT_LIMIT]:
+            previous = resumed.get(candidate.full_name)
+            if previous is not None and previous.deep_checks is GithubDeepCheckStatus.DONE:
+                # 该候选的读取已经完整：直接复用，绝不重复外发。
+                collected[candidate.full_name] = previous
+                continue
             if stop_event is not None and stop_event.is_set():
                 break
             if deadline is not None and time.monotonic() >= deadline:
@@ -237,6 +253,22 @@ class GithubRepositoryReader:
                     )
                 )
                 continue
+            if previous is not None and previous.readme_status in {
+                GithubReadmeStatus.READ,
+                GithubReadmeStatus.NOT_FOUND,
+                GithubReadmeStatus.TOO_LARGE,
+            }:
+                # README 状态已定：复用正文，第二遍只补额外核查缺口。
+                reads.append(
+                    _ReadmeRead(
+                        candidate,
+                        previous.readme_status,
+                        previous.readme_url,
+                        previous.readme_text,
+                        previous.readme_sha,
+                    )
+                )
+                continue
             read, record = self._read_readme(account_id, candidate)
             records.append(record)
             if record.status is ModuleQueryStatus.RATE_LIMITED:
@@ -244,21 +276,29 @@ class GithubRepositoryReader:
                 reset_at = self._client.reset_at_for(BUCKET_CORE)
                 break
             reads.append(read)
-        evidence: list[GithubRepositoryEvidence] = []
         for read in reads:
             if deep_checks is not GithubDeepCheckStatus.DONE:
-                evidence.append(self._unverified(read, deep_checks=deep_checks))
-                continue
-            if _interrupted(stop_event, deadline):
-                evidence.append(
-                    self._unverified(read, deep_checks=GithubDeepCheckStatus.INTERRUPTED)
+                collected[read.candidate.full_name] = self._unverified(
+                    read, deep_checks=deep_checks
                 )
                 continue
-            item, status = self._deepen(account_id, read, records, deadline=deadline)
-            evidence.append(item)
+            if _interrupted(stop_event, deadline):
+                collected[read.candidate.full_name] = self._unverified(
+                    read, deep_checks=GithubDeepCheckStatus.INTERRUPTED
+                )
+                continue
+            item, status = self._deepen(
+                account_id, read, records, deadline=deadline, requirements=requirements
+            )
+            collected[read.candidate.full_name] = item
             if status is GithubDeepCheckStatus.RATE_LIMITED:
                 deep_checks = status
                 reset_at = self._client.reset_at_for(BUCKET_CORE)
+        evidence = [
+            collected[candidate.full_name]
+            for candidate in candidates[:INSPECT_LIMIT]
+            if candidate.full_name in collected
+        ]
         return InspectionOutcome(
             evidence=evidence,
             records=records,
@@ -277,6 +317,7 @@ class GithubRepositoryReader:
         records: list[ModuleQueryRecord],
         *,
         deadline: float | None,
+        requirements: Sequence[str] = (),
     ) -> tuple[GithubRepositoryEvidence, GithubDeepCheckStatus]:
         """补根目录清单、许可与实现文件核查；中途撞上额度即停并如实标注。"""
         root_entries, root_record, root_limited = self._read_root(
@@ -310,11 +351,14 @@ class GithubRepositoryReader:
             readme_text=read.text,
             root_entries=root_entries,
             deadline=deadline,
+            requirements=requirements,
         )
         records.extend(impl_records)
         status = (
             GithubDeepCheckStatus.RATE_LIMITED if impl_limited else GithubDeepCheckStatus.DONE
         )
+        # 内容读取没有固定提交 ref，不能将随后观察到的 HEAD 归给已读内容。
+        # 文件 blob 指纹和取得时间足以如实定位，且不额外消耗上游请求。
         return (
             self._evidence(
                 read,
@@ -348,8 +392,10 @@ class GithubRepositoryReader:
         checks: list[GithubImplementationCheck] | None = None,
         runnable_hints: list[str] | None = None,
         deep_checks: GithubDeepCheckStatus = GithubDeepCheckStatus.DONE,
+        commit_sha: str | None = None,
     ) -> GithubRepositoryEvidence:
         candidate = read.candidate
+        now = datetime.now(UTC)
         return GithubRepositoryEvidence(
             full_name=candidate.full_name,
             html_url=candidate.html_url,
@@ -367,13 +413,20 @@ class GithubRepositoryReader:
             license=license_check,
             readme_status=read.status,
             readme_url=read.url,
+            readme_sha=read.sha,
             readme_text=read.text,
             files_read=list(files_read or []),
             implementation_checks=list(checks or []),
             runnable_hints=list(runnable_hints or []),
             deep_checks=deep_checks,
             matched_query=candidate.matched_query,
-            retrieved_at=datetime.now(UTC),
+            retrieved_at=now,
+            version=_version_evidence(
+                read=read,
+                files_read=files_read or [],
+                commit_sha=commit_sha,
+                now=now,
+            ),
         )
 
     # -- README ----------------------------------------------------------
@@ -402,6 +455,7 @@ class GithubRepositoryReader:
                     GithubReadmeStatus.READ,
                     url,
                     text[: self._readme_max_chars],
+                    _clean(response.payload.get("sha")),
                 ),
                 _record(candidate, response, None, evidence=1),
             )
@@ -549,6 +603,7 @@ class GithubRepositoryReader:
         readme_text: str | None,
         root_entries: list[dict[str, object]],
         deadline: float | None,
+        requirements: Sequence[str] = (),
     ) -> tuple[
         list[GithubImplementationCheck], list[GithubFileRead], list[ModuleQueryRecord], bool
     ]:
@@ -559,7 +614,10 @@ class GithubRepositoryReader:
         files_read: list[GithubFileRead] = []
         records: list[ModuleQueryRecord] = []
         nested: list[str] = []
-        for path in _readme_paths(readme_text, names):
+        paths = _readme_paths(readme_text, names)
+        if requirements:
+            paths = list(dict.fromkeys([*paths, *_relevant_paths(root_entries, requirements)]))
+        for path in paths:
             top, _, rest = path.partition("/")
             if top not in names:
                 checks.append(
@@ -571,7 +629,7 @@ class GithubRepositoryReader:
                     )
                 )
                 continue
-            if not rest:
+            if not rest and (not requirements or not _CODE_EXT.search(path)):
                 checks.append(
                     GithubImplementationCheck(
                         claim=f"README 提到「{path}」",
@@ -582,7 +640,9 @@ class GithubRepositoryReader:
                 )
                 continue
             nested.append(path)
-        for path in nested[: self._implementation_read_limit]:
+        for index, path in enumerate(nested):
+            if index >= self._implementation_read_limit:
+                break
             if deadline is not None and time.monotonic() >= deadline:
                 checks.append(
                     GithubImplementationCheck(
@@ -600,6 +660,12 @@ class GithubRepositoryReader:
             )
             if response.ok and isinstance(response.payload, list):
                 entries = [item for item in response.payload if isinstance(item, dict)]
+                if requirements:
+                    children = _relevant_paths(entries, requirements)
+                    nested.extend(
+                        f"{path}/{child}" for child in children
+                        if f"{path}/{child}" not in nested
+                    )
                 entry_names = [
                     str(item.get("name")) for item in entries if item.get("name") is not None
                 ]
@@ -682,6 +748,73 @@ class GithubRepositoryReader:
                 )
             )
         return checks, files_read, records, False
+
+
+def _relevant_paths(
+    entries: list[dict[str, object]], requirements: Sequence[str]
+) -> list[str]:
+    """按需求原词、入口名选少量源码或目录；请求仍共享实现读取上限。"""
+    terms = set(re.findall(
+        r"[A-Za-z][A-Za-z0-9_-]{2,}|[\u4e00-\u9fff]{2,}", " ".join(requirements).lower()
+    ))
+    candidates: list[tuple[int, str]] = []
+    for entry in entries:
+        name = str(entry.get("name") or "")
+        lowered = name.lower()
+        is_dir = entry.get("type") == "dir"
+        if is_dir and lowered not in _DIR_LIKE:
+            continue
+        if not is_dir and (
+            not _CODE_EXT.search(name)
+            or lowered.endswith((".md", ".txt", ".json", ".toml", ".yaml", ".yml"))
+        ):
+            continue
+        score = sum(term in lowered for term in terms)
+        if lowered in {"main.py", "app.py", "index.ts", "index.js", "server.py", "src", "app"}:
+            score += 2
+        candidates.append((-score, name))
+    return [name for _, name in sorted(candidates)]
+
+
+def _version_evidence(
+    *,
+    read: _ReadmeRead,
+    files_read: list[GithubFileRead],
+    commit_sha: str | None,
+    now: datetime,
+) -> GithubVersionEvidence:
+    """证据的版本依据：提交版本优先，取不到就如实降级到内容指纹或取得时间。"""
+    ref = read.candidate.default_branch
+    if commit_sha:
+        branch = f" {ref}" if ref else ""
+        return GithubVersionEvidence(
+            commit_sha=commit_sha,
+            ref=ref,
+            source="commit_api",
+            obtained_at=now,
+            note=f"证据定位到默认分支{branch}的提交 {commit_sha[:7]}（上游提交接口）。",
+        )
+    file_sha = next((item.sha for item in files_read if item.sha), None)
+    blob = read.sha or file_sha
+    if read.sha:
+        label = "README 的内容指纹"
+    elif file_sha:
+        label = "已读文件的内容指纹"
+    else:
+        label = ""
+    if blob and label:
+        note = f"本轮未取得提交版本，以{label} {blob[:7]} 与取得时间定位证据。"
+    else:
+        note = "本轮未取得提交版本，证据以取得时间定位。"
+    return GithubVersionEvidence(
+        commit_sha=None,
+        ref=ref,
+        source=(
+            "readme_blob" if read.sha else ("file_blob" if file_sha else "fetch_time")
+        ),
+        obtained_at=now,
+        note=note,
+    )
 
 
 def _unread_license(

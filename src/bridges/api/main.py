@@ -1523,6 +1523,9 @@ def create_app(
             search=GithubApiSearchAdapter(app.state.github_api_client),
             reader=GithubRepositoryReader(app.state.github_api_client),
             insights=GithubInsightGenerator(model_gateway),
+            task_version_provider=lambda account_id, conversation_id: (
+                _commute_task_reference(app, account_id, conversation_id)
+            ),
         )
         app.router.add_event_handler(
             "shutdown", app.state.github_api_client.close

@@ -36,6 +36,16 @@ MAX_QUERIES = 3
 #: 整体查询已得到该数量以上候选时不再补组件查询（够用即止）。
 MIN_WHOLE_RESULTS = 3
 
+#: 记为失败的查询状态（检索成功的空结果不算失败，它有自己的终态）。
+FAILED_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
+    {
+        ModuleQueryStatus.ERROR,
+        ModuleQueryStatus.TIMEOUT,
+        ModuleQueryStatus.CANCELLED,
+        ModuleQueryStatus.RATE_LIMITED,
+    }
+)
+
 
 @dataclass(frozen=True)
 class SearchOutcome:
