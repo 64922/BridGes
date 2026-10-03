@@ -139,7 +139,13 @@ class ScopeGateway(StudyGateway):
                     ]
                 )
                 return ModelCallResult(
-                    status=ModelCallStatus.SUCCESS, output={"checks": checks}
+                    status=ModelCallStatus.SUCCESS, output={
+                        "checks": checks,
+                        "exclusions": [
+                            {"fragment_id": item["fragment_id"], "status": "consistent"}
+                            for item in json.loads(payload["prompt"].split("\n被排除片段：")[1])
+                        ],
+                    }
                 )
             if task == "study.preview":
                 self.preview_calls.append(payload)
@@ -241,7 +247,7 @@ def test_same_title_on_different_pages_keeps_distinct_ids_and_evidence(
         ).json()["messages"][-1]["content"]
         assert "暂不需要作答" in content
         assert len(gateway.map_calls) == 1
-        assert gateway.verify_calls == []
+        assert len(gateway.verify_calls) == 1
         run = app.state.chat_service._repo.get_run_by_message(
             account["id"], first.json()["assistant_message"]["message_id"]
         )
@@ -453,7 +459,7 @@ def test_preview_density_and_retry_reuses_mapping_without_duplicate_preview(
         covered = {unit_id for item in study["questions"] for unit_id in item["unit_ids"]}
         assert covered == {unit["unit_id"] for unit in study["units"]}
         assert len(gateway.map_calls) == 1
-        assert gateway.verify_calls == []
+        assert len(gateway.verify_calls) == 1
         assert len(gateway.preview_calls) == 2
         content = client.get(
             f"/chat/conversations/{conversation_id}"

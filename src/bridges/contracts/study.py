@@ -102,13 +102,21 @@ class StudyContentCheck(BaseModel):
     fragment_ids: list[str] = Field(default_factory=list)
 
 
+class StudyExclusionCheck(BaseModel):
+    """被排除片段与排除理由的原文核对结果。"""
+
+    fragment_id: str
+    status: Literal["consistent", "conflict", "insufficient"]
+    detail: str = ""
+
+
 class StudyScope(BaseModel):
     """一个经核验的有效知识范围版本；旧版本保留供导出与恢复。"""
 
     scope_version_id: str
     revision: int = Field(default=1, ge=1)
     #: 映射协议版本（提示与规则）：变化时旧产物不被复用。
-    protocol_version: str = "study-scope-v1"
+    protocol_version: str = "study-scope-v2"
     #: 覆盖页身份与内容指纹，用于判断新增页后的适用性（工单 35）。
     material_hash: str = ""
     page_object_ids: list[str] = Field(default_factory=list)
@@ -117,6 +125,7 @@ class StudyScope(BaseModel):
     units: list[StudyUnit] = Field(default_factory=list)
     coverage: list[StudyCoverageEntry] = Field(default_factory=list)
     content_checks: list[StudyContentCheck] = Field(default_factory=list)
+    exclusion_checks: list[StudyExclusionCheck] = Field(default_factory=list)
     verified: bool = False
     #: 旧合同下生成的历史范围（读取时由升级函数补齐 ID 并标记）。
     legacy: bool = False
@@ -236,7 +245,7 @@ def upgrade_legacy_study_state(state: StudyState) -> StudyState:
     if state.state_version >= STUDY_STATE_VERSION:
         return state
     units = [unit.model_copy(deep=True) for unit in state.units]
-    title_to_id: dict[str, str] = {}
+    title_to_units: dict[str, list[StudyUnit]] = {}
     seen_ids: set[str] = set()
     for index, unit in enumerate(units, 1):
         if not unit.unit_id:
@@ -245,16 +254,16 @@ def upgrade_legacy_study_state(state: StudyState) -> StudyState:
                 candidate = _legacy_unit_id(index + len(seen_ids), unit.title)
             unit.unit_id = candidate
         seen_ids.add(unit.unit_id)
-        title_to_id.setdefault(unit.title, unit.unit_id)
+        title_to_units.setdefault(unit.title, []).append(unit)
     questions = [
         question.model_copy(
             update={
                 "unit_ids": (
                     list(question.unit_ids)
                     or [
-                        title_to_id[title]
+                        title_to_units[title][0].unit_id
                         for title in question.unit_titles
-                        if title in title_to_id
+                        if len(title_to_units.get(title, [])) == 1
                     ]
                 ),
                 "scope_version_id": question.scope_version_id or "legacy-scope-v1",
@@ -270,8 +279,13 @@ def upgrade_legacy_study_state(state: StudyState) -> StudyState:
                     item.model_copy(
                         update={
                             "coverage_units": [
-                                title_to_id.get(ref, ref)
+                                unit_id
                                 for ref in item.coverage_units
+                                for unit_id in (
+                                    [unit.unit_id for unit in title_to_units.get(ref, [])
+                                     if set(unit.fragment_ids) & set(item.fragment_ids)]
+                                    or [ref]
+                                )
                             ]
                         }
                     )

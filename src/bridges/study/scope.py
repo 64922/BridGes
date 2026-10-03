@@ -30,12 +30,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from bridges.contracts.study import (
     StudyContentCheck,
     StudyCoverageEntry,
+    StudyExclusionCheck,
     StudyQuestion,
     StudyScope,
     StudyUnit,
 )
 from bridges.kernel.contracts import (
     ArtifactTrust,
+    InputDependency,
     KernelStatus,
     NodeArtifact,
     NodeExecution,
@@ -51,17 +53,15 @@ from bridges.kernel.contracts import (
 from bridges.kernel.executor import GateHandler, NodeKernel
 from bridges.kernel.registry import RecipeRegistry
 from bridges.study.kernel import (
-    _DEFINITION_PATTERN,
     NodeFailureError,
     StoppedError,
     SupersededError,
     _digest,
-    critical_symbol_kinds,
 )
 
 #: 知识范围协议版本：映射/核验/预习规则（提示、结构与门）变化时递增，
 #: 旧产物按输入键自然不被复用。
-SCOPE_PROTOCOL_VERSION = "study-scope-v1"
+SCOPE_PROTOCOL_VERSION = "study-scope-v2"
 
 #: 节点名（进度事件、失败定位、产物身份与质量门）。
 NODE_MAP = "study.map"
@@ -82,7 +82,7 @@ GATE_SCOPE_CONFLICT = "study_scope_content_conflict"
 GATE_SCOPE_UNVERIFIED = "study_scope_content_unverified"
 GATE_PREVIEW_INCOMPLETE = "study_preview_incomplete"
 
-SCOPE_RECIPE_VERSION = "study-scope-recipe-v1"
+SCOPE_RECIPE_VERSION = "study-scope-recipe-v2"
 MAPPING_RECIPE_ID = "study-scope-mapping"
 PREVIEW_RECIPE_ID = "study-scope-preview"
 
@@ -94,9 +94,9 @@ _NODE_RECIPE_IDS: dict[str, str] = {
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 SCOPE_CAPABILITY_VERSIONS: dict[str, str] = {
-    "study.map": "study-map-v1",
-    "study.verify_scope": "study-verify-scope-v1",
-    "study.preview": "study-preview-v1",
+    "study.map": "study-map-v2",
+    "study.verify_scope": "study-verify-scope-v2",
+    "study.preview": "study-preview-v2",
 }
 
 
@@ -160,17 +160,6 @@ def preview_bounds(units: Sequence[StudyUnit]) -> tuple[int, int]:
     minimum = max(1, (total + 2) // 3)
     maximum = max(minimum, min(8, total))
     return minimum, maximum
-
-
-def needs_content_check(unit: StudyUnit, fragment_texts: Mapping[str, str]) -> bool:
-    """关键定义/公式与关系必须与原文核对；普通描述性概念不额外调用。"""
-    if unit.kind == "relation":
-        return True
-    for fragment_id in unit.fragment_ids:
-        text = fragment_texts.get(fragment_id, "")
-        if critical_symbol_kinds(text) or _DEFINITION_PATTERN.search(text):
-            return True
-    return False
 
 
 def check_scope_structure(
@@ -309,6 +298,7 @@ class _ContentChecks(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     checks: list[_ContentCheck] = Field(default_factory=list)
+    exclusions: list[StudyExclusionCheck] = Field(default_factory=list)
 
 
 class _PreviewQuestion(BaseModel):
@@ -627,7 +617,19 @@ def _artifact(
         capability_version=invocation.spec.capability_version,
         trust_state=trust_state,
         input_key=invocation.spec.input_key(inputs),
-        input_deps=(),
+        input_deps=tuple(
+            InputDependency(
+                node=name, artifact_id=artifact.artifact_id,
+                content_hash=artifact.content_hash,
+            )
+            for name, artifact in invocation.dependencies.items()
+        ) or (
+            InputDependency(
+                node="study.scope" if invocation.spec.name == NODE_PREVIEW else "study.material",
+                artifact_id=None,
+                content_hash=inputs.prior_digest,
+            ),
+        ),
         source_refs=tuple(source_refs),
         read_scope=read_scope,
         requirement_coverage=tuple(dict(item) for item in requirement_coverage),
@@ -733,12 +735,8 @@ class StudyScopeNodeFlow:
         problems = _mapping_problems(mapping, material)
         units, coverage = _build_coverage(mapping, material)
         version_id = scope_version_id(material.material_hash, units, coverage)
-        fragment_lookup = material.fragment_texts()
-        check_unit_ids = [
-            unit.unit_id
-            for unit in units
-            if needs_content_check(unit, fragment_lookup)
-        ]
+        # 同一次独立核验覆盖全部映射，避免分类或定义词法漏掉关键结论。
+        check_unit_ids = [unit.unit_id for unit in units]
         payload = {
             "scope_version_id": version_id,
             "protocol_version": SCOPE_PROTOCOL_VERSION,
@@ -769,9 +767,19 @@ class StudyScopeNodeFlow:
         structure_problems = list(mapped.get("map_problems", []))
         structure_problems.extend(check_scope_structure(mapped))
         checks: list[dict[str, Any]] = []
+        exclusion_checks: list[dict[str, Any]] = []
         if not structure_problems:
             check_ids = [str(item) for item in mapped.get("check_unit_ids", [])]
-            if check_ids:
+            exclusions = [
+                {
+                    "fragment_id": entry["fragment_id"],
+                    "text": material.fragment_texts()[entry["fragment_id"]],
+                    "reason": entry["exclusion_reason"],
+                }
+                for entry in mapped.get("coverage", [])
+                if not entry["unit_ids"]
+            ]
+            if check_ids or exclusions:
                 units_by_id = {
                     str(item.get("unit_id")): item for item in mapped.get("units", [])
                 }
@@ -797,12 +805,16 @@ class StudyScopeNodeFlow:
                     )
                 prompt = (
                     '只输出 JSON {"checks":[{"unit_id":"知识点ID","status":'
-                    '"consistent|conflict|insufficient","detail":"简短说明"}]}。'
+                    '"consistent|conflict|insufficient","detail":"简短说明"}],'
+                    '"exclusions":[{"fragment_id":"片段ID","status":'
+                    '"consistent|conflict|insufficient","detail":"排除依据核对"}]}。'
                     "逐条核对知识点标题与类别是否被所列书页原文支持：定义、公式、"
                     "关系必须与原文完全一致（含负号、上下标、单位与限定条件）；"
                     "原文不足以支持或你无法确认时填 insufficient；不得引入书页之外"
-                    "的知识，也不得改写原文。"
+                    "的知识，也不得改写原文。逐条核对被排除片段的理由是否被原文支持；"
+                    "实质教学内容不得仅因映射遗漏而排除。"
                     + json.dumps(check_input, ensure_ascii=False)
+                    + "\n被排除片段：" + json.dumps(exclusions, ensure_ascii=False)
                 )
                 raw = self._invoke(
                     "qwen_structured_output",
@@ -810,7 +822,16 @@ class StudyScopeNodeFlow:
                 )
                 try:
                     result = _ContentChecks.model_validate(raw)
-                except ValidationError:
+                    returned_ids = [item.unit_id for item in result.checks]
+                    excluded_ids = [item.fragment_id for item in result.exclusions]
+                    if (
+                        len(returned_ids) != len(set(returned_ids))
+                        or set(returned_ids) - set(check_ids)
+                        or len(excluded_ids) != len(set(excluded_ids))
+                        or set(excluded_ids) - {entry["fragment_id"] for entry in exclusions}
+                    ):
+                        raise ValueError("核验引用重复或越界")
+                except (ValidationError, ValueError):
                     checks = [
                         {
                             "unit_id": unit_id,
@@ -845,6 +866,27 @@ class StudyScopeNodeFlow:
                                     "fragment_ids": list(unit.get("fragment_ids", [])),
                                 }
                             )
+                    returned_exclusions = {
+                        item.fragment_id: item for item in result.exclusions
+                    }
+                    for entry in exclusions:
+                        exclusion_check = returned_exclusions.get(entry["fragment_id"])
+                        exclusion_checks.append(
+                            exclusion_check.model_dump() if exclusion_check else {
+                                "fragment_id": entry["fragment_id"],
+                                "status": "insufficient",
+                                "detail": "排除理由未完成原文核对",
+                            }
+                        )
+                if not exclusion_checks:
+                    exclusion_checks = [
+                        {
+                            "fragment_id": entry["fragment_id"],
+                            "status": "insufficient",
+                            "detail": "排除理由核对结果不完整",
+                        }
+                        for entry in exclusions
+                    ]
         payload = {
             **mapped,
             "structure": {
@@ -852,6 +894,7 @@ class StudyScopeNodeFlow:
                 "problems": structure_problems,
             },
             "content_checks": checks,
+            "exclusion_checks": exclusion_checks,
         }
         return _structure_execution(
             invocation,
@@ -871,7 +914,7 @@ class StudyScopeNodeFlow:
                 {
                     "requirement": "关键定义/公式/关系与原文一致",
                     "covered": bool(checks) and all(
-                        item["status"] == "consistent" for item in checks
+                        item["status"] == "consistent" for item in [*checks, *exclusion_checks]
                     ),
                 },
             ],
@@ -893,6 +936,8 @@ class StudyScopeNodeFlow:
             for unit in scope.units
         ]
         system_prompt = (
+            '只输出 JSON {"questions":[{"question":"阅读引导问题",'
+            '"unit_ids":["知识点ID"]}]}。'
             "你是教材预习助教。只依据已核验的知识范围生成阅读引导问题，"
             "不要求学生现在作答，不泄露答案。问题引用给定知识点 ID；"
             "每个核心知识点至少被一个问题覆盖；一题可覆盖多个相关知识点。"
@@ -1061,6 +1106,10 @@ def _scope_content_gate(
         for item in execution.artifact.payload.get("content_checks", [])
         if isinstance(item, Mapping)
     ]
+    checks.extend(
+        {**item, "unit_id": item.get("fragment_id", "")}
+        for item in execution.artifact.payload.get("exclusion_checks", [])
+    )
     conflicts = [item for item in checks if item.get("status") == "conflict"]
     unverified = [item for item in checks if item.get("status") == "insufficient"]
     failed = conflicts or unverified
@@ -1196,7 +1245,9 @@ class StudyScopeRecognition:
         self._flow.configure_preview(scope, policy_block=policy_block)
         result = self._kernel.execute(
             recipe=self._preview_recipe,
-            inputs=self._inputs(prior_digest=scope.scope_version_id),
+            inputs=self._inputs(prior_digest=_digest({
+                "scope": scope.scope_version_id, "policy": policy_block,
+            })),
             event_sink=self._event_sink,
             stop_event=self._stop_event,
         )
@@ -1262,6 +1313,10 @@ class StudyScopeRecognition:
             content_checks=[
                 StudyContentCheck.model_validate(item)
                 for item in payload.get("content_checks", [])
+            ],
+            exclusion_checks=[
+                StudyExclusionCheck.model_validate(item)
+                for item in payload.get("exclusion_checks", [])
             ],
             verified=True,
         )

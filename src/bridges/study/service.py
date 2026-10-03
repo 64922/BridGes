@@ -73,7 +73,7 @@ from bridges.study.scope import (
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
-STUDY_GRAPH_VERSION = "study-pages-v1"
+STUDY_GRAPH_VERSION = "study-scope-v2"
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
@@ -206,6 +206,20 @@ class StudyWorkflow:
         stop_event: threading.Event | None,
     ) -> str | None:
         started = time.monotonic()
+        if run.graph_version != STUDY_GRAPH_VERSION:
+            # 旧检查点可能已经完成未原子提交的预习节点，不能套用新图恢复。
+            finalize_message(
+                self._repo, run.account_id, run.assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="study_graph_version_changed",
+                error_message="学习流程版本已更新，原书页和历史已保留，请重试。",
+                duration_ms=None, model_id=None, started=started, now=datetime.now(UTC),
+            )
+            on_event(StreamEvent(
+                kind="error", error_code="study_graph_version_changed",
+                error_message="学习流程版本已更新，请重试。",
+            ))
+            return "error"
         last_lock: ModelRunLock | None = None
         #: 失败尝试自己的运行锁（与最后一次成功调用的 ``last_lock`` 分开，
         #: 避免把成功的锁当失败证据）。
@@ -811,7 +825,7 @@ class StudyWorkflow:
                     GATE_SCOPE_INCOMPLETE,
                     GATE_SCOPE_CONFLICT,
                     GATE_SCOPE_UNVERIFIED,
-                }:
+                } and budget.begin_adjustment(reason_code=outcome.failure_code):
                     # 一次有界修复：带着失败反馈回到受影响映射；禁止新增知识点
                     # 凑覆盖，也不放宽材料/覆盖规则。再失败即如实报错。
                     prior_count = len(outcome.failure_detail.get("units", [])) or len(
@@ -823,9 +837,14 @@ class StudyWorkflow:
                     }
                     if prior_count:
                         repair["prior_unit_count"] = prior_count
-                    outcome = scope_recognition.map_scope(
-                        material, repair=repair, prior_scope=state.scope
-                    )
+                    try:
+                        outcome = scope_recognition.map_scope(
+                            material, repair=repair, prior_scope=state.scope
+                        )
+                    finally:
+                        budget.end_adjustment(
+                            outcome_code=outcome.failure_code or "study_scope_repaired"
+                        )
             except NodeFailureError as exc:
                 raise StudyWorkflowError(exc.node, exc.code, exc.message) from exc
             except StoppedError as exc:
@@ -852,14 +871,22 @@ class StudyWorkflow:
                     for item in state.scope_history
                     if item.scope_version_id != state.scope.scope_version_id
                 ]
-                state.scope_history = [state.scope, *history][:8]
+                state.scope_history = [state.scope, *history]
             state.scope = scope
             state.units = scope.units
             state.stage = "preview"
             state.wait_reason = None
             # 范围核验通过即持久为 preview 阶段；预习问题与 tutoring 阶段
             # 仍只在消息终态事务提交，停止/失败不提前进入辅导。
-            save_state()
+            with self._repo.database.transaction():
+                decision = material_guard.verify()
+                if not decision.ok:
+                    raise StudyWorkflowError(
+                        current_node,
+                        "stopped" if decision.code == "run_stopped" else decision.code,
+                        decision.message,
+                    )
+                save_state_in_transaction()
             return {}
 
         def preview() -> _GraphState:
@@ -1075,7 +1102,7 @@ class StudyWorkflow:
                         state.tutoring.append(exchange)
                     self._states.save_in_transaction(run.account_id, run.conversation_id, state)
 
-            if not output.get("reviewed"):
+            if not output.get("reviewed") and not output.get("scope"):
                 self._repo.update_message_content(
                     run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
                 )
@@ -1092,7 +1119,7 @@ class StudyWorkflow:
                 started=started,
                 now=datetime.now(UTC),
                 persist_learning=persist_tutoring,
-                final_content=answer if output.get("reviewed") else None,
+                final_content=answer if output.get("reviewed") or output.get("scope") else None,
             )
             return None
         except StudyWorkflowError as exc:

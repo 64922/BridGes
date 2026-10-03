@@ -56122,6 +56122,23 @@
               }
             ],
             "title": "Wait Reason"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope_history": {
+            "items": {
+              "$ref": "#/components/schemas/StudyScope"
+            },
+            "type": "array",
+            "title": "Scope History"
           }
         },
         "type": "object",
@@ -56138,19 +56155,29 @@
             "minLength": 1,
             "title": "Question"
           },
+          "unit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unit Ids"
+          },
           "unit_titles": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "minItems": 1,
             "title": "Unit Titles"
+          },
+          "scope_version_id": {
+            "type": "string",
+            "title": "Scope Version Id",
+            "default": ""
           }
         },
         "type": "object",
         "required": [
-          "question",
-          "unit_titles"
+          "question"
         ],
         "title": "StudyQuestion"
       },
@@ -56447,6 +56474,28 @@
             },
             "type": "array",
             "title": "Pending Object Ids"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope_history": {
+            "items": {
+              "$ref": "#/components/schemas/StudyScope"
+            },
+            "type": "array",
+            "title": "Scope History"
+          },
+          "state_version": {
+            "type": "integer",
+            "title": "State Version",
+            "default": 1
           }
         },
         "type": "object",
@@ -56546,10 +56595,26 @@
       },
       "StudyUnit": {
         "properties": {
+          "unit_id": {
+            "type": "string",
+            "title": "Unit Id",
+            "default": ""
+          },
           "title": {
             "type": "string",
             "minLength": 1,
             "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "concept",
+              "relation",
+              "application",
+              "misconception"
+            ],
+            "title": "Kind",
+            "default": "concept"
           },
           "fragment_ids": {
             "items": {
@@ -62153,6 +62218,179 @@
         ],
         "title": "ArtifactTrustStatus",
         "description": "Lifecycle status of the scientific artifact produced by a run."
+      },
+      "StudyContentCheck": {
+        "properties": {
+          "unit_id": {
+            "type": "string",
+            "title": "Unit Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "consistent",
+              "conflict",
+              "insufficient"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "fragment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fragment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit_id",
+          "status"
+        ],
+        "title": "StudyContentCheck",
+        "description": "关键定义/公式/关系与书页原文的逐点核对结果（与结构门分开）。"
+      },
+      "StudyCoverageEntry": {
+        "properties": {
+          "fragment_id": {
+            "type": "string",
+            "title": "Fragment Id"
+          },
+          "unit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unit Ids"
+          },
+          "exclusion_reason": {
+            "type": "string",
+            "title": "Exclusion Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "fragment_id"
+        ],
+        "title": "StudyCoverageEntry",
+        "description": "覆盖矩阵的一行：一个实质教学片段与知识点/排除理由的关系。"
+      },
+      "StudyExclusionCheck": {
+        "properties": {
+          "fragment_id": {
+            "type": "string",
+            "title": "Fragment Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "consistent",
+              "conflict",
+              "insufficient"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "fragment_id",
+          "status"
+        ],
+        "title": "StudyExclusionCheck",
+        "description": "被排除片段与排除理由的原文核对结果。"
+      },
+      "StudyScope": {
+        "properties": {
+          "scope_version_id": {
+            "type": "string",
+            "title": "Scope Version Id"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision",
+            "default": 1
+          },
+          "protocol_version": {
+            "type": "string",
+            "title": "Protocol Version",
+            "default": "study-scope-v2"
+          },
+          "material_hash": {
+            "type": "string",
+            "title": "Material Hash",
+            "default": ""
+          },
+          "page_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Page Object Ids"
+          },
+          "fragment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fragment Ids"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/StudyUnit"
+            },
+            "type": "array",
+            "title": "Units"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/StudyCoverageEntry"
+            },
+            "type": "array",
+            "title": "Coverage"
+          },
+          "content_checks": {
+            "items": {
+              "$ref": "#/components/schemas/StudyContentCheck"
+            },
+            "type": "array",
+            "title": "Content Checks"
+          },
+          "exclusion_checks": {
+            "items": {
+              "$ref": "#/components/schemas/StudyExclusionCheck"
+            },
+            "type": "array",
+            "title": "Exclusion Checks"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "default": false
+          },
+          "legacy": {
+            "type": "boolean",
+            "title": "Legacy",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope_version_id"
+        ],
+        "title": "StudyScope",
+        "description": "一个经核验的有效知识范围版本；旧版本保留供导出与恢复。"
       }
     }
   }

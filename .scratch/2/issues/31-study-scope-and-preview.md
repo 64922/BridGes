@@ -4,7 +4,7 @@
 
 **Blocked by:** 21 — 按任务、边界与前文适配有分寸表达；30 — 按页恢复书页识别并定位关键材料疑点
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -80,3 +80,7 @@
 - 本票待独立验收；分支 `codex/31-study-scope-and-preview`，工作树 `.worktrees/31-study-scope-and-preview`，基线 `68357a20`。
 
 
+
+## 2026-10-03 独立验收与修复
+
+原交付存在规范和需求缺陷，已独立两轴审查、修复并复验通过。协议/配方/能力/学习图同步 v2；阶段与预习正文在终态事务提交，旧图安全结束、显式重试新图；全部范围历史保留。综合复验150 passed，最后核心复验20 passed；内核合同69 passed/1个main既有OpenAPI漂移，mypy22项与main逐项一致，Ruff通过。真实模型质量仍由42评测。详见[独立验收记录](../acceptance/31-study-scope-and-preview.md)，它覆盖并更正上文实施报告的历史8版淘汰及旧协议限制。合并推送与清理结果随后追加到该记录。

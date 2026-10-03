@@ -1,0 +1,13 @@
+[
+  "LearningResourcesProjection",
+  "PaperIdentity",
+  "PaperReadScope",
+  "PaperRecommendation",
+  "PaperRequirementEvidence",
+  "PaperSearchProjection",
+  "ResourceEvidenceLevel",
+  "ResourceItem",
+  "ResourceMedia",
+  "ResourceRole",
+  "ResourcesGoalKind"
+]

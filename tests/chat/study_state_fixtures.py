@@ -150,5 +150,6 @@ def seed_recognized_study_state(
         "qwen_vision",
         "qwen_structured_output",
         "qwen_structured_output",
+        "qwen_structured_output",
     ]
     return state

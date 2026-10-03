@@ -218,6 +218,7 @@ def test_two_pages_preview_survives_reload_and_is_private(tmp_path: Any, monkeyp
             "qwen_vision",
             "qwen_structured_output",
             "qwen_structured_output",
+            "qwen_structured_output",
         ]
         _register(client, "studyother")
         assert client.get(f"/chat/conversations/{conversation_id}").status_code == 404
