@@ -79,7 +79,7 @@ class ReviewGateway(TutorGateway):
                 "questions": [
                     {
                         "question": f"第{len(data['asked']) + index + 1}个角度：解释线性函数。",
-                        "coverage_units": [unit["title"] for unit in data["units"]],
+                        "coverage_units": [unit["unit_id"] for unit in data["units"]],
                         "fragment_ids": [source["source_id"] for source in data["sources"]],
                     }
                     for index in range(self.question_count)

@@ -12,11 +12,12 @@ from typing import Any, TypedDict, TypeVar
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel, Field, ValidationError
 
 from bridges.ai.adapters import REQUEST_TIMEOUT_SECONDS_KEY, StreamEvent
 from bridges.chat.budget import load_run_budget
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
+from bridges.chat.context_compiler import ContextEvidence
+from bridges.chat.lightweight_policy import ChatLightweightPolicyCompiler
 from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
 from bridges.chat.run_executor import chat_run_context
 from bridges.chat.turn import (
@@ -29,14 +30,14 @@ from bridges.chat.turn import (
 from bridges.contracts.ai import ModelCallStatus, ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus, ChatMode, ChatStreamNodeData
 from bridges.contracts.study import (
+    STUDY_STATE_VERSION,
     StudyExchange,
     StudyFragment,
     StudyPage,
     StudyPageUpdate,
-    StudyQuestion,
     StudyState,
     StudyUnclear,
-    StudyUnit,
+    upgrade_legacy_study_state,
 )
 from bridges.kernel.executor import NodeKernel
 from bridges.kernel.guard import RunCommitGuard
@@ -58,10 +59,21 @@ from bridges.study.kernel import (
     study_recipe_registry,
 )
 from bridges.study.review import grade, next_question, plan_review, review_intent
+from bridges.study.scope import (
+    GATE_SCOPE_CONFLICT,
+    GATE_SCOPE_INCOMPLETE,
+    GATE_SCOPE_UNVERIFIED,
+    SCOPE_GATE_HANDLERS,
+    ScopeFragment,
+    ScopeMaterial,
+    StudyScopeNodeFlow,
+    StudyScopeRecognition,
+    study_scope_recipe_registry,
+)
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
-STUDY_GRAPH_VERSION = "study-pages-v1"
+STUDY_GRAPH_VERSION = "study-scope-v2"
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
@@ -84,14 +96,6 @@ _RECOGNITION_NODES = frozenset(
 
 def _is_recognition_node(node: str) -> bool:
     return node in _RECOGNITION_NODES
-
-
-class _Mapped(BaseModel):
-    units: list[StudyUnit] = Field(min_length=1)
-
-
-class _Preview(BaseModel):
-    questions: list[StudyQuestion] = Field(min_length=1)
 
 
 class StudyWorkflowError(Exception):
@@ -140,7 +144,13 @@ class StudyRepository:
             )
             .fetchone()
         )
-        return StudyState.model_validate_json(row["state_json"]) if row else None
+        if row is None:
+            return None
+        # 旧状态（v1）读取时升级为稳定知识点 ID 合同：旧范围/预习保持可读，
+        # 不因格式变化丢失历史，也不改写阶段、判定或总结。
+        return upgrade_legacy_study_state(
+            StudyState.model_validate_json(row["state_json"])
+        )
 
     def save(self, account_id: str, conversation_id: str, state: StudyState) -> None:
         with self._db.transaction():
@@ -150,6 +160,7 @@ class StudyRepository:
         self, account_id: str, conversation_id: str, state: StudyState,
     ) -> None:
         """由消息终态事务调用，问答与消息要么一起成功、要么一起回滚。"""
+        payload = state.model_copy(update={"state_version": STUDY_STATE_VERSION})
         self._db.scoped(account_id).execute(
             "INSERT INTO study_states (account_id, conversation_id, state_json, updated_at)"
             " VALUES (?, ?, ?, ?) ON CONFLICT(account_id, conversation_id)"
@@ -157,7 +168,7 @@ class StudyRepository:
             (
                 account_id,
                 conversation_id,
-                state.model_dump_json(),
+                payload.model_dump_json(),
                 datetime.now(UTC).isoformat(),
             ),
         )
@@ -169,6 +180,8 @@ class _GraphState(TypedDict, total=False):
     tutoring: dict[str, Any]
     updated_pages: dict[str, Any]
     reviewed: dict[str, Any]
+    scope: dict[str, Any]
+    questions: list[dict[str, Any]]
 
 
 #: 节点返回值：图节点返回增量状态，图内子步骤（如总结）返回自己的结果。
@@ -193,6 +206,20 @@ class StudyWorkflow:
         stop_event: threading.Event | None,
     ) -> str | None:
         started = time.monotonic()
+        if run.graph_version != STUDY_GRAPH_VERSION:
+            # 旧检查点可能已经完成未原子提交的预习节点，不能套用新图恢复。
+            finalize_message(
+                self._repo, run.account_id, run.assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="study_graph_version_changed",
+                error_message="学习流程版本已更新，原书页和历史已保留，请重试。",
+                duration_ms=None, model_id=None, started=started, now=datetime.now(UTC),
+            )
+            on_event(StreamEvent(
+                kind="error", error_code="study_graph_version_changed",
+                error_message="学习流程版本已更新，请重试。",
+            ))
+            return "error"
         last_lock: ModelRunLock | None = None
         #: 失败尝试自己的运行锁（与最后一次成功调用的 ``last_lock`` 分开，
         #: 避免把成功的锁当失败证据）。
@@ -220,6 +247,9 @@ class StudyWorkflow:
             state.pages = state.page_update.pages
             state.units = state.page_update.units
             state.wait_reason = state.page_update.wait_reason
+            if state.page_update.scope is not None:
+                state.scope = state.page_update.scope
+                state.scope_history = state.page_update.scope_history
 
         material_guard = RunCommitGuard(
             self._repo,
@@ -236,7 +266,11 @@ class StudyWorkflow:
                 pending = committed.model_copy(deep=True)
                 pending.pending_object_ids = list(state.pending_object_ids)
                 pending.page_update = StudyPageUpdate(
-                    pages=state.pages, units=state.units, wait_reason=state.wait_reason,
+                    pages=state.pages,
+                    units=state.units,
+                    wait_reason=state.wait_reason,
+                    scope=state.scope,
+                    scope_history=state.scope_history,
                 )
                 self._states.save_in_transaction(run.account_id, run.conversation_id, pending)
             else:
@@ -393,6 +427,71 @@ class StudyWorkflow:
                 runner=flow.run_node,
             ),
             flow=flow,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            run_id=run.run_id,
+            user_message_id=run.user_message_id,
+            user_content=user.content,
+            stop_event=stop_event,
+            event_sink=kernel_event,
+        )
+
+        #: 工单 31：范围映射、范围核验与预习经持久节点内核执行；预习的
+        #: 自然语言生成走统一上下文编译（表达策略 + 采纳证据 + 预算门），
+        #: 策略只作用于提问措辞，不改变片段、范围或游标。
+        def preview_policy_block() -> str:
+            compiler = ChatLightweightPolicyCompiler()
+            existing = (run.config or {}).get("global_writing_policy")
+            snapshot = compiler.compile(
+                ChatMode.STUDY,
+                user_text=user.content or "生成本节预习问题",
+                lesson=True,
+                existing_snapshot=existing,
+            )
+            config = dict(run.config or {})
+            config["global_writing_policy"] = snapshot.model_dump(mode="json")
+            self._repo.update_generation_config(run.account_id, run.run_id, config)
+            run.config = config
+            return snapshot.system_block
+
+        def compile_preview_context(
+            system_prompt: str, data: dict[str, Any]
+        ) -> tuple[list[dict[str, str]] | None, bool]:
+            messages, context_budget = self._service.compile_turn_context(
+                run,
+                system_prompt=system_prompt,
+                evidence=[
+                    ContextEvidence("study-preview", json.dumps(data, ensure_ascii=False))
+                ],
+            )
+            adopted = bool(
+                messages is not None
+                and context_budget is not None
+                and not context_budget["budget_floor_exceeded"]
+                and "study-preview" in context_budget["adopted_evidence_ids"]
+            )
+            return messages, adopted
+
+        scope_flow = StudyScopeNodeFlow(
+            invoke=invoke,
+            compile_context=compile_preview_context,
+        )
+        scope_recognition = StudyScopeRecognition(
+            kernel=NodeKernel(
+                registry=study_scope_recipe_registry(),
+                repository=NodeKernelRepository(self._repo.database),
+                guard=RunCommitGuard(
+                    self._repo,
+                    account_id=run.account_id,
+                    run_id=run.run_id,
+                    conversation_id=run.conversation_id,
+                    assistant_message_id=run.assistant_message_id,
+                    stop_event=stop_event,
+                ),
+                gates=SCOPE_GATE_HANDLERS,
+                runner=scope_flow.run_node,
+            ),
+            flow=scope_flow,
             account_id=run.account_id,
             conversation_id=run.conversation_id,
             run_id=run.run_id,
@@ -698,14 +797,14 @@ class StudyWorkflow:
 
         def map_units() -> _GraphState:
             fragments = [
-                {
-                    "id": fragment.fragment_id,
-                    "page": page.ordinal,
-                    "kind": fragment.kind,
-                    "position": fragment.position,
-                    "text": fragment.text,
-                    "source": fragment.source,
-                }
+                ScopeFragment(
+                    fragment_id=fragment.fragment_id,
+                    page_ordinal=page.ordinal,
+                    kind=fragment.kind,
+                    position=fragment.position,
+                    text=fragment.text,
+                    source=fragment.source,
+                )
                 for page in state.pages
                 for fragment in page.fragments
                 if fragment.confidence >= 0.7
@@ -718,76 +817,102 @@ class StudyWorkflow:
                     )
                 )
             ]
-            mapped = invoke(
-                "qwen_structured_output",
-                {
-                    "prompt": (
-                        '只输出 JSON 对象 {"units":[{"title":"知识点",'
-                        '"fragment_ids":["片段ID"],"core":true}]}。'
-                        "只依据这些片段提炼知识点，引用真实片段 ID，"
-                        "覆盖核心概念、关系、应用和易错处。"
-                        + json.dumps(fragments, ensure_ascii=False)
-                    ),
-                    "temperature": 0.01,
-                },
-            )
+            material = ScopeMaterial.build(pages=state.pages, fragments=fragments)
             try:
-                units = _Mapped.model_validate(mapped).units
-            except ValidationError as exc:
+                outcome = scope_recognition.map_scope(material, prior_scope=state.scope)
+                if outcome.scope is None and outcome.failure_code in {
+                    "study_map_invalid",
+                    GATE_SCOPE_INCOMPLETE,
+                    GATE_SCOPE_CONFLICT,
+                    GATE_SCOPE_UNVERIFIED,
+                } and budget.begin_adjustment(reason_code=outcome.failure_code):
+                    # 一次有界修复：带着失败反馈回到受影响映射；禁止新增知识点
+                    # 凑覆盖，也不放宽材料/覆盖规则。再失败即如实报错。
+                    prior_count = len(outcome.failure_detail.get("units", [])) or len(
+                        state.units
+                    )
+                    repair: dict[str, Any] = {
+                        "code": outcome.failure_code,
+                        "message": outcome.failure_message,
+                    }
+                    if prior_count:
+                        repair["prior_unit_count"] = prior_count
+                    try:
+                        outcome = scope_recognition.map_scope(
+                            material, repair=repair, prior_scope=state.scope
+                        )
+                    finally:
+                        budget.end_adjustment(
+                            outcome_code=outcome.failure_code or "study_scope_repaired"
+                        )
+            except NodeFailureError as exc:
+                raise StudyWorkflowError(exc.node, exc.code, exc.message) from exc
+            except StoppedError as exc:
+                raise StudyWorkflowError(exc.node, "stopped", STUDY_STOPPED_TEXT) from exc
+            except SupersededError as exc:
                 raise StudyWorkflowError(
-                    current_node, "study_map_invalid", "知识范围映射不完整，请重试。"
+                    current_node,
+                    exc.code,
+                    "本轮生成已被其他尝试取代，结果未提交。",
                 ) from exc
-            valid_ids = {fragment["id"] for fragment in fragments}
-            cited_ids = {fragment_id for unit in units for fragment_id in unit.fragment_ids}
-            if cited_ids - valid_ids or any(
-                not any(
-                    fragment.fragment_id in cited_ids
-                    for fragment in page.fragments
-                )
-                for page in state.pages
-            ):
+            if outcome.scope is None:
                 raise StudyWorkflowError(
-                    current_node, "study_map_invalid", "知识点未覆盖每页书页依据，请重试。"
+                    current_node,
+                    outcome.failure_code or "study_scope_failed",
+                    outcome.failure_message or "知识范围核验未通过，请重试。",
                 )
-            state.units = units
+            scope = outcome.scope
+            if (
+                state.scope is not None
+                and state.scope.scope_version_id != scope.scope_version_id
+            ):
+                history = [
+                    item
+                    for item in state.scope_history
+                    if item.scope_version_id != state.scope.scope_version_id
+                ]
+                state.scope_history = [state.scope, *history]
+            state.scope = scope
+            state.units = scope.units
             state.stage = "preview"
             state.wait_reason = None
-            save_state()
+            # 范围核验通过即持久为 preview 阶段；预习问题与 tutoring 阶段
+            # 仍只在消息终态事务提交，停止/失败不提前进入辅导。
+            with self._repo.database.transaction():
+                decision = material_guard.verify()
+                if not decision.ok:
+                    raise StudyWorkflowError(
+                        current_node,
+                        "stopped" if decision.code == "run_stopped" else decision.code,
+                        decision.message,
+                    )
+                save_state_in_transaction()
             return {}
 
         def preview() -> _GraphState:
-            result = invoke(
-                "qwen_structured_output",
-                {
-                    "prompt": (
-                        '只输出 JSON 对象 {"questions":[{"question":"预习问题",'
-                        '"unit_titles":["知识点标题"]}]}。'
-                        "提出有深度的阅读引导问题，不要求学生现在回答；每个核心知识点至少被一个问题覆盖。"
-                        + json.dumps(
-                            [unit.model_dump() for unit in state.units], ensure_ascii=False
-                        )
-                    ),
-                    "temperature": 0.2,
-                },
-            )
-            try:
-                questions = _Preview.model_validate(result).questions
-            except ValidationError as exc:
+            scope = state.scope
+            if scope is None:
                 raise StudyWorkflowError(
-                    current_node, "study_preview_invalid", "预习问题生成不完整，请重试。"
-                ) from exc
-            titles = {unit.title for unit in state.units}
-            covered = {title for question in questions for title in question.unit_titles}
-            if covered - titles or any(
-                unit.core and unit.title not in covered for unit in state.units
-            ):
-                raise StudyWorkflowError(
-                    current_node, "study_preview_invalid", "预习问题未覆盖本节重点，请重试。"
+                    current_node, "study_scope_missing", "有效知识范围缺失，请重试。"
                 )
+            try:
+                questions = scope_recognition.preview_scope(
+                    scope, policy_block=preview_policy_block()
+                )
+            except NodeFailureError as exc:
+                raise StudyWorkflowError(exc.node, exc.code, exc.message) from exc
+            except StoppedError as exc:
+                raise StudyWorkflowError(exc.node, "stopped", STUDY_STOPPED_TEXT) from exc
+            except SupersededError as exc:
+                raise StudyWorkflowError(
+                    current_node,
+                    exc.code,
+                    "本轮生成已被其他尝试取代，结果未提交。",
+                ) from exc
             state.questions = questions
             state.stage = "tutoring"
-            self._states.save(run.account_id, run.conversation_id, state)
-            scope = "、".join(
+            state.wait_reason = None
+            scope_text = "、".join(
                 f"{unit.title}（"
                 + "、".join(
                     f"第{page.ordinal}页{fragment.position}"
@@ -804,9 +929,12 @@ class StudyWorkflow:
             return {
                 "answer": (
                     (f"检测到{duplicate_count}张重复书页，已跳过。\n\n" if duplicate_count else "")
-                    + f"已识别本节范围：{scope}\n\n"
+                    + f"已识别本节范围：{scope_text}\n\n"
                     f"预习时可以带着这些问题阅读，暂不需要作答：\n{questions_text}"
-                )
+                ),
+                # 阶段推进与问题一起在消息终态事务内提交：生成完不等于已提交，
+                # 停止/提交失败时数据库只停在 preview 阶段，重试不会重复预习。
+                "scope": state.model_dump(),
             }
 
         def finish_pages() -> _GraphState:
@@ -955,6 +1083,13 @@ class StudyWorkflow:
                         run.account_id, run.conversation_id,
                         StudyState.model_validate(output["reviewed"]),
                     )
+                if output.get("scope"):
+                    # 范围版本与预习问题只随消息终态事务提交：提交失败即整体
+                    # 回滚，重放/重试复用持久节点产物，不重复预习也不错误推进。
+                    self._states.save_in_transaction(
+                        run.account_id, run.conversation_id,
+                        StudyState.model_validate(output["scope"]),
+                    )
                 if output.get("updated_pages"):
                     self._states.save_in_transaction(
                         run.account_id, run.conversation_id,
@@ -967,7 +1102,7 @@ class StudyWorkflow:
                         state.tutoring.append(exchange)
                     self._states.save_in_transaction(run.account_id, run.conversation_id, state)
 
-            if not output.get("reviewed"):
+            if not output.get("reviewed") and not output.get("scope"):
                 self._repo.update_message_content(
                     run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
                 )
@@ -984,7 +1119,7 @@ class StudyWorkflow:
                 started=started,
                 now=datetime.now(UTC),
                 persist_learning=persist_tutoring,
-                final_content=answer if output.get("reviewed") else None,
+                final_content=answer if output.get("reviewed") or output.get("scope") else None,
             )
             return None
         except StudyWorkflowError as exc:

@@ -118,6 +118,27 @@ def _error(
 
 
 ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
+    _error("study_graph_version_changed", "学习流程版本已更新，历史已保留，请重试。",
+           FailureClass.STATE_CONFLICT, RecoveryAction.RETRY, contextual=True),
+    # 工单 31：保留领域核验详情，登记真实错误类别与恢复动作。
+    _error("study_map_invalid", "知识范围映射结构不完整，请重试。",
+           FailureClass.INTERNAL, RecoveryAction.RETRY, contextual=True),
+    _error("study_scope_incomplete", "知识范围结构核验未通过，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_scope_content_conflict", "关键内容与书页原文冲突，未通过核验，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_scope_content_unverified", "关键内容无法核实，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_preview_incomplete", "预习问题未通过覆盖核验，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_preview_budget", "预习范围超出上下文预算，请缩小范围后重试。",
+           FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST, contextual=True),
+    _error("study_scope_missing", "有效知识范围缺失，请重试。",
+           FailureClass.INTERNAL, RecoveryAction.RETRY, contextual=True),
+    _error("study_preview_missing", "预习问题产物缺失，请重试。",
+           FailureClass.INTERNAL, RecoveryAction.RETRY, contextual=True),
+    _error("study_scope_failed", "知识范围核验未通过，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
     _error(
         "generation_worker_lost",
@@ -979,6 +1000,12 @@ _MODULE_ENTRIES: tuple[CopyEntry, ...] = (
 )
 
 _STUDY_ENTRIES: tuple[CopyEntry, ...] = (
+    CopyEntry(
+        "study.scope.failure", CopyCategory.STUDY, "study",
+        CopyStrategy.DETERMINISTIC_RENDERER, ("failure",),
+        renderer="bridges.study.scope.StudyScopeNodeFlow",
+        note="工单 31：范围结构、关键内容和排除理由核验详情及预习密度缺口。",
+    ),
     CopyEntry(
         "study.pages.wait",
         CopyCategory.WAIT,

@@ -12,6 +12,7 @@ from bridges.chat.attachments import ChatAttachmentService
 from bridges.contracts.ai import ModelCallResult, ModelCallStatus
 from bridges.contracts.study import StudyState
 from bridges.storage import BridgesObjectRepository, EncryptedFileObjectStore
+from bridges.study.scope import assign_unit_id
 from bridges.study.service import StudyRepository, StudyWorkflow
 
 
@@ -22,6 +23,7 @@ class _RecognizedPageGateway:
         self.text = text
         self.page_number = page_number
         self.calls: list[str] = []
+        self.unit_ids: list[str] = []
 
     def invoke(
         self, capability: str, *args: Any, payload: dict[str, Any], **kwargs: Any
@@ -49,25 +51,41 @@ class _RecognizedPageGateway:
                 )
             }
         elif capability == "qwen_structured_output":
-            if '"questions"' in payload["prompt"]:
-                output = {
-                    "questions": [
-                        {
-                            "question": "请阅读本节并思考核心概念的关系。",
-                            "unit_titles": ["线性函数"],
-                        }
-                    ]
-                }
-            else:
+            task = payload.get("task")
+            if task == "study.map":
+                refs = re.findall(r'"fragment_id":\s*"([^"]+:[^"]+)"', payload["prompt"])
+                self.unit_ids = [assign_unit_id("concept", "线性函数", refs)]
                 output = {
                     "units": [
                         {
                             "title": "线性函数",
+                            "kind": "concept",
                             "core": True,
-                            "fragment_ids": re.findall(r'"id":\s*"([^"]+)"', payload["prompt"]),
+                            "fragment_ids": refs,
+                        }
+                    ],
+                    "exclusions": [],
+                }
+            elif task == "study.verify_scope":
+                output = {
+                    "checks": [
+                        {"unit_id": unit_id, "status": "consistent", "detail": ""}
+                        for unit_id in dict.fromkeys(
+                            re.findall(r'"unit_id":\s*"(ku_[^"]+)"', payload["prompt"])
+                        )
+                    ]
+                }
+            elif task == "study.preview":
+                output = {
+                    "questions": [
+                        {
+                            "question": "请阅读本节并思考核心概念的关系。",
+                            "unit_ids": list(self.unit_ids),
                         }
                     ]
                 }
+            else:
+                raise AssertionError(task)
         else:
             raise AssertionError(capability)
         return ModelCallResult(status=ModelCallStatus.SUCCESS, output=output)
@@ -130,6 +148,7 @@ def seed_recognized_study_state(
     assert gateway.calls == [
         "qwen_ocr",
         "qwen_vision",
+        "qwen_structured_output",
         "qwen_structured_output",
         "qwen_structured_output",
     ]
