@@ -66,9 +66,13 @@ describe("学习阶段与页级证据", () => {
                   text: "y=ax+b",
                   confidence: 1,
                   source: "user",
+                  recognition_path: "user",
+                  interpretation: "",
                 },
               ],
-              unclear: [{ position: "右上角", reason: "符号模糊" }],
+              unclear: [
+                { position: "右上角", reason: "符号模糊", kind: "unclear", critical: false },
+              ],
             },
           ],
         }}
@@ -114,7 +118,8 @@ describe("学习阶段与页级证据", () => {
       pages: [{ ordinal: 1, object_id: "photo-1", content_hash: "hash", model_id: "test",
         page_number: 12, same_section: true, replaced_object_ids: [], unclear: [],
         fragments: [{ fragment_id: "photo-1:1", kind: "formula", position: "中部公式",
-          text: "y=ax+b", confidence: 0.9, source: "photo" }] }],
+          text: "y=ax+b", confidence: 0.9, source: "photo",
+          recognition_path: "vision", interpretation: "" }] }],
       review: { complete: true, needs_replan: false, questions: [
         { question_id: "q1", question: "a 的含义是什么？", coverage_units: ["线性函数"],
           fragment_ids: ["photo-1:1"], asked: true, judgement: "correct" },

@@ -14733,6 +14733,32 @@ export interface components {
          */
         GenreElementRole: "core_concept" | "analogy" | "analogy_boundary" | "action_relevance" | "learning_objective" | "prerequisite" | "comprehension_check" | "practice_pause" | "observation" | "analysis" | "interpretation" | "limitation" | "next_step" | "structure_suggestion" | "language_suggestion" | "citation_verification" | "argument_suggestion" | "ai_disclosure_reminder";
         /**
+         * GithubConstraintSet
+         * @description 用户原文里的技术/许可/运行限制（逐字保留，不改写）。
+         */
+        GithubConstraintSet: {
+            /**
+             * Technical
+             * @description 技术条件原词（语言、框架等）。
+             */
+            technical?: string[];
+            /**
+             * License
+             * @description 许可条件原词（MIT、可商用等）。
+             */
+            license?: string[];
+            /**
+             * Runtime
+             * @description 运行条件原词（能跑、可部署等）。
+             */
+            runtime?: string[];
+            /**
+             * Excluded
+             * @description 用户明确排除的词（条件 kind=exclusion 的原话）。
+             */
+            excluded?: string[];
+        };
+        /**
          * GithubContextSource
          * @description 「它」指向的前文依据（可追溯：模块、原词与前文消息 ID）。
          */
@@ -14761,6 +14787,9 @@ export interface components {
         /**
          * GithubCoverage
          * @description 一个推荐仓库相对用户 idea 的覆盖范围。
+         *
+         *     ``WHOLE`` 只要求**全部必要功能**都有文档自述或静态实现依据；可选项
+         *     命中数与 star 数都不能把它推成整体候选（改进工单 26）。
          * @enum {string}
          */
         GithubCoverage: "whole" | "component";
@@ -14772,14 +14801,23 @@ export interface components {
         GithubEvidenceKind: "metadata" | "readme" | "implementation";
         /**
          * GithubFeatureMatch
-         * @description 一条「idea 要点 → 仓库证据」的匹配判定（含证据类型与原文片段）。
+         * @description 一条「需求 → 仓库证据」的矩阵行（含支持层次、来源与原文片段）。
+         *
+         *     ``matched`` 与 ``evidence_kind`` 保持旧字段语义（向下兼容历史投影）；
+         *     新字段 ``support_level`` 给出文档自述／静态实现／未确认／未支持四档，
+         *     ``sources`` 给出可查的来源定位与读取范围。
          */
         GithubFeatureMatch: {
             /**
              * Feature
-             * @description 用户 idea 里的必要功能原词。
+             * @description 用户 idea 里的需求原词。
              */
             feature: string;
+            /**
+             * @description 必要功能、可选功能或用户约束。
+             * @default required
+             */
+            kind: components["schemas"]["GithubRequirementKind"];
             /**
              * Matched
              * @description 是否在该仓库的已取得证据里真实出现。
@@ -14787,6 +14825,8 @@ export interface components {
             matched: boolean;
             /** @description 命中证据的等级；未命中为 None。 */
             evidence_kind?: components["schemas"]["GithubEvidenceKind"] | null;
+            /** @description 支持层次：documented／static_implementation／unconfirmed／unsupported。 */
+            support_level?: components["schemas"]["GithubSupportLevel"] | null;
             /**
              * Matched Terms
              * @description 在证据文本里真实命中的关键词。
@@ -14797,6 +14837,17 @@ export interface components {
              * @description 命中的真实文本片段或未命中的中文说明。
              */
             evidence: string;
+            /**
+             * Sources
+             * @description 支持或否定该行的来源定位（链接/路径、版本与读取范围）。
+             */
+            sources?: components["schemas"]["GithubRequirementSource"][];
+            /**
+             * Runtime Required
+             * @description 该行是否要求实际运行证据（静态读取永远不能满足）。
+             * @default false
+             */
+            runtime_required: boolean;
         };
         /**
          * GithubFileRead
@@ -14996,10 +15047,17 @@ export interface components {
              */
             features?: string[];
             /**
+             * Optional Features
+             * @description 可选功能原词（不参与整体/组件判定）。
+             */
+            optional_features?: string[];
+            /**
              * Tech Terms
              * @description 可选技术词。
              */
             tech_terms?: string[];
+            /** @description 用户原文里的技术/许可/运行限制。 */
+            constraints?: components["schemas"]["GithubConstraintSet"];
             /**
              * Whole Idea
              * @description 是否要找完整产品。
@@ -15013,6 +15071,13 @@ export interface components {
             component_terms?: string[];
             /** @description idea 来自前文时的可追溯依据（AC5 的关联原话）。 */
             context_source?: components["schemas"]["GithubContextSource"] | null;
+            /** @description 需求来自既定类型化产物（选定论文/岗位需求）时的引用。 */
+            requirement_source?: components["schemas"]["GithubRequirementInput"] | null;
+            /**
+             * Identity Note
+             * @description 需求来源身份确认状态的中文说明；身份未确认时必须写明。
+             */
+            identity_note?: string | null;
             /**
              * Queries
              * @description 每次外部调用的统一记录（查询词/条数/时间/错误）。
@@ -15146,15 +15211,41 @@ export interface components {
             language?: string | null;
             /**
              * Feature Matches
-             * @description 逐条要点的匹配判定。
+             * @description 逐条需求的矩阵行（必要、可选与约束）。
              */
             feature_matches?: components["schemas"]["GithubFeatureMatch"][];
             /**
              * Matched Feature Count
-             * @description 命中的要点数。
+             * @description 命中的必要要点数（可选项不计）。
              * @default 0
              */
             matched_feature_count: number;
+            /**
+             * Required Feature Count
+             * @description 必要功能总数。
+             * @default 0
+             */
+            required_feature_count: number;
+            /**
+             * Required Supported Count
+             * @description 必要功能里达到文档自述或静态实现的总数。
+             * @default 0
+             */
+            required_supported_count: number;
+            /**
+             * Runtime Verified
+             * @description 是否取得实际运行证据；静态读取不置为真。
+             * @default false
+             */
+            runtime_verified: boolean;
+            /** @description 该仓库证据的版本依据（提交版本或取得时间）。 */
+            version?: components["schemas"]["GithubVersionEvidence"] | null;
+            /**
+             * Matrix Note
+             * @description 覆盖判定依据的中文说明（必要功能视角）。
+             * @default
+             */
+            matrix_note: string;
             /**
              * Evidence Kinds
              * @description 本轮真实取得的证据等级（去重、弱→强）。
@@ -15232,6 +15323,147 @@ export interface components {
              * @description 未纳入推荐的中文依据。
              */
             reason: string;
+        };
+        /**
+         * GithubRequirementInput
+         * @description 可接收的类型化需求来源（既定论文标识或岗位需求产物）。
+         *
+         *     跨模块触发由工单 37 校验；本模块只接受已经形成的产物引用，并在
+         *     ``identity_confirmed`` 为假时**不宣称**仓库对应那份论文/岗位。
+         */
+        GithubRequirementInput: {
+            /**
+             * Kind
+             * @description 来源类别：paper／job（扩展来源用稳定短名）。
+             */
+            kind: string;
+            /**
+             * Label
+             * @description 面向用户的中文说明，例如「选定的论文」。
+             */
+            label: string;
+            /**
+             * Identifier
+             * @description 稳定标识（arXiv ID、样本 ID 等）。
+             */
+            identifier?: string | null;
+            /**
+             * Phrase
+             * @description 需求原词（用于检索与展示，逐字保留）。
+             * @default
+             */
+            phrase: string;
+            /**
+             * Identity Confirmed
+             * @description 产物身份是否已经确认；未确认时不得宣称对应实现。
+             * @default false
+             */
+            identity_confirmed: boolean;
+            /**
+             * Source Ref
+             * @description 来源产物引用（产物/消息 ID）。
+             */
+            source_ref?: string | null;
+            /**
+             * Identity Note
+             * @description 身份确认状态的说明（缺口或确认依据）。
+             */
+            identity_note?: string | null;
+        };
+        /**
+         * GithubRequirementKind
+         * @description 证据矩阵里一行的需求类别（必要/可选/用户约束）。
+         * @enum {string}
+         */
+        GithubRequirementKind: "required" | "optional" | "constraint";
+        /**
+         * GithubRequirementSource
+         * @description 矩阵一行可核对的来源定位（链接/路径、版本、读取范围与原文片段）。
+         */
+        GithubRequirementSource: {
+            /** @description 来源类别：readme／metadata／implementation_file。 */
+            kind?: components["schemas"]["GithubSourceKind"] | null;
+            /**
+             * Locator
+             * @description 来源定位：文件路径、README 链接或仓库标识。
+             */
+            locator?: string | null;
+            /**
+             * Read Range
+             * @description 实际读取范围（例如「README 正文，前 6000 字符」）。
+             */
+            read_range?: string | null;
+            /**
+             * Excerpt
+             * @description 支持该行的真实原文片段（已截断）。
+             */
+            excerpt?: string | null;
+            /**
+             * Commit Sha
+             * @description 证据对应的提交 SHA；未知为 None。
+             */
+            commit_sha?: string | null;
+            /**
+             * Obtained At
+             * @description 该来源的取得时间。
+             */
+            obtained_at?: string | null;
+        };
+        /**
+         * GithubSourceKind
+         * @description 矩阵一行的来源类别（与证据等级同名，便于渲染与校验）。
+         * @enum {string}
+         */
+        GithubSourceKind: "metadata" | "readme" | "implementation_file";
+        /**
+         * GithubSupportLevel
+         * @description 一项需求在本轮真实证据里的支持层次（越低越弱）。
+         *
+         *     - ``documented``：只有文档自述（README 或 API 元数据）支持；
+         *     - ``static_implementation``：实际读取到的实现文件/目录支持（静态证据，
+         *       不等于程序已经运行验证）；
+         *     - ``unconfirmed``：本轮没有取得足以判断的证据（未读、被额度挡住或
+         *       运行条件无法在静态读取中验证）；
+         *     - ``unsupported``：已取得的证据明确没有支持该项。
+         * @enum {string}
+         */
+        GithubSupportLevel: "documented" | "static_implementation" | "unconfirmed" | "unsupported";
+        /**
+         * GithubVersionEvidence
+         * @description 一条证据对应的版本或取得时间（提交版本优先，取不到就如实降级）。
+         *
+         *     ``commit_sha`` 是读取证据时观察到的默认分支提交；上游没给或额度不够时
+         *     为 None，此时 ``source`` 说明版本依据来自内容指纹（README/文件 blob
+         *     sha）还是单纯的取得时间。任何断言都必须能指回其中一个。
+         */
+        GithubVersionEvidence: {
+            /**
+             * Commit Sha
+             * @description 默认分支提交 SHA；未取得为 None。
+             */
+            commit_sha?: string | null;
+            /**
+             * Ref
+             * @description 提交所在分支名；未知为 None。
+             */
+            ref?: string | null;
+            /**
+             * Source
+             * @description commit_api／readme_blob／file_blob／fetch_time：版本依据的真实来源。
+             * @default fetch_time
+             */
+            source: string;
+            /**
+             * Obtained At
+             * Format: date-time
+             * @description 证据取得时间（UTC）。
+             */
+            obtained_at: string;
+            /**
+             * Note
+             * @description 面向用户的中文说明（版本依据与限制）。
+             */
+            note: string;
         };
         /**
          * GrantPermission
@@ -23628,6 +23860,17 @@ export interface components {
              * @enum {string}
              */
             source: "photo" | "user";
+            /**
+             * Recognition Path
+             * @default vision
+             * @enum {string}
+             */
+            recognition_path: "ocr" | "vision" | "user";
+            /**
+             * Interpretation
+             * @default
+             */
+            interpretation: string;
         };
         /** StudyPage */
         StudyPage: {
@@ -23652,6 +23895,8 @@ export interface components {
             fragments: components["schemas"]["StudyFragment"][];
             /** Unclear */
             unclear?: components["schemas"]["StudyUnclear"][];
+            /** Recognition Paths */
+            recognition_paths?: string[];
         };
         /**
          * StudyPageUpdate
@@ -23758,6 +24003,8 @@ export interface components {
             page_update?: components["schemas"]["StudyPageUpdate"] | null;
             review?: components["schemas"]["StudyReview"] | null;
             summary?: components["schemas"]["StudySummary"] | null;
+            /** Pending Object Ids */
+            pending_object_ids?: string[];
         };
         /** StudySummary */
         StudySummary: {
@@ -23787,6 +24034,17 @@ export interface components {
             position: string;
             /** Reason */
             reason: string;
+            /**
+             * Kind
+             * @default unclear
+             * @enum {string}
+             */
+            kind: "unclear" | "critical_symbol" | "dual_path_mismatch";
+            /**
+             * Critical
+             * @default false
+             */
+            critical: boolean;
         };
         /** StudyUnit */
         StudyUnit: {

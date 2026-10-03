@@ -461,7 +461,8 @@ def test_coverage_splits_whole_and_component_by_matched_features() -> None:
 
     assert recommendation.coverage is GithubCoverage.COMPONENT
     assert recommendation.matched_feature_count == 2
-    assert "只覆盖你列出的 3 项要点中的 2 项" in recommendation.coverage_note
+    assert recommendation.required_supported_count == 2
+    assert "只覆盖你列出的 3 项必要功能中的 2 项" in recommendation.coverage_note
     assert any("不能当作完整实现" in item for item in recommendation.limitations)
 
 

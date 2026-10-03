@@ -37,6 +37,7 @@ from bridges.github.contracts import (
     GithubReadmeStatus,
     GithubRepositoryCandidate,
     GithubRepositoryEvidence,
+    GithubVersionEvidence,
 )
 from bridges.github.lexicon import INSPECT_SOURCE
 from bridges.github.searching import query_record
@@ -187,6 +188,7 @@ class _ReadmeRead:
     status: GithubReadmeStatus
     url: str | None
     text: str | None
+    sha: str | None = None
 
 
 class GithubRepositoryReader:
@@ -315,6 +317,11 @@ class GithubRepositoryReader:
         status = (
             GithubDeepCheckStatus.RATE_LIMITED if impl_limited else GithubDeepCheckStatus.DONE
         )
+        # 实现证据定位到版本：只有真的读到实现文件时才补一次默认分支提交读取
+        # （best-effort，取不到就退回内容指纹与取得时间），不让每个候选多花调用。
+        commit_sha: str | None = None
+        if files_read or any(check.status == "confirmed" for check in checks):
+            commit_sha = self._read_commit(account_id, read.candidate)
         return (
             self._evidence(
                 read,
@@ -323,6 +330,7 @@ class GithubRepositoryReader:
                 checks=checks,
                 runnable_hints=_runnable_hints(root_entries),
                 deep_checks=status,
+                commit_sha=commit_sha,
             ),
             status,
         )
@@ -348,8 +356,10 @@ class GithubRepositoryReader:
         checks: list[GithubImplementationCheck] | None = None,
         runnable_hints: list[str] | None = None,
         deep_checks: GithubDeepCheckStatus = GithubDeepCheckStatus.DONE,
+        commit_sha: str | None = None,
     ) -> GithubRepositoryEvidence:
         candidate = read.candidate
+        now = datetime.now(UTC)
         return GithubRepositoryEvidence(
             full_name=candidate.full_name,
             html_url=candidate.html_url,
@@ -367,13 +377,20 @@ class GithubRepositoryReader:
             license=license_check,
             readme_status=read.status,
             readme_url=read.url,
+            readme_sha=read.sha,
             readme_text=read.text,
             files_read=list(files_read or []),
             implementation_checks=list(checks or []),
             runnable_hints=list(runnable_hints or []),
             deep_checks=deep_checks,
             matched_query=candidate.matched_query,
-            retrieved_at=datetime.now(UTC),
+            retrieved_at=now,
+            version=_version_evidence(
+                read=read,
+                files_read=files_read or [],
+                commit_sha=commit_sha,
+                now=now,
+            ),
         )
 
     # -- README ----------------------------------------------------------
@@ -402,6 +419,7 @@ class GithubRepositoryReader:
                     GithubReadmeStatus.READ,
                     url,
                     text[: self._readme_max_chars],
+                    _clean(response.payload.get("sha")),
                 ),
                 _record(candidate, response, None, evidence=1),
             )
@@ -451,6 +469,27 @@ class GithubRepositoryReader:
             _record(candidate, response, None, evidence=0),
             response.rate_limited,
         )
+
+    # -- 提交版本 --------------------------------------------------------
+
+    def _read_commit(
+        self, account_id: str, candidate: GithubRepositoryCandidate
+    ) -> str | None:
+        """默认分支最新提交 SHA（best-effort：取不到就不阻塞，如实退回时间依据）。"""
+        response = self._client.get(
+            f"/repos/{candidate.full_name}/commits",
+            params={"per_page": "1"},
+            account_id=account_id,
+            reason="GitHub 项目推荐：记录实现证据的提交版本",
+        )
+        if not response.ok or not isinstance(response.payload, list):
+            return None
+        for item in response.payload:
+            if isinstance(item, dict):
+                sha = _clean(item.get("sha"))
+                if sha:
+                    return sha
+        return None
 
     # -- 许可 ------------------------------------------------------------
 
@@ -682,6 +721,47 @@ class GithubRepositoryReader:
                 )
             )
         return checks, files_read, records, False
+
+
+def _version_evidence(
+    *,
+    read: _ReadmeRead,
+    files_read: list[GithubFileRead],
+    commit_sha: str | None,
+    now: datetime,
+) -> GithubVersionEvidence:
+    """证据的版本依据：提交版本优先，取不到就如实降级到内容指纹或取得时间。"""
+    ref = read.candidate.default_branch
+    if commit_sha:
+        branch = f" {ref}" if ref else ""
+        return GithubVersionEvidence(
+            commit_sha=commit_sha,
+            ref=ref,
+            source="commit_api",
+            obtained_at=now,
+            note=f"证据定位到默认分支{branch}的提交 {commit_sha[:7]}（上游提交接口）。",
+        )
+    file_sha = next((item.sha for item in files_read if item.sha), None)
+    blob = read.sha or file_sha
+    if read.sha:
+        label = "README 的内容指纹"
+    elif file_sha:
+        label = "已读文件的内容指纹"
+    else:
+        label = ""
+    if blob and label:
+        note = f"本轮未取得提交版本，以{label} {blob[:7]} 与取得时间定位证据。"
+    else:
+        note = "本轮未取得提交版本，证据以取得时间定位。"
+    return GithubVersionEvidence(
+        commit_sha=None,
+        ref=ref,
+        source=(
+            "readme_blob" if read.sha else ("file_blob" if file_sha else "fetch_time")
+        ),
+        obtained_at=now,
+        note=note,
+    )
 
 
 def _unread_license(

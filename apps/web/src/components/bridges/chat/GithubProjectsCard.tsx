@@ -35,6 +35,20 @@ const EVIDENCE_LABELS: Record<string, string> = {
   implementation: "实际读取的实现文件",
 };
 
+/** 工单 26：矩阵行的支持层次与需求类别（文档自述／静态实现／未确认／未支持）。 */
+const SUPPORT_LEVEL_LABELS: Record<string, string> = {
+  documented: "文档自述",
+  static_implementation: "静态实现",
+  unconfirmed: "未确认",
+  unsupported: "未支持",
+};
+
+const REQUIREMENT_KIND_LABELS: Record<string, string> = {
+  required: "必要功能",
+  optional: "可选功能",
+  constraint: "限制条件",
+};
+
 const README_STATUS_LABELS: Record<string, string> = {
   read: "已读到 README",
   not_found: "仓库没有 README",
@@ -71,25 +85,35 @@ function titleFor(projects: GithubProjectsProjection): string {
   return partial ? `${base}（上游额度受限，结果为已核实部分）` : base;
 }
 
-/** 单条要点的匹配结论：命中就附证据等级与原文窗口，未命中就说未命中。 */
+/** 单条需求的矩阵结论：支持层次 + 证据等级 + 原文窗口（静态读取≠实际运行）。 */
 function FeatureMatchRow({ match }: { match: GithubFeatureMatch }) {
   const terms = match.matched_terms ?? [];
+  const level = match.support_level
+    ? (SUPPORT_LEVEL_LABELS[match.support_level] ?? match.support_level)
+    : match.matched
+      ? "已覆盖"
+      : "未覆盖";
+  const kind = REQUIREMENT_KIND_LABELS[match.kind ?? "required"] ?? match.kind;
+  const weak =
+    match.support_level === "unconfirmed" || match.support_level === "unsupported";
   return (
     <li data-testid={`github-feature-${match.feature}`}>
+      <span style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-xs)" }}>
+        [{kind}]
+      </span>{" "}
       <span style={{ fontWeight: 600 }}>{match.feature}</span>
       {"："}
-      {match.matched ? (
-        <>
-          已覆盖
-          {match.evidence_kind
-            ? `（依据：${EVIDENCE_LABELS[match.evidence_kind] ?? match.evidence_kind}${
-                terms.length > 0 ? `，命中原词：${terms.join("、")}` : ""
-              }）`
-            : ""}
-        </>
-      ) : (
-        <span style={{ color: "var(--color-status-wait)" }}>未覆盖</span>
-      )}
+      <span style={{ color: weak ? "var(--color-status-wait)" : undefined }}>
+        {level}
+        {match.runtime_required && match.support_level === "unconfirmed"
+          ? "（未运行，不声称能跑）"
+          : ""}
+      </span>
+      {match.matched && match.evidence_kind
+        ? `（依据：${EVIDENCE_LABELS[match.evidence_kind] ?? match.evidence_kind}${
+            terms.length > 0 ? `，命中原词：${terms.join("、")}` : ""
+          }）`
+        : ""}
       <span style={{ color: "var(--color-text-tertiary)" }}> · {match.evidence}</span>
     </li>
   );
@@ -114,6 +138,8 @@ function RecommendationRow({ item }: { item: GithubRecommendation }) {
   const filesRead = item.files_read ?? [];
   const checks = item.implementation_checks ?? [];
   const matches = item.feature_matches ?? [];
+  const requiredMatches = matches.filter((match) => (match.kind ?? "required") === "required");
+  const otherMatches = matches.filter((match) => (match.kind ?? "required") !== "required");
   const strengths = item.strengths ?? [];
   const limitations = item.limitations ?? [];
   const topics = item.topics ?? [];
@@ -176,6 +202,17 @@ function RecommendationRow({ item }: { item: GithubRecommendation }) {
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
         {item.coverage_note}
       </span>
+      {item.version ? (
+        <span
+          data-testid={`github-recommendation-${item.full_name}-version`}
+          style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}
+        >
+          证据版本：
+          {item.version.commit_sha
+            ? `提交 ${item.version.commit_sha.slice(0, 7)}`
+            : item.version.note}
+        </span>
+      ) : null}
       {item.description ? (
         <span style={{ fontSize: "var(--text-xs)" }}>项目介绍（API 元数据）：{item.description}</span>
       ) : null}
@@ -186,7 +223,7 @@ function RecommendationRow({ item }: { item: GithubRecommendation }) {
         </span>
       ) : null}
 
-      {matches.length > 0 && (
+      {requiredMatches.length > 0 && (
         <ul
           data-testid={`github-recommendation-${item.full_name}-features`}
           style={{
@@ -198,8 +235,26 @@ function RecommendationRow({ item }: { item: GithubRecommendation }) {
             gap: "var(--space-1)",
           }}
         >
-          {matches.map((match) => (
+          {requiredMatches.map((match) => (
             <FeatureMatchRow key={match.feature} match={match} />
+          ))}
+        </ul>
+      )}
+      {otherMatches.length > 0 && (
+        <ul
+          data-testid={`github-recommendation-${item.full_name}-constraints`}
+          style={{
+            margin: 0,
+            paddingLeft: "var(--space-5)",
+            listStyle: "circle",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-1)",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
+          {otherMatches.map((match) => (
+            <FeatureMatchRow key={`${match.kind ?? "other"}-${match.feature}`} match={match} />
           ))}
         </ul>
       )}
@@ -358,6 +413,14 @@ export function GithubProjectsCard({
   const queries = projects.queries ?? [];
   const notes = projects.evidence_boundary ?? [];
   const features = projects.features ?? [];
+  const optionalFeatures = projects.optional_features ?? [];
+  const constraints = projects.constraints;
+  const constraintTerms = [
+    ...(constraints?.technical ?? []),
+    ...(constraints?.license ?? []),
+    ...(constraints?.runtime ?? []),
+    ...(constraints?.excluded ?? []),
+  ];
   const techTerms = projects.tech_terms ?? [];
   const coversParts = projects.component_terms ?? [];
 
@@ -423,14 +486,44 @@ export function GithubProjectsCard({
           </>
         ) : null}
       </p>
+      {optionalFeatures.length > 0 ? (
+        <span
+          data-testid="github-projects-optional-features"
+          style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}
+        >
+          可选功能（不参与整体/组件判定）：{optionalFeatures.join("、")}
+        </span>
+      ) : null}
+      {constraintTerms.length > 0 ? (
+        <span
+          data-testid="github-projects-constraints"
+          style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}
+        >
+          你提出的限制（逐字保留）：{constraintTerms.join("、")}
+        </span>
+      ) : null}
       {techTerms.length > 0 ? (
         <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-          可选技术词（只用于排序参考）：{techTerms.join("、")}
+          技术词（只用于排序与核对参考）：{techTerms.join("、")}
         </span>
       ) : null}
       {coversParts.length > 0 ? (
         <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
           你本轮指名的组件：{coversParts.join("、")}
+        </span>
+      ) : null}
+      {projects.requirement_source ? (
+        <span
+          data-testid="github-projects-requirement-source"
+          style={{
+            fontSize: "var(--text-xs)",
+            color: projects.identity_note ? "var(--color-status-wait)" : "var(--color-text-tertiary)",
+          }}
+        >
+          {projects.identity_note ??
+            `需求来源：${projects.requirement_source.label}（${
+              projects.requirement_source.identifier ?? "无标识"
+            }）`}
         </span>
       ) : null}
       {projects.context_source ? <ContextSourceRow source={projects.context_source} /> : null}

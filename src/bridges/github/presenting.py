@@ -227,10 +227,38 @@ def _readme_label(status: Any) -> str:
     return README_STATUS_LABELS.get(str(value), str(value))
 
 
+#: 矩阵行的支持层次与需求类别（正文与卡片用同一套说法）。
+SUPPORT_LEVEL_LABELS: dict[str, str] = {
+    "documented": "文档自述",
+    "static_implementation": "静态实现",
+    "unconfirmed": "未确认",
+    "unsupported": "未支持",
+}
+
+REQUIREMENT_KIND_LABELS: dict[str, str] = {
+    "required": "必要功能",
+    "optional": "可选功能",
+    "constraint": "限制条件",
+}
+
+
 def _feature_line(match: GithubFeatureMatch) -> str:
-    if match.matched:
-        return f"{match.feature}：已覆盖（{match.evidence}）"
-    return f"{match.feature}：未覆盖（{match.evidence}）"
+    """矩阵行的固定文案：支持层次与需求类别都要明说（历史数据退回已/未覆盖）。"""
+    kind_value = str(getattr(match.kind, "value", match.kind))
+    kind = REQUIREMENT_KIND_LABELS.get(kind_value, kind_value)
+    if match.support_level is not None:
+        level_value = str(getattr(match.support_level, "value", match.support_level))
+        level = SUPPORT_LEVEL_LABELS.get(level_value, level_value)
+        if match.runtime_required and level_value == "unconfirmed":
+            level += "（未运行，不声称能跑）"
+    else:
+        level = "已覆盖" if match.matched else "未覆盖"
+    source_note = ""
+    if match.sources:
+        first = match.sources[0]
+        scope = f"（{first.read_range}）" if first.read_range else ""
+        source_note = f"；来源：{first.locator or '见证据'}{scope}"
+    return f"[{kind}] {match.feature}：{level}（{match.evidence}{source_note}）"
 
 
 class GithubInsightGenerator:

@@ -68,6 +68,7 @@ from bridges.github.service import (
     GITHUB_MODULE_ID,
     GITHUB_NODE_LABELS,
     GithubModuleError,
+    GithubSupersededError,
 )
 from bridges.github.suggestion import detect_github_suggestion
 from bridges.paper.service import (
@@ -721,7 +722,11 @@ def _invoke_github_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
             manifest_sink=lambda manifest: deps.service.audit_module_manifest(
                 run, "github.insight", manifest
             ),
+            requirement=_github_requirement(run),
         )
+    except GithubSupersededError as error:
+        # 迟到结果：本轮不再写交付终态，交给当前持有执行权的执行者收尾。
+        raise DailyGraphSuperseded(str(error)) from error
     except GithubModuleError as error:
         raise DailyTurnError(
             error.node, error.code, error.message, retryable=error.retryable
@@ -731,6 +736,23 @@ def _invoke_github_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
             run.account_id, run.run_id, wait_reason=outcome.wait_reason
         )
     return {}
+
+
+def _github_requirement(run: Any) -> Any:
+    """运行配置里的类型化需求产物（工单 26 接缝；非法载荷按缺失处理）。
+
+    生产端由工单 37 的跨模块依赖负责；本模块只读既定产物引用，不自行认领
+    论文/岗位的身份。
+    """
+    raw = (run.config or {}).get("github_requirement")
+    if not isinstance(raw, dict):
+        return None
+    from bridges.github.contracts import GithubRequirementInput
+
+    try:
+        return GithubRequirementInput.model_validate(raw)
+    except ValueError:
+        return None
 
 
 def _invoke_resources_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:

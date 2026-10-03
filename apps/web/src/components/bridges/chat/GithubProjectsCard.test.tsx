@@ -62,13 +62,22 @@ const recommendation: GithubRecommendation = {
   feature_matches: [
     {
       feature: "发布想卖的书",
+      kind: "required",
       matched: true,
       evidence_kind: "readme",
+      support_level: "documented",
       matched_terms: ["发布"],
       evidence: "README 自述命中关键词「发布」：学生可以发布想卖的书。",
+      sources: [],
+      runtime_required: false,
     },
   ],
   matched_feature_count: 1,
+  required_feature_count: 1,
+  required_supported_count: 1,
+  runtime_verified: false,
+  version: null,
+  matrix_note: "必要功能支持：文档自述 1；静态读取不等于实际运行。",
   evidence_kinds: ["metadata", "readme"],
   readme_status: "read",
   readme_url: "https://github.com/demo/bookswap/blob/main/README.md",
@@ -128,8 +137,8 @@ describe("GithubProjectsCard（V2 Issue 16）", () => {
     expect(screen.getByTestId("github-recommendation-demo/bookswap-coverage").textContent).toBe(
       "整体项目"
     );
-    // 功能匹配逐条展示，命中要带上依据等级与命中原词。
-    expect(screen.getByTestId("github-feature-发布想卖的书").textContent).toContain("已覆盖");
+    // 功能矩阵逐条展示，命中要带上支持层次、依据等级与命中原词。
+    expect(screen.getByTestId("github-feature-发布想卖的书").textContent).toContain("文档自述");
     expect(screen.getByTestId("github-feature-发布想卖的书").textContent).toContain(
       "README 自述"
     );
@@ -319,6 +328,65 @@ describe("GithubProjectsCard（V2 Issue 16）", () => {
     expect(card.textContent).toContain("github_unavailable");
     screen.getByTestId("github-projects-retry").click();
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("区分必要/可选/约束行，未确认身份的需求来源不宣称对应实现", () => {
+    render(
+      <GithubProjectsCard
+        projects={projection({
+          optional_features: ["云同步"],
+          constraints: { technical: [], license: ["可商用"], runtime: [], excluded: [] },
+          requirement_source: {
+            kind: "paper",
+            label: "选定的论文",
+            identifier: "2401.00001",
+            phrase: "联邦学习聚合",
+            identity_confirmed: false,
+            source_ref: "paper:m-9",
+            identity_note: null,
+          },
+          identity_note:
+            "需求来自选定的论文，但该来源身份尚未确认：只按原词检索，不把仓库断言为它的实现。",
+          recommendations: [
+            {
+              ...recommendation,
+              feature_matches: [
+                ...(recommendation.feature_matches ?? []),
+                {
+                  feature: "云同步",
+                  kind: "optional",
+                  matched: false,
+                  support_level: "unsupported",
+                  evidence: "本轮取得的证据里没有出现该要点的关键词。",
+                  sources: [],
+                  runtime_required: false,
+                },
+                {
+                  feature: "可商用",
+                  kind: "constraint",
+                  matched: false,
+                  support_level: "unconfirmed",
+                  evidence: "许可不可得：保持未知，不声称代码可自由复用。",
+                  sources: [],
+                  runtime_required: false,
+                },
+              ],
+            },
+          ],
+        })}
+        streaming={false}
+      />
+    );
+    expect(screen.getByTestId("github-projects-optional-features").textContent).toContain(
+      "云同步"
+    );
+    expect(screen.getByTestId("github-projects-constraints").textContent).toContain("可商用");
+    expect(screen.getByTestId("github-projects-requirement-source").textContent).toContain(
+      "不把仓库断言为它的实现"
+    );
+    expect(
+      screen.getByTestId("github-recommendation-demo/bookswap-constraints").textContent
+    ).toContain("未确认");
   });
 
   it("指向前文的原词时展示来源与消息标识（可追溯）", () => {
