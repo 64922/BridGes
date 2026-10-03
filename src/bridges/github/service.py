@@ -3,8 +3,9 @@
 模块不再把解析、规划、检索、读取、匹配、排序、核验与交付包在一个黑盒函数
 里：配方与节点定义在 :mod:`bridges.github.kernel`，每个节点在自己的事务中
 提交类型化产物与完成收据；恢复先读收据（检索失败而解析可用时按输入键回填），
-限流只保留已完成检查，未读候选不伪装核实。本模块只负责把内核结果翻译成既有
-消息投影，并复用既有终态收敛路径统一提交。
+限流只保留已完成检查，未读候选不伪装核实。部分失败的检索/读取产物会失效但
+保留已取得结果，重试只补缺口。本模块只负责把内核结果翻译成既有消息投影，
+并复用既有终态收敛路径统一提交（显式派发时由父图沿真实产物依赖链核验后提交）。
 
 三条核心约束（``docs/v2/workflows.md`` 第 7 节）：
 
@@ -24,8 +25,11 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import CallMaterialManifest
+from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
 from bridges.contracts.workflows import RunContextEnvelope
@@ -44,6 +48,8 @@ from bridges.github.inspecting import GithubRepositoryReader
 from bridges.github.kernel import (
     GITHUB_GATE_HANDLERS,
     GITHUB_NODE_LABELS,
+    GITHUB_RECIPE_ID,
+    GITHUB_RECIPE_VERSION,
     INSPECT_DEADLINE_SECONDS,
     NODE_EVALUATE,
     NODE_PARSE,
@@ -67,12 +73,20 @@ from bridges.github.presenting import (
 )
 from bridges.github.ranking import RankOutcome
 from bridges.github.searching import FAILED_QUERY_STATUSES, GithubSearchPort
-from bridges.kernel.contracts import KernelResult, KernelStatus, RecipeInputs
+from bridges.kernel.contracts import (
+    ArtifactTrust,
+    KernelResult,
+    KernelStatus,
+    NodeArtifact,
+    NodeReceiptStatus,
+    RecipeInputs,
+)
 from bridges.kernel.executor import NodeKernel
 from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.repository import NodeKernelRepository
 
 if TYPE_CHECKING:
+    from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
     from bridges.chat.repository import ConversationRepository
     from bridges.chat.task_materials import ModuleTaskContext
 
@@ -106,6 +120,20 @@ class GithubSupersededError(Exception):
     """迟到结果：租约/版本/消息归属已变化，本轮不写任何交付终态。"""
 
 
+class GithubDelivery(BaseModel):
+    """交给父图核验与提交的领域交付，检查点只保存可序列化数据。"""
+
+    projection: GithubProjectsProjection
+    content: str
+    message_status: ChatMessageStatus
+    lock: ModelRunLock | None = None
+    verification_artifact_id: str | None = None
+    present_artifact_id: str | None = None
+    lease_owner: str | None = None
+    task_ref: tuple[str | None, int | None] | None = None
+    error_node: str | None = None
+
+
 @dataclass(frozen=True)
 class GithubRunOutcome:
     """一轮 GitHub 项目推荐的收敛结果（父图据此写等待原因与判断终态）。"""
@@ -113,6 +141,7 @@ class GithubRunOutcome:
     status: GithubProjectStatus
     wait_reason: str | None = None
     queries: list[ModuleQueryRecord] = field(default_factory=list)
+    delivery: GithubDelivery | None = None
 
 
 class GithubProjectsService:
@@ -160,6 +189,8 @@ class GithubProjectsService:
         model_quota: RunModelQuota | None = None,
         manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
         requirement: GithubRequirementInput | None = None,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
+        defer_finalization: bool = False,
     ) -> GithubRunOutcome:
         """执行一轮 GitHub 项目推荐：持久节点内核执行，结果统一提交回同一消息。
 
@@ -193,6 +224,25 @@ class GithubProjectsService:
         )
         run_id = run_context.run_id
         task_ref = self._current_task_ref(account_id, conversation_id)
+        from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
+        from bridges.chat.lightweight_policy import ToolOutcome, continuation_source_text
+
+        run = repo.get_run_by_message(account_id, assistant_message_id)
+        existing_policy = (run.config or {}).get("global_writing_policy") if run else None
+        conversation = repo.get_conversation(account_id, conversation_id)
+        writing_policy = GlobalWritingPolicyCompiler().compile(
+            conversation.mode if conversation else "companion",
+            user_text=user_message.content,
+            continuation_text=continuation_source_text(
+                repo.list_messages(account_id, conversation_id), user_message_id
+            ),
+            tool_outcome=ToolOutcome.NONE,
+            existing_snapshot=writing_policy or existing_policy,
+        )
+        if run is not None:
+            config = dict(run.config or {})
+            config["global_writing_policy"] = writing_policy.model_dump(mode="json")
+            repo.update_generation_config(account_id, run_id, config)
         guard = RunCommitGuard(
             repo,
             account_id=account_id,
@@ -220,6 +270,8 @@ class GithubProjectsService:
             run_model_id=run_model_id,
             model_quota=model_quota,
             manifest_sink=manifest_sink,
+            writing_policy=writing_policy,
+            repository=NodeKernelRepository(repo.database),
         )
         kernel = NodeKernel(
             registry=self._registry,
@@ -253,6 +305,11 @@ class GithubProjectsService:
                 if decision.code != "run_stopped":
                     raise GithubSupersededError(decision.code)
                 result = replace(result, status=KernelStatus.STOPPED)
+            if defer_finalization:
+                return self._prepare_delivery(
+                    result, flow, assistant_message_id=assistant_message_id,
+                    lease_owner=guard.lease_owner, task_ref=task_ref,
+                )
             try:
                 return self._deliver(
                     repo,
@@ -266,6 +323,208 @@ class GithubProjectsService:
                 # 失败投影提交后，再通知父图收敛错误，避免异常回滚投影。
                 delivery_error = error
         raise delivery_error
+
+    def _prepare_delivery(
+        self,
+        result: KernelResult,
+        flow: GithubNodeFlow,
+        *,
+        assistant_message_id: str,
+        lease_owner: str | None,
+        task_ref: tuple[str | None, int | None] | None,
+    ) -> GithubRunOutcome:
+        """生产父图路径只构造交付；不在模块内写助手消息终态。"""
+        analysis = _analysis_of(result) or _empty_analysis()
+        insights = _insights_of(result, flow)
+        wait_reason = None
+        error_node = None
+        if result.status is KernelStatus.COMPLETED:
+            projection = self._projection(result=result, insights=insights)
+            message_status = (
+                ChatMessageStatus.ERROR if projection.status is GithubProjectStatus.ERROR
+                else ChatMessageStatus.DONE
+            )
+            content = (
+                render_result_content(projection) if projection.recommendations
+                else render_empty_content(projection)
+            )
+            if message_status is ChatMessageStatus.ERROR:
+                error_node = NODE_SEARCH
+        elif result.status is KernelStatus.NEEDS_INPUT and analysis.clarification is not None:
+            projection = _base_projection(
+                analysis,
+                status=GithubProjectStatus.CLARIFICATION,
+                pending=ModuleWaitState(
+                    module_id=GITHUB_MODULE_ID, kind=WAIT_KIND_CLARIFICATION,
+                    question=analysis.clarification.question,
+                    origin_message_id=assistant_message_id,
+                    context=pending_payload(analysis), created_at=self._clock(),
+                ), completed_at=self._clock(),
+            )
+            wait_reason = WAIT_REASON_CLARIFICATION
+            message_status = ChatMessageStatus.DONE
+            content = render_clarification_content(projection)
+        elif result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED}:
+            projection = _base_projection(
+                analysis, status=GithubProjectStatus.STOPPED,
+                queries=_records_of(result),
+                evidence_boundary=["你已停止本轮推荐，未继续读取仓库证据。"],
+                completed_at=self._clock(),
+            )
+            message_status = ChatMessageStatus.STOPPED
+            content = render_stopped_content(projection)
+        elif result.status is KernelStatus.REJECTED:
+            raise GithubSupersededError(result.rejection_code or "generation_superseded")
+        else:
+            failure = result.failure
+            error_node = failure.node if failure else NODE_SEARCH
+            projection = _base_projection(
+                analysis, status=GithubProjectStatus.ERROR, queries=_records_of(result),
+                completed_at=self._clock(),
+                error_code=(failure.code if failure else "") or "github_failed",
+                error_message=(failure.message if failure else "")
+                or "GitHub 项目推荐失败，请稍后重试。",
+                retryable=failure.retryable if failure else True,
+            )
+            message_status = ChatMessageStatus.ERROR
+            content = render_empty_content(projection)
+        verification = result.artifact(NODE_VERIFY)
+        present = result.artifact(NODE_PRESENT)
+        return GithubRunOutcome(
+            status=projection.status, wait_reason=wait_reason, queries=list(projection.queries),
+            delivery=GithubDelivery(
+                projection=projection, content=content, message_status=message_status,
+                lock=insights.lock,
+                verification_artifact_id=verification.artifact_id if verification else None,
+                present_artifact_id=present.artifact_id if present else None,
+                lease_owner=lease_owner, task_ref=task_ref, error_node=error_node,
+            ),
+        )
+
+    def verify_delivery_scope(
+        self, repo: ConversationRepository, delivery: GithubDelivery,
+        *, account_id: str, run_id: str, conversation_id: str,
+        assistant_message_id: str, stop_event: threading.Event | None,
+        expected_lease_owner: str | None,
+    ) -> None:
+        """父图提交事务内复核原执行租约、当前任务版本及停止状态。"""
+        run = repo.get_generation_run(account_id, run_id)
+        if run is None or run.lease_owner != expected_lease_owner:
+            raise GithubSupersededError("lease_lost")
+        if self._current_task_ref(account_id, conversation_id) != delivery.task_ref:
+            raise GithubSupersededError("task_version_changed")
+        guard = RunCommitGuard(
+            repo, account_id=account_id, run_id=run_id, conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id, task_ref=delivery.task_ref,
+            task_version_provider=self._task_version_provider, stop_event=stop_event,
+            clock=self._clock,
+        )
+        guard.capture()
+        decision = guard.verify()
+        if not decision.ok:
+            raise GithubSupersededError(decision.code)
+
+    def verify_delivery_projection(
+        self, repo: ConversationRepository, delivery: GithubDelivery,
+        *, account_id: str, run_id: str, conversation_id: str,
+    ) -> bool:
+        """从真实交付产物的依赖链重建投影，逐字段核对交付内容。
+
+        交付可以复用上一轮已完成的产物（重试只补缺口），因此绑定的是**产出
+        交付产物那条依赖链**：链上每个节点必须是配方登记的节点，配方/能力/
+        任务引用/会话吻合，依赖集合与配方声明一致，上游产物 ID 与内容哈希
+        逐一吻合且通过自校验；交付引用的核验产物必须是链上同一节点。若本轮
+        真实执行过节点（存在完成收据），其结果必须与链上同节点内容一致——
+        旧核验不能为新任务或新证据背书。
+        """
+        repository = NodeKernelRepository(repo.database)
+        present = repository.get_artifact(account_id, delivery.present_artifact_id or "")
+        spec_by_node = {spec.name: spec for spec in self._recipe.nodes}
+        chain: dict[str, NodeArtifact] = {}
+
+        def walk(artifact: NodeArtifact) -> bool:
+            spec = spec_by_node.get(artifact.node)
+            if (
+                spec is None
+                or artifact.recipe_id != GITHUB_RECIPE_ID
+                or artifact.recipe_version != GITHUB_RECIPE_VERSION
+                or artifact.artifact_type != spec.artifact_type
+                or artifact.capability_version != spec.capability_version
+                or artifact.conversation_id != conversation_id
+                or not artifact.verify_hash()
+            ):
+                return False
+            if (artifact.task_id, artifact.task_version) != (
+                delivery.task_ref or (None, None)
+            ):
+                return False
+            existing = chain.get(artifact.node)
+            if existing is not None:
+                return existing.artifact_id == artifact.artifact_id
+            chain[artifact.node] = artifact
+            if {dependency.node for dependency in artifact.input_deps} != set(
+                spec.depends_on
+            ):
+                return False
+            for dependency in artifact.input_deps:
+                upstream = repository.get_artifact(
+                    account_id, dependency.artifact_id or ""
+                )
+                if (
+                    upstream is None
+                    or upstream.node != dependency.node
+                    or upstream.content_hash != dependency.content_hash
+                ):
+                    return False
+                if not walk(upstream):
+                    return False
+            return True
+
+        if (
+            present is None
+            or present.node != NODE_PRESENT
+            or present.trust_state is not ArtifactTrust.QUALIFIED
+            or not walk(present)
+            or set(chain) != set(spec_by_node)
+        ):
+            return False
+        verify = chain[NODE_VERIFY]
+        if (
+            verify.artifact_id != delivery.verification_artifact_id
+            or verify.trust_state is not ArtifactTrust.QUALIFIED
+            or verify.node != "github.verify"
+        ):
+            return False
+        if {artifact.run_id for artifact in chain.values()} != {run_id}:
+            # 链包含跨运行回填：本轮真实执行出的结果必须与链上同节点一致，
+            # 否则视为旧核验为新任务或新证据背书。
+            for receipt in repository.list_receipts(account_id, run_id):
+                if receipt.status is not NodeReceiptStatus.COMPLETED:
+                    return False
+                artifact = repository.get_artifact(
+                    account_id, receipt.artifact_id or ""
+                )
+                if artifact is None:
+                    return False
+                if artifact.trust_state is ArtifactTrust.INVALIDATED:
+                    continue
+                chained = chain.get(artifact.node)
+                if chained is None or chained.content_hash != artifact.content_hash:
+                    return False
+        result = KernelResult(
+            status=KernelStatus.COMPLETED, nodes=(), artifacts=tuple(chain.values()),
+            delivery=present,
+        )
+        payload = present.payload
+        expected = self._projection(
+            result=result,
+            insights=InsightOutcome(
+                insights=payload.get("insights") or {}, note=payload.get("note")
+            ),
+        )
+        return expected.model_dump(exclude={"completed_at"}) == delivery.projection.model_dump(
+            exclude={"completed_at"}
+        )
 
     # -- 交付（既有终态收敛路径） ----------------------------------------
 

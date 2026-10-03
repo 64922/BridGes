@@ -36,6 +36,7 @@ from bridges.github.lexicon import (
     extract_tech_constraints,
     extract_tech_terms,
     has_own_subject,
+    wants_implementation_evidence,
     wants_whole_idea,
 )
 
@@ -90,7 +91,7 @@ def parse_github_request(
             ),
         )
 
-    if not has_own_subject(current) and (anchor is not None or typed is not None):
+    if typed is not None or (not has_own_subject(current) and anchor is not None):
         # 指向前文/需求产物：场景与要点都用来源原词**逐字**照抄，不再剥意图词——
         # 来源原词已经是确认过的术语（「深度学习」这类词一旦被当成请求壳剥掉，
         # 指向就变成了另一件事），检索词因此可追溯到具体来源。
@@ -101,7 +102,7 @@ def parse_github_request(
         analysis = GithubIdeaAnalysis(
             original_request=original_request,
             scenario=scenario,
-            features=[scenario],
+            features=extract_features(source_phrase, scenario=scenario),
             tech_terms=extract_tech_terms(source_text),
             whole_idea=whole,
             component_terms=[] if whole else [scenario],
@@ -122,7 +123,12 @@ def parse_github_request(
             requirement_source=typed,
         )
     _apply_conditions(analysis, task_conditions)
-    _apply_limits(analysis, source_text, task_conditions)
+    _apply_limits(analysis, source_text + "；" + current, task_conditions)
+    analysis.implementation_required = (
+        bool(analysis.constraints.runtime)
+        or wants_implementation_evidence(current)
+        or any(wants_implementation_evidence(item) for item in analysis.features)
+    )
     return analysis
 
 

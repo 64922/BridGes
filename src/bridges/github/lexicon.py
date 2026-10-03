@@ -294,9 +294,6 @@ _FEATURE_SEPARATORS = re.compile(
 #: 有意义的连续短语长度下限（短于此的碎段不算要点）。
 MIN_FEATURE_CHARS = 2
 
-#: 必要功能条目上限（有界，避免把整段话当要点列表）。
-MAX_FEATURES = 6
-
 #: 核心场景的长度上限（超出即截断，检索词有界）。
 MAX_SCENARIO_CHARS = 60
 
@@ -472,8 +469,6 @@ def extract_features(text: str, *, scenario: str) -> list[str]:
         if cleaned == scenario or cleaned in features:
             continue
         features.append(cleaned)
-        if len(features) >= MAX_FEATURES:
-            break
     if not features and scenario:
         features = [scenario]
     return features
@@ -505,18 +500,16 @@ def extract_optional_features(
     逐字保留（只剥意图词与结尾助词，和必要功能同一套规则）。
     """
     optional: list[str] = []
-    required_set = set(required)
+    del required
     for segment in _FEATURE_SEPARATORS.split(text):
         cleaned = strip_intent_words(_normalize(segment))
         if len(cleaned) < MIN_FEATURE_CHARS or cleaned == scenario:
             continue
         if not any(hint in cleaned for hint in OPTIONAL_HINTS):
             continue
-        if cleaned in required_set or cleaned in optional:
+        if cleaned in optional:
             continue
-        optional.append(_truncate(cleaned))
-        if len(optional) >= MAX_FEATURES:
-            break
+        optional.append(cleaned)
     return optional
 
 

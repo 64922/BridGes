@@ -243,6 +243,9 @@ class GithubIdeaAnalysis(BaseModel):
         default=None,
         description="本轮需求来自既定的类型化产物（选定论文/岗位需求）时的引用。",
     )
+    implementation_required: bool = Field(
+        default=False, description="用户明确要求实现证据时，文档自述不能满足必要功能。"
+    )
     whole_idea: bool = Field(
         default=True, description="用户要的是完整产品 idea（False 表示只要某个组件）。"
     )

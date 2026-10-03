@@ -23,6 +23,7 @@ from bridges.github.contracts import (
     GithubDeepCheckStatus,
     GithubEvidenceKind,
     GithubFeatureMatch,
+    GithubFileRead,
     GithubIdeaAnalysis,
     GithubMaintenanceEvidence,
     GithubReadmeStatus,
@@ -281,10 +282,12 @@ def rank_candidates(
     """
     current = now or datetime.now(UTC)
     cap = max(1, limit)
-    scored: list[tuple[tuple[int, int, int, int, str], GithubRecommendation]] = []
+    scored: list[tuple[tuple[int, int, int, int, int, str], GithubRecommendation]] = []
     rejected: list[GithubRejectedRepository] = []
     for evidence in evidences:
-        if analysis.whole_idea and not _identity_related(analysis, evidence):
+        component_query = evidence.matched_query in analysis.features
+        identity_related = _identity_related(analysis, evidence)
+        if analysis.whole_idea and not identity_related and not component_query:
             rejected.append(
                 GithubRejectedRepository(
                     full_name=evidence.full_name,
@@ -324,7 +327,10 @@ def rank_candidates(
             if item.support_level
             in {GithubSupportLevel.DOCUMENTED, GithubSupportLevel.STATIC_IMPLEMENTATION}
         ]
-        coverage, covers_parts, coverage_note = _coverage(analysis, matches)
+        coverage_analysis = analysis
+        if analysis.whole_idea and not identity_related:
+            coverage_analysis = analysis.model_copy(update={"whole_idea": False})
+        coverage, covers_parts, coverage_note = _coverage(coverage_analysis, matches)
         maintenance, activity_score = _maintenance(evidence, now=current)
         record = GithubRecommendation(
             rank=0,
@@ -360,6 +366,7 @@ def rank_candidates(
         scored.append(
             (
                 (
+                    0 if coverage is GithubCoverage.WHOLE else 1,
                     -len(supported),
                     -_evidence_score(evidence),
                     -activity_score,
@@ -470,6 +477,7 @@ def match_features(
                 evidence,
                 kind=GithubRequirementKind.REQUIRED,
                 runtime_required=bool(extract_runtime_terms(feature)),
+                implementation_required=analysis.implementation_required,
             )
         )
     for feature in analysis.optional_features:
@@ -512,6 +520,7 @@ def _match_row(
     *,
     kind: GithubRequirementKind,
     runtime_required: bool,
+    implementation_required: bool = False,
 ) -> GithubFeatureMatch:
     """一条功能的证据行：先找最弱到最强的命中，再折算支持层次。"""
     core = _core(feature)
@@ -527,6 +536,24 @@ def _match_row(
         hit_kind, hits, hit_text = level, found, text
         break
     if hit_kind is not None and not runtime_required:
+        sources = _hit_sources(hit_kind, evidence, hits)
+        if any(_explicit_denial(feature, source.excerpt or "") for source in sources):
+            return GithubFeatureMatch(
+                feature=feature, kind=kind, matched=False,
+                evidence_kind=hit_kind, support_level=GithubSupportLevel.UNSUPPORTED,
+                matched_terms=hits, sources=sources,
+                evidence="来源明确否定该功能，不能把关键词出现当作支持。",
+            )
+        if implementation_required and hit_kind is not GithubEvidenceKind.IMPLEMENTATION:
+            return GithubFeatureMatch(
+                feature=feature, kind=kind, matched=True,
+                evidence_kind=hit_kind, support_level=GithubSupportLevel.UNCONFIRMED,
+                matched_terms=hits, sources=sources,
+                evidence=(
+                    f"{_KIND_LABELS[hit_kind]}命中关键词「{'、'.join(hits)}」；"
+                    "你要求实现证据，本轮未确认该实现。"
+                ),
+            )
         support = (
             GithubSupportLevel.STATIC_IMPLEMENTATION
             if hit_kind is GithubEvidenceKind.IMPLEMENTATION
@@ -562,37 +589,31 @@ def _match_row(
             sources=_hit_sources(hit_kind, evidence, hits),
             runtime_required=True,
         )
-    conclusive = _absence_is_conclusive(evidence)
     return GithubFeatureMatch(
         feature=feature,
         kind=kind,
         matched=False,
         evidence_kind=None,
-        support_level=(
-            GithubSupportLevel.UNSUPPORTED
-            if conclusive
-            else GithubSupportLevel.UNCONFIRMED
-        ),
+        support_level=GithubSupportLevel.UNCONFIRMED,
         matched_terms=[],
-        evidence=(
-            "本轮取得的证据（API 元数据、README 自述、已读文件）里"
-            "没有出现该要点的关键词。"
-            if conclusive
-            else "本轮证据不足以判断该要点（未读到 README 或实现文件），"
-            "不代表仓库不支持。"
-        ),
+        evidence="本轮读取范围内没有出现该要点的支持证据，保持未确认，不代表仓库不支持。",
         sources=[],
         runtime_required=runtime_required,
     )
 
 
-def _absence_is_conclusive(evidence: GithubRepositoryEvidence) -> bool:
-    """是否取得了足以判断「没有该功能」的证据（README 或实现文件已读）。"""
-    if evidence.readme_status in {GithubReadmeStatus.READ, GithubReadmeStatus.NOT_FOUND}:
-        return True
-    return bool(evidence.files_read) or any(
-        check.status in {"confirmed", "missing"} for check in evidence.implementation_checks
-    )
+def _explicit_denial(feature: str, text: str) -> bool:
+    """明确否定或待实现的原文不能因同词出现被判为支持。"""
+    core = _core(feature)
+    for sentence in re.split(r"[。；;\n]", text):
+        if not _keyword_hits(core, sentence, phrase=feature):
+            continue
+        if re.search(
+            r"不支持|未支持|尚未|暂不|未实现|待实现|TODO|not supported|not implemented",
+            sentence, re.I,
+        ):
+            return True
+    return False
 
 
 def _hit_sources(
@@ -604,16 +625,18 @@ def _hit_sources(
     version = evidence.version
     commit_sha = version.commit_sha if version is not None else None
     if hit_kind is GithubEvidenceKind.IMPLEMENTATION:
-        locator, read_range, excerpt = _implementation_locator(evidence)
         return [
             GithubRequirementSource(
                 kind=GithubSourceKind.IMPLEMENTATION_FILE,
-                locator=locator,
-                read_range=read_range,
-                excerpt=excerpt,
+                locator=item.path,
+                read_range=f"实际读取的文件片段（前 {len(item.excerpt or '')} 字符）",
+                excerpt=item.excerpt,
                 commit_sha=commit_sha,
                 obtained_at=evidence.retrieved_at,
             )
+            for item in evidence.files_read
+            if _static_file_text(item)
+            and any(hit.lower() in (item.excerpt or "").lower() for hit in hits)
         ]
     if hit_kind is GithubEvidenceKind.README:
         text = evidence.readme_text or ""
@@ -623,7 +646,7 @@ def _hit_sources(
                 locator=evidence.readme_url or evidence.html_url,
                 read_range=f"README 正文（本轮取得 {len(text)} 字符）",
                 excerpt=_quote(text, hits[0]) if hits else None,
-                commit_sha=evidence.readme_sha,
+                commit_sha=None,
                 obtained_at=evidence.retrieved_at,
             )
         ]
@@ -637,28 +660,6 @@ def _hit_sources(
             obtained_at=evidence.retrieved_at,
         )
     ]
-
-
-def _implementation_locator(
-    evidence: GithubRepositoryEvidence,
-) -> tuple[str | None, str, str | None]:
-    for item in evidence.files_read:
-        if item.excerpt:
-            return (
-                item.path,
-                f"实际读取的文件片段（前 {len(item.excerpt)} 字符）",
-                item.excerpt,
-            )
-        if item.entries:
-            return (
-                item.path,
-                f"实际读取的目录清单（{len(item.entries)} 个直接子项）",
-                "、".join(item.entries[:10]),
-            )
-    for check in evidence.implementation_checks:
-        if check.status == "confirmed":
-            return check.path, "根目录清单或文件读取确认存在", check.evidence
-    return None, "已读实现证据", None
 
 
 _PERMISSIVE_LICENSES = frozenset(
@@ -1144,18 +1145,32 @@ def _no_evidence_reason(evidence: GithubRepositoryEvidence) -> str:
     )
 
 
+def _static_file_text(item: GithubFileRead) -> str:
+    """目录、说明文件和显然只有声明/占位的代码不证明功能实现。"""
+    if item.kind != "file" or not item.excerpt:
+        return ""
+    if not re.search(
+        r"\.(py|js|jsx|ts|tsx|go|rs|java|kt|rb|php|cs|cpp|c|h|sh|sql|vue|svelte)$",
+        item.path, re.I,
+    ):
+        return ""
+    body = [line.strip() for line in item.excerpt.splitlines()]
+    executable = [
+        line for line in body
+        if line and not line.startswith(("#", "//", "/*", "*", "import ", "from "))
+        and line not in {"pass", "...", "{", "}"}
+        and not re.match(r"(?:async )?(?:def|class) .*:\s*(?:#.*|pass|\.\.\.)?$", line)
+        and "NotImplemented" not in line
+    ]
+    return item.excerpt if executable else ""
+
+
 def _implementation_text(evidence: GithubRepositoryEvidence) -> str:
     """实际读取到的实现证据文本（只含确认存在的路径与真实片段）。"""
-    parts: list[str] = []
-    for check in evidence.implementation_checks:
-        if check.status == "confirmed":
-            parts.append(check.path)
-    for item in evidence.files_read:
-        parts.append(item.path)
-        parts.extend(item.entries)
-        if item.excerpt:
-            parts.append(item.excerpt)
-    return " ".join(parts)
+    return " ".join(
+        _static_file_text(item) for item in evidence.files_read
+        if _static_file_text(item)
+    )
 
 
 def _quote(text: str, keyword: str) -> str:
@@ -1174,9 +1189,7 @@ def _evidence_kinds(evidence: GithubRepositoryEvidence) -> list[GithubEvidenceKi
     kinds = [GithubEvidenceKind.METADATA]
     if evidence.readme_status is GithubReadmeStatus.READ and evidence.readme_text:
         kinds.append(GithubEvidenceKind.README)
-    if evidence.files_read or any(
-        check.status == "confirmed" for check in evidence.implementation_checks
-    ):
+    if _implementation_text(evidence):
         kinds.append(GithubEvidenceKind.IMPLEMENTATION)
     return kinds
 
@@ -1234,7 +1247,7 @@ def _coverage(
             "你本轮要的是单个组件的公开实现，该仓库只覆盖这一部分，不代表完整产品；"
             "接入你的完整产品所需的集成工作要由你自行完成。",
         )
-    if not unresolved and not blocking_constraints:
+    if required and not unresolved and not blocking_constraints:
         levels = {item.support_level for item in supported}
         detail = (
             "全部达到静态实现证据"

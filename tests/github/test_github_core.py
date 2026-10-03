@@ -178,7 +178,7 @@ def test_feature_matching_prefers_implementation_over_readme_over_metadata() -> 
             GithubFileRead(
                 path="src/books/publish.py",
                 kind="file",
-                excerpt="def publish_book(request):  # 发布想卖的书",
+                excerpt="def publish_book(request):  # 发布想卖的书\n    return request['book']",
             )
         ],
     )

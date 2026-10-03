@@ -14,7 +14,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import (
@@ -33,6 +33,9 @@ from bridges.github.contracts import (
     GithubRecommendation,
 )
 from bridges.github.lexicon import SEARCH_SOURCE
+
+if TYPE_CHECKING:
+    from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
 
 #: 每条「借鉴角度」的长度上限（防止生成失控长文）。
 INSIGHT_MAX_CHARS = 160
@@ -61,7 +64,7 @@ INSIGHT_SYSTEM_PROMPT = (
     "你是开源项目调研助手。只依据给定证据写一句中文「可借鉴角度」，"
     "不得引入未给出的功能、数字、评价或对比，不得猜测内部架构；"
     "证据等级只有「API 元数据」时不要把项目说成已经看过代码。"
-    "每项不超过 100 字，直接说可以从哪里借鉴。"
+    "只能逐字选择该仓库给定的安全借鉴句，不得改写或拼接；没有适用句时省略该仓库。"
 )
 
 INSIGHT_JSON_SCHEMA: dict[str, Any] = {
@@ -282,20 +285,26 @@ class GithubInsightGenerator:
         *,
         model_id: str | None,
         model_quota: RunModelQuota | None = None,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
     ) -> InsightOutcome:
         if not recommendations:
             return InsightOutcome()
         user_content = _insight_prompt(recommendations)
         output_tokens = 900
+        system_prompt = INSIGHT_SYSTEM_PROMPT
+        if writing_policy is not None:
+            system_prompt += "\n\n" + writing_policy.system_block
         payload = {
             "messages": [
-                {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             "json_schema": INSIGHT_JSON_SCHEMA,
             "temperature": 0.3,
             "max_tokens": output_tokens,
         }
+        if writing_policy is not None:
+            payload["global_writing_policy"] = writing_policy.metadata()
         schema_text = json.dumps(INSIGHT_JSON_SCHEMA, ensure_ascii=False, sort_keys=True)
         # 工单 15：工具结果（真实仓库证据）加入后，对最终载荷重新执行预算门
         # （共用 payload_budget 的调用入口，不复制预算器）；超限时只交付证据。
@@ -310,9 +319,9 @@ class GithubInsightGenerator:
                     necessity="required",
                     adopted=True,
                     reason="借鉴角度系统规则与输出契约",
-                    estimated_tokens=estimate_tokens(INSIGHT_SYSTEM_PROMPT),
+                    estimated_tokens=estimate_tokens(system_prompt),
                     source_version="sha256:"
-                    + hashlib.sha256(INSIGHT_SYSTEM_PROMPT.encode()).hexdigest(),
+                    + hashlib.sha256(system_prompt.encode()).hexdigest(),
                     read_range="完整系统规则",
                 ),
                 MaterialManifestEntry(
@@ -386,7 +395,7 @@ class GithubInsightGenerator:
                 lock=lock,
                 manifest=manifest,
             )
-        allowed = {item.full_name for item in recommendations}
+        allowed = {item.full_name: safe_insight_choices(item) for item in recommendations}
         insights: dict[str, str] = {}
         dropped = 0
         for item in (result.output or {}).get("insights", []):
@@ -396,13 +405,16 @@ class GithubInsightGenerator:
             full_name = str(item.get("full_name") or "")
             text = str(item.get("insight_zh") or "").strip()
             # 门控：只接受本轮真实候选的标识；空值/超长/未知标识一律丢弃。
-            if full_name not in allowed or not text or len(text) > INSIGHT_MAX_CHARS:
+            if full_name not in allowed or text not in allowed[full_name]:
                 dropped += 1
                 continue
             insights[full_name] = text
         note = None
         if dropped:
-            note = f"借鉴角度中有 {dropped} 条不符合证据约束（仓库标识或长度），已丢弃。"
+            note = (
+                f"借鉴角度中有 {dropped} 条无法由本轮原始证据核验，已省略；"
+                "实现断言与复杂比较需另行补证，本轮只保留证据范围内的阅读建议。"
+            )
         return InsightOutcome(
             insights=insights,
             note=note,
@@ -412,10 +424,35 @@ class GithubInsightGenerator:
         )
 
 
+def safe_insight_choices(item: GithubRecommendation) -> tuple[str, ...]:
+    """只允许中性阅读建议，来源名称与片段均来自实际已读证据。
+
+    自由改写的实现断言及复杂比较不能靠生成者自评通过；当前没有可核验的
+    独立复核产物，因此闭锁这些文本。简单阅读建议由代码绑定来源即可验证。
+    """
+    choices: list[str] = []
+    if item.readme_excerpt:
+        excerpt = item.readme_excerpt[:65].strip()
+        choices.append(f"可先阅读 README 中的「{excerpt}」，再核对是否适用于你的需求。")
+    for entry in item.files_read:
+        if entry.kind == "file" and entry.excerpt:
+            choice = (
+                f"可先阅读已读文件 {entry.path} 中的「{entry.excerpt[:45].strip()}」，"
+                "再核对是否适用于你的需求；本轮未运行。"
+            )
+            if len(choice) <= INSIGHT_MAX_CHARS:
+                choices.append(choice)
+    return tuple(choices)
+
+
 def _insight_candidate(item: GithubRecommendation) -> str:
     """候选实际发送切片，供提示词与脱敏清单共用。"""
     lines: list[str] = []
     lines.append(f"- full_name: {item.full_name}")
+    lines.append(
+        "  安全借鉴句（只可逐字选择）："
+        + json.dumps(safe_insight_choices(item), ensure_ascii=False)
+    )
     lines.append(f"  覆盖范围: {COVERAGE_LABELS[item.coverage]}（{item.coverage_note}）")
     lines.append(f"  项目介绍: {item.description or '上游没有给出简介'}")
     lines.append(f"  话题: {'、'.join(item.topics) or '无'}")

@@ -15,7 +15,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 from bridges.github.contracts import (
@@ -128,7 +127,7 @@ def test_required_unsupported_is_not_whole_even_with_ratio_stars_and_optionals()
     ]
     gaps = [row for row in required_rows if row.support_level is not GithubSupportLevel.DOCUMENTED]
     assert [row.feature for row in gaps] == ["线下交换"]
-    assert gaps[0].support_level is GithubSupportLevel.UNSUPPORTED
+    assert gaps[0].support_level is GithubSupportLevel.UNCONFIRMED
     assert "缺口" in recommendation.coverage_note
 
 
@@ -376,7 +375,10 @@ def test_implementation_sources_carry_version_and_read_range() -> None:
             GithubFileRead(
                 path="src/books/publish.py",
                 kind="file",
-                excerpt="# 发布书籍：学生发布想卖的书\ndef publish_book(request): ...",
+                excerpt=(
+                    "# 发布书籍：学生发布想卖的书\n"
+                    "def publish_book(request):\n    return request['book']"
+                ),
                 sha="1234567890abcdef",
             )
         ],
@@ -422,23 +424,6 @@ def test_typed_requirement_without_confirmed_identity_is_not_overclaimed() -> No
     assert confirmed_note is not None
     assert "已确认" in confirmed_note
     assert "2401.00001" in confirmed_note
-
-
-@pytest.fixture
-def sqlite_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    from bridges.api.main import create_app
-    from bridges.config import get_settings
-
-    monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
-    monkeypatch.setenv("BRIDGES_SECRET_KEY", "api-test-secret-key")
-    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
-    get_settings.cache_clear()
-    return create_app()
-
-
-@pytest.fixture
-def client(sqlite_app: Any) -> TestClient:
-    return TestClient(sqlite_app)
 
 
 def _retry(client: TestClient, conversation_id: str, message_id: str) -> str:
@@ -493,3 +478,58 @@ def test_retry_reuses_completed_nodes_by_receipt(
     counts = {str(row["node"]): int(row["total"]) for row in rows}
     for node in ("github.parse", "github.search", "github.read", "github.present"):
         assert counts.get(node, 0) >= 1, f"{node} 必须有完成收据"
+
+
+def test_actual_github_artifacts_export_backup_and_delete(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any], tmp_path: Path,
+) -> None:
+    """实际 GitHub 节点产物进入账户导出与备份，并随会话删除。"""
+    import json
+    import sqlite3
+    import zipfile
+    from io import BytesIO
+
+    from bridges.lifecycle.backup import BACKUP_MAGIC, _fernet_for
+
+    _register(client)
+    port = _FakeSearchPort(
+        per_query={WHOLE_QUERY: [_candidate("demo/a", description="校园二手书交换")]}
+    )
+    reader = _FakeReader({"demo/a": _readme_evidence(full_name="demo/a")})
+    _install_github_service(sqlite_app, port=port, reader=reader)
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, WHOLE_IDEA, module_id="github")
+    result = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert result["status"] == "done"
+    database = sqlite_app.state.bridges_database
+    row = database.connection.execute(
+        "SELECT account_id FROM conversations WHERE conversation_id = ?", (conversation_id,)
+    ).fetchone()
+    _, exported = sqlite_app.state.export_service.export_data(str(row["account_id"]))
+    node_items = json.loads(exported)["categories"]["node_kernel"]["items"]
+    assert "github.repository_evidence" in json.dumps(node_items)
+    passphrase = "工单26备份验证口令"
+    _, backup = sqlite_app.state.backup_service.create_backup(passphrase)
+    manifest_bytes, _, payload = backup[len(BACKUP_MAGIC):].partition(b"\n")
+    manifest = json.loads(manifest_bytes)
+    archive_bytes = _fernet_for(passphrase, bytes.fromhex(manifest["salt"])).decrypt(payload)
+    with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+        snapshot = tmp_path / "github-snapshot.db"
+        snapshot.write_bytes(archive.read("bridges.db"))
+    with sqlite3.connect(snapshot) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM node_artifacts WHERE node LIKE 'github.%'"
+        ).fetchone()[0] >= 8
+    from bridges.kernel.repository import NodeKernelRepository
+
+    NodeKernelRepository(database).delete_for_conversation("other-account", conversation_id)
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM node_artifacts WHERE conversation_id = ?", (conversation_id,)
+    ).fetchone()[0] >= 8
+    response = client.delete(f"/chat/conversations/{conversation_id}")
+    assert response.status_code == 204, response.text
+    assert database.connection.execute("SELECT COUNT(*) FROM node_outbox").fetchone()[0] == 0
+    for table in ("node_artifacts", "node_receipts"):
+        assert database.connection.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE conversation_id = ?", (conversation_id,)
+        ).fetchone()[0] == 0

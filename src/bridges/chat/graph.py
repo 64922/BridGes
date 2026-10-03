@@ -67,6 +67,7 @@ from bridges.contracts.understanding import (
 from bridges.github.service import (
     GITHUB_MODULE_ID,
     GITHUB_NODE_LABELS,
+    GithubDelivery,
     GithubModuleError,
     GithubSupersededError,
 )
@@ -244,6 +245,9 @@ class DailyTurnState(TypedDict, total=False):
     #: V2 Issue 08：同一次编译的预算记录（模型 ID、预算与已用估算），
     #: 供画像块按剩余输入预算裁剪；照片轮跳过编译时为空。
     context_budget: dict[str, object] | None
+    #: GitHub 子图交付先进入检查点，父图核验后再统一提交消息。
+    github_delivery: dict[str, Any] | None
+    github_verified: bool
 
 
 class _GraphDeps:
@@ -723,6 +727,7 @@ def _invoke_github_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
                 run, "github.insight", manifest
             ),
             requirement=_github_requirement(run),
+            defer_finalization=True,
         )
     except GithubSupersededError as error:
         # 迟到结果：本轮不再写交付终态，交给当前持有执行权的执行者收尾。
@@ -735,7 +740,12 @@ def _invoke_github_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
         deps.repo.update_generation_progress(
             run.account_id, run.run_id, wait_reason=outcome.wait_reason
         )
-    return {}
+    if outcome.delivery is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "github_delivery_missing",
+            "GitHub 模块缺少待核验交付，本轮未提交。", retryable=True,
+        )
+    return {"github_delivery": outcome.delivery.model_dump(mode="json"), "github_verified": False}
 
 
 def _github_requirement(run: Any) -> Any:
@@ -895,9 +905,12 @@ def _node_verify_output(
     state: DailyTurnState, config: RunnableConfig
 ) -> dict[str, Any]:
     """核验输出：本轮已收敛为明确终态（完成或诚实失败），绝不悬空。"""
-    del state
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
+    if state.get("github_delivery") is not None:
+        delivery = GithubDelivery.model_validate(state["github_delivery"])
+        _verify_github_delivery(deps, delivery)
+        return {"github_verified": True}
     message = deps.repo.get_message(run.account_id, run.assistant_message_id)
     if message is None:
         raise DailyTurnError(
@@ -916,6 +929,61 @@ def _node_verify_output(
             retryable=True,
         )
     return {}
+
+
+def _verify_github_delivery(deps: _GraphDeps, delivery: GithubDelivery) -> None:
+    """读取真实核验产物并复验最终正文，拒绝无核验支持的成功交付。"""
+    from bridges.github.contracts import GithubProjectStatus
+    from bridges.github.presenting import (
+        render_clarification_content,
+        render_empty_content,
+        render_result_content,
+        render_stopped_content,
+        safe_insight_choices,
+    )
+    from bridges.kernel.contracts import ArtifactTrust
+    from bridges.kernel.repository import NodeKernelRepository
+
+    projection = delivery.projection
+    if projection.status is GithubProjectStatus.CLARIFICATION:
+        valid = projection.pending is not None and not projection.recommendations
+        expected_content = render_clarification_content(projection)
+    elif delivery.message_status is ChatMessageStatus.ERROR:
+        valid = (
+            projection.status is GithubProjectStatus.ERROR
+            and bool(projection.error_code) and not projection.recommendations
+        )
+        expected_content = render_empty_content(projection)
+    elif delivery.message_status is ChatMessageStatus.STOPPED:
+        valid = projection.status is GithubProjectStatus.STOPPED
+        expected_content = render_stopped_content(projection)
+    else:
+        artifact = NodeKernelRepository(deps.repo.database).get_artifact(
+            deps.run.account_id, delivery.verification_artifact_id or ""
+        )
+        valid = bool(
+            artifact is not None and artifact.node == "github.verify"
+            and artifact.conversation_id == deps.run.conversation_id
+            and artifact.trust_state is ArtifactTrust.QUALIFIED
+        )
+        if valid:
+            valid = deps.service.github_projects_service.verify_delivery_projection(
+                deps.repo, delivery, account_id=deps.run.account_id, run_id=deps.run.run_id,
+                conversation_id=deps.run.conversation_id,
+            )
+        expected_content = (
+            render_result_content(projection) if projection.recommendations
+            else render_empty_content(projection)
+        )
+    valid = valid and all(
+        item.insight_zh is None or item.insight_zh in safe_insight_choices(item)
+        for item in projection.recommendations
+    )
+    if not valid or delivery.content != expected_content:
+        raise DailyTurnError(
+            NODE_VERIFY_OUTPUT, "github_delivery_unverified",
+            "GitHub 最终交付缺少有效核验依据，本轮未提交。", retryable=True,
+        )
 
 
 def _node_persist_result(
@@ -938,6 +1006,8 @@ def _node_persist_result(
     """
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
+    if state.get("github_delivery") is not None:
+        _persist_github_delivery(deps, state)
     if state.get("module_dispatch") == "chat":
         user_message = deps.repo.get_message(run.account_id, run.user_message_id)
         if user_message is not None:
@@ -965,6 +1035,56 @@ def _node_persist_result(
             run.account_id, run.run_id, model_lock_id=message.run_lock_id
         )
     return {}
+
+
+def _persist_github_delivery(deps: _GraphDeps, state: DailyTurnState) -> None:
+    """父图在共享事务中统一提交 GitHub 结果与终态。"""
+    from bridges.chat.turn import finalize_message
+    from bridges.kernel.repository import NodeKernelRepository
+
+    if not state.get("github_verified"):
+        raise DailyTurnError(
+            NODE_PERSIST_RESULT, "github_delivery_unverified",
+            "GitHub 交付尚未通过父图核验，本轮未提交。", retryable=True,
+        )
+    delivery = GithubDelivery.model_validate(state["github_delivery"])
+    run = deps.run
+    with NodeKernelRepository(deps.repo.database).transaction():
+        _verify_github_delivery(deps, delivery)
+        message = deps.repo.get_message(run.account_id, run.assistant_message_id)
+        # 提交后检查点尚未保存的恢复：相同交付只回放，不重复写入。
+        if message is None or message.status == ChatMessageStatus.STREAMING:
+            try:
+                deps.service.github_projects_service.verify_delivery_scope(
+                    deps.repo, delivery, account_id=run.account_id, run_id=run.run_id,
+                    conversation_id=run.conversation_id,
+                    assistant_message_id=run.assistant_message_id, stop_event=deps.stop_event,
+                    expected_lease_owner=run.lease_owner,
+                )
+            except GithubSupersededError as error:
+                if str(error) == "run_stopped":
+                    raise DailyGraphStop(NODE_PERSIST_RESULT) from error
+                raise DailyGraphSuperseded(str(error)) from error
+            finalize_message(
+                deps.repo, run.account_id, run.assistant_message_id,
+                status=delivery.message_status,
+                error_code=delivery.projection.error_code,
+                error_message=delivery.projection.error_message,
+                duration_ms=None, model_id=None,
+                run_lock_id=delivery.lock.lock_id if delivery.lock else None,
+                lock=delivery.lock, started=deps.started, now=datetime.now(UTC),
+                github_projects=delivery.projection.model_dump(mode="json"),
+                final_content=delivery.content,
+            )
+        elif message.content != delivery.content or message.status != delivery.message_status:
+            raise DailyGraphSuperseded("message_terminal")
+    if delivery.message_status is ChatMessageStatus.ERROR:
+        raise DailyTurnError(
+            delivery.error_node or NODE_PERSIST_RESULT,
+            delivery.projection.error_code or "github_failed",
+            delivery.projection.error_message or "GitHub 项目推荐失败，请稍后重试。",
+            retryable=delivery.projection.retryable,
+        )
 
 
 def build_daily_graph(saver: RepositoryCheckpointSaver) -> Any:

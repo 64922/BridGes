@@ -11,8 +11,10 @@
 核验、以及待交付投影（借鉴角度模型调用留在交付 seam，接入 04 预算合同）。
 
 恢复由完成收据驱动：检索失败而证据可用时按输入键回填；限流只保留已完成
-检查，未读候选不伪装核实。运行类需求永远停在「未确认」——静态读取不等于
-实际运行。
+检查，未读候选不伪装核实。部分失败（限流/超时/预算用尽）的检索与读取产物
+标记为失效、不作为完成凭据长期复用，但已取得的候选、查询记录与仓库证据
+一律保留——重试按同一输入键续作，只补未完成的查询/候选，不重复已完成的
+外发请求。运行类需求永远停在「未确认」——静态读取不等于实际运行。
 """
 
 from __future__ import annotations
@@ -67,8 +69,10 @@ from bridges.kernel.contracts import (
     RecoveryPolicy,
 )
 from bridges.kernel.registry import RecipeRegistry
+from bridges.kernel.repository import NodeKernelRepository
 
 if TYPE_CHECKING:
+    from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
     from bridges.chat.task_materials import ModuleTaskContext
 
 #: 配方节点名（进度事件、失败定位与产物身份）。
@@ -82,7 +86,7 @@ NODE_VERIFY = "github.verify"
 NODE_PRESENT = "github.present"
 
 GITHUB_RECIPE_ID = "github-project-recommendation"
-GITHUB_RECIPE_VERSION = "github-recipe-v1"
+GITHUB_RECIPE_VERSION = "github-recipe-v2"
 
 #: 节点的用户可读中文名（父图失败信息按此标注真实失败位置）。
 GITHUB_NODE_LABELS: dict[str, str] = {
@@ -98,14 +102,14 @@ GITHUB_NODE_LABELS: dict[str, str] = {
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 GITHUB_CAPABILITY_VERSIONS: dict[str, str] = {
-    "github.parse_request": "github-parse-v1",
-    "github.plan_search": "github-plan-v1",
-    "github.search_repositories": "github-search-v1",
-    "github.read_evidence": "github-read-v1",
-    "github.match_requirements": "github-match-v1",
-    "github.evaluate_candidates": "github-evaluate-v1",
-    "github.verify_matrix": "github-verify-v1",
-    "github.present_result": "github-present-v1",
+    "github.parse_request": "github-parse-v2",
+    "github.plan_search": "github-plan-v2",
+    "github.search_repositories": "github-search-v2",
+    "github.read_evidence": "github-read-v2",
+    "github.match_requirements": "github-match-v2",
+    "github.evaluate_candidates": "github-evaluate-v2",
+    "github.verify_matrix": "github-verify-v2",
+    "github.present_result": "github-present-v2",
 }
 
 #: 配方的必要门与可选门（登记集合；代码拒绝未登记质量门）。
@@ -130,7 +134,8 @@ def _digest(value: Any) -> str:
 def _requires_implementation(analysis: GithubIdeaAnalysis) -> bool:
     """本轮是否要求实现/运行证据（决定读取阶段是否按结论打开实现文件）。"""
     return (
-        bool(analysis.constraints.runtime)
+        analysis.implementation_required
+        or bool(analysis.constraints.runtime)
         or wants_implementation_evidence(analysis.original_request)
         or any(wants_implementation_evidence(feature) for feature in analysis.features)
     )
@@ -147,6 +152,13 @@ def _required_matrix_gate(
     """必要门：矩阵行必须有支持层次；整体覆盖不得含有未支持/未确认的必要功能。"""
     del invocation
     payload = execution.artifact.payload
+    if payload.get("matrix_errors"):
+        return QualityGateResult(
+            gate="github.required_matrix",
+            verdict=QualityVerdict.BLOCKED,
+            code="github_matrix_inconsistent",
+            message="推荐矩阵与本轮需求或原始证据不一致，本轮不交付。",
+        )
     rows = payload.get("matrix") or []
     for row in rows:
         if not isinstance(row, dict):
@@ -182,6 +194,13 @@ def _version_sources_gate(
     """必要门：命中的证据必须能定位到版本或取得时间与读取范围。"""
     del invocation
     payload = execution.artifact.payload
+    if payload.get("source_errors"):
+        return QualityGateResult(
+            gate="github.version_sources",
+            verdict=QualityVerdict.REPAIRABLE_FAILURE,
+            code="github_version_missing",
+            message="推荐来源缺少定位、读取范围或版本依据，本轮不交付确定结论。",
+        )
     for row in payload.get("matrix") or []:
         if not isinstance(row, dict) or not row.get("matched"):
             continue
@@ -210,6 +229,13 @@ def _license_disclosure_gate(
     """必要门：许可未知不得被矩阵或正文说成可自由复用。"""
     del invocation
     payload = execution.artifact.payload
+    if payload.get("license_errors"):
+        return QualityGateResult(
+            gate="github.license_disclosure",
+            verdict=QualityVerdict.BLOCKED,
+            code="github_license_claim_without_evidence",
+            message="推荐许可说明与实际读取的许可证据不一致，本轮不交付。",
+        )
     for repo, info in (payload.get("licenses") or {}).items():
         if not isinstance(info, dict):
             continue
@@ -271,6 +297,7 @@ def _read_key(inputs: Any) -> str:
         {
             "search": inputs.artifacts[NODE_SEARCH].content_hash,
             "plan": inputs.artifacts[NODE_PLAN].content_hash,
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
         }
     )
 
@@ -342,7 +369,7 @@ def build_github_recipe() -> RecipeDefinition:
                 capability_version=GITHUB_CAPABILITY_VERSIONS["github.read_evidence"],
                 artifact_type="github.repository_evidence",
                 input_key=_read_key,
-                depends_on=(NODE_SEARCH,),
+                depends_on=(NODE_PARSE, NODE_PLAN, NODE_SEARCH),
                 recovery=RecoveryPolicy.RETRY_NODE,
                 description="两遍读取元数据/README/许可/实现文件并记录提交版本。",
             ),
@@ -426,6 +453,8 @@ class GithubNodeFlow:
         run_model_id: str | None = None,
         model_quota: RunModelQuota | None = None,
         manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
+        repository: NodeKernelRepository | None = None,
     ) -> None:
         self._search = search
         self._reader = reader
@@ -442,6 +471,9 @@ class GithubNodeFlow:
         self._run_model_id = run_model_id
         self._model_quota = model_quota
         self._manifest_sink = manifest_sink
+        self._writing_policy = writing_policy
+        #: 读取本会话上一轮的部分产物以续作未完成查询/候选（重试只补缺口）。
+        self._repository = repository
         self.last_insight: InsightOutcome = InsightOutcome()
 
     @property
@@ -467,6 +499,11 @@ class GithubNodeFlow:
             "requirement": (
                 self._requirement.model_dump(mode="json")
                 if self._requirement is not None
+                else None
+            ),
+            "writing_policy": (
+                self._writing_policy.model_dump(mode="json")
+                if self._writing_policy is not None
                 else None
             ),
         }
@@ -585,13 +622,38 @@ class GithubNodeFlow:
         plan = GithubSearchPlan.model_validate(
             self._dep(invocation, NODE_PLAN)["plan"]
         )
+        resume = self._resume_payload(invocation, NODE_SEARCH)
         candidates: list[Any] = []
         seen: set[str] = set()
         records: list[ModuleQueryRecord] = []
+        completed: set[str] = set()
         reset_at: datetime | None = None
+        if resume is not None:
+            # 续作：已成功的查询结果与候选直接保留，只重跑失败/跳过的查询。
+            for raw in resume.get("queries", []):
+                record = ModuleQueryRecord.model_validate(raw)
+                if (
+                    record.status in FAILED_QUERY_STATUSES
+                    or record.status is ModuleQueryStatus.SKIPPED
+                ):
+                    continue
+                records.append(record)
+                completed.add(record.query)
+            for raw in resume.get("candidates", []):
+                candidate = _candidate_model(raw)
+                if candidate.full_name in seen:
+                    continue
+                seen.add(candidate.full_name)
+                candidates.append(candidate)
+            reset_at = _parse_moment(resume.get("reset_at"))
+        failure: ModuleQueryRecord | None = None
+        enough = False
         deadline = self._external_deadline(invocation, self._search_deadline_seconds)
-        for index, query in enumerate(plan.queries):
-            if index > 0 and len(candidates) >= MIN_WHOLE_RESULTS:
+        for query in plan.queries:
+            if query in completed:
+                continue
+            if len(candidates) >= MIN_WHOLE_RESULTS:
+                enough = True
                 break
             if self._stop_event is not None and self._stop_event.is_set():
                 break
@@ -610,12 +672,11 @@ class GithubNodeFlow:
                     continue
                 seen.add(candidate.full_name)
                 candidates.append(candidate)
-            if not outcome.record.retryable and not outcome.candidates:
-                break
             if (
                 outcome.record.status in FAILED_QUERY_STATUSES
-                and outcome.record.retryable
+                or outcome.record.status is ModuleQueryStatus.SKIPPED
             ):
+                failure = outcome.record
                 break
         ordered = sorted(
             candidates,
@@ -626,22 +687,54 @@ class GithubNodeFlow:
                 topics=list(item.topics),
             ),
         )
+        attempted = {record.query for record in records}
+        pending = [query for query in plan.queries if query not in attempted]
+        partial = failure is not None or (not enough and bool(pending))
+        payload: dict[str, Any] = {
+            "candidates": [candidate.model_dump(mode="json") for candidate in ordered],
+            "queries": [record.model_dump(mode="json") for record in records],
+            "reset_at": reset_at.isoformat() if reset_at is not None else None,
+            "partial": partial,
+            "pending_queries": pending,
+        }
+        error: dict[str, Any] | None = None
+        detail: dict[str, Any] = {}
+        if partial:
+            # 部分失败不能作为完成产物被长期复用：保留已取得的候选与查询记录，
+            # 但标记失效，重试时按同一输入键续作未完成查询。
+            error = {
+                "code": (
+                    failure.error_code
+                    if failure is not None and failure.error_code
+                    else "github_search_incomplete"
+                ),
+                "message": (
+                    failure.error_message
+                    if failure is not None and failure.error_message
+                    else "本轮检索未完成全部计划查询，已完成结果已保留。"
+                ),
+                "retryable": failure.retryable if failure is not None else True,
+            }
+            detail = {"partial": True, **error}
         return NodeExecution(
             artifact=self._artifact(
                 invocation,
-                trust_state=ArtifactTrust.EVIDENCE_BOUND,
-                payload={
-                    "candidates": [
-                        candidate.model_dump(mode="json") for candidate in ordered
-                    ],
-                    "queries": [record.model_dump(mode="json") for record in records],
-                    "reset_at": reset_at.isoformat() if reset_at is not None else None,
-                },
+                trust_state=(
+                    ArtifactTrust.INVALIDATED if partial else ArtifactTrust.EVIDENCE_BOUND
+                ),
+                payload=payload,
                 source_refs=[record.source for record in records],
                 read_scope="GitHub 公开仓库检索",
+                unconfirmed=(
+                    ["上游未完成全部检索查询：已完成的候选保留，重试只补未完成查询。"]
+                    if partial
+                    else []
+                ),
+                error=error,
             ),
             verdict=QualityVerdict.PASS,
             status=NodeReceiptStatus.COMPLETED,
+            detail=detail,
         )
 
     def _run_read(self, invocation: NodeInvocation) -> NodeExecution:
@@ -654,22 +747,60 @@ class GithubNodeFlow:
                 artifact=self._artifact(
                     invocation,
                     trust_state=ArtifactTrust.EVIDENCE_BOUND,
-                    payload={"evidence": [], "queries": [], "rate_limited": False},
+                    payload={
+                        "evidence": [],
+                        "queries": [],
+                        "rate_limited": False,
+                        "partial": False,
+                    },
                     read_scope="没有候选可读取",
                 ),
                 verdict=QualityVerdict.PASS,
                 status=NodeReceiptStatus.COMPLETED,
             )
+        resume_evidence = self._resume_evidence(invocation)
+        inspect_kwargs: dict[str, Any] = {}
+        if isinstance(self._reader, GithubRepositoryReader):
+            inspect_kwargs["requirements"] = self._analysis(invocation).features
+            inspect_kwargs["resume_evidence"] = resume_evidence
         outcome: InspectionOutcome = self._reader.inspect_candidates(
             invocation.account_id,
             candidates,
             stop_event=self._stop_event,
             deadline=self._external_deadline(invocation, self._inspect_deadline_seconds),
+            **inspect_kwargs,
         )
+        partial = outcome.rate_limited or any(
+            record.status in FAILED_QUERY_STATUSES
+            or record.status is ModuleQueryStatus.SKIPPED
+            for record in outcome.records
+        )
+        error: dict[str, Any] | None = None
+        detail: dict[str, Any] = {}
+        unconfirmed: list[str] = []
+        if partial:
+            # 读取不完整同样不能冒充可复用完成产物：证据如实保留，重试只补缺口。
+            error = {
+                "code": (
+                    "github_read_rate_limited"
+                    if outcome.rate_limited
+                    else "github_read_incomplete"
+                ),
+                "message": (
+                    "上游额度限制：部分候选的深入核查未完成，已读取证据已保留。"
+                    if outcome.rate_limited
+                    else "部分候选的读取未完成，已读取证据已保留。"
+                ),
+                "retryable": True,
+            }
+            detail = {"partial": True, **error}
+            unconfirmed = [error["message"]]
         return NodeExecution(
             artifact=self._artifact(
                 invocation,
-                trust_state=ArtifactTrust.EVIDENCE_BOUND,
+                trust_state=(
+                    ArtifactTrust.INVALIDATED if partial else ArtifactTrust.EVIDENCE_BOUND
+                ),
                 payload={
                     "evidence": [
                         item.model_dump(mode="json") for item in outcome.evidence
@@ -681,17 +812,16 @@ class GithubNodeFlow:
                         if outcome.reset_at is not None
                         else None
                     ),
+                    "partial": partial,
                 },
                 source_refs=[record.source for record in outcome.records],
                 read_scope="元数据/README/许可/实现文件（含提交版本）",
-                unconfirmed=(
-                    ["上游额度限制：部分候选的深入核查未完成"]
-                    if outcome.rate_limited
-                    else []
-                ),
+                unconfirmed=unconfirmed,
+                error=error,
             ),
             verdict=QualityVerdict.PASS,
             status=NodeReceiptStatus.COMPLETED,
+            detail=detail,
         )
 
     def _run_match(self, invocation: NodeInvocation) -> NodeExecution:
@@ -775,6 +905,9 @@ class GithubNodeFlow:
     def _run_verify(self, invocation: NodeInvocation) -> NodeExecution:
         analysis = self._analysis(invocation)
         matrix = self._dep(invocation, NODE_MATCH)["matrix"]
+        recommendations = self._dep(invocation, NODE_EVALUATE)["ranked"].get(
+            "recommendations", []
+        )
         read_payload = self._dep(invocation, NODE_READ)
         evidence_by_name = {
             item.full_name: item
@@ -785,11 +918,25 @@ class GithubNodeFlow:
         licenses: dict[str, dict[str, Any]] = {}
         versions: dict[str, dict[str, Any]] = {}
         unconfirmed: list[str] = []
-        for full_name, rows in matrix.items():
+        matrix_errors: list[str] = []
+        source_errors: list[str] = []
+        license_errors: list[str] = []
+        for recommendation in recommendations:
+            full_name = recommendation["full_name"]
+            rows = recommendation.get("feature_matches", [])
             evidence = evidence_by_name.get(full_name)
             if evidence is None:
+                matrix_errors.append(f"{full_name}: 推荐没有本轮读取证据")
                 continue
-            whole = True
+            # 从 parse/read 重新核对，不能只信 match/evaluate 自报的计数和布尔值。
+            expected_rows = [
+                row.model_dump(mode="json") for row in match_features(analysis, evidence)
+            ]
+            if rows != expected_rows or matrix.get(full_name) != expected_rows:
+                matrix_errors.append(f"{full_name}: 矩阵与本轮需求及证据不一致")
+            if recommendation.get("runtime_verified"):
+                matrix_errors.append(f"{full_name}: 静态读取没有运行验证证据")
+            whole = recommendation.get("coverage") == "whole"
             unresolved: list[str] = []
             for row in rows:
                 kind = row.get("kind")
@@ -798,33 +945,29 @@ class GithubNodeFlow:
                 sources = row.get("sources") or []
                 has_sources = bool(
                     sources
-                    and any(
-                        (source.get("locator") or source.get("read_range"))
+                    and all(
+                        source.get("locator")
+                        and source.get("read_range")
+                        and (source.get("commit_sha") or source.get("obtained_at"))
                         for source in sources
                     )
                 )
-                if not matched and kind in {
+                if matched and not has_sources:
+                    source_errors.append(f"{full_name}: {row.get('feature')}")
+                supported = matched and not row.get("runtime_required") and level in {
+                    GithubSupportLevel.DOCUMENTED.value,
+                    GithubSupportLevel.STATIC_IMPLEMENTATION.value,
+                }
+                if not supported and kind in {
                     GithubRequirementKind.REQUIRED.value,
                     GithubRequirementKind.CONSTRAINT.value,
                 }:
                     feature = str(row.get("feature") or "")
-                    if (
-                        kind == GithubRequirementKind.REQUIRED.value
-                        and level
-                        in {
-                            GithubSupportLevel.UNCONFIRMED.value,
-                            GithubSupportLevel.UNSUPPORTED.value,
-                        }
-                    ):
+                    if kind == GithubRequirementKind.REQUIRED.value:
                         unresolved.append(feature)
                     if (
                         kind == GithubRequirementKind.CONSTRAINT.value
                         and feature not in analysis.constraints.excluded
-                        and level
-                        in {
-                            GithubSupportLevel.UNCONFIRMED.value,
-                            GithubSupportLevel.UNSUPPORTED.value,
-                        }
                     ):
                         unresolved.append(feature)
                     unconfirmed.append(f"{full_name}: {feature}")
@@ -838,10 +981,12 @@ class GithubNodeFlow:
                         "has_sources": has_sources,
                     }
                 )
-            if unresolved:
-                whole = False
             coverage[full_name] = {"whole": whole, "required_unresolved": unresolved}
             version = evidence.version
+            if recommendation.get("version") != (
+                version.model_dump(mode="json") if version is not None else None
+            ):
+                source_errors.append(f"{full_name}: 推荐版本与实际读取证据不一致")
             # 版本依据缺失时至少保留取得时间（每条证据都有 retrieved_at），
             # 不把「有取得时间」说成「有提交版本」。
             versions[full_name] = {
@@ -864,11 +1009,21 @@ class GithubNodeFlow:
                     GithubSupportLevel.STATIC_IMPLEMENTATION.value,
                 }
             ]
-            disclosed_unknown = (
-                not evidence.license.detected and not supported_claims
+            license_read = evidence.license.file_read and bool(evidence.license.excerpt)
+            disclosed_unknown = any(
+                "许可" in str(note)
+                and any(
+                    word in str(note)
+                    for word in ("未知", "未取得", "未核实", "未读", "未见", "缺失")
+                )
+                for note in recommendation.get("limitations", [])
             )
+            if recommendation.get("license") != evidence.license.model_dump(mode="json"):
+                license_errors.append(f"{full_name}: 推荐许可与读取证据不一致")
+            if supported_claims and not license_read:
+                license_errors.append(f"{full_name}: 未读取许可却声称满足条件")
             licenses[full_name] = {
-                "detected": evidence.license.detected,
+                "detected": license_read,
                 "file_read": evidence.license.file_read,
                 "supported_claims": bool(supported_claims),
                 "disclosed_unknown": disclosed_unknown,
@@ -888,6 +1043,9 @@ class GithubNodeFlow:
                     "versions": versions,
                     "unconfirmed": unconfirmed,
                     "summary": summary,
+                    "matrix_errors": matrix_errors,
+                    "source_errors": source_errors,
+                    "license_errors": license_errors,
                 },
                 read_scope="矩阵完整性、版本来源与许可说法核验",
                 unconfirmed=unconfirmed,
@@ -933,6 +1091,7 @@ class GithubNodeFlow:
             list(recommendations),
             model_id=self._run_model_id,
             model_quota=self._model_quota,
+            writing_policy=self._writing_policy,
         )
         if result.manifest is not None and self._manifest_sink is not None:
             self._manifest_sink(result.manifest)
@@ -947,6 +1106,72 @@ class GithubNodeFlow:
 
     def _dep(self, invocation: NodeInvocation, node: str) -> dict[str, Any]:
         return dict(invocation.dependencies[node].payload)
+
+    def _resume_payload(
+        self, invocation: NodeInvocation, node: str, *, require_partial: bool = True
+    ) -> dict[str, Any] | None:
+        """按同一输入键读取上一轮产物，供续作未完成查询/候选。
+
+        只回填与当前能力版本一致的产物；检索续作额外要求产物确实是部分完成
+        （完整产物会正常按收据/产物复用，不会走到这里）。
+        """
+        if self._repository is None:
+            return None
+        input_key = invocation.spec.input_key(invocation.inputs)
+        artifact = self._repository.find_artifact(
+            invocation.account_id, invocation.conversation_id, node, input_key
+        )
+        if (
+            artifact is None
+            or artifact.capability_version != invocation.spec.capability_version
+        ):
+            return None
+        if require_partial and artifact.payload.get("partial") is not True:
+            return None
+        return dict(artifact.payload)
+
+    def _resume_evidence(
+        self, invocation: NodeInvocation
+    ) -> list[GithubRepositoryEvidence]:
+        """上一轮已取得的仓库证据：同键优先，键变化时按同计划复用。"""
+        payload = self._resume_payload(invocation, NODE_READ, require_partial=False)
+        if payload is None:
+            payload = self._latest_read_payload(invocation)
+        if payload is None:
+            return []
+        evidence: list[GithubRepositoryEvidence] = []
+        for raw in payload.get("evidence", []):
+            try:
+                evidence.append(_evidence_model(raw))
+            except ValueError:
+                continue
+        return evidence
+
+    def _latest_read_payload(self, invocation: NodeInvocation) -> dict[str, Any] | None:
+        """检索重试补到新候选、读取输入键变化时，仍复用同一计划下已读证据。"""
+        if self._repository is None:
+            return None
+        plan_artifact = invocation.dependencies.get(NODE_PLAN)
+        if plan_artifact is None:
+            return None
+        for artifact in reversed(
+            self._repository.list_artifacts(
+                invocation.account_id, invocation.conversation_id
+            )
+        ):
+            if (
+                artifact.node != NODE_READ
+                or artifact.capability_version != invocation.spec.capability_version
+                or not artifact.payload.get("evidence")
+            ):
+                continue
+            if any(
+                dependency.node == NODE_PLAN
+                and dependency.content_hash == plan_artifact.content_hash
+                for dependency in artifact.input_deps
+            ):
+                return dict(artifact.payload)
+        return None
 
     def _artifact(
         self,
@@ -1032,6 +1257,16 @@ class GithubNodeFlow:
         if invocation.remaining_budget_ms is not None:
             remaining = min(remaining, invocation.remaining_budget_ms / 1000.0)
         return time.monotonic() + max(0.5, remaining)
+
+
+def _parse_moment(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _matrix_unconfirmed(matrix: Mapping[str, list[dict[str, Any]]]) -> list[str]:
