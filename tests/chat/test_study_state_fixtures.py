@@ -30,10 +30,13 @@ def test_fixture_creates_bound_photo_and_verified_receipts(tmp_path: Path) -> No
         "study.validate_pages",
         "study.recognize_page",
         "study.verify_recognition",
+        "study.map",
+        "study.verify_scope",
+        "study.preview",
     }
     receipts = NodeKernelRepository(service._repo.database).list_receipts(
         "alice", artifacts[0].run_id
     )
-    assert len(receipts) == 3
+    assert len(receipts) == 6
     assert all(item.status == NodeReceiptStatus.COMPLETED for item in receipts)
     assert all(item.quality_verdict == QualityVerdict.PASS for item in receipts)

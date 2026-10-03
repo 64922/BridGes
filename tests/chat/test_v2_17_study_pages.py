@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.contracts.ai import ModelCallResult, ModelCallStatus
+from bridges.study.scope import assign_unit_id
 from tests.chat.test_v2_05_photo_attachments import PNG_BYTES, _app, _register, _upload_draft
 
 
@@ -36,6 +37,7 @@ class StudyGateway:
         self.page_numbers = page_numbers
         self.same_section = same_section
         self.fail_map = fail_map
+        self.unit_ids: list[str] = []
 
     def invoke(
         self,
@@ -91,37 +93,56 @@ class StudyGateway:
                 },
             )
         if capability == "qwen_structured_output":
-            if '"questions"' not in payload["prompt"]:
+            task = payload.get("task")
+            if task == "study.map":
                 if self.fail_map:
                     return ModelCallResult(status=ModelCallStatus.BLOCKED, error_code="map_failed")
-                refs = re.findall(r'"id":\s*"([^"]+)"', payload["prompt"])
+                refs = re.findall(r'"fragment_id":\s*"([^"]+:[^"]+)"', payload["prompt"])
+                self.unit_ids = [assign_unit_id("concept", "线性函数", refs)]
                 return ModelCallResult(
                     status=ModelCallStatus.SUCCESS,
                     output={
                         "units": [
                             {
                                 "title": "线性函数",
+                                "kind": "concept",
                                 "fragment_ids": refs,
                                 "core": True,
+                            }
+                        ],
+                        "exclusions": [],
+                    },
+                )
+            if task == "study.verify_scope":
+                refs = re.findall(r'"unit_id":\s*"(ku_[^"]+)"', payload["prompt"])
+                unknown = [ref for ref in refs if ref not in self.unit_ids]
+                assert not unknown, unknown
+                return ModelCallResult(
+                    status=ModelCallStatus.SUCCESS,
+                    output={
+                        "checks": [
+                            {"unit_id": unit_id, "status": "consistent", "detail": ""}
+                            for unit_id in dict.fromkeys(refs)
+                        ]
+                    },
+                )
+            if task == "study.preview":
+                if self.fail_preview:
+                    return ModelCallResult(
+                        status=ModelCallStatus.BLOCKED, error_code="preview_failed"
+                    )
+                return ModelCallResult(
+                    status=ModelCallStatus.SUCCESS,
+                    output={
+                        "questions": [
+                            {
+                                "question": "斜率如何影响图像？",
+                                "unit_ids": list(self.unit_ids),
                             }
                         ]
                     },
                 )
-            if self.fail_preview:
-                return ModelCallResult(
-                    status=ModelCallStatus.BLOCKED, error_code="preview_failed"
-                )
-            return ModelCallResult(
-                status=ModelCallStatus.SUCCESS,
-                output={
-                    "questions": [
-                        {
-                            "question": "斜率如何影响图像？",
-                            "unit_titles": ["线性函数"],
-                        }
-                    ]
-                },
-            )
+            raise AssertionError(task)
         raise AssertionError(capability)
 
 
@@ -569,7 +590,7 @@ def test_stop_during_preview_does_not_advance_stage(tmp_path: Any, monkeypatch: 
 
         def stopping_invoke(*args: Any, **kwargs: Any) -> ModelCallResult:
             result = original(*args, **kwargs)
-            if '"questions"' in kwargs.get("payload", {}).get("prompt", ""):
+            if kwargs.get("payload", {}).get("task") == "study.preview":
                 stopped = client.post(
                     f"/chat/conversations/{conversation_id}/messages/{assistant_id}/stop",
                 )

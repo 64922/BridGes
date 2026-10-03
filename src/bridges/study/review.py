@@ -105,14 +105,20 @@ def plan_review(
     review = state.review.model_copy(deep=True) if state.review else StudyReview()
     asked = [item for item in review.questions if item.asked]
     sources = {source.source_id: source for source in page_sources(state, "")}
-    units = {unit.title: set(unit.fragment_ids) for unit in state.units}
-    if len(units) != len(state.units) or not units:
-        raise ValueError("知识点名称不唯一或为空。")
+    #: 复盘按稳定知识点 ID 归类覆盖，不以标题为唯一键：同名概念不串依据。
+    units = {unit.unit_id: unit for unit in state.units}
+    if len(units) != len(state.units) or not units or any(
+        not unit.unit_id for unit in state.units
+    ):
+        raise ValueError("知识点稳定 ID 缺失或重复。")
     covered = {
-        (title, ref) for item in asked for title in item.coverage_units for ref in item.fragment_ids
+        (unit_id, ref)
+        for item in asked
+        for unit_id in item.coverage_units
+        for ref in item.fragment_ids
     }
     required = {
-        (unit.title, ref) for unit in state.units if unit.core for ref in unit.fragment_ids
+        (unit.unit_id, ref) for unit in state.units if unit.core for ref in unit.fragment_ids
     } - covered
     if not required and asked:
         review.questions = asked
@@ -124,14 +130,18 @@ def plan_review(
             run,
             "study.plan_review",
             '只输出 JSON {"questions":[{"question":"一道题",'
-            '"coverage_units":["知识点标题"],"fragment_ids":["书页片段ID"]}]}。'
+            '"coverage_units":["知识点ID"],"fragment_ids":["书页片段ID"]}]}。'
             "按知识密度决定题量，不固定题数。每项只问一道题，不泄露答案。"
             "覆盖 required 中每个知识点及其书页依据；只安排尚未问出的题，"
-            "不复述 asked 中的题目。允许一题覆盖多个相关知识点。",
+            "不复述 asked 中的题目。允许一题覆盖多个相关知识点。"
+            "coverage_units 必须使用 units 中的稳定知识点 ID，不得使用标题。",
             {
                 "units": [unit.model_dump() for unit in state.units],
                 "sources": [source.model_dump() for source in sources.values()],
-                "required": sorted(required),
+                "required": [
+                    {"unit_id": unit_id, "fragment_id": ref}
+                    for unit_id, ref in sorted(required)
+                ],
                 "asked": [item.model_dump() for item in asked],
             },
             invoke,
@@ -147,13 +157,13 @@ def plan_review(
             or set(item.fragment_ids) - sources.keys()
         ):
             raise ValueError("题目重复或不属于本节范围。")
-        for title in item.coverage_units:
-            refs = set(item.fragment_ids) & units[title]
+        for unit_id in item.coverage_units:
+            refs = set(item.fragment_ids) & set(units[unit_id].fragment_ids)
             if not refs:
                 raise ValueError("题目与知识点依据不匹配。")
-            coverage.update((title, ref) for ref in refs)
+            coverage.update((unit_id, ref) for ref in refs)
         if any(
-            not any(ref in units[title] for title in item.coverage_units)
+            not any(ref in units[unit_id].fragment_ids for unit_id in item.coverage_units)
             for ref in item.fragment_ids
         ):
             raise ValueError("题目引用了覆盖范围之外的片段。")
