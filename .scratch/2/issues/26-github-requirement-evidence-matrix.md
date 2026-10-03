@@ -105,4 +105,10 @@
 - 前端：`tsc --noEmit` 通过；`vitest run` 25 文件 220 项全过。
 - 无数据库迁移（持久状态沿用既有 `node_receipts`/`node_artifacts`，schema 65）；真实 GitHub API/文件可得性与真实解读体验按 42 验证。
 
+### 2026-10-03：合入、推送与清理结果
+
+- 验收接管提交 `454aa01f`（`fix(github): 完成工单 26 验收接管（恢复复用与父图核验绑定）`），基于原交付 `f7b0a596`；合入提交 `0b797369`（`merge: 合入 Issue 26 GitHub 必要功能证据矩阵与验收修复`，`--no-ff`，无冲突）。
+- 合并后在 main 工作树冒烟 `test_github_acceptance_recovery.py` + `test_github_acceptance_insights.py` + `test_openapi_sync.py`：17 passed。
+- 经代理推送：`806600ce..0b797369 main -> main`；`git ls-remote origin refs/heads/main` 与本地一致（0b797369）。
+- 清理：移除工作树 `.worktrees/26-github-requirement-evidence-matrix`，删除分支 `codex/26-github-requirement-evidence-matrix`（原 454aa01f），`git worktree prune`；工作树 24/25 未受影响。
 
