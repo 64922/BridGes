@@ -104,6 +104,128 @@
   line-height: 1.6;
 }
 
+.evidence {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-text-tertiary);
+  padding-top: 14px;
+}
+
+.evidenceBody {
+  display: grid;
+  gap: 16px;
+}
+
+.evidenceSection {
+  display: grid;
+  gap: 6px;
+}
+
+.evidenceLabel {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.quote {
+  margin: 0;
+  border-left: 3px solid var(--color-accent-primary);
+  border-radius: 0 10px 10px 0;
+  padding: 8px 12px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.evidenceNote {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.sourceList,
+.feedbackList {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourceItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sourceItem button,
+.feedbackActions button,
+.evidenceError button {
+  flex-shrink: 0;
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 999px;
+  padding: 5px 11px;
+  color: var(--color-text-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.sourceItem button:hover,
+.feedbackActions button:hover:not(:disabled),
+.evidenceError button:hover {
+  border-color: var(--color-accent-primary);
+}
+
+.feedbackActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feedbackActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.feedbackNotice {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.feedbackError {
+  margin: 0;
+  color: var(--color-status-error);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.feedbackList {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.evidenceError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--color-status-error);
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: var(--color-status-error);
+  background: var(--color-status-error-bg);
+}
+
 .state,
 .empty {
   color: var(--color-text-secondary);

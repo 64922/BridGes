@@ -32,7 +32,7 @@ import logging
 import re
 import secrets
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -41,11 +41,19 @@ from pathlib import Path
 from typing import Protocol
 
 from bridges.contracts.atomic_profile import (
+    AtomicProfileEvidenceQuoteStatus,
+    AtomicProfileEvidenceSource,
+    AtomicProfileEvidenceSourceStatus,
     AtomicProfileFactIdentity,
     AtomicProfileFactRelation,
     AtomicProfileFactScope,
+    AtomicProfileFeedback,
+    AtomicProfileFeedbackKind,
+    AtomicProfileFeedbackProjection,
     AtomicProfileGoalState,
     AtomicProfileItem,
+    AtomicProfileItemEvidenceProjection,
+    AtomicProfileItemFeedbackRequest,
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
     AtomicProfileItemStatus,
@@ -57,8 +65,12 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileReconciliationEntry,
     AtomicProfileReconciliationOutcome,
     AtomicProfileTombstoneEntry,
+    AtomicProfileValidityStatus,
     AtomicProfileWriteOrigin,
+    feedback_effect_for,
+    feedback_message_for,
 )
+from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_adoption import (
     AdoptedProfileItem,
     AdoptedProfileSlice,
@@ -75,6 +87,7 @@ from bridges.contracts.profiles import (
     ProfileSliceItem,
     UnusedSliceItem,
 )
+from bridges.observability.service import ObservabilityService
 from bridges.profiles.adapters import ProfileError
 from bridges.profiles.commit import ProfileCommit, SourceWithdrawal, SourceWithdrawalStatus
 from bridges.profiles.four_dimensions import (
@@ -143,6 +156,23 @@ class MemoryDirective:
     def __init__(self, kind: AtomicProfileMemoryKind, target: str) -> None:
         self.kind = kind
         self.target = target
+
+
+@dataclass(frozen=True)
+class ProfileSourceMessage:
+    """证据来源消息的最小只读快照（组合根从聊天仓库按账户映射）。"""
+
+    message_id: str
+    conversation_id: str
+    role: str
+    status: str
+    content: str
+    created_at: datetime
+
+
+#: 来源读取端口：按账户与消息标识返回快照；不存在时返回 ``None``。
+#: 未接线时证据接口如实把来源标为不可读，绝不伪造原话或定位。
+ProfileEvidenceSourceReader = Callable[[str, str], ProfileSourceMessage | None]
 
 
 def normalize_text(text: str) -> str:
@@ -659,6 +689,32 @@ def _new_item_id() -> str:
     return f"item-{secrets.token_urlsafe(16)}"
 
 
+def _new_feedback_id() -> str:
+    return f"profile-feedback-{secrets.token_urlsafe(16)}"
+
+
+def _validity_status(
+    item: AtomicProfileItem, now: datetime
+) -> AtomicProfileValidityStatus:
+    """把有效期与目标生命周期折算为页面可读的当前时效状态。
+
+    目标暂停/完成优先于期限；已过去的期限显示过期；起点在未来的显示
+    尚未生效；没有任何明示期限的长期信息显示未设期限。
+    """
+
+    if item.goal_state == AtomicProfileGoalState.PAUSED:
+        return AtomicProfileValidityStatus.PAUSED
+    if item.goal_state == AtomicProfileGoalState.COMPLETED:
+        return AtomicProfileValidityStatus.COMPLETED
+    if item.valid_until is not None and item.valid_until <= now:
+        return AtomicProfileValidityStatus.EXPIRED
+    if item.valid_from is not None and item.valid_from > now:
+        return AtomicProfileValidityStatus.SCHEDULED
+    if item.valid_from is None and item.valid_until is None:
+        return AtomicProfileValidityStatus.UNBOUNDED
+    return AtomicProfileValidityStatus.ACTIVE
+
+
 def _digest(pairs: Iterable[tuple[str, str]]) -> str:
     payload = "|".join(sorted(f"{left}:{right}" for left, right in pairs))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -998,6 +1054,22 @@ class AtomicProfileRepository(ABC):
         """删除某个迁移批次新建的条目，返回被删除的条目标识。"""
 
     @abstractmethod
+    def save_feedback(self, feedback: AtomicProfileFeedback) -> AtomicProfileFeedback:
+        """保存一条画像依据反馈（同账户同条目同类别幂等由调用方保证）。"""
+
+    @abstractmethod
+    def find_feedback(
+        self, owner_id: str, item_id: str, kind: AtomicProfileFeedbackKind
+    ) -> AtomicProfileFeedback | None:
+        """按账户、条目与类别查找已有反馈（幂等重放返回既有记录）。"""
+
+    @abstractmethod
+    def list_feedback(
+        self, owner_id: str, item_id: str
+    ) -> list[AtomicProfileFeedback]:
+        """列出某条目的反馈，最新的在前。"""
+
+    @abstractmethod
     def save_migration_report(
         self, report: AtomicProfileMigrationReport
     ) -> AtomicProfileMigrationReport:
@@ -1032,14 +1104,19 @@ class InMemoryAtomicProfileRepository(AtomicProfileRepository):
     def __init__(self) -> None:
         self._items: dict[tuple[str, str], AtomicProfileItem] = {}
         self._reports: dict[tuple[str, str], AtomicProfileMigrationReport] = {}
+        self._feedback: dict[tuple[str, str], AtomicProfileFeedback] = {}
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
-        snapshot = (copy.deepcopy(self._items), copy.deepcopy(self._reports))
+        snapshot = (
+            copy.deepcopy(self._items),
+            copy.deepcopy(self._reports),
+            copy.deepcopy(self._feedback),
+        )
         try:
             yield
         except BaseException:
-            self._items, self._reports = snapshot
+            self._items, self._reports, self._feedback = snapshot
             raise
 
     @staticmethod
@@ -1122,6 +1199,48 @@ class InMemoryAtomicProfileRepository(AtomicProfileRepository):
         for item_id in removed:
             self._items.pop(self._key(owner_id, item_id), None)
         return removed
+
+    def save_feedback(self, feedback: AtomicProfileFeedback) -> AtomicProfileFeedback:
+        # 与 SQLite 的唯一约束保持一致：同账户同条目同类别只保留第一条。
+        if (
+            self.find_feedback(
+                feedback.owner_account_id, feedback.profile_item_id, feedback.kind
+            )
+            is not None
+        ):
+            return feedback
+        self._feedback[self._key(feedback.owner_account_id, feedback.feedback_id)] = (
+            feedback
+        )
+        return feedback
+
+    def find_feedback(
+        self, owner_id: str, item_id: str, kind: AtomicProfileFeedbackKind
+    ) -> AtomicProfileFeedback | None:
+        return next(
+            (
+                feedback
+                for feedback in self._feedback.values()
+                if feedback.owner_account_id == owner_id
+                and feedback.profile_item_id == item_id
+                and feedback.kind == kind
+            ),
+            None,
+        )
+
+    def list_feedback(
+        self, owner_id: str, item_id: str
+    ) -> list[AtomicProfileFeedback]:
+        feedback = [
+            entry
+            for entry in self._feedback.values()
+            if entry.owner_account_id == owner_id
+            and entry.profile_item_id == item_id
+        ]
+        feedback.sort(
+            key=lambda entry: (entry.created_at, entry.feedback_id), reverse=True
+        )
+        return feedback
 
     def save_migration_report(
         self, report: AtomicProfileMigrationReport
@@ -1428,6 +1547,63 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
         )
         return removed
 
+    @staticmethod
+    def _feedback_from_row(row: object) -> AtomicProfileFeedback:
+        return AtomicProfileFeedback(
+            feedback_id=str(row["feedback_id"]),  # type: ignore[index]
+            owner_account_id=str(row["account_id"]),  # type: ignore[index]
+            profile_item_id=str(row["profile_item_id"]),  # type: ignore[index]
+            item_version=int(row["item_version"]),  # type: ignore[index]
+            kind=AtomicProfileFeedbackKind(str(row["kind"])),  # type: ignore[index]
+            note=(
+                str(row["note"])  # type: ignore[index]
+                if row["note"] is not None  # type: ignore[index]
+                else None
+            ),
+            created_at=SqliteAtomicProfileRepository._dt(
+                str(row["created_at"])  # type: ignore[index]
+            ),
+        )
+
+    def save_feedback(self, feedback: AtomicProfileFeedback) -> AtomicProfileFeedback:
+        self._db.scoped(feedback.owner_account_id).execute(
+            "INSERT INTO profile_item_feedback ("
+            "feedback_id, account_id, profile_item_id, kind, note, item_version, "
+            "created_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(account_id, profile_item_id, kind) DO NOTHING",
+            (
+                feedback.feedback_id,
+                feedback.owner_account_id,
+                feedback.profile_item_id,
+                feedback.kind.value,
+                feedback.note,
+                feedback.item_version,
+                self._iso(feedback.created_at),
+            ),
+        )
+        return feedback
+
+    def find_feedback(
+        self, owner_id: str, item_id: str, kind: AtomicProfileFeedbackKind
+    ) -> AtomicProfileFeedback | None:
+        row = self._db.scoped(owner_id).execute(
+            "SELECT * FROM profile_item_feedback "
+            "WHERE account_id = ? AND profile_item_id = ? AND kind = ?",
+            (owner_id, item_id, kind.value),
+        ).fetchone()
+        return self._feedback_from_row(row) if row is not None else None
+
+    def list_feedback(
+        self, owner_id: str, item_id: str
+    ) -> list[AtomicProfileFeedback]:
+        rows = self._db.scoped(owner_id).execute(
+            "SELECT * FROM profile_item_feedback "
+            "WHERE account_id = ? AND profile_item_id = ? "
+            "ORDER BY created_at DESC, feedback_id DESC",
+            (owner_id, item_id),
+        ).fetchall()
+        return [self._feedback_from_row(row) for row in rows]
+
     def _report_from_row(self, row: object) -> AtomicProfileMigrationReport:
         """还原完整报告：计数字段来自报告行，逐条明细来自同批次台账。"""
 
@@ -1600,9 +1776,15 @@ class AtomicProfileService:
         four_dimensions: FourDimensionProfileService,
         repository: AtomicProfileRepository,
         profile_commit: ProfileCommit | None = None,
+        message_reader: ProfileEvidenceSourceReader | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self._four_dimensions = four_dimensions
         self._repository = repository
+        # 改进工单 20：依据展开按账户读取来源消息快照（组合根注入聊天仓库
+        # 适配器）；未注入时来源如实标记为不可读，不伪造定位与原话。
+        self._message_reader = message_reader
+        self._observability = observability_service
         # 改进工单 18：撤回传播的消费方（摘要等派生物失效）在组合根注入；
         # 未注入时撤回本身照常成立，只是没有下游通知。
         self._revocation_listener: ProfileRevocationListener | None = None
@@ -1707,7 +1889,8 @@ class AtomicProfileService:
             updated_at=item.updated_at,
             user_edited_at=item.user_edited_at,
             source_message_ids=list(item.source_message_ids),
-            evidence_quote=item.evidence_quote,
+            # 原话仅由按需依据接口核验后返回，列表不复制可能已失效的来源内容。
+            evidence_quote=None,
             write_origin=item.write_origin,
             supersedes_id=item.supersedes_id,
             # 工单 18：页面按需展示明示期限与目标状态（长期偏好两项都为空/
@@ -1717,6 +1900,184 @@ class AtomicProfileService:
             validity_phrase=item.validity_phrase,
             goal_state=item.goal_state,
         )
+
+    # -- 依据展开与反馈（工单 20） ----------------------------------------
+
+    @staticmethod
+    def feedback_projection(
+        feedback: AtomicProfileFeedback,
+    ) -> AtomicProfileFeedbackProjection:
+        """把反馈记录折算为页面投影；文案与效果是确定性映射。"""
+
+        return AtomicProfileFeedbackProjection(
+            feedback_id=feedback.feedback_id,
+            profile_item_id=feedback.profile_item_id,
+            kind=feedback.kind,
+            effect=feedback_effect_for(feedback.kind),
+            message=feedback_message_for(feedback.kind),
+            note=feedback.note,
+            created_at=feedback.created_at,
+        )
+
+    def item_evidence(
+        self,
+        account_id: str,
+        item_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> AtomicProfileItemEvidenceProjection:
+        """按需展开一条画像信息的依据、时效与反馈。
+
+        只读取本条数据：条目的来源消息逐个按账户查可得状态；消息已删除或
+        不可读时如实标注。合同要求删除聊天原文时同步失效其派生原话副本，
+        因此没有可读来源时不再回传保存的原话（标为 ``source_unavailable``），
+        绝不伪造引语或跨账户定位。
+        """
+
+        item = self._repository.get_item(account_id, item_id)
+        if item.status != AtomicProfileItemStatus.ACTIVE:
+            raise AtomicProfileError("画像条目已删除，没有可展开的依据。")
+        moment = now or _now()
+        messages = {
+            message_id: self._message_reader(account_id, message_id)
+            if self._message_reader is not None else None
+            for message_id in item.source_message_ids
+        }
+        sources = [
+            self._evidence_source(message_id, message)
+            for message_id, message in messages.items()
+        ]
+        feedback = [
+            self.feedback_projection(entry)
+            for entry in self._repository.list_feedback(account_id, item_id)
+        ]
+        evidence_quote = item.evidence_quote
+        has_matching_source = any(
+            source.status == AtomicProfileEvidenceSourceStatus.AVAILABLE
+            and (message := messages[source.message_id]) is not None
+            and evidence_quote in message.content
+            for source in sources
+        ) if evidence_quote else False
+        if evidence_quote and not has_matching_source:
+            # 必须核对原话仍在可读来源中；其他来源存活不能保留已删消息的副本。
+            evidence_quote = None
+            evidence_quote_status = (
+                AtomicProfileEvidenceQuoteStatus.SOURCE_UNAVAILABLE
+            )
+        elif evidence_quote:
+            evidence_quote_status = AtomicProfileEvidenceQuoteStatus.RECORDED
+        else:
+            evidence_quote_status = AtomicProfileEvidenceQuoteStatus.NOT_RECORDED
+        return AtomicProfileItemEvidenceProjection(
+            profile_item_id=item.profile_item_id,
+            version=item.version,
+            text=item.text,
+            write_origin=item.write_origin,
+            user_edited_at=item.user_edited_at,
+            updated_at=item.updated_at,
+            fact_scope=item.fact_scope,
+            goal_state=item.goal_state,
+            valid_from=item.valid_from,
+            valid_until=item.valid_until,
+            validity_phrase=item.validity_phrase,
+            validity_status=_validity_status(item, moment),
+            evidence_quote=evidence_quote,
+            evidence_quote_status=evidence_quote_status,
+            sources=sources,
+            feedback=feedback,
+        )
+
+    def _evidence_source(
+        self, message_id: str, message: ProfileSourceMessage | None
+    ) -> AtomicProfileEvidenceSource:
+        """解析一条来源消息的可得状态；只有可读用户消息给出定位信息。"""
+
+        if self._message_reader is None:
+            return AtomicProfileEvidenceSource(
+                message_id=message_id,
+                status=AtomicProfileEvidenceSourceStatus.UNREADABLE,
+            )
+        if message is None:
+            return AtomicProfileEvidenceSource(
+                message_id=message_id,
+                status=AtomicProfileEvidenceSourceStatus.DELETED,
+            )
+        readable = (
+            message.role == "user"
+            and message.status == "done"
+            and bool(message.content.strip())
+        )
+        if not readable:
+            return AtomicProfileEvidenceSource(
+                message_id=message_id,
+                status=AtomicProfileEvidenceSourceStatus.UNREADABLE,
+                created_at=message.created_at,
+            )
+        return AtomicProfileEvidenceSource(
+            message_id=message_id,
+            status=AtomicProfileEvidenceSourceStatus.AVAILABLE,
+            conversation_id=message.conversation_id,
+            created_at=message.created_at,
+        )
+
+    def record_feedback(
+        self,
+        account_id: str,
+        item_id: str,
+        request: AtomicProfileItemFeedbackRequest,
+    ) -> AtomicProfileFeedbackProjection:
+        """记录一条四类反馈；反馈本身绝不修改或删除条目。"""
+
+        note = normalize_text(request.note) if request.note else None
+        with self._repository.transaction():
+            item = self._repository.get_item(account_id, item_id)
+            if item.status != AtomicProfileItemStatus.ACTIVE:
+                raise AtomicProfileError("画像条目已删除，不能继续反馈。")
+            existing = self._repository.find_feedback(
+                account_id, item_id, request.kind
+            )
+            if existing is None:
+                candidate = AtomicProfileFeedback(
+                    feedback_id=_new_feedback_id(),
+                    owner_account_id=account_id,
+                    profile_item_id=item_id,
+                    item_version=item.version,
+                    kind=request.kind,
+                    note=note or None,
+                    created_at=_now(),
+                )
+                self._repository.save_feedback(candidate)
+                # 并发重复提交由唯一约束兜底：以实际落库的既有行为准。
+                stored = self._repository.find_feedback(
+                    account_id, item_id, request.kind
+                )
+                feedback = stored or candidate
+            else:
+                feedback = existing
+        self._audit_feedback(account_id, feedback)
+        return self.feedback_projection(feedback)
+
+    def _audit_feedback(
+        self, account_id: str, feedback: AtomicProfileFeedback
+    ) -> None:
+        """反馈审计：只记条目与类别，不含正文与用户补充说明。"""
+
+        if self._observability is None:
+            return
+        try:
+            self._observability.log_audit(
+                actor_account_id=account_id,
+                action=AuditAction.PROFILE_EVIDENCE_FEEDBACK,
+                result=AuditResult.SUCCESS,
+                reason="profile_evidence_feedback",
+                details={
+                    "profile_item_id": feedback.profile_item_id,
+                    "kind": feedback.kind.value,
+                    "effect": feedback_effect_for(feedback.kind).value,
+                },
+            )
+        except Exception:  # noqa: BLE001 - 审计失败不回收已记录的反馈
+            return
 
     # -- 用户操作 ---------------------------------------------------------
 
@@ -3209,6 +3570,8 @@ __all__ = [
     "AtomicProfileService",
     "InMemoryAtomicProfileRepository",
     "MemoryDirective",
+    "ProfileEvidenceSourceReader",
+    "ProfileSourceMessage",
     "SqliteAtomicProfileRepository",
     "fact_identity_key",
     "identity_key",

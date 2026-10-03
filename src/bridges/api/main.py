@@ -213,6 +213,7 @@ from bridges.profiles import (
     InMemoryFourDimensionProfileRepository,
     InMemoryProfileRepository,
     ProfileService,
+    ProfileSourceMessage,
     RuleBasedAutomaticProfileExtractor,
     SqliteAtomicProfileRepository,
     SqliteAutomaticProfileRepository,
@@ -500,6 +501,31 @@ def _profile_neighbor_reader(
             if len(neighbors) >= PROFILE_EXTRACTION_MAX_NEIGHBORS:
                 break
         return list(reversed(neighbors))
+
+    return read
+
+
+def _atomic_profile_source_reader(
+    repository: ConversationRepository,
+) -> Callable[[str, str], ProfileSourceMessage | None]:
+    """按账户读取画像依据来源消息的最小快照（改进工单 20）。
+
+    聊天消息是物理删除：消息行不存在即来源已删除。仓库存取一律按账户作用域，
+    跨账户消息标识查不到，不会给出其他账户的定位。
+    """
+
+    def read(account_id: str, message_id: str) -> ProfileSourceMessage | None:
+        message = repository.get_message(account_id, message_id)
+        if message is None:
+            return None
+        return ProfileSourceMessage(
+            message_id=message.message_id,
+            conversation_id=message.conversation_id,
+            role=getattr(message.role, "value", message.role),
+            status=getattr(message.status, "value", message.status),
+            content=message.content,
+            created_at=message.created_at,
+        )
 
     return read
 
@@ -1142,9 +1168,20 @@ def create_app(
         if profile_database is not None
         else InMemoryAtomicProfileRepository()
     )
+    # 改进工单 20：依据展开与自动画像提取共用同一个按账户读取会话消息的
+    # 仓库；内存模式没有聊天仓库时来源如实标为不可读，不伪造定位。
+    profile_conversation_repository = (
+        ConversationRepository(profile_database) if profile_database is not None else None
+    )
     app.state.atomic_profile_service = AtomicProfileService(
         four_dimensions=app.state.four_dimension_profile_service,
         repository=atomic_profile_repository,
+        message_reader=(
+            _atomic_profile_source_reader(profile_conversation_repository)
+            if profile_conversation_repository is not None
+            else None
+        ),
+        observability_service=app.state.observability_service,
     )
 
     # T020: register a profile-specific impact resolver so assertion deletions
@@ -1252,9 +1289,6 @@ def create_app(
     )
     app.state.four_dimension_profile_service.set_observation_delete_callback(
         automatic_profile_repository.delete_observations_for_record
-    )
-    profile_conversation_repository = (
-        ConversationRepository(profile_database) if profile_database is not None else None
     )
     automatic_profile_extractor = (
         RuleBasedAutomaticProfileExtractor()

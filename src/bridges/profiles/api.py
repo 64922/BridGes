@@ -8,7 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from bridges.api.auth import SubjectDep
 from bridges.contracts.atomic_profile import (
+    AtomicProfileFeedbackProjection,
     AtomicProfileItemDeleteRequest,
+    AtomicProfileItemEvidenceProjection,
+    AtomicProfileItemFeedbackRequest,
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
     AtomicProfileMigrationReport,
@@ -325,6 +328,56 @@ async def delete_atomic_profile_item(
     except AtomicProfileError as exc:
         raise _atomic_error(exc, "atomic_profile_delete_failed") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# 改进工单 20：按需展开一条信息的真实依据（来源原话、发生时间、适用范围、
+# 有效期/状态与可用来源定位）与四类反馈。展开只读取本条数据；来源已删除或
+# 不可读时如实标注，不伪造引语，也不返回跨账户定位。
+
+
+@router.get(
+    "/items/{item_id}/evidence",
+    response_model=AtomicProfileItemEvidenceProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+    },
+)
+async def get_atomic_profile_item_evidence(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    item_id: str,
+) -> AtomicProfileItemEvidenceProjection:
+    """返回单条画像信息的依据、时效与反馈；来源定位再次按账户校验。"""
+    try:
+        return service.item_evidence(subject.account_id, item_id)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_evidence_failed") from exc
+
+
+@router.post(
+    "/items/{item_id}/feedback",
+    response_model=AtomicProfileFeedbackProjection,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def submit_atomic_profile_item_feedback(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    item_id: str,
+    request: AtomicProfileItemFeedbackRequest,
+) -> AtomicProfileFeedbackProjection:
+    """记录事实记错/过期/范围不适用/回答没执行偏好反馈；不自动删除事实。"""
+    try:
+        return service.record_feedback(subject.account_id, item_id, request)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_feedback_failed") from exc
 
 
 # 旧四类数据的原子化迁移：迁移是账户级、可重复执行且只读旧记录的操作，

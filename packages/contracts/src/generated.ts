@@ -3042,6 +3042,46 @@ export interface paths {
         patch: operations["modify_atomic_profile_item_profiles_items__item_id__patch"];
         trace?: never;
     };
+    "/profiles/items/{item_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Atomic Profile Item Evidence
+         * @description 返回单条画像信息的依据、时效与反馈；来源定位再次按账户校验。
+         */
+        get: operations["get_atomic_profile_item_evidence_profiles_items__item_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/items/{item_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Atomic Profile Item Feedback
+         * @description 记录事实记错/过期/范围不适用/回答没执行偏好反馈；不自动删除事实。
+         */
+        post: operations["submit_atomic_profile_item_feedback_profiles_items__item_id__feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/items/migration": {
         parameters: {
             query?: never;
@@ -7342,6 +7382,104 @@ export interface components {
             person_id: string;
         };
         /**
+         * AtomicProfileEvidenceQuoteStatus
+         * @description 原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。
+         *
+         *     ``SOURCE_UNAVAILABLE``：保存过原话，但无法在当前可读来源中核对。
+         *     合同要求删除聊天原文时同步失效其派生原话副本，因此正文不再展示；
+         *     内部保留的记录不在此处回传。
+         * @enum {string}
+         */
+        AtomicProfileEvidenceQuoteStatus: "recorded" | "not_recorded" | "source_unavailable";
+        /**
+         * AtomicProfileEvidenceSource
+         * @description 一条画像依据的来源定位（改进工单 20；只含定位，不含整条正文）。
+         */
+        AtomicProfileEvidenceSource: {
+            /**
+             * Message Id
+             * @description 来源消息标识。
+             */
+            message_id: string;
+            /** @description 来源可得状态。 */
+            status: components["schemas"]["AtomicProfileEvidenceSourceStatus"];
+            /**
+             * Conversation Id
+             * @description 来源所属会话标识；不可得时为空。
+             */
+            conversation_id?: string | null;
+            /**
+             * Created At
+             * @description 来源消息发生时间；不可得时为空。
+             */
+            created_at?: string | null;
+        };
+        /**
+         * AtomicProfileEvidenceSourceStatus
+         * @description 来源消息对当前用户的可得状态（改进工单 20）。
+         *
+         *     ``AVAILABLE`` 表示消息仍可按账户读取；``DELETED`` 表示来源已被删除；
+         *     ``UNREADABLE`` 表示消息存在但无法作为用户事实来源使用（非用户消息、
+         *     未完成或正文为空），或当前运行没有接线来源读取。三种状态都如实返回，
+         *     不伪造原话。
+         * @enum {string}
+         */
+        AtomicProfileEvidenceSourceStatus: "available" | "deleted" | "unreadable";
+        /**
+         * AtomicProfileFactScope
+         * @description 事实适用范围（身份的一部分；默认长期）。
+         * @enum {string}
+         */
+        AtomicProfileFactScope: "long_term" | "current";
+        /**
+         * AtomicProfileFeedbackEffect
+         * @description 反馈对条目的确定性效果：只表达建议，不自动删除仍正确的事实。
+         * @enum {string}
+         */
+        AtomicProfileFeedbackEffect: "suggest_fact_correction" | "suggest_validity_review" | "no_fact_change";
+        /**
+         * AtomicProfileFeedbackKind
+         * @description 用户对一条画像信息的四类反馈（改进工单 20）。
+         * @enum {string}
+         */
+        AtomicProfileFeedbackKind: "fact_wrong" | "expired" | "scope_inapplicable" | "preference_not_followed";
+        /**
+         * AtomicProfileFeedbackProjection
+         * @description 反馈的页面投影：类别、效果、中文回执与时间。
+         */
+        AtomicProfileFeedbackProjection: {
+            /**
+             * Feedback Id
+             * @description 稳定反馈标识。
+             */
+            feedback_id: string;
+            /**
+             * Profile Item Id
+             * @description 反馈指向的条目标识。
+             */
+            profile_item_id: string;
+            /** @description 反馈类别。 */
+            kind: components["schemas"]["AtomicProfileFeedbackKind"];
+            /** @description 对条目的确定性效果。 */
+            effect: components["schemas"]["AtomicProfileFeedbackEffect"];
+            /**
+             * Message
+             * @description 中文回执文案。
+             */
+            message: string;
+            /**
+             * Note
+             * @description 可选的补充说明。
+             */
+            note?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 反馈提交时间。
+             */
+            created_at: string;
+        };
+        /**
          * AtomicProfileGoalState
          * @description 目标生命周期标记（改进工单 18；只按用户明确信号变化）。
          *
@@ -7360,6 +7498,94 @@ export interface components {
              * @description 用户读到的版本号。
              */
             version: number;
+        };
+        /**
+         * AtomicProfileItemEvidenceProjection
+         * @description 单条画像信息的按需依据投影（改进工单 20）。
+         *
+         *     只包含展开该条所需的信息：正文、来源定位、适用范围、期限/状态与反馈
+         *     回执；不包含内部哈希、事实身份键或类别。
+         */
+        AtomicProfileItemEvidenceProjection: {
+            /**
+             * Profile Item Id
+             * @description 稳定的原子条目标识。
+             */
+            profile_item_id: string;
+            /**
+             * Version
+             * @description 修正请求使用的乐观锁版本号。
+             */
+            version: number;
+            /**
+             * Text
+             * @description 条目正文。
+             */
+            text: string;
+            /** @description 最近一次写入来源。 */
+            write_origin: components["schemas"]["AtomicProfileWriteOrigin"];
+            /**
+             * User Edited At
+             * @description 用户最近一次编辑时间；非空表示主动来源。
+             */
+            user_edited_at?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近一次变化时间。
+             */
+            updated_at: string;
+            /** @description 适用范围。 */
+            fact_scope: components["schemas"]["AtomicProfileFactScope"];
+            /** @description 目标生命周期标记。 */
+            goal_state: components["schemas"]["AtomicProfileGoalState"];
+            /**
+             * Valid From
+             * @description 有效期起点。
+             */
+            valid_from?: string | null;
+            /**
+             * Valid Until
+             * @description 有效期终点。
+             */
+            valid_until?: string | null;
+            /**
+             * Validity Phrase
+             * @description 原文明示的时间表达。
+             */
+            validity_phrase?: string | null;
+            /** @description 当前时效状态。 */
+            validity_status: components["schemas"]["AtomicProfileValidityStatus"];
+            /**
+             * Evidence Quote
+             * @description 保存时的精确原话；未保存时为空。
+             */
+            evidence_quote?: string | null;
+            /** @description 原话引用状态。 */
+            evidence_quote_status: components["schemas"]["AtomicProfileEvidenceQuoteStatus"];
+            /**
+             * Sources
+             * @description 来源消息定位与可得状态。
+             */
+            sources?: components["schemas"]["AtomicProfileEvidenceSource"][];
+            /**
+             * Feedback
+             * @description 该条目已有的反馈（按时间倒序）。
+             */
+            feedback?: components["schemas"]["AtomicProfileFeedbackProjection"][];
+        };
+        /**
+         * AtomicProfileItemFeedbackRequest
+         * @description 提交一条画像信息反馈（不携带条目正文，反馈说明可选）。
+         */
+        AtomicProfileItemFeedbackRequest: {
+            /** @description 反馈类别。 */
+            kind: components["schemas"]["AtomicProfileFeedbackKind"];
+            /**
+             * Note
+             * @description 可选的补充说明。
+             */
+            note?: string | null;
         };
         /**
          * AtomicProfileItemModifyRequest
@@ -7583,6 +7809,12 @@ export interface components {
          * @enum {string}
          */
         AtomicProfileReconciliationOutcome: "migrated" | "duplicated" | "tombstoned" | "skipped" | "failed";
+        /**
+         * AtomicProfileValidityStatus
+         * @description 条目当前时效状态（由有效期与目标生命周期折算，页面直接展示）。
+         * @enum {string}
+         */
+        AtomicProfileValidityStatus: "unbounded" | "scheduled" | "active" | "expired" | "paused" | "completed";
         /**
          * AtomicProfileWriteOrigin
          * @description 条目写入来源（内部字段，页面只用于诚实标注最近变化）。
@@ -7901,6 +8133,16 @@ export interface components {
             web_search_allowed: boolean;
             /** Side Effects */
             side_effects?: string[];
+            /** Module Id */
+            module_id?: string | null;
+            /** Requested Module Id */
+            requested_module_id?: string | null;
+            /** Route Source */
+            route_source?: string | null;
+            /** Capability List */
+            capability_list?: string[];
+            /** Understanding Version */
+            understanding_version?: string | null;
         };
         /**
          * CapsuleIssueRequest
@@ -18285,7 +18527,7 @@ export interface components {
          * @description 当前主能力集合；后续能力只能以新注册项追加。
          * @enum {string}
          */
-        MainCapability: "ordinary_chat" | "paper_search" | "clarification" | "humanizer" | "image" | "video" | "career";
+        MainCapability: "ordinary_chat" | "paper_search" | "clarification" | "humanizer" | "image" | "video" | "career" | "commute" | "resources" | "tieba" | "github";
         /**
          * MapConfigResponse
          * @description 浏览器地图的运行时配置（不含任何安全密钥正文）。
@@ -36233,6 +36475,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AtomicProfileItemProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    get_atomic_profile_item_evidence_profiles_items__item_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileItemEvidenceProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_atomic_profile_item_feedback_profiles_items__item_id__feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtomicProfileItemFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileFeedbackProjection"];
                 };
             };
             /** @description Unauthorized */

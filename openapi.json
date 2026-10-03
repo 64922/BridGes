@@ -14042,6 +14042,194 @@
         }
       }
     },
+    "/profiles/items/{item_id}/evidence": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Atomic Profile Item Evidence",
+        "description": "返回单条画像信息的依据、时效与反馈；来源定位再次按账户校验。",
+        "operationId": "get_atomic_profile_item_evidence_profiles_items__item_id__evidence_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtomicProfileItemEvidenceProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/items/{item_id}/feedback": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Submit Atomic Profile Item Feedback",
+        "description": "记录事实记错/过期/范围不适用/回答没执行偏好反馈；不自动删除事实。",
+        "operationId": "submit_atomic_profile_item_feedback_profiles_items__item_id__feedback_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtomicProfileItemFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtomicProfileFeedbackProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/profiles/items/migration": {
       "post": {
         "tags": [
@@ -28693,6 +28881,158 @@
         "title": "AssignRoleRequest",
         "description": "分配独立复核者或平台发行者。"
       },
+      "AtomicProfileEvidenceQuoteStatus": {
+        "type": "string",
+        "enum": [
+          "recorded",
+          "not_recorded",
+          "source_unavailable"
+        ],
+        "title": "AtomicProfileEvidenceQuoteStatus",
+        "description": "原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。\n\n``SOURCE_UNAVAILABLE``：保存过原话，但无法在当前可读来源中核对。\n合同要求删除聊天原文时同步失效其派生原话副本，因此正文不再展示；\n内部保留的记录不在此处回传。"
+      },
+      "AtomicProfileEvidenceSource": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "来源消息标识。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AtomicProfileEvidenceSourceStatus",
+            "description": "来源可得状态。"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "来源所属会话标识；不可得时为空。"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "来源消息发生时间；不可得时为空。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message_id",
+          "status"
+        ],
+        "title": "AtomicProfileEvidenceSource",
+        "description": "一条画像依据的来源定位（改进工单 20；只含定位，不含整条正文）。"
+      },
+      "AtomicProfileEvidenceSourceStatus": {
+        "type": "string",
+        "enum": [
+          "available",
+          "deleted",
+          "unreadable"
+        ],
+        "title": "AtomicProfileEvidenceSourceStatus",
+        "description": "来源消息对当前用户的可得状态（改进工单 20）。\n\n``AVAILABLE`` 表示消息仍可按账户读取；``DELETED`` 表示来源已被删除；\n``UNREADABLE`` 表示消息存在但无法作为用户事实来源使用（非用户消息、\n未完成或正文为空），或当前运行没有接线来源读取。三种状态都如实返回，\n不伪造原话。"
+      },
+      "AtomicProfileFactScope": {
+        "type": "string",
+        "enum": [
+          "long_term",
+          "current"
+        ],
+        "title": "AtomicProfileFactScope",
+        "description": "事实适用范围（身份的一部分；默认长期）。"
+      },
+      "AtomicProfileFeedbackEffect": {
+        "type": "string",
+        "enum": [
+          "suggest_fact_correction",
+          "suggest_validity_review",
+          "no_fact_change"
+        ],
+        "title": "AtomicProfileFeedbackEffect",
+        "description": "反馈对条目的确定性效果：只表达建议，不自动删除仍正确的事实。"
+      },
+      "AtomicProfileFeedbackKind": {
+        "type": "string",
+        "enum": [
+          "fact_wrong",
+          "expired",
+          "scope_inapplicable",
+          "preference_not_followed"
+        ],
+        "title": "AtomicProfileFeedbackKind",
+        "description": "用户对一条画像信息的四类反馈（改进工单 20）。"
+      },
+      "AtomicProfileFeedbackProjection": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id",
+            "description": "稳定反馈标识。"
+          },
+          "profile_item_id": {
+            "type": "string",
+            "title": "Profile Item Id",
+            "description": "反馈指向的条目标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AtomicProfileFeedbackKind",
+            "description": "反馈类别。"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/AtomicProfileFeedbackEffect",
+            "description": "对条目的确定性效果。"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "中文回执文案。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "可选的补充说明。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "反馈提交时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "profile_item_id",
+          "kind",
+          "effect",
+          "message",
+          "created_at"
+        ],
+        "title": "AtomicProfileFeedbackProjection",
+        "description": "反馈的页面投影：类别、效果、中文回执与时间。"
+      },
       "AtomicProfileGoalState": {
         "type": "string",
         "enum": [
@@ -28719,6 +29059,173 @@
         ],
         "title": "AtomicProfileItemDeleteRequest",
         "description": "删除确认的乐观锁请求。"
+      },
+      "AtomicProfileItemEvidenceProjection": {
+        "properties": {
+          "profile_item_id": {
+            "type": "string",
+            "title": "Profile Item Id",
+            "description": "稳定的原子条目标识。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "修正请求使用的乐观锁版本号。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "条目正文。"
+          },
+          "write_origin": {
+            "$ref": "#/components/schemas/AtomicProfileWriteOrigin",
+            "description": "最近一次写入来源。"
+          },
+          "user_edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Edited At",
+            "description": "用户最近一次编辑时间；非空表示主动来源。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近一次变化时间。"
+          },
+          "fact_scope": {
+            "$ref": "#/components/schemas/AtomicProfileFactScope",
+            "description": "适用范围。"
+          },
+          "goal_state": {
+            "$ref": "#/components/schemas/AtomicProfileGoalState",
+            "description": "目标生命周期标记。"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From",
+            "description": "有效期起点。"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until",
+            "description": "有效期终点。"
+          },
+          "validity_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validity Phrase",
+            "description": "原文明示的时间表达。"
+          },
+          "validity_status": {
+            "$ref": "#/components/schemas/AtomicProfileValidityStatus",
+            "description": "当前时效状态。"
+          },
+          "evidence_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Quote",
+            "description": "保存时的精确原话；未保存时为空。"
+          },
+          "evidence_quote_status": {
+            "$ref": "#/components/schemas/AtomicProfileEvidenceQuoteStatus",
+            "description": "原话引用状态。"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AtomicProfileEvidenceSource"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "来源消息定位与可得状态。"
+          },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/AtomicProfileFeedbackProjection"
+            },
+            "type": "array",
+            "title": "Feedback",
+            "description": "该条目已有的反馈（按时间倒序）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_item_id",
+          "version",
+          "text",
+          "write_origin",
+          "updated_at",
+          "fact_scope",
+          "goal_state",
+          "validity_status",
+          "evidence_quote_status"
+        ],
+        "title": "AtomicProfileItemEvidenceProjection",
+        "description": "单条画像信息的按需依据投影（改进工单 20）。\n\n只包含展开该条所需的信息：正文、来源定位、适用范围、期限/状态与反馈\n回执；不包含内部哈希、事实身份键或类别。"
+      },
+      "AtomicProfileItemFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AtomicProfileFeedbackKind",
+            "description": "反馈类别。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "可选的补充说明。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "AtomicProfileItemFeedbackRequest",
+        "description": "提交一条画像信息反馈（不携带条目正文，反馈说明可选）。"
       },
       "AtomicProfileItemModifyRequest": {
         "properties": {
@@ -29070,6 +29577,19 @@
         ],
         "title": "AtomicProfileReconciliationOutcome",
         "description": "单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。\n\n``duplicated`` 是「来源或身份已经存在，因此没有新建条目」的合并计数：具体\n是用户条目优先、来源已迁移还是墓碑抑制，看同一条明细的原因码。``failed``\n只出现在可重试报告里——整批已回滚，台账只留失败那一条。"
+      },
+      "AtomicProfileValidityStatus": {
+        "type": "string",
+        "enum": [
+          "unbounded",
+          "scheduled",
+          "active",
+          "expired",
+          "paused",
+          "completed"
+        ],
+        "title": "AtomicProfileValidityStatus",
+        "description": "条目当前时效状态（由有效期与目标生命周期折算，页面直接展示）。"
       },
       "AtomicProfileWriteOrigin": {
         "type": "string",
@@ -29557,6 +30077,62 @@
             "type": "array",
             "maxItems": 8,
             "title": "Side Effects"
+          },
+          "module_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module Id"
+          },
+          "requested_module_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Module Id"
+          },
+          "route_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Source"
+          },
+          "capability_list": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Capability List"
+          },
+          "understanding_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Understanding Version"
           }
         },
         "additionalProperties": false,
@@ -46407,7 +46983,11 @@
           "humanizer",
           "image",
           "video",
-          "career"
+          "career",
+          "commute",
+          "resources",
+          "tieba",
+          "github"
         ],
         "title": "MainCapability",
         "description": "当前主能力集合；后续能力只能以新注册项追加。"

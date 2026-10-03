@@ -243,6 +243,21 @@ export type AtomicProfileItemModifyRequest =
   components["schemas"]["AtomicProfileItemModifyRequest"];
 export type AtomicProfileWriteOrigin =
   components["schemas"]["AtomicProfileWriteOrigin"];
+// 改进工单 20：按需展开的依据/时效投影与四类反馈合同。
+export type AtomicProfileItemEvidenceProjection =
+  components["schemas"]["AtomicProfileItemEvidenceProjection"];
+export type AtomicProfileEvidenceSource =
+  components["schemas"]["AtomicProfileEvidenceSource"];
+export type AtomicProfileEvidenceSourceStatus =
+  components["schemas"]["AtomicProfileEvidenceSourceStatus"];
+export type AtomicProfileValidityStatus =
+  components["schemas"]["AtomicProfileValidityStatus"];
+export type AtomicProfileFeedbackProjection =
+  components["schemas"]["AtomicProfileFeedbackProjection"];
+export type AtomicProfileFeedbackKind =
+  components["schemas"]["AtomicProfileFeedbackKind"];
+export type AtomicProfileItemFeedbackRequest =
+  components["schemas"]["AtomicProfileItemFeedbackRequest"];
 // 改进工单 07：账户级画像记录/使用控制（两个开关互相独立）。
 export type ProfileAccountControlsProjection =
   components["schemas"]["ProfileAccountControlsProjection"];
@@ -1771,6 +1786,36 @@ export async function deleteAtomicProfileItem(
     }
   );
   if (!res.ok) throw await parseApiError(res);
+}
+
+// 改进工单 20：展开一条信息的依据（只取本条必要数据）与四类反馈。
+
+export async function fetchAtomicProfileItemEvidence(
+  itemId: string
+): Promise<AtomicProfileItemEvidenceProjection> {
+  const res = await fetch(
+    `${API_BASE}/profiles/items/${encodeURIComponent(itemId)}/evidence`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function submitAtomicProfileItemFeedback(
+  itemId: string,
+  request: AtomicProfileItemFeedbackRequest
+): Promise<AtomicProfileFeedbackProjection> {
+  const res = await fetch(
+    `${API_BASE}/profiles/items/${encodeURIComponent(itemId)}/feedback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 // ---------- 画像记录/使用控制（改进工单 07） ----------

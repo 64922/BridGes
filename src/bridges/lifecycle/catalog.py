@@ -99,6 +99,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。
     "profile_item_migration_records",
+    # 改进工单 20：画像依据反馈（四类），随账户删除并进入导出。
+    "profile_item_feedback",
     # 工单 08：跨轮任务域。子表（事件/等待/条件/版本）先于父表
     # conversation_tasks 删除（外键强制打开，无 CASCADE）。
     "task_events",
@@ -245,6 +247,8 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
             "profile_items",
             "profile_item_migrations",
             "profile_item_migration_records",
+            # 改进工单 20：四类依据反馈（只含类别与可选说明，不含画像正文）。
+            "profile_item_feedback",
         ),
         512,
     ),
@@ -418,6 +422,7 @@ def logical_summary(
         "profile_items",
         "profile_item_migrations",
         "profile_item_migration_records",
+        "profile_item_feedback",
         "learning_projects",
         "learning_project_migration_runs",
         "learning_project_migrations",

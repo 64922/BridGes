@@ -295,6 +295,194 @@ class AtomicProfileItemProjection(BaseModel):
     )
 
 
+class AtomicProfileEvidenceSourceStatus(StrEnum):
+    """来源消息对当前用户的可得状态（改进工单 20）。
+
+    ``AVAILABLE`` 表示消息仍可按账户读取；``DELETED`` 表示来源已被删除；
+    ``UNREADABLE`` 表示消息存在但无法作为用户事实来源使用（非用户消息、
+    未完成或正文为空），或当前运行没有接线来源读取。三种状态都如实返回，
+    不伪造原话。
+    """
+
+    AVAILABLE = "available"
+    DELETED = "deleted"
+    UNREADABLE = "unreadable"
+
+
+class AtomicProfileEvidenceSource(BaseModel):
+    """一条画像依据的来源定位（改进工单 20；只含定位，不含整条正文）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message_id: str = Field(description="来源消息标识。")
+    status: AtomicProfileEvidenceSourceStatus = Field(description="来源可得状态。")
+    conversation_id: str | None = Field(
+        default=None, description="来源所属会话标识；不可得时为空。"
+    )
+    created_at: datetime | None = Field(
+        default=None, description="来源消息发生时间；不可得时为空。"
+    )
+
+
+class AtomicProfileValidityStatus(StrEnum):
+    """条目当前时效状态（由有效期与目标生命周期折算，页面直接展示）。"""
+
+    UNBOUNDED = "unbounded"
+    SCHEDULED = "scheduled"
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+
+
+class AtomicProfileEvidenceQuoteStatus(StrEnum):
+    """原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。
+
+    ``SOURCE_UNAVAILABLE``：保存过原话，但无法在当前可读来源中核对。
+    合同要求删除聊天原文时同步失效其派生原话副本，因此正文不再展示；
+    内部保留的记录不在此处回传。
+    """
+
+    RECORDED = "recorded"
+    NOT_RECORDED = "not_recorded"
+    SOURCE_UNAVAILABLE = "source_unavailable"
+
+
+class AtomicProfileFeedbackKind(StrEnum):
+    """用户对一条画像信息的四类反馈（改进工单 20）。"""
+
+    FACT_WRONG = "fact_wrong"
+    EXPIRED = "expired"
+    SCOPE_INAPPLICABLE = "scope_inapplicable"
+    PREFERENCE_NOT_FOLLOWED = "preference_not_followed"
+
+
+class AtomicProfileFeedbackEffect(StrEnum):
+    """反馈对条目的确定性效果：只表达建议，不自动删除仍正确的事实。"""
+
+    SUGGEST_FACT_CORRECTION = "suggest_fact_correction"
+    SUGGEST_VALIDITY_REVIEW = "suggest_validity_review"
+    NO_FACT_CHANGE = "no_fact_change"
+
+
+#: 四类反馈的确定性效果映射；后两类明确不改动事实，过期与记错也只给
+#: 修改/删除建议，由用户行内操作完成，反馈本身绝不自动删除条目。
+_FEEDBACK_EFFECTS: dict[AtomicProfileFeedbackKind, AtomicProfileFeedbackEffect] = {
+    AtomicProfileFeedbackKind.FACT_WRONG: (
+        AtomicProfileFeedbackEffect.SUGGEST_FACT_CORRECTION
+    ),
+    AtomicProfileFeedbackKind.EXPIRED: (
+        AtomicProfileFeedbackEffect.SUGGEST_VALIDITY_REVIEW
+    ),
+    AtomicProfileFeedbackKind.SCOPE_INAPPLICABLE: (
+        AtomicProfileFeedbackEffect.NO_FACT_CHANGE
+    ),
+    AtomicProfileFeedbackKind.PREFERENCE_NOT_FOLLOWED: (
+        AtomicProfileFeedbackEffect.NO_FACT_CHANGE
+    ),
+}
+
+#: 反馈的中文回执文案（服务端确定性生成，页面如实展示）。
+_FEEDBACK_MESSAGES: dict[AtomicProfileFeedbackKind, str] = {
+    AtomicProfileFeedbackKind.FACT_WRONG: (
+        "已记录反馈。这条信息记错了，可以用「修改」直接更正，或先「删除」再重新记住。"
+    ),
+    AtomicProfileFeedbackKind.EXPIRED: (
+        "已记录反馈。过期信息不会自动删除；可以修改正文中的期限，或直接删除这条信息。"
+    ),
+    AtomicProfileFeedbackKind.SCOPE_INAPPLICABLE: (
+        "已记录反馈。范围不适用不会删除这条事实；如确不需要，可在行内修改或删除。"
+    ),
+    AtomicProfileFeedbackKind.PREFERENCE_NOT_FOLLOWED: (
+        "已记录反馈。回答没有执行偏好不会自动删除这条信息，它会用于改进后续回答。"
+    ),
+}
+
+
+def feedback_effect_for(kind: AtomicProfileFeedbackKind) -> AtomicProfileFeedbackEffect:
+    """返回反馈类别的确定性效果。"""
+
+    return _FEEDBACK_EFFECTS[kind]
+
+
+def feedback_message_for(kind: AtomicProfileFeedbackKind) -> str:
+    """返回反馈类别的中文回执文案。"""
+
+    return _FEEDBACK_MESSAGES[kind]
+
+
+class AtomicProfileItemFeedbackRequest(BaseModel):
+    """提交一条画像信息反馈（不携带条目正文，反馈说明可选）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: AtomicProfileFeedbackKind = Field(description="反馈类别。")
+    note: str | None = Field(
+        default=None, max_length=500, description="可选的补充说明。"
+    )
+
+
+class AtomicProfileFeedback(BaseModel):
+    """一条已持久化的画像信息反馈（内部记录，按账户隔离）。"""
+
+    feedback_id: str = Field(description="稳定反馈标识。")
+    owner_account_id: str = Field(description="提交反馈的账户标识。")
+    profile_item_id: str = Field(description="反馈指向的原子条目标识。")
+    item_version: int = Field(ge=1, description="反馈时用户读到的条目版本。")
+    kind: AtomicProfileFeedbackKind = Field(description="反馈类别。")
+    note: str | None = Field(default=None, description="可选的补充说明。")
+    created_at: datetime = Field(description="反馈提交时间。")
+
+
+class AtomicProfileFeedbackProjection(BaseModel):
+    """反馈的页面投影：类别、效果、中文回执与时间。"""
+
+    feedback_id: str = Field(description="稳定反馈标识。")
+    profile_item_id: str = Field(description="反馈指向的条目标识。")
+    kind: AtomicProfileFeedbackKind = Field(description="反馈类别。")
+    effect: AtomicProfileFeedbackEffect = Field(description="对条目的确定性效果。")
+    message: str = Field(description="中文回执文案。")
+    note: str | None = Field(default=None, description="可选的补充说明。")
+    created_at: datetime = Field(description="反馈提交时间。")
+
+
+class AtomicProfileItemEvidenceProjection(BaseModel):
+    """单条画像信息的按需依据投影（改进工单 20）。
+
+    只包含展开该条所需的信息：正文、来源定位、适用范围、期限/状态与反馈
+    回执；不包含内部哈希、事实身份键或类别。
+    """
+
+    profile_item_id: str = Field(description="稳定的原子条目标识。")
+    version: int = Field(ge=1, description="修正请求使用的乐观锁版本号。")
+    text: str = Field(description="条目正文。")
+    write_origin: AtomicProfileWriteOrigin = Field(description="最近一次写入来源。")
+    user_edited_at: datetime | None = Field(
+        default=None, description="用户最近一次编辑时间；非空表示主动来源。"
+    )
+    updated_at: datetime = Field(description="最近一次变化时间。")
+    fact_scope: AtomicProfileFactScope = Field(description="适用范围。")
+    goal_state: AtomicProfileGoalState = Field(description="目标生命周期标记。")
+    valid_from: datetime | None = Field(default=None, description="有效期起点。")
+    valid_until: datetime | None = Field(default=None, description="有效期终点。")
+    validity_phrase: str | None = Field(
+        default=None, description="原文明示的时间表达。"
+    )
+    validity_status: AtomicProfileValidityStatus = Field(description="当前时效状态。")
+    evidence_quote: str | None = Field(
+        default=None, description="保存时的精确原话；未保存时为空。"
+    )
+    evidence_quote_status: AtomicProfileEvidenceQuoteStatus = Field(
+        description="原话引用状态。"
+    )
+    sources: list[AtomicProfileEvidenceSource] = Field(
+        default_factory=list, description="来源消息定位与可得状态。"
+    )
+    feedback: list[AtomicProfileFeedbackProjection] = Field(
+        default_factory=list, description="该条目已有的反馈（按时间倒序）。"
+    )
+
+
 class AtomicProfileItemModifyRequest(BaseModel):
     """行内编辑的乐观锁请求。"""
 
@@ -374,12 +562,21 @@ class AtomicProfileMigrationReport(BaseModel):
 
 
 __all__ = [
+    "AtomicProfileEvidenceQuoteStatus",
+    "AtomicProfileEvidenceSource",
+    "AtomicProfileEvidenceSourceStatus",
     "AtomicProfileFactIdentity",
     "AtomicProfileFactRelation",
     "AtomicProfileFactScope",
+    "AtomicProfileFeedback",
+    "AtomicProfileFeedbackEffect",
+    "AtomicProfileFeedbackKind",
+    "AtomicProfileFeedbackProjection",
     "AtomicProfileGoalState",
     "AtomicProfileItem",
     "AtomicProfileItemDeleteRequest",
+    "AtomicProfileItemEvidenceProjection",
+    "AtomicProfileItemFeedbackRequest",
     "AtomicProfileItemModifyRequest",
     "AtomicProfileItemProjection",
     "AtomicProfileItemStatus",
@@ -391,5 +588,8 @@ __all__ = [
     "AtomicProfileReconciliationEntry",
     "AtomicProfileReconciliationOutcome",
     "AtomicProfileTombstoneEntry",
+    "AtomicProfileValidityStatus",
     "AtomicProfileWriteOrigin",
+    "feedback_effect_for",
+    "feedback_message_for",
 ]
