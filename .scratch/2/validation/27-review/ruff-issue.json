@@ -1,0 +1,2184 @@
+[
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 69,
+      "row": 16
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 16
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 16,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 61,
+      "row": 266
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from fastapi import Depends, FastAPI, HTTPException, Request, status\r\nfrom fastapi.responses import JSONResponse\r\nfrom pydantic import ValidationError as PydanticValidationError\r\n\r\nfrom bridges import __version__\r\nfrom bridges.ai import (\r\n    CapabilityRegistry,\r\n    CapabilityRegistryError,\r\n    StubQwenAdapter,\r\n)\r\nfrom bridges.ai.production import build_production_composition\r\nfrom bridges.ai.run_model_config import RunModelConfigProvider\r\nfrom bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder\r\nfrom bridges.ai.startup_check import log_qwen_startup_connectivity_warnings\r\nfrom bridges.ai.stream_script_fixture import ScriptedChatStreamAdapter\r\nfrom bridges.api import (\r\n    auth,\r\n    chat,\r\n    compatibility,\r\n    credentials,\r\n    domain_packs,\r\n    evaluation,\r\n    expression,\r\n    ingestion,\r\n    institution,\r\n    knowledge_base,\r\n    learning_project_migration,\r\n    learning_projects,\r\n    model_settings,\r\n    projects,\r\n    science,\r\n    scope,\r\n    search,\r\n    sharing,\r\n    skills,\r\n    sync,\r\n    tasks,\r\n    vault,\r\n    workflows,\r\n)\r\nfrom bridges.api import commute as commute_api\r\nfrom bridges.api.csrf import CsrfOriginMiddleware\r\nfrom bridges.api.data import router as data_router\r\nfrom bridges.api.image import router as image_router\r\nfrom bridges.api.mcp import router as mcp_router\r\nfrom bridges.api.media import router as media_router\r\nfrom bridges.api.plugins import router as plugins_router\r\nfrom bridges.api.reminder import router as reminder_router\r\nfrom bridges.api.speech import router as speech_router\r\nfrom bridges.api.video import router as video_router\r\nfrom bridges.arxiv_mcp.service import ArxivSearchService\r\nfrom bridges.career.service import CareerPlannerService\r\nfrom bridges.career_plan.collecting import HttpJobPageReader\r\nfrom bridges.career_plan.searching import (\r\n    WebSearchServiceAdapter as CareerWebSearchAdapter,\r\n)\r\nfrom bridges.career_plan.service import CareerPlanService\r\nfrom bridges.chat import (\r\n    AttachmentRepository,\r\n    ChatAttachmentService,\r\n    ChatService,\r\n    ConversationRepository,\r\n)\r\nfrom bridges.chat.run_executor import GenerationRunExecutor\r\nfrom bridges.chat.selections import ChatSelectionsService\r\nfrom bridges.chat.summary import ChatSummaryService, GatewaySummaryExtractor\r\nfrom bridges.chat.turn import CHAT_CAPABILITY_NAME\r\nfrom bridges.closeout.fixtures import (\r\n    CloseoutArxivClient,\r\n    CloseoutQwenAdapter,\r\n    CloseoutWebSearchClient,\r\n)\r\nfrom bridges.commute.service import CommuteService\r\nfrom bridges.commute.sources import AmapRouteClient\r\nfrom bridges.config import Settings, get_settings\r\nfrom bridges.contracts.ai import (\r\n    CapabilityKind,\r\n    CapabilityRecord,\r\n    CapabilityStatus,\r\n)\r\nfrom bridges.contracts.domain import (\r\n    PackImpactAction,\r\n    PackImpactCategory,\r\n    PackImpactItem,\r\n)\r\nfrom bridges.contracts.health import DependencyHealth, HealthProjection, HealthStatus\r\nfrom bridges.contracts.projects import ObjectRef\r\nfrom bridges.contracts.workflows import RunProjection, WorkflowRunStatus\r\nfrom bridges.credentials.global_credential import (\r\n    GLOBAL_QWEN_KEY_GUIDANCE,\r\n    is_global_qwen_key_configured,\r\n)\r\nfrom bridges.credentials.runtime_resolver import (\r\n    CredentialSource,\r\n    RuntimeCredentialResolver,\r\n)\r\nfrom bridges.credentials.store import (\r\n    CredentialStorePort,\r\n    build_credential_store,\r\n)\r\nfrom bridges.domain import (\r\n    DomainPackLoader,\r\n    DomainPackRegistry,\r\n    DomainPackValidationRuntime,\r\n    create_astronomy_pack,\r\n    create_computer_science_pack,\r\n    create_earth_climate_pack,\r\n    create_life_science_pack,\r\n    create_math_formal_proof_pack,\r\n    create_medical_high_risk_pack,\r\n    create_physics_chemistry_pack,\r\n    create_standards_datasets_pack,\r\n)\r\nfrom bridges.domain.pack_lifecycle import (\r\n    DomainPackLifecycleError,\r\n    DomainPackLifecycleService,\r\n)\r\nfrom bridges.domain.workbench import DomainPackWorkbenchService\r\nfrom bridges.evaluation import EvaluationService\r\nfrom bridges.expression import ExpressionService\r\nfrom bridges.github.client import GITHUB_TIMEOUT_SECONDS, GithubApiClient\r\nfrom bridges.github.inspecting import GithubRepositoryReader\r\nfrom bridges.github.presenting import GithubInsightGenerator\r\nfrom bridges.github.searching import GithubApiSearchAdapter\r\nfrom bridges.github.service import GithubProjectsService\r\nfrom bridges.health.probe import build_health_projection\r\nfrom bridges.identity import IdentityService\r\nfrom bridges.image.service import ImageService\r\nfrom bridges.ingestion.embedding import QwenEmbeddingPort\r\nfrom bridges.ingestion.ocr import QwenOcrPort\r\nfrom bridges.ingestion.service import IngestionService\r\nfrom bridges.institution import InstitutionService\r\nfrom bridges.invalidation import AffectedDownstream, InvalidationService\r\nfrom bridges.knowledge_base import KnowledgeBaseService\r\nfrom bridges.learning import (\r\n    InMemoryLearningRepository,\r\n    LearningPathService,\r\n    LearningService,\r\n    TeachingProgressService,\r\n    TeachingService,\r\n)\r\nfrom bridges.learning.api import router as learning_router\r\nfrom bridges.learning_projects import LearningProjectService\r\nfrom bridges.learning_projects.migration import ProjectMigrationService\r\nfrom bridges.lifecycle.backup import BackupService\r\nfrom bridges.lifecycle.deletion import DeletionService\r\nfrom bridges.lifecycle.exports import ExportService\r\nfrom bridges.mcp.runtime import McpRuntime\r\nfrom bridges.mcp.service import McpService\r\nfrom bridges.media import (\r\n    AccessibilityService,\r\n    MediaGenerationService,\r\n    MediaIngestionService,\r\n    MediaPublishService,\r\n    SandboxService,\r\n    StoryboardService,\r\n    build_media_impact_resolver,\r\n    build_media_publish_impact_resolver,\r\n)\r\nfrom bridges.observability.service import ObservabilityService\r\nfrom bridges.paper.presenting import PaperSummaryGenerator\r\nfrom bridges.paper.service import PaperSearchService\r\nfrom bridges.paper.sources import (\r\n    ENRICH_TIMEOUT_SECONDS,\r\n    ArxivPaperSource,\r\n    MetadataEnricher,\r\n)\r\nfrom bridges.persistence import (\r\n    PersistenceError,\r\n    SqliteStateStore,\r\n    StateStore,\r\n    build_state_store,\r\n)\r\nfrom bridges.plugins.service import PluginService\r\nfrom bridges.profiles import (\r\n    PROFILE_EXTRACTION_MAX_NEIGHBORS,\r\n    AtomicProfileService,\r\n    AutomaticProfileService,\r\n    FourDimensionContractGate,\r\n    FourDimensionProfileService,\r\n    GatewayAutomaticProfileExtractor,\r\n    InMemoryAtomicProfileRepository,\r\n    InMemoryAutomaticProfileRepository,\r\n    InMemoryFourDimensionProfileRepository,\r\n    InMemoryProfileRepository,\r\n    ProfileService,\r\n    ProfileSourceMessage,\r\n    RuleBasedAutomaticProfileExtractor,\r\n    SqliteAtomicProfileRepository,\r\n    SqliteAutomaticProfileRepository,\r\n    SqliteFourDimensionProfileRepository,\r\n)\r\nfrom bridges.profiles.api import router as profiles_router\r\nfrom bridges.profiles.legacy_api import router as legacy_profiles_router\r\nfrom bridges.profiles.sqlite_repository import SqliteProfileRepository\r\nfrom bridges.projects import ProjectService\r\nfrom bridges.resources.reading import OpenLibraryBookInsightReader\r\nfrom bridges.resources.service import LearningResourcesService\r\nfrom bridges.resources.sources import (\r\n    BOOK_TIMEOUT_SECONDS,\r\n    BilibiliVideoDiscoverer,\r\n    BilibiliVideoVerifier,\r\n    OpenAlexBookSource,\r\n    OpenLibraryBookSource,\r\n)\r\nfrom bridges.retirement import CompatibilityMetrics, retire_user_extensions, run_reminder_retirement\r\nfrom bridges.retrieval.service import LayeredRetrievalService\r\nfrom bridges.science import (\r\n    ClaimEvidenceService,\r\n    ScienceSearchService,\r\n    ScienceSourceService,\r\n)\r\nfrom bridges.science.claims import (\r\n    ClaimGraphRevalidationHandler,\r\n    build_claim_impact_resolver,\r\n)\r\nfrom bridges.science.service import build_source_impact_resolver\r\nfrom bridges.scope import ScopeEnforcer\r\nfrom bridges.search import SearchService\r\nfrom bridges.sharing import SharingService\r\nfrom bridges.skills import create_builtin_registry\r\nfrom bridges.speech.service import SpeechService\r\nfrom bridges.storage import (\r\n    SCHEMA_INTEGRITY_ERROR_CODE,\r\n    SCHEMA_VERSION,\r\n    BridgesDatabase,\r\n    BridgesObjectRepository,\r\n    EncryptedFileObjectStore,\r\n    StorageError,\r\n)\r\nfrom bridges.sync import SyncService\r\nfrom bridges.tasks.repository import TaskRepository\r\nfrom bridges.tasks.service import TaskService\r\nfrom bridges.tieba.official import HttpOfficialSiteReader\r\nfrom bridges.tieba.reading import HttpTiebaThreadReader\r\nfrom bridges.tieba.searching import WebSearchServiceAdapter\r\nfrom bridges.tieba.service import TiebaResearchService\r\nfrom bridges.vault import (\r\n    FernetVaultEncryptionAdapter,\r\n    InMemoryDeviceKeychain,\r\n    InMemoryDevicePairingRepository,\r\n    InMemoryVaultRepository,\r\n    MemoryDeviceVaultPort,\r\n    VaultService,\r\n)\r\nfrom bridges.video.service import VideoService\r\nfrom bridges.web_search.contracts import WebSearchHealthStatus\r\nfrom bridges.web_search.providers import build_web_search_provider\r\nfrom bridges.web_search.repository import WebSearchCacheRepository\r\nfrom bridges.web_search.service import SearchClient, WebSearchService\r\nfrom bridges.workflows import WorkflowError, WorkflowService\r\n\r\n\r\n",
+          "end_location": {
+            "column": 1,
+            "row": 269
+          },
+          "location": {
+            "column": 1,
+            "row": 16
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 16
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 16,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 17
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 17
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 17,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 64,
+      "row": 18
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 18
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 18,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 32,
+      "row": 20
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 20
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 20,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 25
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 21
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 21,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 66,
+      "row": 26
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 26
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 26,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 27
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 27
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 27,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 28
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 28
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 28,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 76,
+      "row": 29
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 29
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 29,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 71,
+      "row": 30
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 30
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 30,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 55
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 31
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 31,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 47,
+      "row": 56
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 56
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 56,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 50,
+      "row": 57
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 57
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 57,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 58
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 58
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 58,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 59
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 59
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 59,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 60
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 60
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 60,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 61
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 61
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 61,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 62
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 62
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 62,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 63
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 63
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 63,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 64
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 64
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 64,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 65
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 65
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 65,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 66
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 66
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 66,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 52,
+      "row": 67
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 67
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 67,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 68
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 68
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 68,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 69
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 69
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 69,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 70
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 70
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 70,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 74,
+      "row": 71
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 71
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 71,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 72
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 72
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 72,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 73
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 73
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 73,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 60,
+      "row": 74
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 74
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 74,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 75
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 75
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 75,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 76
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 76
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 76,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 56,
+      "row": 77
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 77
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 77,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 60,
+      "row": 78
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 78
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 78,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 79
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 79
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 79,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 80
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 80
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 80,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 83
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 81
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 81,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 84
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 84
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 84,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 89
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 85
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 85,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 90
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 90
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 90,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 91
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 91
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 91,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 98
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 92
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 92,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 56,
+      "row": 99
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 99
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 99,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 105
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 100
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 100,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 60,
+      "row": 106
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 106
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 106,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 107
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 107
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 107,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 77,
+      "row": 108
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 108
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 108,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 52,
+      "row": 109
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 109
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 109,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 46,
+      "row": 110
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 110
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 110,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 111
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 111
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 111,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 116
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 112
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 112,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 50,
+      "row": 117
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 117
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 117,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 122
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 118
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 118,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 127
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 123
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 123,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 86,
+      "row": 128
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 128
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 128,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 129
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 129
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 129,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 73,
+      "row": 130
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 130
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 130,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 134
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 131
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 131,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 138
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 135
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 135,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 142
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 139
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 139,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 155
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 143
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 143,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 159
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 156
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 156,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 64,
+      "row": 160
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 160
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 160,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 161
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 161
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 161,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 162
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 162
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 162,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 163
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 163
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 163,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 45,
+      "row": 164
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 164
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 164,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 47,
+      "row": 165
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 165
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 165,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 166
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 166
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 166,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 46,
+      "row": 167
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 167
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 167,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 168
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 168
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 168,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 169
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 169
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 169,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 73,
+      "row": 170
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 170
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 170,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 56,
+      "row": 171
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 171
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 171,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 178
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 172
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 172,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 179
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 179
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 179,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 180
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 180
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 180,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 72,
+      "row": 181
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 181
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 181,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 182
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 182
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 182,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 183
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 183
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 183,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 52,
+      "row": 184
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 184
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 184,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 185
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 185
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 185,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 186
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 186
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 186,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 196
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 187
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 187,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 197
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 197
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 197,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 203
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 198
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 198,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 50,
+      "row": 204
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 204
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 204,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 222
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 205
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 205,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 223
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 223
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 223,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 73,
+      "row": 224
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 224
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 224,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 71,
+      "row": 225
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 225
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 225,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 44,
+      "row": 226
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 226
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 226,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 101,
+      "row": 227
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 227
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 227,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 62,
+      "row": 228
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 228
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 228,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 233
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 229
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 229,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 237
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 234
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 234,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 65,
+      "row": 238
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 238
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 238,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 40,
+      "row": 239
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 239
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 239,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 41,
+      "row": 240
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 240
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 240,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 241
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 241
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 241,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 242
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 242
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 242,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 243
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 243
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 243,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 251
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 244
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 244,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 37,
+      "row": 252
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 252
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 252,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 260
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 253
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 253,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 47,
+      "row": 261
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 261
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 261,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 262
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 262
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 262,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 263
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 263
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 263,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 264
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 264
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 264,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 70,
+      "row": 265
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 265
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 265,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 266
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 266
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 266,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "N818",
+    "end_location": {
+      "column": 21,
+      "row": 197
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\chat\\graph.py",
+    "fix": null,
+    "location": {
+      "column": 7,
+      "row": 197
+    },
+    "message": "Exception name `DailyGraphStop` should be named with an Error suffix",
+    "name": "error-suffix-on-exception-name",
+    "noqa_row": 197,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/error-suffix-on-exception-name"
+  },
+  {
+    "cell": null,
+    "code": "N818",
+    "end_location": {
+      "column": 27,
+      "row": 205
+    },
+    "filename": "D:\\BridGes\\.worktrees\\27-question-driven-tieba-evidence\\src\\bridges\\chat\\graph.py",
+    "fix": null,
+    "location": {
+      "column": 7,
+      "row": 205
+    },
+    "message": "Exception name `DailyGraphSuperseded` should be named with an Error suffix",
+    "name": "error-suffix-on-exception-name",
+    "noqa_row": 205,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/error-suffix-on-exception-name"
+  }
+]

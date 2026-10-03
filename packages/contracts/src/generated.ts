@@ -8293,6 +8293,18 @@ export interface components {
              */
             incomparable_notes?: string[];
             /**
+             * Missing Salary Count
+             * @description 主样本里没有给出薪资原文的岗位数（缺失字段，未纳入区间）。
+             * @default 0
+             */
+            missing_salary_count: number;
+            /**
+             * Experience Unverified Count
+             * @description 因页面没有经验要求而被经验条件剔除的候选数。
+             * @default 0
+             */
+            experience_unverified_count: number;
+            /**
              * Sample Scope Note
              * @description 本轮样本口径说明（样本量、日期、地区）。
              */
@@ -8570,6 +8582,11 @@ export interface components {
              * @description 其他约束原话。
              */
             constraints?: string[];
+            /**
+             * Experience Hint
+             * @description 用户提到的经验要求（逐条代码核对，未知不进入统计）。
+             */
+            experience_hint?: string | null;
             /**
              * Plan
              * @description 本轮实际执行的检索计划（来源、查询词、筛选条件）。
@@ -8914,7 +8931,7 @@ export interface components {
             company?: string | null;
             /**
              * Kind
-             * @description 剔除分类：adjacent／city／city_unverified／expired／duplicate／not_job／title_mismatch。
+             * @description 剔除分类：adjacent／city／city_unverified／experience／experience_unverified／expired／duplicate／not_job／title_mismatch。
              */
             kind: string;
             /**
@@ -17219,6 +17236,22 @@ export interface components {
              */
             title_evidence: string;
             /**
+             * Match Basis
+             * @description 匹配依据：title（岗位名直接命中）或 duty（职责原文语义命中）。
+             * @default title
+             */
+            match_basis: string;
+            /**
+             * Duty Evidence
+             * @description 职责／要求原文里命中的目标职责锚点（职责匹配时非空）。
+             */
+            duty_evidence?: string[];
+            /**
+             * Experience Evidence
+             * @description 经验条件与页面经验要求的核对依据；未知为 None。
+             */
+            experience_evidence?: string | null;
+            /**
              * City Evidence
              * @description 城市匹配的核对依据说明。
              */
@@ -18506,6 +18539,21 @@ export interface components {
              * @description 本轮学习目的（备考/项目等）。
              */
             goal?: string | null;
+            /** @description 目的类别（快速概念/备考/系统学习）。 */
+            goal_kind?: components["schemas"]["ResourcesGoalKind"] | null;
+            /** @description 本轮媒介条件。 */
+            media?: components["schemas"]["ResourceMedia"] | null;
+            /**
+             * Assumptions
+             * @description 本轮的低影响假设（明确标注，供用户随时纠正）。
+             */
+            assumptions?: string[];
+            /**
+             * Needs Practice Project
+             * @description 目标是否包含实践项目（为后续组合 GitHub 留信号；本模块不自动组合）。
+             * @default false
+             */
+            needs_practice_project: boolean;
             /**
              * Level Label
              * @description 本轮学习层次的中文标签。
@@ -18516,6 +18564,21 @@ export interface components {
              * @description 层次判定依据。
              */
             level_basis?: string | null;
+            /**
+             * Language
+             * @description 用户要求的资料语言。
+             */
+            language?: string | null;
+            /**
+             * Time Budget
+             * @description 用户的学习时间约束原话。
+             */
+            time_budget?: string | null;
+            /**
+             * Basis Evidence
+             * @description 用户已有基础的原话。
+             */
+            basis_evidence?: string | null;
             /**
              * Queries
              * @description 本轮全部外部调用的统一记录（查询/证据/时间/错误）。
@@ -18529,7 +18592,7 @@ export interface components {
             final_query: string;
             /**
              * Items
-             * @description 按由浅入深顺序排列的真实资料条目。
+             * @description 按由浅入深顺序排列的真实资料条目（含主线/补充角色）。
              */
             items?: components["schemas"]["ResourceItem"][];
             /**
@@ -18544,6 +18607,18 @@ export interface components {
              * @default 0
              */
             requested_videos: number;
+            /**
+             * Path Verified
+             * @description 主线先修/覆盖是否已由目录或简介证据确认；未确认为 False（仅候选）。
+             * @default false
+             */
+            path_verified: boolean;
+            /**
+             * Parallel Limit
+             * @description 本轮两路检索的并行上限（共享预算）。
+             * @default 0
+             */
+            parallel_limit: number;
             /**
              * Evidence Notes
              * @description 证据边界说明（实际数量、来源不足、未观看等）。
@@ -20108,6 +20183,54 @@ export interface components {
             requires_author_confirm: boolean;
         };
         /**
+         * PaperIdentity
+         * @description 选定论文的可核实身份（工单 24：供后续模块精确引用，不靠自然语言猜）。
+         */
+        PaperIdentity: {
+            /**
+             * Order
+             * @description 阅读顺序。
+             */
+            order: number;
+            /**
+             * Arxiv Id
+             * @description arXiv 标识符。
+             */
+            arxiv_id?: string | null;
+            /**
+             * Doi
+             * @description DOI（经 Crossref/OpenAlex 核对）。
+             */
+            doi?: string | null;
+            /**
+             * Title
+             * @description 来源原始标题。
+             */
+            title: string;
+            /**
+             * Published Year
+             * @description 发表年份。
+             */
+            published_year?: number | null;
+            /**
+             * Abs Url
+             * @description 摘要页链接。
+             */
+            abs_url: string;
+            /**
+             * Content Hash
+             * @description 产物身份哈希（内容寻址，便于恢复核验）。
+             * @default
+             */
+            content_hash: string;
+        };
+        /**
+         * PaperReadScope
+         * @description 一篇结果在本轮实际取得的阅读范围（工单 24：断言强度与读取范围一致）。
+         * @enum {string}
+         */
+        PaperReadScope: "abstract" | "partial" | "full_text";
+        /**
          * PaperRecommendation
          * @description 一篇经主题与来源核对后的推荐（阅读顺序见 ``order``）。
          */
@@ -20122,6 +20245,11 @@ export interface components {
              * @description arXiv 标识符；非 arXiv 来源为 None。
              */
             arxiv_id?: string | null;
+            /**
+             * Doi
+             * @description Crossref/OpenAlex 核对的 DOI；缺失为 None。
+             */
+            doi?: string | null;
             /**
              * Title
              * @description 来源返回的原始标题。
@@ -20143,6 +20271,16 @@ export interface components {
              */
             source: string;
             /**
+             * Venue
+             * @description 核对的发表venue；缺失为 None。
+             */
+            venue?: string | null;
+            /**
+             * Cited By Count
+             * @description 核对的引用量；仅作辅助信息，不代表质量或入门性。
+             */
+            cited_by_count?: number | null;
+            /**
              * Abs Url
              * @description 可点开的来源链接（摘要页）。
              */
@@ -20152,6 +20290,11 @@ export interface components {
              * @description 全文 PDF 链接；未取得为 None。
              */
             pdf_url?: string | null;
+            /**
+             * Full Text Url
+             * @description 元数据核对的开放全文链接；未核对为 None。
+             */
+            full_text_url?: string | null;
             /**
              * Primary Category
              * @description 来源返回的主类别。
@@ -20163,6 +20306,11 @@ export interface components {
              * @default false
              */
             full_text_available: boolean;
+            /**
+             * @description 本轮实际阅读范围（摘要/部分正文/全文）。
+             * @default abstract
+             */
+            read_scope: components["schemas"]["PaperReadScope"];
             /**
              * Role
              * @description 在阅读顺序中的角色：survey / foundation / recent / tutorial。
@@ -20179,15 +20327,60 @@ export interface components {
              */
             match_basis: string;
             /**
+             * Match Evidence
+             * @description 逐条需求对应的标题/摘要/正文证据。
+             */
+            match_evidence?: components["schemas"]["PaperRequirementEvidence"][];
+            /**
+             * Supported Claims
+             * @description 有正文依据支持的断言（方法/实验/局限/复现）。
+             */
+            supported_claims?: string[];
+            /**
              * Summary Zh
              * @description 基于来源摘要的中文概述；未生成时为 None（不虚构）。
              */
             summary_zh?: string | null;
+            /** @description 概述绑定的来源逐字证据（标题/摘要片段）；无证据的概述不保留。 */
+            summary_evidence?: components["schemas"]["PaperRequirementEvidence"] | null;
+            /**
+             * Source Abstract
+             * @description 来源实际摘要，供证据复核。
+             * @default
+             */
+            source_abstract: string;
+            /**
+             * Read Evidence
+             * @description 实际正文片段及小节定位，供断言核验。
+             */
+            read_evidence?: components["schemas"]["PaperRequirementEvidence"][];
             /**
              * Unverified
              * @description 本篇未核实项（例如未通读全文、缺发表信息）。
              */
             unverified?: string[];
+        };
+        /**
+         * PaperRequirementEvidence
+         * @description 一条「需求 → 证据」对应（工单 24：专业角色判断语义相关性并给出片段）。
+         */
+        PaperRequirementEvidence: {
+            /**
+             * Requirement
+             * @description 本研究需求（原词/语境/扩展/阅读目的之一）。
+             */
+            requirement: string;
+            /**
+             * Source
+             * @description 证据来源：title / abstract / full_text:<小节>。
+             */
+            source: string;
+            /**
+             * Quote
+             * @description 支持该需求的来源片段（截断展示）。
+             * @default
+             */
+            quote: string;
         };
         /**
          * PaperSearchConstraints
@@ -20280,11 +20473,28 @@ export interface components {
              */
             papers?: components["schemas"]["PaperRecommendation"][];
             /**
+             * Selected
+             * @description 选定论文的可核实身份列表（供 GitHub 等精确引用）。
+             */
+            selected?: components["schemas"]["PaperIdentity"][];
+            /**
              * Requested Count
              * @description 本轮目标篇数（3–5）。
              * @default 0
              */
             requested_count: number;
+            /**
+             * Artifacts
+             * @description 本轮持久节点产物引用（节点名 → 产物 ID，可追溯/恢复）。
+             */
+            artifacts?: {
+                [key: string]: string;
+            };
+            /**
+             * Expression Policy Version
+             * @description 本轮用户可见概述采用的表达策略版本（未生成概述为 None）。
+             */
+            expression_policy_version?: string | null;
             /**
              * Evidence Notes
              * @description 证据边界说明（实际数量、来源不足、未取全文等）。
@@ -21204,6 +21414,12 @@ export interface components {
             next_step_action?: string | null;
         };
         /**
+         * ResourceEvidenceLevel
+         * @description 条目获批所依据的证据层次；标题/时长/点赞只是弱信号。
+         * @enum {string}
+         */
+        ResourceEvidenceLevel: "title" | "intro" | "catalog";
+        /**
          * ResourceItem
          * @description 一份经来源核对的推荐条目（图书或视频，阅读顺序见 ``order``）。
          */
@@ -21256,6 +21472,40 @@ export interface components {
              */
             match_basis: string;
             /**
+             * @description 路径角色：main（主线）或 supplement（补充/候选）。
+             * @default supplement
+             */
+            role: components["schemas"]["ResourceRole"];
+            /**
+             * Purpose Zh
+             * @description 本条在本轮路径中的用途（中文）。
+             * @default
+             */
+            purpose_zh: string;
+            /**
+             * @description 获批依据的证据层次；仅标题/时长/点赞为 title（弱信号）。
+             * @default title
+             */
+            evidence_level: components["schemas"]["ResourceEvidenceLevel"];
+            /**
+             * Read Scope
+             * @description 本轮实际读取的范围（如实、可核对）。
+             * @default
+             */
+            read_scope: string;
+            /**
+             * Content Covered
+             * @description 已读内容是否支持主题覆盖。
+             * @default false
+             */
+            content_covered: boolean;
+            /**
+             * Suitability Basis
+             * @description 已读内容支持本轮基础及目的的依据。
+             * @default
+             */
+            suitability_basis: string;
+            /**
              * Publisher
              * @description 图书出版社；来源未给或视频条目为 None。
              */
@@ -21297,6 +21547,24 @@ export interface components {
          * @enum {string}
          */
         ResourceKind: "book" | "video";
+        /**
+         * ResourceMedia
+         * @description 用户声明的媒介条件（未声明时两路都试）。
+         * @enum {string}
+         */
+        ResourceMedia: "both" | "books" | "videos";
+        /**
+         * ResourceRole
+         * @description 条目在路径中的角色：主线 / 补充（补充含未达主线证据门者）。
+         * @enum {string}
+         */
+        ResourceRole: "main" | "supplement";
+        /**
+         * ResourcesGoalKind
+         * @description 本轮学习目的的三类主路线（数量与组织方式随目标变化）。
+         * @enum {string}
+         */
+        ResourcesGoalKind: "quick_concept" | "exam_prep" | "systematic";
         /**
          * ResourcesStatus
          * @description 资料模块的用户可见状态（同一消息内如实显示）。
@@ -22224,7 +22492,7 @@ export interface components {
         };
         /**
          * SalaryInterval
-         * @description 同一计薪单位下的薪资区间（样本量与原文都留痕）。
+         * @description 同一币种与计薪单位下的薪资区间（样本量与原文都留痕）。
          */
         SalaryInterval: {
             /**
@@ -22233,23 +22501,34 @@ export interface components {
              */
             unit: string;
             /**
+             * Currency
+             * @description 币种：CNY（元）／USD（美元）等，原文能确定时保留。
+             * @default CNY
+             */
+            currency: string;
+            /**
+             * Salary Months
+             * @description 该区间样本给出的发薪月数（如 15 薪）；未并入金额换算。
+             */
+            salary_months?: number[];
+            /**
              * Sample Count
              * @description 该单位下的岗位样本数。
              */
             sample_count: number;
             /**
              * Amount Min
-             * @description 区间下限（元）。
+             * @description 区间下限（原币种金额）。
              */
             amount_min: number;
             /**
              * Amount Max
-             * @description 区间上限（元）。
+             * @description 区间上限（原币种金额）。
              */
             amount_max: number;
             /**
              * Amount Median
-             * @description 样本中点中位数（元）。
+             * @description 样本中点中位数（原币种金额）。
              */
             amount_median: number;
             /**
@@ -23821,6 +24100,41 @@ export interface components {
          * @enum {string}
          */
         StoryboardStatus: "draft" | "designing" | "source_generated" | "static_validated" | "sandbox_rendering" | "completed" | "repairable" | "repair_exhausted" | "quarantined" | "failed";
+        /**
+         * StudyContentCheck
+         * @description 关键定义/公式/关系与书页原文的逐点核对结果（与结构门分开）。
+         */
+        StudyContentCheck: {
+            /** Unit Id */
+            unit_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "consistent" | "conflict" | "insufficient";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Fragment Ids */
+            fragment_ids?: string[];
+        };
+        /**
+         * StudyCoverageEntry
+         * @description 覆盖矩阵的一行：一个实质教学片段与知识点/排除理由的关系。
+         */
+        StudyCoverageEntry: {
+            /** Fragment Id */
+            fragment_id: string;
+            /** Unit Ids */
+            unit_ids?: string[];
+            /**
+             * Exclusion Reason
+             * @default
+             */
+            exclusion_reason: string;
+        };
         /** StudyExchange */
         StudyExchange: {
             /** User Message Id */
@@ -23838,6 +24152,24 @@ export interface components {
              * @default
              */
             gap: string;
+        };
+        /**
+         * StudyExclusionCheck
+         * @description 被排除片段与排除理由的原文核对结果。
+         */
+        StudyExclusionCheck: {
+            /** Fragment Id */
+            fragment_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "consistent" | "conflict" | "insufficient";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
         };
         /** StudyFragment */
         StudyFragment: {
@@ -23909,13 +24241,23 @@ export interface components {
             units?: components["schemas"]["StudyUnit"][];
             /** Wait Reason */
             wait_reason?: string | null;
+            scope?: components["schemas"]["StudyScope"] | null;
+            /** Scope History */
+            scope_history?: components["schemas"]["StudyScope"][];
         };
         /** StudyQuestion */
         StudyQuestion: {
             /** Question */
             question: string;
+            /** Unit Ids */
+            unit_ids?: string[];
             /** Unit Titles */
-            unit_titles: string[];
+            unit_titles?: string[];
+            /**
+             * Scope Version Id
+             * @default
+             */
+            scope_version_id: string;
         };
         /** StudyReview */
         StudyReview: {
@@ -23959,6 +24301,51 @@ export interface components {
             explanation?: string | null;
             /** User Message Id */
             user_message_id?: string | null;
+        };
+        /**
+         * StudyScope
+         * @description 一个经核验的有效知识范围版本；旧版本保留供导出与恢复。
+         */
+        StudyScope: {
+            /** Scope Version Id */
+            scope_version_id: string;
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            /**
+             * Protocol Version
+             * @default study-scope-v2
+             */
+            protocol_version: string;
+            /**
+             * Material Hash
+             * @default
+             */
+            material_hash: string;
+            /** Page Object Ids */
+            page_object_ids?: string[];
+            /** Fragment Ids */
+            fragment_ids?: string[];
+            /** Units */
+            units?: components["schemas"]["StudyUnit"][];
+            /** Coverage */
+            coverage?: components["schemas"]["StudyCoverageEntry"][];
+            /** Content Checks */
+            content_checks?: components["schemas"]["StudyContentCheck"][];
+            /** Exclusion Checks */
+            exclusion_checks?: components["schemas"]["StudyExclusionCheck"][];
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+            /**
+             * Legacy
+             * @default false
+             */
+            legacy: boolean;
         };
         /** StudySource */
         StudySource: {
@@ -24005,6 +24392,14 @@ export interface components {
             summary?: components["schemas"]["StudySummary"] | null;
             /** Pending Object Ids */
             pending_object_ids?: string[];
+            scope?: components["schemas"]["StudyScope"] | null;
+            /** Scope History */
+            scope_history?: components["schemas"]["StudyScope"][];
+            /**
+             * State Version
+             * @default 1
+             */
+            state_version: number;
         };
         /** StudySummary */
         StudySummary: {
@@ -24048,8 +24443,19 @@ export interface components {
         };
         /** StudyUnit */
         StudyUnit: {
+            /**
+             * Unit Id
+             * @default
+             */
+            unit_id: string;
             /** Title */
             title: string;
+            /**
+             * Kind
+             * @default concept
+             * @enum {string}
+             */
+            kind: "concept" | "relation" | "application" | "misconception";
             /** Fragment Ids */
             fragment_ids: string[];
             /**
@@ -25710,6 +26116,163 @@ export interface components {
             unconfirmed_reason?: string | null;
         };
         /**
+         * TiebaConflict
+         * @description 官方规定与吧友经历的一处冲突及时间／范围核对依据。
+         */
+        TiebaConflict: {
+            /**
+             * Topic Terms
+             * @description 双方共同涉及的原始名词。
+             */
+            topic_terms?: string[];
+            /**
+             * Official Title
+             * @description 官方页面标题。
+             */
+            official_title: string;
+            /**
+             * Official Url
+             * @description 官方页面链接。
+             */
+            official_url: string;
+            /**
+             * Official Date
+             * @description 官方页面的日期／版本线索原文；没有为 None。
+             */
+            official_date?: string | null;
+            /**
+             * Official Statement
+             * @description 官方页面中相关段落的真实摘录。
+             */
+            official_statement: string;
+            /**
+             * Post Refs
+             * @description 与该冲突相关的真实楼层出处。
+             */
+            post_refs?: components["schemas"]["TiebaConflictPostRef"][];
+            /**
+             * Time Basis
+             * @description 时间核对依据的中文说明。
+             */
+            time_basis: string;
+            /**
+             * Scope Basis
+             * @description 适用范围核对依据的中文说明。
+             */
+            scope_basis: string;
+            /** @description 裁决结果。 */
+            resolution: components["schemas"]["TiebaConflictResolution"];
+            /**
+             * Note
+             * @description 面向用户的中文说明（为什么这样呈现）。
+             */
+            note: string;
+        };
+        /**
+         * TiebaConflictPostRef
+         * @description 冲突里引用的真实楼层出处。
+         */
+        TiebaConflictPostRef: {
+            /** Url */
+            url: string;
+            /**
+             * Title
+             * @description 帖子标题。
+             */
+            title?: string | null;
+            /**
+             * Floor
+             * @description 楼层号。
+             */
+            floor?: number | null;
+            /**
+             * Posted At
+             * @description 楼层时间原文。
+             */
+            posted_at?: string | null;
+            /**
+             * Quote
+             * @description 与该冲突相关的真实回复摘录。
+             */
+            quote: string;
+        };
+        /**
+         * TiebaConflictResolution
+         * @description 官方与帖子经历冲突的确定性裁决结果。
+         * @enum {string}
+         */
+        TiebaConflictResolution: "official_newer" | "kept_both";
+        /**
+         * TiebaEvidenceRoute
+         * @description 两条独立取证路径：贴吧公开帖子与学校官方页面。
+         * @enum {string}
+         */
+        TiebaEvidenceRoute: "tieba" | "official";
+        /**
+         * TiebaOfficialApplicability
+         * @description 一条官方证据与问题的适用性核对（主体／校区／用途／日期）。
+         *
+         *     官方域名只证明页面属于学校，不证明它适用于本次问题；只有主体、点名
+         *     校区（若有）、用途与点名日期（若有）都核对通过，才算「适用」。
+         */
+        TiebaOfficialApplicability: {
+            /**
+             * Subject
+             * @description 页面对应的主体（学校／部门）。
+             * @default
+             */
+            subject: string;
+            /**
+             * Subject Confirmed
+             * @description 主体是否核对通过。
+             * @default false
+             */
+            subject_confirmed: boolean;
+            /**
+             * Campus
+             * @description 问题点名的校区原词；未点名为 None。
+             */
+            campus?: string | null;
+            /**
+             * Campus Confirmed
+             * @description 校区是否在页面里出现；问题未点名校区为 None。
+             */
+            campus_confirmed?: boolean | null;
+            /**
+             * Purpose Terms
+             * @description 用途相关的原始名词。
+             */
+            purpose_terms?: string[];
+            /**
+             * Purpose Confirmed
+             * @description 用途是否在页面里定位到。
+             * @default false
+             */
+            purpose_confirmed: boolean;
+            /**
+             * Date Requirement
+             * @description 问题点名的日期／时效原话；未点名为 None。
+             */
+            date_requirement?: string | null;
+            /**
+             * Date Confirmed
+             * @description 点名日期是否在页面里出现；问题未点名为 None。
+             */
+            date_confirmed?: boolean | null;
+            /**
+             * Applicable
+             * @description 以上维度都通过时才为真。
+             * @default false
+             */
+            applicable: boolean;
+            /**
+             * Note
+             * @description 面向用户的适用性说明。
+             * @default
+             */
+            note: string;
+        };
+        /**
          * TiebaOfficialCheck
          * @description 学校官方页面核验结果（与吧友经历分开展示）。
          */
@@ -25750,6 +26313,8 @@ export interface components {
              * @description 在该页面文本中真实命中的原始名词。
              */
             matched_terms?: string[];
+            /** @description 与问题的主体／校区／用途／日期适用性核对；未核对为 None。 */
+            applicability?: components["schemas"]["TiebaOfficialApplicability"] | null;
             /**
              * Error Code
              * @description 未取得页面时的失败分类码。
@@ -25843,6 +26408,16 @@ export interface components {
             retrieved_at: string;
         };
         /**
+         * TiebaQuestionKind
+         * @description 问题类型：规定、体验与混合（决定取证顺序与来源范围）。
+         *
+         *     ``POLICY`` 以学校官方规定为第一来源（贴吧提供实际办理经历）；
+         *     ``EXPERIENCE`` 以目标贴吧的真实帖子与回复为主；``MIXED`` 两路独立
+         *     取证后再综合。类型只由确定性词表判定，不调用模型推断。
+         * @enum {string}
+         */
+        TiebaQuestionKind: "policy" | "experience" | "mixed";
+        /**
          * TiebaRejectedCandidate
          * @description 被剔除的候选与剔除理由（他吧同名帖必须留下痕迹，不静默丢弃）。
          */
@@ -25910,6 +26485,42 @@ export interface components {
              * @description 事件／地点原始名词。
              */
             place_or_event?: string[];
+            /**
+             * @description 规定／体验／混合分类。
+             * @default experience
+             */
+            question_kind: components["schemas"]["TiebaQuestionKind"];
+            /**
+             * Campus Terms
+             * @description 问题点名的校区／区域原词。
+             */
+            campus_terms?: string[];
+            /**
+             * Source Priority
+             * @description 本轮实际采用的来源优先级。
+             */
+            source_priority?: components["schemas"]["TiebaEvidenceRoute"][];
+            /**
+             * Parallel Evidence
+             * @description 两路是否共享预算并行取证。
+             * @default false
+             */
+            parallel_evidence: boolean;
+            /**
+             * Plan Rationale
+             * @description 取证顺序的中文说明。
+             */
+            plan_rationale?: string | null;
+            /**
+             * Official Blocked Reason
+             * @description 官方路径被硬条件阻止时的原因说明；未阻止为 None。
+             */
+            official_blocked_reason?: string | null;
+            /**
+             * Official Unverified Note
+             * @description 规定因缺官方证据（含用户限制）保持未核实时的说明。
+             */
+            official_unverified_note?: string | null;
             /** @description 时间条件的执行状态。 */
             time_filter: components["schemas"]["TiebaTimeFilter"];
             /**
@@ -25950,10 +26561,17 @@ export interface components {
              */
             official_checks?: components["schemas"]["TiebaOfficialCheck"][];
             /**
+             * Conflicts
+             * @description 官方与帖子经历按时间／范围核对后仍冲突的条目。
+             */
+            conflicts?: components["schemas"]["TiebaConflict"][];
+            /**
              * Sections
              * @description 只由已读文本分出的段落（可核验的个人经历／不同看法／不确定点）。
              */
             sections?: string[];
+            /** @description 核验节点的结构化结果；旧投影为 None。 */
+            verification?: components["schemas"]["TiebaVerification"] | null;
             /**
              * Evidence Boundary
              * @description 本轮证据边界与缺口的中文说明。
@@ -26024,6 +26642,57 @@ export interface components {
              * @description 面向用户的中文说明（含未执行时的原因）。
              */
             note: string;
+        };
+        /**
+         * TiebaVerification
+         * @description ``tieba.verify`` 的结构化核验结果（模型不能自行宣布通过）。
+         */
+        TiebaVerification: {
+            /**
+             * Contract Version
+             * @default tieba-verification-v1
+             */
+            contract_version: string;
+            /**
+             * Attribution Consistent
+             * @description 确认帖都来自真实读到且吧名吻合的页面。
+             */
+            attribution_consistent: boolean;
+            /**
+             * Read Scope Consistent
+             * @description 引用楼层／时间／页数与实际读取范围一致。
+             */
+            read_scope_consistent: boolean;
+            /**
+             * Unread Claims Absent
+             * @description 未读回复没有被总结或引用。
+             */
+            unread_claims_absent: boolean;
+            /**
+             * Consensus Claims Absent
+             * @description 没有「吧友普遍认为」式共识结论。
+             */
+            consensus_claims_absent: boolean;
+            /**
+             * Official Scope Consistent
+             * @description 官方结论仅来自适用且定位到段落的页面。
+             */
+            official_scope_consistent: boolean;
+            /**
+             * Conflicts Disclosed
+             * @description 检测到的冲突都如实分列。
+             */
+            conflicts_disclosed: boolean;
+            /**
+             * Summary
+             * @description 核验结论的中文摘要。
+             */
+            summary: string;
+            /**
+             * Unconfirmed
+             * @description 仍未确认的事项。
+             */
+            unconfirmed?: string[];
         };
         /**
          * Tombstone

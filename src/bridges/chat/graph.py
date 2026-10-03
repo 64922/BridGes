@@ -63,6 +63,7 @@ from bridges.contracts.chat import (
 )
 from bridges.contracts.tasks import TaskRelation, TaskStatus
 from bridges.contracts.understanding import (
+    HardConditionKind,
     understanding_from_snapshot,
 )
 from bridges.github.service import (
@@ -687,8 +688,11 @@ def _invoke_tieba_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
             conversation_id=run.conversation_id,
             user_message_id=run.user_message_id,
             assistant_message_id=run.assistant_message_id,
+            run_context=chat_run_context(run.account_id, run.conversation_id, run.run_id),
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            module_context=deps.service.module_task_context(run, TIEBA_MODULE_ID),
+            official_blocked_reason=_tieba_official_blocked_reason(run),
         )
     except TiebaModuleError as error:
         raise DailyTurnError(
@@ -699,6 +703,24 @@ def _invoke_tieba_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
             run.account_id, run.run_id, wait_reason=outcome.wait_reason
         )
     return {}
+
+
+def _tieba_official_blocked_reason(run: Any) -> str | None:
+    """用户硬条件只查贴吧时，官方核验路径必须被阻断（来源限制不被绕过）。"""
+    from bridges.tieba.kernel import TIEBA_ONLY_OFFICIAL_BLOCKED
+
+    understanding = understanding_from_snapshot((run.config or {}).get("understanding"))
+    if understanding is None:
+        return None
+    for item in [
+        *understanding.hard_conditions,
+        *understanding.effective_hard_conditions,
+    ]:
+        if item.kind is not HardConditionKind.SOURCE_RESTRICTION:
+            continue
+        if any(word in item.text for word in ("贴吧", "吧里", "吧内")):
+            return TIEBA_ONLY_OFFICIAL_BLOCKED
+    return None
 
 
 def _invoke_github_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
@@ -948,6 +970,19 @@ def _node_verify_output(
             message.error_message or "生成过程出现内部错误，请重试。",
             retryable=True,
         )
+    if (
+        message.tieba_research is not None
+        and message.tieba_research.get("status") != "clarification"
+    ):
+        service = deps.service.tieba_research_service
+        if service is None or not service.verify_message(
+            deps.repo, account_id=run.account_id, run_id=run.run_id,
+            conversation_id=run.conversation_id, assistant_message_id=run.assistant_message_id,
+        ):
+            raise DailyTurnError(
+                NODE_VERIFY_OUTPUT, "tieba_delivery_unverified",
+                "贴吧交付与可信核验产物不一致，本轮未通过核验。", retryable=False,
+            )
     return {}
 
 

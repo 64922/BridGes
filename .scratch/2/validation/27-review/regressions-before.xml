@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="9" time="0.979" timestamp="2026-10-03T21:21:50.492153+08:00" hostname="bababoyi"><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_unconfirmed_official_scope_cannot_be_applicable[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u6700\u8fd1 \u8f6c\u4e13\u4e1a \u89c4\u5b9a-\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u8f6c\u4e13\u4e1a\u7ba1\u7406\u529e\u6cd5-\u8f6c\u4e13\u4e1a\u6bcf\u5e74\u7533\u8bf7\u4e00\u6b21\u3002]" time="0.002"><failure message="AssertionError: assert not True&#10; +  where True = TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed...ed=True, date_requirement='最近', date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。时间条件「最近」为相对说法，页面无法直接核对。').applicable&#10; +    where TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed...ed=True, date_requirement='最近', date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。时间条件「最近」为相对说法，页面无法直接核对。') = &lt;function assess_applicability at 0x000001F5AEDFB740&gt;(TiebaOfficialCheck(title='华东交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...tatus='verified', excerpt='转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None), TiebaQuestionAnalysis(original_question='华东交通大学吧 最近 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus...], time_requirement='最近', time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None))&#10; +      where &lt;function assess_applicability at 0x000001F5AEDFB740&gt; = evidence.assess_applicability&#10; +      and   TiebaOfficialCheck(title='华东交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...tatus='verified', excerpt='转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None) = _check('转专业每年申请一次。', '华东交通大学转专业管理办法')&#10; +      and   TiebaQuestionAnalysis(original_question='华东交通大学吧 最近 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus...], time_requirement='最近', time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None) = parse_tieba_request('华东交通大学吧 最近 转专业 规定')">question = '华东交通大学吧 最近 转专业 规定', title = '华东交通大学转专业管理办法', excerpt = '转专业每年申请一次。'
+
+    @pytest.mark.parametrize("question,title,excerpt", [
+        ("华东交通大学吧 最近 转专业 规定", "华东交通大学转专业管理办法", "转专业每年申请一次。"),
+        ("华东交通大学吧 转专业 规定", "上海交通大学转专业管理办法", "转载上海交通大学：转专业每年申请一次。"),
+        ("华东交通大学吧 转专业 规定", "华东交通大学新闻", "我校学生讲述转专业经历，最新校园活动精彩纷呈。"),
+    ])
+    def test_unconfirmed_official_scope_cannot_be_applicable(question: str, title: str, excerpt: str) -&gt; None:
+&gt;       assert not evidence.assess_applicability(_check(excerpt, title), parse_tieba_request(question)).applicable
+E       AssertionError: assert not True
+E        +  where True = TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed...ed=True, date_requirement='最近', date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。时间条件「最近」为相对说法，页面无法直接核对。').applicable
+E        +    where TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed...ed=True, date_requirement='最近', date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。时间条件「最近」为相对说法，页面无法直接核对。') = &lt;function assess_applicability at 0x000001F5AEDFB740&gt;(TiebaOfficialCheck(title='华东交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...tatus='verified', excerpt='转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None), TiebaQuestionAnalysis(original_question='华东交通大学吧 最近 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus...], time_requirement='最近', time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None))
+E        +      where &lt;function assess_applicability at 0x000001F5AEDFB740&gt; = evidence.assess_applicability
+E        +      and   TiebaOfficialCheck(title='华东交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...tatus='verified', excerpt='转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None) = _check('转专业每年申请一次。', '华东交通大学转专业管理办法')
+E        +      and   TiebaQuestionAnalysis(original_question='华东交通大学吧 最近 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus...], time_requirement='最近', time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None) = parse_tieba_request('华东交通大学吧 最近 转专业 规定')
+
+tests\tieba\test_issue27_acceptance_regressions.py:38: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_unconfirmed_official_scope_cannot_be_applicable[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u8f6c\u4e13\u4e1a \u89c4\u5b9a-\u4e0a\u6d77\u4ea4\u901a\u5927\u5b66\u8f6c\u4e13\u4e1a\u7ba1\u7406\u529e\u6cd5-\u8f6c\u8f7d\u4e0a\u6d77\u4ea4\u901a\u5927\u5b66\uff1a\u8f6c\u4e13\u4e1a\u6bcf\u5e74\u7533\u8bf7\u4e00\u6b21\u3002]" time="0.001"><failure message="AssertionError: assert not True&#10; +  where True = TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。').applicable&#10; +    where TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。') = &lt;function assess_applicability at 0x000001F5AEDFB740&gt;(TiebaOfficialCheck(title='上海交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...rified', excerpt='转载上海交通大学：转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None), TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None))&#10; +      where &lt;function assess_applicability at 0x000001F5AEDFB740&gt; = evidence.assess_applicability&#10; +      and   TiebaOfficialCheck(title='上海交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...rified', excerpt='转载上海交通大学：转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None) = _check('转载上海交通大学：转专业每年申请一次。', '上海交通大学转专业管理办法')&#10; +      and   TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None) = parse_tieba_request('华东交通大学吧 转专业 规定')">question = '华东交通大学吧 转专业 规定', title = '上海交通大学转专业管理办法'
+excerpt = '转载上海交通大学：转专业每年申请一次。'
+
+    @pytest.mark.parametrize("question,title,excerpt", [
+        ("华东交通大学吧 最近 转专业 规定", "华东交通大学转专业管理办法", "转专业每年申请一次。"),
+        ("华东交通大学吧 转专业 规定", "上海交通大学转专业管理办法", "转载上海交通大学：转专业每年申请一次。"),
+        ("华东交通大学吧 转专业 规定", "华东交通大学新闻", "我校学生讲述转专业经历，最新校园活动精彩纷呈。"),
+    ])
+    def test_unconfirmed_official_scope_cannot_be_applicable(question: str, title: str, excerpt: str) -&gt; None:
+&gt;       assert not evidence.assess_applicability(_check(excerpt, title), parse_tieba_request(question)).applicable
+E       AssertionError: assert not True
+E        +  where True = TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。').applicable
+E        +    where TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。') = &lt;function assess_applicability at 0x000001F5AEDFB740&gt;(TiebaOfficialCheck(title='上海交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...rified', excerpt='转载上海交通大学：转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None), TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None))
+E        +      where &lt;function assess_applicability at 0x000001F5AEDFB740&gt; = evidence.assess_applicability
+E        +      and   TiebaOfficialCheck(title='上海交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetche...rified', excerpt='转载上海交通大学：转专业每年申请一次。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None) = _check('转载上海交通大学：转专业每年申请一次。', '上海交通大学转专业管理办法')
+E        +      and   TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None) = parse_tieba_request('华东交通大学吧 转专业 规定')
+
+tests\tieba\test_issue27_acceptance_regressions.py:38: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_unconfirmed_official_scope_cannot_be_applicable[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u8f6c\u4e13\u4e1a \u89c4\u5b9a-\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u65b0\u95fb-\u6211\u6821\u5b66\u751f\u8bb2\u8ff0\u8f6c\u4e13\u4e1a\u7ecf\u5386\uff0c\u6700\u65b0\u6821\u56ed\u6d3b\u52a8\u7cbe\u5f69\u7eb7\u5448\u3002]" time="0.001"><failure message="AssertionError: assert not True&#10; +  where True = TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。').applicable&#10; +    where TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。') = &lt;function assess_applicability at 0x000001F5AEDFB740&gt;(TiebaOfficialCheck(title='华东交通大学新闻', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetched_at=...ed', excerpt='我校学生讲述转专业经历，最新校园活动精彩纷呈。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None), TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None))&#10; +      where &lt;function assess_applicability at 0x000001F5AEDFB740&gt; = evidence.assess_applicability&#10; +      and   TiebaOfficialCheck(title='华东交通大学新闻', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetched_at=...ed', excerpt='我校学生讲述转专业经历，最新校园活动精彩纷呈。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None) = _check('我校学生讲述转专业经历，最新校园活动精彩纷呈。', '华东交通大学新闻')&#10; +      and   TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None) = parse_tieba_request('华东交通大学吧 转专业 规定')">question = '华东交通大学吧 转专业 规定', title = '华东交通大学新闻'
+excerpt = '我校学生讲述转专业经历，最新校园活动精彩纷呈。'
+
+    @pytest.mark.parametrize("question,title,excerpt", [
+        ("华东交通大学吧 最近 转专业 规定", "华东交通大学转专业管理办法", "转专业每年申请一次。"),
+        ("华东交通大学吧 转专业 规定", "上海交通大学转专业管理办法", "转载上海交通大学：转专业每年申请一次。"),
+        ("华东交通大学吧 转专业 规定", "华东交通大学新闻", "我校学生讲述转专业经历，最新校园活动精彩纷呈。"),
+    ])
+    def test_unconfirmed_official_scope_cannot_be_applicable(question: str, title: str, excerpt: str) -&gt; None:
+&gt;       assert not evidence.assess_applicability(_check(excerpt, title), parse_tieba_request(question)).applicable
+E       AssertionError: assert not True
+E        +  where True = TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。').applicable
+E        +    where TiebaOfficialApplicability(subject='jwc.ecjtu.edu.cn（学校官方域名页面）', subject_confirmed=True, campus=None, campus_confirmed... '规定'], purpose_confirmed=True, date_requirement=None, date_confirmed=None, applicable=True, note='已在官方页面定位到与问题相关的段落。') = &lt;function assess_applicability at 0x000001F5AEDFB740&gt;(TiebaOfficialCheck(title='华东交通大学新闻', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetched_at=...ed', excerpt='我校学生讲述转专业经历，最新校园活动精彩纷呈。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None), TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None))
+E        +      where &lt;function assess_applicability at 0x000001F5AEDFB740&gt; = evidence.assess_applicability
+E        +      and   TiebaOfficialCheck(title='华东交通大学新闻', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetched_at=...ed', excerpt='我校学生讲述转专业经历，最新校园活动精彩纷呈。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None) = _check('我校学生讲述转专业经历，最新校园活动精彩纷呈。', '华东交通大学新闻')
+E        +      and   TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None) = parse_tieba_request('华东交通大学吧 转专业 规定')
+
+tests\tieba\test_issue27_acceptance_regressions.py:38: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_no_proven_supersession_keeps_both[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u8f6c\u4e13\u4e1a \u89c4\u5b9a-2026\u5e74\u6700\u65b0\u6d88\u606f\uff1a\u8f6c\u4e13\u4e1a\u6bcf\u5e74\u7533\u8bf7\u4e00\u6b21\u3002-2025-05-20]" time="0.001"><failure message="AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'&#10;  &#10;  - kept_both&#10;  + official_newer)">question = '华东交通大学吧 转专业 规定', excerpt = '2026年最新消息：转专业每年申请一次。'
+posted_at = '2025-05-20'
+
+    @pytest.mark.parametrize("question,excerpt,posted_at", [
+        ("华东交通大学吧 转专业 规定", "2026年最新消息：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", None),
+        ("华东交通大学吧 南区 转专业 规定", "北区自2026年3月1日起执行：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", "2026-05-20"),
+    ])
+    def test_no_proven_supersession_keeps_both(question: str, excerpt: str, posted_at: str | None) -&gt; None:
+        analysis = parse_tieba_request(question)
+        check = _check(excerpt)
+        check = check.model_copy(update={"applicability": evidence.assess_applicability(check, analysis)})
+        conflicts = evidence.detect_conflicts(analysis, [check], [_post(posted_at)])
+&gt;       assert conflicts and conflicts[0].resolution == "kept_both"
+E       AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'
+E         
+E         - kept_both
+E         + official_newer)
+
+tests\tieba\test_issue27_acceptance_regressions.py:52: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_no_proven_supersession_keeps_both[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u8f6c\u4e13\u4e1a \u89c4\u5b9a-\u81ea2026\u5e743\u67081\u65e5\u8d77\u6267\u884c\uff1a\u8f6c\u4e13\u4e1a\u6bcf\u5e74\u7533\u8bf7\u4e00\u6b21\u3002-None]" time="0.001"><failure message="AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'&#10;  &#10;  - kept_both&#10;  + official_newer)">question = '华东交通大学吧 转专业 规定', excerpt = '自2026年3月1日起执行：转专业每年申请一次。'
+posted_at = None
+
+    @pytest.mark.parametrize("question,excerpt,posted_at", [
+        ("华东交通大学吧 转专业 规定", "2026年最新消息：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", None),
+        ("华东交通大学吧 南区 转专业 规定", "北区自2026年3月1日起执行：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", "2026-05-20"),
+    ])
+    def test_no_proven_supersession_keeps_both(question: str, excerpt: str, posted_at: str | None) -&gt; None:
+        analysis = parse_tieba_request(question)
+        check = _check(excerpt)
+        check = check.model_copy(update={"applicability": evidence.assess_applicability(check, analysis)})
+        conflicts = evidence.detect_conflicts(analysis, [check], [_post(posted_at)])
+&gt;       assert conflicts and conflicts[0].resolution == "kept_both"
+E       AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'
+E         
+E         - kept_both
+E         + official_newer)
+
+tests\tieba\test_issue27_acceptance_regressions.py:52: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_no_proven_supersession_keeps_both[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u5357\u533a \u8f6c\u4e13\u4e1a \u89c4\u5b9a-\u5317\u533a\u81ea2026\u5e743\u67081\u65e5\u8d77\u6267\u884c\uff1a\u8f6c\u4e13\u4e1a\u6bcf\u5e74\u7533\u8bf7\u4e00\u6b21\u3002-2025-05-20]" time="0.001"><failure message="AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'&#10;  &#10;  - kept_both&#10;  + official_newer)">question = '华东交通大学吧 南区 转专业 规定', excerpt = '北区自2026年3月1日起执行：转专业每年申请一次。'
+posted_at = '2025-05-20'
+
+    @pytest.mark.parametrize("question,excerpt,posted_at", [
+        ("华东交通大学吧 转专业 规定", "2026年最新消息：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", None),
+        ("华东交通大学吧 南区 转专业 规定", "北区自2026年3月1日起执行：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", "2026-05-20"),
+    ])
+    def test_no_proven_supersession_keeps_both(question: str, excerpt: str, posted_at: str | None) -&gt; None:
+        analysis = parse_tieba_request(question)
+        check = _check(excerpt)
+        check = check.model_copy(update={"applicability": evidence.assess_applicability(check, analysis)})
+        conflicts = evidence.detect_conflicts(analysis, [check], [_post(posted_at)])
+&gt;       assert conflicts and conflicts[0].resolution == "kept_both"
+E       AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'
+E         
+E         - kept_both
+E         + official_newer)
+
+tests\tieba\test_issue27_acceptance_regressions.py:52: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_no_proven_supersession_keeps_both[\u534e\u4e1c\u4ea4\u901a\u5927\u5b66\u5427 \u8f6c\u4e13\u4e1a \u89c4\u5b9a-\u81ea2026\u5e743\u67081\u65e5\u8d77\u6267\u884c\uff1a\u8f6c\u4e13\u4e1a\u6bcf\u5e74\u7533\u8bf7\u4e00\u6b21\u3002-2026-05-20]" time="0.001"><failure message="AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'&#10;  &#10;  - kept_both&#10;  + official_newer)">question = '华东交通大学吧 转专业 规定', excerpt = '自2026年3月1日起执行：转专业每年申请一次。'
+posted_at = '2026-05-20'
+
+    @pytest.mark.parametrize("question,excerpt,posted_at", [
+        ("华东交通大学吧 转专业 规定", "2026年最新消息：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", None),
+        ("华东交通大学吧 南区 转专业 规定", "北区自2026年3月1日起执行：转专业每年申请一次。", "2025-05-20"),
+        ("华东交通大学吧 转专业 规定", "自2026年3月1日起执行：转专业每年申请一次。", "2026-05-20"),
+    ])
+    def test_no_proven_supersession_keeps_both(question: str, excerpt: str, posted_at: str | None) -&gt; None:
+        analysis = parse_tieba_request(question)
+        check = _check(excerpt)
+        check = check.model_copy(update={"applicability": evidence.assess_applicability(check, analysis)})
+        conflicts = evidence.detect_conflicts(analysis, [check], [_post(posted_at)])
+&gt;       assert conflicts and conflicts[0].resolution == "kept_both"
+E       AssertionError: assert ([TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...olution=&lt;TiebaConflictResolution.OFFICIAL_NEWER: 'official_newer'&gt;, note='官方规定与吧友经历不一致：官方页面有更晚的生效依据，按新规定呈现，原始经历一并保留。')] and &lt;TiebaConflic...ficial_newer'&gt; == 'kept_both'
+E         
+E         - kept_both
+E         + official_newer)
+
+tests\tieba\test_issue27_acceptance_regressions.py:52: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_matching_negative_statements_are_not_a_conflict" time="0.001"><failure message="AssertionError: assert not [TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...体规定核对。', resolution=&lt;TiebaConflictResolution.KEPT_BOTH: 'kept_both'&gt;, note='官方规定与吧友经历不一致：已按时间与适用范围核对并双方分列，不替任何一方下结论。')]&#10; +  where [TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...体规定核对。', resolution=&lt;TiebaConflictResolution.KEPT_BOTH: 'kept_both'&gt;, note='官方规定与吧友经历不一致：已按时间与适用范围核对并双方分列，不替任何一方下结论。')] = &lt;function detect_conflicts at 0x000001F5AEDFB7E0&gt;(TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None), [TiebaOfficialCheck(title='华东交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetch...status='verified', excerpt='转专业不用缴费。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None)], [TiebaPostProjection(thread_id=None, url='https://tieba.baidu.com/p/123', title='转专业经历', affiliation_evidence='已读取帖子页面...r_code=None, read_error_message=None, retrieved_at=datetime.datetime(2026, 10, 3, 0, 0, tzinfo=datetime.timezone.utc))])&#10; +    where &lt;function detect_conflicts at 0x000001F5AEDFB7E0&gt; = evidence.detect_conflicts">def test_matching_negative_statements_are_not_a_conflict() -&gt; None:
+        analysis = parse_tieba_request("华东交通大学吧 转专业 规定")
+&gt;       assert not evidence.detect_conflicts(analysis, [_check("转专业不用缴费。")], [_post(content="转专业不用缴费。")])
+E       AssertionError: assert not [TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...体规定核对。', resolution=&lt;TiebaConflictResolution.KEPT_BOTH: 'kept_both'&gt;, note='官方规定与吧友经历不一致：已按时间与适用范围核对并双方分列，不替任何一方下结论。')]
+E        +  where [TiebaConflict(topic_terms=['转专业'], official_title='华东交通大学转专业管理办法', official_url='https://jwc.ecjtu.edu.cn/info/1/2.ht...体规定核对。', resolution=&lt;TiebaConflictResolution.KEPT_BOTH: 'kept_both'&gt;, note='官方规定与吧友经历不一致：已按时间与适用范围核对并双方分列，不替任何一方下结论。')] = &lt;function detect_conflicts at 0x000001F5AEDFB7E0&gt;(TiebaQuestionAnalysis(original_question='华东交通大学吧 转专业 规定', topic_terms=['转专业', '规定'], place_or_event=['转专业'], campus_te...], time_requirement=None, time_year=None, needs_official_check=True, official_topics=['转专业', '规定'], clarification=None), [TiebaOfficialCheck(title='华东交通大学转专业管理办法', url='https://jwc.ecjtu.edu.cn/info/1/2.htm', host='jwc.ecjtu.edu.cn', fetch...status='verified', excerpt='转专业不用缴费。', matched_terms=['转专业'], applicability=None, error_code=None, error_message=None)], [TiebaPostProjection(thread_id=None, url='https://tieba.baidu.com/p/123', title='转专业经历', affiliation_evidence='已读取帖子页面...r_code=None, read_error_message=None, retrieved_at=datetime.datetime(2026, 10, 3, 0, 0, tzinfo=datetime.timezone.utc))])
+E        +    where &lt;function detect_conflicts at 0x000001F5AEDFB7E0&gt; = evidence.detect_conflicts
+
+tests\tieba\test_issue27_acceptance_regressions.py:57: AssertionError</failure></testcase><testcase classname="tests.tieba.test_issue27_acceptance_regressions" name="test_changed_reply_date_is_rejected_by_verification" time="0.001"><failure message="AssertionError: assert not True&#10; +  where True = TiebaVerification(contract_version='tieba-verification-v1', attribution_consistent=True, read_scope_consistent=True, u... official_scope_consistent=True, conflicts_disclosed=True, summary='核验通过：归属、读取范围、官方适用范围与冲突披露都与真实产物一致。', unconfirmed=[]).read_scope_consistent">def test_changed_reply_date_is_rejected_by_verification() -&gt; None:
+        analysis = parse_tieba_request("华东交通大学吧 转专业 规定")
+        post = _post()
+        projected = post.model_copy(update={"replies": [post.replies[0].model_copy(update={"posted_at": "2020-01-01"})]})
+        projection = evidence.build_projection(
+            analysis=analysis, records=[], confirmed=[projected], rejected=[], unconfirmed=[],
+            sections=[], time_filter=evidence.time_filter_state(analysis, [post]), official_checks=[],
+        ).model_copy(update={"official_unverified_note": "规定未核实。"})
+        verification = run_verification(analysis, build_evidence_plan(analysis, official_blocked_reason=None), projection, [], [post])
+&gt;       assert not verification.read_scope_consistent
+E       AssertionError: assert not True
+E        +  where True = TiebaVerification(contract_version='tieba-verification-v1', attribution_consistent=True, read_scope_consistent=True, u... official_scope_consistent=True, conflicts_disclosed=True, summary='核验通过：归属、读取范围、官方适用范围与冲突披露都与真实产物一致。', unconfirmed=[]).read_scope_consistent
+
+tests\tieba\test_issue27_acceptance_regressions.py:69: AssertionError</failure></testcase></testsuite></testsuites>
