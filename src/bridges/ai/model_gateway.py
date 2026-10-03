@@ -837,9 +837,7 @@ class ModelGateway:
                 return blocked, blocked.lock
             # Issue 06 第七轮：按剩余预算截断单次调用超时（单一预算常量
             # 来源），经保留载荷键透传给适配器的 HTTP 客户端；未传入预算
-            # 时不注入（适配器使用默认超时）。调用方已按实测为慢能力声明
-            # 单次超时（如整页书页图片调用）时不覆盖：预算仍经调用登记/
-            # 重试门/总截止约束。
+            # 时不注入（适配器使用默认超时）；显式超时同样不能越过剩余预算。
             call_payload = _payload_with_budget_timeout(payload, budget)
             attempt_began = time.monotonic()
             try:
@@ -1237,14 +1235,14 @@ def _capability_call_key(capability: CapabilityRecord) -> str:
 def _payload_with_budget_timeout(
     payload: dict[str, Any], budget: RunBudget | None
 ) -> dict[str, Any]:
-    """未声明单次超时时注入预算截断后的超时。
-
-    调用方已按实测为慢能力声明单次超时（如整页书页图片调用）时不覆盖：
-    预算仍经调用登记/重试门/总截止约束。
-    """
-    if budget is None or REQUEST_TIMEOUT_SECONDS_KEY in payload:
+    """所有单次超时受运行剩余预算截断，显式值只能进一步缩短窗口。"""
+    if budget is None:
         return payload
-    return {**payload, REQUEST_TIMEOUT_SECONDS_KEY: budget.model_call_timeout_ms() / 1000}
+    timeout_seconds = budget.model_call_timeout_ms() / 1000
+    explicit = payload.get(REQUEST_TIMEOUT_SECONDS_KEY)
+    if isinstance(explicit, (int, float)) and explicit > 0:
+        timeout_seconds = min(timeout_seconds, explicit)
+    return {**payload, REQUEST_TIMEOUT_SECONDS_KEY: timeout_seconds}
 
 
 def _transient_retry_permitted(

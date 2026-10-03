@@ -49,7 +49,7 @@ from bridges.kernel.registry import RecipeRegistry
 
 #: 书页识别协议版本：页内容指纹之外的识别合同（提示词、双路径、关键
 #: 符号规则）变化时递增，旧产物按输入键自然不被复用。
-STUDY_RECOGNITION_PROTOCOL_VERSION = "study-recognition-v2"
+STUDY_RECOGNITION_PROTOCOL_VERSION = "study-recognition-v3"
 
 #: 节点名（进度事件、失败定位、产物身份与质量门）。
 NODE_VALIDATE_PAGES = "study.validate_pages"
@@ -133,17 +133,19 @@ def critical_doubt_kinds(text: str) -> tuple[str, ...]:
 
 
 def _normalized(text: str) -> str:
-    """去空白并统一大小写，用于双路径文本核对（不改变原文语义）。"""
-    return re.sub(r"\s+", "", text).casefold()
+    """只去空白；变量与单位大小写属于原文语义。"""
+    return re.sub(r"\s+", "", text)
 
 
 def _paths_agree(vision_text: str, ocr_text: str) -> bool:
-    """视觉片段是否在 OCR 文本中有对应内容（双向包含，去空白核对）。"""
+    """完整视觉片段是否在 OCR 中按符号边界出现；短 OCR 不能证明长公式。"""
     vision = _normalized(vision_text)
     ocr = _normalized(ocr_text)
     if not vision or not ocr:
         return False
-    return vision in ocr or ocr in vision
+    boundary = r"[A-Za-z0-9_^²³¹⁰-⁹₀-₉]"
+    pattern = r"(?<!" + boundary + ")" + re.escape(vision) + r"(?!" + boundary + ")"
+    return re.search(pattern, ocr) is not None
 
 
 class _RecognizedFragment(BaseModel):
@@ -648,14 +650,15 @@ class StudyPageNodeFlow:
                 )
             )
 
-        # 3) 双路径不一致：关键符号片段的视觉原文在 OCR 文本中找不到对应
-        #    内容时，即使模型自报高置信也保持待补充（模型一致/自报置信
-        #    不是正确保证；只有两路文本一致才不额外标疑点）。
+        # 3) 关键片段及公式/图表均核对完整原文，避免视觉遗漏负号后
+        #    因不再命中关键符号而免检。两路不一致时高置信也不能放行。
         for fragment in fragments:
             text = str(fragment.get("text", ""))
             kinds = critical_symbol_kinds(text)
-            if not kinds:
+            if not kinds and fragment.get("kind") not in {"formula", "chart"}:
                 continue
+            if not kinds:
+                kinds = ("公式/图表",)
             if _paths_agree(text, ocr_text):
                 continue
             position = str(fragment.get("position", "")) or "未知位置"
@@ -947,6 +950,10 @@ class StudyPageRecognition:
             # 关键页记录都按最终页序定位，不能使用回调前的临时对象。
             page = on_page(page)
             pages.append(page)
+            flow.set_prior_fragments([
+                *prior_fragments,
+                *(fragment for recognized_page in pages for fragment in recognized_page.fragments),
+            ])
 
         fix_message = ""
         if any(page.unclear for page in pages):

@@ -17,6 +17,7 @@ import base64
 import json
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai.payload_budget import estimate_payload_tokens
@@ -61,10 +62,14 @@ def test_direct_photo_payload_is_charged_to_payload_budget() -> None:
 
 
 def test_dual_path_agreement_requires_literal_correspondence() -> None:
-    """双路径核对只看两路文字是否互相包含，不引入相似度猜测。"""
+    """双路径核对要求完整片段和符号边界一致，不引入相似度猜测。"""
     assert _paths_agree("x^2", "计算 x^2 的值")
     assert not _paths_agree("x^2", "计算 x3 的值")
     assert not _paths_agree("x^2", "")
+    assert not _paths_agree("x^2", "x")
+    assert not _paths_agree("I=1 mA", "I=1 MA")
+    assert not _paths_agree("x^2", "x^20")
+    assert not _paths_agree("y=x", "y=-x")
 
 
 class _CriticalPageGateway(StudyGateway):
@@ -216,12 +221,15 @@ def test_dual_path_mismatch_is_critical_even_with_high_confidence(
         assert "上下标" in mismatch[0]["reason"]
 
 
+@pytest.mark.parametrize("declared_unclear", [False, True])
 def test_user_supplement_is_labeled_and_resolves_critical_doubt(
-    tmp_path: Any, monkeypatch: Any
+    tmp_path: Any, monkeypatch: Any, declared_unclear: bool
 ) -> None:
     """用户文字补录标为用户来源，命中疑点后进入辅导并保留原文与解释分字段。"""
     app = _app(tmp_path, monkeypatch)
-    app.state.chat_service._gateway = _CriticalPageGateway(text="x^2")
+    app.state.chat_service._gateway = _CriticalPageGateway(
+        text="x^2", declared_unclear=declared_unclear
+    )
     with TestClient(app) as client:
         _register(client, "study30supplement")
         draft = _upload_draft(client, upload_id="study30-supplement").json()
@@ -324,6 +332,7 @@ def _upload_pages(client: TestClient, tags: list[bytes], prefix: str) -> list[st
     return [
         _upload_draft(
             client,
+            filename=f"{prefix}-{index}.png",
             upload_id=f"{prefix}-{index}",
             content=PNG_BYTES + tag,
         ).json()["object_id"]
@@ -573,3 +582,178 @@ def test_lease_transfer_rejects_stale_commit(
             " WHERE node = 'study.recognize_page' AND status = 'completed'"
         ).fetchone()[0]
         assert completed == 0
+
+
+@pytest.mark.parametrize(
+    ("vision_text", "ocr_text"),
+    [("y=x", "y=-x"), ("I=1 mA", "I=1 MA"), ("x^2", "x"), ("x^2", "x^20")],
+)
+def test_formula_disagreement_never_publishes_questions(
+    tmp_path: Any, monkeypatch: Any, vision_text: str, ocr_text: str
+) -> None:
+    """符号遗漏、单位大小写、OCR 缺文和数字前缀均不能被高置信放行。"""
+    app = _app(tmp_path, monkeypatch)
+    gateway = _CriticalPageGateway(text=vision_text)
+    original = gateway.invoke
+
+    def invoke(capability: str, *args: Any, **kwargs: Any) -> ModelCallResult:
+        if capability == "qwen_ocr":
+            return ModelCallResult(
+                status=ModelCallStatus.SUCCESS, output={"content": ocr_text}
+            )
+        return original(capability, *args, **kwargs)
+
+    monkeypatch.setattr(gateway, "invoke", invoke)
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "study30mismatch")
+        draft = _upload_draft(client, upload_id="study30-mismatch").json()
+        first = _first(client, [draft["object_id"]], "study30-mismatch-first")
+        conversation_id = _conversation_id(first)
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["stage"] == "awaiting_pages"
+        assert study["units"] == [] and study["questions"] == []
+        assert any(issue["critical"] for issue in study["pages"][0]["unclear"])
+
+
+@pytest.mark.parametrize("start_with_tutoring", [False, True])
+def test_second_budget_batch_keeps_all_pending_pages(
+    tmp_path: Any, monkeypatch: Any, start_with_tutoring: bool
+) -> None:
+    """初始识别和辅导后追加均保存跨批次未处理页，随后逐批重试。"""
+    app = _app(tmp_path, monkeypatch)
+    gateway = _RecordingGateway()
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "study30batches")
+        initial = _upload_pages(client, [b"-initial"], "study30-initial")
+        first = _first(client, initial, "study30-batches-first")
+        conversation_id = _conversation_id(first)
+        if start_with_tutoring:
+            app.state.generation_executor.run_tick()
+            projection = client.get(f"/chat/conversations/{conversation_id}").json()
+            assert projection["study"]["stage"] == "tutoring"
+        else:
+            # 首轮先完成，接下来独立会话验证初始预算路径。
+            app.state.generation_executor.run_tick()
+            batch = _upload_pages(client, [f"-a{i}".encode() for i in range(5)], "study30-a")
+            first = _first(client, batch, "study30-batches-other")
+            conversation_id = _conversation_id(first)
+        if start_with_tutoring:
+            batch = _upload_pages(client, [f"-a{i}".encode() for i in range(5)], "study30-a")
+            response = client.post(f"/chat/conversations/{conversation_id}/messages", json={
+                "content": "", "attachment_ids": batch, "idempotency_key": "study30-add-a"
+            })
+            assert response.status_code == 200
+        app.state.generation_executor.run_tick()
+        failed_a = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert failed_a["study"]["pending_object_ids"] == [batch[-1]]
+        extra = _upload_pages(client, [f"-b{i}".encode() for i in range(5)], "study30-b")
+        response = client.post(f"/chat/conversations/{conversation_id}/messages", json={
+            "content": "", "attachment_ids": extra, "idempotency_key": "study30-add-b"
+        })
+        assert response.status_code == 200
+        app.state.generation_executor.run_tick()
+        failed_b = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert failed_b["study"]["pending_object_ids"] == [batch[-1], extra[-1]]
+        for index, message in enumerate([failed_a["messages"][-1], failed_b["messages"][-1]]):
+            retry = client.post(
+                f"/chat/conversations/{conversation_id}/messages/{message['message_id']}/retry",
+                json={"idempotency_key": f"study30-batches-retry-{index}"},
+            )
+            assert retry.status_code == 200, retry.text
+            app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert study["pending_object_ids"] == []
+        assert study["stage"] == "tutoring" and study["page_update"] is None
+        assert {*batch, *extra} <= {page["object_id"] for page in study["pages"]}
+
+
+def test_duplicate_photos_in_one_batch_are_recognized_once(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """同一批相同内容的不同附件只识别一次，页序不留空洞。"""
+    app = _app(tmp_path, monkeypatch)
+    gateway = _RecordingGateway()
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "study30dedupe")
+        pages = _upload_pages(client, [b"-same", b"-same", b"-other"], "study30-dedupe")
+        first = _first(client, pages, "study30-dedupe-first")
+        conversation_id = _conversation_id(first)
+        app.state.generation_executor.run_tick()
+        study = client.get(f"/chat/conversations/{conversation_id}").json()["study"]
+        assert [page["ordinal"] for page in study["pages"]] == [1, 2]
+        assert gateway.ocr_calls_for(b"-same") == 1
+
+
+def test_later_page_in_batch_receives_prior_section_evidence(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """首批第二页同节核对使用已经识别的第一页片段。"""
+    app = _app(tmp_path, monkeypatch)
+    gateway = _RecordingGateway()
+    original = gateway.invoke
+    prior_inputs: list[list[Any]] = []
+
+    def invoke(capability: str, *args: Any, **kwargs: Any) -> ModelCallResult:
+        if capability == "qwen_vision":
+            payload = kwargs["payload"]
+            prior_text = payload["prompt"].split("后续页是否同一小节参考既有片段：", 1)[1]
+            prior = json.loads(prior_text.split("；独立 OCR", 1)[0])
+            prior_inputs.append(prior)
+        return original(capability, *args, **kwargs)
+
+    monkeypatch.setattr(gateway, "invoke", invoke)
+    app.state.chat_service._gateway = gateway
+    with TestClient(app) as client:
+        _register(client, "study30section")
+        pages = _upload_pages(client, [b"-first", b"-second"], "study30-section")
+        first = _first(client, pages, "study30-section-first")
+        _conversation_id(first)
+        app.state.generation_executor.run_tick()
+        assert prior_inputs[0] == []
+        assert prior_inputs[1][0]["text"] == "y=ax+b"
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_late_material_commit_is_guarded_after_node_receipt(
+    tmp_path: Any, monkeypatch: Any, cancel: bool
+) -> None:
+    """收据提交之后、领域材料写入之前转移租约/停止，不能写入有效材料。"""
+    from bridges.study.kernel import StudyPageRecognition
+
+    app = _app(tmp_path, monkeypatch)
+    app.state.chat_service._gateway = StudyGateway()
+    original = StudyPageRecognition._build_page
+    with TestClient(app) as client:
+        account = _register(client, "study30late")
+        draft = _upload_draft(client, upload_id="study30-late").json()
+        first = _first(client, [draft["object_id"]], "study30-late-first")
+        conversation_id = _conversation_id(first)
+        assistant_id = first.json()["assistant_message"]["message_id"]
+        run = app.state.chat_service._repo.get_run_by_message(account["id"], assistant_id)
+        assert run is not None
+
+        def build_page(self: Any, *args: Any) -> Any:
+            page = original(self, *args)
+            if cancel:
+                assert client.post(
+                    f"/chat/conversations/{conversation_id}/messages/{assistant_id}/stop"
+                ).status_code == 200
+            else:
+                database = app.state.bridges_database
+                with database.transaction():
+                    database.connection.execute(
+                        "UPDATE generation_runs SET lease_owner = 'other-worker' WHERE run_id = ?",
+                        (run.run_id,),
+                    )
+            return page
+
+        monkeypatch.setattr(StudyPageRecognition, "_build_page", build_page)
+        app.state.generation_executor.run_tick()
+        projection = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert projection["study"]["pages"] == []
+        assert projection["study"]["questions"] == []
+        assert projection["messages"][-1]["status"] == ("stopped" if cancel else "error")

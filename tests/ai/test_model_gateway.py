@@ -346,3 +346,28 @@ def test_retry_stays_on_same_capability_when_no_fallback_configured() -> None:
     assert result.lock is not None
     assert result.lock.fallback_path == ["primary@1"]
     assert result.lock.capability_name == "primary"
+
+
+@pytest.mark.parametrize("explicit_seconds", [180.0, 0.5])
+def test_explicit_timeout_cannot_exceed_run_budget(explicit_seconds: float) -> None:
+    """正式网关传给适配器的显式超时受整轮剩余预算约束。"""
+    from bridges.chat.budget import RunBudget
+
+    registry = CapabilityRegistry()
+    registry.register(_cap("primary"))
+    gateway = ModelGateway(registry)
+    captured: dict[str, Any] = {}
+
+    class Adapter:
+        def call(self, capability: Any, context: Any, payload: dict[str, Any]) -> AdapterResult:
+            captured.update(payload)
+            return _success_result("primary-model")
+
+    gateway.register_adapter("primary", "1", Adapter())
+    budget = RunBudget("run-1", total_ms=5000)
+    result = gateway.invoke(
+        "primary", "1", _context(),
+        payload={"request_timeout_seconds": explicit_seconds}, budget=budget,
+    )
+    assert result.status is ModelCallStatus.SUCCESS
+    assert 0 < captured["request_timeout_seconds"] <= min(4.0, explicit_seconds)

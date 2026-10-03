@@ -220,15 +220,30 @@ class StudyWorkflow:
             state.units = state.page_update.units
             state.wait_reason = state.page_update.wait_reason
 
-        def save_state() -> None:
+        material_guard = RunCommitGuard(
+            self._repo,
+            account_id=run.account_id,
+            run_id=run.run_id,
+            conversation_id=run.conversation_id,
+            assistant_message_id=run.assistant_message_id,
+            stop_event=stop_event,
+        )
+        material_guard.capture()
+
+        def save_state_in_transaction() -> None:
             if updating:
                 pending = committed.model_copy(deep=True)
+                pending.pending_object_ids = list(state.pending_object_ids)
                 pending.page_update = StudyPageUpdate(
                     pages=state.pages, units=state.units, wait_reason=state.wait_reason,
                 )
-                self._states.save(run.account_id, run.conversation_id, pending)
+                self._states.save_in_transaction(run.account_id, run.conversation_id, pending)
             else:
-                self._states.save(run.account_id, run.conversation_id, state)
+                self._states.save_in_transaction(run.account_id, run.conversation_id, state)
+
+        def save_state() -> None:
+            with self._repo.database.transaction():
+                save_state_in_transaction()
 
         def run_node(name: str, body: Callable[[], _NodeResult]) -> _NodeResult:
             """报告真实开始的节点、检查停止信号，并记录节点耗时。"""
@@ -291,8 +306,7 @@ class StudyWorkflow:
                     ],
                 }
             if capability in {"qwen_ocr", "qwen_vision"}:
-                # 整页图片调用按实测耗时给足超时（见常量说明）；网关对
-                # 显式声明的单次超时不覆盖，预算仍经调用登记与重试门约束。
+                # 图片能力声明单次上限；网关仍按运行剩余预算截断。
                 payload = {
                     **payload,
                     REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
@@ -434,15 +448,17 @@ class StudyWorkflow:
                                             if issue.reason != "疑似不同小节，请确认或在新对话上传"]
                             save_state()
             known_before = frozenset(page.content_hash for page in state.pages)
+            seen_hashes = set(known_before)
             candidates: list[StudyPageCandidate] = []
             plans: dict[str, tuple[int, list[str]]] = {}
             next_ordinal = len(state.pages) + 1
             unresolved_open = [page for page in state.pages if page.unclear]
             for attachment in attachments:
-                if attachment.content_hash in known_before:
+                if attachment.content_hash in seen_hashes:
                     duplicates += 1
                     duplicate_count += 1
                     continue
+                seen_hashes.add(attachment.content_hash)
                 target_match = re.search(r"补拍第\s*(\d+)\s*页", user.content)
                 replacement = (
                     next(
@@ -520,7 +536,17 @@ class StudyWorkflow:
                         state.pages.append(page)
                     known.add(page.content_hash)
                     added += 1
-                    save_state()
+                    # 节点收据完成后到领域材料提交之间仍可能停止/转移租约。
+                    # 复用本轮固定快照，在领域写事务内再次守卫。
+                    with self._repo.database.transaction():
+                        decision = material_guard.verify()
+                        if not decision.ok:
+                            raise StudyWorkflowError(
+                                NODE_RECOGNIZE_PAGE,
+                                "stopped" if decision.code == "run_stopped" else decision.code,
+                                decision.message,
+                            )
+                        save_state_in_transaction()
                     return page
 
                 try:
@@ -544,7 +570,12 @@ class StudyWorkflow:
                 if outcome.pending_object_ids:
                     # 预算/批量限制：已完成页保留，未处理页仍是待处理，
                     # 不进入映射/预习，也不宣布整节已读。
-                    state.pending_object_ids = list(outcome.pending_object_ids)
+                    recognized_ids = {page.object_id for page in state.pages}
+                    state.pending_object_ids = list(dict.fromkeys(
+                        object_id
+                        for object_id in [*state.pending_object_ids, *outcome.pending_object_ids]
+                        if object_id not in recognized_ids
+                    ))
                     save_state()
                     raise StudyWorkflowError(
                         NODE_RECOGNIZE_PAGE,
@@ -581,9 +612,10 @@ class StudyWorkflow:
                             for issue in supplement_page.unclear
                             if issue.position in user.content
                         ]
+                        positions = {issue.position for issue in matches}
                         supplement = (
                             user.content.split(matches[0].position, 1)[1].strip()
-                            if len(matches) == 1 else ""
+                            if len(positions) == 1 else ""
                         )
                         if re.fullmatch(
                             r"(?:[:：]|[^？?。\n]*[是为])\s*\S.*", supplement, flags=re.DOTALL,
@@ -603,7 +635,10 @@ class StudyWorkflow:
                                     recognition_path="user",
                                 )
                             )
-                            supplement_page.unclear.remove(issue)
+                            supplement_page.unclear = [
+                                doubt for doubt in supplement_page.unclear
+                                if doubt.position != issue.position
+                            ]
                             supplemented = True
                             save_state()
             unresolved = [page for page in state.pages if page.unclear]
@@ -950,7 +985,10 @@ class StudyWorkflow:
             )
             return None
         except StudyWorkflowError as exc:
-            if updating and _is_recognition_node(current_node):
+            if updating and _is_recognition_node(current_node) and exc.code not in {
+                "stopped", "lease_lost", "lease_expired", "run_terminal", "run_missing",
+                "message_terminal", "message_missing", "task_version_changed",
+            }:
                 state.wait_reason = "recognition_failed"
                 save_state()
             message_status = (
