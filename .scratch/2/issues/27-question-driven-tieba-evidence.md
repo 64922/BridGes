@@ -40,15 +40,55 @@
 
 ## 验收标准
 
-- [ ] 规定/体验/混合三类执行顺序和来源范围符合目标，独立两路共享预算。
-- [ ] 仅标题/摘要时不总结未读回复、不称共识。
-- [ ] 官方与帖子冲突按时间/范围检查并如实分列，官方域名不自动放行。
-- [ ] 只查贴吧限制不被核验节点绕过，访问不可得按真实层次降级。
-- [ ] 来源归属、日期、楼层、读取范围与最终引用一致，恢复不重复有效取证。
+- [x] 规定/体验/混合三类执行顺序和来源范围符合目标，独立两路共享预算。
+- [x] 仅标题/摘要时不总结未读回复、不称共识。
+- [x] 官方与帖子冲突按时间/范围检查并如实分列，官方域名不自动放行。
+- [x] 只查贴吧限制不被核验节点绕过，访问不可得按真实层次降级。
+- [x] 来源归属、日期、楼层、读取范围与最终引用一致，恢复不重复有效取证。
 
 ## 验证与交付证据
 
 覆盖 A14–A15 和只查贴吧/官方失效场景；真实回复/官方可得性在 42。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+### 2026-10-03：实现与验证（待独立验收）
+
+实施提交：`5a960f3d`（实现 + 测试 + 生成契约），分支 `codex/27-question-driven-tieba-evidence`（worktree 同号，基于 main `68357a20`）。前置 10/12/15/21 已按实际接口检查：内核持久节点/收据/守卫、主理解混合入口与任务关系、`module_task_context`、表达模板均已在 main 落地并被本票消费。
+
+**节点与配方**
+
+- 登记 7 节点 `tieba.parse → tieba.plan → tieba.verify_official → tieba.search → tieba.read → tieba.synthesize → tieba.verify`（`tieba-research` / `tieba-recipe-v1`，能力版本 tieba-parse-v2…verify-v2）；四个代码质量门 `tieba.attribution_evidence`、`tieba.read_scope_fidelity`、`tieba.official_scope`、`tieba.conflict_disclosure`，`tieba.verify` 的判定由 `_recomputed_verification` 从依赖产物重算，不接受模型自宣。
+- 分类只由确定性词表判定：命中官方触发词且含体验信号为混合，仅官方触发为规定，其余体验。规定类官方先行（`official_query` → `official_fallback_query`，逐页适用性核对），体验类不追加官方核验，混合类两路独立。执行采用**串行**（官方子路径先于贴吧子路径）并共享同一条运行账本；工单措辞「可并行」为许可，串行换取确定的查询顺序与可测恢复，`parallel_evidence` 因而恒为 False（计划文本明示两路独立、共享同一运行预算）。
+
+**只查贴吧与官方适用性**
+
+- graph 在派发前从 `run.config.understanding` 读取 `SOURCE_RESTRICTION`（贴吧/吧里/吧内），向服务传 `TIEBA_ONLY_OFFICIAL_BLOCKED`；verify_official 在阻断下零外部调用并保留 `official_blocked_reason` 与未核实说明，来源限制不能被核验节点绕过。
+- 官方域名不自动放行：逐页核对主体（命中名词）、点名校区、用途与日期（版本）；页面未点名问题中的校区时 `applicability.applicable=False` 并给出 `official_unverified_note`。
+- 冲突只在该官方摘录与真实回复共享名词且回复有相反说法时成立；按时间与适用范围给出 `OFFICIAL_NEWER`（仅在官方含生效/修订表述且年份不早于帖子）或 `KEPT_BOTH`，双方分列，不做多数表决、不让经历自动推翻规定。
+
+**降级、呈现与恢复**
+
+- 仅标题/摘要不进入确认结果与分段：确认依据只有真的读到帖子页面；未读页面按访问受限/超上限等真实层次降级为候选帖链并写明原因；分段引文必须能回溯到已读回复，模板文字不得出现「普遍认为」类共识表述。
+- 恢复不重复有效取证：search/read/verify_official 产物持久化在 `NodeKernelRepository`，`_resume_payload` 按 input_key、能力版本与 `partial` 标志续用已完成查询、已读页面与已抓官方页面（官方发现查询会重跑以补未抓候选，但已抓页面不再重复抓取）。提交守卫内的终态经 `finalize_message` 并入同一事务写入。
+
+**接口/合同变化**
+
+- `TiebaQuestionKind` + `KIND_LABELS`、`TiebaEvidenceRoute`、`TiebaEvidencePlan`、`TiebaOfficialApplicability`、`TiebaConflictResolution`/`TiebaConflictPostRef`/`TiebaConflict`、`TiebaVerification`；`TiebaQuestionAnalysis` 新增 `campus_terms`/`question_kind`/`experience_signals`；`TiebaOfficialCheck` 新增 `applicability`；`TiebaResearchProjection` 新增 `question_kind`/`campus_terms`/`source_priority`/`parallel_evidence`/`plan_rationale`/`official_blocked_reason`/`official_unverified_note`/`conflicts`/`verification`（全部带默认值，旧数据可读）。
+- 无数据库迁移：贴吧投影仍存在既有消息 JSON 列，`SCHEMA_VERSION` 保持 68；新增持久状态即节点产物/收据，生命周期由既有内核仓库与提交守卫承担。
+- `openapi.json` 与 `packages/contracts/src/generated.ts` 已重新生成（311 paths）。重生成同时对齐了 main 上原有的 paper/resources 契约漂移；`tests/contracts/test_openapi_sync.py` 由基线失败转为 2 passed。前端卡片未改动，新字段由生成类型携带，正式呈现由 38 验收。
+
+**验证**（conda `agent`，Python 3.11.15）
+
+- `tests/tieba`：**76 passed / 2 failed**；两个失败（`test_plain_chat_suggests_tieba_without_searching`、`test_other_modules_still_rejected_and_no_silent_search`）在 main 基线逐项复现（本环境普通聊天路由基线）。
+- 新增 `tests/tieba/test_improvement27_question_driven.py` 9 项：规定/体验/混合顺序与来源范围、运行账本共享（同一 run 行 4 次外部调用、active 归零）、只查贴吧阻断（零官方抓取且未核实）、官方未点名校区不适用、冲突按时间/范围两种裁决、仅帖链不总结未读回复、恢复复用检索/读取/官方页面。
+- `tests/chat tests/kernel tests/contracts`：1165 passed / 50 failed；50 项与 main 基线逐名一致（career/selections/MCP/attachment/openapi 等既有环境失败），无新增失败。
+- `tests/api tests/tasks tests/commute tests/github tests/resources`：421 passed / 1 failed（`test_plain_chat_without_the_module_never_starts_github`，在 main 复现）。
+- 静态：ruff 变更文件全部通过（其余既有告警与 main 一致）；`mypy src/bridges/tieba --no-incremental` 22 errors / 10 files，与 main 该命令完全一致，tieba 文件 0 error。
+
+**已知限制**
+
+- 真实检索、官方页面可得性与真实模型体验不在本票证明范围，由 42 评测；本票只证明确定性机制与真实产物一致性。
+- 官方恢复轮会重跑发现查询（不重抓已取页面），比贴吧检索/读取的「已完成即跳过」保守；如需彻底免重跑需在产物中持久化候选清单，留待后续按需处理。
+- 普通聊天的两个 tieba 基线失败与本环境相关，未在本票修复；不改变账户隔离、模式固定、附件/知识库分域与历史可读/导出。
 
