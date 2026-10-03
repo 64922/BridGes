@@ -62,6 +62,15 @@ _YEARS_BACK = re.compile(r"近\s*([一二三四五六七八九十\d]+)\s*年")
 _WHITESPACE = re.compile(r"\s+")
 _CJK = re.compile(r"[\u4e00-\u9fff]")
 _LATIN_ONLY = re.compile(r"[a-z0-9 ]+")
+_ARXIV_ID = re.compile(r"(?:arxiv(?:\.org/(?:abs|pdf)/|\s*[:：]?\s*))"
+    r"([a-z-]+/\d{7}|\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
+#: 无 ``arxiv`` 前缀的裸标识（仅在原文确实提到 arXiv 时启用，避免误抓数字）。
+_ARXIV_ID_BARE = re.compile(r"\b([a-z-]+/\d{7}|\d{4}\.\d{4,5}(?:v\d+)?)\b")
+_PAPER_TITLE = re.compile(r"《([^》]+)》")
+#: 明确标注“标题/题目/paper”的引号标题（与主题引号区分）。
+_PAPER_TITLE_QUOTED = re.compile(
+    r"(?:标题|题目|论文名)\s*(?:是|为|：|:)?\s*[“\"「『']([^”\"」』']{2,120})[”\"」』']"
+)
 
 #: 语境候选的稳定顺序（平局时的确定性依据）。
 _CONTEXT_ORDER: tuple[str, ...] = tuple(
@@ -113,6 +122,32 @@ def parse_paper_request(
             hint in text.lower() for hint in (*SURVEY_HINTS, "原创", "研究论文")
         ):
             parsed.constraints.prefer_survey = _parse_intent(condition.text.lower())[1]
+        elif condition.kind in {"source", "allowed_source", "excluded_source", "paper"}:
+            saved = _parse_constraints(condition.text, now=current)
+            if not parsed.constraints.allowed_sources:
+                parsed.constraints.allowed_sources = saved.allowed_sources
+            parsed.constraints.excluded_sources = list(dict.fromkeys(
+                [*parsed.constraints.excluded_sources, *saved.excluded_sources]
+            ))
+            parsed.constraints.arxiv_id = parsed.constraints.arxiv_id or saved.arxiv_id
+            parsed.constraints.paper_title = parsed.constraints.paper_title or saved.paper_title
+    if parsed.constraints.arxiv_id:
+        parsed.final_query = f"id:{parsed.constraints.arxiv_id}"
+        parsed.original_phrase = parsed.constraints.arxiv_id
+        parsed.expansions = []
+        parsed.clarification = None
+    elif parsed.constraints.paper_title:
+        parsed.final_query = parsed.constraints.paper_title
+        parsed.original_phrase = parsed.constraints.paper_title
+        parsed.expansions = []
+        parsed.clarification = None
+    allowed = parsed.constraints.allowed_sources
+    if (allowed and "arxiv" not in allowed) or "arxiv" in parsed.constraints.excluded_sources:
+        parsed.clarification = PaperClarification(
+            missing="source", original_phrase=text,
+            question="本模块已登记的候选检索来源是 arXiv；Crossref/OpenAlex 仅支持元数据补充。"
+            "你限定的来源没有可用的候选检索适配器，请选择可用来源或调整来源限制。",
+        )
     return parsed
 
 
@@ -511,11 +546,27 @@ def _parse_constraints(text: str, *, now: datetime) -> PaperConstraints:
     lowered = text.lower()
     year_from, year_to = _parse_years(text, now=now)
     sort_intent, prefer_survey = _parse_intent(lowered)
+    allowed: list[str] = []
+    excluded: list[str] = []
+    for clause in re.split(r"[，。；;,]|(?:但|不过)", lowered):
+        sources = [name for name in ("arxiv", "crossref", "openalex") if name in clause]
+        if re.search(r"不要|不用|禁止|排除|不查|别查|不使用|without|exclude|avoid", clause):
+            excluded.extend(sources)
+        elif re.search(r"仅|只|限定|来源为|来源是|only|from", clause):
+            allowed.extend(sources)
+    identity = _ARXIV_ID.search(text)
+    if identity is None and "arxiv" in lowered:
+        identity = _ARXIV_ID_BARE.search(text)
+    title = _PAPER_TITLE.search(text) or _PAPER_TITLE_QUOTED.search(text)
     return PaperConstraints(
         year_from=year_from,
         year_to=year_to,
         sort_intent=sort_intent,
         prefer_survey=prefer_survey,
+        arxiv_id=identity.group(1) if identity else None,
+        paper_title=title.group(1).strip() if title else None,
+        allowed_sources=list(dict.fromkeys(allowed)),
+        excluded_sources=list(dict.fromkeys(excluded)),
     )
 
 

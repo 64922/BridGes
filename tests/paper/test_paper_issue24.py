@@ -404,6 +404,12 @@ class _BudgetLedger:
     def record_external_call_result(self, **kwargs: Any) -> None:
         del kwargs
 
+    def begin_adjustment(self, **kwargs: Any) -> bool:
+        return self.allowed
+
+    def end_adjustment(self, **kwargs: Any) -> None:
+        del kwargs
+
 
 def test_search_budget_refusal_fails_explicitly(tmp_path: Path) -> None:
     """首次检索就被预算拒绝：报 run_budget_exhausted，不发起真实检索。"""
@@ -523,7 +529,15 @@ class _SummaryGateway:
             status=ModelCallStatus.SUCCESS,
             output={
                 "summaries": [
-                    {"arxiv_id": "2301.00774", "summary_zh": "综述概述测试。"}
+                    {
+                        "arxiv_id": "2301.00774",
+                        "summary_zh": "综述概述测试。",
+                        "evidence_source": "abstract",
+                        "evidence_quote": (
+                            "This survey reviews the attention mechanism "
+                            "in transformer models."
+                        ),
+                    }
                 ]
             },
         )

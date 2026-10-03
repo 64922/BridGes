@@ -58,6 +58,7 @@ def rank_candidates(
     metadata: dict[str, EnrichedMetadata],
     *,
     target_count: int = DEFAULT_TARGET_COUNT,
+    evidence_matches: dict[str, list[str]] | None = None,
 ) -> RankOutcome:
     """核对主题匹配后排序；核对的词必须能在标题/摘要里真的找到。
 
@@ -73,6 +74,12 @@ def rank_candidates(
     seen: set[str] = set()
     for candidate in candidates:
         if candidate.arxiv_id in seen:
+            continue
+        if evidence_matches is not None:
+            matches = evidence_matches.get(candidate.arxiv_id)
+            if matches:
+                seen.add(candidate.arxiv_id)
+                matched.append((candidate, matches))
             continue
         matched_primary = matched_keywords(candidate, [primary]) if primary else []
         if not matched_primary:
@@ -183,6 +190,8 @@ def cover_original_phrase(
     if not primary:
         return False
     for item in recommendations:
+        if item.match_evidence:
+            return True
         haystack = f"{item.title} {item.match_basis}".lower()
         if primary in haystack or all(
             word in haystack for word in _WORD.findall(primary)

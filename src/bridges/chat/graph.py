@@ -635,6 +635,9 @@ def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
             manifest_sink=lambda manifest: deps.service.audit_module_manifest(
                 run, "paper.summarize", manifest
             ),
+            assessment_manifest_sink=lambda manifest: deps.service.audit_module_manifest(
+                run, "paper.assess", manifest
+            ),
             writing_policy=(run.config or {}).get("global_writing_policy"),
         )
     except PaperSupersededError as error:

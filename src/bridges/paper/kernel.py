@@ -69,6 +69,8 @@ from bridges.paper.screening import (
     screen_candidates,
 )
 from bridges.paper.sources import (
+    CROSSREF_SOURCE,
+    OPENALEX_SOURCE,
     CandidateSearchOutcome,
     EnrichedMetadata,
     EnrichOutcome,
@@ -87,7 +89,7 @@ NODE_EVALUATE = "paper.evaluate"
 NODE_VERIFY = "paper.verify"
 
 PAPER_RECIPE_ID = "paper-search"
-PAPER_RECIPE_VERSION = "paper-search-recipe-v1"
+PAPER_RECIPE_VERSION = "paper-search-recipe-v2"
 
 #: 节点的用户可读中文名（父图失败信息按此标注真实失败位置）。
 PAPER_NODE_LABELS: dict[str, str] = {
@@ -232,6 +234,18 @@ class PaperBudget:
             now=datetime.now(UTC),
         )
 
+    def begin_adjustment(self) -> bool:
+        return bool(self._ledger.begin_adjustment(
+            account_id=self._account_id, run_id=self._run_id,
+            reason_code="paper_relevance_insufficient", now=datetime.now(UTC),
+        ))
+
+    def end_adjustment(self, outcome_code: str) -> None:
+        self._ledger.end_adjustment(
+            account_id=self._account_id, run_id=self._run_id,
+            outcome_code=outcome_code, now=datetime.now(UTC),
+        )
+
 
 # ---------------------------------------------------------------------------
 # 输入键：上游 content_hash 进入下游键（失效沿依赖传播的唯一机制）
@@ -258,10 +272,14 @@ def _plan_key(inputs: Any) -> str:
 
 
 def _search_key(inputs: Any) -> str:
+    # 这里刻意不含 run_id：同一会话、同一内容与同一冻结日期（见
+    # prior_digest）的新运行可以复用真实检索产物；跨日/跨年时解析键变化，
+    # 过期来源结果不会复用（恢复失效合同）。
     plans = inputs.artifacts[NODE_PLAN].payload.get("plans") or []
     return _digest(
         {
             "plan": inputs.artifacts[NODE_PLAN].content_hash,
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
             "queries": [item.get("query") for item in plans],
             "capability": PAPER_CAPABILITY_VERSIONS["paper.search_sources"],
         }
@@ -292,6 +310,7 @@ def _enrich_key(inputs: Any) -> str:
     return _digest(
         {
             "search": inputs.artifacts[NODE_SEARCH].content_hash,
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
             "capability": PAPER_CAPABILITY_VERSIONS["paper.enrich_metadata"],
         }
     )
@@ -356,7 +375,7 @@ def build_paper_recipe() -> RecipeDefinition:
                 capability_version=capabilities["paper.search_sources"],
                 artifact_type="paper.candidates",
                 input_key=_search_key,
-                depends_on=(NODE_PLAN,),
+                depends_on=(NODE_PLAN, NODE_PARSE),
                 recovery=RecoveryPolicy.RETRY_NODE,
                 description="仅调用已登记且可用的来源；学术标识去重并记录真实查询。",
             ),
@@ -386,7 +405,7 @@ def build_paper_recipe() -> RecipeDefinition:
                 capability_version=capabilities["paper.enrich_metadata"],
                 artifact_type="paper.enrichment",
                 input_key=_enrich_key,
-                depends_on=(NODE_SEARCH,),
+                depends_on=(NODE_SEARCH, NODE_PARSE),
                 recovery=RecoveryPolicy.RETRY_NODE,
                 description="可选补充发表/版本/引用信息；失败只留缺口不阻断。",
             ),
@@ -411,8 +430,8 @@ def build_paper_recipe() -> RecipeDefinition:
                 required_gates=(
                     "paper.claims_have_evidence",
                     "paper.hard_conditions_hold",
+                    "paper.independent_review",
                 ),
-                optional_gates=("paper.independent_review",),
                 recovery=RecoveryPolicy.BLOCK,
                 description="核对身份、断言证据与未读范围；复杂比较/冲突触发独立复核。",
             ),
@@ -492,6 +511,13 @@ def independent_review_gate(
     """可选独立复核：记录触发与执行情况，不把它伪装成模型自评。"""
     del invocation
     review = execution.artifact.payload.get("independent_review") or {}
+    if review.get("executed") and (review.get("result") or {}).get("passed") is not True:
+        return QualityGateResult(
+            gate="paper.independent_review",
+            verdict=QualityVerdict.BLOCKED,
+            code="paper_independent_review_failed",
+            message="独立复核未通过或裁决结构无效，已阻塞相关结论。",
+        )
     return QualityGateResult(
         gate="paper.independent_review",
         verdict=QualityVerdict.PASS,
@@ -525,6 +551,7 @@ class PaperFlowContext:
     reading_goal: str | None = None
     comparison_requested: bool = False
     task_scope_used: bool = False
+    reference_time: datetime | None = None
 
 
 class PaperNodeFlow:
@@ -570,6 +597,7 @@ class PaperNodeFlow:
 
     @property
     def prior_digest(self) -> str:
+        reference_time = self._context.reference_time
         return _digest(
             {
                 "prior": list(self._context.prior_context),
@@ -579,6 +607,13 @@ class PaperNodeFlow:
                     for item in self._context.task_conditions
                 ],
                 "task_scope": self._context.task_scope_used,
+                # 冻结日期（运行创建时刻的日期）是恢复失效合同的时间版本：
+                # 同一运行跨年仍用冻结日期；同日新运行可复用产物；跨日/跨年
+                # 重新解析相对年份并使过期来源结果失效。
+                "reference_date": (
+                    reference_time.date().isoformat() if reference_time else None
+                ),
+                "reference_year": reference_time.year if reference_time else None,
             }
         )
 
@@ -641,6 +676,7 @@ class PaperNodeFlow:
             pending=self._pending,
             task_topic_hint=self._context.topic_hint,
             task_conditions=conditions,
+            now=self._context.reference_time or self._clock(),
         )
         payload = {
             "analysis": analysis.model_dump(mode="json"),
@@ -692,17 +728,31 @@ class PaperNodeFlow:
             "year_to": analysis.constraints.year_to,
             "prefer_survey": analysis.constraints.prefer_survey,
             "sort_intent": analysis.constraints.sort_intent.value,
+            "arxiv_id": analysis.constraints.arxiv_id,
+            "paper_title": analysis.constraints.paper_title,
+            "allowed_sources": list(analysis.constraints.allowed_sources),
+            "excluded_sources": list(analysis.constraints.excluded_sources),
         }
         return self._completed(invocation, payload)
 
     def _search(self, invocation: NodeInvocation) -> NodeExecution:
+        analysis = self._analysis(invocation, NODE_PARSE)
         plans = [
             PaperQueryPlan.model_validate(item)
             for item in invocation.dependencies[NODE_PLAN].payload["plans"]
         ]
         records: list[ModuleQueryRecord] = []
+        attempts: list[dict[str, Any]] = []
         adopted: CandidateSearchOutcome | None = None
+        adopted_count = -1
+        adopted_index = -1
+        adjustment_used = False
+        adjustment_outcome: str | None = None
         for index, plan in enumerate(plans):
+            if self._stop_event is not None and self._stop_event.is_set():
+                break
+            if index and self._budget is not None and not self._budget.begin_adjustment():
+                break
             call_key = f"paper.search:{index}"
             registered = False
             if self._budget is not None:
@@ -710,7 +760,13 @@ class PaperNodeFlow:
                     call_key, purpose="academic_search"
                 )
                 if not registered:
+                    if index:
+                        adjustment_outcome = "budget_exhausted"
+                        self._budget.end_adjustment(adjustment_outcome)
                     break
+            if index:
+                adjustment_used = True
+            outcome_code = "exception"
             try:
                 result = self._source.search(
                     invocation.account_id,
@@ -719,18 +775,37 @@ class PaperNodeFlow:
                     stop_event=self._stop_event,
                     deadline=time.monotonic() + self._attempt_seconds(),
                 )
+                outcome_code = result.record.status.value
             finally:
                 if self._budget is not None and registered:
-                    self._budget.release_external(call_key, outcome_code="done")
+                    self._budget.release_external(call_key, outcome_code=outcome_code)
+                if index:
+                    adjustment_outcome = outcome_code
+                    if self._budget is not None:
+                        self._budget.end_adjustment(outcome_code)
             records.append(result.record)
             self._search_records.append(result.record)
-            if adopted is None or len(result.candidates) > len(adopted.candidates):
+            cap = self._budget.screen_max if self._budget else DEFAULT_SCREEN_MAX
+            relevant_count = len(screen_candidates(analysis, result.candidates[:cap]).screened)
+            attempts.append(
+                {
+                    "index": index,
+                    "query": result.record.query,
+                    "status": result.record.status.value,
+                    "candidate_count": len(result.candidates),
+                    "relevant_count": relevant_count,
+                    "adopted": False,
+                }
+            )
+            if adopted is None or relevant_count > adopted_count:
                 adopted = result
+                adopted_count = relevant_count
+                adopted_index = index
             is_last = index + 1 == len(plans)
             if (
                 is_last
-                or result.record.status is not ModuleQueryStatus.SUCCESS
-                or len(result.candidates) >= MIN_TARGET_COUNT
+                or result.record.status not in {ModuleQueryStatus.SUCCESS, ModuleQueryStatus.EMPTY}
+                or relevant_count >= MIN_TARGET_COUNT
             ):
                 break
         if adopted is None:
@@ -742,16 +817,25 @@ class PaperNodeFlow:
                     "records": [],
                     "query": "",
                     "status": "budget_exhausted",
+                    "attempts": list(attempts),
                 },
                 code="run_budget_exhausted",
                 message="本轮运行预算已用尽，未发起新的论文检索。",
                 retryable=False,
             )
+        if 0 <= adopted_index < len(attempts):
+            attempts[adopted_index]["adopted"] = True
         payload = {
             "candidates": [candidate_payload(item) for item in adopted.candidates],
             "records": [_record_payload(item) for item in records],
             "query": adopted.query,
             "status": adopted.record.status.value,
+            "attempts": attempts,
+            "adjustment": {
+                "used": adjustment_used,
+                "reason": "paper_relevance_insufficient" if adjustment_used else None,
+                "outcome": adjustment_outcome,
+            },
         }
         if adopted.record.status in {
             ModuleQueryStatus.ERROR,
@@ -873,6 +957,8 @@ class PaperNodeFlow:
             _candidate(item)
             for item in invocation.dependencies[NODE_SEARCH].payload.get("candidates") or []
         ]
+        analysis = self._analysis(invocation, NODE_PARSE)
+        metadata_sources = _allowed_metadata_sources(analysis)
         if self._enricher is None:
             payload = {
                 "metadata": {},
@@ -881,12 +967,31 @@ class PaperNodeFlow:
                 "notes": ["未装配发表信息补充适配器，本轮未核对 DOI/venue/引用量。"],
             }
             return self._completed(invocation, payload)
+        if not metadata_sources:
+            payload = {
+                "metadata": {},
+                "records": [],
+                "available": False,
+                "notes": [
+                    "来源条件未允许 Crossref/OpenAlex，本轮未调用这两个补充来源。"
+                ],
+            }
+            return self._completed(invocation, payload)
         try:
             outcome: EnrichOutcome = self._enricher.enrich(
                 candidates,
                 account_id=invocation.account_id,
                 need_publication_info=True,
-                deadline=time.monotonic() + self._enrich_deadline_seconds,
+                deadline=time.monotonic() + min(
+                    self._enrich_deadline_seconds,
+                    (
+                        self._budget.deadline_seconds()
+                        if self._budget else self._enrich_deadline_seconds
+                    ),
+                ),
+                budget=self._budget,
+                stop_event=self._stop_event,
+                sources=metadata_sources,
             )
         except Exception:  # noqa: BLE001 - 可选补充失败只留缺口，不阻断交付
             payload = {
@@ -934,6 +1039,7 @@ class PaperNodeFlow:
             arxiv_id: _metadata(item)
             for arxiv_id, item in (enrich_payload.get("metadata") or {}).items()
         }
+        comparison_requested = self._comparison_requested(invocation)
         blocked = screen_payload.get("hard_condition_blocked")
         if not screened_payload:
             outcome = "empty"
@@ -941,6 +1047,14 @@ class PaperNodeFlow:
             if blocked == "year":
                 notes.append(
                     "年份条件内没有主题匹配的真实结果；未放宽年份，保持空结果。"
+                )
+            elif blocked == "specified_paper":
+                notes.append(
+                    "没有检索到指定论文；未改用其他论文充当结果。"
+                )
+            elif blocked == "source":
+                notes.append(
+                    "来源条件内没有可用候选；未改用未允许的来源。"
                 )
             else:
                 notes.append("本轮没有取得主题匹配的真实论文，未凑篇数。")
@@ -952,7 +1066,7 @@ class PaperNodeFlow:
                 "hard_condition_violations": [],
                 "outcome": outcome,
                 "notes": notes,
-                "comparison_requested": self._context.comparison_requested,
+                "comparison_requested": comparison_requested,
                 "conflicts": [],
                 "unconfirmed": ["本轮没有可交付的论文结果"],
             }
@@ -965,6 +1079,10 @@ class PaperNodeFlow:
             candidates,
             metadata,
             target_count=int(plan_payload.get("target_count") or DEFAULT_TARGET_COUNT),
+            evidence_matches={
+                item["candidate"]["arxiv_id"]: list(item["matched_requirements"])
+                for item in screened_payload
+            },
         )
         evidence_by_id = {
             item["candidate"]["arxiv_id"]: item for item in screened_payload
@@ -981,6 +1099,7 @@ class PaperNodeFlow:
             enriched = metadata.get(item.arxiv_id or "")
             reading = readings.get(item.arxiv_id or "")
             evidence = evidence_by_id.get(item.arxiv_id or "", {})
+            candidate = evidence.get("candidate") or {}
             claims = supported_claims(reading)
             item.doi = enriched.doi if enriched is not None else None
             item.venue = enriched.venue if enriched is not None else None
@@ -992,6 +1111,7 @@ class PaperNodeFlow:
             )
             item.read_scope = _scope(reading)
             item.full_text_available = item.read_scope is PaperReadScope.FULL_TEXT
+            item.source_abstract = str(candidate.get("abstract") or "")
             item.match_evidence = [
                 PaperRequirementEvidence(
                     requirement=str(entry.get("requirement") or ""),
@@ -999,6 +1119,15 @@ class PaperNodeFlow:
                     quote=str(entry.get("quote") or ""),
                 )
                 for entry in evidence.get("evidence") or ()
+            ]
+            item.read_evidence = [
+                PaperRequirementEvidence(
+                    requirement=item.title,
+                    source=f"full_text:{section.name}",
+                    quote=section.text[:400],
+                )
+                for section in (reading.sections if reading is not None else ())
+                if section.text.strip()
             ]
             item.supported_claims = claims
             if item.read_scope is not PaperReadScope.ABSTRACT and not claims:
@@ -1009,6 +1138,8 @@ class PaperNodeFlow:
             if item.arxiv_id is None and item.doi is None:
                 identity_missing.append(item.title)
             if _violates_year(analysis, item):
+                violations.append(item.title)
+            if _violates_specification(analysis, item):
                 violations.append(item.title)
         if ranked.topic_mismatch:
             outcome = "topic_mismatch"
@@ -1033,11 +1164,18 @@ class PaperNodeFlow:
             "hard_condition_violations": violations,
             "outcome": outcome,
             "notes": list(ranked.notes),
-            "comparison_requested": self._context.comparison_requested,
+            "comparison_requested": comparison_requested,
             "conflicts": conflicts,
             "unconfirmed": [],
         }
         return self._completed(invocation, payload)
+
+    def _comparison_requested(self, invocation: NodeInvocation) -> bool:
+        """比较意图来自显式上下文或本轮阅读目标（parse 节点判定）。"""
+        if self._context.comparison_requested:
+            return True
+        parse_payload = invocation.dependencies[NODE_PARSE].payload
+        return str(parse_payload.get("reading_goal") or "") == GOAL_COMPARE
 
     def _verify(self, invocation: NodeInvocation) -> NodeExecution:
         evaluate_payload = invocation.dependencies[NODE_EVALUATE].payload
@@ -1064,10 +1202,28 @@ class PaperNodeFlow:
                 [str(item) for item in (evaluate_payload.get("conflicts") or [])],
             )
             if result is not None:
-                review = {"triggered": True, "executed": True, "result": dict(result)}
+                # 裁决结构无效（非映射或缺少 passed）按未通过处理，不冒充通过。
+                verdict = (
+                    dict(result)
+                    if isinstance(result, Mapping)
+                    else {"passed": False, "reason": "invalid_review_payload"}
+                )
+                if verdict.get("passed") is not True:
+                    verdict.setdefault("reason", "independent_review_not_passed")
+                review = {"triggered": True, "executed": True, "result": verdict}
         notes = list(evaluate_payload.get("notes") or ())
         if triggered and not review.get("executed"):
-            notes.append("本轮存在复杂比较或来源冲突，独立复核未执行（未装配），相关结论按证据直接呈现。")
+            if self._reviewer is None:
+                notes.append(
+                    "本轮存在复杂比较或来源冲突，独立复核未装配，"
+                    "相关结论按证据直接呈现，未冒充已复核。"
+                )
+            else:
+                notes.append(
+                    "本轮存在复杂比较或来源冲突，独立复核未取得有效裁决，"
+                    "相关结论按证据直接呈现。"
+                )
+            unconfirmed.append("独立复核未执行（未装配或裁决无效）")
         passed_checks: list[str] = []
         if not evaluate_payload.get("identity_missing"):
             passed_checks.append("paper.identity_present")
@@ -1262,6 +1418,36 @@ def _violates_year(analysis: PaperTermAnalysis, item: PaperRecommendation) -> bo
     if year_from is not None and item.published_year < year_from:
         return True
     return year_to is not None and item.published_year > year_to
+
+
+def _violates_specification(
+    analysis: PaperTermAnalysis, item: PaperRecommendation
+) -> bool:
+    """指定论文条件不得被其他论文替代（身份或标题不一致即违约）。"""
+    constraints = analysis.constraints
+    if constraints.arxiv_id:
+        if item.arxiv_id is None:
+            return True
+        left = item.arxiv_id.split("v")[0].lower()
+        right = constraints.arxiv_id.split("v")[0].lower()
+        if left != right:
+            return True
+    title = constraints.paper_title
+    if title:
+        return " ".join(item.title.lower().split()) != " ".join(title.lower().split())
+    return False
+
+
+def _allowed_metadata_sources(analysis: PaperTermAnalysis) -> list[str]:
+    """按来源硬条件计算允许调用的元数据补充来源（空表示不得调用）。"""
+    constraints = analysis.constraints
+    allowed = {item.lower() for item in constraints.allowed_sources}
+    excluded = {item.lower() for item in constraints.excluded_sources}
+    return [
+        source
+        for source in (CROSSREF_SOURCE, OPENALEX_SOURCE)
+        if source not in excluded and (not allowed or source in allowed)
+    ]
 
 
 def _conflicts(

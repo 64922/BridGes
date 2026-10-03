@@ -141,9 +141,10 @@ class ReadCoordinator:
             deadline = min(deadline, time.monotonic() + budget_view.deadline_seconds())
         notes: list[str] = []
         deep_reads = 0
+        attempts = 0
         for item in selected:
             candidate = item.candidate
-            if deep_reads >= self._deep_read_max:
+            if attempts >= self._deep_read_max or time.monotonic() >= deadline:
                 break
             if stop_event is not None and stop_event.is_set():
                 break
@@ -152,6 +153,8 @@ class ReadCoordinator:
                 call_key, purpose="full_text_read"
             ):
                 continue
+            attempts += 1
+            outcome_code = "failed"
             try:
                 reading = self._reader.read(
                     candidate,
@@ -159,6 +162,7 @@ class ReadCoordinator:
                     deadline=deadline,
                     stop_event=stop_event,
                 )
+                outcome_code = "success" if reading.sections else "no_body_evidence"
             except Exception:  # noqa: BLE001 - 可选读取失败只降级，不阻断其余候选
                 reading = PaperReading(
                     arxiv_id=candidate.arxiv_id,
@@ -167,7 +171,7 @@ class ReadCoordinator:
                 )
             finally:
                 if budget_view is not None:
-                    budget_view.release_external(call_key, outcome_code="done")
+                    budget_view.release_external(call_key, outcome_code=outcome_code)
             readings[candidate.arxiv_id] = reading
             if reading.scope in {"full_text", "partial"}:
                 deep_reads += 1

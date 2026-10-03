@@ -103,6 +103,10 @@ class PaperConstraints(BaseModel):
     prefer_survey: bool = Field(
         default=False, description="用户是否明确要综述/回顾论文（影响搭配角色）。"
     )
+    arxiv_id: str | None = Field(default=None, description="指定论文的 arXiv 身份。")
+    paper_title: str | None = Field(default=None, description="指定论文原始标题。")
+    allowed_sources: list[str] = Field(default_factory=list, description="明确允许的来源。")
+    excluded_sources: list[str] = Field(default_factory=list, description="明确禁止的来源。")
 
 
 class PaperTermAnalysis(BaseModel):
@@ -188,6 +192,14 @@ class PaperRecommendation(BaseModel):
     )
     summary_zh: str | None = Field(
         default=None, description="基于来源摘要的中文概述；未生成时为 None（不虚构）。"
+    )
+    summary_evidence: PaperRequirementEvidence | None = Field(
+        default=None,
+        description="概述绑定的来源逐字证据（标题/摘要片段）；无证据的概述不保留。",
+    )
+    source_abstract: str = Field(default="", description="来源实际摘要，供证据复核。")
+    read_evidence: list[PaperRequirementEvidence] = Field(
+        default_factory=list, description="实际正文片段及小节定位，供断言核验。"
     )
     unverified: list[str] = Field(
         default_factory=list, description="本篇未核实项（例如未通读全文、缺发表信息）。"

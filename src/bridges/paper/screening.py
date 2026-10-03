@@ -34,14 +34,24 @@ EXCLUDED_YEAR = "year_out_of_range"
 EXCLUDED_KEYWORD_ONLY = "keyword_only_without_support"
 EXCLUDED_NO_EVIDENCE = "no_supporting_evidence"
 EXCLUDED_JUDGE = "judge_not_relevant"
+EXCLUDED_SOURCE = "source_not_allowed"
+EXCLUDED_SPECIFIED = "specified_paper_mismatch"
 
 
 class PaperRelevanceJudge(Protocol):
-    """专业角色接缝：把研究需求映射到候选的标题/摘要证据。"""
+    """专业角色接缝：把需求映射到候选的标题/摘要证据。"""
 
     def judge(
         self, analysis: PaperTermAnalysis, candidate: PaperCandidate
     ) -> Mapping[str, Any] | None: ...
+
+
+class BatchPaperRelevanceJudge(Protocol):
+    """批量专业角色接缝：一次调用判断全部候选，避免逐候选耗尽运行次数。"""
+
+    def judge_many(
+        self, analysis: PaperTermAnalysis, candidates: list[PaperCandidate]
+    ) -> Mapping[str, Mapping[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -102,33 +112,77 @@ def screen_candidates(
     analysis: PaperTermAnalysis,
     candidates: list[PaperCandidate],
     *,
-    judge: PaperRelevanceJudge | None = None,
+    judge: PaperRelevanceJudge | BatchPaperRelevanceJudge | None = None,
 ) -> ScreenOutcome:
-    """按硬条件与证据匹配筛选候选；不修改用户目标与明确条件。"""
+    """按硬条件与证据匹配筛选候选；不修改用户目标与明确条件。
+
+    专业角色支持批量接缝（``judge_many``）：整批候选一次判断，避免逐候选
+    模型调用耗尽共享运行次数；模型给出的每条证据都要能在标题/摘要里逐字
+    定位，否则丢弃（不得伪造引用）。
+    """
     primary = primary_keyword(analysis)
     expansions = [item.strip().lower() for item in analysis.expansions if item.strip()]
+    constraints = analysis.constraints
 
     screened: list[ScreenedCandidate] = []
     excluded: list[ExcludedCandidate] = []
     year_filtered = 0
     context_rejected = 0
+    source_rejected = 0
+    specified_rejected = 0
+    judges_in_batch = judge is not None and hasattr(judge, "judge_many")
+    batch: Mapping[str, Mapping[str, Any]] = {}
+    if judges_in_batch and candidates:
+        try:
+            batch = judge.judge_many(  # type: ignore[union-attr]
+                analysis, candidates
+            ) or {}
+        except Exception:  # noqa: BLE001 - 专业角色失败回退确定性证据匹配
+            batch = {}
     judge_used = judge is not None
 
     for candidate in candidates:
+        if (constraints.allowed_sources and "arxiv" not in constraints.allowed_sources) or (
+            "arxiv" in constraints.excluded_sources
+        ):
+            excluded.append(ExcludedCandidate(candidate, EXCLUDED_SOURCE))
+            source_rejected += 1
+            continue
+        if constraints.arxiv_id and not _same_arxiv_id(
+            candidate.arxiv_id, constraints.arxiv_id
+        ):
+            excluded.append(ExcludedCandidate(candidate, EXCLUDED_SPECIFIED))
+            specified_rejected += 1
+            continue
+        if constraints.paper_title and (
+            " ".join(candidate.title.lower().split())
+            != " ".join(constraints.paper_title.lower().split())
+        ):
+            excluded.append(ExcludedCandidate(candidate, EXCLUDED_SPECIFIED))
+            specified_rejected += 1
+            continue
         if not _within_year_range(analysis, candidate):
             excluded.append(ExcludedCandidate(candidate, EXCLUDED_YEAR))
             year_filtered += 1
             continue
         matched = _evidence_for(analysis, candidate, primary, expansions)
+        if constraints.arxiv_id or constraints.paper_title:
+            matched = [{"requirement": analysis.original_phrase, "source": "title",
+                "quote": candidate.title[:160], "strength": STRENGTH_DIRECT}]
         judge_result: Mapping[str, Any] | None = None
-        if judge is not None:
-            judge_result = judge.judge(analysis, candidate)
+        if judges_in_batch:
+            judge_result = batch.get(candidate.arxiv_id)
+        elif judge is not None and not hasattr(judge, "judge_many"):
+            try:
+                judge_result = judge.judge(analysis, candidate)
+            except Exception:  # noqa: BLE001 - 角色失败不阻断确定性证据匹配
+                judge_result = None
         if judge_result is not None and judge_result.get("relevant") is False:
             excluded.append(ExcludedCandidate(candidate, EXCLUDED_JUDGE))
             context_rejected += 1
             continue
         if not matched and judge_result is not None and judge_result.get("relevant"):
-            matched = _judge_evidence(judge_result)
+            matched = _judge_evidence(judge_result, candidate)
         if not matched:
             reason = (
                 EXCLUDED_KEYWORD_ONLY
@@ -168,19 +222,40 @@ def screen_candidates(
         notes.append(
             f"已按年份条件过滤：排除 {year_filtered} 篇范围外的论文，未放宽年份。"
         )
+    if source_rejected:
+        notes.append(
+            f"来源条件不允许，{source_rejected} 篇候选未采用；没有改用未允许的来源。"
+        )
     if context_rejected:
         notes.append(
-            f"另有 {context_rejected} 篇只命中原词或关键词、但没有支持研究需求的"
+            f"另有 {context_rejected} 篇只命中原词或关键词、但语境不匹配或没有支持研究需求的"
             "标题/摘要证据，已排除。"
         )
     if not screened:
-        blocked = "year" if year_filtered and not excluded_other(excluded) else None
+        blocked: str | None = None
+        mention_missing = False
+        if constraints.arxiv_id or constraints.paper_title:
+            blocked = "specified_paper"
+            label = constraints.arxiv_id or constraints.paper_title or ""
+            notes.append(
+                f"没有检索到指定论文（{label}）；没有用其他论文替代。"
+            )
+        elif source_rejected:
+            blocked = "source"
+        elif year_filtered and not excluded_other(excluded):
+            blocked = "year"
+        else:
+            mention_missing = bool(candidates)
         return ScreenOutcome(
             excluded=excluded,
-            topic_mismatch=blocked is None and bool(candidates),
+            topic_mismatch=blocked is None and mention_missing,
             hard_condition_blocked=blocked,
             notes=notes,
             judge_used=judge_used,
+        )
+    if specified_rejected:
+        notes.append(
+            f"已按指定论文条件过滤：排除 {specified_rejected} 篇不匹配的候选。"
         )
     if len(screened) < len(candidates) - year_filtered:
         notes.append(
@@ -193,6 +268,11 @@ def screen_candidates(
         notes=notes,
         judge_used=judge_used,
     )
+
+
+def _same_arxiv_id(left: str, right: str) -> bool:
+    """arXiv 标识比较忽略版本后缀（v1/v2 是同一篇论文的不同版本）。"""
+    return left.split("v")[0].lower() == right.split("v")[0].lower()
 
 
 def excluded_other(excluded: list[ExcludedCandidate]) -> bool:
@@ -210,8 +290,6 @@ def _requirements(
 ) -> list[str]:
     items = [primary] if primary else []
     items.extend(expansions)
-    if analysis.constraints.prefer_survey:
-        items.append("survey")
     return [item for item in dict.fromkeys(items) if item]
 
 
@@ -234,6 +312,9 @@ def _evidence_for(
     evidence: list[dict[str, str]] = []
     title = candidate.title
     abstract = candidate.abstract
+    if analysis.context_key and expansions and not matched_keywords(candidate, expansions):
+        # 消歧后的领域是必要条件；孤立原词不能证明属于已确认领域。
+        return []
     for requirement in _requirements(analysis, primary, expansions):
         source, quote = _locate(requirement, title, abstract)
         if source is None:
@@ -292,7 +373,9 @@ def _snippet(text: str, needle: str, *, limit: int = 160) -> str:
     return text[start : start + limit]
 
 
-def _judge_evidence(judge_result: Mapping[str, Any]) -> list[dict[str, str]]:
+def _judge_evidence(
+    judge_result: Mapping[str, Any], candidate: PaperCandidate
+) -> list[dict[str, str]]:
     evidence: list[dict[str, str]] = []
     for item in judge_result.get("evidence") or ():
         if not isinstance(item, Mapping):
@@ -300,7 +383,8 @@ def _judge_evidence(judge_result: Mapping[str, Any]) -> list[dict[str, str]]:
         requirement = str(item.get("requirement") or "").strip()
         source = str(item.get("source") or "abstract").strip()
         quote = str(item.get("quote") or "").strip()[:160]
-        if not requirement:
+        source_text = {"title": candidate.title, "abstract": candidate.abstract}.get(source)
+        if not requirement or not quote or source_text is None or quote not in source_text:
             continue
         evidence.append(
             {

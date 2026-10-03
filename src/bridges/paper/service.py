@@ -38,6 +38,7 @@ from bridges.kernel.contracts import (
 from bridges.kernel.executor import NodeKernel
 from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.repository import NodeKernelRepository
+from bridges.paper.assessment import PaperEvidenceRole
 from bridges.paper.contracts import (
     PaperIdentity,
     PaperQueryPlan,
@@ -71,6 +72,7 @@ from bridges.paper.planning import plan_queries
 from bridges.paper.presenting import (
     ExpressionPolicy,
     PaperSummaryGenerator,
+    SummaryOutcome,
     render_clarification_content,
     render_empty_content,
     render_mismatch_content,
@@ -158,6 +160,7 @@ class PaperSearchService:
             [list[PaperRecommendation], list[str]], Mapping[str, Any] | None
         ]
         | None = None,
+        gateway: Any | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._source = source
@@ -169,6 +172,9 @@ class PaperSearchService:
         self._reader = reader
         self._judge = judge
         self._reviewer = reviewer
+        #: 已登记的结构化模型网关：装配生产 judge/reviewer（共享运行额度、
+        #: 载荷预算与审计）；未装配时按注入接缝或如实标注未复核处理。
+        self._gateway = gateway
         self._clock = clock or (lambda: datetime.now(UTC))
         self._registry = paper_recipe_registry()
         self._recipe = build_paper_recipe()
@@ -194,6 +200,7 @@ class PaperSearchService:
         module_context: ModuleTaskContext | None = None,
         model_quota: RunModelQuota | None = None,
         manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
+        assessment_manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
         writing_policy: Mapping[str, Any] | None = None,
     ) -> PaperRunOutcome:
         """执行一轮论文模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。"""
@@ -227,14 +234,27 @@ class PaperSearchService:
                     if condition.kind in {"domain", "topic"}
                 ]
                 task_conditions = ()
+        run_snapshot = repo.get_generation_run(account_id, run_context.run_id)
         context = PaperFlowContext(
             prior_context=tuple(prior),
             topic_hint=topic_hint,
             task_conditions=task_conditions,
             task_scope_used=task_scope_used,
+            reference_time=run_snapshot.created_at if run_snapshot is not None else self._clock(),
         )
         run_id = run_context.run_id
         budget = self._load_budget(repo, account_id, run_id)
+        judge, reviewer = self._resolve_assessors(
+            repo,
+            account_id=account_id,
+            run_id=run_id,
+            run_context=run_context,
+            run_model_id=run_model_id,
+            model_quota=model_quota,
+            assessment_manifest_sink=(
+                assessment_manifest_sink or manifest_sink
+            ),
+        )
         task_ref = self._current_task_ref(account_id, conversation_id)
         guard = RunCommitGuard(
             repo,
@@ -255,8 +275,8 @@ class PaperSearchService:
                 deep_read_max=(budget.deep_read_max if budget is not None else 3),
                 deadline_seconds=self._enrich_deadline_seconds,
             ),
-            judge=self._judge,
-            reviewer=self._reviewer,
+            judge=judge,
+            reviewer=reviewer,
             context=context,
             pending_wait=pending,
             budget=budget,
@@ -426,7 +446,7 @@ class PaperSearchService:
         enrich_records = _records(result.artifact(NODE_ENRICH))
         notes = _notes(result)
         abstracts = _abstracts(result.artifact(NODE_SEARCH))
-        summary_map, summary_note, lock, policy_version = self._summarize(
+        summary_outcome, policy_version = self._summarize(
             recommendations,
             abstracts,
             run_context=run_context,
@@ -435,14 +455,20 @@ class PaperSearchService:
             manifest_sink=manifest_sink,
             writing_policy=writing_policy,
         )
-        if summary_map:
+        lock = summary_outcome.lock if summary_outcome is not None else None
+        if summary_outcome is not None and summary_outcome.summaries:
+            # 概述绑定逐字来源证据后才写入交付产物；没有证据的条目已在
+            # 生成器内丢弃，不把模型自由文本直接当事实。
             for paper in recommendations:
-                text = summary_map.get(paper.arxiv_id or "")
+                text = summary_outcome.summaries.get(paper.arxiv_id or "")
                 if text:
                     paper.summary_zh = text
+                    paper.summary_evidence = summary_outcome.evidence.get(
+                        paper.arxiv_id or ""
+                    )
         else:
             notes.append(
-                summary_note
+                (summary_outcome.note if summary_outcome is not None else None)
                 or "未生成中文概述，本轮只依据来源返回的标题、摘要与元数据给出理由。"
             )
         now = self._clock()
@@ -689,9 +715,9 @@ class PaperSearchService:
         model_quota: RunModelQuota | None,
         manifest_sink: Callable[[CallMaterialManifest], None] | None,
         writing_policy: Mapping[str, Any] | None,
-    ) -> tuple[dict[str, str] | None, str | None, ModelRunLock | None, str | None]:
+    ) -> tuple[SummaryOutcome | None, str | None]:
         if self._summarizer is None:
-            return None, None, None, None
+            return None, None
         expression = _expression_snapshot(writing_policy)
         result = self._summarizer.generate(
             run_context,
@@ -703,12 +729,40 @@ class PaperSearchService:
         )
         if result.manifest is not None and manifest_sink is not None:
             manifest_sink(result.manifest)
-        return (
-            result.summaries or None,
-            result.note,
-            result.lock,
-            expression.version if expression is not None else None,
+        return result, expression.version if expression is not None else None
+
+    def _resolve_assessors(
+        self,
+        repo: ConversationRepository,
+        *,
+        account_id: str,
+        run_id: str,
+        run_context: RunContextEnvelope,
+        run_model_id: str | None,
+        model_quota: RunModelQuota | None,
+        assessment_manifest_sink: Callable[[CallMaterialManifest], None] | None,
+    ) -> tuple[Any, Any]:
+        """装配本轮 judge/reviewer：优先注入接缝，否则用登记模型网关角色。
+
+        生产角色复用父图同一 ``RunBudget``（持久账本）、``RunModelQuota``
+        与材料清单审计；每批候选一次判断、比较/冲突时独立复核；模型证据
+        由调用方再次逐字核对原文，不把模型输出当作未经核验的事实。
+        """
+        if self._gateway is None:
+            return self._judge, self._reviewer
+        # 局部导入：chat 包属主预算账本，模块级导入形成包级循环。
+        from bridges.chat.budget import load_run_budget
+
+        run_budget = load_run_budget(repo, account_id, run_id)
+        role = PaperEvidenceRole(
+            self._gateway,
+            run_context=run_context,
+            model_id=run_model_id,
+            quota=model_quota,
+            budget=run_budget,
+            manifest_sink=assessment_manifest_sink,
         )
+        return self._judge or role, self._reviewer or role.review
 
     # -- 恢复与等待 ------------------------------------------------------
 

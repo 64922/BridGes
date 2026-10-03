@@ -1493,6 +1493,9 @@ def create_app(
             source=ArxivPaperSource(app.state.arxiv_search_service),
             enricher=paper_enricher,
             summarizer=PaperSummaryGenerator(model_gateway),
+            # 工单 24：生产 judge/reviewer 复用同一登记网关、运行额度与
+            # 载荷预算；每批候选一次语义判断，比较/冲突触发独立复核。
+            gateway=model_gateway,
             task_version_provider=lambda account_id, conversation_id: (
                 _current_task_reference(app, account_id, conversation_id)
             ),
