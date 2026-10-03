@@ -60,4 +60,9 @@
 
 ## 合并、推送与清理
 
-验收已通过。具体提交、代理推送核对及工作树清理结果在执行后追加，其他任务的工作树、分支及主工作区未跟踪文件保留。
+验收修复提交 `fee2f01a`；main 合并提交 `72163cd7`，无文本冲突。本地 main 合并时已包含并行 Issue 31 的提交（`24516100`、`21f16543`、`9d2b31bf`）。
+
+- 合入后在最终 main（`9d2b31bf`）复跑职业模块 `python -m pytest tests/career_plan -q`：**100 passed**，与验收阶段一致。
+- 推送：`git -c http.proxy=socks5h://127.0.0.1:7890 push origin main`（HTTP CONNECT 直连不可用时沿用 SOCKS5），远端由 `68357a20` 前进到 `9d2b31bf`；`git fetch` 后核对 `main == origin/main == 9d2b31bf`。
+- 确认 Issue 工作树无未提交改动（HEAD `fee2f01a`）后删除工作树；首次在工作树目录内执行 `git worktree remove` 时记录已注销但残留空目录（Windows 占用 Permission denied），改从主工作区删除空目录成功。本地分支 `codex/28-auditable-job-sample-analysis`（原指向 `fee2f01a`）已删除。
+- `git worktree prune --dry-run --verbose` 与正式 prune 均无额外失效记录；当前 worktree 清单为 `D:\BridGes`（main）及并行代理的 Issue 27、31 工作树，未触碰。Issue 24/27/31 的验收与验证文件及主工作区未跟踪文件（`24-main-baseline.xml`、`24-main-integration.xml`、`27-review/`、`25-main-baseline.xml`、`31-merge-core.xml`）均保留。

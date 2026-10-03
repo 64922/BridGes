@@ -86,4 +86,5 @@
 - 原交付经 code-review 双轴审查未完全达标；修复原子失败提交、来源失败重试、混合入口、币种/月数/中位数、相邻标题误纳入、目标摘要与未知城市统计边界后复验通过。
 - 最终关联组合 304 passed（职业模块 100 项）；全量与 main 逐项对比、计时波动隔离复验、类型检查及限制见[独立验收记录](../acceptance/28-auditable-job-sample-analysis.md)与[基线对比](../validation/28-baseline-comparison.json)。
 - 验收结论：本票确定性机制达标。原实现报告保留为历史，涉及“只建议不启动”“失败投影事务外写入”等描述已由本次修正替代；真实外部可得性和模型体验仍等待 42。
+- 合入与清理：验收修复 `fee2f01a`，main 合并 `72163cd7`；最终 main `9d2b31bf` 复跑职业模块 100 passed，已推送并与远端 `origin/main` 一致。工作树 `.worktrees/28-auditable-job-sample-analysis` 与分支 `codex/28-auditable-job-sample-analysis` 已删除，prune 无额外失效记录；其余任务的工作树、分支与未跟踪文件保留。详见[独立验收记录](../acceptance/28-auditable-job-sample-analysis.md)。
 
