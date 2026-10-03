@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from bridges.tieba.contracts import (
+    KIND_LABELS,
     ReadStatus,
     TiebaPostProjection,
     TiebaQuestionAnalysis,
@@ -113,13 +114,21 @@ def render_clarification_content(analysis: TiebaQuestionAnalysis) -> str:
 
 def render_result_content(projection: TiebaResearchProjection) -> str:
     """把真实证据渲染成中文正文（零虚构：每个数字与引文都来自投影）。"""
-    lines: list[str] = [f"{TARGET_FORUM_NAME}信息搜集：{projection.topic}"]
+    lines: list[str] = [
+        f"{TARGET_FORUM_NAME}信息搜集（{KIND_LABELS[projection.question_kind]}）：{projection.topic}"
+    ]
     lines.append("")
     lines.append(f"· 原问题：{projection.original_question}")
     if projection.topic_terms:
         lines.append(f"· 原始名词：{'、'.join(projection.topic_terms)}")
     if projection.place_or_event:
         lines.append(f"· 事件／地点：{'、'.join(projection.place_or_event)}")
+    if projection.campus_terms:
+        lines.append(f"· 点名校区：{'、'.join(projection.campus_terms)}")
+    if projection.plan_rationale:
+        lines.append(f"· 取证范围：{projection.plan_rationale}")
+    if projection.official_blocked_reason:
+        lines.append(f"· 来源限制：{projection.official_blocked_reason}")
     lines.append(f"· 时间条件：{projection.time_filter.note}")
     for record in projection.queries:
         lines.append(
@@ -155,6 +164,7 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
 
     lines.extend(_rejected_lines(projection))
     lines.extend(_official_lines(projection))
+    lines.extend(_conflict_lines(projection))
 
     if projection.evidence_boundary:
         lines.append("")
@@ -165,7 +175,14 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
 
 
 def render_empty_content(projection: TiebaResearchProjection) -> str:
-    lines = [f"{TARGET_FORUM_NAME}信息搜集：{projection.topic}", ""]
+    lines = [
+        f"{TARGET_FORUM_NAME}信息搜集（{KIND_LABELS[projection.question_kind]}）：{projection.topic}",
+        "",
+    ]
+    if projection.plan_rationale:
+        lines.append(f"· 取证范围：{projection.plan_rationale}")
+    if projection.official_blocked_reason:
+        lines.append(f"· 来源限制：{projection.official_blocked_reason}")
     if projection.empty_reason:
         lines.append(projection.empty_reason)
     for record in projection.queries:
@@ -174,6 +191,7 @@ def render_empty_content(projection: TiebaResearchProjection) -> str:
     lines.extend(_rejected_lines(projection))
     # 空态同样要给官方核验结果：贴吧没有可用帖子时，官方来源往往才是答案。
     lines.extend(_official_lines(projection))
+    lines.extend(_conflict_lines(projection))
     if projection.evidence_boundary:
         lines.append("")
         lines.append("【证据边界】")
@@ -223,8 +241,16 @@ def _official_lines(projection: TiebaResearchProjection) -> list[str]:
             if check.status == STATUS_VERIFIED and check.excerpt:
                 lines.append(f"  官方原文摘录：{check.excerpt}")
                 lines.append(f"  命中名词：{'、'.join(check.matched_terms)}")
+                if check.applicability is not None:
+                    suffix = "（适用）" if check.applicability.applicable else "（适用性未确认）"
+                    lines.append(
+                        f"  适用性核对：{check.applicability.note}{suffix}"
+                    )
             else:
                 lines.append(f"  {check.error_message or '未取得官方依据。'}")
+        if projection.official_unverified_note:
+            lines.append("")
+            lines.append(projection.official_unverified_note)
         lines.append("")
         lines.append(
             "说明：以上为学校官方页面原文摘录；前文帖子内容是吧友个人经历，"
@@ -232,13 +258,35 @@ def _official_lines(projection: TiebaResearchProjection) -> list[str]:
         )
         return lines
     if projection.official_check_requested:
-        return [
-            "",
-            "【学校官方页面核验】",
-            "本轮涉及校规／费用／开放时间／流程／放假安排，但没有取得可用的学校官方页面，"
-            "因此不给出官方结论。",
-        ]
+        note = (
+            projection.official_unverified_note
+            or "本轮涉及校规／费用／开放时间／流程／放假安排，但没有取得可用的学校官方页面，"
+            "因此不给出官方结论。"
+        )
+        return ["", "【学校官方页面核验】", note]
     return []
+
+
+def _conflict_lines(projection: TiebaResearchProjection) -> list[str]:
+    """冲突段：官方与帖子按时间／适用范围核对后如实分列，不替任何一方下结论。"""
+    if not projection.conflicts:
+        return []
+    lines = ["", "【官方与帖子经历的冲突（按时间与适用范围核对）】"]
+    for index, conflict in enumerate(projection.conflicts, start=1):
+        lines.append("")
+        lines.append(f"{index}. 涉及：{'、'.join(conflict.topic_terms)}")
+        lines.append(
+            f"   官方（{conflict.official_title}｜{conflict.official_url}）："
+            f"{conflict.official_statement}"
+        )
+        for ref in conflict.post_refs:
+            floor = f"第 {ref.floor} 楼" if ref.floor is not None else "楼层未知"
+            posted = f"｜{ref.posted_at}" if ref.posted_at else ""
+            lines.append(f"   帖子（{ref.url}｜{floor}{posted}）：{ref.quote}")
+        lines.append(f"   时间核对：{conflict.time_basis}")
+        lines.append(f"   范围核对：{conflict.scope_basis}")
+        lines.append(f"   处理：{conflict.note}")
+    return lines
 
 
 def _rejected_lines(projection: TiebaResearchProjection) -> list[str]:

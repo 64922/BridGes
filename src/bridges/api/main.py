@@ -1509,6 +1509,10 @@ def create_app(
             search=WebSearchServiceAdapter(app.state.web_search_service),
             reader=HttpTiebaThreadReader(),
             official_reader=HttpOfficialSiteReader(),
+            # 改进工单 27：贴吧节点内核的提交守卫读取当前任务版本（惰性求值）。
+            task_version_provider=lambda account_id, conversation_id: (
+                _current_task_reference(app, account_id, conversation_id)
+            ),
         )
         app.router.add_event_handler(
             "shutdown", app.state.tieba_research_service.close

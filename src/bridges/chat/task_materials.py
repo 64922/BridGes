@@ -418,6 +418,14 @@ MODULE_DECLARATIONS: dict[str, ModuleContextDeclaration] = {
         task_fields=("origin", "destination", "mode"),
         evidence_scope="已确认起终点与方式条件；不扩散到无关话题。",
     ),
+    "tieba": ModuleContextDeclaration(
+        module_id="tieba",
+        purpose="tieba",
+        # 贴吧按确定性词表选择性使用任务条件（主题/时间/校区）；条件类别由
+        # 理解抽取产生、不做固定枚举，因此接收全部有效条件但不整段照搬。
+        task_fields=(),
+        evidence_scope="任务主题、时间与校区条件；只在当前消息缺主题时补检索材料。",
+    ),
 }
 
 

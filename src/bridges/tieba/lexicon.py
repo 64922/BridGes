@@ -140,6 +140,48 @@ HOLIDAY_ARRANGEMENT_TERMS: frozenset[str] = frozenset(
     {"放假", "假期", "校历", "调课", "补课", "调休"}
 )
 
+#: 体验侧信号词：用户想听真实经历／评价／实际做法时命中（不构成官方核验）。
+EXPERIENCE_SIGNALS: frozenset[str] = frozenset(
+    {
+        "经历",
+        "体验",
+        "感受",
+        "感觉",
+        "怎么样",
+        "好不好",
+        "值不值",
+        "推荐",
+        "避雷",
+        "吐槽",
+        "评价",
+        "口碑",
+        "实测",
+        "亲测",
+        "过来人",
+        "学长",
+        "学姐",
+        "方便吗",
+        "好用吗",
+        "难吗",
+        "累吗",
+        "严吗",
+    }
+)
+
+#: 校区／区域原词：问题点名校区时，官方页面必须核对到对应校区（或明确标注未确认）。
+CAMPUS_TERMS: frozenset[str] = frozenset(
+    {
+        "军山湖校区",
+        "进贤校区",
+        "南区",
+        "北区",
+        "本部",
+        "新校区",
+        "老校区",
+        "南昌校区",
+    }
+)
+
 #: 官方核验触发词：涉及校规、费用、开放时间、办事流程或放假安排时必须追加官方核对。
 OFFICIAL_TRIGGERS: frozenset[str] = frozenset(
     {
@@ -376,3 +418,27 @@ def detect_official_topics(question: str, terms: list[str]) -> list[str]:
         if trigger in question and trigger not in topics:
             topics.append(trigger)
     return topics
+
+
+def detect_experience_signals(question: str, terms: list[str]) -> list[str]:
+    """命中体验侧信号词的原话（原词次序，用于判定混合类）。"""
+    signals: list[str] = []
+    for term in terms:
+        if term in EXPERIENCE_SIGNALS and term not in signals:
+            signals.append(term)
+    for signal in EXPERIENCE_SIGNALS:
+        if signal in question and signal not in signals:
+            signals.append(signal)
+    return signals
+
+
+def detect_campus_terms(question: str, terms: list[str]) -> list[str]:
+    """命中校区／区域原词（问题点名时才要求官方页面核对到对应校区）。"""
+    campuses: list[str] = []
+    for term in terms:
+        if term in CAMPUS_TERMS and term not in campuses:
+            campuses.append(term)
+    for campus in CAMPUS_TERMS:
+        if campus in question and campus not in campuses:
+            campuses.append(campus)
+    return campuses
