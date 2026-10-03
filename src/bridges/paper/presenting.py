@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import (
@@ -151,6 +151,14 @@ def render_stopped_content(
     return f"论文检索已停止，实际查询词：{query}。已完成的步骤保留在本条消息内。"
 
 
+class ExpressionPolicy(Protocol):
+    """用户可见概述所需的表达策略视图（Issue 21 快照的结构化子集）。"""
+
+    version: str
+    output_tokens: int
+    system_block: str
+
+
 class PaperSummaryGenerator:
     """可选的中文概述生成：严格门控，模型不得引入候选之外的内容。"""
 
@@ -173,14 +181,25 @@ class PaperSummaryGenerator:
         abstracts: dict[str, str],
         model_id: str | None,
         model_quota: RunModelQuota | None = None,
+        expression: ExpressionPolicy | None = None,
     ) -> SummaryOutcome:
         if not papers:
             return SummaryOutcome()
         user_content = _summary_prompt(papers, abstracts)
-        output_tokens = 1200
+        system_prompt = SUMMARY_SYSTEM_PROMPT
+        # 工单 21：本轮用户可见概述沿用同一表达策略快照（有界输出额度
+        # 单独预留，不挤占任务步骤预算；快照缺失时回退既有安全基线）。
+        expression_block = (
+            str(expression.system_block) if expression is not None else ""
+        )
+        if expression_block:
+            system_prompt = f"{SUMMARY_SYSTEM_PROMPT}\n\n{expression_block}"
+        output_tokens = (
+            int(expression.output_tokens) if expression is not None else 1200
+        )
         payload = {
             "messages": [
-                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             "json_schema": SUMMARY_JSON_SCHEMA,
@@ -201,10 +220,10 @@ class PaperSummaryGenerator:
                     category=MaterialCategory.SYSTEM_RULE.value,
                     necessity="required",
                     adopted=True,
-                    reason="概述系统规则与输出契约",
-                    estimated_tokens=estimate_tokens(SUMMARY_SYSTEM_PROMPT),
+                    reason="概述系统规则、表达策略与输出契约",
+                    estimated_tokens=estimate_tokens(system_prompt),
                     source_version="sha256:"
-                    + hashlib.sha256(SUMMARY_SYSTEM_PROMPT.encode()).hexdigest(),
+                    + hashlib.sha256(system_prompt.encode()).hexdigest(),
                     read_range="完整系统规则",
                 ),
                 MaterialManifestEntry(

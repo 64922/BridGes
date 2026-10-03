@@ -66,7 +66,7 @@ def rank_candidates(
     器学习结果（反之亦然）。
     """
     target = max(MIN_TARGET_COUNT, min(MAX_TARGET_COUNT, target_count))
-    primary = _primary_keyword(analysis)
+    primary = primary_keyword(analysis)
     context_keywords = _context_keywords(analysis)
     context_rejected = 0
     matched: list[tuple[PaperCandidate, list[str]]] = []
@@ -74,10 +74,10 @@ def rank_candidates(
     for candidate in candidates:
         if candidate.arxiv_id in seen:
             continue
-        matched_primary = _matches(candidate, [primary]) if primary else []
+        matched_primary = matched_keywords(candidate, [primary]) if primary else []
         if not matched_primary:
             continue
-        matched_context = _matches(candidate, context_keywords)
+        matched_context = matched_keywords(candidate, context_keywords)
         if context_keywords and not matched_context:
             context_rejected += 1
             continue
@@ -179,7 +179,7 @@ def cover_original_phrase(
     analysis: PaperTermAnalysis, recommendations: list[PaperRecommendation]
 ) -> bool:
     """推荐是否覆盖原始术语（生成前的最后一道原词覆盖核对）。"""
-    primary = _primary_keyword(analysis)
+    primary = primary_keyword(analysis)
     if not primary:
         return False
     for item in recommendations:
@@ -196,7 +196,7 @@ def cover_original_phrase(
 # ---------------------------------------------------------------------------
 
 
-def _primary_keyword(analysis: PaperTermAnalysis) -> str:
+def primary_keyword(analysis: PaperTermAnalysis) -> str:
     """原始术语对应的检索主词（原词覆盖门的依据）。"""
     return analysis.final_query.strip().lower() or analysis.normalized_term.strip().lower()
 
@@ -206,7 +206,7 @@ def _context_keywords(analysis: PaperTermAnalysis) -> list[str]:
     return [item.strip().lower() for item in analysis.expansions if item.strip()]
 
 
-def _matches(candidate: PaperCandidate, keywords: list[str]) -> list[str]:
+def matched_keywords(candidate: PaperCandidate, keywords: list[str]) -> list[str]:
     haystack = f"{candidate.title} {candidate.abstract}".lower()
     matches: list[str] = []
     for keyword in keywords:

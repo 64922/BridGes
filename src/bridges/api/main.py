@@ -467,10 +467,10 @@ def _amap_web_service_key(app: Any) -> str | None:
     )
 
 
-def _commute_task_reference(
+def _current_task_reference(
     app: Any, account_id: str, conversation_id: str
 ) -> tuple[str | None, int | None] | None:
-    """通勤内核提交守卫的任务版本快照（当前任务不存在时为 None）。"""
+    """模块内核提交守卫的任务版本快照（当前任务不存在时为 None）。"""
     service = getattr(app.state, "task_service", None)
     if service is None:
         return None
@@ -1487,10 +1487,15 @@ def create_app(
                 observability=app.state.observability_service,
             )
         )
+        # 改进工单 10：论文内核的提交守卫读取当前任务版本（惰性求值：
+        # task_service 在本装配段之后创建，调用发生在请求期）。
         app.state.paper_search_service = PaperSearchService(
             source=ArxivPaperSource(app.state.arxiv_search_service),
             enricher=paper_enricher,
             summarizer=PaperSummaryGenerator(model_gateway),
+            task_version_provider=lambda account_id, conversation_id: (
+                _current_task_reference(app, account_id, conversation_id)
+            ),
         )
         app.router.add_event_handler("shutdown", app.state.paper_search_service.close)
         # V2 Issue 14：贴吧信息搜集模块子图——检索复用唯一通用公网搜索服务
@@ -1567,7 +1572,7 @@ def create_app(
         app.state.commute_service = CommuteService(
             amap=app.state.commute_amap_client,
             task_version_provider=lambda account_id, conversation_id: (
-                _commute_task_reference(app, account_id, conversation_id)
+                _current_task_reference(app, account_id, conversation_id)
             ),
         )
         app.router.add_event_handler("shutdown", app.state.commute_amap_client.close)

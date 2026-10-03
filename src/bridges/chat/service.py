@@ -2894,17 +2894,11 @@ class ChatService:
         回退既有窗口。它不授予任何工具权限，也不读取画像正文。
         """
         declaration = MODULE_DECLARATIONS.get(module_id)
-        if declaration is None:
-            # 父图按逐消息模块 ID（paper/github/resources）调用，声明表按
-            # 材料域键登记（paper_search 等）；按声明的 purpose 做唯一别名解析。
-            declaration = next(
-                (
-                    item
-                    for item in MODULE_DECLARATIONS.values()
-                    if item.purpose == module_id
-                ),
-                None,
-            )
+        if declaration is None and module_id == "paper":
+            # 父图按逐消息模块 ID（paper）派发，论文声明按材料域键
+            # （paper_search）登记；只对确有登记的论文别名做解析，不扩大
+            # 其它模块的上下文语义（它们此前不接收任务上下文）。
+            declaration = MODULE_DECLARATIONS.get("paper_search")
         if declaration is None:
             return None
         try:
