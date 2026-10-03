@@ -108,12 +108,12 @@ CAREER_NODE_LABELS: dict[str, str] = {
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 CAREER_CAPABILITY_VERSIONS: dict[str, str] = {
-    "career.parse_request": "career-parse-v2",
+    "career.parse_request": "career-parse-v3",
     "career.plan_query": "career-plan-v2",
-    "career.collect_jobs": "career-collect-v1",
-    "career.filter_jobs": "career-filter-v2",
-    "career.analyze_jobs": "career-analyze-v2",
-    "career.verify_delivery": "career-verify-v1",
+    "career.collect_jobs": "career-collect-v2",
+    "career.filter_jobs": "career-filter-v3",
+    "career.analyze_jobs": "career-analyze-v3",
+    "career.verify_delivery": "career-verify-v2",
 }
 
 #: 配方的必要门、可选门（登记集合；代码拒绝未登记质量门）。
@@ -400,9 +400,16 @@ def _conditions_hold_gate(
     city_wanted = cities[0] if cities else None
     for sample in samples:
         sample_city = str(sample.get("city") or "").strip() or None
+        if sample_city is None:
+            return QualityGateResult(
+                gate="career.conditions_hold",
+                verdict=QualityVerdict.BLOCKED,
+                code="career_city_unverified",
+                message="样本实际城市无法核实，本轮不交付该样本的统计。",
+                detail={"url": sample.get("url")},
+            )
         if city_wanted is not None and (
-            sample_city is None
-            or normalize_for_match(city_wanted) not in normalize_for_match(sample_city)
+            normalize_for_match(city_wanted) not in normalize_for_match(sample_city)
         ):
             return QualityGateResult(
                 gate="career.conditions_hold",
@@ -649,8 +656,8 @@ def _evidence_boundary(
     ]
     if unconfirmed_count:
         notes.append(
-            f"另有 {unconfirmed_count} 个候选岗位页没有取得内容，只给出链接并标注"
-            "未核实：它们的岗位名、城市与薪资都未核实，未纳入任何统计。"
+            f"另有 {unconfirmed_count} 个候选未通过详情与条件核验，只给出链接并标注"
+            "缺失字段或读取失败原因；这些候选未纳入任何统计。"
         )
     if unread_count:
         notes.append(
@@ -811,10 +818,13 @@ class CareerNodeFlow:
     def prior_digest(self) -> str | None:
         if self._module_context is not None and self._module_context.used_task_scope:
             return _digest(
-                [
-                    (condition.condition_id, condition.kind, condition.text)
-                    for condition in self._module_context.effective_conditions
-                ]
+                {
+                    "goal": self._module_context.topic_hint or self._module_context.task_goal,
+                    "conditions": [
+                        (condition.condition_id, condition.kind, condition.text)
+                        for condition in self._module_context.effective_conditions
+                    ],
+                }
             )
         return None
 
@@ -1036,6 +1046,29 @@ class CareerNodeFlow:
             f"本轮实际读取 {len(candidates)} 个岗位页"
             f"（每条来源最多 {self._reads_per_source} 个；另有 {len(unread)} 个候选未读取）"
         )
+        if records and all(record.status in FAILED_QUERY_STATUSES for record in records):
+            error = _error_record(records)
+            assert error is not None
+            retryable = any(record.retryable for record in records)
+            return self._failure_execution(
+                invocation,
+                payload={
+                    "records": [record.model_dump(mode="json") for record in records],
+                    "candidates": [_candidate_dict(candidate) for candidate in candidates],
+                    "unread_links": unread,
+                },
+                node=NODE_COLLECT,
+                verdict=(
+                    QualityVerdict.REPAIRABLE_FAILURE if retryable else QualityVerdict.BLOCKED
+                ),
+                status=NodeReceiptStatus.FAILED,
+                code=error.error_code or "career_search_failed",
+                message=(
+                    f"{CAREER_NODE_LABELS[NODE_COLLECT]}："
+                    f"{error.error_message or '本轮的来源检索全部失败，请稍后重试。'}"
+                ),
+                retryable=retryable,
+            )
         return NodeExecution(
             artifact=self._artifact(
                 invocation,

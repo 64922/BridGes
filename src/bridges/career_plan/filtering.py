@@ -196,20 +196,23 @@ def filter_candidates(
             continue
 
         city_value = (page.city or "").strip() or None
+        if city_value is None:
+            evidence = (
+                f"页面没有给出城市，无法核对是否为你要求的「{city_wanted}」，"
+                "因此不纳入主样本。"
+                if city_wanted
+                else "页面没有给出城市，实际地区无法核实，因此不纳入主样本与统计。"
+            )
+            outcome.rejected.append(
+                _rejected(candidate, kind=KIND_CITY_UNVERIFIED, title=title, evidence=evidence)
+            )
+            outcome.unconfirmed.append(CareerCandidateLink(
+                url=candidate.url, title=title, source=candidate.source,
+                source_label=SOURCE_LABELS.get(candidate.source, candidate.source),
+                note=evidence,
+            ))
+            continue
         if city_wanted is not None:
-            if city_value is None:
-                outcome.rejected.append(
-                    _rejected(
-                        candidate,
-                        kind=KIND_CITY_UNVERIFIED,
-                        title=title,
-                        evidence=(
-                            f"页面没有给出城市，无法核对是否为你要求的「{city_wanted}」，"
-                            "因此不纳入主样本。"
-                        ),
-                    )
-                )
-                continue
             if normalize_for_match(city_wanted) not in normalize_for_match(city_value):
                 outcome.rejected.append(
                     _rejected(

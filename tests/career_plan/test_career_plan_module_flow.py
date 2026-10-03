@@ -2,7 +2,7 @@
 
 全部走真实 HTTP + SQLite + 后台执行器（假搜索服务与假岗位页读取，无外网）：
 
-- 只有逐消息 ``module_id=career`` 或点击建议才启动，普通聊天不检索任何来源；
+- 明确的自然语言岗位查询与逐消息 ``module_id=career`` 均能启动；
 - 计划节点先展示三类来源的实际查询词与筛选条件，采集只读公开页面；
 - 只把公开可读、岗位名与城市都匹配的岗位纳入主样本；
 - 相邻岗位单列建议，绝不混入样本的技能与薪资统计；
@@ -376,7 +376,8 @@ def test_city_mismatch_and_unverifiable_city_are_excluded(
     kinds = {item["url"]: item["kind"] for item in career["rejected"]}
     assert kinds[other_city] == "city"
     assert kinds[no_city] == "city_unverified"
-    assert career["status"] == "empty"
+    assert career["status"] == "links_only"
+    assert [item["url"] for item in career["candidate_links"]] == [no_city]
     # 无可用样本时展示实际查询与证据缺口，不给任何市场结论
     assert career["analysis"] is None
     assert career["advices"] == []
@@ -644,29 +645,28 @@ def test_stop_during_collect_marks_message_stopped(
     assert "已停止" in assistant["content"]
 
 
-def test_plain_chat_suggests_career_without_searching(
+def test_plain_chat_explicit_job_query_starts_career_without_profile(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """验收 1：普通聊天只给一键建议，不点击就不检索任何来源。"""
+    """D01／D13：明确查询公开岗位无需模块选择、画像或简历。"""
     _register(client)
-    port = _FakeSearchPort()
-    reader = _FakeReader()
+    port = _FakeSearchPort(
+        per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+    )
+    reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
     _install_career_service(sqlite_app, port=port, reader=reader)
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
 
-    _send(client, conversation_id, "我在准备找 Java 后端开发的工作")
+    _send(client, conversation_id, "帮我查询南昌 Java 后端开发岗位的招聘要求和薪资")
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )
 
-    suggestion = assistant["module_suggestion"]
-    assert suggestion is not None
-    assert suggestion["module_id"] == "career"
-    assert suggestion["label"] == "使用职业规划"
-    assert port.queries == []
-    assert reader.read_urls == []
-    assert assistant["career_plan"] is None
+    assert assistant["status"] == "done"
+    assert assistant["career_plan"]["status"] == "success"
+    assert port.queries and reader.read_urls == [BOSS_URL]
+    assert assistant["career_planning"] is None
 
 
 def test_city_change_starts_a_new_revision_without_reusing_old_city_stats(
@@ -755,6 +755,62 @@ def test_retry_reuses_committed_nodes_without_refetching(
     assert attempt["career_plan"]["status"] == "success"
     assert len(port.queries) == queries_before, "恢复轮不得重复检索已提交节点"
     assert len(reader.read_urls) == reads_before, "恢复轮不得重复读取岗位页"
+
+
+def test_failed_sources_retry_collects_again_and_reuses_parse_plan(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """来源失败后 API 重试必须重取来源，同时保留已完成的解析与计划。"""
+    from bridges.kernel.repository import NodeKernelRepository
+
+    account = _register(client)
+    port = _FakeSearchPort(
+        status=ModuleQueryStatus.ERROR,
+        error_code="career_search_failed",
+        error_message="岗位检索没有形成结果，请稍后重试。",
+    )
+    reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+    _install_career_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, "我想找 Java 后端开发，城市南昌", module_id="career")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    assert assistant["status"] == "error"
+    assert len(assistant["career_plan"]["queries"]) == 3
+    repo = sqlite_app.state.chat_service._repo  # noqa: SLF001
+    kernel_repo = NodeKernelRepository(repo.database)
+    before = kernel_repo.list_artifacts(account["id"], conversation_id)
+    completed_before = {
+        artifact.node: artifact.artifact_id
+        for artifact in before
+        if artifact.node in {"career.parse", "career.plan"}
+    }
+    assert len(completed_before) == 2
+    port.status = ModuleQueryStatus.SUCCESS
+    port.error_code = port.error_message = None
+    port.per_source = {"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+    retried = client.post(
+        f"/chat/conversations/{conversation_id}/messages/{assistant['message_id']}/retry",
+        json={},
+    )
+    assert retried.status_code == 200, retried.text
+    new_message_id = retried.json()["assistant_message"]["message_id"]
+    generation_helpers["drive"](sqlite_app)
+    final = client.get(f"/chat/conversations/{conversation_id}").json()
+    attempt = next(
+        message for message in final["messages"] if message["message_id"] == new_message_id
+    )
+    assert attempt["career_plan"]["status"] == "success"
+    assert len(port.queries) == 6, "失败采集必须重新执行三类来源查询"
+    assert reader.read_urls == [BOSS_URL]
+    after = kernel_repo.list_artifacts(account["id"], conversation_id)
+    assert {
+        artifact.node: artifact.artifact_id
+        for artifact in after
+        if artifact.node in {"career.parse", "career.plan"}
+    } == completed_before, "已完成解析与计划必须复用同一产物"
 
 
 def test_study_mode_rejects_daily_module(

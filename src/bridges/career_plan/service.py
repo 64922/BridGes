@@ -93,11 +93,7 @@ class CareerSupersededError(Exception):
 
 
 class _CareerDeliveryError(Exception):
-    """失败交付信号：投影在守卫事务之后单独落库，再交给父图收敛错误。
-
-    ``update_message_career_plan``／``update_message_content`` 自带事务边界，
-    不能在守卫的写事务里嵌套执行；失败投影因此先带出事务，再写回同一条消息。
-    """
+    """失败交付信号：在守卫事务内原子收敛，提交后再通知父图。"""
 
     def __init__(
         self, error: CareerModuleError, projection: CareerPlanProjection | None
@@ -185,7 +181,7 @@ class CareerPlanService:
             )
         budget = self._load_budget(repo, account_id, run_id)
         task_ref = self._current_task_ref(account_id, conversation_id)
-        clock = lambda: datetime.now(UTC)  # noqa: E731 - 单次执行内的稳定时钟
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC)  # noqa: E731
         guard = RunCommitGuard(
             repo,
             account_id=account_id,
@@ -255,15 +251,18 @@ class CareerPlanService:
                 )
             except _CareerDeliveryError as failure:
                 delivery_failure = failure
-        # 失败投影在守卫事务之外落库（写入方法自带事务），再通知父图收敛错误。
+                if failure.projection is not None:
+                    self._finalize(
+                        repo,
+                        account_id=account_id,
+                        assistant_message_id=assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        projection=failure.projection,
+                        content=render_empty_content(failure.projection),
+                        now=clock(),
+                    )
+        # 错误在事务提交之后抛出，避免已通过守卫的失败投影被异常回滚。
         assert delivery_failure is not None
-        if delivery_failure.projection is not None:
-            self._persist_failure(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                projection=delivery_failure.projection,
-            )
         raise delivery_failure.error
 
     # -- 交付（终态收敛路径） --------------------------------------------
@@ -640,29 +639,6 @@ class CareerPlanService:
         )
 
     # -- 落库 ------------------------------------------------------------
-
-    def _persist_failure(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        projection: CareerPlanProjection,
-    ) -> None:
-        """失败先写回同一条消息（失败分类与查询词都留在投影里），再交给父图收敛。"""
-        now = datetime.now(UTC)
-        repo.update_message_career_plan(
-            account_id,
-            assistant_message_id,
-            projection.model_dump(mode="json"),
-            now,
-        )
-        repo.update_message_content(
-            account_id,
-            assistant_message_id,
-            render_empty_content(projection),
-            now,
-        )
 
     def _finalize(
         self,

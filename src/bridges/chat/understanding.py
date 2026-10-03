@@ -322,20 +322,6 @@ class MainAgentUnderstanding:
             clarification=clarification,
             target_task=target_task,
         )
-        if (
-            actual_module == "career"
-            and route_source == RouteSource.BODY_INTENT
-            and requested_module_id is None
-            and classified.status == RouteStatus.ORDINARY
-            and not classified.is_career
-        ):
-            # 职业模块是显式入口：普通聊天命中求职语境只给一键建议（由收尾
-            # 节点落库），绝不因此自动检索；逐消息选择或点击建议时才真正派发。
-            actual_module, route_source, reason = (
-                None,
-                RouteSource.ORDINARY_CHAT,
-                "职业请求在普通聊天中只给建议，不自动启动模块。",
-            )
         return MainUnderstanding(
             user_message_id=user_message_id,
             mode=mode_value,

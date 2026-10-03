@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from statistics import median
 
 #: 币种（与计薪单位一起构成区间键）。
 CURRENCY_CNY = "CNY"
@@ -23,6 +24,13 @@ CURRENCY_USD = "USD"
 _CURRENCY_LABELS: dict[str, str] = {
     CURRENCY_CNY: "元",
     CURRENCY_USD: "美元",
+    "HKD": "港元",
+    "EUR": "欧元",
+    "JPY": "日元",
+    "GBP": "英镑",
+    "CAD": "加元",
+    "AUD": "澳元",
+    "SGD": "新加坡元",
 }
 
 #: 计薪单位（互不混算的区间键）。
@@ -72,6 +80,13 @@ _PERIOD_MARKERS: tuple[tuple[str, str], ...] = (
 
 #: 币种标记（先认美元，避免「美元」里的「元」被当成人民币）。
 _CURRENCY_MARKERS: tuple[tuple[str, str], ...] = (
+    ("港元", "HKD"), ("港币", "HKD"), ("HK$", "HKD"),
+    ("欧元", "EUR"), ("€", "EUR"),
+    ("日元", "JPY"), ("日币", "JPY"),
+    ("英镑", "GBP"), ("£", "GBP"),
+    ("加元", "CAD"), ("CA$", "CAD"), ("CAD$", "CAD"),
+    ("澳元", "AUD"), ("AU$", "AUD"),
+    ("新加坡元", "SGD"), ("SG$", "SGD"),
     ("美元", CURRENCY_USD),
     ("美金", CURRENCY_USD),
     ("US$", CURRENCY_USD),
@@ -129,6 +144,12 @@ def parse_salary(raw: str) -> SalaryBand:
             note="岗位页没有给出薪资原文。",
         )
     months = _salary_months(text)
+    if "币种未给出" in text:
+        return SalaryBand(
+            raw=text, unit=None, amount_min=None, amount_max=None,
+            salary_months=months, comparable=False, currency="UNKNOWN",
+            note="页面没有声明币种，未纳入任何薪资区间。",
+        )
     for marker in NON_NUMERIC_MARKERS:
         if marker in text:
             return SalaryBand(
@@ -137,7 +158,7 @@ def parse_salary(raw: str) -> SalaryBand:
                 note=f"薪资原文为「{marker}」，没有可比较的金额。",
             )
     period = _period(text)
-    numbers = _numbers(text)
+    numbers = _numbers(_MONTHS.sub("", text))
     if not numbers:
         return SalaryBand(
             raw=text, unit=None, amount_min=None, amount_max=None,
@@ -146,7 +167,7 @@ def parse_salary(raw: str) -> SalaryBand:
         )
     low, high, used_k = numbers
     if period is None:
-        if used_k:
+        if used_k and currency == CURRENCY_CNY:
             # ``15-25K`` 是国内岗位页的月薪约定写法：K 本身即「千元／月」。
             period = "月"
         else:
@@ -235,6 +256,11 @@ def _period(text: str) -> str | None:
 
 
 def _currency(text: str) -> str:
+    # 结构化页面和招聘卡可能把 ISO 币种与金额连写（如 20KUSD）。
+    code = re.search(r"(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])|(?<=K)([A-Z]{3})\b", text)
+    if code is not None:
+        currency = code.group(1) or code.group(2)
+        return CURRENCY_CNY if currency == "RMB" else currency
     for marker, currency in _CURRENCY_MARKERS:
         if _marker_present(text, marker):
             return currency
@@ -256,8 +282,7 @@ def _salary_months(text: str) -> int | None:
     if match is None:
         return None
     months = int(match.group("months"))
-    # 12 薪是默认值（不写也等于 12），只在 13–24 之间才有信息量。
-    return months if 13 <= months <= 24 else None
+    return months
 
 
 @dataclass(frozen=True)
@@ -308,7 +333,7 @@ def aggregate_salary(bands: list[SalaryBand]) -> tuple[list[SalaryAggregate], li
                     sample_count=len(items),
                     amount_min=min(lows),
                     amount_max=max(highs),
-                    amount_median=midpoints[len(midpoints) // 2],
+                    amount_median=int(median(midpoints)),
                     raws=tuple(item.raw for item in items),
                     currency=currency,
                 )

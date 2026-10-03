@@ -262,7 +262,7 @@ def test_only_readable_matching_title_and_city_enter_main_sample() -> None:
     assert kinds["https://a/5"] == KIND_EXPIRED
     assert kinds["https://a/6"] == KIND_TITLE_MISMATCH
     # 读不到页面的候选降级为「未核实链接」，不进入任何统计
-    assert [link.url for link in outcome.unconfirmed] == ["https://a/8"]
+    assert [link.url for link in outcome.unconfirmed] == ["https://a/4", "https://a/8"]
     assert outcome.rejected[0].evidence
 
 
@@ -286,6 +286,32 @@ def test_adjacent_job_is_counted_separately_not_merged() -> None:
     assert outcome.samples == []
     assert outcome.adjacent_counts == {"测试工程师": 1}
     assert "相邻岗位" in outcome.rejected[0].evidence
+
+
+def test_explicit_adjacent_title_overrides_generic_target_fragment() -> None:
+    """后端只是修饰语时，明确的测试或前端职位不能混入后端样本。"""
+    analysis = parse_career_request("我想找 Java 后端开发，城市南昌")
+    titles = ["后端测试工程师", "后端测试开发工程师", "前端工程师（后端接口方向）"]
+    outcome = filter_candidates(
+        [
+            _candidate(
+                f"https://a/{index}", title,
+                requirements=["熟悉 MySQL 与 Redis，负责服务端接口测试"],
+            )
+            for index, title in enumerate(titles)
+        ],
+        analysis,
+        reference=NOW,
+    )
+    assert outcome.samples == []
+    assert len(outcome.rejected) == len(titles)
+    assert all(item.kind == KIND_ADJACENT for item in outcome.rejected)
+    algorithm = parse_career_request("我想找算法工程师")
+    assert match_job_title(
+        "算法工程师（数据分析方向）",
+        target_terms=tuple(algorithm.synonyms),
+        adjacent=tuple(algorithm.adjacent_jobs),
+    ).matched, "真实目标职位不能因方向说明被剔除"
 
 
 def test_duplicate_samples_keep_only_the_first() -> None:
@@ -320,12 +346,18 @@ def test_sample_marks_fetch_and_publish_times_salary_and_link() -> None:
 def test_city_is_not_required_when_user_gives_none() -> None:
     analysis = parse_career_request("目标是 Java 后端实习")
     outcome = filter_candidates(
-        [_candidate("https://a/1", "Java后端开发工程师", city=None)],
+        [
+            _candidate("https://a/1", "Java后端开发工程师", city=None),
+            _candidate("https://a/2", "Java后端开发工程师", city="上海"),
+        ],
         analysis,
         reference=NOW,
     )
     assert len(outcome.samples) == 1
+    assert outcome.samples[0].url == "https://a/2"
     assert "未做城市过滤" in outcome.samples[0].city_evidence
+    assert [link.url for link in outcome.unconfirmed] == ["https://a/1"]
+    assert outcome.rejected[0].kind == KIND_CITY_UNVERIFIED
 
 
 def test_stale_publish_date_is_rejected_as_expired() -> None:

@@ -1199,16 +1199,23 @@ def match_job_title(
     matched = tuple(
         term for term in target_terms if term and normalize_for_match(term) in normalized
     )
+    # 相邻职位也核对其真正同义名，避免漏掉「测试开发工程师」「前端工程师」。
+    adjacent_matches: dict[str, int] = {}
+    for term in adjacent:
+        family = family_for(term)
+        candidates = family.all_terms if family is not None else (term,)
+        lengths = [
+            len(normalize_for_match(candidate))
+            for candidate in candidates
+            if candidate and normalize_for_match(candidate) in normalized
+        ]
+        if lengths:
+            adjacent_matches[term] = max(lengths)
+    adjacent_hits = tuple(adjacent_matches)
     if matched:
-        # 命中的目标说法里若同时含相邻岗位说法，仍以目标说法为准，但把相邻
-        # 命中一并记下（例如「算法工程师（数据分析方向）」）。
-        adjacent_hits = tuple(
-            term
-            for term in adjacent
-            if term and normalize_for_match(term) in normalized
-        )
-        return TitleMatch(matched=True, matched_terms=matched, adjacent_hits=adjacent_hits)
-    adjacent_hits = tuple(
-        term for term in adjacent if term and normalize_for_match(term) in normalized
-    )
+        # 更具体的相邻职位优先于泛化修饰词（「后端测试工程师」中的「后端」）；
+        # 目标职位仍更具体时保留，例如「算法工程师（数据分析方向）」。
+        target_length = max(len(normalize_for_match(term)) for term in matched)
+        if not adjacent_matches or max(adjacent_matches.values()) <= target_length:
+            return TitleMatch(matched=True, matched_terms=matched, adjacent_hits=adjacent_hits)
     return TitleMatch(matched=False, matched_terms=(), adjacent_hits=adjacent_hits)

@@ -24,6 +24,7 @@ import httpx
 
 from bridges.career_plan.contracts import JobReadStatus
 from bridges.career_plan.lexicon import CITY_TERMS, detect_experience, detect_skills
+from bridges.career_plan.salary import currency_label
 
 #: 单个岗位页的读取墙钟上限。
 READ_DEADLINE_SECONDS = 8.0
@@ -498,7 +499,11 @@ def _posting_salary(value: object) -> str | None:
     if low is None and high is None:
         return None
     span = f"{low:g}" if low == high else f"{low:g}-{high:g}"
-    suffix = f" {unit_label}" if unit_label else ""
+    currency = str(value.get("currency") or "").strip().upper()
+    # 结构化金额不能丢弃页面声明的币种，更不能把外币改写成人民币。
+    unit_label = unit_label.removeprefix("元")
+    label = currency_label(currency) if currency else "币种未给出"
+    suffix = f" {label}{unit_label}"
     return f"{span}{suffix}（页面声明的结构化薪资）"
 
 

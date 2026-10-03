@@ -7,10 +7,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from bridges.career_plan.collecting import JobPageReadResult, ParsedJobPage
 from bridges.career_plan.contracts import JobReadStatus
@@ -28,6 +31,7 @@ from bridges.career_plan.searching import (
     CareerSearchOutcome,
     query_record,
 )
+from bridges.career_plan.service import CareerModuleError, CareerPlanService, CareerSupersededError
 from bridges.chat.repository import ConversationRepository
 from bridges.contracts.modules import ModuleQueryStatus
 from bridges.kernel.contracts import (
@@ -167,8 +171,12 @@ def _inputs(content: str) -> RecipeInputs:
     )
 
 
-def _kernel(database: BridgesDatabase, ports: _Ports) -> tuple[NodeKernel, CareerNodeFlow]:
-    flow = CareerNodeFlow(search=ports, reader=ports, clock=lambda: NOW)
+def _kernel(
+    database: BridgesDatabase, ports: _Ports, module_context: Any = None,
+) -> tuple[NodeKernel, CareerNodeFlow]:
+    flow = CareerNodeFlow(
+        search=ports, reader=ports, clock=lambda: NOW, module_context=module_context,
+    )
     kernel = NodeKernel(
         registry=career_recipe_registry(),
         repository=NodeKernelRepository(database),
@@ -304,6 +312,11 @@ def test_gates_block_missing_evidence_instead_of_delivering() -> None:
     )
     assert violated.verdict is QualityVerdict.BLOCKED
     assert violated.code == "career_city_condition_violated"
+    unknown_city = conditions(
+        None, _execution({"cities": [], "samples": [_sample(city=None)]}),
+    )
+    assert unknown_city.verdict is QualityVerdict.BLOCKED
+    assert unknown_city.code == "career_city_unverified"
 
 
 def test_gates_pass_on_consistent_projection() -> None:
@@ -321,3 +334,115 @@ def test_gates_pass_on_consistent_projection() -> None:
     for gate in ("career.sample_evidence", "career.stats_caliber", "career.conditions_hold"):
         result = CAREER_GATE_HANDLERS[gate](None, _execution(projection))
         assert result.verdict is QualityVerdict.PASS, gate
+
+
+def _seed_service(database: BridgesDatabase) -> ConversationRepository:
+    _seed(database)
+    with database.transaction():
+        database.connection.execute(
+            "UPDATE generation_runs SET lease_expires_at = '2099-01-01T00:00:00+00:00'"
+        )
+        database.connection.execute(
+            "INSERT INTO messages"
+            "(message_id, conversation_id, account_id, role, status, content,"
+            " created_at, updated_at) VALUES (?, ?, ?, 'user', 'done', ?, ?, ?)",
+            ("msg-user-28", CONVERSATION, ACCOUNT, "查询 Java 后端开发岗位，城市南昌",
+             NOW.isoformat(), NOW.isoformat()),
+        )
+    return ConversationRepository(database)
+
+
+def _run_service(service: CareerPlanService, repo: ConversationRepository) -> Any:
+    return service.run(
+        repo=repo, account_id=ACCOUNT, conversation_id=CONVERSATION,
+        user_message_id="msg-user-28", assistant_message_id=ASSISTANT,
+        run_context=SimpleNamespace(run_id=RUN),
+        emit_node=lambda *_args: None, stop_event=None,
+    )
+
+
+def test_source_failure_is_finalized_atomically_inside_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """失败投影、正文和终态必须与守卫复核共用同一事务。"""
+    database = BridgesDatabase(tmp_path / "failure-atomic.db")
+    database.initialize()
+    repo = _seed_service(database)
+    ports = _Ports()
+
+    def fail_search(*_args: Any, **kwargs: Any) -> CareerSearchOutcome:
+        return CareerSearchOutcome(record=query_record(
+            query=kwargs["query"], status=ModuleQueryStatus.ERROR,
+            evidence_count=0, error_code="source_unavailable", retryable=True,
+        ), hits=())
+
+    monkeypatch.setattr(ports, "search_public", fail_search)
+    original_finalize = repo.finalize_message
+    observed: list[bool] = []
+
+    def checked_finalize(*args: Any, **kwargs: Any) -> int:
+        observed.append(database.connection.in_transaction)
+        return original_finalize(*args, **kwargs)
+
+    monkeypatch.setattr(repo, "finalize_message", checked_finalize)
+    with pytest.raises(CareerModuleError):
+        _run_service(CareerPlanService(search=ports, reader=ports), repo)
+    message = repo.get_message(ACCOUNT, ASSISTANT)
+    assert observed == [True]
+    assert message is not None and message.status.value == "error"
+    assert message.career_plan is not None and message.career_plan["status"] == "error"
+    assert "查询" in message.content and message.error_code
+
+
+def test_source_failure_after_lease_transfer_cannot_write_a_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """来源返回失败时已转移的租约，拒绝旧执行者的失败交付。"""
+    database = BridgesDatabase(tmp_path / "failure-superseded.db")
+    database.initialize()
+    repo = _seed_service(database)
+    ports = _Ports()
+
+    def transfer_then_fail(*_args: Any, **kwargs: Any) -> CareerSearchOutcome:
+        with database.transaction():
+            database.connection.execute(
+                "UPDATE generation_runs SET lease_owner = 'worker-new' WHERE run_id = ?",
+                (RUN,),
+            )
+        return CareerSearchOutcome(record=query_record(
+            query=kwargs["query"], status=ModuleQueryStatus.ERROR, evidence_count=0,
+        ), hits=())
+
+    monkeypatch.setattr(ports, "search_public", transfer_then_fail)
+    with pytest.raises(CareerSupersededError):
+        _run_service(CareerPlanService(search=ports, reader=ports), repo)
+    message = repo.get_message(ACCOUNT, ASSISTANT)
+    assert message is not None and message.career_plan is None and message.content == ""
+
+
+def test_same_continuation_with_changed_task_goal_cannot_reuse_old_parse(tmp_path: Path) -> None:
+    """条件相同但岗位目标改变时，同一个「继续」不能命中旧目标的产物。"""
+    database = BridgesDatabase(tmp_path / "goal-reuse.db")
+    database.initialize()
+    _seed(database)
+    first_kernel, first_flow = _kernel(database, _Ports(), SimpleNamespace(
+        used_task_scope=True, topic_hint="查询 Java 后端开发岗位，城市南昌",
+        task_goal="", effective_conditions=(),
+    ))
+    first = first_kernel.execute(
+        recipe=build_career_recipe(),
+        inputs=replace(_inputs("继续"), prior_digest=first_flow.prior_digest),
+    )
+    assert first.status is KernelStatus.COMPLETED
+    second_kernel, second_flow = _kernel(database, _Ports(), SimpleNamespace(
+        used_task_scope=True, topic_hint="查询前端开发岗位，城市南昌",
+        task_goal="", effective_conditions=(),
+    ))
+    second = second_kernel.execute(
+        recipe=build_career_recipe(),
+        inputs=replace(_inputs("继续"), prior_digest=second_flow.prior_digest),
+    )
+    assert first_flow.prior_digest != second_flow.prior_digest
+    assert not second.nodes[0].reused
+    parsed = second.artifact("career.parse")
+    assert parsed is not None and parsed.payload["analysis"]["family_title"] == "前端开发工程师"
