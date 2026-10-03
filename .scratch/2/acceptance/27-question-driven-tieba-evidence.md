@@ -62,6 +62,14 @@ main 集成基线：`tests/chat tests/kernel tests/contracts tests/api tests/tas
 
 ## 合并、推送与清理
 
-合并前经用户现有 `socks5h://127.0.0.1:7890` 命令级代理 fetch；`origin/main` 与本地 main 同为 `68357a20`。不修改全局/仓库代理配置。
+合并前经用户现有 `socks5h://127.0.0.1:7890` 命令级代理 fetch；验收当时 `origin/main` 与本地 main 同为 `68357a20`。不修改全局/仓库代理配置。
 
-最终修复提交、合并树验证、远端一致性与本票清理结果在完成后追加。清理仅针对 Issue 27；Issue 28、31 及其他主工作树文件保留。
+### 执行完成（2026-10-03）
+
+- 验收修复提交 `3c13a30c`；main 合并提交 `0fc77251`。合并时本地 main 已由并行会话推进到 `9d2b31bf`（含 Issue 28/31），推送前 fetch 后远端为 `5d0aec96`（Issue 28/31 收尾记录）。
+- 自动合并仅在 `src/bridges/chat/task_materials.py` 冲突：main 侧新增的 `"career"` 声明与本分支新增的 `"tieba"` 声明落在同一插入点，解决为两条声明都保留；解决后导入、`git diff --check` 与 ruff 均通过。
+- `openapi.json` 与 `packages/contracts/src/generated.ts` 自动合并后按合并树重生成（`PYTHONPATH=src scripts/regenerate_openapi.py` → 311 paths；`openapi-typescript@7.13.0`），`tests/contracts/test_openapi_sync.py` **2 passed**。
+- 合入后在最终 main 复跑专项组合 `tests/tieba tests/contracts/test_openapi_sync.py tests/architecture`：**118 passed / 2 failed**，两个失败与基线同名同因（`test_other_modules_still_rejected_and_no_silent_search`、`test_plain_chat_suggests_tieba_without_searching`，已在合并前 main `9d2b31bf` 独立复现）；`mypy src/bridges/tieba --no-incremental` 22 errors 与基线一致，共享接缝 ruff 114 条无新增无消除。
+- 推送：`git -c http.proxy=socks5h://127.0.0.1:7890 push origin main`（`5d0aec96..0fc77251`）；`git ls-remote` 核对 `main == origin/main == 0fc772512340200ed2c1785031c47df9c286d726`。
+- 确认 Issue 工作树无未提交改动（HEAD `3c13a30c`）后删除 `.worktrees/27-question-driven-tieba-evidence` 与分支 `codex/27-question-driven-tieba-evidence`；`git worktree prune` 无额外失效记录。
+- Issue 28、31 的工作树与分支已由各自并行代理在其收尾提交（`0e8e22c5`、`5d0aec96`）中完成清理，本票未触碰；`.worktrees/26-github-requirement-evidence-matrix` 残留目录与主工作树未跟踪验证文件（`24-main-baseline.xml`、`24-main-integration.xml`、`27-review/main-*.xml`、`ruff-main.json`、`25-main-baseline.xml`）保留。

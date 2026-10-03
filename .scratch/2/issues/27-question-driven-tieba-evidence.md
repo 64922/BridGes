@@ -55,6 +55,7 @@
 ### 2026-10-03：用户授权独立验收
 
 code-review 规范轴与需求轴分别独立审查，初始发现的官方适用性/替代关系、恢复字段、引用核验和可信交付缺陷已修复；补充年月日、过期通知与学生类型范围回归。复审两轴均无范围内阻断，五条验收已逐项确认。详细代码证据、修复、main 基线比较与剩余限制见[独立验收记录](../acceptance/27-question-driven-tieba-evidence.md)；合并推送与清理结果在完成后追加。
+- 合入与清理：验收修复 `3c13a30c`，main 合并 `0fc77251`（`task_materials.py` 冲突解决为双方声明都保留，生成合同按合并树重生成）；最终 main 专项组合 118 passed / 2 failed（与基线同名同因），已推送并与远端 `origin/main` 一致。工作树 `.worktrees/27-question-driven-tieba-evidence` 与分支 `codex/27-question-driven-tieba-evidence` 已删除，`git worktree prune` 无额外失效记录；Issue 28/31 由各自代理收尾清理，本票未触碰，其余未跟踪文件保留。详见[独立验收记录](../acceptance/27-question-driven-tieba-evidence.md)。
 
 ### 2026-10-03：实现与验证（待独立验收）
 
