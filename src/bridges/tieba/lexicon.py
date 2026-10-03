@@ -242,7 +242,7 @@ OFFICIAL_DOMAIN_SUFFIX = "ecjtu.edu.cn"
 
 #: 时间条件：保留用户原话，并在能取得帖子时间时真正参与过滤。
 _TIME_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"20\d{2}\s*年(?:\s*\d{1,2}\s*月)?"),
+    re.compile(r"20\d{2}\s*年(?:\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?)?"),
     re.compile(r"\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?"),
     re.compile(
         r"最近|近期|这几天|这两天|上个月|这个月|本月|去年|今年|前年|"

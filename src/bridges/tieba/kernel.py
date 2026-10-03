@@ -24,6 +24,7 @@ from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
 from bridges.kernel.contracts import (
     ArtifactTrust,
     InputDependency,
+    KernelResult,
     NodeArtifact,
     NodeExecution,
     NodeInvocation,
@@ -59,6 +60,7 @@ from bridges.tieba.official import (
     official_query,
 )
 from bridges.tieba.parsing import parse_tieba_request
+from bridges.tieba.presenting import build_sections
 from bridges.tieba.reading import TiebaThreadReader
 from bridges.tieba.searching import (
     REJECT_NOT_A_THREAD,
@@ -89,11 +91,11 @@ TIEBA_RECIPE_VERSION = "tieba-recipe-v1"
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
     "tieba.parse_request": "tieba-parse-v2",
     "tieba.plan_evidence": "tieba-plan-v2",
-    "tieba.verify_official_pages": "tieba-official-v2",
-    "tieba.search_threads": "tieba-search-v2",
+    "tieba.verify_official_pages": "tieba-official-v3",
+    "tieba.search_threads": "tieba-search-v3",
     "tieba.read_threads": "tieba-read-v2",
-    "tieba.synthesize_evidence": "tieba-synthesize-v2",
-    "tieba.verify_evidence": "tieba-verify-v2",
+    "tieba.synthesize_evidence": "tieba-synthesize-v3",
+    "tieba.verify_evidence": "tieba-verify-v3",
 }
 
 TIEBA_GATES: tuple[str, ...] = (
@@ -105,8 +107,7 @@ TIEBA_GATES: tuple[str, ...] = (
 
 #: 只查贴吧时官方路径的阻断原因（来源限制生效）。
 TIEBA_ONLY_OFFICIAL_BLOCKED = (
-    "你明确只查贴吧：本轮遵守来源限制，未访问学校官方页面，"
-    "规定相关内容保持未核实。"
+    "你明确只查贴吧：本轮遵守来源限制，未访问学校官方页面，规定相关内容保持未核实。"
 )
 
 #: 官方证据缺失或不适用的固定说明（规定类必须出现）。
@@ -536,17 +537,12 @@ def run_verification(
         for post in projection.confirmed_posts
     )
     read_scope = _read_scope_consistent(projection.confirmed_posts, posts)
-    unread_absent = _quotes_traceable(projection.sections, posts)
+    _, filtered_posts = evidence.apply_time_condition(analysis, list(posts))
+    unread_absent = _quotes_traceable(projection.sections, filtered_posts)
     consensus_absent = not _has_consensus_phrases(projection)
     official_scope = _official_scope_consistent(analysis, plan, projection, checks)
     recomputed = evidence.detect_conflicts(analysis, checks, posts)
-    projected_keys = {
-        (item.official_url, tuple(item.topic_terms)) for item in projection.conflicts
-    }
-    recomputed_keys = {
-        (item.official_url, tuple(item.topic_terms)) for item in recomputed
-    }
-    conflicts_disclosed = projected_keys == recomputed_keys
+    conflicts_disclosed = projection.conflicts == recomputed
     unconfirmed: list[str] = []
     if not attribution:
         unconfirmed.append("存在与读取页面不一致的帖归属引用。")
@@ -590,13 +586,22 @@ def _read_scope_consistent(
         source = read_by_url.get(item.url)
         if source is None:
             return False
-        if item.pages_read > source.pages_read or item.pages_limit != source.pages_limit:
+        if (
+            item.pages_read != source.pages_read
+            or item.pages_limit != source.pages_limit
+            or item.total_pages != source.total_pages
+            or item.read_status != source.read_status
+            or item.retrieved_at != source.retrieved_at
+            or item.title != source.title
+            or item.thread_id != source.thread_id
+            or item.affiliation_evidence != source.affiliation_evidence
+            or item.replies_obtained != bool(item.replies)
+        ):
             return False
         if item.floor_min != source.floor_min or item.floor_max != source.floor_max:
             return False
-        source_replies = {(reply.floor, reply.content) for reply in source.replies}
         for reply in item.replies:
-            if (reply.floor, reply.content) not in source_replies:
+            if reply not in source.replies:
                 return False
     return True
 
@@ -605,25 +610,7 @@ def _quotes_traceable(
     sections: Sequence[str], posts: Sequence[TiebaPostProjection]
 ) -> bool:
     """每个分段里的引文都必须能回溯到真实读到的回复原文。"""
-    contents = [
-        reply.content.strip()
-        for post in posts
-        for reply in post.replies
-        if reply.content
-    ]
-    if not sections:
-        return True
-    for section in sections:
-        body = section.split("：", 1)[-1]
-        for chunk in body.split("；"):
-            quote = chunk.split("（", 1)[0].strip()
-            if quote.endswith("…"):
-                quote = quote[:-1]
-            if not quote:
-                continue
-            if not any(content.startswith(quote) for content in contents):
-                return False
-    return True
+    return list(sections) == build_sections(list(posts))
 
 
 def _has_consensus_phrases(projection: TiebaResearchProjection) -> bool:
@@ -653,7 +640,11 @@ def _official_scope_consistent(
             projection.official_blocked_reason == plan.official_blocked_reason
             and not projection.official_checks
         )
+    if list(projection.official_checks) != list(checks):
+        return False
     for check in checks:
+        if check.applicability != evidence.assess_applicability(check, analysis):
+            return False
         if check.status == STATUS_VERIFIED and (
             not check.excerpt or not check.matched_terms or check.applicability is None
         ):
@@ -665,7 +656,7 @@ def _official_scope_consistent(
         and check.applicability is not None
         and check.applicability.applicable
     ]
-    return bool(applicable or projection.official_unverified_note)
+    return bool(applicable or projection.official_unverified_note == OFFICIAL_UNVERIFIED_NOTE)
 
 
 class TiebaNodeFlow:
@@ -745,11 +736,7 @@ class TiebaNodeFlow:
 
     def _run_parse(self, invocation: NodeInvocation) -> NodeExecution:
         wait = self._pending_wait
-        wait_context = (
-            wait.context
-            if wait is not None and isinstance(wait.context, dict)
-            else None
-        )
+        wait_context = wait.context if wait is not None and isinstance(wait.context, dict) else None
         analysis = parse_tieba_request(
             invocation.inputs.user_content,
             pending=wait_context,
@@ -843,7 +830,7 @@ class TiebaNodeFlow:
                 status=NodeReceiptStatus.COMPLETED,
             )
         resume = self._resume_payload(invocation, NODE_VERIFY_OFFICIAL)
-        checks = evidence.verify_official(
+        outcome = evidence.verify_official(
             self._search,
             self._official_reader,
             invocation.account_id,
@@ -854,13 +841,15 @@ class TiebaNodeFlow:
             ),
             resume=resume,
         )
-        partial = bool(self._stop_event is not None and self._stop_event.is_set())
+        checks = outcome.checks
         payload = {
             "checks": [check.model_dump(mode="json") for check in checks],
             "blocked": False,
             "blocked_reason": None,
             "skipped": False,
-            "partial": partial,
+            "partial": outcome.partial,
+            "records": [record.model_dump(mode="json") for record in outcome.records],
+            "candidates": outcome.candidates,
         }
         return NodeExecution(
             artifact=self._artifact(
@@ -1156,10 +1145,7 @@ class TiebaNodeFlow:
         artifact = self._repository.find_artifact(
             invocation.account_id, invocation.conversation_id, node, input_key
         )
-        if (
-            artifact is None
-            or artifact.capability_version != invocation.spec.capability_version
-        ):
+        if artifact is None or artifact.capability_version != invocation.spec.capability_version:
             return None
         if artifact.payload.get("partial") is not True:
             return None
@@ -1269,6 +1255,76 @@ def _official_unverified_note(
     if applicable:
         return None
     return OFFICIAL_UNVERIFIED_NOTE
+
+
+def verified_projection(result: KernelResult) -> TiebaResearchProjection | None:
+    """交付前复验完整依赖链，拒绝未合格核验、篡改引用或候选归纳。"""
+    artifacts = {artifact.node: artifact for artifact in result.artifacts}
+    verify = artifacts.get(NODE_VERIFY)
+    if verify is None or verify.trust_state is not ArtifactTrust.QUALIFIED:
+        return None
+    for spec in build_tieba_recipe().nodes:
+        artifact = artifacts.get(spec.name)
+        if (
+            artifact is None
+            or not artifact.verify_hash()
+            or not artifact.reusable
+            or artifact.recipe_id != TIEBA_RECIPE_ID
+            or artifact.recipe_version != TIEBA_RECIPE_VERSION
+            or artifact.capability_version != spec.capability_version
+            or artifact.artifact_type != spec.artifact_type
+            or (
+                artifact.account_id,
+                artifact.conversation_id,
+                artifact.task_id,
+                artifact.task_version,
+            )
+            != (verify.account_id, verify.conversation_id, verify.task_id, verify.task_version)
+            or {dep.node for dep in artifact.input_deps} != set(spec.depends_on)
+        ):
+            return None
+        for dep in artifact.input_deps:
+            upstream = artifacts.get(dep.node)
+            if (
+                upstream is None
+                or upstream.artifact_id != dep.artifact_id
+                or upstream.content_hash != dep.content_hash
+            ):
+                return None
+    try:
+        analysis = TiebaQuestionAnalysis.model_validate(artifacts[NODE_PARSE].payload["analysis"])
+        plan = TiebaEvidencePlan.model_validate(artifacts[NODE_PLAN].payload["plan"])
+        checks = [
+            TiebaOfficialCheck.model_validate(raw)
+            for raw in artifacts[NODE_VERIFY_OFFICIAL].payload["checks"]
+        ]
+        posts = [
+            TiebaPostProjection.model_validate(raw)
+            for raw in artifacts[NODE_READ].payload["confirmed"]
+        ]
+        synthesis = TiebaResearchProjection.model_validate(
+            artifacts[NODE_SYNTHESIZE].payload["projection"]
+        )
+        projected = TiebaResearchProjection.model_validate(verify.payload["projection"])
+        verification = run_verification(analysis, plan, synthesis, checks, posts)
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not all(
+        (
+            verification.attribution_consistent,
+            verification.read_scope_consistent,
+            verification.unread_claims_absent,
+            verification.consensus_claims_absent,
+            verification.official_scope_consistent,
+            verification.conflicts_disclosed,
+        )
+    ):
+        return None
+    return (
+        projected
+        if projected == synthesis.model_copy(update={"verification": verification})
+        else None
+    )
 
 
 # ---------------------------------------------------------------------------

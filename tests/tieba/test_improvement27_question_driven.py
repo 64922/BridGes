@@ -86,7 +86,10 @@ def _official_hit() -> TiebaSearchHit:
 
 
 def test_policy_checks_official_first_and_shares_one_run_budget(
-    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    sqlite_app: Any,
+    client: TestClient,
+    generation_helpers: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """规定类：官方先核对，再查贴吧；两路外部调用记在同一条运行预算上。"""
     account = _register(client)
@@ -113,6 +116,20 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
     )
     official_reader = _FakeOfficialReader()
     _wire(sqlite_app, port, reader=reader, official_reader=official_reader)
+    from dataclasses import replace
+
+    from bridges.kernel.contracts import ArtifactTrust
+    from bridges.tieba.kernel import NODE_VERIFY, verified_projection
+    from bridges.tieba.service import TiebaResearchService
+
+    delivered: list[Any] = []
+    original_delivery = TiebaResearchService._deliver_completed
+
+    def capture(self: Any, repo: Any, account_id: str, message_id: str, result: Any) -> Any:
+        delivered.append(result)
+        return original_delivery(self, repo, account_id, message_id, result)
+
+    monkeypatch.setattr(TiebaResearchService, "_deliver_completed", capture)
     conversation_id = _create_conversation(client)
 
     _send(client, conversation_id, "华东交通大学吧 转专业 规定 流程", module_id="tieba")
@@ -134,16 +151,72 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
 
     # 官方检索、官方抓取、贴吧检索与帖子读取都记在同一条运行账本上。
     database = sqlite_app.state.chat_service._repo.database  # noqa: SLF001
-    rows = database.scoped(account["id"]).execute(
-        "SELECT run_id, external_calls_used, external_calls_active "
-        "FROM run_budget_ledger WHERE account_id = ? AND conversation_id = ?",
-        (account["id"], conversation_id),
-    ).fetchall()
+    rows = (
+        database.scoped(account["id"])
+        .execute(
+            "SELECT run_id, external_calls_used, external_calls_active "
+            "FROM run_budget_ledger WHERE account_id = ? AND conversation_id = ?",
+            (account["id"], conversation_id),
+        )
+        .fetchall()
+    )
     assert len(rows) == 1
     snapshot = RunBudgetLedgerRepository(database).load(account["id"], rows[0]["run_id"])
     assert snapshot is not None
     assert snapshot.external_calls_used == 4
     assert snapshot.external_calls_active == 0
+    result = delivered[0]
+    assert verified_projection(result) is not None
+    assert (
+        verified_projection(
+            replace(
+                result,
+                artifacts=tuple(
+                    artifact for artifact in result.artifacts if artifact.node != NODE_VERIFY
+                ),
+            )
+        )
+        is None
+    )
+    verify = result.artifact(NODE_VERIFY)
+    assert verify is not None
+    for bad in (
+        replace(verify, trust_state=ArtifactTrust.EVIDENCE_BOUND),
+        replace(
+            verify,
+            payload={
+                **verify.payload,
+                "projection": {**verify.payload["projection"], "topic": "伪造主题"},
+            },
+        ),
+    ):
+        changed = replace(
+            result,
+            artifacts=tuple(
+                bad if artifact.node == NODE_VERIFY else artifact for artifact in result.artifacts
+            ),
+        )
+        assert verified_projection(changed) is None
+
+    service = sqlite_app.state.chat_service.tieba_research_service
+    repo = sqlite_app.state.chat_service._repo
+    message = repo.get_message(account["id"], assistant["message_id"])
+    assert message is not None
+    assert service.verify_message(
+        repo,
+        account_id=account["id"],
+        run_id=rows[0]["run_id"],
+        conversation_id=conversation_id,
+        assistant_message_id=assistant["message_id"],
+    )
+    monkeypatch.setattr(repo, "get_message", lambda *_args: replace(message, content="篡改正文"))
+    assert not service.verify_message(
+        repo,
+        account_id=account["id"],
+        run_id=rows[0]["run_id"],
+        conversation_id=conversation_id,
+        assistant_message_id=assistant["message_id"],
+    )
 
 
 def test_experience_question_keeps_forum_only_scope(
@@ -367,7 +440,7 @@ def test_conflict_with_newer_official_rule_uses_time_and_scope_basis(
 
     tieba = assistant["tieba_research"]
     assert tieba["conflicts"][0]["resolution"] == "official_newer"
-    assert tieba["conflicts"][0]["official_date"] == "2026"
+    assert tieba["conflicts"][0]["official_date"] == "2026年3月1日"
     assert tieba["conflicts"][0]["post_refs"][0]["floor"] == 5
     assert tieba["verification"]["conflicts_disclosed"] is True
     assert "【官方与帖子经历的冲突（按时间与适用范围核对）】" in assistant["content"]
@@ -487,7 +560,7 @@ def test_resume_reuses_completed_search_reads_and_official_checks() -> None:
         stop_event=None,
         deadline_seconds=5.0,
         resume={
-            "queries": [record.model_dump(mode="json")],
+            "records": [record.model_dump(mode="json")],
             "candidates": [hit.model_dump(mode="json")],
             "rejected": [],
             "rounds": ["上一轮已完成精确词查询。"],
@@ -548,4 +621,4 @@ def test_resume_reuses_completed_search_reads_and_official_checks() -> None:
     )
     # 已取得的官方页面直接续用，不再重复抓取（发现查询只用于补未抓取的候选）。
     assert official_reader.fetched == []
-    assert [item.url for item in checks] == [OFFICIAL_URL]
+    assert [item.url for item in checks.checks] == [OFFICIAL_URL]

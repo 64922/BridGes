@@ -1,0 +1,180 @@
+{
+  "baseline_commit": "68357a208f3e22b6fdea0445377ea383a80a9fcb",
+  "focused": {
+    "main": {
+      "file": "main-focused.xml",
+      "tests": 94,
+      "passed": 91,
+      "failed": 3,
+      "skipped": 0,
+      "failures": [
+        "tests.contracts.test_openapi_sync::test_committed_openapi_matches_current_api",
+        "tests.tieba.test_tieba_module_flow::test_other_modules_still_rejected_and_no_silent_search",
+        "tests.tieba.test_tieba_module_flow::test_plain_chat_suggests_tieba_without_searching"
+      ]
+    },
+    "issue": {
+      "file": "final-focused.xml",
+      "tests": 120,
+      "passed": 118,
+      "failed": 2,
+      "skipped": 0,
+      "failures": [
+        "tests.tieba.test_tieba_module_flow::test_other_modules_still_rejected_and_no_silent_search",
+        "tests.tieba.test_tieba_module_flow::test_plain_chat_suggests_tieba_without_searching"
+      ]
+    },
+    "introduced_failures": [],
+    "resolved_failures": [
+      "tests.contracts.test_openapi_sync::test_committed_openapi_matches_current_api"
+    ]
+  },
+  "regressions": {
+    "file": "final-regressions.xml",
+    "tests": 51,
+    "passed": 51,
+    "failed": 0,
+    "skipped": 0,
+    "failures": []
+  },
+  "integration": {
+    "main": {
+      "file": "main-integration-isolated.xml",
+      "tests": 1637,
+      "passed": 1586,
+      "failed": 51,
+      "skipped": 0,
+      "failures": [
+        "tests.chat.test_attachment_project::test_attachment_carries_conversation_project",
+        "tests.chat.test_attachment_project::test_attachment_without_project_stays_unbound",
+        "tests.chat.test_attachment_project::test_cleared_project_attachment_not_carried",
+        "tests.chat.test_attachment_project::test_cross_account_attachment_project_hidden",
+        "tests.chat.test_attachment_project::test_project_layer_includes_chat_attachments",
+        "tests.chat.test_career_planning_chat::test_career_always_uses_the_current_four_dimension_slice",
+        "tests.chat.test_career_planning_chat::test_career_audit_does_not_leak_body",
+        "tests.chat.test_career_planning_chat::test_career_boundary_violation_blocks_delivery",
+        "tests.chat.test_career_planning_chat::test_career_chat_rejects_message_attachments",
+        "tests.chat.test_career_planning_chat::test_career_item_feedback_is_idempotent_and_scoped",
+        "tests.chat.test_career_planning_chat::test_career_item_ref_requires_career_message",
+        "tests.chat.test_career_planning_chat::test_career_learning_records_enter_evidence",
+        "tests.chat.test_career_planning_chat::test_career_message_flows_through_real_message_stream",
+        "tests.chat.test_career_planning_chat::test_career_model_failure_is_recoverable_and_retry_keeps_input",
+        "tests.chat.test_career_planning_chat::test_career_persists_and_restores_for_same_account_only",
+        "tests.chat.test_career_planning_chat::test_career_process_events_carry_chinese_states",
+        "tests.chat.test_career_planning_chat::test_career_uses_minimal_authorized_profile_slice",
+        "tests.chat.test_career_planning_chat::test_career_without_profile_has_empty_disclosure",
+        "tests.chat.test_career_planning_chat::test_conflicting_natural_language_tasks_only_ask_one_question",
+        "tests.chat.test_career_planning_chat::test_natural_language_career_route_is_persisted_before_generation",
+        "tests.chat.test_career_planning_chat::test_second_account_planning_is_isolated_from_first",
+        "tests.chat.test_chat_service::test_conversation_lifecycle_persists_pin_rename_project_and_order",
+        "tests.chat.test_issue06_budget_truncation::test_career_over_budget_with_real_result_delivers_plan",
+        "tests.chat.test_issue06_budget_truncation::test_career_slow_call_terminates_within_scaled_budget",
+        "tests.chat.test_issue09_career_resilience::test_clarification_reply_continues_career_planning",
+        "tests.chat.test_issue09_career_resilience::test_consistently_invalid_output_fails_within_budget",
+        "tests.chat.test_issue09_career_resilience::test_invalid_first_output_repairs_once_then_succeeds",
+        "tests.chat.test_issue09_career_resilience::test_missing_external_evidence_delivers_skeleton_with_open_questions",
+        "tests.chat.test_issue09_career_resilience::test_model_over_budget_with_real_result_delivers_plan",
+        "tests.chat.test_issue09_career_resilience::test_parse_failure_repairs_once_then_succeeds",
+        "tests.chat.test_issue09_career_resilience::test_retry_creates_new_attempt_keeping_old_failure",
+        "tests.chat.test_issue09_career_resilience::test_slow_model_completes_durably_across_conversation_switch",
+        "tests.chat.test_issue09_career_resilience::test_sufficient_request_generates_full_plan",
+        "tests.chat.test_issue09_career_resilience::test_vague_request_returns_clarification_without_model_call",
+        "tests.chat.test_mcp_call_chat::test_cross_account_confirmation_404",
+        "tests.chat.test_mcp_call_chat::test_mcp_call_conflicts_with_image_payload",
+        "tests.chat.test_mcp_call_chat::test_selected_mcp_call_succeeds",
+        "tests.chat.test_mcp_call_chat::test_sensitive_pending_approve_flow",
+        "tests.chat.test_mcp_call_chat::test_sensitive_pending_deny_flow",
+        "tests.chat.test_mcp_call_chat::test_unselected_mcp_call_rejected",
+        "tests.chat.test_selections::test_builtin_skill_selection_persists_on_create",
+        "tests.chat.test_selections::test_disabled_skill_rejected_on_create",
+        "tests.chat.test_selections::test_mcp_selection_and_disable_read_cleanup",
+        "tests.chat.test_selections::test_patch_selection_and_clear",
+        "tests.chat.test_selections::test_revoke_permissions_removes_selection",
+        "tests.chat.test_selections::test_selection_scoped_to_account",
+        "tests.chat.test_selections::test_tools_context_injected_when_selected",
+        "tests.chat.test_selections::test_tools_context_not_injected_after_clear",
+        "tests.chat.test_selections::test_unknown_plugin_rejected",
+        "tests.contracts.test_openapi_sync::test_committed_openapi_matches_current_api",
+        "tests.github.test_github_module_flow::test_plain_chat_without_the_module_never_starts_github"
+      ]
+    },
+    "issue": {
+      "file": "issue-integration-isolated.xml",
+      "tests": 1637,
+      "passed": 1587,
+      "failed": 50,
+      "skipped": 0,
+      "failures": [
+        "tests.chat.test_attachment_project::test_attachment_carries_conversation_project",
+        "tests.chat.test_attachment_project::test_attachment_without_project_stays_unbound",
+        "tests.chat.test_attachment_project::test_cleared_project_attachment_not_carried",
+        "tests.chat.test_attachment_project::test_cross_account_attachment_project_hidden",
+        "tests.chat.test_attachment_project::test_project_layer_includes_chat_attachments",
+        "tests.chat.test_career_planning_chat::test_career_always_uses_the_current_four_dimension_slice",
+        "tests.chat.test_career_planning_chat::test_career_audit_does_not_leak_body",
+        "tests.chat.test_career_planning_chat::test_career_boundary_violation_blocks_delivery",
+        "tests.chat.test_career_planning_chat::test_career_chat_rejects_message_attachments",
+        "tests.chat.test_career_planning_chat::test_career_item_feedback_is_idempotent_and_scoped",
+        "tests.chat.test_career_planning_chat::test_career_item_ref_requires_career_message",
+        "tests.chat.test_career_planning_chat::test_career_learning_records_enter_evidence",
+        "tests.chat.test_career_planning_chat::test_career_message_flows_through_real_message_stream",
+        "tests.chat.test_career_planning_chat::test_career_model_failure_is_recoverable_and_retry_keeps_input",
+        "tests.chat.test_career_planning_chat::test_career_persists_and_restores_for_same_account_only",
+        "tests.chat.test_career_planning_chat::test_career_process_events_carry_chinese_states",
+        "tests.chat.test_career_planning_chat::test_career_uses_minimal_authorized_profile_slice",
+        "tests.chat.test_career_planning_chat::test_career_without_profile_has_empty_disclosure",
+        "tests.chat.test_career_planning_chat::test_conflicting_natural_language_tasks_only_ask_one_question",
+        "tests.chat.test_career_planning_chat::test_natural_language_career_route_is_persisted_before_generation",
+        "tests.chat.test_career_planning_chat::test_second_account_planning_is_isolated_from_first",
+        "tests.chat.test_chat_service::test_conversation_lifecycle_persists_pin_rename_project_and_order",
+        "tests.chat.test_issue06_budget_truncation::test_career_over_budget_with_real_result_delivers_plan",
+        "tests.chat.test_issue06_budget_truncation::test_career_slow_call_terminates_within_scaled_budget",
+        "tests.chat.test_issue09_career_resilience::test_clarification_reply_continues_career_planning",
+        "tests.chat.test_issue09_career_resilience::test_consistently_invalid_output_fails_within_budget",
+        "tests.chat.test_issue09_career_resilience::test_invalid_first_output_repairs_once_then_succeeds",
+        "tests.chat.test_issue09_career_resilience::test_missing_external_evidence_delivers_skeleton_with_open_questions",
+        "tests.chat.test_issue09_career_resilience::test_model_over_budget_with_real_result_delivers_plan",
+        "tests.chat.test_issue09_career_resilience::test_parse_failure_repairs_once_then_succeeds",
+        "tests.chat.test_issue09_career_resilience::test_retry_creates_new_attempt_keeping_old_failure",
+        "tests.chat.test_issue09_career_resilience::test_slow_model_completes_durably_across_conversation_switch",
+        "tests.chat.test_issue09_career_resilience::test_sufficient_request_generates_full_plan",
+        "tests.chat.test_issue09_career_resilience::test_vague_request_returns_clarification_without_model_call",
+        "tests.chat.test_mcp_call_chat::test_cross_account_confirmation_404",
+        "tests.chat.test_mcp_call_chat::test_mcp_call_conflicts_with_image_payload",
+        "tests.chat.test_mcp_call_chat::test_selected_mcp_call_succeeds",
+        "tests.chat.test_mcp_call_chat::test_sensitive_pending_approve_flow",
+        "tests.chat.test_mcp_call_chat::test_sensitive_pending_deny_flow",
+        "tests.chat.test_mcp_call_chat::test_unselected_mcp_call_rejected",
+        "tests.chat.test_selections::test_builtin_skill_selection_persists_on_create",
+        "tests.chat.test_selections::test_disabled_skill_rejected_on_create",
+        "tests.chat.test_selections::test_mcp_selection_and_disable_read_cleanup",
+        "tests.chat.test_selections::test_patch_selection_and_clear",
+        "tests.chat.test_selections::test_revoke_permissions_removes_selection",
+        "tests.chat.test_selections::test_selection_scoped_to_account",
+        "tests.chat.test_selections::test_tools_context_injected_when_selected",
+        "tests.chat.test_selections::test_tools_context_not_injected_after_clear",
+        "tests.chat.test_selections::test_unknown_plugin_rejected",
+        "tests.github.test_github_module_flow::test_plain_chat_without_the_module_never_starts_github"
+      ]
+    },
+    "introduced_failures": [],
+    "resolved_failures": [
+      "tests.contracts.test_openapi_sync::test_committed_openapi_matches_current_api"
+    ]
+  },
+  "mypy": {
+    "main_errors": 22,
+    "issue_errors": 22,
+    "introduced": [],
+    "resolved": []
+  },
+  "ruff_shared_files": {
+    "main_diagnostics": 114,
+    "issue_diagnostics": 114,
+    "introduced": []
+  },
+  "limitations": [
+    "首次集成运行被固定 pytest 临时目录文件锁干扰，已用独立 basetemp 重跑。",
+    "确定性替身只证明机制；真实回复、官网可得性和模型体验待工单42。"
+  ]
+}

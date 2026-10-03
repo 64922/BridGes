@@ -964,6 +964,19 @@ def _node_verify_output(
             message.error_message or "生成过程出现内部错误，请重试。",
             retryable=True,
         )
+    if (
+        message.tieba_research is not None
+        and message.tieba_research.get("status") != "clarification"
+    ):
+        service = deps.service.tieba_research_service
+        if service is None or not service.verify_message(
+            deps.repo, account_id=run.account_id, run_id=run.run_id,
+            conversation_id=run.conversation_id, assistant_message_id=run.assistant_message_id,
+        ):
+            raise DailyTurnError(
+                NODE_VERIFY_OUTPUT, "tieba_delivery_unverified",
+                "贴吧交付与可信核验产物不一致，本轮未通过核验。", retryable=False,
+            )
     return {}
 
 

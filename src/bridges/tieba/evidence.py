@@ -115,16 +115,11 @@ TIEBA_ONLY_NOTE = (
 
 #: 官方页面里的「生效／修订」表述：只有这些明确依据才允许按新规定呈现。
 OFFICIAL_SUPERSESSION_MARKERS: tuple[str, ...] = (
-    "起执行",
-    "施行",
-    "生效",
-    "修订",
-    "新版",
-    "最新",
     "调整为",
     "改为",
-    "自20",
-    "之日起",
+    "替代",
+    "代替",
+    "废止",
 )
 
 #: 回复里的相反说法标记：与官方摘录共享名词且出现这些词时才构成冲突候选。
@@ -141,6 +136,11 @@ REPLY_NEGATION_MARKERS: tuple[str, ...] = (
 )
 
 _YEAR = re.compile(r"(20\d{2})")
+_DATE = re.compile(r"(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?")
+_EFFECTIVE_DATE = re.compile(
+    r"(?:自|从)((20\d{2})年(\d{1,2})月(\d{1,2})日)(?:起|之日起)(?:执行|施行|生效)"
+)
+_POLICY_PURPOSE = re.compile(r"规定|办法|通知|申请|审批|办理|缴费|收费|开放|放假|实施|执行|施行")
 
 
 @dataclass(frozen=True)
@@ -173,6 +173,16 @@ class ReadOutcome:
     partial: bool = False
 
 
+@dataclass(frozen=True)
+class OfficialOutcome:
+    """官方路径的页面和发现记录；恢复只补未完成调用。"""
+
+    checks: list[TiebaOfficialCheck]
+    records: list[ModuleQueryRecord]
+    candidates: list[str]
+    partial: bool = False
+
+
 def search_candidates(
     port: TiebaSearchPort,
     account_id: str,
@@ -198,15 +208,12 @@ def search_candidates(
     completed: set[str] = set()
     seeded_hits: list[TiebaSearchHit] = []
     if resume is not None:
-        for raw in resume.get("queries", []):
+        for raw in resume.get("records", resume.get("queries", [])):
             try:
                 record = ModuleQueryRecord.model_validate(raw)
             except ValueError:
                 continue
-            if (
-                record.status in FAILED_QUERY_STATUSES
-                or record.status is ModuleQueryStatus.SKIPPED
-            ):
+            if record.status in FAILED_QUERY_STATUSES or record.status is ModuleQueryStatus.SKIPPED:
                 continue
             records.append(record)
             completed.add(record.query)
@@ -281,7 +288,8 @@ def search_candidates(
         records=records,
         diagnostics=_deduped_diagnostics(rejected, raw_hits=raw_hits, usable=usable),
         rounds=tuple(rounds),
-        partial=partial,
+        partial=partial
+        or any(record.retryable for record in records if record.status in FAILED_QUERY_STATUSES),
     )
 
 
@@ -343,7 +351,7 @@ def read_candidates(
         result = reader.read(hit.url, stop_event=stop_event, deadline=deadline)
         new_attempted.add(hit.url)
         if result.forum_matches_target:
-            confirmed.append(_confirmed_post(hit, result))
+            confirmed.append(confirmed_post(hit, result))
             continue
         if result.forum_name and result.status in {ReadStatus.READ, ReadStatus.PARTIAL}:
             rejected.append(
@@ -351,8 +359,7 @@ def read_candidates(
                     url=result.url,
                     title=result.title or hit.title,
                     evidence=(
-                        f"已读取帖子页面，页面声明所属贴吧为「{result.forum_name}」，"
-                        "不是目标贴吧"
+                        f"已读取帖子页面，页面声明所属贴吧为「{result.forum_name}」，不是目标贴吧"
                     ),
                 )
             )
@@ -390,15 +397,18 @@ def verify_official(
     deadline_seconds: float,
     blocked: bool = False,
     resume: dict[str, Any] | None = None,
-) -> list[TiebaOfficialCheck]:
+) -> OfficialOutcome:
     """官网核验：先按官方域名检索，未命中再用一条去域名限定的查询。
 
     ``blocked`` 为用户硬条件（只查贴吧）阻止官方路径：不做任何外部调用。
     ``resume`` 是上一轮的部分核验产物：已取得的页面按原结果续用。
     """
     if blocked or reader is None:
-        return []
+        return OfficialOutcome([], [], [])
     checks: list[TiebaOfficialCheck] = []
+    records: list[ModuleQueryRecord] = []
+    candidates: list[str] = []
+    completed: set[str] = set()
     fetched_urls: set[str] = set()
     if resume is not None:
         for raw in resume.get("checks", []):
@@ -408,15 +418,29 @@ def verify_official(
                 continue
             checks.append(check)
             fetched_urls.add(check.url)
+        for raw in resume.get("records", []):
+            record = ModuleQueryRecord.model_validate(raw)
+            if (
+                record.status not in FAILED_QUERY_STATUSES
+                and record.status is not ModuleQueryStatus.SKIPPED
+            ):
+                records.append(record)
+                completed.add(record.query)
+        candidates = list(resume.get("candidates", []))
     deadline = time.monotonic() + deadline_seconds
     terms = official_terms(analysis)
     # 问题自带年份时按用户年份挑页面，否则按当前年份（只影响挑选顺序）。
     preferred_year = analysis.time_year or datetime.now(UTC).year
-    candidates: list[str] = []
     for query, reason in (
         (official_query(analysis), "校规／费用／开放时间／流程／放假安排核对学校官方页面"),
         (official_fallback_query(analysis), "官方域名未命中，改用校名与主题再找官方页面"),
     ):
+        if candidates:
+            break
+        if query in completed:
+            continue
+        if _budget_exhausted(stop_event, deadline):
+            return OfficialOutcome(checks, records, candidates, partial=True)
         outcome = port.search_public(
             account_id,
             query=query,
@@ -424,6 +448,7 @@ def verify_official(
             stop_event=stop_event,
             deadline=deadline,
         )
+        records.append(outcome.record)
         candidates = official_candidates(outcome, terms, preferred_year=preferred_year)
         if candidates:
             break
@@ -443,7 +468,11 @@ def verify_official(
                 update={"applicability": assess_applicability(check, analysis)}
             )
         )
-    return checks
+    partial = bool(
+        _budget_exhausted(stop_event, deadline)
+        or any(record.retryable for record in records if record.status in FAILED_QUERY_STATUSES)
+    )
+    return OfficialOutcome(checks, records, candidates, partial=partial)
 
 
 def assess_applicability(
@@ -452,18 +481,38 @@ def assess_applicability(
     """核对官方页面与问题的主体／校区／用途／日期适用性（域名不自动放行）。"""
     text = f"{check.title}\n{check.excerpt or ''}"
     matched = set(check.matched_terms)
-    subject_confirmed = check.status == STATUS_VERIFIED and bool(matched)
+    # 域名只是候选边界；页面还须说明本校或主管部门，转载他校材料不作本校规定。
+    named_schools = re.findall(r"[\u4e00-\u9fff]{2,12}大学", text)
+    foreign_subject = any("华东交通大学" not in school for school in named_schools)
+    subject_confirmed = bool(
+        check.status == STATUS_VERIFIED
+        and is_official_url(check.url)
+        and not foreign_subject
+        and any(
+            name in text
+            for name in ("华东交通大学", "华东交大", "教务处", "学生工作处", "后勤", "图书馆")
+        )
+    )
     campus = analysis.campus_terms[0] if analysis.campus_terms else None
     campus_confirmed: bool | None = None
     if campus:
-        campus_confirmed = campus in text
+        campus_confirmed = all(named in text for named in analysis.campus_terms)
     purpose_terms = [*analysis.topic_terms, *analysis.official_topics][:4]
-    purpose_confirmed = bool(matched)
+    purpose_confirmed = bool(
+        check.excerpt
+        and any(term in check.excerpt for term in purpose_terms if term in matched)
+        and _POLICY_PURPOSE.search(check.excerpt)
+        and all(
+            audience in text
+            for audience in ("本科生", "研究生", "新生", "毕业生")
+            if audience in analysis.original_question
+        )
+    )
     date_requirement = analysis.time_requirement
     date_confirmed: bool | None = None
     if date_requirement:
         date_confirmed = (
-            str(analysis.time_year) in text
+            _matches_requested_date(date_requirement, text, analysis.time_year)
             if analysis.time_year is not None
             else None
         )
@@ -471,13 +520,21 @@ def assess_applicability(
         subject_confirmed
         and purpose_confirmed
         and campus_confirmed is not False
-        and date_confirmed is not False
+        and (not date_requirement or date_confirmed is True)
+        and not _expired_notice(text, analysis, check.fetched_at)
     )
     parts: list[str] = []
     parts.append(
-        "已在官方页面定位到与问题相关的段落。"
+        "页面说明了本校或主管部门主体。"
         if subject_confirmed
-        else "尚未在官方页面定位到与问题相关的段落。"
+        else "页面主体未确认，不能仅凭官方域名判定适用。"
+    )
+    if _expired_notice(text, analysis, check.fetched_at):
+        parts.append("页面明确受理期限已过，不能作为当前适用规定。")
+    parts.append(
+        "已定位到相关规定用途。"
+        if purpose_confirmed
+        else "未定位到相关规定用途，不能把新闻或经历当作规定。"
     )
     if campus:
         parts.append(
@@ -489,7 +546,7 @@ def assess_applicability(
         if date_confirmed is True:
             parts.append(f"页面出现你提到的年份 {analysis.time_year}。")
         elif date_confirmed is False:
-            parts.append(f"页面未出现你提到的年份 {analysis.time_year}，时效性未确认。")
+            parts.append(f"页面日期未对应时间条件「{date_requirement}」，时效性未确认。")
         else:
             parts.append(f"时间条件「{date_requirement}」为相对说法，页面无法直接核对。")
     return TiebaOfficialApplicability(
@@ -528,7 +585,11 @@ def detect_conflicts(
                 )
                 if not shared:
                     continue
-                if not any(marker in content for marker in REPLY_NEGATION_MARKERS):
+                if content.strip().rstrip("。！! ") == excerpt.strip().rstrip("。！! "):
+                    continue
+                if not any(
+                    marker in content or marker in excerpt for marker in REPLY_NEGATION_MARKERS
+                ):
                     continue
                 key = (check.url, shared)
                 entry = grouped.setdefault(
@@ -559,12 +620,23 @@ def detect_conflicts(
             if year is not None
         ]
         official_year = entry["official_year"]
-        has_supersession = any(
-            marker in excerpt for marker in OFFICIAL_SUPERSESSION_MARKERS
+        has_supersession = any(marker in excerpt for marker in OFFICIAL_SUPERSESSION_MARKERS)
+        effective = _EFFECTIVE_DATE.search(excerpt)
+        effective_date = (
+            tuple(int(effective.group(index)) for index in (2, 3, 4)) if effective else None
         )
-        newer = has_supersession and (
-            not reply_years
-            or (official_year is not None and official_year >= max(reply_years))
+        post_dates = [_DATE.search(ref.posted_at or "") for ref in entry["refs"]]
+        scope = assess_applicability(official_check, analysis)
+        newer = bool(
+            has_supersession
+            and effective_date
+            and scope.applicable
+            and post_dates
+            and all(
+                date is not None
+                and effective_date > tuple(int(date.group(index)) for index in (1, 2, 3))
+                for date in post_dates
+            )
         )
         campus_note = ""
         if analysis.campus_terms:
@@ -578,7 +650,8 @@ def detect_conflicts(
             campus_note = "问题未点名校区，按页面整体规定核对。"
         if newer:
             time_basis = (
-                f"官方页面含生效／修订表述，日期线索 {official_year or '未标注'}，"
+                "官方页面明确调整或替代原规定，"
+                f"自 {effective.group(1) if effective else '未标注'} 生效，"
                 f"帖子楼层时间为 {_years_text(reply_years)}：按新规定呈现，"
                 "同时保留帖子经历。"
             )
@@ -593,8 +666,7 @@ def detect_conflicts(
                 f"帖子楼层时间为 {_years_text(reply_years)}：无法确认官方页面已替代帖中说法。"
             )
             note = (
-                "官方规定与吧友经历不一致：已按时间与适用范围核对并双方分列，"
-                "不替任何一方下结论。"
+                "官方规定与吧友经历不一致：已按时间与适用范围核对并双方分列，不替任何一方下结论。"
             )
             resolution = TiebaConflictResolution.KEPT_BOTH
         conflicts.append(
@@ -602,7 +674,9 @@ def detect_conflicts(
                 topic_terms=list(entry["shared"]),
                 official_title=official_check.title,
                 official_url=official_check.url,
-                official_date=str(official_year) if official_year is not None else None,
+                official_date=effective.group(1)
+                if effective
+                else (str(official_year) if official_year is not None else None),
                 official_statement=excerpt,
                 post_refs=list(entry["refs"]),
                 time_basis=time_basis,
@@ -871,8 +945,7 @@ def evidence_boundary(
         note = f"已剔除 {len(rejected)} 条候选（非帖子链接与他吧证据都在剔除依据里逐条留痕）"
         if attempts is not None and attempts.diagnostics.duplicate:
             note += (
-                f"；含两轮重复在内的原始命中 {attempts.diagnostics.raw_hits} 条，"
-                "重复链接只列一次"
+                f"；含两轮重复在内的原始命中 {attempts.diagnostics.raw_hits} 条，重复链接只列一次"
             )
         notes.append(f"{note}。")
     if confirmed:
@@ -890,10 +963,6 @@ def evidence_boundary(
         )
     notes.append("本模块不调用模型生成内容，正文与引文都来自实际取得的页面文本。")
     return notes
-
-
-def _confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostProjection:
-    return confirmed_post(hit, result)
 
 
 def _unconfirmed_link(hit: TiebaSearchHit, reason: str) -> TiebaCandidateLink:
@@ -1053,6 +1122,50 @@ def _clip(text: str) -> str:
 def _year_of(text: str) -> int | None:
     match = _YEAR.search(text)
     return int(match.group(1)) if match is not None else None
+
+
+def _matches_requested_date(requirement: str, text: str, year: int | None) -> bool:
+    """绝对年月日须逐项对应，年份出现不能证明另一个月份也适用。"""
+    if year is None or str(year) not in text:
+        return False
+    month = re.search(r"(?:年|20\d{2}-)\s*(\d{1,2})(?:月|(?:-\d{1,2})?$)", requirement)
+    day = re.search(r"(?:月|20\d{2}-\d{1,2}-)\s*(\d{1,2})(?:日|$)", requirement)
+    if month is None:
+        return True
+    requested_month = int(month.group(1))
+    if day is not None:
+        return any(
+            (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            == (year, requested_month, int(day.group(1)))
+            for match in _DATE.finditer(text)
+        )
+    return any(
+        int(match.group(1)) == year and int(match.group(2)) == requested_month
+        for match in re.finditer(r"(20\d{2})\s*(?:年|-)\s*(\d{1,2})(?:月|-)", text)
+    )
+
+
+def _expired_notice(text: str, analysis: TiebaQuestionAnalysis, fetched_at: datetime) -> bool:
+    """只对明确截止/受理区间判断过期；未写有效期不猜测废止。"""
+    match = re.search(
+        r"(20\d{2})年\d{1,2}月\d{1,2}日(?:至|到)(?:(20\d{2})年)?(\d{1,2})月(\d{1,2})日",
+        text,
+    )
+    deadline = re.search(r"(?:截止|截至|有效期至)[：: ]*((20\d{2})年(\d{1,2})月(\d{1,2})日)", text)
+    if match:
+        end = (int(match.group(2) or match.group(1)), int(match.group(3)), int(match.group(4)))
+    elif deadline:
+        end = (int(deadline.group(2)), int(deadline.group(3)), int(deadline.group(4)))
+    else:
+        return False
+    # 明确查询历史年月/日时保留该时期依据；只给年份不足以判定在受理期内。
+    if (
+        analysis.time_requirement
+        and analysis.time_year
+        and re.search(r"\d{1,2}月|20\d{2}-\d{1,2}", analysis.time_requirement)
+    ):
+        return False
+    return end < (fetched_at.year, fetched_at.month, fetched_at.day)
 
 
 def _years_text(years: Sequence[int]) -> str:

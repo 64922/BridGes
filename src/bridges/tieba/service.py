@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
 from bridges.kernel.contracts import (
+    ArtifactTrust,
     KernelResult,
     KernelStatus,
     RecipeInputs,
@@ -57,6 +58,7 @@ from bridges.tieba.kernel import (
     TiebaNodeFlow,
     build_tieba_recipe,
     tieba_recipe_registry,
+    verified_projection,
 )
 from bridges.tieba.official import TiebaOfficialReader
 from bridges.tieba.parsing import pending_payload
@@ -300,7 +302,7 @@ class TiebaResearchService:
         assistant_message_id: str,
         result: KernelResult,
     ) -> TiebaRunOutcome:
-        projection = _projection_of(result)
+        projection = verified_projection(result)
         if projection is None:
             raise TiebaModuleError(
                 NODE_VERIFY,
@@ -339,6 +341,56 @@ class TiebaResearchService:
             status=projection.status,
             wait_reason=None,
             queries=list(projection.queries),
+        )
+
+    def verify_message(
+        self,
+        repo: ConversationRepository,
+        *,
+        account_id: str,
+        run_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+    ) -> bool:
+        """父图根据本轮完成收据复验可信产物与最终正文。"""
+        repository = NodeKernelRepository(repo.database)
+        receipts = repository.list_receipts(account_id, run_id)
+        artifacts = tuple(
+            artifact
+            for receipt in receipts
+            if (artifact := repository.get_artifact(account_id, receipt.artifact_id or ""))
+            is not None
+            and artifact.recipe_id == TIEBA_RECIPE_ID
+        )
+        result = KernelResult(
+            status=KernelStatus.COMPLETED, nodes=(), artifacts=artifacts, delivery=None
+        )
+        projection = verified_projection(result)
+        message = repo.get_message(account_id, assistant_message_id)
+        verify = result.artifact(NODE_VERIFY)
+        if (
+            projection is None
+            or message is None
+            or verify is None
+            or verify.conversation_id != conversation_id
+            or verify.trust_state is not ArtifactTrust.QUALIFIED
+            or message.status is not ChatMessageStatus.DONE
+        ):
+            return False
+        expected = (
+            render_result_content(projection)
+            if projection.confirmed_posts
+            else render_empty_content(projection)
+        )
+        try:
+            actual = TiebaResearchProjection.model_validate(message.tieba_research)
+        except ValueError:
+            return False
+        # 完成时间由终态事务填写，证据字段与正文仍逐项相等。
+        return (
+            actual.completed_at is not None
+            and actual.model_copy(update={"completed_at": projection.completed_at}) == projection
+            and message.content == expected
         )
 
     def _deliver_clarification(
