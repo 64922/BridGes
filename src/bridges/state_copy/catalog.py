@@ -64,6 +64,7 @@ WAIT_DELETE_IN_PROGRESS_TEXT = "回答仍在生成中，请先停止后再删除
 
 STREAM_INTERRUPTED_TEXT = "连接中断，已保留已接收内容，可点击重试。"
 USER_STOPPED_TEXT = "生成已停止。"
+STUDY_STOPPED_TEXT = "学习处理已停止。"
 ROUTE_REJECTED_FALLBACK_TEXT = "请求未通过参数校验，请调整后重试。"
 
 RETRIEVAL_ATTACHMENTS_PENDING_TEXT = "附件仍在处理中或暂无可检索内容。"
@@ -210,7 +211,7 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
     ),
     _error(
         "web_search_fallback_credentials",
-        "备用公网搜索缺少部署凭据。",
+        "备用公网搜索缺少部署凭据，请联系管理员。",
         FailureClass.NOT_CONFIGURED,
         RecoveryAction.RECONFIGURE,
     ),
@@ -688,13 +689,13 @@ _MODULE_ENTRIES: tuple[CopyEntry, ...] = (
         note="工单 24：候选为空时如实说明。",
     ),
     CopyEntry(
-        "module.paper.partial",
-        CopyCategory.MODULE,
+        "module.paper.mismatch",
+        CopyCategory.CLARIFICATION,
         "paper",
         CopyStrategy.DETERMINISTIC_RENDERER,
-        ("partial",),
+        ("clarification", "topic_mismatch"),
         renderer="bridges.paper.presenting.render_mismatch_content",
-        note="工单 24：线索与已读范围不匹配时交付可支持部分。",
+        note="工单 24：主题不匹配时停止推荐并请求澄清，不是部分成功。",
     ),
     CopyEntry(
         "module.paper.stopped",
@@ -743,13 +744,13 @@ _MODULE_ENTRIES: tuple[CopyEntry, ...] = (
         note="工单 25：证据不足时给真实数量。",
     ),
     CopyEntry(
-        "module.resources.partial",
+        "module.resources.mismatch",
         CopyCategory.MODULE,
         "resources",
         CopyStrategy.DETERMINISTIC_RENDERER,
-        ("partial",),
+        ("empty", "topic_mismatch"),
         renderer="bridges.resources.presenting.render_mismatch_content",
-        note="工单 25：一路失败另一路照常交付并列出缺口。",
+        note="工单 25：主题不匹配时停止推荐，真实投影为空结果。",
     ),
     CopyEntry(
         "module.resources.stopped",
@@ -957,6 +958,60 @@ _MODULE_ENTRIES: tuple[CopyEntry, ...] = (
 
 _STUDY_ENTRIES: tuple[CopyEntry, ...] = (
     CopyEntry(
+        "study.pages.wait",
+        CopyCategory.WAIT,
+        "study",
+        CopyStrategy.DETERMINISTIC_RENDERER,
+        ("waiting", "awaiting_pages"),
+        renderer="bridges.study.service.StudyWorkflow.run",
+        note="工单 30：run.recognize 按实际书页缺失、页序或识别缺口说明等待原因。",
+    ),
+    CopyEntry(
+        "study.preview.scope_and_questions",
+        CopyCategory.STUDY,
+        "study",
+        CopyStrategy.DETERMINISTIC_RENDERER,
+        ("success", "tutoring"),
+        renderer="bridges.study.service.StudyWorkflow.run",
+        note="工单 31：run.preview 从实际范围、页级定位和既有生成问题拼装预习说明。",
+    ),
+    CopyEntry(
+        "study.pages.updated",
+        CopyCategory.STUDY,
+        "study",
+        CopyStrategy.DETERMINISTIC_RENDERER,
+        ("success", "tutoring"),
+        renderer="bridges.study.service.StudyWorkflow.run",
+        note="工单 35：run.finish_pages 说明追加后的真实页数与范围，保留既有问答来源。",
+    ),
+    CopyEntry(
+        "study.review.paused",
+        CopyCategory.WAIT,
+        "study",
+        CopyStrategy.DETERMINISTIC_RENDERER,
+        ("paused", "tutoring"),
+        renderer="bridges.study.service.StudyWorkflow.run",
+        note="工单 35：run.review 的 pause 分支说明回辅导及题目、判定保留，不是生成停止。",
+    ),
+    CopyEntry(
+        "study.review.current_question",
+        CopyCategory.STUDY,
+        "study",
+        CopyStrategy.DETERMINISTIC_RENDERER,
+        ("waiting", "review"),
+        renderer="bridges.study.service.StudyWorkflow.run",
+        note="工单 34：run.review 的 start 分支复述已保存的当前题，不重复出题。",
+    ),
+    CopyEntry(
+        "study.stopped",
+        CopyCategory.STUDY,
+        "study",
+        CopyStrategy.FIXED_TEMPLATE,
+        ("stopped",),
+        text=STUDY_STOPPED_TEXT,
+        note="学习处理实际收到停止信号时使用，不把复盘完成或暂停当作停止。",
+    ),
+    CopyEntry(
         "study.tutoring.answer",
         CopyCategory.STUDY,
         "study",
@@ -988,9 +1043,9 @@ _STUDY_ENTRIES: tuple[CopyEntry, ...] = (
         CopyCategory.STUDY,
         "study",
         CopyStrategy.DETERMINISTIC_RENDERER,
-        ("success", "stopped"),
+        ("success", "complete"),
         renderer="bridges.study.review.next_question",
-        note="工单 34/35：下一题从未问题计划确定性选择。",
+        note="工单 34：选择未问题；无下一题时标记复盘完成，不代表用户停止。",
     ),
     CopyEntry(
         "study.summary.render",

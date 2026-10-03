@@ -11,8 +11,9 @@
 
 from __future__ import annotations
 
-import importlib
 from collections.abc import Mapping
+from dataclasses import replace
+from pydoc import locate
 
 import pytest
 
@@ -29,6 +30,7 @@ from bridges.state_copy import (
     FailureClass,
     RecoveryAction,
     StateCopyNotFoundError,
+    StateCopyRegistryError,
     StateCopyRenderError,
     error_failure_class,
     error_recovery,
@@ -55,8 +57,7 @@ _CONFIG_MARKERS = (
 
 
 def _resolve(path: str) -> object:
-    module_name, _, attribute = path.rpartition(".")
-    return getattr(importlib.import_module(module_name), attribute)
+    return locate(path)
 
 
 def test_registry_validates_and_lists_every_required_category() -> None:
@@ -82,6 +83,22 @@ def test_manifest_registers_version_path_state_owner_and_strategy() -> None:
             assert isinstance(item["text"], str) and item["text"].strip()
         else:
             assert isinstance(item["renderer"], str) and item["renderer"]
+
+
+@pytest.mark.parametrize("path", ["", ".chat", "chat.", "chat..error"])
+def test_registry_rejects_empty_path_segments(
+    monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """清单路径必须能稳定定位来源，不能接受空路径或空段。"""
+    from bridges.state_copy import registry
+
+    entries = (
+        replace(STATE_COPY_ENTRIES[0], path=path),
+        *STATE_COPY_ENTRIES[1:],
+    )
+    monkeypatch.setattr(registry, "STATE_COPY_ENTRIES", entries)
+    with pytest.raises(StateCopyRegistryError, match="路径不合法"):
+        validate_state_copy_registry()
 
 
 def test_render_substitutes_values_and_rejects_bad_calls() -> None:
@@ -147,6 +164,59 @@ def test_module_machine_fields_stay_with_deterministic_renderers() -> None:
     for entry in STATE_COPY_ENTRIES:
         if entry.category is CopyCategory.MODULE:
             assert entry.strategy is CopyStrategy.DETERMINISTIC_RENDERER, entry.path
+
+
+def test_topic_mismatch_entries_keep_actual_terminal_states() -> None:
+    """没有交付结果的主题不匹配不能登记成部分成功。"""
+    from bridges.paper.contracts import PaperSearchStatus
+    from bridges.resources.contracts import ResourcesStatus
+
+    paper = STATE_COPY_REGISTRY["module.paper.mismatch"]
+    resources = STATE_COPY_REGISTRY["module.resources.mismatch"]
+    assert PaperSearchStatus.CLARIFICATION.value in paper.states
+    assert ResourcesStatus.EMPTY.value in resources.states
+    assert "partial" not in paper.states
+    assert "partial" not in resources.states
+
+
+def test_review_completion_is_not_user_stop() -> None:
+    """实际题目计划结束与用户停止分别登记。"""
+    from bridges.contracts.study import StudyReview
+    from bridges.study.review import next_question
+
+    review = StudyReview()
+    answer = next_question(review)
+    assert review.complete is True
+    assert "复盘已结束" in answer
+    entry = STATE_COPY_REGISTRY["study.review.next_question"]
+    assert "complete" in entry.states
+    assert "stopped" not in entry.states
+    assert render_state_copy("study.stopped") == "学习处理已停止。"
+
+
+def test_study_fixed_explanations_have_auditable_sources() -> None:
+    """学习等待、预习、追加、暂停和当前题的既有来源都可定位。"""
+    for path in (
+        "study.pages.wait",
+        "study.preview.scope_and_questions",
+        "study.pages.updated",
+        "study.review.paused",
+        "study.review.current_question",
+    ):
+        entry = STATE_COPY_REGISTRY[path]
+        assert entry.renderer == "bridges.study.service.StudyWorkflow.run"
+        assert callable(_resolve(entry.renderer))
+        assert "run." in entry.note
+
+
+def test_missing_fallback_credentials_keep_actionable_chat_copy() -> None:
+    """聊天优先表必须保留用户确实可执行的管理员配置指引。"""
+    from bridges.chat.turn import user_facing_error
+
+    text = user_facing_error("web_search_fallback_credentials", "内部错误")
+    assert "缺少部署凭据" in text
+    assert "请联系管理员" in text
+    assert error_recovery("web_search_fallback_credentials") is RecoveryAction.RECONFIGURE
 
 
 def test_every_error_template_exposes_class_and_recovery() -> None:

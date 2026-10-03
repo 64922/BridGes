@@ -127,7 +127,7 @@ def validate_state_copy_registry() -> None:
         if entry.path in seen_paths:
             problems.append(f"重复路径：{entry.path}")
         seen_paths.add(entry.path)
-        if not entry.path or any(part for part in entry.path.split(".") if not part):
+        if not entry.path or any(not part for part in entry.path.split(".")):
             problems.append(f"路径不合法：{entry.path!r}")
         if not entry.owner.strip():
             problems.append(f"缺少所属方：{entry.path}")
