@@ -467,14 +467,18 @@ class BilibiliVideoVerifier:
     ) -> tuple[VideoCandidate | None, str | None]:
         if self._client is None:
             return None, "bilibili_unavailable"
-        if deadline is not None and time.monotonic() >= deadline:
-            return None, "bilibili_deadline"
+        timeout = self._timeout
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, "bilibili_deadline"
+            timeout = min(timeout, remaining)
         params = {"bvid": video_id} if video_id.startswith("BV") else {"aid": video_id[2:]}
         try:
             response = self._client.get(
                 BILIBILI_VIEW_ENDPOINT,
                 params=params,
-                timeout=self._timeout,
+                timeout=timeout,
                 headers={
                     "User-Agent": "BridGes/1.0 (public video metadata lookup)",
                     "Referer": BILIBILI_WATCH_TEMPLATE.format(video_id=video_id),
@@ -545,8 +549,11 @@ def _get_json(
     """一次有界 GET + JSON 解析；失败返回稳定的错误码（绝不抛出上游细节）。"""
     if client is None:
         return None, f"{source}_unavailable"
-    if deadline is not None and time.monotonic() >= deadline:
-        return None, f"{source}_deadline"
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, f"{source}_deadline"
+        timeout = min(timeout, remaining)
     try:
         response = client.get(
             endpoint,

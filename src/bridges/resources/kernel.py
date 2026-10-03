@@ -91,7 +91,7 @@ NODE_ORGANIZE = "resources.organize"
 NODE_VERIFY = "resources.verify"
 
 RESOURCES_RECIPE_ID = "learning-resources"
-RESOURCES_RECIPE_VERSION = "learning-resources-recipe-v1"
+RESOURCES_RECIPE_VERSION = "learning-resources-recipe-v2"
 
 #: 书与视频两路检索的并行组名（配方里连续登记、互不依赖）。
 SEARCH_PARALLEL_GROUP = "resources.search"
@@ -110,14 +110,14 @@ RESOURCES_NODE_LABELS: dict[str, str] = {
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 RESOURCES_CAPABILITY_VERSIONS: dict[str, str] = {
-    "resources.parse_request": "resources-parse-v1",
-    "resources.plan_query": "resources-plan-v1",
+    "resources.parse_request": "resources-parse-v2",
+    "resources.plan_query": "resources-plan-v2",
     "resources.search_books": "resources-search-books-v1",
     "resources.search_videos": "resources-search-videos-v1",
-    "resources.read_evidence": "resources-read-v1",
-    "resources.match_candidates": "resources-match-v1",
-    "resources.organize_items": "resources-organize-v1",
-    "resources.verify_delivery": "resources-verify-v1",
+    "resources.read_evidence": "resources-read-v2",
+    "resources.match_candidates": "resources-match-v2",
+    "resources.organize_items": "resources-organize-v2",
+    "resources.verify_delivery": "resources-verify-v2",
 }
 
 #: 配方的必要门与可选门（登记集合；代码拒绝未登记质量门）。
@@ -224,7 +224,7 @@ class ResourcesBudget:
         return max(0, int((self._work_deadline - moment).total_seconds() * 1000))
 
     def deadline_seconds(self, now: datetime | None = None) -> float:
-        return max(0.5, self.remaining_work_ms(now) / 1000.0)
+        return self.remaining_work_ms(now) / 1000.0
 
     def register_external(self, call_key: str, *, purpose: str) -> bool:
         return self._ledger.register_external_call(
@@ -242,6 +242,19 @@ class ResourcesBudget:
             call_key=call_key,
             outcome_code=outcome_code,
             now=datetime.now(UTC),
+        )
+
+    def begin_adjustment(self) -> bool:
+        return self._ledger.begin_adjustment(
+            account_id=self._account_id, run_id=self._run_id,
+            reason_code="resources_path_evidence_gap", now=datetime.now(UTC),
+        )
+
+    def end_adjustment(self, *, books_read: int) -> None:
+        self._ledger.end_adjustment(
+            account_id=self._account_id, run_id=self._run_id,
+            outcome_code="resources_evidence_supplemented", now=datetime.now(UTC),
+            detail={"books_read": books_read},
         )
 
 
@@ -329,7 +342,11 @@ def _path_evidence_gate(
         item
         for item in items
         if item.role is ResourceRole.MAIN
-        and item.evidence_level is ResourceEvidenceLevel.TITLE
+        and (
+            item.evidence_level is ResourceEvidenceLevel.TITLE
+            or not item.content_covered
+            or not item.suitability_basis
+        )
     ]
     if weak_main:
         return QualityGateResult(
@@ -568,7 +585,7 @@ def build_resources_recipe() -> RecipeDefinition:
                 capability_version=RESOURCES_CAPABILITY_VERSIONS["resources.read_evidence"],
                 artifact_type="resources.read_evidence",
                 input_key=_read_key,
-                depends_on=(NODE_PLAN, NODE_SEARCH_BOOKS, NODE_SEARCH_VIDEOS),
+                depends_on=(NODE_PARSE, NODE_PLAN, NODE_SEARCH_BOOKS, NODE_SEARCH_VIDEOS),
                 recovery=RecoveryPolicy.RETRY_NODE,
                 description="读取书目目录/简介与视频页面并记录实际范围（计入预算）。",
             ),
@@ -599,8 +616,7 @@ def build_resources_recipe() -> RecipeDefinition:
                 artifact_type="resources.delivery",
                 input_key=_verify_key,
                 depends_on=(NODE_PARSE, NODE_PLAN, NODE_READ, NODE_ORGANIZE),
-                required_gates=("resources.path_evidence",),
-                optional_gates=("resources.counts_and_media",),
+                required_gates=("resources.path_evidence", "resources.counts_and_media"),
                 recovery=RecoveryPolicy.BLOCK,
                 description="核验主线证据、原词覆盖与读取范围后形成待交付投影。",
             ),
@@ -771,7 +787,7 @@ class ResourcesNodeFlow:
                 )
             )
         for index, source in enumerate(self._books):
-            if skipped_for_media:
+            if skipped_for_media or self._external_stopped(deadline):
                 break
             name = str(getattr(source, "source", f"book_source_{index}"))
             call_key = f"resources.books:{name}:{_digest(plan.book_query)[:16]}"
@@ -870,7 +886,7 @@ class ResourcesNodeFlow:
                     detail="公网搜索服务未装配，本轮没有发送任何发现请求。",
                 )
             )
-        else:
+        elif not self._external_stopped(deadline):
             call_key = f"resources.videos:{_digest(plan.video_query)[:16]}"
             if self._budget is not None and not self._budget.register_external(
                 call_key, purpose="resources.search_videos"
@@ -909,23 +925,28 @@ class ResourcesNodeFlow:
                 )
             elif pages:
                 assert self._verifier is not None
-                verify_key = f"resources.verify_videos:{_digest(pages[0])[:16]}"
-                skip = self._budget is not None and not self._budget.register_external(
-                    verify_key, purpose="resources.search_videos"
+                verify_deadline = min(
+                    deadline, self._external_deadline(self._verify_deadline_seconds)
                 )
-                if skip:
-                    records.append(
-                        _budget_skip_record(
-                            BILIBILI_SOURCE, plan.video_query, purpose="视频核对"
+                for page in dict.fromkeys(pages[:plan.video_candidate_limit]):
+                    if self._external_stopped(verify_deadline):
+                        break
+                    verify_key = f"resources.verify_videos:{_digest(page)[:16]}"
+                    if self._budget is not None and not self._budget.register_external(
+                        verify_key, purpose="resources.search_videos"
+                    ):
+                        records.append(
+                            _budget_skip_record(
+                                BILIBILI_SOURCE, page, purpose="视频核对"
+                            )
                         )
-                    )
-                else:
+                        break
                     verify_code = "exception"
                     try:
                         verified = self._verifier.verify(
-                            pages,
+                            [page],
                             account_id=invocation.account_id,
-                            deadline=time.monotonic() + self._verify_deadline_seconds,
+                            deadline=verify_deadline,
                         )
                         verify_code = "matched"
                     finally:
@@ -934,9 +955,9 @@ class ResourcesNodeFlow:
                                 self._budget.release_external(
                                     verify_key, outcome_code=verify_code
                                 )
-                    candidates = verified.candidates
+                    candidates.extend(verified.candidates)
                     records.extend(verified.records)
-                    rejected = verified.rejected
+                    rejected += verified.rejected
         payload: dict[str, Any] = {
             "query": plan.video_query,
             "candidates": [_video_dict(candidate) for candidate in candidates],
@@ -980,6 +1001,8 @@ class ResourcesNodeFlow:
         evidence: dict[str, Any] = {}
         notes: list[str] = []
         for candidate in book_candidates[: plan.read_limit_books]:
+            if self._external_stopped(deadline):
+                break
             url = str(candidate.get("url") or "")
             if not url:
                 continue
@@ -995,11 +1018,54 @@ class ResourcesNodeFlow:
         if len(book_candidates) > plan.read_limit_books:
             notes.append(
                 f"图书候选 {len(book_candidates)} 本，本轮按读取上限实际深读 "
-                f"{plan.read_limit_books} 本。"
+                f"{len(evidence)} 本。"
             )
         video_candidates = list(videos_payload.get("candidates", []))
+        analysis = ResourcesTermAnalysis.model_validate(
+            self._dep(invocation, NODE_PARSE)["analysis"]
+        )
+        initial_match = match_resources(
+            analysis,
+            [_book_from_dict(item) for item in book_candidates],
+            [_video_from_dict(item) for item in video_candidates],
+            book_evidence={
+                url: BookReadEvidence.model_validate(value) for url, value in evidence.items()
+            },
+        )
+        initial = organize_resources(
+            analysis, plan, initial_match,
+            book_records=list(books_payload.get("records", [])),
+            video_records=list(videos_payload.get("records", [])),
+        )
+        remaining = [item for item in book_candidates if str(item.get("url") or "") not in evidence]
+        if (
+            not initial.path_verified and remaining and self._reader is not None
+            and self._budget is not None and not self._external_stopped(deadline)
+            and self._budget.begin_adjustment()
+        ):
+            extra_reads = 0
+            try:
+                for candidate in remaining[:plan.read_limit_books]:
+                    if self._external_stopped(deadline):
+                        break
+                    url = str(candidate.get("url") or "")
+                    if not url:
+                        continue
+                    read = reader.read(
+                        url, str(candidate.get("source") or ""),
+                        account_id=invocation.account_id, deadline=deadline,
+                    )
+                    evidence[url] = read.model_dump(mode="json")
+                    extra_reads += 1
+                notes.append(
+                    f"主线证据存在缺口，共用整轮调整额度补读 {extra_reads} 本；"
+                    "仍不足则仅交付候选。"
+                )
+            finally:
+                self._budget.end_adjustment(books_read=extra_reads)
         video_reads: dict[str, str] = {}
-        for candidate in video_candidates[: plan.read_limit_videos]:
+        # 简介已随逐页核对取得，全部核对页都如实登记读取范围。
+        for candidate in video_candidates:
             video_id = str(candidate.get("video_id") or "")
             if not video_id:
                 continue
@@ -1008,11 +1074,6 @@ class ResourcesNodeFlow:
                 "哔哩哔哩公开视频页：标题、作者、发布时间、时长、简介（未观看视频）"
                 if has_description
                 else "哔哩哔哩公开视频页：标题、作者、发布时间、时长（该页未提供简介）"
-            )
-        if len(video_candidates) > plan.read_limit_videos:
-            notes.append(
-                f"视频候选 {len(video_candidates)} 条，本轮按读取上限实际核对 "
-                f"{plan.read_limit_videos} 条页面。"
             )
         payload: dict[str, Any] = {
             "book_evidence": evidence,
@@ -1177,6 +1238,9 @@ class ResourcesNodeFlow:
             needs_practice_project=analysis.needs_practice_project,
             level_label=level_label(analysis.level),
             level_basis=analysis.level_basis,
+            language=analysis.language,
+            time_budget=analysis.time_budget,
+            basis_evidence=analysis.basis_evidence,
             queries=queries,
             final_query=plan.book_query,
             items=items,
@@ -1235,6 +1299,8 @@ class ResourcesNodeFlow:
                     ),
                     "match_basis": book.match_basis,
                     "read_scope": book.read_scope,
+                    "content_covered": book.content_covered,
+                    "suitability_basis": book.suitability_basis,
                 }
                 for book in outcome.books
             ],
@@ -1247,6 +1313,8 @@ class ResourcesNodeFlow:
                     "evidence_level": video.evidence_level.value,
                     "match_basis": video.match_basis,
                     "read_scope": video.read_scope,
+                    "content_covered": video.content_covered,
+                    "suitability_basis": video.suitability_basis,
                 }
                 for video in outcome.videos
             ],
@@ -1272,6 +1340,8 @@ class ResourcesNodeFlow:
                     ),
                     match_basis=str(item.get("match_basis") or ""),
                     read_scope=str(item.get("read_scope") or ""),
+                    content_covered=bool(item.get("content_covered")),
+                    suitability_basis=str(item.get("suitability_basis") or ""),
                 )
                 for item in payload.get("books", [])
             ],
@@ -1286,6 +1356,8 @@ class ResourcesNodeFlow:
                     ),
                     match_basis=str(item.get("match_basis") or ""),
                     read_scope=str(item.get("read_scope") or ""),
+                    content_covered=bool(item.get("content_covered")),
+                    suitability_basis=str(item.get("suitability_basis") or ""),
                 )
                 for item in payload.get("videos", [])
             ],
@@ -1390,6 +1462,12 @@ class ResourcesNodeFlow:
             },
             stop_recipe=True,
             recovery=invocation.spec.recovery,
+        )
+
+    def _external_stopped(self, deadline: float) -> bool:
+        return (
+            bool(self._stop_event is not None and self._stop_event.is_set())
+            or time.monotonic() >= deadline
         )
 
     def _external_deadline(self, fallback_seconds: float) -> float:

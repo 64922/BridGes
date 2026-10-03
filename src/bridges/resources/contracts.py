@@ -111,8 +111,9 @@ LEVEL_LABELS: dict[str, str] = {
 STAGE_BEGINNER = "入门"
 STAGE_FOUNDATION = "打基础"
 STAGE_ADVANCED = "进阶"
+STAGE_UNKNOWN = "适用基础未确认"
 
-STAGE_ORDER: tuple[str, ...] = (STAGE_BEGINNER, STAGE_FOUNDATION, STAGE_ADVANCED)
+STAGE_ORDER: tuple[str, ...] = (STAGE_BEGINNER, STAGE_FOUNDATION, STAGE_ADVANCED, STAGE_UNKNOWN)
 
 
 def format_duration(seconds: int) -> str:
@@ -274,6 +275,8 @@ class ResourceItem(BaseModel):
         description="获批依据的证据层次；仅标题/时长/点赞为 title（弱信号）。",
     )
     read_scope: str = Field(default="", description="本轮实际读取的范围（如实、可核对）。")
+    content_covered: bool = Field(default=False, description="已读内容是否支持主题覆盖。")
+    suitability_basis: str = Field(default="", description="已读内容支持本轮基础及目的的依据。")
     publisher: str | None = Field(
         default=None, description="图书出版社；来源未给或视频条目为 None。"
     )
@@ -317,6 +320,9 @@ class LearningResourcesProjection(BaseModel):
     )
     level_label: str | None = Field(default=None, description="本轮学习层次的中文标签。")
     level_basis: str | None = Field(default=None, description="层次判定依据。")
+    language: str | None = Field(default=None, description="用户要求的资料语言。")
+    time_budget: str | None = Field(default=None, description="用户的学习时间约束原话。")
+    basis_evidence: str | None = Field(default=None, description="用户已有基础的原话。")
     queries: list[ModuleQueryRecord] = Field(
         default_factory=list, description="本轮全部外部调用的统一记录（查询/证据/时间/错误）。"
     )

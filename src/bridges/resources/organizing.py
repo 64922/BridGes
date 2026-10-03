@@ -100,10 +100,18 @@ def organize_resources(
                 "主线所需的先修/覆盖证据未在本轮候选中确认："
                 "以下条目按补充/候选列出，不称完整路径已核实。"
             )
+    else:
+        notes.extend(_shortfall_notes(_counts(items), plan))
     if analysis.level_basis:
         notes.append(f"学习层次依据：{analysis.level_basis}。")
     for assumption in analysis.assumptions:
         notes.append(f"本轮假设：{assumption}")
+    if analysis.language:
+        notes.append(f"资料语言要求：{analysis.language}；查询已带语言条件，条目的实际语言仍需核实。")
+    if analysis.time_budget:
+        notes.append(f"学习时间条件：{analysis.time_budget}；优先精简候选，未核实完成学习所需时间。")
+    if analysis.basis_evidence:
+        notes.append(f"你提供的基础原话：{analysis.basis_evidence}；不把自述当作已测能力。")
     return OrganizeOutcome(
         items=items,
         notes=notes,
@@ -223,8 +231,14 @@ def _pick_main(
     if goal_kind is ResourcesGoalKind.SYSTEMATIC:
         remaining_books = best_books[len(main_books):]
         remaining_videos = best_videos[len(main_videos):]
-        extra_book = remaining_books[0] if allow_books and remaining_books else None
-        extra_video = remaining_videos[0] if allow_videos and remaining_videos else None
+        extra_book = (
+            remaining_books[0]
+            if len(main_books) < plan.target_books and remaining_books else None
+        )
+        extra_video = (
+            remaining_videos[0]
+            if len(main_videos) < plan.target_videos and remaining_videos else None
+        )
         if extra_book is not None and (
             extra_video is None or extra_book.score >= extra_video.score
         ):
@@ -248,7 +262,11 @@ def _merge_supplements(
 
 
 def _eligible(entry: EvaluatedBook | EvaluatedVideo) -> bool:
-    return entry.covered and entry.evidence_level is not ResourceEvidenceLevel.TITLE
+    return (
+        entry.content_covered
+        and bool(entry.suitability_basis)
+        and entry.evidence_level is not ResourceEvidenceLevel.TITLE
+    )
 
 
 def _book_sort_key(book: EvaluatedBook) -> tuple[int, int, str]:
@@ -314,12 +332,15 @@ def _book_item(
     if candidate.publisher:
         reason_parts.append(f"由 {candidate.publisher} 出版")
     if candidate.year:
-        reason_parts.append(f"{candidate.year} 年版")
+        reason_parts.append(f"来源记录年份 {candidate.year}（具体版本未核实）")
     reason_parts.append(f"实际读取：{entry.read_scope}")
-    if analysis.goal:
-        reason_parts.append(f"与你的目的（{analysis.goal}）一致")
+    if entry.suitability_basis:
+        reason_parts.append(entry.suitability_basis)
     reason_parts.append("未阅读正文，只依据目录/简介与书目信息判断")
     unverified = ["未阅读正文，难度与写法只按已读内容与书目信息判断"]
+    unverified.append("年份、出版社与 ISBN 为来源书目字段，未确认它们属于同一版本")
+    if not entry.suitability_basis:
+        unverified.append("本轮先修与目的适配未确认，仅作候选")
     if entry.evidence_level is ResourceEvidenceLevel.TITLE:
         unverified.append("仅有标题与书目元数据，未读取目录/简介，不能证明先修与覆盖")
     if not candidate.isbn:
@@ -341,6 +362,8 @@ def _book_item(
         purpose_zh=purpose,
         evidence_level=entry.evidence_level,
         read_scope=entry.read_scope,
+        content_covered=entry.content_covered,
+        suitability_basis=entry.suitability_basis,
         publisher=candidate.publisher,
         isbn=candidate.isbn,
         unverified=unverified,
@@ -368,12 +391,14 @@ def _video_item(
     counters = _counters_text(candidate)
     if counters:
         reason_parts.append(f"{counters}（平台计数，不代表质量结论）")
-    if analysis.goal:
-        reason_parts.append(f"与你的目的（{analysis.goal}）一致")
+    if entry.suitability_basis:
+        reason_parts.append(entry.suitability_basis)
     reason_parts.append("未观看，不对讲授质量下结论")
     unverified = [
         "未观看视频，只核对公开元数据（标题、作者、发布时间、时长、简介、公开计数）"
     ]
+    if not entry.suitability_basis:
+        unverified.append("本轮先修与目的适配未确认，仅作候选")
     if entry.evidence_level is ResourceEvidenceLevel.TITLE:
         unverified.append("该页未提供简介，只有标题/时长/公开计数等弱信号")
     return ResourceItem(
@@ -391,6 +416,8 @@ def _video_item(
         purpose_zh=purpose,
         evidence_level=entry.evidence_level,
         read_scope=entry.read_scope,
+        content_covered=entry.content_covered,
+        suitability_basis=entry.suitability_basis,
         duration_seconds=candidate.duration_seconds,
         published_at=candidate.published_at,
         view_count=candidate.view_count,
@@ -409,15 +436,15 @@ def _purpose(
         if goal_kind is ResourcesGoalKind.QUICK_CONCEPT:
             return "快速建立概念轮廓：先看这一条，再按需要深入"
         if goal_kind is ResourcesGoalKind.EXAM_PREP:
-            return "备考主线：覆盖考试范围的要点与题型"
+            return "备考主线候选：已读内容有考试或习题线索，具体考试范围仍需核对"
         if goal_kind is ResourcesGoalKind.SYSTEMATIC:
             if kind is ResourceKind.BOOK:
-                return "系统学习主线教材：按先修顺序建立知识框架"
+                return "系统学习主线：按已读内容标注的基础阶段依次查看"
             return "系统学习主线讲解：配合教材巩固关键概念（未观看，按公开信息判断）"
         return "本轮主线：先建立可直接使用的知识框架"
     if entry.evidence_level is ResourceEvidenceLevel.TITLE:
         return "候选：仅有标题/时长等弱信号，未读取目录或简介，不能证明先修与覆盖"
-    return "补充：主线之外的备选，用于查漏或换一种讲法"
+    return "补充/候选：依据已读介绍提供线索，先修与目的适配未完全确认"
 
 
 def _role_label(role: ResourceRole) -> str:

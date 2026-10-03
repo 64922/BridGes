@@ -52,8 +52,9 @@ def render_result_content(
     term_note = ""
     if analysis.original_phrase and analysis.original_phrase != plan.book_query:
         term_note = f"（原始说法：{analysis.original_phrase}）"
-    lines.append(f"已按学习资料推荐检索{term_note}，图书查询词：{plan.book_query}。")
-    lines.append(f"视频发现查询词：{plan.video_query}。")
+    lines.append(f"本轮学习资料推荐{term_note}，计划图书查询词：{plan.book_query}。")
+    lines.append(f"计划视频发现查询词：{plan.video_query}。")
+    lines.append(plan.rationale)
     if projection.goal_kind:
         goal_label = GOAL_KIND_LABELS.get(projection.goal_kind, "本轮目标")
         suffix = f"（{analysis.goal}）" if analysis.goal else ""
@@ -64,7 +65,8 @@ def render_result_content(
         lines.append(f"学习层次：{projection.level_label}。")
     if projection.parallel_limit:
         lines.append(
-            f"书与视频两路并行检索（并发上限 {projection.parallel_limit}），共用本轮预算。"
+            f"允许的来源共用本轮预算，并发上限 {projection.parallel_limit}；"
+            "实际请求与跳过情况见检索记录。"
         )
     lines.append("")
     main_items = [item for item in projection.items if item.role is ResourceRole.MAIN]
@@ -72,7 +74,7 @@ def render_result_content(
         item for item in projection.items if item.role is ResourceRole.SUPPLEMENT
     ]
     lines.append(
-        f"共 {len(projection.items)} 条，按由浅入深的顺序"
+        f"共 {len(projection.items)} 条，按已读内容标注的阶段排序（未确认者列候选）"
         f"（主线 {len(main_items)} 条、补充 {len(supplement_items)} 条）："
     )
     if main_items:
@@ -86,8 +88,8 @@ def render_result_content(
     lines.append("")
     if projection.path_verified:
         lines.append(
-            "主线条目均有已读取的来源证据支持（主题覆盖与适用阶段来自目录/简介 "
-            "或公开页面信息）；未读内容不作教学效果断言。"
+            "主线条目的主题及适用阶段有已读目录/简介支持，先按此顺序查看；"
+            "具体课程范围、材料间先修关系与学习效果仍需核对，不称完整路径已核实。"
         )
     else:
         lines.append(

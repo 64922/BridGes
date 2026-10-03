@@ -96,24 +96,25 @@ _LATIN_INTENT_PATTERN = re.compile(
 
 #: 用户明确要求的数量（「两本书」「3 个视频」；媒介随各自数量区分）。
 _COUNT_PATTERN = re.compile(
-    r"(?P<num>[0-9]+|[一二两三四五六七八九十])\s*(?:本|部|个|条|门|套)?\s*"
+    r"(?P<num>[0-9]+|[零一二两三四五六七八九十]+)\s*(?:本|部|个|条|门|套)?\s*"
     r"(?P<kind>图书|教材|视频|书)"
 )
 #: 数量与名词被修饰语隔开时（「三本机器学习的书」）的宽松形态：必须带量词，
 #: 避免把「进一步了解…」这类表达误读成数量。
 _COUNT_LOOSE_PATTERN = re.compile(
-    r"(?P<num>[0-9]+|[一二两三四五六七八九十])\s*(?:本|部|个|条|门|套|张)\s*"
+    r"(?P<num>[0-9]+|[零一二两三四五六七八九十]+)\s*(?:本|部|个|条|门|套|张)\s*"
     r"[^，,。；;！!？?、\s]{0,12}?(?P<kind>图书|教材|视频|书)"
 )
 _CN_DIGITS: dict[str, int] = {
-    "一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
+    "零": 0, "一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
     "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
 }
 
 #: 用户明确的时间约束（「两周」「一个月」「每天半小时」）。
 _TIME_PATTERN = re.compile(
-    r"(?:[0-9]+\s*(?:天|周|个?月|年|小时|分钟)|[一二两三四五六七八九十半]\s*(?:天|周|个?月|年|小时)"
-    r"|每天|每周|每周末|周末|假期|寒假|暑假)"
+    r"(?:(?:每天|每日|每周末|每周)\s*(?:[0-9]+|[一二两三四五六七八九十半]+)\s*(?:小时|分钟)"
+    r"|(?:[0-9]+|[一二两三四五六七八九十半]+)\s*(?:天|周|个?月|年|小时|分钟)"
+    r"|每天|每日|每周末|每周|周末|假期|寒假|暑假)"
 )
 
 #: 已表达的基础证据（用户说过的已有基础；只作标注，不当作能力结论）。
@@ -196,8 +197,15 @@ def detect_language(text: str) -> str | None:
 
 
 def detect_basis_evidence(text: str) -> str | None:
-    match = _BASIS_PATTERN.search(text)
-    return match.group(0) if match is not None else None
+    for clause in _CLAUSE_SPLIT.split(text):
+        matched = _BASIS_PATTERN.search(clause)
+        if matched:
+            if matched.group(0) in {
+                "学过", "学过一点", "没学过", "刚接触", "做过", "用过", "了解一些",
+            }:
+                return clause.strip()
+            return matched.group(0)
+    return None
 
 
 def _detect_count(text: str, *, book: bool) -> int | None:
@@ -209,7 +217,11 @@ def _detect_count(text: str, *, book: bool) -> int | None:
                 continue
             raw = match.group("num")
             value = int(raw) if raw.isdigit() else _CN_DIGITS.get(raw)
-            if value and 0 < value <= 20:
+            if value is None and "十" in raw:
+                tens, ones = raw.split("十", 1)
+                if (not tens or tens in _CN_DIGITS) and (not ones or ones in _CN_DIGITS):
+                    value = _CN_DIGITS.get(tens, 1) * 10 + _CN_DIGITS.get(ones, 0)
+            if value is not None and value >= 0:
                 return value
     return None
 

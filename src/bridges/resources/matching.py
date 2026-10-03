@@ -24,8 +24,10 @@ from bridges.resources.contracts import (
     STAGE_ADVANCED,
     STAGE_BEGINNER,
     STAGE_FOUNDATION,
+    STAGE_UNKNOWN,
     BookReadEvidence,
     ResourceEvidenceLevel,
+    ResourcesGoalKind,
     ResourcesLevel,
     ResourcesTermAnalysis,
 )
@@ -65,6 +67,8 @@ class EvaluatedBook:
     match_basis: str
     read_scope: str
     title_hits: tuple[str, ...] = ()
+    content_covered: bool = False
+    suitability_basis: str = ""
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,8 @@ class EvaluatedVideo:
     match_basis: str
     read_scope: str
     title_hits: tuple[str, ...] = ()
+    content_covered: bool = False
+    suitability_basis: str = ""
 
 
 @dataclass(frozen=True)
@@ -220,16 +226,20 @@ def _evaluate_book(
     )
     covered = bool(title_hits or content_hits)
     evidence_level = _book_evidence_level(evidence)
-    stage = _stage_from_markers(
-        " ".join([candidate.title, content_text])
-    )
+    stage = _stage_from_markers(content_text)
     read_scope = evidence.scope if evidence is not None else TITLE_ONLY_SCOPE
+    if evidence is not None and evidence.error:
+        read_scope = f"尝试读取失败（{evidence.error}），未取得目录/简介"
     hits_text = "、".join(dict.fromkeys((*title_hits, *content_hits))) or "（无）"
     basis_parts = [f"命中「{hits_text}」"]
     if title_hits:
         basis_parts.append("标题命中")
     if content_hits:
         basis_parts.append("已读内容命中")
+    if content_text:
+        basis_parts.append(f"已读内容摘录：{content_text[:500]}")
+    suitability = _suitability_basis(content_text, analysis)
+    basis_parts.append(suitability or "已读内容未确认本轮先修与目的适配")
     basis_parts.append(f"实际读取：{read_scope}")
     basis_parts.append(f"来源：{SOURCE_LABELS.get(candidate.source, candidate.source)}")
     score = _book_score(candidate, analysis, title_hits, content_hits, evidence_level, stage)
@@ -243,6 +253,8 @@ def _evaluate_book(
         match_basis="；".join(basis_parts) + "。",
         read_scope=read_scope,
         title_hits=title_hits,
+        content_covered=bool(content_hits) and evidence_level is not ResourceEvidenceLevel.TITLE,
+        suitability_basis=suitability,
     )
 
 
@@ -295,7 +307,7 @@ def _book_evidence_level(evidence: BookReadEvidence | None) -> ResourceEvidenceL
 
 
 def _evidence_text(evidence: BookReadEvidence | None) -> str:
-    if evidence is None:
+    if evidence is None or evidence.error:
         return ""
     return " ".join(
         [
@@ -355,11 +367,15 @@ def _evaluate_video(
     evidence_level = (
         ResourceEvidenceLevel.INTRO if description else ResourceEvidenceLevel.TITLE
     )
-    stage = _stage_from_markers(" ".join([candidate.title, description]))
+    stage = _stage_from_markers(description)
     hits_text = "、".join(dict.fromkeys((*title_hits, *content_hits))) or "（无）"
     basis_parts = [f"命中「{hits_text}」"]
     basis_parts.append(f"实际读取：{read_scope}")
     basis_parts.append(f"来源：{SOURCE_LABELS[BILIBILI_SOURCE]}")
+    if description:
+        basis_parts.append(f"已读简介摘录：{description[:500]}")
+    suitability = _suitability_basis(description, analysis)
+    basis_parts.append(suitability or "已读简介未确认本轮先修与目的适配")
     score = _video_score(candidate, analysis, title_hits, content_hits, evidence_level, stage)
     return EvaluatedVideo(
         candidate=candidate,
@@ -370,6 +386,8 @@ def _evaluate_video(
         match_basis="；".join(basis_parts) + "。",
         read_scope=read_scope,
         title_hits=title_hits,
+        content_covered=bool(content_hits),
+        suitability_basis=suitability,
     )
 
 
@@ -413,7 +431,39 @@ def _stage_from_markers(text: str) -> str:
         return STAGE_BEGINNER
     if advanced > beginner:
         return STAGE_ADVANCED
-    return STAGE_FOUNDATION
+    if _marker_hits(text, ("基础", "基础知识", "foundation", "fundamentals", "basic")):
+        return STAGE_FOUNDATION
+    return STAGE_UNKNOWN
+
+
+def _suitability_basis(text: str, analysis: ResourcesTermAnalysis) -> str:
+    """仅用已读内容中的明确适用线索；无先修信息时不替用户猜测。"""
+    if re.search(
+        r"不(?:适合|适用|面向|建议)[^。；;\n]{0,12}(?:入门|初学|零基础|基础)"
+        r"|(?:需要|要求|必须|先掌握|先学|先修)[^。；;\n]{0,40}"
+        r"|not\s+(?:for|suitable)|prerequisites?|requires?\s|prior\s+knowledge",
+        text, re.IGNORECASE,
+    ):
+        # 明确先修不能只凭“有点基础”等模糊自述放行，保留候选等待核对。
+        return ""
+    stage = _stage_from_markers(text)
+    level = analysis.level
+    if level is None and analysis.goal_kind is ResourcesGoalKind.QUICK_CONCEPT:
+        level = ResourcesLevel.BEGINNER
+    allowed = {
+        ResourcesLevel.BEGINNER: (STAGE_BEGINNER,),
+        ResourcesLevel.BASIC: (STAGE_BEGINNER, STAGE_FOUNDATION),
+        ResourcesLevel.ADVANCED: (STAGE_BEGINNER, STAGE_FOUNDATION, STAGE_ADVANCED),
+    }
+    if level is None or stage not in allowed[level]:
+        return ""
+    if analysis.goal_kind is ResourcesGoalKind.EXAM_PREP and not _marker_hits(
+        text, ("考试", "备考", "题型", "习题", "exam", "exercises")
+    ):
+        return ""
+    return f"已读内容明确标为「{stage}」，与本轮层次相符" + (
+        "；已读内容含考试或习题线索" if analysis.goal_kind is ResourcesGoalKind.EXAM_PREP else ""
+    )
 
 
 def _marker_hits(text: str, markers: tuple[str, ...]) -> int:
@@ -435,10 +485,10 @@ def _level_fit(level: ResourcesLevel | None, stage: str) -> int:
     if level is None:
         return 0
     if level is ResourcesLevel.BEGINNER:
-        return {STAGE_BEGINNER: 2, STAGE_FOUNDATION: 0, STAGE_ADVANCED: -3}[stage]
+        return {STAGE_BEGINNER: 2, STAGE_FOUNDATION: 0, STAGE_ADVANCED: -3}.get(stage, 0)
     if level is ResourcesLevel.ADVANCED:
-        return {STAGE_BEGINNER: 0, STAGE_FOUNDATION: 1, STAGE_ADVANCED: 2}[stage]
-    return {STAGE_BEGINNER: 1, STAGE_FOUNDATION: 1, STAGE_ADVANCED: 0}[stage]
+        return {STAGE_BEGINNER: 0, STAGE_FOUNDATION: 1, STAGE_ADVANCED: 2}.get(stage, 0)
+    return {STAGE_BEGINNER: 1, STAGE_FOUNDATION: 1, STAGE_ADVANCED: 0}.get(stage, 0)
 
 
 # ---------------------------------------------------------------------------

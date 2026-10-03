@@ -209,7 +209,7 @@ class _FakeVerifier:
         self, pages: list[str], *, account_id: str, deadline: float | None = None
     ) -> VideoVerifyOutcome:
         del account_id, deadline
-        self.pages = list(pages)
+        self.pages.extend(pages)
         records = [
             ModuleQueryRecord(
                 source=BILIBILI_SOURCE,
@@ -221,7 +221,7 @@ class _FakeVerifier:
             for page in pages
         ]
         return VideoVerifyOutcome(
-            candidates=list(self.candidates[: len(pages)]),
+            candidates=[candidate for candidate in self.candidates if candidate.url in pages],
             records=records,
             rejected=self.rejected,
         )
@@ -373,7 +373,12 @@ def test_explicit_resources_module_returns_ordered_checkable_list(
     assert kinds.count("book") == 2
     assert kinds.count("video") == 2
     roles = [item["role"] for item in resources["items"]]
-    assert roles.count("main") == 2 and roles.count("supplement") == 2
+    assert roles.count("main") == 1 and roles.count("supplement") == 3
+    # 图书介绍没有深度学习覆盖/先修证据，不能靠书名入门放进主线。
+    assert all(
+        item["role"] == "supplement"
+        for item in resources["items"] if item["kind"] == "book"
+    )
 
     # 由浅入深的顺序与逐项核对依据。
     orders = [item["order"] for item in resources["items"]]

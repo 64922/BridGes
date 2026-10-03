@@ -368,7 +368,7 @@ def test_match_assigns_evidence_levels_from_actual_reads() -> None:
         book_evidence={
             book_catalog.url: _evidence(
                 book_catalog.url,
-                catalog=["第 1 章 基础"],
+                catalog=["第 1 章 机器学习入门概念"],
                 subjects=["machine learning"],
             )
         },
@@ -452,19 +452,19 @@ def test_organize_systematic_goal_builds_main_path_with_evidence() -> None:
             _book("机器学习实战", url="https://openlibrary.org/works/OL2W"),
         ],
         [
-            _video("BV1", "机器学习系统讲解", description="公开简介"),
-            _video("BV2", "机器学习速览", description="公开简介"),
+            _video("BV1", "机器学习系统讲解", description="机器学习零基础入门简介"),
+            _video("BV2", "机器学习速览", description="机器学习零基础入门简介"),
         ],
         evidence={
             "https://openlibrary.org/works/OL1W": _evidence(
                 "https://openlibrary.org/works/OL1W",
-                catalog=["第 1 章 基础"],
+                catalog=["第 1 章 机器学习入门概念"],
                 subjects=["machine learning"],
             ),
             "https://openlibrary.org/works/OL2W": _evidence(
                 "https://openlibrary.org/works/OL2W",
                 catalog=["第 1 章 实践"],
-                description="machine learning 实践",
+                description="machine learning 基础实践",
             ),
         },
     )
@@ -484,10 +484,10 @@ def test_organize_quick_goal_keeps_single_main_item() -> None:
     analysis, plan, match, outcome = _pipeline(
         "我想快速了解一下量子计算",
         [_book("量子计算入门", url="https://openlibrary.org/works/OL5W")],
-        [_video("BV1", "量子计算速览", description="公开简介")],
+        [_video("BV1", "量子计算速览", description="量子计算零基础入门简介")],
         evidence={
             "https://openlibrary.org/works/OL5W": _evidence(
-                "https://openlibrary.org/works/OL5W", description="量子计算简介"
+                "https://openlibrary.org/works/OL5W", description="量子计算零基础入门简介"
             )
         },
     )
@@ -562,7 +562,7 @@ def test_organize_keeps_one_side_when_other_has_gap() -> None:
     _, plan, _, outcome = _pipeline(
         "我想学机器学习，零基础",
         [],
-        [_video("BV1", "机器学习入门教程", description="公开简介")],
+        [_video("BV1", "机器学习入门教程", description="机器学习零基础入门简介")],
         records={
             "books": [
                 {
@@ -597,7 +597,7 @@ def test_video_items_only_claim_public_metadata_and_counters() -> None:
                 "机器学习入门教程",
                 view_count=1815690,
                 like_count=45780,
-                description="公开简介",
+                description="机器学习零基础入门简介",
             )
         ],
     )
@@ -620,7 +620,7 @@ def test_book_items_record_read_scope_and_purpose() -> None:
         [],
         evidence={
             "https://openlibrary.org/works/OL1W": _evidence(
-                "https://openlibrary.org/works/OL1W", catalog=["第 1 章 基础"]
+                "https://openlibrary.org/works/OL1W", catalog=["第 1 章 机器学习入门概念"]
             )
         },
     )
@@ -637,10 +637,10 @@ def test_success_projection_never_leaves_failed_status_behind() -> None:
     analysis, plan, match, outcome = _pipeline(
         "我有点基础，想系统学习机器学习",
         [_book("机器学习", url="https://openlibrary.org/works/OL1W")],
-        [_video("BV1", "机器学习系统讲解", description="公开简介")],
+        [_video("BV1", "机器学习系统讲解", description="机器学习零基础入门简介")],
         evidence={
             "https://openlibrary.org/works/OL1W": _evidence(
-                "https://openlibrary.org/works/OL1W", description="machine learning 教材"
+                "https://openlibrary.org/works/OL1W", description="machine learning 基础教材"
             )
         },
     )

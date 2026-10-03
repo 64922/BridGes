@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import re
+
 from bridges.resources.contracts import (
     ResourceMedia,
     ResourcesGoalKind,
@@ -57,28 +59,34 @@ def plan_resources(analysis: ResourcesTermAnalysis) -> ResourcesQueryPlan:
     """生成本轮检索计划（图书查询与视频查询各一条，数量随目标/媒介/明确要求）。"""
     term = (analysis.normalized_term or analysis.original_phrase).strip()
     expansions = list(analysis.expansions[:1])
-    book_query = _join([term, *expansions])
+    language = analysis.language if analysis.language in {"中文", "英文", "中英文"} else ""
+    book_query = _join([term, *expansions, language or ""])
     suffix = (
         VIDEO_QUERY_SUFFIX.get(analysis.level, DEFAULT_VIDEO_SUFFIX)
         if analysis.level is not None
         else DEFAULT_VIDEO_SUFFIX
     )
-    video_query = _join([term, suffix])
+    video_query = _join([term, suffix, language or ""])
     media = analysis.media or ResourceMedia.BOTH
     target_books, target_videos = GOAL_TARGETS.get(analysis.goal_kind, (2, 2))
-    if media is ResourceMedia.BOOKS:
-        target_videos = 0
-    elif media is ResourceMedia.VIDEOS:
-        target_books = 0
+    compact = _short_time_budget(analysis.time_budget)
+    if compact:
+        target_books, target_videos = min(target_books, 1), min(target_videos, 1)
     # 用户明确的数量是硬条件：覆盖目标推导与媒介默认。
     if analysis.requested_books is not None:
         target_books = analysis.requested_books
     if analysis.requested_videos is not None:
         target_videos = analysis.requested_videos
+    # 单一媒介仍是硬边界；矛盾的另一媒介数量不得重启已排除的检索。
+    if media is ResourceMedia.BOOKS:
+        target_videos = 0
+    elif media is ResourceMedia.VIDEOS:
+        target_books = 0
     rationale = (
         f"主题词保持你给的原始说法「{term}」"
         + (f"，英文写法「{expansions[0]}」只作为补充" if expansions else "")
-        + f"；图书查询只发送主题词，视频查询额外带上层次提示（{'、'.join(suffix.split())}）"
+        + (f"，资料语言「{language}」作为查询条件，实际语言仍需来源证据核对" if language else "")
+        + f"；查询只发送主题、语言及视频层次提示（{'、'.join(suffix.split())}）"
         "以便找到与本轮层次相符的公开讲解。"
         + (
             f"目标数量按本轮目的取 {target_books} 本书 + {target_videos} 条视频"
@@ -91,6 +99,15 @@ def plan_resources(analysis: ResourcesTermAnalysis) -> ResourcesQueryPlan:
             + "。"
         )
     )
+    if compact:
+        rationale += (
+            "时间较紧，本轮压缩默认数量，明确数量仍优先；"
+            "不保证这些材料能在给定时间内学完。"
+        )
+    elif analysis.time_budget:
+        rationale += "已保留时间约束，但未取得完整学习耗时证据，不保证能在给定时间内学完。"
+    if media is not ResourceMedia.BOTH:
+        rationale += "本轮遵守单一媒介要求，另一媒介的矛盾数量不采用。"
     return ResourcesQueryPlan(
         term=term,
         book_query=book_query,
@@ -114,3 +131,27 @@ def plan_resources(analysis: ResourcesTermAnalysis) -> ResourcesQueryPlan:
 
 def _join(parts: list[str]) -> str:
     return " ".join(part.strip() for part in parts if part and part.strip())
+
+
+def _short_time_budget(value: str | None) -> bool:
+    """只按明确的短期或每日少量时间压缩数量，不估算材料学习耗时。"""
+    if not value:
+        return False
+    matched = re.fullmatch(
+        r"(?P<daily>每天|每日)?\s*(?P<num>[0-9]+|[一二两三四五六七半])\s*(?P<unit>天|周|小时|分钟)",
+        value,
+    )
+    if matched is None:
+        return False
+    raw = matched.group("num")
+    number = float(raw) if raw.isdigit() else {
+        "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "半": 0.5,
+    }[raw]
+    unit = matched.group("unit")
+    if matched.group("daily"):
+        return (unit == "小时" and number <= 1) or (unit == "分钟" and number <= 60)
+    return (
+        (unit == "天" and number <= 7) or (unit == "周" and number <= 1)
+        or unit in {"小时", "分钟"}
+    )

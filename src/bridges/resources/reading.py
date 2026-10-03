@@ -125,12 +125,16 @@ class OpenLibraryBookInsightReader:
     ) -> tuple[dict[str, Any] | None, str | None]:
         if self._client is None:
             return None, READ_UNAVAILABLE
-        if deadline is not None and time.monotonic() >= deadline:
-            return None, "openlibrary_deadline"
+        timeout = self._timeout
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, "openlibrary_deadline"
+            timeout = min(timeout, remaining)
         try:
             response = self._client.get(
                 url,
-                timeout=self._timeout,
+                timeout=timeout,
                 headers={"User-Agent": "BridGes/1.0 (learning resource evidence read)"},
             )
         except httpx.TimeoutException:
