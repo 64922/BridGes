@@ -16,12 +16,14 @@ from datetime import UTC, date, datetime
 from bridges.career_plan.advising import build_advice
 from bridges.career_plan.analyzing import SMALL_SAMPLE_MIN, analyze_samples
 from bridges.career_plan.collecting import JobPageReadResult, ParsedJobPage, is_stale
-from bridges.career_plan.contracts import JobReadStatus
+from bridges.career_plan.contracts import CareerPlanProjection, JobReadStatus
 from bridges.career_plan.filtering import (
     KIND_ADJACENT,
     KIND_CITY,
     KIND_CITY_UNVERIFIED,
     KIND_DUPLICATE,
+    KIND_EXPERIENCE,
+    KIND_EXPERIENCE_UNVERIFIED,
     KIND_EXPIRED,
     KIND_TITLE_MISMATCH,
     JobCandidate,
@@ -41,6 +43,8 @@ from bridges.career_plan.lexicon import (
 from bridges.career_plan.parsing import parse_career_request
 from bridges.career_plan.planning import build_plan
 from bridges.career_plan.salary import (
+    CURRENCY_CNY,
+    CURRENCY_USD,
     UNIT_DAY,
     UNIT_MONTH,
     UNIT_YEAR,
@@ -168,15 +172,19 @@ def test_plan_uses_first_city_and_discloses_the_rest() -> None:
 
 
 def test_plan_filters_only_claim_what_is_actually_enforced() -> None:
-    """筛选条件只写真正执行的判定：阶段与经验只影响查询词或原话展示。"""
+    """筛选条件只写真正执行的判定：城市与经验逐条核对，阶段只进查询词。"""
     analysis = parse_career_request("我想找 Java 后端开发，2026 届，经验 1-3年，城市南昌")
     plan = build_plan(analysis)
     assert analysis.experience_hint == "1-3年"
     assert analysis.graduation_year == 2026
     for item in plan:
         for text in item.filters:
-            assert "经验" not in text, text
+            # 阶段只影响查询词，不写成筛选条件（写了不做等于空头承诺）。
             assert "毕业阶段" not in text and "2026 届" not in text, text
+    assert any(
+        "经验" in f and "1-3年" in f for item in plan for f in item.filters
+    ), "经验条件已在 career.filter 里逐条核对，必须写进筛选条件"
+    assert any("城市必须是「南昌」" in f for item in plan for f in item.filters)
     assert any("校园招聘/应届生口径" in f for item in plan for f in item.filters)
 
 
@@ -194,6 +202,8 @@ def _read(
     expired: bool = False,
     published: date | None = date(2026, 9, 20),
     status: JobReadStatus = JobReadStatus.READ,
+    experience: str | None = None,
+    requirements: list[str] | None = None,
 ) -> JobPageReadResult:
     page = ParsedJobPage(
         title=title,
@@ -202,7 +212,8 @@ def _read(
         salary_raw=salary,
         published_raw=published.isoformat() if published else None,
         published_date=published,
-        requirements=["熟悉 Java 与 MySQL"],
+        experience=experience,
+        requirements=requirements if requirements is not None else ["熟悉 Java 与 MySQL"],
         is_job_posting=is_job,
         expired=expired,
         expired_evidence="岗位页出现「职位已下线」" if expired else None,
@@ -251,7 +262,7 @@ def test_only_readable_matching_title_and_city_enter_main_sample() -> None:
     assert kinds["https://a/5"] == KIND_EXPIRED
     assert kinds["https://a/6"] == KIND_TITLE_MISMATCH
     # 读不到页面的候选降级为「未核实链接」，不进入任何统计
-    assert [link.url for link in outcome.unconfirmed] == ["https://a/8"]
+    assert [link.url for link in outcome.unconfirmed] == ["https://a/4", "https://a/8"]
     assert outcome.rejected[0].evidence
 
 
@@ -275,6 +286,32 @@ def test_adjacent_job_is_counted_separately_not_merged() -> None:
     assert outcome.samples == []
     assert outcome.adjacent_counts == {"测试工程师": 1}
     assert "相邻岗位" in outcome.rejected[0].evidence
+
+
+def test_explicit_adjacent_title_overrides_generic_target_fragment() -> None:
+    """后端只是修饰语时，明确的测试或前端职位不能混入后端样本。"""
+    analysis = parse_career_request("我想找 Java 后端开发，城市南昌")
+    titles = ["后端测试工程师", "后端测试开发工程师", "前端工程师（后端接口方向）"]
+    outcome = filter_candidates(
+        [
+            _candidate(
+                f"https://a/{index}", title,
+                requirements=["熟悉 MySQL 与 Redis，负责服务端接口测试"],
+            )
+            for index, title in enumerate(titles)
+        ],
+        analysis,
+        reference=NOW,
+    )
+    assert outcome.samples == []
+    assert len(outcome.rejected) == len(titles)
+    assert all(item.kind == KIND_ADJACENT for item in outcome.rejected)
+    algorithm = parse_career_request("我想找算法工程师")
+    assert match_job_title(
+        "算法工程师（数据分析方向）",
+        target_terms=tuple(algorithm.synonyms),
+        adjacent=tuple(algorithm.adjacent_jobs),
+    ).matched, "真实目标职位不能因方向说明被剔除"
 
 
 def test_duplicate_samples_keep_only_the_first() -> None:
@@ -309,12 +346,18 @@ def test_sample_marks_fetch_and_publish_times_salary_and_link() -> None:
 def test_city_is_not_required_when_user_gives_none() -> None:
     analysis = parse_career_request("目标是 Java 后端实习")
     outcome = filter_candidates(
-        [_candidate("https://a/1", "Java后端开发工程师", city=None)],
+        [
+            _candidate("https://a/1", "Java后端开发工程师", city=None),
+            _candidate("https://a/2", "Java后端开发工程师", city="上海"),
+        ],
         analysis,
         reference=NOW,
     )
     assert len(outcome.samples) == 1
+    assert outcome.samples[0].url == "https://a/2"
     assert "未做城市过滤" in outcome.samples[0].city_evidence
+    assert [link.url for link in outcome.unconfirmed] == ["https://a/1"]
+    assert outcome.rejected[0].kind == KIND_CITY_UNVERIFIED
 
 
 def test_stale_publish_date_is_rejected_as_expired() -> None:
@@ -549,3 +592,163 @@ def test_adapter_reads_the_real_search_projection_shape() -> None:
     assert outcome.record.status == "success"
     assert outcome.record.evidence_count == 1
     assert outcome.record.detail == "另有 1 条结果不是招聘页，未作为候选"
+
+
+# --------------------------------------------------------------------------
+# 职责语义证据：岗位名未命中也只能用目标职责锚点（两票制）纳入
+# --------------------------------------------------------------------------
+
+
+def test_duty_evidence_admits_semantic_match_with_two_anchors() -> None:
+    analysis = parse_career_request("我想找 Java 后端开发，城市南昌")
+    outcome = filter_candidates(
+        [
+            _candidate(
+                "https://a/1",
+                "软件工程师",
+                requirements=[
+                    "负责服务端接口开发与维护",
+                    "熟悉 MySQL 与 Redis",
+                    "参与高并发系统设计",
+                ],
+            )
+        ],
+        analysis,
+        reference=NOW,
+    )
+    assert [sample.url for sample in outcome.samples] == ["https://a/1"]
+    sample = outcome.samples[0]
+    assert sample.match_basis == "duty"
+    assert len(sample.duty_evidence) >= 2
+    assert "职责" in sample.title_evidence
+
+
+def test_duty_evidence_rejects_single_anchor_or_adjacent_dominant_text() -> None:
+    """职责证据不足或相邻族占优时宁可判不匹配，也不把相邻岗位混入样本。"""
+    analysis = parse_career_request("我想找 Java 后端开发，城市南昌")
+    outcome = filter_candidates(
+        [
+            _candidate(
+                "https://a/1",
+                "软件工程师",
+                requirements=["负责前端页面与组件开发", "熟悉 React 与 Vue", "了解 MySQL"],
+            )
+        ],
+        analysis,
+        reference=NOW,
+    )
+    assert outcome.samples == []
+    assert outcome.rejected[0].kind == KIND_TITLE_MISMATCH
+    assert "职责锚点" in outcome.rejected[0].evidence
+
+
+# --------------------------------------------------------------------------
+# 经验条件：逐条核对，页面未知不进入统计
+# --------------------------------------------------------------------------
+
+
+def test_experience_condition_matches_is_recorded_and_unknown_excluded() -> None:
+    analysis = parse_career_request("我想找 Java 后端开发，经验 1-3年，城市南昌")
+    outcome = filter_candidates(
+        [
+            _candidate("https://a/1", "Java后端开发工程师", experience="1-3年"),
+            _candidate("https://a/2", "Java后端开发工程师", experience=None),
+            _candidate("https://a/3", "Java后端开发工程师", experience="5-10年"),
+        ],
+        analysis,
+        reference=NOW,
+    )
+    assert [sample.url for sample in outcome.samples] == ["https://a/1"]
+    assert "1-3年" in (outcome.samples[0].experience_evidence or "")
+    kinds = {item.url: item.kind for item in outcome.rejected}
+    assert kinds["https://a/2"] == KIND_EXPERIENCE_UNVERIFIED
+    assert kinds["https://a/3"] == KIND_EXPERIENCE
+    assert outcome.experience_unverified_count == 1
+
+
+# --------------------------------------------------------------------------
+# 薪资币种与缺失口径
+# --------------------------------------------------------------------------
+
+
+def test_salary_currency_is_detected_and_never_mixed_in_aggregates() -> None:
+    cny = parse_salary("15-25K·15薪")
+    usd = parse_salary("2000-3000美元/月")
+    assert cny.currency == CURRENCY_CNY and cny.unit == UNIT_MONTH
+    assert usd.currency == CURRENCY_USD and usd.unit == "美元/月"
+    aggregates, _notes = aggregate_salary([cny, usd])
+    assert {(item.currency, item.unit) for item in aggregates} == {
+        (CURRENCY_CNY, UNIT_MONTH),
+        (CURRENCY_USD, "美元/月"),
+    }
+
+
+def test_analysis_reports_missing_salary_and_experience_unverified_counts() -> None:
+    samples = _samples(3)
+    samples[0] = samples[0].model_copy(update={"salary_raw": None})
+    samples[1] = samples[1].model_copy(update={"salary_raw": "1.5-2万"})
+    report = analyze_samples(samples, experience_unverified_count=2)
+    assert report.missing_salary_count == 1, "缺薪资字段单独计数"
+    assert report.experience_unverified_count == 2
+    assert [item.sample_count for item in report.salary_intervals] == [1]
+    assert any("1.5-2万" in note for note in report.incomparable_notes)
+    assert any("没有给出薪资原文" in note for note in report.incomparable_notes)
+
+
+# --------------------------------------------------------------------------
+# 历史投影兼容：旧载荷缺少本票新增字段时仍可读，新字段只补默认值
+# --------------------------------------------------------------------------
+
+
+def test_legacy_projection_payload_without_new_fields_still_reads() -> None:
+    legacy = {
+        "status": "success",
+        "topic": "Java后端开发",
+        "original_request": "我想找 Java 后端开发，城市南昌",
+        "job_terms": ["Java后端开发"],
+        "cities": ["南昌"],
+        "samples": [
+            {
+                "url": "https://a/1",
+                "source": "boss",
+                "source_label": "公开招聘职位",
+                "title": "Java后端开发工程师",
+                "company": "某某科技",
+                "city": "南昌",
+                "salary_raw": "15-25K",
+                "requirements": ["熟悉 Java 与 MySQL"],
+                "skills": ["Java"],
+                "title_evidence": "页面岗位名命中目标岗位。",
+                "city_evidence": "页面城市一致。",
+                "retrieved_at": NOW.isoformat(),
+                "read_status": "read",
+            }
+        ],
+        "analysis": {
+            "sample_count": 1,
+            "salary_intervals": [
+                {
+                    "unit": "元/月",
+                    "sample_count": 1,
+                    "amount_min": 15000,
+                    "amount_max": 15000,
+                    "amount_median": 15000,
+                    "small_sample": True,
+                }
+            ],
+            "sample_scope_note": "仅 1 个样本。",
+            "small_sample": True,
+            "overall_inference_stopped": True,
+        },
+    }
+    projection = CareerPlanProjection.model_validate(legacy)
+    sample = projection.samples[0]
+    assert sample.match_basis == "title"
+    assert sample.duty_evidence == []
+    assert sample.experience_evidence is None
+    interval = projection.analysis.salary_intervals[0]
+    assert interval.currency == CURRENCY_CNY
+    assert interval.salary_months == []
+    assert projection.analysis.missing_salary_count == 0
+    assert projection.analysis.experience_unverified_count == 0
+    assert projection.experience_hint is None

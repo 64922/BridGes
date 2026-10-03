@@ -877,6 +877,138 @@ def detect_experience(text: str) -> str | None:
     return None
 
 
+#: 经验要求里表示「不设经验门槛」的说法（与在校生身份可以互相接受）。
+NO_EXPERIENCE_TERMS: tuple[str, ...] = ("经验不限", "不限经验", "无需经验", "无经验")
+
+#: 校园身份说法（应届／在校岗位与不限经验岗位互相可以接受）。
+STUDENT_EXPERIENCE_TERMS: tuple[str, ...] = ("应届生", "在校生")
+
+_EXPERIENCE_RANGE = re.compile(r"(?P<low>\d+)\s*(?:-|~|到|至)\s*(?P<high>\d+)\s*年")
+_EXPERIENCE_UPPER = re.compile(r"(?P<amount>\d+)\s*年(?:以下|以内)")
+_EXPERIENCE_LOWER = re.compile(r"(?P<amount>\d+)\s*年(?:以上|及以上)")
+
+
+def _experience_bounds(value: str) -> tuple[int, int] | None:
+    match = _EXPERIENCE_RANGE.search(value)
+    if match is not None:
+        return int(match.group("low")), int(match.group("high"))
+    match = _EXPERIENCE_UPPER.search(value)
+    if match is not None:
+        return 0, int(match.group("amount"))
+    match = _EXPERIENCE_LOWER.search(value)
+    if match is not None:
+        return int(match.group("amount")), 999
+    return None
+
+
+def experience_matches(condition: str, page_experience: str | None) -> bool:
+    """逐条核对页面经验要求是否满足用户给的经验条件；页面未知时不匹配。
+
+    未知宁可不进入统计，也不把「不确定」当成「满足」。
+    """
+    if not condition:
+        return True
+    if page_experience is None:
+        return False
+    if condition in NO_EXPERIENCE_TERMS:
+        return page_experience in NO_EXPERIENCE_TERMS or page_experience in STUDENT_EXPERIENCE_TERMS
+    if condition in STUDENT_EXPERIENCE_TERMS:
+        return page_experience in STUDENT_EXPERIENCE_TERMS or page_experience in NO_EXPERIENCE_TERMS
+    expected = _experience_bounds(condition)
+    actual = _experience_bounds(page_experience)
+    if expected is not None and actual is not None:
+        return expected[0] <= actual[1] and actual[0] <= expected[1]
+    return condition == page_experience
+
+
+# --------------------------------------------------------------------------
+# 职责锚点：岗位名没直接命中时，用职责／要求原文做保守的语义核对
+# --------------------------------------------------------------------------
+
+#: 按岗位族记录的职责锚点（只覆盖技术方向；表外的族不做职责匹配，避免误判）。
+DUTY_ANCHORS: dict[str, tuple[str, ...]] = {
+    "backend": (
+        "服务端", "后端", "接口设计", "接口开发", "高并发", "分布式", "微服务",
+        "数据库设计", "Spring Boot", "Spring Cloud", "MyBatis", "Redis", "MySQL",
+        "消息队列", "Kafka", "API", "服务器",
+    ),
+    "frontend": (
+        "前端", "页面", "组件", "React", "Vue", "JavaScript", "TypeScript",
+        "HTML", "CSS", "浏览器", "交互", "小程序", "Web",
+    ),
+    "fullstack": ("全栈", "前端", "后端", "服务端", "页面", "接口开发"),
+    "algorithm": (
+        "机器学习", "深度学习", "模型", "算法", "PyTorch", "TensorFlow", "NLP",
+        "自然语言处理", "计算机视觉", "推荐系统", "特征工程", "论文",
+    ),
+    "data_analyst": (
+        "数据分析", "SQL", "报表", "指标", "数据可视化", "Excel", "Tableau",
+        "PowerBI", "业务分析", "数据看板", "统计分析",
+    ),
+    "data_engineer": (
+        "数据仓库", "数仓", "ETL", "数据管道", "Spark", "Hadoop", "Flink",
+        "Hive", "数据建模", "离线", "实时计算",
+    ),
+    "qa": (
+        "测试用例", "自动化测试", "测试工具", "缺陷", "Bug", "质量", "测试方案",
+        "性能测试", "接口测试",
+    ),
+    "product": (
+        "需求", "原型", "产品设计", "用户调研", "竞品", "PRD", "Axure", "Figma",
+        "产品规划", "版本迭代",
+    ),
+    "sre": (
+        "运维", "监控", "Linux", "Docker", "Kubernetes", "K8s", "部署", "故障",
+        "Nginx", "CI/CD", "Jenkins", "服务器",
+    ),
+    "security": ("安全", "渗透测试", "漏洞", "加密", "攻防", "安全防护", "风险评估"),
+    "embedded": (
+        "嵌入式", "单片机", "PCB", "电路", "驱动", "Linux内核", "C语言", "RTOS", "STM32",
+    ),
+    "mobile": (
+        "Android", "iOS", "客户端", "Flutter", "Swift", "Kotlin", "移动端", "App",
+    ),
+}
+
+
+def duty_evidence(
+    text: str,
+    *,
+    target_terms: tuple[str, ...],
+    adjacent: tuple[str, ...],
+) -> list[str]:
+    """岗位名未直接命中时，用职责／要求原文核对目标岗位族（保守两票制）。
+
+    目标族的职责锚点至少命中 2 个，且相邻族锚点不得占优，才返回命中的目标
+    锚点；证据不足时返回空列表，宁可判为不匹配也不混入相邻岗位。
+    """
+    family = next(
+        (candidate for candidate in (family_for(term) for term in target_terms)
+         if candidate is not None),
+        None,
+    )
+    if family is None:
+        return []
+    anchors = DUTY_ANCHORS.get(family.key, ())
+    if not anchors:
+        return []
+    target_hits = [anchor for anchor in anchors if _skill_present(text, anchor)]
+    if len(target_hits) < 2:
+        return []
+    adjacent_families = {
+        candidate.key
+        for candidate in (family_for(term) for term in adjacent)
+        if candidate is not None and candidate.key != family.key
+    }
+    for key in adjacent_families:
+        rival_hits = sum(
+            1 for anchor in DUTY_ANCHORS.get(key, ()) if _skill_present(text, anchor)
+        )
+        if rival_hits >= len(target_hits):
+            return []
+    return target_hits
+
+
 # --------------------------------------------------------------------------
 # 技能关键词
 # --------------------------------------------------------------------------
@@ -1067,16 +1199,23 @@ def match_job_title(
     matched = tuple(
         term for term in target_terms if term and normalize_for_match(term) in normalized
     )
+    # 相邻职位也核对其真正同义名，避免漏掉「测试开发工程师」「前端工程师」。
+    adjacent_matches: dict[str, int] = {}
+    for term in adjacent:
+        family = family_for(term)
+        candidates = family.all_terms if family is not None else (term,)
+        lengths = [
+            len(normalize_for_match(candidate))
+            for candidate in candidates
+            if candidate and normalize_for_match(candidate) in normalized
+        ]
+        if lengths:
+            adjacent_matches[term] = max(lengths)
+    adjacent_hits = tuple(adjacent_matches)
     if matched:
-        # 命中的目标说法里若同时含相邻岗位说法，仍以目标说法为准，但把相邻
-        # 命中一并记下（例如「算法工程师（数据分析方向）」）。
-        adjacent_hits = tuple(
-            term
-            for term in adjacent
-            if term and normalize_for_match(term) in normalized
-        )
-        return TitleMatch(matched=True, matched_terms=matched, adjacent_hits=adjacent_hits)
-    adjacent_hits = tuple(
-        term for term in adjacent if term and normalize_for_match(term) in normalized
-    )
+        # 更具体的相邻职位优先于泛化修饰词（「后端测试工程师」中的「后端」）；
+        # 目标职位仍更具体时保留，例如「算法工程师（数据分析方向）」。
+        target_length = max(len(normalize_for_match(term)) for term in matched)
+        if not adjacent_matches or max(adjacent_matches.values()) <= target_length:
+            return TitleMatch(matched=True, matched_terms=matched, adjacent_hits=adjacent_hits)
     return TitleMatch(matched=False, matched_terms=(), adjacent_hits=adjacent_hits)

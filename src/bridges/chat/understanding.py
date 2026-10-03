@@ -291,8 +291,6 @@ class MainAgentUnderstanding:
             resolution=resolution,
         )
         classification_text = goal if "career" in detected and goal else text
-        if requested_module_id == "career" and not detected:
-            classification_text = f"职业规划：{classification_text}"
         classified = self._router.classify(classification_text)
         if (
             clarification is None

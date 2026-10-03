@@ -81,10 +81,10 @@ def _stage_part(analysis: CareerRequestAnalysis) -> str:
 def _filters(analysis: CareerRequestAnalysis, city: str | None) -> list[str]:
     """筛选条件只列**实际执行**的判定。
 
-    阶段与经验要求只进查询词或只作原话展示（见 ``build_plan`` 的 reason 与
-    证据边界），不写进筛选条件——写了不做等于给用户一个空头承诺。
+    阶段只进查询词（见 ``build_plan`` 的 reason 与证据边界）；城市与经验
+    条件都在 ``career.filter`` 里逐条代码核对，因此写进筛选条件。
     """
-    filters = ["岗位名必须命中目标岗位或其同义名"]
+    filters = ["岗位名或职责原文必须命中目标岗位及其同义职责"]
     if city:
         filters.append(f"城市必须是「{city}」")
         others = [item for item in analysis.cities if item != city]
@@ -95,6 +95,10 @@ def _filters(analysis: CareerRequestAnalysis, city: str | None) -> list[str]:
             )
     else:
         filters.append("未给出城市：不按城市过滤，但逐条标注岗位实际城市")
+    if analysis.experience_hint:
+        filters.append(
+            f"经验要求必须核对为「{analysis.experience_hint}」；页面未给出经验时不进入样本"
+        )
     filters.append("排除相邻岗位、已过期与重复岗位")
     return filters
 

@@ -1519,6 +1519,9 @@ def create_app(
         app.state.career_plan_service = CareerPlanService(
             search=CareerWebSearchAdapter(app.state.web_search_service),
             reader=HttpJobPageReader(),
+            task_version_provider=lambda account_id, conversation_id: (
+                _current_task_reference(app, account_id, conversation_id)
+            ),
         )
         app.router.add_event_handler("shutdown", app.state.career_plan_service.close)
         # V2 Issue 16：GitHub 项目推荐模块子图——公开仓库检索与证据读取都走

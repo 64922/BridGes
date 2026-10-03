@@ -5,14 +5,33 @@
 ``1.5-2万`` 这类没有周期标记的写法一律标为不可比较，并写明原因——宁可少算，
 也不把不可比的薪资混进同一个区间。
 
-薪资区间按**计薪单位**分别归并：``元/月``、``元/天``、``元/年`` 三类互不混算。
-``·15薪`` 只记录发薪月数，不把年度总额并入月薪区间。
+薪资区间按**计薪单位与币种**分别归并：``元/月``、``元/天``、``元/年`` 三类互不混算，
+``美元/月`` 等非人民币写法单独成组。``·15薪`` 只记录发薪月数，不把年度总额并
+入月薪区间。
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from statistics import median
+
+#: 币种（与计薪单位一起构成区间键）。
+CURRENCY_CNY = "CNY"
+CURRENCY_USD = "USD"
+
+#: 币种中文标签（计薪单位前缀）。
+_CURRENCY_LABELS: dict[str, str] = {
+    CURRENCY_CNY: "元",
+    CURRENCY_USD: "美元",
+    "HKD": "港元",
+    "EUR": "欧元",
+    "JPY": "日元",
+    "GBP": "英镑",
+    "CAD": "加元",
+    "AUD": "澳元",
+    "SGD": "新加坡元",
+}
 
 #: 计薪单位（互不混算的区间键）。
 UNIT_MONTH = "元/月"
@@ -24,6 +43,9 @@ UNIT_WEEK = "元/周"
 #: 全部可比较的计薪单位。
 COMPARABLE_UNITS: tuple[str, ...] = (UNIT_MONTH, UNIT_DAY, UNIT_YEAR, UNIT_HOUR, UNIT_WEEK)
 
+#: 周期顺序（归并时的稳定排序）。
+_PERIODS: tuple[str, ...] = ("月", "天", "年", "时", "周")
+
 #: 没有数值的写法（不参与区间计算，原话照记）。
 NON_NUMERIC_MARKERS: tuple[str, ...] = (
     "面议",
@@ -33,27 +55,47 @@ NON_NUMERIC_MARKERS: tuple[str, ...] = (
     "不便透露",
 )
 
-#: 周期标记 → 计薪单位（先长后短匹配）。
+#: 周期标记 → 计薪周期（先长后短匹配）。
 _PERIOD_MARKERS: tuple[tuple[str, str], ...] = (
-    ("元/月", UNIT_MONTH),
-    ("/月", UNIT_MONTH),
-    ("每月", UNIT_MONTH),
-    ("月薪", UNIT_MONTH),
-    ("元/天", UNIT_DAY),
-    ("/天", UNIT_DAY),
-    ("每天", UNIT_DAY),
-    ("日薪", UNIT_DAY),
-    ("/日", UNIT_DAY),
-    ("元/年", UNIT_YEAR),
-    ("/年", UNIT_YEAR),
-    ("每年", UNIT_YEAR),
-    ("年薪", UNIT_YEAR),
-    ("元/时", UNIT_HOUR),
-    ("/时", UNIT_HOUR),
-    ("每小时", UNIT_HOUR),
-    ("元/周", UNIT_WEEK),
-    ("/周", UNIT_WEEK),
-    ("每周", UNIT_WEEK),
+    ("元/月", "月"),
+    ("/月", "月"),
+    ("每月", "月"),
+    ("月薪", "月"),
+    ("元/天", "天"),
+    ("/天", "天"),
+    ("每天", "天"),
+    ("日薪", "天"),
+    ("/日", "天"),
+    ("元/年", "年"),
+    ("/年", "年"),
+    ("每年", "年"),
+    ("年薪", "年"),
+    ("元/时", "时"),
+    ("/时", "时"),
+    ("每小时", "时"),
+    ("元/周", "周"),
+    ("/周", "周"),
+    ("每周", "周"),
+)
+
+#: 币种标记（先认美元，避免「美元」里的「元」被当成人民币）。
+_CURRENCY_MARKERS: tuple[tuple[str, str], ...] = (
+    ("港元", "HKD"), ("港币", "HKD"), ("HK$", "HKD"),
+    ("欧元", "EUR"), ("€", "EUR"),
+    ("日元", "JPY"), ("日币", "JPY"),
+    ("英镑", "GBP"), ("£", "GBP"),
+    ("加元", "CAD"), ("CA$", "CAD"), ("CAD$", "CAD"),
+    ("澳元", "AUD"), ("AU$", "AUD"),
+    ("新加坡元", "SGD"), ("SG$", "SGD"),
+    ("美元", CURRENCY_USD),
+    ("美金", CURRENCY_USD),
+    ("US$", CURRENCY_USD),
+    ("USD", CURRENCY_USD),
+    ("$", CURRENCY_USD),
+    ("人民币", CURRENCY_CNY),
+    ("元", CURRENCY_CNY),
+    ("¥", CURRENCY_CNY),
+    ("￥", CURRENCY_CNY),
 )
 
 #: 数值（含可选中文／字母倍率）：位置组为 ``(数值, 倍率)``。同一个模式里
@@ -79,6 +121,7 @@ class SalaryBand:
     amount_max: int | None
     salary_months: int | None
     comparable: bool
+    currency: str = CURRENCY_CNY
     note: str | None = None
 
     @property
@@ -93,42 +136,50 @@ class SalaryBand:
 def parse_salary(raw: str) -> SalaryBand:
     """解析一条薪资原文；无法比较时如实标注原因。"""
     text = " ".join((raw or "").split())
+    currency = _currency(text)
     if not text:
         return SalaryBand(
             raw="", unit=None, amount_min=None, amount_max=None,
-            salary_months=None, comparable=False, note="岗位页没有给出薪资原文。",
+            salary_months=None, comparable=False, currency=currency,
+            note="岗位页没有给出薪资原文。",
         )
     months = _salary_months(text)
+    if "币种未给出" in text:
+        return SalaryBand(
+            raw=text, unit=None, amount_min=None, amount_max=None,
+            salary_months=months, comparable=False, currency="UNKNOWN",
+            note="页面没有声明币种，未纳入任何薪资区间。",
+        )
     for marker in NON_NUMERIC_MARKERS:
         if marker in text:
             return SalaryBand(
                 raw=text, unit=None, amount_min=None, amount_max=None,
-                salary_months=months, comparable=False,
+                salary_months=months, comparable=False, currency=currency,
                 note=f"薪资原文为「{marker}」，没有可比较的金额。",
             )
-    unit = _period_unit(text)
-    explicit_unit = unit is not None
-    numbers = _numbers(text)
+    period = _period(text)
+    numbers = _numbers(_MONTHS.sub("", text))
     if not numbers:
         return SalaryBand(
             raw=text, unit=None, amount_min=None, amount_max=None,
-            salary_months=months, comparable=False,
+            salary_months=months, comparable=False, currency=currency,
             note="薪资原文里没有可解析的金额。",
         )
     low, high, used_k = numbers
-    if not explicit_unit:
-        if used_k:
+    if period is None:
+        if used_k and currency == CURRENCY_CNY:
             # ``15-25K`` 是国内岗位页的月薪约定写法：K 本身即「千元／月」。
-            unit = UNIT_MONTH
+            period = "月"
         else:
             return SalaryBand(
                 raw=text, unit=None, amount_min=low, amount_max=high,
-                salary_months=months, comparable=False,
+                salary_months=months, comparable=False, currency=currency,
                 note=(
                     f"薪资原文「{text}」没有标注计薪周期（/月、/天、/年），"
                     "无法与其他岗位比较，因此不并入任何薪资区间。"
                 ),
             )
+    unit = _unit_for(currency, period)
     return SalaryBand(
         raw=text,
         unit=unit,
@@ -136,8 +187,14 @@ def parse_salary(raw: str) -> SalaryBand:
         amount_max=high,
         salary_months=months,
         comparable=True,
+        currency=currency,
         note=_comparable_note(text, unit, months),
     )
+
+
+def currency_label(currency: str) -> str:
+    """币种中文标签（未收录的币种原样返回）。"""
+    return _CURRENCY_LABELS.get(currency, currency)
 
 
 def _comparable_note(text: str, unit: str | None, months: int | None) -> str | None:
@@ -191,11 +248,33 @@ def _to_yuan(num: str, mult: str | None) -> int | None:
     return int(round(value * factor))
 
 
-def _period_unit(text: str) -> str | None:
-    for marker, unit in _PERIOD_MARKERS:
+def _period(text: str) -> str | None:
+    for marker, period in _PERIOD_MARKERS:
         if marker in text:
-            return unit
+            return period
     return None
+
+
+def _currency(text: str) -> str:
+    # 结构化页面和招聘卡可能把 ISO 币种与金额连写（如 20KUSD）。
+    code = re.search(r"(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])|(?<=K)([A-Z]{3})\b", text)
+    if code is not None:
+        currency = code.group(1) or code.group(2)
+        return CURRENCY_CNY if currency == "RMB" else currency
+    for marker, currency in _CURRENCY_MARKERS:
+        if _marker_present(text, marker):
+            return currency
+    return CURRENCY_CNY
+
+
+def _marker_present(text: str, marker: str) -> bool:
+    if marker.isascii() and marker.isalpha():
+        return re.search(rf"(?<![A-Za-z]){re.escape(marker)}(?![A-Za-z])", text, re.I) is not None
+    return marker in text
+
+
+def _unit_for(currency: str, period: str) -> str:
+    return f"{currency_label(currency)}/{period}"
 
 
 def _salary_months(text: str) -> int | None:
@@ -203,13 +282,12 @@ def _salary_months(text: str) -> int | None:
     if match is None:
         return None
     months = int(match.group("months"))
-    # 12 薪是默认值（不写也等于 12），只在 13–24 之间才有信息量。
-    return months if 13 <= months <= 24 else None
+    return months
 
 
 @dataclass(frozen=True)
 class SalaryAggregate:
-    """同一计薪单位下的薪资区间（样本量、区间与原文都留痕）。"""
+    """同一币种与计薪单位下的薪资区间（样本量、区间与原文都留痕）。"""
 
     unit: str
     sample_count: int
@@ -217,41 +295,47 @@ class SalaryAggregate:
     amount_max: int
     amount_median: int
     raws: tuple[str, ...]
+    currency: str = CURRENCY_CNY
 
 
 def aggregate_salary(bands: list[SalaryBand]) -> tuple[list[SalaryAggregate], list[str]]:
-    """按计薪单位分别归并；返回 ``(区间列表, 未并入的原因说明)``。
+    """按币种与计薪单位分别归并；返回 ``(区间列表, 未并入的原因说明)``。
 
     不同计薪单位绝不混算；不可比较的原文只留下原因，不进入任何区间。
     """
-    grouped: dict[str, list[SalaryBand]] = {}
+    grouped: dict[tuple[str, str], list[SalaryBand]] = {}
     notes: list[str] = []
     for band in bands:
         if not band.comparable or band.unit is None:
             if band.note:
                 notes.append(f"「{band.raw}」未并入区间：{band.note}")
             continue
-        grouped.setdefault(band.unit, []).append(band)
+        grouped.setdefault((band.currency, band.unit), []).append(band)
     aggregates: list[SalaryAggregate] = []
-    for unit in COMPARABLE_UNITS:
-        items = grouped.get(unit)
-        if not items:
-            continue
-        lows = [item.amount_min for item in items if item.amount_min is not None]
-        highs = [item.amount_max for item in items if item.amount_max is not None]
-        midpoints = sorted(
-            value for item in items if (value := item.midpoint) is not None
-        )
-        if not lows or not highs:
-            continue
-        aggregates.append(
-            SalaryAggregate(
-                unit=unit,
-                sample_count=len(items),
-                amount_min=min(lows),
-                amount_max=max(highs),
-                amount_median=midpoints[len(midpoints) // 2],
-                raws=tuple(item.raw for item in items),
+    currencies = sorted(
+        {currency for currency, _ in grouped}, key=lambda item: (item != CURRENCY_CNY, item)
+    )
+    for currency in currencies:
+        for period in _PERIODS:
+            items = grouped.get((currency, _unit_for(currency, period)))
+            if not items:
+                continue
+            lows = [item.amount_min for item in items if item.amount_min is not None]
+            highs = [item.amount_max for item in items if item.amount_max is not None]
+            midpoints = sorted(
+                value for item in items if (value := item.midpoint) is not None
             )
-        )
+            if not lows or not highs:
+                continue
+            aggregates.append(
+                SalaryAggregate(
+                    unit=items[0].unit or _unit_for(currency, period),
+                    sample_count=len(items),
+                    amount_min=min(lows),
+                    amount_max=max(highs),
+                    amount_median=int(median(midpoints)),
+                    raws=tuple(item.raw for item in items),
+                    currency=currency,
+                )
+            )
     return aggregates, notes
