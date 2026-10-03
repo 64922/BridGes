@@ -77,3 +77,12 @@ python -m pytest -q --basetemp=.tmp/issue25-full-final \
 - HTTPX timeout 已受剩余 deadline 约束，但仍不能保证持续慢速响应被精确墙钟中断。
 
 临时 XML/log 证据已在提交前清理，本文件保留结论。
+
+## 合入与清理
+
+- 验收修复提交：`048f7f02`；main 合并提交：`61811e82`，无文本冲突。
+- 合入时 main 已由其他代理推进：Issue 26 合并与记录（`0b797369`、`3153fe25`）、Issue 24 合并（`f8325cad`）。自动合并遗留 Issue 24 改名后的 `_commute_task_reference` 未定义引用，由其他代理提交 `f11f7567` 统一为 `_current_task_reference`；随后 `b7f823ac` 记录 Issue 24 清理结果。当前 main（含本票）为 `b7f823ac`。
+- 在最终 main 上复跑专项 `tests/resources tests/kernel tests/commute tests/state_copy`：**245 passed**；另 `tests/chat` 49 failed 均与 `806600ce` 基线同名同因复现，`tests/github` 唯一失败在 `f8325cad` 临时工作树独立复现，均非本票引入。
+- 推送：`http://127.0.0.1:7890` 的 HTTP CONNECT 握手失败，改用同一 FlClash 代理的 SOCKS5：`git -c http.proxy=socks5h://127.0.0.1:7890 push origin main`；远端 main 已含本合并，核对本地与远端一致。
+- 确认 Issue 工作树无未提交改动（HEAD `048f7f02`）后，删除 `D:\BridGes\.worktrees\25-goal-driven-learning-resources` 与本地 `codex/25-goal-driven-learning-resources` 分支。
+- `git worktree prune --dry-run --verbose` 与正式 prune 均无额外失效记录；worktree 清单只剩 `D:\BridGes` 的 main。Issue 24、26 工作树与分支已由各自代理按各自交接完成清理，本票未触碰。
