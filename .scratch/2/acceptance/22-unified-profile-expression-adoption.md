@@ -30,3 +30,10 @@
 - 未重复全量套件和 mypy；原代理的全量失败归因仅为其报告，本次独立确认范围为上述定向测试与画像/学习域。
 
 机制验收不证明真实模型体验；本次结果不能代替 39/40/41 配对评测及 43 最终集成验收。
+
+## 合入与清理
+
+- 验收修复提交：`d2449e45`；main 合并提交：`08ee9871`，无冲突。合并后文件树与已验证 Issue 分支一致。
+- 已通过系统网络代理 `http://127.0.0.1:7890` 推送至仓库配置的 `origin`（`https://github.com/64922/BridGes.git`）；远端 main 经 `ls-remote` 核对为合并提交。
+- 确认 Issue 工作树无未提交改动后，已删除 `D:\BridGes\.worktrees\22-unified-profile-expression-adoption`，再删除本地 `codex/22-unified-profile-expression-adoption` 分支。
+- `git worktree prune --dry-run --verbose` 与正式 prune 未发现额外失效记录；worktree 清单只剩 `D:\BridGes` 的 main，Issue 目录不存在。
