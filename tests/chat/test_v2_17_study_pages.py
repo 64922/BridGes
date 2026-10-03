@@ -94,6 +94,23 @@ class StudyGateway:
             )
         if capability == "qwen_structured_output":
             task = payload.get("task")
+            if task == "study.assess_evidence":
+                sources = payload.get("sources", [])
+                return ModelCallResult(
+                    status=ModelCallStatus.SUCCESS,
+                    output={
+                        "key_points": ["本节概念"],
+                        "supported": [
+                            {
+                                "point": "本节概念",
+                                "source_ids": (
+                                    [sources[0]["source_id"]] if sources else []
+                                ),
+                            }
+                        ],
+                        "gaps": [],
+                    },
+                )
             if task == "study.map":
                 if self.fail_map:
                     return ModelCallResult(status=ModelCallStatus.BLOCKED, error_code="map_failed")

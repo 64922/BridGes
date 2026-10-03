@@ -52,7 +52,19 @@ class _RecognizedPageGateway:
             }
         elif capability == "qwen_structured_output":
             task = payload.get("task")
-            if task == "study.map":
+            if task == "study.assess_evidence":
+                sources = payload.get("sources", [])
+                output = {
+                    "key_points": ["本节概念"],
+                    "supported": [
+                        {
+                            "point": "本节概念",
+                            "source_ids": [sources[0]["source_id"]] if sources else [],
+                        }
+                    ],
+                    "gaps": [],
+                }
+            elif task == "study.map":
                 refs = re.findall(r'"fragment_id":\s*"([^"]+:[^"]+)"', payload["prompt"])
                 self.unit_ids = [assign_unit_id("concept", "线性函数", refs)]
                 output = {

@@ -1,7 +1,8 @@
 """Issue 12：全局知识库检索决策的确定性与持久化幂等性。
 
 Issue 07 更新：规则版本升为 ``retrieval-intent/v3``，学科名词白名单退役，
-触发只由模式、能力路由与用户请求决定。
+触发只由模式、能力路由与用户请求决定。改进工单 32 升为 v4：学习辅导的
+问题级证据缺口可经 ``needs_local_material`` 显式要求本地材料。
 """
 
 from __future__ import annotations
@@ -33,7 +34,31 @@ def test_companion_greeting_skips_global_knowledge_base(env):
 
     assert decision.action == RetrievalDecisionAction.SKIP
     assert decision.reason == RetrievalDecisionReason.COMPANION_DEFAULT
-    assert decision.rules_version == "retrieval-intent/v3"
+    assert decision.rules_version == "retrieval-intent/v4"
+
+
+def test_study_evidence_gap_requests_local_material_but_user_disable_wins() -> None:
+    """工单 32：问题级证据缺口可要求本地材料；用户关闭知识库仍是硬门。"""
+
+    gap = decide_retrieval(
+        "a 是什么",
+        mode="study",
+        capability_route="study",
+        use_knowledge_base=True,
+        needs_local_material=True,
+    )
+    disabled = decide_retrieval(
+        "a 是什么",
+        mode="study",
+        capability_route="study",
+        use_knowledge_base=False,
+        needs_local_material=True,
+    )
+
+    assert gap.action == RetrievalDecisionAction.RETRIEVE
+    assert gap.reason == RetrievalDecisionReason.EVIDENCE_GAP
+    assert disabled.action == RetrievalDecisionAction.SKIP
+    assert disabled.reason == RetrievalDecisionReason.USER_DISABLED
 
 
 def test_companion_topic_name_retrieves_global_knowledge_base() -> None:

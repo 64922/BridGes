@@ -23,8 +23,9 @@ from bridges.contracts.retrieval import (
 )
 
 #: 决策规则版本（Issue 07 由 ``retrieval-intent/v2`` 升为 v3：移除学科
-#: 名词白名单；已持久化的历史决策保留当时的版本号，只影响新回合）。
-RULES_VERSION = "retrieval-intent/v3"
+#: 名词白名单；改进工单 32 升为 v4：学习辅导的问题级证据缺口可显式要求
+#: 本地材料。已持久化的历史决策保留当时的版本号，只影响新回合）。
+RULES_VERSION = "retrieval-intent/v4"
 
 _EXPLICIT_KNOWLEDGE_BASE_TERMS = (
     "知识库",
@@ -162,27 +163,35 @@ def decide_retrieval(
     mode: str,
     capability_route: str,
     use_knowledge_base: bool,
+    needs_local_material: bool = False,
 ) -> RetrievalDecision:
     """按模式、任务与用户请求形成全局知识库决策。
 
     判定顺序（先到先得）：
 
     1. 用户本轮关闭知识库 → ``user_disabled``；
-    2. 图像编辑 → ``specialized_capability``（编辑任务不做本地检索）；
-    3. 用户点名知识库 → ``explicit_knowledge_base``；
-    4. 用户点名自己的材料类型（讲义/笔记/简历/教材等）→ ``uploaded_material``；
-    5. 其余专用能力（humanizer/arxiv/image/video/mcp）→ ``specialized_capability``；
-    6. 学习模式的教学请求（解释/原理/推导等）→ ``study_explanation``；
-    7. 日常模式的知识型问句 → ``knowledge_base_required``；
-    8. 其余（寒暄、创作、无请求形态的主题名词）→ 不检索。
+    2. 学习辅导证据评估显式要求本地材料（工单 32）→ ``evidence_gap``；
+    3. 图像编辑 → ``specialized_capability``（编辑任务不做本地检索）；
+    4. 用户点名知识库 → ``explicit_knowledge_base``；
+    5. 用户点名自己的材料类型（讲义/笔记/简历/教材等）→ ``uploaded_material``；
+    6. 其余专用能力（humanizer/arxiv/image/video/mcp）→ ``specialized_capability``；
+    7. 学习模式的教学请求（解释/原理/推导等）→ ``study_explanation``；
+    8. 日常模式的知识型问句 → ``knowledge_base_required``；
+    9. 其余（寒暄、创作、无请求形态的主题名词）→ 不检索。
 
     只看请求形态与模式/路由，不做学科判定：同一专业名词在任何学科下
-    结论一致（Issue 07 删除了学科名词白名单）。
+    结论一致（Issue 07 删除了学科名词白名单）。``needs_local_material``
+    是调用方已经过问题级证据评估的真实缺口，不是模型自由放行。
     """
 
     if not use_knowledge_base:
         return RetrievalDecision(
             RetrievalDecisionAction.SKIP, RetrievalDecisionReason.USER_DISABLED
+        )
+    if needs_local_material:
+        return RetrievalDecision(
+            RetrievalDecisionAction.RETRIEVE,
+            RetrievalDecisionReason.EVIDENCE_GAP,
         )
 
     explicit = any(term in query for term in _EXPLICIT_KNOWLEDGE_BASE_TERMS)

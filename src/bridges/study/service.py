@@ -964,7 +964,15 @@ class StudyWorkflow:
             if existing is not None:
                 return {"answer": existing.answer, "tutoring": existing.model_dump()}
             try:
-                exchange = tutor(self._service, run, state, user.content, invoke, stop_event)
+                exchange = tutor(
+                    self._service,
+                    run,
+                    state,
+                    user.content,
+                    invoke,
+                    stop_event,
+                    budget=budget,
+                )
             except ValueError as exc:
                 raise StudyWorkflowError(
                     current_node, "study_tutor_invalid", "辅导依据或结果未通过核验，请重试。"
