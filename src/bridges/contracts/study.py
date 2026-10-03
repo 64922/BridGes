@@ -162,6 +162,21 @@ class StudyPageUpdate(BaseModel):
     scope_history: list[StudyScope] = Field(default_factory=list)
 
 
+class StudyQuestionCheck(BaseModel):
+    """出题前的内容核验结果（工单 33）：题干/评分依据/答案逐项裁决。
+
+    只由出题前的独立核验写入；已判定题目不回写、不随用户答案临时修改。
+    """
+
+    status: Literal["consistent", "conflict", "insufficient"] = "insufficient"
+    detail: str = ""
+    question_matches_knowledge: bool = False
+    rubric_supported: bool = False
+    answer_consistent: bool = False
+    #: 登记计算工具是否实际复算过该题的数值结论（工单 33）。
+    calculation_checked: bool = False
+
+
 class StudyReviewQuestion(BaseModel):
     question_id: str
     question: str
@@ -173,6 +188,40 @@ class StudyReviewQuestion(BaseModel):
     canonical_answer: str | None = None
     explanation: str | None = None
     user_message_id: str | None = None
+    #: 生成该题时的有效范围版本（工单 33）：评分依据绑定具体小节版本，
+    #: 不随后续摘要或追加页漂移；旧题为空。
+    scope_version_id: str = ""
+    #: 必须命中的核心评分要点（作答前冻结，仅内部保存）。
+    core_points: list[str] = Field(default_factory=list)
+    #: 允许的等价表述/推导（工单 33）：表达不同不扣分。
+    equivalents: list[str] = Field(default_factory=list)
+    #: 关键误解与不完整/错误的判定依据（作答前冻结）。
+    key_misconceptions: list[str] = Field(default_factory=list)
+    incomplete_basis: str = ""
+    incorrect_basis: str = ""
+    #: 题目自设条件的明确标注（工单 33）：不冒充教材原例；无自设条件时为空。
+    conditions: str = ""
+    #: 出题前的内容核验裁决；旧题无此字段。
+    verification: StudyQuestionCheck | None = None
+    #: 旧评分合同题目：保留原判定，不宣称按新标准评分、不进入新核验。
+    legacy: bool = False
+
+    def public_view(self) -> "StudyReviewQuestion":
+        """私有读边界：未判定题不暴露评分要点与标准答案，仅保留题干。"""
+        judged = self.judgement is not None
+        return self.model_copy(
+            update={
+                "core_points": [],
+                "equivalents": [],
+                "key_misconceptions": [],
+                "incomplete_basis": "",
+                "incorrect_basis": "",
+                "conditions": "",
+                "verification": None,
+                "canonical_answer": self.canonical_answer if judged else None,
+                "explanation": self.explanation if judged else None,
+            }
+        )
 
 
 class StudyReview(BaseModel):
@@ -180,6 +229,19 @@ class StudyReview(BaseModel):
     active_question_id: str | None = None
     needs_replan: bool = False
     complete: bool = False
+    #: 本次复盘计划冻结的有效范围版本与计划合同版本（工单 33）。
+    scope_version_id: str = ""
+    protocol_version: str = "study-review-v1"
+
+    def public_view(self) -> "StudyReview":
+        """客户端只接收已呈现题及其实际判定；未来题与私有依据不外发。"""
+        return self.model_copy(
+            update={
+                "questions": [
+                    item.public_view() for item in self.questions if item.asked
+                ]
+            }
+        )
 
 
 class StudySummaryPoint(BaseModel):
@@ -222,12 +284,12 @@ class StudyState(BaseModel):
         """题库仅留在服务端；客户端只接收已展示题及其实际判定。"""
         result = self.model_copy(deep=True)
         if result.review:
-            result.review.questions = [item for item in result.review.questions if item.asked]
+            result.review = result.review.public_view()
         return result
 
 
-#: 当前学习状态 JSON 合同版本（读取旧版本时由升级函数补齐稳定 ID）。
-STUDY_STATE_VERSION = 2
+#: 当前学习状态 JSON 合同版本（读取旧版本时由升级函数补齐稳定 ID 与遗留标记）。
+STUDY_STATE_VERSION = 3
 
 
 def _legacy_unit_id(index: int, title: str) -> str:
@@ -237,87 +299,102 @@ def _legacy_unit_id(index: int, title: str) -> str:
 
 
 def upgrade_legacy_study_state(state: StudyState) -> StudyState:
-    """把 v1 状态升级为稳定 ID 合同；旧预习/范围保持可读、可导出。
+    """把旧状态逐版升级为当前合同；旧预习/范围/判定保持可读、可导出。
 
-    只补齐身份与范围版本字段，不改写阶段、题目判定、总结或任何正文；
-    升级后的状态在下一次保存时以 v2 落库。
+    - v1 → v2：补齐稳定知识点 ID 与遗留范围版本；
+    - v2 → v3（工单 33）：旧复盘题标记为遗留评分合同，保留原判定与
+      标准答案，不按新的出题前核验标准重新解释，也不改写任何正文。
+
+    升级后的状态在下一次保存时以当前版本落库。
     """
     if state.state_version >= STUDY_STATE_VERSION:
         return state
+    original = state.state_version
     units = [unit.model_copy(deep=True) for unit in state.units]
-    title_to_units: dict[str, list[StudyUnit]] = {}
-    seen_ids: set[str] = set()
-    for index, unit in enumerate(units, 1):
-        if not unit.unit_id:
-            candidate = _legacy_unit_id(index, unit.title)
-            while candidate in seen_ids:
-                candidate = _legacy_unit_id(index + len(seen_ids), unit.title)
-            unit.unit_id = candidate
-        seen_ids.add(unit.unit_id)
-        title_to_units.setdefault(unit.title, []).append(unit)
-    questions = [
-        question.model_copy(
-            update={
-                "unit_ids": (
-                    list(question.unit_ids)
-                    or [
-                        title_to_units[title][0].unit_id
-                        for title in question.unit_titles
-                        if len(title_to_units.get(title, [])) == 1
-                    ]
-                ),
-                "scope_version_id": question.scope_version_id or "legacy-scope-v1",
-            }
-        )
-        for question in state.questions
-    ]
+    questions = state.questions
     review = state.review
-    if review is not None:
+    scope = state.scope
+    if original < 2:
+        title_to_units: dict[str, list[StudyUnit]] = {}
+        seen_ids: set[str] = set()
+        for index, unit in enumerate(units, 1):
+            if not unit.unit_id:
+                candidate = _legacy_unit_id(index, unit.title)
+                while candidate in seen_ids:
+                    candidate = _legacy_unit_id(index + len(seen_ids), unit.title)
+                unit.unit_id = candidate
+            seen_ids.add(unit.unit_id)
+            title_to_units.setdefault(unit.title, []).append(unit)
+        questions = [
+            question.model_copy(
+                update={
+                    "unit_ids": (
+                        list(question.unit_ids)
+                        or [
+                            title_to_units[title][0].unit_id
+                            for title in question.unit_titles
+                            if len(title_to_units.get(title, [])) == 1
+                        ]
+                    ),
+                    "scope_version_id": question.scope_version_id or "legacy-scope-v1",
+                }
+            )
+            for question in state.questions
+        ]
+        if review is not None:
+            review = review.model_copy(
+                update={
+                    "questions": [
+                        item.model_copy(
+                            update={
+                                "coverage_units": [
+                                    unit_id
+                                    for ref in item.coverage_units
+                                    for unit_id in (
+                                        [unit.unit_id for unit in title_to_units.get(ref, [])
+                                         if set(unit.fragment_ids) & set(item.fragment_ids)]
+                                        or [ref]
+                                    )
+                                ]
+                            }
+                        )
+                        for item in review.questions
+                    ]
+                }
+            )
+        if scope is None and units:
+            coverage = [
+                StudyCoverageEntry(
+                    fragment_id=fragment_id,
+                    unit_ids=[
+                        unit.unit_id for unit in units if fragment_id in unit.fragment_ids
+                    ],
+                )
+                for fragment_id in dict.fromkeys(
+                    fragment_id
+                    for unit in units
+                    for fragment_id in unit.fragment_ids
+                )
+            ]
+            scope = StudyScope(
+                scope_version_id="legacy-scope-v1",
+                protocol_version="study-scope-v1",
+                material_hash="",
+                page_object_ids=[page.object_id for page in state.pages],
+                fragment_ids=[entry.fragment_id for entry in coverage],
+                units=units,
+                coverage=coverage,
+                verified=True,
+                legacy=True,
+            )
+    if original < 3 and review is not None:
         review = review.model_copy(
             update={
                 "questions": [
-                    item.model_copy(
-                        update={
-                            "coverage_units": [
-                                unit_id
-                                for ref in item.coverage_units
-                                for unit_id in (
-                                    [unit.unit_id for unit in title_to_units.get(ref, [])
-                                     if set(unit.fragment_ids) & set(item.fragment_ids)]
-                                    or [ref]
-                                )
-                            ]
-                        }
-                    )
+                    item.model_copy(update={"legacy": True})
                     for item in review.questions
                 ]
             }
-        )
-    scope = state.scope
-    if scope is None and units:
-        coverage = [
-            StudyCoverageEntry(
-                fragment_id=fragment_id,
-                unit_ids=[
-                    unit.unit_id for unit in units if fragment_id in unit.fragment_ids
-                ],
-            )
-            for fragment_id in dict.fromkeys(
-                fragment_id
-                for unit in units
-                for fragment_id in unit.fragment_ids
-            )
-        ]
-        scope = StudyScope(
-            scope_version_id="legacy-scope-v1",
-            protocol_version="study-scope-v1",
-            material_hash="",
-            page_object_ids=[page.object_id for page in state.pages],
-            fragment_ids=[entry.fragment_id for entry in coverage],
-            units=units,
-            coverage=coverage,
-            verified=True,
-            legacy=True,
         )
     return state.model_copy(
         update={

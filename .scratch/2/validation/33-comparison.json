@@ -1,0 +1,37 @@
+{
+  "baseline_commit": "809f05a5",
+  "environment": "Windows / conda agent / Python 3.12 / PYTHONUTF8=1",
+  "command": "python -m pytest tests -q --tb=no -p no:cacheprovider --basetemp=<独立目录> --junitxml=<输出>",
+  "note": "main 基线以 PYTHONPYCACHEPREFIX 指向新目录强制重编译，避免旧 Desktop 检出路径下的 __pycache__ 掩盖基线失败。本票全量与 main 基线的失败差集仅 2 项，均为基线既有不稳定用例；无学习/复盘相关新增失败。",
+  "main": {
+    "tests": 5346,
+    "passed": 5122,
+    "failed_or_error": 224
+  },
+  "issue": {
+    "tests": 5355,
+    "passed": 5130,
+    "failed_or_error": 225
+  },
+  "new_failures": {
+    "tests.chat.test_improvement13_acceptance::test_121_message_history_prepares_bounded_cache_and_converges": {
+      "kind": "failure",
+      "message": "AssertionError: assert 'm014' == 'm000'",
+      "classified_as": "pre-existing",
+      "evidence": "该用例单独运行与整文件运行在 main 洁净检出和本票工作树均失败（1 failed / 7 passed，两侧同形）；仅在 main 全量运行中因跨模块顺序/时序耦合偶然通过。"
+    }
+  },
+  "main_only_failures": {},
+  "mypy": {
+    "command": "python -m mypy src/bridges/contracts/study.py src/bridges/study/review.py src/bridges/study/service.py src/bridges/state_copy/catalog.py --follow-imports=silent",
+    "tail": [
+      "﻿Success: no issues found in 4 source files"
+    ]
+  },
+  "ruff": {
+    "command": "python -m ruff check src/bridges/contracts/study.py src/bridges/study/review.py src/bridges/study/service.py src/bridges/state_copy/catalog.py tests/chat/test_improvement33_preverified_questions.py tests/chat/test_v2_19_study_review.py tests/chat/test_improvement31_study_scope_preview.py",
+    "tail": [
+      "﻿All checks passed!"
+    ]
+  }
+}

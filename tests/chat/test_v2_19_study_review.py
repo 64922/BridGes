@@ -64,7 +64,7 @@ class ReviewGateway(TutorGateway):
         task = payload.get("task")
         if task == "study.summarize":
             return self.summarize(payload)
-        if task not in {"study.plan_review", "study.grade"}:
+        if task not in {"study.plan_review", "study.verify_questions", "study.grade"}:
             return super().invoke(capability, version, context, payload, **kwargs)
         data = next(
             json.loads(message["content"])
@@ -81,6 +81,13 @@ class ReviewGateway(TutorGateway):
                         "question": f"第{len(data['asked']) + index + 1}个角度：解释线性函数。",
                         "coverage_units": [unit["unit_id"] for unit in data["units"]],
                         "fragment_ids": [source["source_id"] for source in data["sources"]],
+                        "core_points": ["a 是斜率", "b 是纵截距"],
+                        "canonical_answer": "a 是斜率，b 是纵截距。",
+                        "equivalents": ["a 表示 x 每增加 1 时 y 的变化量"],
+                        "key_misconceptions": ["把 a 当作截距"],
+                        "incomplete_basis": "只说出斜率，未说明截距",
+                        "incorrect_basis": "把 a 与 b 的角色对调",
+                        "conditions": "",
                     }
                     for index in range(self.question_count)
                 ]
@@ -89,17 +96,40 @@ class ReviewGateway(TutorGateway):
                 output = {"questions": []}
             if self.failure == "foreign":
                 output["questions"][0]["fragment_ids"] = ["foreign-fragment"]
-        else:
-            output = {
-                "question_id": data["question"]["question_id"],
-                "judgement": self.judgement,
-                "canonical_answer": "a 是斜率，b 是纵截距。",
-                "explanation": "x 每增加 1，y 增加 a。",
-            }
-            if self.failure == "wrong_id":
-                output["question_id"] = "another-question"
-            if self.failure == "invalid":
-                output["judgement"] = "maybe"
+            return ModelCallResult(status=ModelCallStatus.SUCCESS, output=output)
+        if task == "study.verify_questions":
+            checks = [
+                {
+                    "question_id": question["question_id"],
+                    "question_matches_knowledge": True,
+                    "rubric_supported": True,
+                    "answer_consistent": True,
+                    "status": "consistent",
+                    "detail": "",
+                }
+                for question in data["questions"]
+            ]
+            if self.failure == "verify_conflict":
+                checks[0]["status"] = "conflict"
+                checks[0]["detail"] = "题干未覆盖 b 的几何意义"
+            if self.failure == "verify_insufficient":
+                checks[0]["status"] = "insufficient"
+            if self.failure == "calculation":
+                checks[0]["calculation"] = {
+                    "expression": "2 + 2",
+                    "variables": {},
+                    "expected": 5,
+                }
+            return ModelCallResult(status=ModelCallStatus.SUCCESS, output={"checks": checks})
+        output = {
+            "question_id": data["question"]["question_id"],
+            "judgement": self.judgement,
+            "explanation": "x 每增加 1，y 增加 a。",
+        }
+        if self.failure == "wrong_id":
+            output["question_id"] = "another-question"
+        if self.failure == "invalid":
+            output["judgement"] = "maybe"
         return ModelCallResult(status=ModelCallStatus.SUCCESS, output=output)
 
 

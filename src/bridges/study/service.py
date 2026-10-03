@@ -58,7 +58,13 @@ from bridges.study.kernel import (
     _json_object_text,  # noqa: F401 - 再导出，兼容既有测试导入路径
     study_recipe_registry,
 )
-from bridges.study.review import grade, next_question, plan_review, review_intent
+from bridges.study.review import (
+    ReviewPlanError,
+    grade,
+    next_question,
+    plan_review,
+    review_intent,
+)
 from bridges.study.scope import (
     GATE_SCOPE_CONFLICT,
     GATE_SCOPE_INCOMPLETE,
@@ -990,6 +996,27 @@ class StudyWorkflow:
             text = render_summary(state.summary, state)
             return f"{answer}\n\n{text}" if answer else text
 
+        def plan_with_repair() -> Any:
+            """出题前核验失败时按公共预算做一次有界修复；再失败不上报坏题。"""
+            try:
+                return plan_review(self._service, run, state, invoke)
+            except ReviewPlanError as exc:
+                if not budget.begin_adjustment(reason_code=exc.code):
+                    raise
+                outcome_code = exc.code
+                try:
+                    repaired = plan_review(
+                        self._service,
+                        run,
+                        state,
+                        invoke,
+                        repair={"code": exc.code, "message": exc.message},
+                    )
+                    outcome_code = "study_review_repaired"
+                    return repaired
+                finally:
+                    budget.end_adjustment(outcome_code=outcome_code)
+
         def review() -> _GraphState:
             try:
                 if intent == "pause":
@@ -1002,7 +1029,7 @@ class StudyWorkflow:
                     )
                 elif intent == "start":
                     if state.review is None or state.review.needs_replan:
-                        state.review = plan_review(self._service, run, state, invoke)
+                        state.review = plan_with_repair()
                     state.stage = "review"
                     if state.review.active_question_id:
                         current = next(item for item in state.review.questions
@@ -1017,6 +1044,10 @@ class StudyWorkflow:
                     answer = grade(self._service, run, state, user.content, invoke)
                 if intent != "pause" and state.review is not None and state.review.complete:
                     answer = finish_review(answer)
+            except ReviewPlanError as exc:
+                raise StudyWorkflowError(
+                    current_node, exc.code, exc.message
+                ) from exc
             except ValueError as exc:
                 raise StudyWorkflowError(
                     current_node, "study_review_invalid",
