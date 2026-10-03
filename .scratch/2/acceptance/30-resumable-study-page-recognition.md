@@ -51,3 +51,12 @@
 
 
 合并树验证：学习全链路 + state_copy + 真实夹具 + 表达保真 **137 passed**；Issue 20 画像披露/退役页面兼容 + 模型网关 + 09 预算 + 内核 + 架构 **100 passed**。合并后 mypy 4 个生产文件无问题，相关生产/夹具 Ruff 与暂存差异检查通过。所有冲突已解决，保留双方合同，未遗留未合并路径。
+
+
+### 执行完成
+
+- 验收修复提交：`75cd243b`；冲突解决后的合并提交：`ac9ce6ac`。
+- 已经现有代理推送 origin/main，GitHub 远端 main 与本地 main 核对均为 `ac9ce6acc98693eff5253d11216c49b784e0cae9`。
+- 确认 Issue 分支完全被 main 包含、工作树无未提交文件后，先 `git worktree remove D:/BridGes/.worktrees/issue-30`，再 `git branch -d codex/issue-30-resumable-study-page-recognition`，均成功。
+- `git worktree prune --verbose` 完成；随后 dry-run 无输出（无失效记录）。当前仅剩主工作树；Issue 30 路径不存在、本地 Issue 分支不存在、main 干净。
+- 本节为交付后的文档补记，随独立文档提交同步远端；没有再修改产品代码。
