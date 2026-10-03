@@ -81,3 +81,11 @@
 - 本次未重跑全仓测试或正式桌面视觉验收；前端全来源投影及真实体验继续按原跨票分工验收。保留五种分诊状态，`ready-for-human` 下以本记录注明本票独立验收已通过。
 - 详见 [独立验收记录](../acceptance/23-natural-state-copy-and-templates.md)。
 
+### 2026-10-03：合入、推送与清理完成
+
+- 验收修复提交 `767bc85a`，无冲突合并到 main，合并提交 `789ef23b`；该合并树与已验收分支完全一致。
+- 推送前检测到并行任务又合入 Issue 20，保留其提交，基于当前 `main@c68f8cdd` 复跑接缝回归：公共文案、路由、AI、公网搜索、错误映射、聊天终态、前置表达及学习书页/辅导/复盘共 **511 passed / 2 skipped**。
+- 通过系统网络代理 `http://127.0.0.1:7890` 同步 `origin/main`，远端已包含本票合并，推送确认 `Everything up-to-date`。
+- Issue 工作树 `.worktrees/23-natural-state-copy-and-templates` 已删除，本地分支 `codex/23-natural-state-copy-and-templates` 已按 `git branch -d` 删除。
+- 已运行 `git worktree prune --verbose`，再次 dry-run 无失效记录；复核仅剩主工作树与活跃的 Issue 30 工作树。
+
