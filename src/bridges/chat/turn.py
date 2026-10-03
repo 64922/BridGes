@@ -33,7 +33,7 @@ from pydantic import ValidationError
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.ai.errors import user_facing_model_error
-from bridges.ai.model_quota import MODEL_QUOTA_VERSION, RUN_MODEL_QUOTA_CONFIG_KEY, RunModelQuota
+from bridges.ai.model_quota import MODEL_QUOTA_VERSION, RunModelQuota
 from bridges.ai.payload_budget import (
     CallMaterialManifest,
     MaterialCategory,
@@ -63,7 +63,9 @@ from bridges.chat.budget import (
     SEARCH_HANDOFF_RESERVE_SECONDS,
     RunBudget,
     RunStage,
+    load_run_budget,
 )
+from bridges.chat.fact_protection import FragmentKind, compile_protected_fragments
 from bridges.chat.global_writing_policy import (
     GlobalWritingPolicyCompiler,
     GlobalWritingPolicySnapshot,
@@ -87,11 +89,6 @@ from bridges.chat.material_reading import (
     select_file_segments,
 )
 from bridges.chat.repository import ConversationRepository, MessageRecord
-from bridges.chat.run_budget_ledger import (
-    RUN_BUDGET_INITIALS,
-    RunBudgetLedgerRepository,
-    derive_run_budget_class,
-)
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.chat.stream_protection import StreamProtectionAssembler
 from bridges.chat.task_materials import (
@@ -753,6 +750,10 @@ _RETRYABLE_CODES = frozenset(
         "budget_exceeded",
         # 改进工单 04：用户缩小范围后重试有望成功（幂等，不产生副作用）。
         "payload_budget_exceeded",
+        # 改进工单 30：书页识别预算耗尽可重试（新运行重新计预算，
+        # 已完成页按内容指纹复用，只继续未完成页）。
+        "run_budget_exhausted",
+        "run_budget_call_limit",
     }
 )
 
@@ -1452,15 +1453,21 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
     return "\n".join(lines)
 
 
-def ensure_unverified_teaching_prefix(content: str, *, local_source_count: int = 0) -> str:
+def ensure_unverified_teaching_prefix(
+    content: str, *, local_source_count: int = 0, preserve_from: str = ""
+) -> str:
     """保证未联网核实的教学回答在正文开头有确定性标注。
 
     ``local_source_count`` 为真实本地来源数：降级回答以本地命中材料为锚时
     保留编号不越界的 ``[reference:N]``，联网/论文引用与 URL 一律剥离。
+    ``preserve_from`` 为用户原文：其中已有的链接不参与剥离，交给保护区按
+    对象锚点配对恢复；模型漂移或被凭空补的链接不会因此放行。
     """
 
     content = strip_unverified_teaching_references(
-        content, local_source_count=local_source_count
+        content,
+        local_source_count=local_source_count,
+        preserve_urls=bool(_owner_urls(preserve_from)),
     )
     content = re.sub(
         rf"(?:{re.escape(_UNVERIFIED_TEACHING_PREFIX)}\s*)+",
@@ -1472,20 +1479,31 @@ def ensure_unverified_teaching_prefix(content: str, *, local_source_count: int =
     return f"{_UNVERIFIED_TEACHING_PREFIX}\n{content}"
 
 
+def _owner_urls(text: str) -> tuple[str, ...]:
+    """用户原文中的链接片段；降级回答剥离时据此保留待恢复的槽位。"""
+
+    return tuple(
+        fragment.text
+        for fragment in compile_protected_fragments(text)
+        if fragment.kind is FragmentKind.URL
+    )
+
+
 def strip_unverified_teaching_references(
-    content: str, *, local_source_count: int = 0
+    content: str, *, local_source_count: int = 0, preserve_urls: bool = False
 ) -> str:
     """移除无本轮来源可绑定的联网引用和链接。
 
     降级回答以真实本地材料为锚时（``local_source_count > 0``），只保留
     编号落在真实本地来源范围内的 ``[reference:N]``；网络引用、论文引用
     与 URL 一律剥离，杜绝伪 URL 与「已联网/已查到」式表述落地。
+    ``preserve_urls`` 为用户原文含链接时的例外：链接交由保护区配对恢复，
+    不在此处剥离。
     """
 
-    stripped = _WEB_URL_RE.sub(
-        "",
-        _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content)),
-    )
+    stripped = _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content))
+    if not preserve_urls:
+        stripped = _WEB_URL_RE.sub("", stripped)
     if local_source_count > 0:
 
         def _keep(match: re.Match[str]) -> str:
@@ -2673,44 +2691,12 @@ class TurnOrchestrator:
         信号含图片/视频载荷，崩溃窗口内的运行缺失这些信号时按轻量处理，
         影响仅限崩溃窗口与升级前遗留运行）。
         """
-        ledger = RunBudgetLedgerRepository(self._repo.database)
-        ledger.recover_external_calls(account_id, run_id, now=datetime.now(UTC))
-        snapshot = ledger.load(account_id, run_id)
-        if snapshot is None:
-            run = self._repo.get_generation_run(account_id, run_id)
-            if run is None:
-                # 运行已随会话/消息删除的竞态：不会进入生成阶段，内存
-                # 预算兜底（与既有 RunBudget 行为一致）。
-                return RunBudget(run_id)
-            budget_class = derive_run_budget_class(
-                mode=mode_hint,
-                route=route_hint,
-            )
-            quota = RunModelQuota.from_config(
-                (run.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)
-            )
-            token_budget = (
-                quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
-                if quota is not None and quota.is_verified and quota.max_input_tokens is not None
-                else None
-            )
-            snapshot = ledger.ensure_for_run(
-                account_id=account_id,
-                run_id=run_id,
-                conversation_id=run.conversation_id,
-                budget_class=budget_class,
-                run_created_at=run.created_at,
-                now=datetime.now(UTC),
-                token_budget=token_budget,
-            )
-        return RunBudget.from_ledger_snapshot(
+        return load_run_budget(
+            self._repo,
+            account_id,
             run_id,
-            total_budget_ms=snapshot.plan.total_budget_ms,
-            deadline_utc=snapshot.plan.deadline_at,
-            reserve_ms=snapshot.plan.verify_deliver_reserve_ms,
-            ledger=ledger,
-            account_id=account_id,
-            active=snapshot.active,
+            route_hint=route_hint,
+            mode_hint=mode_hint,
         )
 
     def stream_turn(
@@ -4373,16 +4359,29 @@ class TurnOrchestrator:
                 if teaching_projection is not None
                 else 0
             )
+            # 降级学习回答会剥离网络引用与 URL；用户原文自有链接是事实锁，
+            # 不能因此丢失：候选里保留链接槽位交由保护区配对替换，并把用户
+            # 链接纳入引用资格清单，模型凭空补的链接仍按清单外引用失败。
+            fallback_owner_urls = (
+                _owner_urls(protected_owner_query)
+                if allow_model_knowledge_fallback
+                else ()
+            )
             assembler = StreamProtectionAssembler(
                 protected_owner_query,
-                additional_sources=protected_sources,
+                additional_sources=protected_sources + fallback_owner_urls,
+                # 降级学习回答会确定性剥离 URL/网络引用，用户自有的必需片段
+                # 因此可能在候选正文中缺失；按任务合同在终态补尾，不丢用户事实。
+                append_missing=allow_model_knowledge_fallback,
             )
             raw_content = ""
 
             def _candidate_text() -> str:
                 if allow_model_knowledge_fallback:
                     return ensure_unverified_teaching_prefix(
-                        raw_content, local_source_count=degraded_local_count
+                        raw_content,
+                        local_source_count=degraded_local_count,
+                        preserve_from=protected_owner_query,
                     )
                 return raw_content
 

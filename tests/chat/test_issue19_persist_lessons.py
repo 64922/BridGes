@@ -16,6 +16,7 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
 from bridges.web_search.contracts import WebSearchResult
 from bridges.web_search.service import WebSearchService
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _capability() -> CapabilityRecord:
@@ -108,6 +109,7 @@ def test_chat_persists_lightweight_progress_and_keeps_legacy_tables_read_only(
 ) -> None:
     service = _service(tmp_path)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
     first = _send(
         service, conversation.conversation_id, "我想学习 Transformer", "issue19-1"
     )

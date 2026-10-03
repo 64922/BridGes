@@ -496,6 +496,19 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
         FailureClass.UNSUPPORTED,
         RecoveryAction.ADJUST_REQUEST,
     ),
+    _error(
+        "run_budget_exhausted",
+        "本轮运行预算不足以识别全部书页；已完成的书页已保存，"
+        "未处理页仍待识别。请重试本条消息继续。",
+        FailureClass.RATE_LIMIT_TIMEOUT,
+        RecoveryAction.RETRY,
+    ),
+    _error(
+        "run_budget_call_limit",
+        "本轮模型调用已达预算上限，已完成内容已保存；请重试继续。",
+        FailureClass.RATE_LIMIT_TIMEOUT,
+        RecoveryAction.RETRY,
+    ),
     # -- 日常父图节点错误（显式拒绝，不悄悄降级；节点失败时由父图拼装
     #    位置与恢复方式，因此这里登记真实类别但不覆盖具体原因） ----------
     _error(

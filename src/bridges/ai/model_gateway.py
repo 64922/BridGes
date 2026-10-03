@@ -561,11 +561,7 @@ class ModelGateway:
                 )
                 yield event
                 return
-            call_payload = payload
-            if budget is not None:
-                call_payload = {
-                    **payload, REQUEST_TIMEOUT_SECONDS_KEY: budget.model_call_timeout_ms() / 1000
-                }
+            call_payload = _payload_with_budget_timeout(payload, budget)
             try:
                 for chunk in stream_call(primary, run_context, call_payload):
                     delivered_any_chunk = True
@@ -841,11 +837,8 @@ class ModelGateway:
                 return blocked, blocked.lock
             # Issue 06 第七轮：按剩余预算截断单次调用超时（单一预算常量
             # 来源），经保留载荷键透传给适配器的 HTTP 客户端；未传入预算
-            # 时不注入（适配器使用默认超时）。
-            call_payload = payload
-            if budget is not None:
-                timeout_seconds = budget.model_call_timeout_ms() / 1000
-                call_payload = {**payload, REQUEST_TIMEOUT_SECONDS_KEY: timeout_seconds}
+            # 时不注入（适配器使用默认超时）；显式超时同样不能越过剩余预算。
+            call_payload = _payload_with_budget_timeout(payload, budget)
             attempt_began = time.monotonic()
             try:
                 adapter_result = adapter.call(capability, run_context, call_payload)
@@ -1237,6 +1230,19 @@ def _usage_int(usage: dict[str, Any], key: str) -> int | None:
 def _capability_call_key(capability: CapabilityRecord) -> str:
     """账本登记键：能力名@版本加本次调用唯一标识，重试复用同一键。"""
     return f"{capability.name}@{capability.version}:{secrets.token_hex(12)}"
+
+
+def _payload_with_budget_timeout(
+    payload: dict[str, Any], budget: RunBudget | None
+) -> dict[str, Any]:
+    """所有单次超时受运行剩余预算截断，显式值只能进一步缩短窗口。"""
+    if budget is None:
+        return payload
+    timeout_seconds = budget.model_call_timeout_ms() / 1000
+    explicit = payload.get(REQUEST_TIMEOUT_SECONDS_KEY)
+    if isinstance(explicit, (int, float)) and explicit > 0:
+        timeout_seconds = min(timeout_seconds, explicit)
+    return {**payload, REQUEST_TIMEOUT_SECONDS_KEY: timeout_seconds}
 
 
 def _transient_retry_permitted(

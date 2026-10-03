@@ -26,6 +26,7 @@ from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.storage.database import BridgesDatabase
 from bridges.web_search.contracts import WebSearchResult
 from bridges.web_search.service import WebSearchService
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _capability() -> CapabilityRecord:
@@ -136,6 +137,7 @@ def test_clear_goal_publishes_one_overview_and_lightweight_progress(
     client = _SearchClient()
     service = _service(tmp_path, adapter, client)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final, events = _send(
         service, conversation.conversation_id, "我想学习 Transformer", "run-issue18-1"
@@ -178,6 +180,7 @@ def test_missing_goal_only_asks_for_goal_without_search_or_model(
     client = _SearchClient()
     service = _service(tmp_path, adapter, client)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final, _ = _send(service, conversation.conversation_id, query, "run-issue18-2")
 
@@ -197,6 +200,7 @@ def test_missing_evidence_does_not_create_plan_but_allows_marked_model_fallback(
     adapter = _Adapter()
     service = _service(tmp_path, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final, _ = _send(
         service, conversation.conversation_id, "我想学习 Transformer", "run-issue18-3"
@@ -219,6 +223,7 @@ def test_model_failure_clears_staged_plan_and_allows_retry(tmp_path: Path) -> No
     client = _SearchClient()
     service = _service(tmp_path, adapter, client)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
+    seed_recognized_study_state(service, "alice", conversation.conversation_id)
 
     final, events = _send(
         service, conversation.conversation_id, "我想学习 Transformer", "run-issue18-4"

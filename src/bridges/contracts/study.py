@@ -9,14 +9,28 @@ class StudyFragment(BaseModel):
     fragment_id: str
     kind: Literal["text", "formula", "chart"]
     position: str
+    #: 书页原文（照片识别所见内容或用户补录文字）。模型推断不写在这里。
     text: str
     confidence: float = Field(ge=0, le=1)
     source: Literal["photo", "user"] = "photo"
+    #: 产生该片段的识别路径：``vision``（视觉结构化，当前双路径的片段来源）、
+    #: ``ocr``（文字识别；OCR 优化经代表样本实测后才启用）、``user``（补录）。
+    recognition_path: Literal["ocr", "vision", "user"] = "vision"
+    #: 模型对图表/公式的推断或解释（如趋势、含义）。与 ``text`` 分字段，
+    #: 图表推断不得当作图表原文，也不作为书页依据引用。
+    interpretation: str = ""
 
 
 class StudyUnclear(BaseModel):
     position: str
     reason: str
+    #: 疑点类别：``unclear`` 一般不清；``critical_symbol`` 负号/上下标/
+    #: 分子分母/单位/核心定义等关键符号疑点；``dual_path_mismatch`` OCR 与
+    #: 视觉两路结果不一致。
+    kind: Literal["unclear", "critical_symbol", "dual_path_mismatch"] = "unclear"
+    #: 是否为不能靠置信阈值放行的关键疑点：为真时保持材料待补充，
+    #: 依赖它的出题被阻塞。
+    critical: bool = False
 
 
 class StudyPage(BaseModel):
@@ -29,6 +43,9 @@ class StudyPage(BaseModel):
     replaced_object_ids: list[str] = Field(default_factory=list)
     fragments: list[StudyFragment]
     unclear: list[StudyUnclear] = Field(default_factory=list)
+    #: 本页实际启用的识别路径（当前未验证 OCR 优化时双路径全开，保留安全
+    #: 双路径；代表性样本实测后才允许按风险收窄）。
+    recognition_paths: list[str] = Field(default_factory=lambda: ["ocr", "vision"])
 
 
 class StudyUnit(BaseModel):
@@ -115,6 +132,9 @@ class StudyState(BaseModel):
     page_update: StudyPageUpdate | None = None
     review: StudyReview | None = None
     summary: StudySummary | None = None
+    #: 因运行预算/批量限制尚未识别的书页附件（按上传顺序）。非空时保持
+    #: 识别阶段，不宣布整节已读；恢复只处理这些页，已识别页按内容哈希复用。
+    pending_object_ids: list[str] = Field(default_factory=list)
 
     def public_view(self) -> "StudyState":
         """题库仅留在服务端；客户端只接收已展示题及其实际判定。"""

@@ -31,6 +31,7 @@ from bridges.contracts.chat import ChatMessageStatus, ChatMode
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
+from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 #: 用户原句：包含精确事实（带单位数值）、来源（链接与编号引用）、
 #: 行内代码、代码围栏与公式——全部属于受保护区。
@@ -157,19 +158,7 @@ def test_ambiguous_drift_enters_error_instead_of_guessing(tmp_path: Path) -> Non
     "mode",
     [
         pytest.param(ChatMode.COMPANION, id="companion"),
-        pytest.param(
-            ChatMode.STUDY,
-            id="study",
-            marks=pytest.mark.xfail(
-                reason=(
-                    "学习模式辅导走 qwen_structured_output 结构化 invoke 路径，"
-                    "需要真实书页夹具才会进入被测生成；Issue 05 只提供可绑定片段"
-                    "协议，学习链消费由学习票（30–36）接线。此处不声称学习模式"
-                    "事实保护已验证（见 docs/人味化/审查与改进建议.md 局限）。"
-                ),
-                strict=False,
-            ),
-        ),
+        pytest.param(ChatMode.STUDY, id="study"),
     ],
 )
 def test_drifted_facts_are_restored_verbatim_in_generation_chain(
@@ -177,6 +166,9 @@ def test_drifted_facts_are_restored_verbatim_in_generation_chain(
 ) -> None:
     """链路级：普通生成链上模型换写受保护片段后，落库正文按用户原句逐字恢复。"""
     created = service.create_conversation("alice", mode=mode)
+    if mode == ChatMode.STUDY:
+        # 合法书页阶段证据：日常学习管线在真实识别状态之后才进入生成。
+        seed_recognized_study_state(service, "alice", created.conversation_id)
     _, assistant, _ = service.start_generation("alice", created.conversation_id, USER_QUERY)
     list(
         service.stream_generation(

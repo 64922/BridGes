@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import re
 import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal, TypedDict, TypeVar
+from typing import Any, TypedDict, TypeVar
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field, ValidationError
 
 from bridges.ai.adapters import REQUEST_TIMEOUT_SECONDS_KEY, StreamEvent
+from bridges.chat.budget import load_run_budget
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
+from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
 from bridges.chat.run_executor import chat_run_context
 from bridges.chat.turn import (
     error_is_retryable,
@@ -37,8 +38,25 @@ from bridges.contracts.study import (
     StudyUnclear,
     StudyUnit,
 )
+from bridges.kernel.executor import NodeKernel
+from bridges.kernel.guard import RunCommitGuard
+from bridges.kernel.repository import NodeKernelRepository
 from bridges.state_copy import STUDY_STOPPED_TEXT
 from bridges.storage.database import BridgesDatabase
+from bridges.study.kernel import (
+    NODE_RECOGNIZE_PAGE,
+    NODE_VALIDATE_PAGES,
+    NODE_VERIFY_RECOGNITION,
+    STUDY_PAGE_GATE_HANDLERS,
+    NodeFailureError,
+    StoppedError,
+    StudyPageCandidate,
+    StudyPageNodeFlow,
+    StudyPageRecognition,
+    SupersededError,
+    _json_object_text,  # noqa: F401 - 再导出，兼容既有测试导入路径
+    study_recipe_registry,
+)
 from bridges.study.review import grade, next_question, plan_review, review_intent
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
@@ -52,19 +70,20 @@ STUDY_GRAPH_VERSION = "study-pages-v1"
 #: 不改全局默认超时，也不影响其他调用方。
 STUDY_IMAGE_CALL_TIMEOUT_SECONDS = 180.0
 
+#: 书页识别阶段的节点集合：追加页识别失败时按「保留已确认范围」收敛
+#: （page_update 语义），不让半完成的追加覆盖已确认的书页与题目。
+_RECOGNITION_NODES = frozenset(
+    {
+        "study.recognize",
+        NODE_VALIDATE_PAGES,
+        NODE_RECOGNIZE_PAGE,
+        NODE_VERIFY_RECOGNITION,
+    }
+)
 
-class _RecognizedFragment(BaseModel):
-    kind: Literal["text", "formula", "chart"]
-    position: str = Field(min_length=1)
-    text: str = Field(min_length=1)
-    confidence: float = Field(ge=0, le=1)
 
-
-class _Recognition(BaseModel):
-    same_section: bool
-    page_number: int | None = Field(default=None, ge=1)
-    fragments: list[_RecognizedFragment] = Field(min_length=1)
-    unclear: list[StudyUnclear] = Field(default_factory=list)
+def _is_recognition_node(node: str) -> bool:
+    return node in _RECOGNITION_NODES
 
 
 class _Mapped(BaseModel):
@@ -106,29 +125,6 @@ def model_failure_message(error_code: str | None) -> str:
         else _STUDY_MODEL_FINAL_FALLBACK
     )
     return user_facing_error(error_code, fallback)
-
-
-def _json_object_text(content: str) -> str:
-    """抽取视觉模型正文里的 JSON 对象正文再交给原合同校验。
-
-    视觉能力没有结构化输出开关，实测模型会把 JSON 包在 ```json 代码块里
-    （issue 04 用原始教材页复现：整段合法 JSON 被围栏与一句说明包住，
-    ``model_validate_json`` 因此以"书页结构识别不完整"失败）。围栏与
-    前后说明是可确定的包装，剥掉后仍按原 pydantic 合同校验，识别结论
-    本身不做任何猜测或补全。按第一个完整 JSON 对象截取（而不是"首个
-    ``{`` 到最后一个 ``}``"），说明文字里再出现花括号也不会改变截取范围。
-    """
-    text = content.strip()
-    if text.startswith("```"):
-        _, _, text = text.partition("\n")
-    start = text.find("{")
-    if start < 0:
-        return text
-    try:
-        _, end = json.JSONDecoder().raw_decode(text[start:])
-    except ValueError:
-        return text[start:]
-    return text[start : start + end]
 
 
 class StudyRepository:
@@ -225,15 +221,30 @@ class StudyWorkflow:
             state.units = state.page_update.units
             state.wait_reason = state.page_update.wait_reason
 
-        def save_state() -> None:
+        material_guard = RunCommitGuard(
+            self._repo,
+            account_id=run.account_id,
+            run_id=run.run_id,
+            conversation_id=run.conversation_id,
+            assistant_message_id=run.assistant_message_id,
+            stop_event=stop_event,
+        )
+        material_guard.capture()
+
+        def save_state_in_transaction() -> None:
             if updating:
                 pending = committed.model_copy(deep=True)
+                pending.pending_object_ids = list(state.pending_object_ids)
                 pending.page_update = StudyPageUpdate(
                     pages=state.pages, units=state.units, wait_reason=state.wait_reason,
                 )
-                self._states.save(run.account_id, run.conversation_id, pending)
+                self._states.save_in_transaction(run.account_id, run.conversation_id, pending)
             else:
-                self._states.save(run.account_id, run.conversation_id, state)
+                self._states.save_in_transaction(run.account_id, run.conversation_id, state)
+
+        def save_state() -> None:
+            with self._repo.database.transaction():
+                save_state_in_transaction()
 
         def run_node(name: str, body: Callable[[], _NodeResult]) -> _NodeResult:
             """报告真实开始的节点、检查停止信号，并记录节点耗时。"""
@@ -272,6 +283,14 @@ class StudyWorkflow:
 
             return execute
 
+        #: 工单 09：本次运行的持久预算（模型调用登记/上限/重试门由网关
+        #: 统一执行）与工单 03 的额度快照（最终载荷预算门）；两者与聊天
+        #: 父图同源，学习子流程不复制预算器。
+        budget = load_run_budget(
+            self._repo, run.account_id, run.run_id, mode_hint="study"
+        )
+        model_quota = self._service.run_model_quota(run)
+
         def invoke(capability: str, payload: dict[str, Any]) -> dict[str, Any]:
             nonlocal failure_lock, last_lock
             if stop_event is not None and stop_event.is_set():
@@ -287,12 +306,20 @@ class StudyWorkflow:
                         {"role": "user", "content": payload["prompt"]},
                     ],
                 }
+            if capability in {"qwen_ocr", "qwen_vision"}:
+                # 图片能力声明单次上限；网关仍按运行剩余预算截断。
+                payload = {
+                    **payload,
+                    REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
+                }
             result = self._service._gateway.invoke(
                 capability,
                 "1",
                 chat_run_context(run.account_id, run.conversation_id, run.run_id),
                 payload=payload,
                 model_override=(run.config or {}).get("run_model_id"),
+                budget=budget,
+                model_quota=model_quota,
             )
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
@@ -313,11 +340,79 @@ class StudyWorkflow:
                 )
             return result.output
 
+        #: 工单 30：书页识别经持久节点内核执行（逐页产物/收据/质量门）。
+        ledger = RunBudgetLedgerRepository(self._repo.database)
+
+        def remaining_model_calls() -> int | None:
+            snapshot = ledger.load(run.account_id, run.run_id)
+            if snapshot is None:
+                return None
+            if not snapshot.active:
+                return 0
+            return max(0, snapshot.plan.model_call_limit - snapshot.model_calls_used)
+
+        flow = StudyPageNodeFlow(
+            load_image=lambda object_id: self._attachments.download(
+                run.account_id, run.conversation_id, object_id
+            ),
+            invoke=invoke,
+            budget_remaining_calls=remaining_model_calls,
+        )
+
+        def kernel_event(node: str, status: Any, duration_ms: int | None) -> None:
+            nonlocal current_node
+            current_node = node
+            self._repo.update_generation_progress(
+                run.account_id, run.run_id, current_node=node
+            )
+            on_event(
+                StreamEvent(
+                    kind="node",
+                    node=ChatStreamNodeData(
+                        message_id=run.assistant_message_id,
+                        node=node,
+                        status=status,
+                        duration_ms=duration_ms,
+                    ),
+                )
+            )
+
+        recognition = StudyPageRecognition(
+            kernel=NodeKernel(
+                registry=study_recipe_registry(),
+                repository=NodeKernelRepository(self._repo.database),
+                guard=RunCommitGuard(
+                    self._repo,
+                    account_id=run.account_id,
+                    run_id=run.run_id,
+                    conversation_id=run.conversation_id,
+                    assistant_message_id=run.assistant_message_id,
+                    stop_event=stop_event,
+                ),
+                gates=STUDY_PAGE_GATE_HANDLERS,
+                runner=flow.run_node,
+            ),
+            flow=flow,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            run_id=run.run_id,
+            user_message_id=run.user_message_id,
+            user_content=user.content,
+            stop_event=stop_event,
+            event_sink=kernel_event,
+        )
+
         def recognize() -> _GraphState:
             nonlocal duplicate_count
             if not attachments and state.wait_reason == "recognition_failed":
                 return {
                     "wait": True, "answer": "追加书页识别尚未完成，请重试原失败消息或重新补拍。",
+                }
+            if not attachments and state.pending_object_ids:
+                # 未处理页不被说成已读：先继续完成识别，才进入范围映射。
+                return {
+                    "wait": True,
+                    "answer": "上一轮还有书页未识别完成；请重试原消息继续识别剩余页。",
                 }
             previous_stage = state.stage
             state.stage = "recognizing"
@@ -353,138 +448,159 @@ class StudyWorkflow:
                             page.unclear = [issue for issue in page.unclear
                                             if issue.reason != "疑似不同小节，请确认或在新对话上传"]
                             save_state()
+            known_before = frozenset(page.content_hash for page in state.pages)
+            seen_hashes = set(known_before)
+            candidates: list[StudyPageCandidate] = []
+            plans: dict[str, tuple[int, list[str]]] = {}
+            next_ordinal = len(state.pages) + 1
+            unresolved_open = [page for page in state.pages if page.unclear]
             for attachment in attachments:
                 if stop_event is not None and stop_event.is_set():
                     raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
-                if attachment.content_hash in known:
+                if attachment.content_hash in seen_hashes:
                     duplicates += 1
                     duplicate_count += 1
                     continue
-                unresolved_before = [page for page in state.pages if page.unclear]
+                seen_hashes.add(attachment.content_hash)
                 target_match = re.search(r"补拍第\s*(\d+)\s*页", user.content)
                 replacement = (
                     next(
                         (
                             page
-                            for page in unresolved_before
+                            for page in unresolved_open
                             if page.ordinal == int(target_match.group(1))
                         ),
                         None,
                     )
                     if target_match
                     else (
-                        unresolved_before[0]
-                        if len(unresolved_before) == 1
+                        unresolved_open[0]
+                        if len(unresolved_open) == 1
                         # 隐式补齐只在流程确实在等补拍时生效：一次上传多页的
                         # 批次里，未标"补拍第N页"的后一页是**新的一页**，不是
-                        # 前一页的重拍。旧实现对着空消息也做替换，导致三页首传
-                        # 被上一页的待确认项吞掉一页（issue 04 用原始三张教材
-                        # 页实测：第 1 页有看不清项时，第 2 页替换掉了第 1 页，
-                        # 最终只识别出两页）。
+                        # 前一页的重拍（issue 04 用原始三张教材页实测）。
                         and state.wait_reason == "unclear_page"
                         and (not user.content.strip() or "补拍" in user.content)
                         else None
                     )
                 )
-                record, content = self._attachments.download(
-                    run.account_id, run.conversation_id, attachment.object_id
-                )
-                encoded = base64.b64encode(content).decode("ascii")
-                ocr = invoke(
-                    "qwen_ocr",
-                    {
-                        "image_base64": encoded,
-                        "mime_type": record.media_type,
-                        "prompt": (
-                            "按阅读顺序逐字识别这页教材的文字、公式与图表标签；"
-                            "看不清的符号写[不清]，不要猜测。"
-                        ),
-                        "task": None,
-                        "temperature": 0.01,
-                        # 整页图片调用按实测耗时给足超时（见常量说明）。
-                        REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
-                    },
-                )
-                ocr_text = ocr.get("content")
-                if not isinstance(ocr_text, str) or not ocr_text.strip():
-                    raise StudyWorkflowError(
-                        current_node, "study_ocr_empty", "书页文字识别失败，请重试或补拍。"
+                if replacement is not None:
+                    plans[attachment.object_id] = (
+                        replacement.ordinal,
+                        [*replacement.replaced_object_ids, replacement.object_id],
                     )
-                earlier = [fragment.text for page in state.pages for fragment in page.fragments]
-                vision = invoke(
-                    "qwen_vision",
-                    {
-                        "image_base64": encoded,
-                        "mime_type": record.media_type,
-                        "temperature": 0.01,
-                        # 整页图片调用按实测耗时给足超时（见常量说明）。
-                        REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
-                        "prompt": (
-                            "只输出 JSON 对象，字段 same_section(boolean),"
-                            " page_number(书上印刷页码，正整数；看不到或不确定时为 null)，"
-                            " fragments(数组：kind 为 text/formula/chart、"
-                            "position 为页面位置、text 为所见内容、confidence 为 0-1),"
-                            " unclear(数组：position、reason)。"
-                            "逐段保留公式和图表；任何看不清或低置信内容必须列入 unclear，不得猜测。"
-                            "后续页是否同一小节参考既有片段："
-                            + json.dumps(earlier[:12], ensure_ascii=False)
-                            + "；独立 OCR 结果仅供核对："
-                            + ocr_text[:9000]
-                        ),
-                    },
-                )
-                try:
-                    parsed = _Recognition.model_validate_json(
-                        _json_object_text(str(vision.get("content", "")))
-                    )
-                except ValidationError as exc:
-                    raise StudyWorkflowError(
-                        current_node, "study_recognition_invalid", "书页结构识别不完整，请重试。"
-                    ) from exc
-                ordinal = replacement.ordinal if replacement else len(state.pages) + 1
-                fragments = [
-                    StudyFragment(
-                        fragment_id=f"{record.object_id}:{index}",
-                        kind=item.kind,
-                        position=item.position,
-                        text=item.text,
-                        confidence=item.confidence,
-                    )
-                    for index, item in enumerate(parsed.fragments, 1)
-                ]
-                unclear = list(parsed.unclear)
-                unclear.extend(
-                    StudyUnclear(position=item.position, reason="关键内容识别置信度低")
-                    for item in parsed.fragments
-                    if item.confidence < 0.7
-                    and not any(issue.position == item.position for issue in unclear)
-                )
-                if state.pages and not parsed.same_section:
-                    unclear.append(
-                        StudyUnclear(position="整页", reason="疑似不同小节，请确认或在新对话上传")
-                    )
-                page = StudyPage(
-                    object_id=record.object_id,
-                    ordinal=ordinal,
-                    content_hash=record.content_hash,
-                    model_id=(last_lock.actual_model_id or "") if last_lock else "",
-                    page_number=parsed.page_number,
-                    same_section=parsed.same_section if state.pages else True,
-                    replaced_object_ids=(
-                        [*replacement.replaced_object_ids, replacement.object_id]
-                        if replacement
-                        else []
-                    ),
-                    fragments=fragments,
-                    unclear=unclear,
-                )
-                if replacement:
-                    state.pages[ordinal - 1] = page
+                    unresolved_open = [
+                        page
+                        for page in unresolved_open
+                        if page.ordinal != replacement.ordinal
+                    ]
                 else:
-                    state.pages.append(page)
-                known.add(record.content_hash)
-                added += 1
+                    plans[attachment.object_id] = (next_ordinal, [])
+                    next_ordinal += 1
+                candidates.append(
+                    StudyPageCandidate(
+                        object_id=attachment.object_id,
+                        content_hash=attachment.content_hash,
+                        media_type=attachment.media_type,
+                    )
+                )
+
+            fix_message = ""
+            if candidates:
+                prior_fragments = [
+                    fragment for page in state.pages for fragment in page.fragments
+                ]
+
+                def on_page(page: StudyPage) -> StudyPage:
+                    nonlocal added
+                    ordinal, replaced = plans.get(page.object_id, (next_ordinal, []))
+                    page = page.model_copy(
+                        update={
+                            "ordinal": ordinal,
+                            "replaced_object_ids": replaced,
+                            "model_id": (
+                                (last_lock.actual_model_id or "") if last_lock else ""
+                            ),
+                            "same_section": page.same_section if state.pages else True,
+                        }
+                    )
+                    if state.pages and not page.same_section and not any(
+                        issue.position == "整页" for issue in page.unclear
+                    ):
+                        page.unclear.append(
+                            StudyUnclear(
+                                position="整页",
+                                reason="疑似不同小节，请确认或在新对话上传",
+                            )
+                        )
+                    if replaced:
+                        state.pages[ordinal - 1] = page
+                    else:
+                        state.pages.append(page)
+                    known.add(page.content_hash)
+                    added += 1
+                    # 节点收据完成后到领域材料提交之间仍可能停止/转移租约。
+                    # 复用本轮固定快照，在领域写事务内再次守卫。
+                    with self._repo.database.transaction():
+                        decision = material_guard.verify()
+                        if not decision.ok:
+                            raise StudyWorkflowError(
+                                NODE_RECOGNIZE_PAGE,
+                                "stopped" if decision.code == "run_stopped" else decision.code,
+                                decision.message,
+                            )
+                        save_state_in_transaction()
+                    return page
+
+                try:
+                    outcome = recognition.recognize(
+                        candidates,
+                        known_before,
+                        on_page=on_page,
+                        prior_fragments=prior_fragments,
+                    )
+                except NodeFailureError as exc:
+                    raise StudyWorkflowError(exc.node, exc.code, exc.message) from exc
+                except StoppedError as exc:
+                    raise StudyWorkflowError(exc.node, "stopped", STUDY_STOPPED_TEXT) from exc
+                except SupersededError as exc:
+                    raise StudyWorkflowError(
+                        NODE_RECOGNIZE_PAGE,
+                        exc.code,
+                        "本轮生成已被其他尝试取代，结果未提交。",
+                    ) from exc
+                fix_message = outcome.fix_message
+                if outcome.pending_object_ids:
+                    # 预算/批量限制：已完成页保留，未处理页仍是待处理，
+                    # 不进入映射/预习，也不宣布整节已读。
+                    recognized_ids = {page.object_id for page in state.pages}
+                    state.pending_object_ids = list(dict.fromkeys(
+                        object_id
+                        for object_id in [*state.pending_object_ids, *outcome.pending_object_ids]
+                        if object_id not in recognized_ids
+                    ))
+                    save_state()
+                    raise StudyWorkflowError(
+                        NODE_RECOGNIZE_PAGE,
+                        "run_budget_exhausted",
+                        "本轮运行预算不足以识别全部书页；已完成的书页已保存，"
+                        "未处理页仍待识别。请重试本条消息继续。",
+                    )
+            recognized_ids = {page.object_id for page in state.pages}
+            state.pending_object_ids = [
+                object_id
+                for object_id in state.pending_object_ids
+                if object_id not in recognized_ids
+            ]
+            if state.pending_object_ids:
+                # 未完成页仍然待处理：本轮即使上传了新页也不进入映射/
+                # 预习，更不宣布整节已读；旧页只能靠重试原消息继续。
                 save_state()
+                return {
+                    "wait": True,
+                    "answer": "本轮新书页已保存；上一轮还有书页未识别完成，"
+                    "请重试原消息继续识别剩余页。",
+                }
             if not attachments and user.content.strip() and state.wait_reason == "unclear_page":
                 match = re.search(r"第\s*(\d+)\s*页", user.content)
                 if match:
@@ -499,9 +615,10 @@ class StudyWorkflow:
                             for issue in supplement_page.unclear
                             if issue.position in user.content
                         ]
+                        positions = {issue.position for issue in matches}
                         supplement = (
                             user.content.split(matches[0].position, 1)[1].strip()
-                            if len(matches) == 1 else ""
+                            if len(positions) == 1 else ""
                         )
                         if re.fullmatch(
                             r"(?:[:：]|[^？?。\n]*[是为])\s*\S.*", supplement, flags=re.DOTALL,
@@ -517,15 +634,21 @@ class StudyWorkflow:
                                     text=user.content,
                                     confidence=1,
                                     source="user",
+                                    # 文字补录标用户补充，不冒充照片识别。
+                                    recognition_path="user",
                                 )
                             )
-                            supplement_page.unclear.remove(issue)
+                            supplement_page.unclear = [
+                                doubt for doubt in supplement_page.unclear
+                                if doubt.position != issue.position
+                            ]
                             supplemented = True
                             save_state()
             unresolved = [page for page in state.pages if page.unclear]
             if unresolved:
                 state.stage = "awaiting_pages"
                 state.wait_reason = "unclear_page"
+                state.pending_object_ids = []
                 save_state()
                 self._repo.update_generation_progress(
                     run.account_id, run.run_id, wait_reason=state.wait_reason
@@ -535,14 +658,17 @@ class StudyWorkflow:
                     for page in unresolved
                     for issue in page.unclear
                 )
+                fix_text = fix_message or (
+                    f"这些位置还看不清：{details}。"
+                    "请补拍对应位置，或按“第N页+位置：具体内容”补录文字。"
+                    "若确认是同节照片，请回复“确认第N页属于本节”；"
+                    "不同小节的书页请在新对话上传。"
+                )
                 return {
                     "wait": True,
                     "answer": (
                         (f"检测到{duplicates}张重复书页，已跳过。" if duplicates else "")
-                        + f"这些位置还看不清：{details}。"
-                        "请补拍对应位置，或按“第N页+位置：具体内容”补录文字。"
-                        "若确认是同节照片，请回复“确认第N页属于本节”；"
-                        "不同小节的书页请在新对话上传。"
+                        + fix_text
                     ),
                 }
             numbered = [page for page in state.pages if page.page_number is not None]
@@ -862,7 +988,10 @@ class StudyWorkflow:
             )
             return None
         except StudyWorkflowError as exc:
-            if updating and current_node == "study.recognize":
+            if updating and _is_recognition_node(current_node) and exc.code not in {
+                "stopped", "lease_lost", "lease_expired", "run_terminal", "run_missing",
+                "message_terminal", "message_missing", "task_version_changed",
+            }:
                 state.wait_reason = "recognition_failed"
                 save_state()
             message_status = (
@@ -885,7 +1014,7 @@ class StudyWorkflow:
             on_event(StreamEvent(kind="error", error_code=exc.code, error_message=exc.message))
             return "error"
         except Exception:
-            if updating and current_node == "study.recognize":
+            if updating and _is_recognition_node(current_node):
                 state.wait_reason = "recognition_failed"
                 save_state()
             finalize_message(
