@@ -130,6 +130,9 @@ class VideoVerifyOutcome:
 class OpenLibraryBookSource:
     """Open Library 图书书目：书目、ISBN 与出版社的主来源。"""
 
+    #: 来源标识（预算记账与逐来源计数使用，与记录里的 source 一致）。
+    source = OPENLIBRARY_SOURCE
+
     def __init__(
         self,
         *,
@@ -229,6 +232,9 @@ class OpenLibraryBookSource:
 
 class OpenAlexBookSource:
     """OpenAlex 图书记录：补上书目来源没有的英文书目（有限补充，失败只报缺口）。"""
+
+    #: 来源标识（预算记账与逐来源计数使用，与记录里的 source 一致）。
+    source = OPENALEX_SOURCE
 
     def __init__(
         self,

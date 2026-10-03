@@ -71,6 +71,12 @@ class RecipeRegistry:
             raise RecipeValidationError(
                 recipe.recipe_id, "empty_recipe", "配方至少需要一个节点。"
             )
+        if recipe.parallel_limit < 1:
+            raise RecipeValidationError(
+                recipe.recipe_id,
+                "parallel_limit_invalid",
+                "并行上限必须是正整数（1 表示组内串行）。",
+            )
         names: dict[str, int] = {}
         for index, spec in enumerate(recipe.nodes):
             if spec.name in names:
@@ -105,7 +111,33 @@ class RecipeRegistry:
                         "skipped_prerequisite",
                         f"节点 {spec.name} 的前置 {dependency} 不在必经顺序之前（可能形成循环）。",
                     )
+        self._validate_parallel_groups(recipe)
         self._assert_acyclic(recipe)
+
+    def _validate_parallel_groups(self, recipe: RecipeDefinition) -> None:
+        """并行组必须连续；组内节点不得互相依赖。"""
+        last_index: dict[str, int] = {}
+        for index, spec in enumerate(recipe.nodes):
+            if spec.parallel_group is None:
+                continue
+            if spec.parallel_group in last_index and last_index[spec.parallel_group] != index - 1:
+                raise RecipeValidationError(
+                    recipe.recipe_id,
+                    "parallel_group_split",
+                    f"并行组 {spec.parallel_group} 必须由连续节点组成。",
+                )
+            last_index[spec.parallel_group] = index
+        for spec in recipe.nodes:
+            if spec.parallel_group is None:
+                continue
+            for dependency in spec.depends_on:
+                if recipe.node(dependency).parallel_group == spec.parallel_group:
+                    raise RecipeValidationError(
+                        recipe.recipe_id,
+                        "parallel_group_dependency",
+                        f"并行组 {spec.parallel_group} 内的节点 {spec.name} 依赖同组前置"
+                        f" {dependency}，无法并发执行。",
+                    )
 
     def _assert_acyclic(self, recipe: RecipeDefinition) -> None:
         """显式无环校验：即使顺序约束被放宽也拒绝循环。"""

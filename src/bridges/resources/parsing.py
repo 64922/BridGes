@@ -14,21 +14,29 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from bridges.contracts.modules import ModuleWaitState
 from bridges.resources.contracts import (
     LEVEL_LABELS,
+    ResourceMedia,
     ResourcesClarification,
+    ResourcesGoalKind,
     ResourcesLevel,
     ResourcesTermAnalysis,
 )
 from bridges.resources.lexicon import (
     GOAL_HINTS,
+    GOAL_KIND_HINTS,
     INTENT_STOPWORDS,
     LATIN_INTENT_WORDS,
     LEVEL_CANDIDATES,
     LEVEL_HINTS,
+    MEDIA_BOOKS_HINTS,
+    MEDIA_VIDEOS_HINTS,
+    PRACTICE_PROJECT_HINTS,
     TERM_ENGLISH,
     TOPIC_STOPWORDS,
 )
@@ -41,6 +49,14 @@ if TYPE_CHECKING:
 PENDING_ORIGINAL_PHRASE = "original_phrase"
 PENDING_GOAL = "goal"
 PENDING_MISSING = "missing"
+PENDING_GOAL_KIND = "goal_kind"
+PENDING_MEDIA = "media"
+PENDING_REQUESTED_BOOKS = "requested_books"
+PENDING_REQUESTED_VIDEOS = "requested_videos"
+PENDING_LANGUAGE = "language"
+PENDING_TIME_BUDGET = "time_budget"
+PENDING_BASIS = "basis_evidence"
+PENDING_PRACTICE = "needs_practice_project"
 
 #: 参与层次判定的最近用户消息条数上限（够用即止，不把整段历史塞进解析）。
 CONTEXT_LOOKBACK_MESSAGES = 6
@@ -68,11 +84,141 @@ _WHITESPACE = re.compile(r"\s+")
 _TERM_KEYS: tuple[str, ...] = tuple(sorted(TERM_ENGLISH, key=len, reverse=True))
 #: 中文意图词按长度倒序（先剥长词，避免「推荐一下」被「推荐」切碎）。
 _INTENT_WORDS: tuple[str, ...] = tuple(sorted(INTENT_STOPWORDS, key=len, reverse=True))
+#: 单次扫描的意图词替换：从左到右选第一个命中的写法，因此重叠时取该位置
+#: 能匹配的最长写法（「快速了解一下」先剥「快速了解」再剥「一下」，不会把
+#: 「快速了解」被更长的「了解一下」从中间切断）。
+_INTENT_PATTERN = re.compile("|".join(re.escape(word) for word in _INTENT_WORDS))
 #: 拉丁意图词按词边界剥离（避免把 Transformer 的 a、Python 的 on 切掉）。
 _LATIN_INTENT_PATTERN = re.compile(
     r"\b(?:" + "|".join(sorted(LATIN_INTENT_WORDS, key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
+
+#: 用户明确要求的数量（「两本书」「3 个视频」；媒介随各自数量区分）。
+_COUNT_PATTERN = re.compile(
+    r"(?P<num>[0-9]+|[一二两三四五六七八九十])\s*(?:本|部|个|条|门|套)?\s*"
+    r"(?P<kind>图书|教材|视频|书)"
+)
+#: 数量与名词被修饰语隔开时（「三本机器学习的书」）的宽松形态：必须带量词，
+#: 避免把「进一步了解…」这类表达误读成数量。
+_COUNT_LOOSE_PATTERN = re.compile(
+    r"(?P<num>[0-9]+|[一二两三四五六七八九十])\s*(?:本|部|个|条|门|套|张)\s*"
+    r"[^，,。；;！!？?、\s]{0,12}?(?P<kind>图书|教材|视频|书)"
+)
+_CN_DIGITS: dict[str, int] = {
+    "一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+}
+
+#: 用户明确的时间约束（「两周」「一个月」「每天半小时」）。
+_TIME_PATTERN = re.compile(
+    r"(?:[0-9]+\s*(?:天|周|个?月|年|小时|分钟)|[一二两三四五六七八九十半]\s*(?:天|周|个?月|年|小时)"
+    r"|每天|每周|每周末|周末|假期|寒假|暑假)"
+)
+
+#: 已表达的基础证据（用户说过的已有基础；只作标注，不当作能力结论）。
+_BASIS_PATTERN = re.compile(
+    r"(?:学过|学过一点|有一点基础|有一定基础|有点基础|基础不牢|零基础|没基础|没学过|"
+    r"刚接触|做过|用过|了解一些)"
+)
+
+
+@dataclass(frozen=True)
+class _RequestConditions:
+    """解析出的选择条件（目的/媒介/数量/语言/时间/基础/实践项目）。"""
+
+    goal_kind: ResourcesGoalKind | None = None
+    media: ResourceMedia | None = None
+    requested_books: int | None = None
+    requested_videos: int | None = None
+    language: str | None = None
+    time_budget: str | None = None
+    basis_evidence: str | None = None
+    needs_practice_project: bool = False
+
+
+def read_conditions(text: str) -> _RequestConditions:
+    """从本轮原话里读出选择条件（确定性词表/规则；缺失保持 None）。"""
+    return _RequestConditions(
+        goal_kind=detect_goal_kind(text),
+        media=detect_media(text),
+        requested_books=_detect_count(text, book=True),
+        requested_videos=_detect_count(text, book=False),
+        language=detect_language(text),
+        time_budget=_detect_time_budget(text),
+        basis_evidence=detect_basis_evidence(text),
+        needs_practice_project=any(hint in text for hint in PRACTICE_PROJECT_HINTS),
+    )
+
+
+def detect_goal_kind(text: str) -> ResourcesGoalKind | None:
+    """三类学习目的：取原文中最靠后的命中（与层次判定同一策略）。"""
+    best: tuple[int, ResourcesGoalKind] | None = None
+    for goal_kind, hints in GOAL_KIND_HINTS.items():
+        for hint in hints:
+            position = text.rfind(hint)
+            if position < 0:
+                continue
+            if best is None or position > best[0]:
+                best = (position, goal_kind)
+    if best is not None:
+        return best[1]
+    # 旧目的说法兜底到三类，保证计划与组织总有一条明确路线。
+    goal = detect_goal(text)
+    if goal == "备考":
+        return ResourcesGoalKind.EXAM_PREP
+    if goal == "入门了解":
+        return ResourcesGoalKind.QUICK_CONCEPT
+    if goal in {"科研", "工作面试", "项目实战"}:
+        return ResourcesGoalKind.SYSTEMATIC
+    return None
+
+
+def detect_media(text: str) -> ResourceMedia | None:
+    """明确只要书/只要视频时返回对应媒介；未表达为 None（两路都试）。"""
+    books = any(hint in text for hint in MEDIA_BOOKS_HINTS)
+    videos = any(hint in text for hint in MEDIA_VIDEOS_HINTS)
+    if books and not videos:
+        return ResourceMedia.BOOKS
+    if videos and not books:
+        return ResourceMedia.VIDEOS
+    return None
+
+
+def detect_language(text: str) -> str | None:
+    if "中英" in text:
+        return "中英文"
+    if "英文" in text or "英语" in text:
+        return "英文"
+    if "中文" in text or "汉语" in text:
+        return "中文"
+    return None
+
+
+def detect_basis_evidence(text: str) -> str | None:
+    match = _BASIS_PATTERN.search(text)
+    return match.group(0) if match is not None else None
+
+
+def _detect_count(text: str, *, book: bool) -> int | None:
+    for pattern in (_COUNT_PATTERN, _COUNT_LOOSE_PATTERN):
+        for match in pattern.finditer(text):
+            kind = match.group("kind")
+            is_book = kind in {"书", "图书", "教材"}
+            if is_book != book:
+                continue
+            raw = match.group("num")
+            value = int(raw) if raw.isdigit() else _CN_DIGITS.get(raw)
+            if value and 0 < value <= 20:
+                return value
+    return None
+
+
+def _detect_time_budget(text: str) -> str | None:
+    match = _TIME_PATTERN.search(text)
+    if match is None:
+        return None
+    return match.group(0).strip()
 
 
 def parse_resources_request(
@@ -82,11 +228,11 @@ def parse_resources_request(
     pending: ModuleWaitState | None = None,
     module_context: ModuleTaskContext | None = None,
 ) -> ResourcesTermAnalysis:
-    """解析一轮资料请求；缺少层次且它影响推荐时返回唯一的一个澄清问题。
+    """解析一轮资料请求；缺少会改变选择的条件时返回唯一的一个澄清问题。
 
     ``pending`` 非空表示上一轮已提问、本轮 ``content`` 是该问题的回答：解析
-    从等待处恢复（原词与目的沿用等待状态里的记录），而不是把回答当成一个
-    全新的资料请求。
+    从等待处恢复（原词与条件沿用等待状态里的记录），而不是把回答当成一个
+    全新的资料请求。低影响缺项（媒介、时间）不追问，只在正文明确标注假设。
     """
     text = content.strip()
     if module_context is not None and module_context.used_task_scope:
@@ -94,6 +240,7 @@ def parse_resources_request(
         fields = {
             condition.kind: condition.text for condition in module_context.effective_conditions
         }
+        conditions = _merge_conditions(read_conditions(text), _conditions_from_fields(fields))
         term = (
             extract_topic_phrase(module_context.topic_hint)
             if (
@@ -106,23 +253,35 @@ def parse_resources_request(
         level, basis = detect_level(text)
         if level is None and "level" in fields:
             level, basis = detect_level(fields["level"])
-        if term is None:
-            return _needs_topic(goal=goal)
-        if level is None and not _defers_level(text):
-            return _needs_level(term, goal=goal)
-        return _analysis_for_term(term, goal=goal, level=level, level_basis=basis)
+        return _resolve_analysis(
+            term,
+            goal=goal,
+            level=level,
+            level_basis=basis,
+            conditions=conditions,
+            deferred=_defers_level(text),
+        )
     if pending is not None and pending.kind == "clarification":
         return _resume_from_clarification(text, pending, prior_context=prior_context)
     return _parse_fresh(text, prior_context=prior_context)
 
 
 def pending_payload(analysis: ResourcesTermAnalysis, *, missing: str) -> dict[str, object]:
-    """澄清等待状态的恢复载荷（原词 / 目的 / 缺失项，均为可序列化值）。"""
-    return {
+    """澄清等待状态的恢复载荷（原词 / 条件 / 缺失项，均为可序列化值）。"""
+    payload: dict[str, object] = {
         PENDING_ORIGINAL_PHRASE: analysis.original_phrase,
         PENDING_GOAL: analysis.goal,
         PENDING_MISSING: missing,
+        PENDING_GOAL_KIND: analysis.goal_kind.value if analysis.goal_kind else None,
+        PENDING_MEDIA: analysis.media.value if analysis.media else None,
+        PENDING_REQUESTED_BOOKS: analysis.requested_books,
+        PENDING_REQUESTED_VIDEOS: analysis.requested_videos,
+        PENDING_LANGUAGE: analysis.language,
+        PENDING_TIME_BUDGET: analysis.time_budget,
+        PENDING_BASIS: analysis.basis_evidence,
+        PENDING_PRACTICE: analysis.needs_practice_project,
     }
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -132,18 +291,50 @@ def pending_payload(analysis: ResourcesTermAnalysis, *, missing: str) -> dict[st
 
 def _parse_fresh(text: str, *, prior_context: Sequence[str]) -> ResourcesTermAnalysis:
     goal = detect_goal(text)
+    conditions = read_conditions(text)
     term = extract_topic_phrase(text)
-    if term is None:
-        return _needs_topic(goal=goal)
     level, basis = detect_level(text, prior_context=prior_context)
-    if level is not None:
-        return _analysis_for_term(term, goal=goal, level=level, level_basis=basis)
-    if _defers_level(text):
-        # 用户把层次交给我们：不追问，按通用顺序给（正文如实说明）。
-        return _analysis_for_term(
-            term, goal=goal, level=None, level_basis="你未指定层次，按通用顺序整理"
-        )
-    return _needs_level(term, goal=goal)
+    if level is None and conditions.goal_kind is ResourcesGoalKind.QUICK_CONCEPT:
+        # 快速概念路线不因缺少层次而追问：低影响缺项按明确标注的假设处理。
+        basis = None
+    return _resolve_analysis(
+        term,
+        goal=goal,
+        level=level,
+        level_basis=basis,
+        conditions=conditions,
+        deferred=_defers_level(text),
+    )
+
+
+def _resolve_analysis(
+    term: str | None,
+    *,
+    goal: str | None,
+    level: ResourcesLevel | None,
+    level_basis: str | None,
+    conditions: _RequestConditions,
+    deferred: bool,
+) -> ResourcesTermAnalysis:
+    """把解析结果收敛为分析或唯一的一个澄清（层次只在影响选择时追问）。"""
+    if term is None:
+        return _needs_topic(goal=goal, conditions=conditions)
+    if (
+        level is None
+        and not deferred
+        and conditions.goal_kind is not ResourcesGoalKind.QUICK_CONCEPT
+    ):
+        return _needs_level(term, goal=goal, conditions=conditions)
+    if deferred:
+        level_basis = "你未指定层次，按通用顺序整理"
+    return _analysis_for_term(
+        term,
+        goal=goal,
+        level=level,
+        level_basis=level_basis,
+        conditions=conditions,
+        assumptions=_assumptions(conditions, level=level, deferred=deferred),
+    )
 
 
 def extract_topic_phrase(text: str) -> str | None:
@@ -154,10 +345,15 @@ def extract_topic_phrase(text: str) -> str | None:
         if len(inner) >= MIN_TERM_LENGTH:
             return inner
     for clause in _CLAUSE_SPLIT.split(text):
+        # 词表里的专业名词先于意图词识别：「机器学习资料」不能被当成
+        # 「学习资料」这个意图词切掉（原始专业名词逐字保留是硬要求）。
+        raw_lexicon = _lexicon_match(clause)
         stripped = _strip_intents(clause)
         if not stripped:
+            if raw_lexicon is not None:
+                return raw_lexicon
             continue
-        lexicon = _lexicon_match(stripped)
+        lexicon = _lexicon_match(stripped) or raw_lexicon
         latin = _latin_match(stripped)
         if (
             lexicon is not None
@@ -239,13 +435,21 @@ def _resume_from_clarification(
     if not original_phrase:
         # 等待状态没有可用的恢复载荷：按全新请求解析回答本身。
         return _parse_fresh(answer, prior_context=prior_context)
-    # 回答里也可能补充学习目的（「有点基础，主要是想应付期末」）：一并采纳。
+    # 回答里也可能补充学习目的或条件（「有点基础，主要是想应付期末」）：一并采纳。
     goal = detect_goal(answer) or goal
+    conditions = _merge_conditions(
+        read_conditions(answer), _conditions_from_payload(payload)
+    )
     from_answer = _level_from_text(answer)
     if from_answer is not None:
         level, word = from_answer
         return _analysis_for_term(
-            original_phrase, goal=goal, level=level, level_basis=f"你说了「{word}」"
+            original_phrase,
+            goal=goal,
+            level=level,
+            level_basis=f"你说了「{word}」",
+            conditions=conditions,
+            assumptions=_assumptions(conditions, level=level, deferred=False),
         )
     if _defers_level(answer):
         return _analysis_for_term(
@@ -253,8 +457,10 @@ def _resume_from_clarification(
             goal=goal,
             level=None,
             level_basis="你未指定层次，按通用顺序整理",
+            conditions=conditions,
+            assumptions=_assumptions(conditions, level=None, deferred=True),
         )
-    return _needs_level(original_phrase, goal=goal)
+    return _needs_level(original_phrase, goal=goal, conditions=conditions)
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +474,8 @@ def _analysis_for_term(
     goal: str | None,
     level: ResourcesLevel | None,
     level_basis: str | None,
+    conditions: _RequestConditions,
+    assumptions: Sequence[str],
 ) -> ResourcesTermAnalysis:
     expansions = expansions_for(term)
     if term in TERM_ENGLISH:
@@ -284,11 +492,22 @@ def _analysis_for_term(
         goal=goal,
         level=level,
         level_basis=level_basis,
+        goal_kind=conditions.goal_kind,
+        media=conditions.media,
+        requested_books=conditions.requested_books,
+        requested_videos=conditions.requested_videos,
+        language=conditions.language,
+        time_budget=conditions.time_budget,
+        basis_evidence=conditions.basis_evidence,
+        assumptions=list(assumptions),
+        needs_practice_project=conditions.needs_practice_project,
         final_query=_query_for(term, expansions),
     )
 
 
-def _needs_level(term: str, *, goal: str | None) -> ResourcesTermAnalysis:
+def _needs_level(
+    term: str, *, goal: str | None, conditions: _RequestConditions
+) -> ResourcesTermAnalysis:
     question = (
         f"为了挑对「{term}」的图书和视频，先确认一个问题："
         "你现在的学习层次是哪一档——零基础入门、有一定基础，还是进阶提高？"
@@ -300,6 +519,14 @@ def _needs_level(term: str, *, goal: str | None) -> ResourcesTermAnalysis:
         confidence=0.6,
         goal=goal,
         level=None,
+        goal_kind=conditions.goal_kind,
+        media=conditions.media,
+        requested_books=conditions.requested_books,
+        requested_videos=conditions.requested_videos,
+        language=conditions.language,
+        time_budget=conditions.time_budget,
+        basis_evidence=conditions.basis_evidence,
+        needs_practice_project=conditions.needs_practice_project,
         final_query=_query_for(term, expansions_for(term)),
         clarification=ResourcesClarification(
             question=question,
@@ -310,7 +537,9 @@ def _needs_level(term: str, *, goal: str | None) -> ResourcesTermAnalysis:
     )
 
 
-def _needs_topic(*, goal: str | None) -> ResourcesTermAnalysis:
+def _needs_topic(
+    *, goal: str | None, conditions: _RequestConditions
+) -> ResourcesTermAnalysis:
     return ResourcesTermAnalysis(
         original_phrase="",
         normalized_term="",
@@ -318,12 +547,111 @@ def _needs_topic(*, goal: str | None) -> ResourcesTermAnalysis:
         confidence=0.2,
         goal=goal,
         level=None,
+        goal_kind=conditions.goal_kind,
+        media=conditions.media,
+        requested_books=conditions.requested_books,
+        requested_videos=conditions.requested_videos,
+        language=conditions.language,
+        time_budget=conditions.time_budget,
+        basis_evidence=conditions.basis_evidence,
+        needs_practice_project=conditions.needs_practice_project,
         final_query="",
         clarification=ResourcesClarification(
             question="你想学哪个方向？告诉我专业名词或课程名，我再去找对应的图书和视频。",
             missing="topic",
             original_phrase="",
             candidates=[],
+        ),
+    )
+
+
+def _assumptions(
+    conditions: _RequestConditions,
+    *,
+    level: ResourcesLevel | None,
+    deferred: bool,
+) -> list[str]:
+    """低影响缺项的明确假设（只在正文标注，不追加追问）。"""
+    notes: list[str] = []
+    if deferred:
+        notes.append("你未指定学习层次，本轮按通用顺序整理（可随时纠正）。")
+    elif level is None and conditions.goal_kind is ResourcesGoalKind.QUICK_CONCEPT:
+        notes.append("你没说明当前基础；快速概念路线按入门概览组织，随时可以让我调整深浅。")
+    if conditions.media is None:
+        notes.append("你没限定只要书或只要视频，本轮两路都试；需要单一媒介时告诉我即可。")
+    if conditions.time_budget is None and conditions.goal_kind is ResourcesGoalKind.EXAM_PREP:
+        notes.append("你没给备考时间范围，本轮按不限时整理；告诉我截止时间后我会压缩或展开。")
+    return notes
+
+
+def _conditions_from_fields(fields: dict[str, str]) -> _RequestConditions:
+    """任务有效字段里的选择条件（goal/medium/language）。"""
+    goal_text = fields.get("goal", "") or ""
+    media_text = fields.get("medium", "") or ""
+    language = (fields.get("language", "") or "").strip() or None
+    return _RequestConditions(
+        goal_kind=detect_goal_kind(goal_text) if goal_text else None,
+        media=detect_media(media_text) if media_text else None,
+        language=language,
+    )
+
+
+def _conditions_from_payload(payload: dict[str, object]) -> _RequestConditions:
+    """等待状态里保存的条件（澄清恢复时沿用）。"""
+
+    def _enum_value(enum_type: type[StrEnum], key: str) -> StrEnum | None:
+        raw = payload.get(key)
+        if not raw:
+            return None
+        try:
+            return enum_type(str(raw))
+        except ValueError:
+            return None
+
+    def _optional_int(key: str) -> int | None:
+        raw = payload.get(key)
+        return int(raw) if isinstance(raw, int) else None
+
+    def _optional_str(key: str) -> str | None:
+        raw = payload.get(key)
+        return str(raw) if isinstance(raw, str) and raw else None
+
+    goal_kind = _enum_value(ResourcesGoalKind, PENDING_GOAL_KIND)
+    media = _enum_value(ResourceMedia, PENDING_MEDIA)
+    return _RequestConditions(
+        goal_kind=goal_kind if isinstance(goal_kind, ResourcesGoalKind) else None,
+        media=media if isinstance(media, ResourceMedia) else None,
+        requested_books=_optional_int(PENDING_REQUESTED_BOOKS),
+        requested_videos=_optional_int(PENDING_REQUESTED_VIDEOS),
+        language=_optional_str(PENDING_LANGUAGE),
+        time_budget=_optional_str(PENDING_TIME_BUDGET),
+        basis_evidence=_optional_str(PENDING_BASIS),
+        needs_practice_project=bool(payload.get(PENDING_PRACTICE)),
+    )
+
+
+def _merge_conditions(
+    primary: _RequestConditions, fallback: _RequestConditions
+) -> _RequestConditions:
+    """本轮原话优先于等待/任务里的旧条件（缺失才沿用）。"""
+
+    def _int_or_fallback(current: int | None, previous: int | None) -> int | None:
+        return current if current is not None else previous
+
+    return _RequestConditions(
+        goal_kind=primary.goal_kind or fallback.goal_kind,
+        media=primary.media or fallback.media,
+        requested_books=_int_or_fallback(
+            primary.requested_books, fallback.requested_books
+        ),
+        requested_videos=_int_or_fallback(
+            primary.requested_videos, fallback.requested_videos
+        ),
+        language=primary.language or fallback.language,
+        time_budget=primary.time_budget or fallback.time_budget,
+        basis_evidence=primary.basis_evidence or fallback.basis_evidence,
+        needs_practice_project=(
+            primary.needs_practice_project or fallback.needs_practice_project
         ),
     )
 
@@ -395,9 +723,6 @@ def _defers_level(text: str) -> bool:
 
 def _strip_intents(text: str) -> str:
     """剥掉意图／指代词，留下候选主题词（中文按子串、拉丁按词边界）。"""
-    stripped = text
-    for word in _INTENT_WORDS:
-        if word in stripped:
-            stripped = stripped.replace(word, " ")
+    stripped = _INTENT_PATTERN.sub(" ", text)
     stripped = _LATIN_INTENT_PATTERN.sub(" ", stripped)
     return _WHITESPACE.sub(" ", stripped).strip()
