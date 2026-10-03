@@ -527,16 +527,18 @@ def test_other_modules_still_rejected_and_no_silent_search(
 ) -> None:
     """请求契约内但子图尚未接入的模块仍被明确拒绝；普通聊天不产生任何论文检索记录。"""
     _register(client)
-    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
+    # 六个日常模块已全部接入，这里把 paper 临时从可用集合摘掉，复现
     # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
     monkeypatch.setattr(
         "bridges.chat.graph.AVAILABLE_MODULE_IDS",
-        frozenset({"paper", "commute", "resources", "tieba", "github"}),
+        frozenset({"commute", "resources", "tieba", "github", "career"}),
     )
     fake = _install_paper_source(sqlite_app, _FakePaperSource())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    created = _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
+    created = _send(
+        client, conversation_id, "帮我找几篇知识蒸馏的论文", module_id="paper"
+    )
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id, created
     )
@@ -551,10 +553,10 @@ def test_other_modules_still_rejected_and_no_silent_search(
     assert fake.queries == [], "普通聊天绝不暗中检索"
 
 
-def test_plain_chat_suggests_paper_module_without_searching(
+def test_body_intent_paper_request_dispatches_without_suggestion(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """普通聊天里的明显论文请求只给一键建议（原文启动，不检索）。"""
+    """工单 12 起正文明确的论文请求直达模块，不再只给一键建议。"""
     _register(client)
     fake = _install_paper_source(
         sqlite_app, _FakePaperSource(candidates=DISTILLATION_CANDIDATES)
@@ -566,33 +568,11 @@ def test_plain_chat_suggests_paper_module_without_searching(
         sqlite_app, client, generation_helpers["drive"], conversation_id, created
     )
 
-    suggestion = assistant["module_suggestion"]
-    assert suggestion is not None
-    assert suggestion["module_id"] == "paper"
-    assert suggestion["label"] == "使用论文搜索"
-    assert suggestion["text"] == "帮我找几篇知识蒸馏的论文"
-    assert fake.queries == [], "建议本身绝不发起检索"
-
-    # 点击建议：同一用户消息以显式模块重新派发（不重复写用户消息）
-    dispatched = client.post(
-        f"/chat/conversations/{conversation_id}/messages/"
-        f"{assistant['message_id']}/retry",
-        json={"module_id": "paper"},
-    )
-    assert dispatched.status_code == 200, dispatched.text
-    assert (
-        dispatched.json()["user_message"]["message_id"]
-        == created["user_message"]["message_id"]
-    )
-    generation_helpers["drive"](sqlite_app)
-    final = client.get(f"/chat/conversations/{conversation_id}").json()
-    users = [m for m in final["messages"] if m["role"] == "user"]
-    assert len(users) == 1, "点击建议不得重复写用户消息"
-    assert users[0]["module_id"] is None, "历史模块标识不被改写"
-    latest = [m for m in final["messages"] if m["role"] == "assistant"][-1]
-    assert latest["paper_search"] is not None
-    assert latest["paper_search"]["status"] == "success"
-    assert fake.queries, "点击建议后确实检索"
+    assert assistant["module_suggestion"] is None, "正文明确时直接执行，不再只给建议"
+    assert assistant["paper_search"] is not None
+    assert assistant["paper_search"]["status"] == "success"
+    assert fake.queries, "正文明确后确实检索"
+    assert assistant["route"]["route_source"] == "body_intent"
 
 
 def test_module_suggestion_absent_for_ambiguous_chat(
@@ -610,10 +590,10 @@ def test_module_suggestion_absent_for_ambiguous_chat(
     assert assistant["module_suggestion"] is None
 
 
-def test_module_suggestion_flags_ambiguous_term(
+def test_body_intent_ambiguous_term_dispatches_and_asks_one_question(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """歧义术语仍给建议，但标记需要先消歧（点击后模块会先问一项）。"""
+    """正文明确的歧义术语直达模块：模块内先问一项，而不是只给建议。"""
     _register(client)
     _install_paper_source(sqlite_app, _FakePaperSource())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
@@ -622,9 +602,10 @@ def test_module_suggestion_flags_ambiguous_term(
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id, created
     )
-    suggestion = assistant["module_suggestion"]
-    assert suggestion is not None
-    assert suggestion["needs_disambiguation"] is True
+    assert assistant["module_suggestion"] is None
+    assert assistant["paper_search"] is not None
+    assert assistant["paper_search"]["status"] == "clarification"
+    assert assistant["paper_search"]["pending"] is not None
 
 
 def test_public_query_carries_no_private_context(
