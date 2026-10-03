@@ -4112,6 +4112,8 @@ class TurnOrchestrator:
                 )
                 profile_context = None
                 profile_items = []
+                atomic_adopted = None
+                profile_slice_id = None
                 if context_note is not None:
                     context_note = self._persist_context_note(
                         account_id,
@@ -4161,8 +4163,12 @@ class TurnOrchestrator:
                     arxiv_search_projection=arxiv_search_projection,
                 ),
             )
-            if writing_policy.profile_context is not None:
-                profile_context = writing_policy.profile_context
+            profile_context = writing_policy.profile_context
+            if writing_policy.fallback_reason is not None:
+                profile_items = []
+                context_note = self._clear_failed_policy_adoption(
+                    account_id, assistant_message_id, context_note
+                )
             # 改进工单 21：输出预留取本任务的有界额度（默认 1024，显式长文
             # 任务为策略快照里的任务上限）；最终载荷门据此重算输入上界。
             output_tokens = writing_policy.output_tokens
@@ -5542,6 +5548,8 @@ class TurnOrchestrator:
             )
             profile_context = None
             profile_items = []
+            atomic_adopted = None
+            profile_slice_id = None
             if context_note is not None:
                 context_note = self._persist_context_note(
                     account_id,
@@ -5570,6 +5578,11 @@ class TurnOrchestrator:
                 context_note is not None and context_note.state == ContextNoteState.ERROR
             ),
         )
+        if writing_policy.fallback_reason is not None:
+            profile_items = []
+            context_note = self._clear_failed_policy_adoption(
+                account_id, assistant_message_id, context_note
+            )
         correction_context = self._profile_correction_context(
             account_id, assistant_message_id
         )
@@ -6717,7 +6730,17 @@ class TurnOrchestrator:
         )
         if (
             isinstance(existing_data, dict)
-            and existing_data.get("profile_context") != profile_context
+            and (
+                existing_data.get("profile_context") != profile_context
+                or (
+                    adopted_slice is not None
+                    and (
+                        existing_data.get("profile_slice_id") != adopted_slice.slice_id
+                        or existing_data.get("profile_revocation_version")
+                        != adopted_slice.revocation_version
+                    )
+                )
+            )
         ):
             # 正常重试复用策略；删除、纠正、关闭或预算变化时重新绑定真实采用
             # 结果，不能让旧策略快照把已经失效的正文重新带回模型输入。
@@ -6755,6 +6778,35 @@ class TurnOrchestrator:
             config["global_writing_policy"] = snapshot.model_dump(mode="json")
             self._repo.update_generation_config(account_id, run.run_id, config)
         return snapshot
+
+    def _clear_failed_policy_adoption(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        context_note: ContextNoteProjection | None,
+    ) -> ContextNoteProjection | None:
+        """安全基线不采用画像；保存的采用记录和用户披露须与载荷一致。"""
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        if run is not None:
+            config = dict(run.config or {})
+            config.pop("adopted_profile_slice", None)
+            self._repo.update_generation_config(account_id, run.run_id, config)
+        if context_note is None or context_note.profile_item_count == 0:
+            return context_note
+        self._audit_slice_usage(
+            account_id, mode=context_note.mode.value, enabled=True,
+            slice_id=None, item_count=0,
+            excluded_count=context_note.profile_item_count,
+            material_categories=context_note.material_categories,
+        )
+        return self._persist_context_note(
+            account_id, assistant_message_id,
+            context_note.model_copy(update={
+                "state": ContextNoteState.ERROR,
+                "profile_item_count": 0,
+                "note": "本轮表达策略不可用，已按安全基线回答，没有使用长期画像信息。",
+            }),
+        )
 
     def _profile_correction_context(
         self, account_id: str, assistant_message_id: str

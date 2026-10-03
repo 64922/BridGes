@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.lightweight_policy import (
     GLOBAL_CHAT_LIGHTWEIGHT_VERSION,
     ChatLightweightPolicyCompiler,
@@ -281,6 +282,72 @@ def test_retry_after_delete_drops_rules_and_claims_no_profile(env: _Env) -> None
     assert "本轮没有可用画像信息" in _policy_blocks(env)[-1]
 
 
+def test_delete_between_compilation_and_send_drops_adopted_rules(
+    env: _Env, monkeypatch: Any
+) -> None:
+    """发送前撤回不仅清数据块，也不能从采用对象重新编译出旧偏好。"""
+    env.remember(BREVITY, "m-race")
+    original = env.atomic.is_adopted_slice_current
+
+    def revoke_before_check(account: str, adopted: Any) -> bool:
+        item = env.atomic.list_items(account)[0]
+        env.atomic.delete_item(account, item.profile_item_id, item.version)
+        return original(account, adopted)
+
+    monkeypatch.setattr(env.atomic, "is_adopted_slice_current", revoke_before_check)
+    final = env.ask("解释贝叶斯定理")
+
+    assert env.slice_blocks() == []
+    assert "用户长期偏好简短直接" not in env.payload_text()
+    assert env.payload()["global_writing_policy"]["profile_item_count"] == 0
+    assert env.payload()["global_writing_policy"]["profile_decisions"] == []
+    assert final.context_note.profile_item_count == 0
+
+
+def test_retry_after_recreating_same_preference_rebinds_metadata(env: _Env) -> None:
+    """正文相同不代表采用版本相同；删除后重新记住必须绑定新来源。"""
+    env.remember(BREVITY, "m-old")
+    final = env.ask("解释贝叶斯定理")
+    item = env.atomic.list_items(ACCOUNT)[0]
+    env.atomic.delete_item(ACCOUNT, item.profile_item_id, item.version)
+    env.remember(BREVITY, "m-new")
+    retried = _retry(env, final.message_id)
+    config = env.chat._repo.get_run_by_message(  # noqa: SLF001
+        ACCOUNT, retried.message_id
+    ).config
+    assert (
+        config["global_writing_policy"]["profile_slice_id"]
+        == config["adopted_profile_slice"]["slice_id"]
+    )
+    assert (
+        config["global_writing_policy"]["profile_revocation_version"]
+        == config["adopted_profile_slice"]["revocation_version"]
+    )
+
+
+def test_chat_policy_failure_drops_profile_and_updates_disclosure(
+    env: _Env, monkeypatch: Any
+) -> None:
+    env.remember(BREVITY, "m-fallback")
+
+    original = GlobalWritingPolicyCompiler.compile
+
+    def fail_normal(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("adopted_slice") is not None:
+            raise RuntimeError("表达资源不可用")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(GlobalWritingPolicyCompiler, "compile", fail_normal)
+    final = env.ask("解释贝叶斯定理")
+    assert env.slice_blocks() == []
+    assert BREVITY not in env.payload_text()
+    assert env.payload()["global_writing_policy"]["profile_item_count"] == 0
+    assert final.context_note.profile_item_count == 0
+    assert env.slice_audits()[-1].details["item_count"] == 0
+    config = env.chat._repo.get_run_by_message(ACCOUNT, final.message_id).config  # noqa: SLF001
+    assert "adopted_profile_slice" not in config
+
+
 # ---------------------------------------------------------------------------
 # 学习辅导：真实应用接线复用同一采用快照
 # ---------------------------------------------------------------------------
@@ -391,8 +458,9 @@ def test_study_tutoring_next_question_after_delete_does_not_adopt(
         assert stored["adopted_profile_slice"]["adopted_items"] == []
 
 
+@pytest.mark.parametrize("failure", ["profile", "policy"])
 def test_study_tutoring_profile_failure_falls_back_to_baseline(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: Any, failure: str
 ) -> None:
     app = _app(tmp_path, monkeypatch)
     gateway = TutorGateway()
@@ -401,11 +469,24 @@ def test_study_tutoring_profile_failure_falls_back_to_baseline(
     def boom(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("profile store unavailable")
 
-    monkeypatch.setattr(
-        app.state.atomic_profile_service, "compile_adopted_slice", boom
-    )
+    if failure == "profile":
+        monkeypatch.setattr(
+            app.state.atomic_profile_service, "compile_adopted_slice", boom
+        )
+    else:
+        original = ChatLightweightPolicyCompiler.compile
+
+        def fail_normal(self: Any, *args: Any, **kwargs: Any) -> Any:
+            if kwargs.get("adopted_slice") is not None:
+                return boom()
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(ChatLightweightPolicyCompiler, "compile", fail_normal)
     with TestClient(app) as client:
-        _, endpoint = _start_study(client, app, "tutorfallback")
+        account, endpoint = _start_study(client, app, "tutorfallback")
+        app.state.atomic_profile_service.remember(
+            account, BREVITY, source_message_id="m-fallback"
+        )
         result = _ask_tutor(
             client, app, endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-fallback-1"
         )
@@ -420,6 +501,51 @@ def test_study_tutoring_profile_failure_falls_back_to_baseline(
     ]
     assert any("安全基线" in block for block in system_blocks)
     assert all(_SLICE_MARKER not in block for block in system_blocks)
+    run = app.state.chat_service._repo.get_run_by_message(  # noqa: SLF001
+        account, assistant["message_id"],
+    )
+    assert run.config["global_writing_policy"]["fallback_reason"] is not None
+    assert "adopted_profile_slice" not in run.config
+
+
+def test_study_tutoring_delete_during_context_compilation_drops_profile(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """真实上下文编译结束后撤回，最终辅导调用和配置都应走无画像基线。"""
+    app = _app(tmp_path, monkeypatch)
+    gateway = TutorGateway()
+    service = app.state.chat_service
+    service._gateway = gateway  # noqa: SLF001
+    with TestClient(app) as client:
+        account, endpoint = _start_study(client, app, "tutorrace")
+        atomic = app.state.atomic_profile_service
+        atomic.remember(account, BREVITY, source_message_id="m-race")
+        original = service.compile_turn_context
+        revoked = False
+
+        def compile_then_revoke(run: Any, **kwargs: Any) -> Any:
+            nonlocal revoked
+            result = original(run, **kwargs)
+            if not revoked and _SLICE_MARKER in kwargs.get("system_prompt", ""):
+                item = atomic.list_items(account)[0]
+                atomic.delete_item(account, item.profile_item_id, item.version)
+                revoked = True
+            return result
+
+        monkeypatch.setattr(service, "compile_turn_context", compile_then_revoke)
+        result = _ask_tutor(
+            client, app, endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-race"
+        )
+        assistant = result["messages"][-1]
+        assert assistant["status"] == "done", assistant
+        assert revoked
+        assert len(gateway.tutor_payloads) == 1
+        payload = str(gateway.tutor_payloads[-1]["messages"])
+        assert BREVITY not in payload
+        assert "用户长期偏好简短直接" not in payload
+        run = service._repo.get_run_by_message(account, assistant["message_id"])  # noqa: SLF001
+        assert run.config["global_writing_policy"]["profile_items"] == []
+        assert "adopted_profile_slice" not in run.config
 
 
 def test_study_tutoring_isolates_accounts(
