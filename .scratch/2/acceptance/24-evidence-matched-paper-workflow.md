@@ -38,4 +38,13 @@
 
 ## 合并与清理
 
-合并前通过命令级 `http.proxy` 配置 fetch origin 并核对远端。最终合并提交、推送结果、远端一致性、工作树/分支删除与 Issue 25/26 保留结果在完成后追加。
+合并前通过命令级 `http.proxy` 配置 fetch origin 并核对远端（`origin/main=3153fe25`）。最终合并提交、推送结果、远端一致性、工作树/分支删除与 Issue 25/26 保留结果在完成后追加。
+
+### 执行完成（2026-10-03）
+
+- 合并时 main 已由并行会话推进到 `3153fe25`（Issue 26 合入）；本票合并提交为 `f8325cad`。随后并行会话又合入 Issue 25（`61811e82`），实际顺序：`3153fe25` → `f8325cad` → `61811e82` → `f11f7567`。
+- 自动合并暴露一处语义冲突：本票将 `api/main.py` 的 `_commute_task_reference` 重命名为 `_current_task_reference`，而 Issue 25/26 新增的 github/resources 调用者仍引用旧名，合并树出现未定义名称（F821；ruff 复核 114→112）。合并后修复 `f11f7567` 统一改用 `_current_task_reference`；资源模块「未接入模块显式拒绝」回归恢复通过（合入前 main 为失败），github/resources 任务版本引用不再在请求期抛 NameError。
+- 合并树回归（HEAD `f11f7567`）：`tests/paper + tests/chat/test_improvement15_* + tests/kernel + tests/storage/test_schema_v65.py + tests/commute + tests/resources + tests/tieba + tests/github` = **538 passed / 3 failed**；3 项（tieba 拒绝断言、tieba 建议、github 无模块不启动）与合入前 main `3153fe25` 同名同因复现，0 新增失败。
+- 提交：验收修复 `c010a718`、合并 `f8325cad`、合并后修复 `f11f7567`。已经现有代理推送 origin/main，本地与远端一致为 `f11f7567421928249890064365f638597260ef3a`。
+- 工作树清理：先 `git worktree remove D:/BridGes/.worktrees/24-evidence-matched-paper-workflow`，再 `git branch -d codex/24-evidence-matched-paper-workflow`，成功；临时校验工作树已移除；`git worktree prune` 无失效项（dry-run 无输出）。Issue 25 工作树与分支保留，`.worktrees/26-github-requirement-evidence-matrix` 目录保留未动。
+- 本节为交付后的文档补记，随独立文档提交同步远端；没有再修改产品代码。
