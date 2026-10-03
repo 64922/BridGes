@@ -8242,7 +8242,7 @@ export interface components {
         CareerAdviceItem: {
             /**
              * Kind
-             * @description 建议分类：skill／project／action。
+             * @description 建议分类：skill／project／action／leverage／confirm／pace。
              */
             kind: string;
             /**
@@ -8265,6 +8265,22 @@ export interface components {
              * @description 是否为推断（不是样本原文直接支持的内容）。
              */
             inference: boolean;
+            /**
+             * Priority
+             * @description 个人规划分支的优先序号（1 为最高）；0 表示未排序。
+             * @default 0
+             */
+            priority: number;
+            /**
+             * Background Basis
+             * @description 个人规划建议的用户侧依据（自述/已采用条目）。
+             */
+            background_basis?: string[];
+            /**
+             * Feasibility
+             * @description 与时间/资源约束的可执行性说明；无约束为空。
+             */
+            feasibility?: string | null;
         };
         /**
          * CareerAnalysis
@@ -8357,6 +8373,142 @@ export interface components {
             verification_next_step?: string | null;
         };
         /**
+         * CareerBackgroundItem
+         * @description 一条有来源的个人背景材料（仅个人规划分支读取）。
+         */
+        CareerBackgroundItem: {
+            /** @description 来源类别。 */
+            source: components["schemas"]["CareerBackgroundSource"];
+            /**
+             * Text
+             * @description 完整事实/原话正文（不截断）。
+             */
+            text: string;
+            /**
+             * Source Ref
+             * @description 来源引用：消息 ID、条目 ID 或片段 ID。
+             */
+            source_ref: string;
+            /**
+             * Authority
+             * @description 来源权威：user／automatic／migration。
+             * @default user
+             */
+            authority: string;
+            /**
+             * Relation
+             * @description 画像事实关系；非画像来源为空。
+             */
+            relation?: string | null;
+            /**
+             * Version
+             * @description 画像条目版本；非画像来源为空。
+             */
+            version?: number | null;
+            /**
+             * Expires At
+             * @description 明示有效期终点；无期限为空。
+             */
+            expires_at?: string | null;
+            /**
+             * Applicable To
+             * @description 本条允许改变的回答决策标签（来自工单 19 切片）。
+             */
+            applicable_to?: string[];
+            /**
+             * Conditions
+             * @description 适用条件（如依赖前再确认仍有效）。
+             */
+            conditions?: string[];
+            /**
+             * Is Default
+             * @description 长期默认偏好；本轮明确要求可覆盖。
+             * @default false
+             */
+            is_default: boolean;
+            /**
+             * Overridden
+             * @description 本轮明确要求优先，本条本轮不生效。
+             * @default false
+             */
+            overridden: boolean;
+        };
+        /**
+         * CareerBackgroundSnapshot
+         * @description 个人规划分支的一次背景快照（含来源、切片版本与未取得原因）。
+         */
+        CareerBackgroundSnapshot: {
+            /**
+             * Items
+             * @description 本轮实际可用的完整背景材料。
+             */
+            items?: components["schemas"]["CareerBackgroundItem"][];
+            /**
+             * Slice Id
+             * @description 工单 19 采用切片标识。
+             */
+            slice_id?: string | null;
+            /**
+             * Revocation Version
+             * @description 切片同一快照的撤回版本。
+             */
+            revocation_version?: string | null;
+            /**
+             * Compiled Policy Version
+             * @description 切片编译规则版本；旧版本按缺省重编。
+             */
+            compiled_policy_version?: string | null;
+            /**
+             * Used Profile
+             * @description 本轮是否实际采用了长期画像切片。
+             * @default false
+             */
+            used_profile: boolean;
+            /**
+             * Purpose Task Kind
+             * @description 切片编译时的任务种类。
+             */
+            purpose_task_kind?: string | null;
+            /**
+             * Time Budget Minutes
+             * @description 每天可用分钟数；当前陈述优先于长期默认。
+             */
+            time_budget_minutes?: number | null;
+            /**
+             * Time Budget Source
+             * @description 时间约束来源：statement／profile；无约束为空。
+             */
+            time_budget_source?: string | null;
+            /**
+             * Unavailable Reason
+             * @description 背景未取得的原因（不阻断公开岗位部分）。
+             */
+            unavailable_reason?: string | null;
+            /**
+             * Excluded Notes
+             * @description 未采用来源与原因的中文说明。
+             */
+            excluded_notes?: string[];
+            /**
+             * Checked At
+             * Format: date-time
+             * @description 本次调用检查切片版本/来源的时间。
+             */
+            checked_at: string;
+        };
+        /**
+         * CareerBackgroundSource
+         * @description 个人规划分支允许使用的背景来源（每项都留来源引用）。
+         * @enum {string}
+         */
+        CareerBackgroundSource: "user_statement" | "task" | "profile" | "resume";
+        /**
+         * CareerBranch
+         * @description 职业规划的两条目的分支（改进工单 29）。
+         * @enum {string}
+         */
+        CareerBranch: "job_intel" | "personal_planning";
+        /**
          * CareerCandidateLink
          * @description 仅有搜索摘要时的链接降级（未核实，不纳入样本）。
          */
@@ -8383,6 +8535,43 @@ export interface components {
              * @description 为什么没有纳入样本的中文说明。
              */
             note: string;
+        };
+        /**
+         * CareerCombinationRequirement
+         * @description 供工单 37 组合的最小需求产物（学习资料／实践项目）。
+         */
+        CareerCombinationRequirement: {
+            /**
+             * Kind
+             * @description 需求类型：resources（资料）／github（实践项目）。
+             */
+            kind: string;
+            /**
+             * Topic
+             * @description 需求主题（岗位方向或任务）。
+             */
+            topic: string;
+            /**
+             * Goal
+             * @description 该需求要达成的可复核目标。
+             */
+            goal: string;
+            /**
+             * Skills
+             * @description 涉及的要求词（来自样本原文）。
+             */
+            skills?: string[];
+            /**
+             * Basis
+             * @description 需求依据：样本或差距引用。
+             */
+            basis?: string[];
+            /**
+             * Inference
+             * @description 需求是否为推断（如实践项目方向由要求组合推断）。
+             * @default false
+             */
+            inference: boolean;
         };
         /**
          * CareerEvidenceKind
@@ -8469,6 +8658,66 @@ export interface components {
              * @description 本条核查时间（服务端复核时填充）。
              */
             verified_at?: string | null;
+        };
+        /**
+         * CareerGapCategory
+         * @description 个人差距的三种分类（未知绝不判为不足）。
+         * @enum {string}
+         */
+        CareerGapCategory: "has_evidence" | "to_improve" | "to_confirm";
+        /**
+         * CareerGapItem
+         * @description 一条岗位要求与用户背景的逐项对照（两侧证据都保留）。
+         */
+        CareerGapItem: {
+            /**
+             * Term
+             * @description 岗位要求词（技能关键词原文）。
+             */
+            term: string;
+            /** @description 已有依据／明确待提升／待确认。 */
+            category: components["schemas"]["CareerGapCategory"];
+            /**
+             * Requirement Count
+             * @description 样本中出现该词的岗位数。
+             */
+            requirement_count: number;
+            /**
+             * Requirement Total
+             * @description 本轮主样本岗位数。
+             */
+            requirement_total: number;
+            /**
+             * Job Evidence
+             * @description 岗位侧证据：命中该词的要求原文。
+             */
+            job_evidence?: string[];
+            /**
+             * Job Sample Urls
+             * @description 岗位侧证据对应的样本链接。
+             */
+            job_sample_urls?: string[];
+            /**
+             * Background Evidence
+             * @description 用户侧证据：明确自述或允许使用的来源正文。
+             */
+            background_evidence?: string[];
+            /**
+             * Background Refs
+             * @description 用户侧证据的来源引用。
+             */
+            background_refs?: string[];
+            /**
+             * Note
+             * @description 分类说明；待确认必须说明「不等于不足」。
+             */
+            note: string;
+            /**
+             * Inference
+             * @description 是否为推断（非直接证据）。
+             * @default false
+             */
+            inference: boolean;
         };
         /**
          * CareerItemState
@@ -8588,6 +8837,11 @@ export interface components {
              */
             experience_hint?: string | null;
             /**
+             * @description 本轮目的分支（只查岗位／个人准备）。
+             * @default job_intel
+             */
+            branch: components["schemas"]["CareerBranch"];
+            /**
              * Plan
              * @description 本轮实际执行的检索计划（来源、查询词、筛选条件）。
              */
@@ -8619,6 +8873,33 @@ export interface components {
              * @description 面向用户的可执行建议。
              */
             advices?: components["schemas"]["CareerAdviceItem"][];
+            /** @description 个人规划分支的背景快照；只查岗位时为 None。 */
+            background?: components["schemas"]["CareerBackgroundSnapshot"] | null;
+            /**
+             * Gaps
+             * @description 逐项岗位要求 × 用户证据对照（个人规划分支；未知为待确认）。
+             */
+            gaps?: components["schemas"]["CareerGapItem"][];
+            /**
+             * Personal Advices
+             * @description 按差距与约束编排的个人优先行动。
+             */
+            personal_advices?: components["schemas"]["CareerAdviceItem"][];
+            /**
+             * Combination Requirements
+             * @description 供工单 37 组合的最小需求产物。
+             */
+            combination_requirements?: components["schemas"]["CareerCombinationRequirement"][];
+            /**
+             * Follow Up Question
+             * @description 背景不足时唯一的关键问题（不阻断岗位部分交付）。
+             */
+            follow_up_question?: string | null;
+            /**
+             * Personal Boundary
+             * @description 个人判断证据边界的中文说明。
+             */
+            personal_boundary?: string[];
             /**
              * Adjacent Suggestions
              * @description 相邻岗位单列建议。

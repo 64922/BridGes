@@ -6,6 +6,7 @@ import os
 import threading
 import time
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -78,6 +79,11 @@ from bridges.tieba.reading import HttpTiebaThreadReader
 from bridges.tieba.searching import WebSearchServiceAdapter
 from bridges.tieba.service import TiebaResearchService
 from bridges.career_plan.collecting import HttpJobPageReader
+from bridges.career_plan.background import (
+    unavailable_snapshot as career_background_unavailable,
+    snapshot_from_adopted_slice as career_snapshot_from_slice,
+)
+from bridges.career_plan.contracts import CareerBackgroundSnapshot
 from bridges.career_plan.searching import (
     WebSearchServiceAdapter as CareerWebSearchAdapter,
 )
@@ -222,6 +228,7 @@ from bridges.profiles import (
 )
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.legacy_api import router as legacy_profiles_router
+from bridges.profiles.purpose import build_purpose as build_profile_purpose
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
 from bridges.retirement import CompatibilityMetrics, retire_user_extensions, run_reminder_retirement
@@ -479,6 +486,64 @@ def _current_task_reference(
     if context is None:
         return None
     return (context.task_id, context.version)
+
+
+class CareerBackgroundLoader:
+    """工单 29：个人规划分支的长期背景提供者（只读、按用途、每次核对版本）。
+
+    只在 ``career.background`` 节点（个人规划分支）被调用；每次调用都重新读取
+    画像使用开关、按用途编译采用切片并核对撤回版本。任何失败都如实降级为
+    「本轮没有长期背景」，绝不让旧切片或未采用正文进入回答；公开岗位检索
+    从不经过这里，因此背景正文不会发往公网。
+    """
+
+    def __init__(self, app: Any) -> None:
+        self._app = app
+
+    def load(
+        self,
+        account_id: str,
+        *,
+        run_id: str,
+        query: str | None,
+        current_user_message_id: str | None = None,
+        now: Any = None,
+    ) -> CareerBackgroundSnapshot:
+        moment = now if now is not None else datetime.now(UTC)
+        atomic = getattr(self._app.state, "atomic_profile_service", None)
+        automatic = getattr(self._app.state, "automatic_profile_service", None)
+        if atomic is None:
+            return career_background_unavailable(
+                "本轮没有装配可用的长期画像服务，只使用当前陈述。",
+                checked_at=moment,
+            )
+        if automatic is not None and not automatic.is_profile_usage_enabled(account_id):
+            return career_background_unavailable(
+                "长期画像使用已关闭，本轮只使用当前陈述。",
+                checked_at=moment,
+            )
+        try:
+            purpose = build_profile_purpose(
+                mode="companion", query=query, module_id="career"
+            )
+            adopted = atomic.compile_adopted_slice(
+                account_id,
+                run_id=run_id,
+                purpose=purpose,
+                current_user_message_id=current_user_message_id,
+                now=moment,
+            )
+            if not atomic.is_adopted_slice_current(account_id, adopted):
+                return career_background_unavailable(
+                    "个人背景在本轮已变更，旧的已记住信息不采用。",
+                    checked_at=moment,
+                )
+            return career_snapshot_from_slice(adopted, checked_at=moment)
+        except Exception:  # noqa: BLE001 - 背景失败不阻断公开岗位部分
+            return career_background_unavailable(
+                "个人背景来源本轮不可用，只使用当前陈述。",
+                checked_at=moment,
+            )
 
 
 def _paper_metadata_client() -> httpx.Client:
@@ -1526,6 +1591,9 @@ def create_app(
             task_version_provider=lambda account_id, conversation_id: (
                 _current_task_reference(app, account_id, conversation_id)
             ),
+            # 改进工单 29：个人规划分支只经登记提供者读取允许使用的画像切片；
+            # 只查岗位分支不会触发该提供者，背景正文也不进入公开检索。
+            background_provider=CareerBackgroundLoader(app),
         )
         app.router.add_event_handler("shutdown", app.state.career_plan_service.close)
         # V2 Issue 16：GitHub 项目推荐模块子图——公开仓库检索与证据读取都走

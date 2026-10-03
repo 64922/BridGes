@@ -1,8 +1,8 @@
 """工单 28：职业样本节点内核验收（配方、收据复用与质量门）。
 
-- 配方登记六个必经节点与三个必要质量门；
-- 一次真实内核执行提交六个节点的产物与收据，重放只回填不重跑；
-- 质量门按真实投影裁决：样本证据、统计口径、条件核对缺一即拦截。
+- 配方登记九个必经节点与四个必要质量门；
+- 一次真实内核执行提交九个节点的产物与收据，重放只回填不重跑；
+- 质量门按真实投影裁决：样本证据、统计口径、条件核对与个人证据缺一即拦截。
 """
 
 from __future__ import annotations
@@ -58,6 +58,9 @@ NODE_ORDER = (
     "career.collect",
     "career.filter",
     "career.analyze",
+    "career.background",
+    "career.gap",
+    "career.advise",
     "career.verify",
 )
 
@@ -195,7 +198,7 @@ def _kernel(
     return kernel, flow
 
 
-def test_recipe_registers_six_ordered_nodes_and_required_gates() -> None:
+def test_recipe_registers_nine_ordered_nodes_and_required_gates() -> None:
     recipe = build_career_recipe()
     assert recipe.recipe_id == CAREER_RECIPE_ID
     assert recipe.recipe_version == CAREER_RECIPE_VERSION
@@ -205,8 +208,12 @@ def test_recipe_registers_six_ordered_nodes_and_required_gates() -> None:
         "career.sample_evidence",
         "career.stats_caliber",
         "career.conditions_hold",
+        "career.personal_evidence",
     }
-    assert "career.independent_review" in verify.optional_gates
+    assert set(verify.optional_gates) == {
+        "career.independent_review",
+        "career.personal_review",
+    }
     assert set(CAREER_GATE_HANDLERS) == CAREER_GATES
     # 装配即校验：能力、门与依赖都必须是登记过的真实定义。
     assert career_recipe_registry().get(CAREER_RECIPE_ID) is not None
@@ -225,7 +232,7 @@ def test_full_run_persists_receipts_and_replay_reuses_without_refetch(
         inputs=_inputs("我想找 Java 后端开发，城市南昌，经验 1-3年"),
     )
     assert first.status is KernelStatus.COMPLETED
-    assert [state.reused for state in first.nodes] == [False] * 6
+    assert [state.reused for state in first.nodes] == [False] * 9
     assert [state.node for state in first.nodes] == list(NODE_ORDER)
     assert ports.queries and ports.reads == [BOSS_URL]
 
@@ -248,7 +255,7 @@ def test_full_run_persists_receipts_and_replay_reuses_without_refetch(
     assert replay.status is KernelStatus.COMPLETED
     assert all(state.reused for state in replay.nodes)
     assert replay_ports.queries == [] and replay_ports.reads == [], "重放不得再次调用外部来源"
-    assert len(repository.list_artifacts(ACCOUNT, CONVERSATION)) == 6
+    assert len(repository.list_artifacts(ACCOUNT, CONVERSATION)) == 9
 
 
 def _execution(projection: dict[str, Any]) -> Any:

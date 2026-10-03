@@ -3,14 +3,23 @@
 原词逐字保留：检索锚点由用户说出的岗位词组成，绝不把「算法工程师」换成
 「数据分析师」这类相邻岗位。**只在岗位意图真的不足或含糊时**追问一个问题，
 并把恢复载荷写回消息，下一条回复从该处继续。
+
+改进工单 29：parse 只做确定性标注，不读画像；本轮额外区分「只查岗位」
+与「个人准备」两条目的分支，并从**当前陈述**提取每天可用时间（长期默认
+只在 ``career.background`` 节点读取）。
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Any
 
-from bridges.career_plan.contracts import CareerClarification, CareerRequestAnalysis
+from bridges.career_plan.contracts import (
+    CareerBranch,
+    CareerClarification,
+    CareerRequestAnalysis,
+)
 from bridges.career_plan.lexicon import (
     adjacent_terms,
     detect_cities,
@@ -58,6 +67,86 @@ CONSTRAINT_TERMS: tuple[str, ...] = (
     "大厂",
     "外企",
 )
+
+#: 明示「只要岗位情报、不要个人建议」的覆盖要求：个人分支不启动。
+_JOB_ONLY_RE = re.compile(
+    r"只(?:看|查|要|想要|需要|给).{0,4}(?:岗位|招聘|职位|薪资|信息|分析)"
+)
+
+#: 个人准备意图的确定性特征（保守：只在明确表达准备/差距/规划时命中）。
+_PERSONAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?:该|如何|怎么|怎样).{0,6}(?:准备|提升|补强|补齐|上手|入行)"),
+    re.compile(r"(?:适合|匹配).{0,2}(?:我|自己)"),
+    re.compile(r"我(?:的|目前|现在)?.{0,4}(?:差距|短板|欠缺|不足)"),
+    re.compile(r"我(?:还|下一步|现在)?(?:需要|要|得|应该).{0,4}(?:学|补|提升|准备|练)"),
+    re.compile(r"(?:个人|自己|我的).{0,4}(?:准备|规划|发展|提升)"),
+    re.compile(r"给(?:我|自己).{0,6}(?:建议|规划|方案)"),
+    re.compile(r"准备(?:一?下)?.{0,6}(?:求职|应聘|面试|实习|校招|秋招|春招|工作)"),
+    re.compile(r"(?:求职|应聘|面试|校招|秋招|春招|实习)(?:该|要|怎么|如何)?.{0,4}准备"),
+    re.compile(r"从哪(?:里|儿).{0,2}(?:开始|下手)"),
+    re.compile(r"能(?:拿到|找到|进|上岸)"),
+    re.compile(r"(?:简历|个人材料).{0,6}(?:改|优化|建议|怎么写)"),
+    re.compile(r"帮我(?:规划|安排|制定).{0,10}(?:学习|准备|提升|路线)"),
+)
+
+_CN_DIGITS: dict[str, int] = {
+    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+    "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+}
+
+#: 每天可用时间：只认按「天/日」给出的时段，不把每周/每月折算成每天。
+_TIME_BUDGET_RE = re.compile(
+    r"每(?:天|日)(?:大概|大约|约|可以|能|最多|至少|只有|可用|抽出|安排|有)?"
+    r"[^\d一二两三四五六七八九十半]{0,4}?"
+    r"(?P<value>\d+(?:\.\d+)?|半|[一二两三四五六七八九十]+)"
+    r"\s*(?:个)?(?P<unit>小时|钟头|分钟|min(?:ute)?s?|h)"
+)
+
+
+def detect_personal_planning(text: str) -> bool:
+    """是否明确要求个人准备建议；显式「只要岗位」优先。"""
+
+    value = (text or "").strip()
+    if not value or _JOB_ONLY_RE.search(value):
+        return False
+    return any(pattern.search(value) for pattern in _PERSONAL_PATTERNS)
+
+
+def detect_time_budget(text: str) -> int | None:
+    """从原话提取每天可用分钟数；无法确定时返回 None（不猜）。"""
+
+    match = _TIME_BUDGET_RE.search(text or "")
+    if match is None:
+        return None
+    amount = _cn_number(match.group("value"))
+    if amount is None or amount <= 0:
+        return None
+    unit = match.group("unit")
+    minutes = amount * 60 if unit in {"小时", "钟头", "h"} else amount
+    rounded = int(round(minutes))
+    return rounded if 1 <= rounded <= 24 * 60 else None
+
+
+def _cn_number(text: str) -> float | None:
+    """解析阿拉伯数字、半与十以内的中文数字（每天时段量级）。"""
+
+    value = text.strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    if value == "半":
+        return 0.5
+    if "十" in value:
+        head, _, tail = value.partition("十")
+        tens = _CN_DIGITS.get(head, 1) if head else 1
+        units = _CN_DIGITS.get(tail, 0) if tail else 0
+        return float(tens * 10 + units)
+    if len(value) == 1 and value in _CN_DIGITS:
+        return float(_CN_DIGITS[value])
+    return None
 
 
 def parse_career_request(
@@ -115,6 +204,14 @@ def parse_career_request(
         experience_hint = _first(detect_experience, current, resumed, *task_texts)
 
     family = family_for(terms[0]) if terms else None
+    branch = (
+        CareerBranch.PERSONAL_PLANNING
+        if detect_personal_planning(current) or detect_personal_planning(resumed)
+        else CareerBranch.JOB_INTEL
+    )
+    budget = detect_time_budget(current)
+    if budget is None:
+        budget = detect_time_budget(resumed)
     analysis = CareerRequestAnalysis(
         original_request=original,
         job_terms=terms,
@@ -128,6 +225,8 @@ def parse_career_request(
         experience_hint=experience_hint,
         constraints=_constraints(original, current),
         duty_intent=family.title if family is not None else (terms[0] if terms else None),
+        branch=branch,
+        time_budget_minutes=budget,
     )
     clarification = _clarification(terms)
     if clarification is None:
