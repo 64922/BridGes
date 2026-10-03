@@ -4,7 +4,7 @@
 
 **Blocked by:** 19 — 生成前编译用途明确的完整画像切片；21 — 按任务、边界与前文适配有分寸表达
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -39,15 +39,50 @@
 
 ## 验收标准
 
-- [ ] 真实无类别“简短直接”偏好进入策略，模型上下文不再同时声称没有画像。
-- [ ] 不相关背景被排除，当前长推导覆盖简短默认，说明元数据与实际输入一致。
-- [ ] 偏好修改/删除后后续调用和旧重试不再采用；两账户隔离。
-- [ ] 普通聊天和实际学习/模块生成复用同一快照语义，未连接路径有明确清单并在后续消费者票验收。
-- [ ] 策略/画像失败走基线，不增加人味化调用、不恢复分类 UI。
+- [x] 真实无类别“简短直接”偏好进入策略，模型上下文不再同时声称没有画像。
+- [x] 不相关背景被排除，当前长推导覆盖简短默认，说明元数据与实际输入一致。
+- [x] 偏好修改/删除后后续调用和旧重试不再采用；两账户隔离。
+- [x] 普通聊天和实际学习/模块生成复用同一快照语义，未连接路径有明确清单并在后续消费者票验收。
+- [x] 策略/画像失败走基线，不增加人味化调用、不恢复分类 UI。
 
 ## 验证与交付证据
 
 使用真实原子服务切片接到正式图分派，覆盖删除竞争、不同节点和采用元数据；最终全路径覆盖由 38/43 复核。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+## 实施记录（2026-10-03）
+
+**分支/合同版本：** 分支 `codex/22-unified-profile-expression-adoption`，基点 `main@624298a9`；表达策略合同版本 `global-chat-lightweight-v4`；无数据库迁移，沿用既有 `generation_runs.config_json` 保存采用快照与策略快照；开发和测试使用 conda `agent`（Windows，Python 3.11.15，UTF-8）。
+
+### 实现说明
+
+- **消费 19 的采用快照**：`ChatLightweightPolicyCompiler.compile(adopted_slice=...)` 不再按旧四维维度白名单过滤；采用条目的完整事实、决策标签、切片标识与撤回版本从 `AdoptedProfileSlice` 折算，策略与画像数据块消费同一结果。未启用原子画像的兼容路径保留全部非空旧条目（仍受 `_MAX_PROFILE_ITEMS=6` 上限），不再静默丢维度。
+- **少量表达约束**：新增公开函数 `compile_adopted_expression_rules`（确定性、无模型调用），每轮最多 4 条规则——篇幅/顺序类偏好（简短、详细、先例后公式、结论先行、保留公式）编译为通用规则，不把偏好原句变成高权限系统指令；语气/结构/称呼带原句以「用户声明」数据口吻注入；背景、目标、现实约束、推荐范围按决策标签编译为事实型约束，条件（无期限先确认）随规则保留；优先声明仍低于当前明确要求与任务合同。
+- **不再宣称没有画像**：有采用条目时策略正文不出现「本轮没有可用画像信息」，也不重复倾倒偏好原句；完整事实由同一快照渲染的画像数据块与少量带原句的事实型约束（语气/结构/称呼）共同承载。无采用条目且无画像上下文时如实声明无画像。
+- **元数据一致**：快照新增 `profile_decisions`、`profile_revocation_version` 并进入 `metadata()`（不含正文）；模型运行锁/运行配置的画像条数、决策标签、切片标识与实际输入同源。
+- **聊天接线**：`turn._compile_profile_slice` 把采用对象作为第六个返回值交给 `_compile_writing_policy(adopted_slice=...)`（日常/学习与生涯模块同一入口）；教学等级假设优先使用采用快照中的讲解起点/计划层级决策；重试仅在 `profile_context` 未变化时复用策略正文，修改、删除、关闭使用或预算变化会重新绑定真实采用结果。
+- **学习辅导接线**：`study/tutoring.py` 新增 `_reuse_tutoring_profile`（校验已存快照当前性，失效则重编译并写回运行配置）与 `_tutoring_policy`（复用完整策略快照，否则用同一采用对象编译）；画像数据块经 `adopted_profile_block_within_budget` 注入（无采用条目时不留下只有标题的空块），低置信排除与普通聊天一样要求先确认；删除后的下一次提问不再采用旧正文。已保存问答的正常重试按学习领域既有语义复述原回答（已发出的云端上下文不可收回），不会为复现旧回答重新发送失效信息。
+- **失败降级**：画像缺失或策略编译异常走安全基线；不新增人味化专属模型调用，不恢复分类 UI。
+
+### 接口/合同变化
+
+- `GLOBAL_CHAT_LIGHTWEIGHT_VERSION`：`global-chat-lightweight-v3` → `global-chat-lightweight-v4`；旧快照字段全部保留默认值，反序列化原样复用，旧任务重试不漂移。
+- `ChatLightweightPolicySnapshot` 新增 `profile_decisions`、`profile_revocation_version`；新增公开导出 `compile_adopted_expression_rules`；`ChatLightweightPolicyCompiler.compile` 与兼容入口 `GlobalWritingPolicyCompiler.compile` 新增 `adopted_slice` 参数。
+- `study/tutoring.py` 在既有运行配置保存 `adopted_profile_slice` 与 `global_writing_policy`；无新表、无新 OpenAPI；沿用运行记录的备份/导出/删除与失败恢复。
+
+### 未连接路径清单（交由消费者票验收）
+
+- `study/review.py`、`study/summary.py`（复盘判定与总结生成；33–36）。
+- `paper/github/commute/resources/tieba/career_plan` 的 `presenting.py` 模块生成（24–28）。
+- 上述路径本票不新增策略编译，保持各自现有表达；接入时使用统一的 `AdoptedProfileSlice` 与策略快照，不新建第二套采用状态。
+
+### 验证结果
+
+- 新增 `tests/chat/test_improvement22_unified_profile_expression.py` **14 passed**：无类别偏好进入策略且无「无画像」矛盾、事实型偏好带原句、规则上限与顺序、无关爱好排除、明确要求覆盖简短默认、有上下文不声明无画像、失败走基线、真实回合策略/画像/元数据同源、修改后重试重编、删除后重试不采用、学习辅导注入与删除后重提问不采用、学习辅导画像失败走安全基线、两账户隔离。
+- 更新 `tests/chat/test_chat_lightweight_policy.py` 的旧白名单断言为兼容路径语义（维度不再丢失、仍受条目上限）；定向回归 5 个文件 **122 passed**。
+- `tests/profiles tests/learning` **626 passed / 1 failed**；失败 `test_chat_correction_uses_latest_record_and_is_idempotent` 在 `main@624298a9` 同名同因复现，属既有失败。
+- 全量 `pytest` **243 failed / 4837 passed / 39 skipped / 2 errors**（21:48）；抽查三个相关文件（`test_career_planning_chat.py`、`test_issue06_budget_truncation.py`、`test_chat_service.py`）在工作树与 `main@624298a9` 均为 **19 failed / 50 passed**；失败清单不含本票新增/修改的测试文件，画像/学习项目等代表失败在 main 同名复现。
+- `mypy src` **98 errors** 与 main 基线一致；变更文件 ruff 零诊断；`docs/人味化/复核脚本.py` 的采用探针改用真实原子服务编译快照并重生成 `复核结果.json`（v4、采用条目 1、无关爱好不进入、切片标识一致）。
+- **限制**：确定性模型与工具响应只证明机制；真实模型体验、上下文连续性与画像改善分别由 39/40/41 评测票验证，最终全路径由 43 复核。
 

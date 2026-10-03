@@ -30,6 +30,7 @@ from bridges.chat.lightweight_policy import (
 )
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.expression_task import ExpressionTaskContract
+from bridges.contracts.profile_adoption import AdoptedProfileSlice
 from bridges.contracts.profiles import ProfileSliceItem
 
 #: 旧策略版本常量（兼容快照解码；技能注册表 manifest 已改用新版本）。
@@ -87,6 +88,7 @@ class GlobalWritingPolicyCompiler:
         *,
         user_text: str | None = None,
         expression_contract: ExpressionTaskContract | None = None,
+        adopted_slice: AdoptedProfileSlice | None = None,
         profile_slice_id: str | None = None,
         profile_items: list[ProfileSliceItem] | tuple[ProfileSliceItem, ...] = (),
         profile_context: str | None = None,
@@ -114,6 +116,7 @@ class GlobalWritingPolicyCompiler:
             mode,
             user_text=user_text or "",
             expression_contract=expression_contract,
+            adopted_slice=adopted_slice,
             profile_slice_id=profile_slice_id,
             profile_items=profile_items,
             profile_context=profile_context,

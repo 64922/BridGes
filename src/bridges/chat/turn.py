@@ -162,6 +162,8 @@ from bridges.profiles.atomic import (
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.purpose import (
+    DECISION_EXPLANATION_START,
+    DECISION_PLAN_LEVEL,
     application_summary,
     build_purpose,
 )
@@ -3146,6 +3148,7 @@ class TurnOrchestrator:
             profile_context: str | None = None
             profile_items: list[ProfileSliceItem] = []
             profile_slice_id: str | None = None
+            atomic_adopted: AdoptedProfileSlice | None = None
             study_profile_compiled = False
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
@@ -3527,6 +3530,7 @@ class TurnOrchestrator:
                     profile_items,
                     profile_slice_id,
                     profile_revocation_version,
+                    atomic_adopted,
                 ) = self._compile_profile_slice(
                     account_id,
                     conversation_id,
@@ -3553,20 +3557,40 @@ class TurnOrchestrator:
                     teaching_projection is not None
                     and teaching_projection.evidence_gate.allow_model_knowledge
                 ):
-                    academic = next(
-                        (
-                            item
-                            for item in profile_items
-                            if item.dimension
-                            == FourDimension.ACADEMIC_STATUS.value
-                        ),
-                        None,
-                    )
-                    if academic is not None:
+                    # 原子采用快照没有类别字段：按用途决策（讲解起点/计划层级）
+                    # 定位背景条目；四维兼容路径仍按旧维度取学业情况。
+                    academic_text = None
+                    if atomic_adopted is not None:
+                        academic_text = next(
+                            (
+                                item.fact_text
+                                for item in atomic_adopted.adopted_items
+                                if {
+                                    DECISION_EXPLANATION_START,
+                                    DECISION_PLAN_LEVEL,
+                                }
+                                & set(item.applicable_to)
+                            ),
+                            None,
+                        )
+                    else:
+                        academic = next(
+                            (
+                                item
+                                for item in profile_items
+                                if item.dimension
+                                == FourDimension.ACADEMIC_STATUS.value
+                            ),
+                            None,
+                        )
+                        academic_text = (
+                            academic.value_or_rule if academic is not None else None
+                        )
+                    if academic_text:
                         teaching_projection = teaching_projection.model_copy(
                             update={
                                 "level_assumption": (
-                                    f"按画像中的学业情况（{academic.value_or_rule}）"
+                                    f"按画像中的学业情况（{academic_text}）"
                                     "调整讲解深度；你的回答会继续随反馈调整。"
                                 )
                             }
@@ -4049,6 +4073,7 @@ class TurnOrchestrator:
                     profile_items,
                     profile_slice_id,
                     profile_revocation_version,
+                    atomic_adopted,
                 ) = self._compile_profile_slice(
                     account_id,
                     conversation_id,
@@ -4119,6 +4144,7 @@ class TurnOrchestrator:
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
                 mode=mode,
+                adopted_slice=atomic_adopted,
                 profile_slice_id=profile_slice_id,
                 profile_items=profile_items,
                 profile_context=profile_context,
@@ -5484,6 +5510,7 @@ class TurnOrchestrator:
             profile_items,
             profile_slice_id,
             profile_revocation_version,
+            atomic_adopted,
         ) = self._compile_profile_slice(
             account_id,
             conversation_id,
@@ -5535,6 +5562,7 @@ class TurnOrchestrator:
             account_id=account_id,
             assistant_message_id=assistant_message_id,
             mode=mode,
+            adopted_slice=atomic_adopted,
             profile_slice_id=profile_slice_id,
             profile_items=profile_items,
             profile_context=profile_context,
@@ -6266,6 +6294,7 @@ class TurnOrchestrator:
         list[ProfileSliceItem],
         str | None,
         str | None,
+        AdoptedProfileSlice | None,
     ]:
         """编译本轮最小画像切片并落库上下文说明披露。
 
@@ -6284,6 +6313,9 @@ class TurnOrchestrator:
         学习阶段），默认表达偏好跨主题适用、背景/目标/约束按任务召回，本轮
         明确要求覆盖默认；整条采用或整条排除，不截断正文。模型输入以同一
         快照渲染，审计采用条数与实际注入一致。
+
+        改进工单 22：采用快照同时返回给表达策略编译（第六个元素），策略与
+        画像数据块使用同一版本/子集；删除、撤回或关闭画像后重编译。
         """
         now = datetime.now(UTC)
         material_categories = self._material_categories(
@@ -6298,7 +6330,7 @@ class TurnOrchestrator:
             or self._profiles
         )
         if profile_service is None:
-            return None, None, [], None, None
+            return None, None, [], None, None, None
         if not use_profile:
             self._audit_slice_usage(
                 account_id,
@@ -6327,6 +6359,7 @@ class TurnOrchestrator:
                 ),
                 None,
                 [],
+                None,
                 None,
                 None,
             )
@@ -6365,6 +6398,7 @@ class TurnOrchestrator:
                 ),
                 None,
                 [],
+                None,
                 None,
                 None,
             )
@@ -6504,6 +6538,7 @@ class TurnOrchestrator:
                 [],
                 None,
                 None,
+                None,
             )
         if atomic_adopted is not None:
             adopted_requires_confirmation = any(
@@ -6579,6 +6614,7 @@ class TurnOrchestrator:
                 profile_items,
                 atomic_adopted.slice_id,
                 atomic_adopted.revocation_version,
+                atomic_adopted,
             )
         requires_confirmation = any(
             item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON
@@ -6623,6 +6659,7 @@ class TurnOrchestrator:
             profile_items,
             profile_slice.slice_id,
             profile_slice.revocation_version,
+            None,
         )
 
     def _profile_slice_still_current(
@@ -6655,6 +6692,7 @@ class TurnOrchestrator:
         account_id: str,
         assistant_message_id: str,
         mode: ChatMode,
+        adopted_slice: AdoptedProfileSlice | None,
         profile_slice_id: str | None,
         profile_items: list[ProfileSliceItem],
         profile_context: str | None,
@@ -6669,7 +6707,9 @@ class TurnOrchestrator:
         改进工单 21：读取同账户会话内最近一条实质用户请求作为续接/纠正的
         形态依据（只做本地分类，不复制历史进提示词），并接入实际工具状态
         与有依据的拒答信号；重试回传已有完整快照时原样复用，不重新编译
-        形态或规则。
+        形态或规则。改进工单 22：采用快照与画像上下文一起传入，策略与
+        画像数据块使用同一版本/子集；画像上下文变化（删除、纠正、关闭、
+        预算）时重新绑定真实采用结果。
         """
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
         existing_data = (
@@ -6697,6 +6737,7 @@ class TurnOrchestrator:
             snapshot = self._writing_policy.compile(
                 mode,
                 user_text=user_text,
+                adopted_slice=adopted_slice,
                 profile_slice_id=profile_slice_id,
                 profile_items=profile_items,
                 profile_context=profile_context,

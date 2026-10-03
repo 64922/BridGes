@@ -1,4 +1,10 @@
-"""辅导证据编译与引用核验；正文和来源由同一次生成形成。"""
+"""辅导证据编译与引用核验；正文和来源由同一次生成形成。
+
+改进工单 22：辅导的策略与画像采用复用同一份运行快照——优先复用运行配置
+里已固化的完整策略；没有时从 19 的采用快照折算表达约束，并把采用的完整
+事实作为画像数据块注入（与普通聊天同一接缝）。删除、撤回或关闭使用后，
+下一次调用重编译；已发出的旧上下文不可收回，检查只阻止后续调用继续使用。
+"""
 
 from __future__ import annotations
 
@@ -6,15 +12,19 @@ import re
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from bridges.chat.context_compiler import ContextEvidence
 from bridges.chat.lightweight_policy import ChatLightweightPolicyCompiler
+from bridges.chat.turn import adopted_profile_block_within_budget
 from bridges.contracts.chat import ChatMode
+from bridges.contracts.profile_adoption import AdoptedProfileSlice
 from bridges.contracts.retrieval import CitationAccessStatus, RetrievalSourceLayer
 from bridges.contracts.study import StudyExchange, StudySource, StudyState
+from bridges.profiles.atomic import RECALL_LOW_CONFIDENCE_REASON
+from bridges.profiles.purpose import build_purpose
 from bridges.web_search.contracts import WebSearchStatus, WebSearchVerification
 
 
@@ -91,6 +101,95 @@ def page_sources(state: StudyState, question: str) -> list[StudySource]:
             )
     ranked.sort(key=lambda item: item[0], reverse=True)
     return [source for _, source in ranked]
+
+
+def _reuse_tutoring_profile(service: Any, run: Any) -> AdoptedProfileSlice | None:
+    """读取或编译本轮唯一采用快照；删除/撤回/关闭使用后重编译。
+
+    学习书页流程不经过日常父图的画像前移，因此这里补上同一接缝：已保存的
+    快照先做当前性校验（版本/状态/期限），失效则重新编译；新编译结果写回
+    运行配置，使正常重试复用同一版本与子集。画像服务未装配或长期使用已
+    关闭时不读取任何长期正文。
+    """
+
+    atomic = getattr(service, "_atomic_profiles", None)
+    if atomic is None:
+        return None
+    automatic = getattr(service, "_automatic_profiles", None)
+    if automatic is not None and not automatic.is_profile_usage_enabled(run.account_id):
+        return None
+    config = dict(run.config or {})
+    saved = config.get("adopted_profile_slice")
+    if isinstance(saved, dict):
+        try:
+            candidate = AdoptedProfileSlice.model_validate(saved)
+        except ValidationError:
+            candidate = None
+        if candidate is not None and atomic.is_adopted_slice_current(
+            run.account_id, candidate
+        ):
+            return candidate
+    message = service._repo.get_message(run.account_id, run.user_message_id)
+    adopted = atomic.compile_adopted_slice(
+        run.account_id,
+        run_id=run.run_id,
+        purpose=build_purpose(
+            mode="study",
+            query=message.content if message is not None else None,
+        ),
+        current_user_message_id=run.user_message_id,
+    )
+    stored = adopted.model_copy(
+        update={
+            "purpose": adopted.purpose.model_copy(update={"query": None}),
+            "excluded_items": tuple(
+                item.model_copy(update={"fact_text": ""})
+                for item in adopted.excluded_items
+            ),
+        }
+    )
+    config["adopted_profile_slice"] = stored.model_dump(mode="json")
+    service._repo.update_generation_config(run.account_id, run.run_id, config)
+    run.config = config
+    return cast(AdoptedProfileSlice, adopted)
+
+
+def _tutoring_policy(
+    service: Any, run: Any, question: str
+) -> tuple[Any, str | None]:
+    """编译或复用本轮辅导表达策略，并与采用快照渲染同一画像数据块。"""
+
+    adopted = _reuse_tutoring_profile(service, run)
+    profile_context = None
+    if adopted is not None:
+        # 与普通聊天同形：低置信采用结果要求模型缺少依据时先向用户确认；
+        # 没有采用条目时完全不注入画像块（不留只有标题的空块）。
+        requires_confirmation = any(
+            item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON
+            for item in adopted.excluded_items
+        )
+        _, profile_context, _ = adopted_profile_block_within_budget(
+            adopted, requires_confirmation=requires_confirmation
+        )
+    existing = (run.config or {}).get("global_writing_policy")
+    if not isinstance(existing, dict) or existing.get("snapshot_complete") is not True:
+        existing = None
+    elif existing.get("profile_context") != profile_context:
+        # 真实采用结果变化（删除、撤回、关闭、预算）时不能复用旧策略正文。
+        existing = None
+    snapshot = ChatLightweightPolicyCompiler().compile(
+        ChatMode.STUDY,
+        user_text=question,
+        lesson=True,
+        adopted_slice=adopted,
+        profile_context=profile_context,
+        existing_snapshot=existing,
+    )
+    config = dict(run.config or {})
+    config["global_writing_policy"] = snapshot.model_dump(mode="json")
+    service._repo.update_generation_config(run.account_id, run.run_id, config)
+    run.config = config
+    return snapshot, profile_context
 
 
 def tutor(
@@ -194,14 +293,19 @@ def tutor(
                 if not projection.results:
                     notes.append("联网未找到可引用结果。")
 
-    policy = ChatLightweightPolicyCompiler().compile(
-        ChatMode.STUDY,
-        user_text=question,
-        lesson=True,
-    )
+    try:
+        policy, profile_context = _tutoring_policy(service, run, question)
+    except Exception:  # noqa: BLE001 - 画像/策略失败走安全基线，不阻断辅导
+        policy = ChatLightweightPolicyCompiler(resource=None).compile(
+            ChatMode.STUDY, user_text=question, lesson=True
+        )
+        profile_context = None
+    system_prompt = _RULES + "\n" + policy.system_block
+    if profile_context:
+        system_prompt = system_prompt + "\n" + profile_context
     messages, budget = service.compile_turn_context(
         run,
-        system_prompt=_RULES + "\n" + policy.system_block,
+        system_prompt=system_prompt,
         evidence=[
             ContextEvidence(
                 evidence_id=source.source_id,

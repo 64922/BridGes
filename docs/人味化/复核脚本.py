@@ -13,6 +13,9 @@ Issue 06 起流式案例改用正式追加式装配器（``StreamProtectionAssem
 
 改进工单 21 起形态反例补充续接（“继续”沿用上一轮详细任务）与工具失败/
 部分结果两档，用于复核有分寸表达的任务承接与如实降级。
+
+改进工单 22 起「原子画像适配」改用真实原子服务编译采用快照：复核无类别
+偏好进入策略、无关爱好不进入、策略正文不再同时声称没有画像。
 """
 
 from __future__ import annotations
@@ -39,7 +42,26 @@ from bridges.chat.stream_protection import (
     StreamProtectionAssembler,
 )
 from bridges.contracts.chat import ChatMode
-from bridges.contracts.profiles import ProfileSliceItem
+from bridges.profiles.adapters import InMemoryProfileRepository
+from bridges.profiles.atomic import (
+    AtomicProfileService,
+    InMemoryAtomicProfileRepository,
+)
+from bridges.profiles.four_dimensions import (
+    FourDimensionProfileService,
+    InMemoryFourDimensionProfileRepository,
+)
+from bridges.profiles.purpose import build_purpose
+
+
+def _atomic_profile_service() -> AtomicProfileService:
+    """与测试同形的只读原子服务（内存仓库，不触碰业务数据）。"""
+
+    four = FourDimensionProfileService(
+        source_repository=InMemoryProfileRepository(),
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    return AtomicProfileService(four, InMemoryAtomicProfileRepository())
 
 
 def main() -> None:
@@ -131,17 +153,19 @@ def main() -> None:
     ]
 
     compiler = ChatLightweightPolicyCompiler()
-    profile = ProfileSliceItem(
-        assertion_id="只读复核条目",
-        dimension="",
-        value_or_rule="回答喜欢简短直接",
-        inclusion_reason="模拟原子画像切片",
+    # 改进工单 22：真实原子服务编译采用快照，策略与画像块消费同一结果。
+    atomic = _atomic_profile_service()
+    atomic.remember("复核账户", "回答喜欢简短直接", source_message_id="复核-偏好")
+    atomic.remember("复核账户", "我平时喜欢跑步", source_message_id="复核-爱好")
+    adopted = atomic.compile_adopted_slice(
+        "复核账户",
+        run_id="复核-运行",
+        purpose=build_purpose(mode="companion", query="这个概念是什么意思"),
     )
     snapshot = compiler.compile(
         ChatMode.COMPANION,
         user_text="这个概念是什么意思",
-        profile_items=[profile],
-        profile_context="【本轮画像信息】回答喜欢简短直接",
+        adopted_slice=adopted,
     )
 
     # 对照 turn.py 当前的追加式装配协议：delta 只表示新内容，同一序列同时
@@ -170,10 +194,18 @@ def main() -> None:
         "保护区反例": protection,
         "语义参考判断": semantic,
         "原子画像适配": {
-            "输入条目数": 1,
+            "输入条目数": 2,
+            "采用条目数": len(adopted.adopted_items),
             "策略采用条目数": len(snapshot.profile_items),
             "策略正文声称无画像": "本轮没有可用画像信息" in snapshot.system_block,
-            "另一个画像上下文仍保留": snapshot.profile_context is not None,
+            "采用决策标签": list(snapshot.profile_decisions),
+            "采用规则": [
+                rule_id
+                for rule_id in snapshot.rule_ids
+                if rule_id.startswith("adopted-")
+            ],
+            "无关爱好进入策略": "喜欢跑步" in snapshot.system_block,
+            "切片标识一致": snapshot.profile_slice_id == adopted.slice_id,
         },
         "流式恢复模拟": {"发送增量": deltas, "落库正文": stored, "前端累加正文": received},
         "规则冲突核查": {
