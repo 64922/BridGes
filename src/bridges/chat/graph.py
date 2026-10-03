@@ -83,6 +83,7 @@ from bridges.resources.service import (
     RESOURCES_MODULE_ID,
     RESOURCES_NODE_LABELS,
     ResourcesModuleError,
+    ResourcesSupersededError,
 )
 from bridges.resources.suggestion import detect_resources_suggestion
 from bridges.routing.contracts import MODULE_CAPABILITIES, RouteStatus
@@ -776,8 +777,8 @@ def _github_requirement(run: Any) -> Any:
 def _invoke_resources_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
     """资料子图执行体：节点进度经同一 ``node`` 事件与 current_node 透传。
 
-    与论文子图共用同一套事件、等待与失败合同；本模块的正文完全由真实证据
-    渲染，不调用模型（因此不传运行上下文与模型 ID）。
+    与通勤子图共用同一套内核执行、等待与失败合同；本模块的正文完全由真实
+    证据渲染，不调用模型（``run_model_id`` 原样传入但被模块忽略）。
     """
     run = deps.run
     service = getattr(deps.service, "learning_resources_service", None)
@@ -799,12 +800,17 @@ def _invoke_resources_module(deps: _GraphDeps, state: DailyTurnState) -> dict[st
             conversation_id=run.conversation_id,
             user_message_id=run.user_message_id,
             assistant_message_id=run.assistant_message_id,
+            run_context=chat_run_context(run.account_id, run.conversation_id, run.run_id),
+            run_model_id=state.get("run_model_id"),
             emit_node=emit_node,
             stop_event=deps.stop_event,
             module_context=deps.service.module_task_context(
                 run, RESOURCES_MODULE_ID
             ),
         )
+    except ResourcesSupersededError as error:
+        # 迟到结果：本轮不再写交付终态，交给当前持有执行权的执行者收尾。
+        raise DailyGraphSuperseded(str(error)) from error
     except ResourcesModuleError as error:
         raise DailyTurnError(
             error.node, error.code, error.message, retryable=error.retryable

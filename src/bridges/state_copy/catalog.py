@@ -775,6 +775,15 @@ _MODULE_ENTRIES: tuple[CopyEntry, ...] = (
         note="工单 25：停止不伪装完成。",
     ),
     CopyEntry(
+        "module.resources.error",
+        CopyCategory.MODULE,
+        "resources",
+        CopyStrategy.DETERMINISTIC_RENDERER,
+        ("error",),
+        renderer="bridges.resources.presenting.render_error_content",
+        note="工单 25：失败如实给出缺口与可重试性。",
+    ),
+    CopyEntry(
         "module.resources.progress_labels",
         CopyCategory.PROGRESS,
         "resources",

@@ -1,11 +1,11 @@
-"""Issue 13 资料模块：解析、计划与排序的单元合同。
+"""资料模块的单元合同（改进工单 25 更新）。
 
 覆盖验收要点：
 - 检索主题保持本轮原始专业名词（译名只作扩展）；
+- 三类学习目的决定默认数量与媒介条件；用户明确的数量/媒介是硬条件；
 - 学习层次确实影响推荐且上下文不足时只追问这一项，并能从等待状态恢复；
-- 默认尝试两本书 + 三条哔哩哔哩视频，逐项核对可取得的元数据；
-- 展示由浅入深的顺序与选择理由；条目不足时说明实际数量，不凑数；
-- 未看过的视频只写公开元数据，不描述不可验证的具体内容。
+- 匹配按证据分层：目录/简介支持主线，标题/时长/点赞只作弱信号；
+- 组织按目标分主线/补充，主线未确认时不称完整路径；不足如实报差。
 """
 
 from __future__ import annotations
@@ -13,10 +13,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from bridges.contracts.modules import ModuleWaitState
-from bridges.resources.contracts import ResourcesLevel
+from bridges.resources.contracts import (
+    ResourceEvidenceLevel,
+    ResourceRole,
+    ResourcesGoalKind,
+    ResourcesLevel,
+    ResourcesStatus,
+)
+from bridges.resources.matching import match_resources
+from bridges.resources.organizing import organize_resources
 from bridges.resources.parsing import parse_resources_request, pending_payload
 from bridges.resources.planning import plan_resources
-from bridges.resources.ranking import cover_original_phrase, rank_resources
+from bridges.resources.reading import WORK_PAGE_SCOPE
 from bridges.resources.sources import BookCandidate, VideoCandidate
 
 NOW = datetime(2026, 9, 25, tzinfo=UTC)
@@ -30,10 +38,11 @@ def _book(
     publisher: str | None = "清华大学出版社",
     isbn: str | None = "9787302423287",
     url: str = "https://openlibrary.org/works/OL1W",
+    creators: list[str] | None = None,
 ) -> BookCandidate:
     return BookCandidate(
         title=title,
-        creators=["周志华"],
+        creators=creators or ["周志华"],
         year=year,
         publisher=publisher,
         isbn=isbn,
@@ -63,6 +72,46 @@ def _video(
         view_count=view_count,
         like_count=like_count,
     )
+
+
+def _evidence(
+    url: str,
+    *,
+    catalog: list[str] | None = None,
+    description: str = "",
+    subjects: list[str] | None = None,
+):
+    from bridges.resources.contracts import BookReadEvidence
+
+    return BookReadEvidence(
+        url=url,
+        scope=WORK_PAGE_SCOPE,
+        catalog=catalog or [],
+        description=description,
+        subjects=subjects or [],
+    )
+
+
+def _pipeline(
+    text: str,
+    books: list[BookCandidate],
+    videos: list[VideoCandidate],
+    *,
+    evidence: dict | None = None,
+    prior: list[str] | None = None,
+    records: dict | None = None,
+):
+    analysis = parse_resources_request(text, prior_context=prior or [])
+    plan = plan_resources(analysis)
+    match = match_resources(analysis, books, videos, book_evidence=evidence or {})
+    outcome = organize_resources(
+        analysis,
+        plan,
+        match,
+        book_records=(records or {}).get("books", []),
+        video_records=(records or {}).get("videos", []),
+    )
+    return analysis, plan, match, outcome
 
 
 def _pending(question: str, original: str, goal: str | None = None) -> ModuleWaitState:
@@ -103,9 +152,23 @@ def test_learn_goal_and_level_do_not_leak_into_topic() -> None:
     analysis = parse_resources_request("强化 Python 基础，准备课程考试")
     assert analysis.original_phrase == "Python"
     assert analysis.goal == "备考"
+    assert analysis.goal_kind is ResourcesGoalKind.EXAM_PREP
     assert analysis.clarification is None
     assert analysis.level is ResourcesLevel.BASIC
     assert analysis.level_basis is not None and "备考" in analysis.level_basis
+
+
+def test_conditions_are_parsed_from_one_sentence() -> None:
+    """一句话里的目的/媒介/时间/语言/基础与实践项目都被读出。"""
+    analysis = parse_resources_request(
+        "我是零基础，想系统学习机器学习，只要视频，两周后考试，看英文资料，要练手项目"
+    )
+    assert analysis.goal_kind is ResourcesGoalKind.EXAM_PREP, "取最靠后的目的"
+    assert analysis.media is not None and analysis.media.value == "videos"
+    assert analysis.time_budget == "两周"
+    assert analysis.language == "英文"
+    assert analysis.basis_evidence == "零基础"
+    assert analysis.needs_practice_project is True
 
 
 def test_missing_level_asks_exactly_one_question() -> None:
@@ -119,7 +182,6 @@ def test_missing_level_asks_exactly_one_question() -> None:
         "basic",
         "advanced",
     ]
-    # 澄清时仍保留原词与最终查询词（用户能看到会用什么词去检索）。
     assert analysis.original_phrase == "Transformer"
     assert analysis.normalized_term == "Transformer"
 
@@ -139,6 +201,15 @@ def test_goal_derives_beginner_level_without_asking() -> None:
     analysis = parse_resources_request("我想入门了解一下深度学习")
     assert analysis.clarification is None
     assert analysis.level is ResourcesLevel.BEGINNER
+
+
+def test_quick_concept_without_level_does_not_ask() -> None:
+    """快速概念路线不因缺少层次而追问：低影响缺项按明确假设标注。"""
+    analysis = parse_resources_request("我想概览量子计算")
+    assert analysis.clarification is None
+    assert analysis.goal_kind is ResourcesGoalKind.QUICK_CONCEPT
+    assert analysis.level is None
+    assert analysis.assumptions, "低影响缺项必须留下明确假设"
 
 
 def test_deferred_level_does_not_ask_again() -> None:
@@ -218,17 +289,51 @@ def test_pending_payload_is_serializable_and_keeps_original() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_plan_keeps_term_in_both_queries_and_targets_two_plus_three() -> None:
-    """计划默认两本书 + 三条视频；原词同时出现在图书查询与视频发现查询里。"""
+def test_plan_targets_follow_goal_kind() -> None:
+    """三类目的给不同默认数量；目的未知时保守 2+2，不默认凑 2+3。"""
+    quick = plan_resources(parse_resources_request("我想快速了解一下量子计算"))
+    assert (quick.target_books, quick.target_videos) == (1, 1)
+    exam = plan_resources(
+        parse_resources_request("我是零基础，准备期末考试，帮我找机器学习的资料")
+    )
+    assert exam.goal_kind is ResourcesGoalKind.EXAM_PREP
+    assert (exam.target_books, exam.target_videos) == (1, 2)
+    systematic = plan_resources(
+        parse_resources_request("我有点基础，想系统学习机器学习")
+    )
+    assert systematic.goal_kind is ResourcesGoalKind.SYSTEMATIC
+    assert (systematic.target_books, systematic.target_videos) == (2, 2)
+    unknown = plan_resources(parse_resources_request("我想学机器学习，零基础"))
+    assert unknown.goal_kind is None
+    assert (unknown.target_books, unknown.target_videos) == (2, 2)
+
+
+def test_plan_keeps_term_in_both_queries() -> None:
+    """原词同时出现在图书查询与视频发现查询里；并行与读取上限随计划。"""
     analysis = parse_resources_request("我想学机器学习，零基础")
     plan = plan_resources(analysis)
-    assert plan.target_books == 2
-    assert plan.target_videos == 3
     assert plan.book_query == "机器学习 machine learning"
-    assert plan.video_query.startswith("机器学习")
-    assert "零基础" in plan.video_query
+    assert plan.video_query == "机器学习 零基础 入门 教程"
     assert plan.expansions_used == ["machine learning"]
     assert "机器学习" in plan.rationale
+    assert plan.parallel_limit == 2
+    assert plan.read_limit_books >= 1 and plan.read_limit_videos >= 1
+
+
+def test_plan_applies_media_and_explicit_counts() -> None:
+    """媒介裁剪另一路；用户明确的数量覆盖目标推导（硬条件）。"""
+    videos_only = plan_resources(
+        parse_resources_request("我是零基础，只要视频，推荐机器学习资料")
+    )
+    assert videos_only.media.value == "videos"
+    assert (videos_only.target_books, videos_only.target_videos) == (0, 2)
+    books_only = plan_resources(
+        parse_resources_request("我是零基础，只要书，推荐机器学习资料")
+    )
+    assert books_only.media.value == "books"
+    assert (books_only.target_books, books_only.target_videos) == (2, 0)
+    explicit = plan_resources(parse_resources_request("我是零基础，要三本机器学习的书"))
+    assert explicit.target_books == 3
 
 
 def test_plan_without_level_uses_plain_video_suffix() -> None:
@@ -240,223 +345,306 @@ def test_plan_without_level_uses_plain_video_suffix() -> None:
 
 
 # ---------------------------------------------------------------------------
-# resources.rank
+# resources.match（证据分层）
 # ---------------------------------------------------------------------------
 
 
-def test_rank_orders_shallow_to_deep_with_reasons() -> None:
-    """清单按由浅入深排列，每条都带适用阶段、理由与核对依据。"""
+def test_match_assigns_evidence_levels_from_actual_reads() -> None:
+    """目录 > 简介 > 标题：只有真实读取到的内容才能证明覆盖与先修。"""
     analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(
-        analysis,
-        plan,
-        [
-            _book("机器学习", publisher="清华大学出版社", isbn="9787302423287"),
-            _book(
-                "Advanced Machine Learning Handbook",
-                source="openalex",
-                publisher="Springer",
-                isbn="9781111111111",
-                url="https://doi.org/10.1/adv",
-            ),
-        ],
-        [
-            _video("BV1", "机器学习零基础入门教程", duration=1500),
-            _video("BV2", "机器学习进阶：深入原理与实战", duration=5400),
-            _video("BV3", "机器学习速览", duration=300, description="机器学习简介"),
-        ],
+    book_catalog = _book("机器学习", url="https://openlibrary.org/works/OL1W")
+    book_bare = _book(
+        "机器学习实战",
+        url="https://openlibrary.org/works/OL2W",
+        isbn=None,
+        publisher=None,
     )
-    assert outcome.topic_mismatch is False
-    assert [item.order for item in outcome.items] == [1, 2, 3, 4, 5]
-    kinds = [item.kind for item in outcome.items]
-    assert kinds.count("book") == 2
-    assert kinds.count("video") == 3
-    stages = [item.stage for item in outcome.items]
-    assert stages == sorted(stages, key=["入门", "打基础", "进阶"].index)
-    for item in outcome.items:
-        assert item.reason_zh.strip()
-        assert item.match_basis.strip()
-        assert item.url.startswith("https://")
-    assert any("零基础" in note for note in outcome.notes)
-
-
-def test_rank_excludes_offtopic_books_and_counts_them() -> None:
-    """主题门：标题不覆盖原词或扩展词的书目被排除，并在证据边界里报数。"""
-    analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(
+    video_intro = _video("BV1", "机器学习入门教程", description="机器学习公开简介")
+    video_bare = _video("BV2", "机器学习速览", description="")
+    match = match_resources(
         analysis,
-        plan,
-        [
-            _book("机器学习"),
-            _book("Cooking with Python", source="openalex", publisher=None, isbn=None),
-        ],
+        [book_catalog, book_bare],
+        [video_intro, video_bare],
+        book_evidence={
+            book_catalog.url: _evidence(
+                book_catalog.url,
+                catalog=["第 1 章 机器学习入门概念"],
+                subjects=["machine learning"],
+            )
+        },
+    )
+    levels = {
+        (entry.candidate.title): entry.evidence_level for entry in match.books
+    }
+    assert levels["机器学习"] is ResourceEvidenceLevel.CATALOG
+    assert levels["机器学习实战"] is ResourceEvidenceLevel.TITLE
+    video_levels = {
+        entry.candidate.title: entry.evidence_level for entry in match.videos
+    }
+    assert video_levels["机器学习入门教程"] is ResourceEvidenceLevel.INTRO
+    assert video_levels["机器学习速览"] is ResourceEvidenceLevel.TITLE
+    assert all(entry.read_scope for entry in [*match.books, *match.videos])
+
+
+def test_match_accepts_coverage_from_read_content() -> None:
+    """候选换了说法（标题不含原词）但已读简介覆盖需求时同样通过。"""
+    analysis = parse_resources_request("我想学机器学习，零基础")
+    renamed = _book("统计学习导论", url="https://openlibrary.org/works/OL3W")
+    match = match_resources(
+        analysis,
+        [renamed],
         [],
+        book_evidence={
+            renamed.url: _evidence(
+                renamed.url, description="本书是 machine learning 的入门教材"
+            )
+        },
     )
-    assert [item.title for item in outcome.items] == ["机器学习"]
-    assert any("1 条书目" in note for note in outcome.notes)
+    assert len(match.books) == 1
+    assert match.books[0].covered is True
+    assert "已读内容命中" in match.books[0].match_basis
 
 
-def test_rank_reports_actual_counts_when_sources_fall_short() -> None:
-    """条目不足时按实际数量收敛并说明，绝不虚构补足 2+3。"""
+def test_match_excludes_offtopic_and_dedupes_versions() -> None:
+    """主题门 + 重复版本受控：同题同作者保留书目更完整的一条。"""
     analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(analysis, plan, [_book("机器学习")], [])
-    assert len(outcome.items) == 1
-    assert any("实际取得 1 本书、0 条视频" in note for note in outcome.notes)
-    assert any("我没有虚构补足" in note for note in outcome.notes)
+    thin = _book(
+        "Machine Learning",
+        source="openalex",
+        publisher=None,
+        isbn=None,
+        url="https://doi.org/10.1/ml",
+    )
+    rich = _book("Machine Learning", publisher="MIT Press", isbn="9780262018029")
+    outcome = match_resources(
+        analysis, [thin, rich, _book("Cooking with Python", source="openalex")], []
+    )
+    assert [entry.candidate.title for entry in outcome.books] == ["Machine Learning"]
+    assert outcome.books[0].candidate.publisher == "MIT Press"
+    assert any("重复版本受控" in note for note in outcome.notes)
+    assert outcome.book_excluded >= 1
 
 
-def test_rank_stops_on_topic_mismatch_without_filling_quota() -> None:
-    """标题都没覆盖原词时判定主题不匹配，停止推荐而不是凑数量。"""
+def test_match_stops_on_topic_mismatch_without_filling_quota() -> None:
+    """标题与已读内容都没覆盖原词时判定主题不匹配，停止推荐而不是凑数量。"""
     analysis = parse_resources_request("我想学量子纠缠，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(
+    match = match_resources(
         analysis,
-        plan,
-        [_book("Cooking with Python", source="openalex", publisher=None, isbn=None)],
+        [_book("Cooking with Python", source="openalex")],
         [_video("BV9", "PyTorch 安装教程")],
     )
-    assert outcome.topic_mismatch is True
-    assert outcome.items == []
-    assert any("量子纠缠" in note for note in outcome.notes)
+    assert match.topic_mismatch is True
+    assert match.books == [] and match.videos == []
+    assert any("量子纠缠" in note for note in match.notes)
 
 
-def test_rank_dedupes_same_book_keeping_richer_bibliography() -> None:
-    """同一本书出现在两个来源时只保留书目信息更完整的一条。"""
+# ---------------------------------------------------------------------------
+# resources.organize（主线/补充与数量）
+# ---------------------------------------------------------------------------
+
+
+def test_organize_systematic_goal_builds_main_path_with_evidence() -> None:
+    """系统学习：两书一视频进主线（有证据），其余按补充排在目标数内。"""
+    analysis, plan, match, outcome = _pipeline(
+        "我有点基础，想系统学习机器学习",
+        [
+            _book("机器学习", url="https://openlibrary.org/works/OL1W"),
+            _book("机器学习实战", url="https://openlibrary.org/works/OL2W"),
+        ],
+        [
+            _video("BV1", "机器学习系统讲解", description="机器学习零基础入门简介"),
+            _video("BV2", "机器学习速览", description="机器学习零基础入门简介"),
+        ],
+        evidence={
+            "https://openlibrary.org/works/OL1W": _evidence(
+                "https://openlibrary.org/works/OL1W",
+                catalog=["第 1 章 机器学习入门概念"],
+                subjects=["machine learning"],
+            ),
+            "https://openlibrary.org/works/OL2W": _evidence(
+                "https://openlibrary.org/works/OL2W",
+                catalog=["第 1 章 实践"],
+                description="machine learning 基础实践",
+            ),
+        },
+    )
+    assert (plan.target_books, plan.target_videos) == (2, 2)
+    assert outcome.path_verified is True
+    mains = [item for item in outcome.items if item.role is ResourceRole.MAIN]
+    assert len(mains) == 3
+    assert sum(1 for item in mains if item.kind.value == "book") == 2
+    orders = [item.order for item in outcome.items]
+    assert orders == list(range(1, len(outcome.items) + 1))
+    assert all(item.purpose_zh for item in outcome.items)
+    assert all(item.read_scope for item in outcome.items)
+
+
+def test_organize_quick_goal_keeps_single_main_item() -> None:
+    """快速理解概念：只有一条主线，其余按目标数进补充。"""
+    analysis, plan, match, outcome = _pipeline(
+        "我想快速了解一下量子计算",
+        [_book("量子计算入门", url="https://openlibrary.org/works/OL5W")],
+        [_video("BV1", "量子计算速览", description="量子计算零基础入门简介")],
+        evidence={
+            "https://openlibrary.org/works/OL5W": _evidence(
+                "https://openlibrary.org/works/OL5W", description="量子计算零基础入门简介"
+            )
+        },
+    )
+    assert plan.goal_kind is ResourcesGoalKind.QUICK_CONCEPT
+    mains = [item for item in outcome.items if item.role is ResourceRole.MAIN]
+    assert len(mains) == 1
+    assert mains[0].kind.value == "video", "快速概念优先一条讲解视频"
+
+
+def test_organize_title_only_candidates_never_enter_main_path() -> None:
+    """只有标题/时长等弱信号的条目只作补充，且明确不称完整路径已核实。"""
+    _, _, _, outcome = _pipeline(
+        "我想学机器学习，零基础",
+        [_book("机器学习", url="https://openlibrary.org/works/OL1W")],
+        [_video("BV1", "机器学习入门教程")],
+    )
+    assert outcome.path_verified is False
+    assert all(item.role is ResourceRole.SUPPLEMENT for item in outcome.items)
+    assert any("不称完整路径已核实" in note for note in outcome.notes)
+    assert any(
+        item.evidence_level is ResourceEvidenceLevel.TITLE for item in outcome.items
+    )
+
+
+def test_organize_reports_actual_counts_against_goal() -> None:
+    """条目不足时按实际数量收敛并说明差多少，绝不虚构补足。"""
+    _, plan, _, outcome = _pipeline(
+        "我想学机器学习，零基础",
+        [_book("机器学习", url="https://openlibrary.org/works/OL1W")],
+        [],
+        evidence={
+            "https://openlibrary.org/works/OL1W": _evidence(
+                "https://openlibrary.org/works/OL1W", description="machine learning 简介"
+            )
+        },
+    )
+    assert plan.target_books == 2 and plan.target_videos == 2
+    assert any("图书还差 1 本" in note for note in outcome.notes)
+    assert any("视频还差 2 条" in note for note in outcome.notes)
+
+
+def test_organize_reports_hard_failure_without_guessing() -> None:
+    """两条来源都没有可用答复且至少一处硬失败：整轮如实失败，不凑条目。"""
     analysis = parse_resources_request("我想学机器学习，零基础")
     plan = plan_resources(analysis)
-    outcome = rank_resources(
+    match = match_resources(analysis, [], [])
+    outcome = organize_resources(
         analysis,
         plan,
-        [
-            _book(
-                "Machine Learning",
-                source="openalex",
-                publisher=None,
-                isbn=None,
-                url="https://doi.org/10.1/ml",
-            ),
-            _book(
-                "Machine Learning",
-                source="openlibrary",
-                publisher="MIT Press",
-                isbn="9780262018029",
-            ),
+        match,
+        book_records=[
+            {
+                "source": "openlibrary",
+                "query": plan.book_query,
+                "status": "error",
+                "error_code": "openlibrary_offline",
+                "error_message": "当前无法连接 Open Library，请检查网络后重试。",
+                "retryable": True,
+            }
         ],
+        video_records=[],
+    )
+    assert outcome.items == []
+    assert outcome.failure is not None
+    assert outcome.failure["node"] == "resources.search_books"
+    assert outcome.failure["code"] == "openlibrary_offline"
+    assert outcome.failure["retryable"] is True
+
+
+def test_organize_keeps_one_side_when_other_has_gap() -> None:
+    """一侧失败只标注自己的缺口：另一侧的有用条目照常给出。"""
+    _, plan, _, outcome = _pipeline(
+        "我想学机器学习，零基础",
         [],
+        [_video("BV1", "机器学习入门教程", description="机器学习零基础入门简介")],
+        records={
+            "books": [
+                {
+                    "source": "openlibrary",
+                    "query": "机器学习 machine learning",
+                    "status": "timeout",
+                    "error_code": "openlibrary_timeout",
+                    "error_message": "Open Library 检索超时。",
+                    "retryable": True,
+                }
+            ]
+        },
     )
-    assert len(outcome.items) == 1
-    assert outcome.items[0].source == "openlibrary"
-    assert outcome.items[0].isbn == "9780262029" or outcome.items[0].isbn == "9780262018029"
-    assert any("重复" in note for note in outcome.notes)
+    assert outcome.failure is None
+    assert [item.kind.value for item in outcome.items] == ["video"]
+    assert any("图书还差" in note for note in outcome.notes)
 
 
-def test_rank_level_alignment_shifts_which_books_are_chosen() -> None:
-    """层次对齐：候选多于目标数时，零基础与进阶用户选到的书不同。"""
-    beginner = parse_resources_request("我想学机器学习，零基础")
-    advanced = parse_resources_request("我想学机器学习，进阶")
-    books = [
-        _book("机器学习入门与基础", isbn="9787302423287"),
-        _book("机器学习进阶原理", isbn="9787111111111", url="https://openlibrary.org/works/OL2W"),
-        _book(
-            "Advanced Machine Learning Handbook",
-            source="openalex",
-            publisher="Springer",
-            isbn="9781111111111",
-            url="https://doi.org/10.1/adv",
-        ),
-    ]
-    beginner_titles = [
-        item.title
-        for item in rank_resources(beginner, plan_resources(beginner), books, []).items
-    ]
-    advanced_titles = [
-        item.title
-        for item in rank_resources(advanced, plan_resources(advanced), books, []).items
-    ]
-    assert beginner_titles == ["机器学习入门与基础", "机器学习进阶原理"]
-    assert sorted(advanced_titles) == sorted(
-        ["机器学习进阶原理", "Advanced Machine Learning Handbook"]
-    )
-    assert "Advanced Machine Learning Handbook" not in beginner_titles
-    assert "机器学习入门与基础" not in advanced_titles
+# ---------------------------------------------------------------------------
+# 条目字段与弱信号
+# ---------------------------------------------------------------------------
 
 
-def test_rank_notes_stage_level_conflict_when_sources_fall_short() -> None:
-    """候选不足时仍给出条目，但如实说明有一条与层次不完全匹配。"""
-    beginner = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(beginner)
-    outcome = rank_resources(
-        beginner,
-        plan,
+def test_video_items_only_claim_public_metadata_and_counters() -> None:
+    """视频条目只写公开元数据与公开计数；未观看、不下质量结论。"""
+    _, _, _, outcome = _pipeline(
+        "我想学机器学习，零基础",
+        [],
         [
-            _book(
-                "Advanced Machine Learning Handbook",
-                source="openalex",
-                publisher="Springer",
-                isbn="9781111111111",
-                url="https://doi.org/10.1/adv",
+            _video(
+                "BV1",
+                "机器学习入门教程",
+                view_count=1815690,
+                like_count=45780,
+                description="机器学习零基础入门简介",
             )
         ],
-        [],
-    )
-    assert [item.stage for item in outcome.items] == ["进阶"]
-    assert any("不完全匹配" in note for note in outcome.notes)
-
-
-def test_video_items_only_claim_public_metadata() -> None:
-    """视频条目带未观看的未核实项，不描述讲授质量；元数据来自公开接口。"""
-    analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(
-        analysis, plan, [], [_video("BV1", "机器学习入门教程", duration=1500)]
     )
     item = outcome.items[0]
-    assert item.kind == "video"
-    assert item.duration_seconds == 1500
+    assert item.kind.value == "video"
+    assert item.duration_seconds == 1800
     assert item.creator == "某 UP 主"
     assert any("未观看" in note for note in item.unverified)
-    assert "机器学习" in item.match_basis
-
-
-def test_video_public_counters_are_reported_as_weak_evidence() -> None:
-    """公开计数（播放/点赞）如实呈现并标注平台计数，不当成质量结论。"""
-    analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(
-        analysis,
-        plan,
-        [],
-        [_video("BV1", "机器学习入门教程", view_count=1815690, like_count=45780)],
-    )
-    item = outcome.items[0]
-    assert item.view_count == 1815690
-    assert item.like_count == 45780
     assert "播放 约 181.6 万 次" in item.reason_zh
     assert "点赞 约 4.6 万 次" in item.reason_zh
     assert "平台计数，不代表质量结论" in item.reason_zh
+    assert "机器学习" in item.match_basis
 
 
-def test_popular_video_breaks_ties_within_the_same_stage() -> None:
-    """口碑证据只是弱信号：条数上限内同阶段取舍时，有公开反馈的排前面。"""
-    analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    popular = _video("BV1", "机器学习入门教程（上）", like_count=500)
-    quiet = _video("BV2", "机器学习入门教程（下）", like_count=5)
-    outcome = rank_resources(analysis, plan, [], [quiet, popular])
-    titles = [item.title for item in outcome.items]
-    assert titles[0] == popular.title
-    # 未给计数时不参与该弱信号（接口没给就没有这段理由）。
-    bare = rank_resources(analysis, plan, [], [_video("BV3", "机器学习入门教程（补）")])
-    assert "平台计数" not in bare.items[0].reason_zh
+def test_book_items_record_read_scope_and_purpose() -> None:
+    """图书条目记录实际读取范围与角色用途，不足的证据如实标注。"""
+    _, _, _, outcome = _pipeline(
+        "我有点基础，想系统学习机器学习",
+        [_book("机器学习", url="https://openlibrary.org/works/OL1W")],
+        [],
+        evidence={
+            "https://openlibrary.org/works/OL1W": _evidence(
+                "https://openlibrary.org/works/OL1W", catalog=["第 1 章 机器学习入门概念"]
+            )
+        },
+    )
+    item = outcome.items[0]
+    assert item.role is ResourceRole.MAIN
+    assert item.evidence_level is ResourceEvidenceLevel.CATALOG
+    assert item.read_scope == WORK_PAGE_SCOPE
+    assert item.purpose_zh
+    assert "未阅读正文" in "；".join(item.unverified)
 
 
-def test_cover_original_phrase_guards_the_final_projection() -> None:
-    """最后一道门：清单必须至少覆盖原词本身。"""
-    analysis = parse_resources_request("我想学机器学习，零基础")
-    plan = plan_resources(analysis)
-    outcome = rank_resources(analysis, plan, [_book("机器学习")], [])
-    assert cover_original_phrase(analysis, outcome.items) is True
-    assert cover_original_phrase(analysis, []) is False
+def test_success_projection_never_leaves_failed_status_behind() -> None:
+    """有证据的成功交付：状态可标 success，且主线确认标志为真。"""
+    analysis, plan, match, outcome = _pipeline(
+        "我有点基础，想系统学习机器学习",
+        [_book("机器学习", url="https://openlibrary.org/works/OL1W")],
+        [_video("BV1", "机器学习系统讲解", description="机器学习零基础入门简介")],
+        evidence={
+            "https://openlibrary.org/works/OL1W": _evidence(
+                "https://openlibrary.org/works/OL1W", description="machine learning 基础教材"
+            )
+        },
+    )
+    assert match.topic_mismatch is False
+    assert outcome.items
+    assert outcome.path_verified is True
+    assert ResourcesStatus.SUCCESS.value == "success"

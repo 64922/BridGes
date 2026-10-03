@@ -87,6 +87,7 @@ from bridges.paper.sources import (
     ArxivPaperSource,
     MetadataEnricher,
 )
+from bridges.resources.reading import OpenLibraryBookInsightReader
 from bridges.resources.service import LearningResourcesService
 from bridges.resources.sources import (
     BOOK_TIMEOUT_SECONDS,
@@ -1538,9 +1539,10 @@ def create_app(
         app.router.add_event_handler(
             "shutdown", app.state.github_api_client.close
         )
-        # V2 Issue 13：学习资料推荐模块子图——图书书目（Open Library 为主、
-        # OpenAlex 有限补充）与哔哩哔哩视频（公网搜索发现后逐条核对公开元数据）。
-        # 收尾夹具模式不装配外部来源，两条检索如实标注缺口。
+        # V2 Issue 13 / 工单 25：学习资料推荐模块子图——图书书目（Open Library
+        # 为主、OpenAlex 有限补充）与哔哩哔哩视频（公网搜索发现后逐条核对公开
+        # 元数据）；图书按需读取作品页目录/简介作为覆盖证据。收尾夹具模式不装配
+        # 外部来源，两条检索如实标注缺口。
         if use_closeout_fixtures:
             app.state.learning_resources_service = LearningResourcesService()
         else:
@@ -1561,6 +1563,13 @@ def create_app(
                 verifier=BilibiliVideoVerifier(
                     client=_resource_metadata_client(),
                     observability=app.state.observability_service,
+                ),
+                insight_reader=OpenLibraryBookInsightReader(
+                    client=_resource_metadata_client(),
+                    observability=app.state.observability_service,
+                ),
+                task_version_provider=lambda account_id, conversation_id: (
+                    _commute_task_reference(app, account_id, conversation_id)
                 ),
             )
         app.router.add_event_handler(

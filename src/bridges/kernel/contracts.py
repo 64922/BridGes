@@ -357,7 +357,12 @@ InputKey = Callable[[RecipeInputs], str]
 
 @dataclass(frozen=True, slots=True)
 class NodeSpec:
-    """一个注册节点：能力、依赖、必要/可选门与恢复分支。"""
+    """一个注册节点：能力、依赖、必要/可选门与恢复分支。
+
+    ``parallel_group`` 非空时，配方中连续的同组节点互不依赖，由内核在
+    同一批次内并发执行（并发数受配方 ``parallel_limit`` 约束）；组内节点
+    不得相互依赖，也不得跨段重复登记同一组名。
+    """
 
     name: str
     capability: str
@@ -369,6 +374,7 @@ class NodeSpec:
     optional_gates: tuple[str, ...] = ()
     recovery: RecoveryPolicy = RecoveryPolicy.RETRY_NODE
     description: str = ""
+    parallel_group: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,6 +384,8 @@ class RecipeDefinition:
     recipe_id: str
     recipe_version: str
     nodes: tuple[NodeSpec, ...]
+    #: 同一并行组内允许同时执行的节点数（1 = 组内也串行）。
+    parallel_limit: int = 1
 
     def node(self, name: str) -> NodeSpec:
         for spec in self.nodes:

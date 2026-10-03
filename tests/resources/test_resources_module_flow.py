@@ -20,10 +20,12 @@ from fastapi.testclient import TestClient
 
 from bridges.ai.adapters import StreamChunk
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
-from bridges.resources.contracts import STAGE_ORDER
+from bridges.resources.contracts import STAGE_ORDER, BookReadEvidence
+from bridges.resources.reading import WORK_PAGE_SCOPE
 from bridges.resources.service import LearningResourcesService
 from bridges.resources.sources import (
     BILIBILI_SOURCE,
+    BOOK_CATALOG_SOURCE,
     OPENALEX_SOURCE,
     OPENLIBRARY_SOURCE,
     BookCandidate,
@@ -207,7 +209,7 @@ class _FakeVerifier:
         self, pages: list[str], *, account_id: str, deadline: float | None = None
     ) -> VideoVerifyOutcome:
         del account_id, deadline
-        self.pages = list(pages)
+        self.pages.extend(pages)
         records = [
             ModuleQueryRecord(
                 source=BILIBILI_SOURCE,
@@ -219,9 +221,36 @@ class _FakeVerifier:
             for page in pages
         ]
         return VideoVerifyOutcome(
-            candidates=list(self.candidates[: len(pages)]),
+            candidates=[candidate for candidate in self.candidates if candidate.url in pages],
             records=records,
             rejected=self.rejected,
+        )
+
+    def close(self) -> None:
+        return None
+
+
+class _FakeInsightReader:
+    """可控图书证据读取：返回可核对的公开作品页简介（不访问外网）。"""
+
+    def __init__(self, *, description: str = "公开作品页简介：机器学习的系统性介绍。") -> None:
+        self.description = description
+        self.urls: list[str] = []
+
+    def read(
+        self,
+        candidate_url: str,
+        source: str,
+        *,
+        account_id: str,
+        deadline: float | None = None,
+    ) -> BookReadEvidence:
+        del source, account_id, deadline
+        self.urls.append(candidate_url)
+        return BookReadEvidence(
+            url=candidate_url,
+            scope=WORK_PAGE_SCOPE,
+            description=self.description,
         )
 
     def close(self) -> None:
@@ -261,12 +290,14 @@ def _install_resources_service(
     books: list[_FakeBookSource] | None = None,
     discoverer: _FakeDiscoverer | None = None,
     verifier: _FakeVerifier | None = None,
+    insight_reader: _FakeInsightReader | None = None,
 ) -> LearningResourcesService:
     """把资料模块的来源换成替身（模块编排、父图派发与消息落库保持真实）。"""
     service = LearningResourcesService(
         books=books or [],
         discoverer=discoverer,
         verifier=verifier,
+        insight_reader=insight_reader or _FakeInsightReader(),
     )
     app.state.learning_resources_service = service
     app.state.chat_service._learning_resources = service  # noqa: SLF001
@@ -333,21 +364,33 @@ def test_explicit_resources_module_returns_ordered_checkable_list(
     assert resources["level_label"] == "零基础入门"
     assert resources["pending"] is None
 
-    # 默认目标：两本书 + 三条视频，缺一不可时如实说明（这里刚好足量）。
+    # 目的未知时保守 2 本书 + 2 条视频；并行上限与路径证据随投影落库。
     assert resources["requested_books"] == 2
-    assert resources["requested_videos"] == 3
+    assert resources["requested_videos"] == 2
+    assert resources["parallel_limit"] == 2
+    assert resources["path_verified"] is True
     kinds = [item["kind"] for item in resources["items"]]
     assert kinds.count("book") == 2
-    assert kinds.count("video") == 3
+    assert kinds.count("video") == 2
+    roles = [item["role"] for item in resources["items"]]
+    assert roles.count("main") == 1 and roles.count("supplement") == 3
+    # 图书介绍没有深度学习覆盖/先修证据，不能靠书名入门放进主线。
+    assert all(
+        item["role"] == "supplement"
+        for item in resources["items"] if item["kind"] == "book"
+    )
 
     # 由浅入深的顺序与逐项核对依据。
     orders = [item["order"] for item in resources["items"]]
-    assert orders == [1, 2, 3, 4, 5]
+    assert orders == [1, 2, 3, 4]
     stages = [item["stage"] for item in resources["items"]]
     assert stages == sorted(stages, key=STAGE_ORDER.index)
     for item in resources["items"]:
         assert item["reason_zh"]
         assert item["match_basis"]
+        assert item["purpose_zh"]
+        assert item["read_scope"]
+        assert item["evidence_level"] in {"catalog", "intro", "title"}
         assert item["url"].startswith("https://")
         assert item["unverified"]
     # 图书按书目信息核对（ISBN/出版社可查），视频标注未观看。
@@ -372,7 +415,7 @@ def test_explicit_resources_module_returns_ordered_checkable_list(
     # 正文可见真实查询词与直达链接，且不描述未观看视频的具体内容。
     assert "深度学习 deep learning" in assistant["content"]
     assert "深度学习 零基础 入门 教程" in assistant["content"]
-    assert assistant["content"].count("https://") >= 5
+    assert assistant["content"].count("https://") >= 4
     assert "未观看" in assistant["content"]
 
 
@@ -412,6 +455,84 @@ def test_book_gap_is_limited_to_its_own_source(
     assert timeout["status"] == "timeout"
     assert timeout["error_code"] == "openlibrary_timeout"
     assert any("图书还差" in note for note in resources["evidence_notes"])
+    assert any("视频还差" in note for note in resources["evidence_notes"])
+
+
+def test_media_condition_videos_only_skips_book_search(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """媒介是硬条件：只要视频就完全不检索图书，并在证据里标注跳过。"""
+    _register(client)
+    book_source = _FakeBookSource(candidates=[BEGINNER_BOOK])
+    discoverer = _FakeDiscoverer()
+    _install_resources_service(
+        sqlite_app,
+        books=[book_source],
+        discoverer=discoverer,
+        verifier=_FakeVerifier(),
+    )
+    conversation_id = _create_conversation(client)
+    _send(
+        client,
+        conversation_id,
+        "我是零基础，只要视频，想学深度学习",
+        module_id="resources",
+    )
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert assistant["status"] == "done"
+    resources = assistant["learning_resources"]
+    assert resources["status"] == "success"
+    assert resources["requested_books"] == 0
+    assert book_source.queries == [], "只要视频时不得检索图书"
+    assert discoverer.queries == ["深度学习 零基础 入门 教程"]
+    assert resources["items"] and all(
+        item["kind"] == "video" for item in resources["items"]
+    )
+    skipped = [query for query in resources["queries"] if query["status"] == "skipped"]
+    assert any(
+        query["source"] == BOOK_CATALOG_SOURCE and "明确只要视频" in query["detail"]
+        for query in skipped
+    ), resources["queries"]
+
+
+def test_media_condition_books_only_skips_video_search(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """媒介是硬条件：只要书就完全不检索视频，并在证据里标注跳过。"""
+    _register(client)
+    book_source = _FakeBookSource(candidates=[BEGINNER_BOOK])
+    discoverer = _FakeDiscoverer()
+    _install_resources_service(
+        sqlite_app,
+        books=[book_source],
+        discoverer=discoverer,
+        verifier=_FakeVerifier(),
+    )
+    conversation_id = _create_conversation(client)
+    _send(
+        client,
+        conversation_id,
+        "我是零基础，只要书，想学深度学习",
+        module_id="resources",
+    )
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+
+    assert assistant["status"] == "done"
+    resources = assistant["learning_resources"]
+    assert resources["status"] == "success"
+    assert resources["requested_videos"] == 0
+    assert discoverer.queries == [], "只要书时不得检索视频"
+    assert book_source.queries == ["深度学习 deep learning"]
+    assert resources["items"] and all(
+        item["kind"] == "book" for item in resources["items"]
+    )
+    skipped = [query for query in resources["queries"] if query["status"] == "skipped"]
+    assert any("明确只要图书" in query["detail"] for query in skipped)
 
 
 def test_both_sources_hard_failure_marks_message_failed(
@@ -589,7 +710,7 @@ def test_rejected_video_is_reported_and_not_listed(
         sqlite_app,
         books=[_FakeBookSource(candidates=[BEGINNER_BOOK, HANDBOOK_BOOK])],
         discoverer=_FakeDiscoverer(),
-        verifier=_FakeVerifier(candidates=[VIDEOS[0], VIDEOS[1]], rejected=1),
+        verifier=_FakeVerifier(candidates=[VIDEOS[0]], rejected=2),
     )
     conversation_id = _create_conversation(client)
     _send(client, conversation_id, "我是零基础，想学深度学习", module_id="resources")
@@ -626,10 +747,11 @@ def test_stop_during_discovery_marks_message_stopped(
     resources = assistant["learning_resources"]
     assert resources["status"] == "stopped"
     assert "已停止" in assistant["content"]
-    # 停止在 resources.search_videos 的节点边界生效：排序与生成没有执行。
+    # 停止在书/视频并行批次内生效：未提交的批次结果不得在停止后写入，
+    # 已确定的是计划的真实查询词（正文可见），条目为空。
     assert resources["items"] == []
-    assert resources["queries"][0]["source"] == OPENLIBRARY_SOURCE
-    assert resources["queries"][0]["query"] == "深度学习 deep learning"
+    assert resources["queries"] == []
+    assert "深度学习 deep learning" in assistant["content"]
 
 
 def test_plain_chat_suggests_resources_module_without_searching(
@@ -686,25 +808,28 @@ def test_other_modules_still_rejected_and_no_silent_search(
 ) -> None:
     """请求契约内但子图尚未接入的模块仍被明确拒绝；普通聊天不产生任何资料检索记录。"""
     _register(client)
-    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
-    # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
+    # 六个日常模块已全部接入，「请求契约合法、子图尚未接入」的过渡状态用
+    # 显式模块门的单元断言复现（拒绝路径与具体模块无关）。
+    from bridges.chat import graph as graph_module
+
     monkeypatch.setattr(
-        "bridges.chat.graph.AVAILABLE_MODULE_IDS",
+        graph_module,
+        "AVAILABLE_MODULE_IDS",
         frozenset({"paper", "commute", "resources", "tieba", "github"}),
     )
+    with pytest.raises(graph_module.DailyTurnError) as rejection:
+        graph_module._node_select_explicit_module(  # noqa: SLF001
+            {"module_id": "career"},
+            {"configurable": {"deps": None}},
+        )
+    assert rejection.value.code == "module_not_available"
+
     openlibrary = _FakeBookSource(candidates=[BEGINNER_BOOK, HANDBOOK_BOOK])
     _install_resources_service(
         sqlite_app, books=[openlibrary], discoverer=_FakeDiscoverer()
     )
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
-    assistant = _run_and_read(
-        sqlite_app, client, generation_helpers["drive"], conversation_id
-    )
-    assert assistant["status"] == "error"
-    assert assistant["error_code"] == "module_not_available"
-
     _send(client, conversation_id, "你好，随便聊聊")
     plain_assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id
