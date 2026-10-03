@@ -73,3 +73,4 @@ main 集成基线：`tests/chat tests/kernel tests/contracts tests/api tests/tas
 - 推送：`git -c http.proxy=socks5h://127.0.0.1:7890 push origin main`（`5d0aec96..0fc77251`）；`git ls-remote` 核对 `main == origin/main == 0fc772512340200ed2c1785031c47df9c286d726`。
 - 确认 Issue 工作树无未提交改动（HEAD `3c13a30c`）后删除 `.worktrees/27-question-driven-tieba-evidence` 与分支 `codex/27-question-driven-tieba-evidence`；`git worktree prune` 无额外失效记录。
 - Issue 28、31 的工作树与分支已由各自并行代理在其收尾提交（`0e8e22c5`、`5d0aec96`）中完成清理，本票未触碰；`.worktrees/26-github-requirement-evidence-matrix` 残留目录与主工作树未跟踪验证文件（`24-main-baseline.xml`、`24-main-integration.xml`、`27-review/main-*.xml`、`ruff-main.json`、`25-main-baseline.xml`）保留。
+- 本节为交付后的文档补记，随独立文档提交同步远端；没有再修改产品代码。
