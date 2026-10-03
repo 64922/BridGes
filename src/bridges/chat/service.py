@@ -1195,12 +1195,29 @@ class ChatService:
                 else content
             )
             classified = self._router.classify(paper_request)
-            if classified.is_paper_search or classified.status in {
+            if (
+                not classified.is_paper_search
+                and understanding is not None
+                and understanding.route_source == RouteSource.MODULE_HINT
+            ):
+                # 用户显式选择了论文模块（菜单/建议点击/逐消息提示）：正文即使
+                # 只是纯主题词（如「Transformer 的注意力机制入门」），也用同一
+                # 路由器把主题包装成可执行论文计划后派发；主题逐字保留。
+                wrapped = self._router.classify(f"找关于{content}的论文")
+                if wrapped.is_paper_search:
+                    classified = wrapped
+            if classified.is_paper_search:
+                return classified.model_copy(update={
+                    **metadata, "module_id": "paper",
+                    "web_search_allowed": classified.web_search_allowed and web_allowed,
+                    "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
+                })
+            if classified.status in {
                 RouteStatus.CLARIFY,
                 RouteStatus.REJECTED,
             }:
                 return classified.model_copy(update={
-                    **metadata, "module_id": "paper" if classified.is_paper_search else None,
+                    **metadata, "module_id": None,
                     "web_search_allowed": classified.web_search_allowed and web_allowed,
                     "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
                 })
@@ -2877,6 +2894,11 @@ class ChatService:
         回退既有窗口。它不授予任何工具权限，也不读取画像正文。
         """
         declaration = MODULE_DECLARATIONS.get(module_id)
+        if declaration is None and module_id == "paper":
+            # 父图按逐消息模块 ID（paper）派发，论文声明按材料域键
+            # （paper_search）登记；只对确有登记的论文别名做解析，不扩大
+            # 其它模块的上下文语义（它们此前不接收任务上下文）。
+            declaration = MODULE_DECLARATIONS.get("paper_search")
         if declaration is None:
             return None
         try:

@@ -54,17 +54,17 @@ def plan_queries(analysis: PaperTermAnalysis) -> tuple[PaperQueryPlan, ...]:
             ),
         )
     ]
-    if expansions:
+    if not analysis.constraints.arxiv_id and not analysis.constraints.paper_title:
         # 精确词 + 扩展词没有足够结果时，放宽为只用主词（仍然保留原词）。
         plans.append(
             PaperQueryPlan(
-                query=primary,
+                query=primary if expansions else f"title:{primary}",
                 sort_by=sort_by,
                 sort_order=sort_order,
                 max_results=max_results,
                 target_count=DEFAULT_TARGET_COUNT,
                 expansions_used=[],
-                rationale=f"扩展词使结果过少，第二轮只用主词「{primary}」放宽召回。",
+                rationale=f"相关候选不足，按原主题「{primary}」调整查询一次，保持硬条件。",
             )
         )
     return tuple(plans)

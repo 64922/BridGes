@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import (
@@ -28,6 +28,7 @@ from bridges.paper.contracts import (
     ROLE_LABELS,
     PaperQueryPlan,
     PaperRecommendation,
+    PaperRequirementEvidence,
     PaperSearchProjection,
     PaperTermAnalysis,
 )
@@ -38,7 +39,10 @@ SUMMARY_MAX_CHARS = 160
 SUMMARY_SYSTEM_PROMPT = (
     "你是学术检索助手。只依据给定的论文标题、摘要与类别写中文概述，"
     "不得引入未给出的结论、数字、对比或引用；不确定就不写。"
-    "每篇概述不超过 120 字，用一句话说明它解决什么问题、用了什么方法。"
+    "每篇概述不超过 120 字，用一句话说明它解决什么问题、面向什么任务；"
+    "不要写方法细节、实验结果、局限、复现或性能比较（那需要正文依据）。"
+    "每条概述必须给出对应的原文片段：source 只能是 title 或 abstract，"
+    "quote 必须是该字段中逐字出现的片段，否则不要输出这条概述。"
 )
 
 SUMMARY_JSON_SCHEMA: dict[str, Any] = {
@@ -51,8 +55,15 @@ SUMMARY_JSON_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "arxiv_id": {"type": "string"},
                     "summary_zh": {"type": "string"},
+                    "evidence_source": {"type": "string", "enum": ["title", "abstract"]},
+                    "evidence_quote": {"type": "string"},
                 },
-                "required": ["arxiv_id", "summary_zh"],
+                "required": [
+                    "arxiv_id",
+                    "summary_zh",
+                    "evidence_source",
+                    "evidence_quote",
+                ],
             },
         }
     },
@@ -70,6 +81,7 @@ class SummaryOutcome:
     """
 
     summaries: dict[str, str] = field(default_factory=dict)
+    evidence: dict[str, PaperRequirementEvidence] = field(default_factory=dict)
     note: str | None = None
     lock: ModelRunLock | None = None
     dropped: int = 0
@@ -151,6 +163,14 @@ def render_stopped_content(
     return f"论文检索已停止，实际查询词：{query}。已完成的步骤保留在本条消息内。"
 
 
+class ExpressionPolicy(Protocol):
+    """用户可见概述所需的表达策略视图（Issue 21 快照的结构化子集）。"""
+
+    version: str
+    output_tokens: int
+    system_block: str
+
+
 class PaperSummaryGenerator:
     """可选的中文概述生成：严格门控，模型不得引入候选之外的内容。"""
 
@@ -173,14 +193,25 @@ class PaperSummaryGenerator:
         abstracts: dict[str, str],
         model_id: str | None,
         model_quota: RunModelQuota | None = None,
+        expression: ExpressionPolicy | None = None,
     ) -> SummaryOutcome:
         if not papers:
             return SummaryOutcome()
         user_content = _summary_prompt(papers, abstracts)
-        output_tokens = 1200
+        system_prompt = SUMMARY_SYSTEM_PROMPT
+        # 工单 21：本轮用户可见概述沿用同一表达策略快照（有界输出额度
+        # 单独预留，不挤占任务步骤预算；快照缺失时回退既有安全基线）。
+        expression_block = (
+            str(expression.system_block) if expression is not None else ""
+        )
+        if expression_block:
+            system_prompt = f"{SUMMARY_SYSTEM_PROMPT}\n\n{expression_block}"
+        output_tokens = (
+            int(expression.output_tokens) if expression is not None else 1200
+        )
         payload = {
             "messages": [
-                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             "json_schema": SUMMARY_JSON_SCHEMA,
@@ -201,10 +232,10 @@ class PaperSummaryGenerator:
                     category=MaterialCategory.SYSTEM_RULE.value,
                     necessity="required",
                     adopted=True,
-                    reason="概述系统规则与输出契约",
-                    estimated_tokens=estimate_tokens(SUMMARY_SYSTEM_PROMPT),
+                    reason="概述系统规则、表达策略与输出契约",
+                    estimated_tokens=estimate_tokens(system_prompt),
                     source_version="sha256:"
-                    + hashlib.sha256(SUMMARY_SYSTEM_PROMPT.encode()).hexdigest(),
+                    + hashlib.sha256(system_prompt.encode()).hexdigest(),
                     read_range="完整系统规则",
                 ),
                 MaterialManifestEntry(
@@ -278,6 +309,7 @@ class PaperSummaryGenerator:
             )
         allowed = {paper.arxiv_id: paper for paper in papers if paper.arxiv_id}
         summaries: dict[str, str] = {}
+        evidence: dict[str, PaperRequirementEvidence] = {}
         dropped = 0
         for item in (result.output or {}).get("summaries", []):
             if not isinstance(item, dict):
@@ -285,16 +317,38 @@ class PaperSummaryGenerator:
                 continue
             arxiv_id = str(item.get("arxiv_id") or "")
             text = str(item.get("summary_zh") or "").strip()
-            # 门控：只接受本轮真实候选的标识；空值/超长/未知标识一律丢弃。
-            if arxiv_id not in allowed or not text or len(text) > SUMMARY_MAX_CHARS:
+            source = str(item.get("evidence_source") or "").strip().lower()
+            quote = str(item.get("evidence_quote") or "").strip()
+            # 门控：概述必须绑定本轮真实候选标题/摘要里的逐字片段；
+            # 空值/超长/未知标识/无法定位的证据一律丢弃，绝不保留自由文本。
+            source_text = None
+            if arxiv_id in allowed:
+                source_text = {
+                    "title": allowed[arxiv_id].title,
+                    "abstract": abstracts.get(arxiv_id, ""),
+                }.get(source)
+            if (
+                source_text is None
+                or not quote
+                or quote not in source_text
+                or not text
+                or len(text) > SUMMARY_MAX_CHARS
+            ):
                 dropped += 1
                 continue
             summaries[arxiv_id] = text
+            evidence[arxiv_id] = PaperRequirementEvidence(
+                requirement="source_summary", source=source, quote=quote[:400]
+            )
         note = None
         if dropped:
-            note = f"中文概述中有 {dropped} 条不符合证据约束（标识或长度），已丢弃。"
+            note = (
+                f"中文概述中有 {dropped} 条不符合证据约束（标识、长度或无法定位的"
+                "原文片段），已丢弃。"
+            )
         return SummaryOutcome(
             summaries=summaries,
+            evidence=evidence,
             note=note,
             lock=lock,
             dropped=dropped,

@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from hashlib import sha256
 from threading import Event
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -203,6 +204,14 @@ def _record_detail(projection: ArxivSearchProjection) -> str | None:
     return "；".join(notes) if notes else None
 
 
+class ExternalCallBudget(Protocol):
+    """外部来源共享的运行调用额度。"""
+
+    def register_external(self, call_key: str, *, purpose: str) -> bool: ...
+
+    def release_external(self, call_key: str, *, outcome_code: str) -> None: ...
+
+
 class MetadataEnricher:
     """Crossref／OpenAlex 有限补充：核对发表信息、引用与全文可得性。
 
@@ -236,40 +245,76 @@ class MetadataEnricher:
         account_id: str,
         need_publication_info: bool,
         deadline: float | None = None,
+        budget: ExternalCallBudget | None = None,
+        stop_event: Event | None = None,
+        sources: Sequence[str] | None = None,
     ) -> EnrichOutcome:
         if not need_publication_info or not candidates:
+            return EnrichOutcome()
+        wanted = (
+            {CROSSREF_SOURCE, OPENALEX_SOURCE}
+            if sources is None
+            else {item for item in sources if item in {CROSSREF_SOURCE, OPENALEX_SOURCE}}
+        )
+        if not wanted:
             return EnrichOutcome()
         metadata: dict[str, EnrichedMetadata] = {}
         records: list[ModuleQueryRecord] = []
         truncated = False
         for candidate in candidates[: self._max_lookups]:
-            if deadline is not None and time.monotonic() >= deadline:
+            if (stop_event is not None and stop_event.is_set()) or (
+                deadline is not None and time.monotonic() >= deadline
+            ):
                 truncated = True
                 break
-            started = time.monotonic()
-            crossref = self._lookup_crossref(candidate)
-            self._audit(
-                account_id=account_id,
-                source=CROSSREF_SOURCE,
-                candidate=candidate,
-                metadata=crossref,
-                started=started,
-            )
-            records.append(_enrich_record(CROSSREF_SOURCE, candidate.title, crossref))
-            if deadline is not None and time.monotonic() >= deadline:
-                truncated = True
-                break
-            started = time.monotonic()
-            openalex = self._lookup_openalex(candidate)
-            self._audit(
-                account_id=account_id,
-                source=OPENALEX_SOURCE,
-                candidate=candidate,
-                metadata=openalex,
-                started=started,
-            )
-            records.append(_enrich_record(OPENALEX_SOURCE, candidate.title, openalex))
-            merged = _merge_metadata(crossref, openalex)
+            crossref: EnrichedMetadata | None = None
+            if CROSSREF_SOURCE in wanted:
+                started = time.monotonic()
+                crossref = self._budgeted_lookup(
+                    candidate, CROSSREF_SOURCE, budget, deadline
+                )
+                if crossref is None:
+                    truncated = True
+                    break
+                self._audit(
+                    account_id=account_id,
+                    source=CROSSREF_SOURCE,
+                    candidate=candidate,
+                    metadata=crossref,
+                    started=started,
+                )
+                records.append(
+                    _enrich_record(CROSSREF_SOURCE, candidate.title, crossref)
+                )
+                if (stop_event is not None and stop_event.is_set()) or (
+                    deadline is not None and time.monotonic() >= deadline
+                ):
+                    if crossref.error_code is None:
+                        metadata[candidate.arxiv_id] = crossref
+                    truncated = True
+                    break
+            openalex: EnrichedMetadata | None = None
+            if OPENALEX_SOURCE in wanted:
+                started = time.monotonic()
+                openalex = self._budgeted_lookup(
+                    candidate, OPENALEX_SOURCE, budget, deadline
+                )
+                if openalex is None:
+                    if crossref is not None and crossref.error_code is None:
+                        metadata[candidate.arxiv_id] = crossref
+                    truncated = True
+                    break
+                self._audit(
+                    account_id=account_id,
+                    source=OPENALEX_SOURCE,
+                    candidate=candidate,
+                    metadata=openalex,
+                    started=started,
+                )
+                records.append(
+                    _enrich_record(OPENALEX_SOURCE, candidate.title, openalex)
+                )
+            merged = _merge_selected(crossref, openalex)
             if merged is not None:
                 metadata[candidate.arxiv_id] = merged
         if truncated:
@@ -278,10 +323,32 @@ class MetadataEnricher:
                     source="academic_metadata",
                     query="（本轮元数据补充未逐篇完成）",
                     status=ModuleQueryStatus.SKIPPED,
-                    detail="补充检索达到本轮时间预算，剩余论文未核对发表信息。",
+                    detail="补充检索因预算、截止或停止未完成，剩余论文未核对发表信息。",
                 )
             )
         return EnrichOutcome(metadata=metadata, records=records)
+
+    def _budgeted_lookup(
+        self, candidate: PaperCandidate, source: str,
+        budget: ExternalCallBudget | None, deadline: float | None,
+    ) -> EnrichedMetadata | None:
+        key = f"paper.enrich:{source}:{candidate.arxiv_id}"
+        if budget is not None and not budget.register_external(key, purpose="academic_metadata"):
+            return None
+        outcome = "exception"
+        timeout = self._timeout
+        if deadline is not None:
+            timeout = min(timeout, max(0.001, deadline - time.monotonic()))
+        try:
+            result = (
+                self._lookup_crossref(candidate, timeout=timeout) if source == CROSSREF_SOURCE
+                else self._lookup_openalex(candidate, timeout=timeout)
+            )
+            outcome = result.error_code or "matched"
+            return result
+        finally:
+            if budget is not None:
+                budget.release_external(key, outcome_code=outcome)
 
     # -- 披露审计 --------------------------------------------------------
 
@@ -315,9 +382,11 @@ class MetadataEnricher:
 
     # -- 来源实现 --------------------------------------------------------
 
-    def _lookup_crossref(self, candidate: PaperCandidate) -> EnrichedMetadata:
+    def _lookup_crossref(
+        self, candidate: PaperCandidate, *, timeout: float | None = None
+    ) -> EnrichedMetadata:
         params = {"query.bibliographic": candidate.title, "rows": "1"}
-        payload = self._get_json(CROSSREF_ENDPOINT, params, CROSSREF_SOURCE)
+        payload = self._get_json(CROSSREF_ENDPOINT, params, CROSSREF_SOURCE, timeout=timeout)
         if isinstance(payload, EnrichedMetadata):
             return payload
         items = ((payload or {}).get("message") or {}).get("items") or []
@@ -339,9 +408,11 @@ class MetadataEnricher:
             error_message="Crossref 未找到标题匹配的记录。",
         )
 
-    def _lookup_openalex(self, candidate: PaperCandidate) -> EnrichedMetadata:
+    def _lookup_openalex(
+        self, candidate: PaperCandidate, *, timeout: float | None = None
+    ) -> EnrichedMetadata:
         params = {"search": candidate.title, "per-page": "1"}
-        payload = self._get_json(OPENALEX_ENDPOINT, params, OPENALEX_SOURCE)
+        payload = self._get_json(OPENALEX_ENDPOINT, params, OPENALEX_SOURCE, timeout=timeout)
         if isinstance(payload, EnrichedMetadata):
             return payload
         results = (payload or {}).get("results") or []
@@ -367,7 +438,8 @@ class MetadataEnricher:
         )
 
     def _get_json(
-        self, endpoint: str, params: dict[str, str], source: str
+        self, endpoint: str, params: dict[str, str], source: str,
+        *, timeout: float | None = None,
     ) -> dict[str, Any] | EnrichedMetadata:
         if self._client is None:
             return EnrichedMetadata(
@@ -379,7 +451,7 @@ class MetadataEnricher:
             response = self._client.get(
                 endpoint,
                 params=params,
-                timeout=self._timeout,
+                timeout=timeout if timeout is not None else self._timeout,
                 headers={"User-Agent": "BridGes/1.0 (academic metadata lookup)"},
             )
         except httpx.TimeoutException:
@@ -438,6 +510,18 @@ def _enrich_record(
         retryable=metadata.error_code is not None
         and metadata.error_code.endswith(("_timeout", "_offline", "_rate_limit")),
     )
+
+
+def _merge_selected(
+    crossref: EnrichedMetadata | None, openalex: EnrichedMetadata | None
+) -> EnrichedMetadata | None:
+    """合并实际调用的来源结果；只有一个来源时直接采用（未找到则无）。"""
+    if crossref is not None and openalex is not None:
+        return _merge_metadata(crossref, openalex)
+    selected = crossref if crossref is not None else openalex
+    if selected is None or selected.error_code is not None:
+        return None
+    return selected
 
 
 def _merge_metadata(
