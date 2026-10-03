@@ -37,6 +37,7 @@ from bridges.contracts.study import (
     StudyUnclear,
     StudyUnit,
 )
+from bridges.state_copy import STUDY_STOPPED_TEXT
 from bridges.storage.database import BridgesDatabase
 from bridges.study.review import grade, next_question, plan_review, review_intent
 from bridges.study.summary import build_summary, render_summary
@@ -239,7 +240,7 @@ class StudyWorkflow:
             nonlocal current_node
             current_node = name
             if stop_event is not None and stop_event.is_set():
-                raise StudyWorkflowError(name, "stopped", "学习处理已停止。")
+                raise StudyWorkflowError(name, "stopped", STUDY_STOPPED_TEXT)
             self._repo.update_generation_progress(run.account_id, run.run_id, current_node=name)
             on_event(
                 StreamEvent(
@@ -274,7 +275,7 @@ class StudyWorkflow:
         def invoke(capability: str, payload: dict[str, Any]) -> dict[str, Any]:
             nonlocal failure_lock, last_lock
             if stop_event is not None and stop_event.is_set():
-                raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
+                raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
             if capability == "qwen_structured_output" and "messages" not in payload:
                 payload = {
                     **payload,
@@ -294,7 +295,7 @@ class StudyWorkflow:
                 model_override=(run.config or {}).get("run_model_id"),
             )
             if stop_event is not None and stop_event.is_set():
-                raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
+                raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
             if result.status not in {ModelCallStatus.SUCCESS, ModelCallStatus.DEGRADED}:
                 # 只保留失败尝试自己的锁：网关没给锁就如实留空，不能把上一次
                 # 成功调用的锁当成本次失败的证据（issue 04 第 5 条：内部记录要
@@ -354,7 +355,7 @@ class StudyWorkflow:
                             save_state()
             for attachment in attachments:
                 if stop_event is not None and stop_event.is_set():
-                    raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
+                    raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
                 if attachment.content_hash in known:
                     duplicates += 1
                     duplicate_count += 1
@@ -821,7 +822,7 @@ class StudyWorkflow:
             )
             answer = output.get("answer") or "已保存书页，请继续补拍。"
             if stop_event is not None and stop_event.is_set():
-                raise StudyWorkflowError(current_node, "stopped", "学习处理已停止。")
+                raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
             def persist_tutoring() -> None:
                 if output.get("reviewed"):
                     self._states.save_in_transaction(

@@ -83,6 +83,7 @@ from bridges.resources.service import (
 )
 from bridges.resources.suggestion import detect_resources_suggestion
 from bridges.routing.contracts import MODULE_CAPABILITIES, RouteStatus
+from bridges.state_copy import RecoveryAction, error_recovery, render_state_copy
 from bridges.tieba.service import (
     TIEBA_MODULE_ID,
     TIEBA_NODE_LABELS,
@@ -149,6 +150,43 @@ NODE_LABELS: dict[str, str] = {
     **COMMUTE_NODE_LABELS,
     **CAREER_NODE_LABELS,
 }
+
+
+def node_label(node: str) -> str:
+    """节点标识 → 用户可读名称；未知节点原样返回，不臆造文案。"""
+    return NODE_LABELS.get(node, node)
+
+
+#: 已登记错误码的恢复方式 → 注册表恢复提示路径；无恢复方式或未登记
+#: 的错误不追加指引（失败原因本身必须已经说清楚）。
+_RECOVERY_HINT_PATHS: dict[RecoveryAction, str] = {
+    RecoveryAction.RETRY: "chat.progress.recovery_retry_plain",
+    RecoveryAction.WAIT: "chat.progress.recovery_wait",
+    RecoveryAction.ADJUST_REQUEST: "chat.progress.recovery_adjust",
+    RecoveryAction.RECONFIGURE: "chat.progress.recovery_reconfigure",
+}
+
+
+def node_failure_message(
+    *, node: str, message: str, retryable: bool, code: str | None = None
+) -> str:
+    """失败位置 + 真实原因 + 真实恢复方式（固定文案注册表渲染）。
+
+    恢复提示以真实可重试性为准；不可重试时按错误码登记的恢复方式选择
+    （重试/等待/调整/联系管理员），无恢复方式或未登记的错误不追加指引。
+    """
+    if retryable:
+        recovery = render_state_copy("chat.progress.recovery_retry")
+    else:
+        action = error_recovery(code)
+        path = None if action is None else _RECOVERY_HINT_PATHS.get(action)
+        recovery = render_state_copy(path) if path is not None else ""
+    return render_state_copy(
+        "chat.progress.node_failure",
+        label=node_label(node),
+        message=message,
+        recovery=recovery,
+    )
 
 
 class DailyGraphStop(Exception):
@@ -307,10 +345,11 @@ class _GraphDeps:
         运行状态）由终态 module 派生与提交。消息已终态时（例如回合编排
         已先提交失败）收尾为幂等重放，不追加矛盾事件。
         """
-        label = NODE_LABELS.get(error.node, error.node)
-        node_message = (
-            f"在「{label}」步骤失败：{error.message}"
-            + ("可点击重试。" if error.retryable else "请调整后重试。")
+        node_message = node_failure_message(
+            node=error.node,
+            message=error.message,
+            retryable=error.retryable,
+            code=error.code,
         )
         self.terminal.converge(
             self.run.account_id,
@@ -463,7 +502,7 @@ def _node_select_explicit_module(
         raise DailyTurnError(
             NODE_SELECT_EXPLICIT_MODULE,
             "module_not_available",
-            "该模块尚未开放，请使用普通对话。",
+            render_state_copy("error.module_not_available"),
             retryable=False,
         )
     del deps
@@ -497,17 +536,17 @@ def _node_invoke_subgraph_or_chat(
         if conversation is None or conversation.mode != "companion":
             raise DailyTurnError(
                 NODE_INVOKE_SUBGRAPH_OR_CHAT, "module_mode_conflict",
-                "学习模式不能启动日常模块。", retryable=False,
+                render_state_copy("error.module_mode_conflict"), retryable=False,
             )
         if understanding is not None and understanding.blocks_network:
             raise DailyTurnError(
                 NODE_INVOKE_SUBGRAPH_OR_CHAT, "network_not_allowed",
-                "本轮要求不联网，不能启动需要外部检索的模块。", retryable=False,
+                render_state_copy("error.network_not_allowed"), retryable=False,
             )
         if understanding is not None and not understanding.allows_module(dispatch):
             raise DailyTurnError(
                 NODE_INVOKE_SUBGRAPH_OR_CHAT, "source_not_allowed",
-                "所选模块不符合本轮限定的资料来源。", retryable=False,
+                render_state_copy("error.source_not_allowed"), retryable=False,
             )
         binding = (run.config or {}).get("task_binding")
         if isinstance(binding, dict):
@@ -523,7 +562,7 @@ def _node_invoke_subgraph_or_chat(
             ):
                 raise DailyTurnError(
                     NODE_INVOKE_SUBGRAPH_OR_CHAT, "task_state_conflict",
-                    "任务状态或版本已变化，请基于最新任务重试。", retryable=False,
+                    render_state_copy("error.task_state_conflict"), retryable=False,
                 )
     if dispatch == PAPER_MODULE_ID:
         return _invoke_paper_module(deps, state)

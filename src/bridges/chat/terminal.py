@@ -87,6 +87,7 @@ from bridges.contracts.chat import (
     ChatStreamEventKind,
     ChatThinkingSummary,
 )
+from bridges.state_copy import USER_STOPPED_TEXT
 
 if TYPE_CHECKING:
     from bridges.chat.repository import (
@@ -97,9 +98,9 @@ if TYPE_CHECKING:
 
 #: 残留 streaming 消息或缺错误码时的兜底错误码（与现行内部错误合同一致）。
 INTERNAL_ERROR_CODE = "internal_error"
-#: 停止收敛的稳定码与中文原因（停止事件沿用既有 error 传输种类与文案）。
+#: 停止收敛的稳定码与中文原因（固定文案注册表为唯一来源）。
 STOPPED_CODE = "stopped"
-STOPPED_MESSAGE = "生成已停止。"
+STOPPED_MESSAGE = USER_STOPPED_TEXT
 #: 执行器失联收尸的稳定码（中文原因与可重试性走统一映射，不在此重复文案）。
 WORKER_LOST_CODE = "generation_worker_lost"
 #: 迁移前遗留（无运行记录）的断流收敛稳定码。

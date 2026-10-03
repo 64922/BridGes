@@ -57,6 +57,13 @@ from bridges.retrieval.search import (
     search_keyword,
     search_vectors,
 )
+from bridges.state_copy import (
+    RETRIEVAL_ATTACHMENTS_PENDING_TEXT,
+    RETRIEVAL_KNOWLEDGE_BASE_NOT_READY_TEXT,
+    RETRIEVAL_PROJECT_RETIRED_TEXT,
+    RETRIEVAL_SUFFICIENCY_COPY,
+    RETRIEVAL_VECTOR_UNAVAILABLE_TEXT,
+)
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.repository import BridgesObjectRepository
 
@@ -69,10 +76,10 @@ _LAYER_ORDER = (
     RetrievalSourceLayer.KNOWLEDGE_BASE,
 )
 
-#: 索引不可用时的统一中文说明。
-_INDEX_UNAVAILABLE_NOTE = "本地索引不可用，暂无法检索本地材料，请稍后重试。"
+#: 索引不可用时的统一中文说明（固定文案注册表为唯一来源）。
+_INDEX_UNAVAILABLE_NOTE = RETRIEVAL_SUFFICIENCY_COPY["index_unavailable"]
 #: 向量检索不可用时的回退说明。
-_VECTOR_UNAVAILABLE_NOTE = "向量检索暂不可用，本轮仅使用关键词检索。"
+_VECTOR_UNAVAILABLE_NOTE = RETRIEVAL_VECTOR_UNAVAILABLE_TEXT
 #: 第一阶段最多允许进入片段检索的全局知识库文件数。
 KNOWLEDGE_BASE_CANDIDATE_LIMIT = 8
 #: 附件层一次纳入检索的最大附件数（V2 Issue 06：按绑定时间取最近若干份，
@@ -613,7 +620,7 @@ class LayeredRetrievalService:
         if attachment_ids:
             layers[RetrievalSourceLayer.ATTACHMENT].update(
                 status=RetrievalLayerStatus.NO_MATERIAL,
-                note="附件仍在处理中或暂无可检索内容。",
+                note=RETRIEVAL_ATTACHMENTS_PENDING_TEXT,
                 ready_document_ids=self._ready_documents(
                     account_id,
                     source="chat_attachment",
@@ -625,18 +632,18 @@ class LayeredRetrievalService:
                     object_ids=attachment_ids,
                 ),
             )
-        layers[RetrievalSourceLayer.PROJECT]["note"] = "学习项目文件来源已退役。"
+        layers[RetrievalSourceLayer.PROJECT]["note"] = RETRIEVAL_PROJECT_RETIRED_TEXT
         if use_knowledge_base:
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
                 status=RetrievalLayerStatus.NO_MATERIAL,
-                note="知识库暂无已就绪材料。",
+                note=RETRIEVAL_KNOWLEDGE_BASE_NOT_READY_TEXT,
             )
             ready_document_ids = self._ready_documents(account_id, source="knowledge_base")
             if not ready_document_ids:
                 status, note = self._unready_status(
                     account_id,
                     source="knowledge_base",
-                    fallback="知识库暂无已就绪材料。",
+                    fallback=RETRIEVAL_KNOWLEDGE_BASE_NOT_READY_TEXT,
                 )
                 layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
                     status=status, note=note
@@ -1054,11 +1061,5 @@ def _loads_layers(value: str) -> list[dict[str, Any]]:
 
 
 def _sufficiency_note(sufficiency: RetrievalSufficiency) -> str:
-    """充足性信号对应的面向用户中文说明。"""
-    return {
-        RetrievalSufficiency.SUFFICIENT: "已检索到足够的本地材料。",
-        RetrievalSufficiency.NO_HITS: "没有找到与问题相关的本地材料。",
-        RetrievalSufficiency.CONFLICT: "检索到的候选来源存在冲突，结果可能不确定。",
-        RetrievalSufficiency.INSUFFICIENT_COVERAGE: "检索到的本地材料覆盖不足。",
-        RetrievalSufficiency.INDEX_UNAVAILABLE: _INDEX_UNAVAILABLE_NOTE,
-    }[sufficiency]
+    """充足性信号对应的面向用户中文说明（固定文案注册表为唯一来源）。"""
+    return RETRIEVAL_SUFFICIENCY_COPY[sufficiency.value]

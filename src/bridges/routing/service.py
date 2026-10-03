@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from bridges.career.intake import assess_intake
 from bridges.career.intent import is_career_intent, is_study_planning_request
 from bridges.contracts.career import CareerPlanningRouteContract
+from bridges.expression_task.contract_compiler import REWRITE_ACTION_RE
 from bridges.routing.contracts import (
     CapabilityRoute,
     MainCapability,
@@ -20,14 +21,19 @@ from bridges.routing.contracts import (
     RouteStatus,
     VideoGenerationPlan,
 )
-from bridges.expression_task.contract_compiler import REWRITE_ACTION_RE
+from bridges.routing.registry import CapabilityRouteRegistry
+from bridges.state_copy import (
+    ROUTE_CLARIFY_MULTIPLE_PAPER_OR_OTHER_TEXT,
+    ROUTE_CLARIFY_MULTIPLE_TEXT_CAPABILITIES_TEXT,
+    ROUTE_CLARIFY_PAPER_QUERY_PARTS_TEXT,
+    ROUTE_CLARIFY_PAPER_TOPIC_TEXT,
+)
 from bridges.video.constants import (
     VIDEO_DEFAULT_DURATION_SECONDS,
     VIDEO_DEFAULT_SIZE,
     VIDEO_MODEL_ID,
     VIDEO_SUPPORTED_DURATIONS_SECONDS,
 )
-from bridges.routing.registry import CapabilityRouteRegistry
 
 
 class NaturalLanguageRouter:
@@ -239,7 +245,7 @@ class NaturalLanguageRouter:
     def classify(self, content: str) -> CapabilityRoute:
         text = content.strip()
         if not text:
-            return self._clarify("paper_empty_query", "你想查哪一主题的论文？")
+            return self._clarify("paper_empty_query", ROUTE_CLARIFY_PAPER_TOPIC_TEXT)
 
         career_route = self._classify_career(text)
         if career_route is not None:
@@ -263,7 +269,7 @@ class NaturalLanguageRouter:
         ):
             return self._clarify(
                 "multiple_capabilities",
-                "这条消息包含多个任务；你想先执行论文搜索，还是先完成其他任务？",
+                ROUTE_CLARIFY_MULTIPLE_PAPER_OR_OTHER_TEXT,
             )
         if not has_paper and not has_id:
             return self._ordinary("未识别到论文搜索意图。")
@@ -288,7 +294,9 @@ class NaturalLanguageRouter:
                 web_search_allowed=False,
             )
         if not any((constraints.topic_terms, constraints.author, constraints.title, constraints.arxiv_id)):
-            return self._clarify("paper_empty_query", "你想查哪一主题、作者、标题或 arXiv 标识符？")
+            return self._clarify(
+                "paper_empty_query", ROUTE_CLARIFY_PAPER_QUERY_PARTS_TEXT
+            )
         plan = PaperSearchPlan(
             normalized_query=self._normalized_query(constraints),
             constraints=constraints,
@@ -331,7 +339,9 @@ class NaturalLanguageRouter:
                 main_capability=MainCapability.CLARIFICATION,
                 confidence=0.35,
                 reason="这条消息包含多个独立任务，需要先确定主能力。",
-                clarification_question="这条消息包含多个独立任务，本轮先做哪一项？",
+                clarification_question=(
+                    ROUTE_CLARIFY_MULTIPLE_TEXT_CAPABILITIES_TEXT
+                ),
                 error_code="multiple_text_capabilities",
                 knowledge_base_allowed=False,
                 web_search_allowed=False,

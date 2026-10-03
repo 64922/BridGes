@@ -20,6 +20,12 @@ from bridges import public_search_budget as search_budget
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.observability.service import ObservabilityService
+from bridges.state_copy import (
+    WEB_SEARCH_CANCELLED_TEXT,
+    WEB_SEARCH_INTERNAL_TEXT,
+    WEB_SEARCH_PROVIDER_UNREADY_TEXT,
+    WEB_SEARCH_STAGE_TIMEOUT_TEXT,
+)
 from bridges.web_search.client import (
     DEFAULT_PROVIDER_COOLDOWN_SECONDS,
     WebSearchError,
@@ -568,9 +574,7 @@ class WebSearchService:
             ),
             can_cancel=True,
             error_message=(
-                "联网服务异常，正在尝试联网；失败将进入模型知识降级。"
-                if degraded
-                else None
+                WEB_SEARCH_PROVIDER_UNREADY_TEXT if degraded else None
             ),
         )
 
@@ -714,8 +718,8 @@ class WebSearchService:
 
             error = self._last_search_error(round_errors)
             if error is None and round_errors:
-                error = WebSearchError(
-                    "web_search_internal", "公网搜索服务发生内部异常，请重试。", retryable=False
+                error =                 WebSearchError(
+                    "web_search_internal", WEB_SEARCH_INTERNAL_TEXT, retryable=False
                 )
             if round_page_classifications:
                 last_result_metadata = (
@@ -838,7 +842,7 @@ class WebSearchService:
                 status=WebSearchStatus.ERROR,
                 searched_at=self._clock(),
                 error_code="web_search_stage_timeout",
-                error_message="公网搜索阶段超时，未形成有效投影，请重试。",
+                error_message=WEB_SEARCH_STAGE_TIMEOUT_TEXT,
                 can_retry=True,
                 attempt_count=attempts,
                 query_count=len(query_history),
@@ -948,7 +952,7 @@ class WebSearchService:
                         WebSearchError(
                             timeout_code,
                             (
-                                "公网搜索阶段超时，未形成有效投影，请重试。"
+                                WEB_SEARCH_STAGE_TIMEOUT_TEXT
                                 if timeout_code == "web_search_stage_timeout"
                                 else "联网搜索超时，请重试。"
                             ),
@@ -961,7 +965,7 @@ class WebSearchService:
                     errors.append(
                         WebSearchError(
                             "web_search_internal",
-                            "公网搜索服务发生内部异常，请重试。",
+                            WEB_SEARCH_INTERNAL_TEXT,
                             retryable=False,
                         )
                     )
@@ -971,7 +975,7 @@ class WebSearchService:
                         errors.append(
                             WebSearchError(
                                 "web_search_stage_timeout",
-                                "公网搜索阶段超时，未形成有效投影，请重试。",
+                                WEB_SEARCH_STAGE_TIMEOUT_TEXT,
                             )
                         )
                     elif timed.finished_at > deadline:
@@ -1296,7 +1300,7 @@ class WebSearchService:
             status=WebSearchStatus.CANCELLED,
             searched_at=self._clock(),
             error_code="web_search_cancelled",
-            error_message="已取消本轮联网搜索。",
+            error_message=WEB_SEARCH_CANCELLED_TEXT,
             can_retry=False,
             can_cancel=False,
             attempt_count=attempts,
