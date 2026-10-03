@@ -184,12 +184,30 @@ def test_career_stage_answer_dispatches_accumulated_goal():
     assert call.kwargs["request_text"] == goal
 
 
-def test_career_service_parses_accumulated_goal_without_changing_message(monkeypatch):
+def test_career_service_parses_accumulated_goal_without_changing_message(
+    tmp_path, monkeypatch
+):
+    """服务用累积目标解析，但请求原文（用户消息）不被改写、也不发起检索。"""
+    from bridges.career_plan.service import CareerModuleError
+    from bridges.storage.database import BridgesDatabase
+
     goal = "帮我规划职业发展；想做数据分析师；大三"
-    user = SimpleNamespace(content="大三")
+    user = SimpleNamespace(content="大三", conversation_id="conversation")
+    assistant = SimpleNamespace(
+        conversation_id="conversation", status=ChatMessageStatus.STREAMING
+    )
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
     repo = MagicMock()
-    repo.get_message.return_value = user
+    repo.database = database
     repo.list_messages.return_value = []
+    repo.get_run_by_message.return_value = SimpleNamespace(run_id="run")
+    repo.get_message.side_effect = (
+        lambda account, message: assistant if message == "assistant" else user
+    )
+    repo.get_generation_run.return_value = SimpleNamespace(
+        status="running", lease_owner=None, lease_expires_at=None, stop_requested=False
+    )
     service = CareerPlanService(search=MagicMock(), reader=MagicMock())
     captured = []
 
@@ -201,8 +219,10 @@ def test_career_service_parses_accumulated_goal_without_changing_message(monkeyp
         captured.append(analysis)
         raise ParsedRequestError
 
-    monkeypatch.setattr("bridges.career_plan.service.parse_career_request", capture)
-    with pytest.raises(ParsedRequestError):
+    # Issue 28 起解析在节点内核中执行：解析异常按节点失败收敛为模块错误，
+    # 补丁落在内核的解析调用点上，验证的语义不变。
+    monkeypatch.setattr("bridges.career_plan.kernel.parse_career_request", capture)
+    with pytest.raises(CareerModuleError):
         service.run(
             repo=repo, account_id="account", conversation_id="conversation",
             user_message_id="user", assistant_message_id="assistant",

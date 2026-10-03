@@ -39,6 +39,7 @@ from bridges.career_plan.service import (
     CAREER_MODULE_ID,
     CAREER_NODE_LABELS,
     CareerModuleError,
+    CareerSupersededError,
 )
 from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.checkpoints import RepositoryCheckpointSaver
@@ -900,10 +901,15 @@ def _invoke_career_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, 
             conversation_id=run.conversation_id,
             user_message_id=run.user_message_id,
             assistant_message_id=run.assistant_message_id,
+            run_context=chat_run_context(run.account_id, run.conversation_id, run.run_id),
             emit_node=emit_node,
             stop_event=deps.stop_event,
+            module_context=deps.service.module_task_context(run, CAREER_MODULE_ID),
             **request_options,
         )
+    except CareerSupersededError as error:
+        # 迟到结果：本轮不再写交付终态，交给当前持有执行权的执行者收尾。
+        raise DailyGraphSuperseded(str(error)) from error
     except CareerModuleError as error:
         raise DailyTurnError(
             error.node, error.code, error.message, retryable=error.retryable

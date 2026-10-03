@@ -26,18 +26,21 @@ MAX_SKILL_STATS = 20
 UNKNOWN_CITY = "页面未给出城市"
 
 
-def analyze_samples(samples: list[JobSample]) -> CareerAnalysis:
+def analyze_samples(
+    samples: list[JobSample], *, experience_unverified_count: int = 0
+) -> CareerAnalysis:
     """从主样本归纳；样本为空时如实给出零样本口径。"""
     if not samples:
         return CareerAnalysis(
             sample_count=0,
+            experience_unverified_count=experience_unverified_count,
             sample_scope_note="本轮没有公开可读且岗位与城市都匹配的岗位样本。",
             small_sample=True,
             overall_inference_stopped=True,
         )
     cities = _city_composition(samples)
     span = _published_span(samples)
-    intervals, notes = _salary_intervals(samples)
+    intervals, notes, missing_salary_count = _salary_intervals(samples)
     return CareerAnalysis(
         sample_count=len(samples),
         city_composition=cities,
@@ -45,6 +48,8 @@ def analyze_samples(samples: list[JobSample]) -> CareerAnalysis:
         skill_stats=_skill_stats(samples),
         salary_intervals=intervals,
         incomparable_notes=notes,
+        missing_salary_count=missing_salary_count,
+        experience_unverified_count=experience_unverified_count,
         sample_scope_note=_scope_note(len(samples), cities, span),
         small_sample=len(samples) < SMALL_SAMPLE_MIN,
         overall_inference_stopped=len(samples) < SMALL_SAMPLE_MIN,
@@ -87,10 +92,15 @@ def _skill_stats(samples: list[JobSample]) -> list[SkillStat]:
 
 def _salary_intervals(
     samples: list[JobSample],
-) -> tuple[list[SalaryInterval], list[str]]:
-    """按计薪单位归并薪资；不可比较的原文只留原因。"""
+) -> tuple[list[SalaryInterval], list[str], int]:
+    """按币种与计薪单位归并薪资；不可比较的原文只留原因。"""
     bands = [parse_salary(sample.salary_raw or "") for sample in samples]
     aggregates, notes = aggregate_salary(bands)
+    months_by_raw = {
+        band.raw: band.salary_months
+        for band in bands
+        if band.salary_months is not None
+    }
     city_by_raw: dict[str, list[str]] = {}
     for sample in samples:
         raw = (sample.salary_raw or "").strip()
@@ -103,9 +113,14 @@ def _salary_intervals(
             for city in city_by_raw.get(raw, []):
                 if city not in cities:
                     cities.append(city)
+        months = sorted(
+            {months_by_raw[raw] for raw in aggregate.raws if raw in months_by_raw}
+        )
         intervals.append(
             SalaryInterval(
                 unit=aggregate.unit,
+                currency=aggregate.currency,
+                salary_months=months,
                 sample_count=aggregate.sample_count,
                 amount_min=aggregate.amount_min,
                 amount_max=aggregate.amount_max,
@@ -118,7 +133,7 @@ def _salary_intervals(
     missing = [sample for sample in samples if not (sample.salary_raw or "").strip()]
     if missing:
         notes.append(f"有 {len(missing)} 个岗位页没有给出薪资原文，未纳入任何薪资区间。")
-    return intervals, notes
+    return intervals, notes, len(missing)
 
 
 def _scope_note(count: int, cities: list[CityCount], span: str | None) -> str:

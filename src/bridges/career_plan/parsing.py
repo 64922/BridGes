@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from bridges.career_plan.contracts import CareerClarification, CareerRequestAnalysis
@@ -63,25 +64,57 @@ def parse_career_request(
     content: str,
     *,
     pending: dict[str, Any] | None = None,
+    task_texts: Sequence[str] = (),
 ) -> CareerRequestAnalysis:
     """解析本轮请求；``pending`` 是上一轮等待中的恢复载荷。
 
     恢复轮里这一条消息就是用户对上一轮提问的回答：岗位取自它，而原始请求
     与阶段／城市仍以首次提问为准（首次已给的信息不会被覆盖掉）。
+
+    ``task_texts`` 是当前任务已确认的目标与条件原话（目标在前）。当前消息
+    给出新的岗位词时按**新目标**解析，不把旧任务的城市／阶段悄悄套到新目标
+    上；当前消息只是修订条件（如「换成杭州」）时，才回退到任务上下文补齐
+    岗位与尚未改写的条件。任务条件的版本变化会进入 parse 的输入键，旧产物
+    因此不会被当成当前数据复用。
     """
     current = content.strip()
     resumed = ""
     if pending:
         resumed = str(pending.get(PENDING_ORIGINAL_REQUEST) or "").strip()
-    original = resumed or current
 
-    terms = extract_job_terms(current) or extract_job_terms(original)
+    current_terms = extract_job_terms(current)
+    if current_terms:
+        # 新岗位目标：只从当前消息与恢复请求里取信息，旧任务条件不自动继承。
+        terms = current_terms
+        original = resumed or current
+        cities = _first(detect_cities, current, resumed) or []
+        stage = _first(detect_stage, current, resumed)
+        graduation_year = detect_graduation_year(current) or detect_graduation_year(resumed)
+        experience_hint = _first(detect_experience, current, resumed)
+    else:
+        # 条件修订／续接：岗位与未改写条件回退到已确认的任务目标与条件。
+        contexts = [text for text in (*task_texts, resumed, current) if text]
+        terms = next(
+            (found for found in (extract_job_terms(text) for text in contexts) if found),
+            [],
+        )
+        original = resumed or (task_texts[0] if task_texts else "") or current
+        cities = _first(detect_cities, current, resumed, *task_texts) or []
+        stage = _first(detect_stage, current, resumed, *task_texts)
+        graduation_year = next(
+            (
+                year
+                for year in (
+                    detect_graduation_year(text)
+                    for text in (current, resumed, *task_texts)
+                )
+                if year is not None
+            ),
+            None,
+        )
+        experience_hint = _first(detect_experience, current, resumed, *task_texts)
+
     family = family_for(terms[0]) if terms else None
-    stage = detect_stage(original) or detect_stage(current)
-    graduation_year = detect_graduation_year(original) or detect_graduation_year(current)
-    cities = detect_cities(original) or detect_cities(current)
-    experience_hint = detect_experience(original) or detect_experience(current)
-
     analysis = CareerRequestAnalysis(
         original_request=original,
         job_terms=terms,
@@ -94,11 +127,23 @@ def parse_career_request(
         cities=cities,
         experience_hint=experience_hint,
         constraints=_constraints(original, current),
+        duty_intent=family.title if family is not None else (terms[0] if terms else None),
     )
     clarification = _clarification(terms)
     if clarification is None:
         return analysis
     return analysis.model_copy(update={"clarification": clarification})
+
+
+def _first(detector: Any, *texts: str) -> Any:
+    """按顺序取第一个有结果的原话检测（空文本跳过）。"""
+    for text in texts:
+        if not text:
+            continue
+        found = detector(text)
+        if found:
+            return found
+    return None
 
 
 def _clarification(terms: list[str]) -> CareerClarification | None:

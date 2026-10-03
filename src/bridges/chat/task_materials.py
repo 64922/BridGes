@@ -418,6 +418,12 @@ MODULE_DECLARATIONS: dict[str, ModuleContextDeclaration] = {
         task_fields=("origin", "destination", "mode"),
         evidence_scope="已确认起终点与方式条件；不扩散到无关话题。",
     ),
+    "career": ModuleContextDeclaration(
+        module_id="career",
+        purpose="career",
+        task_fields=("city", "other", "count"),
+        evidence_scope="任务目标与已确认城市/条件；不读取画像正文，也不继承无关话题。",
+    ),
 }
 
 

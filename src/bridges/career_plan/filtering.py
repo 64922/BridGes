@@ -32,6 +32,8 @@ from bridges.career_plan.contracts import (
 from bridges.career_plan.lexicon import (
     SOURCE_LABELS,
     TitleMatch,
+    duty_evidence,
+    experience_matches,
     match_job_title,
     normalize_for_match,
 )
@@ -44,6 +46,8 @@ KIND_DUPLICATE = "duplicate"
 KIND_NOT_JOB = "not_job"
 KIND_TITLE_MISMATCH = "title_mismatch"
 KIND_CITY_UNVERIFIED = "city_unverified"
+KIND_EXPERIENCE = "experience"
+KIND_EXPERIENCE_UNVERIFIED = "experience_unverified"
 
 #: 未读到时给用户的说明（每类失败各自的真实原因）。
 _READ_FAILURE_NOTES: dict[JobReadStatus, str] = {
@@ -78,7 +82,7 @@ class JobCandidate:
     read: JobPageReadResult
 
 
-@dataclass(frozen=True)
+@dataclass
 class FilterOutcome:
     """过滤阶段的真实产出。"""
 
@@ -86,6 +90,7 @@ class FilterOutcome:
     rejected: list[CareerRejectedSample] = field(default_factory=list)
     unconfirmed: list[CareerCandidateLink] = field(default_factory=list)
     adjacent_counts: dict[str, int] = field(default_factory=dict)
+    experience_unverified_count: int = 0
 
 
 def filter_candidates(
@@ -94,7 +99,7 @@ def filter_candidates(
     *,
     reference: datetime,
 ) -> FilterOutcome:
-    """按顺序执行：可读性 → 岗位页 → 过期 → 岗位名 → 城市 → 去重。"""
+    """按顺序执行：可读性 → 岗位页 → 过期 → 岗位名/职责 → 城市 → 经验 → 去重。"""
     outcome = FilterOutcome()
     target = tuple(analysis.synonyms or analysis.job_terms)
     adjacent = tuple(analysis.adjacent_jobs)
@@ -151,7 +156,16 @@ def filter_candidates(
 
         title = page.title or ""
         match = match_job_title(title, target_terms=target, adjacent=adjacent)
-        if not match.matched:
+        duty_hits: list[str] = []
+        if not match.matched and not match.adjacent_hits:
+            # 岗位名没命中时，再看职责／要求原文：命中目标职责锚点（两票以上、
+            # 相邻族不占优）才纳入样本；显式相邻岗位名仍然直接剔除。
+            duty_hits = duty_evidence(
+                "\n".join(page.requirements),
+                target_terms=target,
+                adjacent=adjacent,
+            )
+        if not match.matched and not duty_hits:
             if match.adjacent_hits:
                 hint = match.adjacent_hits[0]
                 outcome.adjacent_counts[hint] = outcome.adjacent_counts.get(hint, 0) + 1
@@ -174,7 +188,8 @@ def filter_candidates(
                         title=title,
                         evidence=(
                             f"页面岗位名是「{title}」，既不命中目标岗位"
-                            f"「{analysis.job_title or ''}」也不命中其同义名。"
+                            f"「{analysis.job_title or ''}」也不命中其同义名，"
+                            "职责原文也没有命中目标岗位的职责锚点。"
                         ),
                     )
                 )
@@ -215,6 +230,44 @@ def filter_candidates(
                 else "本轮未给出城市，未做城市过滤；页面也未给出城市。"
             )
 
+        experience_evidence: str | None = None
+        if analysis.experience_hint:
+            if page.experience is None:
+                outcome.rejected.append(
+                    _rejected(
+                        candidate,
+                        kind=KIND_EXPERIENCE_UNVERIFIED,
+                        title=title,
+                        evidence=(
+                            f"页面没有给出经验要求，无法核对是否为你要求的"
+                            f"「{analysis.experience_hint}」，因此不纳入主样本。"
+                        ),
+                    )
+                )
+                outcome.experience_unverified_count += 1
+                continue
+            if not experience_matches(analysis.experience_hint, page.experience):
+                outcome.rejected.append(
+                    _rejected(
+                        candidate,
+                        kind=KIND_EXPERIENCE,
+                        title=title,
+                        evidence=(
+                            f"页面经验要求是「{page.experience}」，与你要求的"
+                            f"「{analysis.experience_hint}」不符。"
+                        ),
+                    )
+                )
+                continue
+            experience_evidence = (
+                f"页面经验要求「{page.experience}」与你要求的"
+                f"「{analysis.experience_hint}」一致。"
+            )
+        elif page.experience:
+            experience_evidence = (
+                f"本轮未给出经验条件，未做经验过滤；页面经验要求为「{page.experience}」。"
+            )
+
         key = _dedupe_key(page.company, title, city_value)
         if key in seen_keys:
             outcome.rejected.append(
@@ -230,7 +283,14 @@ def filter_candidates(
             continue
         seen_keys.add(key)
         outcome.samples.append(
-            _sample(candidate, page=page, match=match, city_evidence=city_evidence)
+            _sample(
+                candidate,
+                page=page,
+                match=match,
+                duty_hits=duty_hits,
+                city_evidence=city_evidence,
+                experience_evidence=experience_evidence,
+            )
         )
     return outcome
 
@@ -264,10 +324,20 @@ def _sample(
     *,
     page: ParsedJobPage,
     match: TitleMatch,
+    duty_hits: list[str],
     city_evidence: str,
+    experience_evidence: str | None,
 ) -> JobSample:
     requirements = list(page.requirements)
-    evidence = f"页面岗位名「{page.title or ''}」命中目标说法「{match.matched_terms[0]}」。"
+    if match.matched:
+        evidence = f"页面岗位名「{page.title or ''}」命中目标说法「{match.matched_terms[0]}」。"
+        match_basis = "title"
+    else:
+        evidence = (
+            f"页面岗位名「{page.title or ''}」未直接命中目标岗位，但职责／要求原文命中"
+            f"目标职责锚点：{'、'.join(duty_hits)}。"
+        )
+        match_basis = "duty"
     if match.adjacent_hits:
         evidence += f"同时提到相邻岗位「{match.adjacent_hits[0]}」，已记入相邻岗位建议。"
     return JobSample(
@@ -285,6 +355,9 @@ def _sample(
         requirements=requirements,
         skills=skills_of(requirements),
         title_evidence=evidence,
+        match_basis=match_basis,
+        duty_evidence=list(duty_hits),
+        experience_evidence=experience_evidence,
         city_evidence=city_evidence,
         retrieved_at=candidate.read.retrieved_at,
         read_status=candidate.read.status,

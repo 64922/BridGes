@@ -1,45 +1,54 @@
-"""职业规划模块编排服务（由日常父图在显式派发时调用）。
+"""职业规划模块编排服务（由日常父图在显式派发时调用，改进工单 28）。
 
-节点顺序 ``career.parse → career.plan → career.collect → career.filter →
-career.analyze → career.advise``。每一步都只写真实发生的事：实际查询词与筛选
-条件、真实读到的岗位字段、逐条剔除依据。主样本只收公开可读且岗位与城市都
-匹配的岗位，因此读不到页面时如实降级为「未核实链接」，不会把搜索摘要当岗位内容。
+子图按持久节点内核执行：``career.parse → career.plan → career.collect →
+career.filter → career.analyze → career.verify``。每个节点在自己的局部事务里
+提交产物与完成收据，恢复时先读收据：输入未变则回填产物（不重复外部读取），
+输入变化（例如任务城市条件从上海改成杭州）则重算该节点及其下游，旧统计绝不
+被当成当前数据复用。
 
-本模块不调用模型：正文、分析与建议全部由真实证据渲染与归纳。
+每一步都只写真实发生的事：实际查询词与筛选条件、真实读到的岗位字段、逐条
+剔除依据。主样本只收公开可读、岗位名或职责原文命中目标、城市与经验条件都
+可核对的岗位；读不到页面时如实降级为「未核实链接」。本模块不调用模型。
 """
 
 from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, TypeVar
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, NoReturn
 
-from bridges.career_plan.advising import build_advice
-from bridges.career_plan.analyzing import analyze_samples
-from bridges.career_plan.collecting import JobPageReader
 from bridges.career_plan.contracts import (
-    AdjacentJobSuggestion,
-    CareerAdviceItem,
-    CareerAnalysis,
     CareerCandidateLink,
     CareerPlanProjection,
     CareerPlanStatus,
     CareerQueryPlanItem,
+    CareerRejectedSample,
     CareerRequestAnalysis,
-    JobSample,
 )
-from bridges.career_plan.filtering import (
-    FilterOutcome,
-    JobCandidate,
-    filter_candidates,
-    site_label,
+from bridges.career_plan.kernel import (
+    CAREER_GATE_HANDLERS,
+    CAREER_NODE_LABELS,
+    CAREER_RECIPE_ID,
+    CAREER_RECIPE_VERSION,
+    FAILED_QUERY_STATUSES,
+    NODE_ANALYZE,
+    NODE_COLLECT,
+    NODE_FILTER,
+    NODE_PARSE,
+    NODE_PLAN,
+    NODE_VERIFY,
+    READ_DEADLINE_SECONDS,
+    READS_PER_SOURCE,
+    SEARCH_DEADLINE_SECONDS,
+    CareerBudget,
+    CareerNodeFlow,
+    _build_projection,
+    career_recipe_registry,
 )
-from bridges.career_plan.lexicon import SOURCE_LABELS
-from bridges.career_plan.parsing import parse_career_request, pending_payload
-from bridges.career_plan.planning import build_plan
+from bridges.career_plan.parsing import pending_payload
 from bridges.career_plan.presenting import (
     render_clarification_content,
     render_empty_content,
@@ -47,54 +56,23 @@ from bridges.career_plan.presenting import (
     render_result_content,
     render_stopped_content,
 )
-from bridges.career_plan.searching import CareerSearchHit, CareerSearchPort
+from bridges.career_plan.searching import CareerSearchPort
 from bridges.contracts.chat import ChatMessageStatus
-from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
+from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
+from bridges.kernel.contracts import KernelResult, KernelStatus, RecipeInputs
+from bridges.kernel.executor import NodeKernel
+from bridges.kernel.guard import RunCommitGuard
+from bridges.kernel.repository import NodeKernelRepository
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
-
-NODE_PARSE = "career.parse"
-NODE_PLAN = "career.plan"
-NODE_COLLECT = "career.collect"
-NODE_FILTER = "career.filter"
-NODE_ANALYZE = "career.analyze"
-NODE_ADVISE = "career.advise"
-
-#: 模块节点中文标签（进度事件与失败定位共用）。
-CAREER_NODE_LABELS: dict[str, str] = {
-    NODE_PARSE: "理解求职目标",
-    NODE_PLAN: "制定检索计划",
-    NODE_COLLECT: "读取公开岗位",
-    NODE_FILTER: "筛选匹配岗位",
-    NODE_ANALYZE: "归纳技能与薪资",
-    NODE_ADVISE: "给出求职建议",
-}
+    from bridges.chat.task_materials import ModuleTaskContext
+    from bridges.contracts.workflows import RunContextEnvelope
 
 #: 显式模块标识与等待原因（父图与前端都依赖）。
 CAREER_MODULE_ID = "career"
 WAIT_KIND_CLARIFICATION = "clarification"
 WAIT_REASON_CLARIFICATION = "career_clarification"
-
-#: 各阶段的墙钟预算：检索（三条来源查询共用）、逐页读取。
-SEARCH_DEADLINE_SECONDS = 30.0
-READ_DEADLINE_SECONDS = 20.0
-
-#: 每条来源查询最多读取的岗位页数（每个页面一次真实公开读取）。
-READS_PER_SOURCE = 3
-
-#: 记为失败的查询状态（检索成功的空结果不算失败，它有自己的终态）。
-FAILED_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
-    {
-        ModuleQueryStatus.ERROR,
-        ModuleQueryStatus.TIMEOUT,
-        ModuleQueryStatus.CANCELLED,
-        ModuleQueryStatus.RATE_LIMITED,
-    }
-)
-
-#: 证据边界里固定说明（每条都对应真实实现约束）。
-BOUNDARY_NOT_MODEL = "本模块不调用模型生成内容，正文、统计与建议都来自实际读到的页面文本。"
 
 
 class CareerModuleError(Exception):
@@ -110,6 +88,25 @@ class CareerModuleError(Exception):
         self.retryable = retryable
 
 
+class CareerSupersededError(Exception):
+    """迟到结果：租约/版本/消息归属已变化，本轮不写任何交付终态。"""
+
+
+class _CareerDeliveryError(Exception):
+    """失败交付信号：投影在守卫事务之后单独落库，再交给父图收敛错误。
+
+    ``update_message_career_plan``／``update_message_content`` 自带事务边界，
+    不能在守卫的写事务里嵌套执行；失败投影因此先带出事务，再写回同一条消息。
+    """
+
+    def __init__(
+        self, error: CareerModuleError, projection: CareerPlanProjection | None
+    ) -> None:
+        super().__init__(error.message)
+        self.error = error
+        self.projection = projection
+
+
 @dataclass(frozen=True)
 class CareerRunOutcome:
     """一轮职业规划分析的收敛结果（父图据此写等待原因与判断终态）。"""
@@ -119,32 +116,30 @@ class CareerRunOutcome:
     queries: list[ModuleQueryRecord] = field(default_factory=list)
 
 
-@dataclass(frozen=True)
-class _Collected:
-    """检索与读取的真实产出：统一查询记录、待过滤候选与未读到的链接。"""
-
-    records: list[ModuleQueryRecord]
-    candidates: list[JobCandidate]
-    unread_links: list[CareerSearchHit]
-
-
 class CareerPlanService:
-    """职业规划编排服务。"""
+    """职业规划编排服务（持久节点内核执行）。"""
 
     def __init__(
         self,
         *,
         search: CareerSearchPort,
-        reader: JobPageReader,
+        reader: Any,
         search_deadline_seconds: float = SEARCH_DEADLINE_SECONDS,
         read_deadline_seconds: float = READ_DEADLINE_SECONDS,
         reads_per_source: int = READS_PER_SOURCE,
+        task_version_provider: Callable[
+            [str, str], tuple[str | None, int | None] | None
+        ]
+        | None = None,
     ) -> None:
         self._search = search
         self._reader = reader
         self._search_deadline_seconds = search_deadline_seconds
         self._read_deadline_seconds = read_deadline_seconds
         self._reads_per_source = reads_per_source
+        self._task_version_provider = task_version_provider
+        self._registry = career_recipe_registry()
+        self._recipe = self._registry.get(CAREER_RECIPE_ID)
 
     def close(self) -> None:
         closer = getattr(self._reader, "close", None)
@@ -161,14 +156,15 @@ class CareerPlanService:
         conversation_id: str,
         user_message_id: str,
         assistant_message_id: str,
-        run_context: object | None = None,
+        run_context: RunContextEnvelope | None = None,
         run_model_id: str | None = None,
         request_text: str | None = None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
+        module_context: ModuleTaskContext | None = None,
     ) -> CareerRunOutcome:
         """执行一轮职业规划分析；终态全部写回同一条助手消息。"""
-        del run_context, run_model_id  # 本模块不调用模型，不存在模型生成的断言。
+        del run_model_id  # 本模块不调用模型，不存在模型生成的断言。
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise CareerModuleError(
@@ -177,85 +173,149 @@ class CareerPlanService:
                 "消息不存在或没有访问权限。",
                 retryable=False,
             )
-        waiting = self._pending_wait(repo, account_id, conversation_id)
-        run = _Run(emit_node)
-        analysis = run.node(
-            NODE_PARSE,
-            lambda: parse_career_request(
-                request_text if request_text is not None else user_message.content,
-                pending=None if waiting is None else dict(waiting.context),
-            ),
-        )
-        if analysis.clarification is not None:
-            return self._persist_clarification(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                analysis=analysis,
+        content = request_text if request_text is not None else user_message.content
+        pending = self._pending_wait(repo, account_id, conversation_id)
+        run_id = self._run_id(repo, account_id, assistant_message_id, run_context)
+        if run_id is None:
+            raise CareerModuleError(
+                NODE_PARSE,
+                "run_context_missing",
+                "缺少本轮运行上下文，未提交职业规划结果。",
+                retryable=True,
             )
-        stopped = self._stopped(
+        budget = self._load_budget(repo, account_id, run_id)
+        task_ref = self._current_task_ref(account_id, conversation_id)
+        clock = lambda: datetime.now(UTC)  # noqa: E731 - 单次执行内的稳定时钟
+        guard = RunCommitGuard(
             repo,
             account_id=account_id,
+            run_id=run_id,
+            conversation_id=conversation_id,
             assistant_message_id=assistant_message_id,
-            analysis=analysis,
-            queries=(),
+            task_ref=task_ref,
+            task_version_provider=self._task_version_provider,
+            stop_event=stop_event,
+            clock=clock,
+        )
+        flow = CareerNodeFlow(
+            search=self._search,
+            reader=self._reader,
+            clock=clock,
+            module_context=module_context,
+            pending_wait=pending,
+            budget=budget,
+            stop_event=stop_event,
+            search_deadline_seconds=self._search_deadline_seconds,
+            read_deadline_seconds=self._read_deadline_seconds,
+            reads_per_source=self._reads_per_source,
+        )
+        kernel = NodeKernel(
+            registry=self._registry,
+            repository=NodeKernelRepository(repo.database),
+            guard=guard,
+            gates=CAREER_GATE_HANDLERS,
+            runner=flow.run_node,
+            clock=clock,
+        )
+        result = kernel.execute(
+            recipe=self._recipe,
+            inputs=RecipeInputs(
+                account_id=account_id,
+                conversation_id=conversation_id,
+                run_id=run_id,
+                user_message_id=user_message_id,
+                user_content=content,
+                task_id=task_ref[0] if task_ref is not None else None,
+                task_version=task_ref[1] if task_ref is not None else None,
+                wait_identity=self._wait_identity(pending),
+                artifacts={},
+                prior_digest=flow.prior_digest,
+            ),
+            remaining_budget_ms=(
+                budget.remaining_work_ms() if budget is not None else None
+            ),
+            event_sink=emit_node,
             stop_event=stop_event,
         )
-        if stopped is not None:
-            return stopped
-
-        plan = run.node(NODE_PLAN, lambda: build_plan(analysis))
-        collected = run.node(
-            NODE_COLLECT,
-            lambda: self._collect(account_id, plan, stop_event=stop_event),
-        )
-        stopped = self._stopped(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            analysis=analysis,
-            queries=tuple(collected.records),
-            stop_event=stop_event,
-        )
-        if stopped is not None:
-            return stopped
-
-        outcome = run.node(
-            NODE_FILTER,
-            lambda: filter_candidates(
-                collected.candidates, analysis, reference=datetime.now(UTC)
-            ),
-        )
-        report = run.node(NODE_ANALYZE, lambda: analyze_samples(outcome.samples))
-        advices, adjacent = run.node(
-            NODE_ADVISE,
-            lambda: build_advice(
-                analysis, report, outcome.samples, adjacent_counts=outcome.adjacent_counts
-            ),
-        )
-
-        projection = _projection(
-            analysis=analysis,
-            plan=plan,
-            collected=collected,
-            outcome=outcome,
-            report=report,
-            advices=advices,
-            adjacent=adjacent,
-        )
-        if projection.status is CareerPlanStatus.ERROR:
+        # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
+        delivery_failure: _CareerDeliveryError | None = None
+        with NodeKernelRepository(repo.database).transaction():
+            decision = guard.verify()
+            if not decision.ok:
+                if decision.code != "run_stopped":
+                    raise CareerSupersededError(decision.code)
+                result = replace(result, status=KernelStatus.STOPPED)
+            try:
+                return self._deliver(
+                    repo,
+                    account_id=account_id,
+                    assistant_message_id=assistant_message_id,
+                    result=result,
+                    stop_event=stop_event,
+                )
+            except _CareerDeliveryError as failure:
+                delivery_failure = failure
+        # 失败投影在守卫事务之外落库（写入方法自带事务），再通知父图收敛错误。
+        assert delivery_failure is not None
+        if delivery_failure.projection is not None:
             self._persist_failure(
                 repo,
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
-                projection=projection,
+                projection=delivery_failure.projection,
             )
+        raise delivery_failure.error
+
+    # -- 交付（终态收敛路径） --------------------------------------------
+
+    def _deliver(
+        self,
+        repo: ConversationRepository,
+        *,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+        stop_event: threading.Event | None,
+    ) -> CareerRunOutcome:
+        if result.status is KernelStatus.COMPLETED:
+            return self._deliver_completed(
+                repo, account_id, assistant_message_id, result
+            )
+        if result.status is KernelStatus.NEEDS_INPUT:
+            return self._deliver_clarification(
+                repo, account_id, assistant_message_id, result
+            )
+        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
+            stop_event is not None and stop_event.is_set()
+        ):
+            return self._deliver_stopped(repo, account_id, assistant_message_id, result)
+        if result.status is KernelStatus.REJECTED:
+            raise CareerSupersededError(
+                result.rejection_code or "generation_superseded"
+            )
+        return self._deliver_failure(result)
+
+    def _deliver_completed(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CareerRunOutcome:
+        artifact = result.delivery
+        if artifact is None or artifact.node != NODE_VERIFY:
             raise CareerModuleError(
-                NODE_COLLECT,
-                projection.error_code or "career_search_failed",
-                projection.error_message or "岗位检索失败，请稍后重试。",
-                retryable=projection.retryable,
+                NODE_VERIFY,
+                "career_delivery_missing",
+                "职业规划结果没有形成待交付产物，本轮未提交。",
+                retryable=True,
             )
+        projection = CareerPlanProjection.model_validate(
+            artifact.payload["projection"]
+        )
+        if projection.status is CareerPlanStatus.ERROR:
+            return self._deliver_failure(result, projection=projection)
+        now = datetime.now(UTC)
         self._finalize(
             repo,
             account_id=account_id,
@@ -263,6 +323,7 @@ class CareerPlanService:
             status=ChatMessageStatus.DONE,
             projection=projection,
             content=_content_for(projection),
+            now=now,
         )
         return CareerRunOutcome(
             status=projection.status,
@@ -270,54 +331,234 @@ class CareerPlanService:
             queries=list(projection.queries),
         )
 
-    # -- 检索与读取 ------------------------------------------------------
-
-    def _collect(
+    def _deliver_clarification(
         self,
+        repo: ConversationRepository,
         account_id: str,
-        plan: tuple[CareerQueryPlanItem, ...],
-        *,
-        stop_event: threading.Event | None,
-    ) -> _Collected:
-        """按计划逐来源检索，再逐页公开读取（每页一次，有界去重）。"""
-        records: list[ModuleQueryRecord] = []
-        candidates: list[JobCandidate] = []
-        unread: list[CareerSearchHit] = []
-        seen_urls: set[str] = set()
-        search_deadline = time.monotonic() + self._search_deadline_seconds
-        read_deadline = time.monotonic() + self._read_deadline_seconds
-        for item in plan:
-            outcome = self._search.search_public(
-                account_id,
-                query=item.query,
-                reason=f"职业规划：{item.source_label}按最小公开查询词检索",
-                source=item.source,
-                stop_event=stop_event,
-                deadline=search_deadline,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CareerRunOutcome:
+        analysis = self._parse_analysis(result)
+        clarification = analysis.clarification if analysis is not None else None
+        if analysis is None or clarification is None:
+            raise CareerModuleError(
+                NODE_PARSE,
+                "career_clarification_missing",
+                "职业规划澄清状态缺少恢复载荷，本轮未提交。",
+                retryable=True,
             )
-            records.append(outcome.record)
-            fresh = [hit for hit in outcome.hits if hit.url not in seen_urls]
-            for hit in fresh[: self._reads_per_source]:
-                seen_urls.add(hit.url)
-                if stop_event is not None and stop_event.is_set():
-                    break
-                read = self._reader.read(
-                    hit.url, stop_event=stop_event, deadline=read_deadline
-                )
-                candidates.append(
-                    JobCandidate(
-                        url=hit.url,
-                        source=item.source,
-                        label=hit.title or site_label(hit.url),
-                        read=read,
-                    )
-                )
-            for hit in fresh[self._reads_per_source :]:
-                seen_urls.add(hit.url)
-                unread.append(hit)
-            if stop_event is not None and stop_event.is_set():
-                break
-        return _Collected(records=records, candidates=candidates, unread_links=unread)
+        now = datetime.now(UTC)
+        projection = CareerPlanProjection(
+            status=CareerPlanStatus.CLARIFICATION,
+            topic=_topic_of(analysis),
+            original_request=analysis.original_request,
+            job_terms=list(analysis.job_terms),
+            family_title=analysis.family_title,
+            stage=analysis.stage,
+            graduation_year=analysis.graduation_year,
+            cities=list(analysis.cities),
+            constraints=list(analysis.constraints),
+            experience_hint=analysis.experience_hint,
+            pending=ModuleWaitState(
+                module_id=CAREER_MODULE_ID,
+                kind=WAIT_KIND_CLARIFICATION,
+                question=clarification.question,
+                origin_message_id=assistant_message_id,
+                context=pending_payload(analysis),
+                created_at=now,
+            ),
+            completed_at=now,
+        )
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            projection=projection,
+            content=render_clarification_content(analysis),
+            now=now,
+        )
+        return CareerRunOutcome(
+            status=projection.status,
+            wait_reason=WAIT_REASON_CLARIFICATION,
+            queries=[],
+        )
+
+    def _deliver_stopped(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        result: KernelResult,
+    ) -> CareerRunOutcome:
+        analysis = self._parse_analysis(result)
+        records = self._records(result)
+        now = datetime.now(UTC)
+        if analysis is None:
+            projection = CareerPlanProjection(
+                status=CareerPlanStatus.STOPPED,
+                topic="",
+                original_request="",
+                queries=records,
+                evidence_boundary=["你已停止本轮分析，未继续检索与读取岗位页。"],
+                completed_at=now,
+            )
+        else:
+            projection = _build_projection(
+                analysis=analysis,
+                plan=self._plan_items(result),
+                records=records,
+                samples=[],
+                rejected=self._rejected(result),
+                unconfirmed=self._unconfirmed(result),
+                unread_links=self._unread_links(result),
+                report=None,
+                advices=[],
+                adjacent=[],
+                reads_per_source=self._reads_per_source,
+            ).model_copy(
+                update={
+                    "status": CareerPlanStatus.STOPPED,
+                    "evidence_boundary": [
+                        "你已停止本轮分析，未继续检索与读取岗位页。"
+                    ],
+                    "empty_reason": None,
+                    "completed_at": now,
+                }
+            )
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.STOPPED,
+            projection=projection,
+            content=render_stopped_content(projection),
+            now=now,
+        )
+        return CareerRunOutcome(
+            status=CareerPlanStatus.STOPPED, wait_reason=None, queries=records
+        )
+
+    def _deliver_failure(
+        self,
+        result: KernelResult,
+        *,
+        projection: CareerPlanProjection | None = None,
+    ) -> NoReturn:
+        """失败先写回同一条消息（失败分类与查询词都留在投影里），再交给父图收敛。"""
+        node = NODE_VERIFY
+        code = "career_search_failed"
+        message = "岗位检索失败，请稍后重试。"
+        retryable = True
+        if projection is not None:
+            # 全部来源失败：投影本身已带失败分类，失败定位固定在采集节点。
+            node = NODE_COLLECT
+            code = projection.error_code or code
+            message = projection.error_message or message
+            retryable = projection.retryable
+        else:
+            failure = result.failure
+            if failure is not None:
+                node = failure.node
+                code = failure.code or code
+                message = failure.message or message
+                retryable = failure.retryable
+            projection = self._failure_projection(
+                result, code=code, message=message, retryable=retryable
+            )
+        raise _CareerDeliveryError(
+            CareerModuleError(node, code, message, retryable=retryable), projection
+        )
+
+    def _failure_projection(
+        self,
+        result: KernelResult,
+        *,
+        code: str,
+        message: str,
+        retryable: bool,
+    ) -> CareerPlanProjection | None:
+        """按已提交产物组装失败投影：实际查询与剔除依据都保留。"""
+        analysis = self._parse_analysis(result)
+        if analysis is None:
+            return None
+        projection = _build_projection(
+            analysis=analysis,
+            plan=self._plan_items(result),
+            records=self._records(result),
+            samples=[],
+            rejected=self._rejected(result),
+            unconfirmed=self._unconfirmed(result),
+            unread_links=self._unread_links(result),
+            report=None,
+            advices=[],
+            adjacent=[],
+            reads_per_source=self._reads_per_source,
+        )
+        return projection.model_copy(
+            update={
+                "status": CareerPlanStatus.ERROR,
+                "samples": [],
+                "analysis": None,
+                "advices": [],
+                "adjacent_suggestions": [],
+                "empty_reason": None,
+                "retryable": retryable,
+                "error_code": code,
+                "error_message": message,
+            }
+        )
+
+    # -- 内核产物读取 -----------------------------------------------------
+
+    def _parse_analysis(self, result: KernelResult) -> CareerRequestAnalysis | None:
+        artifact = result.artifact(NODE_PARSE)
+        if artifact is None:
+            return None
+        payload = artifact.payload.get("analysis")
+        if not isinstance(payload, dict):
+            return None
+        return CareerRequestAnalysis.model_validate(payload)
+
+    def _plan_items(self, result: KernelResult) -> list[CareerQueryPlanItem]:
+        artifact = result.artifact(NODE_PLAN)
+        if artifact is None:
+            return []
+        return [
+            CareerQueryPlanItem.model_validate(item)
+            for item in artifact.payload.get("plan") or []
+        ]
+
+    def _records(self, result: KernelResult) -> list[ModuleQueryRecord]:
+        artifact = result.artifact(NODE_COLLECT)
+        if artifact is None:
+            return []
+        return [
+            ModuleQueryRecord.model_validate(item)
+            for item in artifact.payload.get("records") or []
+        ]
+
+    def _unread_links(self, result: KernelResult) -> list[dict[str, Any]]:
+        artifact = result.artifact(NODE_COLLECT)
+        if artifact is None:
+            return []
+        return [dict(item) for item in artifact.payload.get("unread_links") or []]
+
+    def _filter_payload(self, result: KernelResult) -> dict[str, Any]:
+        artifact = result.artifact(NODE_FILTER)
+        return dict(artifact.payload) if artifact is not None else {}
+
+    def _rejected(self, result: KernelResult) -> list[CareerRejectedSample]:
+        return [
+            CareerRejectedSample.model_validate(item)
+            for item in self._filter_payload(result).get("rejected") or []
+        ]
+
+    def _unconfirmed(self, result: KernelResult) -> list[CareerCandidateLink]:
+        return [
+            CareerCandidateLink.model_validate(item)
+            for item in self._filter_payload(result).get("unconfirmed") or []
+        ]
 
     # -- 恢复与等待 ------------------------------------------------------
 
@@ -348,86 +589,57 @@ class CareerPlanService:
                 return None
         return None
 
+    def _run_id(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        run_context: RunContextEnvelope | None,
+    ) -> str | None:
+        run_id = getattr(run_context, "run_id", None) if run_context is not None else None
+        if run_id:
+            return str(run_id)
+        record = repo.get_run_by_message(account_id, assistant_message_id)
+        return record.run_id if record is not None else None
+
+    def _wait_identity(self, pending: ModuleWaitState | None) -> str | None:
+        if pending is None:
+            return None
+        return (
+            f"{pending.module_id}:{pending.kind}:{pending.origin_message_id}:"
+            f"{pending.created_at.isoformat()}"
+        )
+
+    def _current_task_ref(
+        self, account_id: str, conversation_id: str
+    ) -> tuple[str | None, int | None] | None:
+        if self._task_version_provider is None:
+            return None
+        return self._task_version_provider(account_id, conversation_id)
+
+    def _load_budget(
+        self, repo: ConversationRepository, account_id: str, run_id: str
+    ) -> CareerBudget | None:
+        """从持久账本加载共享预算（缺失行时按无预算模式保留本地截止）。"""
+        # 局部导入：chat 包（预算账本属主）在模块级导入会与父图形成循环。
+        from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
+
+        ledger = RunBudgetLedgerRepository(repo.database)
+        snapshot = ledger.load(account_id, run_id)
+        if snapshot is None:
+            return None
+        ledger.recover_external_calls(account_id, run_id, now=datetime.now(UTC))
+        work_deadline = snapshot.plan.deadline_at - timedelta(
+            milliseconds=snapshot.plan.verify_deliver_reserve_ms
+        )
+        return CareerBudget(
+            ledger=ledger,
+            account_id=account_id,
+            run_id=run_id,
+            work_deadline=work_deadline,
+        )
+
     # -- 落库 ------------------------------------------------------------
-
-    def _persist_clarification(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        analysis: CareerRequestAnalysis,
-    ) -> CareerRunOutcome:
-        clarification = analysis.clarification
-        assert clarification is not None  # 调用点已判定
-        now = datetime.now(UTC)
-        projection = CareerPlanProjection(
-            status=CareerPlanStatus.CLARIFICATION,
-            topic=_topic_of(analysis),
-            original_request=analysis.original_request,
-            job_terms=list(analysis.job_terms),
-            stage=analysis.stage,
-            graduation_year=analysis.graduation_year,
-            cities=list(analysis.cities),
-            constraints=list(analysis.constraints),
-            pending=ModuleWaitState(
-                module_id=CAREER_MODULE_ID,
-                kind=WAIT_KIND_CLARIFICATION,
-                question=clarification.question,
-                origin_message_id=assistant_message_id,
-                context=pending_payload(analysis),
-                created_at=now,
-            ),
-            completed_at=now,
-        )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            projection=projection,
-            content=render_clarification_content(analysis),
-        )
-        return CareerRunOutcome(
-            status=projection.status,
-            wait_reason=WAIT_REASON_CLARIFICATION,
-            queries=[],
-        )
-
-    def _persist_stopped(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        analysis: CareerRequestAnalysis,
-        queries: Sequence[ModuleQueryRecord],
-    ) -> CareerRunOutcome:
-        now = datetime.now(UTC)
-        projection = CareerPlanProjection(
-            status=CareerPlanStatus.STOPPED,
-            topic=_topic_of(analysis),
-            original_request=analysis.original_request,
-            job_terms=list(analysis.job_terms),
-            stage=analysis.stage,
-            graduation_year=analysis.graduation_year,
-            cities=list(analysis.cities),
-            constraints=list(analysis.constraints),
-            queries=list(queries),
-            evidence_boundary=["你已停止本轮分析，未继续检索与读取岗位页。"],
-            completed_at=now,
-        )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.STOPPED,
-            projection=projection,
-            content=render_stopped_content(projection),
-        )
-        return CareerRunOutcome(
-            status=CareerPlanStatus.STOPPED, wait_reason=None, queries=list(queries)
-        )
 
     def _persist_failure(
         self,
@@ -452,26 +664,6 @@ class CareerPlanService:
             now,
         )
 
-    def _stopped(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        analysis: CareerRequestAnalysis,
-        queries: Sequence[ModuleQueryRecord],
-        stop_event: threading.Event | None,
-    ) -> CareerRunOutcome | None:
-        if stop_event is None or not stop_event.is_set():
-            return None
-        return self._persist_stopped(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            analysis=analysis,
-            queries=queries,
-        )
-
     def _finalize(
         self,
         repo: ConversationRepository,
@@ -481,13 +673,11 @@ class CareerPlanService:
         status: ChatMessageStatus,
         projection: CareerPlanProjection,
         content: str,
+        now: datetime,
     ) -> None:
-        now = datetime.now(UTC)
         projection = projection.model_copy(
             update={"completed_at": projection.completed_at or now}
         )
-        if content:
-            repo.update_message_content(account_id, assistant_message_id, content, now)
         # 局部导入：模块子图与 chat 服务互相引用（父图调用子图、子图复用消息
         # 终态收敛），模块级导入会形成包级循环。
         from bridges.chat.turn import finalize_message
@@ -506,149 +696,8 @@ class CareerPlanService:
             started=time.monotonic(),
             now=now,
             career_plan=projection.model_dump(mode="json"),
+            final_content=content,
         )
-
-
-T = TypeVar("T")
-
-
-class _Run:
-    """节点进度发射器：只对真实开始/完成的节点发 started/completed 与耗时。"""
-
-    def __init__(self, emit_node: Callable[[str, str, int | None], None]) -> None:
-        self._emit = emit_node
-
-    def node(self, name: str, body: Callable[[], T]) -> T:
-        self._emit(name, "started", None)
-        started = time.monotonic()
-        result = body()
-        self._emit(name, "completed", max(1, int((time.monotonic() - started) * 1000)))
-        return result
-
-
-def _projection(
-    *,
-    analysis: CareerRequestAnalysis,
-    plan: tuple[CareerQueryPlanItem, ...],
-    collected: _Collected,
-    outcome: FilterOutcome,
-    report: CareerAnalysis,
-    advices: list[CareerAdviceItem],
-    adjacent: list[AdjacentJobSuggestion],
-) -> CareerPlanProjection:
-    """组装投影并判定终态（终态只由真实证据决定）。"""
-    samples = list(outcome.samples)
-    links = _candidate_links(collected, outcome)
-    status = _status(collected.records, samples, bool(links))
-    error = _error_record(collected.records)
-    return CareerPlanProjection(
-        status=status,
-        topic=_topic_of(analysis),
-        original_request=analysis.original_request,
-        job_terms=list(analysis.job_terms),
-        family_title=analysis.family_title,
-        stage=analysis.stage,
-        graduation_year=analysis.graduation_year,
-        cities=list(analysis.cities),
-        constraints=list(analysis.constraints),
-        plan=list(plan),
-        queries=list(collected.records),
-        samples=samples,
-        candidate_links=links,
-        rejected=list(outcome.rejected),
-        analysis=report if samples else None,
-        advices=list(advices),
-        adjacent_suggestions=list(adjacent),
-        evidence_boundary=_evidence_boundary(analysis, collected, outcome, samples),
-        empty_reason=(
-            _empty_reason(analysis)
-            if status in {CareerPlanStatus.LINKS_ONLY, CareerPlanStatus.EMPTY}
-            else None
-        ),
-        retryable=bool(error and error.retryable),
-        error_code=error.error_code if error is not None else None,
-        error_message=error.error_message if error is not None else None,
-    )
-
-
-def _status(
-    records: Sequence[ModuleQueryRecord],
-    samples: list[JobSample],
-    has_candidate_links: bool,
-) -> CareerPlanStatus:
-    """终态只由真实证据决定：有样本→成功；全是失败→错误；有未核实链接→仅链接。"""
-    if samples:
-        return CareerPlanStatus.SUCCESS
-    if records and all(record.status in FAILED_QUERY_STATUSES for record in records):
-        return CareerPlanStatus.ERROR
-    if has_candidate_links:
-        return CareerPlanStatus.LINKS_ONLY
-    return CareerPlanStatus.EMPTY
-
-
-def _candidate_links(
-    collected: _Collected, outcome: FilterOutcome
-) -> list[CareerCandidateLink]:
-    """未核实的候选链接：读不到页面的、以及超出读取上限没有读的。"""
-    links = list(outcome.unconfirmed)
-    for hit in collected.unread_links:
-        links.append(
-            CareerCandidateLink(
-                url=hit.url,
-                title=hit.title or site_label(hit.url),
-                source=hit.source,
-                source_label=SOURCE_LABELS.get(hit.source, hit.source),
-                note="未核实：超过本轮读取上限，没有读取该岗位页。",
-            )
-        )
-    return links
-
-
-def _empty_reason(analysis: CareerRequestAnalysis) -> str:
-    job = analysis.job_title or (analysis.job_terms[0] if analysis.job_terms else "")
-    city_part = f"，城市 {'、'.join(analysis.cities)}" if analysis.cities else ""
-    return (
-        f"本轮没有取得公开可读且匹配的「{job}」{city_part}岗位样本："
-        "上面的检索计划与调用记录是实际发出的查询，未核实的候选链接已逐条列出。"
-    )
-
-
-def _evidence_boundary(
-    analysis: CareerRequestAnalysis,
-    collected: _Collected,
-    outcome: FilterOutcome,
-    samples: list[JobSample],
-) -> list[str]:
-    """证据边界：只写本轮真实的取舍与缺口。"""
-    notes = [
-        "只把公开可读、岗位名命中目标岗位（或真正同义名）、城市可核对的岗位纳入主样本；"
-        "搜索摘要不构成岗位样本。",
-    ]
-    if outcome.unconfirmed:
-        notes.append(
-            f"另有 {len(outcome.unconfirmed)} 个候选岗位页没有取得内容，只给出链接并标注"
-            "未核实：它们的岗位名、城市与薪资都未核实，未纳入任何统计。"
-        )
-    if collected.unread_links:
-        notes.append(
-            f"本轮每条来源最多读取 {READS_PER_SOURCE} 个岗位页，"
-            f"另有 {len(collected.unread_links)} 个候选没有读取。"
-        )
-    if analysis.adjacent_jobs:
-        notes.append(
-            "相邻岗位（"
-            + "、".join(analysis.adjacent_jobs[:3])
-            + "）单列建议，不并入技能与薪资统计。"
-        )
-    if analysis.experience_hint:
-        notes.append(
-            f"你提到的经验要求「{analysis.experience_hint}」本轮没有做经验过滤："
-            "样本里的经验要求逐条展示，由你自己核对。"
-        )
-    if not samples:
-        notes.append("本轮没有可用岗位样本，因此没有给出技能、薪资或市场层面的结论。")
-    notes.append(BOUNDARY_NOT_MODEL)
-    return notes
 
 
 def _content_for(projection: CareerPlanProjection) -> str:
@@ -669,23 +718,25 @@ def _topic_of(analysis: CareerRequestAnalysis) -> str:
     return " · ".join(parts)
 
 
-def _error_record(records: Sequence[ModuleQueryRecord]) -> ModuleQueryRecord | None:
-    for record in records:
-        if record.status in FAILED_QUERY_STATUSES:
-            return record
-    return None
-
-
 __all__ = [
     "CAREER_MODULE_ID",
     "CAREER_NODE_LABELS",
-    "CareerModuleError",
-    "CareerPlanService",
-    "CareerRunOutcome",
-    "NODE_ADVISE",
+    "CAREER_RECIPE_ID",
+    "CAREER_RECIPE_VERSION",
+    "FAILED_QUERY_STATUSES",
     "NODE_ANALYZE",
     "NODE_COLLECT",
     "NODE_FILTER",
     "NODE_PARSE",
     "NODE_PLAN",
+    "NODE_VERIFY",
+    "READ_DEADLINE_SECONDS",
+    "READS_PER_SOURCE",
+    "SEARCH_DEADLINE_SECONDS",
+    "CareerModuleError",
+    "CareerPlanService",
+    "CareerRunOutcome",
+    "CareerSupersededError",
+    "WAIT_KIND_CLARIFICATION",
+    "WAIT_REASON_CLARIFICATION",
 ]

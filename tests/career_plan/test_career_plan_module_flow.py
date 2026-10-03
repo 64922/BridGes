@@ -575,10 +575,10 @@ def test_error_turn_ends_the_wait_so_next_message_starts_fresh(
     assert any("未给出城市" in f for item in career["plan"] for f in item["filters"])
 
 
-def test_experience_hint_is_disclosed_as_not_filtered(
+def test_experience_condition_is_verified_per_sample(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """验收 3/4：用户提到的经验要求不假装过滤过，写进证据边界逐条说明。"""
+    """验收 3/4：经验条件逐条核对，页面经验未知的候选不进入统计。"""
     _register(client)
     port = _FakeSearchPort(
         per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
@@ -598,14 +598,19 @@ def test_experience_hint_is_disclosed_as_not_filtered(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )
     career = assistant["career_plan"]
+    assert career["samples"], "页面经验要求与用户条件一致时应纳入样本"
+    assert career["samples"][0]["experience_evidence"]
+    assert "1-3年" in career["samples"][0]["experience_evidence"]
     assert any(
-        "1-3年" in note and "没有做经验过滤" in note
+        "1-3年" in note and "已逐条代码核对" in note
         for note in career["evidence_boundary"]
     )
-    assert "没有做经验过滤" in assistant["content"]
-    # 经验要求不得偷偷变成筛选条件
-    assert all(
-        "经验" not in text for item in career["plan"] for text in item["filters"]
+    assert "已逐条代码核对" in assistant["content"]
+    # 经验条件已在过滤节点真实执行，因此必须出现在筛选条件里。
+    assert any(
+        "经验" in text and "1-3年" in text
+        for item in career["plan"]
+        for text in item["filters"]
     )
 
 
@@ -664,6 +669,94 @@ def test_plain_chat_suggests_career_without_searching(
     assert assistant["career_plan"] is None
 
 
+def test_city_change_starts_a_new_revision_without_reusing_old_city_stats(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """验收 4：换城市后旧城市样本与统计不复用，新版本只统计新城市。"""
+    _register(client)
+    shanghai_url = BOSS_URL
+    hangzhou_url = "https://www.zhipin.com/job_detail/hz.html"
+    port = _FakeSearchPort(
+        per_source={
+            "boss": [
+                _hit(shanghai_url, "boss", "Java后端开发工程师（上海）"),
+                _hit(hangzhou_url, "boss", "Java后端开发工程师（杭州）"),
+            ]
+        }
+    )
+    reader = _FakeReader(
+        {
+            shanghai_url: _read_result(
+                url=shanghai_url, status=JobReadStatus.READ, city="上海"
+            ),
+            hangzhou_url: _read_result(
+                url=hangzhou_url, status=JobReadStatus.READ, city="杭州"
+            ),
+        }
+    )
+    _install_career_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "我想找 Java 后端开发，城市上海", module_id="career")
+    first = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    assert first["career_plan"]["cities"] == ["上海"]
+    assert {sample["url"] for sample in first["career_plan"]["samples"]} == {
+        shanghai_url
+    }
+
+    _send(client, conversation_id, "换成杭州", module_id="career")
+    second = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    career = second["career_plan"]
+    assert career["cities"] == ["杭州"]
+    assert career["original_request"] == "我想找 Java 后端开发，城市上海"
+    assert {sample["url"] for sample in career["samples"]} == {hangzhou_url}
+    assert all(sample["city"] == "杭州" for sample in career["samples"])
+    assert first["career_plan"]["samples"] != career["samples"], "旧城市统计不得复用"
+
+
+def test_retry_reuses_committed_nodes_without_refetching(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """验收 5：重试恢复时已提交节点从收据回填，不全链重跑。"""
+    _register(client)
+    port = _FakeSearchPort(
+        per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+    )
+    reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+    _install_career_service(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+
+    _send(client, conversation_id, "我想找 Java 后端开发，城市南昌", module_id="career")
+    assistant = _run_and_read(
+        sqlite_app, client, generation_helpers["drive"], conversation_id
+    )
+    assert assistant["career_plan"]["status"] == "success"
+    queries_before = len(port.queries)
+    reads_before = len(reader.read_urls)
+
+    retried = client.post(
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{assistant['message_id']}/retry",
+        json={},
+    )
+    assert retried.status_code == 200, retried.text
+    new_message_id = retried.json()["assistant_message"]["message_id"]
+    generation_helpers["drive"](sqlite_app)
+    final = client.get(f"/chat/conversations/{conversation_id}").json()
+    attempt = next(
+        message for message in final["messages"] if message["message_id"] == new_message_id
+    )
+    assert attempt["career_plan"]["status"] == "success"
+    assert len(port.queries) == queries_before, "恢复轮不得重复检索已提交节点"
+    assert len(reader.read_urls) == reads_before, "恢复轮不得重复读取岗位页"
+
+
 def test_study_mode_rejects_daily_module(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
@@ -707,7 +800,9 @@ def test_other_modules_still_rejected_and_no_silent_search(
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
 
-    _send(client, conversation_id, "帮我推荐几个开源项目", module_id="career")
+    # 正文不得命中其他模块：Issue 12 起正文单模块意图优先于逐消息模块提示，
+    # 用一个只有求职语境的句子才能验证「显式选择 career 且子图未接入」的拒绝。
+    _send(client, conversation_id, "我想找 Java 后端开发", module_id="career")
     assistant = _run_and_read(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )

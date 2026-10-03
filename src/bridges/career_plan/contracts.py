@@ -68,6 +68,10 @@ class CareerRequestAnalysis(BaseModel):
     constraints: list[str] = Field(
         default_factory=list, description="用户提出的其他约束原话。"
     )
+    duty_intent: str | None = Field(
+        default=None,
+        description="职责意图：岗位族名称或目标岗位原话，用于职责原文的语义核对。",
+    )
     clarification: CareerClarification | None = Field(
         default=None, description="需要用户补一项时的澄清问题。"
     )
@@ -124,6 +128,17 @@ class JobSample(BaseModel):
         default_factory=list, description="从能力要求原文里命中的技能关键词。"
     )
     title_evidence: str = Field(description="岗位名匹配目标岗位的依据说明。")
+    match_basis: str = Field(
+        default="title",
+        description="匹配依据：title（岗位名直接命中）或 duty（职责原文语义命中）。",
+    )
+    duty_evidence: list[str] = Field(
+        default_factory=list,
+        description="职责／要求原文里命中的目标职责锚点（职责匹配时非空）。",
+    )
+    experience_evidence: str | None = Field(
+        default=None, description="经验条件与页面经验要求的核对依据；未知为 None。"
+    )
     city_evidence: str = Field(description="城市匹配的核对依据说明。")
     retrieved_at: datetime = Field(description="实际抓取时间。")
     read_status: JobReadStatus = Field(description="读取结果分类。")
@@ -139,8 +154,8 @@ class CareerRejectedSample(BaseModel):
     company: str | None = Field(default=None, description="公司名；未读到为 None。")
     kind: str = Field(
         description=(
-            "剔除分类：adjacent／city／city_unverified／expired／duplicate／"
-            "not_job／title_mismatch。"
+            "剔除分类：adjacent／city／city_unverified／experience／"
+            "experience_unverified／expired／duplicate／not_job／title_mismatch。"
         )
     )
     evidence: str = Field(description="剔除依据的中文说明。")
@@ -157,13 +172,20 @@ class CareerCandidateLink(BaseModel):
 
 
 class SalaryInterval(BaseModel):
-    """同一计薪单位下的薪资区间（样本量与原文都留痕）。"""
+    """同一币种与计薪单位下的薪资区间（样本量与原文都留痕）。"""
 
     unit: str = Field(description="计薪单位：元/月、元/天、元/年。")
+    currency: str = Field(
+        default="CNY", description="币种：CNY（元）／USD（美元）等，原文能确定时保留。"
+    )
+    salary_months: list[int] = Field(
+        default_factory=list,
+        description="该区间样本给出的发薪月数（如 15 薪）；未并入金额换算。",
+    )
     sample_count: int = Field(description="该单位下的岗位样本数。")
-    amount_min: int = Field(description="区间下限（元）。")
-    amount_max: int = Field(description="区间上限（元）。")
-    amount_median: int = Field(description="样本中点中位数（元）。")
+    amount_min: int = Field(description="区间下限（原币种金额）。")
+    amount_max: int = Field(description="区间上限（原币种金额）。")
+    amount_median: int = Field(description="样本中点中位数（原币种金额）。")
     cities: list[str] = Field(default_factory=list, description="该区间覆盖的城市。")
     raws: list[str] = Field(default_factory=list, description="该区间用到的薪资原文。")
     small_sample: bool = Field(
@@ -198,6 +220,12 @@ class CareerAnalysis(BaseModel):
     salary_intervals: list[SalaryInterval] = Field(default_factory=list)
     incomparable_notes: list[str] = Field(
         default_factory=list, description="未并入区间的薪资原文与原因。"
+    )
+    missing_salary_count: int = Field(
+        default=0, description="主样本里没有给出薪资原文的岗位数（缺失字段，未纳入区间）。"
+    )
+    experience_unverified_count: int = Field(
+        default=0, description="因页面没有经验要求而被经验条件剔除的候选数。"
     )
     sample_scope_note: str = Field(description="本轮样本口径说明（样本量、日期、地区）。")
     small_sample: bool = Field(description="样本量是否不足以支撑总体推断。")
@@ -240,6 +268,9 @@ class CareerPlanProjection(BaseModel):
     graduation_year: int | None = Field(default=None, description="届别年份。")
     cities: list[str] = Field(default_factory=list, description="期望城市。")
     constraints: list[str] = Field(default_factory=list, description="其他约束原话。")
+    experience_hint: str | None = Field(
+        default=None, description="用户提到的经验要求（逐条代码核对，未知不进入统计）。"
+    )
     plan: list[CareerQueryPlanItem] = Field(
         default_factory=list, description="本轮实际执行的检索计划（来源、查询词、筛选条件）。"
     )

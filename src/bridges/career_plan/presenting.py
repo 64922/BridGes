@@ -19,6 +19,8 @@ from bridges.career_plan.filtering import (
     KIND_CITY,
     KIND_CITY_UNVERIFIED,
     KIND_DUPLICATE,
+    KIND_EXPERIENCE,
+    KIND_EXPERIENCE_UNVERIFIED,
     KIND_EXPIRED,
     KIND_NOT_JOB,
     KIND_TITLE_MISMATCH,
@@ -43,6 +45,8 @@ REJECTION_LABELS: dict[str, str] = {
     KIND_ADJACENT: "相邻岗位（单列，不并入样本）",
     KIND_CITY: "城市不符",
     KIND_CITY_UNVERIFIED: "城市无法核对",
+    KIND_EXPERIENCE: "经验要求不符",
+    KIND_EXPERIENCE_UNVERIFIED: "经验要求无法核对",
     KIND_EXPIRED: "已过期或已下线",
     KIND_DUPLICATE: "重复岗位",
     KIND_NOT_JOB: "不是岗位详情页",
@@ -149,6 +153,8 @@ def _requirement_lines_block(projection: CareerPlanProjection) -> list[str]:
     lines.append(
         f"· 期望城市：{'、'.join(projection.cities)}" if projection.cities else "· 期望城市：未给出"
     )
+    if projection.experience_hint:
+        lines.append(f"· 经验条件：{projection.experience_hint}（逐条核对，未知不进入统计）")
     if projection.constraints:
         lines.append(f"· 其他约束：{'、'.join(projection.constraints)}")
     return lines
@@ -203,6 +209,8 @@ def _sample_lines(index: int, sample: JobSample) -> list[str]:
     lines.append(f"   抓取时间：{_fmt(sample.retrieved_at)}（来源：{sample.source_label}）")
     lines.append(f"   岗位匹配依据：{sample.title_evidence}")
     lines.append(f"   城市核对：{sample.city_evidence}")
+    if sample.experience_evidence:
+        lines.append(f"   经验核对：{sample.experience_evidence}")
     for requirement in sample.requirements[:MAX_REQUIREMENT_LINES]:
         lines.append(f"   要求原文：{requirement}")
     if len(sample.requirements) > MAX_REQUIREMENT_LINES:
@@ -231,13 +239,16 @@ def _analysis_lines(projection: CareerPlanProjection) -> list[str]:
     else:
         lines.append("· 技能关键词：样本要求原文里没有命中词表内的技能词。")
     if analysis.salary_intervals:
-        lines.append("· 薪资区间（按计薪单位分别统计，不同单位不混算）：")
+        lines.append("· 薪资区间（按币种与计薪单位分别统计，不同币种／单位不混算）：")
         for interval in analysis.salary_intervals:
             lines.append(
                 f"    {interval.unit}：{interval.amount_min:,}–{interval.amount_max:,}"
                 f"（中位 {interval.amount_median:,}；样本 {interval.sample_count} 个；"
                 f"地区：{'、'.join(interval.cities) or '页面未给出'}）"
             )
+            if interval.salary_months:
+                months = "、".join(f"{item} 薪" for item in interval.salary_months)
+                lines.append(f"      发薪月数：{months}（只记录原文，未并入区间金额）")
             if interval.small_sample:
                 lines.append(
                     f"      样本量 {interval.sample_count} 个偏少，只按本区间读数，"
