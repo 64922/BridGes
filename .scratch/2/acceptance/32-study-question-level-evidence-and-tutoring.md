@@ -83,4 +83,10 @@ python .scratch/2/validation/32-review/compare_results.py final-confirmed.xml
 
 ## 合并、推送与清理
 
-（待合并后补记）
+合并前经用户现有 `http://127.0.0.1:7890` 命令级代理 fetch，确认 `main == origin/main == 809f05a5`。`git merge --no-ff codex/32-study-question-level-evidence-and-tutoring` 无冲突，合并提交 `2c6cf2f8569188a50df5a6356309e2fb98ffdb8b`（父 `809f05a5` 与 `e9a2d833`）；合并树与已通过最终完整回归的 `e9a2d833` 树完全一致（均为 `86d06304`），最终相关回归、mypy 与 Ruff 结论直接适用于合并产物。
+
+合并后在主工作区（conda agent，唯一 basetemp）复跑：核心门 **38 passed**（[merge-core.xml](../validation/32-review/merge-core.xml)）；学习链路综合 **182 passed**（[merge-study.xml](../validation/32-review/merge-study.xml)）。
+
+推送：`git -c http.proxy=http://127.0.0.1:7890 push origin main`（`809f05a5..2c6cf2f8`）；`git ls-remote origin refs/heads/main` 核对远端与本地同为 `2c6cf2f8569188a50df5a6356309e2fb98ffdb8b`。未 force push。
+
+清理：确认工作树 HEAD `e9a2d833` 已合并且仅剩 4 个被最终证据取代的中间 XML（未跟踪）后，先显式删除这些文件（`Resolve-Path` 核实均在本工作树内），再 `git worktree remove` 删除 `D:\BridGes\.worktrees\32-study-question-level-evidence-and-tutoring`，`git branch -d` 删除本地分支 `codex/32-study-question-level-evidence-and-tutoring`；`git worktree prune --dry-run --verbose` 无失效记录。清理后仅余主工作区与工单 29、33 的工作树，均保留（29 的 HEAD 已由并行会话推进为 `b3c4402c`）；主工作区其他任务的未跟踪验证文件（`24-main-baseline.xml`、`24-main-integration.xml`、`27-review/main-*`、`ruff-main.json`、`25-main-baseline.xml`、`29-review/`、`32-review/main-*.xml`）保留未动。本记录与合并验证证据随文档补记提交同步远端。
