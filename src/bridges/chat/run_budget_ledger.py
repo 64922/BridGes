@@ -32,7 +32,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from bridges.routing import CapabilityRoute, MainCapability
+from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.storage.database import BridgesDatabase
 
 #: 账本合同版本；未来字段演进时递增，未知版本读回时闭锁而不是猜测语义。
@@ -134,6 +134,14 @@ def derive_run_budget_class(
     票 10/12/37 接线后启用。
     """
     capability = route.main_capability if route is not None else None
+    if (
+        route is not None
+        and route.status is RouteStatus.MATCHED
+        and len(route.capability_list) > 1
+    ):
+        # 工单 37：已登记跨模块复合运行按普通检索预算（60 秒/15 秒预留），
+        # 全部模块分支共享同一本账。
+        return RunBudgetClass.NORMAL
     if mode == "study" or capability in _DEEP_MAIN_CAPABILITIES or has_image or has_video:
         return RunBudgetClass.DEEP
     return RunBudgetClass.LIGHTWEIGHT

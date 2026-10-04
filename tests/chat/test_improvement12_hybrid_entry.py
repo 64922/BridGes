@@ -144,13 +144,21 @@ def test_body_intent_overrides_module_hint() -> None:
     assert result.route_source == RouteSource.BODY_INTENT
 
 
-def test_multiple_modules_ask_one_question() -> None:
+def test_registered_multi_module_plans_composite_without_question() -> None:
     result = _understand("帮我找几篇论文，再找几本入门教材")
+
+    assert result.actual_module_id is None
+    assert result.clarification_question is None
+    assert result.capability_list == ["paper", "resources"]
+
+
+def test_unregistered_multi_module_keeps_one_question() -> None:
+    result = _understand("帮我找几篇论文，再看看贴吧里怎么说")
 
     assert result.actual_module_id is None
     assert result.clarification_question is not None
     assert result.missing_fields == ["capability"]
-    assert result.route_source == RouteSource.ORDINARY_CHAT
+    assert result.capability_list == []
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +478,34 @@ def test_pause_continue_and_cancel_transitions(tmp_path: Path) -> None:
     )
 
 
+def test_registered_composite_freezes_one_normal_budget(tmp_path: Path) -> None:
+    from bridges.chat.run_budget_ledger import (
+        RunBudgetClass,
+        RunBudgetLedgerRepository,
+    )
+
+    service, tasks = _chat_service(tmp_path)
+    conversation = service.create_conversation("alice")
+    _, assistant, _ = service.start_generation(
+        "alice", conversation.conversation_id, "帮我找几篇论文，再找几本入门教材"
+    )
+
+    assert assistant.route is not None
+    assert assistant.route.status.value == "matched"
+    assert assistant.route.module_id is None
+    assert assistant.route.capability_list == ["paper", "resources"]
+    run = service._repo.get_run_by_message(  # type: ignore[attr-defined]  # noqa: SLF001
+        "alice", assistant.message_id  # type: ignore[attr-defined]
+    )
+    snapshot = RunBudgetLedgerRepository(  # noqa: SLF001
+        service._repo.database  # type: ignore[attr-defined]
+    ).load("alice", run.run_id)
+    assert snapshot is not None and snapshot.active
+    assert snapshot.plan.budget_class is RunBudgetClass.NORMAL
+    projections = tasks.list_projections("alice", conversation.conversation_id)
+    assert len(projections) == 1 and projections[0].open_waits == []
+
+
 def test_multi_module_clarification_opens_wait_and_answer_resolves(
     tmp_path: Path,
 ) -> None:
@@ -477,7 +513,7 @@ def test_multi_module_clarification_opens_wait_and_answer_resolves(
     conversation = service.create_conversation("alice")
 
     _, assistant, _ = service.start_generation(
-        "alice", conversation.conversation_id, "帮我找几篇论文，再找几本入门教材"
+        "alice", conversation.conversation_id, "帮我找几篇论文，再看看贴吧里怎么说"
     )
     _finish_turn(service, assistant)
 
@@ -501,7 +537,7 @@ def test_new_topic_pauses_task_and_suspends_old_wait(tmp_path: Path) -> None:
     service, tasks = _chat_service(tmp_path)
     conversation = service.create_conversation("alice")
     _, assistant, _ = service.start_generation(
-        "alice", conversation.conversation_id, "帮我找几篇论文，再找几本入门教材"
+        "alice", conversation.conversation_id, "帮我找几篇论文，再看看贴吧里怎么说"
     )
     _finish_turn(service, assistant)
     task = _current_task(tasks, "alice", conversation.conversation_id)

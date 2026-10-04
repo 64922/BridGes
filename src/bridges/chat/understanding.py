@@ -184,6 +184,13 @@ _NON_ACTION_RE = re.compile(
 _RESTART_RE = re.compile(r"重新(?:开始|发起|查|找)|重来|再来一次")
 
 
+def _registered_composite(detected: Sequence[str]) -> bool:
+    """已登记组合交给复合调度（工单 37），未登记组合保持一次澄清。"""
+    from bridges.orchestration.registry import COMPOSITE_COMBINATIONS  # noqa: PLC0415
+
+    return len(detected) > 1 and frozenset(detected) in COMPOSITE_COMBINATIONS
+
+
 class MainAgentUnderstanding:
     """确定性主理解：一次产出关系/参数/硬条件与实际路由来源。"""
 
@@ -322,13 +329,26 @@ class MainAgentUnderstanding:
             clarification=clarification,
             target_task=target_task,
         )
+        composite_capabilities = (
+            list(detected)
+            if (
+                clarification is None
+                and actual_module is None
+                and requested_module_id not in detected
+                and _registered_composite(detected)
+            )
+            else []
+        )
         return MainUnderstanding(
             user_message_id=user_message_id,
             mode=mode_value,
             requested_module_id=requested_module_id,
             actual_module_id=actual_module,
             route_source=route_source,
-            capability_list=[actual_module] if actual_module else [],
+            capability_list=(
+                composite_capabilities
+                or ([actual_module] if actual_module else [])
+            ),
             reason=reason,
             goal=goal,
             hard_conditions=hard_conditions,
@@ -500,6 +520,10 @@ class MainAgentUnderstanding:
         if ambiguity is not None:
             return ambiguity, ["task"]
         if len(detected) > 1 and requested_module_id not in detected:
+            if _registered_composite(detected):
+                # 工单 37：已登记的跨模块组合由复合计划统一调度与核验，
+                # 不再逐条追问「先执行哪一个」。
+                return None, []
             names = "、".join(detected)
             return (
                 render_state_copy("chat.clarification.multiple_tasks", names=names),

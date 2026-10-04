@@ -252,6 +252,12 @@ class DailyTurnState(TypedDict, total=False):
     #: GitHub 子图交付先进入检查点，父图核验后再统一提交消息。
     github_delivery: dict[str, Any] | None
     github_verified: bool
+    #: 工单 37 复合运行：计划/结果/综合/最终门先进入检查点，父图核验后
+    #: 在守卫事务内一次性提交全部投影与正文。
+    composite_outcome: dict[str, Any] | None
+    composite_draft: dict[str, Any] | None
+    composite_gate: dict[str, Any] | None
+    composite_verified: bool
 
 
 class _GraphDeps:
@@ -573,6 +579,13 @@ def _node_invoke_subgraph_or_chat(
                     NODE_INVOKE_SUBGRAPH_OR_CHAT, "task_state_conflict",
                     render_state_copy("error.task_state_conflict"), retryable=False,
                 )
+    if (
+        dispatch == "chat"
+        and understanding is not None
+        and len(understanding.capability_list) > 1
+    ):
+        # 工单 37：已登记跨模块组合走复合计划（模块不自行结束助手消息）。
+        return _invoke_composite_plan(deps, state, understanding)
     if dispatch == PAPER_MODULE_ID:
         return _invoke_paper_module(deps, state)
     if dispatch == TIEBA_MODULE_ID:
@@ -606,6 +619,433 @@ def _node_invoke_subgraph_or_chat(
     for event in stream:
         deps.emit(event)
     return {}
+
+
+#: 复合计划可执行的模块 → ChatService 上的服务属性名（工单 37）。
+_COMPOSITE_SERVICE_ATTRS: dict[str, str] = {
+    PAPER_MODULE_ID: "paper_search_service",
+    RESOURCES_MODULE_ID: "learning_resources_service",
+    GITHUB_MODULE_ID: "github_projects_service",
+    CAREER_MODULE_ID: "career_plan_service",
+}
+
+
+def _invoke_composite_plan(
+    deps: _GraphDeps, state: DailyTurnState, understanding: Any
+) -> dict[str, Any]:
+    """工单 37：按已登记组合执行有限跨模块计划。
+
+    模块经 ``defer_finalization`` 只提交内核产物与延迟交付，不结束助手
+    消息；父图核验综合与最终门后，在守卫事务内一次性提交全部投影。
+    """
+    from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository  # noqa: PLC0415
+    from bridges.orchestration.contracts import CompositeStatus  # noqa: PLC0415
+    from bridges.orchestration.executor import (  # noqa: PLC0415
+        CompositeBudget,
+        StepRunContext,
+    )
+    from bridges.orchestration.planner import CompositePlanner  # noqa: PLC0415
+    from bridges.orchestration.production import (  # noqa: PLC0415
+        CompositeOrchestrationService,
+        ModuleServiceStepRunner,
+        wait_reason_for,
+    )
+
+    run = deps.run
+    conversation = deps.repo.get_conversation(run.account_id, run.conversation_id)
+    if conversation is None or conversation.mode != "companion":
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "module_mode_conflict",
+            render_state_copy("error.module_mode_conflict"), retryable=False,
+        )
+    if understanding.blocks_network:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "network_not_allowed",
+            render_state_copy("error.network_not_allowed"), retryable=False,
+        )
+    for module_id in understanding.capability_list:
+        if not understanding.allows_module(module_id):
+            raise DailyTurnError(
+                NODE_INVOKE_SUBGRAPH_OR_CHAT, "source_not_allowed",
+                render_state_copy("error.source_not_allowed"), retryable=False,
+            )
+    user_message = deps.repo.get_message(run.account_id, run.user_message_id)
+    goal = understanding.goal or (
+        user_message.content if user_message is not None else ""
+    )
+    planner = CompositePlanner()
+    plan = planner.plan(
+        goal=goal,
+        user_message_id=run.user_message_id,
+        module_ids=understanding.capability_list,
+        hard_conditions=[
+            *understanding.hard_conditions,
+            *understanding.effective_hard_conditions,
+        ],
+    )
+    if plan is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "composite_plan_unavailable",
+            "该组合尚未登记为可执行的跨模块计划，本轮未派发。", retryable=False,
+        )
+    superseded: list[str] = []
+    runners = {
+        step.module_id: ModuleServiceStepRunner(
+            resolve=_composite_resolver(
+                understanding, step.module_id, goal
+            ),
+            run=_composite_run_call(
+                deps, state, module_id=step.module_id, goal=goal,
+                superseded=superseded,
+            ),
+        )
+        for step in plan.steps
+        if step.module_id in _COMPOSITE_SERVICE_ATTRS
+    }
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(
+            state["assistant_message_id"], node, status, duration_ms=duration_ms
+        )
+
+    result = CompositeOrchestrationService(planner=planner).run(
+        plan=plan,
+        runners=runners,
+        context=StepRunContext(
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+            run_id=run.run_id,
+            user_message_id=run.user_message_id,
+            assistant_message_id=run.assistant_message_id,
+            goal=goal,
+            run_context=chat_run_context(
+                run.account_id, run.conversation_id, run.run_id
+            ),
+            stop_event=deps.stop_event,
+            emit_node=emit_node,
+        ),
+        budget=CompositeBudget(
+            RunBudgetLedgerRepository(deps.repo.database),
+            account_id=run.account_id,
+            run_id=run.run_id,
+        ),
+    )
+    if superseded:
+        raise DailyGraphSuperseded(superseded[0])
+    if result.outcome.status is CompositeStatus.REJECTED:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "composite_plan_rejected",
+            f"复合计划被代码校验拒绝（{result.outcome.rejection_code}），本轮未执行。",
+            retryable=False,
+        )
+    reason = wait_reason_for(result.outcome)
+    if reason is not None:
+        deps.repo.update_generation_progress(
+            run.account_id, run.run_id, wait_reason=reason
+        )
+    return {
+        "composite_outcome": result.outcome.model_dump(mode="json"),
+        "composite_draft": result.draft.model_dump(mode="json"),
+        "composite_gate": result.gate.model_dump(mode="json"),
+        "composite_verified": False,
+    }
+
+
+def _composite_resolver(
+    understanding: Any, module_id: str, goal: str
+) -> Callable[[Any, Any], dict[str, Any]]:
+    """按登记参数来源解析步骤参数（无外呼；私人背景不进入指纹与公网）。"""
+
+    def resolve(step: Any, context: Any) -> dict[str, Any]:
+        del step
+        upstream = context.upstream
+        if module_id == CAREER_MODULE_ID:
+            params: dict[str, Any] = {"job_terms": goal}
+            city = next(
+                (
+                    item.text
+                    for item in [
+                        *understanding.hard_conditions,
+                        *understanding.effective_hard_conditions,
+                    ]
+                    if item.kind is HardConditionKind.CITY
+                ),
+                None,
+            )
+            if city:
+                params["city"] = city
+            return params
+        if module_id == RESOURCES_MODULE_ID:
+            return {"topic": _composite_topic(upstream.get(CAREER_MODULE_ID)) or goal}
+        if module_id == GITHUB_MODULE_ID:
+            career = upstream.get(CAREER_MODULE_ID)
+            return {
+                "topic": _composite_topic(career) or goal,
+                "identity_confirmed": career is not None,
+            }
+        return {"topic": context.goal}
+
+    return resolve
+
+
+def _composite_topic(result: Any) -> str | None:
+    """上游交付投影里的公开主题词（缺失时为 None，不臆造）。"""
+    if result is None or result.delivery is None:
+        return None
+    topic = (result.delivery.projection or {}).get("topic")
+    return str(topic) if topic else None
+
+
+def _composite_run_call(
+    deps: _GraphDeps,
+    state: DailyTurnState,
+    *,
+    module_id: str,
+    goal: str,
+    superseded: list[str],
+) -> Callable[[Any, Any, Any], Any]:
+    """构造一个模块的无终态调用（``defer_finalization=True``）。"""
+    run = deps.run
+    service = getattr(deps.service, _COMPOSITE_SERVICE_ATTRS[module_id], None)
+    if service is None:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "module_not_available",
+            "复合计划所需模块当前不可用，请稍后重试。", retryable=True,
+        )
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(
+            state["assistant_message_id"], node, status, duration_ms=duration_ms
+        )
+
+    def call(step: Any, context: Any, resolved: Any) -> Any:
+        del step, resolved
+        common: dict[str, Any] = {
+            "repo": deps.repo,
+            "account_id": run.account_id,
+            "conversation_id": run.conversation_id,
+            "user_message_id": run.user_message_id,
+            "assistant_message_id": run.assistant_message_id,
+            "run_context": chat_run_context(
+                run.account_id, run.conversation_id, run.run_id
+            ),
+            "emit_node": emit_node,
+            "stop_event": deps.stop_event,
+            "defer_finalization": True,
+        }
+        try:
+            if module_id == PAPER_MODULE_ID:
+                return service.run(
+                    **common,
+                    run_model_id=state.get("run_model_id"),
+                    module_context=deps.service.module_task_context(
+                        run, PAPER_MODULE_ID
+                    ),
+                    model_quota=deps.service.run_model_quota(run),
+                    manifest_sink=lambda manifest: deps.service.audit_module_manifest(
+                        run, "paper.summarize", manifest
+                    ),
+                    assessment_manifest_sink=lambda manifest: (
+                        deps.service.audit_module_manifest(
+                            run, "paper.assess", manifest
+                        )
+                    ),
+                    writing_policy=(run.config or {}).get("global_writing_policy"),
+                )
+            if module_id == RESOURCES_MODULE_ID:
+                return service.run(
+                    **common,
+                    run_model_id=state.get("run_model_id"),
+                    module_context=deps.service.module_task_context(
+                        run, RESOURCES_MODULE_ID
+                    ),
+                )
+            if module_id == CAREER_MODULE_ID:
+                return service.run(
+                    **common,
+                    run_model_id=state.get("run_model_id"),
+                    request_text=goal or None,
+                    module_context=deps.service.module_task_context(
+                        run, CAREER_MODULE_ID
+                    ),
+                )
+            return service.run(
+                **common,
+                run_model_id=state.get("run_model_id"),
+                module_context=deps.service.module_task_context(run, GITHUB_MODULE_ID),
+                model_quota=deps.service.run_model_quota(run),
+                manifest_sink=lambda manifest: deps.service.audit_module_manifest(
+                    run, "github.insight", manifest
+                ),
+                requirement=_composite_github_requirement(context, goal),
+            )
+        except (
+            PaperSupersededError,
+            ResourcesSupersededError,
+            CareerSupersededError,
+            GithubSupersededError,
+        ) as error:
+            # 迟到结果：整轮由父图守卫统一拒绝，不写任何终态。
+            superseded.append(str(error))
+            raise
+
+    return call
+
+
+def _composite_github_requirement(context: Any, goal: str) -> Any:
+    """把上游交付转换为 GitHub 的类型化需求（身份未确认不宣称对应）。"""
+    from bridges.github.contracts import GithubRequirementInput  # noqa: PLC0415
+
+    paper = context.upstream.get(PAPER_MODULE_ID)
+    career = context.upstream.get(CAREER_MODULE_ID)
+    if paper is not None:
+        return GithubRequirementInput(
+            kind="paper",
+            label="候选论文",
+            phrase=goal,
+            identity_confirmed=False,
+            source_ref=next(iter(paper.artifact_refs.values()), None),
+            identity_note="本轮只取得候选论文，身份尚未确认；不宣称仓库对应那份论文。",
+        )
+    if career is not None:
+        return GithubRequirementInput(
+            kind="job",
+            label="岗位需求",
+            phrase=_composite_topic(career) or goal,
+            identity_confirmed=True,
+            source_ref=next(iter(career.artifact_refs.values()), None),
+            identity_note="岗位需求来自用户原话与已核验岗位样本。",
+        )
+    return None
+
+
+def _verify_composite_result(state: DailyTurnState) -> None:
+    """父图核验：最终门通过且成功分支都有内核产物引用。"""
+    from bridges.orchestration.contracts import (  # noqa: PLC0415
+        CompositeOutcome,
+        SynthesisGateResult,
+    )
+
+    outcome = CompositeOutcome.model_validate(state["composite_outcome"])
+    gate = SynthesisGateResult.model_validate(state["composite_gate"])
+    if not gate.passed:
+        raise DailyTurnError(
+            NODE_VERIFY_OUTPUT, "composite_gate_failed",
+            f"综合未通过最终门（{gate.code}），本轮未提交。", retryable=False,
+        )
+    missing = [
+        step.step_id
+        for step in outcome.steps
+        if step.state.value == "completed"
+        and step.delivery is not None
+        and not step.artifact_refs
+    ]
+    if missing:
+        raise DailyTurnError(
+            NODE_VERIFY_OUTPUT, "composite_delivery_unverified",
+            "复合交付缺少内核产物引用，本轮未提交。", retryable=True,
+        )
+
+
+def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
+    """父图在守卫事务中一次提交全部投影、正文与终态。"""
+    from bridges.chat.turn import finalize_message  # noqa: PLC0415
+    from bridges.kernel.guard import RunCommitGuard  # noqa: PLC0415
+    from bridges.kernel.repository import NodeKernelRepository  # noqa: PLC0415
+    from bridges.orchestration.contracts import (  # noqa: PLC0415
+        CompositeOutcome,
+        CompositeStatus,
+        SynthesisDraft,
+        SynthesisGateResult,
+    )
+    from bridges.orchestration.production import (  # noqa: PLC0415
+        first_failure,
+        message_status_for,
+        projection_updates,
+        render_final_content,
+    )
+
+    if not state.get("composite_verified"):
+        raise DailyTurnError(
+            NODE_PERSIST_RESULT, "composite_delivery_unverified",
+            "复合交付尚未通过父图核验，本轮未提交。", retryable=True,
+        )
+    outcome = CompositeOutcome.model_validate(state["composite_outcome"])
+    gate = SynthesisGateResult.model_validate(state["composite_gate"])
+    if not gate.passed:
+        raise DailyTurnError(
+            NODE_PERSIST_RESULT, "composite_gate_failed",
+            f"综合未通过最终门（{gate.code}），本轮未提交。", retryable=False,
+        )
+    if outcome.status is CompositeStatus.REJECTED:
+        raise DailyGraphSuperseded(outcome.rejection_code or "composite_rejected")
+    if outcome.status is CompositeStatus.STOPPED:
+        raise DailyGraphStop(NODE_PERSIST_RESULT)
+    run = deps.run
+    draft = SynthesisDraft.model_validate(state["composite_draft"])
+    content = render_final_content(draft)
+    projections = projection_updates(outcome)
+    status = message_status_for(outcome)
+    failure = first_failure(outcome)
+    lock = next(
+        (
+            step.delivery.lock
+            for step in outcome.steps
+            if step.delivery is not None and step.delivery.lock is not None
+        ),
+        None,
+    )
+    with NodeKernelRepository(deps.repo.database).transaction():
+        guard = RunCommitGuard(
+            deps.repo,
+            account_id=run.account_id,
+            run_id=run.run_id,
+            conversation_id=run.conversation_id,
+            assistant_message_id=run.assistant_message_id,
+            stop_event=deps.stop_event,
+        )
+        guard.capture()
+        decision = guard.verify()
+        if not decision.ok:
+            if decision.code == "run_stopped":
+                raise DailyGraphStop(NODE_PERSIST_RESULT)
+            raise DailyGraphSuperseded(decision.code)
+        message = deps.repo.get_message(run.account_id, run.assistant_message_id)
+        # 提交后检查点尚未保存的恢复：相同交付只回放，不重复写入。
+        if message is None or message.status == ChatMessageStatus.STREAMING:
+            finalize_message(
+                deps.repo, run.account_id, run.assistant_message_id,
+                status=status,
+                error_code=(
+                    failure.code
+                    if failure is not None and status is ChatMessageStatus.ERROR
+                    else None
+                ),
+                error_message=(
+                    failure.message
+                    if failure is not None and status is ChatMessageStatus.ERROR
+                    else None
+                ),
+                duration_ms=None, model_id=None,
+                run_lock_id=lock.lock_id if lock is not None else None,
+                lock=lock, started=deps.started, now=datetime.now(UTC),
+                final_content=content,
+                paper_search=projections.get("paper_search"),
+                tieba_research=projections.get("tieba_research"),
+                career_plan=projections.get("career_plan"),
+                learning_resources=projections.get("learning_resources"),
+                commute_route=projections.get("commute_route"),
+                github_projects=projections.get("github_projects"),
+            )
+        elif message.content != content or message.status != status:
+            raise DailyGraphSuperseded("message_terminal")
+    if status is ChatMessageStatus.ERROR and failure is not None:
+        raise DailyTurnError(
+            failure.node or NODE_PERSIST_RESULT,
+            failure.code,
+            failure.message,
+            retryable=failure.retryable,
+        )
 
 
 def _invoke_paper_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, Any]:
@@ -949,6 +1389,9 @@ def _node_verify_output(
     """核验输出：本轮已收敛为明确终态（完成或诚实失败），绝不悬空。"""
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
+    if state.get("composite_outcome") is not None:
+        _verify_composite_result(state)
+        return {"composite_verified": True}
     if state.get("github_delivery") is not None:
         delivery = GithubDelivery.model_validate(state["github_delivery"])
         _verify_github_delivery(deps, delivery)
@@ -1061,6 +1504,9 @@ def _node_persist_result(
     """
     deps: _GraphDeps = config["configurable"]["deps"]
     run = deps.run
+    if state.get("composite_outcome") is not None:
+        _persist_composite_result(deps, state)
+        return {}
     if state.get("github_delivery") is not None:
         _persist_github_delivery(deps, state)
     if state.get("module_dispatch") == "chat":

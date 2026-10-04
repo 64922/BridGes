@@ -22,6 +22,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from bridges.contracts.ai import ModelRunLock
+
 
 class ModuleQueryStatus(StrEnum):
     """一次外部工具调用的结果分类（各来源共用，不隐藏失败）。"""
@@ -72,3 +74,32 @@ class ModuleWaitState(BaseModel):
         default_factory=dict, description="模块自己的恢复载荷（JSON 可序列化）。"
     )
     created_at: datetime = Field(description="进入等待状态的时间。")
+
+
+class ModuleDelivery(BaseModel):
+    """模块在「不自行结束助手消息」模式下返回的完整交付（工单 37 复合接缝）。
+
+    模块仍在内核里提交真实产物与完成收据，但不调用 ``finalize_message``；
+    复合调度器统一核验后，把每个分支的投影与最终正文在同一事务里一次提交。
+    ``message_status`` 是 :class:`~bridges.contracts.chat.ChatMessageStatus`
+    的值；失败分支保留错误投影与可重试性，由复合调度器按必要/可选步骤决定
+    阻塞相关结论还是保留有效部分。``wait_reason`` 供澄清等待写入运行表。
+    """
+
+    module_id: str = Field(description="模块标识（与路由/配方一致）。")
+    status: str = Field(description="模块投影状态值（成功/澄清/空/失败/停止）。")
+    projection_field: str = Field(description="助手消息投影字段名，例如 paper_search。")
+    projection: dict[str, Any] = Field(description="模块投影（JSON 可序列化）。")
+    content: str = Field(default="", description="该分支候选正文（综合前，不直接终态）。")
+    message_status: str = Field(description="ChatMessageStatus 的值。")
+    error_node: str | None = Field(default=None, description="失败所在节点。")
+    error_code: str | None = Field(default=None, description="稳定错误分类码。")
+    error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
+    retryable: bool = Field(default=False, description="失败是否值得重试。")
+    artifact_refs: dict[str, str] = Field(
+        default_factory=dict, description="节点 → 产物 ID（引用，不复制载荷）。"
+    )
+    lock: ModelRunLock | None = Field(
+        default=None, description="该分支实际生成的模型运行锁（可序列化）。"
+    )
+    wait_reason: str | None = Field(default=None, description="持久化等待原因（澄清等）。")
