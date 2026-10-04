@@ -177,6 +177,52 @@ def env(tmp_path: Path) -> _Env:
     return _Env(tmp_path)
 
 
+def test_issue41_current_text_pending_and_cross_session_commit(env: _Env, caplog) -> None:
+    """原文即时进入模型；未提交画像不泄漏，提交后跨会话可用且日志无正文。"""
+    private = "我每天只有30分钟学习时间，标记为合成私密甲乙丙，请安排复习计划。"
+    from bridges.contracts.profile_extraction import ProfileExtractionOutput
+
+    class Extractor:
+        version = "issue41-chat-fixed-v1"
+
+        def extract(self, **kwargs):
+            if kwargs["content"] != private:
+                return ProfileExtractionOutput(items=[])
+            return ProfileExtractionOutput.model_validate({"items": [{
+                "dimension": "stage_goal", "normalized_value": "每天只有30分钟学习时间",
+                "fact_text": "我每天只有30分钟学习时间", "action": "create", "reliability": 0.99,
+                "evidence_ref": kwargs["message_id"], "evidence_start": 0,
+                "evidence_end": len("我每天只有30分钟学习时间"),
+            }]})
+
+    env.automatic._extractor = Extractor()
+
+    def turn(conversation_id, content, run_id):
+        user, assistant, _ = env.chat.start_generation(ACCOUNT, conversation_id, content)
+        list(env.chat.stream_generation(
+            ACCOUNT, conversation_id, assistant.message_id, _context(run_id),
+            until_user_message_id=user.message_id,
+        ))
+        return env.chat.message_projection(ACCOUNT, assistant.message_id)
+
+    with caplog.at_level("INFO"):
+        first = turn(env.conversation_id, private, "issue41-first")
+        assert first.status == ChatMessageStatus.DONE
+        assert any(message["role"] == "user" and private in message["content"]
+                   for message in env.payload()["messages"])
+        assert not env.slice_blocks()
+        assert env.automatic.list_retry_tasks(ACCOUNT)
+        assert not env.items()
+        other = env.chat.create_conversation(ACCOUNT).conversation_id
+        turn(other, "帮我安排数学复习计划", "issue41-before")
+        assert not env.slice_blocks()
+        env.automatic.run_retry_tick()
+        turn(other, "帮我安排数学复习计划", "issue41-after")
+        assert any("30分钟" in block.replace(" ", "") for block in env.slice_blocks())
+    assert "合成私密甲乙丙" not in caplog.text
+    assert private not in str(env.slice_audits())
+
+
 def test_cross_topic_preference_applies_without_word_overlap(env: _Env) -> None:
     """默认表达偏好跨主题适用：与「贝叶斯」没有词面交集也进入本轮。"""
 

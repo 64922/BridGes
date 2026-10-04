@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -21,6 +22,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +64,16 @@ def _code_commit() -> str | None:
     return completed.stdout.strip() or None
 
 
+def _source_hashes() -> dict[str, str]:
+    """锁定实际被测源码，含未提交修复，不记录凭据或用户数据。"""
+    paths = sorted((REPO_ROOT / "src/bridges").rglob("*.py"))
+    paths.append(Path(__file__).resolve())
+    return {
+        path.relative_to(REPO_ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in paths
+    }
+
+
 # ---------------------------------------------------------------------------
 # 真实抽取探针：固定源消息 + 本地判定
 # ---------------------------------------------------------------------------
@@ -73,33 +85,30 @@ def _item_text(item: Any) -> str:
 
 def _check_negated(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    inverted = [text for text in texts if "喜欢" in text and "不" not in text]
-    retained = bool(items)
+    retained = any("不喜欢长篇回答" in text.replace(" ", "") for text in texts)
+    inverted = any("喜欢长篇回答" in text and "不喜欢长篇回答" not in text for text in texts)
     return retained and not inverted, f"retained={retained} extracted={texts}"
 
 
 def _check_multi_fact(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    return len(items) >= 2, f"count={len(items)} extracted={texts}"
+    retained = all(any(f"喜欢{fact}" in text for text in texts) for fact in ("跑步", "游泳"))
+    return retained, f"count={len(items)} extracted={texts}"
 
 
 def _check_third_party(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    violations = [
-        text for text in texts if "摄影" in text and "朋友" not in text
-    ]
-    return not violations, f"extracted={texts}"
+    return not items, f"extracted={texts}"
 
 
 def _check_quoted(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    violations = [text for text in texts if "跑步" in text]
-    return not violations, f"extracted={texts}"
+    return not items, f"extracted={texts}"
 
 
 def _check_self_report(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    return any("概率" in text for text in texts), f"extracted={texts}"
+    return any("学习概率统计" in text for text in texts), f"extracted={texts}"
 
 
 def _check_ambiguous(content: str, items: list[Any]) -> tuple[bool, str]:
@@ -152,6 +161,30 @@ def run_real_extraction_probe(gateway: Any) -> list[dict[str, Any]]:
                 lock_sink=locks.append,
             )
             passed, detail = probe.check(probe.content, list(output.items))
+            from bridges.evaluation.profile_quality import ProfileLab
+
+            message_id = f"msg-{probe.probe_id}"
+            evidence_ok = all(
+                item.evidence_ref == message_id
+                and item.evidence_start is not None
+                and item.evidence_end is not None
+                and 0 <= item.evidence_start < item.evidence_end <= len(probe.content)
+                and (item.fact_text or item.normalized_value).replace(" ", "")
+                in probe.content[item.evidence_start : item.evidence_end].replace(" ", "")
+                for item in output.items
+            )
+            lab = ProfileLab({message_id: [item.model_dump(mode="json") for item in output.items]})
+            lab.schedule("eval41-extraction", message_id, probe.content)
+            lab.drain()
+            persisted = lab.active_texts("eval41-extraction")
+            should_persist = probe.probe_id in {"negated_preference", "multi_fact", "self_report"}
+            governance_ok = bool(persisted) if should_persist else not persisted
+            if probe.probe_id == "multi_fact":
+                governance_ok = all(
+                    any(f"喜欢{fact}" in text for text in persisted) for fact in ("跑步", "游泳")
+                )
+            passed = passed and evidence_ok and governance_ok
+            detail += f" evidence_ok={evidence_ok} persisted={persisted}"
             error_code = None
         except Exception as exc:  # noqa: BLE001 - 探针失败按不通过记录
             passed, detail = False, "探针执行异常"
@@ -193,11 +226,7 @@ def build_real_gateway(data_dir: Path) -> tuple[Any, Any]:
     if not resolved.configured or resolved.value is None:
         raise RuntimeError("missing_global_qwen_key")
     composition = build_production_composition(
-        settings.model_copy(
-            update={
-                "qwen_api_key": SecretStr(resolved.value.get_secret_value())
-            }
-        )
+        settings.model_copy(update={"qwen_api_key": SecretStr(resolved.value.get_secret_value())})
     )
     if not composition.global_key_configured:
         raise RuntimeError("missing_global_qwen_key")
@@ -243,8 +272,7 @@ def _render_report(
     ]
     if pairing is not None:
         lines.append(
-            f"- 真实配对：{pairing['run_count']} 次调用"
-            f"（{pairing['task_count']} 任务 × 4 条件）"
+            f"- 真实配对：{pairing['run_count']} 次调用（{pairing['task_count']} 任务 × 4 条件）"
         )
     if extraction is not None:
         lines.append(f"- 真实抽取探针：{len(extraction)} 条源消息")
@@ -264,10 +292,7 @@ def _render_report(
         )
     if extraction is not None:
         failed = [probe["probe_id"] for probe in extraction if not probe["passed"]]
-        lines.append(
-            f"- 真实抽取探针总体：{'通过' if not failed else '不通过'}；"
-            f"失败：{failed}"
-        )
+        lines.append(f"- 真实抽取探针总体：{'通过' if not failed else '不通过'}；失败：{failed}")
     lines.extend(["", "## 真实抽取探针明细", ""])
     if extraction is None:
         lines.append("未执行。")
@@ -301,17 +326,18 @@ def _render_report(
         ]
     )
     if pairing is not None and extraction is not None:
-        total_in = sum(
-            summary["input_tokens"] for summary in pairing["conditions"].values()
-        ) + sum(probe.get("input_tokens") or 0 for probe in extraction)
+        total_in = sum(summary["input_tokens"] for summary in pairing["conditions"].values()) + sum(
+            probe.get("input_tokens") or 0 for probe in extraction
+        )
         total_out = sum(
             summary["output_tokens"] for summary in pairing["conditions"].values()
         ) + sum(probe.get("output_tokens") or 0 for probe in extraction)
         lines.append(f"- 真实调用总输入 token：{total_in}；总输出 token：{total_out}")
     lines.extend(
         [
-            "- 治理动作（记住/修改/删除/忘掉）各以单仓库事务提交，读取与采用切片为只读快照；",
-            "  本轮未单独插桩事务占用时长，作为已知局限。",
+            "- SQLite 事务持有时间与模型阶段事务状态见 deterministic-report.json "
+            "的 sqlite_async_transactions。",
+            "  该测量为合成内存 SQLite 的机制证据，不代表真实磁盘或生产负载延迟。",
             "",
             "## 阈值依据与索引/模型选择建议",
             "",
@@ -324,7 +350,6 @@ def _render_report(
             "",
             "- 真实配对每条件样本少（2 任务），只证明机制可用与方向性改善，不宣称准确率。",
             "- 配对回答检查为确定性内容规则，不替代人工盲评；盲评材料见 blind-review.md。",
-            "- 环境代理不可达 GitHub，仓库同步受限；DashScope 直连可用。",
             "",
         ]
     )
@@ -358,6 +383,11 @@ def main(argv: list[str] | None = None) -> int:
     environment = {
         "generated_at": datetime.now(UTC).isoformat(),
         "code_commit": _code_commit(),
+        "source_hashes": _source_hashes(),
+        "python": sys.version,
+        "python_executable": sys.executable,
+        "conda_environment": os.environ.get("CONDA_DEFAULT_ENV"),
+        "dependencies": {name: version(name) for name in ("pydantic", "httpx", "pytest", "ruff")},
         "prompt_version": PROFILE_EXTRACTION_PROMPT_VERSION,
         "model_id": "qwen3.7-plus-2026-05-26",
         "account_model": "synthetic eval account per condition",
@@ -367,6 +397,7 @@ def main(argv: list[str] | None = None) -> int:
         **deterministic.get("environment", {}),
         "code_commit": environment["code_commit"],
         "prompt_version": environment["prompt_version"],
+        "source_hashes": environment["source_hashes"],
     }
     (args.output_dir / "deterministic-report.json").write_text(
         json.dumps(deterministic, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -395,9 +426,7 @@ def main(argv: list[str] | None = None) -> int:
             inconclusive = True
         else:
             extraction = run_real_extraction_probe(composition.gateway)
-            report = run_pairing(
-                make_chat_sender(composition.gateway), environment=environment
-            )
+            report = run_pairing(make_chat_sender(composition.gateway), environment=environment)
             write_reports(report, args.output_dir)
             pairing_payload = report.to_dict()
 
@@ -412,14 +441,20 @@ def main(argv: list[str] | None = None) -> int:
         "deterministic_passed": deterministic["passed"],
         "pairing_passed": pairing_payload["passed"] if pairing_payload else None,
         "extraction_passed": (
-            all(probe["passed"] for probe in extraction)
-            if extraction is not None
-            else None
+            all(probe["passed"] for probe in extraction) if extraction is not None else None
         ),
         "real_probes_requested": args.real_probes,
         "inconclusive": inconclusive,
         "output_dir": str(args.output_dir),
     }
+    (args.output_dir / "run-report.json").write_text(
+        json.dumps(
+            {**summary, "environment": environment, "extraction": extraction},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     print(json.dumps(summary, ensure_ascii=False))
     if not deterministic["passed"]:
         return 2

@@ -123,6 +123,24 @@ def test_profile_metrics_detect_overreach() -> None:
     assert not any(a.assertion_id == "a-scope" and a.passed for a in assertions)
 
 
+def test_complete_relation_and_active_negation_are_required() -> None:
+    case = _case("profile-goal-loop").model_copy(update={"initial_state": {
+        "profile_expected": "喜欢长篇回答",
+    }})
+    for text, status in [("我不喜欢长篇回答", "active"), ("喜欢长篇回答", "deleted")]:
+        results = run_auto_assertions(case, {"recorded_assertions": [
+            {"value_or_rule": text, "status": status},
+        ]})
+        recorded = next(result for result in results if result.assertion_id == "a-record-goal")
+        assert not recorded.passed
+    full = case.model_copy(update={"initial_state": {
+        "profile_expected_facts": ["我正在学习Python"],
+    }})
+    assert _metric(profile_metrics(full, {"recorded_assertions": [
+        {"fact_text": "Python"},
+    ]}), "fact_completeness") == 0
+
+
 def test_profile_metrics_precise_update_and_negation_guard() -> None:
     """Issue 41 评审修复：精准变更有非恒定断言；否定事实不匹配肯定期望。"""
 

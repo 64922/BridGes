@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
@@ -74,9 +75,7 @@ class PairingResponse:
 class PairingSender(Protocol):
     """执行单次配对生成的调用方（真实模型或替身）。"""
 
-    def __call__(
-        self, task: PairingTask, condition: PairingCondition
-    ) -> PairingResponse: ...
+    def __call__(self, task: PairingTask, condition: PairingCondition) -> PairingResponse: ...
 
 
 @dataclass(frozen=True)
@@ -150,16 +149,10 @@ class PairingReport:
             "runs": len(runs),
             "passed": sum(1 for run in runs if run.passed),
             "latency_ms_avg": (
-                round(sum(r.response.latency_ms for r in runs) / len(runs))
-                if runs
-                else None
+                round(sum(r.response.latency_ms for r in runs) / len(runs)) if runs else None
             ),
-            "input_tokens": sum(
-                r.response.input_tokens or 0 for r in runs
-            ),
-            "output_tokens": sum(
-                r.response.output_tokens or 0 for r in runs
-            ),
+            "input_tokens": sum(r.response.input_tokens or 0 for r in runs),
+            "output_tokens": sum(r.response.output_tokens or 0 for r in runs),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -168,13 +161,9 @@ class PairingReport:
             "environment": self.environment,
             "task_count": len(self.tasks),
             "run_count": len(self.runs),
-            "failed_runs": [
-                f"{run.task_id}/{run.condition.value}"
-                for run in self.failed_runs
-            ],
+            "failed_runs": [f"{run.task_id}/{run.condition.value}" for run in self.failed_runs],
             "conditions": {
-                condition.value: self.condition_summary(condition)
-                for condition in PairingCondition
+                condition.value: self.condition_summary(condition) for condition in PairingCondition
             },
             "runs": [run.to_dict() for run in self.runs],
         }
@@ -210,9 +199,7 @@ class PairingReport:
             for checkpoint in run.checkpoints:
                 mark = "x" if checkpoint.passed else " "
                 gate = "（硬门）" if checkpoint.hard_gate else ""
-                lines.append(
-                    f"- [{mark}] {checkpoint.title}{gate}：{checkpoint.detail}"
-                )
+                lines.append(f"- [{mark}] {checkpoint.title}{gate}：{checkpoint.detail}")
             lines.append("")
         return "\n".join(lines)
 
@@ -266,6 +253,28 @@ def evaluate_answer(
         example_pos is not None and (formula_pos is None or example_pos < formula_pos)
     )
     measurements["answer_length"] = len(answer)
+    if task.task_id == "study-plan":
+        minutes = [float(value) for value in re.findall(r"(\d+(?:\.\d+)?)\s*分钟", answer)]
+        hours = [float(value) * 60 for value in re.findall(r"(\d+(?:\.\d+)?)\s*小时", answer)]
+        durations = minutes + hours + ([30.0] if "半小时" in answer or "三十分钟" in answer else [])
+        measurements["session_minutes_max"] = max(durations) if durations else None
+        daily_slot_totals = []
+        for line in answer.splitlines():
+            slots = re.findall(r"(?:上午|下午|晚上|早上|中午)\s*(\d+(?:\.\d+)?)\s*分钟", line)
+            if slots:
+                daily_slot_totals.append(sum(float(value) for value in slots))
+        measurements["daily_slot_minutes"] = daily_slot_totals
+        if condition == PairingCondition.CORRECT:
+            checks.append(
+                Checkpoint(
+                    "time_feasible",
+                    "时段与明确每日分配不超过半小时（另需内容复核）",
+                    bool(durations) and max(durations) <= 30
+                    and all(total <= 30 for total in daily_slot_totals),
+                    f"学习时长分钟={durations}；每日明确分配={daily_slot_totals}",
+                    True,
+                )
+            )
 
     if condition == PairingCondition.CORRECT:
         if task.correct_example_first:
@@ -274,14 +283,12 @@ def evaluate_answer(
                     checkpoint_id="correct_example_first",
                     title="正确画像让回答先给例子再讲公式",
                     passed=measurements["example_before_formula"],
-                    detail=(
-                        f"example_pos={example_pos} formula_pos={formula_pos}"
-                    ),
+                    detail=(f"example_pos={example_pos} formula_pos={formula_pos}"),
                     hard_gate=True,
                 )
             )
         if task.correct_required_any:
-            reflected = _contains_any(answer, task.correct_required_any)
+            reflected = bool(re.search(r"30\s*分钟|半小时|三十分钟", answer))
             measurements["correct_constraint_reflected"] = reflected
             checks.append(
                 Checkpoint(
@@ -294,9 +301,7 @@ def evaluate_answer(
             )
 
     if condition == PairingCondition.OUTDATED:
-        stale_hits = [
-            term for term in task.outdated_forbidden if term in answer
-        ]
+        stale_hits = [term for term in task.outdated_forbidden if term in answer]
         measurements["outdated_fact_echoed"] = stale_hits
         checks.append(
             Checkpoint(
@@ -374,12 +379,41 @@ def run_pairing(
                     measurements=measurements,
                 )
             )
+    # 必须比较同任务条件，不能四份同文分别命中关键词就宣称画像收益。
+    for task in tasks:
+        by_condition = {run.condition: run for run in runs if run.task_id == task.task_id}
+        if set(by_condition) != set(PairingCondition):
+            continue
+        correct = by_condition[PairingCondition.CORRECT]
+        baseline = by_condition[PairingCondition.NONE]
+        wrong = by_condition[PairingCondition.WRONG]
+        distinct = correct.response.answer != baseline.response.answer
+        if task.correct_example_first:
+            contrast = (
+                bool(correct.measurements["example_before_formula"])
+                and not wrong.measurements["example_before_formula"]
+            )
+        else:
+            correct_time = correct.measurements.get("session_minutes_max")
+            wrong_time = wrong.measurements.get("session_minutes_max")
+            contrast = (
+                correct_time is not None
+                and wrong_time is not None
+                and correct_time <= 30 < wrong_time
+            )
+        paired = Checkpoint(
+            "paired_content_contrast",
+            "正确/无/错误画像产生可测内容差异",
+            distinct and contrast,
+            f"与无画像不同={distinct}；与错误画像的行为对照={contrast}",
+            True,
+        )
+        index = runs.index(correct)
+        runs[index] = replace(correct, checkpoints=correct.checkpoints + (paired,))
     return PairingReport(tasks=tasks, runs=runs, environment=dict(environment or {}))
 
 
-def blind_review_bundle(
-    report: PairingReport, *, seed: int = 41
-) -> tuple[str, dict[str, str]]:
+def blind_review_bundle(report: PairingReport, *, seed: int = 41) -> tuple[str, dict[str, str]]:
     """产出匿名盲评材料与「匿名编号 → 条件」映射。"""
 
     shuffled = list(report.runs)
@@ -400,8 +434,7 @@ def blind_review_bundle(
             [
                 f"## {label}（任务提示：{_task_prompt(report, run.task_id)}）",
                 "",
-                run.response.answer.strip() or "（无回答，状态："
-                f"{run.response.status}）",
+                run.response.answer.strip() or f"（无回答，状态：{run.response.status}）",
                 "",
             ]
         )
@@ -460,11 +493,7 @@ def make_chat_sender(
         )
         now = datetime.now(UTC)
         for index, fact in enumerate(task.facts_for(condition)):
-            source_at = (
-                now - timedelta(days=14)
-                if condition == PairingCondition.OUTDATED
-                else now
-            )
+            source_at = now - timedelta(days=14) if condition == PairingCondition.OUTDATED else now
             atomic.remember(
                 account_id,
                 fact,
@@ -478,9 +507,7 @@ def make_chat_sender(
             atomic_profile_service=atomic,
             automatic_profile_service=automatic,
         )
-        conversation = service.create_conversation(
-            account_id, mode=ChatMode.COMPANION
-        )
+        conversation = service.create_conversation(account_id, mode=ChatMode.COMPANION)
         started = time.monotonic()
         user, assistant, _ = service.start_generation(
             account_id, conversation.conversation_id, task.prompt
@@ -544,9 +571,7 @@ def write_reports(report: PairingReport, output_dir: Any) -> dict[str, Any]:
     (target / "pairing-report.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    (target / "pairing-report.md").write_text(
-        report.render_markdown(), encoding="utf-8"
-    )
+    (target / "pairing-report.md").write_text(report.render_markdown(), encoding="utf-8")
     (target / "blind-review.md").write_text(blind_markdown, encoding="utf-8")
     return {
         "pairing-report.json": True,

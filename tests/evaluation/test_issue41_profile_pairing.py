@@ -16,8 +16,7 @@ from bridges.evaluation.profile_pairing import (
 
 _ANSWERS = {
     PairingCondition.NONE: (
-        "贝叶斯定理描述如何在获得新证据后更新概率判断。"
-        "它先给出先验，再乘以似然并归一化。"
+        "贝叶斯定理描述如何在获得新证据后更新概率判断。它先给出先验，再乘以似然并归一化。"
     ),
     PairingCondition.CORRECT: (
         "先看一个例子：某种疾病发病率 1%，检测阳性率 99%……"
@@ -25,19 +24,14 @@ _ANSWERS = {
         "贝叶斯定理的核心是概率。"
     ),
     PairingCondition.WRONG: (
-        "贝叶斯定理的严格证明如下：由条件概率定义出发……"
-        "该定理是概率论的基础结论。"
+        "贝叶斯定理的严格证明如下：由条件概率定义出发……该定理是概率论的基础结论。"
     ),
-    PairingCondition.OUTDATED: (
-        "贝叶斯定理是概率论中的更新规则：先验乘以似然后归一化。"
-    ),
+    PairingCondition.OUTDATED: ("贝叶斯定理是概率论中的更新规则：先验乘以似然后归一化。"),
 }
 
 _PLAN_ANSWERS = {
     PairingCondition.NONE: "两周线性代数复习计划：第一周矩阵与行列式，第二周特征值。",
-    PairingCondition.CORRECT: (
-        "按你每天 30 分钟的安排，线性代数复习分两周：第一周……"
-    ),
+    PairingCondition.CORRECT: ("按你每天 30 分钟的安排，线性代数复习分两周：第一周……"),
     PairingCondition.WRONG: "每天 8 小时高强度复习线性代数，两周可以完成三轮。",
     PairingCondition.OUTDATED: "两周线性代数复习计划：先梳理矩阵，再复习特征值。",
 }
@@ -50,11 +44,7 @@ class _FakeSender:
     def __call__(self, task, condition):
         answer = self.overrides.get(
             (task.task_id, condition),
-            (
-                _ANSWERS[condition]
-                if task.task_id == "bayes-explain"
-                else _PLAN_ANSWERS[condition]
-            ),
+            (_ANSWERS[condition] if task.task_id == "bayes-explain" else _PLAN_ANSWERS[condition]),
         )
         return PairingResponse(
             status="done",
@@ -70,15 +60,10 @@ class _FakeSender:
 
 def test_all_conditions_pass_with_compliant_answers() -> None:
     report = run_pairing(_FakeSender())
-    assert report.passed, [
-        f"{run.task_id}/{run.condition.value}"
-        for run in report.failed_runs
-    ]
+    assert report.passed, [f"{run.task_id}/{run.condition.value}" for run in report.failed_runs]
     assert len(report.runs) == len(PAIRING_TASKS) * len(PairingCondition)
 
-    correct = [
-        run for run in report.runs if run.condition == PairingCondition.CORRECT
-    ]
+    correct = [run for run in report.runs if run.condition == PairingCondition.CORRECT]
     assert all(run.measurements["example_before_formula"] for run in correct[:1])
     assert all(
         run.measurements.get("correct_constraint_reflected")
@@ -114,8 +99,7 @@ def test_outdated_fact_leak_fails_gate() -> None:
     run = next(
         run
         for run in report.failed_runs
-        if run.condition == PairingCondition.OUTDATED
-        and run.task_id == "bayes-explain"
+        if run.condition == PairingCondition.OUTDATED and run.task_id == "bayes-explain"
     )
     assert "六级" in run.measurements["outdated_fact_echoed"]
 
@@ -147,3 +131,31 @@ def test_blind_review_and_reports_written(tmp_path: Path) -> None:
     assert (tmp_path / "blind-review.md").exists()
     payload = json.loads((tmp_path / "pairing-report.json").read_text("utf-8"))
     assert payload["blind_review_map"] == mapping
+
+
+def test_identical_keyword_answers_do_not_prove_pairing_gain() -> None:
+    def sender(task, condition):
+        return PairingResponse("done", "贝叶斯例如错误。公式错误。线性代数每天8小时，30是页码。", 0)
+
+    assert not run_pairing(sender).passed
+
+
+def test_time_budget_mention_does_not_allow_an_infeasible_plan() -> None:
+    sender = _FakeSender(
+        {
+            ("study-plan", PairingCondition.CORRECT): "线性代数每天30分钟，周末学习8小时。",
+        }
+    )
+    report = run_pairing(sender)
+    assert not report.passed
+    assert any(
+        c.checkpoint_id == "time_feasible" and not c.passed
+        for run in report.failed_runs
+        for c in run.checkpoints
+    )
+
+
+def test_multiple_daily_sessions_must_fit_total_time_budget() -> None:
+    sender = _FakeSender({("study-plan", PairingCondition.CORRECT):
+                          "线性代数每天上午30分钟，下午30分钟。"})
+    assert not run_pairing(sender).passed

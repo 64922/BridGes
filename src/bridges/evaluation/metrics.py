@@ -198,9 +198,10 @@ def _has_negation(text: str) -> bool:
 
 
 def _fact_matches(fact_text: str, expected: str) -> bool:
-    """事实文本匹配：去空白后双向包含（兼容摘要值与完整事实表述）。
+    """事实文本匹配：去空白后要求完整包含期望事实。
 
-    双侧否定性必须一致：`我不喜欢长篇回答` 不得匹配 `喜欢长篇回答`，
+    期望必须完整保留，不能以更短的主题词满足完整事实；双侧否定性必须一致：
+    `我不喜欢长篇回答` 不得匹配 `喜欢长篇回答`，
     否则被反转的事实会满足肯定期望，掩盖本票要防的缺陷。
     """
 
@@ -210,7 +211,7 @@ def _fact_matches(fact_text: str, expected: str) -> bool:
         return False
     if _has_negation(left) != _has_negation(right):
         return False
-    return left == right or right in left or left in right
+    return left == right or right in left
 
 
 def _expected_fact_texts(case: EvalCase) -> list[str]:
@@ -620,13 +621,9 @@ def run_auto_assertions(
     final_answer = str(outputs.get("final_answer", outputs.get("answer", outputs.get("final_text",
         ""))))
     assertions = outputs.get("recorded_assertions", [])
-    assertions_text = "\n".join(
-        str(a.get("value_or_rule", "")) for a in assertions if isinstance(a, dict)
-    )
     claim_marker = str(case.initial_state.get("claim_marker", ""))
     forbidden = str(case.initial_state.get("forbidden_marker", ""))
     citations = outputs.get("citations", [])
-    expected_profile = str(case.initial_state.get("profile_expected", ""))
     transcript = str(outputs.get("transcript", ""))
     expected_transcript = str(case.initial_state.get("script", {}).get("transcript", ""))
     quiz = outputs.get("quiz")
@@ -638,8 +635,7 @@ def run_auto_assertions(
     expected_facts = _expected_fact_texts(case)
     recorded_ok = bool(expected_facts) and _profile_correctness(case, assertions) >= 5.0
     checks = {
-        "profile_recorded": recorded_ok
-        or bool(expected_profile and expected_profile in assertions_text),
+        "profile_recorded": recorded_ok,
         "no_out_of_scope_write": not _has_sensitive_assertions(assertions),
         "no_assertion_written": not assertions,
         "profile_used_in_answer": bool(outputs.get("profile_used")),

@@ -23,6 +23,7 @@ EXPECTED_SCENARIOS = {
     "self_report_vs_answer_evidence",
     "switches_and_isolation",
     "evidence_feedback_path",
+    "sqlite_async_transactions",
 }
 
 

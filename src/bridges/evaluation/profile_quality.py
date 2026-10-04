@@ -20,8 +20,10 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
 from typing import Any
 
 from bridges.contracts.atomic_profile import (
@@ -126,9 +128,7 @@ class ProfileQualityReport:
     @property
     def pass_rate(self) -> float:
         checks = self.checkpoints
-        return (
-            sum(1 for c in checks if c.passed) / len(checks) if checks else 1.0
-        )
+        return sum(1 for c in checks if c.passed) / len(checks) if checks else 1.0
 
     @property
     def scenario_pass_rate(self) -> float:
@@ -146,9 +146,7 @@ class ProfileQualityReport:
             "scenario_count": len(self.scenarios),
             "checkpoint_count": len(self.checkpoints),
             "hard_gate_failures": [
-                checkpoint.checkpoint_id
-                for checkpoint in self.hard_gates
-                if not checkpoint.passed
+                checkpoint.checkpoint_id for checkpoint in self.hard_gates if not checkpoint.passed
             ],
             "environment": dict(self.environment),
             "scenarios": [scenario.to_dict() for scenario in self.scenarios],
@@ -171,9 +169,7 @@ class ProfileQualityReport:
             for checkpoint in scenario.checkpoints:
                 mark = "x" if checkpoint.passed else " "
                 gate = "（硬门）" if checkpoint.hard_gate else ""
-                lines.append(
-                    f"- [{mark}] {checkpoint.title}{gate}：{checkpoint.detail}"
-                )
+                lines.append(f"- [{mark}] {checkpoint.title}{gate}：{checkpoint.detail}")
             if scenario.measurements:
                 lines.append("")
                 lines.append(f"- 测量：`{scenario.measurements}`")
@@ -291,9 +287,7 @@ class ProfileLab:
         self._messages[message_id] = message
         return message
 
-    def _read_source_message(
-        self, account_id: str, message_id: str
-    ) -> ProfileSourceMessage | None:
+    def _read_source_message(self, account_id: str, message_id: str) -> ProfileSourceMessage | None:
         return self._messages.get(message_id)
 
     def schedule(
@@ -304,9 +298,7 @@ class ProfileLab:
         *,
         created_at: datetime | None = None,
     ):
-        self.register_message(
-            account_id, message_id, content, created_at=created_at
-        )
+        self.register_message(account_id, message_id, content, created_at=created_at)
         return self.automatic.schedule_message_extraction(
             account_id,
             conversation_id="eval41-conversation",
@@ -377,10 +369,7 @@ class ProfileLab:
         *,
         now: datetime | None = None,
     ) -> list[str]:
-        return [
-            item.fact_text
-            for item in self.recall(account_id, question, now=now).adopted_items
-        ]
+        return [item.fact_text for item in self.recall(account_id, question, now=now).adopted_items]
 
 
 def _check(
@@ -467,9 +456,7 @@ def scenario_multi_fact_coexistence() -> ScenarioResult:
     lab.schedule(ACCOUNT_A, "m-multi-1", "我喜欢跑步，也喜欢游泳")
     lab.drain()
     active = lab.active_texts(ACCOUNT_A)
-    both = any("跑步" in text for text in active) and any(
-        "游泳" in text for text in active
-    )
+    both = any("跑步" in text for text in active) and any("游泳" in text for text in active)
     return ScenarioResult(
         scenario_id="multi_fact_coexistence",
         title="一条消息的多条事实并存而不是只保留一条",
@@ -622,12 +609,10 @@ def scenario_time_anchor() -> ScenarioResult:
         else ANCHOR + timedelta(days=14)
     )
     in_window = any(
-        "英语六级" in text
-        for text in lab.recalled_texts(ACCOUNT_A, "英语六级考试", now=ANCHOR)
+        "英语六级" in text for text in lab.recalled_texts(ACCOUNT_A, "英语六级考试", now=ANCHOR)
     )
     after_window = not any(
-        "英语六级" in text
-        for text in lab.recalled_texts(ACCOUNT_A, "英语六级考试", now=expired_at)
+        "英语六级" in text for text in lab.recalled_texts(ACCOUNT_A, "英语六级考试", now=expired_at)
     )
     long_term_kept = any(
         "跑步" in text
@@ -681,26 +666,18 @@ def scenario_parallel_goals_precise_change() -> ScenarioResult:
     cet6 = lab.atomic.remember(
         ACCOUNT_A, "我计划通过英语六级", source_message_id="m-goal-2", source_at=ANCHOR
     )
-    both_active = {"我计划考研", "我计划通过英语六级"} <= set(
-        lab.active_texts(ACCOUNT_A)
-    )
+    both_active = {"我计划考研", "我计划通过英语六级"} <= set(lab.active_texts(ACCOUNT_A))
     before_change = list(lab.active_texts(ACCOUNT_A))
     # 变更前冻结的画像切片：变更后必须按版本失效，不能在下一轮继续注入。
     adopted_before_change = lab.recall(ACCOUNT_A, "我计划考研还是就业")
-    slice_current_before = lab.atomic.is_adopted_slice_current(
-        ACCOUNT_A, adopted_before_change
-    )
+    slice_current_before = lab.atomic.is_adopted_slice_current(ACCOUNT_A, adopted_before_change)
     # 用户行内编辑：把考研目标替换成就业目标；六级不受影响。
     lab.atomic.modify_item(
         ACCOUNT_A,
         kaoyan.profile_item_id,
-        AtomicProfileItemModifyRequest(
-            text="我计划毕业后直接就业", version=kaoyan.version
-        ),
+        AtomicProfileItemModifyRequest(text="我计划毕业后直接就业", version=kaoyan.version),
     )
-    slice_invalidated = not lab.atomic.is_adopted_slice_current(
-        ACCOUNT_A, adopted_before_change
-    )
+    slice_invalidated = not lab.atomic.is_adopted_slice_current(ACCOUNT_A, adopted_before_change)
     active_after = lab.active_texts(ACCOUNT_A)
     old_released = not any(text == "我计划考研" for text in active_after)
     replacement_active = any("直接就业" in text for text in active_after)
@@ -760,12 +737,8 @@ def scenario_delete_synonym_and_recovery() -> ScenarioResult:
             "m-del-2": [_candidate("喜欢慢跑", fact_text="我喜欢慢跑")],
         }
     )
-    lab.atomic.remember(
-        ACCOUNT_A, "我喜欢跑步", source_message_id="m-del-1", source_at=ANCHOR
-    )
-    item = next(
-        entry for entry in lab.all_items(ACCOUNT_A) if "跑步" in entry.text
-    )
+    lab.atomic.remember(ACCOUNT_A, "我喜欢跑步", source_message_id="m-del-1", source_at=ANCHOR)
+    item = next(entry for entry in lab.all_items(ACCOUNT_A) if "跑步" in entry.text)
     lab.atomic.delete_item(ACCOUNT_A, item.profile_item_id, item.version)
     lab.schedule(ACCOUNT_A, "m-del-2", "我喜欢慢跑")
     lab.drain()
@@ -826,9 +799,7 @@ def scenario_low_confidence_mirror() -> ScenarioResult:
         for item in lab.recall(ACCOUNT_A, "概率统计").excluded_items
     }
     not_recalled = not any("概率统计" in text for text in recalled)
-    has_reason = any(
-        "概率统计" in text and reason for text, reason in excluded_reasons.items()
-    )
+    has_reason = any("概率统计" in text and reason for text, reason in excluded_reasons.items())
     return ScenarioResult(
         scenario_id="low_confidence_mirror",
         title="LOW 把握度镜像条目不作为确定事实召回",
@@ -857,10 +828,10 @@ def scenario_low_confidence_mirror() -> ScenarioResult:
 
 
 def scenario_stop_recording_forget_and_late_task() -> ScenarioResult:
-    lab = ProfileLab()
-    lab.atomic.remember(
-        ACCOUNT_A, "我喜欢跑步", source_message_id="m-stop-1", source_at=ANCHOR
-    )
+    lab = ProfileLab({"m-stop-late": [_candidate("喜欢跑步", fact_text="我喜欢跑步")]})
+    lab.atomic.remember(ACCOUNT_A, "我喜欢跑步", source_message_id="m-stop-1", source_at=ANCHOR)
+    # 先登记非空候选，再撤回：验证已存在的旧任务，而非关闭后才登记空任务。
+    lab.schedule(ACCOUNT_A, "m-stop-late", "我喜欢跑步")
     lab.automatic.set_account_controls(ACCOUNT_A, recording_enabled=False)
     result = lab.automatic.process_synchronous_controls(
         ACCOUNT_A,
@@ -871,11 +842,7 @@ def scenario_stop_recording_forget_and_late_task() -> ScenarioResult:
         mode="daily",
     )
     memory = result.memory if result is not None else None
-    forgotten = bool(
-        memory
-        and memory.status.value == "forgotten"
-        and memory.matched_count >= 1
-    )
+    forgotten = bool(memory and memory.status.value == "forgotten" and memory.matched_count >= 1)
     active_after = lab.active_texts(ACCOUNT_A)
     gone = not any("跑步" in text for text in active_after)
 
@@ -896,8 +863,7 @@ def scenario_stop_recording_forget_and_late_task() -> ScenarioResult:
                 "forget_still_works",
                 "停止记录后忘掉仍即时生效",
                 forgotten and gone,
-                f"memory={memory.model_dump(mode='json') if memory else None} "
-                f"活跃={active_after}",
+                f"memory={memory.model_dump(mode='json') if memory else None} 活跃={active_after}",
                 hard_gate=True,
             ),
             _check(
@@ -916,6 +882,178 @@ def scenario_stop_recording_forget_and_late_task() -> ScenarioResult:
         ],
         measurements={"run_records": lab.run_records[-2:]},
     )
+
+
+def scenario_sqlite_async_transactions() -> ScenarioResult:
+    """实际 SQLite 仓库跨会话提交、重放、迟到竞争及事务占用测量。"""
+    from bridges.profiles import (
+        SqliteAtomicProfileRepository,
+        SqliteAutomaticProfileRepository,
+        SqliteFourDimensionProfileRepository,
+    )
+    from bridges.storage import BridgesDatabase
+
+    class MeasuredDatabase(BridgesDatabase):
+        def __init__(self):
+            self.transaction_ms: list[float] = []
+            super().__init__(":memory:")
+
+        @contextmanager
+        def transaction(self):
+            with super().transaction():
+                started = perf_counter()
+                try:
+                    yield
+                finally:
+                    self.transaction_ms.append((perf_counter() - started) * 1000)
+
+    database = MeasuredDatabase()
+    database.initialize()
+    database.transaction_ms.clear()
+    model_in_transaction: list[bool] = []
+    calls: list[str] = []
+    four = FourDimensionProfileService(
+        InMemoryProfileRepository(), SqliteFourDimensionProfileRepository(database)
+    )
+    atomic = AtomicProfileService(four, SqliteAtomicProfileRepository(database))
+    repository = SqliteAutomaticProfileRepository(database)
+    candidate = FixedCandidateExtractor(
+        {
+            "m-sqlite": [_candidate("学习概率统计", fact_text="我正在学习概率统计")],
+            "m-race": [_candidate("喜欢跑步", fact_text="我喜欢跑步")],
+        }
+    )
+
+    class ProbeExtractor:
+        version = "issue41-sqlite-probe-v1"
+
+        def extract(self, **kwargs):
+            model_in_transaction.append(database.connection.in_transaction)
+            calls.append(kwargs["message_id"])
+            if kwargs["message_id"] == "m-race":
+                # worker 已领取并进入模型阶段时撤回，返回的旧候选必须被拒绝。
+                item = next(item for item in atomic.list_items(ACCOUNT_A) if "跑步" in item.text)
+                atomic.delete_item(ACCOUNT_A, item.profile_item_id, item.version)
+            return candidate.extract(**kwargs)
+
+    automatic = AutomaticProfileService(
+        four_dimension_service=four,
+        repository=repository,
+        extractor=ProbeExtractor(),
+        atomic_profile_service=atomic,
+    )
+    try:
+        started = perf_counter()
+        automatic.schedule_message_extraction(
+            ACCOUNT_A,
+            conversation_id="session-a",
+            message_id="m-sqlite",
+            content="我正在学习概率统计",
+            run_id="run-sqlite",
+        )
+        before = atomic.compile_adopted_slice(
+            ACCOUNT_A,
+            run_id="session-b-before",
+            purpose=build_purpose(mode="daily", query="解释概率统计"),
+        )
+        pending_hidden = not before.adopted_items and not calls
+        automatic.run_retry_tick()
+        committed = perf_counter()
+        after = atomic.compile_adopted_slice(
+            ACCOUNT_A,
+            run_id="session-b-after",
+            purpose=build_purpose(mode="daily", query="解释概率统计"),
+        )
+        automatic.schedule_message_extraction(
+            ACCOUNT_A,
+            conversation_id="session-a",
+            message_id="m-sqlite",
+            content="我正在学习概率统计",
+            run_id="run-sqlite",
+        )
+        automatic.run_retry_tick()
+        idempotent = calls == ["m-sqlite"]
+        atomic.remember(ACCOUNT_A, "我喜欢跑步", source_message_id="m-race")
+        old_slice = atomic.compile_adopted_slice(
+            ACCOUNT_A, run_id="old-run", purpose=build_purpose(mode="daily", query="跑步")
+        )
+        automatic.schedule_message_extraction(
+            ACCOUNT_A,
+            conversation_id="session-a",
+            message_id="m-race",
+            content="我喜欢跑步",
+            run_id="race-run",
+        )
+        automatic.run_retry_tick()
+        active = [
+            item.text
+            for item in atomic.list_items(ACCOUNT_A)
+            if item.status == AtomicProfileItemStatus.ACTIVE
+        ]
+        return ScenarioResult(
+            "sqlite_async_transactions",
+            "SQLite 跨会话提交与撤回竞争",
+            [
+                _check(
+                    "pending_cross_session_hidden",
+                    "后台未提交不在另一会话召回",
+                    pending_hidden,
+                    f"待提交采用={len(before.adopted_items)}",
+                    hard_gate=True,
+                ),
+                _check(
+                    "committed_cross_session_visible",
+                    "提交后另一会话可用",
+                    any("学习概率统计" in item.fact_text for item in after.adopted_items),
+                    f"提交后采用={len(after.adopted_items)}",
+                    hard_gate=True,
+                ),
+                _check(
+                    "same_message_replay_once",
+                    "同消息重放不重复模型调用",
+                    idempotent,
+                    f"模型调用={calls}",
+                    hard_gate=True,
+                ),
+                _check(
+                    "claimed_worker_revoked",
+                    "领取后撤回拒绝迟到事实并使旧切片失效",
+                    "我喜欢跑步" not in active
+                    and not atomic.is_slice_current(ACCOUNT_A, old_slice.revocation_version),
+                    f"活动事实={active}",
+                    hard_gate=True,
+                ),
+                _check(
+                    "model_outside_transaction",
+                    "模型阶段不占 SQLite 写事务",
+                    model_in_transaction == [False, False],
+                    f"模型阶段事务状态={model_in_transaction}",
+                    hard_gate=True,
+                ),
+            ],
+            {
+                "commit_latency_ms": (committed - started) * 1000,
+                "model_calls": len(calls),
+                "transaction_count": len(database.transaction_ms),
+                "transaction_ms_total": sum(database.transaction_ms),
+                "transaction_ms_max": max(database.transaction_ms, default=0),
+                "transaction_measurement": (
+                    "BEGIN 成功后至提交前业务持有时间；不含锁等待/COMMIT；"
+                    "合成内存 SQLite，不代表磁盘 P95"
+                ),
+                "runs": [
+                    {
+                        "message_id": run.message_id,
+                        "status": run.status.value,
+                        "created_at": run.created_at.isoformat(),
+                        "updated_at": run.updated_at.isoformat(),
+                    }
+                    for run in repository.list_runs()
+                ],
+            },
+        )
+    finally:
+        database.close()
 
 
 # ---------------------------------------------------------------------------
@@ -949,9 +1087,7 @@ def scenario_self_report_vs_answer_evidence() -> ScenarioResult:
     lab.drain()
     active = lab.active_texts(ACCOUNT_A)
     self_report_stored = any("我正在学习概率统计" in text for text in active)
-    no_capability_label = not any(
-        ("数学差" in text) or ("数学很差" in text) for text in active
-    )
+    no_capability_label = not any(("数学差" in text) or ("数学很差" in text) for text in active)
     # 行为线索（看了两小时）不是稳定事实。
     no_behavior_label = not any("两小时" in text for text in active)
     return ScenarioResult(
@@ -989,12 +1125,8 @@ def scenario_self_report_vs_answer_evidence() -> ScenarioResult:
 
 def scenario_switches_and_isolation() -> ScenarioResult:
     lab = ProfileLab()
-    lab.atomic.remember(
-        ACCOUNT_A, "我喜欢跑步", source_message_id="m-iso-1", source_at=ANCHOR
-    )
-    lab.atomic.remember(
-        ACCOUNT_B, "我喜欢摄影", source_message_id="m-iso-2", source_at=ANCHOR
-    )
+    lab.atomic.remember(ACCOUNT_A, "我喜欢跑步", source_message_id="m-iso-1", source_at=ANCHOR)
+    lab.atomic.remember(ACCOUNT_B, "我喜欢摄影", source_message_id="m-iso-2", source_at=ANCHOR)
     lab.automatic.set_account_controls(ACCOUNT_A, usage_enabled=False)
     usage_flag_off = not lab.automatic.is_profile_usage_enabled(ACCOUNT_A)
     kept_after_off = any("跑步" in text for text in lab.active_texts(ACCOUNT_A))
@@ -1005,8 +1137,7 @@ def scenario_switches_and_isolation() -> ScenarioResult:
     )
     lab.automatic.set_account_controls(ACCOUNT_A, usage_enabled=True)
     usage_back = any(
-        "跑步" in text
-        for text in lab.recalled_texts(ACCOUNT_A, "我平时喜欢跑步，推荐运动")
+        "跑步" in text for text in lab.recalled_texts(ACCOUNT_A, "我平时喜欢跑步，推荐运动")
     )
     return ScenarioResult(
         scenario_id="switches_and_isolation",
@@ -1040,9 +1171,7 @@ def scenario_switches_and_isolation() -> ScenarioResult:
             ),
         ],
         measurements={
-            "controls_after_off": lab.automatic.account_controls(
-                ACCOUNT_A
-            ).model_dump(mode="json"),
+            "controls_after_off": lab.automatic.account_controls(ACCOUNT_A).model_dump(mode="json"),
         },
     )
 
@@ -1147,6 +1276,7 @@ _SCENARIOS = (
     scenario_self_report_vs_answer_evidence,
     scenario_switches_and_isolation,
     scenario_evidence_feedback_path,
+    scenario_sqlite_async_transactions,
 )
 
 
