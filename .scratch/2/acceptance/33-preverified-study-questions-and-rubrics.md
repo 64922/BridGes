@@ -61,6 +61,6 @@ code-review 规范轴由独立只读子代理审查原交付，初审 3 项硬�
 
 合并前重新复核发现远端 main 已由并发工单 29/32 推进到 `3b4c891d`（审查基点 `809f05a5` 之后），故先把 main 合入本票分支：唯一冲突为 `src/bridges/study/service.py` 的学习图版本常量（本票 `study-review-v3` 对 32 票 `study-tutoring-v3`）。按双方意图合并为 `study-tutoring-review-v4`，并把 `study-tutoring-v3` 与 `study-pages-v1`/`study-scope-v2` 并列加入 `chat/service.py` 的旧版本安全结束路由；冲突解决后分支合并提交 `65be2851`。合并后定向组合 **157 passed**、学习全链路 **170 passed**、内核/合同/工作流/架构 **70 passed**。
 
-随后在主工作树以 `git merge --no-ff codex/33-preverified-study-questions-and-rubrics` 合入，合并提交 `e0baca16`；合并后复跑学习全链路 **170 passed**、内核/合同/工作流/架构 **70 passed**（`33-merge-study.xml`、`33-merge-kernel.xml`）。经命令级代理 `http://127.0.0.1:7890` 执行 `git push origin main`（`3b4c891d..e0baca16`，未改全局配置），`git ls-remote origin refs/heads/main` 与本地完整 SHA 一致：`e0baca16d75a3f43e82d4d8c4fc77bab50628319`。
+随后在主工作树以 `git merge --no-ff codex/33-preverified-study-questions-and-rubrics` 合入，合并提交 `e0baca16`；合并后复跑学习全链路 **170 passed**、内核/合同/工作流/架构 **70 passed**（`33-merge-study.xml`、`33-merge-kernel.xml`）。经命令级代理 `http://127.0.0.1:7890` 执行 `git push origin main`（`3b4c891d..e0baca16`，未改全局配置），并以 `git ls-remote origin refs/heads/main` 核对一致：合并与代码证据位于 `e0baca16`；本记录与合并后证据随后经同一代理再次推送，推送后远端 main 与本地完整 SHA 一致。
 
 推送成功后确认 Issue 工作树无未提交内容（HEAD `65be2851`，`git status` 干净），删除 `D:\BridGes\.worktrees\33-preverified-study-questions-and-rubrics` 与本地分支 `codex/33-preverified-study-questions-and-rubrics`，`git worktree prune --verbose` 无额外失效记录。其他任务的工作树/分支与未跟踪验证文件未触碰；工单 29/32 由其自身流程在本次验收期间完成合入、推送与清理。复现脚本随证据提交：`33-independent-compare-final.py`、`33-independent-start-repro.py`。
