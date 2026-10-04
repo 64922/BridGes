@@ -41,16 +41,78 @@
 
 ## 验收标准
 
-- [ ] 论文+资料可并行且一总预算，论文身份不清不宣称对应实现。
-- [ ] Java 后端实习目标组合岗位/最小背景/资料/项目，私人简历不发公网。
-- [ ] 换杭州且资料暂不改仅重算相关岗位/建议依赖；仍有效公共材料复用。
-- [ ] 关键结论支持不足被门阻止，普通闲聊/纯工具不强制模型裁判。
-- [ ] 单分支可选失败有效部分仍交付，必要失败阻塞相关结论。
-- [ ] 非法循环、未登记能力、硬限制绕过、第二轮调整及旧版本迟到写入均拒绝。
+- [x] 论文+资料可并行且一总预算，论文身份不清不宣称对应实现。
+- [x] Java 后端实习目标组合岗位/最小背景/资料/项目，私人简历不发公网。
+- [x] 换杭州且资料暂不改仅重算相关岗位/建议依赖；仍有效公共材料复用。
+- [x] 关键结论支持不足被门阻止，普通闲聊/纯工具不强制模型裁判。
+- [x] 单分支可选失败有效部分仍交付，必要失败阻塞相关结论。
+- [x] 非法循环、未登记能力、硬限制绕过、第二轮调整及旧版本迟到写入均拒绝。
 
 ## 验证与交付证据
 
 覆盖 A04–A06、A09–A11、R02–R08，记录实际调度/调用/质量裁决与依赖失效。
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
+
+## 实现记录（本地实现，待独立验收）
+
+分支 `codex/37-composite-plans-and-verified-synthesis`，工作树 `D:\BridGes\.worktrees\37-composite-plans-and-verified-synthesis`，基点 `main@48d12a45`。开发与验证使用 conda `agent`（Windows、Python 3.11）。合同版本 `composite-orchestration-v1`。
+
+### 交付内容
+
+1. 新包 `src/bridges/orchestration/`：
+   - `contracts.py`：计划/步骤/参数来源与分级/校验拒绝码/步骤结果/综合草案/最终门/复合结果等可序列化类型；综合产物登记类型 `orchestration.synthesis`（`COMPOSITE_ARTIFACT_TYPE`）。
+   - `registry.py`：绑定真实领域配方的模块登记表与 5 个合法组合（paper+resources 并行、paper→github 身份依赖、career→resources、career→github、career+resources+github）；贴吧/通勤标记 `composite_ready=False`，复合校验拒绝。
+   - `planner.py`：确定性构造与校验（未登记能力/配方版本/循环/模式/硬条件/参数来源缺引用/私人参数离设备/公网身份依赖/并行宽度/第二轮调整）。
+   - `executor.py`：依赖波次调度、并行分支、共享 `CompositeBudget`（09 账本包装）、参数级输入指纹复用、条件键失效、必要失败阻塞依赖、可选失败保留、整次运行最多一轮受控调整、停止与提交守卫拒绝。
+   - `synthesis.py`：按一个目标组织综合；最终门检查无证据断言、限定条件缺失、引用错连与核验结构；风险触发独立核验（复杂比较/来源冲突/关键公式/个人差距/实现证据），普通闲聊与确定性工具不强制模型裁判，同模型独立调用不视为独立事实来源。
+   - `production.py`：模块服务 `defer_finalization` 交付 → 步骤结果适配、综合编排服务、终态映射与一次提交的投影汇总。
+2. 模块无终态接缝：`bridges/contracts/modules.py` 新增 `ModuleDelivery`；`paper`/`resources`/`career_plan` 服务新增 `defer_finalization`（GitHub 既有同款）。defer 时内核照常提交产物与收据、不写助手消息终态；失败作为交付返回；迟到/失效仍抛 `*SupersededError`。
+3. 聊天接线：
+   - `chat/understanding.py`：多条能力信号命中**已登记组合**时不再逐条追问，`capability_list` 记录多模块；未登记组合保持一次澄清。
+   - `chat/service.py`：复合路由（`MATCHED` + 多值 `capability_list`，不派发单模块）。
+   - `chat/run_budget_ledger.py`：已登记复合运行冻结 `NORMAL`（60 秒、15 秒预留），全部分支共用同一本 09 账本。
+   - `chat/graph.py`：`invoke_subgraph_or_chat` 复合分支（模式/硬条件/来源门 → 计划 → defer 调用 → 综合与最终门 → 计划/草案/门进检查点）；`verify_output` 核验最终门与成功分支的产物引用；`persist_result` 在 `RunCommitGuard` 守卫事务内**一次** `finalize_message` 提交全部投影与综合正文；迟到/停止按既有 `DailyGraphSuperseded`/`DailyGraphStop` 语义拒绝。
+   - 私人参数（简历/画像）只由职业模块本地读取，不进入步骤解析指纹与公网步骤参数；岗位→GitHub 的 `GithubRequirementInput` 用岗位原词且 `identity_confirmed=True`；论文→GitHub 在上游身份未确认时 `identity_confirmed=False` 并带限定说明。
+4. 持久状态：不新增数据库表/迁移；计划随运行配置、复合结果随父图检查点、分支产物沿用内核产物表与 09 账本（备份/导出/删除/审计沿用既有机制）。
+
+### 接口变化
+
+- 新增 `ModuleDelivery`（`contracts/modules.py`）：`module_id`/`status`/`projection_field`/`projection`/`content`/`message_status`/`error_*`/`retryable`/`artifact_refs`/`lock`/`wait_reason`。
+- `PaperSearchService.run`、`LearningResourcesService.run`、`CareerPlanService.run` 新增关键字参数 `defer_finalization: bool = False`；`*RunOutcome` 新增 `delivery` 字段；默认行为不变。
+- `MainUnderstanding.capability_list` 在已登记组合下可为多值；`CapabilityRoute.capability_list` 同步（合同已有字段，无版本变更）。
+- 新增编排包公开类型与 `CompositeOrchestrationService`/`ModuleServiceStepRunner`（供 38 投影与其他消费者复用）。
+
+### 验证结果
+
+- 引擎机制 `tests/orchestration/test_issue37_composite_engine.py`：**14 passed**。覆盖 A04 并行+共享预算、A05 身份未确认不宣称对应、A06 换城市只重算条件相关步骤并复用公共材料、A09 可选失败保留有效部分/必要失败阻塞依赖、A11 无网与来源限制拒绝、R03 提交守卫拒绝迟到写入、R04 第二轮调整拒绝、R08 未登记能力/循环/硬条件绕过拒绝；均用真实 `BridgesDatabase` + 09 账本 + 内核 `RunCommitGuard`。
+- 模块无终态交付 `tests/orchestration/test_headless_deliveries.py`：**6 passed**（defer 时消息保持 streaming 且投影为空、产物引用与内核收据一一对应、与 defer=False 控制组投影一致）。
+- 聊天派发 `tests/chat/test_issue37_composite_dispatch.py`：**3 passed**（一次终态提交两个投影与综合正文；澄清写运行表且整体 `needs_input`；旧终态迟到写入被守卫拒绝）。
+- 相关回归：`tests/chat/test_improvement12_hybrid_entry.py` + `test_improvement12_execution_guards.py` + `test_golden_intent_routes.py` + `tests/orchestration` 共 **155 passed**。
+- 全量：`pytest tests -q` 为 **5242 passed / 202 failed / 39 skipped**；失败集合与本机 `main@48d12a45` 基线同源（对失败文件集合抽跑：main **196 failed / 286 passed**、分支 **196 failed / 286 passed**，失败清单一致），未发现本票引入的新失败。基线失败集中在已退役插件/MCP/学习项目等历史测试与本机环境差异。
+- 静态检查：`ruff check` 对本票全部改动文件通过（仅 `graph.py` 两条既有 `N818` 命名告警，main 同样存在）；`mypy` 对 `orchestration`、`contracts/modules.py`、`understanding.py`、`run_budget_ledger.py` **无错误**（`graph.py` 仅余 main 既有的 `add_node` 重载与 GitHub 服务联合类型告警）。
+
+### 剩余限制
+
+- 真实模型体验与外部来源可得性按评测票验证；本票证据仅证明确定性机制。
+- 生产交付的逐条 Claim 已从真实产物链重建并由 `EvidenceVerifier` 风险核验；`career` 私人背景只在本地证据链参与重算，不进入公网请求、综合结论或综合产物。
+- 跨轮复用已接入父图（`prior_results`/`changed_conditions` + 修订轮从上一轮综合恢复计划）；「换成杭州」这类无条件能力信号的修订轮会重算受条件影响的岗位并复用资料；含模块词的修订仍按票 12 路由走单模块路径。
+- 论文身份需用户选定后才能进入 GitHub「对应实现」断言；本票保证未确认时明确限定，不声称对应。
+- career 私人投影与交付正文在父图检查点只留产物引用，提交时从内核产物回填；澄清/失败轮必须送达用户的模块文案（非用户简历原文）仍随检查点保留到终态提交。
+
+## 独立验收（2026-10-04）：通过
+
+基点 `main@48d12a45`，原交付 `8c1785a2`，验收修复 `8c59d631`、`94d296dd` 与本轮修复。
+完整逐项证据、两轮原始双轴结论、修复与复验见 [独立验收记录](../validation/37-review/README.md)。
+
+第一轮双轴均判不通过（生产可信桥接、跨轮复用、岗位类型化需求、选定论文身份、最终门修复缺失）；
+第二轮复验确认：真实理解检测顺序被计划拓扑排序修复、draft 上游阻塞依赖、终态 EVIDENCE_BOUND 不再升格、
+未合格投影/综合产物不再标 qualified、私人投影退出检查点、裸条件修订轮可恢复复合计划。
+终验独立探针（含检查点字段递归扫描、修订轮 19 项边界）确认两个阻断点关闭后未再发现私文泄漏路径。
+
+conda agent 下最终相关集合 **228 passed**；模块域（github/resources/paper/career）**446 passed + 1 failed**，
+该失败与 `main` 同环境一致（`test_plain_chat_without_the_module_never_starts_github`，非本票引入）；
+验收探针 **4 passed**；Ruff 本票改动通过（graph 两条 N818 为 main 既有），Mypy 编排包通过、
+graph.py 与 main 同参数同为既有 8 条告警（无新增）。
+
 

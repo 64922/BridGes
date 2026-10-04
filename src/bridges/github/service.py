@@ -79,6 +79,7 @@ from bridges.kernel.contracts import (
     KernelStatus,
     NodeArtifact,
     NodeReceiptStatus,
+    RecipeDefinition,
     RecipeInputs,
 )
 from bridges.kernel.executor import NodeKernel
@@ -437,93 +438,14 @@ class GithubProjectsService:
         真实执行过节点（存在完成收据），其结果必须与链上同节点内容一致——
         旧核验不能为新任务或新证据背书。
         """
-        repository = NodeKernelRepository(repo.database)
-        present = repository.get_artifact(account_id, delivery.present_artifact_id or "")
-        spec_by_node = {spec.name: spec for spec in self._recipe.nodes}
-        chain: dict[str, NodeArtifact] = {}
-
-        def walk(artifact: NodeArtifact) -> bool:
-            spec = spec_by_node.get(artifact.node)
-            if (
-                spec is None
-                or artifact.recipe_id != GITHUB_RECIPE_ID
-                or artifact.recipe_version != GITHUB_RECIPE_VERSION
-                or artifact.artifact_type != spec.artifact_type
-                or artifact.capability_version != spec.capability_version
-                or artifact.conversation_id != conversation_id
-                or not artifact.verify_hash()
-            ):
-                return False
-            if (artifact.task_id, artifact.task_version) != (
-                delivery.task_ref or (None, None)
-            ):
-                return False
-            existing = chain.get(artifact.node)
-            if existing is not None:
-                return existing.artifact_id == artifact.artifact_id
-            chain[artifact.node] = artifact
-            if {dependency.node for dependency in artifact.input_deps} != set(
-                spec.depends_on
-            ):
-                return False
-            for dependency in artifact.input_deps:
-                upstream = repository.get_artifact(
-                    account_id, dependency.artifact_id or ""
-                )
-                if (
-                    upstream is None
-                    or upstream.node != dependency.node
-                    or upstream.content_hash != dependency.content_hash
-                ):
-                    return False
-                if not walk(upstream):
-                    return False
-            return True
-
-        if (
-            present is None
-            or present.node != NODE_PRESENT
-            or present.trust_state is not ArtifactTrust.QUALIFIED
-            or not walk(present)
-            or set(chain) != set(spec_by_node)
-        ):
-            return False
-        verify = chain[NODE_VERIFY]
-        if (
-            verify.artifact_id != delivery.verification_artifact_id
-            or verify.trust_state is not ArtifactTrust.QUALIFIED
-            or verify.node != "github.verify"
-        ):
-            return False
-        if {artifact.run_id for artifact in chain.values()} != {run_id}:
-            # 链包含跨运行回填：本轮真实执行出的结果必须与链上同节点一致，
-            # 否则视为旧核验为新任务或新证据背书。
-            for receipt in repository.list_receipts(account_id, run_id):
-                if receipt.status is not NodeReceiptStatus.COMPLETED:
-                    return False
-                artifact = repository.get_artifact(
-                    account_id, receipt.artifact_id or ""
-                )
-                if artifact is None:
-                    return False
-                if artifact.trust_state is ArtifactTrust.INVALIDATED:
-                    continue
-                chained = chain.get(artifact.node)
-                if chained is None or chained.content_hash != artifact.content_hash:
-                    return False
-        result = KernelResult(
-            status=KernelStatus.COMPLETED, nodes=(), artifacts=tuple(chain.values()),
-            delivery=present,
-        )
-        payload = present.payload
-        expected = self._projection(
-            result=result,
-            insights=InsightOutcome(
-                insights=payload.get("insights") or {}, note=payload.get("note")
-            ),
-        )
-        return expected.model_dump(exclude={"completed_at"}) == delivery.projection.model_dump(
-            exclude={"completed_at"}
+        return verify_github_delivery_projection(
+            repository=NodeKernelRepository(repo.database),
+            recipe=self._recipe,
+            delivery=delivery,
+            account_id=account_id,
+            run_id=run_id,
+            conversation_id=conversation_id,
+            clock=self._clock,
         )
 
     # -- 交付（既有终态收敛路径） ----------------------------------------
@@ -750,79 +672,8 @@ class GithubProjectsService:
         result: KernelResult,
         insights: InsightOutcome,
     ) -> GithubProjectsProjection:
-        analysis = _analysis_of(result) or _empty_analysis()
-        records = _records_of(result)
-        ranked = _ranked_of(result)
-        evaluate = result.artifact(NODE_EVALUATE)
-        read = result.artifact("github.read")
-        verify = result.artifact(NODE_VERIFY)
-        rate_limited = bool(
-            evaluate is not None and evaluate.payload.get("rate_limited")
-        ) or _has_rate_limit(records)
-        reset_at = _parse_moment(
-            evaluate.payload.get("reset_at") if evaluate is not None else None
-        ) or _parse_moment(read.payload.get("reset_at") if read is not None else None)
-        errors = _first_error(records)
-        recommendations = [
-            item.model_copy(update={"insight_zh": insights.insights.get(item.full_name)})
-            for item in ranked.recommendations
-        ]
-        metadata_only = False
-        if recommendations:
-            metadata_only = all(
-                GithubEvidenceKind.README not in item.evidence_kinds
-                and GithubEvidenceKind.IMPLEMENTATION not in item.evidence_kinds
-                for item in recommendations
-            )
-            status = (
-                GithubProjectStatus.METADATA_ONLY
-                if metadata_only
-                else GithubProjectStatus.SUCCESS
-            )
-        elif not records or _only_failures(records):
-            status = GithubProjectStatus.ERROR
-        else:
-            status = GithubProjectStatus.EMPTY
-        boundary = _evidence_boundary(
-            analysis=analysis,
-            recommendations=recommendations,
-            rejected=ranked.rejected,
-            rate_limited=rate_limited,
-            rate_limit_reset_at=reset_at,
-            metadata_only=metadata_only,
-            insights_note=insights.note,
-            has_insights=bool(insights.insights),
-            verification=verify.payload if verify is not None else None,
-        )
-        return GithubProjectsProjection(
-            status=status,
-            scenario=analysis.scenario,
-            original_request=analysis.original_request,
-            features=list(analysis.features),
-            optional_features=list(analysis.optional_features),
-            tech_terms=list(analysis.tech_terms),
-            constraints=analysis.constraints.model_copy(deep=True),
-            whole_idea=analysis.whole_idea,
-            component_terms=list(analysis.component_terms),
-            context_source=analysis.context_source,
-            requirement_source=analysis.requirement_source,
-            identity_note=_identity_note(analysis),
-            queries=list(records),
-            recommendations=recommendations,
-            rejected=list(ranked.rejected),
-            rate_limit=_rate_limit_state(limited=rate_limited, reset_at=reset_at),
-            evidence_boundary=boundary,
-            empty_reason=(
-                _failure_reason(errors)
-                if status is GithubProjectStatus.ERROR and errors is not None
-                else (_empty_reason(ranked) if status is GithubProjectStatus.EMPTY else None)
-            ),
-            retryable=bool(errors and errors.retryable)
-            or rate_limited
-            or metadata_only,
-            error_code=errors.error_code if errors is not None else None,
-            error_message=errors.error_message if errors is not None else None,
-            completed_at=self._clock(),
+        return build_github_projection(
+            result=result, insights=insights, clock=self._clock
         )
 
     # -- 恢复与等待 ------------------------------------------------------
@@ -957,6 +808,107 @@ class GithubProjectsService:
         )
 
 
+def verify_github_delivery_projection(
+    *,
+    repository: NodeKernelRepository,
+    recipe: RecipeDefinition,
+    delivery: GithubDelivery,
+    account_id: str,
+    run_id: str,
+    conversation_id: str,
+    clock: Callable[[], datetime] | None = None,
+) -> bool:
+    """模块级链核验：供单模块父图与复合编排共用，不依赖服务实例装配。"""
+    present = repository.get_artifact(account_id, delivery.present_artifact_id or "")
+    spec_by_node = {spec.name: spec for spec in recipe.nodes}
+    chain: dict[str, NodeArtifact] = {}
+
+    def walk(artifact: NodeArtifact) -> bool:
+        spec = spec_by_node.get(artifact.node)
+        if (
+            spec is None
+            or artifact.recipe_id != GITHUB_RECIPE_ID
+            or artifact.recipe_version != GITHUB_RECIPE_VERSION
+            or artifact.artifact_type != spec.artifact_type
+            or artifact.capability_version != spec.capability_version
+            or artifact.conversation_id != conversation_id
+            or not artifact.verify_hash()
+        ):
+            return False
+        if (artifact.task_id, artifact.task_version) != (
+            delivery.task_ref or (None, None)
+        ):
+            return False
+        existing = chain.get(artifact.node)
+        if existing is not None:
+            return existing.artifact_id == artifact.artifact_id
+        chain[artifact.node] = artifact
+        if {dependency.node for dependency in artifact.input_deps} != set(
+            spec.depends_on
+        ):
+            return False
+        for dependency in artifact.input_deps:
+            upstream = repository.get_artifact(
+                account_id, dependency.artifact_id or ""
+            )
+            if (
+                upstream is None
+                or upstream.node != dependency.node
+                or upstream.content_hash != dependency.content_hash
+            ):
+                return False
+            if not walk(upstream):
+                return False
+        return True
+
+    if (
+        present is None
+        or present.node != NODE_PRESENT
+        or present.trust_state is not ArtifactTrust.QUALIFIED
+        or not walk(present)
+        or set(chain) != set(spec_by_node)
+    ):
+        return False
+    verify = chain[NODE_VERIFY]
+    if (
+        verify.artifact_id != delivery.verification_artifact_id
+        or verify.trust_state is not ArtifactTrust.QUALIFIED
+        or verify.node != "github.verify"
+    ):
+        return False
+    if {artifact.run_id for artifact in chain.values()} != {run_id}:
+        # 链包含跨运行回填：本轮真实执行出的结果必须与链上同节点一致，
+        # 否则视为旧核验为新任务或新证据背书。
+        for receipt in repository.list_receipts(account_id, run_id):
+            if receipt.status is not NodeReceiptStatus.COMPLETED:
+                return False
+            artifact = repository.get_artifact(
+                account_id, receipt.artifact_id or ""
+            )
+            if artifact is None:
+                return False
+            if artifact.trust_state is ArtifactTrust.INVALIDATED:
+                continue
+            chained = chain.get(artifact.node)
+            if chained is None or chained.content_hash != artifact.content_hash:
+                return False
+    result = KernelResult(
+        status=KernelStatus.COMPLETED, nodes=(), artifacts=tuple(chain.values()),
+        delivery=present,
+    )
+    payload = present.payload
+    expected = build_github_projection(
+        result=result,
+        insights=InsightOutcome(
+            insights=payload.get("insights") or {}, note=payload.get("note")
+        ),
+        clock=clock or (lambda: datetime.now(UTC)),
+    )
+    return expected.model_dump(exclude={"completed_at"}) == delivery.projection.model_dump(
+        exclude={"completed_at"}
+    )
+
+
 # -- 内核结果读取 ------------------------------------------------------------
 
 
@@ -1070,6 +1022,89 @@ def _insights_of(result: KernelResult, flow: GithubNodeFlow) -> InsightOutcome:
             else {}
         ),
         note=note if isinstance(note, str) else None,
+    )
+
+
+def build_github_projection(
+    *,
+    result: KernelResult,
+    insights: InsightOutcome,
+    clock: Callable[[], datetime],
+) -> GithubProjectsProjection:
+    """从内核链重建 GitHub 投影（服务与模块级核验共用，不依赖实例装配）。"""
+    analysis = _analysis_of(result) or _empty_analysis()
+    records = _records_of(result)
+    ranked = _ranked_of(result)
+    evaluate = result.artifact(NODE_EVALUATE)
+    read = result.artifact("github.read")
+    verify = result.artifact(NODE_VERIFY)
+    rate_limited = bool(
+        evaluate is not None and evaluate.payload.get("rate_limited")
+    ) or _has_rate_limit(records)
+    reset_at = _parse_moment(
+        evaluate.payload.get("reset_at") if evaluate is not None else None
+    ) or _parse_moment(read.payload.get("reset_at") if read is not None else None)
+    errors = _first_error(records)
+    recommendations = [
+        item.model_copy(update={"insight_zh": insights.insights.get(item.full_name)})
+        for item in ranked.recommendations
+    ]
+    metadata_only = False
+    if recommendations:
+        metadata_only = all(
+            GithubEvidenceKind.README not in item.evidence_kinds
+            and GithubEvidenceKind.IMPLEMENTATION not in item.evidence_kinds
+            for item in recommendations
+        )
+        status = (
+            GithubProjectStatus.METADATA_ONLY
+            if metadata_only
+            else GithubProjectStatus.SUCCESS
+        )
+    elif not records or _only_failures(records):
+        status = GithubProjectStatus.ERROR
+    else:
+        status = GithubProjectStatus.EMPTY
+    boundary = _evidence_boundary(
+        analysis=analysis,
+        recommendations=recommendations,
+        rejected=ranked.rejected,
+        rate_limited=rate_limited,
+        rate_limit_reset_at=reset_at,
+        metadata_only=metadata_only,
+        insights_note=insights.note,
+        has_insights=bool(insights.insights),
+        verification=verify.payload if verify is not None else None,
+    )
+    return GithubProjectsProjection(
+        status=status,
+        scenario=analysis.scenario,
+        original_request=analysis.original_request,
+        features=list(analysis.features),
+        optional_features=list(analysis.optional_features),
+        tech_terms=list(analysis.tech_terms),
+        constraints=analysis.constraints.model_copy(deep=True),
+        whole_idea=analysis.whole_idea,
+        component_terms=list(analysis.component_terms),
+        context_source=analysis.context_source,
+        requirement_source=analysis.requirement_source,
+        identity_note=_identity_note(analysis),
+        queries=list(records),
+        recommendations=recommendations,
+        rejected=list(ranked.rejected),
+        rate_limit=_rate_limit_state(limited=rate_limited, reset_at=reset_at),
+        evidence_boundary=boundary,
+        empty_reason=(
+            _failure_reason(errors)
+            if status is GithubProjectStatus.ERROR and errors is not None
+            else (_empty_reason(ranked) if status is GithubProjectStatus.EMPTY else None)
+        ),
+        retryable=bool(errors and errors.retryable)
+        or rate_limited
+        or metadata_only,
+        error_code=errors.error_code if errors is not None else None,
+        error_message=errors.error_message if errors is not None else None,
+        completed_at=clock(),
     )
 
 

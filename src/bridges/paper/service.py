@@ -27,7 +27,7 @@ from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import CallMaterialManifest
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.chat import ChatMessageStatus
-from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
+from bridges.contracts.modules import ModuleDelivery, ModuleQueryRecord, ModuleWaitState
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.kernel.contracts import (
     KernelResult,
@@ -126,6 +126,8 @@ class PaperRunOutcome:
     wait_reason: str | None = None
     queries: list[ModuleQueryRecord] = field(default_factory=list)
     artifacts: dict[str, str] = field(default_factory=dict)
+    #: 工单 37 复合接缝：``defer_finalization`` 模式下返回的完整交付。
+    delivery: ModuleDelivery | None = None
 
 
 @dataclass
@@ -202,8 +204,14 @@ class PaperSearchService:
         manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
         assessment_manifest_sink: Callable[[CallMaterialManifest], None] | None = None,
         writing_policy: Mapping[str, Any] | None = None,
+        defer_finalization: bool = False,
     ) -> PaperRunOutcome:
-        """执行一轮论文模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。"""
+        """执行一轮论文模块；终态（完成/澄清/空/失败/停止）全部写回同一消息。
+
+        ``defer_finalization``（工单 37）为真时不写消息终态，只返回
+        :class:`~bridges.contracts.modules.ModuleDelivery` 交给复合调度器统一核验
+        与提交；失败也作为交付返回（迟到/失效仍抛 ``PaperSupersededError``）。
+        """
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise PaperModuleError(
@@ -342,6 +350,8 @@ class PaperSearchService:
                     manifest_sink=manifest_sink,
                     writing_policy=writing_policy,
                 )
+            if defer_finalization:
+                return self._package_delivery(prepared=prepared, result=result)
             outcome = self._deliver(
                 repo,
                 account_id=account_id,
@@ -701,6 +711,47 @@ class PaperSearchService:
             ),
             queries=list(projection.queries),
             artifacts=_artifact_refs(result),
+        )
+
+    def _package_delivery(
+        self,
+        *,
+        prepared: _PreparedDelivery,
+        result: KernelResult,
+    ) -> PaperRunOutcome:
+        """生产父图路径只构造交付；不在模块内写助手消息终态。"""
+        projection = prepared.projection
+        failure = prepared.failure
+        wait_reason = (
+            WAIT_REASON_CLARIFICATION
+            if projection.status is PaperSearchStatus.CLARIFICATION
+            else None
+        )
+        artifact_refs = _artifact_refs(result)
+        return PaperRunOutcome(
+            status=projection.status,
+            wait_reason=wait_reason,
+            queries=list(projection.queries),
+            artifacts=artifact_refs,
+            delivery=ModuleDelivery(
+                module_id=PAPER_MODULE_ID,
+                status=projection.status.value,
+                projection_field="paper_search",
+                projection=projection.model_dump(mode="json"),
+                content=prepared.content,
+                message_status=(
+                    ChatMessageStatus.ERROR
+                    if failure is not None
+                    else prepared.message_status
+                ).value,
+                error_node=failure.node if failure is not None else None,
+                error_code=failure.code if failure is not None else None,
+                error_message=failure.message if failure is not None else None,
+                retryable=failure.retryable if failure is not None else False,
+                artifact_refs=artifact_refs,
+                lock=prepared.lock,
+                wait_reason=wait_reason,
+            ),
         )
 
     # -- 概述调用（工单 21 表达策略 + 工单 04 最终预算） ------------------

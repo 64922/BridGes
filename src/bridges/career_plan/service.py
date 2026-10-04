@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any
 
 from bridges.career_plan.background import CareerBackgroundProvider
 from bridges.career_plan.contracts import (
@@ -64,7 +64,7 @@ from bridges.career_plan.presenting import (
 )
 from bridges.career_plan.searching import CareerSearchPort
 from bridges.contracts.chat import ChatMessageStatus
-from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
+from bridges.contracts.modules import ModuleDelivery, ModuleQueryRecord, ModuleWaitState
 from bridges.kernel.contracts import KernelResult, KernelStatus, RecipeInputs
 from bridges.kernel.executor import NodeKernel
 from bridges.kernel.guard import RunCommitGuard
@@ -116,6 +116,22 @@ class CareerRunOutcome:
     status: CareerPlanStatus
     wait_reason: str | None = None
     queries: list[ModuleQueryRecord] = field(default_factory=list)
+    #: 工单 37 复合接缝：``defer_finalization`` 模式下返回的完整交付。
+    delivery: ModuleDelivery | None = None
+
+
+@dataclass
+class _PreparedDelivery:
+    """事务外准备好的交付内容（事务内只做守卫复核与原子写入）。
+
+    ``projection`` 为 ``None`` 只出现在解析产物缺失的失败路径：旧路径不写
+    失败投影，只把错误交给父图；延迟终态时为交付合成最小错误投影。
+    """
+
+    projection: CareerPlanProjection | None
+    content: str
+    message_status: ChatMessageStatus
+    failure: CareerModuleError | None = None
 
 
 class CareerPlanService:
@@ -164,8 +180,14 @@ class CareerPlanService:
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
         module_context: ModuleTaskContext | None = None,
+        defer_finalization: bool = False,
     ) -> CareerRunOutcome:
-        """执行一轮职业规划分析；终态全部写回同一条助手消息。"""
+        """执行一轮职业规划分析；终态全部写回同一条助手消息。
+
+        ``defer_finalization``（工单 37）为真时不写消息终态，只返回
+        :class:`~bridges.contracts.modules.ModuleDelivery` 交给复合调度器统一核验
+        与提交；失败也作为交付返回（迟到/失效仍抛 ``CareerSupersededError``）。
+        """
         del run_model_id  # 本模块不调用模型，不存在模型生成的断言。
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
@@ -274,6 +296,12 @@ class CareerPlanService:
                 if decision.code != "run_stopped":
                     raise CareerSupersededError(decision.code)
                 result = replace(result, status=KernelStatus.STOPPED)
+            if defer_finalization:
+                return self._package_delivery(
+                    result=result,
+                    assistant_message_id=assistant_message_id,
+                    stop_event=stop_event,
+                )
             try:
                 return self._deliver(
                     repo,
@@ -300,6 +328,30 @@ class CareerPlanService:
 
     # -- 交付（终态收敛路径） --------------------------------------------
 
+    def _prepare_delivery(
+        self,
+        result: KernelResult,
+        *,
+        assistant_message_id: str,
+        stop_event: threading.Event | None,
+    ) -> _PreparedDelivery:
+        """把内核结果翻译成投影/正文与终端状态；不写消息终态。"""
+        if result.status is KernelStatus.COMPLETED:
+            return self._prepare_completed(result)
+        if result.status is KernelStatus.NEEDS_INPUT:
+            return self._prepare_clarification(
+                result, assistant_message_id=assistant_message_id
+            )
+        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
+            stop_event is not None and stop_event.is_set()
+        ):
+            return self._prepare_stopped(result)
+        if result.status is KernelStatus.REJECTED:
+            raise CareerSupersededError(
+                result.rejection_code or "generation_superseded"
+            )
+        return self._prepare_failure(result)
+
     def _deliver(
         self,
         repo: ConversationRepository,
@@ -309,31 +361,96 @@ class CareerPlanService:
         result: KernelResult,
         stop_event: threading.Event | None,
     ) -> CareerRunOutcome:
-        if result.status is KernelStatus.COMPLETED:
-            return self._deliver_completed(
-                repo, account_id, assistant_message_id, result
-            )
-        if result.status is KernelStatus.NEEDS_INPUT:
-            return self._deliver_clarification(
-                repo, account_id, assistant_message_id, result
-            )
-        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
-            stop_event is not None and stop_event.is_set()
-        ):
-            return self._deliver_stopped(repo, account_id, assistant_message_id, result)
-        if result.status is KernelStatus.REJECTED:
-            raise CareerSupersededError(
-                result.rejection_code or "generation_superseded"
-            )
-        return self._deliver_failure(result)
+        prepared = self._prepare_delivery(
+            result,
+            assistant_message_id=assistant_message_id,
+            stop_event=stop_event,
+        )
+        if prepared.failure is not None:
+            raise _CareerDeliveryError(prepared.failure, prepared.projection)
+        projection = prepared.projection
+        assert projection is not None
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=prepared.message_status,
+            projection=projection,
+            content=prepared.content,
+            now=datetime.now(UTC),
+        )
+        return CareerRunOutcome(
+            status=projection.status,
+            wait_reason=(
+                WAIT_REASON_CLARIFICATION
+                if projection.status is CareerPlanStatus.CLARIFICATION
+                else None
+            ),
+            queries=list(projection.queries),
+        )
 
-    def _deliver_completed(
+    def _package_delivery(
         self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
+        *,
         result: KernelResult,
+        assistant_message_id: str,
+        stop_event: threading.Event | None,
     ) -> CareerRunOutcome:
+        """生产父图路径只构造交付；不在模块内写助手消息终态。"""
+        prepared = self._prepare_delivery(
+            result,
+            assistant_message_id=assistant_message_id,
+            stop_event=stop_event,
+        )
+        projection = prepared.projection
+        failure = prepared.failure
+        content = prepared.content
+        now = datetime.now(UTC)
+        if projection is None:
+            # 解析产物缺失的失败路径没有可写投影：为交付合成最小错误骨架。
+            projection = CareerPlanProjection(
+                status=CareerPlanStatus.ERROR,
+                topic="",
+                original_request="",
+                error_code=failure.code if failure is not None else None,
+                error_message=failure.message if failure is not None else None,
+                retryable=failure.retryable if failure is not None else False,
+                completed_at=now,
+            )
+            content = render_empty_content(projection)
+        projection = projection.model_copy(
+            update={"completed_at": projection.completed_at or now}
+        )
+        wait_reason = (
+            WAIT_REASON_CLARIFICATION
+            if projection.status is CareerPlanStatus.CLARIFICATION
+            else None
+        )
+        delivery = ModuleDelivery(
+            module_id=CAREER_MODULE_ID,
+            status=projection.status.value,
+            projection_field="career_plan",
+            projection=projection.model_dump(mode="json"),
+            content=content,
+            message_status=prepared.message_status.value,
+            error_node=failure.node if failure is not None else None,
+            error_code=failure.code if failure is not None else None,
+            error_message=failure.message if failure is not None else None,
+            retryable=failure.retryable if failure is not None else False,
+            artifact_refs={
+                artifact.node: artifact.artifact_id for artifact in result.artifacts
+            },
+            lock=None,
+            wait_reason=wait_reason,
+        )
+        return CareerRunOutcome(
+            status=projection.status,
+            wait_reason=wait_reason,
+            queries=list(projection.queries),
+            delivery=delivery,
+        )
+
+    def _prepare_completed(self, result: KernelResult) -> _PreparedDelivery:
         artifact = result.delivery
         if artifact is None or artifact.node != NODE_VERIFY:
             raise CareerModuleError(
@@ -346,30 +463,19 @@ class CareerPlanService:
             artifact.payload["projection"]
         )
         if projection.status is CareerPlanStatus.ERROR:
-            return self._deliver_failure(result, projection=projection)
-        now = datetime.now(UTC)
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
+            return self._prepare_failure(result, projection=projection)
+        return _PreparedDelivery(
             projection=projection,
             content=_content_for(projection),
-            now=now,
-        )
-        return CareerRunOutcome(
-            status=projection.status,
-            wait_reason=None,
-            queries=list(projection.queries),
+            message_status=ChatMessageStatus.DONE,
         )
 
-    def _deliver_clarification(
+    def _prepare_clarification(
         self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
         result: KernelResult,
-    ) -> CareerRunOutcome:
+        *,
+        assistant_message_id: str,
+    ) -> _PreparedDelivery:
         analysis = self._parse_analysis(result)
         clarification = analysis.clarification if analysis is not None else None
         if analysis is None or clarification is None:
@@ -401,28 +507,13 @@ class CareerPlanService:
             ),
             completed_at=now,
         )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
+        return _PreparedDelivery(
             projection=projection,
             content=render_clarification_content(analysis),
-            now=now,
-        )
-        return CareerRunOutcome(
-            status=projection.status,
-            wait_reason=WAIT_REASON_CLARIFICATION,
-            queries=[],
+            message_status=ChatMessageStatus.DONE,
         )
 
-    def _deliver_stopped(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-    ) -> CareerRunOutcome:
+    def _prepare_stopped(self, result: KernelResult) -> _PreparedDelivery:
         analysis = self._parse_analysis(result)
         records = self._records(result)
         now = datetime.now(UTC)
@@ -458,26 +549,19 @@ class CareerPlanService:
                     "completed_at": now,
                 }
             )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.STOPPED,
+        return _PreparedDelivery(
             projection=projection,
             content=render_stopped_content(projection),
-            now=now,
-        )
-        return CareerRunOutcome(
-            status=CareerPlanStatus.STOPPED, wait_reason=None, queries=records
+            message_status=ChatMessageStatus.STOPPED,
         )
 
-    def _deliver_failure(
+    def _prepare_failure(
         self,
         result: KernelResult,
         *,
         projection: CareerPlanProjection | None = None,
-    ) -> NoReturn:
-        """失败先写回同一条消息（失败分类与查询词都留在投影里），再交给父图收敛。"""
+    ) -> _PreparedDelivery:
+        """失败先收敛为交付（失败分类与查询词都留在投影里），再交给父图。"""
         node = NODE_VERIFY
         code = "career_search_failed"
         message = "岗位检索失败，请稍后重试。"
@@ -498,8 +582,13 @@ class CareerPlanService:
             projection = self._failure_projection(
                 result, code=code, message=message, retryable=retryable
             )
-        raise _CareerDeliveryError(
-            CareerModuleError(node, code, message, retryable=retryable), projection
+        return _PreparedDelivery(
+            projection=projection,
+            content=(
+                render_empty_content(projection) if projection is not None else ""
+            ),
+            message_status=ChatMessageStatus.ERROR,
+            failure=CareerModuleError(node, code, message, retryable=retryable),
         )
 
     def _failure_projection(

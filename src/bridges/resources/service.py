@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from bridges.contracts.chat import ChatMessageStatus
-from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
+from bridges.contracts.modules import ModuleDelivery, ModuleQueryRecord, ModuleWaitState
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.kernel.contracts import (
     KernelResult,
@@ -107,6 +107,18 @@ class ResourcesRunOutcome:
     status: ResourcesStatus
     wait_reason: str | None = None
     queries: list[ModuleQueryRecord] = field(default_factory=list)
+    #: 工单 37 复合接缝：``defer_finalization`` 模式下返回的完整交付。
+    delivery: ModuleDelivery | None = None
+
+
+@dataclass
+class _PreparedDelivery:
+    """事务外准备好的交付内容（事务内只做守卫复核与原子写入）。"""
+
+    projection: LearningResourcesProjection
+    content: str
+    message_status: ChatMessageStatus
+    failure: ResourcesModuleError | None = None
 
 
 class LearningResourcesService:
@@ -156,11 +168,21 @@ class LearningResourcesService:
         assistant_message_id: str,
         run_context: RunContextEnvelope,
         run_model_id: str | None = None,
+        request_text: str | None = None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
         module_context: ModuleTaskContext | None = None,
+        defer_finalization: bool = False,
     ) -> ResourcesRunOutcome:
-        """执行一轮资料模块：持久节点内核执行，结果统一提交回同一消息。"""
+        """执行一轮资料模块：持久节点内核执行，结果统一提交回同一消息。
+
+        ``defer_finalization``（工单 37）为真时不写消息终态，只返回
+        :class:`~bridges.contracts.modules.ModuleDelivery` 交给复合调度器统一核验
+        与提交；失败也作为交付返回（迟到/失效仍抛 ``ResourcesSupersededError``）。
+
+        ``request_text``（工单 37 复合）为上游已核验的最小公开目标时，用它替代
+        本轮用户消息原文进入解析；单模块路径保持 ``None``，不改变现有语义。
+        """
         # 资料推荐不调用模型：本轮模型锁与本模块无关（签名保持一致）。
         del run_model_id
         user_message = repo.get_message(account_id, user_message_id)
@@ -219,7 +241,9 @@ class LearningResourcesService:
                 conversation_id=conversation_id,
                 run_id=run_id,
                 user_message_id=user_message_id,
-                user_content=user_message.content,
+                user_content=(
+                    request_text if request_text is not None else user_message.content
+                ),
                 task_id=task_ref[0] if task_ref is not None else None,
                 task_version=task_ref[1] if task_ref is not None else None,
                 wait_identity=self._wait_identity(pending),
@@ -240,19 +264,49 @@ class LearningResourcesService:
                     raise ResourcesSupersededError(decision.code)
                 result = replace(result, status=KernelStatus.STOPPED)
             try:
+                prepared = self._prepare_delivery(
+                    result,
+                    assistant_message_id=assistant_message_id,
+                    stop_event=stop_event,
+                )
+                if defer_finalization:
+                    return self._package_delivery(prepared=prepared, result=result)
                 return self._deliver(
                     repo,
                     account_id=account_id,
                     assistant_message_id=assistant_message_id,
-                    result=result,
-                    stop_event=stop_event,
+                    prepared=prepared,
                 )
             except ResourcesModuleError as error:
                 # 失败投影提交后，再通知父图收敛错误，避免异常回滚投影。
                 delivery_error = error
         raise delivery_error
 
-    # -- 交付（既有终态收敛路径） ----------------------------------------
+    # -- 交付（既有终态收敛路径 + 工单 37 延迟终态） ----------------------
+
+    def _prepare_delivery(
+        self,
+        result: KernelResult,
+        *,
+        assistant_message_id: str,
+        stop_event: threading.Event | None,
+    ) -> _PreparedDelivery:
+        """把内核结果翻译成投影/正文与终端状态；不写消息终态。"""
+        if result.status is KernelStatus.COMPLETED:
+            return self._prepare_completed(result)
+        if result.status is KernelStatus.NEEDS_INPUT:
+            return self._prepare_clarification(
+                result, assistant_message_id=assistant_message_id
+            )
+        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
+            stop_event is not None and stop_event.is_set()
+        ):
+            return self._prepare_stopped(result)
+        if result.status is KernelStatus.REJECTED:
+            raise ResourcesSupersededError(
+                result.rejection_code or "generation_superseded"
+            )
+        return self._prepare_failure(result)
 
     def _deliver(
         self,
@@ -260,34 +314,75 @@ class LearningResourcesService:
         *,
         account_id: str,
         assistant_message_id: str,
-        result: KernelResult,
-        stop_event: threading.Event | None,
+        prepared: _PreparedDelivery,
     ) -> ResourcesRunOutcome:
-        if result.status is KernelStatus.COMPLETED:
-            return self._deliver_completed(
-                repo, account_id, assistant_message_id, result
-            )
-        if result.status is KernelStatus.NEEDS_INPUT:
-            return self._deliver_clarification(
-                repo, account_id, assistant_message_id, result
-            )
-        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
-            stop_event is not None and stop_event.is_set()
-        ):
-            return self._deliver_stopped(repo, account_id, assistant_message_id, result)
-        if result.status is KernelStatus.REJECTED:
-            raise ResourcesSupersededError(
-                result.rejection_code or "generation_superseded"
-            )
-        return self._deliver_failure(repo, account_id, assistant_message_id, result)
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=prepared.message_status,
+            projection=prepared.projection,
+            content=prepared.content,
+            now=datetime.now(UTC),
+        )
+        if prepared.failure is not None:
+            raise prepared.failure
+        return self._outcome(prepared)
 
-    def _deliver_completed(
+    def _package_delivery(
         self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
+        *,
+        prepared: _PreparedDelivery,
         result: KernelResult,
     ) -> ResourcesRunOutcome:
+        """生产父图路径只构造交付；不在模块内写助手消息终态。"""
+        projection = prepared.projection
+        failure = prepared.failure
+        wait_reason = (
+            WAIT_REASON_CLARIFICATION
+            if projection.status is ResourcesStatus.CLARIFICATION
+            else None
+        )
+        delivery = ModuleDelivery(
+            module_id=RESOURCES_MODULE_ID,
+            status=projection.status.value,
+            projection_field="learning_resources",
+            projection=projection.model_dump(mode="json"),
+            content=prepared.content,
+            message_status=prepared.message_status.value,
+            error_node=failure.node if failure is not None else None,
+            error_code=failure.code if failure is not None else projection.error_code,
+            error_message=(
+                failure.message if failure is not None else projection.error_message
+            ),
+            retryable=failure.retryable if failure is not None else projection.retryable,
+            artifact_refs={
+                artifact.node: artifact.artifact_id for artifact in result.artifacts
+            },
+            lock=None,
+            wait_reason=wait_reason,
+        )
+        return self._outcome(prepared, delivery=delivery)
+
+    def _outcome(
+        self,
+        prepared: _PreparedDelivery,
+        *,
+        delivery: ModuleDelivery | None = None,
+    ) -> ResourcesRunOutcome:
+        projection = prepared.projection
+        return ResourcesRunOutcome(
+            status=projection.status,
+            wait_reason=(
+                WAIT_REASON_CLARIFICATION
+                if projection.status is ResourcesStatus.CLARIFICATION
+                else None
+            ),
+            queries=list(projection.queries),
+            delivery=delivery,
+        )
+
+    def _prepare_completed(self, result: KernelResult) -> _PreparedDelivery:
         artifact = result.delivery
         if artifact is None or artifact.node != NODE_VERIFY:
             raise ResourcesModuleError(
@@ -300,12 +395,9 @@ class LearningResourcesService:
             artifact.payload["projection"]
         )
         if projection.status is ResourcesStatus.ERROR:
-            return self._deliver_failure(
-                repo, account_id, assistant_message_id, result, projection=projection
-            )
+            return self._prepare_failure(result, projection=projection)
         analysis = self._analysis(result)
         plan = self._plan(result)
-        now = datetime.now(UTC)
         content = (
             render_result_content(analysis, plan, projection)
             if projection.status is ResourcesStatus.SUCCESS
@@ -317,26 +409,18 @@ class LearningResourcesService:
             if analysis is not None and plan is not None
             else ""
         )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
+        return _PreparedDelivery(
             projection=projection,
             content=content,
-            now=now,
-        )
-        return ResourcesRunOutcome(
-            status=projection.status, queries=list(projection.queries)
+            message_status=ChatMessageStatus.DONE,
         )
 
-    def _deliver_clarification(
+    def _prepare_clarification(
         self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
         result: KernelResult,
-    ) -> ResourcesRunOutcome:
+        *,
+        assistant_message_id: str,
+    ) -> _PreparedDelivery:
         analysis = self._analysis(result)
         if analysis is None or analysis.clarification is None:
             raise ResourcesModuleError(
@@ -373,27 +457,13 @@ class LearningResourcesService:
                 created_at=now,
             ),
         )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
+        return _PreparedDelivery(
             projection=projection,
             content=render_clarification_content(analysis),
-            now=now,
-        )
-        return ResourcesRunOutcome(
-            status=ResourcesStatus.CLARIFICATION,
-            wait_reason=WAIT_REASON_CLARIFICATION,
+            message_status=ChatMessageStatus.DONE,
         )
 
-    def _deliver_stopped(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-    ) -> ResourcesRunOutcome:
+    def _prepare_stopped(self, result: KernelResult) -> _PreparedDelivery:
         analysis = self._analysis(result)
         plan = self._plan(result)
         queries = self._queries(result)
@@ -422,26 +492,18 @@ class LearningResourcesService:
             evidence_notes=["用户停止了本轮检索，未生成的步骤不会补做。"],
             searched_at=now,
         )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.STOPPED,
+        return _PreparedDelivery(
             projection=projection,
             content=render_stopped_content(plan),
-            now=now,
+            message_status=ChatMessageStatus.STOPPED,
         )
-        return ResourcesRunOutcome(status=ResourcesStatus.STOPPED, queries=queries)
 
-    def _deliver_failure(
+    def _prepare_failure(
         self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
         result: KernelResult,
         *,
         projection: LearningResourcesProjection | None = None,
-    ) -> ResourcesRunOutcome:
+    ) -> _PreparedDelivery:
         analysis = self._analysis(result)
         plan = self._plan(result)
         queries = self._queries(result)
@@ -496,17 +558,12 @@ class LearningResourcesService:
                 error_message=message,
                 retryable=retryable,
             )
-        now = datetime.now(UTC)
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.ERROR,
+        return _PreparedDelivery(
             projection=projection,
             content=render_error_content(projection),
-            now=now,
+            message_status=ChatMessageStatus.ERROR,
+            failure=ResourcesModuleError(node, code, message, retryable=retryable),
         )
-        raise ResourcesModuleError(node, code, message, retryable=retryable)
 
     # -- 内核结果读取 -----------------------------------------------------
 

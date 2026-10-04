@@ -1187,6 +1187,18 @@ class ChatService:
                 web_search_allowed=False,
                 **metadata,
             )
+        if understanding is not None and len(understanding.capability_list) > 1:
+            # 工单 37：已登记跨模块组合由复合计划统一调度与核验；路由只
+            # 记录能力列表，实际计划与参数来源由编排器按登记表验证。
+            return CapabilityRoute(
+                status=RouteStatus.MATCHED,
+                main_capability=MainCapability.ORDINARY_CHAT,
+                confidence=1.0,
+                reason="已登记跨模块组合，按依赖计划统一调度与核验。",
+                knowledge_base_allowed=kb_allowed,
+                web_search_allowed=web_allowed,
+                **metadata,
+            )
         module = understanding.actual_module_id if understanding is not None else None
         if module == "paper":
             paper_request = (

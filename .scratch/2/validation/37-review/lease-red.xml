@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="3.025" timestamp="2026-10-04T19:51:02.379752+08:00" hostname="bababoyi"><testcase classname="tests.chat.test_issue37_composite_dispatch" name="test_composite_rejects_transferred_lease" time="0.302"><failure message="Failed: DID NOT RAISE DailyGraphSuperseded">tmp_path = WindowsPath('D:/BridGes/.worktrees/37-composite-plans-and-verified-synthesis/.tmp/issue37-lease-red/test_composite_rejects_transfe0')
+
+    def test_composite_rejects_transferred_lease(tmp_path: Path) -&gt; None:
+        database = BridgesDatabase(tmp_path / "bridges.db")
+        assert database.initialize() &gt; 0
+        _seed(database, _understanding().model_dump(mode="json"))
+        deps = _deps(database, _understanding())
+        state: dict = {"module_dispatch": "chat", "assistant_message_id": ASSISTANT}
+        state.update(_node_invoke_subgraph_or_chat(state, {"configurable": {"deps": deps}}))
+        state.update(_node_verify_output(state, {"configurable": {"deps": deps}}))
+        # deps.run 保留原执行者快照；新执行者取得租约后，旧执行不得重新捕获它。
+        with database.transaction():
+            database.connection.execute(
+                "UPDATE generation_runs SET lease_owner = 'worker-new' WHERE run_id = ?",
+                (RUN,),
+            )
+&gt;       with pytest.raises(DailyGraphSuperseded, match="lease_lost"):
+E       Failed: DID NOT RAISE DailyGraphSuperseded
+
+tests\chat\test_issue37_composite_dispatch.py:280: Failed</failure></testcase></testsuite></testsuites>

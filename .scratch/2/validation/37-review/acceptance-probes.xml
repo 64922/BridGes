@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="2.902" timestamp="2026-10-04T19:59:11.666210+08:00" hostname="bababoyi"><testcase classname=".scratch.2.validation.37-review.acceptance_probes" name="test_done_does_not_prove_qualified_claims" time="0.002"><failure message="AssertionError: assert 'qualified' != 'qualified'&#10; +  where 'qualified' = StepResult(step_id='paper', module_id='paper', state=&lt;StepState.COMPLETED: 'completed'&gt;, trust_state='qualified', reus...on=None, failure=None, queries=[], duration_ms=None, input_fingerprint=None, resolved_param_names=[], external_calls=0).trust_state">def test_done_does_not_prove_qualified_claims():
+        plan = CompositePlanner().plan(
+            goal="查论文和资料", user_message_id="user", module_ids=["paper", "resources"]
+        )
+        result = step_result_from_delivery(plan.steps[0], ModuleDelivery(
+            module_id="paper", status="success", projection_field="paper_search",
+            projection={}, content="该方法显著优于全部现有方法。", message_status="done",
+            artifact_refs={"paper.verify": "不存在的产物"},
+        ))
+&gt;       assert result.trust_state != "qualified"
+E       AssertionError: assert 'qualified' != 'qualified'
+E        +  where 'qualified' = StepResult(step_id='paper', module_id='paper', state=&lt;StepState.COMPLETED: 'completed'&gt;, trust_state='qualified', reus...on=None, failure=None, queries=[], duration_ms=None, input_fingerprint=None, resolved_param_names=[], external_calls=0).trust_state
+
+.scratch\2\validation\37-review\acceptance_probes.py:34: AssertionError</failure></testcase><testcase classname=".scratch.2.validation.37-review.acceptance_probes" name="test_parent_graph_loads_prior_results_for_reuse" time="0.309"><failure message="AssertionError: assert 'prior_results' in {'plan': CompositePlan(contract_version='composite-orchestration-v1', plan_id='plan_msg-user-37-chat', revision=0, goa..._node at 0x00000151EA372660&gt;), 'budget': &lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;}&#10; +  where {'plan': CompositePlan(contract_version='composite-orchestration-v1', plan_id='plan_msg-user-37-chat', revision=0, goa..._node at 0x00000151EA372660&gt;), 'budget': &lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;} = call(&lt;bridges.orchestration.production.CompositeOrchestrationService object at 0x00000151EA394890&gt;, plan=CompositePlan...mit_node at 0x00000151EA372660&gt;), budget=&lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;).kwargs&#10; +    where call(&lt;bridges.orchestration.production.CompositeOrchestrationService object at 0x00000151EA394890&gt;, plan=CompositePlan...mit_node at 0x00000151EA372660&gt;), budget=&lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;) = &lt;function run at 0x00000151EA2A98A0&gt;.call_args">tmp_path = WindowsPath('D:/BridGes/.worktrees/37-composite-plans-and-verified-synthesis/.tmp/issue37-probes-final/test_parent_graph_loads_prior_0')
+
+    def test_parent_graph_loads_prior_results_for_reuse(tmp_path):
+        database = BridgesDatabase(tmp_path / "bridges.db")
+        database.initialize()
+        understanding = _understanding()
+        _seed(database, understanding.model_dump(mode="json"))
+        deps = _deps(database, understanding)
+        # 检查编排层接缝；模块内核可能复用局部收据，本探针不冒充完整跨轮测量。
+        state = {"module_dispatch": "chat", "assistant_message_id": deps.run.assistant_message_id}
+        original = CompositeOrchestrationService.run
+        with patch.object(CompositeOrchestrationService, "run", autospec=True, side_effect=original) as call:
+            _node_invoke_subgraph_or_chat(state, {"configurable": {"deps": deps}})
+&gt;       assert "prior_results" in call.call_args.kwargs
+E       AssertionError: assert 'prior_results' in {'plan': CompositePlan(contract_version='composite-orchestration-v1', plan_id='plan_msg-user-37-chat', revision=0, goa..._node at 0x00000151EA372660&gt;), 'budget': &lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;}
+E        +  where {'plan': CompositePlan(contract_version='composite-orchestration-v1', plan_id='plan_msg-user-37-chat', revision=0, goa..._node at 0x00000151EA372660&gt;), 'budget': &lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;} = call(&lt;bridges.orchestration.production.CompositeOrchestrationService object at 0x00000151EA394890&gt;, plan=CompositePlan...mit_node at 0x00000151EA372660&gt;), budget=&lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;).kwargs
+E        +    where call(&lt;bridges.orchestration.production.CompositeOrchestrationService object at 0x00000151EA394890&gt;, plan=CompositePlan...mit_node at 0x00000151EA372660&gt;), budget=&lt;bridges.orchestration.executor.CompositeBudget object at 0x00000151EA3B09D0&gt;) = &lt;function run at 0x00000151EA2A98A0&gt;.call_args
+
+.scratch\2\validation\37-review\acceptance_probes.py:48: AssertionError</failure></testcase><testcase classname=".scratch.2.validation.37-review.acceptance_probes" name="test_selected_paper_identity_reaches_github" time="0.001"><failure message="AssertionError: assert False&#10; +  where False = GithubRequirementInput(kind='paper', label='候选论文', identifier=None, phrase='第二篇论文有没有对应代码', identity_confirmed=False, source_ref='paper-verified', identity_note='本轮只取得候选论文，身份尚未确认；不宣称仓库对应那份论文。').identity_confirmed">def test_selected_paper_identity_reaches_github():
+        paper = SimpleNamespace(
+            artifact_refs={"paper.verify": "paper-verified"},
+            delivery=SimpleNamespace(projection={
+                "selected": [PaperIdentity(
+                    order=2, title="选定论文", doi="10.1234/example",
+                    abs_url="https://example.org/paper", content_hash="selected-hash",
+                ).model_dump(mode="json")],
+            }),
+        )
+        requirement = _composite_github_requirement(
+            SimpleNamespace(upstream={"paper": paper}), "第二篇论文有没有对应代码"
+        )
+&gt;       assert requirement.identity_confirmed
+E       AssertionError: assert False
+E        +  where False = GithubRequirementInput(kind='paper', label='候选论文', identifier=None, phrase='第二篇论文有没有对应代码', identity_confirmed=False, source_ref='paper-verified', identity_note='本轮只取得候选论文，身份尚未确认；不宣称仓库对应那份论文。').identity_confirmed
+
+.scratch\2\validation\37-review\acceptance_probes.py:64: AssertionError</failure></testcase></testsuite></testsuites>
