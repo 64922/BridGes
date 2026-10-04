@@ -1,0 +1,37 @@
+{
+  "main_commit": "48d12a454bb3f759d8a1ffcdb9a5b5732073501a",
+  "issue_code_commit": "2d152638",
+  "same_failure_ids": true,
+  "main": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "4",
+    "skipped": "0",
+    "tests": "656",
+    "time": "65.191",
+    "timestamp": "2026-10-04T20:10:26.942094+08:00",
+    "hostname": "bababoyi"
+  },
+  "issue": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "4",
+    "skipped": "0",
+    "tests": "676",
+    "time": "65.086",
+    "timestamp": "2026-10-04T20:05:53.393173+08:00",
+    "hostname": "bababoyi"
+  },
+  "main_failures": {
+    "tests.evaluation.test_runner_reproducibility::test_lock_freezes_reproducibility_metadata": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-_eealn8e\\\\env-0.db'",
+    "tests.evaluation.test_runner_reproducibility::test_double_run_is_reproducible": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-rn9v_ou2\\\\env-0.db'",
+    "tests.evaluation.test_runner_reproducibility::test_reproduction_command_is_one_click_replayable": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-lv7ntevi\\\\env-0.db'",
+    "tests.evaluation.test_runner_reproducibility::test_suite_run_produces_all_suts_and_tasks": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-xy1duvno\\\\env-0.db'"
+  },
+  "issue_failures": {
+    "tests.evaluation.test_runner_reproducibility::test_lock_freezes_reproducibility_metadata": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-n2cbgg3y\\\\env-0.db'",
+    "tests.evaluation.test_runner_reproducibility::test_double_run_is_reproducible": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-intwnu_k\\\\env-0.db'",
+    "tests.evaluation.test_runner_reproducibility::test_reproduction_command_is_one_click_replayable": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-ihwzj8dl\\\\env-0.db'",
+    "tests.evaluation.test_runner_reproducibility::test_suite_run_produces_all_suts_and_tasks": "PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\\\Users\\\\33755\\\\AppData\\\\Local\\\\Temp\\\\bridges-eval-5q_4rwdk\\\\env-0.db'"
+  }
+}
