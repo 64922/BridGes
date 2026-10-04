@@ -53,8 +53,10 @@ class ReviewPlanError(Exception):
 
     def __init__(self, code: str, message: str) -> None:
         self.code = code
-        self.message = message
-        super().__init__(message)
+        # 模型核验说明可能含未来题与答案；仅供内部修复，不进入消息或 SSE。
+        self.repair_detail = message
+        self.message = "复盘题目与评分依据未通过出题前核验，已保留当前阶段，请重试。"
+        super().__init__(self.message)
 
 
 def review_intent(text: str) -> Literal["start", "pause", "tutor"] | None:
@@ -167,7 +169,10 @@ def evaluate_calculation(
                 return float(left**right)
         raise ValueError("算式包含不允许的语法。")
 
-    value = visit(tree)
+    try:
+        value = visit(tree)
+    except (ArithmeticError, TypeError, RecursionError) as exc:
+        raise ValueError("算式超出有限实数计算范围。") from exc
     if not math.isfinite(value):
         raise ValueError("算式结果不是有限数值。")
     return value
@@ -207,6 +212,7 @@ class _QuestionCheck(BaseModel):
     answer_consistent: bool
     status: Literal["consistent", "conflict", "insufficient"]
     detail: str = ""
+    requires_calculation: bool
     calculation: _NumericCheck | None = None
 
 
@@ -244,6 +250,8 @@ def _call(
     error_code: str | None = None,
     policy_block: str = "",
 ) -> dict[str, Any]:
+    if task not in REVIEW_CAPABILITY_VERSIONS:
+        raise ValueError("复盘调用了未登记的能力。")
     # 完整必要材料作为一个证据块：预算不足即失败，不偷偷丢掉待覆盖的知识点。
     system_prompt = (
         "你是教材复盘助教。仅以本次本节书页作为出题和判定依据，"
@@ -307,6 +315,10 @@ def _condition_problems(
     “第3题”“第12页”等序数/页码不是题设条件，先排除；知识点标题中的数字
     视为材料内的既有记号。
     """
+    if item.conditions and not item.conditions.startswith("题设："):
+        return "自设条件须以“题设：”标明，不能冒充教材原例。"
+    if item.conditions and re.search(r"教材(?:原)?例|教材例子|书[中上](?:的)?例", item.question):
+        return "自设题设不能在题干中声称是教材原例。"
     material = " ".join(
         [sources[ref].snippet for ref in item.fragment_ids if ref in sources]
         + unit_titles
@@ -331,9 +343,12 @@ def _condition_problems(
     return ""
 
 
-def _calculation_status(check: _NumericCheck) -> tuple[str, str]:
+def _calculation_status(
+    check: _NumericCheck,
+    calculate: Callable[[str, Mapping[str, float]], float],
+) -> tuple[str, str]:
     try:
-        value = evaluate_calculation(check.expression, check.variables)
+        value = calculate(check.expression, check.variables)
     except ValueError as exc:
         return "insufficient", f"确定性计算无法核验：{exc}"
     if not math.isclose(value, check.expected, rel_tol=1e-9, abs_tol=1e-9):
@@ -349,8 +364,10 @@ def _verify_planned(
     service: Any,
     run: Any,
     planned: list[StudyReviewQuestion],
+    scope: StudyScope,
     sources: Mapping[str, StudySource],
     invoke: Callable[[str, dict[str, Any]], dict[str, Any]],
+    calculate: Callable[[str, Mapping[str, float]], float],
 ) -> list[StudyReviewQuestion]:
     """独立的出题前核验：题干/评分依据/答案逐题裁决，数值由登记工具复算。"""
     if not planned:
@@ -358,6 +375,10 @@ def _verify_planned(
     referenced = {ref for item in planned for ref in item.fragment_ids}
     data = {
         "questions": [item.model_dump() for item in planned],
+        "units": [
+            unit.model_dump() for unit in scope.units
+            if any(unit.unit_id in item.coverage_units for item in planned)
+        ],
         "sources": [
             sources[ref].model_dump() for ref in sorted(referenced) if ref in sources
         ],
@@ -366,14 +387,20 @@ def _verify_planned(
         '只输出 JSON {"checks":[{"question_id":"题ID",'
         '"question_matches_knowledge":true|false,"rubric_supported":true|false,'
         '"answer_consistent":true|false,"status":"consistent|conflict|insufficient",'
-        '"detail":"简短说明","calculation":{"expression":"算式","variables":{},'
+        '"detail":"简短说明","requires_calculation":true|false,'
+        '"calculation":{"expression":"算式","variables":{},'
         '"expected":0}}]}。'
-        "逐题独立核验：题干是否真的在考所引用的知识点；评分要点与标准答案"
-        "是否逐字受所列书页支持；不同合理表述或等价推导是否会误判为错。"
+        "逐题独立核验：根据 units 中 ID 对应的内容，判断题干是否真的在考"
+        "所引用的知识点；评分要点与标准答案"
+        "是否受所列书页支持或由书页与明确题设推导；不同合理表述或等价"
+        "推导是否会误判为错。自设条件必须明确标为题设，不能冒充教材原例。"
         "不得引入书页之外的知识，也不得因题目措辞流畅而放行。"
-        "题目涉及数值计算时必须给出 calculation：expression 只用数字、四则"
+        "每题必须声明 requires_calculation；涉及确定数值计算时为 true，"
+        "并必须给出 calculation：expression 只用数字、四则"
         "运算、括号和 variables 中的变量，expected 为期望数值；系统会用登记"
-        "计算工具复算，不一致即判 conflict。每道题恰好给出一条核验，"
+        "计算工具复算；expression 必须对应题设与书页公式，expected 必须是"
+        "冻结标准答案中同一目标量的数值，不得用无关算式或答案常量冒充复算。"
+        "不一致即判 conflict。每道题恰好给出一条核验，"
         "不得漏题、改题或重复。"
     )
     raw = _call(
@@ -405,9 +432,45 @@ def _verify_planned(
         detail = check.detail
         code = ""
         calculation_checked = False
+        # 明显的数值求值题不能靠核验模型省略工具字段放行。
+        numeric_question = bool(
+            re.search(r"计算|求.*(?:值|结果)|运算", question.question)
+            and re.search(r"\d", question.question + (question.canonical_answer or ""))
+        ) or bool(re.search(r"\d\s*[-+*/×÷^]\s*\d", question.question))
+        if (check.requires_calculation or numeric_question) and check.calculation is None:
+            raise ReviewPlanError(
+                ERROR_PLAN_CALCULATION, "确定数值计算缺少登记工具复算依据。"
+            )
         if check.calculation is not None:
+            answer_numbers = re.findall(
+                r"(?<![A-Za-z0-9_.])[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?",
+                question.canonical_answer or "",
+            )
+            if len(answer_numbers) != 1:
+                raise ReviewPlanError(
+                    ERROR_PLAN_UNVERIFIED,
+                    "计算工具目前仅核验可明确绑定的单一数值答案，请明确目标量与数值。",
+                )
+            if not math.isclose(
+                float(answer_numbers[0]), check.calculation.expected,
+                rel_tol=1e-9, abs_tol=1e-9,
+            ):
+                raise ReviewPlanError(
+                    ERROR_PLAN_CALCULATION, "计算目标值与冻结标准答案不一致。"
+                )
+            try:
+                calculation_tree = ast.parse(check.calculation.expression, mode="eval")
+            except SyntaxError as exc:
+                raise ReviewPlanError(ERROR_PLAN_UNVERIFIED, "计算算式无法解析。") from exc
+            if not any(
+                isinstance(node, (ast.BinOp, ast.UnaryOp))
+                for node in ast.walk(calculation_tree)
+            ):
+                raise ReviewPlanError(
+                    ERROR_PLAN_UNVERIFIED, "答案常量不能替代实际计算复算。"
+                )
             calculation_status, calculation_detail = _calculation_status(
-                check.calculation
+                check.calculation, calculate
             )
             if calculation_status == "conflict":
                 status, detail, code = (
@@ -467,6 +530,7 @@ def plan_review(
     invoke: Callable[[str, dict[str, Any]], dict[str, Any]],
     *,
     repair: Mapping[str, Any] | None = None,
+    calculate: Callable[[str, Mapping[str, float]], float] = evaluate_calculation,
 ) -> StudyReview:
     """冻结有效范围并一次生成题目/私有评分要点；核验通过才返回。
 
@@ -474,11 +538,16 @@ def plan_review(
     状态，也不呈现任何未核验题目。
     """
     scope = _require_scope(state)
+    if state.stage not in {"tutoring", "review", "summary"}:
+        raise ReviewPlanError(ERROR_PLAN_INCOMPLETE, "当前阶段不能开始复盘。")
     review = state.review.model_copy(deep=True) if state.review else StudyReview()
     asked = [item for item in review.questions if item.asked]
     from bridges.study.tutoring import page_sources
 
-    sources = {source.source_id: source for source in page_sources(state, "")}
+    sources = {
+        source.source_id: source for source in page_sources(state, "")
+        if source.source_id in scope.fragment_ids
+    }
     #: 复盘按稳定知识点 ID 归类覆盖，不以标题为唯一键：同名概念不串依据。
     units = {unit.unit_id: unit for unit in scope.units}
     if len(units) != len(scope.units) or not units or any(
@@ -507,7 +576,8 @@ def plan_review(
         "决定题量，覆盖 required 中每个知识点及其书页依据；只安排尚未问出"
         "的题，不复述 asked 中的题目；允许一题覆盖多个相关知识点。"
         "coverage_units 必须使用 units 中的稳定知识点 ID，不得使用标题。"
-        "评分要点必须逐字受书页支持，不得引入知识库、联网、模型常识或"
+        "评分要点必须受书页支持或由书页与明确题设推导，不得引入知识库、"
+        "联网、模型常识或"
         "历史辅导中的外部补充；不同合理表述或等价推导不得判错。"
         "题目若自设数值或条件，必须在 conditions 中明确写为题目条件"
         "（例如“题设：…”），不得冒充教材原例；不泄露答案与要点由系统处理。"
@@ -593,7 +663,7 @@ def plan_review(
         raise ReviewPlanError(
             ERROR_PLAN_INCOMPLETE, "复盘未覆盖本节主要知识点，请重试。"
         )
-    planned = _verify_planned(service, run, planned, sources, invoke)
+    planned = _verify_planned(service, run, planned, scope, sources, invoke, calculate)
     review.questions = [*asked, *planned]
     review.active_question_id = None
     review.scope_version_id = scope.scope_version_id
@@ -618,8 +688,9 @@ def next_question(review: StudyReview) -> str:
         return "本节复盘已结束，作答与判定已保存。未作答的题不计为已掌握，可以回辅导继续提问。"
     question.asked = True
     number = sum(item.asked for item in review.questions)
+    conditions = f"\n{question.conditions}" if question.conditions else ""
     return (
-        f"复盘第{number}题：{question.question}\n\n"
+        f"复盘第{number}题：{question.question}{conditions}\n\n"
         "请直接作答；不知道也可以直说。可随时暂停复盘回辅导。"
     )
 

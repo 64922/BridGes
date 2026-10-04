@@ -216,7 +216,6 @@ class StudyReviewQuestion(BaseModel):
                 "key_misconceptions": [],
                 "incomplete_basis": "",
                 "incorrect_basis": "",
-                "conditions": "",
                 "verification": None,
                 "canonical_answer": self.canonical_answer if judged else None,
                 "explanation": self.explanation if judged else None,

@@ -49,6 +49,18 @@ def _default_plan(data: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _calculation_plan(data: dict[str, Any]) -> list[dict[str, Any]]:
+    question = _default_plan(data)[0]
+    question.update(
+        question="计算 2+2 的值。", canonical_answer="4",
+        core_points=["按加法规则得到结果4"], equivalents=["四"],
+        key_misconceptions=["加法计算错误"],
+        incomplete_basis="未给出计算结果", incorrect_basis="计算结果不符",
+        conditions="题设：2+2",
+    )
+    return [question]
+
+
 class Review33Gateway(ScopeGateway):
     """在范围替身上追加复盘计划/核验/判定三类确定性响应。"""
 
@@ -146,6 +158,7 @@ class Review33Gateway(ScopeGateway):
                         "question_matches_knowledge": True,
                         "rubric_supported": True,
                         "answer_consistent": True,
+                        "requires_calculation": False,
                         "status": "consistent",
                         "detail": "",
                     }
@@ -358,6 +371,7 @@ def test_verification_conflict_repairs_once_then_presents(
                 "question_matches_knowledge": True,
                 "rubric_supported": True,
                 "answer_consistent": True,
+                "requires_calculation": False,
                 "status": status,
                 "detail": "首次核验发现题干未测对应知识",
             }
@@ -391,6 +405,7 @@ def test_persistent_verification_failure_never_presents_question(
                 "question_matches_knowledge": False,
                 "rubric_supported": True,
                 "answer_consistent": False,
+                "requires_calculation": False,
                 "status": "conflict",
                 "detail": "标准答案与书页冲突",
             }
@@ -434,6 +449,7 @@ def test_registered_calculator_rejects_wrong_numeric_rubric(
                 "question_matches_knowledge": True,
                 "rubric_supported": True,
                 "answer_consistent": True,
+                "requires_calculation": True,
                 "status": "consistent",
                 "detail": "",
                 "calculation": {
@@ -450,6 +466,7 @@ def test_registered_calculator_rejects_wrong_numeric_rubric(
         ["温度是表示物体冷热程度的物理量。"],
         map_fn=_single_unit_map,
         verify_fn=verify_fn,
+        plan_fn=_calculation_plan,
     )
     with TestClient(app) as client:
         account, endpoint = _start_review(client, app, gateway)
@@ -458,7 +475,7 @@ def test_registered_calculator_rejects_wrong_numeric_rubric(
         assert len(gateway.question_verify_calls) == 2
         assert (
             gateway.question_verify_calls[0]["questions"][0]["canonical_answer"]
-            == _FROZEN_CANONICAL
+            == "4"
         )
         raw = _raw_state(app, account["id"], endpoint)
         assert raw.review.questions[0].verification.calculation_checked is True
@@ -480,6 +497,7 @@ def test_persistent_calculation_mismatch_blocks_with_dedicated_code(
                 "question_matches_knowledge": True,
                 "rubric_supported": True,
                 "answer_consistent": True,
+                "requires_calculation": True,
                 "status": "consistent",
                 "detail": "",
                 "calculation": {
@@ -496,6 +514,7 @@ def test_persistent_calculation_mismatch_blocks_with_dedicated_code(
         ["温度是表示物体冷热程度的物理量。"],
         map_fn=_single_unit_map,
         verify_fn=verify_fn,
+        plan_fn=_calculation_plan,
     )
     with TestClient(app) as client:
         _account, endpoint = _start_review(client, app, gateway)
@@ -511,14 +530,14 @@ def test_self_set_conditions_must_be_labelled(
 ) -> None:
     def plan_fn(data: dict[str, Any]) -> list[dict[str, Any]]:
         unit = data["units"][0]
-        conditions = "" if len(gateway.plan_calls) == 1 else "题设：a=2，x=1"
+        conditions = "" if len(gateway.plan_calls) == 1 else "题设：a=2，x=1，b=0"
         return [
             {
-                "question": "设 a=2，x=1，求 y=ax+b 的值。",
+                "question": "设 a=2，x=1，b=0，求 y=ax+b 的值。",
                 "coverage_units": [unit["unit_id"]],
                 "fragment_ids": list(unit["fragment_ids"]),
                 "core_points": ["代入计算"],
-                "canonical_answer": "y=a+b",
+                "canonical_answer": "y=2",
                 "equivalents": [],
                 "key_misconceptions": ["漏代入"],
                 "incomplete_basis": "未代入",
@@ -528,7 +547,16 @@ def test_self_set_conditions_must_be_labelled(
         ]
 
     app = _app(tmp_path, monkeypatch)
-    gateway = Review33Gateway(["线性函数 y=ax+b。"], map_fn=_single_unit_map, plan_fn=plan_fn)
+    def verify_fn(data: dict[str, Any]) -> list[dict[str, Any]]:
+        return [{
+            "question_id": question["question_id"], "question_matches_knowledge": True,
+            "rubric_supported": True, "answer_consistent": True, "status": "consistent",
+            "requires_calculation": True,
+            "calculation": {"expression": "2*1+0", "expected": 2},
+        } for question in data["questions"]]
+
+    gateway = Review33Gateway(["线性函数 y=ax+b。"], map_fn=_single_unit_map,
+                              plan_fn=plan_fn, verify_fn=verify_fn)
     with TestClient(app) as client:
         account, endpoint = _start_review(client, app, gateway)
         result = _ask(client, app, endpoint, "开始复盘")
@@ -536,7 +564,7 @@ def test_self_set_conditions_must_be_labelled(
         assert len(gateway.plan_calls) == 2
         assert "自设条件未明确标注为题设" in gateway.plan_prompts[1]
         raw = _raw_state(app, account["id"], endpoint)
-        assert raw.review.questions[0].conditions == "题设：a=2，x=1"
+        assert raw.review.questions[0].conditions == "题设：a=2，x=1，b=0"
 
 
 def test_legacy_review_question_keeps_old_judgement_and_path(
@@ -692,3 +720,6 @@ def test_failed_plan_commit_sends_no_question_and_retry_recovers(
         assert result["study"]["stage"] == "review"
         questions = result["study"]["review"]["questions"]
         assert len(questions) == 1 and questions[0]["asked"] is True
+        # 合格计划的局部收据已提交；终态失败后复用，不重出题/改评分依据。
+        assert len(gateway.plan_calls) == 1
+        assert len(gateway.question_verify_calls) == 1

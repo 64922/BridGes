@@ -1,0 +1,15 @@
+.....................F.................................................. [ 59%]
+..................................................                       [100%]
+================================== FAILURES ===================================
+__________________ test_self_set_conditions_must_be_labelled __________________
+tests\chat\test_improvement33_preverified_questions.py:554: in test_self_set_conditions_must_be_labelled
+    assert result["messages"][-1]["status"] == "done", result["messages"][-1]
+E   AssertionError: {'message_id': '1ucitKlvBJLU_4yNsk0EJg', 'conversation_id': '1BTnSXkYcqPl9V44D6cAVw', 'role': 'assistant', 'attempt_number': 1, ...}
+E   assert 'error' == 'done'
+E     
+E     - done
+E     + error
+=========================== short test summary info ===========================
+FAILED tests/chat/test_improvement33_preverified_questions.py::test_self_set_conditions_must_be_labelled
+1 failed, 121 passed in 157.28s (0:02:37)
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests/chat/test_improvement33_acceptance.py tests/chat/test_improvement33_preverified_questions.py tests/chat/test_v2_17_study_pages.py tests/chat/test_v2_18_study_tutoring.py tests/chat/test_v2_19_study_review.py tests/chat/test_v2_20_study_summary.py tests/chat/test_improvement31_study_scope_preview.py tests/lifecycle/test_issue33_review_lifecycle.py tests/lifecycle/test_issue31_scope_lifecycle.py tests/contracts tests/kernel -q --tb=short -p no:cacheprovider --basetemp=.tmp/review33-final-focused --junitxml=.scratch/2/validation/33-independent-final-focused.xml` failed. (See above for error)

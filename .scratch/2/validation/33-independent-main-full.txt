@@ -1,0 +1,286 @@
+........................................................................ [  1%]
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  5%]
+.......................................s................................ [  6%]
+....................................................................s... [  8%]
+........................................................................ [  9%]
+........................................................................ [ 10%]
+....................FFFFFFFFFFFFFFFFFFFFF............................... [ 12%]
+.....................................F.................................. [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 21%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 25%]
+........................................................................ [ 26%]
+...............FF..........................................FFFFFFFFFF... [ 28%]
+........................FFFFFF......................................FFFF [ 29%]
+FFFFF................................................................... [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 33%]
+...............................F............................F.....FFF... [ 35%]
+................................................F....................... [ 36%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+.................................F.FFF.................................. [ 44%]
+........................................................................ [ 45%]
+..............................F......................................... [ 47%]
+........................................................................ [ 48%]
+................sFFF.FF......................ss......................... [ 49%]
+...................................ss................................... [ 51%]
+........................................................................ [ 52%]
+..........................................F...........................F. [ 53%]
+........................................F.........ssssssssssssssss...sss [ 55%]
+sssss................FF................................................. [ 56%]
+..........ss..........................................................F. [ 57%]
+........................................................................ [ 59%]
+....................F.FFFFFFFFFFFFFFF.....FFF........................... [ 60%]
+..................F.F..F..F..F...............FFFFFFFFFFFFFFFFFF......... [ 61%]
+.......................FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF.................. [ 63%]
+........................................................................ [ 64%]
+........................................................................ [ 65%]
+.........................FF............................................. [ 67%]
+........................................................................ [ 68%]
+................................FFFFFFFFFFFFFFFFFFFF.FFF.FFFFFFFFFFFFFFF [ 70%]
+F....................................................................... [ 71%]
+........................F............................................... [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+........................................................................ [ 76%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 83%]
+..........FFFFFFFFFFF..................F..............F................. [ 84%]
+...................................................................ss... [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 88%]
+ss...............F...................................................... [ 90%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+...................................................FF................... [ 95%]
+........................................................................ [ 96%]
+................s....................................................... [ 98%]
+................................................................s....... [ 99%]
+..................                                                       [100%]
+============================== warnings summary ===============================
+tests\plugins\test_checker.py:135
+  D:\BridGes\tests\plugins\test_checker.py:135: DeprecationWarning: invalid escape sequence '\ '
+    """白盒：..\ 组合（Windows 风格）必须被判为路径穿越。
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/chat/test_attachment_project.py::test_attachment_carries_conversation_project
+FAILED tests/chat/test_attachment_project.py::test_attachment_without_project_stays_unbound
+FAILED tests/chat/test_attachment_project.py::test_cleared_project_attachment_not_carried
+FAILED tests/chat/test_attachment_project.py::test_project_layer_includes_chat_attachments
+FAILED tests/chat/test_attachment_project.py::test_cross_account_attachment_project_hidden
+FAILED tests/chat/test_career_planning_chat.py::test_career_message_flows_through_real_message_stream
+FAILED tests/chat/test_career_planning_chat.py::test_career_process_events_carry_chinese_states
+FAILED tests/chat/test_career_planning_chat.py::test_career_persists_and_restores_for_same_account_only
+FAILED tests/chat/test_career_planning_chat.py::test_career_uses_minimal_authorized_profile_slice
+FAILED tests/chat/test_career_planning_chat.py::test_career_always_uses_the_current_four_dimension_slice
+FAILED tests/chat/test_career_planning_chat.py::test_career_without_profile_has_empty_disclosure
+FAILED tests/chat/test_career_planning_chat.py::test_career_learning_records_enter_evidence
+FAILED tests/chat/test_career_planning_chat.py::test_career_model_failure_is_recoverable_and_retry_keeps_input
+FAILED tests/chat/test_career_planning_chat.py::test_natural_language_career_route_is_persisted_before_generation
+FAILED tests/chat/test_career_planning_chat.py::test_conflicting_natural_language_tasks_only_ask_one_question
+FAILED tests/chat/test_career_planning_chat.py::test_career_chat_rejects_message_attachments
+FAILED tests/chat/test_career_planning_chat.py::test_career_boundary_violation_blocks_delivery
+FAILED tests/chat/test_career_planning_chat.py::test_career_item_feedback_is_idempotent_and_scoped
+FAILED tests/chat/test_career_planning_chat.py::test_career_item_ref_requires_career_message
+FAILED tests/chat/test_career_planning_chat.py::test_career_audit_does_not_leak_body
+FAILED tests/chat/test_career_planning_chat.py::test_second_account_planning_is_isolated_from_first
+FAILED tests/chat/test_chat_service.py::test_conversation_lifecycle_persists_pin_rename_project_and_order
+FAILED tests/chat/test_issue06_budget_truncation.py::test_career_slow_call_terminates_within_scaled_budget
+FAILED tests/chat/test_issue06_budget_truncation.py::test_career_over_budget_with_real_result_delivers_plan
+FAILED tests/chat/test_issue09_career_resilience.py::test_vague_request_returns_clarification_without_model_call
+FAILED tests/chat/test_issue09_career_resilience.py::test_clarification_reply_continues_career_planning
+FAILED tests/chat/test_issue09_career_resilience.py::test_sufficient_request_generates_full_plan
+FAILED tests/chat/test_issue09_career_resilience.py::test_invalid_first_output_repairs_once_then_succeeds
+FAILED tests/chat/test_issue09_career_resilience.py::test_parse_failure_repairs_once_then_succeeds
+FAILED tests/chat/test_issue09_career_resilience.py::test_consistently_invalid_output_fails_within_budget
+FAILED tests/chat/test_issue09_career_resilience.py::test_slow_model_completes_durably_across_conversation_switch
+FAILED tests/chat/test_issue09_career_resilience.py::test_model_over_budget_with_real_result_delivers_plan
+FAILED tests/chat/test_issue09_career_resilience.py::test_missing_external_evidence_delivers_skeleton_with_open_questions
+FAILED tests/chat/test_issue09_career_resilience.py::test_retry_creates_new_attempt_keeping_old_failure
+FAILED tests/chat/test_mcp_call_chat.py::test_selected_mcp_call_succeeds - As...
+FAILED tests/chat/test_mcp_call_chat.py::test_unselected_mcp_call_rejected - ...
+FAILED tests/chat/test_mcp_call_chat.py::test_sensitive_pending_approve_flow
+FAILED tests/chat/test_mcp_call_chat.py::test_sensitive_pending_deny_flow - A...
+FAILED tests/chat/test_mcp_call_chat.py::test_mcp_call_conflicts_with_image_payload
+FAILED tests/chat/test_mcp_call_chat.py::test_cross_account_confirmation_404
+FAILED tests/chat/test_selections.py::test_builtin_skill_selection_persists_on_create
+FAILED tests/chat/test_selections.py::test_disabled_skill_rejected_on_create
+FAILED tests/chat/test_selections.py::test_unknown_plugin_rejected - Assertio...
+FAILED tests/chat/test_selections.py::test_mcp_selection_and_disable_read_cleanup
+FAILED tests/chat/test_selections.py::test_patch_selection_and_clear - Assert...
+FAILED tests/chat/test_selections.py::test_revoke_permissions_removes_selection
+FAILED tests/chat/test_selections.py::test_selection_scoped_to_account - Asse...
+FAILED tests/chat/test_selections.py::test_tools_context_injected_when_selected
+FAILED tests/chat/test_selections.py::test_tools_context_not_injected_after_clear
+FAILED tests/closeout/test_authenticity_gate.py::test_gate_deterministic_checks_pass_but_gate_blocks_without_key
+FAILED tests/closeout/test_capability_manifest.py::test_real_app_routes_are_fully_classified
+FAILED tests/closeout/test_mail_verification.py::test_immediate_delivery_verifies
+FAILED tests/closeout/test_mail_verification.py::test_mail_verification_converges_to_verified_after_10_second_delivery
+FAILED tests/closeout/test_mail_verification.py::test_dropped_mail_times_out_to_failed
+FAILED tests/closeout/test_three_journeys.py::test_three_journeys_persist_profile_and_isolate_accounts
+FAILED tests/evaluation/test_runner_reproducibility.py::test_lock_freezes_reproducibility_metadata
+FAILED tests/evaluation/test_runner_reproducibility.py::test_double_run_is_reproducible
+FAILED tests/evaluation/test_runner_reproducibility.py::test_reproduction_command_is_one_click_replayable
+FAILED tests/evaluation/test_runner_reproducibility.py::test_suite_run_produces_all_suts_and_tasks
+FAILED tests/github/test_github_module_flow.py::test_plain_chat_without_the_module_never_starts_github
+FAILED tests/ingestion/test_api.py::test_upload_enqueues_and_detail_shows_queued_then_ready
+FAILED tests/ingestion/test_api.py::test_detail_and_retry_for_failed_document
+FAILED tests/ingestion/test_api.py::test_cross_account_detail_is_404 - Assert...
+FAILED tests/ingestion/test_api.py::test_unsupported_type_shows_none_status
+FAILED tests/ingestion/test_api.py::test_index_status_shows_real_versions_after_worker_build
+FAILED tests/integration/test_gq08_golden_path.py::test_fresh_install_golden_path_all_capabilities_zero_key_config
+FAILED tests/integration/test_issue16_profile_contract.py::test_four_dimension_public_contract_keeps_only_read_modify_withdraw
+FAILED tests/integration/test_media_retirement.py::test_chat_image_chain_does_not_route_to_legacy_media_services
+FAILED tests/integration/test_runtime_smoke.py::test_start_fails_with_empty_global_key_before_spawning
+FAILED tests/integration/test_runtime_smoke.py::test_start_fails_when_global_key_env_absent
+FAILED tests/knowledge_base/test_knowledge_base_service.py::test_chat_attachment_record_not_mutable_via_kb_path
+FAILED tests/learning_projects/test_learning_project_service.py::test_project_file_processed_by_worker_becomes_ready
+FAILED tests/learning_projects/test_learning_projects_api.py::test_project_crud_happy_path
+FAILED tests/learning_projects/test_learning_projects_api.py::test_project_validation_errors
+FAILED tests/learning_projects/test_learning_projects_api.py::test_project_list_orders_by_recent_update
+FAILED tests/learning_projects/test_learning_projects_api.py::test_summary_counts_conversations_and_files
+FAILED tests/learning_projects/test_learning_projects_api.py::test_create_conversation_with_project_id_uses_learning_projects
+FAILED tests/learning_projects/test_learning_projects_api.py::test_move_conversation_between_projects_and_detach
+FAILED tests/learning_projects/test_learning_projects_api.py::test_move_preserves_messages_mode_events_and_attachments
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_keep_detaches_conversations_and_removes_files
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_contents_delete_removes_everything
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_rolls_back_on_mid_delete_failure
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_contents_delete_refuses_while_streaming
+FAILED tests/learning_projects/test_learning_projects_api.py::test_cross_account_access_is_uniform_404
+FAILED tests/learning_projects/test_learning_projects_api.py::test_patch_title_and_project_applies_atomically
+FAILED tests/learning_projects/test_learning_projects_api.py::test_patch_invalid_title_leaves_project_membership_unchanged
+FAILED tests/learning_projects/test_learning_projects_api.py::test_patch_mid_write_failure_rolls_back_title_and_project
+FAILED tests/learning_projects/test_project_files_api.py::test_file_upload_list_download_delete_roundtrip
+FAILED tests/learning_projects/test_project_files_api.py::test_file_upload_validation_and_missing_project
+FAILED tests/learning_projects/test_project_files_api.py::test_file_delete_conflicts_while_processing
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_preview_lists_categories
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_returns_json_download_after_reauth
+FAILED tests/lifecycle/test_lifecycle_api.py::test_delete_account_removes_data_and_session
+FAILED tests/lifecycle/test_lifecycle_api.py::test_create_backup_returns_encrypted_file
+FAILED tests/lifecycle/test_lifecycle_api.py::test_full_backup_restore_roundtrip_via_api
+FAILED tests/mcp/test_mcp_api.py::test_list_requires_login - assert 410 == 401
+FAILED tests/mcp/test_mcp_api.py::test_list_empty_after_register - assert 410...
+FAILED tests/mcp/test_mcp_api.py::test_check_valid_descriptor - assert 410 ==...
+FAILED tests/mcp/test_mcp_api.py::test_check_rejected_descriptor_lists_reasons
+FAILED tests/mcp/test_mcp_api.py::test_check_non_yaml_rejected - assert 410 =...
+FAILED tests/mcp/test_mcp_api.py::test_install_valid_descriptor - assert 410 ...
+FAILED tests/mcp/test_mcp_api.py::test_install_rejected_descriptor_422 - asse...
+FAILED tests/mcp/test_mcp_api.py::test_install_conflict_409 - assert 410 == 409
+FAILED tests/mcp/test_mcp_api.py::test_enable_disable_and_uninstall - assert ...
+FAILED tests/mcp/test_mcp_api.py::test_revoke_permissions_endpoint - assert 4...
+FAILED tests/mcp/test_mcp_api.py::test_revoke_permissions_invalid_422 - asser...
+FAILED tests/mcp/test_mcp_api.py::test_invoke_success - assert 410 == 200
+FAILED tests/mcp/test_mcp_api.py::test_invoke_undeclared_slice_403 - assert 4...
+FAILED tests/mcp/test_mcp_api.py::test_sensitive_pending_then_approve - asser...
+FAILED tests/mcp/test_mcp_api.py::test_sensitive_deny_403 - KeyError: 'confir...
+FAILED tests/mcp/test_mcp_api.py::test_calls_endpoint - assert 410 == 200
+FAILED tests/mcp/test_mcp_api.py::test_cross_account_404 - assert 410 == 200
+FAILED tests/mcp/test_mcp_api.py::test_unmounted_service_503 - assert 410 == 503
+FAILED tests/mcp/test_mcp_service.py::test_install_locks_integrity_and_persists
+FAILED tests/mcp/test_mcp_service.py::test_install_rejects_bad_descriptor_without_side_effects
+FAILED tests/mcp/test_mcp_service.py::test_install_rejects_unknown_source - A...
+FAILED tests/mcp/test_mcp_service.py::test_install_conflict_when_same_id_installed
+FAILED tests/mcp/test_mcp_service.py::test_failed_then_reinstall_overwrites
+FAILED tests/mcp/test_mcp_service.py::test_install_failed_state_cannot_enable
+FAILED tests/mcp/test_mcp_service.py::test_disable_stops_process - bridges.co...
+FAILED tests/mcp/test_mcp_service.py::test_disabled_invoke_rejected - bridges...
+FAILED tests/mcp/test_mcp_service.py::test_uninstall_removes_record_object_and_process
+FAILED tests/mcp/test_mcp_service.py::test_malicious_secret_reader_fails_closed
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[path-reader-path_reader.py-read_file]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[network-connector-network_connector.py-http_get]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[command-launcher-command_launcher.py-run_command]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[cross-account-cross_account.py-read_file]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_cross_account_slice_is_minimal
+FAILED tests/mcp/test_mcp_service.py::test_malicious_zombie_becomes_failed - ...
+FAILED tests/mcp/test_mcp_service.py::test_malicious_slow_start_times_out - b...
+FAILED tests/mcp/test_mcp_service.py::test_undeclared_data_slice_rejected - b...
+FAILED tests/mcp/test_mcp_service.py::test_attachment_slice_requires_declaration
+FAILED tests/mcp/test_mcp_service.py::test_sensitive_approve_full_flow - brid...
+FAILED tests/mcp/test_mcp_service.py::test_sensitive_deny_terminates_call - b...
+FAILED tests/mcp/test_mcp_service.py::test_confirmation_not_reusable - bridge...
+FAILED tests/mcp/test_mcp_service.py::test_revoke_permissions_uses_new_manifest
+FAILED tests/mcp/test_mcp_service.py::test_revoke_sensitive_permission_terminates_running_process
+FAILED tests/mcp/test_mcp_service.py::test_call_stats_and_failure_reasons - b...
+FAILED tests/mcp/test_mcp_service.py::test_audit_never_contains_secrets_or_body
+FAILED tests/mcp/test_mcp_service.py::test_restart_restores_legal_configuration
+FAILED tests/mcp/test_mcp_service.py::test_reap_orphans_kills_leftover_process
+FAILED tests/mcp/test_mcp_service.py::test_account_isolation_for_all_operations
+FAILED tests/mcp/test_mcp_service.py::test_cross_account_rejected_by_scope_enforcer
+FAILED tests/mcp/test_mcp_service.py::test_same_mcp_id_across_accounts_both_authorized
+FAILED tests/observability/test_observability_seam.py::test_success_task_emits_audit_and_summary
+FAILED tests/observability/test_observability_seam.py::test_retry_task_records_retryable_failure_then_success
+FAILED tests/plugins/test_plugin_api.py::test_list_plugins_requires_login - a...
+FAILED tests/plugins/test_plugin_api.py::test_list_plugins_returns_builtin_and_empty_user
+FAILED tests/plugins/test_plugin_api.py::test_check_valid_package_returns_manifest
+FAILED tests/plugins/test_plugin_api.py::test_check_rejected_package_lists_reasons
+FAILED tests/plugins/test_plugin_api.py::test_check_oversized_package_413 - a...
+FAILED tests/plugins/test_plugin_api.py::test_check_missing_filename_400 - as...
+FAILED tests/plugins/test_plugin_api.py::test_install_success_and_audit - ass...
+FAILED tests/plugins/test_plugin_api.py::test_install_rejected_package_422_with_recoverable_failure
+FAILED tests/plugins/test_plugin_api.py::test_install_conflict_when_already_installed
+FAILED tests/plugins/test_plugin_api.py::test_failed_package_reinstall_success
+FAILED tests/plugins/test_plugin_api.py::test_enable_disable_and_uninstall - ...
+FAILED tests/plugins/test_plugin_api.py::test_builtin_disable_and_enable - Ke...
+FAILED tests/plugins/test_plugin_api.py::test_builtin_cannot_be_uninstalled
+FAILED tests/plugins/test_plugin_api.py::test_enable_unknown_plugin_404 - ass...
+FAILED tests/plugins/test_plugin_api.py::test_other_account_cannot_see_or_touch_user_package
+FAILED tests/plugins/test_plugin_api.py::test_demo_parses_markdown_for_real
+FAILED tests/plugins/test_plugin_api.py::test_demo_disabled_builtin_conflict
+FAILED tests/plugins/test_plugin_api.py::test_demo_parse_failure_422 - assert...
+FAILED tests/plugins/test_plugin_api.py::test_demo_builtin_enabled_state_is_per_account
+FAILED tests/plugins/test_plugin_api.py::test_install_and_toggle_audit_records
+FAILED tests/plugins/test_plugin_service.py::test_builtin_toggle_persists_per_account
+FAILED tests/plugins/test_plugin_service.py::test_builtin_cannot_be_uninstalled
+FAILED tests/plugins/test_plugin_service.py::test_user_package_cannot_collide_with_builtin
+FAILED tests/plugins/test_plugin_service.py::test_install_success_stores_object_and_record_and_audit
+FAILED tests/plugins/test_plugin_service.py::test_check_package_is_side_effect_free
+FAILED tests/plugins/test_plugin_service.py::test_install_rejected_creates_recoverable_failure_not_running_entry
+FAILED tests/plugins/test_plugin_service.py::test_duplicate_install_same_version_conflicts
+FAILED tests/plugins/test_plugin_service.py::test_failed_package_can_be_fixed_and_reinstalled
+FAILED tests/plugins/test_plugin_service.py::test_failed_install_does_not_enter_running_registry
+FAILED tests/plugins/test_plugin_service.py::test_user_package_toggle_and_uninstall
+FAILED tests/plugins/test_plugin_service.py::test_toggle_failed_package_rejected
+FAILED tests/plugins/test_plugin_service.py::test_uninstall_unknown_package_404
+FAILED tests/plugins/test_plugin_service.py::test_state_survives_service_recreation
+FAILED tests/plugins/test_plugin_service.py::test_account_isolation_for_all_operations
+FAILED tests/plugins/test_plugin_service.py::test_demo_parses_markdown_attachment_for_real
+FAILED tests/plugins/test_plugin_service.py::test_demo_rejects_disabled_builtin
+FAILED tests/plugins/test_plugin_service.py::test_demo_parse_failure_reports_chinese_reason
+FAILED tests/plugins/test_plugin_service.py::test_demo_parses_real_pdf - brid...
+FAILED tests/plugins/test_plugin_service.py::test_audit_never_contains_package_content
+FAILED tests/profiles/test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[get-/plugins]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/plugins/check]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/plugins/install]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/plugins/anything/enable]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[delete-/plugins/anything]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[get-/mcp]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/check]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/install]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/anything/invoke]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/anything/confirmations/c1/approve]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[get-/mcp/anything/calls]
+FAILED tests/retrieval/test_retrieval_service.py::test_scope_attachment_then_project_then_kb
+FAILED tests/retrieval/test_retrieval_service.py::test_citation_detail_project_layer_uses_project_download_entry
+FAILED tests/security/test_object_authorization.py::test_concurrent_two_account_operations_do_not_cross_contaminate
+FAILED tests/tieba/test_tieba_module_flow.py::test_other_modules_still_rejected_and_no_silent_search
+FAILED tests/tieba/test_tieba_module_flow.py::test_plain_chat_suggests_tieba_without_searching
+202 failed, 5105 passed, 39 skipped, 1 warning in 1938.02s (0:32:18)
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests -q --tb=no -p no:cacheprovider --basetemp=D:/BridGes/.worktrees/33-preverified-study-questions-and-rubrics/.tmp/review33-main-full --junitxml=D:/BridGes/.worktrees/33-preverified-study-questions-and-rubrics/.scratch/2/validation/33-independent-main-full.xml` failed. (See above for error)

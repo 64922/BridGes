@@ -1,0 +1,7 @@
+src\bridges\chat\service.py:250: error: Argument "route" to "ChatStreamStartedData" has incompatible type "CapabilityRoute | RouteDecision | None"; expected "CapabilityRoute | None"  [arg-type]
+src\bridges\chat\service.py:1975: error: Item "None" of "ChatConversationProjection | None" has no attribute "messages"  [union-attr]
+src\bridges\chat\service.py:1979: error: Item "None" of "ChatConversationProjection | None" has no attribute "messages"  [union-attr]
+src\bridges\chat\service.py:1998: error: Argument "conversation" to "ChatFirstTurnResponse" has incompatible type "ChatConversationProjection | None"; expected "ChatConversationProjection"  [arg-type]
+src\bridges\chat\service.py:2035: error: Argument "conversation" to "ChatFirstTurnResponse" has incompatible type "ChatConversationProjection | None"; expected "ChatConversationProjection"  [arg-type]
+Found 5 errors in 1 file (checked 5 source files)
+ERROR conda.cli.main_run:execute(127): `conda run python -m mypy src/bridges/chat/service.py src/bridges/contracts/study.py src/bridges/study/review.py src/bridges/study/service.py src/bridges/state_copy/catalog.py --follow-imports=silent` failed. (See above for error)

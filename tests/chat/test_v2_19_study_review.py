@@ -104,6 +104,7 @@ class ReviewGateway(TutorGateway):
                     "question_matches_knowledge": True,
                     "rubric_supported": True,
                     "answer_consistent": True,
+                    "requires_calculation": False,
                     "status": "consistent",
                     "detail": "",
                 }
