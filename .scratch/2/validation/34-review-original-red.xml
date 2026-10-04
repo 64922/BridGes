@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="8" skipped="0" tests="8" time="17.820" timestamp="2026-10-04T20:00:06.663373+08:00" hostname="bababoyi"><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_received_answer_survives_failed_grading" time="1.848"><failure message="AssertionError: assert None == '冷热程度的量度'&#10; +  where None = StudyReviewQuestion(question_id='rq_3d70bd8725928ef4', question='请说明本节核心概念及其关系。', coverage_units=['ku_d2c53c189f976371...estion_matches_knowledge=True, rubric_supported=True, answer_consistent=True, calculation_checked=False), legacy=False).answer">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_received_answer_survives_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002318093C190&gt;
+
+    def test_received_answer_survives_failed_grading(tmp_path: Any, monkeypatch: Any) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map)
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            gateway.fail_grade = "timeout"
+            failed = _ask(client, app, endpoint, "冷热程度的量度")
+            question = _raw_state(app, account["id"], endpoint).review.questions[0]
+            assert failed["messages"][-1]["status"] == "error"
+&gt;           assert question.answer == "冷热程度的量度"
+E           AssertionError: assert None == '冷热程度的量度'
+E            +  where None = StudyReviewQuestion(question_id='rq_3d70bd8725928ef4', question='请说明本节核心概念及其关系。', coverage_units=['ku_d2c53c189f976371...estion_matches_knowledge=True, rubric_supported=True, answer_consistent=True, calculation_checked=False), legacy=False).answer
+
+tests\chat\test_issue34_independent_acceptance.py:29: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_presentation_and_feedback_survive_terminal_failure" time="1.356"><failure message="AssertionError: assert '回答正确' in ''">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_presentation_and_feedback0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023184363750&gt;
+
+    def test_presentation_and_feedback_survive_terminal_failure(tmp_path: Any, monkeypatch: Any) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(
+            ["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map, plan_fn=_two_question_plan,
+        )
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            original = study_service.finalize_message
+            def fail_done(*args: Any, **kwargs: Any) -&gt; Any:
+                if kwargs.get("status") == ChatMessageStatus.DONE:
+                    raise RuntimeError("模拟呈现提交后终态失败")
+                return original(*args, **kwargs)
+            with monkeypatch.context() as patch:
+                patch.setattr(study_service, "finalize_message", fail_done)
+                failed = _ask(client, app, endpoint, "温度表示冷热程度")
+            state = _raw_state(app, account["id"], endpoint)
+            assert state.review.questions[1].asked
+&gt;           assert "回答正确" in failed["messages"][-1]["content"]
+E           AssertionError: assert '回答正确' in ''
+
+tests\chat\test_issue34_independent_acceptance.py:52: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_empty_point_evidence_is_rejected[grade]" time="1.395"><failure message="AssertionError: assert 'done' == 'error'&#10;  &#10;  - error&#10;  + done">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_empty_point_evidence_is_r0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023184103550&gt;
+phase = 'grade'
+
+    @pytest.mark.parametrize("phase", ["grade", "recheck"])
+    def test_empty_point_evidence_is_rejected(tmp_path: Any, monkeypatch: Any, phase: str) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map)
+        if phase == "recheck":
+            gateway.initial_judgement = "incomplete"
+        original = gateway.invoke
+        def no_evidence(*args: Any, **kwargs: Any) -&gt; Any:
+            result = original(*args, **kwargs)
+            task = kwargs.get("payload", {}).get("task")
+            if task == ("study.grade" if phase == "grade" else "study.recheck_grade"):
+                for point in result.output["point_checks"]:
+                    point["fragment_ids"] = []
+            return result
+        monkeypatch.setattr(gateway, "invoke", no_evidence)
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            failed = _ask(client, app, endpoint, "温度表示冷热程度")
+&gt;           assert failed["messages"][-1]["status"] == "error"
+E           AssertionError: assert 'done' == 'error'
+E             
+E             - error
+E             + done
+
+tests\chat\test_issue34_independent_acceptance.py:78: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_empty_point_evidence_is_rejected[recheck]" time="1.546"><failure message="AssertionError: assert 'done' == 'error'&#10;  &#10;  - error&#10;  + done">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_empty_point_evidence_is_r1')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023187ACAA10&gt;
+phase = 'recheck'
+
+    @pytest.mark.parametrize("phase", ["grade", "recheck"])
+    def test_empty_point_evidence_is_rejected(tmp_path: Any, monkeypatch: Any, phase: str) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map)
+        if phase == "recheck":
+            gateway.initial_judgement = "incomplete"
+        original = gateway.invoke
+        def no_evidence(*args: Any, **kwargs: Any) -&gt; Any:
+            result = original(*args, **kwargs)
+            task = kwargs.get("payload", {}).get("task")
+            if task == ("study.grade" if phase == "grade" else "study.recheck_grade"):
+                for point in result.output["point_checks"]:
+                    point["fragment_ids"] = []
+            return result
+        monkeypatch.setattr(gateway, "invoke", no_evidence)
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            failed = _ask(client, app, endpoint, "温度表示冷热程度")
+&gt;           assert failed["messages"][-1]["status"] == "error"
+E           AssertionError: assert 'done' == 'error'
+E             
+E             - error
+E             + done
+
+tests\chat\test_issue34_independent_acceptance.py:78: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_scope_change_during_grading_rejects_late_result" time="1.769"><failure message="AssertionError: assert 'done' == 'error'&#10;  &#10;  - error&#10;  + done">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_scope_change_during_gradi0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023189E93A90&gt;
+
+    def test_scope_change_during_grading_rejects_late_result(tmp_path: Any, monkeypatch: Any) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map)
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            original = gateway.invoke
+            def change_scope(*args: Any, **kwargs: Any) -&gt; Any:
+                result = original(*args, **kwargs)
+                if kwargs.get("payload", {}).get("task") == "study.grade":
+                    state = _raw_state(app, account["id"], endpoint)
+                    state.scope.scope_version_id = "new-scope"
+                    study_service.StudyRepository(app.state.bridges_database).save(
+                        account["id"], endpoint.rsplit("/", 1)[-1], state,
+                    )
+                return result
+            monkeypatch.setattr(gateway, "invoke", change_scope)
+            failed = _ask(client, app, endpoint, "温度表示冷热程度")
+            state = _raw_state(app, account["id"], endpoint)
+&gt;           assert failed["messages"][-1]["status"] == "error"
+E           AssertionError: assert 'done' == 'error'
+E             
+E             - error
+E             + done
+
+tests\chat\test_issue34_independent_acceptance.py:101: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_explanation_request_is_not_graded[\u8fd9\u9053\u9898\u662f\u4ec0\u4e48\u610f\u601d\uff1f]" time="1.444"><failure message="AssertionError: assert not [{'question': {'question_id': 'rq_e9e4df28c6c49be2', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_7e52678c8d24..._id': 'sv0HAynbeNJ4Huyd1rFfYQ:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}]&#10; +  where [{'question': {'question_id': 'rq_e9e4df28c6c49be2', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_7e52678c8d24..._id': 'sv0HAynbeNJ4Huyd1rFfYQ:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}] = &lt;tests.chat.test_improvement34_verified_grading_feedback.Grade34Gateway object at 0x00000231857C1FD0&gt;.grade_calls">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_explanation_request_is_no0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023189FD9250&gt;
+user_text = '这道题是什么意思？'
+
+    @pytest.mark.parametrize("user_text", ["这道题是什么意思？", "我想先问一下这题怎么理解"])
+    def test_explanation_request_is_not_graded(tmp_path: Any, monkeypatch: Any, user_text: str) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map)
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            _ask(client, app, endpoint, user_text)
+            question = _raw_state(app, account["id"], endpoint).review.questions[0]
+&gt;           assert not gateway.grade_calls
+E           AssertionError: assert not [{'question': {'question_id': 'rq_e9e4df28c6c49be2', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_7e52678c8d24..._id': 'sv0HAynbeNJ4Huyd1rFfYQ:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}]
+E            +  where [{'question': {'question_id': 'rq_e9e4df28c6c49be2', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_7e52678c8d24..._id': 'sv0HAynbeNJ4Huyd1rFfYQ:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}] = &lt;tests.chat.test_improvement34_verified_grading_feedback.Grade34Gateway object at 0x00000231857C1FD0&gt;.grade_calls
+
+tests\chat\test_issue34_independent_acceptance.py:115: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_explanation_request_is_not_graded[\u6211\u60f3\u5148\u95ee\u4e00\u4e0b\u8fd9\u9898\u600e\u4e48\u7406\u89e3]" time="1.434"><failure message="AssertionError: assert not [{'question': {'question_id': 'rq_09370f4849b3e857', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_1402cdf61d4e..._id': '44-RH75A-EZ4kq-8agKPow:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}]&#10; +  where [{'question': {'question_id': 'rq_09370f4849b3e857', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_1402cdf61d4e..._id': '44-RH75A-EZ4kq-8agKPow:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}] = &lt;tests.chat.test_improvement34_verified_grading_feedback.Grade34Gateway object at 0x0000023189DC3690&gt;.grade_calls">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_explanation_request_is_no1')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023184175750&gt;
+user_text = '我想先问一下这题怎么理解'
+
+    @pytest.mark.parametrize("user_text", ["这道题是什么意思？", "我想先问一下这题怎么理解"])
+    def test_explanation_request_is_not_graded(tmp_path: Any, monkeypatch: Any, user_text: str) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map)
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            _ask(client, app, endpoint, user_text)
+            question = _raw_state(app, account["id"], endpoint).review.questions[0]
+&gt;           assert not gateway.grade_calls
+E           AssertionError: assert not [{'question': {'question_id': 'rq_09370f4849b3e857', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_1402cdf61d4e..._id': '44-RH75A-EZ4kq-8agKPow:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}]
+E            +  where [{'question': {'question_id': 'rq_09370f4849b3e857', 'question': '请说明本节核心概念及其关系。', 'coverage_units': ['ku_1402cdf61d4e..._id': '44-RH75A-EZ4kq-8agKPow:1', 'kind': 'page', 'label': '上传第1页（书上第12页） · 正文', 'snippet': '温度是表示物体冷热程度的物理量。', ...}]}] = &lt;tests.chat.test_improvement34_verified_grading_feedback.Grade34Gateway object at 0x0000023189DC3690&gt;.grade_calls
+
+tests\chat\test_issue34_independent_acceptance.py:115: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_stop_after_kernel_commit_preserves_domain_and_feedback" time="1.706"><failure message="AssertionError: assert (None == 'correct')&#10; +  where None = StudyReviewQuestion(question_id='rq_e9b65ba80290ae7a', question='第1个角度：说明本节核心概念。', coverage_units=['ku_a796e510bb6ee57...estion_matches_knowledge=True, rubric_supported=True, answer_consistent=True, calculation_checked=False), legacy=False).judgement">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-original-validation/.tmp/pytest-basetemp/test_stop_after_kernel_commit_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000023189E3AA10&gt;
+
+    def test_stop_after_kernel_commit_preserves_domain_and_feedback(tmp_path: Any, monkeypatch: Any) -&gt; None:
+        from bridges.kernel.executor import NodeKernel
+        from bridges.kernel.repository import NodeKernelRepository
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(
+            ["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map, plan_fn=_two_question_plan,
+        )
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            original = NodeKernel._deliver_outbox
+            def stop_after_commit(self: Any, account_id: str, run_id: str, sink: Any) -&gt; None:
+                original(self, account_id, run_id, sink)
+                artifacts = NodeKernelRepository(app.state.bridges_database).list_artifacts(
+                    account_id, endpoint.rsplit("/", 1)[-1],
+                )
+                if any(item.node == "study.grade" for item in artifacts):
+                    with app.state.bridges_database.transaction():
+                        app.state.bridges_database.connection.execute(
+                            "UPDATE generation_runs SET stop_requested = 1 WHERE run_id = ?", (run_id,),
+                        )
+            with monkeypatch.context() as patch:
+                patch.setattr(NodeKernel, "_deliver_outbox", stop_after_commit)
+                stopped = _ask(client, app, endpoint, "温度表示冷热程度")
+            question = _raw_state(app, account["id"], endpoint).review.questions[0]
+&gt;           assert question.judgement == "correct" and question.feedback
+E           AssertionError: assert (None == 'correct')
+E            +  where None = StudyReviewQuestion(question_id='rq_e9b65ba80290ae7a', question='第1个角度：说明本节核心概念。', coverage_units=['ku_a796e510bb6ee57...estion_matches_knowledge=True, rubric_supported=True, answer_consistent=True, calculation_checked=False), legacy=False).judgement
+
+tests\chat\test_issue34_independent_acceptance.py:144: AssertionError</failure></testcase></testsuite></testsuites>

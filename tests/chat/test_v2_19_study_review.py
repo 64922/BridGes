@@ -64,7 +64,10 @@ class ReviewGateway(TutorGateway):
         task = payload.get("task")
         if task == "study.summarize":
             return self.summarize(payload)
-        if task not in {"study.plan_review", "study.verify_questions", "study.grade"}:
+        if task not in {
+            "study.plan_review", "study.verify_questions", "study.grade",
+            "study.recheck_grade",
+        }:
             return super().invoke(capability, version, context, payload, **kwargs)
         data = next(
             json.loads(message["content"])
@@ -122,10 +125,39 @@ class ReviewGateway(TutorGateway):
                     "expected": 5,
                 }
             return ModelCallResult(status=ModelCallStatus.SUCCESS, output={"checks": checks})
+        if task == "study.recheck_grade":
+            question = data["question"]
+            return ModelCallResult(
+                status=ModelCallStatus.SUCCESS,
+                output={
+                    "question_id": question["question_id"],
+                    "status": "confirmed",
+                    "judgement": self.judgement,
+                    "explanation": "x 每增加 1，y 增加 a。",
+                    "point_checks": [
+                        {
+                            "point": point,
+                            "status": "hit" if self.judgement == "correct" else "missing",
+                            "fragment_ids": list(question["fragment_ids"]),
+                        }
+                        for point in question["core_points"]
+                    ],
+                    "detail": "复核维持原判定。",
+                },
+            )
+        question = data["question"]
         output = {
-            "question_id": data["question"]["question_id"],
+            "question_id": question["question_id"],
             "judgement": self.judgement,
             "explanation": "x 每增加 1，y 增加 a。",
+            "point_checks": [
+                {
+                    "point": point,
+                    "status": "hit" if self.judgement == "correct" else "missing",
+                    "fragment_ids": list(question["fragment_ids"]),
+                }
+                for point in question["core_points"]
+            ],
         }
         if self.failure == "wrong_id":
             output["question_id"] = "another-question"
@@ -213,6 +245,10 @@ def test_failed_grade_retry_stays_on_same_question(
         gateway.failure = failure
         result = _ask(client, app, endpoint, "不知道")
         assert result["messages"][-1]["status"] == "error"
+        # 收答案单独保存；系统失败不写判定、不推进其余教学状态。
+        before["review"]["questions"][0].update({
+            "answer": "不知道", "user_message_id": result["messages"][-2]["message_id"],
+        })
         assert result["study"] == before
         gateway.failure = None
         result = _retry(client, app, endpoint)
@@ -331,6 +367,11 @@ def test_stop_during_review_does_not_advance(
         app.state.generation_executor.run_tick()
         result = client.get(endpoint).json()
         assert result["messages"][-1]["status"] == "stopped"
+        if task == "study.grade":
+            before["review"]["questions"][0].update({
+                "answer": "不知道",
+                "user_message_id": response.json()["user_message"]["message_id"],
+            })
         assert result["study"] == before
 
 

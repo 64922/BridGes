@@ -1,0 +1,18 @@
+工单 34 全量回归对比（conda agent / Windows / PYTHONUTF8=1 / -q -p no:cacheprovider）
+
+分支（codex/34-verified-study-grading-and-feedback，基点 48d12a45，含本票改动）：
+  221 failed, 5203 passed, 39 skipped, 2 errors（.tmp/full34.txt）
+main 洁净工作树（同基点 48d12a45，无本票改动）：
+  223 failed, 5196 passed, 37 skipped, 2 errors（%TEMP%\opencode\main34.txt）
+
+按测试 ID 去重集合对比（含 FAILED 与 ERROR）：
+  NEW_ON_BRANCH（本票新增失败）：无
+  FIXED_ON_BRANCH（main 失败、本票通过）：
+    FAILED tests/runtime/test_runtime_contract.py::test_startup_full_journey_start_health_duplicate_reject_stop_restart
+    FAILED tests/runtime/test_runtime_contract.py::test_startup_reports_chinese_error_when_port_is_occupied
+  （以上两条为端口/时序型环境抖动，非本票修复；其余 223 条两侧同形）
+
+结论：本票无新增失败；失败均为该开发环境既有的基线失败（main 同样失败）。
+分支比 main 多 7 个用例且全部通过（tests/chat/test_improvement34_verified_grading_feedback.py）。
+抽样复核：在 main 对 chat/mcp/plugins/learning_projects/tieba/runtime 等失败文件各代表用例
+单独运行，结果同样失败，确认属基线环境问题。

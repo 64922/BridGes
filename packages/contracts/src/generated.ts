@@ -22032,7 +22032,7 @@ export interface components {
          * @description 检索决策的稳定原因枚举。
          * @enum {string}
          */
-        RetrievalDecisionReason: "explicit_knowledge_base" | "uploaded_material" | "study_explanation" | "knowledge_base_required" | "user_disabled" | "specialized_capability" | "companion_default";
+        RetrievalDecisionReason: "explicit_knowledge_base" | "uploaded_material" | "study_explanation" | "knowledge_base_required" | "evidence_gap" | "user_disabled" | "specialized_capability" | "companion_default";
         /**
          * RetrievalExercise
          * @description A single retrieval-practice exercise bound to evidence and fact locks.
@@ -24416,6 +24416,67 @@ export interface components {
              */
             exclusion_reason: string;
         };
+        /**
+         * StudyEvidenceAssessment
+         * @description 问题级证据充分性评估与逐层补证记录（工单 32）。
+         *
+         *     先取本节相关片段与必要前文判断关键解释点是否已支持；不足时按用户
+         *     设置检索知识库，复查剩余缺口，仍不足且允许联网时用最小公开术语补证。
+         *     评估只读材料，不改写阶段、范围或考查范围。
+         */
+        StudyEvidenceAssessment: {
+            /**
+             * Protocol Version
+             * @default study-tutor-evidence-v2
+             */
+            protocol_version: string;
+            /**
+             * Sufficient
+             * @default false
+             */
+            sufficient: boolean;
+            /** Key Points */
+            key_points?: string[];
+            /** Supported Points */
+            supported_points?: string[];
+            /** Gaps */
+            gaps?: components["schemas"]["StudyEvidenceGap"][];
+            /** Supplements */
+            supplements?: components["schemas"]["StudySupplementAttempt"][];
+            /** Conflicts */
+            conflicts?: string[];
+        };
+        /**
+         * StudyEvidenceGap
+         * @description 问题级证据评估的一条缺口（工单 32）。
+         *
+         *     ``supplement`` 是所需补证类型：``knowledge_base`` 查本节之外的知识库、
+         *     ``web`` 需公开来源（时效或明确核验要求也归入此项）、``page`` 关键书页
+         *     不清需补拍补录、``none`` 无可用补证。``status`` 是补给后的最终处置：
+         *     ``resolved`` 已由补充来源覆盖、``needs_page`` 等待书页、``unverified``
+         *     因用户限制、来源失败或预算保持未核实。
+         */
+        StudyEvidenceGap: {
+            /** Point */
+            point: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Supplement
+             * @default none
+             * @enum {string}
+             */
+            supplement: "knowledge_base" | "web" | "page" | "none";
+            /**
+             * Status
+             * @default unverified
+             * @enum {string}
+             */
+            status: "resolved" | "unverified" | "needs_page";
+        };
         /** StudyExchange */
         StudyExchange: {
             /** User Message Id */
@@ -24433,6 +24494,7 @@ export interface components {
              * @default
              */
             gap: string;
+            assessment?: components["schemas"]["StudyEvidenceAssessment"] | null;
         };
         /**
          * StudyExclusionCheck
@@ -24485,6 +24547,32 @@ export interface components {
              */
             interpretation: string;
         };
+        /**
+         * StudyGradeRecord
+         * @description 一次作答判定的逐项核对与必要复核记录（工单 34，仅内部保存）。
+         *
+         *     判定输出结构与复核规则变化时递增 ``protocol_version``；旧题没有该记录。
+         */
+        StudyGradeRecord: {
+            /**
+             * Protocol Version
+             * @default study-grade-v4
+             */
+            protocol_version: string;
+            /** Point Checks */
+            point_checks?: components["schemas"]["StudyPointCheck"][];
+            /**
+             * Recheck Status
+             * @default not_needed
+             * @enum {string}
+             */
+            recheck_status: "not_needed" | "confirmed" | "revised" | "conflict" | "insufficient";
+            /**
+             * Recheck Detail
+             * @default
+             */
+            recheck_detail: string;
+        };
         /** StudyPage */
         StudyPage: {
             /** Object Id */
@@ -24525,6 +24613,24 @@ export interface components {
             scope?: components["schemas"]["StudyScope"] | null;
             /** Scope History */
             scope_history?: components["schemas"]["StudyScope"][];
+        };
+        /**
+         * StudyPointCheck
+         * @description 判定时逐项核对评分要点的一条记录（工单 34）。
+         *
+         *     ``status`` 区分命中、缺失与矛盾；``fragment_ids`` 是支持该结论的书页
+         *     片段。等价表述按命中记录，不因措辞不同扣分。
+         */
+        StudyPointCheck: {
+            /** Point */
+            point: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "hit" | "missing" | "contradicted";
+            /** Fragment Ids */
+            fragment_ids?: string[];
         };
         /** StudyQuestion */
         StudyQuestion: {
@@ -24631,6 +24737,9 @@ export interface components {
             explanation?: string | null;
             /** User Message Id */
             user_message_id?: string | null;
+            /** Feedback */
+            feedback?: string | null;
+            grade_record?: components["schemas"]["StudyGradeRecord"] | null;
             /**
              * Scope Version Id
              * @default
@@ -24784,6 +24893,32 @@ export interface components {
             question_ids?: string[];
             /** Fragment Ids */
             fragment_ids?: string[];
+        };
+        /**
+         * StudySupplementAttempt
+         * @description 一层补证的真实执行结果（用于审计“为何没查/没查到”）。
+         */
+        StudySupplementAttempt: {
+            /**
+             * Layer
+             * @enum {string}
+             */
+            layer: "knowledge_base" | "web";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "used" | "empty" | "failed" | "conflict" | "skipped_disabled" | "skipped_restricted" | "not_needed" | "budget_exhausted" | "query_insufficient";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Source Count
+             * @default 0
+             */
+            source_count: number;
         };
         /** StudyUnclear */
         StudyUnclear: {

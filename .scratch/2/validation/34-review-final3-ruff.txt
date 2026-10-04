@@ -1,0 +1,20 @@
+N818 Exception name `ConversationModeLockConflict` should be named with an Error suffix
+   --> src\bridges\chat\repository.py:160:7
+    |
+160 | class ConversationModeLockConflict(StorageError):
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+161 |     """首条消息已由另一事务提交，不能再次创建首轮。"""
+    |
+
+E501 Line too long (101 > 100)
+    --> src\bridges\chat\repository.py:1546:101
+     |
+1544 |                     self._db.scoped(account_id).execute(
+1545 |                         "INSERT INTO conversations"
+1546 |                         "(conversation_id, account_id, title, mode, mode_locked, pinned, project_id,"
+     |                                                                                                     ^
+1547 |                         " plugin_selection, idempotency_key, created_at, updated_at)"
+1548 |                         " VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)",
+     |
+
+Found 2 errors.

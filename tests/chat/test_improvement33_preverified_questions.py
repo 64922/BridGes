@@ -131,7 +131,10 @@ class Review33Gateway(ScopeGateway):
         task = payload.get("task")
         if task == "study.summarize":
             return self.summarize(payload)
-        if task not in {"study.plan_review", "study.verify_questions", "study.grade"}:
+        if task not in {
+            "study.plan_review", "study.verify_questions", "study.grade",
+            "study.recheck_grade",
+        }:
             return super().invoke(capability, version, context, payload, **kwargs)
         data = next(
             json.loads(message["content"])
@@ -168,11 +171,42 @@ class Review33Gateway(ScopeGateway):
             return ModelCallResult(
                 status=ModelCallStatus.SUCCESS, output={"checks": checks}
             )
+        if task == "study.recheck_grade":
+            question = data["question"]
+            return ModelCallResult(
+                status=ModelCallStatus.SUCCESS,
+                output={
+                    "question_id": question["question_id"],
+                    "status": "confirmed",
+                    "judgement": self.grade_judgement,
+                    "explanation": "独立复核维持原判定。",
+                    "point_checks": [
+                        {
+                            "point": point,
+                            "status": (
+                                "hit" if self.grade_judgement == "correct" else "missing"
+                            ),
+                            "fragment_ids": list(question["fragment_ids"]),
+                        }
+                        for point in question["core_points"]
+                    ],
+                    "detail": "",
+                },
+            )
         self.grade_calls.append(data)
+        question = data["question"]
         output = {
-            "question_id": data["question"]["question_id"],
+            "question_id": question["question_id"],
             "judgement": self.grade_judgement,
             "explanation": "按冻结评分要点核对。",
+            "point_checks": [
+                {
+                    "point": point,
+                    "status": "hit" if self.grade_judgement == "correct" else "missing",
+                    "fragment_ids": list(question["fragment_ids"]),
+                }
+                for point in question["core_points"]
+            ],
             # 新合同不得采用该值；旧合同用它补齐标准答案。
             "canonical_answer": "旧评分合同生成的标准答案。",
         }

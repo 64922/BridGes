@@ -39,11 +39,11 @@
 
 ## 验收标准
 
-- [ ] 等价答案按冻结要点通过，争议进入复核；标准不随作答漂移。
-- [ ] 批改/结构/复核失败不跳题、不记学生错误。
-- [ ] 用户消息、答案和判定幂等；旧租约/取消竞争不重复或覆盖。
-- [ ] 错题反馈后继续原覆盖计划，无自动补救题和强制重答。
-- [ ] 最后题判定成功后总结失败仍保留反馈和判定，恢复不重判。
+- [x] 等价答案按冻结要点通过，争议进入复核；标准不随作答漂移。
+- [x] 批改/结构/复核失败不跳题、不记学生错误。
+- [x] 用户消息、答案和判定幂等；旧租约/取消竞争不重复或覆盖。
+- [x] 错题反馈后继续原覆盖计划，无自动补救题和强制重答。
+- [x] 最后题判定成功后总结失败仍保留反馈和判定，恢复不重判。
 
 ## 验证与交付证据
 
@@ -51,3 +51,40 @@
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
 
+
+## Comments
+
+### 2026-10-04 实施与验证记录
+
+**实现说明与接口/合同变化：**
+
+- `src/bridges/contracts/study.py`：新增 `StudyPointCheck`（point/status/fragment_ids）与 `StudyGradeRecord`（judgement/point_checks/recheck_status/source/explanation）；`StudyReviewQuestion` 增加 `feedback`/`grade_record`，`public_view()` 隐藏 `grade_record`、仅在判定后展示 `feedback`；`STUDY_STATE_VERSION` 仍为 3（新增字段均可选，旧状态原样可读，无需迁移重写）。
+- `src/bridges/study/review.py`：`REVIEW_PROTOCOL_VERSION` 保持 `study-review-v2`，新增 `GRADE_PROTOCOL_VERSION="study-grade-v3"` 与能力 `study.recheck_grade`（`study-recheck-grade-v1`）；`_point_records` 要求逐项精确覆盖全部冻结 core_points、证据限题目片段、判正确时不得含缺失/矛盾；判定非 correct 或模型标记争议时触发独立复核，`confirmed/revised` 落库、`conflict` 抛 `study_review_disputed`、`insufficient` 抛 `study_recheck_failed`，均保留当前题不推进；标准答案一律取作答前冻结值，忽略模型返回。
+- `src/bridges/study/grade_kernel.py`（新增）：`ReviewGradeKernel`，配方 `study-review-grading`、节点 `study.grade`、门 `study.review_grade_committed`、产物 `study.grade_result`；判定与反馈产物、收据、可重放事件同事务按守卫提交；同来源消息按输入键复用已提交产物，不重新判定。
+- `src/bridges/study/service.py`：图版本 `STUDY_GRAPH_VERSION="study-tutoring-review-v5"`；判定落库、下一题呈现落库、总结落库拆为独立守卫提交边界；`reviewed_committed` 终态只写消息正文；`_replay_judged` 按来源消息重放已提交反馈，激活题未被呈现时补提交下一题呈现。
+- `src/bridges/chat/service.py`：旧图安全路由加入 `study-tutoring-review-v4`。
+- `src/bridges/state_copy/catalog.py`：登记 `study_grade_invalid`、`study_review_disputed`、`study_recheck_failed`、`study_grade_budget`、`study_review_scope_changed` 五个错误模板；`study.review.feedback` 渲染器改为 `bridges.study.review.render_feedback`（原 `grade` 已随重构移除）。
+- 合同产物：`openapi.json` 与 `packages/contracts/src/generated.ts` 重新生成（新增 `StudyPointCheck`/`StudyGradeRecord` 及题上字段），`tests/contracts` 通过。
+
+**验证结果（conda `agent`，Windows，`PYTHONUTF8=1`）：**
+
+- 本票验收 `tests/chat/test_improvement34_verified_grading_feedback.py` **7 passed**：等价答案经复核改判且冻结标准不漂移；复核 `conflict` 保留当前题、不记错答、重试可恢复；判定模型失败保留当前题且重试恰好提交一次、已提交判定重试不再生成（409）；故障注入「判定已提交、下一题呈现中断」→ 重试只重放反馈并补呈现，判定模型只调 1 次；最后一题判定成功后总结失败保留反馈与判定、重试只补总结（grade 1 次 / summarize 2 次）；错题反馈后按冻结计划进入下一未问题（题量不变、plan 1 次、复核 1 次）；旧租约迟到判定被守卫拒绝（`lease_lost`）且研究状态零变化。
+- 聚焦回归 **212 passed**（学习链 `v2_17/18/19/20`、`improvement30/31/32/33`、`improvement33_acceptance`、`issue31_independent_acceptance`、`lifecycle/issue33_review_lifecycle`、`tests/contracts`、`tests/state_copy`；记录 `.scratch/2/validation/34-final-focused.xml`）。
+- 全量：本票分支 `221 failed / 5203 passed / 39 skipped / 2 errors`；main 洁净基线（同基点 `48d12a45`）`223 failed / 5196 passed / 37 skipped / 2 errors`。按测试 ID 差分 **本票新增失败为 0**，两条 runtime 端口/时序用例仅方向相反地抖动；失败均为该开发环境既有基线失败（抽样在 main 对 chat/mcp/plugins/learning_projects/tieba/runtime 代表用例单跑同样失败）。详见 `.scratch/2/validation/34-full-baseline-compare.txt`。
+- `ruff` 改动文件全通过（`.scratch/2/validation/34-final-ruff.txt`）；`mypy` 与 main 同形：同命令下 `22 errors in 10 files`，均为既有其他模块错误，本票源码无新增（`.scratch/2/validation/34-final-mypy.txt`）。
+
+**限制与待验收项：**
+
+- 网关替身只证明确定性机制；真实模型的等价判定、复核质量与反馈文案体验由评测票 42 验证。
+- 本票未合并、未推送，待独立验收：分支 `codex/34-verified-study-grading-and-feedback`，工作树 `.worktrees/34-verified-study-grading-and-feedback`，基点 `48d12a45`。
+
+## 独立验收与修复（2026-10-04）
+
+> 上述实施记录为编码代理历史交付；本节及[独立验收报告](../acceptance/34-verified-study-grading-and-feedback.md)为独立复验证据。
+
+- **规范轴**：按 code-review 技能审查 AGENTS/CONTEXT/workflow 与 12 项 smell baseline，无硬性违规；处理 2 项判断性建议——`grade_kernel.py` 含糊的 `top` 改名 `review_scope_version_id`、服务内重复守卫模板提取 `_verify_review_commit()`。
+- **需求轴**（独立反例 8 failed 可复现）：下一题呈现与正文分开提交可能先于正文；NodeKernel 产物/收据/外箱已提交而领域判定未提交；判定失败未保留已接收答案与来源；空 `fragment_ids` 可错误通过逐点核对；解释请求被误判作答；写入前缺少预期领域版本/执行权校验存在迟到覆盖。均已在独立事务边界修复：判定产物提交回调 `commit_effect` 与领域写入同事务（失败整体回滚）、收到合法答案先行保存、只按已呈现且已核验的当前题收答案、空证据拒绝、复核补表达策略、每次写事务核对执行权与完整领域快照（按题 ID/范围版本/来源）。
+- **约定协议与合同**：`study-grade-v3` → `study-grade-v4`、`study-review-grade-recipe-v1` → `v2`；图仍 `study-tutoring-review-v5`。`openapi.json` 与 `generated.ts` 重生成对账一致（311 paths）。
+- **SSE 缺陷闭合**：delta 生成事件载荷补 `kind: "delta"`（原缺字段会被前端 `event.data.kind` 收窄丢弃）；新增 `test_sse_replay_delta_frames_carry_frontend_kind`，还原旧载荷复现红、修复后绿。
+- **最终验证**（conda `agent`）：分支 334 passed / 5 failed，干净 main `eb85c064` 313 passed / 同 5 failed，逐测试对账 0 回归、21 项新增测试全绿；5 项失败为既有 `test_lifecycle_api.py` 会话创建 409 环境问题，main 同现。Ruff 改动文件通过（`repository.py` 2 项既有与 main 同）；mypy 22 = 22 错误集合相同；`git diff --check` 干净。
+- **状态**：缺陷已闭合，验收达标；合并、代理推送、远端核对与工作树/分支清理结果在完成后补充。

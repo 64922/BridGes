@@ -21,7 +21,15 @@ def test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak(
                        "fragment_ids": ["fragment-1"], "canonical_answer": "私有答案甲",
                        "core_points": ["私有要点甲"], "equivalents": ["私有等价甲"],
                        "key_misconceptions": ["私有误解甲"], "incomplete_basis": "缺要点",
-                       "incorrect_basis": "与原文冲突", "verification": {
+                       "incorrect_basis": "与原文冲突",
+                       "answer": "学生答案甲", "user_message_id": "answer-source",
+                       "judgement": "correct", "feedback": "已提交反馈甲",
+                       "grade_record": {"protocol_version": "study-grade-v4",
+                                        "recheck_status": "revised",
+                                        "recheck_detail": "独立核实甲",
+                                        "point_checks": [{"point": "私有要点甲", "status": "hit",
+                                                          "fragment_ids": ["fragment-1"]}]},
+                       "verification": {
                            "status": "consistent", "question_matches_knowledge": True,
                            "rubric_supported": True, "answer_consistent": True,
                        },
@@ -52,6 +60,8 @@ def test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak(
         _, payload = harness.export.export_data(account)
         study = json.dumps(json.loads(payload)["categories"]["study"], ensure_ascii=False)
         assert own in study and foreign not in study
+        if account == harness.acc1:
+            assert "已提交反馈甲" in study and "独立核实甲" in study
     _, backup = harness.backup.create_backup("评分依据恢复口令")
     harness.database.connection.execute("DELETE FROM study_states")
     restored = harness.backup.restore_backup("评分依据恢复口令", backup, confirmation="恢复")

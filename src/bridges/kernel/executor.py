@@ -72,12 +72,14 @@ class NodeKernel:
         gates: Mapping[str, GateHandler],
         runner: NodeRunner,
         clock: Callable[[], datetime] | None = None,
+        commit_effect: Callable[[NodeArtifact], None] | None = None,
     ) -> None:
         self._registry = registry
         self._repository = repository
         self._guard = guard
         self._gates = dict(gates)
         self._runner = runner
+        self._commit_effect = commit_effect
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(
@@ -474,6 +476,13 @@ class NodeKernel:
                 events=(*execution.events, *invalidation_events, completion_event),
                 now=self._clock(),
             )
+            # 领域属主的本地效果与产物、收据、外箱同事务；失败整体回滚。
+            if (
+                self._commit_effect is not None
+                and execution.status is NodeReceiptStatus.COMPLETED
+                and execution.verdict is QualityVerdict.PASS
+            ):
+                self._commit_effect(artifact)
         artifacts[spec.name] = artifact
         states.append(
             NodeState(

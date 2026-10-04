@@ -57131,6 +57131,42 @@
         ],
         "title": "StudyFragment"
       },
+      "StudyGradeRecord": {
+        "properties": {
+          "protocol_version": {
+            "type": "string",
+            "title": "Protocol Version",
+            "default": "study-grade-v4"
+          },
+          "point_checks": {
+            "items": {
+              "$ref": "#/components/schemas/StudyPointCheck"
+            },
+            "type": "array",
+            "title": "Point Checks"
+          },
+          "recheck_status": {
+            "type": "string",
+            "enum": [
+              "not_needed",
+              "confirmed",
+              "revised",
+              "conflict",
+              "insufficient"
+            ],
+            "title": "Recheck Status",
+            "default": "not_needed"
+          },
+          "recheck_detail": {
+            "type": "string",
+            "title": "Recheck Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "StudyGradeRecord",
+        "description": "一次作答判定的逐项核对与必要复核记录（工单 34，仅内部保存）。\n\n判定输出结构与复核规则变化时递增 ``protocol_version``；旧题没有该记录。"
+      },
       "StudyPage": {
         "properties": {
           "object_id": {
@@ -57256,6 +57292,38 @@
         ],
         "title": "StudyPageUpdate",
         "description": "追加页的候选范围，全部核对并合并成功后才替换已确认范围。"
+      },
+      "StudyPointCheck": {
+        "properties": {
+          "point": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Point"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "hit",
+              "missing",
+              "contradicted"
+            ],
+            "title": "Status"
+          },
+          "fragment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fragment Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point",
+          "status"
+        ],
+        "title": "StudyPointCheck",
+        "description": "判定时逐项核对评分要点的一条记录（工单 34）。\n\n``status`` 区分命中、缺失与矛盾；``fragment_ids`` 是支持该结论的书页\n片段。等价表述按命中记录，不因措辞不同扣分。"
       },
       "StudyQuestion": {
         "properties": {
@@ -57464,6 +57532,27 @@
               }
             ],
             "title": "User Message Id"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "grade_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyGradeRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "scope_version_id": {
             "type": "string",
