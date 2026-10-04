@@ -4613,6 +4613,33 @@ class TurnOrchestrator:
                         category="qwen_text_chat",
                         first_token_ms=first_token_ms,
                     )
+                    # 工单 40：调用完成后把可取得的供应商实际用量补记到同一
+                    # 材料清单（估算保持调用前快照）。只记数值，不含正文。
+                    if material_manifest is not None and isinstance(
+                        event.usage, dict
+                    ):
+                        prompt_tokens = event.usage.get("prompt_tokens")
+                        completion_tokens = event.usage.get("completion_tokens")
+                        if isinstance(prompt_tokens, int) or isinstance(
+                            completion_tokens, int
+                        ):
+                            self._audit_material_manifest(
+                                account_id,
+                                assistant_message_id,
+                                material_manifest.with_usage(
+                                    actual_input_tokens=(
+                                        prompt_tokens
+                                        if isinstance(prompt_tokens, int)
+                                        else None
+                                    ),
+                                    actual_output_tokens=(
+                                        completion_tokens
+                                        if isinstance(completion_tokens, int)
+                                        else None
+                                    ),
+                                ),
+                                phase="post_call",
+                            )
                     yield self._stage_event(
                         assistant_message_id,
                         RunStage.MODEL_GENERATION,
@@ -7055,10 +7082,18 @@ class TurnOrchestrator:
         account_id: str,
         assistant_message_id: str,
         manifest: CallMaterialManifest,
+        *,
+        phase: str = "pre_call",
     ) -> None:
-        """落一条脱敏材料清单审计（只含 ID/类别/版本/计数，绝不含正文）。"""
+        """落一条脱敏材料清单审计（只含 ID/类别/版本/计数，绝不含正文）。
+
+        ``phase`` 区分调用前估计（``pre_call``）与调用后补记实际用量
+        （``post_call``，工单 40）；两事件均脱敏，后者只补充数值字段。
+        """
         if self._observability is None:
             return
+        details = manifest.to_record()
+        details["record_phase"] = phase
         self._observability.log_audit(
             actor_account_id=account_id,
             action=AuditAction.PAYLOAD_BUDGET_EVALUATED,
@@ -7069,7 +7104,7 @@ class TurnOrchestrator:
             ),
             object_refs=[assistant_message_id],
             reason="本轮最终载荷预算门与采用材料清单。",
-            details=manifest.to_record(),
+            details=details,
         )
 
     def _audit_slice_usage(

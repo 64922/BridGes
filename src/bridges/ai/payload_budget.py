@@ -385,6 +385,28 @@ class CallMaterialManifest:
     def excluded_ids(self) -> list[str]:
         return [entry.material_id for entry in self.entries if not entry.adopted]
 
+    def with_usage(
+        self,
+        *,
+        actual_input_tokens: int | None,
+        actual_output_tokens: int | None,
+    ) -> CallMaterialManifest:
+        """返回补记供应商真实用量的副本（调用完成后审计使用）。
+
+        估算（``estimated_input_tokens``）保持不变，实际用量只在可取得时
+        填充；两者都只记数值，不承载正文。
+        """
+        return CallMaterialManifest(
+            entries=self.entries,
+            gate=self.gate,
+            output_tokens=self.output_tokens,
+            estimated_input_tokens=self.estimated_input_tokens,
+            summary_instance=self.summary_instance,
+            actual_input_tokens=actual_input_tokens,
+            actual_output_tokens=actual_output_tokens,
+            manifest_version=self.manifest_version,
+        )
+
     def to_record(self) -> dict[str, Any]:
         """审计记录（只含 ID、类别、必要性、版本与计数，绝不含正文）。"""
         return {
