@@ -66,7 +66,9 @@
 
 ## 交付状态
 
-- 合并、代理推送、远端核对与工作树/分支清理结果在合并完成后追加；本文件随分支先行提交，随后在 main 补充实际结果。
+- 合并（2026-10-04）：`codex/34-verified-study-grading-and-feedback`（`76649c0c`）以 no-ff 合入 main `eb85c064`，合并提交 `e9b1e758`，无冲突。合并树重跑同一聚焦集：**334 passed / 同一 5 项基线失败**（`34-review-merged-focused.*`），与分支结果一致。
+- 推送：`git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main` 输出 `eb85c064..e9b1e758 main -> main`；`git ls-remote origin main` = `e9b1e7584c307c1125a2b34b5194c0f8f94715f1`，与本地 `main`、`origin/main` 三方一致。
+- 清理：独立确认 Issue 工作树无未提交的受跟踪改动（仅被本记录替代的中间日志），已删除工作树 `.worktrees/34-verified-study-grading-and-feedback` 与本地分支 `codex/34-verified-study-grading-and-feedback`，并执行 `git worktree prune`。其他任务的工作树/分支（`.worktrees/37-composite-plans-and-verified-synthesis`、`.worktrees/26-github-requirement-evidence-matrix` 及各自分支）未改动、保留。
 
 ## 剩余限制
 

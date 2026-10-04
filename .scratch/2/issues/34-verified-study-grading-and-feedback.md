@@ -87,4 +87,4 @@
 - **约定协议与合同**：`study-grade-v3` → `study-grade-v4`、`study-review-grade-recipe-v1` → `v2`；图仍 `study-tutoring-review-v5`。`openapi.json` 与 `generated.ts` 重生成对账一致（311 paths）。
 - **SSE 缺陷闭合**：delta 生成事件载荷补 `kind: "delta"`（原缺字段会被前端 `event.data.kind` 收窄丢弃）；新增 `test_sse_replay_delta_frames_carry_frontend_kind`，还原旧载荷复现红、修复后绿。
 - **最终验证**（conda `agent`）：分支 334 passed / 5 failed，干净 main `eb85c064` 313 passed / 同 5 failed，逐测试对账 0 回归、21 项新增测试全绿；5 项失败为既有 `test_lifecycle_api.py` 会话创建 409 环境问题，main 同现。Ruff 改动文件通过（`repository.py` 2 项既有与 main 同）；mypy 22 = 22 错误集合相同；`git diff --check` 干净。
-- **状态**：缺陷已闭合，验收达标；合并、代理推送、远端核对与工作树/分支清理结果在完成后补充。
+- **状态**：缺陷已闭合，验收达标。`76649c0c` 以 no-ff 合入 main `eb85c064` 得 `e9b1e758`（无冲突），合并树复跑 334 passed / 同一 5 项基线失败；经代理推送后 `ls-remote origin main` 与本地一致（`e9b1e758`）。Issue 工作树与本地分支已删除，`worktree prune` 完成；其他任务工作树/分支保留。
