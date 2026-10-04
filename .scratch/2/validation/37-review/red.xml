@@ -37,7 +37,7 @@ tests\orchestration\test_issue37_review_regressions.py:76: AssertionError</failu
         step.claims = [Claim(
             text=step.summary, evidence_refs=["evidence"], risk="personal_gap"
         )]
-    
+
         class Verifier:
             def verify(self, **kwargs):
                 return IndependentVerification(
@@ -46,7 +46,7 @@ tests\orchestration\test_issue37_review_regressions.py:76: AssertionError</failu
                     source=VerificationSource.SAME_MODEL_INDEPENDENT_CALL,
                     rules=["无需核验"],
                 )
-    
+
         gate = FinalGate(verifier=Verifier()).check(
             SynthesisDraft(summary="结果"), [step]
         )
