@@ -10,7 +10,7 @@ code-review 规范轴由独立只读子代理审查原交付，初审 3 项硬�
 
 1. 核验失败把未来题干与模型 `detail` 放进公开错误消息，可能经 API/SSE 泄露答案。修复：`ReviewPlanError.message` 改为固定安全中文文案，模型原始反馈存入 `repair_detail`，只供唯一一次内部修复提示使用；`exception.message` 上抛到 API/SSE 的路径均为安全文案。验收测试 `test_failed_verification_hides_private_details_in_api_and_replay` 用答案金丝雀与未呈现题干金丝雀断言 API 响应、错误信封、SSE 重放均不包含，且第二次计划提示仍收到原始反馈（证明私有与修复两条通路分离）。
 2. `REVIEW_CAPABILITY_VERSIONS` 原为未被使用的常量，计算没有实际登记分派，合格计划没有持久产物/完成收据。修复：`_call` 拒绝未登记任务；新增 `src/bridges/study/review_kernel.py`，用真实 `RecipeRegistry`/`NodeKernel`/质量门 `_plan_gate`/`RunCommitGuard` 执行 `study.plan_review` 节点，合格计划写入私有产物（含 `calculations`、协议版本、能力版本）与完成收据；计算按实际登记版本分派并把调用结果随产物保存；事件只发节点状态。`test_plan_receipt_records_registered_calculation_without_replay_leak` 断言产物中的计算登记恰好一条、SSE 重放不含 `expression`/`core_points`。
-3. `STUDY_GRAPH_VERSION` 未变，旧已完成检查点可能直接恢复未经新核验的 reviewed 输出并抬升为 v3。修复：图版本改为 `study-review-v3`；`chat/service.py` 把 `study-scope-v2` 也路由到 `StudyWorkflow`，由既有版本门在原子提交前以 `study_graph_version_changed` 结束并保留原书页与历史，显式重试进入新图。`test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification` 断言失败后状态不变、无计划/核验调用、重试后才走新核验。
+3. `STUDY_GRAPH_VERSION` 未变，旧已完成检查点可能直接恢复未经新核验的 reviewed 输出并抬升为 v3。修复：审查分支图版本先改为 `study-review-v3`，`chat/service.py` 把 `study-scope-v2` 也路由到 `StudyWorkflow`，由既有版本门在原子提交前以 `study_graph_version_changed` 结束并保留原书页与历史；合入并发工单 32 后按双方意图合并为 `study-tutoring-review-v4`，并把 `study-tutoring-v3` 与 `study-pages-v1`/`study-scope-v2` 并列加入旧版本安全结束路由。`test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification` 断言失败后状态不变、无计划/核验调用、重试后才走新核验。
 
 ## Spec
 
@@ -59,4 +59,8 @@ code-review 规范轴由独立只读子代理审查原交付，初审 3 项硬�
 
 ## 合并、推送与清理
 
-（执行后补记）
+合并前重新复核发现远端 main 已由并发工单 29/32 推进到 `3b4c891d`（审查基点 `809f05a5` 之后），故先把 main 合入本票分支：唯一冲突为 `src/bridges/study/service.py` 的学习图版本常量（本票 `study-review-v3` 对 32 票 `study-tutoring-v3`）。按双方意图合并为 `study-tutoring-review-v4`，并把 `study-tutoring-v3` 与 `study-pages-v1`/`study-scope-v2` 并列加入 `chat/service.py` 的旧版本安全结束路由；冲突解决后分支合并提交 `65be2851`。合并后定向组合 **157 passed**、学习全链路 **170 passed**、内核/合同/工作流/架构 **70 passed**。
+
+随后在主工作树以 `git merge --no-ff codex/33-preverified-study-questions-and-rubrics` 合入，合并提交 `e0baca16`；合并后复跑学习全链路 **170 passed**、内核/合同/工作流/架构 **70 passed**（`33-merge-study.xml`、`33-merge-kernel.xml`）。经命令级代理 `http://127.0.0.1:7890` 执行 `git push origin main`（`3b4c891d..e0baca16`，未改全局配置），`git ls-remote origin refs/heads/main` 与本地完整 SHA 一致：`e0baca16d75a3f43e82d4d8c4fc77bab50628319`。
+
+推送成功后确认 Issue 工作树无未提交内容（HEAD `65be2851`，`git status` 干净），删除 `D:\BridGes\.worktrees\33-preverified-study-questions-and-rubrics` 与本地分支 `codex/33-preverified-study-questions-and-rubrics`，`git worktree prune --verbose` 无额外失效记录。其他任务的工作树/分支与未跟踪验证文件未触碰；工单 29/32 由其自身流程在本次验收期间完成合入、推送与清理。复现脚本随证据提交：`33-independent-compare-final.py`、`33-independent-start-repro.py`。
