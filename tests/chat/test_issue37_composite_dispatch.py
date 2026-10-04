@@ -31,7 +31,10 @@ from bridges.chat.run_budget_ledger import (
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleDelivery
 from bridges.contracts.understanding import MainUnderstanding
+from bridges.kernel.repository import NodeKernelRepository
+from bridges.orchestration.contracts import COMPOSITE_ARTIFACT_TYPE
 from bridges.storage.database import BridgesDatabase
+from tests.orchestration.issue37_chains import seed_paper, seed_resources
 
 ACCOUNT = "acc-37-chat"
 CONVERSATION = "conv-37-chat"
@@ -43,6 +46,8 @@ NOW = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
 
 def _seed(database: BridgesDatabase, understanding: dict) -> None:
     stamp = NOW.isoformat()
+    # 租约用真实当前时间签出：固定时钟的租约在测试运行日会过期。
+    lease_expires_at = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
     with database.transaction():
         database.connection.execute(
             "INSERT OR IGNORE INTO conversations"
@@ -69,20 +74,21 @@ def _seed(database: BridgesDatabase, understanding: dict) -> None:
                 CONVERSATION,
                 USER,
                 ASSISTANT,
-                (NOW + timedelta(minutes=5)).isoformat(),
+                lease_expires_at,
                 json.dumps({"understanding": understanding}, ensure_ascii=False),
                 stamp,
                 stamp,
             ),
         )
+    now = datetime.now(UTC)
     RunBudgetLedgerRepository(database).freeze_for_run(
         account_id=ACCOUNT,
         run_id=RUN,
         conversation_id=CONVERSATION,
         plan=derive_run_budget_plan(
-            RunBudgetClass.NORMAL, deadline_at=NOW + timedelta(minutes=5)
+            RunBudgetClass.NORMAL, deadline_at=now + timedelta(minutes=5)
         ),
-        now=NOW,
+        now=now,
     )
 
 
@@ -120,7 +126,13 @@ def _delivery(
     )
 
 
-def _deps(database: BridgesDatabase, understanding: MainUnderstanding):
+def _deps(
+    database: BridgesDatabase,
+    understanding: MainUnderstanding,
+    *,
+    paper_delivery: ModuleDelivery | None = None,
+    resources_delivery: ModuleDelivery | None = None,
+):
     repo = ConversationRepository(database)
     run = repo.get_generation_run(ACCOUNT, RUN)
     assert run is not None
@@ -128,7 +140,8 @@ def _deps(database: BridgesDatabase, understanding: MainUnderstanding):
     service.module_task_context.return_value = None
     service.run_model_quota.return_value = None
     service.paper_search_service.run.return_value = SimpleNamespace(
-        delivery=_delivery(
+        delivery=paper_delivery
+        or _delivery(
             module_id="paper",
             projection_field="paper_search",
             topic="入门论文",
@@ -138,7 +151,8 @@ def _deps(database: BridgesDatabase, understanding: MainUnderstanding):
         wait_reason=None,
     )
     service.learning_resources_service.run.return_value = SimpleNamespace(
-        delivery=_delivery(
+        delivery=resources_delivery
+        or _delivery(
             module_id="resources",
             projection_field="learning_resources",
             topic="入门资料",
@@ -160,11 +174,35 @@ def _deps(database: BridgesDatabase, understanding: MainUnderstanding):
     )
 
 
+def _seed_qualified_deliveries(database: BridgesDatabase):
+    _, paper = seed_paper(
+        database,
+        run_id=RUN,
+        account_id=ACCOUNT,
+        conversation_id=CONVERSATION,
+        content="论文正文：两篇入门论文。",
+    )
+    _, resources = seed_resources(
+        database,
+        run_id=RUN,
+        account_id=ACCOUNT,
+        conversation_id=CONVERSATION,
+        content="资料正文：一条精简路径。",
+    )
+    return paper, resources
+
+
 def test_composite_dispatch_commits_all_projections_once(tmp_path: Path) -> None:
     database = BridgesDatabase(tmp_path / "bridges.db")
     assert database.initialize() > 0
     _seed(database, _understanding().model_dump(mode="json"))
-    deps = _deps(database, _understanding())
+    paper_delivery, resources_delivery = _seed_qualified_deliveries(database)
+    deps = _deps(
+        database,
+        _understanding(),
+        paper_delivery=paper_delivery,
+        resources_delivery=resources_delivery,
+    )
     state: dict = {"module_dispatch": "chat", "assistant_message_id": ASSISTANT}
 
     updates = _node_invoke_subgraph_or_chat(
@@ -174,6 +212,7 @@ def test_composite_dispatch_commits_all_projections_once(tmp_path: Path) -> None
     outcome = updates["composite_outcome"]
     assert outcome["status"] in {"completed", "partial"}
     assert {step["module_id"] for step in outcome["steps"]} == {"paper", "resources"}
+    assert all(step["trust_state"] == "qualified" for step in outcome["steps"])
     assert updates["composite_gate"]["passed"] is True
     deps.service.paper_search_service.run.assert_called_once()
     assert (
@@ -198,10 +237,22 @@ def test_composite_dispatch_commits_all_projections_once(tmp_path: Path) -> None
     assert message.status is ChatMessageStatus.DONE
     assert message.paper_search is not None
     assert message.learning_resources is not None
-    assert "论文正文" in message.content
-    assert "资料正文" in message.content
+    assert "入门论文" in message.content
+    assert "入门资料" in message.content
     runs = ConversationRepository(database).get_generation_run(ACCOUNT, RUN)
     assert runs is not None and runs.wait_reason is None
+    # 综合产物与投影/正文在同一守卫事务内落库（脱敏，不含正文原文）。
+    synthesis = [
+        artifact
+        for artifact in NodeKernelRepository(database).list_artifacts(
+            ACCOUNT, CONVERSATION
+        )
+        if artifact.artifact_type == COMPOSITE_ARTIFACT_TYPE
+    ]
+    assert len(synthesis) == 1
+    payload = synthesis[0].payload
+    assert payload["steps"]
+    assert "论文正文：两篇入门论文。" not in json.dumps(payload, ensure_ascii=False)
 
 
 def test_composite_clarification_writes_wait_and_marks_needs_input(

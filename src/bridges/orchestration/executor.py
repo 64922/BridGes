@@ -120,6 +120,8 @@ class StepRunContext:
     attempt: int = 0
     stop_event: threading.Event | None = None
     emit_node: Callable[[str, str, int | None], None] | None = None
+    task_id: str | None = None
+    task_version: int | None = None
 
 
 class StepRunner(Protocol):
@@ -253,20 +255,33 @@ class CompositeExecutor:
                     attempt=1,
                     stop_event=context.stop_event,
                     emit_node=context.emit_node,
+                    task_id=context.task_id,
+                    task_version=context.task_version,
                 )
-                self._run_waves(
-                    plan=adjusted_plan,
-                    runners=runners,
-                    context=retry_context,
-                    prior={},
-                    invalidated=retry_ids,
-                    results=results,
-                    executed=executed,
-                )
+                try:
+                    self._run_waves(
+                        plan=adjusted_plan,
+                        runners=runners,
+                        context=retry_context,
+                        prior={},
+                        invalidated=retry_ids,
+                        results=results,
+                        executed=executed,
+                    )
+                except BaseException:
+                    if self._budget is not None:
+                        self._budget.end_adjustment(
+                            "exception", {"retried_steps": sorted(retry_ids)}
+                        )
+                    raise
                 plan = adjusted_plan
                 status = self._status_for(plan, results)
                 if violation is not None:
                     status = CompositeStatus.PARTIAL
+                if self._budget is not None:
+                    self._budget.end_adjustment(
+                        status.value, {"retried_steps": sorted(retry_ids)}
+                    )
             elif violation is not None:
                 results.setdefault(
                     violation.step_id or "plan",
@@ -340,21 +355,18 @@ class CompositeExecutor:
                 for step in plan.steps
                 if step.step_id not in results
                 and all(
-                    dependency in results
-                    and results[dependency].state is StepState.COMPLETED
+                    dependency in results and _usable(results[dependency])
                     for dependency in step.depends_on
                 )
             ]
-            # 上游未完成（失败/阻塞/等待）的步骤：阻塞或跳过，不再执行。
+            # 上游未完成或未通过证据核验的步骤：阻塞或跳过，不再执行。
             for step in plan.steps:
                 if step.step_id in results:
                     continue
                 failed_upstream = [
                     dependency
                     for dependency in step.depends_on
-                    if dependency in results
-                    and results[dependency].state
-                    not in {StepState.COMPLETED, StepState.PENDING}
+                    if dependency in results and not _usable(results[dependency])
                 ]
                 if failed_upstream:
                     blocked_by = "、".join(failed_upstream)
@@ -367,9 +379,10 @@ class CompositeExecutor:
                             else StepState.SKIPPED
                         ),
                         blocked_reason=(
-                            f"必要步骤 {blocked_by} 未完成，依赖它的结论被阻塞。"
+                            f"必要步骤 {blocked_by} 未完成或未通过证据核验，"
+                            "依赖它的结论被阻塞。"
                             if step.required
-                            else f"上游 {blocked_by} 未完成，可选项跳过。"
+                            else f"上游 {blocked_by} 未完成或未通过核验，可选项跳过。"
                         ),
                     )
             ready = [
@@ -377,8 +390,7 @@ class CompositeExecutor:
                 for step in plan.steps
                 if step.step_id not in results
                 and all(
-                    dependency in results
-                    and results[dependency].state is StepState.COMPLETED
+                    dependency in results and _usable(results[dependency])
                     for dependency in step.depends_on
                 )
             ]
@@ -422,15 +434,22 @@ class CompositeExecutor:
                     attempt=context.attempt,
                     stop_event=stop_event,
                     emit_node=context.emit_node,
+                    task_id=context.task_id,
+                    task_version=context.task_version,
                 )
                 resolved = runner.resolve(step, step_context)
-                fingerprint = _fingerprint(step, resolved)
+                fingerprint = _fingerprint(step, resolved, step_context)
                 previous = prior.get(step.step_id)
                 if (
                     previous is not None
                     and previous.state is StepState.COMPLETED
+                    and previous.trust_state == "qualified"
                     and step.step_id not in invalidated
                     and previous.input_fingerprint == fingerprint
+                    and (
+                        not hasattr(runner, "can_reuse")
+                        or runner.can_reuse(step, step_context, previous)
+                    )
                 ):
                     results[step.step_id] = previous.model_copy(
                         update={"reused": True}
@@ -595,13 +614,21 @@ class CompositeExecutor:
         )
 
 
-def _fingerprint(step: CompositeStep, resolved: Mapping[str, Any]) -> str:
+def _usable(result: StepResult) -> bool:
+    """下游可消费的上游结果：调度完成且已通过证据核验。"""
+    return result.state is StepState.COMPLETED and result.trust_state == "qualified"
+
+
+def _fingerprint(
+    step: CompositeStep, resolved: Mapping[str, Any], context: StepRunContext
+) -> str:
     material = json.dumps(
         {
             "step": step.step_id,
             "recipe": f"{step.recipe_id}@{step.recipe_version}",
             "capability": f"{step.capability}@{step.capability_version}",
             "params": _canonical(resolved),
+            "scope": [context.account_id, context.conversation_id, context.task_id],
         },
         ensure_ascii=False,
         sort_keys=True,

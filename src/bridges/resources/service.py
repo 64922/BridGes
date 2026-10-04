@@ -168,6 +168,7 @@ class LearningResourcesService:
         assistant_message_id: str,
         run_context: RunContextEnvelope,
         run_model_id: str | None = None,
+        request_text: str | None = None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
         module_context: ModuleTaskContext | None = None,
@@ -178,6 +179,9 @@ class LearningResourcesService:
         ``defer_finalization``（工单 37）为真时不写消息终态，只返回
         :class:`~bridges.contracts.modules.ModuleDelivery` 交给复合调度器统一核验
         与提交；失败也作为交付返回（迟到/失效仍抛 ``ResourcesSupersededError``）。
+
+        ``request_text``（工单 37 复合）为上游已核验的最小公开目标时，用它替代
+        本轮用户消息原文进入解析；单模块路径保持 ``None``，不改变现有语义。
         """
         # 资料推荐不调用模型：本轮模型锁与本模块无关（签名保持一致）。
         del run_model_id
@@ -237,7 +241,9 @@ class LearningResourcesService:
                 conversation_id=conversation_id,
                 run_id=run_id,
                 user_message_id=user_message_id,
-                user_content=user_message.content,
+                user_content=(
+                    request_text if request_text is not None else user_message.content
+                ),
                 task_id=task_ref[0] if task_ref is not None else None,
                 task_version=task_ref[1] if task_ref is not None else None,
                 wait_identity=self._wait_identity(pending),

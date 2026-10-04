@@ -71,7 +71,10 @@ class CompositePlanner:
         rule = self.combination_for(module_ids)
         if rule is None:
             return None
-        unique = [module_id for module_id in dict.fromkeys(module_ids) if module_id in rule]
+        unique = self._dependency_order(
+            [module_id for module_id in dict.fromkeys(module_ids) if module_id in rule],
+            rule,
+        )
         conditions = list(hard_conditions)
         moment = now or datetime.now(UTC)
         steps: list[CompositeStep] = []
@@ -118,6 +121,32 @@ class CompositePlanner:
             created_at=moment,
         )
 
+    @staticmethod
+    def _dependency_order(
+        module_ids: list[str], rule: Mapping[str, tuple[str, ...]]
+    ) -> list[str]:
+        """按依赖关系稳定拓扑排序；理解层的能力顺序不构成计划拒绝理由。"""
+        pending = list(module_ids)
+        ordered: list[str] = []
+        placed: set[str] = set()
+        while pending:
+            ready = [
+                module_id
+                for module_id in pending
+                if all(dependency in placed for dependency in rule.get(module_id, ()))
+            ]
+            if not ready:
+                # 缺失或循环依赖交由 validate 结构化拒绝，这里保持原顺序。
+                ordered.extend(pending)
+                break
+            for module_id in ready:
+                ordered.append(module_id)
+                placed.add(module_id)
+            pending = [
+                module_id for module_id in pending if module_id not in placed
+            ]
+        return ordered
+
     def _bindings_for(
         self,
         module_id: str,
@@ -127,22 +156,21 @@ class CompositePlanner:
         user_message_id: str,
     ) -> list[ParameterBinding]:
         """每个步骤参数都绑定权威来源；私人材料标为本地参数。"""
+        if module_id == "resources" and "career" in unique:
+            topic_source = (ParameterSource.UPSTREAM_ARTIFACT, "career")
+        elif module_id == "github" and "career" in unique and "paper" not in unique:
+            # 岗位需求词来自 career 的公开组合需求；论文场景的主题仍是用户原话。
+            topic_source = (ParameterSource.UPSTREAM_ARTIFACT, "career")
+        else:
+            topic_source = (ParameterSource.USER_MESSAGE, user_message_id)
         bindings: list[ParameterBinding] = [
             ParameterBinding(
                 name="topic",
-                source=(
-                    ParameterSource.UPSTREAM_ARTIFACT
-                    if module_id == "resources" and "career" in unique
-                    else ParameterSource.USER_MESSAGE
-                ),
-                source_ref=(
-                    "career"
-                    if module_id == "resources" and "career" in unique
-                    else user_message_id
-                ),
+                source=topic_source[0],
+                source_ref=topic_source[1],
                 classification=(
                     DataClassification.DERIVED_PUBLIC
-                    if module_id == "resources" and "career" in unique
+                    if topic_source[0] is ParameterSource.UPSTREAM_ARTIFACT
                     else DataClassification.PUBLIC
                 ),
                 leaves_device=True,

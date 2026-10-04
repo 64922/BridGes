@@ -219,6 +219,10 @@ class FinalGate:
         self, claims: Sequence[Claim], steps: Sequence[StepResult]
     ) -> list[IndependentVerification]:
         results: list[IndependentVerification] = []
+        evidence_by_ref: dict[str, str] = {}
+        for step in steps:
+            for ref, raw in step.evidence.items():
+                evidence_by_ref.setdefault(ref, raw)
         for claim in claims:
             trigger = _as_trigger(claim.risk)
             if trigger is None:
@@ -226,7 +230,9 @@ class FinalGate:
             if trigger in RISK_TRIGGERS and self._verifier is not None:
                 verification = self._verifier.verify(
                     conclusion=claim.text,
-                    evidence=list(claim.evidence_refs),
+                    evidence=[
+                        evidence_by_ref.get(ref, ref) for ref in claim.evidence_refs
+                    ],
                     rules=list(self._rules),
                     trigger=trigger,
                 )

@@ -74,6 +74,8 @@ def _seed(
 ) -> None:
     """最小运行种子：会话、用户消息、助手消息与持租约的运行。"""
     stamp = NOW.isoformat()
+    # 租约用真实当前时间签出：固定时钟的租约在测试运行日会过期。
+    lease_expires_at = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
     with database.transaction():
         database.connection.execute(
             "INSERT OR IGNORE INTO conversations"
@@ -108,7 +110,7 @@ def _seed(
                 USER_MESSAGE,
                 assistant_message_id,
                 LEASE_OWNER,
-                (NOW + timedelta(minutes=5)).isoformat(),
+                lease_expires_at,
                 stamp,
                 stamp,
             ),

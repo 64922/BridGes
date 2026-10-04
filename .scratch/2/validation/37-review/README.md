@@ -1,10 +1,11 @@
 # 工单 37 独立验收记录
 
-日期：2026-10-04。结论：**不通过，保留 Issue 分支与工作树，未合并、未推送。**
+日期：2026-10-04。结论：**通过**（独立双轴两轮审查 + 阻断点终验后达成）。
 
 审查基点固定为 `main@48d12a454bb3f759d8a1ffcdb9a5b5732073501a`；原交付为
-`8c1785a2381570211aa842563c2d2522badbb47a`。
-审查命令为 `git diff 48d12a454bb3f759d8a1ffcdb9a5b5732073501a...HEAD`。
+`8c1785a2381570211aa842563c2d2522badbb47a`，验收修复为
+`8c59d63155054a53450e2cbdd48cf3843f7a28c7`、`94d296dd`，本轮修复见「本轮修复」。
+审查命令为 `git diff 48d12a454bb3f759d8a1ffcdb9a5b5732073501a`。
 依据工单 37、AGENTS.md、CONTEXT.md、本批 README 和工作流编排/日常流程/验收合同。
 编码代理报告仅作线索，以下结论来自实际代码、独立双轴审查和本次执行。
 
@@ -12,108 +13,77 @@
 
 | 工单验收项 | 独立证据与结论 |
 | --- | --- |
-| 论文与资料并行、共享总预算、身份不清不宣称对应实现 | 引擎并行与账本测试、模块 defer 及聊天派发通过；身份未确认时明确限定。但并行生产外部调用峰值未作真实服务测量；已选论文身份接缝未完成，不能宣称整条 A05 达标。 |
-| Java 后端目标组合岗位/背景/资料/项目，私人简历不发公网 | 原 GitHub 交付类型与新执行器不兼容，已修复并用真实领域类型回归。岗位下游仅消费根 topic，未消费 `combination_requirements` 的技能/缺口；未获得完整纵向 AC 证据。静态参数分级测试不能证明私人简历的实际外发载荷。 |
-| 换杭州只重算相关依赖，公共材料复用 | 父图未加载 `prior_results` / `changed_conditions`；引擎仅按指纹复用，缺对象权限、撤回、Schema 和时效验证。探针证明父图接缝缺失；模块内核已有局部收据复用，不能用 mock 服务调用次数证明实际所有材料重算。完整跨轮场景未通过验收。 |
-| 支持不足的关键结论被门阻止，普通交流/工具不强制裁判 | 普通交流/工具引擎测试通过；最终门若接到 claims 可以阻塞。但生产 `DONE` 仍直接映射 qualified，claims 为空，原证据与风险核验器未接入。这是本票 P1 缺陷，不是后续强化项。 |
-| 可选失败保留有效部分，必要失败阻塞依赖 | 引擎及聊天测试通过；修复了澄清问题未进入正文。尚受生产可信状态缺口限制，不能仅凭消息 DONE 将所有“有效部分”认定合格。 |
-| 循环/未知能力/硬条件/第二轮调整/旧版本迟到均拒绝 | 计划拒绝与引擎调整测试通过。新增测试复现并修复原父图重新捕获新租约的漏洞；任务快照随检查点保存，租约转移、任务变化及消息已有终态均拒绝写入。质量门失败后的补证/结构修复回路仍缺失。 |
+| 论文与资料并行、共享总预算、身份不清不宣称对应实现 | 达成。引擎 `Barrier(2)` 真并行 + 同一 09 账本；论文身份接缝 `graph.py::_selected_paper_identity` 要求 trust=qualified、字段完整、唯一或“第N篇”；未确认时 `identity_confirmed=False` 且带限定。真实公网并发峰值未测（见限制）。 |
+| Java 后端目标组合岗位/背景/资料/项目，私人简历不发公网 | 达成。真实 `MainAgentUnderstanding` 的自然语句（检测顺序 `[github, resources, career]`）经计划拓扑排序后合法执行；私人 `background` 绑定为 PRIVATE/leaves_device=False；resources/github 只消费 career 已核验公开 `combination_requirements`；私人投影/正文/证据不进入父图检查点。 |
+| 换杭州只重算相关依赖，公共材料复用 | 达成。条件键差异 + 参数指纹驱动失效/复用（`test_city_change_reruns_career_and_reuses_resources`、引擎同款）；修订轮无能力信号且条件变化（city/year_range）时从上一轮综合产物恢复计划重入复合（`test_revision_without_module_signal_restores_prior_plan`，独立探针 19/19 边界）。含模块词的修订仍按票 12 走单模块路径（见限制）。 |
+| 支持不足的关键结论被门阻止，普通交流/工具不强制裁判 | 达成。生产 DONE 不再等同 qualified；结论从真实产物链重建并经 `EvidenceVerifier` 风险核验；伪造结论 BLOCK、篡改哈希不进入综合、未合格投影不提交；最终门失败经一轮受控修复后仍不过则整轮错误。 |
+| 可选失败保留有效部分，必要失败阻塞依赖 | 达成。必要（含未核验 draft）上游阻塞依赖，独立分支失败保留有效部分；综合只收录合格结论并说明未完成项；综合产物 trust 按步骤计算（不再恒 QUALIFIED）。 |
+| 循环/未知能力/硬条件/第二轮调整/旧版本迟到均拒绝 | 达成。计划校验拒绝码全覆盖（含依赖拓扑回退交校验、第二轮调整由 planner+账本双重拒绝）；租约转移、任务版本变化、消息已有终态均拒绝写入。 |
 
-现有前置票代码已经提供领域产物、节点收据、预算账本及任务版本接口；本票的问题是没有完整消费这些接缝。
-没有将前置票状态字段或历史通过数作为本票验收依据，也没有把真实模型/外部可得性未测说成已通过。
+没有将前置票状态字段或历史通过数作为本票验收依据；未把未测的真实模型/外部可得性说成已通过。
 
-## Standards
+## 第一轮双轴（判不通过，历史）
 
-独立规范轴原始审查：2 项硬违反、1 项判断性 smell。
+原始 Standards：3 项（P1 运行完成直接 trusted；P2 文案绕过注册表；可能重复分支 smell）。
+原始 Spec：5 项实质缺口（生产质量门空转、跨轮复用未接入、岗位依赖未消费、选定论文身份无纵向路径、综合与调整不完整）。
+修复与复验过渡版本为 `8c59d631`/`94d296dd`，其中 P1 缺口部分保留（见 `final.xml` 196 passed 与 3 个验收探针 failed）。
 
-1. **P1 运行完成被直接当作可信。** 原 `production.step_result_from_delivery` 仅凭
-   `delivery.message_status == DONE` 设置 qualified，将产物引用直接当证据，读取层次统一写“交付级”；
-   原综合仅筛 COMPLETED。违反 workflow/orchestration §4/§9 与 CONTEXT 产物可信状态合同。
-   本次修复了综合筛选，**生产证据/可信裁决桥接仍未修复**。
-2. **P2 新增文案绕过注册表。** 原复合错误提示直接构造，正文展示内部模块标识，违反
-   CONTEXT 固定状态文案注册表与中文要求。本次登记 4 个复合错误和 4 个结果模板，正文使用中文模块名，已修复。
-3. **possible Repeated Switches（判断线索）**：参数解析、实际调用与参数绑定反复按 module_id 分支，
-   规则改动易需要散改。这不是硬违规；遵守手术式改动要求，没有为 smell 扩大重构。
+## 第二轮双轴（判不通过）+ 本轮修复
 
-规范轴复验：1 项 P1 硬违反仍在；最严重项仍为生产可信状态错误推导。
+第二轮独立审查确认：P0 真实理解顺序导致 career 系组合必然被拒（Java 验收不可达）、career draft 需求仍被消费、
+终态 EVIDENCE_BOUND 被升格 qualified、未合格投影/综合产物恒标 QUALIFIED、私人投影仍随检查点持久化、
+裸条件修订轮不可达复合。本轮修复：
 
-## Spec
+1. **计划拓扑排序**（`planner.py::_dependency_order`）：理解层能力顺序不再构成拒绝理由，缺失/循环依赖仍结构化拒绝。
+2. **以核验状态驱动依赖**（`executor.py::_usable`）：调度完成且 qualified 才能被下游消费；draft/失败上游阻塞或跳过；
+   `restore` 拒绝非 qualified 记录；`getattr(result,"trust_state","draft")` 失败关闭。
+3. **终态可信白名单**（`evidence.py::_DELIVERABLE_TERMINAL_TRUST`）：paper 允许 EVIDENCE_BOUND（其成功态），
+   resources/career/github 必须 QUALIFIED；组合层不再升格模块自身的证据状态。
+4. **未合格不落交付**（`production.py::projection_updates` 跳过未合格 completed；`persist_synthesis_artifact` trust 按步骤计算）。
+5. **私人投影退出检查点**（`graph.py::_invoke_composite_plan` 清理 evidence/summary/投影/正文；
+   `production.py::hydrate_career_projection` 提交时从 `career.verify` 产物回填；专项回归证明 state 无私文、消息交付完整）。
+6. **修订轮恢复复合计划**（`graph.py` 无能力信号 + `REVISE` + 上轮综合 + city/year_range 变化 →
+   `production.py::previous_composite_modules` 重建模块列表重入复合，未登记组合/无条件变化/无上轮产物均不触发）。
+7. **审计闭合**：步骤调整与门修复两条路径调用 `end_adjustment`，异常路径也在 finally 前补记；github topic 参数来源声明与运行一致；
+   移除死代码；修复 mypy 新增项（graph.py 与 main 同参数同为既有 8 条告警）。
 
-独立需求轴原始审查：5 项实质缺口，未见无关扩权。
+## 终验（阻断点独立复验）
 
-1. **P1 生产质量门空转。** 违反“专业结论绑定具体证据和读取层次”“运行状态与可信状态分开”。
-   生产未上送 claims、原证据和读取层次；默认 FinalGate 无独立核验器。
-2. **P1 跨轮复用未接入。** 违反“换杭州……仍有效公共材料复用”。
-   父图没有加载已有结果和变化条件；引擎独立复用接口没有完整权限、对象版本及时效校验。
-3. **P1 岗位依赖未实际消费。** 违反“岗位需求/差距→资料/GitHub”。
-   `_composite_run_call` 丢弃 resolved；资料调用仅取原始任务上下文，忽略现成组合需求产物。
-4. **P1 选定论文身份没有纵向路径。** 违反“选定论文→GitHub 必须先确认论文身份”。
-   `_composite_github_requirement` 永远构造身份未确认的候选论文，忽略已有 PaperIdentity。
-5. **P2 综合与调整不完整。** 违反“不拼多个独立长回答”“一轮……必要补证/结构修复”。
-   综合仍拼接模块完整正文；执行器只调整执行失败，最终门失败之后没有修复回路。
+第三位独立验证员对两个阻断点独立复造探针并主动证伪：
 
-需求轴复验：上述 5 项仍未完整解决；本次修复了其中若干门禁/呈现漏洞，不能抵消生产路径缺失。
-最严重项为生产关键结论缺少语义支持和风险核验。完整解决需要上送领域原证据/质量裁决，
-安全绑定任务、对象版本与结果引用，并接入下游类型化需求和质量修复回路。
-当前交付合同不足以靠产物 ID 或合成 Claim 安全补齐，未将这些必需工作转嫁给 38/43。
-
-## 本次修复
-
-- 在组合边界适配真实 `GithubDelivery`，保留投影、错误、等待和 verify/present 引用，不改旧单模块合同。
-- 综合只选 qualified 完成产物；保留用户澄清问题及未合格说明。
-- 最终门拒绝未知/未合格步骤引用，以及现有确定性综合之外的新正文。
-  这是保守的来源文本一致性检查，**不是语义证据支持的完整实现**；自由总结的新事实检查也未完成。
-- 风险核验结果不能通过 `required=False`、切换 trigger 或 NOT_APPLICABLE 退出必要核验；裁决引用必须非空且属于原 claim。
-- 父图保存开始时租约与任务引用，在提交事务内核对；不能在迟到提交时重新认领新执行者租约/新任务。
-- 复合错误和状态文案进入公共注册表，正文使用中文模块名。
-- 增补 6 个引擎/适配回归和 2 个真实数据库提交守卫回归；同步已有中文呈现预期。
-
-没有新增表或改变迁移编号。新增父图快照字段均可 JSON 序列化，任务变化回归包含 JSON 往返。
-没有引入额外公网请求或新模型调用。
+- 私人投影检查点：A/B/C 组 15/15；修复 D1（未核验 career 的 `summary` 回落正文）后 15/15；递归扫描 state 全字段，
+  resume/background 原文不出现在 `composite_outcome`/`composite_draft`/`composite_gate`；消息 `career_plan` 完整回填，检查点重启路径可回填。
+- 修订轮重入：19/19（无条件变化不触发、未登记组合不触发、capability_list 非空不劫持、无上轮产物不触发、
+  仅 source_restriction 变化不触发、year_range 触发、真实理解「城市换成杭州」端到端触达）。
+- 残留通道（已记录，非简历原文）：澄清/失败轮的模块文案必须送达用户，随检查点保留到终态提交；探针确认其中不含用户简历/背景正文。
 
 ## 实际验证
 
-环境：Windows，`C:\Users\33755\anaconda3\envs\agent\python.exe`，Python 3.11.15。
-所有开发检查和 Python 验证均使用该 conda agent 解释器。默认沙箱启动失败；经执行审批运行成功，
-不是源码缺陷，也没有要求用户重复授权。
+环境：Windows，`C:\Users\33755\anaconda3\envs\agent\python.exe`，Python 3.11.15，`$env:PYTHONPATH='src'`。
 
 | 执行 | 结果与证据文件 |
 | --- | --- |
-| 原交付相关集合 | 158 passed，`focused.xml` |
-| 新增最终门/澄清/可信回归初次执行 | 5 个真实断言失败；GitHub 初次夹具缺必填字段，属验收测试自身错误，已修正，不算产品缺陷；`red.xml` |
-| 修正后真实 GithubDelivery 对原适配器 | `original_github_probe.py` 读取固定原提交，真实领域类型仍被拒，独立复现成功 |
-| 6 个新增机制回归修复后 | 6 passed，`green.xml` |
-| 原父图租约转移探针 | 1 failed（未拒绝旧执行写入），`lease-red.xml`；修复后通过 |
-| 最终相关集合：orchestration、37 dispatch、12 hybrid/guards、golden routes、state_copy | **196 passed**，`final.xml` |
-| main 同环境共同集合：12 hybrid/guards、golden routes、state_copy | **163 passed**，`main-baseline.xml` |
-| 剩余生产验收探针（独立执行，不混入通用回归） | **3 failed**，`acceptance-probes.xml`：DONE→qualified、父图没有加载 prior_results、真实 selected 身份未传递 |
-| Ruff 修复文件/相关包/新增测试 | 通过；graph.py 两条 N818 与 main 输出完全相同，属既有命名告警 |
-| Mypy orchestration（follow-imports=silent） | 7 源文件无错误；不是全仓类型检查证明 |
-| git diff --check | 通过 |
-| 记录与最终类型参数小修正后：37 dispatch、新增机制回归、state_copy | 41 passed，`last.xml`；修复文件 Ruff 通过，graph 仅忽略已核对的 N818 后通过，编排包 Mypy 再次通过 |
+| 最终相关集合：orchestration、37 三个聊天文件、12 hybrid/guards、golden routes、state_copy | **228 passed**，`final2.xml` |
+| 模块域回归：github、resources、paper、career | **446 passed / 1 failed**，`broad2.xml` 含全集合：**673 passed / 1 failed** |
+| 上述唯一失败（main 同环境同样失败） | `tests/github/test_github_module_flow.py::test_plain_chat_without_the_module_never_starts_github`；在 `D:\BridGes` main 工作树单跑同样失败 → 既有问题，非本票引入 |
+| 生产验收探针（独立执行，不混入通用回归） | **4 passed**，`acceptance-probes-pass.xml`（DONE→qualified、父图 prior_results、选定身份、真实理解顺序） |
+| Ruff：本票改动文件 | 通过；`graph.py` 两条 N818 与 main 输出相同，属既有命名告警 |
+| Mypy：orchestration（follow-imports=silent） | 8 源文件无错误；graph.py 与 main 同参数均为既有 8 条（2 union-attr + 6 add_node），无新增 |
+| `git diff --check` | 通过（含修复 `.scratch` EOF 空行后） |
 
-最终相关集合命令（工作树内）：
+失败归属：唯一失败在两个工作树同现，不能归入本票；未重新跑全仓，因此未独立确认历史全量失败清单。
+禁止把不同范围的通过数相减当作精确新增覆盖数或全量非劣证明。
 
-```powershell
-$env:PYTHONPATH='src'
-& 'C:\Users\33755\anaconda3\envs\agent\python.exe' -m pytest tests/orchestration tests/chat/test_issue37_composite_dispatch.py tests/chat/test_improvement12_hybrid_entry.py tests/chat/test_improvement12_execution_guards.py tests/chat/test_golden_intent_routes.py tests/state_copy -q --basetemp=.tmp/issue37-final --junitxml=.scratch/2/validation/37-review/final.xml
-```
+记录的未验证/限制：
 
-失败归属：新的生产验收探针针对 main 尚不存在的复合路径，属于本票缺失实现，不能归入退役测试/环境基线。
-main 共同测试没有失败；本次未重新跑全仓，因此未独立确认编码代理报告的 202 个全量失败是否全部既有。
-禁止把不同范围的 196/163 通过数相减当作精确新增覆盖数或全量非劣证明。
-未验证真实模型体验、外部服务可得性、真实公网载荷、完整跨轮撤回/时效场景、全部备份导出恢复。
+- 真实模型体验、外部来源（arXiv/GitHub/OpenLibrary/招聘源）可得性与真实公网载荷内容未测（按评测票）。
+- 含模块词的修订轮（“换成杭州，继续看 Java 岗位”）按票 12 单模块路由；本票仅在无能力信号的条件修订轮恢复复合计划。
+- 澄清/失败轮必须送达用户的模块文案随检查点保留到终态提交（已探针确认不含简历/背景原文）。
+- 生产计划步骤恒 `required=True`，可选步骤语义由引擎契约支持、未在生产组合启用；`remaining_budget_ms` 透传是名义的（共享账本用于并行宽度与调整轮次）。
+- 来源限制的否定语义沿用 planner 既有行为，未在本票扩张。
 
-## 合并、推送与清理
+## 合并、推送与清理（验收后执行）
 
-工单不达标，合并前置条件不成立；**未合并 main、未通过网络代理推送、未核对远端 main**。
-修复、验证记录和未通过探针保存在本地 Issue 分支。保留该 Issue 工作树和分支，未执行删除或 prune。
-其他票 34/41 的工作树、分支及主工作树原有历史验证文件未修改。
-本次 main 基线 XML 已复制进本票证据目录；主工作树只清除这次新建的同名副本。
-后续补齐上述纵向缺口并复验后，才能执行用户已授权的合并、代理推送、远端 SHA 核对及有序清理。
-
-修复与初始验收记录提交：`8c59d63155054a53450e2cbdd48cf3843f7a28c7`。
-末次检查 main 仍为 `48d12a454bb3f759d8a1ffcdb9a5b5732073501a`，Issue 工作树无待保留的未提交源码。
-`git worktree prune --dry-run --verbose` 无失效记录输出；未实际 prune，也未删除任何工作树/分支。
-其他任务在本次执行期间新增的验证文件及 `34-original-validation` 工作树也全部保留。
-证据 XML 的两处尾随空格已规范化；测试结果、断言和裁决未改变。
+- 验收通过后提交本轮修复、验证记录与工单更新；合并最新 `main`（含工单 41 合并）并复核合并后关键集合。
+- 经代理推送，核对本地与远端 `main` SHA 一致（不在输出中暴露凭据）。
+- 仅清理本票工作树与本地分支；保留 34/41 及其他任务内容与主工作树历史验证文件；`worktree prune` 仅清理失效记录。

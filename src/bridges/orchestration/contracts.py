@@ -254,6 +254,8 @@ class StepResult(BaseModel):
         description="实际解析的参数名（不保存私人值）；供审计核对参数来源。",
     )
     external_calls: int = Field(default=0, ge=0, description="本步骤实际发生的外部调用数。")
+    evidence: dict[str, str] = Field(default_factory=dict, description="引用对应的实际证据。")
+    scope_key: str | None = None
 
     @property
     def delivered(self) -> bool:

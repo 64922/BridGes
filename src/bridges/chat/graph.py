@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -260,6 +261,8 @@ class DailyTurnState(TypedDict, total=False):
     composite_verified: bool
     composite_lease_owner: str | None
     composite_task_ref: list[Any]
+    #: 工单 37：本轮硬条件快照（脱敏），供下一轮比较条件变化与跨轮复用。
+    composite_conditions: list[dict[str, str]] | None
 
 
 class _GraphDeps:
@@ -548,6 +551,42 @@ def _node_invoke_subgraph_or_chat(
         and understanding.task_relation in {TaskRelation.PAUSE, TaskRelation.CANCEL}
     ):
         dispatch = "chat"
+    if (
+        dispatch == "chat"
+        and understanding is not None
+        and understanding.task_relation is TaskRelation.REVISE
+        and not understanding.capability_list
+    ):
+        # 工单 37：修订轮只改条件（如“换成杭州”）时按上一轮综合恢复计划，
+        # 重算受条件影响的步骤、复用未受影响的公共材料。
+        from bridges.orchestration.planner import CompositePlanner  # noqa: PLC0415
+        from bridges.orchestration.production import (  # noqa: PLC0415
+            changed_condition_keys,
+            load_prior_composite,
+            previous_composite_modules,
+        )
+
+        prior_payload = load_prior_composite(
+            deps.repo,
+            account_id=run.account_id,
+            conversation_id=run.conversation_id,
+        )
+        modules = previous_composite_modules(prior_payload)
+        conditions = [
+            *understanding.hard_conditions,
+            *understanding.effective_hard_conditions,
+        ]
+        changed = set(changed_condition_keys(prior_payload, conditions))
+        if (
+            modules
+            and changed & {"city", "year_range"}
+            and CompositePlanner().combination_for(modules) is not None
+        ):
+            return _invoke_composite_plan(
+                deps,
+                state,
+                understanding.model_copy(update={"capability_list": modules}),
+            )
     if dispatch in AVAILABLE_MODULE_IDS:
         conversation = deps.repo.get_conversation(run.account_id, run.conversation_id)
         if conversation is None or conversation.mode != "companion":
@@ -642,6 +681,10 @@ def _invoke_composite_plan(
     """
     from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository  # noqa: PLC0415
     from bridges.orchestration.contracts import CompositeStatus  # noqa: PLC0415
+    from bridges.orchestration.evidence import (  # noqa: PLC0415
+        DeliveryEvidence,
+        EvidenceVerifier,
+    )
     from bridges.orchestration.executor import (  # noqa: PLC0415
         CompositeBudget,
         StepRunContext,
@@ -650,8 +693,13 @@ def _invoke_composite_plan(
     from bridges.orchestration.production import (  # noqa: PLC0415
         CompositeOrchestrationService,
         ModuleServiceStepRunner,
+        changed_condition_keys,
+        condition_snapshot,
+        load_prior_composite,
         wait_reason_for,
     )
+    from bridges.orchestration.synthesis import FinalGate  # noqa: PLC0415
+    from bridges.tasks.repository import TaskRepository  # noqa: PLC0415
 
     run = deps.run
     conversation = deps.repo.get_conversation(run.account_id, run.conversation_id)
@@ -676,22 +724,21 @@ def _invoke_composite_plan(
         user_message.content if user_message is not None else ""
     )
     planner = CompositePlanner()
-    from bridges.tasks.repository import TaskRepository  # noqa: PLC0415
-
     task = TaskRepository(deps.repo.database).current_task(
         run.account_id, run.conversation_id
     )
     task_ref = [task.task_id, task.current_version] if task is not None else [None, None]
+    conditions = [
+        *understanding.hard_conditions,
+        *understanding.effective_hard_conditions,
+    ]
     plan = planner.plan(
         goal=goal,
         user_message_id=run.user_message_id,
         module_ids=understanding.capability_list,
         task_id=task.task_id if task is not None else None,
         task_version=task.current_version if task is not None else None,
-        hard_conditions=[
-            *understanding.hard_conditions,
-            *understanding.effective_hard_conditions,
-        ],
+        hard_conditions=conditions,
     )
     if plan is None:
         raise DailyTurnError(
@@ -699,6 +746,47 @@ def _invoke_composite_plan(
             render_state_copy("error.composite_plan_unavailable"), retryable=False,
         )
     superseded: list[str] = []
+
+    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
+        deps.emit_node(
+            state["assistant_message_id"], node, status, duration_ms=duration_ms
+        )
+
+    context = StepRunContext(
+        account_id=run.account_id,
+        conversation_id=run.conversation_id,
+        run_id=run.run_id,
+        user_message_id=run.user_message_id,
+        assistant_message_id=run.assistant_message_id,
+        goal=goal,
+        run_context=chat_run_context(
+            run.account_id, run.conversation_id, run.run_id
+        ),
+        stop_event=deps.stop_event,
+        emit_node=emit_node,
+        task_id=task.task_id if task is not None else None,
+        task_version=task.current_version if task is not None else None,
+    )
+    evidence = DeliveryEvidence(deps.repo)
+    prior_payload = load_prior_composite(
+        deps.repo, account_id=run.account_id, conversation_id=run.conversation_id
+    )
+    prior_results: dict[str, Any] = {}
+    records = prior_payload.get("steps") if prior_payload is not None else None
+    if isinstance(records, list):
+        steps_by_id = {step.step_id: step for step in plan.steps}
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            step_id = record.get("step_id")
+            if not isinstance(step_id, str):
+                continue
+            step = steps_by_id.get(step_id)
+            if step is None:
+                continue
+            restored = evidence.restore(step, context, record)
+            if restored is not None:
+                prior_results[step.step_id] = restored
     runners = {
         step.module_id: ModuleServiceStepRunner(
             resolve=_composite_resolver(
@@ -708,37 +796,25 @@ def _invoke_composite_plan(
                 deps, state, module_id=step.module_id, goal=goal,
                 superseded=superseded,
             ),
+            qualify=evidence.qualify,
         )
         for step in plan.steps
         if step.module_id in _COMPOSITE_SERVICE_ATTRS
     }
-
-    def emit_node(node: str, status: str, duration_ms: int | None) -> None:
-        deps.emit_node(
-            state["assistant_message_id"], node, status, duration_ms=duration_ms
-        )
-
-    result = CompositeOrchestrationService(planner=planner).run(
+    result = CompositeOrchestrationService(
+        planner=planner,
+        gate=FinalGate(verifier=EvidenceVerifier()),
+    ).run(
         plan=plan,
         runners=runners,
-        context=StepRunContext(
-            account_id=run.account_id,
-            conversation_id=run.conversation_id,
-            run_id=run.run_id,
-            user_message_id=run.user_message_id,
-            assistant_message_id=run.assistant_message_id,
-            goal=goal,
-            run_context=chat_run_context(
-                run.account_id, run.conversation_id, run.run_id
-            ),
-            stop_event=deps.stop_event,
-            emit_node=emit_node,
-        ),
+        context=context,
         budget=CompositeBudget(
             RunBudgetLedgerRepository(deps.repo.database),
             account_id=run.account_id,
             run_id=run.run_id,
         ),
+        prior_results=prior_results,
+        changed_conditions=changed_condition_keys(prior_payload, conditions),
     )
     if superseded:
         raise DailyGraphSuperseded(superseded[0])
@@ -753,14 +829,29 @@ def _invoke_composite_plan(
         deps.repo.update_generation_progress(
             run.account_id, run.run_id, wait_reason=reason
         )
+    outcome_payload = result.outcome.model_dump(mode="json")
+    for step_payload in outcome_payload.get("steps") or []:
+        # 原证据只在本次核验与最终门内使用；不把私人证据原文写进父图检查点。
+        step_payload["evidence"] = {}
+        if step_payload.get("module_id") == CAREER_MODULE_ID:
+            # career 投影含私人背景/简历原文：检查点只留引用与短结论；
+            # 提交时由 ``hydrate_career_projection`` 从内核产物回填。
+            # 未达可信状态的步骤 summary 会回落到交付正文，这里一并清空。
+            step_payload["summary"] = ""
+            delivery_payload = step_payload.get("delivery")
+            if isinstance(delivery_payload, dict):
+                delivery_payload["projection"] = {}
+                delivery_payload["content"] = ""
     return {
-        "composite_outcome": result.outcome.model_dump(mode="json"),
+        "composite_outcome": outcome_payload,
         "composite_draft": result.draft.model_dump(mode="json"),
         "composite_gate": result.gate.model_dump(mode="json"),
         "composite_verified": False,
         "composite_lease_owner": run.lease_owner,
         "composite_task_ref": task_ref,
+        "composite_conditions": condition_snapshot(conditions),
     }
+
 
 
 def _composite_resolver(
@@ -788,12 +879,20 @@ def _composite_resolver(
                 params["city"] = city
             return params
         if module_id == RESOURCES_MODULE_ID:
-            return {"topic": _composite_topic(upstream.get(CAREER_MODULE_ID)) or goal}
+            # 只消费 career 已核验的公开最小需求；有 career 时绝不回退到
+            # 可能含私人简历的原始消息。
+            topic = _composite_resources_topic(upstream)
+            if topic is None and CAREER_MODULE_ID not in upstream:
+                topic = goal
+            return {"topic": topic or ""}
         if module_id == GITHUB_MODULE_ID:
-            career = upstream.get(CAREER_MODULE_ID)
+            requirement = _composite_github_requirement(context, goal)
             return {
-                "topic": _composite_topic(career) or goal,
-                "identity_confirmed": career is not None,
+                "topic": requirement.phrase if requirement is not None else context.goal,
+                "identity_confirmed": bool(
+                    requirement is not None and requirement.identity_confirmed
+                ),
+                "kind": requirement.kind if requirement is not None else "",
             }
         return {"topic": context.goal}
 
@@ -801,11 +900,97 @@ def _composite_resolver(
 
 
 def _composite_topic(result: Any) -> str | None:
-    """上游交付投影里的公开主题词（缺失时为 None，不臆造）。"""
+    """上游交付投影里的公开主题词（缺失或未核验时为 None，不臆造）。"""
     if result is None or result.delivery is None:
+        return None
+    if getattr(result, "trust_state", "draft") != "qualified":
         return None
     topic = (result.delivery.projection or {}).get("topic")
     return str(topic) if topic else None
+
+
+def _composite_public_requirement(result: Any, kind: str) -> dict[str, Any] | None:
+    """career 组合需求里的公开最小目标（只消费已核验的公开要求词）。"""
+    if result is None or result.delivery is None:
+        return None
+    if getattr(result, "trust_state", "draft") != "qualified":
+        return None
+    requirements = (result.delivery.projection or {}).get("combination_requirements")
+    if not isinstance(requirements, list):
+        return None
+    for item in requirements:
+        if isinstance(item, dict) and item.get("kind") == kind:
+            return item
+    return None
+
+
+def _requirement_phrase(requirement: dict[str, Any]) -> str:
+    """把组合需求拼成一条公开查询短语（只用岗位方向与要求词）。"""
+    topic = str(requirement.get("topic") or "").strip()
+    goal = str(requirement.get("goal") or "").strip()
+    skills = [
+        str(skill).strip()
+        for skill in requirement.get("skills") or []
+        if str(skill).strip()
+    ]
+    parts = [topic or goal]
+    if skills:
+        parts.append("、".join(dict.fromkeys(skills)))
+    return "：".join(part for part in parts if part)
+
+
+def _composite_resources_topic(upstream: Any) -> str | None:
+    career = upstream.get(CAREER_MODULE_ID)
+    requirement = _composite_public_requirement(career, "resources")
+    if requirement is not None:
+        phrase = _requirement_phrase(requirement)
+        if phrase:
+            return phrase
+    return _composite_topic(career)
+
+
+#: 中文序数词（“第二篇”）。
+_CHINESE_ORDINALS: dict[str, int] = {
+    "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+}
+
+
+def _goal_ordinal(goal: str) -> int | None:
+    match = re.search(r"第\s*([一二三四五六七八九十\d]+)\s*篇", goal or "")
+    if match is None:
+        return None
+    token = match.group(1)
+    if token.isdigit():
+        return int(token)
+    return _CHINESE_ORDINALS.get(token)
+
+
+def _selected_paper_identity(result: Any, goal: str) -> Any:
+    """只有已核验步骤、且身份字段完整、目标无歧义时才确认论文身份。"""
+    if getattr(result, "trust_state", "draft") != "qualified":
+        return None
+    if result.delivery is None:
+        return None
+    from bridges.paper.contracts import PaperIdentity  # noqa: PLC0415
+
+    projection = result.delivery.projection or {}
+    identities = []
+    for item in projection.get("selected") or []:
+        try:
+            identity = PaperIdentity.model_validate(item)
+        except ValueError:
+            continue
+        if identity.title and (identity.arxiv_id or identity.doi) and identity.abs_url:
+            identities.append(identity)
+    if not identities:
+        return None
+    ordinal = _goal_ordinal(goal)
+    if ordinal is not None:
+        return next(
+            (identity for identity in identities if identity.order == ordinal), None
+        )
+    return identities[0] if len(identities) == 1 else None
 
 
 def _composite_run_call(
@@ -831,7 +1016,7 @@ def _composite_run_call(
         )
 
     def call(step: Any, context: Any, resolved: Any) -> Any:
-        del step, resolved
+        del step
         common: dict[str, Any] = {
             "repo": deps.repo,
             "account_id": run.account_id,
@@ -868,6 +1053,7 @@ def _composite_run_call(
                 return service.run(
                     **common,
                     run_model_id=state.get("run_model_id"),
+                    request_text=resolved.get("topic"),
                     module_context=deps.service.module_task_context(
                         run, RESOURCES_MODULE_ID
                     ),
@@ -905,29 +1091,59 @@ def _composite_run_call(
 
 
 def _composite_github_requirement(context: Any, goal: str) -> Any:
-    """把上游交付转换为 GitHub 的类型化需求（身份未确认不宣称对应）。"""
+    """把上游交付转换为 GitHub 的类型化需求（身份未确认不宣称对应）。
+
+    论文：只有投影里的 ``selected`` 身份字段完整且目标无歧义（“第二篇”或
+    唯一候选）时才确认身份；岗位：只消费 career 公开的
+    ``combination_requirements``（岗位方向与要求词），私人简历与背景正文
+    不进入公网需求。
+    """
     from bridges.github.contracts import GithubRequirementInput  # noqa: PLC0415
 
     paper = context.upstream.get(PAPER_MODULE_ID)
     career = context.upstream.get(CAREER_MODULE_ID)
     if paper is not None:
+        source_ref = next(iter(paper.artifact_refs.values()), None)
+        identity = _selected_paper_identity(paper, goal)
+        if identity is not None:
+            return GithubRequirementInput(
+                kind="paper",
+                label="选定论文",
+                identifier=identity.arxiv_id or identity.doi or identity.title,
+                phrase=goal,
+                identity_confirmed=True,
+                source_ref=source_ref,
+                identity_note=f"论文身份已确认：{identity.title}。",
+            )
         return GithubRequirementInput(
             kind="paper",
             label="候选论文",
             phrase=goal,
             identity_confirmed=False,
-            source_ref=next(iter(paper.artifact_refs.values()), None),
+            source_ref=source_ref,
             identity_note="本轮只取得候选论文，身份尚未确认；不宣称仓库对应那份论文。",
         )
     if career is not None:
-        return GithubRequirementInput(
-            kind="job",
-            label="岗位需求",
-            phrase=_composite_topic(career) or goal,
-            identity_confirmed=True,
-            source_ref=next(iter(career.artifact_refs.values()), None),
-            identity_note="岗位需求来自用户原话与已核验岗位样本。",
+        source_ref = next(iter(career.artifact_refs.values()), None)
+        requirement = _composite_public_requirement(career, "github")
+        phrase = (
+            _requirement_phrase(requirement)
+            if requirement is not None
+            else _composite_topic(career)
         )
+        if phrase:
+            return GithubRequirementInput(
+                kind="job",
+                label="岗位需求",
+                phrase=phrase,
+                identity_confirmed=requirement is not None,
+                source_ref=source_ref,
+                identity_note=(
+                    "岗位需求来自已核验公开样本的要求词。"
+                    if requirement is not None
+                    else "岗位结果尚未形成公开需求清单；只按岗位方向检索，不宣称匹配已核验。"
+                ),
+            )
     return None
 
 
@@ -972,7 +1188,9 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
     )
     from bridges.orchestration.production import (  # noqa: PLC0415
         first_failure,
+        hydrate_career_projection,
         message_status_for,
+        persist_synthesis_artifact,
         projection_updates,
         render_final_content,
     )
@@ -996,6 +1214,11 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
     run = deps.run
     draft = SynthesisDraft.model_validate(state["composite_draft"])
     content = render_final_content(draft)
+    outcome = hydrate_career_projection(
+        NodeKernelRepository(deps.repo.database),
+        account_id=run.account_id,
+        outcome=outcome,
+    )
     projections = projection_updates(outcome)
     status = message_status_for(outcome)
     failure = first_failure(outcome)
@@ -1063,6 +1286,26 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
                 learning_resources=projections.get("learning_resources"),
                 commute_route=projections.get("commute_route"),
                 github_projects=projections.get("github_projects"),
+            )
+            # 同一守卫事务内保存脱敏综合产物：计划/步骤/证据引用、任务版本、
+            # 条件快照与门裁决；不重复保存模块正文或私人原文。
+            task_ref = state.get("composite_task_ref") or [None, None]
+            persist_synthesis_artifact(
+                NodeKernelRepository(deps.repo.database),
+                account_id=run.account_id,
+                conversation_id=run.conversation_id,
+                run_id=run.run_id,
+                task_id=task_ref[0],
+                task_version=task_ref[1],
+                outcome=outcome,
+                gate=gate,
+                draft=draft,
+                conditions=[
+                    item
+                    for item in state.get("composite_conditions") or []
+                    if isinstance(item, dict)
+                ],
+                now=datetime.now(UTC),
             )
         elif message.content != content or message.status != status:
             raise DailyGraphSuperseded("message_terminal")
