@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from bridges.career_plan.contracts import (
+    CareerBranch,
+    CareerGapCategory,
     CareerPlanProjection,
     CareerRequestAnalysis,
     JobSample,
@@ -53,6 +55,13 @@ REJECTION_LABELS: dict[str, str] = {
     KIND_TITLE_MISMATCH: "岗位名不匹配",
 }
 
+#: 个人差距分类 → 中文标题（未知不是弱项）。
+GAP_CATEGORY_LABELS: dict[str, str] = {
+    CareerGapCategory.HAS_EVIDENCE.value: "已有依据",
+    CareerGapCategory.TO_IMPROVE.value: "明确待提升",
+    CareerGapCategory.TO_CONFIRM.value: "待确认（不等于不足）",
+}
+
 
 def render_clarification_content(analysis: CareerRequestAnalysis) -> str:
     question = analysis.clarification.question if analysis.clarification else ""
@@ -90,6 +99,7 @@ def render_result_content(projection: CareerPlanProjection) -> str:
             for basis in advice.basis:
                 lines.append(f"    依据：{basis}")
 
+    lines.extend(_personal_lines(projection))
     lines.extend(_adjacent_lines(projection))
     lines.extend(_rejected_lines(projection))
     lines.extend(_boundary_lines(projection))
@@ -106,6 +116,7 @@ def render_links_only_content(projection: CareerPlanProjection) -> str:
     lines.extend(_query_lines(projection))
     lines.extend(_candidate_lines(projection))
     lines.extend(_rejected_lines(projection))
+    lines.extend(_personal_lines(projection))
     lines.extend(_boundary_lines(projection))
     return "\n".join(lines).rstrip()
 
@@ -120,6 +131,7 @@ def render_empty_content(projection: CareerPlanProjection) -> str:
     lines.extend(_query_lines(projection))
     lines.extend(_candidate_lines(projection))
     lines.extend(_rejected_lines(projection))
+    lines.extend(_personal_lines(projection))
     lines.extend(_boundary_lines(projection))
     return "\n".join(lines).rstrip()
 
@@ -299,6 +311,77 @@ def _rejected_lines(projection: CareerPlanProjection) -> list[str]:
         lines.append(f"· {label}：共 {len(entries)} 条")
         for entry in entries:
             lines.append(f"    {entry}")
+    return lines
+
+
+def _personal_lines(projection: CareerPlanProjection) -> list[str]:
+    """个人准备分支：背景、差距（三分类）、优先行动与关键问题。"""
+
+    if projection.branch is not CareerBranch.PERSONAL_PLANNING:
+        return []
+    lines: list[str] = ["", "【个人准备（只基于你明确给出的背景与岗位要求）】"]
+    background = projection.background
+    if background is None:
+        lines.append("· 本轮没有读取个人背景；以下结论只来自当前陈述。")
+    else:
+        if background.used_profile:
+            lines.append(
+                "· 背景来源：当前陈述与已记住信息最小切片"
+                f"（采用 {len(background.items)} 条；切片已检查版本与来源）。"
+            )
+        else:
+            lines.append("· 背景来源：当前陈述。")
+        if background.unavailable_reason:
+            lines.append(f"· 长期背景说明：{background.unavailable_reason}")
+        if background.time_budget_minutes is not None:
+            source = (
+                "当前陈述"
+                if background.time_budget_source == "statement"
+                else "已记住信息"
+            )
+            lines.append(
+                f"· 每天可用时间：{background.time_budget_minutes} 分钟（来源：{source}）"
+            )
+
+    if projection.gaps:
+        grouped: dict[str, list[str]] = {}
+        for gap in projection.gaps:
+            label = GAP_CATEGORY_LABELS.get(str(gap.category), str(gap.category))
+            grouped.setdefault(label, []).append(
+                f"· {gap.term}（岗位 {gap.requirement_count}/{gap.requirement_total}）：{gap.note}"
+            )
+            for evidence in gap.background_evidence:
+                grouped[label].append(f"    你的依据：{evidence}")
+        lines.append("· 逐项对照：")
+        for label, entries in grouped.items():
+            lines.append(f"  {label}")
+            lines.extend(f"  {entry}" for entry in entries)
+    else:
+        lines.append("· 逐项对照：本轮没有形成可交付的个人差距结论。")
+
+    if projection.personal_advices:
+        lines.append("· 优先行动（按上面的顺序）：")
+        for advice in projection.personal_advices:
+            tag = "推断" if advice.inference else "证据"
+            serial = f"{advice.priority}. " if advice.priority else "· "
+            lines.append(f"  {serial}[{tag}] {advice.title}：{advice.detail}")
+            for basis in advice.background_basis:
+                lines.append(f"      你的依据：{basis}")
+            if advice.feasibility:
+                lines.append(f"      可执行性：{advice.feasibility}")
+
+    if projection.combination_requirements:
+        lines.append("· 可交给资料／项目模块继续的最小需求：")
+        for requirement in projection.combination_requirements:
+            kind = "学习资料" if requirement.kind == "resources" else "实践项目"
+            tag = "推断" if requirement.inference else "证据"
+            lines.append(
+                f"  [{tag}] {kind}：{requirement.goal}"
+                f"（涉及：{'、'.join(requirement.skills) or '见岗位要求'}）"
+            )
+
+    if projection.follow_up_question:
+        lines.extend(["", f"关键问题（只问这一项）：{projection.follow_up_question}"])
     return lines
 
 

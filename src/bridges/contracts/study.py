@@ -141,6 +141,60 @@ class StudySource(BaseModel):
     url: str | None = None
 
 
+class StudyEvidenceGap(BaseModel):
+    """问题级证据评估的一条缺口（工单 32）。
+
+    ``supplement`` 是所需补证类型：``knowledge_base`` 查本节之外的知识库、
+    ``web`` 需公开来源（时效或明确核验要求也归入此项）、``page`` 关键书页
+    不清需补拍补录、``none`` 无可用补证。``status`` 是补给后的最终处置：
+    ``resolved`` 已由补充来源覆盖、``needs_page`` 等待书页、``unverified``
+    因用户限制、来源失败或预算保持未核实。
+    """
+
+    point: str = Field(min_length=1)
+    reason: str = ""
+    supplement: Literal["knowledge_base", "web", "page", "none"] = "none"
+    status: Literal["resolved", "unverified", "needs_page"] = "unverified"
+
+
+class StudySupplementAttempt(BaseModel):
+    """一层补证的真实执行结果（用于审计“为何没查/没查到”）。"""
+
+    layer: Literal["knowledge_base", "web"]
+    status: Literal[
+        "used",
+        "empty",
+        "failed",
+        "conflict",
+        "skipped_disabled",
+        "skipped_restricted",
+        "not_needed",
+        "budget_exhausted",
+        "query_insufficient",
+    ]
+    detail: str = ""
+    source_count: int = Field(default=0, ge=0)
+
+
+class StudyEvidenceAssessment(BaseModel):
+    """问题级证据充分性评估与逐层补证记录（工单 32）。
+
+    先取本节相关片段与必要前文判断关键解释点是否已支持；不足时按用户
+    设置检索知识库，复查剩余缺口，仍不足且允许联网时用最小公开术语补证。
+    评估只读材料，不改写阶段、范围或考查范围。
+    """
+
+    protocol_version: str = "study-tutor-evidence-v2"
+    #: 全部关键解释点是否都有已采纳来源支持（无缺口）。
+    sufficient: bool = False
+    key_points: list[str] = Field(default_factory=list)
+    supported_points: list[str] = Field(default_factory=list)
+    gaps: list[StudyEvidenceGap] = Field(default_factory=list)
+    supplements: list[StudySupplementAttempt] = Field(default_factory=list)
+    #: 保留的冲突来源说明（不合并为单一结论，也不作为支持证据）。
+    conflicts: list[str] = Field(default_factory=list)
+
+
 class StudyExchange(BaseModel):
     user_message_id: str
     assistant_message_id: str
@@ -148,6 +202,8 @@ class StudyExchange(BaseModel):
     answer: str
     sources: list[StudySource]
     gap: str = ""
+    #: 本轮的证据充分性评估（工单 32）；旧状态（v2 无该字段）读取为 None。
+    assessment: StudyEvidenceAssessment | None = None
 
 
 class StudyPageUpdate(BaseModel):

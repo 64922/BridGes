@@ -1063,6 +1063,12 @@ def _skill_present(text: str, skill: str) -> bool:
     return skill in text
 
 
+def skill_present(text: str, skill: str) -> bool:
+    """公开的技能词匹配入口（与 :func:`detect_skills` 同一口径）。"""
+
+    return _skill_present(text, skill)
+
+
 # --------------------------------------------------------------------------
 # 来源与页面判定
 # --------------------------------------------------------------------------

@@ -422,7 +422,10 @@ MODULE_DECLARATIONS: dict[str, ModuleContextDeclaration] = {
         module_id="career",
         purpose="career",
         task_fields=("city", "other", "count"),
-        evidence_scope="任务目标与已确认城市/条件；不读取画像正文，也不继承无关话题。",
+        evidence_scope=(
+            "任务目标与已确认城市/条件；仅个人规划分支经登记背景提供者读取"
+            "允许的最小画像切片，公开检索从不携带画像或简历正文。"
+        ),
     ),
     "tieba": ModuleContextDeclaration(
         module_id="tieba",

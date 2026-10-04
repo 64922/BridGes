@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="12" time="130.538" timestamp="2026-10-04T09:20:30.530421+08:00" hostname="bababoyi"><testcase classname="tests.integration.test_runtime_smoke" name="test_doctor_smoke" time="4.676" /><testcase classname="tests.integration.test_runtime_smoke" name="test_migrate_smoke" time="4.611" /><testcase classname="tests.integration.test_runtime_smoke" name="test_doctor_notices_test_environment_needs_no_global_key" time="4.821" /><testcase classname="tests.integration.test_runtime_smoke" name="test_doctor_fails_without_global_key_in_development" time="4.680" /><testcase classname="tests.integration.test_runtime_smoke" name="test_doctor_reports_configured_global_key_without_tail" time="4.824" /><testcase classname="tests.integration.test_runtime_smoke" name="test_start_fails_when_global_key_file_unreadable" time="4.297" /><testcase classname="tests.integration.test_runtime_smoke" name="test_start_fails_with_empty_global_key_before_spawning" time="36.474"><failure message="subprocess.TimeoutExpired: Command '['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'start']' timed out after 15 seconds">def test_start_fails_with_empty_global_key_before_spawning() -&gt; None:
+        """start 配置空 Key（环境变量为空串）时非零退出，且不启动任何子服务。
+    
+        GQ-08 AC6：空 Key 与缺失、不可读文件一样在启动边界失败；断言中文
+        配置指引出现在输出中且没有"已启动"横幅（不产生孤儿进程）。
+        """
+&gt;       result = _run_cli("start", env=_dev_env({"BRIDGES_QWEN_API_KEY": ""}))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_runtime_smoke.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_runtime_smoke.py:62: in _run_cli
+    return subprocess.run(
+&lt;stdin&gt;:7: in bounded_run
+    ???
+C:\Users\33755\anaconda3\envs\agent\Lib\subprocess.py:550: in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\subprocess.py:1209: in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;Popen: returncode: 1 args: ['C:\\Users\\33755\\anaconda3\\envs\\agent\\pyth...&gt;
+input = None, endtime = 135837.156, orig_timeout = 15
+
+    def _communicate(self, input, endtime, orig_timeout):
+        # Start reader threads feeding into a list hanging off of this
+        # object, unless they've already been started.
+        if self.stdout and not hasattr(self, "_stdout_buff"):
+            self._stdout_buff = []
+            self.stdout_thread = \
+                    threading.Thread(target=self._readerthread,
+                                     args=(self.stdout, self._stdout_buff))
+            self.stdout_thread.daemon = True
+            self.stdout_thread.start()
+        if self.stderr and not hasattr(self, "_stderr_buff"):
+            self._stderr_buff = []
+            self.stderr_thread = \
+                    threading.Thread(target=self._readerthread,
+                                     args=(self.stderr, self._stderr_buff))
+            self.stderr_thread.daemon = True
+            self.stderr_thread.start()
+    
+        if self.stdin:
+            self._stdin_write(input)
+    
+        # Wait for the reader threads, or time out.  If we time out, the
+        # threads remain reading and the fds left open in case the user
+        # calls communicate again.
+        if self.stdout is not None:
+            self.stdout_thread.join(self._remaining_time(endtime))
+            if self.stdout_thread.is_alive():
+&gt;               raise TimeoutExpired(self.args, orig_timeout)
+E               subprocess.TimeoutExpired: Command '['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'start']' timed out after 15 seconds
+
+C:\Users\33755\anaconda3\envs\agent\Lib\subprocess.py:1630: TimeoutExpired</failure></testcase><testcase classname="tests.integration.test_runtime_smoke" name="test_start_fails_when_global_key_env_absent" time="38.984"><failure message="subprocess.TimeoutExpired: Command '['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'start']' timed out after 15 seconds">def test_start_fails_when_global_key_env_absent() -&gt; None:
+        """start 完全缺失全局 Key 环境变量时同样非零退出并给出中文指引。"""
+        env = _dev_env()
+        env.pop("BRIDGES_QWEN_API_KEY", None)
+&gt;       result = _run_cli("start", env=env)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_runtime_smoke.py:214: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_runtime_smoke.py:62: in _run_cli
+    return subprocess.run(
+&lt;stdin&gt;:7: in bounded_run
+    ???
+C:\Users\33755\anaconda3\envs\agent\Lib\subprocess.py:550: in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\subprocess.py:1209: in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;Popen: returncode: 1 args: ['C:\\Users\\33755\\anaconda3\\envs\\agent\\pyth...&gt;
+input = None, endtime = 135874.234, orig_timeout = 15
+
+    def _communicate(self, input, endtime, orig_timeout):
+        # Start reader threads feeding into a list hanging off of this
+        # object, unless they've already been started.
+        if self.stdout and not hasattr(self, "_stdout_buff"):
+            self._stdout_buff = []
+            self.stdout_thread = \
+                    threading.Thread(target=self._readerthread,
+                                     args=(self.stdout, self._stdout_buff))
+            self.stdout_thread.daemon = True
+            self.stdout_thread.start()
+        if self.stderr and not hasattr(self, "_stderr_buff"):
+            self._stderr_buff = []
+            self.stderr_thread = \
+                    threading.Thread(target=self._readerthread,
+                                     args=(self.stderr, self._stderr_buff))
+            self.stderr_thread.daemon = True
+            self.stderr_thread.start()
+    
+        if self.stdin:
+            self._stdin_write(input)
+    
+        # Wait for the reader threads, or time out.  If we time out, the
+        # threads remain reading and the fds left open in case the user
+        # calls communicate again.
+        if self.stdout is not None:
+            self.stdout_thread.join(self._remaining_time(endtime))
+            if self.stdout_thread.is_alive():
+&gt;               raise TimeoutExpired(self.args, orig_timeout)
+E               subprocess.TimeoutExpired: Command '['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'start']' timed out after 15 seconds
+
+C:\Users\33755\anaconda3\envs\agent\Lib\subprocess.py:1630: TimeoutExpired</failure></testcase><testcase classname="tests.integration.test_runtime_smoke" name="test_api_command_fails_without_global_key" time="4.954" /><testcase classname="tests.integration.test_runtime_smoke" name="test_worker_command_fails_without_global_key" time="4.787" /><testcase classname="tests.integration.test_runtime_smoke" name="test_health_endpoints_return_unified_projection" time="7.510" /><testcase classname="tests.integration.test_runtime_smoke" name="test_api_gracefully_shuts_down" time="9.039" /></testsuite></testsuites>

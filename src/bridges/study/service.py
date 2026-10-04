@@ -79,7 +79,7 @@ from bridges.study.scope import (
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
-STUDY_GRAPH_VERSION = "study-review-v3"
+STUDY_GRAPH_VERSION = "study-tutoring-review-v4"
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
@@ -970,7 +970,15 @@ class StudyWorkflow:
             if existing is not None:
                 return {"answer": existing.answer, "tutoring": existing.model_dump()}
             try:
-                exchange = tutor(self._service, run, state, user.content, invoke, stop_event)
+                exchange = tutor(
+                    self._service,
+                    run,
+                    state,
+                    user.content,
+                    invoke,
+                    stop_event,
+                    budget=budget,
+                )
             except ValueError as exc:
                 raise StudyWorkflowError(
                     current_node, "study_tutor_invalid", "辅导依据或结果未通过核验，请重试。"

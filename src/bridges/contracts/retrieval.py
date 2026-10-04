@@ -29,6 +29,8 @@ class RetrievalDecisionReason(StrEnum):
     UPLOADED_MATERIAL = "uploaded_material"
     STUDY_EXPLANATION = "study_explanation"
     KNOWLEDGE_BASE_REQUIRED = "knowledge_base_required"
+    #: 学习辅导的问题级证据评估发现真实缺口（改进工单 32）。
+    EVIDENCE_GAP = "evidence_gap"
     USER_DISABLED = "user_disabled"
     SPECIALIZED_CAPABILITY = "specialized_capability"
     COMPANION_DEFAULT = "companion_default"

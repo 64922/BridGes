@@ -30299,7 +30299,7 @@
           "kind": {
             "type": "string",
             "title": "Kind",
-            "description": "建议分类：skill／project／action。"
+            "description": "建议分类：skill／project／action／leverage／confirm／pace。"
           },
           "title": {
             "type": "string",
@@ -30323,6 +30323,32 @@
             "type": "boolean",
             "title": "Inference",
             "description": "是否为推断（不是样本原文直接支持的内容）。"
+          },
+          "priority": {
+            "type": "integer",
+            "title": "Priority",
+            "description": "个人规划分支的优先序号（1 为最高）；0 表示未排序。",
+            "default": 0
+          },
+          "background_basis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Background Basis",
+            "description": "个人规划建议的用户侧依据（自述/已采用条目）。"
+          },
+          "feasibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feasibility",
+            "description": "与时间/资源约束的可执行性说明；无约束为空。"
           }
         },
         "type": "object",
@@ -30487,6 +30513,245 @@
         "title": "CareerAssumption",
         "description": "待验证假设：说明下一步核查方式，不得包装成结论。"
       },
+      "CareerBackgroundItem": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/CareerBackgroundSource",
+            "description": "来源类别。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "完整事实/原话正文（不截断）。"
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "来源引用：消息 ID、条目 ID 或片段 ID。"
+          },
+          "authority": {
+            "type": "string",
+            "title": "Authority",
+            "description": "来源权威：user／automatic／migration。",
+            "default": "user"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation",
+            "description": "画像事实关系；非画像来源为空。"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "画像条目版本；非画像来源为空。"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "明示有效期终点；无期限为空。"
+          },
+          "applicable_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable To",
+            "description": "本条允许改变的回答决策标签（来自工单 19 切片）。"
+          },
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conditions",
+            "description": "适用条件（如依赖前再确认仍有效）。"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "description": "长期默认偏好；本轮明确要求可覆盖。",
+            "default": false
+          },
+          "overridden": {
+            "type": "boolean",
+            "title": "Overridden",
+            "description": "本轮明确要求优先，本条本轮不生效。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "text",
+          "source_ref"
+        ],
+        "title": "CareerBackgroundItem",
+        "description": "一条有来源的个人背景材料（仅个人规划分支读取）。"
+      },
+      "CareerBackgroundSnapshot": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CareerBackgroundItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "本轮实际可用的完整背景材料。"
+          },
+          "slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slice Id",
+            "description": "工单 19 采用切片标识。"
+          },
+          "revocation_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revocation Version",
+            "description": "切片同一快照的撤回版本。"
+          },
+          "compiled_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compiled Policy Version",
+            "description": "切片编译规则版本；旧版本按缺省重编。"
+          },
+          "used_profile": {
+            "type": "boolean",
+            "title": "Used Profile",
+            "description": "本轮是否实际采用了长期画像切片。",
+            "default": false
+          },
+          "purpose_task_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose Task Kind",
+            "description": "切片编译时的任务种类。"
+          },
+          "time_budget_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Budget Minutes",
+            "description": "每天可用分钟数；当前陈述优先于长期默认。"
+          },
+          "time_budget_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Budget Source",
+            "description": "时间约束来源：statement／profile；无约束为空。"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason",
+            "description": "背景未取得的原因（不阻断公开岗位部分）。"
+          },
+          "excluded_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Notes",
+            "description": "未采用来源与原因的中文说明。"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At",
+            "description": "本次调用检查切片版本/来源的时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checked_at"
+        ],
+        "title": "CareerBackgroundSnapshot",
+        "description": "个人规划分支的一次背景快照（含来源、切片版本与未取得原因）。"
+      },
+      "CareerBackgroundSource": {
+        "type": "string",
+        "enum": [
+          "user_statement",
+          "task",
+          "profile",
+          "resume"
+        ],
+        "title": "CareerBackgroundSource",
+        "description": "个人规划分支允许使用的背景来源（每项都留来源引用）。"
+      },
+      "CareerBranch": {
+        "type": "string",
+        "enum": [
+          "job_intel",
+          "personal_planning"
+        ],
+        "title": "CareerBranch",
+        "description": "职业规划的两条目的分支（改进工单 29）。"
+      },
       "CareerCandidateLink": {
         "properties": {
           "url": {
@@ -30524,6 +30789,55 @@
         ],
         "title": "CareerCandidateLink",
         "description": "仅有搜索摘要时的链接降级（未核实，不纳入样本）。"
+      },
+      "CareerCombinationRequirement": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "需求类型：resources（资料）／github（实践项目）。"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "description": "需求主题（岗位方向或任务）。"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "该需求要达成的可复核目标。"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skills",
+            "description": "涉及的要求词（来自样本原文）。"
+          },
+          "basis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Basis",
+            "description": "需求依据：样本或差距引用。"
+          },
+          "inference": {
+            "type": "boolean",
+            "title": "Inference",
+            "description": "需求是否为推断（如实践项目方向由要求组合推断）。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "topic",
+          "goal"
+        ],
+        "title": "CareerCombinationRequirement",
+        "description": "供工单 37 组合的最小需求产物（学习资料／实践项目）。"
       },
       "CareerEvidenceKind": {
         "type": "string",
@@ -30666,6 +30980,94 @@
         ],
         "title": "CareerFact",
         "description": "已知事实：必须带可定位来源与核查时间，否则复核标记未核实。"
+      },
+      "CareerGapCategory": {
+        "type": "string",
+        "enum": [
+          "has_evidence",
+          "to_improve",
+          "to_confirm"
+        ],
+        "title": "CareerGapCategory",
+        "description": "个人差距的三种分类（未知绝不判为不足）。"
+      },
+      "CareerGapItem": {
+        "properties": {
+          "term": {
+            "type": "string",
+            "title": "Term",
+            "description": "岗位要求词（技能关键词原文）。"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CareerGapCategory",
+            "description": "已有依据／明确待提升／待确认。"
+          },
+          "requirement_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requirement Count",
+            "description": "样本中出现该词的岗位数。"
+          },
+          "requirement_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Requirement Total",
+            "description": "本轮主样本岗位数。"
+          },
+          "job_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Job Evidence",
+            "description": "岗位侧证据：命中该词的要求原文。"
+          },
+          "job_sample_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Job Sample Urls",
+            "description": "岗位侧证据对应的样本链接。"
+          },
+          "background_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Background Evidence",
+            "description": "用户侧证据：明确自述或允许使用的来源正文。"
+          },
+          "background_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Background Refs",
+            "description": "用户侧证据的来源引用。"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "分类说明；待确认必须说明「不等于不足」。"
+          },
+          "inference": {
+            "type": "boolean",
+            "title": "Inference",
+            "description": "是否为推断（非直接证据）。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "term",
+          "category",
+          "requirement_count",
+          "requirement_total",
+          "note"
+        ],
+        "title": "CareerGapItem",
+        "description": "一条岗位要求与用户背景的逐项对照（两侧证据都保留）。"
       },
       "CareerItemState": {
         "type": "string",
@@ -30859,6 +31261,11 @@
             "title": "Experience Hint",
             "description": "用户提到的经验要求（逐条代码核对，未知不进入统计）。"
           },
+          "branch": {
+            "$ref": "#/components/schemas/CareerBranch",
+            "description": "本轮目的分支（只查岗位／个人准备）。",
+            "default": "job_intel"
+          },
           "plan": {
             "items": {
               "$ref": "#/components/schemas/CareerQueryPlanItem"
@@ -30917,6 +31324,61 @@
             "type": "array",
             "title": "Advices",
             "description": "面向用户的可执行建议。"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CareerBackgroundSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "个人规划分支的背景快照；只查岗位时为 None。"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CareerGapItem"
+            },
+            "type": "array",
+            "title": "Gaps",
+            "description": "逐项岗位要求 × 用户证据对照（个人规划分支；未知为待确认）。"
+          },
+          "personal_advices": {
+            "items": {
+              "$ref": "#/components/schemas/CareerAdviceItem"
+            },
+            "type": "array",
+            "title": "Personal Advices",
+            "description": "按差距与约束编排的个人优先行动。"
+          },
+          "combination_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/CareerCombinationRequirement"
+            },
+            "type": "array",
+            "title": "Combination Requirements",
+            "description": "供工单 37 组合的最小需求产物。"
+          },
+          "follow_up_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up Question",
+            "description": "背景不足时唯一的关键问题（不阻断岗位部分交付）。"
+          },
+          "personal_boundary": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Personal Boundary",
+            "description": "个人判断证据边界的中文说明。"
           },
           "adjacent_suggestions": {
             "items": {
@@ -52465,6 +52927,7 @@
           "uploaded_material",
           "study_explanation",
           "knowledge_base_required",
+          "evidence_gap",
           "user_disabled",
           "specialized_capability",
           "companion_default"
@@ -56431,6 +56894,99 @@
         "title": "StudyCoverageEntry",
         "description": "覆盖矩阵的一行：一个实质教学片段与知识点/排除理由的关系。"
       },
+      "StudyEvidenceAssessment": {
+        "properties": {
+          "protocol_version": {
+            "type": "string",
+            "title": "Protocol Version",
+            "default": "study-tutor-evidence-v2"
+          },
+          "sufficient": {
+            "type": "boolean",
+            "title": "Sufficient",
+            "default": false
+          },
+          "key_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Key Points"
+          },
+          "supported_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Points"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/StudyEvidenceGap"
+            },
+            "type": "array",
+            "title": "Gaps"
+          },
+          "supplements": {
+            "items": {
+              "$ref": "#/components/schemas/StudySupplementAttempt"
+            },
+            "type": "array",
+            "title": "Supplements"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          }
+        },
+        "type": "object",
+        "title": "StudyEvidenceAssessment",
+        "description": "问题级证据充分性评估与逐层补证记录（工单 32）。\n\n先取本节相关片段与必要前文判断关键解释点是否已支持；不足时按用户\n设置检索知识库，复查剩余缺口，仍不足且允许联网时用最小公开术语补证。\n评估只读材料，不改写阶段、范围或考查范围。"
+      },
+      "StudyEvidenceGap": {
+        "properties": {
+          "point": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Point"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "supplement": {
+            "type": "string",
+            "enum": [
+              "knowledge_base",
+              "web",
+              "page",
+              "none"
+            ],
+            "title": "Supplement",
+            "default": "none"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "unverified",
+              "needs_page"
+            ],
+            "title": "Status",
+            "default": "unverified"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point"
+        ],
+        "title": "StudyEvidenceGap",
+        "description": "问题级证据评估的一条缺口（工单 32）。\n\n``supplement`` 是所需补证类型：``knowledge_base`` 查本节之外的知识库、\n``web`` 需公开来源（时效或明确核验要求也归入此项）、``page`` 关键书页\n不清需补拍补录、``none`` 无可用补证。``status`` 是补给后的最终处置：\n``resolved`` 已由补充来源覆盖、``needs_page`` 等待书页、``unverified``\n因用户限制、来源失败或预算保持未核实。"
+      },
       "StudyExchange": {
         "properties": {
           "user_message_id": {
@@ -56460,6 +57016,16 @@
             "type": "string",
             "title": "Gap",
             "default": ""
+          },
+          "assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyEvidenceAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -57292,6 +57858,51 @@
         ],
         "title": "StudySummaryPoint",
         "description": "总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。"
+      },
+      "StudySupplementAttempt": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "knowledge_base",
+              "web"
+            ],
+            "title": "Layer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "used",
+              "empty",
+              "failed",
+              "conflict",
+              "skipped_disabled",
+              "skipped_restricted",
+              "not_needed",
+              "budget_exhausted",
+              "query_insufficient"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "source_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Source Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "status"
+        ],
+        "title": "StudySupplementAttempt",
+        "description": "一层补证的真实执行结果（用于审计“为何没查/没查到”）。"
       },
       "StudyUnclear": {
         "properties": {

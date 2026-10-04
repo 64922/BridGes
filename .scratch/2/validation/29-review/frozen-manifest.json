@@ -1,0 +1,21 @@
+{
+  "openapi.json": "3f0b157ec3fc80c90ff384d1877c16a9fdfa5ecf0e5ec88c6343c653ddc321a2",
+  "packages/contracts/src/generated.ts": "b74a70f437b1e1f5880de512e3f92d7717434d0555e5f33c8d4bea350d6c54f1",
+  "src/bridges/api/main.py": "5782bc4caa6cb41ce6520586270a3c894fe1bb40f26a742368771fef20e0526a",
+  "src/bridges/career_plan/advising.py": "83607dd7d0ae299afc0114e54b60038305304834c5b1055eec90cbea8f1bdb82",
+  "src/bridges/career_plan/background.py": "c11e98dc81eb30346563c03cc0a86d4f546f8e5bdd6d2a0b2e6411edac7538d9",
+  "src/bridges/career_plan/contracts.py": "48ca01b179dc1d2b1834da51844a60c750645e22b075129fb258d2d4c2fbee64",
+  "src/bridges/career_plan/gap.py": "488deeaa4a10dcc31a5be73097c83512f6ce757e080e9df7fda50fd23cb89a3a",
+  "src/bridges/career_plan/kernel.py": "7adea610643ce7f05cc5203f795874d9f7218f7b2f2b931178d5c7d3f8a13105",
+  "src/bridges/career_plan/lexicon.py": "5cf3c48f0628f174237e52f8aadc0ef09da4e5974bf31a9113f6a4587362117e",
+  "src/bridges/career_plan/parsing.py": "ceca67a2736c2e1c7408aab785bb77bd3dbb1392ffeb767b7d8684659e7f950f",
+  "src/bridges/career_plan/presenting.py": "c529fc558ad2a09b0a51372777f856da5103c89a9f97a252722136a0429e93f3",
+  "src/bridges/career_plan/reviewing.py": "5c36860a4a3dfd9e1863cb172d8d64cdafe93c88ed74466ac4f069b98278a883",
+  "src/bridges/career_plan/service.py": "a5cbc92838c551bbff09ec9dcddea472ddd747d01e5f8c98ab155dc38a656c92",
+  "src/bridges/chat/task_materials.py": "1bf8d2d1fa32048bccadb76e3853aa737c8e873dd7023a4ffe17c14e069c9787",
+  "tests/career_plan/test_career_plan_kernel_acceptance.py": "9da1c559e906c078bfabb4594ba92ca064f583009149a52a324e7da91c4daa39",
+  "tests/career_plan/test_issue29_background_recovery.py": "536e935cf7a492231ed6b69f9f5d4b9a6bd91ae2fcaa10fa03f79c3ea16ffdf3",
+  "tests/career_plan/test_issue29_personal_career_gap.py": "acd9298f8cfe06bc8c47c5895dec066b115d92d99568206a58739544a8f31d31",
+  "tests/career_plan/test_issue29_personal_review.py": "926faf1563adc38cd60e525d6310f3c997992b58d6462db6fe11742d5bf7f54c",
+  "tests/career_plan/test_issue29_review_regressions.py": "b0693e3619aa04a13888dad2ef3a02c3ae69ba2e12023a6cbab987e69667e714"
+}

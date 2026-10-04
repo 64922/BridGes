@@ -1,14 +1,16 @@
-"""职业规划模块编排服务（由日常父图在显式派发时调用，改进工单 28）。
+"""职业规划模块编排服务（由日常父图在显式派发时调用，改进工单 28／29）。
 
 子图按持久节点内核执行：``career.parse → career.plan → career.collect →
-career.filter → career.analyze → career.verify``。每个节点在自己的局部事务里
-提交产物与完成收据，恢复时先读收据：输入未变则回填产物（不重复外部读取），
-输入变化（例如任务城市条件从上海改成杭州）则重算该节点及其下游，旧统计绝不
-被当成当前数据复用。
+career.filter → career.analyze → career.background → career.gap →
+career.advise → career.verify``。每个节点在自己的局部事务里提交产物与完成收据，
+恢复时先读收据：输入未变则回填产物（不重复外部读取），输入变化（例如任务城市
+条件从上海改成杭州）则重算该节点及其下游，旧统计绝不被当成当前数据复用。
 
 每一步都只写真实发生的事：实际查询词与筛选条件、真实读到的岗位字段、逐条
 剔除依据。主样本只收公开可读、岗位名或职责原文命中目标、城市与经验条件都
-可核对的岗位；读不到页面时如实降级为「未核实链接」。本模块不调用模型。
+可核对的岗位；读不到页面时如实降级为「未核实链接」。个人规划分支只经登记
+的背景提供者读取当前陈述与允许使用的最小切片，公开检索从不携带背景正文，
+岗位结果也不写回画像。本模块不调用模型。
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, NoReturn
 
+from bridges.career_plan.background import CareerBackgroundProvider
 from bridges.career_plan.contracts import (
     CareerCandidateLink,
     CareerPlanProjection,
@@ -34,9 +37,12 @@ from bridges.career_plan.kernel import (
     CAREER_RECIPE_ID,
     CAREER_RECIPE_VERSION,
     FAILED_QUERY_STATUSES,
+    NODE_ADVISE,
     NODE_ANALYZE,
+    NODE_BACKGROUND,
     NODE_COLLECT,
     NODE_FILTER,
+    NODE_GAP,
     NODE_PARSE,
     NODE_PLAN,
     NODE_VERIFY,
@@ -127,6 +133,7 @@ class CareerPlanService:
             [str, str], tuple[str | None, int | None] | None
         ]
         | None = None,
+        background_provider: CareerBackgroundProvider | None = None,
     ) -> None:
         self._search = search
         self._reader = reader
@@ -134,8 +141,7 @@ class CareerPlanService:
         self._read_deadline_seconds = read_deadline_seconds
         self._reads_per_source = reads_per_source
         self._task_version_provider = task_version_provider
-        self._registry = career_recipe_registry()
-        self._recipe = self._registry.get(CAREER_RECIPE_ID)
+        self._background_provider = background_provider
 
     def close(self) -> None:
         closer = getattr(self._reader, "close", None)
@@ -204,29 +210,33 @@ class CareerPlanService:
             search_deadline_seconds=self._search_deadline_seconds,
             read_deadline_seconds=self._read_deadline_seconds,
             reads_per_source=self._reads_per_source,
+            background_provider=self._background_provider,
         )
+        registry = career_recipe_registry(background_input_key=flow.background_input_key)
+        recipe = registry.get(CAREER_RECIPE_ID)
         kernel = NodeKernel(
-            registry=self._registry,
+            registry=registry,
             repository=NodeKernelRepository(repo.database),
             guard=guard,
             gates=CAREER_GATE_HANDLERS,
             runner=flow.run_node,
             clock=clock,
         )
+        kernel_inputs = RecipeInputs(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            user_message_id=user_message_id,
+            user_content=content,
+            task_id=task_ref[0] if task_ref is not None else None,
+            task_version=task_ref[1] if task_ref is not None else None,
+            wait_identity=self._wait_identity(pending),
+            artifacts={},
+            prior_digest=flow.prior_digest,
+        )
         result = kernel.execute(
-            recipe=self._recipe,
-            inputs=RecipeInputs(
-                account_id=account_id,
-                conversation_id=conversation_id,
-                run_id=run_id,
-                user_message_id=user_message_id,
-                user_content=content,
-                task_id=task_ref[0] if task_ref is not None else None,
-                task_version=task_ref[1] if task_ref is not None else None,
-                wait_identity=self._wait_identity(pending),
-                artifacts={},
-                prior_digest=flow.prior_digest,
-            ),
+            recipe=recipe,
+            inputs=kernel_inputs,
             remaining_budget_ms=(
                 budget.remaining_work_ms() if budget is not None else None
             ),
@@ -236,6 +246,29 @@ class CareerPlanService:
         # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
         delivery_failure: _CareerDeliveryError | None = None
         with NodeKernelRepository(repo.database).transaction():
+            # 同一最终事务内核对画像，避免核验节点后撤回仍交付旧个人结论。
+            # 最多修复一次；公开节点的输入不变，仍按已核实收据复用。
+            for repair in range(2):
+                background = result.artifact(NODE_BACKGROUND)
+                if result.status is not KernelStatus.COMPLETED or background is None:
+                    break
+                if background.payload.get("background") is None:
+                    break
+                current_key = flow.background_input_key(replace(
+                    kernel_inputs,
+                    artifacts={artifact.node: artifact for artifact in result.artifacts},
+                ))
+                if current_key == background.input_key:
+                    break
+                if repair:
+                    raise CareerSupersededError("career_background_changed")
+                result = kernel.execute(
+                    recipe=recipe, inputs=kernel_inputs,
+                    remaining_budget_ms=(
+                        budget.remaining_work_ms() if budget is not None else None
+                    ),
+                    event_sink=emit_node, stop_event=stop_event,
+                )
             decision = guard.verify()
             if not decision.ok:
                 if decision.code != "run_stopped":
@@ -700,9 +733,12 @@ __all__ = [
     "CAREER_RECIPE_ID",
     "CAREER_RECIPE_VERSION",
     "FAILED_QUERY_STATUSES",
+    "NODE_ADVISE",
     "NODE_ANALYZE",
+    "NODE_BACKGROUND",
     "NODE_COLLECT",
     "NODE_FILTER",
+    "NODE_GAP",
     "NODE_PARSE",
     "NODE_PLAN",
     "NODE_VERIFY",

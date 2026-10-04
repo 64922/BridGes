@@ -1,23 +1,31 @@
-"""职业规划配方的持久节点实现（改进工单 28）。
+"""职业规划配方的持久节点实现（改进工单 28／29）。
 
 配方顺序（与 ``docs/workflow/daily-workflows.md`` 的职业规划段落一致）：
 
     career.parse → career.plan → career.collect → career.filter
-      → career.analyze → career.verify
+      → career.analyze → career.background → career.gap → career.advise
+      → career.verify
 
 每个节点都在自己的局部事务里提交类型化产物、输入依赖/哈希、质量裁决与完成
 收据；恢复先读完成收据，未完成或输入变化（例如任务城市条件改成杭州）的节点
 及其下游按输入键重算，未变化的中间结果直接回填，旧统计不会被当成当前数据复用。
 
 - ``career.parse``：保留岗位原词/职责意图/阶段/城市/经验条件；当前消息只修订
-  条件（如「换成杭州」）时回退任务上下文补齐目标，任务条件版本进入输入键。
+  条件（如「换成杭州」）时回退任务上下文补齐目标，任务条件版本进入输入键；
+  同时确定性区分「只查岗位」与「个人准备」两条目的分支。
 - ``career.collect``：逐来源检索、逐页公开读取；每次调用都进统一查询记录。
 - ``career.filter``：逐条代码核对岗位/职责、过期、城市与经验条件；未知一律
   不进入相应统计（职责语义命中需两票以上且相邻族不占优）。
 - ``career.analyze``：只按主样本归纳，薪资保留币种/计薪单位/发薪月数与缺失
   字段；样本不足停止总体推断。
-- ``career.verify``：必需门核验「样本证据、统计口径、条件核对」后形成待交付
-  投影；可选门如实记录未执行独立复核。
+- ``career.background``（工单 29）：仅个人规划分支读取当前陈述、允许使用的
+  19 切片或登记简历片段；只查岗位时明确跳过，公开检索查询从不携带背景正文。
+- ``career.gap``（工单 29）：岗位要求 × 用户证据逐项对照；没有依据一律
+  待确认，未知不等于不足。
+- ``career.advise``（工单 29）：岗位侧行动照旧；个人分支按明确待提升、已有
+  依据、待确认排序，并把每天可用时间等约束翻成可执行说明。
+- ``career.verify``：必需门核验「样本证据、统计口径、条件核对、个人证据
+  两侧支持」后形成待交付投影；可选门如实记录未执行独立复核。
 """
 
 from __future__ import annotations
@@ -34,6 +42,12 @@ from typing import TYPE_CHECKING, Any
 
 from bridges.career_plan.advising import build_advice
 from bridges.career_plan.analyzing import SMALL_SAMPLE_MIN, analyze_samples
+from bridges.career_plan.background import (
+    CareerBackgroundProvider,
+    build_statement_items,
+    finalize_snapshot,
+    unavailable_snapshot,
+)
 from bridges.career_plan.collecting import (
     JobPageReadResult,
     ParsedJobPage,
@@ -42,7 +56,11 @@ from bridges.career_plan.contracts import (
     AdjacentJobSuggestion,
     CareerAdviceItem,
     CareerAnalysis,
+    CareerBackgroundSnapshot,
+    CareerBranch,
     CareerCandidateLink,
+    CareerCombinationRequirement,
+    CareerGapItem,
     CareerPlanProjection,
     CareerPlanStatus,
     CareerQueryPlanItem,
@@ -55,6 +73,11 @@ from bridges.career_plan.filtering import (
     JobCandidate,
     filter_candidates,
     site_label,
+)
+from bridges.career_plan.gap import (
+    build_gaps,
+    build_personal_advice,
+    personal_boundary_notes,
 )
 from bridges.career_plan.lexicon import (
     SOURCE_LABELS,
@@ -91,10 +114,13 @@ NODE_PLAN = "career.plan"
 NODE_COLLECT = "career.collect"
 NODE_FILTER = "career.filter"
 NODE_ANALYZE = "career.analyze"
+NODE_BACKGROUND = "career.background"
+NODE_GAP = "career.gap"
+NODE_ADVISE = "career.advise"
 NODE_VERIFY = "career.verify"
 
 CAREER_RECIPE_ID = "career-job-sample"
-CAREER_RECIPE_VERSION = "career-job-sample-recipe-v1"
+CAREER_RECIPE_VERSION = "career-job-sample-recipe-v3"
 
 #: 节点的用户可读中文名（父图失败信息按此标注真实失败位置）。
 CAREER_NODE_LABELS: dict[str, str] = {
@@ -103,17 +129,23 @@ CAREER_NODE_LABELS: dict[str, str] = {
     NODE_COLLECT: "读取公开岗位",
     NODE_FILTER: "筛选匹配岗位",
     NODE_ANALYZE: "归纳技能与薪资",
+    NODE_BACKGROUND: "编译个人背景",
+    NODE_GAP: "对照个人差距",
+    NODE_ADVISE: "编排优先行动",
     NODE_VERIFY: "核验样本证据",
 }
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 CAREER_CAPABILITY_VERSIONS: dict[str, str] = {
-    "career.parse_request": "career-parse-v3",
+    "career.parse_request": "career-parse-v4",
     "career.plan_query": "career-plan-v2",
     "career.collect_jobs": "career-collect-v2",
     "career.filter_jobs": "career-filter-v3",
-    "career.analyze_jobs": "career-analyze-v3",
-    "career.verify_delivery": "career-verify-v2",
+    "career.analyze_jobs": "career-analyze-v4",
+    "career.load_background": "career-background-v2",
+    "career.match_gap": "career-gap-v2",
+    "career.advise_actions": "career-advise-v3",
+    "career.verify_delivery": "career-verify-v3",
 }
 
 #: 配方的必要门、可选门（登记集合；代码拒绝未登记质量门）。
@@ -122,7 +154,9 @@ CAREER_GATES: frozenset[str] = frozenset(
         "career.sample_evidence",
         "career.stats_caliber",
         "career.conditions_hold",
+        "career.personal_evidence",
         "career.independent_review",
+        "career.personal_review",
     }
 )
 
@@ -450,12 +484,114 @@ def _independent_review_gate(
     )
 
 
+def _personal_evidence_gate(
+    invocation: NodeInvocation, execution: NodeExecution
+) -> QualityGateResult:
+    """必要门（个人分支）：差距结论必须有用户与岗位两侧可定位证据。
+
+    只查岗位分支明确跳过；个人分支里非「待确认」的每条差距必须同时具备
+    岗位要求原文与用户侧来源引用；只查岗位或没有个人结论时不拦截。
+    """
+    del invocation
+    projection = execution.artifact.payload.get("projection") or {}
+    if str(projection.get("branch") or CareerBranch.JOB_INTEL.value) != (
+        CareerBranch.PERSONAL_PLANNING.value
+    ):
+        return QualityGateResult(
+            gate="career.personal_evidence",
+            verdict=QualityVerdict.PASS,
+            detail={"skipped": True, "reason": "本轮只查岗位，未进入个人差距流程。"},
+        )
+    for gap in projection.get("gaps") or []:
+        category = str(gap.get("category") or "")
+        term = str(gap.get("term") or "")
+        if category in {"has_evidence", "to_improve"} and (
+            not gap.get("job_evidence")
+            or not gap.get("background_evidence")
+            or not gap.get("background_refs")
+        ):
+            return QualityGateResult(
+                gate="career.personal_evidence",
+                verdict=QualityVerdict.BLOCKED,
+                code="career_personal_evidence_missing",
+                message="个人差距缺少用户或岗位两侧证据，本轮不交付该结论。",
+                detail={"term": term, "category": category},
+            )
+        if category == "to_confirm" and "不等于不足" not in str(gap.get("note") or ""):
+            return QualityGateResult(
+                gate="career.personal_evidence",
+                verdict=QualityVerdict.BLOCKED,
+                code="career_unknown_treated_as_weakness",
+                message="待确认项缺少「未知不等于不足」的边界说明，本轮不交付。",
+                detail={"term": term},
+            )
+    for advice in projection.get("personal_advices") or []:
+        if bool(advice.get("inference")) is False and str(advice.get("kind") or "") in {
+            "skill",
+            "leverage",
+            "pace",
+        } and (not advice.get("basis") or not advice.get("background_basis")):
+            return QualityGateResult(
+                gate="career.personal_evidence",
+                verdict=QualityVerdict.BLOCKED,
+                code="career_personal_advice_evidence_missing",
+                message="个人行动缺少直接依据，本轮不交付。",
+                detail={"title": advice.get("title")},
+            )
+    return QualityGateResult(
+        gate="career.personal_evidence",
+        verdict=QualityVerdict.PASS,
+        detail={"gaps": len(projection.get("gaps") or [])},
+    )
+
+
+def _personal_review_gate(
+    invocation: NodeInvocation, execution: NodeExecution
+) -> QualityGateResult:
+    """必要门：独立重查原始证据；新的综合推断没有复核来源则阻塞。"""
+    del invocation
+    projection = execution.artifact.payload.get("projection") or {}
+    if str(projection.get("branch") or CareerBranch.JOB_INTEL.value) != (
+        CareerBranch.PERSONAL_PLANNING.value
+    ):
+        return QualityGateResult(
+            gate="career.personal_review",
+            verdict=QualityVerdict.PASS,
+            detail={"executed": False, "reason": "本轮不涉及个人综合判断。"},
+        )
+    from bridges.career_plan.reviewing import review_personal_projection
+
+    reason = review_personal_projection(CareerPlanProjection.model_validate(projection))
+    if reason is not None:
+        return QualityGateResult(
+            gate="career.personal_review",
+            verdict=QualityVerdict.BLOCKED,
+            code="career_personal_review_blocked",
+            message=reason,
+            detail={"executed": True, "method": "independent_code_evidence_review"},
+        )
+    return QualityGateResult(
+        gate="career.personal_review",
+        verdict=QualityVerdict.PASS,
+        detail={
+            "executed": True,
+            "method": "independent_code_evidence_review",
+            "reason": (
+                "独立代码核验已从原始样本与背景重查分类和有限行动策略；"
+                "这不是模型复核，新的能力综合推断缺少独立来源时保持阻塞。"
+            ),
+        },
+    )
+
+
 #: 配方质量门处理器（与配方登记的门名一一对应；内核据此执行结构化裁决）。
 CAREER_GATE_HANDLERS: dict[str, Any] = {
     "career.sample_evidence": _sample_evidence_gate,
     "career.stats_caliber": _stats_caliber_gate,
     "career.conditions_hold": _conditions_hold_gate,
+    "career.personal_evidence": _personal_evidence_gate,
     "career.independent_review": _independent_review_gate,
+    "career.personal_review": _personal_review_gate,
 }
 
 
@@ -512,6 +648,43 @@ def _analyze_key(inputs: RecipeInputs) -> str:
     )
 
 
+def _background_key(inputs: RecipeInputs) -> str:
+    return _digest(
+        {
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
+            "content": inputs.user_content,
+            "wait": inputs.wait_identity,
+            "prior": inputs.prior_digest,
+            "capability": CAREER_CAPABILITY_VERSIONS["career.load_background"],
+        }
+    )
+
+
+def _gap_key(inputs: RecipeInputs) -> str:
+    return _digest(
+        {
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
+            "filter": inputs.artifacts[NODE_FILTER].content_hash,
+            "analyze": inputs.artifacts[NODE_ANALYZE].content_hash,
+            "background": inputs.artifacts[NODE_BACKGROUND].content_hash,
+            "capability": CAREER_CAPABILITY_VERSIONS["career.match_gap"],
+        }
+    )
+
+
+def _advise_key(inputs: RecipeInputs) -> str:
+    return _digest(
+        {
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
+            "filter": inputs.artifacts[NODE_FILTER].content_hash,
+            "analyze": inputs.artifacts[NODE_ANALYZE].content_hash,
+            "background": inputs.artifacts[NODE_BACKGROUND].content_hash,
+            "gap": inputs.artifacts[NODE_GAP].content_hash,
+            "capability": CAREER_CAPABILITY_VERSIONS["career.advise_actions"],
+        }
+    )
+
+
 def _verify_key(inputs: RecipeInputs) -> str:
     return _digest(
         {
@@ -520,12 +693,17 @@ def _verify_key(inputs: RecipeInputs) -> str:
             "collect": inputs.artifacts[NODE_COLLECT].content_hash,
             "filter": inputs.artifacts[NODE_FILTER].content_hash,
             "analyze": inputs.artifacts[NODE_ANALYZE].content_hash,
+            "background": inputs.artifacts[NODE_BACKGROUND].content_hash,
+            "gap": inputs.artifacts[NODE_GAP].content_hash,
+            "advise": inputs.artifacts[NODE_ADVISE].content_hash,
             "capability": CAREER_CAPABILITY_VERSIONS["career.verify_delivery"],
         }
     )
 
 
-def build_career_recipe() -> RecipeDefinition:
+def build_career_recipe(
+    *, background_input_key: Callable[[RecipeInputs], str] | None = None
+) -> RecipeDefinition:
     """构造并校验职业规划配方（必经顺序、依赖只指向前置节点）。"""
     return RecipeDefinition(
         recipe_id=CAREER_RECIPE_ID,
@@ -581,32 +759,81 @@ def build_career_recipe() -> RecipeDefinition:
                 description="只按主样本归纳技能与薪资；保留币种/月数/缺失字段。",
             ),
             NodeSpec(
+                name=NODE_BACKGROUND,
+                capability="career.load_background",
+                capability_version=CAREER_CAPABILITY_VERSIONS["career.load_background"],
+                artifact_type="career.background_snapshot",
+                input_key=background_input_key or _background_key,
+                depends_on=(NODE_PARSE,),
+                recovery=RecoveryPolicy.RETRY_NODE,
+                description="仅个人分支读取当前陈述与允许的长期背景；只查岗位明确跳过。",
+            ),
+            NodeSpec(
+                name=NODE_GAP,
+                capability="career.match_gap",
+                capability_version=CAREER_CAPABILITY_VERSIONS["career.match_gap"],
+                artifact_type="career.gap_analysis",
+                input_key=_gap_key,
+                depends_on=(NODE_PARSE, NODE_FILTER, NODE_ANALYZE, NODE_BACKGROUND),
+                recovery=RecoveryPolicy.BLOCK,
+                description="岗位要求与用户证据逐项对照；无依据一律待确认。",
+            ),
+            NodeSpec(
+                name=NODE_ADVISE,
+                capability="career.advise_actions",
+                capability_version=CAREER_CAPABILITY_VERSIONS["career.advise_actions"],
+                artifact_type="career.advice_plan",
+                input_key=_advise_key,
+                depends_on=(
+                    NODE_PARSE,
+                    NODE_FILTER,
+                    NODE_ANALYZE,
+                    NODE_BACKGROUND,
+                    NODE_GAP,
+                ),
+                recovery=RecoveryPolicy.BLOCK,
+                description="岗位行动照旧；个人分支按差距与约束编排优先行动。",
+            ),
+            NodeSpec(
                 name=NODE_VERIFY,
                 capability="career.verify_delivery",
                 capability_version=CAREER_CAPABILITY_VERSIONS["career.verify_delivery"],
                 artifact_type="career.delivery",
                 input_key=_verify_key,
-                depends_on=(NODE_PARSE, NODE_PLAN, NODE_COLLECT, NODE_FILTER, NODE_ANALYZE),
+                depends_on=(
+                    NODE_PARSE,
+                    NODE_PLAN,
+                    NODE_COLLECT,
+                    NODE_FILTER,
+                    NODE_ANALYZE,
+                    NODE_BACKGROUND,
+                    NODE_GAP,
+                    NODE_ADVISE,
+                ),
                 required_gates=(
                     "career.sample_evidence",
                     "career.stats_caliber",
                     "career.conditions_hold",
+                    "career.personal_evidence",
+                    "career.personal_review",
                 ),
                 optional_gates=("career.independent_review",),
                 recovery=RecoveryPolicy.BLOCK,
-                description="核验样本证据、统计口径与条件核对后形成待交付投影。",
+                description="核验样本证据、统计口径、条件核对与个人证据后形成待交付投影。",
             ),
         ),
     )
 
 
-def career_recipe_registry() -> RecipeRegistry:
+def career_recipe_registry(
+    *, background_input_key: Callable[[RecipeInputs], str] | None = None
+) -> RecipeRegistry:
     """登记职业规划能力、质量门与配方；非法定义在装配时即被拒绝。"""
     registry = RecipeRegistry(
         capabilities=CAREER_CAPABILITY_VERSIONS.keys(),
         gates=CAREER_GATES,
     )
-    registry.register(build_career_recipe())
+    registry.register(build_career_recipe(background_input_key=background_input_key))
     return registry
 
 
@@ -738,10 +965,17 @@ def _build_projection(
     advices: list[CareerAdviceItem],
     adjacent: list[AdjacentJobSuggestion],
     reads_per_source: int,
+    background: CareerBackgroundSnapshot | None = None,
+    gaps: Sequence[CareerGapItem] = (),
+    personal_advices: Sequence[CareerAdviceItem] = (),
+    combination_requirements: Sequence[CareerCombinationRequirement] = (),
+    follow_up_question: str | None = None,
+    personal_boundary: Sequence[str] = (),
 ) -> CareerPlanProjection:
     links = _candidate_links(unconfirmed, unread_links)
     status = _status(records, samples, bool(links))
     error = _error_record(records)
+    is_personal = analysis.branch is CareerBranch.PERSONAL_PLANNING
     return CareerPlanProjection(
         status=status,
         topic=_topic_of(analysis),
@@ -753,6 +987,7 @@ def _build_projection(
         cities=list(analysis.cities),
         constraints=list(analysis.constraints),
         experience_hint=analysis.experience_hint,
+        branch=analysis.branch,
         plan=list(plan),
         queries=list(records),
         samples=samples,
@@ -760,15 +995,26 @@ def _build_projection(
         rejected=rejected,
         analysis=report if samples else None,
         advices=advices,
+        background=background if is_personal else None,
+        gaps=list(gaps) if is_personal else [],
+        personal_advices=list(personal_advices) if is_personal else [],
+        combination_requirements=(
+            list(combination_requirements) if is_personal else []
+        ),
+        follow_up_question=follow_up_question if is_personal else None,
+        personal_boundary=list(personal_boundary) if is_personal else [],
         adjacent_suggestions=adjacent,
-        evidence_boundary=_evidence_boundary(
-            analysis,
-            records,
-            unconfirmed_count=len(unconfirmed),
-            unread_count=len(unread_links),
-            samples=samples,
-            rejected=rejected,
-            reads_per_source=reads_per_source,
+        evidence_boundary=(
+            _evidence_boundary(
+                analysis,
+                records,
+                unconfirmed_count=len(unconfirmed),
+                unread_count=len(unread_links),
+                samples=samples,
+                rejected=rejected,
+                reads_per_source=reads_per_source,
+            )
+            + list(personal_boundary if is_personal else ())
         ),
         empty_reason=(
             _empty_reason(analysis)
@@ -802,6 +1048,7 @@ class CareerNodeFlow:
         search_deadline_seconds: float = SEARCH_DEADLINE_SECONDS,
         read_deadline_seconds: float = READ_DEADLINE_SECONDS,
         reads_per_source: int = READS_PER_SOURCE,
+        background_provider: CareerBackgroundProvider | None = None,
     ) -> None:
         self._search = search
         self._reader = reader
@@ -813,6 +1060,9 @@ class CareerNodeFlow:
         self._search_deadline_seconds = search_deadline_seconds
         self._read_deadline_seconds = read_deadline_seconds
         self._reads_per_source = reads_per_source
+        self._background_provider = background_provider
+        self._prepared_background: CareerBackgroundSnapshot | None = None
+        self._prepared_background_key: str | None = None
 
     @property
     def prior_digest(self) -> str | None:
@@ -852,6 +1102,9 @@ class CareerNodeFlow:
             NODE_COLLECT: self._run_collect,
             NODE_FILTER: self._run_filter,
             NODE_ANALYZE: self._run_analyze,
+            NODE_BACKGROUND: self._run_background,
+            NODE_GAP: self._run_gap,
+            NODE_ADVISE: self._run_advise,
             NODE_VERIFY: self._run_verify,
         }[invocation.spec.name]
         try:
@@ -1133,7 +1386,6 @@ class CareerNodeFlow:
         )
 
     def _run_analyze(self, invocation: NodeInvocation) -> NodeExecution:
-        analysis = self._analysis(invocation)
         filter_payload = self._dep(invocation, NODE_FILTER)
         samples = [
             JobSample.model_validate(item) for item in filter_payload.get("samples") or []
@@ -1144,21 +1396,11 @@ class CareerNodeFlow:
                 filter_payload.get("experience_unverified_count") or 0
             ),
         )
-        advices, adjacent = build_advice(
-            analysis,
-            report,
-            samples,
-            adjacent_counts=filter_payload.get("adjacent_counts") or {},
-        )
         return NodeExecution(
             artifact=self._artifact(
                 invocation,
                 trust_state=ArtifactTrust.EVIDENCE_BOUND,
-                payload={
-                    "analysis": report.model_dump(mode="json"),
-                    "advices": [item.model_dump(mode="json") for item in advices],
-                    "adjacent": [item.model_dump(mode="json") for item in adjacent],
-                },
+                payload={"analysis": report.model_dump(mode="json")},
                 read_scope="只基于主样本页面原文归纳（无外部读取）",
                 requirement_coverage=[
                     {"requirement": "薪资按币种与计薪单位分别归并", "covered": True},
@@ -1168,6 +1410,216 @@ class CareerNodeFlow:
             verdict=QualityVerdict.PASS,
             status=NodeReceiptStatus.COMPLETED,
             detail={"sample_count": report.sample_count},
+        )
+
+    def background_input_key(self, inputs: RecipeInputs) -> str:
+        """复用收据前核验背景；当前执行只加载一次，时钟不改变内容键。"""
+        analysis = CareerRequestAnalysis.model_validate(
+            inputs.artifacts[NODE_PARSE].payload["analysis"]
+        )
+        if analysis.branch is not CareerBranch.PERSONAL_PLANNING:
+            self._prepared_background = None
+            self._prepared_background_key = _background_key(inputs)
+            return self._prepared_background_key
+        statement_items = build_statement_items(
+            user_content=inputs.user_content,
+            user_message_id=inputs.user_message_id,
+            task_texts=self._task_texts(),
+            task_ref=(
+                f"task:{inputs.task_id}#v{inputs.task_version}"
+                if inputs.task_id is not None else None
+            ),
+        )
+        profile_snapshot: CareerBackgroundSnapshot | None = None
+        if self._background_provider is not None:
+            try:
+                profile_snapshot = self._background_provider.load(
+                    inputs.account_id,
+                    run_id=inputs.run_id,
+                    query=inputs.user_content or None,
+                    current_user_message_id=inputs.user_message_id,
+                    now=self._clock(),
+                )
+            except Exception:  # noqa: BLE001 - 背景来源失败不阻断公开岗位部分
+                profile_snapshot = unavailable_snapshot(
+                    "长期背景来源本轮不可用；个人部分只使用当前陈述。",
+                    checked_at=self._clock(),
+                )
+        self._prepared_background = finalize_snapshot(
+            analysis=analysis,
+            statement_items=statement_items,
+            profile_snapshot=profile_snapshot,
+        )
+        self._prepared_background_key = _digest({
+            "request": _background_key(inputs),
+            "background": self._prepared_background.model_dump(
+                mode="json", exclude={"checked_at"}
+            ),
+        })
+        return self._prepared_background_key
+
+    def _run_background(self, invocation: NodeInvocation) -> NodeExecution:
+        """仅个人规划分支读取允许背景；只查岗位时明确跳过。"""
+        analysis = self._analysis(invocation)
+        if analysis.branch is not CareerBranch.PERSONAL_PLANNING:
+            return NodeExecution(
+                artifact=self._artifact(
+                    invocation,
+                    trust_state=ArtifactTrust.EVIDENCE_BOUND,
+                    payload={
+                        "background": None,
+                        "skipped": True,
+                        "reason": "本轮只查岗位，未进入个人背景流程。",
+                    },
+                    requirement_coverage=[
+                        {"requirement": "只岗位请求不读取个人背景", "covered": True},
+                    ],
+                ),
+                verdict=QualityVerdict.PASS,
+                status=NodeReceiptStatus.COMPLETED,
+                detail={"skipped": True},
+            )
+        snapshot = self._prepared_background
+        if snapshot is None:
+            self.background_input_key(invocation.inputs)
+            snapshot = self._prepared_background
+        assert snapshot is not None
+        return NodeExecution(
+            artifact=self._artifact(
+                invocation,
+                trust_state=ArtifactTrust.EVIDENCE_BOUND,
+                payload={
+                    "background": snapshot.model_dump(mode="json"),
+                    "skipped": False,
+                },
+                read_scope=(
+                    "当前陈述与任务原话"
+                    + ("、允许使用的已记住信息切片" if snapshot.used_profile else "")
+                    + "（不含未采用正文）"
+                ),
+                requirement_coverage=[
+                    {"requirement": "每次调用检查切片版本与来源", "covered": True},
+                    {"requirement": "背景正文不进入公开检索", "covered": True},
+                ],
+                source_refs=[item.source_ref for item in snapshot.items],
+                unconfirmed=(
+                    [snapshot.unavailable_reason]
+                    if snapshot.unavailable_reason
+                    else []
+                ),
+            ),
+            verdict=QualityVerdict.PASS,
+            status=NodeReceiptStatus.COMPLETED,
+            detail={
+                "items": len(snapshot.items),
+                "used_profile": snapshot.used_profile,
+                "time_budget_minutes": snapshot.time_budget_minutes,
+            },
+        )
+
+    def _run_gap(self, invocation: NodeInvocation) -> NodeExecution:
+        """岗位要求 × 用户证据逐项对照；未知保持待确认。"""
+        analysis = self._analysis(invocation)
+        background = self._background(invocation)
+        if analysis.branch is not CareerBranch.PERSONAL_PLANNING or background is None:
+            return NodeExecution(
+                artifact=self._artifact(
+                    invocation,
+                    trust_state=ArtifactTrust.EVIDENCE_BOUND,
+                    payload={"gaps": [], "skipped": True},
+                    requirement_coverage=[
+                        {"requirement": "只岗位请求不产生个人差距结论", "covered": True},
+                    ],
+                ),
+                verdict=QualityVerdict.PASS,
+                status=NodeReceiptStatus.COMPLETED,
+                detail={"skipped": True},
+            )
+        report = self._report(invocation)
+        samples = self._samples(invocation)
+        gaps = build_gaps(
+            analysis=analysis, report=report, samples=samples, background=background
+        )
+        return NodeExecution(
+            artifact=self._artifact(
+                invocation,
+                trust_state=ArtifactTrust.EVIDENCE_BOUND,
+                payload={
+                    "gaps": [gap.model_dump(mode="json") for gap in gaps],
+                    "skipped": False,
+                    "insufficient": not any(gap.background_evidence for gap in gaps),
+                },
+                read_scope="只对照主样本要求原文与允许使用的背景正文（无模型调用）",
+                requirement_coverage=[
+                    {"requirement": "未知能力不判为不足", "covered": True},
+                    {"requirement": "差距两侧证据可定位", "covered": True},
+                ],
+            ),
+            verdict=QualityVerdict.PASS,
+            status=NodeReceiptStatus.COMPLETED,
+            detail={
+                "gaps": len(gaps),
+                "confirmed": sum(
+                    1 for gap in gaps if gap.background_evidence
+                ),
+            },
+        )
+
+    def _run_advise(self, invocation: NodeInvocation) -> NodeExecution:
+        """岗位行动照旧；个人分支按差距与约束编排优先行动。"""
+        analysis = self._analysis(invocation)
+        filter_payload = self._dep(invocation, NODE_FILTER)
+        samples = [
+            JobSample.model_validate(item) for item in filter_payload.get("samples") or []
+        ]
+        report = self._report(invocation)
+        is_personal = analysis.branch is CareerBranch.PERSONAL_PLANNING
+        advices, adjacent = build_advice(
+            analysis,
+            report,
+            samples,
+            adjacent_counts=filter_payload.get("adjacent_counts") or {},
+            personal=is_personal,
+        )
+        gaps = self._gaps(invocation)
+        background = self._background(invocation)
+        personal_advices: list[CareerAdviceItem] = []
+        requirements: list[CareerCombinationRequirement] = []
+        question: str | None = None
+        if is_personal and report is not None and gaps:
+            personal_advices, requirements, question = build_personal_advice(
+                analysis=analysis,
+                report=report,
+                gaps=gaps,
+                background=background,
+            )
+        return NodeExecution(
+            artifact=self._artifact(
+                invocation,
+                trust_state=ArtifactTrust.EVIDENCE_BOUND,
+                payload={
+                    "advices": [item.model_dump(mode="json") for item in advices],
+                    "adjacent": [item.model_dump(mode="json") for item in adjacent],
+                    "personal_advices": [
+                        item.model_dump(mode="json") for item in personal_advices
+                    ],
+                    "combination_requirements": [
+                        item.model_dump(mode="json") for item in requirements
+                    ],
+                    "follow_up_question": question,
+                },
+                read_scope="只引用主样本要求原文与已采用背景（无外部调用）",
+                requirement_coverage=[
+                    {"requirement": "建议区分直接证据与推断", "covered": True},
+                    {"requirement": "时间约束影响行动可行性", "covered": True},
+                ],
+            ),
+            verdict=QualityVerdict.PASS,
+            status=NodeReceiptStatus.COMPLETED,
+            detail={
+                "advices": len(advices),
+                "personal_advices": len(personal_advices),
+            },
         )
 
     def _run_verify(self, invocation: NodeInvocation) -> NodeExecution:
@@ -1200,14 +1652,30 @@ class CareerNodeFlow:
             if samples and analyze_payload.get("analysis")
             else None
         )
+        advise_payload = self._dep(invocation, NODE_ADVISE)
         advices = [
             CareerAdviceItem.model_validate(item)
-            for item in analyze_payload.get("advices") or []
+            for item in advise_payload.get("advices") or []
         ]
         adjacent = [
             AdjacentJobSuggestion.model_validate(item)
-            for item in analyze_payload.get("adjacent") or []
+            for item in advise_payload.get("adjacent") or []
         ]
+        personal_advices = [
+            CareerAdviceItem.model_validate(item)
+            for item in advise_payload.get("personal_advices") or []
+        ]
+        requirements = [
+            CareerCombinationRequirement.model_validate(item)
+            for item in advise_payload.get("combination_requirements") or []
+        ]
+        background = self._background(invocation)
+        gaps = self._gaps(invocation)
+        boundary = personal_boundary_notes(
+            branch_is_personal=analysis.branch is CareerBranch.PERSONAL_PLANNING,
+            background=background,
+            gaps=gaps,
+        )
         projection = _build_projection(
             analysis=analysis,
             plan=plan,
@@ -1220,6 +1688,12 @@ class CareerNodeFlow:
             advices=advices,
             adjacent=adjacent,
             reads_per_source=self._reads_per_source,
+            background=background,
+            gaps=gaps,
+            personal_advices=personal_advices,
+            combination_requirements=requirements,
+            follow_up_question=advise_payload.get("follow_up_question"),
+            personal_boundary=boundary,
         )
         return NodeExecution(
             artifact=self._artifact(
@@ -1246,6 +1720,35 @@ class CareerNodeFlow:
         return CareerRequestAnalysis.model_validate(
             self._dep(invocation, NODE_PARSE)["analysis"]
         )
+
+    def _samples(self, invocation: NodeInvocation) -> list[JobSample]:
+        filter_payload = self._dep(invocation, NODE_FILTER)
+        return [
+            JobSample.model_validate(item)
+            for item in filter_payload.get("samples") or []
+        ]
+
+    def _report(self, invocation: NodeInvocation) -> CareerAnalysis | None:
+        analyze_payload = self._dep(invocation, NODE_ANALYZE)
+        if not analyze_payload.get("analysis"):
+            return None
+        if not self._samples(invocation):
+            return None
+        return CareerAnalysis.model_validate(analyze_payload["analysis"])
+
+    def _background(
+        self, invocation: NodeInvocation
+    ) -> CareerBackgroundSnapshot | None:
+        payload = self._dep(invocation, NODE_BACKGROUND).get("background")
+        if not isinstance(payload, Mapping):
+            return None
+        return CareerBackgroundSnapshot.model_validate(dict(payload))
+
+    def _gaps(self, invocation: NodeInvocation) -> list[CareerGapItem]:
+        payload = self._dep(invocation, NODE_GAP)
+        return [
+            CareerGapItem.model_validate(item) for item in payload.get("gaps") or []
+        ]
 
     def _artifact(
         self,
@@ -1280,7 +1783,11 @@ class CareerNodeFlow:
             artifact_type=invocation.spec.artifact_type,
             capability_version=invocation.spec.capability_version,
             trust_state=trust_state,
-            input_key=invocation.spec.input_key(inputs),
+            input_key=(
+                self._prepared_background_key
+                if invocation.spec.name == NODE_BACKGROUND and self._prepared_background_key
+                else invocation.spec.input_key(inputs)
+            ),
             input_deps=dependencies,
             source_refs=tuple(source_refs),
             read_scope=read_scope,
@@ -1339,9 +1846,12 @@ __all__ = [
     "CAREER_RECIPE_ID",
     "CAREER_RECIPE_VERSION",
     "FAILED_QUERY_STATUSES",
+    "NODE_ADVISE",
     "NODE_ANALYZE",
+    "NODE_BACKGROUND",
     "NODE_COLLECT",
     "NODE_FILTER",
+    "NODE_GAP",
     "NODE_PARSE",
     "NODE_PLAN",
     "NODE_VERIFY",
