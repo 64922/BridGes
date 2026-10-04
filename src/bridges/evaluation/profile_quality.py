@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bridges.contracts.atomic_profile import (
+    AtomicProfileFeedbackEffect,
     AtomicProfileFeedbackKind,
     AtomicProfileItemFeedbackRequest,
     AtomicProfileItemModifyRequest,
@@ -375,12 +376,7 @@ class ProfileLab:
         question: str,
         *,
         now: datetime | None = None,
-        respect_usage_control: bool = False,
     ) -> list[str]:
-        if respect_usage_control and not self.automatic.is_profile_usage_enabled(
-            account_id
-        ):
-            return []
         return [
             item.fact_text
             for item in self.recall(account_id, question, now=now).adopted_items
@@ -689,6 +685,11 @@ def scenario_parallel_goals_precise_change() -> ScenarioResult:
         lab.active_texts(ACCOUNT_A)
     )
     before_change = list(lab.active_texts(ACCOUNT_A))
+    # 变更前冻结的画像切片：变更后必须按版本失效，不能在下一轮继续注入。
+    adopted_before_change = lab.recall(ACCOUNT_A, "我计划考研还是就业")
+    slice_current_before = lab.atomic.is_adopted_slice_current(
+        ACCOUNT_A, adopted_before_change
+    )
     # 用户行内编辑：把考研目标替换成就业目标；六级不受影响。
     lab.atomic.modify_item(
         ACCOUNT_A,
@@ -696,6 +697,9 @@ def scenario_parallel_goals_precise_change() -> ScenarioResult:
         AtomicProfileItemModifyRequest(
             text="我计划毕业后直接就业", version=kaoyan.version
         ),
+    )
+    slice_invalidated = not lab.atomic.is_adopted_slice_current(
+        ACCOUNT_A, adopted_before_change
     )
     active_after = lab.active_texts(ACCOUNT_A)
     old_released = not any(text == "我计划考研" for text in active_after)
@@ -728,6 +732,13 @@ def scenario_parallel_goals_precise_change() -> ScenarioResult:
                 "无关目标不被连带覆盖",
                 cet6_untouched,
                 f"活动条目：{active_after}",
+                hard_gate=True,
+            ),
+            _check(
+                "slice_invalidated_after_change",
+                "已变更事实使旧画像切片按版本失效",
+                slice_current_before and slice_invalidated,
+                f"变更前有效={slice_current_before} 变更后失效={slice_invalidated}",
                 hard_gate=True,
             ),
         ],
@@ -985,12 +996,6 @@ def scenario_switches_and_isolation() -> ScenarioResult:
         ACCOUNT_B, "我喜欢摄影", source_message_id="m-iso-2", source_at=ANCHOR
     )
     lab.automatic.set_account_controls(ACCOUNT_A, usage_enabled=False)
-    usage_off = (
-        lab.recalled_texts(
-            ACCOUNT_A, "我平时喜欢跑步，推荐运动", respect_usage_control=True
-        )
-        == []
-    )
     usage_flag_off = not lab.automatic.is_profile_usage_enabled(ACCOUNT_A)
     kept_after_off = any("跑步" in text for text in lab.active_texts(ACCOUNT_A))
     isolation_a = lab.recalled_texts(ACCOUNT_A, "我平时喜欢摄影")
@@ -1008,10 +1013,10 @@ def scenario_switches_and_isolation() -> ScenarioResult:
         title="使用开关停止取用且不删数据，账户隔离互不可见",
         checkpoints=[
             _check(
-                "usage_off_no_recall",
-                "关闭使用后开关为关且调用方门控不注入",
-                usage_off and usage_flag_off,
-                f"usage_flag_off={usage_flag_off} 切片为空={usage_off}",
+                "usage_off_flag",
+                "关闭使用后开关为关（调用方据此不注入）",
+                usage_flag_off,
+                f"usage_flag_off={usage_flag_off}",
             ),
             _check(
                 "usage_off_keeps_data",
@@ -1071,19 +1076,31 @@ def scenario_evidence_feedback_path() -> ScenarioResult:
         evidence.validity_status == AtomicProfileValidityStatus.EXPIRED
         and evidence.evidence_quote_status is not None
     )
-    feedback = lab.atomic.record_feedback(
-        ACCOUNT_A,
-        long_term.profile_item_id,
-        AtomicProfileItemFeedbackRequest(
-            kind=AtomicProfileFeedbackKind.FACT_WRONG
+    expected_effects = {
+        AtomicProfileFeedbackKind.FACT_WRONG.value: (
+            AtomicProfileFeedbackEffect.SUGGEST_FACT_CORRECTION.value
         ),
-    )
-    feedback_effects = {
-        "fact_wrong": feedback.effect.value,
+        AtomicProfileFeedbackKind.EXPIRED.value: (
+            AtomicProfileFeedbackEffect.SUGGEST_VALIDITY_REVIEW.value
+        ),
+        AtomicProfileFeedbackKind.SCOPE_INAPPLICABLE.value: (
+            AtomicProfileFeedbackEffect.NO_FACT_CHANGE.value
+        ),
+        AtomicProfileFeedbackKind.PREFERENCE_NOT_FOLLOWED.value: (
+            AtomicProfileFeedbackEffect.NO_FACT_CHANGE.value
+        ),
     }
+    feedback_effects: dict[str, str] = {}
+    for kind in AtomicProfileFeedbackKind:
+        projection = lab.atomic.record_feedback(
+            ACCOUNT_A,
+            long_term.profile_item_id,
+            AtomicProfileItemFeedbackRequest(kind=kind),
+        )
+        feedback_effects[kind.value] = projection.effect.value
+    four_paths_explained = feedback_effects == expected_effects
     # 反馈不自动删改事实。
     still_active = any("跑步" in text for text in lab.active_texts(ACCOUNT_A))
-    no_body_in_audit = True  # 反馈审计只含类型与标识；本场景没有可写审计正文。
     return ScenarioResult(
         scenario_id="evidence_feedback_path",
         title="页面依据可解释过期/记错等反馈，反馈不自动删改事实",
@@ -1096,8 +1113,8 @@ def scenario_evidence_feedback_path() -> ScenarioResult:
             ),
             _check(
                 "feedback_effect_explains",
-                "四类反馈路径有确定性效果",
-                bool(feedback_effects),
+                "四类反馈路径各有确定性效果",
+                four_paths_explained,
                 f"effects={feedback_effects}",
             ),
             _check(
@@ -1107,14 +1124,8 @@ def scenario_evidence_feedback_path() -> ScenarioResult:
                 "反馈后条目仍活动",
                 hard_gate=True,
             ),
-            _check(
-                "audit_body_boundary",
-                "授权数据与正文日志边界明确",
-                no_body_in_audit,
-                "反馈审计不落正文（既有 20 合同）",
-            ),
         ],
-        measurements={"feedback_effect": feedback.effect.value},
+        measurements={"feedback_effects": feedback_effects},
     )
 
 

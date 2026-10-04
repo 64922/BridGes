@@ -8,7 +8,9 @@
   "environment": {
     "layer": "deterministic-mechanism",
     "account_model": "two synthetic accounts",
-    "anchor": "2026-10-05T12:00:00+00:00"
+    "anchor": "2026-10-05T12:00:00+00:00",
+    "code_commit": "3bd66158e117dc637af68560df201d371e5bef26",
+    "prompt_version": "profile-extraction-prompt-v4"
   },
   "scenarios": [
     {
@@ -163,33 +165,40 @@
           "title": "考研与六级同时存在",
           "passed": true,
           "hard_gate": false,
-          "detail": "活动条目：['我计划通过英语六级', '我计划考研']"
+          "detail": "活动条目：['我计划考研', '我计划通过英语六级']"
         },
         {
           "id": "old_goal_released",
           "title": "被替代旧目标不再活动",
           "passed": true,
           "hard_gate": false,
-          "detail": "活动条目：['我计划通过英语六级', '我计划毕业后直接就业']"
+          "detail": "活动条目：['我计划毕业后直接就业', '我计划通过英语六级']"
         },
         {
           "id": "replacement_active",
           "title": "新目标成为活动事实",
           "passed": true,
           "hard_gate": false,
-          "detail": "活动条目：['我计划通过英语六级', '我计划毕业后直接就业']"
+          "detail": "活动条目：['我计划毕业后直接就业', '我计划通过英语六级']"
         },
         {
           "id": "unrelated_untouched",
           "title": "无关目标不被连带覆盖",
           "passed": true,
           "hard_gate": true,
-          "detail": "活动条目：['我计划通过英语六级', '我计划毕业后直接就业']"
+          "detail": "活动条目：['我计划毕业后直接就业', '我计划通过英语六级']"
+        },
+        {
+          "id": "slice_invalidated_after_change",
+          "title": "已变更事实使旧画像切片按版本失效",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "变更前有效=True 变更后失效=True"
         }
       ],
       "measurements": {
-        "kaoyan_id": "item-9CFoAEmVKBEsvuje53VqPg",
-        "cet6_id": "item-sTG0Hp4z5nwfzgCOHZPc6A"
+        "kaoyan_id": "item-d528ZsqC1DZQjryeXN5Z2w",
+        "cet6_id": "item-3VGxPyjTj4nuaAXmUQqtbg"
       }
     },
     {
@@ -220,7 +229,7 @@
         }
       ],
       "measurements": {
-        "deleted_id": "item-icyWRRq01VTvbdXVrvYBEg"
+        "deleted_id": "item-jH0_Kyf1hhFXXNKzP0TWrw"
       }
     },
     {
@@ -244,7 +253,7 @@
         }
       ],
       "measurements": {
-        "mirrored_id": "item-jumCg_cO8wiDHLHIWCdOQw"
+        "mirrored_id": "item-VWbTbj4YXDZG1saTe_g8MA"
       }
     },
     {
@@ -282,8 +291,8 @@
             "status": "exhausted",
             "attempts": 0,
             "outcome": "no_signal",
-            "created_at": "2026-10-04T08:53:14.913362+00:00",
-            "updated_at": "2026-10-04T08:53:14.913362+00:00",
+            "created_at": "2026-10-04T11:28:15.313764+00:00",
+            "updated_at": "2026-10-04T11:28:15.313764+00:00",
             "source": "local_rule"
           },
           {
@@ -292,8 +301,8 @@
             "status": "exhausted",
             "attempts": 0,
             "outcome": "no_signal",
-            "created_at": "2026-10-04T08:53:14.913362+00:00",
-            "updated_at": "2026-10-04T08:53:14.913362+00:00",
+            "created_at": "2026-10-04T11:28:15.313764+00:00",
+            "updated_at": "2026-10-04T11:28:15.313764+00:00",
             "source": "local_rule"
           }
         ]
@@ -336,11 +345,11 @@
       "passed": true,
       "checkpoints": [
         {
-          "id": "usage_off_no_recall",
-          "title": "关闭使用后开关为关且调用方门控不注入",
+          "id": "usage_off_flag",
+          "title": "关闭使用后开关为关（调用方据此不注入）",
           "passed": true,
           "hard_gate": false,
-          "detail": "usage_flag_off=True 切片为空=True"
+          "detail": "usage_flag_off=True"
         },
         {
           "id": "usage_off_keeps_data",
@@ -370,7 +379,7 @@
           "recording_enabled": true,
           "usage_enabled": true,
           "usage_control_version": 2,
-          "usage_updated_at": "2026-10-04T08:53:14.914363Z"
+          "usage_updated_at": "2026-10-04T11:28:15.314764Z"
         }
       }
     },
@@ -388,10 +397,10 @@
         },
         {
           "id": "feedback_effect_explains",
-          "title": "四类反馈路径有确定性效果",
+          "title": "四类反馈路径各有确定性效果",
           "passed": true,
           "hard_gate": false,
-          "detail": "effects={'fact_wrong': 'suggest_fact_correction'}"
+          "detail": "effects={'fact_wrong': 'suggest_fact_correction', 'expired': 'suggest_validity_review', 'scope_inapplicable': 'no_fact_change', 'preference_not_followed': 'no_fact_change'}"
         },
         {
           "id": "feedback_does_not_delete",
@@ -399,17 +408,15 @@
           "passed": true,
           "hard_gate": true,
           "detail": "反馈后条目仍活动"
-        },
-        {
-          "id": "audit_body_boundary",
-          "title": "授权数据与正文日志边界明确",
-          "passed": true,
-          "hard_gate": false,
-          "detail": "反馈审计不落正文（既有 20 合同）"
         }
       ],
       "measurements": {
-        "feedback_effect": "suggest_fact_correction"
+        "feedback_effects": {
+          "fact_wrong": "suggest_fact_correction",
+          "expired": "suggest_validity_review",
+          "scope_inapplicable": "no_fact_change",
+          "preference_not_followed": "no_fact_change"
+        }
       }
     }
   ]

@@ -17,16 +17,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
 
+from bridges.evaluation.metrics import PERSONALIZATION_CLICHES
 from bridges.evaluation.profile_quality import Checkpoint
-
-#: 个性化套话：出现即不计具体改善。
-PERSONALIZATION_CLICHES = (
-    "根据你的画像",
-    "作为你的专属",
-    "为你量身定制",
-    "贴合你的个人特点",
-    "基于对你的了解",
-)
 
 _EXAMPLE_MARKERS = ("例如", "比如", "例子", "举例", "打个比方", "想象")
 _FORMULA_MARKERS = ("公式", "$$", "\\frac", "数学表达", "数学形式")
@@ -138,6 +130,7 @@ class PairingReport:
 
     tasks: tuple[PairingTask, ...]
     runs: list[PairingRun]
+    environment: dict[str, Any] = field(default_factory=dict)
 
     @property
     def checkpoints(self) -> list[Checkpoint]:
@@ -172,6 +165,7 @@ class PairingReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
+            "environment": self.environment,
             "task_count": len(self.tasks),
             "run_count": len(self.runs),
             "failed_runs": [
@@ -353,6 +347,7 @@ def run_pairing(
     *,
     tasks: tuple[PairingTask, ...] = PAIRING_TASKS,
     conditions: tuple[PairingCondition, ...] = tuple(PairingCondition),
+    environment: dict[str, Any] | None = None,
 ) -> PairingReport:
     """按任务 × 条件执行配对生成并检查具体内容。"""
 
@@ -379,7 +374,7 @@ def run_pairing(
                     measurements=measurements,
                 )
             )
-    return PairingReport(tasks=tasks, runs=runs)
+    return PairingReport(tasks=tasks, runs=runs, environment=dict(environment or {}))
 
 
 def blind_review_bundle(

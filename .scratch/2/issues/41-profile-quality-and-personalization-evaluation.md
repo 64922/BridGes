@@ -4,7 +4,7 @@
 
 **Blocked by:** 17 — 回答后异步提取有精确证据的完整事实；18 — 治理画像范围、有效期和语义撤回传播；19 — 生成前编译用途明确的完整画像切片；20 — 在简洁画像列表中按需查看依据与时效；22 — 统一画像用途与表达策略采用快照；29 — 依据最小背景区分个人差距与待确认项
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -74,7 +74,7 @@
 
 ### 验证结果
 
-- 确定性：12 场景 36 检查点 100% 通过，硬门全通过；tests/evaluation 85 passed（4 项 `test_runner_reproducibility` 失败在 main 同样失败，属既有）；tests/profiles 536 passed（1 项 `test_issue01_chat_profile_correction` 失败在 main 同样失败，属既有）；画像相关 chat 测试 41 passed。
+- 确定性：12 场景 36 检查点 100% 通过，硬门全通过；tests/evaluation 86 passed（4 项 `test_runner_reproducibility` 失败在 main 同样失败，属既有）；tests/profiles 536 passed（1 项 `test_issue01_chat_profile_correction` 失败在 main 同样失败，属既有）；画像相关 chat 测试 41 passed。
 - 全仓逐目录（`-n 4`，含 `tests/evaluation`、`tests/profiles`）：5232 passed / 182 failed / 1 error / 若干 skip；逐目录与 main 对比失败数完全一致（如 chat 49、mcp 49、learning_projects 19、plugins 19+1E、retirement 11、closeout 6），全部为既有环境性失败，非本票引入。
 - 真实抽取探针：6/6 通过（否定不反转、多事实并存、第三方与引用零写入、自述学习关系、模糊低把握）。
 - 真实配对：8/8 通过；正确画像进入具体内容（贝叶斯任务举例先于公式、复习任务反映每日 30 分钟约束），错误画像出现可测退化（不举例子），过时画像 0 条被采用且无过期事实回声。
@@ -85,5 +85,14 @@
 - 每条件 2 个任务样本，只证明机制与方向，不宣称准确率；人工判断以 `blind-review.md` 为准。
 - 回答检查为确定性内容规则；事务占用未单独插桩。
 - 环境代理不可达 GitHub，仓库同步受限。
+
+### 评审修复（2026-10-04，两轴 code-review 后）
+
+- 指标层：新增否定一致性守卫，`我不喜欢长篇回答` 不再匹配肯定期望 `喜欢长篇回答`；`PERSONALIZATION_CLICHES` 收敛为单一公开来源（metrics），配对模块复用；删除只写不读的 `_FactView.relation`；新增 `precise_update` 非恒定回归（旧事实活动=0、新事实替换=5）。
+- 确定性场景：场景 6 增加「旧切片按版本失效」硬门检查点；场景 11 删除自证的切片模拟，改为断言真实使用开关；场景 12 实际执行四类反馈并逐类核对效果映射，删除恒真的审计检查点。
+- 脚本与报告：抽取探针收紧（否定必须保留完整分句、多事实必须 ≥2 条、模糊必须非 create）；数据目录改由 `LOCALAPPDATA` 推导；`deterministic-report.json` 与 `pairing-report.json` 环境块新增 `code_commit` 与 `prompt_version`（v4），报告正文同步显示。
+- 修复后复核：确定性 12 场景 36 检查点仍 100% 通过；tests/evaluation+tests/profiles 622 passed / 5 既有失败（与 main 一致）。
+- 修复后真实重跑（14 次调用，2026-10-04T11:28Z）：抽取 6/6（否定完整保留 `我不喜欢长篇回答`；多事实 count=2；模糊 action=observe reliability=0.3）、配对 8/8；产物已按修复后代码重生成，环境块记录代码提交 `3bd66158` + 本次评审修复（工作树状态，随修复提交固化）。
+- 仍未覆盖（如实记录）：后台未完成/异常终态/同轮版本的纵向重放依赖 17/18 既有测试，未在本票场景内重复；事务占用未插桩；Python 报告渲染在场景报告与配对报告间仍有重复。
 
 

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -37,7 +39,27 @@ from bridges.evaluation.profile_quality import (  # noqa: E402
     run_profile_quality_evaluation,
 )
 
-DEFAULT_DATA_DIR = Path.home() / "AppData/Local/BridGes/data"
+
+def _local_app_data() -> Path:
+    base = os.environ.get("LOCALAPPDATA")
+    return Path(base) if base else Path.home() / "AppData/Local"
+
+
+DEFAULT_DATA_DIR = _local_app_data() / "BridGes/data"
+
+
+def _code_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return completed.stdout.strip() or None
 
 
 # ---------------------------------------------------------------------------
@@ -51,15 +73,14 @@ def _item_text(item: Any) -> str:
 
 def _check_negated(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    inverted = [
-        text for text in texts if "喜欢" in text and "不" not in text
-    ]
-    return not inverted, f"extracted={texts}"
+    inverted = [text for text in texts if "喜欢" in text and "不" not in text]
+    retained = bool(items)
+    return retained and not inverted, f"retained={retained} extracted={texts}"
 
 
 def _check_multi_fact(content: str, items: list[Any]) -> tuple[bool, str]:
     texts = [_item_text(item) for item in items]
-    return bool(items), f"extracted={texts}"
+    return len(items) >= 2, f"count={len(items)} extracted={texts}"
 
 
 def _check_third_party(content: str, items: list[Any]) -> tuple[bool, str]:
@@ -82,13 +103,12 @@ def _check_self_report(content: str, items: list[Any]) -> tuple[bool, str]:
 
 
 def _check_ambiguous(content: str, items: list[Any]) -> tuple[bool, str]:
-    texts = [_item_text(item) for item in items]
-    violations = [
-        _item_text(item)
+    detail = [
+        f"{_item_text(item)}|action={item.action.value}|reliability={item.reliability}"
         for item in items
-        if item.action.value == "create" and item.reliability >= 0.9
     ]
-    return not violations, f"extracted={texts}"
+    violations = [entry for entry in detail if "|action=create|" in entry]
+    return not violations, f"extracted={detail}"
 
 
 @dataclass(frozen=True)
@@ -204,6 +224,8 @@ def _render_report(
         "# 工单 41 画像质量评测报告",
         "",
         f"- 生成时间：{environment['generated_at']}",
+        f"- 代码提交：{environment['code_commit']}",
+        f"- 抽取提示词版本：{environment['prompt_version']}",
         f"- 模型：{environment['model_id']}",
         f"- 账户模型：{environment['account_model']}",
         (
@@ -331,12 +353,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    from bridges.profiles.automatic import PROFILE_EXTRACTION_PROMPT_VERSION
+
     environment = {
         "generated_at": datetime.now(UTC).isoformat(),
+        "code_commit": _code_commit(),
+        "prompt_version": PROFILE_EXTRACTION_PROMPT_VERSION,
         "model_id": "qwen3.7-plus-2026-05-26",
         "account_model": "synthetic eval account per condition",
     }
     deterministic = run_profile_quality_evaluation().to_dict()
+    deterministic["environment"] = {
+        **deterministic.get("environment", {}),
+        "code_commit": environment["code_commit"],
+        "prompt_version": environment["prompt_version"],
+    }
     (args.output_dir / "deterministic-report.json").write_text(
         json.dumps(deterministic, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -364,7 +395,9 @@ def main(argv: list[str] | None = None) -> int:
             inconclusive = True
         else:
             extraction = run_real_extraction_probe(composition.gateway)
-            report = run_pairing(make_chat_sender(composition.gateway))
+            report = run_pairing(
+                make_chat_sender(composition.gateway), environment=environment
+            )
             write_reports(report, args.output_dir)
             pairing_payload = report.to_dict()
 

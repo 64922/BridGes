@@ -1,9 +1,11 @@
 # 工单 41 画像质量评测报告
 
-- 生成时间：2026-10-04T08:53:14.907847+00:00
+- 生成时间：2026-10-04T11:28:15.244827+00:00
+- 代码提交：3bd66158e117dc637af68560df201d371e5bef26
+- 抽取提示词版本：profile-extraction-prompt-v4
 - 模型：qwen3.7-plus-2026-05-26
 - 账户模型：synthetic eval account per condition
-- 真实探针：已执行
+- 真实探针：已执行（--real-probes 显式开启；缺凭据时记录 inconclusive）
 
 ## 样本与不确定性
 
@@ -22,25 +24,25 @@
 
 | 探针 | 分类 | 结果 | 延迟(ms) | 模型调用 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| negated_preference | explicit_self | 通过 | 6983 | 1 | extracted=[] |
-| multi_fact | explicit_self | 通过 | 23157 | 1 | extracted=['喜欢跑步 跑步', '喜欢游泳 游泳'] |
+| negated_preference | explicit_self | 通过 | 11047 | 1 | retained=True extracted=['我不喜欢长篇回答 不喜欢长篇回答'] |
+| multi_fact | explicit_self | 通过 | 17969 | 1 | count=2 extracted=['喜欢跑步 跑步', '喜欢游泳 游泳'] |
 | third_party | forbidden | 通过 | 0 | 0 | extracted=[] |
 | quoted | forbidden | 通过 | 0 | 0 | extracted=[] |
-| self_report | explicit_self | 通过 | 17233 | 1 | extracted=['正在学习概率统计 学习概率统计'] |
-| ambiguous_low_confidence | ambiguous | 通过 | 10375 | 1 | extracted=['可能喜欢摄影 摄影'] |
+| self_report | explicit_self | 通过 | 11718 | 1 | extracted=['我正在学习概率统计 学习概率统计'] |
+| ambiguous_low_confidence | ambiguous | 通过 | 11764 | 1 | extracted=['可能喜欢摄影 摄影|action=observe|reliability=0.3'] |
 
 ## 真实配对明细
 
 | 条件 | 次数 | 通过 | 平均延迟(ms) | 输入 token | 输出 token |
 | --- | --- | --- | --- | --- | --- |
-| no_profile | 2 | 2 | 33546 | 976 | 3546 |
-| correct_profile | 2 | 2 | 44155 | 1668 | 4949 |
-| wrong_profile | 2 | 2 | 35546 | 1529 | 4028 |
-| outdated_profile | 2 | 2 | 27655 | 976 | 2810 |
+| no_profile | 2 | 2 | 37024 | 976 | 3913 |
+| correct_profile | 2 | 2 | 38796 | 1668 | 4282 |
+| wrong_profile | 2 | 2 | 36757 | 1529 | 4253 |
+| outdated_profile | 2 | 2 | 24914 | 976 | 2688 |
 
 ## 成本与事务边界
 
-- 真实调用总输入 token：6250；总输出 token：18426
+- 真实调用总输入 token：6250；总输出 token：18039
 - 治理动作（记住/修改/删除/忘掉）各以单仓库事务提交，读取与采用切片为只读快照；
   本轮未单独插桩事务占用时长，作为已知局限。
 

@@ -28,10 +28,12 @@ _TEMPLATE_PHRASES = (
 )
 
 #: 空泛个性化套话（Issue 41：出现这些短语不构成回答改善，必须由具体行为检查替代）。
-_PERSONALIZATION_CLICHES = (
+#: 该清单同时被确定性指标与真实配对评测（profile_pairing）引用，避免多处漂移。
+PERSONALIZATION_CLICHES = (
     "结合你的学习目标", "根据你的目标", "结合你正在学的", "根据你的兴趣",
     "结合你的情况", "根据你的情况", "结合你的画像", "根据你的画像",
     "根据你的偏好", "我记得你喜欢", "我知道你喜欢",
+    "作为你的专属", "为你量身定制", "贴合你的个人特点", "基于对你的了解",
 )
 _AI_PHRASES = (
     "作为 AI", "作为一个人工智能", "我是 AI", "希望能帮到你", "希望对你有帮助",
@@ -122,7 +124,6 @@ class _FactView:
     text: str
     status: str
     evidence: bool
-    relation: str | None
 
 
 #: 视为“活动”的条目状态（旧断言与原子条目共用；空状态按活动处理）。
@@ -174,22 +175,11 @@ def _fact_views(assertions: list[Any]) -> list[_FactView]:
         text = _fact_text(assertion)
         if not text:
             continue
-        relation = None
-        if isinstance(assertion, dict):
-            raw_relation = (
-                assertion.get("fact_relation")
-                or assertion.get("relation")
-                or assertion.get("canonical_dimension")
-            )
-            if hasattr(raw_relation, "value"):
-                raw_relation = raw_relation.value
-            relation = str(raw_relation) if raw_relation else None
         views.append(
             _FactView(
                 text=text,
                 status=_fact_status(assertion),
                 evidence=_fact_evidence(assertion),
-                relation=relation,
             )
         )
     return views
@@ -199,12 +189,26 @@ def _normalized_fact_text(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+#: 否定标记：事实一侧含否定而另一侧不含时禁止判为同一事实（防反转事实满足肯定期望）。
+_NEGATION_MARKERS = ("不", "没", "别", "无需", "不要")
+
+
+def _has_negation(text: str) -> bool:
+    return any(marker in text for marker in _NEGATION_MARKERS)
+
+
 def _fact_matches(fact_text: str, expected: str) -> bool:
-    """事实文本匹配：去空白后双向包含（兼容摘要值与完整事实表述）。"""
+    """事实文本匹配：去空白后双向包含（兼容摘要值与完整事实表述）。
+
+    双侧否定性必须一致：`我不喜欢长篇回答` 不得匹配 `喜欢长篇回答`，
+    否则被反转的事实会满足肯定期望，掩盖本票要防的缺陷。
+    """
 
     left = _normalized_fact_text(fact_text)
     right = _normalized_fact_text(expected)
     if not left or not right:
+        return False
+    if _has_negation(left) != _has_negation(right):
         return False
     return left == right or right in left or left in right
 
@@ -372,7 +376,7 @@ def _personalization_gain(case: EvalCase, outputs: dict[str, Any]) -> float:
 def _personalization_cliche_free(final_answer: str) -> float:
     """套话抑制：空泛个性化宣称不构成改善，出现即不计分。"""
 
-    return 0.0 if _contains_any(final_answer, _PERSONALIZATION_CLICHES) else 5.0
+    return 0.0 if _contains_any(final_answer, PERSONALIZATION_CLICHES) else 5.0
 
 
 def profile_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValue]:

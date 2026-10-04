@@ -123,6 +123,60 @@ def test_profile_metrics_detect_overreach() -> None:
     assert not any(a.assertion_id == "a-scope" and a.passed for a in assertions)
 
 
+def test_profile_metrics_precise_update_and_negation_guard() -> None:
+    """Issue 41 评审修复：精准变更有非恒定断言；否定事实不匹配肯定期望。"""
+
+    case = _case("profile-goal-loop")
+    staged = case.model_copy(
+        update={
+            "initial_state": {
+                **case.initial_state,
+                "profile_expected_facts": ["我计划毕业后直接就业"],
+                "profile_replaced_facts": ["我计划考研"],
+            }
+        }
+    )
+    replaced_still_active = {
+        "recorded_assertions": [
+            {"value_or_rule": "我计划考研", "status": "active"}
+        ],
+        "final_answer": "",
+    }
+    assert (
+        _metric(profile_metrics(staged, replaced_still_active), "precise_update")
+        == 0.0
+    )
+    replacement_only = {
+        "recorded_assertions": [
+            {"value_or_rule": "我计划毕业后直接就业", "status": "active"}
+        ],
+        "final_answer": "",
+    }
+    assert (
+        _metric(profile_metrics(staged, replacement_only), "precise_update")
+        == 5.0
+    )
+
+    positive_case = case.model_copy(
+        update={
+            "initial_state": {
+                **case.initial_state,
+                "profile_expected_facts": ["喜欢长篇回答"],
+            }
+        }
+    )
+    negated = {
+        "recorded_assertions": [
+            {"value_or_rule": "我不喜欢长篇回答", "status": "active"}
+        ],
+        "final_answer": "",
+    }
+    assert (
+        _metric(profile_metrics(positive_case, negated), "profile_correctness")
+        == 0.0
+    )
+
+
 def test_profile_no_personalization_gets_zero_gain() -> None:
     case = _case("profile-personalization-gain")
     outputs = {
