@@ -67,3 +67,11 @@ API/OpenAPI合同仍为本票新增个人投影字段，`openapi.json`/`generate
 ## 合并、推送与清理
 
 合并前已复核：验收开始时固定点与 `origin/main` 一致；验收期间 main 前进至 `f2b50516`（工单32），已先合入本分支并完成合并树全量复核（见上）。其他工作树、分支及未跟踪文件均保留。main 合并、推送与清理结果在完成后追加。
+
+### 执行完成（2026-10-04）
+
+- 验收修复提交 `b3c4402c`，同口径对账补充 `27aac2a6`；main 合并提交 `aea34b43`（`merge: 合入工单29个人职业差距依据化验收修复`，父提交为含工单32的 `f2b50516`）。合并无冲突，`openapi.json` 自动合并。
+- 合并后在最前 main 复跑聚焦组合（职业 151 ＋ OpenAPI 同步 ＋ 工单32 相关）**238 passed**；`git diff` 核对合并树与本票分支 HEAD 树内容一致。
+- 推送：`git -c http.proxy=http://127.0.0.1:7890 push origin main`（`f2b50516..aea34b43`）；`git ls-remote` 核对 `main == origin/main == aea34b43af73167044d7486ce6d3366c2acfc393`。
+- 确认 Issue 工作树无未提交改动后删除 `.worktrees/29-evidence-based-personal-career-gap` 与分支 `codex/29-evidence-based-personal-career-gap`（原 `27aac2a6`）；`git worktree prune` 无额外失效记录。分支侧原始日志已复制到主工作区 `.scratch/2/validation/29-review/*.log`（未跟踪保留）；提交的 XML/JSON 证据已随合并进入 main。
+- 保留：工单33工作树与分支、主工作区未跟踪验证文件（`24-*`、`27-review/main-*`、`25-main-baseline.xml`、`29-review/main-*`、`32-review/`）。Issue 29 之外的内容未触碰。

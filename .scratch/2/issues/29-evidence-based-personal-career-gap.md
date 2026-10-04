@@ -53,7 +53,9 @@
 
 ### 2026-10-04：用户授权独立验收
 
-code-review 规范轴与需求轴独立审查；初审发现的背景收据未核画像有效性、整句否定跨技能污染、个人复核门固定 PASS、全技能已有依据时漏组合需求、跨轮续接丢分支/时间、任务原话引用塞入私人摘要等缺陷已修复并补充回归。五条验收标准已逐项确认（复选框已勾）。最终能力版本 `career-job-sample-recipe-v3`，能力 parse-v4、plan-v2、collect-v2、filter-v3、analyze-v4、background-v2、gap-v2、advise-v3、verify-v3，替代下方实施记录中的早期版本号；无数据库迁移或画像写入口。冻结全量对账（211 项共享失败、1 项环境波动、0 项 main 独有）、烟测环境限制、main 基线与剩余限制见[独立验收记录](../acceptance/29-evidence-based-personal-career-gap.md)。合入推送与清理结果在完成后追加。
+code-review 规范轴与需求轴独立审查；初审发现的背景收据未核画像有效性、整句否定跨技能污染、个人复核门固定 PASS、全技能已有依据时漏组合需求、跨轮续接丢分支/时间、任务原话引用塞入私人摘要等缺陷已修复并补充回归。五条验收标准已逐项确认（复选框已勾）。最终能力版本 `career-job-sample-recipe-v3`，能力 parse-v4、plan-v2、collect-v2、filter-v3、analyze-v4、background-v2、gap-v2、advise-v3、verify-v3，替代下方实施记录中的早期版本号；无数据库迁移或画像写入口。同口径全量对账（200 项共享失败，0 分支独有、0 main 独有；此前冻结运行的环境波动与 11 项 CLI 子进程环境失败已查明）、烟测环境限制、main 基线与剩余限制见[独立验收记录](../acceptance/29-evidence-based-personal-career-gap.md)。
+
+- 合入与清理：验收修复 `b3c4402c`、对账补充 `27aac2a6`；main 合并 `aea34b43`（合并前 main 与 `origin/main` 已含工单32的 `f2b50516`，合入本票后再将分支合入 main；合并后 main 聚焦组合 238 passed）。推送 `f2b50516..aea34b43` 并核对 `origin/main` 一致。工作树与分支已删除，`git worktree prune` 无额外失效记录；其他工作树与未跟踪测试文件保留。
 
 ## 实施记录（2026-10-04）
 
