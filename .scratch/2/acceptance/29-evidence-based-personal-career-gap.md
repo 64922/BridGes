@@ -48,9 +48,15 @@ API/OpenAPI合同仍为本票新增个人投影字段，`openapi.json`/`generate
 - 原交付聚焦：117 passed。新增回归修复前9 failed，修复后对应全部通过。
 - 关联组合 `tests/career_plan tests/kernel tests/routing` + OpenAPI同步 + Issue12执行守卫、Issue15任务材料/模块验收：273 passed。之后任务依据引用签名最后修复，全部职业测试151 passed。
 - 规范：职业领域及新测试Ruff通过，`git diff --check`通过；API既有导入风格诊断如上。`mypy src --no-incremental` 分支/main均100 errors / 20 files，按文件与诊断内容去行号逐条一致，新增/消失均0。
-- 冻结全量（`29-review/branch-frozen-full.xml`）：本分支 **5134 passed / 212 failed / 39 skipped**（5385 用例）；对账 main 全量基线（`29-review/main-full.xml`，**5084 passed / 211 failed / 39 skipped**，5334 用例）：211 项失败 ID 完全一致，无 main 独有失败。唯一分支独有失败 `tests.chat.test_terminal_recovery_and_replay::test_lost_worker_recovers_within_cap_then_converges_with_partial_content`（StorageError「数据库当前不可写」）在 main 与首次分支全量均通过，冻结工作树隔离复跑 **1 passed**（17.9s），判定为全量并发下的存储瞬时波动，不是本票代码失败；不将其算作工单通过项，也不宣称全量通过。首次全量（`branch-full.xml` 5133/212）中的唯一新增失败（加载修复过程中的旧测试替身，整数撤回版本不满足字符串合同）已随替身修复消失，冻结版 `test_revocation_after_verify_starts_cannot_publish_old_conclusion[True]` 通过；冻结版较首次多 1 个用例 `test_task_evidence_ref_uses_identity_and_version_not_private_excerpt`（最后一项任务引用签名修复的回归）。冻结前生成的 19 个文件 SHA-256 清单（`frozen-manifest.json`）与运行前工作树逐一一致，冻结结果对本代码有效。
-- main 全量基线 XML 记录的解释器与用例路径为 `C:\Users\33755\Desktop\BridGes`（运行当时的 Desktop 检出）；其 211 个失败 ID 被本分支冻结运行全部复现，用例总数差（51）恰为本票新增/改名用例，失败、跳过与类型基线计数相互自洽。
-- 烟测（受限环境）：main 与分支均 **10 passed / 2 failed**，失败 ID 相同（`test_start_fails_with_empty_global_key_before_spawning`、`test_start_fails_when_global_key_env_absent`）：main 检出报 `'next' is not recognized`（desktop profile 触发 `npm run build`，本机未安装 Next.js），分支检出在 15 秒有界超时内未结束；属工作树路径/前端构建环境限制，不是本票代码失败，也不声称烟测通过。
+- 验收期间 main 前进：验收开始时固定点、本地 main 与 `origin/main` 同为 `809f05a5`；提交验收修复 `b3c4402c` 后，并行会话已把工单32合入 main（`f2b50516`，`origin/main` 一致）。随后把 `f2b50516` 合入本票分支（合并提交 `0894f5fa`），合并无冲突，`openapi.json` 自动合并且 OpenAPI 同步检查通过。
+- 全量对账（口径：`python -m pytest tests -q -n 4 --ignore=tests/integration/test_runtime_smoke.py`，子进程 `PYTHONPATH=src`；烟测单独有界运行）：
+  - 首次分支全量 `branch-full.xml`：5133 passed / 212 failed / 39 skipped；唯一分支独有失败为旧测试替身（加载了修复过程中的中间态，整数撤回版本不满足字符串合同），已随替身修复消失。
+  - 冻结全量 `branch-frozen-full.xml`：5134 passed / 212 failed / 39 skipped；对账原 main 基线 `main-full.xml`（Desktop 检出，5084/211/39）共享 211 项、无 main 独有失败；唯一分支独有失败 `tests.chat.test_terminal_recovery_and_replay::test_lost_worker_recovers_within_cap_then_converges_with_partial_content`（StorageError「数据库当前不可写」）在 main 与首次分支全量均通过，冻结工作树隔离复跑 1 passed（17.9s），判定为全量并发下的存储瞬时波动，不计工单通过项；冻结前生成的 19 个文件 SHA-256 清单（`frozen-manifest.json`）与运行前工作树逐一一致，冻结结果对本代码有效。
+  - 同口径复核发现：原 main 基线与冻结运行均未给 CLI 子进程设置 `PYTHONPATH=src`，共享失败中有 11 项为子进程 `No module named 'bridges'` 环境失败，非代码失败。
+  - 同口径重跑：main `main-final-full.xml`（`f2b50516`，含工单32）**5131 passed / 200 failed / 39 skipped**（5370 用例）；分支 `branch-final-full.xml`（`b3c4402c`，旧固定点+本票）**5146 passed / 200 failed / 39 skipped**（5385 用例）；两者共享 200 项失败，0 分支独有、0 main 独有、0 状态差异。
+  - 合入工单32后的合并树 `branch-merged-full.xml`（`0894f5fa`）：**5182 passed / 200 failed / 39 skipped**（5421 用例）；对账 `main-final-full.xml`：共享 200 项失败，0 分支独有、0 main 独有、0 状态差异，本票净增 51 个用例全部通过。聚焦组合（职业 151 ＋ OpenAPI 同步 ＋ 工单32 相关）238 passed。
+  - 结论：本票相对 `809f05a5` 与 `f2b50516` 两个 main 状态均无新增失败；200 项失败全部为 main 既有，不称为通过。
+- 烟测（受限环境）：main 与分支均 **10 passed / 2 failed**，失败 ID 相同（`test_start_fails_with_empty_global_key_before_spawning`、`test_start_fails_when_global_key_env_absent`）：desktop profile 触发 `npm run build`，本机未安装 Next.js：main 检出报 `'next' is not recognized`，分支检出在 15 秒有界超时内未结束；属工作树路径/前端构建环境限制，不是本票代码失败，也不声称烟测通过。
 
 ## 剩余限制
 
@@ -60,4 +66,4 @@ API/OpenAPI合同仍为本票新增个人投影字段，`openapi.json`/`generate
 
 ## 合并、推送与清理
 
-待冻结全量对账后执行。其他工作树、分支及未跟踪文件均保留。
+合并前已复核：验收开始时固定点与 `origin/main` 一致；验收期间 main 前进至 `f2b50516`（工单32），已先合入本分支并完成合并树全量复核（见上）。其他工作树、分支及未跟踪文件均保留。main 合并、推送与清理结果在完成后追加。
