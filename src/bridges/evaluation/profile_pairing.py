@@ -254,8 +254,13 @@ def evaluate_answer(
     )
     measurements["answer_length"] = len(answer)
     if task.task_id == "study-plan":
-        minutes = [float(value) for value in re.findall(r"(\d+(?:\.\d+)?)\s*分钟", answer)]
-        hours = [float(value) * 60 for value in re.findall(r"(\d+(?:\.\d+)?)\s*小时", answer)]
+        # 整段复习的累计预算不是单日时段；保留每天/周末的实际投入。
+        session_text = re.sub(
+            r"(?:两周|14天|十四天)?\s*(?:总共|总计|累计|合计)\s*\d+(?:\.\d+)?\s*(?:小时|分钟)",
+            "", answer,
+        )
+        minutes = [float(value) for value in re.findall(r"(\d+(?:\.\d+)?)\s*分钟", session_text)]
+        hours = [float(value) * 60 for value in re.findall(r"(\d+(?:\.\d+)?)\s*小时", session_text)]
         durations = minutes + hours + ([30.0] if "半小时" in answer or "三十分钟" in answer else [])
         measurements["session_minutes_max"] = max(durations) if durations else None
         daily_slot_totals = []

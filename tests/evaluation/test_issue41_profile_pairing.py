@@ -159,3 +159,9 @@ def test_multiple_daily_sessions_must_fit_total_time_budget() -> None:
     sender = _FakeSender({("study-plan", PairingCondition.CORRECT):
                           "线性代数每天上午30分钟，下午30分钟。"})
     assert not run_pairing(sender).passed
+
+
+def test_two_week_total_is_not_a_daily_session() -> None:
+    sender = _FakeSender({("study-plan", PairingCondition.CORRECT):
+                          "线性代数每天30分钟，两周总共7小时；15分钟看例题+15分钟计算。"})
+    assert run_pairing(sender).passed
