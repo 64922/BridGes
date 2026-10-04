@@ -4,7 +4,7 @@
 
 **Blocked by:** 17 — 回答后异步提取有精确证据的完整事实；18 — 治理画像范围、有效期和语义撤回传播；19 — 生成前编译用途明确的完整画像切片；20 — 在简洁画像列表中按需查看依据与时效；22 — 统一画像用途与表达策略采用快照；29 — 依据最小背景区分个人差距与待确认项
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -40,11 +40,11 @@
 
 ## 验收标准
 
-- [ ] 复核探针各缺陷都有回归，控制/账户隔离硬门全通过。
-- [ ] 多目标并存、精准替代、删除近义抑制和明确恢复得到实测证据。
-- [ ] 有/无/错误/过时画像真实配对检查具体内容改善，不用套话或条数代替。
-- [ ] 异步时序/跨会话延迟/版本失效真实可追溯，成本与事务边界测量明确。
-- [ ] 报告指标/样本/不确定性、阈值依据和索引/模型选择建议，失败不放行。
+- [x] 复核探针各缺陷都有回归，控制/账户隔离硬门全通过。
+- [x] 多目标并存、精准替代、删除近义抑制和明确恢复得到实测证据。
+- [x] 有/无/错误/过时画像真实配对检查具体内容改善，不用套话或条数代替。
+- [x] 异步时序/跨会话延迟/版本失效真实可追溯，成本与事务边界测量明确。
+- [x] 报告指标/样本/不确定性、阈值依据和索引/模型选择建议，失败不放行。
 
 ## 验证与交付证据
 
@@ -52,3 +52,57 @@
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
 
+## 实施记录（2026-10-04，待独立验收）
+
+> 下列为编码代理的历史实施记录，不代替独立证据。最终验收见文末及独立验收报告。
+
+### 代码与产物
+
+- 新增 `src/bridges/evaluation/profile_quality.py`：12 个确定性纵向场景（否定偏好、多事实并存、第三方/引用/情绪、回指、时间锚、并行目标精准替代、删除近义抑制与明确恢复、LOW 镜像、停止记录后忘掉与迟到任务、自述与答题证据、开关与账户隔离、依据与反馈路径），36 个检查点（含硬门）。
+- 新增 `src/bridges/evaluation/profile_pairing.py`：四条件（无/正确/错误/过时画像）同模型同任务配对，按具体内容检查（举例先于公式、学习约束进入内容、过时事实零回声、任务主题保留、套话拒绝），记录延迟/token/成本并产出盲评材料。
+- 新增 `scripts/run_issue41_profile_evaluation.py`：确定性治理 + 真实抽取探针（6 条源消息）+ 真实配对的统一入口；`--real-probes` 显式 opt-in，缺凭据时非零退出且报告记 `inconclusive`。
+- 新增 `tests/evaluation/test_issue41_profile_quality.py`、`tests/evaluation/test_issue41_profile_pairing.py`。
+- 验证产物：`.scratch/2/validation/41-profile-quality/`（report.md、deterministic-report.json、pairing-report.json/.md、blind-review.md）。
+
+### 接口/合同变化
+
+- 画像指标扩为 9 项：新增 `fact_completeness`、`precise_update`、`source_support`、`cliche_control`，`cross_turn_stability` 改为按完整事实身份判定；自动断言新增 `no_personalization_cliche`；注入回归新增 `profile_cliche_only`、`profile_overwrite`。
+- 量表 `scale-profile-5` 扩为 9 项；`profile-goal-loop`、`profile-personalization-gain` 增加 `profile_expected_facts` 与 `answer_requirements`（must_include/ordered/min_chars/must_exclude 套话）。
+- `PROFILE_EXTRACTION_PROMPT_VERSION` v3 → v4：显式给出字段枚举、类型与 `evidence_ref` 取值。首轮真实探针 4/6 因模型输出不符合 `profile-extraction-v2` 合同而被合同失败关闭（零写入），定位为提示词未告知字段约束后修复；机制安全路径（失败关闭）不变。
+
+### 环境
+
+- conda `agent`；Windows；固定模型 `qwen3.7-plus-2026-05-26`；DashScope 直连；运行期凭据取自 OS 凭据库 `runtime:global-qwen-api-key`，密钥未写入报告/日志/提交。真实调用共 14 次（6 抽取 + 8 配对），可在 30 分钟内重跑。
+
+### 验证结果
+
+- 确定性：12 场景 36 检查点 100% 通过，硬门全通过；tests/evaluation 86 passed（4 项 `test_runner_reproducibility` 失败在 main 同样失败，属既有）；tests/profiles 536 passed（1 项 `test_issue01_chat_profile_correction` 失败在 main 同样失败，属既有）；画像相关 chat 测试 41 passed。
+- 全仓逐目录（`-n 4`，含 `tests/evaluation`、`tests/profiles`）：5232 passed / 182 failed / 1 error / 若干 skip；逐目录与 main 对比失败数完全一致（如 chat 49、mcp 49、learning_projects 19、plugins 19+1E、retirement 11、closeout 6），全部为既有环境性失败，非本票引入。
+- 真实抽取探针：6/6 通过（否定不反转、多事实并存、第三方与引用零写入、自述学习关系、模糊低把握）。
+- 真实配对：8/8 通过；正确画像进入具体内容（贝叶斯任务举例先于公式、复习任务反映每日 30 分钟约束），错误画像出现可测退化（不举例子），过时画像 0 条被采用且无过期事实回声。
+- 成本与延迟：真实调用输入 6250 token / 输出 18426 token；四条件平均延迟 27.7s–44.2s。
+
+### 限制与后续
+
+- 每条件 2 个任务样本，只证明机制与方向，不宣称准确率；人工判断以 `blind-review.md` 为准。
+- 回答检查为确定性内容规则；事务占用未单独插桩。
+- 环境代理不可达 GitHub，仓库同步受限。
+
+### 评审修复（2026-10-04，两轴 code-review 后）
+
+- 指标层：新增否定一致性守卫，`我不喜欢长篇回答` 不再匹配肯定期望 `喜欢长篇回答`；`PERSONALIZATION_CLICHES` 收敛为单一公开来源（metrics），配对模块复用；删除只写不读的 `_FactView.relation`；新增 `precise_update` 非恒定回归（旧事实活动=0、新事实替换=5）。
+- 确定性场景：场景 6 增加「旧切片按版本失效」硬门检查点；场景 11 删除自证的切片模拟，改为断言真实使用开关；场景 12 实际执行四类反馈并逐类核对效果映射，删除恒真的审计检查点。
+- 脚本与报告：抽取探针收紧（否定必须保留完整分句、多事实必须 ≥2 条、模糊必须非 create）；数据目录改由 `LOCALAPPDATA` 推导；`deterministic-report.json` 与 `pairing-report.json` 环境块新增 `code_commit` 与 `prompt_version`（v4），报告正文同步显示。
+- 修复后复核：确定性 12 场景 36 检查点仍 100% 通过；tests/evaluation+tests/profiles 622 passed / 5 既有失败（与 main 一致）。
+- 修复后真实重跑（14 次调用，2026-10-04T11:28Z）：抽取 6/6（否定完整保留 `我不喜欢长篇回答`；多事实 count=2；模糊 action=observe reliability=0.3）、配对 8/8；产物已按修复后代码重生成，环境块记录代码提交 `3bd66158` + 本次评审修复（工作树状态，随修复提交固化）。
+- 仍未覆盖（如实记录）：后台未完成/异常终态/同轮版本的纵向重放依赖 17/18 既有测试，未在本票场景内重复；事务占用未插桩；Python 报告渲染在场景报告与配对报告间仍有重复。
+
+
+
+## 独立验收（2026-10-04）
+
+- 按 code-review 分别完成规范轴和需求轴审查，以实际代码及独立执行为证据。初审发现静态网络断言、源码锁不足、配对/抽取假阳性、时序/事务/页面/日志补证缺口；修复提交 `2d152638`、`12c870c0`。复审确认评测票达标，五项验收勾选。
+- [完整独立验收与限制](../validation/41-independent/acceptance.md)：13场景/41检查点、真实抽取6/6；真实回答原始失败留痕，修复累计预算判据后对同批回答离线复评8/8，独立内容评审2胜0平0负。未宣称所有回答正确或准确率100%。
+- 修复后相关范围672通过/4失败，main隔离同范围652通过/相同4项同根因旧评测底座失败；最后累计预算判据回归9/9，ruff通过。页面组件13/13，真实依据/反馈API回归通过；桌面E2E前端启动超时未进入断言。
+- 本票不新增业务持久状态/迁移/索引。事务测量为合成内存SQLite，不含锁等待/COMMIT；模型输出条件不足、试卷拆分未明确及小样本限制均保留。编码代理旧报告与全仓通过数只作历史线索。
+- 达标后合并、代理推送、远端核对和对应工作树/分支清理的实际状态见独立验收目录交付记录。

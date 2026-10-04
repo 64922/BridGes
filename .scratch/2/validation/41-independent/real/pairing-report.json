@@ -1,0 +1,374 @@
+{
+  "passed": true,
+  "environment": {
+    "generated_at": "2026-10-04T11:47:31.848820+00:00",
+    "code_commit": "3514e1cd78463b80ba176c01054c029568e627f5",
+    "prompt_version": "profile-extraction-prompt-v4",
+    "model_id": "qwen3.7-plus-2026-05-26",
+    "account_model": "synthetic eval account per condition"
+  },
+  "task_count": 2,
+  "run_count": 8,
+  "failed_runs": [],
+  "conditions": {
+    "no_profile": {
+      "runs": 2,
+      "passed": 2,
+      "latency_ms_avg": 33109,
+      "input_tokens": 976,
+      "output_tokens": 3627
+    },
+    "correct_profile": {
+      "runs": 2,
+      "passed": 2,
+      "latency_ms_avg": 36937,
+      "input_tokens": 1668,
+      "output_tokens": 4245
+    },
+    "wrong_profile": {
+      "runs": 2,
+      "passed": 2,
+      "latency_ms_avg": 34703,
+      "input_tokens": 1529,
+      "output_tokens": 3979
+    },
+    "outdated_profile": {
+      "runs": 2,
+      "passed": 2,
+      "latency_ms_avg": 26780,
+      "input_tokens": 976,
+      "output_tokens": 2983
+    }
+  },
+  "runs": [
+    {
+      "task_id": "bayes-explain",
+      "condition": "no_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "贝叶斯定理的核心其实就一句话：根据新出现的证据，来更新你对某件事的原有看法。\n\n我们可以用一个经典的“疾病检测”例子来体会它的含义。\n假设某种疾病在人群中的发病率是 1%（这是你的“初始看法”，也叫先验概率）。\n现在有一种检测试剂，如果真生病了，有 99% 的概率会测出阳性；但如果没有生病，也有 5% 的概率会误报阳性。\n如果你去检测，结果呈阳性，你真正得病的概率是多少？\n\n直觉上可能觉得很高，但用贝叶斯定理算下来，其实只有 16% 左右。\n这是因为一开始得病的人本来就很少，那 5% 的误报是建立在庞大的健康人群基数上的。这部分健康人产生的假阳性数量，远远盖过了真正生病的人产生的真阳性数量。\n\n在数学上，它被写成一个公式：更新后的概率 = (证据的可靠性 × 初始概率) / 证据出现的总概率。但不用死记硬背，理解背后的逻辑更重要。\n\n至于它的用法，本质上是给你一个框架，把“旧经验”和“新证据”结合起来做动态决策。\n生活中很多系统都在默默用它。比如垃圾邮件过滤器，根据邮件里出现的特定词汇，不断更新它是垃圾邮件的概率；或者自动驾驶汽车，根据传感器接收到的新数据，实时更新对前方障碍物位置的判断。\n\n它其实也是在提醒我们，面对新信息时，别被眼前的单一证据带偏，要结合事物原本的基础概率来综合判断。",
+      "answer_length": 552,
+      "latency_ms": 36875,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 509,
+      "output_tokens": 2079,
+      "cost_estimate": null,
+      "profile_item_count": 0,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('贝叶斯', '概率')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        }
+      ],
+      "measurements": {
+        "example_present": true,
+        "example_before_formula": true,
+        "answer_length": 552
+      }
+    },
+    {
+      "task_id": "bayes-explain",
+      "condition": "correct_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "贝叶斯定理的核心含义是：在观察到新证据后，如何更新我们对某件事发生概率的估计。它把“先验信念”和“新证据”结合起来，得出“后验信念”。\n\n为了直观理解，我们来看一个医学检测的例子。\n假设某种疾病的发病率是 1%（100人里有1人患病）。现有一种检测方法：\n- 如果真患病，有 99% 的概率检测出阳性。\n- 如果没患病，有 5% 的概率误测为阳性。\n如果你检测出了阳性，真正患病的概率是多少？直觉上可能觉得很高，但实际并非如此。\n\n这里就需要用到贝叶斯定理的公式：\n$$P(A|B) = \\frac{P(B|A) \\cdot P(A)}{P(B)}$$\n\n在这个例子中：\n- $A$ 代表“患病”，$B$ 代表“检测阳性”。\n- $P(A)$ 是**先验概率**，即在看检测结果前，基于总体数据得出的发病率 = 0.01。\n- $P(B|A)$ 是**似然度**，即已知患病的情况下，检测出阳性的概率 = 0.99。\n- $P(B)$ 是**边缘概率**，即检测出阳性的总概率（包含真阳性和假阳性）：\n  $$P(B) = P(B|A)P(A) + P(B|\\neg A)P(\\neg A) = 0.99 \\times 0.01 + 0.05 \\times 0.99 = 0.0594$$\n- $P(A|B)$ 是**后验概率**，即在检测出阳性的新证据下，真正患病的概率：\n  $$P(A|B) = \\frac{0.99 \\times 0.01}{0.0594} \\approx 16.7\\%$$\n\n计算结果表明，即使检测准确率高达 99%，因为基础发病率太低，阳性结果中仍有很大一部分是健康人的假阳性。\n\n在实际用法中，贝叶斯定理提供了一种“动态修正”的框架：\n1. 先根据历史经验或基础数据设定一个初始概率（先验概率 $P(A)$）。\n2. 收集到新数据或证据（$B$）。\n3. 评估在证据出现的情况下，假设成立的可能性（似然度 $P(B|A)$）。\n4. 通过公式计算，得到更新后的概率（后验概率 $P(A|B)$）。\n\n这种“先有初始猜测，看到数据后不断修正”的思路，是统计学中贝叶斯推断的基础，也被广泛应用于机器学习（如朴素贝叶斯分类器）、医学诊断和日常决策中。",
+      "answer_length": 937,
+      "latency_ms": 38985,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 810,
+      "output_tokens": 2250,
+      "cost_estimate": null,
+      "profile_item_count": 1,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('贝叶斯', '概率')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        },
+        {
+          "id": "correct_example_first",
+          "title": "正确画像让回答先给例子再讲公式",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "example_pos=87 formula_pos=229"
+        }
+      ],
+      "measurements": {
+        "example_present": true,
+        "example_before_formula": true,
+        "answer_length": 937
+      }
+    },
+    {
+      "task_id": "bayes-explain",
+      "condition": "wrong_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "贝叶斯定理的核心公式为 $P(A|B) = \\frac{P(B|A)P(A)}{P(B)}$。在参数推断的连续空间中，若 $\\theta$ 为参数，$x$ 为观测数据，其后验分布表示为 $p(\\theta|x) = \\frac{p(x|\\theta)p(\\theta)}{\\int p(x|\\theta')p(\\theta')d\\theta'}$。\n\n其严格证明直接源于条件概率的定义与乘法公式。对于事件 $A$ 和 $B$，在 $P(B)>0$ 且 $P(A)>0$ 的条件下，条件概率定义为 $P(A|B) = \\frac{P(A \\cap B)}{P(B)}$ 与 $P(B|A) = \\frac{P(A \\cap B)}{P(A)}$。由后者可得联合概率 $P(A \\cap B) = P(B|A)P(A)$，将其代入前式即得 $P(A|B) = \\frac{P(B|A)P(A)}{P(B)}$。当 $A$ 属于样本空间的一个可数划分 $\\{A_i\\}$ 时，结合全概率公式 $P(B) = \\sum_i P(B|A_i)P(A_i)$，分母即可展开为边缘概率的求和形式。\n\n在含义上，该定理提供了在观测到数据后更新信念的数学机制。$p(\\theta)$ 为先验分布，编码了观测前的初始信息；$p(x|\\theta)$ 为似然函数，刻画了给定参数下数据的生成概率；$p(\\theta|x)$ 为后验分布，是融合先验与数据后的更新结果；分母的积分项为边缘似然，作为确保后验分布积分为 1 的归一化常数。\n\n在实际用法中，贝叶斯定理构成了贝叶斯推断的基础。具体操作时，首先基于先验知识或无信息原则设定参数的先验分布，接着根据数据生成过程建立似然函数，随后通过贝叶斯定理计算后验分布。得到后验分布后，可通过计算后验期望或众数进行点估计，通过计算后验分位数构建可信区间，或通过对参数积分求得未来观测的预测分布。",
+      "answer_length": 806,
+      "latency_ms": 38547,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 769,
+      "output_tokens": 2208,
+      "cost_estimate": null,
+      "profile_item_count": 1,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('贝叶斯', '概率')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        }
+      ],
+      "measurements": {
+        "example_present": false,
+        "example_before_formula": false,
+        "answer_length": 806
+      }
+    },
+    {
+      "task_id": "bayes-explain",
+      "condition": "outdated_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "贝叶斯定理的核心思想是：根据新出现的证据，更新你对某件事的看法。它提供了一种数学方法，把“原有的经验”和“新证据”结合起来，得出一个更准确的判断。\n\n要理解它，可以看它包含的三个关键概率：\n1. 先验概率：在看到新证据前，你基于已有经验认为事情发生的概率。\n2. 似然度：如果事情真的发生了，出现当前这个新证据的可能性有多大。\n3. 后验概率：看到新证据后，事情发生的更新概率，也就是你最终要得出的结论。\n\n我们通过一个经典的医学检测例子来看看它的用法。假设某种疾病的发病率是 1%（这是先验概率）。有一种检测方法，准确率是 99%，这意味着健康人也有 1% 的概率被误测为阳性。\n\n如果你去检测，结果呈阳性，你真正得病的概率是多少？直觉上很多人会觉得是 99%，但用贝叶斯定理计算，结果其实只有 50% 左右。原因在于，健康人群的基数远大于患病人群，那 1% 的健康人误诊的绝对数量，几乎和真正患病的人数一样多。\n\n这就是贝叶斯定理的实际用法：它帮我们克服直觉偏差，把容易被忽略的“基础概率”考虑进去。在现实中，它被广泛用于垃圾邮件过滤、机器学习和医疗诊断等领域。它的本质就是建立一个动态的认知过程：先有一个初步猜测，然后随着新信息的加入，不断修正这个猜测。",
+      "answer_length": 530,
+      "latency_ms": 34233,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 509,
+      "output_tokens": 1959,
+      "cost_estimate": null,
+      "profile_item_count": 0,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('贝叶斯', '概率')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        },
+        {
+          "id": "outdated_fact_absent",
+          "title": "过时/无关事实不进入回答",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "命中过时词：[]"
+        }
+      ],
+      "measurements": {
+        "example_present": true,
+        "example_before_formula": true,
+        "answer_length": 530,
+        "outdated_fact_echoed": []
+      }
+    },
+    {
+      "task_id": "study-plan",
+      "condition": "no_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "这是一个为期两周的线性代数复习计划，分为基础巩固与进阶综合两个阶段。\n\n**第一周：基础与核心计算**\n* Day 1-2：矩阵运算与初等变换（矩阵乘法、逆矩阵、矩阵的秩）。\n* Day 3-4：线性方程组（解的判定、基础解系、解的结构）。\n* Day 5：行列式（性质、展开定理）。\n* Day 6：向量组（线性相关/无关、极大线性无关组、施密特正交化）。\n* Day 7：第一周知识点串联与错题复盘。\n\n**第二周：进阶与综合应用**\n* Day 8-9：特征值与特征向量（求解、矩阵相似对角化、实对称矩阵的正交对角化）。\n* Day 10：二次型（化标准形、正定性判定）。\n* Day 11-12：套卷训练（完成2-3套完整试卷，严格限时）。\n* Day 13：查漏补缺（针对套卷暴露的薄弱点进行专项复习）。\n* Day 14：核心公式与定理回顾，梳理知识框架。\n\n线代前后知识点联系紧密，复习时建议多动手推导计算，避免眼高手低。",
+      "answer_length": 418,
+      "latency_ms": 29343,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 467,
+      "output_tokens": 1548,
+      "cost_estimate": null,
+      "profile_item_count": 0,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('线性代数', '线代', '复习', '矩阵', '行列式', '向量', '特征值')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        }
+      ],
+      "measurements": {
+        "example_present": false,
+        "example_before_formula": false,
+        "answer_length": 418
+      }
+    },
+    {
+      "task_id": "study-plan",
+      "condition": "correct_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "每天30分钟时间紧凑，咱们把精力集中在拿分性价比最高的计算和核心概念上。这是为你安排的14天计划：\n\n**第一周：基础计算**\n- Day 1：矩阵初等行变换（重点练求逆矩阵）。\n- Day 2：行列式计算（掌握展开定理和化三角形法）。\n- Day 3：向量组的秩与线性相关性（理清概念，练求极大无关组）。\n- Day 4：线性方程组的解（重点练求基础解系和通解）。\n- Day 5：复盘前4天错题，重做一遍。\n- Day 6：机动时间（补进度或休息）。\n- Day 7：休息。\n\n**第二周：进阶与实战**\n- Day 8：特征值与特征向量（重点练计算和判断可对角化）。\n- Day 9：实对称矩阵的正交对角化（练熟正交化和单位化计算）。\n- Day 10：二次型化标准形（掌握正交变换法和配方法）。\n- Day 11：复盘错题，默写核心公式。\n- Day 12：往年真题计算题专项（只做计算大题，练手感）。\n- Day 13：往年真题概念题专项（理清判断逻辑）。\n- Day 14：挑一套真题里最核心的3道大题，限时30分钟完成。\n\n每天30分钟就专注眼前这一个任务，做完就安心放下。",
+      "answer_length": 494,
+      "latency_ms": 34889,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 858,
+      "output_tokens": 1995,
+      "cost_estimate": null,
+      "profile_item_count": 2,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('线性代数', '线代', '复习', '矩阵', '行列式', '向量', '特征值')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        },
+        {
+          "id": "correct_constraint_reflected",
+          "title": "正确画像的事实/约束进入具体内容",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "应有其一：('30', '半小时', '三十分钟')"
+        }
+      ],
+      "measurements": {
+        "example_present": false,
+        "example_before_formula": false,
+        "answer_length": 494,
+        "correct_constraint_reflected": true
+      }
+    },
+    {
+      "task_id": "study-plan",
+      "condition": "wrong_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "每天8小时复习线代强度不小，建议按“3小时概念梳理+4小时刷题+1小时错题复盘”来分配每天的精力。\n\n第1-2天：行列式与矩阵。重点复习行列式计算、矩阵运算、逆矩阵与初等变换。\n第3-5天：向量与线性方程组。线代核心，吃透线性相关性、秩、基础解系与解的结构。\n第6-8天：特征值、特征向量与对角化。难点集中区，重点练习施密特正交化与实对称矩阵对角化，一定要多动手算。\n第9-10天：二次型。掌握化标准型以及正定矩阵的判定。\n第11-12天：错题重做与查漏补缺。回顾前10天的错题，针对计算易错点集中加练。\n第13-14天：全真模拟。每天做两套完整测试卷，剩余时间对答案、梳理知识网络。\n\n建议把8小时拆成上午3小时、下午3小时、晚上2小时，中间注意起身休息。如果某个模块提前过关，直接把时间挪给后面的综合练习。",
+      "answer_length": 355,
+      "latency_ms": 30859,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 760,
+      "output_tokens": 1771,
+      "cost_estimate": null,
+      "profile_item_count": 1,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('线性代数', '线代', '复习', '矩阵', '行列式', '向量', '特征值')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        }
+      ],
+      "measurements": {
+        "example_present": false,
+        "example_before_formula": false,
+        "answer_length": 355
+      }
+    },
+    {
+      "task_id": "study-plan",
+      "condition": "outdated_profile",
+      "status": "done",
+      "error_code": null,
+      "passed": true,
+      "answer": "第一周聚焦基础：前两天复习矩阵运算与行列式，中间三天攻克向量组与线性方程组，最后两天理清向量空间、基与维数。第二周转向进阶：前三天掌握特征值、特征向量及矩阵对角化，接着两天复习二次型，最后两天做成套真题和查漏补缺。每天记得动笔算几道题保持手感。",
+      "answer_length": 122,
+      "latency_ms": 19327,
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "input_tokens": 467,
+      "output_tokens": 1024,
+      "cost_estimate": null,
+      "profile_item_count": 0,
+      "checkpoints": [
+        {
+          "id": "topic_kept",
+          "title": "回答仍然回答原任务（旧兴趣/画像不替换任务）",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "主题词：('线性代数', '线代', '复习', '矩阵', '行列式', '向量', '特征值')"
+        },
+        {
+          "id": "no_cliche",
+          "title": "不使用个性化套话",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "命中：[]"
+        },
+        {
+          "id": "outdated_fact_absent",
+          "title": "过时/无关事实不进入回答",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "命中过时词：[]"
+        }
+      ],
+      "measurements": {
+        "example_present": false,
+        "example_before_formula": false,
+        "answer_length": 122,
+        "outdated_fact_echoed": []
+      }
+    }
+  ],
+  "blind_review_map": {
+    "case-01": "bayes-explain/no_profile",
+    "case-02": "study-plan/no_profile",
+    "case-03": "study-plan/outdated_profile",
+    "case-04": "bayes-explain/outdated_profile",
+    "case-05": "study-plan/correct_profile",
+    "case-06": "bayes-explain/correct_profile",
+    "case-07": "bayes-explain/wrong_profile",
+    "case-08": "study-plan/wrong_profile"
+  }
+}

@@ -24,6 +24,8 @@ from bridges.evaluation.metrics import (
 _TARGET_CASE: dict[str, str] = {
     "fact_error": "science-bell-evidence",
     "profile_overreach": "profile-goal-loop",
+    "profile_cliche_only": "profile-goal-loop",
+    "profile_overwrite": "profile-goal-loop",
     "risk_misjudgment": "career-promise",
     "teaching_skip": "teaching-prereq",
     "multimodal_failure": "mm-image",
@@ -33,6 +35,8 @@ _TARGET_CASE: dict[str, str] = {
 class InjectionScenario(StrEnum):
     FACT_ERROR = "fact_error"
     PROFILE_OVERREACH = "profile_overreach"
+    PROFILE_CLICHE_ONLY = "profile_cliche_only"
+    PROFILE_OVERWRITE = "profile_overwrite"
     RISK_MISJUDGMENT = "risk_misjudgment"
     TEACHING_SKIP = "teaching_skip"
     MULTIMODAL_FAILURE = "multimodal_failure"
@@ -63,6 +67,15 @@ def inject(
             }
         )
         mutated["recorded_assertions"] = assertions
+    elif scenario == InjectionScenario.PROFILE_CLICHE_ONLY:
+        # 套话注入：用空泛“根据你的画像”替换具体内容行为。
+        mutated["final_answer"] = "根据你的画像，结合你的学习目标，我们从基础讲起。"
+    elif scenario == InjectionScenario.PROFILE_OVERWRITE:
+        # 覆盖注入：并行目标只剩最后一个，模拟同维度互相覆盖。
+        assertions = list(mutated.get("recorded_assertions", []))
+        active = [a for a in assertions if isinstance(a, dict) and a.get("status") == "active"]
+        if active:
+            mutated["recorded_assertions"] = active[-1:]
     elif scenario == InjectionScenario.RISK_MISJUDGMENT:
         text = str(mutated.get("final_text", ""))
         mutated["final_text"] = text + " 只要你报名，保证找到工作，保证月薪两万。"
@@ -81,6 +94,8 @@ def detection_threshold(scenario: InjectionScenario, metric_id: str) -> float:
     thresholds = {
         InjectionScenario.FACT_ERROR: {"fact_accuracy": 4.0},
         InjectionScenario.PROFILE_OVERREACH: {"out_of_scope_write": 4.0},
+        InjectionScenario.PROFILE_CLICHE_ONLY: {"cliche_control": 4.0},
+        InjectionScenario.PROFILE_OVERWRITE: {"fact_completeness": 4.0},
         InjectionScenario.RISK_MISJUDGMENT: {"risk_boundary": 4.0},
         InjectionScenario.TEACHING_SKIP: {"step_planning": 4.0},
         InjectionScenario.MULTIMODAL_FAILURE: {"asset_availability": 4.0},
@@ -91,6 +106,8 @@ def detection_threshold(scenario: InjectionScenario, metric_id: str) -> float:
 _KEY_METRIC_BY_SCENARIO: dict[InjectionScenario, str] = {
     InjectionScenario.FACT_ERROR: "fact_accuracy",
     InjectionScenario.PROFILE_OVERREACH: "out_of_scope_write",
+    InjectionScenario.PROFILE_CLICHE_ONLY: "cliche_control",
+    InjectionScenario.PROFILE_OVERWRITE: "fact_completeness",
     InjectionScenario.RISK_MISJUDGMENT: "risk_boundary",
     InjectionScenario.TEACHING_SKIP: "step_planning",
     InjectionScenario.MULTIMODAL_FAILURE: "asset_availability",

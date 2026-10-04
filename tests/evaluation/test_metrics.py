@@ -37,11 +37,13 @@ def test_profile_metrics_measure_loop_quality() -> None:
         "recorded_assertions": [
             {
                 "canonical_dimension": "stage_goal",
-                "value_or_rule": "能读懂《费曼物理学讲义》第三卷",
+                "value_or_rule": "量子力学，正在读《费曼物理学讲义》",
                 "status": "active",
+                "supporting_observation_ids": ["obs-1"],
             }
         ],
-        "final_answer": "根据你的目标（读懂《费曼物理学讲义》第三卷），我们从量子比特讲起。",
+        "final_answer": "先用一个直观对照：经典比特像开关，只能在 0 或 1 之间切换；"
+        "而量子比特可以同时处于 0 和 1 的叠加态，这正是理解量子计算的第一步。",
         "context_note": {"state": "ready", "profile_items": [{}]},
         "profile_used": True,
     }
@@ -49,8 +51,55 @@ def test_profile_metrics_measure_loop_quality() -> None:
     assert _metric(metrics, "profile_correctness") == 5.0
     assert _metric(metrics, "out_of_scope_write") == 5.0
     assert _metric(metrics, "personalization_gain") == 5.0
+    assert _metric(metrics, "cliche_control") == 5.0
     assert _metric(metrics, "cross_turn_stability") == 5.0
     assert 0.0 <= _metric(metrics, "naturalness") <= 5.0
+
+
+def test_profile_metrics_reject_cliche_only_personalization() -> None:
+    """Issue 41：空泛套话不再被计为个性化收益。"""
+
+    case = _case("profile-goal-loop")
+    outputs = {
+        "recorded_assertions": [
+            {
+                "canonical_dimension": "stage_goal",
+                "value_or_rule": "读懂《费曼物理学讲义》第三卷",
+                "status": "active",
+            }
+        ],
+        "final_answer": "根据你的目标（读懂《费曼物理学讲义》第三卷），我们开始吧。",
+        "context_note": {"state": "ready", "profile_items": [{}]},
+        "profile_used": True,
+    }
+    metrics = profile_metrics(case, outputs)
+    assert _metric(metrics, "personalization_gain") == 0.0
+    assert _metric(metrics, "cliche_control") == 0.0
+    assertions = run_auto_assertions(case, outputs)
+    assert not any(a.assertion_id == "a-concrete" and a.passed for a in assertions)
+
+
+def test_profile_metrics_require_coexistence_and_source_support() -> None:
+    """Issue 41：并行事实缺失或来源缺失按完整事实衡量，不用同维度唯一判稳定。"""
+
+    case = _case("profile-goal-loop")
+    outputs = {
+        "recorded_assertions": [
+            {
+                "canonical_dimension": "interest_preference",
+                "value_or_rule": "量子力学",
+                "status": "active",
+            }
+        ],
+        "final_answer": "先用一个直观对照：经典比特像开关，而量子比特可以同时处于"
+        "0 和 1 的叠加态。",
+        "context_note": {},
+        "profile_used": True,
+    }
+    metrics = profile_metrics(case, outputs)
+    assert _metric(metrics, "fact_completeness") == 2.5
+    assert _metric(metrics, "cross_turn_stability") == 0.0
+    assert _metric(metrics, "source_support") == 0.0
 
 
 def test_profile_metrics_detect_overreach() -> None:
@@ -72,6 +121,78 @@ def test_profile_metrics_detect_overreach() -> None:
     assert _metric(metrics, "out_of_scope_write") == 0.0
     assertions = run_auto_assertions(case, outputs)
     assert not any(a.assertion_id == "a-scope" and a.passed for a in assertions)
+
+
+def test_complete_relation_and_active_negation_are_required() -> None:
+    case = _case("profile-goal-loop").model_copy(update={"initial_state": {
+        "profile_expected": "喜欢长篇回答",
+    }})
+    for text, status in [("我不喜欢长篇回答", "active"), ("喜欢长篇回答", "deleted")]:
+        results = run_auto_assertions(case, {"recorded_assertions": [
+            {"value_or_rule": text, "status": status},
+        ]})
+        recorded = next(result for result in results if result.assertion_id == "a-record-goal")
+        assert not recorded.passed
+    full = case.model_copy(update={"initial_state": {
+        "profile_expected_facts": ["我正在学习Python"],
+    }})
+    assert _metric(profile_metrics(full, {"recorded_assertions": [
+        {"fact_text": "Python"},
+    ]}), "fact_completeness") == 0
+
+
+def test_profile_metrics_precise_update_and_negation_guard() -> None:
+    """Issue 41 评审修复：精准变更有非恒定断言；否定事实不匹配肯定期望。"""
+
+    case = _case("profile-goal-loop")
+    staged = case.model_copy(
+        update={
+            "initial_state": {
+                **case.initial_state,
+                "profile_expected_facts": ["我计划毕业后直接就业"],
+                "profile_replaced_facts": ["我计划考研"],
+            }
+        }
+    )
+    replaced_still_active = {
+        "recorded_assertions": [
+            {"value_or_rule": "我计划考研", "status": "active"}
+        ],
+        "final_answer": "",
+    }
+    assert (
+        _metric(profile_metrics(staged, replaced_still_active), "precise_update")
+        == 0.0
+    )
+    replacement_only = {
+        "recorded_assertions": [
+            {"value_or_rule": "我计划毕业后直接就业", "status": "active"}
+        ],
+        "final_answer": "",
+    }
+    assert (
+        _metric(profile_metrics(staged, replacement_only), "precise_update")
+        == 5.0
+    )
+
+    positive_case = case.model_copy(
+        update={
+            "initial_state": {
+                **case.initial_state,
+                "profile_expected_facts": ["喜欢长篇回答"],
+            }
+        }
+    )
+    negated = {
+        "recorded_assertions": [
+            {"value_or_rule": "我不喜欢长篇回答", "status": "active"}
+        ],
+        "final_answer": "",
+    }
+    assert (
+        _metric(profile_metrics(positive_case, negated), "profile_correctness")
+        == 0.0
+    )
 
 
 def test_profile_no_personalization_gets_zero_gain() -> None:

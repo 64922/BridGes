@@ -1,0 +1,423 @@
+{
+  "passed": true,
+  "pass_rate": 1.0,
+  "scenario_pass_rate": 1.0,
+  "scenario_count": 12,
+  "checkpoint_count": 36,
+  "hard_gate_failures": [],
+  "environment": {
+    "layer": "deterministic-mechanism",
+    "account_model": "two synthetic accounts",
+    "anchor": "2026-10-05T12:00:00+00:00",
+    "code_commit": "3bd66158e117dc637af68560df201d371e5bef26",
+    "prompt_version": "profile-extraction-prompt-v4"
+  },
+  "scenarios": [
+    {
+      "scenario_id": "negated_preference",
+      "title": "否定偏好保留完整分句且不反转为肯定",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "negation_kept",
+          "title": "否定分句完整保存",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我不喜欢长篇回答']"
+        },
+        {
+          "id": "no_positive_inversion",
+          "title": "不写入肯定版本",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我不喜欢长篇回答']"
+        }
+      ],
+      "measurements": {
+        "active_count": 1
+      }
+    },
+    {
+      "scenario_id": "multi_fact_coexistence",
+      "title": "一条消息的多条事实并存而不是只保留一条",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "two_facts_coexist",
+          "title": "跑步与游泳同时存在",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我喜欢跑步', '我喜欢游泳']"
+        }
+      ],
+      "measurements": {
+        "active_count": 2
+      }
+    },
+    {
+      "scenario_id": "mixed_subject_quote_emotion",
+      "title": "混合消息只写用户合规片段，第三方/引用/情绪零写入",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "self_fact_written",
+          "title": "合规自述写入",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我喜欢跑步']"
+        },
+        {
+          "id": "third_party_absent",
+          "title": "第三方内容零写入",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我喜欢跑步']"
+        },
+        {
+          "id": "emotion_absent",
+          "title": "情绪线索不进入稳定画像",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我喜欢跑步']"
+        }
+      ],
+      "measurements": {
+        "active_count": 1
+      }
+    },
+    {
+      "scenario_id": "anaphora",
+      "title": "回指不写入新事实，既有背景可跨轮召回",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "no_duplicate_fact",
+          "title": "回指消息不重复写入",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我正在学习概率统计']"
+        },
+        {
+          "id": "no_dangling_reference",
+          "title": "回指词不成为事实对象",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我正在学习概率统计']"
+        },
+        {
+          "id": "background_recalled",
+          "title": "既有背景跨轮按用途召回",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "采用条目：['我正在学习概率统计']"
+        }
+      ],
+      "measurements": {
+        "active_count": 1
+      }
+    },
+    {
+      "scenario_id": "time_anchor",
+      "title": "相对时间以来源消息为锚，过期不注入，长期偏好无统一 TTL",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "validity_anchored",
+          "title": "相对时间解析为绝对区间并保留锚点",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "valid_from=2026-10-12 00:00:00+00:00 valid_until=2026-10-18 23:59:59+00:00 anchor=2026-10-05 12:00:00+00:00"
+        },
+        {
+          "id": "in_window_recall",
+          "title": "有效期内可召回",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "下周考试"
+        },
+        {
+          "id": "expired_not_recalled",
+          "title": "过期后停止注入",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "过期时间点切片不含该事实"
+        },
+        {
+          "id": "long_term_no_ttl",
+          "title": "长期偏好不因统一 TTL 丢失",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "偏好条目：我平时喜欢跑步"
+        }
+      ],
+      "measurements": {
+        "valid_from": "2026-10-12T00:00:00+00:00",
+        "valid_until": "2026-10-18T23:59:59+00:00"
+      }
+    },
+    {
+      "scenario_id": "parallel_goals_precise_change",
+      "title": "并行目标并存，明确替代只影响对应事实",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "parallel_coexist",
+          "title": "考研与六级同时存在",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我计划考研', '我计划通过英语六级']"
+        },
+        {
+          "id": "old_goal_released",
+          "title": "被替代旧目标不再活动",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我计划毕业后直接就业', '我计划通过英语六级']"
+        },
+        {
+          "id": "replacement_active",
+          "title": "新目标成为活动事实",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我计划毕业后直接就业', '我计划通过英语六级']"
+        },
+        {
+          "id": "unrelated_untouched",
+          "title": "无关目标不被连带覆盖",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我计划毕业后直接就业', '我计划通过英语六级']"
+        },
+        {
+          "id": "slice_invalidated_after_change",
+          "title": "已变更事实使旧画像切片按版本失效",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "变更前有效=True 变更后失效=True"
+        }
+      ],
+      "measurements": {
+        "kaoyan_id": "item-d528ZsqC1DZQjryeXN5Z2w",
+        "cet6_id": "item-3VGxPyjTj4nuaAXmUQqtbg"
+      }
+    },
+    {
+      "scenario_id": "delete_synonym_and_recovery",
+      "title": "删除后普通近义不恢复，明确重新记住只以新来源恢复",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "synonym_suppressed",
+          "title": "普通近义提及不恢复",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：[]"
+        },
+        {
+          "id": "explicit_recovery",
+          "title": "明确重新记住可恢复",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "恢复条目：我喜欢跑步"
+        },
+        {
+          "id": "recovery_new_source_recorded",
+          "title": "恢复记录新授权来源，不靠旧消息自动复活",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "来源：['m-del-1', 'm-del-3']"
+        }
+      ],
+      "measurements": {
+        "deleted_id": "item-jH0_Kyf1hhFXXNKzP0TWrw"
+      }
+    },
+    {
+      "scenario_id": "low_confidence_mirror",
+      "title": "LOW 把握度镜像条目不作为确定事实召回",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "low_not_recalled",
+          "title": "低把握度条目不进入采用切片",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "采用条目：[]"
+        },
+        {
+          "id": "exclusion_reason_recorded",
+          "title": "排除原因可审计",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "排除：{'概率统计': '可靠程度不足，暂不用于当前回答'}"
+        }
+      ],
+      "measurements": {
+        "mirrored_id": "item-VWbTbj4YXDZG1saTe_g8MA"
+      }
+    },
+    {
+      "scenario_id": "stop_recording_forget_and_late_task",
+      "title": "停止记录不挡主动忘掉，迟到任务不复活已撤回事实",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "forget_still_works",
+          "title": "停止记录后忘掉仍即时生效",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "memory={'kind': 'forget', 'status': 'forgotten', 'matched_count': 1} 活跃=[]"
+        },
+        {
+          "id": "no_new_fact_while_blocked",
+          "title": "停止记录期间不自动新增",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：[]"
+        },
+        {
+          "id": "late_task_no_revive",
+          "title": "消息重放/迟到任务不复活已撤回事实",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：[]"
+        }
+      ],
+      "measurements": {
+        "run_records": [
+          {
+            "extraction_id": "profile-extract-52136a472b3e25d7d5a55ad88a9dbfbb",
+            "message_id": "m-stop-3",
+            "status": "exhausted",
+            "attempts": 0,
+            "outcome": "no_signal",
+            "created_at": "2026-10-04T11:28:15.313764+00:00",
+            "updated_at": "2026-10-04T11:28:15.313764+00:00",
+            "source": "local_rule"
+          },
+          {
+            "extraction_id": "profile-extract-dd67eff2db2b39daf48eea3a6071dc85",
+            "message_id": "m-stop-1",
+            "status": "exhausted",
+            "attempts": 0,
+            "outcome": "no_signal",
+            "created_at": "2026-10-04T11:28:15.313764+00:00",
+            "updated_at": "2026-10-04T11:28:15.313764+00:00",
+            "source": "local_rule"
+          }
+        ]
+      }
+    },
+    {
+      "scenario_id": "self_report_vs_answer_evidence",
+      "title": "自述基础与答题证据分开，不以一次不会答形成长期标签",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "self_report_stored",
+          "title": "明确自述作为起点事实保存",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我正在学习概率统计']"
+        },
+        {
+          "id": "no_capability_label",
+          "title": "一次不会答不形成全局能力标签",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我正在学习概率统计']"
+        },
+        {
+          "id": "no_behavior_label",
+          "title": "行为线索只观察不晋升为长期事实",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "活动条目：['我正在学习概率统计']"
+        }
+      ],
+      "measurements": {
+        "active_count": 1
+      }
+    },
+    {
+      "scenario_id": "switches_and_isolation",
+      "title": "使用开关停止取用且不删数据，账户隔离互不可见",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "usage_off_flag",
+          "title": "关闭使用后开关为关（调用方据此不注入）",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "usage_flag_off=True"
+        },
+        {
+          "id": "usage_off_keeps_data",
+          "title": "关闭使用不删除已记录信息",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "活动条目：['我喜欢跑步']"
+        },
+        {
+          "id": "account_isolated",
+          "title": "账户之间互不召回",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "A 查摄影：[]；B 查跑步：[]"
+        },
+        {
+          "id": "usage_back_recall",
+          "title": "重新开启后可再用未删除信息",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "切片恢复"
+        }
+      ],
+      "measurements": {
+        "controls_after_off": {
+          "controls_version": "profile-controls-v1",
+          "recording_enabled": true,
+          "usage_enabled": true,
+          "usage_control_version": 2,
+          "usage_updated_at": "2026-10-04T11:28:15.314764Z"
+        }
+      }
+    },
+    {
+      "scenario_id": "evidence_feedback_path",
+      "title": "页面依据可解释过期/记错等反馈，反馈不自动删改事实",
+      "passed": true,
+      "checkpoints": [
+        {
+          "id": "expired_evidence_explains",
+          "title": "过期事实的依据展开给出时效状态",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "validity=expired"
+        },
+        {
+          "id": "feedback_effect_explains",
+          "title": "四类反馈路径各有确定性效果",
+          "passed": true,
+          "hard_gate": false,
+          "detail": "effects={'fact_wrong': 'suggest_fact_correction', 'expired': 'suggest_validity_review', 'scope_inapplicable': 'no_fact_change', 'preference_not_followed': 'no_fact_change'}"
+        },
+        {
+          "id": "feedback_does_not_delete",
+          "title": "反馈不自动删除仍正确的事实",
+          "passed": true,
+          "hard_gate": true,
+          "detail": "反馈后条目仍活动"
+        }
+      ],
+      "measurements": {
+        "feedback_effects": {
+          "fact_wrong": "suggest_fact_correction",
+          "expired": "suggest_validity_review",
+          "scope_inapplicable": "no_fact_change",
+          "preference_not_followed": "no_fact_change"
+        }
+      }
+    }
+  ]
+}

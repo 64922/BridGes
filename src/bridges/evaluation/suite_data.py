@@ -118,7 +118,11 @@ SCALES: list[ScoringScale] = [
         [
             ("profile_correctness", "画像正确性"),
             ("out_of_scope_write", "越界写入抑制"),
+            ("fact_completeness", "完整事实覆盖"),
+            ("precise_update", "精准变更"),
+            ("source_support", "来源支持"),
             ("personalization_gain", "后续个性化收益"),
+            ("cliche_control", "套话抑制"),
             ("naturalness", "自然度"),
             ("cross_turn_stability", "跨轮稳定性"),
         ],
@@ -473,19 +477,30 @@ CASES: list[EvalCase] = [
             _assert("a-record-goal", "profile_recorded", "学习目标维度被正确记录"),
             _assert("a-scope", "no_out_of_scope_write", "无越界写入"),
             _assert("a-personal", "profile_used_in_answer", "后续回答使用了画像切片"),
-            _assert("a-stable", "profile_stable", "跨轮画像记录未重复或冲突"),
+            _assert("a-concrete", "personalization_gain", "回答含具体个性化行为而非套话"),
+            _assert("a-stable", "profile_stable", "并列事实未重复或冲突"),
         ],
         human_scale_id="scale-profile-5",
         budget=_BUDGET,
         expected_artifact_schema_id="schema-profile-loop",
         initial_state={
             "profile_expected": "费曼",
+            "profile_expected_facts": ["量子力学", "费曼"],
+            "answer_requirements": {
+                "must_include": ["量子比特", "叠加态"],
+                "ordered": [["经典", "叠加态"]],
+                "min_chars": 40,
+                "must_exclude": [
+                    "结合你的", "根据你的兴趣", "根据你的目标", "根据你的画像",
+                ],
+            },
             "script": {
                 "rules": [
                     {
                         "match": "（类别：兴趣偏好）",
-                        "answer": "根据你的兴趣（量子力学，正在读《费曼物理学讲义》），"
-                        "我们从量子比特讲起：量子比特可以同时处于 0 和 1 的叠加态。",
+                        "answer": "先用一个直观对照：经典比特像开关，只能在 0 或 1 "
+                        "之间切换；而量子比特可以同时处于 0 和 1 的叠加态，这正是"
+                        "理解量子计算的第一步。",
                     },
                     {
                         "match": "",
@@ -549,18 +564,29 @@ CASES: list[EvalCase] = [
         auto_assertions=[
             _assert("a-personal", "profile_used_in_answer", "第二轮回答使用了画像切片"),
             _assert("a-gain", "personalization_gain", "有画像时回答更贴合用户背景"),
+            _assert("a-natural-cliche", "no_personalization_cliche", "不用套话声称个性化"),
         ],
         human_scale_id="scale-profile-5",
         budget=_BUDGET,
         expected_artifact_schema_id="schema-profile-loop",
         initial_state={
             "profile_expected": "分子生物学",
+            "profile_expected_facts": ["分子生物学"],
+            "answer_requirements": {
+                "must_include": ["拉链", "半保留复制", "模板"],
+                "ordered": [["拉链", "半保留复制"]],
+                "min_chars": 40,
+                "must_exclude": [
+                    "结合你的", "根据你的兴趣", "根据你的目标", "根据你的画像",
+                ],
+            },
             "script": {
                 "rules": [
                     {
                         "match": "（类别：兴趣偏好）",
-                        "answer": "结合你正在学的（分子生物学基础）：DNA 复制是"
-                        "半保留复制，两条链分别作为模板合成互补链。",
+                        "answer": "先用一个直观画面：DNA 像一条拉链，从中间拉开后，"
+                        "每条链都能补齐自己的另一半——这就是半保留复制：两条链"
+                        "分别作为模板合成互补链。",
                     },
                     {
                         "match": "",
