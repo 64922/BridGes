@@ -1,0 +1,15 @@
+{
+  "issue_total": 5369,
+  "issue_failed": 199,
+  "main_total": 5346,
+  "main_failed": 202,
+  "issue_pass": 5170,
+  "main_pass": 5144,
+  "issue_only_failures": [],
+  "main_only_failures": [
+    "tests.integration.test_runtime_smoke::test_start_fails_when_global_key_env_absent",
+    "tests.integration.test_runtime_smoke::test_start_fails_with_empty_global_key_before_spawning",
+    "tests.profiles.test_issue01_chat_profile_correction::test_chat_correction_uses_latest_record_and_is_idempotent"
+  ],
+  "failure_sets_equal": false
+}

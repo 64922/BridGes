@@ -1,0 +1,33 @@
+{
+  "issue_total": 5371,
+  "issue_failed": 223,
+  "main_total": 5346,
+  "main_failed": 202,
+  "issue_pass": 5148,
+  "main_pass": 5144,
+  "issue_only_failures": [
+    "tests.closeout.test_api_boot::test_api_starts_from_unique_absolute_sqlite_path_and_health_passes",
+    "tests.closeout.test_api_boot::test_two_api_runs_do_not_collide_on_ports_or_data_dirs",
+    "tests.integration.test_cli_contract::test_api_help_exits_successfully",
+    "tests.integration.test_cli_contract::test_doctor_reports_basic_diagnostics",
+    "tests.integration.test_cli_contract::test_doctor_reports_no_conda_dependency_when_not_in_conda",
+    "tests.integration.test_cli_contract::test_migrate_exits_successfully",
+    "tests.integration.test_cli_contract::test_serve_help_exits_successfully",
+    "tests.integration.test_cli_contract::test_web_help_exits_successfully",
+    "tests.integration.test_runtime_smoke::test_api_command_fails_without_global_key",
+    "tests.integration.test_runtime_smoke::test_api_gracefully_shuts_down",
+    "tests.integration.test_runtime_smoke::test_doctor_fails_without_global_key_in_development",
+    "tests.integration.test_runtime_smoke::test_doctor_notices_test_environment_needs_no_global_key",
+    "tests.integration.test_runtime_smoke::test_doctor_reports_configured_global_key_without_tail",
+    "tests.integration.test_runtime_smoke::test_doctor_smoke",
+    "tests.integration.test_runtime_smoke::test_health_endpoints_return_unified_projection",
+    "tests.integration.test_runtime_smoke::test_migrate_smoke",
+    "tests.integration.test_runtime_smoke::test_start_fails_when_global_key_file_unreadable",
+    "tests.integration.test_runtime_smoke::test_worker_command_fails_without_global_key",
+    "tests.runtime.test_runtime_contract::test_cli_start_help_mentions_all_services",
+    "tests.runtime.test_runtime_contract::test_cli_worker_scheduler_help_exits_successfully",
+    "tests.runtime.test_runtime_contract::test_runtime_lock_auto_released_after_process_death"
+  ],
+  "main_only_failures": [],
+  "failure_sets_equal": false
+}

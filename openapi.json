@@ -57290,6 +57290,48 @@
         ],
         "title": "StudyQuestion"
       },
+      "StudyQuestionCheck": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "consistent",
+              "conflict",
+              "insufficient"
+            ],
+            "title": "Status",
+            "default": "insufficient"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "question_matches_knowledge": {
+            "type": "boolean",
+            "title": "Question Matches Knowledge",
+            "default": false
+          },
+          "rubric_supported": {
+            "type": "boolean",
+            "title": "Rubric Supported",
+            "default": false
+          },
+          "answer_consistent": {
+            "type": "boolean",
+            "title": "Answer Consistent",
+            "default": false
+          },
+          "calculation_checked": {
+            "type": "boolean",
+            "title": "Calculation Checked",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "StudyQuestionCheck",
+        "description": "出题前的内容核验结果（工单 33）：题干/评分依据/答案逐项裁决。\n\n只由出题前的独立核验写入；已判定题目不回写、不随用户答案临时修改。"
+      },
       "StudyReview": {
         "properties": {
           "questions": {
@@ -57319,6 +57361,16 @@
             "type": "boolean",
             "title": "Complete",
             "default": false
+          },
+          "scope_version_id": {
+            "type": "string",
+            "title": "Scope Version Id",
+            "default": ""
+          },
+          "protocol_version": {
+            "type": "string",
+            "title": "Protocol Version",
+            "default": "study-review-v1"
           }
         },
         "type": "object",
@@ -57412,6 +57464,62 @@
               }
             ],
             "title": "User Message Id"
+          },
+          "scope_version_id": {
+            "type": "string",
+            "title": "Scope Version Id",
+            "default": ""
+          },
+          "core_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Core Points"
+          },
+          "equivalents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Equivalents"
+          },
+          "key_misconceptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Key Misconceptions"
+          },
+          "incomplete_basis": {
+            "type": "string",
+            "title": "Incomplete Basis",
+            "default": ""
+          },
+          "incorrect_basis": {
+            "type": "string",
+            "title": "Incorrect Basis",
+            "default": ""
+          },
+          "conditions": {
+            "type": "string",
+            "title": "Conditions",
+            "default": ""
+          },
+          "verification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyQuestionCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legacy": {
+            "type": "boolean",
+            "title": "Legacy",
+            "default": false
           }
         },
         "type": "object",

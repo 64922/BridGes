@@ -139,6 +139,19 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
            FailureClass.INTERNAL, RecoveryAction.RETRY, contextual=True),
     _error("study_scope_failed", "知识范围核验未通过，请重试。",
            FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    # 工单 33：出题前冻结与核验的失败码；保留领域核验详情与真实恢复方式。
+    _error("study_review_plan_incomplete", "复盘计划未覆盖或结构不完整，原阶段已保留，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_review_verify_conflict", "题目或评分要点与书页冲突，未通过出题前核验，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_review_verify_unverified", "题目或评分要点无法核实，未通过出题前核验，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_review_calculation", "题目数值结论与登记计算工具复算不一致，未出题，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_review_budget", "复盘计划超出上下文预算，请缩小本节范围后重试。",
+           FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST, contextual=True),
+    _error("study_review_invalid", "复盘判定或结果未通过核验，原题已保留，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
     _error(
         "generation_worker_lost",

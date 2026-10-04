@@ -502,7 +502,7 @@ def test_legacy_state_upgrades_with_stable_ids_and_exports(tmp_path: Any) -> Non
     repository = StudyRepository(database)
     state = repository.get("alice", conversation.conversation_id)
     assert state is not None
-    assert state.state_version == 2
+    assert state.state_version == 3
     unit_id = state.units[0].unit_id
     assert unit_id.startswith("legacy-")
     assert state.questions[0].unit_ids == [unit_id]
@@ -517,6 +517,6 @@ def test_legacy_state_upgrades_with_stable_ids_and_exports(tmp_path: Any) -> Non
     exported = export_rows(database, "alice", "study_states")
     assert len(exported) == 1
     restored = json.loads(exported[0]["state_json"])
-    assert restored["state_version"] == 2
+    assert restored["state_version"] == 3
     assert restored["scope"]["scope_version_id"] == "legacy-scope-v1"
     assert restored["units"][0]["unit_id"] == unit_id

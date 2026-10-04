@@ -26,7 +26,8 @@ describe("学习阶段与页级证据", () => {
     expect(button.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("复盘").getAttribute("aria-current")).toBe("step");
     rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
-      review: { complete: false, needs_replan: false } }}
+      review: { complete: false, needs_replan: false,
+        scope_version_id: "", protocol_version: "study-review-v1" } }}
       onAction={onAction} />);
     fireEvent.click(screen.getByRole("button", { name: "继续复盘" }));
     expect(onAction).toHaveBeenCalledWith("继续复盘");
@@ -35,7 +36,8 @@ describe("学习阶段与页级证据", () => {
   it("复盘结束不重新开题，追加页待确认时不提供复盘操作", () => {
     const onAction = vi.fn(async () => true);
     const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
-      review: { complete: true, needs_replan: false } }} onAction={onAction} />);
+      review: { complete: true, needs_replan: false,
+        scope_version_id: "", protocol_version: "study-review-v1" } }} onAction={onAction} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByRole("status").textContent).toContain("复盘已结束");
     rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
@@ -120,11 +122,16 @@ describe("学习阶段与页级证据", () => {
         fragments: [{ fragment_id: "photo-1:1", kind: "formula", position: "中部公式",
           text: "y=ax+b", confidence: 0.9, source: "photo",
           recognition_path: "vision", interpretation: "" }] }],
-      review: { complete: true, needs_replan: false, questions: [
+      review: { complete: true, needs_replan: false,
+        scope_version_id: "", protocol_version: "study-review-v1", questions: [
         { question_id: "q1", question: "a 的含义是什么？", coverage_units: ["线性函数"],
-          fragment_ids: ["photo-1:1"], asked: true, judgement: "correct" },
+          fragment_ids: ["photo-1:1"], asked: true, judgement: "correct",
+          scope_version_id: "", incomplete_basis: "", incorrect_basis: "",
+          conditions: "", legacy: false },
         { question_id: "q2", question: "b 如何影响图像？", coverage_units: ["线性函数"],
-          fragment_ids: ["photo-1:1"], asked: true, judgement: "incorrect" },
+          fragment_ids: ["photo-1:1"], asked: true, judgement: "incorrect",
+          scope_version_id: "", incomplete_basis: "", incorrect_basis: "",
+          conditions: "", legacy: false },
       ] },
       summary: { points: [
         { kind: "learned", text: "本节讲线性函数 y=ax+b。", fragment_ids: ["photo-1:1"] },
@@ -147,9 +154,12 @@ describe("学习阶段与页级证据", () => {
   it("全部答对时待补段只陈述实际判定，不宣称有漏洞", () => {
     render(<StudyProgress study={{
       subsection_id: "section-1", stage: "summary", pages: [],
-      review: { complete: true, needs_replan: false, questions: [
+      review: { complete: true, needs_replan: false,
+        scope_version_id: "", protocol_version: "study-review-v1", questions: [
         { question_id: "q1", question: "a 的含义是什么？", coverage_units: ["线性函数"],
-          fragment_ids: [], asked: true, judgement: "correct" },
+          fragment_ids: [], asked: true, judgement: "correct",
+          scope_version_id: "", incomplete_basis: "", incorrect_basis: "",
+          conditions: "", legacy: false },
       ] },
       summary: { points: [
         { kind: "learned", text: "本节讲线性函数。", fragment_ids: [] },

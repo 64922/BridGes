@@ -2988,7 +2988,9 @@ class ChatService:
         执行器把 ``on_event`` 接到游标事件持久化上；停止信号与终态收敛
         语义见 :mod:`bridges.chat.graph`。
         """
-        if run.graph_version in {STUDY_GRAPH_VERSION, "study-pages-v1"}:
+        if run.graph_version in {
+            STUDY_GRAPH_VERSION, "study-pages-v1", "study-scope-v2", "study-tutoring-v3",
+        }:
             return StudyWorkflow(self).run(
                 run, on_event=on_event, stop_event=stop_event
             )

@@ -58,7 +58,13 @@ from bridges.study.kernel import (
     _json_object_text,  # noqa: F401 - 再导出，兼容既有测试导入路径
     study_recipe_registry,
 )
-from bridges.study.review import grade, next_question, plan_review, review_intent
+from bridges.study.review import (
+    ReviewPlanError,
+    grade,
+    next_question,
+    review_intent,
+)
+from bridges.study.review_kernel import ReviewPlanKernel
 from bridges.study.scope import (
     GATE_SCOPE_CONFLICT,
     GATE_SCOPE_INCOMPLETE,
@@ -73,7 +79,7 @@ from bridges.study.scope import (
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
-STUDY_GRAPH_VERSION = "study-tutoring-v3"
+STUDY_GRAPH_VERSION = "study-tutoring-review-v4"
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
@@ -998,6 +1004,28 @@ class StudyWorkflow:
             text = render_summary(state.summary, state)
             return f"{answer}\n\n{text}" if answer else text
 
+        def plan_with_repair() -> Any:
+            """出题前核验失败时按公共预算做一次有界修复；再失败不上报坏题。"""
+            planner = ReviewPlanKernel(
+                self._service, run, invoke,
+                stop_event=stop_event, event_sink=kernel_event,
+            )
+            try:
+                return planner.plan(state)
+            except ReviewPlanError as exc:
+                if not budget.begin_adjustment(reason_code=exc.code):
+                    raise
+                outcome_code = exc.code
+                try:
+                    repaired = planner.plan(
+                        state,
+                        repair={"code": exc.code, "message": exc.repair_detail},
+                    )
+                    outcome_code = "study_review_repaired"
+                    return repaired
+                finally:
+                    budget.end_adjustment(outcome_code=outcome_code)
+
         def review() -> _GraphState:
             try:
                 if intent == "pause":
@@ -1010,12 +1038,14 @@ class StudyWorkflow:
                     )
                 elif intent == "start":
                     if state.review is None or state.review.needs_replan:
-                        state.review = plan_review(self._service, run, state, invoke)
+                        state.review = plan_with_repair()
                     state.stage = "review"
                     if state.review.active_question_id:
                         current = next(item for item in state.review.questions
                                        if item.question_id == state.review.active_question_id)
                         answer = f"请回答当前复盘题：{current.question}"
+                        if current.conditions:
+                            answer += f"\n\n{current.conditions}"
                     elif state.review.complete:
                         # 复盘计划已完成：复述总结（缺失时在此补齐），不再出题。
                         answer = ""
@@ -1025,6 +1055,16 @@ class StudyWorkflow:
                     answer = grade(self._service, run, state, user.content, invoke)
                 if intent != "pause" and state.review is not None and state.review.complete:
                     answer = finish_review(answer)
+            except ReviewPlanError as exc:
+                raise StudyWorkflowError(
+                    current_node, exc.code, exc.message
+                ) from exc
+            except StoppedError as exc:
+                raise StudyWorkflowError(exc.node, "stopped", STUDY_STOPPED_TEXT) from exc
+            except SupersededError as exc:
+                raise StudyWorkflowError(
+                    current_node, exc.code, "学习运行已失效，原书页与历史已保留。"
+                ) from exc
             except ValueError as exc:
                 raise StudyWorkflowError(
                     current_node, "study_review_invalid",

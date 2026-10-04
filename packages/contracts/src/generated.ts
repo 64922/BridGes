@@ -24540,6 +24540,45 @@ export interface components {
              */
             scope_version_id: string;
         };
+        /**
+         * StudyQuestionCheck
+         * @description 出题前的内容核验结果（工单 33）：题干/评分依据/答案逐项裁决。
+         *
+         *     只由出题前的独立核验写入；已判定题目不回写、不随用户答案临时修改。
+         */
+        StudyQuestionCheck: {
+            /**
+             * Status
+             * @default insufficient
+             * @enum {string}
+             */
+            status: "consistent" | "conflict" | "insufficient";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Question Matches Knowledge
+             * @default false
+             */
+            question_matches_knowledge: boolean;
+            /**
+             * Rubric Supported
+             * @default false
+             */
+            rubric_supported: boolean;
+            /**
+             * Answer Consistent
+             * @default false
+             */
+            answer_consistent: boolean;
+            /**
+             * Calculation Checked
+             * @default false
+             */
+            calculation_checked: boolean;
+        };
         /** StudyReview */
         StudyReview: {
             /** Questions */
@@ -24556,6 +24595,16 @@ export interface components {
              * @default false
              */
             complete: boolean;
+            /**
+             * Scope Version Id
+             * @default
+             */
+            scope_version_id: string;
+            /**
+             * Protocol Version
+             * @default study-review-v1
+             */
+            protocol_version: string;
         };
         /** StudyReviewQuestion */
         StudyReviewQuestion: {
@@ -24582,6 +24631,38 @@ export interface components {
             explanation?: string | null;
             /** User Message Id */
             user_message_id?: string | null;
+            /**
+             * Scope Version Id
+             * @default
+             */
+            scope_version_id: string;
+            /** Core Points */
+            core_points?: string[];
+            /** Equivalents */
+            equivalents?: string[];
+            /** Key Misconceptions */
+            key_misconceptions?: string[];
+            /**
+             * Incomplete Basis
+             * @default
+             */
+            incomplete_basis: string;
+            /**
+             * Incorrect Basis
+             * @default
+             */
+            incorrect_basis: string;
+            /**
+             * Conditions
+             * @default
+             */
+            conditions: string;
+            verification?: components["schemas"]["StudyQuestionCheck"] | null;
+            /**
+             * Legacy
+             * @default false
+             */
+            legacy: boolean;
         };
         /**
          * StudyScope
