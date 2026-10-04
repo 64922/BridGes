@@ -1,0 +1,2222 @@
+[
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 69,
+      "row": 17
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 17
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 17,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 61,
+      "row": 274
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from fastapi import Depends, FastAPI, HTTPException, Request, status\r\nfrom fastapi.responses import JSONResponse\r\nfrom pydantic import ValidationError as PydanticValidationError\r\n\r\nfrom bridges import __version__\r\nfrom bridges.ai import (\r\n    CapabilityRegistry,\r\n    CapabilityRegistryError,\r\n    StubQwenAdapter,\r\n)\r\nfrom bridges.ai.production import build_production_composition\r\nfrom bridges.ai.run_model_config import RunModelConfigProvider\r\nfrom bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder\r\nfrom bridges.ai.startup_check import log_qwen_startup_connectivity_warnings\r\nfrom bridges.ai.stream_script_fixture import ScriptedChatStreamAdapter\r\nfrom bridges.api import (\r\n    auth,\r\n    chat,\r\n    compatibility,\r\n    credentials,\r\n    domain_packs,\r\n    evaluation,\r\n    expression,\r\n    ingestion,\r\n    institution,\r\n    knowledge_base,\r\n    learning_project_migration,\r\n    learning_projects,\r\n    model_settings,\r\n    projects,\r\n    science,\r\n    scope,\r\n    search,\r\n    sharing,\r\n    skills,\r\n    sync,\r\n    tasks,\r\n    vault,\r\n    workflows,\r\n)\r\nfrom bridges.api import commute as commute_api\r\nfrom bridges.api.csrf import CsrfOriginMiddleware\r\nfrom bridges.api.data import router as data_router\r\nfrom bridges.api.image import router as image_router\r\nfrom bridges.api.mcp import router as mcp_router\r\nfrom bridges.api.media import router as media_router\r\nfrom bridges.api.plugins import router as plugins_router\r\nfrom bridges.api.reminder import router as reminder_router\r\nfrom bridges.api.speech import router as speech_router\r\nfrom bridges.api.video import router as video_router\r\nfrom bridges.arxiv_mcp.service import ArxivSearchService\r\nfrom bridges.career.service import CareerPlannerService\r\nfrom bridges.career_plan.background import (\r\n    snapshot_from_adopted_slice as career_snapshot_from_slice,\r\n)\r\nfrom bridges.career_plan.background import (\r\n    unavailable_snapshot as career_background_unavailable,\r\n)\r\nfrom bridges.career_plan.collecting import HttpJobPageReader\r\nfrom bridges.career_plan.contracts import CareerBackgroundSnapshot\r\nfrom bridges.career_plan.searching import (\r\n    WebSearchServiceAdapter as CareerWebSearchAdapter,\r\n)\r\nfrom bridges.career_plan.service import CareerPlanService\r\nfrom bridges.chat import (\r\n    AttachmentRepository,\r\n    ChatAttachmentService,\r\n    ChatService,\r\n    ConversationRepository,\r\n)\r\nfrom bridges.chat.run_executor import GenerationRunExecutor\r\nfrom bridges.chat.selections import ChatSelectionsService\r\nfrom bridges.chat.summary import ChatSummaryService, GatewaySummaryExtractor\r\nfrom bridges.chat.turn import CHAT_CAPABILITY_NAME\r\nfrom bridges.closeout.fixtures import (\r\n    CloseoutArxivClient,\r\n    CloseoutQwenAdapter,\r\n    CloseoutWebSearchClient,\r\n)\r\nfrom bridges.commute.service import CommuteService\r\nfrom bridges.commute.sources import AmapRouteClient\r\nfrom bridges.config import Settings, get_settings\r\nfrom bridges.contracts.ai import (\r\n    CapabilityKind,\r\n    CapabilityRecord,\r\n    CapabilityStatus,\r\n)\r\nfrom bridges.contracts.domain import (\r\n    PackImpactAction,\r\n    PackImpactCategory,\r\n    PackImpactItem,\r\n)\r\nfrom bridges.contracts.health import DependencyHealth, HealthProjection, HealthStatus\r\nfrom bridges.contracts.profile_adoption import AdoptedProfileSlice\r\nfrom bridges.contracts.projects import ObjectRef\r\nfrom bridges.contracts.workflows import RunProjection, WorkflowRunStatus\r\nfrom bridges.credentials.global_credential import (\r\n    GLOBAL_QWEN_KEY_GUIDANCE,\r\n    is_global_qwen_key_configured,\r\n)\r\nfrom bridges.credentials.runtime_resolver import (\r\n    CredentialSource,\r\n    RuntimeCredentialResolver,\r\n)\r\nfrom bridges.credentials.store import (\r\n    CredentialStorePort,\r\n    build_credential_store,\r\n)\r\nfrom bridges.domain import (\r\n    DomainPackLoader,\r\n    DomainPackRegistry,\r\n    DomainPackValidationRuntime,\r\n    create_astronomy_pack,\r\n    create_computer_science_pack,\r\n    create_earth_climate_pack,\r\n    create_life_science_pack,\r\n    create_math_formal_proof_pack,\r\n    create_medical_high_risk_pack,\r\n    create_physics_chemistry_pack,\r\n    create_standards_datasets_pack,\r\n)\r\nfrom bridges.domain.pack_lifecycle import (\r\n    DomainPackLifecycleError,\r\n    DomainPackLifecycleService,\r\n)\r\nfrom bridges.domain.workbench import DomainPackWorkbenchService\r\nfrom bridges.evaluation import EvaluationService\r\nfrom bridges.expression import ExpressionService\r\nfrom bridges.github.client import GITHUB_TIMEOUT_SECONDS, GithubApiClient\r\nfrom bridges.github.inspecting import GithubRepositoryReader\r\nfrom bridges.github.presenting import GithubInsightGenerator\r\nfrom bridges.github.searching import GithubApiSearchAdapter\r\nfrom bridges.github.service import GithubProjectsService\r\nfrom bridges.health.probe import build_health_projection\r\nfrom bridges.identity import IdentityService\r\nfrom bridges.image.service import ImageService\r\nfrom bridges.ingestion.embedding import QwenEmbeddingPort\r\nfrom bridges.ingestion.ocr import QwenOcrPort\r\nfrom bridges.ingestion.service import IngestionService\r\nfrom bridges.institution import InstitutionService\r\nfrom bridges.invalidation import AffectedDownstream, InvalidationService\r\nfrom bridges.knowledge_base import KnowledgeBaseService\r\nfrom bridges.learning import (\r\n    InMemoryLearningRepository,\r\n    LearningPathService,\r\n    LearningService,\r\n    TeachingProgressService,\r\n    TeachingService,\r\n)\r\nfrom bridges.learning.api import router as learning_router\r\nfrom bridges.learning_projects import LearningProjectService\r\nfrom bridges.learning_projects.migration import ProjectMigrationService\r\nfrom bridges.lifecycle.backup import BackupService\r\nfrom bridges.lifecycle.deletion import DeletionService\r\nfrom bridges.lifecycle.exports import ExportService\r\nfrom bridges.mcp.runtime import McpRuntime\r\nfrom bridges.mcp.service import McpService\r\nfrom bridges.media import (\r\n    AccessibilityService,\r\n    MediaGenerationService,\r\n    MediaIngestionService,\r\n    MediaPublishService,\r\n    SandboxService,\r\n    StoryboardService,\r\n    build_media_impact_resolver,\r\n    build_media_publish_impact_resolver,\r\n)\r\nfrom bridges.observability.service import ObservabilityService\r\nfrom bridges.paper.presenting import PaperSummaryGenerator\r\nfrom bridges.paper.service import PaperSearchService\r\nfrom bridges.paper.sources import (\r\n    ENRICH_TIMEOUT_SECONDS,\r\n    ArxivPaperSource,\r\n    MetadataEnricher,\r\n)\r\nfrom bridges.persistence import (\r\n    PersistenceError,\r\n    SqliteStateStore,\r\n    StateStore,\r\n    build_state_store,\r\n)\r\nfrom bridges.plugins.service import PluginService\r\nfrom bridges.profiles import (\r\n    PROFILE_EXTRACTION_MAX_NEIGHBORS,\r\n    AtomicProfileService,\r\n    AutomaticProfileService,\r\n    FourDimensionContractGate,\r\n    FourDimensionProfileService,\r\n    GatewayAutomaticProfileExtractor,\r\n    InMemoryAtomicProfileRepository,\r\n    InMemoryAutomaticProfileRepository,\r\n    InMemoryFourDimensionProfileRepository,\r\n    InMemoryProfileRepository,\r\n    ProfileService,\r\n    ProfileSourceMessage,\r\n    RuleBasedAutomaticProfileExtractor,\r\n    SqliteAtomicProfileRepository,\r\n    SqliteAutomaticProfileRepository,\r\n    SqliteFourDimensionProfileRepository,\r\n)\r\nfrom bridges.profiles.api import router as profiles_router\r\nfrom bridges.profiles.legacy_api import router as legacy_profiles_router\r\nfrom bridges.profiles.purpose import build_purpose as build_profile_purpose\r\nfrom bridges.profiles.sqlite_repository import SqliteProfileRepository\r\nfrom bridges.projects import ProjectService\r\nfrom bridges.resources.reading import OpenLibraryBookInsightReader\r\nfrom bridges.resources.service import LearningResourcesService\r\nfrom bridges.resources.sources import (\r\n    BOOK_TIMEOUT_SECONDS,\r\n    BilibiliVideoDiscoverer,\r\n    BilibiliVideoVerifier,\r\n    OpenAlexBookSource,\r\n    OpenLibraryBookSource,\r\n)\r\nfrom bridges.retirement import CompatibilityMetrics, retire_user_extensions, run_reminder_retirement\r\nfrom bridges.retrieval.service import LayeredRetrievalService\r\nfrom bridges.science import (\r\n    ClaimEvidenceService,\r\n    ScienceSearchService,\r\n    ScienceSourceService,\r\n)\r\nfrom bridges.science.claims import (\r\n    ClaimGraphRevalidationHandler,\r\n    build_claim_impact_resolver,\r\n)\r\nfrom bridges.science.service import build_source_impact_resolver\r\nfrom bridges.scope import ScopeEnforcer\r\nfrom bridges.search import SearchService\r\nfrom bridges.sharing import SharingService\r\nfrom bridges.skills import create_builtin_registry\r\nfrom bridges.speech.service import SpeechService\r\nfrom bridges.storage import (\r\n    SCHEMA_INTEGRITY_ERROR_CODE,\r\n    SCHEMA_VERSION,\r\n    BridgesDatabase,\r\n    BridgesObjectRepository,\r\n    EncryptedFileObjectStore,\r\n    StorageError,\r\n)\r\nfrom bridges.sync import SyncService\r\nfrom bridges.tasks.repository import TaskRepository\r\nfrom bridges.tasks.service import TaskService\r\nfrom bridges.tieba.official import HttpOfficialSiteReader\r\nfrom bridges.tieba.reading import HttpTiebaThreadReader\r\nfrom bridges.tieba.searching import WebSearchServiceAdapter\r\nfrom bridges.tieba.service import TiebaResearchService\r\nfrom bridges.vault import (\r\n    FernetVaultEncryptionAdapter,\r\n    InMemoryDeviceKeychain,\r\n    InMemoryDevicePairingRepository,\r\n    InMemoryVaultRepository,\r\n    MemoryDeviceVaultPort,\r\n    VaultService,\r\n)\r\nfrom bridges.video.service import VideoService\r\nfrom bridges.web_search.contracts import WebSearchHealthStatus\r\nfrom bridges.web_search.providers import build_web_search_provider\r\nfrom bridges.web_search.repository import WebSearchCacheRepository\r\nfrom bridges.web_search.service import SearchClient, WebSearchService\r\nfrom bridges.workflows import WorkflowError, WorkflowService\r\n\r\n\r\n",
+          "end_location": {
+            "column": 1,
+            "row": 277
+          },
+          "location": {
+            "column": 1,
+            "row": 17
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 17
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 17,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 18
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 18
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 18,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 64,
+      "row": 19
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 19
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 19,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 32,
+      "row": 21
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 21
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 21,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 26
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 22
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 22,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 66,
+      "row": 27
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 27
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 27,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 28
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 28
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 28,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 29
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 29
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 29,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 76,
+      "row": 30
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 30
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 30,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 71,
+      "row": 31
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 31
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 31,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 56
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 32
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 32,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 47,
+      "row": 57
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 57
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 57,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 50,
+      "row": 58
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 58
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 58,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 59
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 59
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 59,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 60
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 60
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 60,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 61
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 61
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 61,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 62
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 62
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 62,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 63
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 63
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 63,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 64
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 64
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 64,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 65
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 65
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 65,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 66
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 66
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 66,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 67
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 67
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 67,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 52,
+      "row": 68
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 68
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 68,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 69
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 69
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 69,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 70
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 70
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 70,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 53,
+      "row": 71
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 71
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 71,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 74,
+      "row": 72
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 72
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 72,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 73
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 73
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 73,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 74
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 74
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 74,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 60,
+      "row": 75
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 75
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 75,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 76
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 76
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 76,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 77
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 77
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 77,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 56,
+      "row": 78
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 78
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 78,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 60,
+      "row": 79
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 79
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 79,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 80
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 80
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 80,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 81
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 81
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 81,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 85
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 82
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 82,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 86
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 86
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 86,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 89
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 87
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 87,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 90
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 90
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 90,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 95
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 91
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 91,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 96
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 96
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 96,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 97
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 97
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 97,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 104
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 98
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 98,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 56,
+      "row": 105
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 105
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 105,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 111
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 106
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 106,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 60,
+      "row": 112
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 112
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 112,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 113
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 113
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 113,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 77,
+      "row": 114
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 114
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 114,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 52,
+      "row": 115
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 115
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 115,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 46,
+      "row": 116
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 116
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 116,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 117
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 117
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 117,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 122
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 118
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 118,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 50,
+      "row": 123
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 123
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 123,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 128
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 124
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 124,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 133
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 129
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 129,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 86,
+      "row": 134
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 134
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 134,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 135
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 135
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 135,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 73,
+      "row": 136
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 136
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 136,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 140
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 137
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 137,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 144
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 141
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 141,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 148
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 145
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 145,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 161
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 149
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 149,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 165
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 162
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 162,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 64,
+      "row": 166
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 166
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 166,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 167
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 167
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 167,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 168
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 168
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 168,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 57,
+      "row": 169
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 169
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 169,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 45,
+      "row": 170
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 170
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 170,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 47,
+      "row": 171
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 171
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 171,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 58,
+      "row": 172
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 172
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 172,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 46,
+      "row": 173
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 173
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 173,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 174
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 174
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 174,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 175
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 175
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 175,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 73,
+      "row": 176
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 176
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 176,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 56,
+      "row": 177
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 177
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 177,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 184
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 178
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 178,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 185
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 185
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 185,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 186
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 186
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 186,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 72,
+      "row": 187
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 187
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 187,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 188
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 188
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 188,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 55,
+      "row": 189
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 189
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 189,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 52,
+      "row": 190
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 190
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 190,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 191
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 191
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 191,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 192
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 192
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 192,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 202
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 193
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 193,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 203
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 203
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 203,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 209
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 204
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 204,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 50,
+      "row": 210
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 210
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 210,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 228
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 211
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 211,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 59,
+      "row": 229
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 229
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 229,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 73,
+      "row": 230
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 230
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 230,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 76,
+      "row": 231
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 231
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 231,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 232
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 232
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 232,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 71,
+      "row": 233
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 233
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 233,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 44,
+      "row": 234
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 234
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 234,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 101,
+      "row": 235
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 235
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 235,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 62,
+      "row": 236
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 236
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 236,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 241
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 237
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 237,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 245
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 242
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 242,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 65,
+      "row": 246
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 246
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 246,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 40,
+      "row": 247
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 247
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 247,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 41,
+      "row": 248
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 248
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 248,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 43,
+      "row": 249
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 249
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 249,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 51,
+      "row": 250
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 250
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 250,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 49,
+      "row": 251
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 251
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 251,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 259
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 252
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 252,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 37,
+      "row": 260
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 260
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 260,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 2,
+      "row": 268
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 261
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 261,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 47,
+      "row": 269
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 269
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 269,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 63,
+      "row": 270
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 270
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 270,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 271
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 271
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 271,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 67,
+      "row": 272
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 272
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 272,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 70,
+      "row": 273
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 273
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 273,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  },
+  {
+    "cell": null,
+    "code": "E402",
+    "end_location": {
+      "column": 61,
+      "row": 274
+    },
+    "filename": "D:\\BridGes\\.worktrees\\29-evidence-based-personal-career-gap\\src\\bridges\\api\\main.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 274
+    },
+    "message": "Module level import not at top of file",
+    "name": "module-import-not-at-top-of-file",
+    "noqa_row": 274,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+  }
+]

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="24" time="11.094" timestamp="2026-10-04T08:59:27.710591+08:00" hostname="bababoyi"><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_skill_evidence_binds_to_own_assertion[\u6211\u4f1a Java\uff0c\u4f46\u4e0d\u4f1a Redis-expected0]" time="0.025" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_skill_evidence_binds_to_own_assertion[\u6211\u4e0d\u4f1a Java\uff0c\u4f46\u4f1a Redis-expected1]" time="0.001" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_skill_evidence_binds_to_own_assertion[\u6211\u4f1a Java\uff0c\u60f3\u5b66 Redis-expected2]" time="0.001" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_skill_evidence_binds_to_own_assertion[\u5c97\u4f4d\u8981\u6c42\u719f\u6089 Java \u548c Redis-expected3]" time="0.002" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_skill_evidence_binds_to_own_assertion[\u6211\u7684\u670b\u53cb\u4f1a Java \u548c Redis-expected4]" time="0.002" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_skill_evidence_binds_to_own_assertion[\u6211\u4f1a Java \u5417\uff1fRedis \u9700\u8981\u5b66\u5417\uff1f-expected5]" time="0.001" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_conflicting_same_source_remains_unknown" time="0.001" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_project_requirement_survives_all_skills_evidenced" time="0.001" /><testcase classname="tests.career_plan.test_issue29_review_regressions" name="test_personal_task_continuation_keeps_branch_and_time" time="0.001"><failure message="AssertionError: assert &lt;CareerBranch.JOB_INTEL: 'job_intel'&gt; is &lt;CareerBranch.PERSONAL_PLANNING: 'personal_planning'&gt;&#10; +  where &lt;CareerBranch.JOB_INTEL: 'job_intel'&gt; = CareerRequestAnalysis(original_request='给我Java后端准备建议，每天30分钟', job_terms=[], job_title=None, family_title=None, synonym...rification=CareerClarification(question='你想找什么岗位？（例如：Java 后端开发、算法工程师、数据分析师、产品经理）', reason='没有可检索的岗位锚点，先确认目标岗位才能发起检索。')).branch&#10; +  and   &lt;CareerBranch.PERSONAL_PLANNING: 'personal_planning'&gt; = CareerBranch.PERSONAL_PLANNING">def test_personal_task_continuation_keeps_branch_and_time():
+        analysis = parse_career_request("换成杭州", task_texts=("给我Java后端准备建议，每天30分钟",))
+&gt;       assert analysis.branch is CareerBranch.PERSONAL_PLANNING
+E       AssertionError: assert &lt;CareerBranch.JOB_INTEL: 'job_intel'&gt; is &lt;CareerBranch.PERSONAL_PLANNING: 'personal_planning'&gt;
+E        +  where &lt;CareerBranch.JOB_INTEL: 'job_intel'&gt; = CareerRequestAnalysis(original_request='给我Java后端准备建议，每天30分钟', job_terms=[], job_title=None, family_title=None, synonym...rification=CareerClarification(question='你想找什么岗位？（例如：Java 后端开发、算法工程师、数据分析师、产品经理）', reason='没有可检索的岗位锚点，先确认目标岗位才能发起检索。')).branch
+E        +  and   &lt;CareerBranch.PERSONAL_PLANNING: 'personal_planning'&gt; = CareerBranch.PERSONAL_PLANNING
+
+tests\career_plan\test_issue29_review_regressions.py:45: AssertionError</failure></testcase><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_job_only_override_and_conservative_personal_detection" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_daily_time_budget_is_parsed_and_not_converted_from_weeks" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_statement_time_budget_overrides_profile_default" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_unknown_is_to_confirm_and_confirmed_gaps_have_both_sides" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_without_background_all_gaps_stay_to_confirm_with_boundary" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_personal_advice_order_feasibility_and_combination_requirements" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_personal_evidence_gate_blocks_unbacked_conclusions" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_background_only_feeds_personal_nodes" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_loader_reads_current_slice_by_purpose_query" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_loader_respects_usage_switch_and_slice_revocation" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_loader_degrades_when_profile_source_fails" time="0.001" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_personal_request_without_profile_delivers_job_part_and_boundary" time="1.667"><failure message="AssertionError: assert 2 == 1&#10; +  where 2 = len([{'account_id': 'r2hVzCVRFdU2FmJ7lJwufg', 'run_id': 'zYVY43L627hxyr_i7gAdvQ', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'Fw5GiTBDUrBfug4ryUxGag'}])&#10; +    where [{'account_id': 'r2hVzCVRFdU2FmJ7lJwufg', 'run_id': 'zYVY43L627hxyr_i7gAdvQ', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'Fw5GiTBDUrBfug4ryUxGag'}] = &lt;test_issue29_personal_career_gap._RecordingProvider object at 0x0000022FD45BBE10&gt;.calls">sqlite_app = &lt;fastapi.applications.FastAPI object at 0x0000022FD3551B50&gt;
+client = &lt;starlette.testclient.TestClient object at 0x0000022FD45ED190&gt;
+generation_helpers = {'drive': &lt;function generation_helpers.&lt;locals&gt;.drive at 0x0000022FD5B4ECA0&gt;, 'subscribe': &lt;function generation_helper...t 0x0000022FD5B4EDE0&gt;, 'executor_thread': &lt;function generation_helpers.&lt;locals&gt;.executor_thread at 0x0000022FD5B4EE80&gt;}
+
+    def test_personal_request_without_profile_delivers_job_part_and_boundary(
+        sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    ) -&gt; None:
+        """背景不足仍交付真实岗位部分；未知全部待确认并给出一个关键问题。"""
+    
+        _register(client)
+        atomic = _FakeAtomicProfile(_adopted_slice())
+        sqlite_app.state.atomic_profile_service = atomic
+        sqlite_app.state.automatic_profile_service.is_profile_usage_enabled = (  # type: ignore[method-assign]
+            lambda account_id: True
+        )
+        port = _FakeSearchPort(
+            per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+        )
+        reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+        provider = _RecordingProvider(CareerBackgroundLoader(sqlite_app))
+        _install_career(sqlite_app, port=port, reader=reader, provider=provider)
+        sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+        conversation_id = _create_conversation(client)
+    
+        _send(client, conversation_id, PERSONAL_REQUEST, module_id="career")
+        assistant = _run_and_read(
+            sqlite_app, client, generation_helpers["drive"], conversation_id
+        )
+    
+        assert assistant["status"] == "done"
+        career = assistant["career_plan"]
+        assert career["branch"] == "personal_planning"
+        assert len(career["samples"]) == 1
+        assert career["background"]["used_profile"] is False
+        # 个人分支只读取一次采用切片，没有任何画像写入口被调用
+&gt;       assert len(provider.calls) == 1
+E       AssertionError: assert 2 == 1
+E        +  where 2 = len([{'account_id': 'r2hVzCVRFdU2FmJ7lJwufg', 'run_id': 'zYVY43L627hxyr_i7gAdvQ', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'Fw5GiTBDUrBfug4ryUxGag'}])
+E        +    where [{'account_id': 'r2hVzCVRFdU2FmJ7lJwufg', 'run_id': 'zYVY43L627hxyr_i7gAdvQ', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'Fw5GiTBDUrBfug4ryUxGag'}] = &lt;test_issue29_personal_career_gap._RecordingProvider object at 0x0000022FD45BBE10&gt;.calls
+
+tests\career_plan\test_issue29_personal_career_gap.py:656: AssertionError</failure></testcase><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_job_only_request_never_touches_profile_source" time="1.486" /><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_current_profile_slice_feeds_gaps_without_leaking_to_public_queries" time="1.344"><failure message="AssertionError: assert 2 == 1&#10; +  where 2 = len([{'account_id': 'KgSTHSBv856mA5MO88B4Mg', 'run_id': 'WaJuWlYSGI5JMpO0EffC-g', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'HkE2B7U0-1NX-_5HKW4wUw'}])&#10; +    where [{'account_id': 'KgSTHSBv856mA5MO88B4Mg', 'run_id': 'WaJuWlYSGI5JMpO0EffC-g', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'HkE2B7U0-1NX-_5HKW4wUw'}] = &lt;test_issue29_personal_career_gap._RecordingProvider object at 0x0000022FD81A3F90&gt;.calls">sqlite_app = &lt;fastapi.applications.FastAPI object at 0x0000022FD5D55F50&gt;
+client = &lt;starlette.testclient.TestClient object at 0x0000022FD81BD190&gt;
+generation_helpers = {'drive': &lt;function generation_helpers.&lt;locals&gt;.drive at 0x0000022FDA396700&gt;, 'subscribe': &lt;function generation_helper...t 0x0000022FDA396840&gt;, 'executor_thread': &lt;function generation_helpers.&lt;locals&gt;.executor_thread at 0x0000022FDA3968E0&gt;}
+
+    def test_current_profile_slice_feeds_gaps_without_leaking_to_public_queries(
+        sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    ) -&gt; None:
+        """采用切片进入差距与行动；私人正文绝不进入公开检索查询与链接。"""
+    
+        _register(client)
+        adopted = _adopted_slice(
+            _adopted_item("我熟悉 Java，也写过 Spring Boot 小项目", item_id="p-java"),
+            _adopted_item("我不会 Docker，还没系统学过", item_id="p-docker"),
+            _adopted_item(
+                "我每天最多学习 45 分钟",
+                item_id="p-time",
+                applicable_to=("plan_time_budget",),
+            ),
+        )
+        atomic = _FakeAtomicProfile(adopted)
+        sqlite_app.state.atomic_profile_service = atomic
+        sqlite_app.state.automatic_profile_service.is_profile_usage_enabled = (  # type: ignore[method-assign]
+            lambda account_id: True
+        )
+        port = _FakeSearchPort(
+            per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+        )
+        reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+        provider = _RecordingProvider(CareerBackgroundLoader(sqlite_app))
+        _install_career(sqlite_app, port=port, reader=reader, provider=provider)
+        sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+        conversation_id = _create_conversation(client)
+    
+        _send(client, conversation_id, PERSONAL_REQUEST, module_id="career")
+        assistant = _run_and_read(
+            sqlite_app, client, generation_helpers["drive"], conversation_id
+        )
+    
+        career = assistant["career_plan"]
+        assert career["background"]["used_profile"] is True
+&gt;       assert len(provider.calls) == 1
+E       AssertionError: assert 2 == 1
+E        +  where 2 = len([{'account_id': 'KgSTHSBv856mA5MO88B4Mg', 'run_id': 'WaJuWlYSGI5JMpO0EffC-g', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'HkE2B7U0-1NX-_5HKW4wUw'}])
+E        +    where [{'account_id': 'KgSTHSBv856mA5MO88B4Mg', 'run_id': 'WaJuWlYSGI5JMpO0EffC-g', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'HkE2B7U0-1NX-_5HKW4wUw'}] = &lt;test_issue29_personal_career_gap._RecordingProvider object at 0x0000022FD81A3F90&gt;.calls
+
+tests\career_plan\test_issue29_personal_career_gap.py:741: AssertionError</failure></testcase><testcase classname="tests.career_plan.test_issue29_personal_career_gap" name="test_revoked_or_failed_profile_does_not_resurrect_old_conclusions" time="1.277"><failure message="AssertionError: assert 2 == 1&#10; +  where 2 = len([{'account_id': 'XbkCR9RxiRGelZvzBcgr1w', 'run_id': 'kLiW3NXucBoR-blMXByJGg', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'OTS9YLxvSzheAyX2fUP3Hg'}])&#10; +    where [{'account_id': 'XbkCR9RxiRGelZvzBcgr1w', 'run_id': 'kLiW3NXucBoR-blMXByJGg', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'OTS9YLxvSzheAyX2fUP3Hg'}] = &lt;test_issue29_personal_career_gap._RecordingProvider object at 0x0000022FDC757E90&gt;.calls">sqlite_app = &lt;fastapi.applications.FastAPI object at 0x0000022FDA57C5D0&gt;
+client = &lt;starlette.testclient.TestClient object at 0x0000022FDA5BC250&gt;
+generation_helpers = {'drive': &lt;function generation_helpers.&lt;locals&gt;.drive at 0x0000022FDC730AE0&gt;, 'subscribe': &lt;function generation_helper...t 0x0000022FDC730C20&gt;, 'executor_thread': &lt;function generation_helpers.&lt;locals&gt;.executor_thread at 0x0000022FDC730CC0&gt;}
+
+    def test_revoked_or_failed_profile_does_not_resurrect_old_conclusions(
+        sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+    ) -&gt; None:
+        """切片失效或来源失败：个人结论全部回到待确认，公开岗位部分照常交付。"""
+    
+        _register(client)
+        adopted = _adopted_slice(
+            _adopted_item("我不会 Docker，还没系统学过", item_id="p-docker"),
+            _adopted_item("我熟悉 Spring Boot", item_id="p-spring"),
+        )
+        sqlite_app.state.atomic_profile_service = _FakeAtomicProfile(adopted, current=False)
+        sqlite_app.state.automatic_profile_service.is_profile_usage_enabled = (  # type: ignore[method-assign]
+            lambda account_id: True
+        )
+        port = _FakeSearchPort(
+            per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+        )
+        reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+        provider = _RecordingProvider(CareerBackgroundLoader(sqlite_app))
+        _install_career(sqlite_app, port=port, reader=reader, provider=provider)
+        sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+        conversation_id = _create_conversation(client)
+    
+        _send(client, conversation_id, PERSONAL_REQUEST, module_id="career")
+        assistant = _run_and_read(
+            sqlite_app, client, generation_helpers["drive"], conversation_id
+        )
+    
+        career = assistant["career_plan"]
+        assert len(career["samples"]) == 1
+        assert career["background"]["used_profile"] is False
+        assert "已变更" in (career["background"]["unavailable_reason"] or "")
+&gt;       assert len(provider.calls) == 1
+E       AssertionError: assert 2 == 1
+E        +  where 2 = len([{'account_id': 'XbkCR9RxiRGelZvzBcgr1w', 'run_id': 'kLiW3NXucBoR-blMXByJGg', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'OTS9YLxvSzheAyX2fUP3Hg'}])
+E        +    where [{'account_id': 'XbkCR9RxiRGelZvzBcgr1w', 'run_id': 'kLiW3NXucBoR-blMXByJGg', 'query': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Ja...uery': '我熟悉 Java，想确认一下我还需要补什么，目标岗位是 Java 后端实习，城市南昌，每天可以安排 30 分钟', 'current_user_message_id': 'OTS9YLxvSzheAyX2fUP3Hg'}] = &lt;test_issue29_personal_career_gap._RecordingProvider object at 0x0000022FDC757E90&gt;.calls
+
+tests\career_plan\test_issue29_personal_career_gap.py:800: AssertionError</failure></testcase></testsuite></testsuites>

@@ -37,11 +37,19 @@ def build_advice(
     samples: list[JobSample],
     *,
     adjacent_counts: dict[str, int] | None = None,
+    personal: bool = False,
 ) -> tuple[list[CareerAdviceItem], list[AdjacentJobSuggestion]]:
-    """生成建议与相邻岗位单列。零样本时不给内容型建议。"""
+    """生成建议与相邻岗位单列。零样本时不给内容型建议。
+
+    ``personal`` 为个人准备分支：技能补强与项目方向由 ``career.gap`` 的
+    两侧证据行动替代（工单 29），这里只保留岗位侧的取证/投递动作，避免
+    同一结论出现两份依据不同的建议。
+    """
     adjacent = _adjacent_suggestions(analysis, adjacent_counts or {})
     if not samples or report is None or report.sample_count == 0:
         return [], adjacent
+    if personal:
+        return _action_advices(analysis, report, samples, adjacent), adjacent
     advices = [
         *_skill_advices(report, samples),
         *_project_advice(analysis, report, samples),
