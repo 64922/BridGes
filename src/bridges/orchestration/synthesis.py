@@ -25,6 +25,8 @@ from bridges.orchestration.contracts import (
     VerificationTrigger,
     VerificationVerdict,
 )
+from bridges.state_copy import render_state_copy
+from bridges.state_copy.catalog import COMPOSITE_MODULE_LABELS
 
 #: 必须独立核验的风险类别（其余类别不强制模型裁判）。
 RISK_TRIGGERS: tuple[VerificationTrigger, ...] = (
@@ -57,13 +59,14 @@ class Synthesizer:
             result
             for result in outcome.steps
             if result.state is StepState.COMPLETED
+            and result.trust_state == "qualified"
         ]
         sections: list[SynthesisSection] = []
         for result in delivered:
             body = result.summary or _first_paragraph(result)
             sections.append(
                 SynthesisSection(
-                    title=result.module_id,
+                    title=COMPOSITE_MODULE_LABELS.get(result.module_id, "未登记步骤"),
                     body=body,
                     step_ids=[result.step_id],
                     evidence_refs=list(result.evidence_refs),
@@ -75,25 +78,38 @@ class Synthesizer:
         limitations: list[str] = []
         for result in outcome.steps:
             limitations.extend(result.unconfirmed)
+            if result.state is StepState.NEEDS_INPUT:
+                question = result.summary or _first_paragraph(result)
+                if question:
+                    limitations.append(question)
+            if result.state is StepState.COMPLETED and result.trust_state != "qualified":
+                limitations.append(render_state_copy("composite.result.unqualified"))
             if result.state in {StepState.FAILED, StepState.BLOCKED, StepState.SKIPPED}:
                 text = result.blocked_reason
                 if not text and result.failure is not None:
                     text = result.failure.message
                 if text:
-                    limitations.append(f"{result.module_id}：{text}")
+                    name = COMPOSITE_MODULE_LABELS.get(result.module_id, "未登记步骤")
+                    limitations.append(f"{name}：{text}")
         blocked = [
-            f"{result.module_id}：{result.blocked_reason}"
+            f"{COMPOSITE_MODULE_LABELS.get(result.module_id, '未登记步骤')}："
+            f"{result.blocked_reason}"
             for result in outcome.steps
             if result.state in {StepState.FAILED, StepState.BLOCKED}
             and result.blocked_reason
         ]
         if delivered:
-            names = "、".join(result.module_id for result in delivered)
-            summary = f"围绕「{outcome.plan.goal}」，本轮完成了：{names}。"
+            names = "、".join(
+                COMPOSITE_MODULE_LABELS.get(result.module_id, "未登记步骤")
+                for result in delivered
+            )
+            summary = render_state_copy(
+                "composite.result.completed", goal=outcome.plan.goal, names=names
+            )
         else:
-            summary = f"围绕「{outcome.plan.goal}」，本轮没有得到可交付结果。"
+            summary = render_state_copy("composite.result.empty", goal=outcome.plan.goal)
         if blocked:
-            summary += " 以下结论因必要步骤未完成而阻塞：" + "；".join(blocked) + "。"
+            summary += " " + render_state_copy("composite.result.blocked", items="；".join(blocked))
         return SynthesisDraft(
             summary=summary,
             sections=sections,
@@ -137,10 +153,28 @@ class FinalGate:
                     if ref and ref not in owned_refs.get(step.step_id, set()):
                         mislinked.append(f"{step.step_id}:{ref}")
         new_facts: list[str] = []
+        by_step = {step.step_id: step for step in steps}
         for section in draft.sections:
-            if not section.step_ids:
+            if not section.step_ids or any(
+                step_id not in by_step
+                or by_step[step_id].state is not StepState.COMPLETED
+                or by_step[step_id].trust_state != "qualified"
+                for step_id in section.step_ids
+            ):
                 new_facts.append(section.title)
                 continue
+            # 当前综合器为确定性投影，不允许靠相同引用为改写的新事实背书。
+            supported_text = {
+                text
+                for step_id in section.step_ids
+                for text in (
+                    by_step[step_id].summary or _first_paragraph(by_step[step_id]),
+                    *(claim.text for claim in by_step[step_id].claims),
+                )
+                if text
+            }
+            if section.body and section.body not in supported_text:
+                new_facts.append(section.title)
             allowed: set[str] = set()
             for step_id in section.step_ids:
                 allowed.update(owned_refs.get(step_id, set()))
@@ -249,18 +283,22 @@ def _validate_structure(
 ) -> IndependentVerification:
     """核验输出也要检查引用与裁决结构；结构不合法按阻塞处理。"""
     valid = bool(
-        verification.rules
+        verification.required
+        and verification.trigger.value == claim.risk
+        and verification.verdict is not VerificationVerdict.NOT_APPLICABLE
+        and verification.rules
         and verification.verdict in set(VerificationVerdict)
         and verification.source in set(VerificationSource)
         and (
-            verification.verdict in {VerificationVerdict.NOT_APPLICABLE}
-            or set(verification.evidence_refs).issubset(set(claim.evidence_refs))
+            verification.evidence_refs
+            and set(verification.evidence_refs).issubset(set(claim.evidence_refs))
         )
     )
     if valid:
         return verification
     return verification.model_copy(
         update={
+            "required": True,
             "verdict": VerificationVerdict.BLOCK,
             "note": "核验结构或引用不合法，按阻塞处理：" + (verification.note or ""),
         }

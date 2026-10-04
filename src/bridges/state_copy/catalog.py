@@ -77,6 +77,11 @@ RETRIEVAL_INDEX_UNAVAILABLE_TEXT = "本地索引不可用，暂无法检索本�
 RETRIEVAL_VECTOR_UNAVAILABLE_TEXT = "向量检索暂不可用，本轮仅使用关键词检索。"
 RETRIEVAL_PROJECT_RETIRED_TEXT = "学习项目文件来源已退役。"
 
+COMPOSITE_MODULE_LABELS = {
+    "paper": "论文", "resources": "学习资料", "career": "岗位分析",
+    "github": "开源项目", "tieba": "贴吧取证", "commute": "校园通勤",
+}
+
 WEB_SEARCH_PROVIDER_UNREADY_TEXT = (
     "联网服务异常，正在尝试联网；失败将进入模型知识降级。"
 )
@@ -153,6 +158,14 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
     _error("study_review_invalid", "复盘判定或结果未通过核验，原题已保留，请重试。",
            FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
+    _error("composite_plan_unavailable", "该组合尚未接入，请缩小为单项任务后重试。",
+           FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST),
+    _error("composite_plan_rejected", "组合计划未通过条件校验，请调整请求后重试。",
+           FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST),
+    _error("composite_gate_failed", "综合结果未通过证据核验，本轮未提交，请缩小范围后重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.ADJUST_REQUEST),
+    _error("composite_delivery_unverified", "组合交付尚未通过核验，本轮未提交，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY),
     _error(
         "generation_worker_lost",
         "生成进程意外退出，已保留已接收内容，可点击重试。",
@@ -1149,6 +1162,26 @@ def _error_entries() -> tuple[CopyEntry, ...]:
 
 
 _PUBLIC_ENTRIES: tuple[CopyEntry, ...] = (
+    CopyEntry(
+        "composite.result.completed", CopyCategory.PARTIAL, "orchestration",
+        CopyStrategy.FIXED_TEMPLATE, ("completed", "partial"),
+        text="围绕「{goal}」，本轮完成了：{names}。",
+    ),
+    CopyEntry(
+        "composite.result.empty", CopyCategory.EMPTY, "orchestration",
+        CopyStrategy.FIXED_TEMPLATE, ("failed", "needs_input"),
+        text="围绕「{goal}」，本轮没有得到可交付结果。",
+    ),
+    CopyEntry(
+        "composite.result.blocked", CopyCategory.PARTIAL, "orchestration",
+        CopyStrategy.FIXED_TEMPLATE, ("partial", "failed"),
+        text="以下结论因步骤未完成而阻塞：{items}。",
+    ),
+    CopyEntry(
+        "composite.result.unqualified", CopyCategory.PARTIAL, "orchestration",
+        CopyStrategy.FIXED_TEMPLATE, ("unqualified",),
+        text="该分支执行完成，但产物尚未通过可信核验。",
+    ),
     # -- 澄清 --------------------------------------------------------------
     CopyEntry(
         "chat.clarification.multiple_tasks",

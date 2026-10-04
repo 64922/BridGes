@@ -706,7 +706,7 @@ def test_optional_branch_failure_keeps_valid_parts(database: BridgesDatabase) ->
     assert outcome.delivered_steps == ["paper"]
     assert any("resources" in item for item in outcome.blocked_conclusions)
     draft = Synthesizer().build(outcome)
-    assert any("resources" in item for item in draft.limitations)
+    assert any("学习资料" in item for item in draft.limitations)
     assert draft.sections and draft.sections[0].step_ids == ["paper"]
 
 

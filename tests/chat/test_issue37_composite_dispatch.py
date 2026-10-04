@@ -261,3 +261,46 @@ def test_composite_late_write_rejected(tmp_path: Path) -> None:
     message = ConversationRepository(database).get_message(ACCOUNT, ASSISTANT)
     assert message is not None and message.paper_search is None
     assert message.status is ChatMessageStatus.DONE
+
+
+def test_composite_rejects_transferred_lease(tmp_path: Path) -> None:
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    assert database.initialize() > 0
+    _seed(database, _understanding().model_dump(mode="json"))
+    deps = _deps(database, _understanding())
+    state: dict = {"module_dispatch": "chat", "assistant_message_id": ASSISTANT}
+    state.update(_node_invoke_subgraph_or_chat(state, {"configurable": {"deps": deps}}))
+    state.update(_node_verify_output(state, {"configurable": {"deps": deps}}))
+    # deps.run 保留原执行者快照；新执行者取得租约后，旧执行不得重新捕获它。
+    with database.transaction():
+        database.connection.execute(
+            "UPDATE generation_runs SET lease_owner = 'worker-new' WHERE run_id = ?",
+            (RUN,),
+        )
+    with pytest.raises(DailyGraphSuperseded, match="lease_lost"):
+        _node_persist_result(state, {"configurable": {"deps": deps}})
+    message = ConversationRepository(database).get_message(ACCOUNT, ASSISTANT)
+    assert message is not None and message.status is ChatMessageStatus.STREAMING
+    assert message.paper_search is None
+
+
+def test_composite_rejects_changed_task_after_checkpoint_reload(tmp_path: Path) -> None:
+    from bridges.tasks.repository import TaskRepository
+
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    assert database.initialize() > 0
+    _seed(database, _understanding().model_dump(mode="json"))
+    tasks = TaskRepository(database)
+    tasks.create_task(account_id=ACCOUNT, conversation_id=CONVERSATION, goal="找论文")
+    deps = _deps(database, _understanding())
+    state: dict = {"module_dispatch": "chat", "assistant_message_id": ASSISTANT}
+    state.update(_node_invoke_subgraph_or_chat(state, {"configurable": {"deps": deps}}))
+    state.update(_node_verify_output(state, {"configurable": {"deps": deps}}))
+    # JSON 往返模拟检查点重载；不能重新捕获当前任务来掩盖版本变化。
+    state = json.loads(json.dumps(state, ensure_ascii=False))
+    tasks.create_task(account_id=ACCOUNT, conversation_id=CONVERSATION, goal="新任务")
+    with pytest.raises(DailyGraphSuperseded, match="task_version_changed"):
+        _node_persist_result(state, {"configurable": {"deps": deps}})
+    message = ConversationRepository(database).get_message(ACCOUNT, ASSISTANT)
+    assert message is not None and message.status is ChatMessageStatus.STREAMING
+    assert message.paper_search is None

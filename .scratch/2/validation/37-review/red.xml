@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="6" time="1.345" timestamp="2026-10-04T19:47:36.215061+08:00" hostname="bababoyi"><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_real_github_delivery_is_accepted" time="0.036"><failure message="pydantic_core._pydantic_core.ValidationError: 2 validation errors for GithubProjectsProjection&#10;scenario&#10;  Field required [type=missing, input_value={'status': &lt;GithubProject...l_request': '查项目'}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/missing&#10;rate_limit&#10;  Field required [type=missing, input_value={'status': &lt;GithubProject...l_request': '查项目'}, input_type=dict]&#10;    For further information visit https://errors.pydantic.dev/2.13/v/missing">def test_real_github_delivery_is_accepted() -&gt; None:
+&gt;       projection = GithubProjectsProjection(
+            status=GithubProjectStatus.EMPTY, topic="项目", original_request="查项目"
+        )
+E       pydantic_core._pydantic_core.ValidationError: 2 validation errors for GithubProjectsProjection
+E       scenario
+E         Field required [type=missing, input_value={'status': &lt;GithubProject...l_request': '查项目'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.13/v/missing
+E       rate_limit
+E         Field required [type=missing, input_value={'status': &lt;GithubProject...l_request': '查项目'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.13/v/missing
+
+tests\orchestration\test_issue37_review_regressions.py:29: ValidationError</failure></testcase><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_final_gate_rejects_new_text_even_with_valid_refs" time="0.001"><failure message="AssertionError: assert (not True)&#10; +  where True = SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...terministic_code'&gt;, independent_fact_source=False, rules=['无风险关键结论，不追加模型裁判。'], evidence_refs=[], note='普通结果不强制模型裁判。')]).passed">def test_final_gate_rejects_new_text_even_with_valid_refs() -&gt; None:
+        step = _step()
+        draft = SynthesisDraft(summary="已取得论文。", sections=[SynthesisSection(
+            title="论文", body="该实现已经运行验证。", step_ids=["paper"],
+            evidence_refs=["evidence"],
+        )])
+        gate = FinalGate().check(draft, [step])
+&gt;       assert not gate.passed and gate.new_facts
+E       AssertionError: assert (not True)
+E        +  where True = SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...terministic_code'&gt;, independent_fact_source=False, rules=['无风险关键结论，不追加模型裁判。'], evidence_refs=[], note='普通结果不强制模型裁判。')]).passed
+
+tests\orchestration\test_issue37_review_regressions.py:69: AssertionError</failure></testcase><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_final_gate_rejects_unknown_step_without_refs" time="0.001"><failure message="AssertionError: assert not True&#10; +  where True = SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...terministic_code'&gt;, independent_fact_source=False, rules=['无风险关键结论，不追加模型裁判。'], evidence_refs=[], note='普通结果不强制模型裁判。')]).passed&#10; +    where SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...terministic_code'&gt;, independent_fact_source=False, rules=['无风险关键结论，不追加模型裁判。'], evidence_refs=[], note='普通结果不强制模型裁判。')]) = check(SynthesisDraft(summary='结果', sections=[SynthesisSection(title='论文', body='新的结论', step_ids=['missing'], evidence_refs=[], qualification=None)], limitations=[], blocked=[], next_actions=[]), [StepResult(step_id='paper', module_id='paper', state=&lt;StepState.COMPLETED: 'completed'&gt;, trust_state='qualified', reu...n=None, failure=None, queries=[], duration_ms=None, input_fingerprint=None, resolved_param_names=[], external_calls=0)])&#10; +      where check = &lt;bridges.orchestration.synthesis.FinalGate object at 0x000001FAE0A57A50&gt;.check&#10; +        where &lt;bridges.orchestration.synthesis.FinalGate object at 0x000001FAE0A57A50&gt; = FinalGate()">def test_final_gate_rejects_unknown_step_without_refs() -&gt; None:
+        draft = SynthesisDraft(summary="结果", sections=[SynthesisSection(
+            title="论文", body="新的结论", step_ids=["missing"],
+        )])
+&gt;       assert not FinalGate().check(draft, [_step()]).passed
+E       AssertionError: assert not True
+E        +  where True = SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...terministic_code'&gt;, independent_fact_source=False, rules=['无风险关键结论，不追加模型裁判。'], evidence_refs=[], note='普通结果不强制模型裁判。')]).passed
+E        +    where SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...terministic_code'&gt;, independent_fact_source=False, rules=['无风险关键结论，不追加模型裁判。'], evidence_refs=[], note='普通结果不强制模型裁判。')]) = check(SynthesisDraft(summary='结果', sections=[SynthesisSection(title='论文', body='新的结论', step_ids=['missing'], evidence_refs=[], qualification=None)], limitations=[], blocked=[], next_actions=[]), [StepResult(step_id='paper', module_id='paper', state=&lt;StepState.COMPLETED: 'completed'&gt;, trust_state='qualified', reu...n=None, failure=None, queries=[], duration_ms=None, input_fingerprint=None, resolved_param_names=[], external_calls=0)])
+E        +      where check = &lt;bridges.orchestration.synthesis.FinalGate object at 0x000001FAE0A57A50&gt;.check
+E        +        where &lt;bridges.orchestration.synthesis.FinalGate object at 0x000001FAE0A57A50&gt; = FinalGate()
+
+tests\orchestration\test_issue37_review_regressions.py:76: AssertionError</failure></testcase><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_risk_verifier_cannot_opt_out_of_required_check" time="0.001"><failure message="AssertionError: assert not True&#10; +  where True = SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...NDENT_CALL: 'same_model_independent_call'&gt;, independent_fact_source=False, rules=['无需核验'], evidence_refs=[], note='')]).passed">def test_risk_verifier_cannot_opt_out_of_required_check() -&gt; None:
+        step = _step()
+        step.claims = [Claim(
+            text=step.summary, evidence_refs=["evidence"], risk="personal_gap"
+        )]
+    
+        class Verifier:
+            def verify(self, **kwargs):
+                return IndependentVerification(
+                    required=False, trigger=VerificationTrigger.ORDINARY_CHAT,
+                    verdict=VerificationVerdict.NOT_APPLICABLE,
+                    source=VerificationSource.SAME_MODEL_INDEPENDENT_CALL,
+                    rules=["无需核验"],
+                )
+    
+        gate = FinalGate(verifier=Verifier()).check(
+            SynthesisDraft(summary="结果"), [step]
+        )
+&gt;       assert not gate.passed
+E       AssertionError: assert not True
+E        +  where True = SynthesisGateResult(passed=True, code='', message='', new_facts=[], missing_qualifications=[], mislinked_refs=[], unsu...NDENT_CALL: 'same_model_independent_call'&gt;, independent_fact_source=False, rules=['无需核验'], evidence_refs=[], note='')]).passed
+
+tests\orchestration\test_issue37_review_regressions.py:97: AssertionError</failure></testcase><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_synthesis_keeps_clarification_question" time="0.100"><failure message="AssertionError: assert '请确认你想看的方向。' in '围绕「查论文和项目」，本轮没有得到可交付结果。'&#10; +  where '围绕「查论文和项目」，本轮没有得到可交付结果。' = render_final_content(SynthesisDraft(summary='围绕「查论文和项目」，本轮没有得到可交付结果。', sections=[], limitations=[], blocked=[], next_actions=[]))">def test_synthesis_keeps_clarification_question() -&gt; None:
+        step = StepResult(
+            step_id="paper", module_id="paper", state=StepState.NEEDS_INPUT,
+            summary="请确认你想看的方向。",
+            delivery=ModuleDelivery(
+                module_id="paper", status="clarification", projection_field="paper_search",
+                projection={}, content="请确认你想看的方向。", message_status="done",
+                wait_reason="paper_clarification",
+            ),
+        )
+        draft = Synthesizer().build(CompositeOutcome(
+            status=CompositeStatus.NEEDS_INPUT, plan=_plan(), steps=[step],
+            created_at=datetime.now(UTC),
+        ))
+&gt;       assert "请确认你想看的方向。" in render_final_content(draft)
+E       AssertionError: assert '请确认你想看的方向。' in '围绕「查论文和项目」，本轮没有得到可交付结果。'
+E        +  where '围绕「查论文和项目」，本轮没有得到可交付结果。' = render_final_content(SynthesisDraft(summary='围绕「查论文和项目」，本轮没有得到可交付结果。', sections=[], limitations=[], blocked=[], next_actions=[]))
+
+tests\orchestration\test_issue37_review_regressions.py:115: AssertionError</failure></testcase><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_synthesis_does_not_publish_unqualified_completed_body" time="0.001"><failure message="AssertionError: assert not [SynthesisSection(title='paper', body='只读取了摘要。', step_ids=['paper'], evidence_refs=['evidence'], qualification=None)]&#10; +  where [SynthesisSection(title='paper', body='只读取了摘要。', step_ids=['paper'], evidence_refs=['evidence'], qualification=None)] = SynthesisDraft(summary='围绕「查论文和项目」，本轮完成了：paper。', sections=[SynthesisSection(title='paper', body='只读取了摘要。', step_ids=['paper'], evidence_refs=['evidence'], qualification=None)], limitations=[], blocked=[], next_actions=[]).sections">def test_synthesis_does_not_publish_unqualified_completed_body() -&gt; None:
+        step = _step().model_copy(update={"trust_state": "draft"})
+        draft = Synthesizer().build(CompositeOutcome(
+            status=CompositeStatus.COMPLETED, plan=_plan(), steps=[step],
+            created_at=datetime.now(UTC),
+        ))
+&gt;       assert not draft.sections
+E       AssertionError: assert not [SynthesisSection(title='paper', body='只读取了摘要。', step_ids=['paper'], evidence_refs=['evidence'], qualification=None)]
+E        +  where [SynthesisSection(title='paper', body='只读取了摘要。', step_ids=['paper'], evidence_refs=['evidence'], qualification=None)] = SynthesisDraft(summary='围绕「查论文和项目」，本轮完成了：paper。', sections=[SynthesisSection(title='paper', body='只读取了摘要。', step_ids=['paper'], evidence_refs=['evidence'], qualification=None)], limitations=[], blocked=[], next_actions=[]).sections
+
+tests\orchestration\test_issue37_review_regressions.py:124: AssertionError</failure></testcase></testsuite></testsuites>

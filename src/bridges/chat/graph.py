@@ -258,6 +258,8 @@ class DailyTurnState(TypedDict, total=False):
     composite_draft: dict[str, Any] | None
     composite_gate: dict[str, Any] | None
     composite_verified: bool
+    composite_lease_owner: str | None
+    composite_task_ref: list[Any]
 
 
 class _GraphDeps:
@@ -674,10 +676,18 @@ def _invoke_composite_plan(
         user_message.content if user_message is not None else ""
     )
     planner = CompositePlanner()
+    from bridges.tasks.repository import TaskRepository  # noqa: PLC0415
+
+    task = TaskRepository(deps.repo.database).current_task(
+        run.account_id, run.conversation_id
+    )
+    task_ref = [task.task_id, task.current_version] if task is not None else [None, None]
     plan = planner.plan(
         goal=goal,
         user_message_id=run.user_message_id,
         module_ids=understanding.capability_list,
+        task_id=task.task_id if task is not None else None,
+        task_version=task.current_version if task is not None else None,
         hard_conditions=[
             *understanding.hard_conditions,
             *understanding.effective_hard_conditions,
@@ -686,7 +696,7 @@ def _invoke_composite_plan(
     if plan is None:
         raise DailyTurnError(
             NODE_INVOKE_SUBGRAPH_OR_CHAT, "composite_plan_unavailable",
-            "该组合尚未登记为可执行的跨模块计划，本轮未派发。", retryable=False,
+            render_state_copy("error.composite_plan_unavailable"), retryable=False,
         )
     superseded: list[str] = []
     runners = {
@@ -735,7 +745,7 @@ def _invoke_composite_plan(
     if result.outcome.status is CompositeStatus.REJECTED:
         raise DailyTurnError(
             NODE_INVOKE_SUBGRAPH_OR_CHAT, "composite_plan_rejected",
-            f"复合计划被代码校验拒绝（{result.outcome.rejection_code}），本轮未执行。",
+            render_state_copy("error.composite_plan_rejected"),
             retryable=False,
         )
     reason = wait_reason_for(result.outcome)
@@ -748,6 +758,8 @@ def _invoke_composite_plan(
         "composite_draft": result.draft.model_dump(mode="json"),
         "composite_gate": result.gate.model_dump(mode="json"),
         "composite_verified": False,
+        "composite_lease_owner": run.lease_owner,
+        "composite_task_ref": task_ref,
     }
 
 
@@ -931,7 +943,7 @@ def _verify_composite_result(state: DailyTurnState) -> None:
     if not gate.passed:
         raise DailyTurnError(
             NODE_VERIFY_OUTPUT, "composite_gate_failed",
-            f"综合未通过最终门（{gate.code}），本轮未提交。", retryable=False,
+            render_state_copy("error.composite_gate_failed"), retryable=False,
         )
     missing = [
         step.step_id
@@ -943,7 +955,7 @@ def _verify_composite_result(state: DailyTurnState) -> None:
     if missing:
         raise DailyTurnError(
             NODE_VERIFY_OUTPUT, "composite_delivery_unverified",
-            "复合交付缺少内核产物引用，本轮未提交。", retryable=True,
+            render_state_copy("error.composite_delivery_unverified"), retryable=True,
         )
 
 
@@ -968,14 +980,14 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
     if not state.get("composite_verified"):
         raise DailyTurnError(
             NODE_PERSIST_RESULT, "composite_delivery_unverified",
-            "复合交付尚未通过父图核验，本轮未提交。", retryable=True,
+            render_state_copy("error.composite_delivery_unverified"), retryable=True,
         )
     outcome = CompositeOutcome.model_validate(state["composite_outcome"])
     gate = SynthesisGateResult.model_validate(state["composite_gate"])
     if not gate.passed:
         raise DailyTurnError(
             NODE_PERSIST_RESULT, "composite_gate_failed",
-            f"综合未通过最终门（{gate.code}），本轮未提交。", retryable=False,
+            render_state_copy("error.composite_gate_failed"), retryable=False,
         )
     if outcome.status is CompositeStatus.REJECTED:
         raise DailyGraphSuperseded(outcome.rejection_code or "composite_rejected")
@@ -996,6 +1008,21 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
         None,
     )
     with NodeKernelRepository(deps.repo.database).transaction():
+        # 核对执行开始时的快照，不能在提交时认领别人的新租约或新任务版本。
+        current_run = deps.repo.get_generation_run(run.account_id, run.run_id)
+        if current_run is None or current_run.lease_owner != state.get("composite_lease_owner"):
+            raise DailyGraphSuperseded("lease_lost")
+        from bridges.tasks.repository import TaskRepository  # noqa: PLC0415
+
+        current_task = TaskRepository(deps.repo.database).current_task(
+            run.account_id, run.conversation_id
+        )
+        current_ref = (
+            [current_task.task_id, current_task.current_version]
+            if current_task is not None else [None, None]
+        )
+        if current_ref != state.get("composite_task_ref"):
+            raise DailyGraphSuperseded("task_version_changed")
         guard = RunCommitGuard(
             deps.repo,
             account_id=run.account_id,

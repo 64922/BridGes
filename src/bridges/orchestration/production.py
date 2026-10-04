@@ -72,6 +72,32 @@ class ModuleServiceStepRunner:
         del remaining_budget_ms
         outcome = self._run(step, context, resolved)
         delivery = getattr(outcome, "delivery", None)
+        if step.module_id == "github":
+            # GitHub 保留既有领域交付合同；只在组合边界转换，单模块路径不变。
+            from bridges.github.service import GithubDelivery
+
+            if isinstance(delivery, GithubDelivery):
+                projection = delivery.projection
+                delivery = ModuleDelivery(
+                    module_id="github",
+                    status=projection.status.value,
+                    projection_field="github_projects",
+                    projection=projection.model_dump(mode="json"),
+                    content=delivery.content,
+                    message_status=delivery.message_status.value,
+                    error_node=delivery.error_node,
+                    error_code=projection.error_code,
+                    error_message=projection.error_message,
+                    retryable=projection.retryable,
+                    artifact_refs={
+                        node: ref for node, ref in (
+                            ("github.verify", delivery.verification_artifact_id),
+                            ("github.present", delivery.present_artifact_id),
+                        ) if ref is not None
+                    },
+                    lock=delivery.lock,
+                    wait_reason=getattr(outcome, "wait_reason", None),
+                )
         if not isinstance(delivery, ModuleDelivery):
             return StepResult(
                 step_id=step.step_id,
