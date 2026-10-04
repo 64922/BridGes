@@ -57136,7 +57136,7 @@
           "protocol_version": {
             "type": "string",
             "title": "Protocol Version",
-            "default": "study-grade-v3"
+            "default": "study-grade-v4"
           },
           "point_checks": {
             "items": {

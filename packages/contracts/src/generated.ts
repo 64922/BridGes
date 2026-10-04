@@ -24556,7 +24556,7 @@ export interface components {
         StudyGradeRecord: {
             /**
              * Protocol Version
-             * @default study-grade-v3
+             * @default study-grade-v4
              */
             protocol_version: string;
             /** Point Checks */

@@ -251,7 +251,7 @@ class StudyGradeRecord(BaseModel):
     判定输出结构与复核规则变化时递增 ``protocol_version``；旧题没有该记录。
     """
 
-    protocol_version: str = "study-grade-v3"
+    protocol_version: str = "study-grade-v4"
     point_checks: list[StudyPointCheck] = Field(default_factory=list)
     #: 必要独立复核的处置：不需要、维持原判、改判、争议未决、无法核实。
     recheck_status: Literal[

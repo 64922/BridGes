@@ -625,12 +625,20 @@ class ConversationRepository:
     ) -> int:
         """流式增量落库；仅当消息仍处于 streaming 状态时生效，返回影响行数。"""
         with self._db.transaction():
-            cursor = self._db.scoped(account_id).execute(
-                "UPDATE messages SET content = ?, updated_at = ?"
-                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
-                (content, _iso(updated_at), message_id, account_id),
+            return self.update_message_content_in_transaction(
+                account_id, message_id, content, updated_at
             )
-            return cursor.rowcount
+
+    def update_message_content_in_transaction(
+        self, account_id: str, message_id: str, content: str, updated_at: datetime
+    ) -> int:
+        """由领域提交事务调用，保证呈现事实与可恢复正文原子保存。"""
+        cursor = self._db.scoped(account_id).execute(
+            "UPDATE messages SET content = ?, updated_at = ?"
+            " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+            (content, _iso(updated_at), message_id, account_id),
+        )
+        return cursor.rowcount
 
     def update_message_thinking(
         self,
@@ -1879,21 +1887,30 @@ class ConversationRepository:
         停止终态由图中断路径产生（其后不会再有合法节点进度），仍然一律拒绝。
         """
         with self._db.transaction():
-            existing = self._db.scoped(account_id).execute(
-                "SELECT kind FROM generation_events WHERE run_id = ? AND account_id = ?"
-                " AND kind IN (?, ?) LIMIT 1",
-                (run_id, account_id, *_TERMINAL_EVENT_KINDS),
-            ).fetchone()
-            post_terminal_progress = (
-                existing is not None
-                and kind == ChatStreamEventKind.NODE.value
-                and str(existing["kind"]) == ChatStreamEventKind.DONE.value
-            )
-            if existing is not None and not post_terminal_progress:
-                return 0
-            return self._append_generation_event_locked(
+            return self.append_generation_event_in_transaction(
                 account_id, run_id, kind, payload, created_at
             )
+
+    def append_generation_event_in_transaction(
+        self, account_id: str, run_id: str, kind: str,
+        payload: dict[str, Any], created_at: datetime,
+    ) -> int:
+        """由领域守卫事务调用，正文事件与已提交反馈/呈现事实同时可恢复。"""
+        existing = self._db.scoped(account_id).execute(
+            "SELECT kind FROM generation_events WHERE run_id = ? AND account_id = ?"
+            " AND kind IN (?, ?) LIMIT 1",
+            (run_id, account_id, *_TERMINAL_EVENT_KINDS),
+        ).fetchone()
+        post_terminal_progress = (
+            existing is not None
+            and kind == ChatStreamEventKind.NODE.value
+            and str(existing["kind"]) == ChatStreamEventKind.DONE.value
+        )
+        if existing is not None and not post_terminal_progress:
+            return 0
+        return self._append_generation_event_locked(
+            account_id, run_id, kind, payload, created_at
+        )
 
     def _append_generation_event_locked(
         self,

@@ -28,7 +28,12 @@ from bridges.chat.turn import (
     user_facing_error,
 )
 from bridges.contracts.ai import ModelCallStatus, ModelRunLock
-from bridges.contracts.chat import ChatMessageStatus, ChatMode, ChatStreamNodeData
+from bridges.contracts.chat import (
+    ChatMessageStatus,
+    ChatMode,
+    ChatStreamDeltaData,
+    ChatStreamNodeData,
+)
 from bridges.contracts.study import (
     STUDY_STATE_VERSION,
     StudyExchange,
@@ -996,17 +1001,54 @@ class StudyWorkflow:
 
         intent = review_intent(user.content)
 
-        def _save_committed() -> None:
+        expected_review_state = committed.model_dump()
+
+        def _verify_review_commit() -> None:
+            """写事务内核对执行权及预期领域版本，拒绝迟到覆盖。"""
+            decision = material_guard.verify()
+            if not decision.ok:
+                raise StudyWorkflowError(
+                    current_node,
+                    "stopped" if decision.code == "run_stopped" else decision.code,
+                    decision.message,
+                )
+            latest = self._states.get(run.account_id, run.conversation_id)
+            if latest is None or latest.model_dump() != expected_review_state:
+                raise StudyWorkflowError(
+                    current_node, "study_review_scope_changed",
+                    "小节或题目状态已变化，迟到结果未提交，请重试。",
+                )
+
+        def _save_review_content(content: str) -> None:
+            """事务内只追加已核验正文，保存游标事件供错误/停止后重放。"""
+            message = self._repo.get_message(run.account_id, run.assistant_message_id)
+            assert message is not None, "提交守卫已验证助手消息存在"
+            if not content.startswith(message.content):
+                raise ReviewGradeError(
+                    "study_grade_invalid", "已提交反馈与恢复正文不一致，已保留原记录。"
+                )
+            delta = content[len(message.content):]
+            if not delta:
+                return
+            self._repo.update_message_content_in_transaction(
+                run.account_id, run.assistant_message_id, content, datetime.now(UTC)
+            )
+            self._repo.append_generation_event_in_transaction(
+                run.account_id, run.run_id, "delta",
+                ChatStreamDeltaData(
+                    message_id=run.assistant_message_id, delta=delta
+                ).model_dump(mode="json"), datetime.now(UTC),
+            )
+
+        def _save_committed(content: str | None = None) -> None:
             """在自己的提交边界内保存领域状态；租约/停止/版本失效即拒绝。"""
-            with self._repo.database.transaction():
-                decision = material_guard.verify()
-                if not decision.ok:
-                    raise StudyWorkflowError(
-                        current_node,
-                        "stopped" if decision.code == "run_stopped" else decision.code,
-                        decision.message,
-                    )
+            nonlocal expected_review_state
+            with NodeKernelRepository(self._repo.database).transaction():
+                _verify_review_commit()
                 save_state_in_transaction()
+                if content is not None:
+                    _save_review_content(content)
+            expected_review_state = state.model_dump()
 
         def _current_question() -> Any:
             if state.review is None:
@@ -1020,13 +1062,20 @@ class StudyWorkflow:
                 raise StudyWorkflowError(
                     current_node, "study_review_invalid", "当前复盘题不存在，已保留原阶段。"
                 )
-            with self._repo.database.transaction():
-                decision = material_guard.verify()
-                if not decision.ok:
-                    raise StudyWorkflowError(
-                        current_node,
-                        "stopped" if decision.code == "run_stopped" else decision.code,
-                        decision.message,
+            nonlocal expected_review_state
+            with NodeKernelRepository(self._repo.database).transaction():
+                _verify_review_commit()
+                if (
+                    outcome.question_id != question.question_id
+                    or outcome.scope_version_id != (
+                        question.scope_version_id or (
+                            state.review.scope_version_id if state.review else ""
+                        )
+                    )
+                    or outcome.user_message_id != run.user_message_id
+                ):
+                    raise ReviewGradeError(
+                        "study_grade_invalid", "判定与当前题或来源不一致，已保留当前题。"
                     )
                 question.answer = user.content
                 question.judgement = outcome.judgement
@@ -1036,13 +1085,15 @@ class StudyWorkflow:
                 question.grade_record = outcome.record
                 question.user_message_id = run.user_message_id
                 save_state_in_transaction()
+                _save_review_content(outcome.feedback)
+            expected_review_state = state.model_dump()
 
-        def _commit_presentation() -> str | None:
+        def _commit_presentation(feedback: str) -> str | None:
             """下一题呈现提交边界：选中下一题不算呈现，落库才算。"""
             if state.review is None:
                 return None
             text = advance_question(state.review)
-            _save_committed()
+            _save_committed(f"{feedback}\n\n{text}" if text else feedback)
             return text
 
         def _grade_new_answer() -> str:
@@ -1052,12 +1103,21 @@ class StudyWorkflow:
                 raise StudyWorkflowError(
                     current_node, "study_review_invalid", "当前没有待判定的复盘题，已保留原阶段。"
                 )
-            outcome = ReviewGradeKernel(
+            grading = ReviewGradeKernel(
                 self._service, run, invoke,
                 stop_event=stop_event, event_sink=kernel_event,
-            ).grade(state, user.content)
-            _commit_judgement(outcome)
-            presentation = _commit_presentation()
+                commit_outcome=_commit_judgement,
+            )
+            question = grading.question(state)
+            # 收到合法当前题答案是独立事实，判定失败也保留来源关联。
+            question.answer = user.content
+            question.user_message_id = run.user_message_id
+            _save_committed()
+            outcome = grading.grade(state, user.content)
+            if question.judgement is None:
+                # 完成产物复用时只幂等回填，不重新判定。
+                _commit_judgement(outcome)
+            presentation = _commit_presentation(outcome.feedback)
             parts = [outcome.feedback]
             if presentation:
                 parts.append(presentation)
@@ -1074,7 +1134,7 @@ class StudyWorkflow:
                 if current is not None and current is not question:
                     return f"{feedback}\n\n{render_question_prompt(review, current)}"
                 # 激活题仍是已判定题：呈现提交曾中断，补提交下一题。
-            presentation = _commit_presentation()
+            presentation = _commit_presentation(feedback)
             return f"{feedback}\n\n{presentation}" if presentation else feedback
 
         def finish_review(answer: str) -> str:
@@ -1139,9 +1199,14 @@ class StudyWorkflow:
                     if state.review.active_question_id:
                         current = next(item for item in state.review.questions
                                        if item.question_id == state.review.active_question_id)
-                        answer = f"请回答当前复盘题：{current.question}"
-                        if current.conditions:
-                            answer += f"\n\n{current.conditions}"
+                        if current.judgement is not None:
+                            # 提交后停止的明确继续：保留反馈，只补呈现，不要求重答。
+                            answer = _replay_judged(current)
+                            committed = True
+                        else:
+                            answer = f"请回答当前复盘题：{current.question}"
+                            if current.conditions:
+                                answer += f"\n\n{current.conditions}"
                     elif state.review.complete:
                         # 复盘计划已完成：复述总结（缺失时在此补齐），不再出题。
                         answer = ""

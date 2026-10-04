@@ -77,3 +77,14 @@
 
 - 网关替身只证明确定性机制；真实模型的等价判定、复核质量与反馈文案体验由评测票 42 验证。
 - 本票未合并、未推送，待独立验收：分支 `codex/34-verified-study-grading-and-feedback`，工作树 `.worktrees/34-verified-study-grading-and-feedback`，基点 `48d12a45`。
+
+## 独立验收与修复（2026-10-04）
+
+> 上述实施记录为编码代理历史交付；本节及[独立验收报告](../acceptance/34-verified-study-grading-and-feedback.md)为独立复验证据。
+
+- **规范轴**：按 code-review 技能审查 AGENTS/CONTEXT/workflow 与 12 项 smell baseline，无硬性违规；处理 2 项判断性建议——`grade_kernel.py` 含糊的 `top` 改名 `review_scope_version_id`、服务内重复守卫模板提取 `_verify_review_commit()`。
+- **需求轴**（独立反例 8 failed 可复现）：下一题呈现与正文分开提交可能先于正文；NodeKernel 产物/收据/外箱已提交而领域判定未提交；判定失败未保留已接收答案与来源；空 `fragment_ids` 可错误通过逐点核对；解释请求被误判作答；写入前缺少预期领域版本/执行权校验存在迟到覆盖。均已在独立事务边界修复：判定产物提交回调 `commit_effect` 与领域写入同事务（失败整体回滚）、收到合法答案先行保存、只按已呈现且已核验的当前题收答案、空证据拒绝、复核补表达策略、每次写事务核对执行权与完整领域快照（按题 ID/范围版本/来源）。
+- **约定协议与合同**：`study-grade-v3` → `study-grade-v4`、`study-review-grade-recipe-v1` → `v2`；图仍 `study-tutoring-review-v5`。`openapi.json` 与 `generated.ts` 重生成对账一致（311 paths）。
+- **SSE 缺陷闭合**：delta 生成事件载荷补 `kind: "delta"`（原缺字段会被前端 `event.data.kind` 收窄丢弃）；新增 `test_sse_replay_delta_frames_carry_frontend_kind`，还原旧载荷复现红、修复后绿。
+- **最终验证**（conda `agent`）：分支 334 passed / 5 failed，干净 main `eb85c064` 313 passed / 同 5 failed，逐测试对账 0 回归、21 项新增测试全绿；5 项失败为既有 `test_lifecycle_api.py` 会话创建 409 环境问题，main 同现。Ruff 改动文件通过（`repository.py` 2 项既有与 main 同）；mypy 22 = 22 错误集合相同；`git diff --check` 干净。
+- **状态**：缺陷已闭合，验收达标；合并、代理推送、远端核对与工作树/分支清理结果在完成后补充。

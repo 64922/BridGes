@@ -43,7 +43,7 @@ from bridges.study.review import (
 NODE_REVIEW_GRADE = "study.grade"
 GATE_REVIEW_GRADE = "study.review_grade_committed"
 GRADE_RECIPE_ID = "study-review-grading"
-GRADE_RECIPE_VERSION = "study-review-grade-recipe-v1"
+GRADE_RECIPE_VERSION = "study-review-grade-recipe-v2"
 
 
 def _grade_input_key(inputs: RecipeInputs) -> str:
@@ -87,12 +87,14 @@ class ReviewGradeKernel:
         invoke: Callable[[str, dict[str, Any]], dict[str, Any]],
         *, stop_event: Any,
         event_sink: Callable[[str, str, int | None], None],
+        commit_outcome: Callable[[GradeOutcome], None],
     ) -> None:
         self._service = service
         self._run = run
         self._invoke = invoke
         self._stop_event = stop_event
         self._event_sink = event_sink
+        self._commit_outcome = commit_outcome
         self._recipe = RecipeDefinition(
             recipe_id=GRADE_RECIPE_ID,
             recipe_version=GRADE_RECIPE_VERSION,
@@ -126,20 +128,25 @@ class ReviewGradeKernel:
             ),
             None,
         )
-        if question is None or question.judgement is not None:
+        if question is None or not question.asked or question.judgement is not None:
             raise ReviewGradeError(
                 ERROR_GRADE_INVALID, "当前题不存在或已经判定，已保留当前阶段。"
             )
-        return question
-
-    def grade(self, state: StudyState, answer: str) -> GradeOutcome:
-        question = self.question(state)
         scope = state.scope
-        top = state.review.scope_version_id if state.review else ""
+        if not question.legacy and (
+            scope is None or not scope.verified
+            or not question.canonical_answer or not question.core_points
+            or question.verification is None
+            or question.verification.status != "consistent"
+        ):
+            raise ReviewGradeError(
+                ERROR_GRADE_INVALID, "当前题或范围缺少已核验的评分依据，已保留当前题。"
+            )
+        review_scope_version_id = state.review.scope_version_id if state.review else ""
         if (
             question.scope_version_id
-            and top
-            and question.scope_version_id != top
+            and review_scope_version_id
+            and question.scope_version_id != review_scope_version_id
         ) or (
             question.scope_version_id
             and scope is not None
@@ -149,6 +156,10 @@ class ReviewGradeKernel:
                 "study_review_scope_changed",
                 "题目版本与当前复盘范围不一致，请重新开始复盘。",
             )
+        return question
+
+    def grade(self, state: StudyState, answer: str) -> GradeOutcome:
+        question = self.question(state)
         frozen_answer = question.canonical_answer or ""
 
         def execute(invocation: NodeInvocation) -> NodeExecution:
@@ -209,6 +220,9 @@ class ReviewGradeKernel:
                 assistant_message_id=run.assistant_message_id, stop_event=self._stop_event,
             ),
             gates={GATE_REVIEW_GRADE: _grade_gate}, runner=execute,
+            commit_effect=lambda artifact: self._commit_outcome(
+                GradeOutcome.model_validate(artifact.payload["outcome"])
+            ),
         )
         result = kernel.execute(
             recipe=self._recipe,

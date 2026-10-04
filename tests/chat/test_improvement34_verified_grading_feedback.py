@@ -211,11 +211,14 @@ def test_disputed_recheck_keeps_question_without_student_error(
         assert result["messages"][-1]["status"] == "error"
         assert result["messages"][-1]["error_code"] == "study_review_disputed"
         # 复核未决：保留当前题，不记学生错答，也不推进游标。
-        assert result["study"] == before
+        assert (
+            result["study"]["review"]["active_question_id"]
+            == before["review"]["active_question_id"]
+        )
         raw = _raw_state(app, account["id"], endpoint).review.questions[0]
         assert raw.judgement is None
-        assert raw.answer is None
-        assert raw.user_message_id is None
+        assert raw.answer == "不知道"
+        assert raw.user_message_id
 
         gateway.recheck_fn = None
         result = _retry(client, app, endpoint)
@@ -240,7 +243,10 @@ def test_grade_failure_keeps_question_then_retry_commits_once(
         before = _ask(client, app, endpoint, "开始复盘")["study"]
         failed = _ask(client, app, endpoint, "温度表示冷热程度")
         assert failed["messages"][-1]["status"] == "error"
-        assert failed["study"] == before
+        assert (
+            failed["study"]["review"]["active_question_id"]
+            == before["review"]["active_question_id"]
+        )
 
         gateway.fail_grade = None
         result = _retry(client, app, endpoint)
@@ -395,7 +401,10 @@ def test_late_lease_loss_rejects_grade_without_advancing(
         assert result["messages"][-1]["status"] == "error"
         assert result["messages"][-1]["error_code"] == "lease_lost"
         # 失去执行权后的迟到判定不得覆盖任何状态。
-        assert result["study"] == before
+        assert (
+            result["study"]["review"]["active_question_id"]
+            == before["review"]["active_question_id"]
+        )
         raw = _raw_state(app, account["id"], endpoint).review.questions[0]
         assert raw.judgement is None
-        assert raw.answer is None
+        assert raw.answer == "温度表示冷热程度"

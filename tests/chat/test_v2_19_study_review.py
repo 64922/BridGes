@@ -245,6 +245,10 @@ def test_failed_grade_retry_stays_on_same_question(
         gateway.failure = failure
         result = _ask(client, app, endpoint, "不知道")
         assert result["messages"][-1]["status"] == "error"
+        # 收答案单独保存；系统失败不写判定、不推进其余教学状态。
+        before["review"]["questions"][0].update({
+            "answer": "不知道", "user_message_id": result["messages"][-2]["message_id"],
+        })
         assert result["study"] == before
         gateway.failure = None
         result = _retry(client, app, endpoint)
@@ -363,6 +367,11 @@ def test_stop_during_review_does_not_advance(
         app.state.generation_executor.run_tick()
         result = client.get(endpoint).json()
         assert result["messages"][-1]["status"] == "stopped"
+        if task == "study.grade":
+            before["review"]["questions"][0].update({
+                "answer": "不知道",
+                "user_message_id": response.json()["user_message"]["message_id"],
+            })
         assert result["study"] == before
 
 

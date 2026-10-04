@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="5.862" timestamp="2026-10-04T20:23:48.276947+08:00" hostname="bababoyi"><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_presentation_and_feedback_survive_terminal_failure" time="1.195"><failure message="assert (0 == 1)&#10; +  where 0 = &lt;built-in method count of str object at 0x0000012BB6A6EF20&gt;('回答正确')&#10; +    where &lt;built-in method count of str object at 0x0000012BB6A6EF20&gt; = 'event: started\ndata: {&quot;arxiv_search&quot;: null, &quot;attempt_number&quot;: 1, &quot;conversation_id&quot;: &quot;5hCY4L-r9HvF5ullHwLjMQ&quot;, &quot;kind&quot;...，已保留已完成部分。&quot;], &quot;steps&quot;: [&quot;按学习目标分析你的问题与已有知识&quot;, &quot;从多个角度收集并核对相关来源&quot;, &quot;组织一次性全面介绍并标注引用&quot;], &quot;tools&quot;: []}, &quot;web_search&quot;: null}\n\n'.count">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-verified-study-grading-and-feedback/.tmp/pytest34-sse-red/test_presentation_and_feedback0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000012BB40021D0&gt;
+
+    def test_presentation_and_feedback_survive_terminal_failure(
+        tmp_path: Any, monkeypatch: Any,
+    ) -&gt; None:
+        from bridges.study import service as study_service
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(
+            ["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map, plan_fn=_two_question_plan,
+        )
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            original = study_service.finalize_message
+            def fail_done(*args: Any, **kwargs: Any) -&gt; Any:
+                if kwargs.get("status") == ChatMessageStatus.DONE:
+                    raise RuntimeError("模拟呈现提交后终态失败")
+                return original(*args, **kwargs)
+            with monkeypatch.context() as patch:
+                patch.setattr(study_service, "finalize_message", fail_done)
+                failed = _ask(client, app, endpoint, "温度表示冷热程度")
+            state = _raw_state(app, account["id"], endpoint)
+            assert state.review.questions[1].asked
+            assert "回答正确" in failed["messages"][-1]["content"]
+            assert "复盘第2题" in failed["messages"][-1]["content"]
+            assistant_id = failed["messages"][-1]["message_id"]
+            replay = client.get(endpoint + f"/messages/{assistant_id}/events").text
+&gt;           assert replay.count("回答正确") == 1 and replay.count("复盘第2题") == 1
+E           assert (0 == 1)
+E            +  where 0 = &lt;built-in method count of str object at 0x0000012BB6A6EF20&gt;('回答正确')
+E            +    where &lt;built-in method count of str object at 0x0000012BB6A6EF20&gt; = 'event: started\ndata: {"arxiv_search": null, "attempt_number": 1, "conversation_id": "5hCY4L-r9HvF5ullHwLjMQ", "kind"...，已保留已完成部分。"], "steps": ["按学习目标分析你的问题与已有知识", "从多个角度收集并核对相关来源", "组织一次性全面介绍并标注引用"], "tools": []}, "web_search": null}\n\n'.count
+
+tests\chat\test_issue34_independent_acceptance.py:61: AssertionError</failure></testcase><testcase classname="tests.chat.test_issue34_independent_acceptance" name="test_stop_after_kernel_commit_preserves_domain_and_feedback" time="1.051"><failure message="assert 0 == 1&#10; +  where 0 = &lt;built-in method count of str object at 0x0000012BB8C87620&gt;('回答正确')&#10; +    where &lt;built-in method count of str object at 0x0000012BB8C87620&gt; = 'event: started\ndata: {&quot;arxiv_search&quot;: null, &quot;attempt_number&quot;: 1, &quot;conversation_id&quot;: &quot;DV5_WTpxdMkuHQJJS4rNqg&quot;, &quot;kind&quot;...，已保留已完成部分。&quot;], &quot;steps&quot;: [&quot;按学习目标分析你的问题与已有知识&quot;, &quot;从多个角度收集并核对相关来源&quot;, &quot;组织一次性全面介绍并标注引用&quot;], &quot;tools&quot;: []}, &quot;web_search&quot;: null}\n\n'.count">tmp_path = WindowsPath('D:/BridGes/.worktrees/34-verified-study-grading-and-feedback/.tmp/pytest34-sse-red/test_stop_after_kernel_commit_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000012BAE149D90&gt;
+
+    def test_stop_after_kernel_commit_preserves_domain_and_feedback(
+        tmp_path: Any, monkeypatch: Any,
+    ) -&gt; None:
+        from bridges.kernel.executor import NodeKernel
+        from bridges.kernel.repository import NodeKernelRepository
+        app = _app(tmp_path, monkeypatch)
+        gateway = Grade34Gateway(
+            ["温度是表示物体冷热程度的物理量。"], map_fn=_single_unit_map, plan_fn=_two_question_plan,
+        )
+        with TestClient(app) as client:
+            account, endpoint = _start_review(client, app, gateway)
+            _ask(client, app, endpoint, "开始复盘")
+            original = NodeKernel._deliver_outbox
+            def stop_after_commit(self: Any, account_id: str, run_id: str, sink: Any) -&gt; None:
+                original(self, account_id, run_id, sink)
+                artifacts = NodeKernelRepository(app.state.bridges_database).list_artifacts(
+                    account_id, endpoint.rsplit("/", 1)[-1],
+                )
+                if any(item.node == "study.grade" for item in artifacts):
+                    with app.state.bridges_database.transaction():
+                        app.state.bridges_database.connection.execute(
+                            "UPDATE generation_runs SET stop_requested = 1 WHERE run_id = ?", (run_id,),
+                        )
+            with monkeypatch.context() as patch:
+                patch.setattr(NodeKernel, "_deliver_outbox", stop_after_commit)
+                stopped = _ask(client, app, endpoint, "温度表示冷热程度")
+            question = _raw_state(app, account["id"], endpoint).review.questions[0]
+            assert question.judgement == "correct" and question.feedback
+            assert "回答正确" in stopped["messages"][-1]["content"]
+            assistant_id = stopped["messages"][-1]["message_id"]
+            replay = client.get(endpoint + f"/messages/{assistant_id}/events").text
+&gt;           assert replay.count("回答正确") == 1
+E           assert 0 == 1
+E            +  where 0 = &lt;built-in method count of str object at 0x0000012BB8C87620&gt;('回答正确')
+E            +    where &lt;built-in method count of str object at 0x0000012BB8C87620&gt; = 'event: started\ndata: {"arxiv_search": null, "attempt_number": 1, "conversation_id": "DV5_WTpxdMkuHQJJS4rNqg", "kind"...，已保留已完成部分。"], "steps": ["按学习目标分析你的问题与已有知识", "从多个角度收集并核对相关来源", "组织一次性全面介绍并标注引用"], "tools": []}, "web_search": null}\n\n'.count
+
+tests\chat\test_issue34_independent_acceptance.py:159: AssertionError</failure></testcase></testsuite></testsuites>

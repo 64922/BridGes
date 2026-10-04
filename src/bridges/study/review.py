@@ -35,13 +35,13 @@ from bridges.contracts.study import (
 REVIEW_PROTOCOL_VERSION = "study-review-v2"
 
 #: 判定协议版本（工单 34）：逐项核对与必要复核规则变化时递增。
-GRADE_PROTOCOL_VERSION = "study-grade-v3"
+GRADE_PROTOCOL_VERSION = "study-grade-v4"
 
 #: 已登记的复盘能力版本（代码拒绝未登记能力；数值复算是确定性工具）。
 REVIEW_CAPABILITY_VERSIONS: dict[str, str] = {
     "study.plan_review": "study-plan-review-v2",
     "study.verify_questions": "study-verify-questions-v2",
-    "study.grade": "study-grade-v3",
+    "study.grade": "study-grade-v4",
     "study.recheck_grade": "study-recheck-grade-v1",
     "study.calculate": "study-calculate-v1",
 }
@@ -104,6 +104,12 @@ def review_intent(text: str) -> Literal["start", "pause", "tutor"] | None:
     if re.match(
         r"(?:暂停复盘|先回辅导)?(?:我想|我需要)?(?:请|麻烦|能不能|可以)?"
         r"(?:先)?(?:给我|帮我)?(?:再|重新)?(?:讲讲|讲一下|讲解|解释|辅导)",
+        text,
+    ):
+        return "tutor"
+    if re.fullmatch(
+        r"(?:我想|我需要)?(?:先)?(?:问一下|问问).+"
+        r"|(?:这(?:道)?题|题目|这句话|这个概念).*(?:什么意思|是什么意思|怎么理解|如何理解|为什么|怎么做)[？?]?",
         text,
     ):
         return "tutor"
@@ -771,13 +777,7 @@ def judged_by_message(review: StudyReview, message_id: str) -> StudyReviewQuesti
 
 def _is_legacy_question(question: StudyReviewQuestion) -> bool:
     """旧评分合同题：沿用原判定路径，不进入逐项核对与独立复核。"""
-    return (
-        question.legacy
-        or not question.canonical_answer
-        or not question.core_points
-        or question.verification is None
-        or question.verification.status != "consistent"
-    )
+    return question.legacy
 
 
 _LABELS = {"correct": "回答正确", "incomplete": "回答不完整", "incorrect": "回答有误"}
@@ -859,10 +859,10 @@ def _point_records(
     allowed = set(question.fragment_ids)
     records: list[StudyPointCheck] = []
     for item in checks:
-        if set(item.fragment_ids) - allowed:
+        if not item.fragment_ids or set(item.fragment_ids) - allowed:
             raise ReviewGradeError(
                 ERROR_GRADE_INVALID,
-                "判定引用了题目范围之外的书页证据，已保留当前题，请重试。",
+                "判定缺少书页证据或引用越界，已保留当前题，请重试。",
             )
         records.append(
             StudyPointCheck(
@@ -920,6 +920,7 @@ def _recheck_grade(
         error_code=ERROR_GRADE_RECHECK_FAILED,
         evidence_id="study-grade-recheck",
         role="你是教材复盘的独立复核者。",
+        policy_block=_policy_block(run),
     )
     try:
         recheck = _Recheck.model_validate(raw)
@@ -981,7 +982,7 @@ def grade_question(
             raise ReviewGradeError(
                 ERROR_GRADE_INVALID, "判定题号与当前题不一致，已保留当前题，请重试。"
             )
-        canonical = result.canonical_answer or question.canonical_answer or ""
+        canonical = question.canonical_answer or result.canonical_answer or ""
         if not canonical:
             raise ReviewGradeError(
                 ERROR_GRADE_INVALID, "判定缺少标准答案，已保留当前题，请重试。"
