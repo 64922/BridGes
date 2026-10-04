@@ -52465,6 +52465,7 @@
           "uploaded_material",
           "study_explanation",
           "knowledge_base_required",
+          "evidence_gap",
           "user_disabled",
           "specialized_capability",
           "companion_default"
@@ -56431,6 +56432,99 @@
         "title": "StudyCoverageEntry",
         "description": "覆盖矩阵的一行：一个实质教学片段与知识点/排除理由的关系。"
       },
+      "StudyEvidenceAssessment": {
+        "properties": {
+          "protocol_version": {
+            "type": "string",
+            "title": "Protocol Version",
+            "default": "study-tutor-evidence-v2"
+          },
+          "sufficient": {
+            "type": "boolean",
+            "title": "Sufficient",
+            "default": false
+          },
+          "key_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Key Points"
+          },
+          "supported_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Points"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/StudyEvidenceGap"
+            },
+            "type": "array",
+            "title": "Gaps"
+          },
+          "supplements": {
+            "items": {
+              "$ref": "#/components/schemas/StudySupplementAttempt"
+            },
+            "type": "array",
+            "title": "Supplements"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          }
+        },
+        "type": "object",
+        "title": "StudyEvidenceAssessment",
+        "description": "问题级证据充分性评估与逐层补证记录（工单 32）。\n\n先取本节相关片段与必要前文判断关键解释点是否已支持；不足时按用户\n设置检索知识库，复查剩余缺口，仍不足且允许联网时用最小公开术语补证。\n评估只读材料，不改写阶段、范围或考查范围。"
+      },
+      "StudyEvidenceGap": {
+        "properties": {
+          "point": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Point"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "supplement": {
+            "type": "string",
+            "enum": [
+              "knowledge_base",
+              "web",
+              "page",
+              "none"
+            ],
+            "title": "Supplement",
+            "default": "none"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "unverified",
+              "needs_page"
+            ],
+            "title": "Status",
+            "default": "unverified"
+          }
+        },
+        "type": "object",
+        "required": [
+          "point"
+        ],
+        "title": "StudyEvidenceGap",
+        "description": "问题级证据评估的一条缺口（工单 32）。\n\n``supplement`` 是所需补证类型：``knowledge_base`` 查本节之外的知识库、\n``web`` 需公开来源（时效或明确核验要求也归入此项）、``page`` 关键书页\n不清需补拍补录、``none`` 无可用补证。``status`` 是补给后的最终处置：\n``resolved`` 已由补充来源覆盖、``needs_page`` 等待书页、``unverified``\n因用户限制、来源失败或预算保持未核实。"
+      },
       "StudyExchange": {
         "properties": {
           "user_message_id": {
@@ -56460,6 +56554,16 @@
             "type": "string",
             "title": "Gap",
             "default": ""
+          },
+          "assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyEvidenceAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -57184,6 +57288,51 @@
         ],
         "title": "StudySummaryPoint",
         "description": "总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。"
+      },
+      "StudySupplementAttempt": {
+        "properties": {
+          "layer": {
+            "type": "string",
+            "enum": [
+              "knowledge_base",
+              "web"
+            ],
+            "title": "Layer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "used",
+              "empty",
+              "failed",
+              "conflict",
+              "skipped_disabled",
+              "skipped_restricted",
+              "not_needed",
+              "budget_exhausted",
+              "query_insufficient"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "source_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Source Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "status"
+        ],
+        "title": "StudySupplementAttempt",
+        "description": "一层补证的真实执行结果（用于审计“为何没查/没查到”）。"
       },
       "StudyUnclear": {
         "properties": {
