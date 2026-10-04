@@ -206,12 +206,19 @@ def parse_career_request(
     family = family_for(terms[0]) if terms else None
     branch = (
         CareerBranch.PERSONAL_PLANNING
-        if detect_personal_planning(current) or detect_personal_planning(resumed)
+        if not _JOB_ONLY_RE.search(current) and any(
+            detect_personal_planning(text)
+            for text in (current, resumed, *(task_texts if not current_terms else ()))
+        )
         else CareerBranch.JOB_INTEL
     )
     budget = detect_time_budget(current)
     if budget is None:
-        budget = detect_time_budget(resumed)
+        budget = next(
+            (value for text in (resumed, *(task_texts if not current_terms else ()))
+             if (value := detect_time_budget(text)) is not None),
+            None,
+        )
     analysis = CareerRequestAnalysis(
         original_request=original,
         job_terms=terms,

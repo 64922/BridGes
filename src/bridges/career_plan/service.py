@@ -142,8 +142,6 @@ class CareerPlanService:
         self._reads_per_source = reads_per_source
         self._task_version_provider = task_version_provider
         self._background_provider = background_provider
-        self._registry = career_recipe_registry()
-        self._recipe = self._registry.get(CAREER_RECIPE_ID)
 
     def close(self) -> None:
         closer = getattr(self._reader, "close", None)
@@ -214,28 +212,31 @@ class CareerPlanService:
             reads_per_source=self._reads_per_source,
             background_provider=self._background_provider,
         )
+        registry = career_recipe_registry(background_input_key=flow.background_input_key)
+        recipe = registry.get(CAREER_RECIPE_ID)
         kernel = NodeKernel(
-            registry=self._registry,
+            registry=registry,
             repository=NodeKernelRepository(repo.database),
             guard=guard,
             gates=CAREER_GATE_HANDLERS,
             runner=flow.run_node,
             clock=clock,
         )
+        kernel_inputs = RecipeInputs(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            user_message_id=user_message_id,
+            user_content=content,
+            task_id=task_ref[0] if task_ref is not None else None,
+            task_version=task_ref[1] if task_ref is not None else None,
+            wait_identity=self._wait_identity(pending),
+            artifacts={},
+            prior_digest=flow.prior_digest,
+        )
         result = kernel.execute(
-            recipe=self._recipe,
-            inputs=RecipeInputs(
-                account_id=account_id,
-                conversation_id=conversation_id,
-                run_id=run_id,
-                user_message_id=user_message_id,
-                user_content=content,
-                task_id=task_ref[0] if task_ref is not None else None,
-                task_version=task_ref[1] if task_ref is not None else None,
-                wait_identity=self._wait_identity(pending),
-                artifacts={},
-                prior_digest=flow.prior_digest,
-            ),
+            recipe=recipe,
+            inputs=kernel_inputs,
             remaining_budget_ms=(
                 budget.remaining_work_ms() if budget is not None else None
             ),
@@ -245,6 +246,29 @@ class CareerPlanService:
         # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
         delivery_failure: _CareerDeliveryError | None = None
         with NodeKernelRepository(repo.database).transaction():
+            # 同一最终事务内核对画像，避免核验节点后撤回仍交付旧个人结论。
+            # 最多修复一次；公开节点的输入不变，仍按已核实收据复用。
+            for repair in range(2):
+                background = result.artifact(NODE_BACKGROUND)
+                if result.status is not KernelStatus.COMPLETED or background is None:
+                    break
+                if background.payload.get("background") is None:
+                    break
+                current_key = flow.background_input_key(replace(
+                    kernel_inputs,
+                    artifacts={artifact.node: artifact for artifact in result.artifacts},
+                ))
+                if current_key == background.input_key:
+                    break
+                if repair:
+                    raise CareerSupersededError("career_background_changed")
+                result = kernel.execute(
+                    recipe=recipe, inputs=kernel_inputs,
+                    remaining_budget_ms=(
+                        budget.remaining_work_ms() if budget is not None else None
+                    ),
+                    event_sink=emit_node, stop_event=stop_event,
+                )
             decision = guard.verify()
             if not decision.ok:
                 if decision.code != "run_stopped":

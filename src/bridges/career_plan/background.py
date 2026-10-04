@@ -30,6 +30,9 @@ from bridges.contracts.profile_adoption import AdoptedProfileSlice
 #: 个人规划分支最多采用的背景条目数（含当前陈述；整条采用，不截断）。
 MAX_BACKGROUND_ITEMS = 8
 
+#: 背景正文采用预算：按完整条目计数，超出时整条排除，不截断事实。
+MAX_BACKGROUND_CHARACTERS = 8000
+
 #: 画像事实里“允许改变计划时间”的决策标签（工单 19 用途语义）。
 PLAN_TIME_DECISION = "plan_time_budget"
 
@@ -49,11 +52,11 @@ class CareerBackgroundProvider(Protocol):
 
 
 def build_statement_items(
-    analysis: CareerRequestAnalysis,
     *,
     user_content: str,
     user_message_id: str,
     task_texts: tuple[str, ...] = (),
+    task_ref: str | None = None,
 ) -> list[CareerBackgroundItem]:
     """当前陈述条目：本轮原文一条，任务已确认原话逐条（都有来源）。"""
 
@@ -76,7 +79,7 @@ def build_statement_items(
             CareerBackgroundItem(
                 source=CareerBackgroundSource.TASK,
                 text=value,
-                source_ref=f"task:{analysis.original_request[:40]}#{index}",
+                source_ref=f"{task_ref or user_message_id}#task-text:{index}",
                 authority="user",
             )
         )
@@ -149,12 +152,31 @@ def finalize_snapshot(
     """合并当前陈述与允许的长期来源，并确定时间约束的优先级。"""
 
     profile = profile_snapshot or unavailable_snapshot("本轮没有可用的长期背景来源。")
-    items = [*statement_items, *profile.items][:MAX_BACKGROUND_ITEMS]
+    items: list[CareerBackgroundItem] = []
+    remaining_characters = MAX_BACKGROUND_CHARACTERS
+    excluded_count = 0
+    for item in [*statement_items, *profile.items]:
+        if item.overridden:
+            continue
+        if len(items) >= MAX_BACKGROUND_ITEMS or len(item.text) > remaining_characters:
+            excluded_count += 1
+            continue
+        items.append(item)
+        remaining_characters -= len(item.text)
+    adopted_profile_items = [
+        item for item in items if item.source is CareerBackgroundSource.PROFILE
+    ]
     statement_budget = analysis.time_budget_minutes
-    budget: int | None = statement_budget
-    source: str | None = "statement" if statement_budget is not None else None
-    if budget is None:
-        for item in profile.items:
+    statement_budget_adopted = statement_budget is not None and any(
+        item.source in {CareerBackgroundSource.USER_STATEMENT, CareerBackgroundSource.TASK}
+        and detect_time_budget(item.text) == statement_budget
+        for item in items
+    )
+    budget: int | None = statement_budget if statement_budget_adopted else None
+    source: str | None = "statement" if statement_budget_adopted else None
+    # 本轮明确时间的原话超预算时，不偷偷回退长期默认时间。
+    if statement_budget is None:
+        for item in adopted_profile_items:
             if PLAN_TIME_DECISION not in item.applicable_to:
                 continue
             found = detect_time_budget(item.text)
@@ -167,12 +189,19 @@ def finalize_snapshot(
         slice_id=profile.slice_id,
         revocation_version=profile.revocation_version,
         compiled_policy_version=profile.compiled_policy_version,
-        used_profile=bool(profile.items),
+        used_profile=bool(adopted_profile_items),
         purpose_task_kind=profile.purpose_task_kind,
         time_budget_minutes=budget,
         time_budget_source=source,
         unavailable_reason=profile.unavailable_reason,
-        excluded_notes=list(profile.excluded_notes),
+        excluded_notes=[
+            *profile.excluded_notes,
+            *(
+                [f"另有 {excluded_count} 条背景超出本轮预算，整条未采用。"]
+                if excluded_count
+                else []
+            ),
+        ],
         checked_at=profile.checked_at,
     )
 

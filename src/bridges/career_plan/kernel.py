@@ -120,7 +120,7 @@ NODE_ADVISE = "career.advise"
 NODE_VERIFY = "career.verify"
 
 CAREER_RECIPE_ID = "career-job-sample"
-CAREER_RECIPE_VERSION = "career-job-sample-recipe-v2"
+CAREER_RECIPE_VERSION = "career-job-sample-recipe-v3"
 
 #: 节点的用户可读中文名（父图失败信息按此标注真实失败位置）。
 CAREER_NODE_LABELS: dict[str, str] = {
@@ -137,15 +137,15 @@ CAREER_NODE_LABELS: dict[str, str] = {
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 CAREER_CAPABILITY_VERSIONS: dict[str, str] = {
-    "career.parse_request": "career-parse-v3",
+    "career.parse_request": "career-parse-v4",
     "career.plan_query": "career-plan-v2",
     "career.collect_jobs": "career-collect-v2",
     "career.filter_jobs": "career-filter-v3",
     "career.analyze_jobs": "career-analyze-v4",
-    "career.load_background": "career-background-v1",
-    "career.match_gap": "career-gap-v1",
-    "career.advise_actions": "career-advise-v2",
-    "career.verify_delivery": "career-verify-v2",
+    "career.load_background": "career-background-v2",
+    "career.match_gap": "career-gap-v2",
+    "career.advise_actions": "career-advise-v3",
+    "career.verify_delivery": "career-verify-v3",
 }
 
 #: 配方的必要门、可选门（登记集合；代码拒绝未登记质量门）。
@@ -548,7 +548,7 @@ def _personal_evidence_gate(
 def _personal_review_gate(
     invocation: NodeInvocation, execution: NodeExecution
 ) -> QualityGateResult:
-    """可选门：个人关键综合判断的独立复核（本轮如实记录未执行）。"""
+    """必要门：独立重查原始证据；新的综合推断没有复核来源则阻塞。"""
     del invocation
     projection = execution.artifact.payload.get("projection") or {}
     if str(projection.get("branch") or CareerBranch.JOB_INTEL.value) != (
@@ -559,14 +559,26 @@ def _personal_review_gate(
             verdict=QualityVerdict.PASS,
             detail={"executed": False, "reason": "本轮不涉及个人综合判断。"},
         )
+    from bridges.career_plan.reviewing import review_personal_projection
+
+    reason = review_personal_projection(CareerPlanProjection.model_validate(projection))
+    if reason is not None:
+        return QualityGateResult(
+            gate="career.personal_review",
+            verdict=QualityVerdict.BLOCKED,
+            code="career_personal_review_blocked",
+            message=reason,
+            detail={"executed": True, "method": "independent_code_evidence_review"},
+        )
     return QualityGateResult(
         gate="career.personal_review",
         verdict=QualityVerdict.PASS,
         detail={
-            "executed": False,
+            "executed": True,
+            "method": "independent_code_evidence_review",
             "reason": (
-                "差距分类由两侧原文直接对照得出，本轮未执行独立的模型复核；"
-                "依据不足的结论已保持待确认或阻塞。"
+                "独立代码核验已从原始样本与背景重查分类和有限行动策略；"
+                "这不是模型复核，新的能力综合推断缺少独立来源时保持阻塞。"
             ),
         },
     )
@@ -689,7 +701,9 @@ def _verify_key(inputs: RecipeInputs) -> str:
     )
 
 
-def build_career_recipe() -> RecipeDefinition:
+def build_career_recipe(
+    *, background_input_key: Callable[[RecipeInputs], str] | None = None
+) -> RecipeDefinition:
     """构造并校验职业规划配方（必经顺序、依赖只指向前置节点）。"""
     return RecipeDefinition(
         recipe_id=CAREER_RECIPE_ID,
@@ -749,7 +763,7 @@ def build_career_recipe() -> RecipeDefinition:
                 capability="career.load_background",
                 capability_version=CAREER_CAPABILITY_VERSIONS["career.load_background"],
                 artifact_type="career.background_snapshot",
-                input_key=_background_key,
+                input_key=background_input_key or _background_key,
                 depends_on=(NODE_PARSE,),
                 recovery=RecoveryPolicy.RETRY_NODE,
                 description="仅个人分支读取当前陈述与允许的长期背景；只查岗位明确跳过。",
@@ -801,8 +815,9 @@ def build_career_recipe() -> RecipeDefinition:
                     "career.stats_caliber",
                     "career.conditions_hold",
                     "career.personal_evidence",
+                    "career.personal_review",
                 ),
-                optional_gates=("career.independent_review", "career.personal_review"),
+                optional_gates=("career.independent_review",),
                 recovery=RecoveryPolicy.BLOCK,
                 description="核验样本证据、统计口径、条件核对与个人证据后形成待交付投影。",
             ),
@@ -810,13 +825,15 @@ def build_career_recipe() -> RecipeDefinition:
     )
 
 
-def career_recipe_registry() -> RecipeRegistry:
+def career_recipe_registry(
+    *, background_input_key: Callable[[RecipeInputs], str] | None = None
+) -> RecipeRegistry:
     """登记职业规划能力、质量门与配方；非法定义在装配时即被拒绝。"""
     registry = RecipeRegistry(
         capabilities=CAREER_CAPABILITY_VERSIONS.keys(),
         gates=CAREER_GATES,
     )
-    registry.register(build_career_recipe())
+    registry.register(build_career_recipe(background_input_key=background_input_key))
     return registry
 
 
@@ -1044,6 +1061,8 @@ class CareerNodeFlow:
         self._read_deadline_seconds = read_deadline_seconds
         self._reads_per_source = reads_per_source
         self._background_provider = background_provider
+        self._prepared_background: CareerBackgroundSnapshot | None = None
+        self._prepared_background_key: str | None = None
 
     @property
     def prior_digest(self) -> str | None:
@@ -1393,6 +1412,52 @@ class CareerNodeFlow:
             detail={"sample_count": report.sample_count},
         )
 
+    def background_input_key(self, inputs: RecipeInputs) -> str:
+        """复用收据前核验背景；当前执行只加载一次，时钟不改变内容键。"""
+        analysis = CareerRequestAnalysis.model_validate(
+            inputs.artifacts[NODE_PARSE].payload["analysis"]
+        )
+        if analysis.branch is not CareerBranch.PERSONAL_PLANNING:
+            self._prepared_background = None
+            self._prepared_background_key = _background_key(inputs)
+            return self._prepared_background_key
+        statement_items = build_statement_items(
+            user_content=inputs.user_content,
+            user_message_id=inputs.user_message_id,
+            task_texts=self._task_texts(),
+            task_ref=(
+                f"task:{inputs.task_id}#v{inputs.task_version}"
+                if inputs.task_id is not None else None
+            ),
+        )
+        profile_snapshot: CareerBackgroundSnapshot | None = None
+        if self._background_provider is not None:
+            try:
+                profile_snapshot = self._background_provider.load(
+                    inputs.account_id,
+                    run_id=inputs.run_id,
+                    query=inputs.user_content or None,
+                    current_user_message_id=inputs.user_message_id,
+                    now=self._clock(),
+                )
+            except Exception:  # noqa: BLE001 - 背景来源失败不阻断公开岗位部分
+                profile_snapshot = unavailable_snapshot(
+                    "长期背景来源本轮不可用；个人部分只使用当前陈述。",
+                    checked_at=self._clock(),
+                )
+        self._prepared_background = finalize_snapshot(
+            analysis=analysis,
+            statement_items=statement_items,
+            profile_snapshot=profile_snapshot,
+        )
+        self._prepared_background_key = _digest({
+            "request": _background_key(inputs),
+            "background": self._prepared_background.model_dump(
+                mode="json", exclude={"checked_at"}
+            ),
+        })
+        return self._prepared_background_key
+
     def _run_background(self, invocation: NodeInvocation) -> NodeExecution:
         """仅个人规划分支读取允许背景；只查岗位时明确跳过。"""
         analysis = self._analysis(invocation)
@@ -1414,32 +1479,11 @@ class CareerNodeFlow:
                 status=NodeReceiptStatus.COMPLETED,
                 detail={"skipped": True},
             )
-        statement_items = build_statement_items(
-            analysis,
-            user_content=invocation.inputs.user_content,
-            user_message_id=invocation.inputs.user_message_id,
-            task_texts=self._task_texts(),
-        )
-        profile_snapshot: CareerBackgroundSnapshot | None = None
-        if self._background_provider is not None:
-            try:
-                profile_snapshot = self._background_provider.load(
-                    invocation.inputs.account_id,
-                    run_id=invocation.inputs.run_id,
-                    query=invocation.inputs.user_content or None,
-                    current_user_message_id=invocation.inputs.user_message_id,
-                    now=self._clock(),
-                )
-            except Exception:  # noqa: BLE001 - 背景来源失败不阻断公开岗位部分
-                profile_snapshot = unavailable_snapshot(
-                    "长期背景来源本轮不可用；个人部分只使用当前陈述。",
-                    checked_at=self._clock(),
-                )
-        snapshot = finalize_snapshot(
-            analysis=analysis,
-            statement_items=statement_items,
-            profile_snapshot=profile_snapshot,
-        )
+        snapshot = self._prepared_background
+        if snapshot is None:
+            self.background_input_key(invocation.inputs)
+            snapshot = self._prepared_background
+        assert snapshot is not None
         return NodeExecution(
             artifact=self._artifact(
                 invocation,
@@ -1739,7 +1783,11 @@ class CareerNodeFlow:
             artifact_type=invocation.spec.artifact_type,
             capability_version=invocation.spec.capability_version,
             trust_state=trust_state,
-            input_key=invocation.spec.input_key(inputs),
+            input_key=(
+                self._prepared_background_key
+                if invocation.spec.name == NODE_BACKGROUND and self._prepared_background_key
+                else invocation.spec.input_key(inputs)
+            ),
             input_deps=dependencies,
             source_refs=tuple(source_refs),
             read_scope=read_scope,

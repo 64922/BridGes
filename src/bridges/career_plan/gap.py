@@ -31,7 +31,7 @@ from bridges.career_plan.contracts import (
     CareerRequestAnalysis,
     JobSample,
 )
-from bridges.career_plan.lexicon import skill_present
+from bridges.career_plan.lexicon import detect_skills, skill_present
 from bridges.career_plan.parsing import detect_time_budget
 
 #: 逐项对照最多覆盖的要求词条数。
@@ -52,15 +52,20 @@ _POSITIVE_RE = re.compile(
 #: 背景原文里「明确待提升」的表述特征（用户明确说出的缺口或补学打算）。
 _NEGATIVE_RE = re.compile(
     r"不会|不熟悉|不熟练|没学过|没有学过|没接触过|没做过|没写过|没有.{0,6}经验|"
-    r"欠缺|缺乏|薄弱|零基础|不懂|不太会|不怎么会|不擅长|待补|想学|打算学|"
-    r"准备学|需要学|要补习|补一下|还没学|没系统学过"
+    r"欠缺|缺乏|薄弱|零基础|不懂|不太会|不怎么会|不擅长|待补|"
+    r"要补习|补一下|还没学|没系统学过"
 )
 
 #: 当前目标里包含学习资料或实践项目时，输出供工单 37 组合的最小需求产物。
 _RESOURCES_RE = re.compile(r"资料|学习|课程|书|教程|视频|资源|教材|网课|刷题")
 _PROJECT_RE = re.compile(r"项目|练手|实践|github|开源|作品", re.IGNORECASE)
 
-_SENTENCE_SPLIT_RE = re.compile(r"[。！？；;\n]+")
+_SENTENCE_SPLIT_RE = re.compile(r"[。；;\n，,]+|(?:但是|但|不过)")
+# 引用、第三方、疑问和愿望不能当作用户已经具备/缺少能力的断言。
+_NON_ASSERTION_RE = re.compile(
+    r"[？?吗呢]|是否|如果|假如|岗位|招聘|要求|不确定|可能|也许|能否|不是不会|并非不会|不会只|朋友|同学|同事|他|她|你|"
+    r"[‘’“”\"「」]|想学|打算学|准备学|需要学|学会"
+)
 
 _SOURCE_LABELS: dict[str, str] = {
     "user_statement": "本轮自述",
@@ -100,12 +105,28 @@ def build_gaps(
         positive: list[tuple[CareerBackgroundItem, str]] = []
         negative: list[tuple[CareerBackgroundItem, str]] = []
         for item in items:
+            if item.overridden:
+                continue
             for sentence in _sentences_with(item.text, stat.term):
-                if _NEGATIVE_RE.search(sentence):
+                polarity = evidence_polarity(sentence, stat.term)
+                if polarity == "negative":
                     negative.append((item, sentence))
-                elif _POSITIVE_RE.search(sentence):
+                elif polarity == "positive":
                     positive.append((item, sentence))
-        if negative:
+        # 本轮明确自述覆盖任务原话与长期背景；同层冲突不强行选一侧。
+        all_hits = [*positive, *negative]
+        if all_hits:
+            rank = min(_source_rank(item) for item, _ in all_hits)
+            positive = [(item, text) for item, text in positive if _source_rank(item) == rank]
+            negative = [(item, text) for item, text in negative if _source_rank(item) == rank]
+        if positive and negative:
+            category = CareerGapCategory.TO_CONFIRM
+            note = (
+                f"岗位样本里有 {stat.count}/{report.sample_count} 个要求「{stat.term}」；"
+                "相关背景存在冲突，需要确认当前情况；未知不等于不足。"
+            )
+            hits = [*positive, *negative]
+        elif negative:
             category = CareerGapCategory.TO_IMPROVE
             note = (
                 f"岗位样本里有 {stat.count}/{report.sample_count} 个要求「{stat.term}」；"
@@ -128,7 +149,9 @@ def build_gaps(
             )
             hits = []
         evidence_lines, refs = _background_evidence(hits)
-        if category is not CareerGapCategory.TO_CONFIRM and not evidence_lines:
+        if category is not CareerGapCategory.TO_CONFIRM and (
+            not evidence_lines or not job_evidence or not urls
+        ):
             # 防御：分类必须有用户侧原文支持，否则退回待确认，绝不凭空写差距。
             category = CareerGapCategory.TO_CONFIRM
             note = (
@@ -173,7 +196,8 @@ def build_personal_advice(
     priority = 0
     for gap in ordered:
         priority += 1
-        feasibility = budget_note if gap.category is not CareerGapCategory.TO_CONFIRM else None
+        feasibility = budget_note
+        step = _feasible_step(budget, background)
         if gap.category is CareerGapCategory.TO_IMPROVE:
             advices.append(
                 CareerAdviceItem(
@@ -181,12 +205,12 @@ def build_personal_advice(
                     title=f"优先补强 {gap.term}",
                     detail=(
                         f"岗位样本里有 {gap.requirement_count}/{gap.requirement_total} 个岗位"
-                        f"要求「{gap.term}」，你也明确提到需要补；先做一个最小可展示的练习"
-                        "或小项目，再回到岗位要求原文逐条核对。"
+                        f"要求「{gap.term}」，你也明确提到需要补；{step}"
+                        "再回到岗位要求原文逐条核对。"
                     ),
                     basis=[*gap.job_evidence, *[f"岗位样本：{url}" for url in gap.job_sample_urls]],
                     background_basis=list(gap.background_evidence),
-                    inference=False,
+                    inference=True,
                     priority=priority,
                     feasibility=feasibility,
                 )
@@ -197,12 +221,12 @@ def build_personal_advice(
                     kind="leverage",
                     title=f"把 {gap.term} 的现有基础转成可核验材料",
                     detail=(
-                        f"你的背景里有「{gap.term}」的对应依据；把这段经历写进简历或作品说明，"
-                        "并补一个能对应岗位要求原文的具体例子。"
+                        f"你的背景里有「{gap.term}」的对应依据；{step}"
+                        "将实际完成的例子整理成材料，不把正在学习当成项目经验。"
                     ),
                     basis=[*gap.job_evidence, *[f"岗位样本：{url}" for url in gap.job_sample_urls]],
                     background_basis=list(gap.background_evidence),
-                    inference=False,
+                    inference=True,
                     priority=priority,
                     feasibility=feasibility,
                 )
@@ -215,11 +239,12 @@ def build_personal_advice(
                     detail=(
                         f"岗位样本里有 {gap.requirement_count}/{gap.requirement_total} 个岗位"
                         f"要求「{gap.term}」，但你还没有提供相关背景；这不等于不足。"
-                        "用一个最小自测或小任务确认后，再决定它排在哪一档。"
+                        f"{step}确认后再决定它排在哪一档。"
                     ),
                     basis=[*gap.job_evidence, *[f"岗位样本：{url}" for url in gap.job_sample_urls]],
-                    inference=False,
+                    inference=True,
                     priority=priority,
+                    feasibility=feasibility,
                 )
             )
     interest = _interest_note(analysis, background)
@@ -246,7 +271,7 @@ def build_personal_advice(
                     item.text
                     for item in _budget_source_items(background)
                 ],
-                inference=False,
+                inference=True,
                 priority=priority,
                 feasibility=budget_note,
             )
@@ -336,6 +361,45 @@ def _job_evidence(
     return lines[:MAX_JOB_EVIDENCE_LINES], urls[:MAX_JOB_EVIDENCE_LINES]
 
 
+def _source_rank(item: CareerBackgroundItem) -> int:
+    return {"user_statement": 0, "task": 1, "resume": 2, "profile": 3}[item.source.value]
+
+
+def evidence_polarity(text: str, term: str) -> str | None:
+    """只接受同一分句中绑定该技能的能力断言；不明确则待确认。"""
+    if (
+        _NON_ASSERTION_RE.search(text)
+        or not skill_present(text, term)
+        or not re.match(r"^(?:我|本人|用户|会|熟悉|熟练|掌握|精通|了解|擅长|用过|做过|写过|"
+                        r"学过|正在学|在学|不会|不熟|没|没有|还没|零基础)", text.strip())
+    ):
+        return None
+    markers = [(match.start(), match.end(), "negative")
+               for match in _NEGATIVE_RE.finditer(text)]
+    markers += [(match.start(), match.end(), "positive")
+                for match in _POSITIVE_RE.finditer(text)
+                if not any(start <= match.start() < end for start, end, _ in markers)]
+    skills = detect_skills(text)
+    lowered = text.casefold()
+    position = lowered.find(term.casefold())
+    if position < 0:
+        return None
+    before = [(start, end, value) for start, end, value in markers if end <= position]
+    after = [(start, end, value) for start, end, value in markers
+             if start >= position + len(term)]
+    if before:
+        return max(before)[2]
+    if after:
+        start, _end, value = min(after)
+        # 「Java、Redis不会」共享谓词；「Java和会Redis」不把Redis谓词归给Java。
+        between = text[position + len(term):start]
+        if not any(skill_present(text[start:], skill) for skill in skills if skill != term):
+            return value
+        if not between.strip():
+            return None
+    return None
+
+
 def _sentences_with(text: str, term: str) -> list[str]:
     return [
         sentence.strip()
@@ -357,6 +421,17 @@ def _background_evidence(
         if item.source_ref and item.source_ref not in refs:
             refs.append(item.source_ref)
     return lines[:MAX_BACKGROUND_EVIDENCE_LINES], refs[:MAX_BACKGROUND_EVIDENCE_LINES]
+
+
+def _feasible_step(budget: int | None, background: CareerBackgroundSnapshot | None) -> str:
+    texts = " ".join(item.text for item in background.items) if background else ""
+    if re.search(r"没有电脑|没电脑|只有手机|只能用手机", texts):
+        return "先用手机阅读一个小例子并写下思路，暂不安排需要电脑运行的项目。"
+    if budget is not None and budget <= 15:
+        return "本时段先阅读一个例子并记录一个问题，暂不安排完整项目。"
+    if budget is not None and budget < 60:
+        return "本时段先完成一个单功能练习，将较大项目拆到后续时段。"
+    return "先做一个最小可展示的练习或小项目。"
 
 
 def _budget_note(background: CareerBackgroundSnapshot | None) -> str:
@@ -411,7 +486,7 @@ def _interest_note(
             *[f"已记住信息：{item.text}" for item in interests[:1]],
         ],
         background_basis=[item.source_ref for item in interests[:1]],
-        inference=False,
+        inference=True,
     )
 
 
@@ -423,18 +498,16 @@ def _combination_requirements(
     goal_text = analysis.original_request
     job = analysis.job_title or (analysis.job_terms[0] if analysis.job_terms else "目标岗位")
     needs = [gap for gap in gaps if gap.category is not CareerGapCategory.HAS_EVIDENCE]
-    if not needs:
-        return []
     requirements: list[CareerCombinationRequirement] = []
     if wants_learning_resources(goal_text):
         requirements.append(
             CareerCombinationRequirement(
                 kind="resources",
                 topic=job,
-                goal=f"补齐「{job}」岗位样本反复要求、而你尚未确认或明确要补的能力。",
-                skills=[gap.term for gap in needs],
-                basis=[group for gap in needs for group in gap.job_evidence][:4],
-                inference=False,
+                goal=f"围绕「{job}」岗位要求推荐学习资料；待确认技能先核实基础，不预设不足。",
+                skills=[gap.term for gap in (needs or gaps)],
+                basis=[group for gap in (needs or gaps) for group in gap.job_evidence][:4],
+                inference=True,
             )
         )
     if wants_practice_project(goal_text):

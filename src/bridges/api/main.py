@@ -229,6 +229,7 @@ from bridges.profiles import (
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.legacy_api import router as legacy_profiles_router
 from bridges.profiles.purpose import build_purpose as build_profile_purpose
+from bridges.contracts.profile_adoption import AdoptedProfileSlice
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
 from bridges.retirement import CompatibilityMetrics, retire_user_extensions, run_reminder_retirement
@@ -510,39 +511,66 @@ class CareerBackgroundLoader:
         now: Any = None,
     ) -> CareerBackgroundSnapshot:
         moment = now if now is not None else datetime.now(UTC)
-        atomic = getattr(self._app.state, "atomic_profile_service", None)
-        automatic = getattr(self._app.state, "automatic_profile_service", None)
-        if atomic is None:
-            return career_background_unavailable(
-                "本轮没有装配可用的长期画像服务，只使用当前陈述。",
-                checked_at=moment,
-            )
-        if automatic is not None and not automatic.is_profile_usage_enabled(account_id):
-            return career_background_unavailable(
-                "长期画像使用已关闭，本轮只使用当前陈述。",
-                checked_at=moment,
-            )
         try:
-            purpose = build_profile_purpose(
-                mode="companion", query=query, module_id="career"
-            )
-            adopted = atomic.compile_adopted_slice(
-                account_id,
-                run_id=run_id,
-                purpose=purpose,
-                current_user_message_id=current_user_message_id,
-                now=moment,
-            )
-            if not atomic.is_adopted_slice_current(account_id, adopted):
+            atomic = getattr(self._app.state, "atomic_profile_service", None)
+            automatic = getattr(self._app.state, "automatic_profile_service", None)
+            if atomic is None or automatic is None:
                 return career_background_unavailable(
-                    "个人背景在本轮已变更，旧的已记住信息不采用。",
+                    "本轮没有装配可用的长期画像服务，只使用当前陈述。",
                     checked_at=moment,
                 )
-            return career_snapshot_from_slice(adopted, checked_at=moment)
+            if not automatic.is_profile_usage_enabled(account_id):
+                return career_background_unavailable(
+                    "长期画像使用已关闭，本轮只使用当前陈述。", checked_at=moment,
+                )
+            database = getattr(self._app.state, "bridges_database", None)
+            repo = ConversationRepository(database) if database is not None else None
+            run = repo.get_generation_run(account_id, run_id) if repo is not None else None
+            saved = (run.config or {}).get("adopted_profile_slice") if run else None
+            adopted = None
+            if isinstance(saved, dict):
+                try:
+                    candidate = AdoptedProfileSlice.model_validate(saved)
+                    if candidate.owner_account_id == account_id and atomic.is_adopted_slice_current(
+                        account_id, candidate, now=moment
+                    ):
+                        adopted = candidate
+                except ValueError:
+                    pass
+            if adopted is None:
+                adopted = atomic.compile_adopted_slice(
+                    account_id, run_id=run_id,
+                    purpose=build_profile_purpose(
+                        mode="companion", query=query, module_id="career"
+                    ),
+                    current_user_message_id=current_user_message_id, now=moment,
+                )
+                if adopted.owner_account_id != account_id or not atomic.is_adopted_slice_current(
+                    account_id, adopted, now=moment
+                ):
+                    return career_background_unavailable(
+                        "个人背景在本轮已变更，旧的已记住信息不采用。", checked_at=moment,
+                    )
+                if run is not None and repo is not None:
+                    stored = adopted.model_copy(update={
+                        "purpose": adopted.purpose.model_copy(update={"query": None}),
+                        "excluded_items": tuple(
+                            item.model_copy(update={"fact_text": ""})
+                            for item in adopted.excluded_items
+                        ),
+                    })
+                    config = dict(run.config or {})
+                    config["adopted_profile_slice"] = stored.model_dump(mode="json")
+                    if not repo.update_generation_config(account_id, run_id, config):
+                        return career_background_unavailable(
+                            "本轮背景快照未能保存，只使用当前陈述。", checked_at=moment,
+                        )
+            # 后续节点只能从同轮冻结快照选子集，不因新画像重新召回。
+            subset = adopted.with_items(adopted.select_subset())
+            return career_snapshot_from_slice(subset, checked_at=moment)
         except Exception:  # noqa: BLE001 - 背景失败不阻断公开岗位部分
             return career_background_unavailable(
-                "个人背景来源本轮不可用，只使用当前陈述。",
-                checked_at=moment,
+                "个人背景来源本轮不可用，只使用当前陈述。", checked_at=moment,
             )
 
 

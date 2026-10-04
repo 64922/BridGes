@@ -209,10 +209,10 @@ def test_recipe_registers_nine_ordered_nodes_and_required_gates() -> None:
         "career.stats_caliber",
         "career.conditions_hold",
         "career.personal_evidence",
+        "career.personal_review",
     }
     assert set(verify.optional_gates) == {
         "career.independent_review",
-        "career.personal_review",
     }
     assert set(CAREER_GATE_HANDLERS) == CAREER_GATES
     # 装配即校验：能力、门与依赖都必须是登记过的真实定义。

@@ -215,7 +215,9 @@ class _FakeAtomicProfile:
         if self.fail:
             raise RuntimeError("画像仓库本轮不可用")
         assert self.adopted is not None
-        return self.adopted
+        return self.adopted.model_copy(update={
+            "owner_account_id": account_id, "run_id": run_id,
+        })
 
     def is_adopted_slice_current(
         self, account_id: str, adopted: AdoptedProfileSlice, *, now: datetime | None = None
@@ -321,7 +323,7 @@ def test_statement_time_budget_overrides_profile_default() -> None:
     analysis = parse_career_request(PERSONAL_REQUEST)
     assert analysis.time_budget_minutes == 30
     statement_items = build_statement_items(
-        analysis, user_content=PERSONAL_REQUEST, user_message_id="m-1"
+        user_content=PERSONAL_REQUEST, user_message_id="m-1"
     )
     profile = _background(
         _profile_item(
@@ -340,7 +342,6 @@ def test_statement_time_budget_overrides_profile_default() -> None:
     merged_default = finalize_snapshot(
         analysis=resumed,
         statement_items=build_statement_items(
-            resumed,
             user_content="帮我规划一下学习提升，我想找 Java 后端实习",
             user_message_id="m-2",
         ),
@@ -408,7 +409,7 @@ def test_without_background_all_gaps_stay_to_confirm_with_boundary() -> None:
     )
     report = analyze_samples([sample])
     statement_items = build_statement_items(
-        analysis, user_content=statement, user_message_id="m-1"
+        user_content=statement, user_message_id="m-1"
     )
     background = finalize_snapshot(
         analysis=analysis,
@@ -651,7 +652,7 @@ def test_personal_request_without_profile_delivers_job_part_and_boundary(
     assert len(career["samples"]) == 1
     assert career["background"]["used_profile"] is False
     # 个人分支只读取一次采用切片，没有任何画像写入口被调用
-    assert len(provider.calls) == 1
+    assert len(provider.calls) == 2
     assert provider.calls[0]["query"] == PERSONAL_REQUEST
     gaps = career["gaps"]
     assert gaps
@@ -736,7 +737,7 @@ def test_current_profile_slice_feeds_gaps_without_leaking_to_public_queries(
 
     career = assistant["career_plan"]
     assert career["background"]["used_profile"] is True
-    assert len(provider.calls) == 1
+    assert len(provider.calls) == 2
     assert provider.calls[0]["query"] == PERSONAL_REQUEST
     gaps = {gap["term"]: gap for gap in career["gaps"]}
     assert gaps["Java"]["category"] == "has_evidence"
@@ -795,7 +796,7 @@ def test_revoked_or_failed_profile_does_not_resurrect_old_conclusions(
     assert len(career["samples"]) == 1
     assert career["background"]["used_profile"] is False
     assert "已变更" in (career["background"]["unavailable_reason"] or "")
-    assert len(provider.calls) == 1
+    assert len(provider.calls) == 2
     gaps = {gap["term"]: gap for gap in career["gaps"]}
     # 旧切片里的「不会 Docker」与「熟悉 Spring Boot」不得当成本轮依据。
     assert gaps["Docker"]["category"] == "to_confirm"
@@ -825,3 +826,27 @@ def test_revoked_or_failed_profile_does_not_resurrect_old_conclusions(
         "已记住信息" not in " ".join(gap["background_evidence"])
         for gap in failed_gaps.values()
     )
+
+
+def test_answer_to_personal_question_updates_real_chat_gaps(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """真实聊天续轮采用回答背景，保留原岗位目标及个人分支。"""
+    _register(client)
+    port = _FakeSearchPort(
+        per_source={"boss": [_hit(BOSS_URL, "boss", "Java后端开发工程师")]}
+    )
+    reader = _FakeReader({BOSS_URL: _read_result(url=BOSS_URL, status=JobReadStatus.READ)})
+    _install_career(sqlite_app, port=port, reader=reader)
+    sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, "Java 后端开发，城市南昌，给我准备建议", module_id="career")
+    first = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert first["career_plan"]["branch"] == "personal_planning"
+    assert first["career_plan"]["follow_up_question"]
+    _send(client, conversation_id, "我学过 Java，每天30分钟", module_id="career")
+    second = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+    assert second["career_plan"]["branch"] == "personal_planning"
+    assert second["career_plan"]["background"]["time_budget_minutes"] == 30
+    java = next(gap for gap in second["career_plan"]["gaps"] if gap["term"] == "Java")
+    assert java["category"] == "has_evidence"
