@@ -4,7 +4,7 @@
 
 **Blocked by:** 15 — 按解析任务选择检索材料与模块上下文；21 — 按任务、边界与前文适配有分寸表达；31 — 核验知识范围覆盖并提交辅助预习
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -81,4 +81,12 @@
 - 重试复用已固化的知识库轮次与联网投影；受影响的证据复查与辅导生成会重做（复核评估为一次有界调用），并非零模型调用恢复。
 - `assessment` 只追加可选字段、无数据库迁移；旧前端不读取该字段时行为不变。`generated.ts` 未随 `openapi.json` 重生成，留给最终集成票 43 按前端需要同步。
 - 本票待独立验收；分支 `codex/32-study-question-level-evidence-and-tutoring`，工作树 `.worktrees/32-study-question-level-evidence-and-tutoring`，基线 `809f05a5`。
+
+## 2026-10-04 独立验收与修复
+
+原交付经两轴独立审查发现缺陷，已直接修复并复验通过；编码代理报告仅作线索。本节覆盖并更正上文实施报告的部分历史结论：原实现并未真正「先查知识库、复查剩余缺口再联网」，而是首次评估后固定两层触发连续执行、最后才复查；伪造引用的支持点仍会晋升为生成硬约束；恢复复用会受自动调整额度与停止竞态影响，且正文只有引用 ID 校验、没有公式/条件/缺口科学质量门。上述均已修复，证据协议由 v1 升为 `study-tutor-evidence-v2`，学习图由 `study-scope-v2` 升为 `study-tutoring-v3`，无新表、无状态版本迁移。
+
+修复内容包括：补证改为 KB→复查→剩余缺口决定公网→再复查；支持点只保留具备当前采用来源 ID 的条目；新增 `study.verify_tutoring` 正文科学质量门；KB 冲突不再被正常命中吞掉；公网完整接入外呼预算与截止；停止后的迟到结果不写投影；耗尽自动调整额度仍可只读复用已固化产物。普通外部未核实缺口不再一概要求补拍，明确书页缺口仍请求补拍。
+
+最终完整相关回归 Issue 侧 1518 passed / 52 failed / 2 skipped，main 基线同组合 1482 passed / 52 failed / 2 skipped；失败集合按完整测试 ID 逐项一致、0 新增、0 消失。mypy 两边同 22 errors in 10 files，去重 14=14、0 新增；本票改动文件 Ruff 全过。真实模型充分性、科学核验准确率与外部可得性仍由评测票 42 验证。详见[独立验收记录](../acceptance/32-study-question-level-evidence-and-tutoring.md)。
 

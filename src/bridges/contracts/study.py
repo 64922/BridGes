@@ -184,7 +184,7 @@ class StudyEvidenceAssessment(BaseModel):
     评估只读材料，不改写阶段、范围或考查范围。
     """
 
-    protocol_version: str = "study-tutor-evidence-v1"
+    protocol_version: str = "study-tutor-evidence-v2"
     #: 全部关键解释点是否都有已采纳来源支持（无缺口）。
     sufficient: bool = False
     key_points: list[str] = Field(default_factory=list)

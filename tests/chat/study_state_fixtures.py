@@ -52,7 +52,13 @@ class _RecognizedPageGateway:
             }
         elif capability == "qwen_structured_output":
             task = payload.get("task")
-            if task == "study.assess_evidence":
+            if task == "study.verify_tutoring":
+                output = {"checks": [
+                    {"index": index, "supported": True, "formulas_valid": True,
+                     "conditions_preserved": True, "gaps_respected": True}
+                    for index, _ in enumerate(payload["parts"])
+                ]}
+            elif task == "study.assess_evidence":
                 sources = payload.get("sources", [])
                 output = {
                     "key_points": ["本节概念"],

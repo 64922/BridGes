@@ -23,14 +23,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from bridges.chat.context_compiler import ContextEvidence
-from bridges.chat.task_materials import MaterialDomain, select_task_materials
 from bridges.contracts.retrieval import (
     CitationAccessStatus,
     RetrievalSourceLayer,
@@ -46,8 +45,11 @@ from bridges.contracts.study import (
 from bridges.contracts.understanding import understanding_from_snapshot
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 
+if TYPE_CHECKING:
+    from bridges.chat.context_compiler import ContextEvidence
+
 #: 评估协议版本（提示、字段或口径变化时递增）。
-EVIDENCE_PROTOCOL_VERSION = "study-tutor-evidence-v1"
+EVIDENCE_PROTOCOL_VERSION = "study-tutor-evidence-v2"
 #: 评估调用的输出额度（结构化 JSON，短）。
 ASSESS_OUTPUT_TOKENS = 640
 #: 交给公开检索的缺口点上限（最小公开参数）。
@@ -218,6 +220,19 @@ def _normalize_assessment_gaps(
                 status="unverified",
             )
         )
+    if not result.supported and not result.gaps:
+        gaps.append(StudyEvidenceGap(
+            point="当前问题", reason="证据评估为空，无法确认充分性",
+            supplement="none", status="unverified",
+        ))
+    if not result.gaps:
+        judged = {_gap_key(item.point) for item in result.supported}
+        for point in result.key_points:
+            if _gap_key(point) not in judged:
+                gaps.append(StudyEvidenceGap(
+                    point=point, reason="关键解释点没有对应的支持判断",
+                    supplement="none", status="unverified",
+                ))
     return _dedupe_gaps(gaps)
 
 
@@ -257,6 +272,8 @@ def _question_terms(text: str) -> set[str]:
 
 
 def _source_evidence(sources: Sequence[StudySource]) -> list[ContextEvidence]:
+    from bridges.chat.context_compiler import ContextEvidence
+
     return [
         ContextEvidence(
             evidence_id=source.source_id,
@@ -309,8 +326,11 @@ def _assess_once(
 
 def _knowledge_base_sources(
     service: Any, run: Any, question: str, gaps: Sequence[StudyEvidenceGap],
+    *, persisted: Any = None,
 ) -> tuple[list[StudySource], StudySupplementAttempt]:
     """按缺口最小查询检索当前账户知识库；失败/无命中如实返回。"""
+
+    from bridges.chat.task_materials import MaterialDomain, select_task_materials
 
     retrieval = getattr(service, "_retrieval", None)
     if retrieval is None:
@@ -319,33 +339,36 @@ def _knowledge_base_sources(
         )
     # 最小本地查询：缺口本身优先，只有显式请求且无缺口时才用整句问题。
     gap_points = [
-        gap.point for gap in gaps if gap.supplement == "knowledge_base"
+        gap.point for gap in gaps if gap.supplement in _INTERNAL_SUPPLEMENTS
     ]
     hint = _local_query_terms("；".join(gap_points)) if gap_points else question
     selection = select_task_materials(hint, purpose="study_tutor")
     query = selection.query_for(MaterialDomain.KNOWLEDGE_BASE) or hint
     try:
-        decision = retrieval.ensure_decision(
-            run.account_id,
-            run.conversation_id,
-            run.assistant_message_id,
-            run.user_message_id,
-            query,
-            mode="study",
-            capability_route="study",
-            use_knowledge_base=True,
-            needs_local_material=True,
-        )
-        result = retrieval.run_round(
-            run.account_id,
-            run.conversation_id,
-            run.assistant_message_id,
-            run.user_message_id,
-            query,
-            use_knowledge_base=True,
-            decision=decision,
-            knowledge_base_query=query,
-        )
+        if persisted is not None:
+            result = persisted
+        else:
+            decision = retrieval.ensure_decision(
+                run.account_id,
+                run.conversation_id,
+                run.assistant_message_id,
+                run.user_message_id,
+                query,
+                mode="study",
+                capability_route="study",
+                use_knowledge_base=True,
+                needs_local_material=True,
+            )
+            result = retrieval.run_round(
+                run.account_id,
+                run.conversation_id,
+                run.assistant_message_id,
+                run.user_message_id,
+                query,
+                use_knowledge_base=True,
+                decision=decision,
+                knowledge_base_query=query,
+            )
     except Exception:  # noqa: BLE001 - 本地检索失败不得整体中断辅导
         return [], StudySupplementAttempt(
             layer="knowledge_base", status="failed", detail="知识库检索当前不可用。"
@@ -382,6 +405,14 @@ def _knowledge_base_sources(
                 )
             )
     status: Literal["used", "empty", "failed", "conflict"]
+    if result is not None and result.sufficiency == RetrievalSufficiency.CONFLICT:
+        return [], StudySupplementAttempt(
+            layer="knowledge_base", status="conflict",
+            detail="知识库来源存在冲突：" + "；".join(
+                f"{source.label}：{source.snippet}" for source in sources
+            ) + ("；" + result.note if result.note else ""),
+            source_count=len(sources),
+        )
     if sources:
         status = "used"
         detail = f"知识库命中{len(sources)}条可引用片段。"
@@ -403,8 +434,10 @@ def _web_gap_query(
 ) -> str:
     """只用缺口公开术语构造查询；绝不用原文或书页内容兜底。"""
 
+    from bridges.chat.task_materials import MaterialDomain, select_task_materials
+
     points = [
-        gap.point for gap in gaps if gap.supplement == "web"
+        gap.point for gap in gaps if gap.supplement in _INTERNAL_SUPPLEMENTS
     ][:PUBLIC_GAP_POINT_LIMIT]
     hint = "。".join(point[:PUBLIC_GAP_POINT_MAX_CHARS] for point in points)
     if not hint:
@@ -457,6 +490,7 @@ def _web_sources(
     *,
     stop_event: Any,
     persisted: WebSearchProjection | None = None,
+    budget: Any = None,
 ) -> tuple[list[StudySource], list[str], StudySupplementAttempt]:
     """执行公开补证：只发脱敏最小查询，失败/冲突分列且不阻断交付。"""
 
@@ -480,11 +514,31 @@ def _web_sources(
                 layer="web", status="query_insufficient",
                 detail="缺口查询未通过公开查询规划，未发起公开检索。",
             )
-        try:
-            projection = web.search(run.account_id, plan, stop_event=stop_event)
-        except Exception as exc:  # noqa: BLE001 - 外部失败不得整体中断辅导
+        call_key = "study_evidence_web:" + run.user_message_id
+        if budget is not None and not budget.register_external_call(
+            call_key, purpose="study_evidence_gap",
+        ):
             return [], [], StudySupplementAttempt(
-                layer="web", status="failed", detail=f"联网检索失败：{exc}"
+                layer="web", status="budget_exhausted",
+                detail="本轮外部调用预算不足，缺口保持未核实。",
+            )
+        try:
+            kwargs: dict[str, Any] = {"stop_event": stop_event}
+            if budget is not None:
+                deadlines = budget.public_search_deadlines({"web"})
+                kwargs.update(deadline=deadlines.provider_deadline,
+                              stage_deadline=deadlines.stage_deadline)
+            projection = web.search(run.account_id, plan, **kwargs)
+        except Exception:  # noqa: BLE001 - 外部失败不得整体中断辅导
+            return [], [], StudySupplementAttempt(
+                layer="web", status="failed", detail="联网检索失败，外部来源当前不可用。"
+            )
+        finally:
+            if budget is not None:
+                budget.release_external_call(call_key, outcome_code="study_evidence_web_finished")
+        if stop_event is not None and stop_event.is_set():
+            return [], [], StudySupplementAttempt(
+                layer="web", status="failed", detail="本轮已停止，迟到的联网结果未保存。",
             )
         if projection is None:
             return [], [], StudySupplementAttempt(
@@ -581,14 +635,8 @@ def gather_evidence(
     supplements: list[StudySupplementAttempt] = []
     supplement_sources: list[StudySource] = []
 
-    kb_gap = next((gap for gap in gaps if gap.supplement == "knowledge_base"), None)
-    web_gap = next((gap for gap in gaps if gap.supplement == "web"), None)
-    kb_trigger = "gap" if kb_gap is not None else (
-        "explicit" if _KB_EXPLICIT.search(question) else None
-    )
-    web_trigger = "gap" if web_gap is not None else (
-        "explicit" if _WEB_EXPLICIT.search(question)
-        else ("freshness" if _FRESHNESS.search(question) and gaps else None)
+    kb_trigger = "explicit" if _KB_EXPLICIT.search(question) else (
+        "gap" if any(gap.supplement in _INTERNAL_SUPPLEMENTS for gap in gaps) else None
     )
     if kb_trigger is not None and not permissions.knowledge_base:
         supplements.append(
@@ -607,86 +655,107 @@ def gather_evidence(
             )
         )
         kb_trigger = None
-    if web_trigger is not None and not permissions.web:
-        supplements.append(
-            StudySupplementAttempt(
-                layer="web",
-                status="skipped_disabled",
-                detail="用户明确不联网，本轮未发起公开检索。",
-            )
-        )
-        web_trigger = None
+    adjustment_started = False
+    assessment_result = first
+    current_ids = adopted_ids
+    final_gaps = gaps
 
-    auto_needed = kb_trigger == "gap" or web_trigger == "gap"
-    budgeted = True
-    if auto_needed and budget is not None:
-        budgeted = bool(budget.begin_adjustment(reason_code="study_evidence_gap"))
-        if not budgeted:
-            supplements.append(
-                StudySupplementAttempt(
-                    layer="knowledge_base" if kb_trigger == "gap" else "web",
-                    status="budget_exhausted",
-                    detail="本轮自动补证额度已用尽，缺口保持未核实。",
-                )
+    def allow_supplement(layer: Literal["knowledge_base", "web"], trigger: str) -> bool:
+        nonlocal adjustment_started
+        if stop_event is not None and stop_event.is_set():
+            raise ValueError("本轮已停止，未继续补证。")
+        if trigger == "explicit" or budget is None or adjustment_started:
+            return True
+        adjustment_started = bool(budget.begin_adjustment(reason_code="study_evidence_gap"))
+        if adjustment_started:
+            return True
+        supplements.append(StudySupplementAttempt(
+            layer=layer, status="budget_exhausted",
+            detail="本轮自动补证额度已用尽，缺口保持未核实。",
+        ))
+        return False
+
+    def reassess() -> None:
+        nonlocal assessment_result, current_ids, final_gaps
+        try:
+            result, ids = _assess_once(
+                service, run, question, [*page_sources, *supplement_sources],
+                prior_gaps=final_gaps, invoke=invoke,
             )
-            kb_trigger = None
-            web_trigger = None
+            final_gaps = _dedupe_gaps([
+                *targeted_page_gaps(state, question),
+                *_normalize_assessment_gaps(result, ids),
+            ])
+            assessment_result, current_ids = result, ids
+        except Exception:  # noqa: BLE001 - 复查失败保留已知缺口
+            if stop_event is not None and stop_event.is_set():
+                raise
+            notes.append("补充来源复查未完成，剩余缺口按未核实保留。")
 
     try:
-        if kb_trigger is not None:
-            sources, attempt = _knowledge_base_sources(service, run, question, gaps)
+        kb_cached = None
+        retrieval = getattr(service, "_retrieval", None)
+        if kb_trigger is not None and retrieval is not None:
+            # 只读查询失败时仍走新补证的预算许可，不绕过硬门。
+            with suppress(Exception):
+                kb_cached = retrieval.round_projection(run.account_id, run.assistant_message_id)
+        if kb_trigger is not None and (
+            kb_cached is not None or allow_supplement("knowledge_base", kb_trigger)
+        ):
+            sources, attempt = _knowledge_base_sources(
+                service, run, question, gaps, persisted=kb_cached,
+            )
             supplements.append(attempt)
             supplement_sources.extend(sources)
-        if web_trigger is not None:
-            query = _web_gap_query(question, gaps)
+            if attempt.status == "conflict":
+                conflicts.append(attempt.detail)
+            if sources:
+                reassess()
+        # 公网决策必须使用知识库补证后的剩余缺口，不能沿用首轮裁决。
+        web_trigger = "explicit" if _WEB_EXPLICIT.search(question) else (
+            "gap" if any(
+                gap.supplement in _INTERNAL_SUPPLEMENTS for gap in final_gaps
+            ) or (_FRESHNESS.search(question) and any(
+                gap.status == "unverified" for gap in final_gaps
+            )) else None
+        )
+        if web_trigger is not None and not permissions.web:
+            supplements.append(StudySupplementAttempt(
+                layer="web", status="skipped_disabled",
+                detail="用户明确不联网，本轮未发起公开检索。",
+            ))
+            web_trigger = None
+        web_cached = persisted_web_projection(service, run) if web_trigger is not None else None
+        if web_trigger is not None and (
+            web_cached is not None or allow_supplement("web", web_trigger)
+        ):
+            query = _web_gap_query(question, final_gaps)
             sources, web_conflicts, attempt = _web_sources(
                 service,
                 run,
                 query,
                 stop_event=stop_event,
-                persisted=persisted_web_projection(service, run),
+                persisted=web_cached,
+                budget=budget,
             )
             supplements.append(attempt)
             supplement_sources.extend(sources)
             conflicts.extend(web_conflicts)
+            if sources:
+                reassess()
     finally:
-        if auto_needed and budget is not None and budgeted:
+        if adjustment_started:
             budget.end_adjustment(
                 outcome_code="study_evidence_supplemented" if supplement_sources
                 else "study_evidence_gap"
             )
 
-    resolved_points: set[str] = set()
-    final_gaps = gaps
-    if supplement_sources:
-        try:
-            second, second_ids = _assess_once(
-                service,
-                run,
-                question,
-                [*page_sources, *supplement_sources],
-                prior_gaps=gaps,
-                invoke=invoke,
-            )
-            final_gaps = _dedupe_gaps(
-                [
-                    *targeted_page_gaps(state, question),
-                    *_normalize_assessment_gaps(
-                        second, {*adopted_ids, *second_ids}
-                    ),
-                ]
-            )
-            final_keys = {_gap_key(gap.point) for gap in final_gaps}
-            resolved_points = {
-                _gap_key(gap.point)
-                for gap in gaps
-                if _gap_key(gap.point) not in final_keys
-            }
-        except Exception:  # noqa: BLE001 - 复查失败保持缺口未核实，不阻断交付
-            notes.append("补充来源复查未完成，剩余缺口按未核实保留。")
-
+    assessment_result = assessment_result.model_copy(update={"supported": [
+        item for item in assessment_result.supported
+        if item.source_ids and all(ref in current_ids for ref in item.source_ids)
+    ]})
     assessment = _finalize(
-        first, final_gaps, supplements, conflicts, resolved_points, notes
+        assessment_result, final_gaps, supplements, conflicts, notes
     )
     return EvidenceBundle(
         assessment=assessment,
@@ -700,7 +769,6 @@ def _finalize(
     final_gaps: Sequence[StudyEvidenceGap],
     supplements: Sequence[StudySupplementAttempt],
     conflicts: Sequence[str],
-    resolved_points: set[str],
     notes: list[str],
 ) -> StudyEvidenceAssessment:
     """装配最终评估：缺口状态、补充层结果与冲突说明。"""
@@ -710,7 +778,7 @@ def _finalize(
         status = (
             "needs_page"
             if gap.supplement == "page"
-            else ("resolved" if _gap_key(gap.point) in resolved_points else "unverified")
+            else "unverified"
         )
         gaps.append(gap.model_copy(update={"status": status}))
     for attempt in supplements:
@@ -721,7 +789,7 @@ def _finalize(
         ):
             notes.append(f"{_layer_label(attempt.layer)}：{attempt.detail}")
     for conflict in conflicts:
-        notes.append(f"联网来源存在冲突：{conflict}；冲突来源分列，未合并为确定结论。")
+        notes.append(f"补充来源存在冲突：{conflict}；冲突来源分列，未合并为确定结论。")
     if any(gap.status == "unverified" for gap in gaps):
         notes.append(
             "未核实缺口："

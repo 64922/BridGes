@@ -271,12 +271,12 @@ def test_disabled_knowledge_base_and_no_network_keep_gaps_unverified(
             }
         ]
         result = _ask(
-            client, app, endpoint, "解释斜率的严格定义", use_knowledge_base=False
+            client, app, endpoint, "不要联网，解释斜率的严格定义", use_knowledge_base=False
         )
         assert result["messages"][-1]["status"] == "done", result["messages"][-1]
         exchange = result["study"]["tutoring"][0]
-        attempt = exchange["assessment"]["supplements"][-1]
-        assert attempt["layer"] == "knowledge_base"
+        attempt = next(item for item in exchange["assessment"]["supplements"]
+                       if item["layer"] == "knowledge_base")
         assert attempt["status"] == "skipped_disabled"
         assert all(source["kind"] == "page" for source in exchange["sources"])
         assert "未核实缺口" in result["messages"][-1]["content"]
@@ -466,13 +466,17 @@ def test_retry_reuses_persisted_supplements_without_external_repeat(
             },
         ]
         gateway.fail_tutor = True
-        failed = _ask(client, app, endpoint, "解释斜率应用并联网查最新实例")
+        failed = _ask(client, app, endpoint, "解释斜率应用")
         assert failed["messages"][-1]["status"] == "error"
         assert failed["study"]["tutoring"] == []
         queries_after_first = list(search.queries)
         assert queries_after_first
 
         gateway.fail_tutor = False
+        from bridges.chat.budget import RunBudget
+
+        # 模拟同一运行恢复时自动调整额度已用尽：只读复用不应再次扣额度。
+        monkeypatch.setattr(RunBudget, "begin_adjustment", lambda self, **kwargs: False)
         gateway.assess_results = [
             {
                 "key_points": ["应用"],

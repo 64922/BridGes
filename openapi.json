@@ -56437,7 +56437,7 @@
           "protocol_version": {
             "type": "string",
             "title": "Protocol Version",
-            "default": "study-tutor-evidence-v1"
+            "default": "study-tutor-evidence-v2"
           },
           "sufficient": {
             "type": "boolean",
