@@ -2990,6 +2990,7 @@ class ChatService:
         """
         if run.graph_version in {
             STUDY_GRAPH_VERSION, "study-pages-v1", "study-scope-v2", "study-tutoring-v3",
+            "study-tutoring-review-v4",
         }:
             return StudyWorkflow(self).run(
                 run, on_event=on_event, stop_event=stop_event

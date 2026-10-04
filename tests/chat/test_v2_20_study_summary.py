@@ -233,7 +233,15 @@ def test_unverified_summary_keeps_judgements_and_retries_once(
         assert failed["messages"][-1]["status"] == "error"
         assert failed["messages"][-1]["error_code"] == code
         assert "study.summarize" in failed["messages"][-1]["error_message"]
-        assert failed["study"] == before
+        # 工单 34：最后一题判定先提交；总结失败只保留待总结状态，不丢判定与反馈。
+        failed_question = failed["study"]["review"]["questions"][0]
+        assert failed_question["answer"] == "a 是斜率"
+        assert failed_question["judgement"] == judgement
+        assert failed_question["feedback"]
+        assert failed["study"]["summary"] is None
+        assert failed["study"]["stage"] == "review"
+        assert failed["study"]["review"]["complete"] is True
+        assert before["review"]["questions"][0]["judgement"] is None
         gateway.fail_summary = None
         result = _retry(client, app, endpoint)
         assert result["messages"][-1]["status"] == "done", result["messages"][-1]
@@ -322,9 +330,15 @@ def test_failed_summary_cannot_regrade_a_later_question(tmp_path: Any, monkeypat
         gateway.fail_summary = "timeout"
         failed = _ask(client, app, endpoint, "b 是纵截距")["messages"][-1]["message_id"]
         gateway.fail_summary = None
+        # 工单 34：总结失败不回滚已提交判定；迟到重试不得改写已保存结果。
+        committed = client.get(endpoint).json()["study"]
+        assert [item["judgement"] for item in committed["review"]["questions"]] == [
+            "correct", "correct",
+        ]
+        assert committed["review"]["questions"][1]["answer"] == "b 是纵截距"
+        assert committed["summary"] is None
         before = _ask(client, app, endpoint, "再讲讲斜率")["study"]
-        assert [item["judgement"] for item in before["review"]["questions"]] == ["correct", None]
-        assert before["review"]["questions"][1]["answer"] is None
+        assert before["review"]["questions"][1]["judgement"] == "correct"
         response = client.post(endpoint + f"/messages/{failed}/retry", json={})
         assert response.status_code == 409
         assert client.get(endpoint).json()["study"] == before
@@ -340,6 +354,7 @@ def test_stop_during_summary_keeps_review_complete(tmp_path: Any, monkeypatch: A
     with TestClient(app) as client:
         endpoint = _start(client, app)
         before = _ask(client, app, endpoint, "开始复盘")["study"]
+        assert before["review"]["questions"][0]["judgement"] is None
         response = client.post(endpoint + "/messages", json={"content": "a 是斜率"})
         assistant_id = response.json()["assistant_message"]["message_id"]
         original = gateway.invoke
@@ -354,5 +369,11 @@ def test_stop_during_summary_keeps_review_complete(tmp_path: Any, monkeypatch: A
         app.state.generation_executor.run_tick()
         result = client.get(endpoint).json()
         assert result["messages"][-1]["status"] == "stopped"
-        assert result["study"] == before
+        # 工单 34：判定先提交；停止发生在总结阶段时保留判定与已呈现完成状态。
+        assert result["study"]["stage"] == "review"
+        assert result["study"]["review"]["complete"] is True
+        question = result["study"]["review"]["questions"][0]
+        assert question["judgement"] == "correct"
+        assert question["answer"] == "a 是斜率"
+        assert question["feedback"]
         assert result["study"]["summary"] is None

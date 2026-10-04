@@ -152,6 +152,17 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
            FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST, contextual=True),
     _error("study_review_invalid", "复盘判定或结果未通过核验，原题已保留，请重试。",
            FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    # 工单 34：作答判定的失败码；保留当前题，不推进游标、不记学生错答。
+    _error("study_grade_invalid", "判定结果未通过核验，当前题已保留，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_review_disputed", "判定存在未解决的争议，当前题已保留，请重试或先继续辅导。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_recheck_failed", "必要复核未能完成，当前题已保留，请重试。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_grade_budget", "判定超出上下文预算，当前题已保留，请重试。",
+           FailureClass.UNSUPPORTED, RecoveryAction.RETRY, contextual=True),
+    _error("study_review_scope_changed", "题目版本与当前复盘范围不一致，请重新开始复盘。",
+           FailureClass.STATE_CONFLICT, RecoveryAction.REFRESH_STATE, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
     _error(
         "generation_worker_lost",
@@ -1097,7 +1108,7 @@ _STUDY_ENTRIES: tuple[CopyEntry, ...] = (
         "study",
         CopyStrategy.MODEL_ADAPTED,
         ("success", "partial", "failure"),
-        renderer="bridges.study.review.grade",
+        renderer="bridges.study.review.render_feedback",
         note="工单 34：判定证据先于表达，正确/不完整/错误如实反馈。",
     ),
     CopyEntry(

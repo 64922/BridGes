@@ -44,6 +44,7 @@ from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.repository import NodeKernelRepository
 from bridges.state_copy import STUDY_STOPPED_TEXT
 from bridges.storage.database import BridgesDatabase
+from bridges.study.grade_kernel import ReviewGradeKernel
 from bridges.study.kernel import (
     NODE_RECOGNIZE_PAGE,
     NODE_VALIDATE_PAGES,
@@ -59,9 +60,14 @@ from bridges.study.kernel import (
     study_recipe_registry,
 )
 from bridges.study.review import (
+    ReviewGradeError,
     ReviewPlanError,
-    grade,
+    active_question,
+    advance_question,
+    judged_by_message,
     next_question,
+    render_feedback,
+    render_question_prompt,
     review_intent,
 )
 from bridges.study.review_kernel import ReviewPlanKernel
@@ -79,7 +85,7 @@ from bridges.study.scope import (
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
-STUDY_GRAPH_VERSION = "study-tutoring-review-v4"
+STUDY_GRAPH_VERSION = "study-tutoring-review-v5"
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
@@ -186,6 +192,9 @@ class _GraphState(TypedDict, total=False):
     tutoring: dict[str, Any]
     updated_pages: dict[str, Any]
     reviewed: dict[str, Any]
+    #: 判定/反馈/呈现/总结已按各自提交边界落库（工单 34）；
+    #: 终态只写助手消息正文，不重复保存领域状态。
+    reviewed_committed: bool
     scope: dict[str, Any]
     questions: list[dict[str, Any]]
 
@@ -987,20 +996,106 @@ class StudyWorkflow:
 
         intent = review_intent(user.content)
 
+        def _save_committed() -> None:
+            """在自己的提交边界内保存领域状态；租约/停止/版本失效即拒绝。"""
+            with self._repo.database.transaction():
+                decision = material_guard.verify()
+                if not decision.ok:
+                    raise StudyWorkflowError(
+                        current_node,
+                        "stopped" if decision.code == "run_stopped" else decision.code,
+                        decision.message,
+                    )
+                save_state_in_transaction()
+
+        def _current_question() -> Any:
+            if state.review is None:
+                return None
+            return active_question(state.review)
+
+        def _commit_judgement(outcome: Any) -> None:
+            """判定提交边界：答案、判定、反馈产物与来源消息同事务落库。"""
+            question = _current_question()
+            if question is None:
+                raise StudyWorkflowError(
+                    current_node, "study_review_invalid", "当前复盘题不存在，已保留原阶段。"
+                )
+            with self._repo.database.transaction():
+                decision = material_guard.verify()
+                if not decision.ok:
+                    raise StudyWorkflowError(
+                        current_node,
+                        "stopped" if decision.code == "run_stopped" else decision.code,
+                        decision.message,
+                    )
+                question.answer = user.content
+                question.judgement = outcome.judgement
+                question.canonical_answer = outcome.canonical_answer
+                question.explanation = outcome.explanation
+                question.feedback = outcome.feedback
+                question.grade_record = outcome.record
+                question.user_message_id = run.user_message_id
+                save_state_in_transaction()
+
+        def _commit_presentation() -> str | None:
+            """下一题呈现提交边界：选中下一题不算呈现，落库才算。"""
+            if state.review is None:
+                return None
+            text = advance_question(state.review)
+            _save_committed()
+            return text
+
+        def _grade_new_answer() -> str:
+            """判定新作答：登记节点提交判定产物，领域层按产物幂等应用。"""
+            question = _current_question()
+            if question is None or question.judgement is not None:
+                raise StudyWorkflowError(
+                    current_node, "study_review_invalid", "当前没有待判定的复盘题，已保留原阶段。"
+                )
+            outcome = ReviewGradeKernel(
+                self._service, run, invoke,
+                stop_event=stop_event, event_sink=kernel_event,
+            ).grade(state, user.content)
+            _commit_judgement(outcome)
+            presentation = _commit_presentation()
+            parts = [outcome.feedback]
+            if presentation:
+                parts.append(presentation)
+            return "\n\n".join(parts)
+
+        def _replay_judged(question: Any) -> str:
+            """同一来源消息已提交判定：重放反馈，不重新调用判定。"""
+            feedback = render_feedback(question)
+            review = state.review
+            if review is None or review.complete:
+                return feedback
+            if review.active_question_id:
+                current = _current_question()
+                if current is not None and current is not question:
+                    return f"{feedback}\n\n{render_question_prompt(review, current)}"
+                # 激活题仍是已判定题：呈现提交曾中断，补提交下一题。
+            presentation = _commit_presentation()
+            return f"{feedback}\n\n{presentation}" if presentation else feedback
+
         def finish_review(answer: str) -> str:
-            """复盘计划全部判定后进入总结；已生成的总结只复述，不重复生成。"""
+            """全部判定后单独执行总结；总结失败不回滚已提交的判定与反馈。"""
             if state.summary is None:
                 try:
-                    state.summary = run_node(
+                    summary = run_node(
                         "study.summarize",
                         lambda: build_summary(self._service, run, state, invoke),
                     )
                 except ValueError as exc:
                     raise StudyWorkflowError(
                         "study.summarize", "study_summary_invalid",
-                        "总结结果未通过核验，复盘判定与题目记录已保留，请重试。",
+                        "总结结果未通过核验，复盘判定与题目反馈已保留，请重试。",
                     ) from exc
-            state.stage = "summary"
+                state.summary = summary
+                state.stage = "summary"
+                _save_committed()
+            elif state.stage != "summary":
+                state.stage = "summary"
+                _save_committed()
             text = render_summary(state.summary, state)
             return f"{answer}\n\n{text}" if answer else text
 
@@ -1027,6 +1122,7 @@ class StudyWorkflow:
                     budget.end_adjustment(outcome_code=outcome_code)
 
         def review() -> _GraphState:
+            committed = False
             try:
                 if intent == "pause":
                     state.stage = "tutoring"
@@ -1052,10 +1148,24 @@ class StudyWorkflow:
                     else:
                         answer = next_question(state.review)
                 else:
-                    answer = grade(self._service, run, state, user.content, invoke)
+                    replay_question = (
+                        judged_by_message(state.review, run.user_message_id)
+                        if state.review is not None
+                        else None
+                    )
+                    if replay_question is not None:
+                        # 已提交合法判定不因重试重新生成：按来源消息重放反馈。
+                        answer = _replay_judged(replay_question)
+                    else:
+                        answer = _grade_new_answer()
+                    committed = True
                 if intent != "pause" and state.review is not None and state.review.complete:
                     answer = finish_review(answer)
             except ReviewPlanError as exc:
+                raise StudyWorkflowError(
+                    current_node, exc.code, exc.message
+                ) from exc
+            except ReviewGradeError as exc:
                 raise StudyWorkflowError(
                     current_node, exc.code, exc.message
                 ) from exc
@@ -1070,6 +1180,8 @@ class StudyWorkflow:
                     current_node, "study_review_invalid",
                     "复盘结果未通过核验，原题已保留，请重试。",
                 ) from exc
+            if committed:
+                return {"answer": answer, "reviewed_committed": True}
             return {"answer": answer, "reviewed": state.model_dump()}
 
         graph = StateGraph(_GraphState)
@@ -1081,6 +1193,10 @@ class StudyWorkflow:
         graph.add_node("study.plan_review", node("study.plan_review", review))
         graph.add_node("study.grade", node("study.grade", review))
         graph.add_node("study.pause_review", node("study.pause_review", review))
+        replay_judged = bool(
+            state.review is not None
+            and judged_by_message(state.review, run.user_message_id) is not None
+        )
         entry = "study.recognize"
         if state.stage in {"tutoring", "review", "summary"} and not updating and not attachments:
             if intent == "pause":
@@ -1089,6 +1205,9 @@ class StudyWorkflow:
                 entry = "study.plan_review"
             elif intent == "tutor":
                 entry = "study.tutor"
+            elif replay_judged and state.stage in {"review", "summary"}:
+                # 判定/反馈已提交但终态未达：只重放与补齐呈现/总结。
+                entry = "study.grade"
             elif state.stage == "review" and state.review and not state.review.complete:
                 entry = "study.grade"
             else:
@@ -1150,7 +1269,8 @@ class StudyWorkflow:
                         state.tutoring.append(exchange)
                     self._states.save_in_transaction(run.account_id, run.conversation_id, state)
 
-            if not output.get("reviewed") and not output.get("scope"):
+            review_committed = bool(output.get("reviewed_committed"))
+            if not output.get("reviewed") and not output.get("scope") and not review_committed:
                 self._repo.update_message_content(
                     run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
                 )
@@ -1167,7 +1287,13 @@ class StudyWorkflow:
                 started=started,
                 now=datetime.now(UTC),
                 persist_learning=persist_tutoring,
-                final_content=answer if output.get("reviewed") or output.get("scope") else None,
+                final_content=(
+                    answer
+                    if output.get("reviewed")
+                    or output.get("scope")
+                    or review_committed
+                    else None
+                ),
             )
             return None
         except StudyWorkflowError as exc:

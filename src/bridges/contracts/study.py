@@ -233,6 +233,33 @@ class StudyQuestionCheck(BaseModel):
     calculation_checked: bool = False
 
 
+class StudyPointCheck(BaseModel):
+    """判定时逐项核对评分要点的一条记录（工单 34）。
+
+    ``status`` 区分命中、缺失与矛盾；``fragment_ids`` 是支持该结论的书页
+    片段。等价表述按命中记录，不因措辞不同扣分。
+    """
+
+    point: str = Field(min_length=1)
+    status: Literal["hit", "missing", "contradicted"]
+    fragment_ids: list[str] = Field(default_factory=list)
+
+
+class StudyGradeRecord(BaseModel):
+    """一次作答判定的逐项核对与必要复核记录（工单 34，仅内部保存）。
+
+    判定输出结构与复核规则变化时递增 ``protocol_version``；旧题没有该记录。
+    """
+
+    protocol_version: str = "study-grade-v3"
+    point_checks: list[StudyPointCheck] = Field(default_factory=list)
+    #: 必要独立复核的处置：不需要、维持原判、改判、争议未决、无法核实。
+    recheck_status: Literal[
+        "not_needed", "confirmed", "revised", "conflict", "insufficient"
+    ] = "not_needed"
+    recheck_detail: str = ""
+
+
 class StudyReviewQuestion(BaseModel):
     question_id: str
     question: str
@@ -244,6 +271,11 @@ class StudyReviewQuestion(BaseModel):
     canonical_answer: str | None = None
     explanation: str | None = None
     user_message_id: str | None = None
+    #: 已提交的用户可见判定反馈正文（工单 34）：提交后中断/重试按原文重放，
+    #: 不重新调用判定。旧题为空时按标准答案与解释确定性重建。
+    feedback: str | None = None
+    #: 判定时的逐项核对与必要复核记录（工单 34，仅内部保存）。
+    grade_record: StudyGradeRecord | None = None
     #: 生成该题时的有效范围版本（工单 33）：评分依据绑定具体小节版本，
     #: 不随后续摘要或追加页漂移；旧题为空。
     scope_version_id: str = ""
@@ -273,8 +305,10 @@ class StudyReviewQuestion(BaseModel):
                 "incomplete_basis": "",
                 "incorrect_basis": "",
                 "verification": None,
+                "grade_record": None,
                 "canonical_answer": self.canonical_answer if judged else None,
                 "explanation": self.explanation if judged else None,
+                "feedback": self.feedback if judged else None,
             }
         )
 

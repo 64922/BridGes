@@ -64,7 +64,10 @@ class ReviewGateway(TutorGateway):
         task = payload.get("task")
         if task == "study.summarize":
             return self.summarize(payload)
-        if task not in {"study.plan_review", "study.verify_questions", "study.grade"}:
+        if task not in {
+            "study.plan_review", "study.verify_questions", "study.grade",
+            "study.recheck_grade",
+        }:
             return super().invoke(capability, version, context, payload, **kwargs)
         data = next(
             json.loads(message["content"])
@@ -122,10 +125,39 @@ class ReviewGateway(TutorGateway):
                     "expected": 5,
                 }
             return ModelCallResult(status=ModelCallStatus.SUCCESS, output={"checks": checks})
+        if task == "study.recheck_grade":
+            question = data["question"]
+            return ModelCallResult(
+                status=ModelCallStatus.SUCCESS,
+                output={
+                    "question_id": question["question_id"],
+                    "status": "confirmed",
+                    "judgement": self.judgement,
+                    "explanation": "x 每增加 1，y 增加 a。",
+                    "point_checks": [
+                        {
+                            "point": point,
+                            "status": "hit" if self.judgement == "correct" else "missing",
+                            "fragment_ids": list(question["fragment_ids"]),
+                        }
+                        for point in question["core_points"]
+                    ],
+                    "detail": "复核维持原判定。",
+                },
+            )
+        question = data["question"]
         output = {
-            "question_id": data["question"]["question_id"],
+            "question_id": question["question_id"],
             "judgement": self.judgement,
             "explanation": "x 每增加 1，y 增加 a。",
+            "point_checks": [
+                {
+                    "point": point,
+                    "status": "hit" if self.judgement == "correct" else "missing",
+                    "fragment_ids": list(question["fragment_ids"]),
+                }
+                for point in question["core_points"]
+            ],
         }
         if self.failure == "wrong_id":
             output["question_id"] = "another-question"
