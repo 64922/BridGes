@@ -1,0 +1,21 @@
+工单 35 全量对账（同基点 3665008b，conda agent，Windows）
+
+命令：python -m pytest -q -p no:cacheprovider --junitxml=...
+main（D:\BridGes 洁净 3665008b）：225 failed / 5301 passed / 37 skipped / 2 errors（32:22）
+branch（工作树 codex/35-...，审查修复后最终态）：222 failed / 5314 passed / 39 skipped / 2 errors（21:18）
+
+失败集合差分（按测试 nodeid）：
+- 仅 main 失败（branch 通过或跳过）：
+  tests/chat/test_issue05_deadline_cancellation.py::test_paper_route_keeps_arxiv_only_request_inside_its_own_budget（branch 通过，时序抖动）
+  tests/security/test_secret_scan.py::test_repository_contains_no_committed_secrets（branch 通过）
+  tests/runtime/test_runtime_contract.py::test_startup_full_journey_start_health_duplicate_reject_stop_restart（branch skip：NEEDS_WEB_BUILD，工作树无 Web 构建）
+  tests/runtime/test_runtime_contract.py::test_startup_reports_chinese_error_when_port_is_occupied（branch skip：同上）
+- 仅 branch 失败：
+  tests/learning/test_teaching_progress.py::test_answer_assessment_drives_remedial_next_action
+  判定：既有顺序/环境相关抖动，与本票无关。证据：① 同一测试在未改动的 main 工作树（同基点）单跑同样失败；
+  ② 分支上运行整个 tests/learning 目录 90 passed（该用例通过）；③ learning 模块不 import study，本票代码无调用路径；
+  ④ 同一全量命令在 main 通过、分支首跑通过、分支复跑失败，属测试套全局状态/时序抖动（teaching_next_actions
+  的 INSERT OR IGNORE 与 created_at 排序路径，既有代码）。
+- 采集数差 +12 为本票新增测试且全绿；其余基线失败与 main 逐 nodeid 一致。
+
+证据：main-full.txt / branch-full.txt / final-focused.xml（同目录）。

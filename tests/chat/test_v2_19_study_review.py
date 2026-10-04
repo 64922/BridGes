@@ -284,10 +284,17 @@ def test_pause_tutor_and_resume_keep_asked_questions(tmp_path: Any, monkeypatch:
         before = _ask(client, app, endpoint, "a 是斜率")["study"]["review"]
         result = _ask(client, app, endpoint, "暂停复盘")
         assert result["study"]["stage"] == "tutoring"
-        assert result["study"]["review"]["questions"] == before["questions"]
+        paused = result["study"]["review"]["questions"]
+        assert [item["question_id"] for item in paused] == [
+            item["question_id"] for item in before["questions"]
+        ]
+        assert paused[0] == before["questions"][0]
+        # 工单 35：已呈现未答的当前题单独记录，不改写已答/已判来源。
+        assert paused[1]["unanswered"] is True
+        assert paused[1]["answer"] is None and paused[1]["judgement"] is None
         _ask(client, app, endpoint, "再解释一下斜率")
         result = _ask(client, app, endpoint, "继续复盘")
-        assert result["study"]["review"]["questions"][:2] == before["questions"]
+        assert result["study"]["review"]["questions"][:2] == paused
         assert "复盘第3题" in result["messages"][-1]["content"]
         assert len(gateway.tutor_payloads) == 1
         assert [task for task, _ in gateway.review_calls].count("study.plan_review") == 1
@@ -308,11 +315,14 @@ def test_append_pages_replans_only_unasked_and_preserves_grades(
         result = _ask(client, app, endpoint, "漏拍了一页", attachment_ids=[photo["object_id"]])
         assert result["study"]["stage"] == "tutoring"
         assert result["study"]["review"]["needs_replan"] is True
-        assert result["study"]["review"]["questions"] == before["questions"]
+        appended = result["study"]["review"]["questions"]
+        assert appended[0] == before["questions"][0]
+        # 工单 35：追加页作废当前激活题时单独记录已呈现未答。
+        assert appended[1]["unanswered"] is True
         result = _ask(client, app, endpoint, "继续复盘")
         assert result["messages"][-1]["status"] == "done", result["messages"][-1]
         review = result["study"]["review"]
-        assert review["questions"][:2] == before["questions"]
+        assert review["questions"][:2] == appended
         assert any(
             ref.startswith(photo["object_id"]) for ref in review["questions"][-1]["fragment_ids"]
         )
@@ -478,6 +488,9 @@ def test_request_to_explain_returns_to_tutoring_without_grading(
         else:
             assert result["study"]["stage"] == "tutoring"
             assert result["study"]["review"]["active_question_id"] is None
-            assert result["study"]["review"]["questions"] == before["review"]["questions"]
+            questions = result["study"]["review"]["questions"]
+            # 工单 35：讲解请求等同暂停当前题，已呈现未答单独记录、不判分。
+            assert questions[0]["unanswered"] is True
+            assert questions[0]["answer"] is None and questions[0]["judgement"] is None
             resumed = _ask(client, app, endpoint, "继续复盘")
             assert "复盘第2题" in resumed["messages"][-1]["content"]

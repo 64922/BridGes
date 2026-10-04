@@ -40,7 +40,9 @@ from bridges.contracts.study import (
     StudyFragment,
     StudyPage,
     StudyPageUpdate,
+    StudyReview,
     StudyState,
+    StudySummaryRecord,
     StudyUnclear,
     upgrade_legacy_study_state,
 )
@@ -113,6 +115,19 @@ _RECOGNITION_NODES = frozenset(
 
 def _is_recognition_node(node: str) -> bool:
     return node in _RECOGNITION_NODES
+
+
+def _mark_active_unanswered(review: StudyReview | None) -> None:
+    """暂停/追加/转辅导使当前激活题作废时，单独记录已呈现未答（工单 35）。
+
+    保留题号、来源与已判定题；未作答不计为答对，继续复盘默认从未问题开始。
+    """
+    if review is None:
+        return
+    current = active_question(review)
+    if current is not None and current.judgement is None and current.answer is None:
+        current.unanswered = True
+    review.active_question_id = None
 
 
 class StudyWorkflowError(Exception):
@@ -653,6 +668,18 @@ class StudyWorkflow:
                             )
                         )
                     if replaced:
+                        # 补拍替换：旧页原识别片段移入历史（superseded_fragments），
+                        # 新页片段与旧原文双方来源都保留；旧片段不再进入范围映射
+                        # 与当前书页依据。新页未通过关键疑点门时不切有效版本。
+                        previous = state.pages[ordinal - 1]
+                        page = page.model_copy(
+                            update={
+                                "superseded_fragments": [
+                                    *previous.fragments,
+                                    *previous.superseded_fragments,
+                                ],
+                            }
+                        )
                         state.pages[ordinal - 1] = page
                     else:
                         state.pages.append(page)
@@ -963,21 +990,36 @@ class StudyWorkflow:
             state.page_update = None
             state.questions = committed.questions
             if state.review:
-                state.review.active_question_id = None
+                _mark_active_unanswered(state.review)
                 state.review.needs_replan = True
                 state.review.complete = False
-            # 书页范围变了：旧总结不再对应当前知识范围与题目，等重排后再生成。
-            state.summary = None
+            # 书页范围变了：旧总结不再对应当前知识范围与题目，移入历史并
+            # 标注原范围版本；当前总结置空，待重排后按新范围重新生成，
+            # 后续总结不冒用旧版本结论。
+            if state.summary is not None:
+                state.summary_history = [
+                    *state.summary_history,
+                    StudySummaryRecord(
+                        summary=state.summary,
+                        scope_version_id=(
+                            committed.scope.scope_version_id if committed.scope else ""
+                        ),
+                        superseded_reason="追加或补拍书页使本节知识范围更新",
+                    ),
+                ]
+                state.summary = None
             return {"updated_pages": state.model_dump(), "answer": (
                 (f"检测到{duplicate_count}张重复书页，已跳过。\n\n" if duplicate_count else "")
                 + f"已更新本节书页，共{len(state.pages)}页。"
                 "知识范围：" + "、".join(unit.title for unit in state.units)
-                + "。原有辅导问答与来源已保留，可以继续提问。"
+                + "。原有辅导问答、来源与已判定题已保留；原总结已作为历史保留，"
+                "待按新范围重新复盘后生成新总结，可以继续提问。"
             )}
 
         def tutoring() -> _GraphState:
             if state.stage == "review" and state.review:
-                state.review.active_question_id = None
+                # 提问/要求再讲等同暂停当前题：记录已呈现未答，不把讲解当答案。
+                _mark_active_unanswered(state.review)
             state.stage = "tutoring"
             existing = next((item for item in state.tutoring
                              if item.user_message_id == run.user_message_id), None)
@@ -1003,21 +1045,53 @@ class StudyWorkflow:
 
         expected_review_state = committed.model_dump()
 
-        def _verify_review_commit() -> None:
-            """写事务内核对执行权及预期领域版本，拒绝迟到覆盖。"""
+        def _verify_material_commit(
+            expected: dict[str, Any],
+            code: str,
+            message: str,
+            *,
+            exclude: set[str] | None = None,
+            allow_message_terminal: bool = False,
+        ) -> None:
+            """写事务内核对停止、执行权与预期有效状态，拒绝迟到覆盖。
+
+            停止以显式信号为准；租约转移/运行终态由共享守卫在消息检查前
+            拒绝。``finalize_message`` 已在同一事务内把消息收敛到目标终态，
+            因此仅追加页提交豁免 ``message_terminal``。
+            """
+            if stop_event is not None and stop_event.is_set():
+                raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
             decision = material_guard.verify()
-            if not decision.ok:
+            if (
+                not decision.ok
+                and not (allow_message_terminal and decision.code == "message_terminal")
+            ):
                 raise StudyWorkflowError(
                     current_node,
                     "stopped" if decision.code == "run_stopped" else decision.code,
                     decision.message,
                 )
             latest = self._states.get(run.account_id, run.conversation_id)
-            if latest is None or latest.model_dump() != expected_review_state:
-                raise StudyWorkflowError(
-                    current_node, "study_review_scope_changed",
-                    "小节或题目状态已变化，迟到结果未提交，请重试。",
-                )
+            if latest is None or latest.model_dump(exclude=exclude) != expected:
+                raise StudyWorkflowError(current_node, code, message)
+
+        def _verify_update_commit() -> None:
+            """追加页原子切换：有效状态（不含待提交候选）未变且执行权在握。"""
+            _verify_material_commit(
+                committed.model_dump(exclude={"page_update", "pending_object_ids"}),
+                "study_page_update_changed",
+                "小节状态已变化，本次追加结果未提交，请重试。",
+                exclude={"page_update", "pending_object_ids"},
+                allow_message_terminal=True,
+            )
+
+        def _verify_review_commit() -> None:
+            """写事务内核对执行权及预期领域版本，拒绝迟到覆盖。"""
+            _verify_material_commit(
+                expected_review_state,
+                "study_review_scope_changed",
+                "小节或题目状态已变化，迟到结果未提交，请重试。",
+            )
 
         def _save_review_content(content: str) -> None:
             """事务内只追加已核验正文，保存游标事件供错误/停止后重放。"""
@@ -1186,8 +1260,7 @@ class StudyWorkflow:
             try:
                 if intent == "pause":
                     state.stage = "tutoring"
-                    if state.review:
-                        state.review.active_question_id = None
+                    _mark_active_unanswered(state.review)
                     answer = (
                         "已暂停复盘，可以继续提问或追加本节照片。已问题与判定保留；"
                         "继续复盘时从未问题开始，未作答题不计为已掌握。"
@@ -1323,6 +1396,9 @@ class StudyWorkflow:
                         StudyState.model_validate(output["scope"]),
                     )
                 if output.get("updated_pages"):
+                    # 追加页的原子版本切换：执行权与有效版本守卫通过才替换
+                    # 有效书页/范围，失败整体回滚并保留原有效版本。
+                    _verify_update_commit()
                     self._states.save_in_transaction(
                         run.account_id, run.conversation_id,
                         StudyState.model_validate(output["updated_pages"]),

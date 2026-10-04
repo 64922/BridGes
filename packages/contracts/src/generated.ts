@@ -24598,6 +24598,8 @@ export interface components {
             unclear?: components["schemas"]["StudyUnclear"][];
             /** Recognition Paths */
             recognition_paths?: string[];
+            /** Superseded Fragments */
+            superseded_fragments?: components["schemas"]["StudyFragment"][];
         };
         /**
          * StudyPageUpdate
@@ -24772,6 +24774,11 @@ export interface components {
              * @default false
              */
             legacy: boolean;
+            /**
+             * Unanswered
+             * @default false
+             */
+            unanswered: boolean;
         };
         /**
          * StudyScope
@@ -24861,6 +24868,8 @@ export interface components {
             page_update?: components["schemas"]["StudyPageUpdate"] | null;
             review?: components["schemas"]["StudyReview"] | null;
             summary?: components["schemas"]["StudySummary"] | null;
+            /** Summary History */
+            summary_history?: components["schemas"]["StudySummaryRecord"][];
             /** Pending Object Ids */
             pending_object_ids?: string[];
             scope?: components["schemas"]["StudyScope"] | null;
@@ -24893,6 +24902,26 @@ export interface components {
             question_ids?: string[];
             /** Fragment Ids */
             fragment_ids?: string[];
+        };
+        /**
+         * StudySummaryRecord
+         * @description 一节历史总结及其依据范围版本（工单 35）。
+         *
+         *     追加书页或范围变化使当前总结失效时，旧总结移入 ``StudyState.summary_history``
+         *     保留，标注生成时的有效范围版本；后续总结不得冒用旧版本结论。
+         */
+        StudySummaryRecord: {
+            summary: components["schemas"]["StudySummary"];
+            /**
+             * Scope Version Id
+             * @default
+             */
+            scope_version_id: string;
+            /**
+             * Superseded Reason
+             * @default
+             */
+            superseded_reason: string;
         };
         /**
          * StudySupplementAttempt

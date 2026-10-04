@@ -294,7 +294,7 @@ def test_plan_freezes_private_rubric_and_reads_never_leak_it(
         assert stored.verification is not None
         assert stored.verification.status == "consistent"
         assert stored.verification.answer_consistent is True
-        assert raw.state_version == 3
+        assert raw.state_version == 4
         assert len(gateway.plan_calls) == 1
         assert len(gateway.question_verify_calls) == 1
 
@@ -706,7 +706,7 @@ def test_legacy_review_question_keeps_old_judgement_and_path(
             (json.dumps(legacy, ensure_ascii=False), account["id"], conversation_id),
         )
         projection = client.get(endpoint).json()["study"]
-        assert projection["state_version"] == 3
+        assert projection["state_version"] == 4
         old = projection["review"]["questions"][0]
         assert old["judgement"] == "correct"
         assert old["canonical_answer"] == "a 是斜率。"
