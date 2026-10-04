@@ -52,3 +52,38 @@
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
 
+## 实施记录（2026-10-04，待独立验收）
+
+### 代码与产物
+
+- 新增 `src/bridges/evaluation/profile_quality.py`：12 个确定性纵向场景（否定偏好、多事实并存、第三方/引用/情绪、回指、时间锚、并行目标精准替代、删除近义抑制与明确恢复、LOW 镜像、停止记录后忘掉与迟到任务、自述与答题证据、开关与账户隔离、依据与反馈路径），36 个检查点（含硬门）。
+- 新增 `src/bridges/evaluation/profile_pairing.py`：四条件（无/正确/错误/过时画像）同模型同任务配对，按具体内容检查（举例先于公式、学习约束进入内容、过时事实零回声、任务主题保留、套话拒绝），记录延迟/token/成本并产出盲评材料。
+- 新增 `scripts/run_issue41_profile_evaluation.py`：确定性治理 + 真实抽取探针（6 条源消息）+ 真实配对的统一入口；`--real-probes` 显式 opt-in，缺凭据时非零退出且报告记 `inconclusive`。
+- 新增 `tests/evaluation/test_issue41_profile_quality.py`、`tests/evaluation/test_issue41_profile_pairing.py`。
+- 验证产物：`.scratch/2/validation/41-profile-quality/`（report.md、deterministic-report.json、pairing-report.json/.md、blind-review.md）。
+
+### 接口/合同变化
+
+- 画像指标扩为 9 项：新增 `fact_completeness`、`precise_update`、`source_support`、`cliche_control`，`cross_turn_stability` 改为按完整事实身份判定；自动断言新增 `no_personalization_cliche`；注入回归新增 `profile_cliche_only`、`profile_overwrite`。
+- 量表 `scale-profile-5` 扩为 9 项；`profile-goal-loop`、`profile-personalization-gain` 增加 `profile_expected_facts` 与 `answer_requirements`（must_include/ordered/min_chars/must_exclude 套话）。
+- `PROFILE_EXTRACTION_PROMPT_VERSION` v3 → v4：显式给出字段枚举、类型与 `evidence_ref` 取值。首轮真实探针 4/6 因模型输出不符合 `profile-extraction-v2` 合同而被合同失败关闭（零写入），定位为提示词未告知字段约束后修复；机制安全路径（失败关闭）不变。
+
+### 环境
+
+- conda `agent`；Windows；固定模型 `qwen3.7-plus-2026-05-26`；DashScope 直连；运行期凭据取自 OS 凭据库 `runtime:global-qwen-api-key`，密钥未写入报告/日志/提交。真实调用共 14 次（6 抽取 + 8 配对），可在 30 分钟内重跑。
+
+### 验证结果
+
+- 确定性：12 场景 36 检查点 100% 通过，硬门全通过；tests/evaluation 85 passed（4 项 `test_runner_reproducibility` 失败在 main 同样失败，属既有）；tests/profiles 536 passed（1 项 `test_issue01_chat_profile_correction` 失败在 main 同样失败，属既有）；画像相关 chat 测试 41 passed。
+- 全仓逐目录（`-n 4`，含 `tests/evaluation`、`tests/profiles`）：5232 passed / 182 failed / 1 error / 若干 skip；逐目录与 main 对比失败数完全一致（如 chat 49、mcp 49、learning_projects 19、plugins 19+1E、retirement 11、closeout 6），全部为既有环境性失败，非本票引入。
+- 真实抽取探针：6/6 通过（否定不反转、多事实并存、第三方与引用零写入、自述学习关系、模糊低把握）。
+- 真实配对：8/8 通过；正确画像进入具体内容（贝叶斯任务举例先于公式、复习任务反映每日 30 分钟约束），错误画像出现可测退化（不举例子），过时画像 0 条被采用且无过期事实回声。
+- 成本与延迟：真实调用输入 6250 token / 输出 18426 token；四条件平均延迟 27.7s–44.2s。
+
+### 限制与后续
+
+- 每条件 2 个任务样本，只证明机制与方向，不宣称准确率；人工判断以 `blind-review.md` 为准。
+- 回答检查为确定性内容规则；事务占用未单独插桩。
+- 环境代理不可达 GitHub，仓库同步受限。
+
+

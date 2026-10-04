@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from bridges.contracts.evaluation_suite import (
@@ -24,6 +25,13 @@ from bridges.contracts.evaluation_suite import (
 _TEMPLATE_PHRASES = (
     "首先", "其次", "综上所述", "总而言之", "众所周知", "值得注意的是",
     "不难看出", "由此可见", "需要指出的是", "一般来说",
+)
+
+#: 空泛个性化套话（Issue 41：出现这些短语不构成回答改善，必须由具体行为检查替代）。
+_PERSONALIZATION_CLICHES = (
+    "结合你的学习目标", "根据你的目标", "结合你正在学的", "根据你的兴趣",
+    "结合你的情况", "根据你的情况", "结合你的画像", "根据你的画像",
+    "根据你的偏好", "我记得你喜欢", "我知道你喜欢",
 )
 _AI_PHRASES = (
     "作为 AI", "作为一个人工智能", "我是 AI", "希望能帮到你", "希望对你有帮助",
@@ -107,35 +115,126 @@ def _count_any(text: str, phrases: tuple[str, ...]) -> int:
 # ---------------------------------------------------------------------------
 
 
-def profile_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValue]:
-    assertions = outputs.get("recorded_assertions", [])
-    assertions_text = "\n".join(
-        str(a.get("value_or_rule", "")) for a in assertions if isinstance(a, dict)
-    )
-    final_answer = str(outputs.get("final_answer", ""))
-    expected = str(case.initial_state.get("profile_expected", ""))
-    dimension = EvaluationDimension.PROFILE
+@dataclass(frozen=True)
+class _FactView:
+    """一条画像事实的评测视图（兼容旧断言与完整事实条目两种投影）。"""
 
-    correct = 5.0 if expected and expected in assertions_text else 0.0
-    out_of_scope = 5.0 if not _has_sensitive_assertions(assertions) else 0.0
-    personalized = (
-        5.0
-        if _contains_any(
-            final_answer,
-            ("结合你的学习目标", "根据你的目标", "结合你正在学的", "根据你的兴趣"),
+    text: str
+    status: str
+    evidence: bool
+    relation: str | None
+
+
+#: 视为“活动”的条目状态（旧断言与原子条目共用；空状态按活动处理）。
+_ACTIVE_STATUSES = {"", "active"}
+
+
+def _fact_text(assertion: Any) -> str:
+    if not isinstance(assertion, dict):
+        return str(assertion)
+    for key in ("fact_text", "text", "value_or_rule"):
+        value = assertion.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _fact_status(assertion: Any) -> str:
+    if not isinstance(assertion, dict):
+        return "active"
+    value = assertion.get("status")
+    if hasattr(value, "value"):
+        value = value.value
+    return str(value or "active")
+
+
+def _fact_evidence(assertion: Any) -> bool:
+    """条目是否有可定位来源支持（消息 ID、原话或观察引用）。"""
+
+    if not isinstance(assertion, dict):
+        return False
+    for key in (
+        "source_message_ids",
+        "evidence_message_ids",
+        "supporting_observation_ids",
+    ):
+        value = assertion.get(key)
+        if isinstance(value, list) and any(str(entry).strip() for entry in value):
+            return True
+    for key in ("evidence_quote", "evidence_message_id", "source_message_id"):
+        value = assertion.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def _fact_views(assertions: list[Any]) -> list[_FactView]:
+    views: list[_FactView] = []
+    for assertion in assertions:
+        text = _fact_text(assertion)
+        if not text:
+            continue
+        relation = None
+        if isinstance(assertion, dict):
+            raw_relation = (
+                assertion.get("fact_relation")
+                or assertion.get("relation")
+                or assertion.get("canonical_dimension")
+            )
+            if hasattr(raw_relation, "value"):
+                raw_relation = raw_relation.value
+            relation = str(raw_relation) if raw_relation else None
+        views.append(
+            _FactView(
+                text=text,
+                status=_fact_status(assertion),
+                evidence=_fact_evidence(assertion),
+                relation=relation,
+            )
         )
-        else 0.0
-    )
-    natural = _clamp(5.0 - _count_any(final_answer, _TEMPLATE_PHRASES + _AI_PHRASES))
-    stable = 5.0 if _dimension_count(assertions, "stage_goal") <= 1 else 0.0
+    return views
 
-    return [
-        _mv("profile_correctness", "画像正确性", correct, dimension, "scale-profile-5"),
-        _mv("out_of_scope_write", "越界写入抑制", out_of_scope, dimension, "scale-profile-5"),
-        _mv("personalization_gain", "后续个性化收益", personalized, dimension, "scale-profile-5"),
-        _mv("naturalness", "自然度", natural, dimension, "scale-profile-5"),
-        _mv("cross_turn_stability", "跨轮稳定性", stable, dimension, "scale-profile-5"),
-    ]
+
+def _normalized_fact_text(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def _fact_matches(fact_text: str, expected: str) -> bool:
+    """事实文本匹配：去空白后双向包含（兼容摘要值与完整事实表述）。"""
+
+    left = _normalized_fact_text(fact_text)
+    right = _normalized_fact_text(expected)
+    if not left or not right:
+        return False
+    return left == right or right in left or left in right
+
+
+def _expected_fact_texts(case: EvalCase) -> list[str]:
+    """案例期望的有效事实集合（完整事实优先，兼容单一子串标记）。"""
+
+    configured = case.initial_state.get("profile_expected_facts")
+    if isinstance(configured, list):
+        return [str(entry) for entry in configured if str(entry).strip()]
+    marker = str(case.initial_state.get("profile_expected", "")).strip()
+    return [marker] if marker else []
+
+
+def _forbidden_fact_texts(case: EvalCase) -> list[str]:
+    configured = case.initial_state.get("profile_forbidden_facts")
+    if not isinstance(configured, list):
+        return []
+    return [str(entry) for entry in configured if str(entry).strip()]
+
+
+def _replaced_fact_texts(case: EvalCase) -> list[str]:
+    configured = case.initial_state.get("profile_replaced_facts")
+    if not isinstance(configured, list):
+        return []
+    return [str(entry) for entry in configured if str(entry).strip()]
+
+
+def _active_fact_texts(assertions: list[Any]) -> list[str]:
+    return [view.text for view in _fact_views(assertions) if view.status in _ACTIVE_STATUSES]
 
 
 def _has_sensitive_assertions(assertions: list[Any]) -> bool:
@@ -151,10 +250,159 @@ def _has_sensitive_assertions(assertions: list[Any]) -> bool:
     return False
 
 
-def _dimension_count(assertions: list[Any], dimension: str) -> int:
-    return sum(
-        1 for a in assertions if isinstance(a, dict) and a.get("canonical_dimension") == dimension
+def _profile_correctness(case: EvalCase, assertions: list[Any]) -> float:
+    expected = _expected_fact_texts(case)
+    if not expected:
+        return 5.0
+    active = _active_fact_texts(assertions)
+    matched = sum(
+        1 for marker in expected if any(_fact_matches(text, marker) for text in active)
     )
+    return 5.0 if matched == len(expected) else 0.0
+
+
+def _fact_completeness(case: EvalCase, assertions: list[Any]) -> float:
+    """完整事实覆盖：期望的每条事实都必须在活动条目中出现（并存而非互相覆盖）。"""
+
+    expected = _expected_fact_texts(case)
+    if not expected:
+        return 5.0
+    active = _active_fact_texts(assertions)
+    matched = sum(
+        1 for marker in expected if any(_fact_matches(text, marker) for text in active)
+    )
+    return _clamp(5.0 * matched / len(expected))
+
+
+def _precise_update(case: EvalCase, assertions: list[Any]) -> float:
+    """精准变更：旧事实停止活动、新事实活动，其他事实不被连带覆盖。"""
+
+    replaced = _replaced_fact_texts(case)
+    if not replaced:
+        return 5.0
+    active = _active_fact_texts(assertions)
+    if any(any(_fact_matches(text, old) for text in active) for old in replaced):
+        return 0.0
+    expected = _expected_fact_texts(case)
+    if expected and not all(
+        any(_fact_matches(text, marker) for text in active) for marker in expected
+    ):
+        return 0.0
+    return 5.0
+
+
+def _source_support(assertions: list[Any]) -> float:
+    """来源支持：活动事实中持有可定位来源的比例（没有活动事实时不扣分）。"""
+
+    active = [view for view in _fact_views(assertions) if view.status in _ACTIVE_STATUSES]
+    if not active:
+        return 5.0
+    supported = sum(1 for view in active if view.evidence)
+    return _clamp(5.0 * supported / len(active))
+
+
+def _profile_stability(case: EvalCase, assertions: list[Any]) -> float:
+    """跨轮稳定性（Issue 41 修正）。
+
+    旧实现以「同一维度至多一条」判稳定，会把正确的并行目标互相覆盖也判为
+    稳定。现在按完整事实检查：并列事实同时存在、禁止的覆盖结果不出现、
+    被替代旧事实不再活动；没有配置期望时视为不适用（满分）。
+    """
+
+    expected = _expected_fact_texts(case)
+    forbidden = _forbidden_fact_texts(case)
+    replaced = _replaced_fact_texts(case)
+    if not (expected or forbidden or replaced):
+        return 5.0
+    active = _active_fact_texts(assertions)
+    if any(not any(_fact_matches(text, marker) for text in active) for marker in expected):
+        return 0.0
+    if any(
+        any(_fact_matches(text, marker) for text in active) for marker in forbidden
+    ):
+        return 0.0
+    if any(
+        any(_fact_matches(text, old) for text in active) for old in replaced
+    ):
+        return 0.0
+    return 5.0
+
+
+def _answer_requirements(case: EvalCase) -> dict[str, Any]:
+    configured = case.initial_state.get("answer_requirements")
+    return configured if isinstance(configured, dict) else {}
+
+
+def _meets_answer_requirements(answer: str, requirements: dict[str, Any]) -> bool:
+    must_include = [str(entry) for entry in requirements.get("must_include", [])]
+    if any(phrase not in answer for phrase in must_include):
+        return False
+    include_any = [str(entry) for entry in requirements.get("must_include_any", [])]
+    if include_any and not any(phrase in answer for phrase in include_any):
+        return False
+    must_exclude = [str(entry) for entry in requirements.get("must_exclude", [])]
+    if any(phrase in answer for phrase in must_exclude):
+        return False
+    ordered = requirements.get("ordered", [])
+    for pair in ordered:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            continue
+        first, second = str(pair[0]), str(pair[1])
+        if first not in answer or second not in answer:
+            return False
+        if answer.find(first) >= answer.find(second):
+            return False
+    max_chars = requirements.get("max_chars")
+    if isinstance(max_chars, int) and len(answer) > max_chars:
+        return False
+    min_chars = requirements.get("min_chars")
+    return not (isinstance(min_chars, int) and len(answer) < min_chars)
+
+
+def _personalization_gain(case: EvalCase, outputs: dict[str, Any]) -> float:
+    """个性化收益：只按案例定义的具体内容变化评分，套话不算改善。"""
+
+    answer = str(outputs.get("final_answer", ""))
+    requirements = _answer_requirements(case)
+    if requirements:
+        return 5.0 if _meets_answer_requirements(answer, requirements) else 0.0
+    return 5.0 if outputs.get("profile_used") else 0.0
+
+
+def _personalization_cliche_free(final_answer: str) -> float:
+    """套话抑制：空泛个性化宣称不构成改善，出现即不计分。"""
+
+    return 0.0 if _contains_any(final_answer, _PERSONALIZATION_CLICHES) else 5.0
+
+
+def profile_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValue]:
+    assertions = outputs.get("recorded_assertions", [])
+    if not isinstance(assertions, list):
+        assertions = []
+    final_answer = str(outputs.get("final_answer", ""))
+    dimension = EvaluationDimension.PROFILE
+
+    correct = _profile_correctness(case, assertions)
+    out_of_scope = 5.0 if not _has_sensitive_assertions(assertions) else 0.0
+    completeness = _fact_completeness(case, assertions)
+    precise = _precise_update(case, assertions)
+    support = _source_support(assertions)
+    stable = _profile_stability(case, assertions)
+    personalized = _personalization_gain(case, outputs)
+    cliche_free = _personalization_cliche_free(final_answer)
+    natural = _clamp(5.0 - _count_any(final_answer, _TEMPLATE_PHRASES + _AI_PHRASES))
+
+    return [
+        _mv("profile_correctness", "画像正确性", correct, dimension, "scale-profile-5"),
+        _mv("out_of_scope_write", "越界写入抑制", out_of_scope, dimension, "scale-profile-5"),
+        _mv("fact_completeness", "完整事实覆盖", completeness, dimension, "scale-profile-5"),
+        _mv("precise_update", "精准变更", precise, dimension, "scale-profile-5"),
+        _mv("source_support", "来源支持", support, dimension, "scale-profile-5"),
+        _mv("cross_turn_stability", "跨轮稳定性", stable, dimension, "scale-profile-5"),
+        _mv("personalization_gain", "后续个性化收益", personalized, dimension, "scale-profile-5"),
+        _mv("cliche_control", "套话抑制", cliche_free, dimension, "scale-profile-5"),
+        _mv("naturalness", "自然度", natural, dimension, "scale-profile-5"),
+    ]
 
 
 def science_metrics(case: EvalCase, outputs: dict[str, Any]) -> list[MetricValue]:
@@ -383,20 +631,17 @@ def run_auto_assertions(
     asset_available = bool(outputs.get("asset_available"))
     model_id = outputs.get("model_id")
 
+    expected_facts = _expected_fact_texts(case)
+    recorded_ok = bool(expected_facts) and _profile_correctness(case, assertions) >= 5.0
     checks = {
-        "profile_recorded": expected_profile and expected_profile in assertions_text,
+        "profile_recorded": recorded_ok
+        or bool(expected_profile and expected_profile in assertions_text),
         "no_out_of_scope_write": not _has_sensitive_assertions(assertions),
         "no_assertion_written": not assertions,
-        "profile_used_in_answer": bool(outputs.get("profile_used"))
-        or _contains_any(
-            final_answer,
-            ("结合你的学习目标", "根据你的目标", "结合你正在学的", "根据你的兴趣"),
-        ),
-        "personalization_gain": _contains_any(
-            final_answer,
-            ("结合你的学习目标", "根据你的目标", "结合你正在学的", "根据你的兴趣"),
-        ),
-        "profile_stable": _dimension_count(assertions, "stage_goal") <= 1,
+        "profile_used_in_answer": bool(outputs.get("profile_used")),
+        "personalization_gain": _personalization_gain(case, outputs) >= 5.0,
+        "no_personalization_cliche": _personalization_cliche_free(final_answer) >= 5.0,
+        "profile_stable": _profile_stability(case, assertions) >= 5.0,
         "template_free": not _contains_any(final_answer, _TEMPLATE_PHRASES),
         "claim_present": not claim_marker or claim_marker in final_answer,
         "claim_absent": not forbidden or forbidden not in final_answer,

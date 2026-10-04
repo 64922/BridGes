@@ -37,11 +37,13 @@ def test_profile_metrics_measure_loop_quality() -> None:
         "recorded_assertions": [
             {
                 "canonical_dimension": "stage_goal",
-                "value_or_rule": "能读懂《费曼物理学讲义》第三卷",
+                "value_or_rule": "量子力学，正在读《费曼物理学讲义》",
                 "status": "active",
+                "supporting_observation_ids": ["obs-1"],
             }
         ],
-        "final_answer": "根据你的目标（读懂《费曼物理学讲义》第三卷），我们从量子比特讲起。",
+        "final_answer": "先用一个直观对照：经典比特像开关，只能在 0 或 1 之间切换；"
+        "而量子比特可以同时处于 0 和 1 的叠加态，这正是理解量子计算的第一步。",
         "context_note": {"state": "ready", "profile_items": [{}]},
         "profile_used": True,
     }
@@ -49,8 +51,55 @@ def test_profile_metrics_measure_loop_quality() -> None:
     assert _metric(metrics, "profile_correctness") == 5.0
     assert _metric(metrics, "out_of_scope_write") == 5.0
     assert _metric(metrics, "personalization_gain") == 5.0
+    assert _metric(metrics, "cliche_control") == 5.0
     assert _metric(metrics, "cross_turn_stability") == 5.0
     assert 0.0 <= _metric(metrics, "naturalness") <= 5.0
+
+
+def test_profile_metrics_reject_cliche_only_personalization() -> None:
+    """Issue 41：空泛套话不再被计为个性化收益。"""
+
+    case = _case("profile-goal-loop")
+    outputs = {
+        "recorded_assertions": [
+            {
+                "canonical_dimension": "stage_goal",
+                "value_or_rule": "读懂《费曼物理学讲义》第三卷",
+                "status": "active",
+            }
+        ],
+        "final_answer": "根据你的目标（读懂《费曼物理学讲义》第三卷），我们开始吧。",
+        "context_note": {"state": "ready", "profile_items": [{}]},
+        "profile_used": True,
+    }
+    metrics = profile_metrics(case, outputs)
+    assert _metric(metrics, "personalization_gain") == 0.0
+    assert _metric(metrics, "cliche_control") == 0.0
+    assertions = run_auto_assertions(case, outputs)
+    assert not any(a.assertion_id == "a-concrete" and a.passed for a in assertions)
+
+
+def test_profile_metrics_require_coexistence_and_source_support() -> None:
+    """Issue 41：并行事实缺失或来源缺失按完整事实衡量，不用同维度唯一判稳定。"""
+
+    case = _case("profile-goal-loop")
+    outputs = {
+        "recorded_assertions": [
+            {
+                "canonical_dimension": "interest_preference",
+                "value_or_rule": "量子力学",
+                "status": "active",
+            }
+        ],
+        "final_answer": "先用一个直观对照：经典比特像开关，而量子比特可以同时处于"
+        "0 和 1 的叠加态。",
+        "context_note": {},
+        "profile_used": True,
+    }
+    metrics = profile_metrics(case, outputs)
+    assert _metric(metrics, "fact_completeness") == 2.5
+    assert _metric(metrics, "cross_turn_stability") == 0.0
+    assert _metric(metrics, "source_support") == 0.0
 
 
 def test_profile_metrics_detect_overreach() -> None:

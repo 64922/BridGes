@@ -110,7 +110,9 @@ PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
 #: 改进工单 17：每次真实模型调用的版本合同（Issue 03 接缝）。提示词与
 #: 输入合同按精确证据区间升级；输出 Schema 保持 v2 的向后兼容可选字段。
-PROFILE_EXTRACTION_PROMPT_VERSION = "profile-extraction-prompt-v3"
+#: 工单 41 真实探针发现模型不遵守字段枚举与 evidence_ref 约定（合同失败
+#: 关闭），提示词升级 v4：显式给出字段/枚举/类型与 evidence_ref 取值。
+PROFILE_EXTRACTION_PROMPT_VERSION = "profile-extraction-prompt-v4"
 PROFILE_EXTRACTION_RECIPE_VERSION = "profile-extraction-recipe-v1"
 PROFILE_EXTRACTION_CONTEXT_VERSION = "profile-extraction-context-v1"
 PROFILE_EXTRACTION_QUALITY_POLICY_VERSION = "profile-extraction-quality-v1"
@@ -809,12 +811,20 @@ class GatewayAutomaticProfileExtractor:
                 "content": (
                     "只抽取当前用户消息里用户关于自己的明确稳定信号。禁止第三方、"
                     "引用、假设、角色扮演、敏感信息与一次性情绪；邻近用户消息只用于"
-                    "理解『这个专业』等回指，不能作为事实依据。每条候选输出四维枚举、"
-                    "规范化值、完整事实正文 fact_text（保留关系、否定、范围与原文"
-                    "明示时间）、动作 action、可靠度 reliability，以及支持该候选的"
-                    "当前消息 Unicode 码点半开区间 evidence_start/evidence_end"
-                    "（区间原话必须真实支持事实；模糊或行为线索用 observe）。"
-                    "以 JSON 输出 items。"
+                    "理解『这个专业』等回指，不能作为事实依据。"
+                    '只输出一个 JSON 对象 {"items": [...]}，不要输出其他顶层字段。'
+                    "每个元素必须且只能严格包含以下字段："
+                    "dimension 只能是 academic_status/knowledge_interest/hobby/"
+                    "stage_goal 之一；normalized_value 为字符串；fact_text 为字符串，"
+                    "使用用户原话或原句片段（保留关系、否定、范围与原文明示时间），"
+                    "不要以『用户』开头；"
+                    f'evidence_ref 固定填写 "{message_id}"；'
+                    "reliability 为 0 到 1 之间的小数（禁止 high/medium/low 等文字）；"
+                    "action 只能是 create/update/observe/ignore 之一；"
+                    "evidence_start 与 evidence_end 为整数，是支持该候选的当前消息 "
+                    "Unicode 码点半开区间 [start, end)（区间原话必须真实支持事实；"
+                    "模糊或行为线索用 observe）。"
+                    '没有可抽取信号时输出 {"items": []}。'
                     f"本条消息的确定性分类为 {classification.category.value}，"
                     f"原因码为 {classification.reason_code}。"
                 ),

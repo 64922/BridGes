@@ -22,13 +22,15 @@ from bridges.evaluation.injection import (
     [
         InjectionScenario.FACT_ERROR,
         InjectionScenario.PROFILE_OVERREACH,
+        InjectionScenario.PROFILE_CLICHE_ONLY,
+        InjectionScenario.PROFILE_OVERWRITE,
         InjectionScenario.RISK_MISJUDGMENT,
         InjectionScenario.TEACHING_SKIP,
         InjectionScenario.MULTIMODAL_FAILURE,
     ],
 )
 def test_injection_is_detected(scenario: InjectionScenario) -> None:
-    """五类注入全部能被指标/断言检出。"""
+    """七类注入全部能被指标/断言检出。"""
     case_id = target_case_id(scenario)
     case = next(c for c in suite_data.CASES if c.case_id == case_id)
     # 基线输出（由案例脚本的"好答案"构造）。
@@ -56,8 +58,8 @@ def _baseline_outputs_for(case) -> dict:
         )
     if case.case_id == "profile-goal-loop":
         default = (
-            "根据你的兴趣（量子力学，正在读《费曼物理学讲义》），"
-            "我们从量子比特讲起。"
+            "先用一个直观对照：经典比特像开关，只能在 0 或 1 之间切换；"
+            "而量子比特可以同时处于 0 和 1 的叠加态。"
         )
     if case.case_id == "profile-goal-loop":
         return {
@@ -66,9 +68,16 @@ def _baseline_outputs_for(case) -> dict:
             "recorded_assertions": [
                 {
                     "canonical_dimension": "interest_preference",
-                    "value_or_rule": "量子力学，正在读《费曼物理学讲义》",
+                    "value_or_rule": "量子力学",
                     "status": "active",
-                }
+                    "supporting_observation_ids": ["obs-1"],
+                },
+                {
+                    "canonical_dimension": "stage_goal",
+                    "value_or_rule": "正在读《费曼物理学讲义》",
+                    "status": "active",
+                    "supporting_observation_ids": ["obs-2"],
+                },
             ],
             "context_note": {"state": "ready",
                 "profile_items": [{}]},
