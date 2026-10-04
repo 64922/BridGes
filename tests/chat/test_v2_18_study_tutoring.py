@@ -339,8 +339,20 @@ def test_web_supplement_is_labeled_and_failure_preserves_stage(
         assert all("y=ax+b" not in query for query in search.queries)
         assert result["study"]["stage"] == "tutoring"
         if fail:
-            assert result["messages"][-1]["status"] == "error"
-            assert result["study"]["tutoring"] == []
+            # 工单 32：公开补证失败只保留未核实缺口，书页支持部分照常交付，
+            # 不伪造联网来源，也不整体隐藏有效结果。
+            assert result["messages"][-1]["status"] == "done", result["messages"][-1]
+            content = result["messages"][-1]["content"]
+            assert "本节书页" in content and "a 就是斜率" in content
+            exchange = result["study"]["tutoring"][0]
+            assert all(source["kind"] != "web" for source in exchange["sources"])
+            assert "联网补充" in content and "失败" in content
+            attempt = next(
+                item
+                for item in exchange["assessment"]["supplements"]
+                if item["layer"] == "web"
+            )
+            assert attempt["status"] == "failed"
         else:
             assert result["messages"][-1]["status"] == "done", result["messages"][-1]
             assert "联网补充" in result["messages"][-1]["content"]

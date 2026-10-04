@@ -141,8 +141,13 @@ class LayeredRetrievalService:
         mode: str,
         capability_route: str,
         use_knowledge_base: bool,
+        needs_local_material: bool = False,
     ) -> RetrievalDecisionProjection:
-        """在任何索引副作用前形成并持久化一份检索决策。"""
+        """在任何索引副作用前形成并持久化一份检索决策。
+
+        ``needs_local_material``（工单 32）由调用方的问题级证据评估给出：
+        真实缺口要求检索已启用的知识库；用户关闭知识库仍然是硬门。
+        """
         existing = self._repository.decision_row(
             account_id,
             user_message_id=user_message_id,
@@ -160,6 +165,7 @@ class LayeredRetrievalService:
             mode=mode,
             capability_route=capability_route,
             use_knowledge_base=use_knowledge_base,
+            needs_local_material=needs_local_material,
         )
         now = _now()
         try:
