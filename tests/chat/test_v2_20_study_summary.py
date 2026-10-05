@@ -15,7 +15,7 @@ from tests.chat.test_v2_17_study_pages import _first
 from tests.chat.test_v2_18_study_tutoring import _ask, _retry, _start
 from tests.chat.test_v2_19_study_review import ReviewGateway
 
-_SECTIONS = ("学到了什么", "复盘已掌握", "还需补的点")
+_SECTIONS = ("学到了什么", "复盘已掌握", "还需补的点", "未作答或尚未判定")
 
 
 class SummaryGateway(ReviewGateway):
@@ -140,7 +140,9 @@ def test_summary_starts_after_last_judgement_and_replays_without_rework(
         content = result["messages"][-1]["content"]
         assert "回答正确" in content
         assert all(title in content for title in _SECTIONS)
-        assert "本次复盘的题目全部答对，暂无待补的理解点。" in _section(content, "还需补的点")
+        assert "本次没有判定不完整、错误或依据需重新确认的题目。" in _section(
+            content, "还需补的点"
+        )
         assert "判定为正确" in _section(content, "复盘已掌握")
         assert "第1题「" in _section(content, "复盘已掌握")
         assert "上传第1页" in _section(content, "学到了什么")

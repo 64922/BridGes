@@ -48,7 +48,7 @@ for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
     await expect(progress.getByText("复盘", { exact: true })).toHaveAttribute("aria-current", "step");
     await expect(progress.getByText("学到了什么")).toHaveCount(0);
 
-    // 最后一题判定完成后进入总结：三段分述，逐条附上题目判定与书页依据。
+    // 最后一题判定完成后进入总结：四段分述，未答/未判单独成段（工单 36）。
     conversation.study.stage = "summary";
     conversation.study.review.complete = true;
     conversation.study.summary = { points: [
@@ -59,13 +59,15 @@ for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
       "回答正确。\n\n正确答案：a 是斜率，b 是纵截距。\n\n本节学习总结（依据本节书页与复盘已判定题）"
       + "\n\n学到了什么：\n- 本节讲线性函数 y=ax+b 的斜率与截距。\n  依据：上传第1页（书上第12页） · 中部公式"
       + "\n\n复盘已掌握：\n- 能解释斜率与截距的含义。\n  依据：第1题「a 的含义是什么？」判定为正确"
-      + "\n\n还需补的点：\n- 本次复盘的题目全部答对，暂无待补的理解点。";
+      + "\n\n还需补的点：\n- 本次没有判定不完整、错误或依据需重新确认的题目。"
+      + "\n\n未作答或尚未判定：\n- 本次复盘没有未作答或尚未判定的题目。";
     await page.reload();
     await expect(progress.getByText("总结", { exact: true })).toHaveAttribute("aria-current", "step");
     await expect(progress.getByText("学到了什么")).toBeVisible();
     await expect(progress.getByText(/上传第1页（书上第12页） · 中部公式/)).toBeVisible();
     await expect(progress.getByText(/判定为正确/)).toBeVisible();
-    await expect(page.getByText(/本次复盘的题目全部答对/).first()).toBeVisible();
+    await expect(page.getByText(/本次没有判定不完整、错误或依据需重新确认的题目/).first()).toBeVisible();
+    await expect(page.getByText(/本次复盘没有未作答或尚未判定的题目/).first()).toBeVisible();
     await expect(progress.getByRole("button")).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath(`summary-${width}.png`), fullPage: true });
 

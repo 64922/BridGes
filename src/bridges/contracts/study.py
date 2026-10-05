@@ -340,9 +340,14 @@ class StudyReview(BaseModel):
 
 
 class StudySummaryPoint(BaseModel):
-    """总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。"""
+    """总结的一条结论：掌握、漏洞与未答事实都指向实际题目或本节书页片段。
 
-    kind: Literal["learned", "mastered", "gap"]
+    ``kind`` 四类分别对应本轮学过的知识、判定正确且依据仍有效的掌握、
+    判定不完整/错误或依据已更新的缺口，以及已呈现但未作答/尚未判定的题
+    （工单 36）：未答与未判必须单独列出，不得写成答对、错答或掌握。
+    """
+
+    kind: Literal["learned", "mastered", "gap", "unanswered"]
     text: str = Field(min_length=1)
     question_ids: list[str] = Field(default_factory=list)
     fragment_ids: list[str] = Field(default_factory=list)
@@ -350,6 +355,9 @@ class StudySummaryPoint(BaseModel):
 
 class StudySummary(BaseModel):
     points: list[StudySummaryPoint] = Field(min_length=1)
+    #: 生成该总结时冻结的当前有效范围版本（工单 36）：由系统在核验后
+    #: 确定性写入，不采用模型输出；旧状态（v4 及以前）读取为空。
+    scope_version_id: str = ""
 
 
 class StudySummaryRecord(BaseModel):

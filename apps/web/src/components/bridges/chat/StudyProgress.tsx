@@ -19,11 +19,13 @@ const JUDGEMENT_LABEL: Record<string, string> = {
   incorrect: "错误",
 };
 
-// 三段兜底文案与消息内总结一致：空段只陈述实际判定，不额外宣称掌握。
+// 四段兜底文案与消息内总结一致：空段只陈述实际判定，不额外宣称掌握；
+// 未作答/尚未判定单独成段，不与答对或漏洞混排（工单 36）。
 const SUMMARY_SECTIONS = [
   { kind: "learned", label: "学到了什么", empty: "本节没有可依据书页归纳的内容。" },
   { kind: "mastered", label: "复盘已掌握", empty: "本次复盘没有判定为正确的题目。" },
-  { kind: "gap", label: "还需补的点", empty: "本次复盘的题目全部答对，暂无待补的理解点。" },
+  { kind: "gap", label: "还需补的点", empty: "本次没有判定不完整、错误或依据需重新确认的题目。" },
+  { kind: "unanswered", label: "未作答或尚未判定", empty: "本次复盘没有未作答或尚未判定的题目。" },
 ] as const;
 
 function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>) {
@@ -32,7 +34,9 @@ function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>)
     labels.set(
       item.question_id,
       `第${index + 1}题「${item.question}」`
-        + (item.judgement ? `判定为${JUDGEMENT_LABEL[item.judgement]}` : "未作答"),
+        + (item.judgement
+          ? `判定为${JUDGEMENT_LABEL[item.judgement]}`
+          : item.answer != null ? "已作答（尚未判定）" : "未作答"),
     );
   });
   for (const page of state.pages ?? []) {

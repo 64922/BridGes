@@ -216,9 +216,13 @@ def test_unanswered_question_never_counts_as_mastered(
         content = result["messages"][-1]["content"]
         mastered = _section(content, "复盘已掌握")
         gaps = _section(content, "还需补的点")
+        pending = _section(content, "未作答或尚未判定")
         assert "第2题" not in mastered
-        assert "第2题" in gaps
-        assert "未作答（已呈现，未计入掌握）" in gaps
+        # 工单 36：未作答与判定不完整分开单列，未答不写成错答。
+        assert "第2题" not in gaps
+        assert "第2题" in pending
+        assert "未作答（已呈现，未计入掌握）" in pending
+        assert "第3题" in gaps and "判定为错误" in gaps
         material = gateway.summary_calls[-1]
         second = material["questions"][1]
         assert second["unanswered"] is True and second["judgement"] is None
@@ -653,10 +657,11 @@ def test_summary_basis_changed_history_is_marked_not_mastered() -> None:
             "points": [
                 {"kind": "learned", "text": "本节讲线性函数。", "fragment_ids": ["obj-2:1"]},
                 {"kind": "gap", "text": "依据已更新，需重新确认。", "question_ids": ["q1"]},
-                {"kind": "gap", "text": "未作答，需补。", "question_ids": ["q2"]},
+                {"kind": "unanswered", "text": "未作答，需补。", "question_ids": ["q2"]},
             ]
         },
     )
     rendered = render_summary(summary, state)
     assert "判定为正确（依据已更新，需重新确认）" in rendered
     assert "未作答（已呈现，未计入掌握）" in rendered
+    assert rendered.index("未作答或尚未判定") > rendered.index("还需补的点")
