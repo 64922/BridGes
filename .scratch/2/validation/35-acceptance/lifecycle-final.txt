@@ -1,0 +1,227 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_version_history_survives_lifecycle_and_legacy_read ___________
+
+tmp_path = WindowsPath('D:/BridGes/.worktrees/35-study-pause-and-appended-page-versions/.tmp/acceptance35-final-lifecycle/test_version_history_survives_0')
+
+    def test_version_history_survives_lifecycle_and_legacy_read(tmp_path):
+>       from bridges.study.service import StudyRepository
+
+tests\lifecycle\test_issue35_version_history_lifecycle.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\study\service.py:17: in <module>
+    from bridges.chat.budget import load_run_budget
+src\bridges\chat\__init__.py:6: in <module>
+    from bridges.chat.service import ChatDomainError, ChatService
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    """持久化聊天服务（Issue 11 纵向切片）。
+    
+    服务负责对话/消息的账户隔离持久化、生成状态机（streaming → done /
+    error / stopped）、用户级重试（每次重试新建助手尝试，历史原样保留）
+    与模型运行锁落库。回合编排（模式路由/检索/切片编译/提示词组装/流式
+    收敛）已收敛到深模块 ``bridges.chat.turn.TurnOrchestrator``（Issue 42
+    架构加深），本服务经 ``stream_generation`` 委托；真实供应商调用经由
+    ``ModelGateway.stream`` 完成，失败以稳定错误码返回，由 API 层映射为
+    可操作中文提示。
+    """
+    
+    from __future__ import annotations
+    
+    import contextlib
+    import logging
+    import secrets
+    import threading
+    import time
+    from collections.abc import Callable, Iterator, Mapping
+    from dataclasses import replace
+    from datetime import UTC, datetime
+    from typing import TYPE_CHECKING, Any
+    
+    from pydantic import ValidationError
+    
+    from bridges import __version__
+    from bridges.ai import ModelGateway
+    from bridges.ai.adapters import StreamEvent
+    from bridges.ai.model_quota import (
+        RUN_MODEL_QUOTA_CONFIG_KEY,
+        RunModelQuota,
+        build_run_model_quota,
+        resolve_run_quota,
+    )
+    from bridges.ai.payload_budget import CallMaterialManifest
+    from bridges.ai.run_model_config import RunModelConfigProvider, factory_run_model_config
+    from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
+    from bridges.arxiv_mcp.service import ArxivSearchService
+    from bridges.career_plan.contracts import CareerPlanProjection
+    from bridges.career_plan.service import CareerPlanService
+    from bridges.chat.attachments import (
+        PHOTO_MEDIA_TYPES,
+        ChatAttachmentError,
+        ChatAttachmentService,
+    )
+    from bridges.chat.context_compiler import CompiledTurnContext, ContextEvidence
+    from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
+    from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
+    from bridges.chat.graph import DAILY_GRAPH_VERSION, run_daily_turn
+    from bridges.chat.lifecycle import GenerationLifecycle
+    from bridges.chat.lightweight_policy import (
+        DEFAULT_OUTPUT_TOKENS,
+        continuation_source_text,
+        output_tokens_for_request,
+    )
+    from bridges.chat.material_reading import collect_photo_refs, plan_photo_reads
+    from bridges.chat.repository import (
+        ConversationModeLockConflict,
+        ConversationRecord,
+        ConversationRepository,
+        GenerationEventRecord,
+        GenerationRunRecord,
+        MessageRecord,
+        ModeEventRecord,
+    )
+    from bridges.chat.run_budget_ledger import (
+        RUN_BUDGET_INITIALS,
+        RunBudgetLedgerRepository,
+        anchor_run_budget_deadline,
+        derive_run_budget_class,
+        derive_run_budget_plan,
+    )
+    from bridges.chat.selections import (
+        ChatSelectionsService,
+        SelectionResolution,
+        selection_key,
+    )
+    from bridges.chat.summary import ChatSummaryService
+    from bridges.chat.task_materials import (
+        MODULE_DECLARATIONS,
+        ModuleTaskContext,
+        build_module_context,
+    )
+    from bridges.chat.terminal import GenerationTerminal, internal_error_outcome, stopped_outcome
+    from bridges.chat.turn import (
+        CHAT_MODE,
+        # STREAM_INTERRUPTED_MESSAGE 在此 re-export，保持既有导入路径不变
+        #（定义在 chat/turn.py；读取路径的陈旧收敛已迁入终态 module）。
+        STREAM_INTERRUPTED_MESSAGE,  # noqa: F401 - re-export
+        CareerPlannerOrchestrator,
+        TurnOrchestrator,
+        attempt_group,
+        capability_route_from,
+        # error_is_retryable / user_facing_error 在此 re-export，保持 api/chat.py
+        # 的既有导入路径不变（定义在 chat/turn.py）。
+        error_is_retryable,  # noqa: F401 - re-export
+        initial_thinking,
+        owner_user_message,
+        result_summary,
+        user_facing_error,  # noqa: F401 - re-export
+    )
+    from bridges.chat.understanding import MainAgentUnderstanding, task_turn_request
+    from bridges.commute.contracts import CommuteRouteProjection
+    from bridges.commute.service import CommuteService
+    from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
+    from bridges.contracts.career import CareerPlanningProjection
+    from bridges.contracts.chat import (
+        CHAT_MODULE_VALUES,
+        ChatConversationListProjection,
+        ChatConversationProjection,
+        ChatConversationSummary,
+        ChatFirstTurnResponse,
+        ChatMessageProjection,
+        ChatMessageRole,
+        ChatMessageStatus,
+        ChatMode,
+        ChatModeEventProjection,
+        ChatModuleId,
+        ChatPluginSelectionItem,
+        ChatRunStatus,
+        ChatRunView,
+        ChatStreamEventKind,
+        ChatStreamStartedData,
+        ChatThinkingSummary,
+        ContextNoteProjection,
+        ImageRequestPayload,
+        McpCallMessageProjection,
+        McpCallRequestPayload,
+        McpCallStatus,
+        ModuleSuggestionProjection,
+        RemovedPluginSelection,
+        VideoRequestPayload,
+    )
+    from bridges.contracts.feedback import (
+        AnswerFeedback,
+        AnswerFeedbackRequest,
+        FeedbackKind,
+        FeedbackStatus,
+    )
+    from bridges.contracts.humanizer import (
+        HUMANIZER_CHECKPOINT_KEY,
+        HumanizerResultProjection,
+    )
+    from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
+    from bridges.contracts.mcp import McpError
+    from bridges.contracts.observability import AuditAction, AuditResult
+    from bridges.contracts.profile_extraction import (
+        ProfileCorrectionResult,
+        ProfileCorrectionStatus,
+        ProfilePreprocessResult,
+    )
+    from bridges.contracts.profiles import ProfileNotification
+    from bridges.contracts.routing import RouteDecision
+    from bridges.contracts.speech import ReadAloudProjection
+    from bridges.contracts.summaries import HistorySummary
+    from bridges.contracts.tasks import TaskRecord, TaskRelation, TaskTurnRequest, TaskWait
+    from bridges.contracts.teaching import TeachingTurnProjection
+    from bridges.contracts.teaching_progress import (
+        LearningProgressProjection,
+        PlanAdjustment,
+    )
+    from bridges.contracts.understanding import (
+        UNDERSTANDING_CONTRACT_VERSION,
+        HardCondition,
+        HardConditionKind,
+        MainUnderstanding,
+        RouteSource,
+        understanding_from_snapshot,
+    )
+    from bridges.contracts.video import VideoTaskProjection
+    from bridges.contracts.workflows import RunContextEnvelope
+    from bridges.github.contracts import GithubProjectsProjection
+    from bridges.github.service import GithubProjectsService
+    from bridges.learning.progress import TeachingProgressService
+    from bridges.learning.teaching_gate import TeachingTurnService
+    from bridges.mcp.service import McpService
+    from bridges.observability.service import ObservabilityService
+    from bridges.paper.contracts import PaperSearchProjection
+    from bridges.paper.service import PaperSearchService
+    from bridges.paper.suggestion import PAPER_REQUEST_HINTS
+    from bridges.profiles.atomic import AtomicProfileService
+    from bridges.profiles.automatic import AutomaticProfileService
+    from bridges.profiles.four_dimensions import FourDimensionProfileService
+    from bridges.profiles.service import ProfileService
+    from bridges.profiles.signals import ProfileSignalCategory, ProfileSignalClassifier
+    from bridges.resources.contracts import LearningResourcesProjection
+    from bridges.resources.service import LearningResourcesService
+    from bridges.retrieval.decision import capability_route_for_request
+    from bridges.retrieval.service import LayeredRetrievalService
+    from bridges.routing import (
+        MODULE_CAPABILITIES,
+        CapabilityRoute,
+        MainCapability,
+        NaturalLanguageRouter,
+        RouteStatus,
+    )
+    from bridges.state_copy import (
+        WAIT_DELETE_IN_PROGRESS_TEXT,
+        WAIT_GENERATION_IN_PROGRESS_TEXT,
+    )
+    from bridges.storage.errors import StorageError
+>   from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository, StudyWorkflow
+E   ImportError: cannot import name 'STUDY_GRAPH_VERSION' from partially initialized module 'bridges.study.service' (most likely due to a circular import) (D:\BridGes\.worktrees\35-study-pause-and-appended-page-versions\src\bridges\study\service.py)
+
+src\bridges\chat\service.py:202: ImportError
+=========================== short test summary info ===========================
+FAILED tests/lifecycle/test_issue35_version_history_lifecycle.py::test_version_history_survives_lifecycle_and_legacy_read
+1 failed in 2.39s
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests/lifecycle/test_issue35_version_history_lifecycle.py --basetemp=.tmp/acceptance35-final-lifecycle --junitxml=.scratch/2/validation/35-acceptance/lifecycle-final.xml -q` failed. (See above for error)
+

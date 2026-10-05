@@ -4,7 +4,7 @@
 
 **Blocked by:** 30 — 按页恢复书页识别并定位关键材料疑点；31 — 核验知识范围覆盖并提交辅助预习；33 — 出题前冻结并核验覆盖计划与评分要点；34 — 幂等判定作答并执行一次覆盖反馈
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -74,4 +74,14 @@
 
 - 网关替身只证明确定性机制；真实模型的未答总结、依据变化标注与补拍识别体验由评测票 42 验证。
 - 本票未合并、未推送，待独立验收：分支 `codex/35-study-pause-and-appended-page-versions`，工作树 `.worktrees/35-study-pause-and-appended-page-versions`，基点 `3665008b`。
+
+### 2026-10-05 独立验收与修复
+
+依据工单、规范、实际代码和本次独立执行，修复后达到本票确定性验收标准。上节为编码代理历史交付，独立证据以 [验收报告](../acceptance/35-study-pause-and-appended-page-versions.md) 为准。
+
+- code-review Standards / Spec 双轴独立审查并复审完成。需求轴发现候选写覆盖并发有效状态、旧图恢复不兼容两项；主审反例另发现持久停止被终态豁免跳过、已答未判标签误标未答。修复源码提交 `7b464f98`，图升级 v6，历史 v5 安全结束后显式重试。
+- 原交付独立竞争反例 4 failed / 1 passed、标签反例 1 failed；修复后独立新回归 7 passed，最终隔离字节码缓存组合 22 passed，边界/总结组合 30 passed。
+- 最终扩展组合 235 passed / 5 failed；同 5 项生命周期 API 失败在 main 精确复现。本次全量 main 5301 passed / 225 failed / 37 skipped / 2 errors，分支 5320 passed / 222 failed / 39 skipped / 2 errors。唯一仅分支失败为新增生命周期旧夹具的默认值断言，已修正并复验；未把它归为旧基线失败。最终没有剩余新增产品回归。
+- 新状态实际导出、备份恢复、删除、账户隔离通过；Ruff 通过；Mypy 全 src 与 main 同一 108 项错误集合；OpenAPI/TypeScript 再生一致。验收日志凭据匹配值已脱敏，计数/标识/断言保留。
+- 合并、推送提交及清理状态见验收报告交付段。真实模型、外部服务和浏览器体验继续按评测票验证，本次不宣称仓库全绿。
 

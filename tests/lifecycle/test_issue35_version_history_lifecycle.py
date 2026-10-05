@@ -1,5 +1,6 @@
 """工单 35：版本 4 历史的迁移、导出、备份恢复、删除与账户隔离。"""
 
+import importlib
 import json
 
 from bridges.contracts.study import StudyState
@@ -7,6 +8,8 @@ from tests.lifecycle.harness import Harness
 
 
 def test_version_history_survives_lifecycle_and_legacy_read(tmp_path):
+    # 初始化既有聊天组合根，避免学习/聊天服务的既有循环导入依赖收集顺序。
+    importlib.import_module("bridges.chat")
     from bridges.study.service import StudyRepository
 
     harness = Harness(tmp_path)

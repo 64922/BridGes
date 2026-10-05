@@ -2,6 +2,8 @@
 
 日期：2026-10-05。原交付 `3e652e4f678d398f1803d9391aaab8ff8622b6f0`，固定 main 基线 `3665008b2a008ca36d02e0cfeb3896525aa8f640`。交接报告只用于定位；证据来自实际代码、双轴独立审查、本次执行的测试与 main 对照。
 
+结论：修复后通过本票确定性验收。修复源码提交 `7b464f98`；后续提交仅完善独立测试初始化与验收证据。全量对账无剩余新增产品回归，真实模型与浏览器验证限制见末节。
+
 ## Standards（规范符合性）
 
 code-review 规范轴独立审查 AGENTS、CONTEXT、批次执行说明、领域文档、工作流、ADR 及全部 12 项 smell baseline。静态初审报告 0 项硬违反、0 项值得报告的异味；修复复审通过。规范轴结论与需求轴分别记录。
@@ -52,13 +54,15 @@ code-review 规范轴独立审查 AGENTS、CONTEXT、批次执行说明、领域
 - 新增独立回归最终 `green.xml`：**7 passed**，包括完整生命周期。早期生命周期夹具缺字段/默认值/嵌套导出解析已修正，最终按真实导出 state_json 与保存状态逐字结构比较。
 - 最终扩展组合 `final-focused.xml`：**235 passed / 5 failed**。同 5 项 `tests/lifecycle/test_lifecycle_api.py` 在 main 独立复现（`main-lifecycle.xml`，**9 passed / 5 failed**）：会话创建返回 409，旧测试预期 201，属于既有失败。本票生命周期机制独立通过。
 - 最后将消息终态豁免限定最终回调后的 `final-boundary.xml`：**30 passed**，含本票原交付测试、新增竞争/生命周期、总结回归。
-- Ruff 本票源码/测试通过；chat/service.py 仅增加历史 v5 路由，原文件既有格式问题不作无关修改。`git diff --check` 通过。
+- Ruff 本票源码/测试通过；chat/service.py 单独运行也通过（chat-service-ruff.json 为 []）。`git diff --check` 通过。
 - 本次 `python -m mypy src/bridges`：分支与 main **均 108 errors in 22 files**，逐条错误集合一致，无新增。原交接不同范围命令的 22 项不作为此命令基线。
-- 全量 main/分支运行及逐 nodeid 差分仍待收尾，完成后在下节记录实际结果。
+- 本次独立全量 main：**5301 passed / 225 failed / 37 skipped / 2 errors**（1686.37 秒）；分支：**5320 passed / 222 failed / 39 skipped / 2 errors**（1502.36 秒）。记录 main-full.* / full.*，按 nodeid 差分见 full-compare.json，比较脚本随记录保存。日志发现 1 处测试凭据匹配，full.txt/full.xml 已脱敏，测试标识、失败类型和计数不变；sanitizer 随证据保存，未改他人日志。
+- 分支全量是在生命周期夹具最终修正及标签补测之前启动，不能声称它是最后提交的完整全绿运行。新增 18 项采集、无删除测试，其中 17 项通过；唯一仅分支失败是新增生命周期测试对旧总结默认 `question_ids=[]` 的夹具断言遗漏。已修正默认值和嵌套导出解析，green/final-focused/final-boundary 均通过；生命周期单跑又暴露现有聊天/学习循环导入，测试显式初始化既有聊天组合根后消除收集顺序依赖。最终使用独立 PYTHONPYCACHEPREFIX、生命周期优先收集的 `final-recheck.xml`：**22 passed**（原票 12 + 独立新回归 7 + 合同 3），验证最终文件与字节码缓存无关。这些新增测试失败不是遗留基线失败，已逐项修正并复验。
+- 仅 main 失败的 4 项：预算重试 active/closed 时序（main 单跑 main-budget.xml **1 passed**）、两项启动/端口测试（工作树无 Web 构建按 NEEDS_WEB_BUILD 跳过）、秘密扫描（main 已有未跟踪 34-review-main-full.txt 告警；分支全量无此文件）。其他失败/错误同 main；没有把绝对失败数量变少当作验收证据。
 
 ## 交付状态
 
-本票修复及聚焦验证完成；全量对账、合并、推送和工作树清理尚未完成。待验证完成再追加实际提交与远端一致性结果。
+本票修复、双轴终审、聚焦验证与全量对账完成，达到合入条件。main/远端基点仍为 `3665008b`。合并、推送和工作树清理结果在完成后追加。
 
 ## 剩余限制
 

@@ -1,0 +1,45 @@
+{
+  "main": {
+    "passed": 5301,
+    "failure": 225,
+    "error": 2,
+    "skipped": 37
+  },
+  "branch": {
+    "passed": 5320,
+    "failure": 222,
+    "error": 2,
+    "skipped": 39
+  },
+  "branch_only_failures": [
+    "tests.lifecycle.test_issue35_version_history_lifecycle::test_version_history_survives_lifecycle_and_legacy_read"
+  ],
+  "main_only_failures": [
+    "tests.chat.test_improvement09_run_budget_integration::test_retry_creates_new_budget_run",
+    "tests.runtime.test_runtime_contract::test_startup_full_journey_start_health_duplicate_reject_stop_restart",
+    "tests.runtime.test_runtime_contract::test_startup_reports_chinese_error_when_port_is_occupied",
+    "tests.security.test_secret_scan::test_repository_contains_no_committed_secrets"
+  ],
+  "new_tests": {
+    "tests.chat.test_improvement35_acceptance::test_append_final_transaction_rejects_late_authority_change[lease]": "passed",
+    "tests.chat.test_improvement35_acceptance::test_append_final_transaction_rejects_late_authority_change[stop]": "passed",
+    "tests.chat.test_improvement35_acceptance::test_candidate_write_preserves_concurrent_effective_state[mapping]": "passed",
+    "tests.chat.test_improvement35_acceptance::test_candidate_write_preserves_concurrent_effective_state[recognition]": "passed",
+    "tests.chat.test_improvement35_acceptance::test_previous_graph_cannot_replay_pre_versioned_update": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_append_after_summary_versions_history_and_preview_questions": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_append_failure_keeps_effective_scope_and_reuses_recognized_pages[map]": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_append_failure_keeps_effective_scope_and_reuses_recognized_pages[ocr]": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_append_switch_rejected_when_effective_state_changed_mid_run": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_new_page_critical_unclear_blocks_switch_and_supplement_resolves": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_pause_is_not_graded_and_resume_defaults_to_next_unasked": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_replacement_keeps_superseded_source_fragments": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_restart_after_append_failure_recovers_without_duplicates": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_scope_conflict_blocks_switch_until_resolved": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_stop_during_append_keeps_effective_state_and_recovers": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_summary_basis_changed_history_is_marked_not_mastered": "passed",
+    "tests.chat.test_improvement35_study_pause_and_appended_versions::test_unanswered_question_never_counts_as_mastered": "passed",
+    "tests.lifecycle.test_issue35_version_history_lifecycle::test_version_history_survives_lifecycle_and_legacy_read": "failure"
+  },
+  "removed_tests": []
+}
+
