@@ -6,6 +6,8 @@
 
 **Status:** ready-for-human
 
+**验收结论：** 2026-10-05 独立验收通过；详见 [验收报告](../acceptance/36-evidence-bound-study-summary.md)。
+
 **优先级：** P1
 
 ## 背景与需求
