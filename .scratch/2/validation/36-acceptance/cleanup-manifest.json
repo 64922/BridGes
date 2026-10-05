@@ -1,0 +1,170 @@
+[
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-full.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-full.txt",
+    "sha256": "4B982C01D65DC5FB97CC2D15ECF7EA73BC90A7D4DE1FEAE0009AE64E00CB0E22",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-full.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-full.xml",
+    "sha256": "FD38B20E333AEEC86994235F0BD058B50D6571D45FC5BB735219ACFD9DCDF202",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-mypy.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-mypy.txt",
+    "sha256": "78C53A36CD782BD5600C84ED3C66F4922A2E0BDF06B632B461E3174768DA8E33",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-ruff.json",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-ruff.json",
+    "sha256": "A98C5B9D324384E66F9F5FF6188793AB185DA3A0FD09E5568B365C715B66191F",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-web-lint-direct.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-web-lint-direct.txt",
+    "sha256": "DEC8F2AB343A38B8FE57C07D344BBD915F3CC2FC24C244294C12C03F35F9E6CA",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-web-typecheck.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-web-typecheck.txt",
+    "sha256": "5823947CDE8440995678CB880FC61942004F4529C6505439CD8BBD1F333885F3",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\branch-web-unit-direct.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\branch-web-unit-direct.txt",
+    "sha256": "36AB4E4334B3A295C4DF903FE54C07B9A347281C85E59DA1C724C6376CA18AD8",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\final-mypy.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\final-mypy.txt",
+    "sha256": "78C53A36CD782BD5600C84ED3C66F4922A2E0BDF06B632B461E3174768DA8E33",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-full.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-full.txt",
+    "sha256": "11AED610040CB49C4FBC27727AC70EB54CEC5DD0BB167BAB7F716967397B79BB",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-full.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-full.xml",
+    "sha256": "43D0DAECC37A9DF9AD8234C6F1CB519243A6C0C53C2259884306CB9917707948",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-lifecycle.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-lifecycle.txt",
+    "sha256": "0013FDF7B1B102B91D5C7FFCF970C9A8076DA05CF372298A0F4C3180D2B6C493",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-lifecycle.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-lifecycle.xml",
+    "sha256": "F4A1DF4163B2E7F49E49AC187726F3DDA4E12F3F50985107A850BE86882F62C9",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-mypy.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-mypy.txt",
+    "sha256": "78C53A36CD782BD5600C84ED3C66F4922A2E0BDF06B632B461E3174768DA8E33",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-ruff.json",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-ruff.json",
+    "sha256": "578D271D106FB83A34797E7D9E2C08EADA3FD39723DD40B9A59326E89F728F72",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-acceptance\\main-web-typecheck.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-acceptance-preserved\\36-acceptance\\main-web-typecheck.txt",
+    "sha256": "EFAD28900EF697A9EF2397971E3B99678842B4EF6FF466C3F88FA7BCBC20A557",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\branch-full-final.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\branch-full-final.txt",
+    "sha256": "B4ED73756623A707407FA623368A3B901EA62E2C873F1E82BB27995DC291322E",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\branch-full-final.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\branch-full-final.xml",
+    "sha256": "3ABE58E4A74BAB56A43D3FFAA7D7F6414F00740D1084BB0209BC064965AD7706",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\branch-full.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\branch-full.txt",
+    "sha256": "8474080A61FF755A5914C6DFD7728463D328D739B3A9238B77C701DC8475DAC7",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\branch-full.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\branch-full.xml",
+    "sha256": "892F620FE61357176D7AD3E190CB27AAE7FF71A8FBB1A8312AFC30687B91BDE1",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\final-focused-final.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\final-focused-final.txt",
+    "sha256": "D455F0219C617DA33B39CCCD8DB82C48828BBF47CF9A683A02758AB49BCFF92A",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\final-focused-final.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\final-focused-final.xml",
+    "sha256": "35D9465C3EE86D1D03970008299055598ADDAF63E6EA1B261FE2A8A8B7C8AB9A",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\final-focused.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\final-focused.txt",
+    "sha256": "15A03AB082772B680683A26E29D089C40D8A91E554F9908EB3F605107CEDB4DD",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\final-focused.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\final-focused.xml",
+    "sha256": "EAFE4D4787A05AEAF9AC79C506018AB276B2C3B0E0360D21A826C227B9249B77",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\final-mypy.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\final-mypy.txt",
+    "sha256": "6844755644C5C068A1F5BDEF822AB0ACB466F3A380B05B8C3EEB5FC5A219626C",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\full-compare.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\full-compare.txt",
+    "sha256": "91C97197FB4EA814C503C107AB612905127006B787BB9A62B550B036D53F3A79",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\main-focused.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\main-focused.txt",
+    "sha256": "8504C603C7A91B4A61111C92C61E29A59FE6174762A7D9FDE23E41DA619381AE",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\main-full.txt",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\main-full.txt",
+    "sha256": "92695F4B68D122CEFEBD9BA5E0D8F0448CB6A611F91D2D62A1D9D117097DD226",
+    "verified": true
+  },
+  {
+    "source": "D:\\BridGes\\.worktrees\\36-evidence-bound-study-summary\\.scratch\\2\\validation\\36-review\\main-full.xml",
+    "preserved": "D:\\BridGes\\.scratch\\2\\validation\\36-review-preserved\\36-review\\main-full.xml",
+    "sha256": "B7D44316F26D1019CC02524A1D2706E1EC839A2EE5D918EA189540CF193AD1B4",
+    "verified": true
+  }
+]
