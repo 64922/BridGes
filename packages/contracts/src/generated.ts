@@ -10020,6 +10020,8 @@ export interface components {
              * @description 可操作的中文错误说明。
              */
             error_message?: string | null;
+            /** @description 本条助手消息的公开回合结果投影（含能力/可信/恢复）。 */
+            turn_result?: components["schemas"]["TurnResultProjection"] | null;
             /**
              * Duration Ms
              * @description 本次生成耗时（毫秒）。
@@ -21909,6 +21911,16 @@ export interface components {
             reasons?: string[];
         };
         /**
+         * ResultTrust
+         * @description 已交付结果块的公开可信状态（工单 38）。
+         *
+         *     只发布已经过对应质量门的结果块：``QUALIFIED`` 为通过核验的完整结果，
+         *     ``EVIDENCE_BOUND`` 为证据已绑定但如实保留范围/读取缺口的有效部分。
+         *     待核验草稿不进入公开投影。
+         * @enum {string}
+         */
+        ResultTrust: "qualified" | "evidence_bound";
+        /**
          * RetiredCapabilityError
          * @description 稳定的 410 响应体，不回显账户、路径参数或请求正文。
          */
@@ -27375,6 +27387,161 @@ export interface components {
              * @default 1
              */
             confidence: number;
+        };
+        /**
+         * TurnOutcome
+         * @description 一次回合的公开交付分类（工单 38）。
+         *
+         *     与运行状态（``ChatRunStatus``）和产物可信状态分开：运行完成不等于
+         *     结果可用，部分交付不等于失败。澄清成功提交的消息对应 ``NEEDS_INPUT``
+         *     ——任务仍等待输入，不是任务完成。
+         * @enum {string}
+         */
+        TurnOutcome: "complete" | "needs_input" | "partial" | "blocked" | "cancelled" | "failed";
+        /**
+         * TurnRecoveryProjection
+         * @description 一次回合的真实恢复方式（工单 38，复用固定状态文案注册表）。
+         *
+         *     只承诺真实可用的恢复：可重试才给重试，限流/冷却给等待，配置类失败
+         *     只提示联系管理员；``available_after`` 仅在领域结果给出真实恢复时刻时
+         *     携带，前端按用户时区展示。
+         */
+        TurnRecoveryProjection: {
+            /**
+             * Action
+             * @description RecoveryAction 值（retry/wait/reconfigure/…）。
+             */
+            action: string;
+            /**
+             * Label
+             * @description 中文恢复说明。
+             */
+            label: string;
+            /**
+             * Retryable
+             * @description 是否可点击重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Available After
+             * @description 真实可用的恢复时刻；没有真实时刻为 None。
+             */
+            available_after?: string | null;
+        };
+        /**
+         * TurnResultBlock
+         * @description 一个已交付/被阻塞的模块结果块（不含正文与内部证据）。
+         *
+         *     ``state`` 保留领域模块的真实状态值，``detail`` 为可操作的中文说明；
+         *     两者都来自真实投影，不交给模型改写。
+         */
+        TurnResultBlock: {
+            /**
+             * Module Id
+             * @description 已登记模块标识。
+             */
+            module_id: string;
+            /**
+             * Label
+             * @description 模块中文名。
+             */
+            label: string;
+            /**
+             * State
+             * @description 领域投影的真实状态值。
+             */
+            state: string;
+            /** @description 该块的可信状态。 */
+            trust: components["schemas"]["ResultTrust"];
+            /**
+             * Detail
+             * @description 可操作中文说明；无补充为空。
+             * @default
+             */
+            detail: string;
+        };
+        /**
+         * TurnResultProjection
+         * @description 一条助手消息的公开回合结果投影（工单 38）。
+         *
+         *     只包含用户可理解的交付面：请求模块提示与实际执行能力分开、实际交付
+         *     的结果块、被阻塞项、真实恢复方式与等待语义；不包含内部步骤、证据
+         *     原文、模型思维链或私有评分依据。
+         */
+        TurnResultProjection: {
+            /**
+             * Version
+             * @description 结果投影合同版本。
+             * @default turn-result-v1
+             */
+            version: string;
+            /** @description 本轮交付分类。 */
+            outcome: components["schemas"]["TurnOutcome"];
+            /**
+             * Outcome Label
+             * @description 交付分类的中文自然文案。
+             */
+            outcome_label: string;
+            /** @description 整体可信状态；无可信结果块为 None。 */
+            trust?: components["schemas"]["ResultTrust"] | null;
+            /**
+             * Trust Label
+             * @description 可信状态中文说明。
+             */
+            trust_label?: string | null;
+            /**
+             * Requested Module Id
+             * @description 请求携带的模块提示（历史标识，不重写）。
+             */
+            requested_module_id?: string | null;
+            /**
+             * Actual Module Id
+             * @description 代码校验后实际执行的模块；未派发为 None。
+             */
+            actual_module_id?: string | null;
+            /**
+             * Capability List
+             * @description 本轮实际路由的能力列表（模块 ID）。
+             */
+            capability_list?: string[];
+            /**
+             * Route Source
+             * @description 实际路由来源（正文意图/模块提示/建议点击等）。
+             */
+            route_source?: string | null;
+            /**
+             * Delivered
+             * @description 已交付的通过门结果块。
+             */
+            delivered?: components["schemas"]["TurnResultBlock"][];
+            /**
+             * Blocked
+             * @description 被阻塞/失败的模块项及真实原因。
+             */
+            blocked?: components["schemas"]["TurnResultBlock"][];
+            /**
+             * Gaps
+             * @description 本轮未完成的缺口（来自真实限制与阻塞结论）。
+             */
+            gaps?: string[];
+            /** @description 真实可用的恢复方式；无需恢复为 None。 */
+            recovery?: components["schemas"]["TurnRecoveryProjection"] | null;
+            /**
+             * Wait Reason
+             * @description 待输入原因（澄清/补充信息）；非等待为 None。
+             */
+            wait_reason?: string | null;
+            /**
+             * Task Id
+             * @description 关联跨轮任务标识；无任务为 None。
+             */
+            task_id?: string | null;
+            /**
+             * Task Version
+             * @description 关联任务版本；建议点击据此绑定，不改写历史。
+             */
+            task_version?: number | null;
         };
         /**
          * UserFeedback

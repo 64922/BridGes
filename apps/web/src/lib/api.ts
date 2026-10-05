@@ -21,6 +21,9 @@ export type DeviceAccountProjection = components["schemas"]["DeviceAccountProjec
 export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsResponse"];
 export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
 export type ChatMessageProjection = components["schemas"]["ChatMessageProjection"];
+// 改进工单 38：公开回合结果投影（交付分类/可信状态/真实恢复与等待语义）。
+export type TurnResultProjection = components["schemas"]["TurnResultProjection"];
+export type TurnResultBlock = components["schemas"]["TurnResultBlock"];
 export type ChatAttachmentProjection = components["schemas"]["ChatAttachmentProjection"];
 // Issue 05：聊天照片草稿（账户域，发送时原子绑定到消息）。
 export type ChatAttachmentDraftProjection = components["schemas"]["ChatAttachmentDraftProjection"];

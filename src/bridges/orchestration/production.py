@@ -15,7 +15,13 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from bridges.contracts.chat import ChatMessageStatus
+from bridges.contracts.chat import (
+    ChatMessageStatus,
+    ResultTrust,
+    TurnOutcome,
+    TurnResultBlock,
+    TurnResultProjection,
+)
 from bridges.contracts.modules import ModuleDelivery
 from bridges.contracts.understanding import HardCondition, HardConditionKind
 from bridges.kernel.contracts import ArtifactTrust, InputDependency, NodeArtifact
@@ -354,6 +360,123 @@ def message_status_for(outcome: CompositeOutcome) -> ChatMessageStatus:
     return ChatMessageStatus.DONE
 
 
+#: 复合调度状态 → 公开交付分类（工单 38）。
+_COMPOSITE_TURN_OUTCOMES: dict[CompositeStatus, TurnOutcome] = {
+    CompositeStatus.COMPLETED: TurnOutcome.COMPLETE,
+    CompositeStatus.PARTIAL: TurnOutcome.PARTIAL,
+    CompositeStatus.NEEDS_INPUT: TurnOutcome.NEEDS_INPUT,
+    CompositeStatus.BLOCKED: TurnOutcome.BLOCKED,
+    CompositeStatus.FAILED: TurnOutcome.FAILED,
+    CompositeStatus.STOPPED: TurnOutcome.CANCELLED,
+    CompositeStatus.REJECTED: TurnOutcome.BLOCKED,
+}
+
+
+def turn_result_for_outcome(
+    outcome: CompositeOutcome,
+    *,
+    task_id: str | None = None,
+    task_version: int | None = None,
+) -> TurnResultProjection:
+    """复合结果的公开回合投影：只含通过门的交付块与真实阻塞/恢复。
+
+    待核验草稿不进入：只有 ``COMPLETED 且 trust=qualified`` 的步骤成为
+    已交付块；未合格完成、失败、阻塞与失效步骤只作为缺口与真实原因列出。
+    路由能力字段由读取投影从消息路由快照补齐。
+    """
+    from bridges.chat.turn_result import (  # noqa: PLC0415
+        TURN_RESULT_VERSION,
+        outcome_label,
+        recovery_for_error,
+        trust_label,
+    )
+    from bridges.state_copy import render_state_copy  # noqa: PLC0415
+    from bridges.state_copy.catalog import COMPOSITE_MODULE_LABELS  # noqa: PLC0415
+
+    delivered: list[TurnResultBlock] = []
+    blocked: list[TurnResultBlock] = []
+    for step in outcome.steps:
+        label = COMPOSITE_MODULE_LABELS.get(step.module_id, step.module_id)
+        if step.state is StepState.COMPLETED and step.trust_state == "qualified":
+            delivered.append(
+                TurnResultBlock(
+                    module_id=step.module_id,
+                    label=label,
+                    state=step.state.value,
+                    trust=ResultTrust.QUALIFIED,
+                    detail=step.summary if step.summary else "",
+                )
+            )
+        elif step.state is StepState.COMPLETED:
+            blocked.append(
+                TurnResultBlock(
+                    module_id=step.module_id,
+                    label=label,
+                    state=step.state.value,
+                    trust=ResultTrust.EVIDENCE_BOUND,
+                    detail=render_state_copy("composite.result.unqualified"),
+                )
+            )
+        elif step.state is StepState.NEEDS_INPUT:
+            continue
+        elif step.state is not StepState.SKIPPED and step.state is not StepState.PENDING:
+            detail = (
+                step.failure.message
+                if step.failure is not None
+                else (step.blocked_reason or "该分支未形成可交付结果。")
+            )
+            blocked.append(
+                TurnResultBlock(
+                    module_id=step.module_id,
+                    label=label,
+                    state=step.state.value,
+                    trust=ResultTrust.EVIDENCE_BOUND,
+                    detail=detail,
+                )
+            )
+    result_outcome = _COMPOSITE_TURN_OUTCOMES.get(
+        outcome.status, TurnOutcome.BLOCKED
+    )
+    if result_outcome is TurnOutcome.COMPLETE and blocked:
+        result_outcome = TurnOutcome.PARTIAL
+    overall_trust: ResultTrust | None = None
+    if delivered:
+        overall_trust = (
+            ResultTrust.QUALIFIED if not blocked else ResultTrust.EVIDENCE_BOUND
+        )
+    failure = first_failure(outcome)
+    gaps = list(
+        dict.fromkeys(
+            [
+                *outcome.blocked_conclusions,
+                *(item.detail for item in blocked if item.detail),
+            ]
+        )
+    )
+    return TurnResultProjection(
+        version=TURN_RESULT_VERSION,
+        outcome=result_outcome,
+        outcome_label=outcome_label(result_outcome),
+        trust=overall_trust,
+        trust_label=trust_label(overall_trust) if overall_trust is not None else None,
+        delivered=delivered,
+        blocked=blocked,
+        gaps=gaps,
+        recovery=(
+            recovery_for_error(failure.code)
+            if result_outcome is TurnOutcome.FAILED and failure is not None
+            else None
+        ),
+        wait_reason=(
+            wait_reason_for(outcome)
+            if result_outcome is TurnOutcome.NEEDS_INPUT
+            else None
+        ),
+        task_id=task_id,
+        task_version=task_version,
+    )
+
+
 def first_failure(outcome: CompositeOutcome) -> StepFailure | None:
     for step in outcome.steps:
         if step.failure is not None:
@@ -598,5 +721,6 @@ __all__ = [
     "projection_updates",
     "render_final_content",
     "step_result_from_delivery",
+    "turn_result_for_outcome",
     "wait_reason_for",
 ]

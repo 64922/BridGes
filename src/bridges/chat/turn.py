@@ -118,6 +118,7 @@ from bridges.contracts.chat import (
     McpCallMessageProjection,
     McpCallRequestPayload,
     McpCallStatus,
+    TurnResultProjection,
     VideoRequestPayload,
 )
 from bridges.contracts.humanizer import HumanizerSkillInput
@@ -2569,6 +2570,7 @@ def finalize_message(
     learning_resources: dict[str, Any] | None = None,
     commute_route: dict[str, Any] | None = None,
     github_projects: dict[str, Any] | None = None,
+    turn_result: TurnResultProjection | dict[str, Any] | None = None,
 ) -> int:
     """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。
 
@@ -2576,6 +2578,9 @@ def finalize_message(
     所有终态路径（生成/停止/陈旧收敛）共用这一处。
 
     Issue 10：传入 ``lock`` 时，运行锁与消息终态在同一事务内持久化。
+
+    工单 38：``turn_result`` 由复合计划在守卫事务内传入精确结果；其余
+    路径不传，读取投影按同一规则确定性推导。
 
     返回影响行数：0 表示消息已不是 streaming（并发收尾已先提交）。
     """
@@ -2607,6 +2612,11 @@ def finalize_message(
         teaching=teaching,
         persist_learning=persist_learning,
         final_content=final_content,
+        turn_result=(
+            turn_result.model_dump(mode="json")
+            if isinstance(turn_result, TurnResultProjection)
+            else turn_result
+        ),
     )
 
 

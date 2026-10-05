@@ -53,3 +53,76 @@
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
 
+## 实施记录（2026-10-05）
+
+分支 `codex/38-trusted-progress-and-result-projection`，worktree
+`.worktrees/38-trusted-progress-and-result-projection`，基点
+`main@9f27c49bbf0eb7113a06a2910320df89bfce32c7`（前置票 06/22/23/36/37
+已合并并独立验收）。
+
+### 实现说明
+
+- **回合结果投影（读取时确定性推导）**：新增 `chat/turn_result.py`，按消息
+  终态、错误码、路由快照、六个领域投影与运行等待缘由推导 `TurnResultProjection`
+  （交付分类/可信状态/请求与实际能力/已交付与被阻塞块/缺口/真实恢复/等待）。
+  历史消息 `turn_result` 列为空时读取推导，零回填迁移。固定文案全部来自
+  `state_copy` 注册表（工单 23），不调用模型、不读取证据原文。
+- **复合运行精确结果（提交事务内）**：`orchestration/production.py` 新增
+  `turn_result_for_outcome`，把复合结果收敛为公开交付面：只有
+  `COMPLETED 且 trust_state=qualified` 的步骤进入已交付块；未合格完成/失败/
+  阻塞/失效步骤只作为阻塞项与真实原因；`graph.py::_persist_composite_result`
+  在同一守卫事务内把它与正文、领域投影、终态一起提交。设计（待核验）草稿
+  不进入任何投影输入。
+- **领域状态映射**：`clarification→needs_input`、`error→failed`、
+  `stopped→cancelled`、`links_only/metadata_only/unverified→partial+evidence_bound`、
+  成功→`complete+qualified`；不可恢复全部失败→`blocked`。恢复方式经登记的
+  `error_recovery` 分类，仅 `web_search.cooldown_until` 为真实可用时刻。
+- **前端正式路径**：新增 `TurnResultCard`（交付分类/可信状态/能力/已交付/
+  未完成/缺口/恢复），在 `MessageList` 随权威历史渲染；`chat-thread.tsx`
+  修复停止消息被折叠成普通完成的问题并透传 `turn_result`；`page.tsx`
+  `load()` 不再无条件清空进行态，避免轮询/错误收敛刷新触发重复订阅与正文
+  回退（仍有活跃运行的同一消息保留既有订阅，从服务端游标续读）。
+- **接口/迁移变化**：`contracts/chat.py` 新增 `TurnOutcome`、`ResultTrust`、
+  `TurnResultBlock`、`TurnRecoveryProjection`、`TurnResultProjection`；
+  `ChatMessageProjection` 新增 `turn_result`。数据库迁移 69：
+  `messages.turn_result TEXT`（SCHEMA_VERSION 69）。导出/删除走
+  `lifecycle/catalog.py` 的 messages 通用表序列化，备份为整库快照，新列自动
+  覆盖，无需额外登记。OpenAPI 与 `packages/contracts/src/generated.ts` 已再生成。
+- **SSE 协议**：不新增正文事件类型（06 拥有）；结果块在原子提交后经
+  `done` 事件载荷/权威历史发布，进度沿用真实 `node`/`stage` 事件。
+
+### 验证结果
+
+- 后端单测 `tests/chat/test_issue38_turn_result.py`：**13 passed**（推导映射、
+  受阻/恢复/冷却时刻、复合门合格块、持久值优先+路由补齐、损坏载荷回退、
+  迁移 69 旧库保留、终态事务内持久化与对话读取）。
+- 前端单测（vitest）：`TurnResultCard.test.tsx` + `chat-thread.test.tsx`
+  全量 **229 passed**；`npm run typecheck` 仅剩 main 既有测试类型错误
+  （与 main 同）；`npm run lint` 无新增；`npm run build` 成功。
+- E2E `apps/web/e2e/issue38-trusted-progress.spec.ts`：**6 passed**
+  （1280×720 / 1440×900 / 1920×1080 各 2 条）——终态历史结果卡与键盘可达的
+  继续入口；真实 API+执行器+SSE 流式进度、Esc 停止、取消投影、停止后无新
+  调用、刷新一致与三视口无横向溢出。
+- 回归：`tests/contracts`+`tests/storage` **109 passed**；`tests/orchestration`
+  **46 passed**；`tests/chat` 49 failed 与本机 `main` 失败清单逐项一致（旧
+  插件/MCP/生涯测试与 main 同）；其余目录按目录执行，失败集合与 `main`
+  基线一致（security 比 main 少 1 条 flaky）；`tests/integration` 排除本机
+  桌面凭据导致的 2 条挂起用例后 **3 failed / 275 passed / 26 skipped**，
+  与 main 的 3 条真实失败一致。
+- 环境：conda `agent`；Windows/PowerShell。
+
+### 剩余限制
+
+- 结果块只在终态原子提交后发布，未增加每步渐进 `result` SSE 事件（执行器
+  多线程下可能先于提交发布未过门结论）；流式进度仍由真实 `node`/`stage`
+  事件承担。
+- 单模块路径的可信状态按领域终态分类推导（`success` 等视为合格），复合路径
+  以门与 `trust_state` 为准；未新增独立可信元数据。
+- 历史 `module_id` 只读展示，建议点击绑定任务版本；本票不重写历史标识。
+- `tests/integration` 的
+  `test_start_fails_with_empty_global_key_before_spawning` /
+  `test_start_fails_when_global_key_env_absent` 在本机因桌面数据目录已有
+  可用凭据而进入真实启动监督（main 同样挂起；在 main 基线运行中因锁占用
+  快速失败），按环境限制排除。
+- 确定性脚本适配器只证明机制；真实模型体验与外部来源可得性按评测票验证。
+

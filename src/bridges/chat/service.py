@@ -99,6 +99,7 @@ from bridges.chat.turn import (
     result_summary,
     user_facing_error,  # noqa: F401 - re-export
 )
+from bridges.chat.turn_result import derive_turn_result
 from bridges.chat.understanding import MainAgentUnderstanding, task_turn_request
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
@@ -129,6 +130,7 @@ from bridges.contracts.chat import (
     McpCallStatus,
     ModuleSuggestionProjection,
     RemovedPluginSelection,
+    TurnResultProjection,
     VideoRequestPayload,
 )
 from bridges.contracts.feedback import (
@@ -3391,6 +3393,71 @@ class ChatService:
             model_lock_id=run.model_lock_id,
         )
 
+    def _turn_result_projection(
+        self,
+        message: MessageRecord,
+        run_view: ChatRunView | None,
+    ) -> TurnResultProjection | None:
+        """公开回合结果投影（工单 38）。
+
+        复合运行随终态写入了精确结果（含阻塞结论与步骤可信状态），这里
+        只补齐消息级路由能力字段；其余路径（单模块/聊天/学习/历史消息）
+        按同一规则从消息终态、领域投影与路由快照确定性推导，不迁移旧行。
+        只发布已提交投影，待核验草稿不在任何输入中。
+        """
+        if message.role is not ChatMessageRole.ASSISTANT:
+            return None
+        route = message.route if isinstance(message.route, dict) else None
+        parsed: TurnResultProjection | None = None
+        if isinstance(message.turn_result, dict):
+            try:
+                parsed = TurnResultProjection.model_validate(message.turn_result)
+            except ValidationError:
+                parsed = None
+        if parsed is None:
+            parsed = derive_turn_result(
+                status=message.status,
+                error_code=message.error_code,
+                route=route,
+                projections={
+                    "paper_search": message.paper_search,
+                    "tieba_research": message.tieba_research,
+                    "career_plan": message.career_plan,
+                    "learning_resources": message.learning_resources,
+                    "commute_route": message.commute_route,
+                    "github_projects": message.github_projects,
+                },
+                wait_reason=run_view.wait_reason if run_view is not None else None,
+                web_search=message.web_search,
+            )
+        actual = parsed.actual_module_id
+        if actual is None and route is not None:
+            actual = route.get("module_id") if isinstance(route.get("module_id"), str) else None
+        capabilities = parsed.capability_list or [
+            str(item)
+            for item in (route or {}).get("capability_list") or []
+            if isinstance(item, str)
+        ]
+        return parsed.model_copy(
+            update={
+                "requested_module_id": parsed.requested_module_id
+                or (
+                    route.get("requested_module_id")
+                    if route is not None
+                    and isinstance(route.get("requested_module_id"), str)
+                    else None
+                ),
+                "actual_module_id": actual,
+                "capability_list": capabilities,
+                "route_source": parsed.route_source
+                or (
+                    route.get("route_source")
+                    if route is not None and isinstance(route.get("route_source"), str)
+                    else None
+                ),
+            }
+        )
+
     def _project_message(
         self,
         message: MessageRecord,
@@ -3561,6 +3628,7 @@ class ChatService:
             ),
             error_code=message.error_code,
             error_message=message.error_message,
+            turn_result=self._turn_result_projection(message, run_view),
             duration_ms=message.duration_ms,
             model_id=message.model_id,
             run_lock_id=message.run_lock_id,

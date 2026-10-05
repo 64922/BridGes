@@ -20,6 +20,7 @@ import type {
   RetrievalRoundProjection,
   TeachingTurnProjection,
   TiebaResearchProjection,
+  TurnResultProjection,
   WebSearchProjection,
 } from "@/lib/api";
 import type {
@@ -41,6 +42,7 @@ import { TiebaResearchCard } from "./chat/TiebaResearchCard";
 import { CareerPlanCard } from "./chat/CareerPlanCard";
 import { LearningResourcesCard } from "./chat/LearningResourcesCard";
 import { CommuteRouteCard } from "./chat/CommuteRouteCard";
+import { TurnResultCard } from "./chat/TurnResultCard";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { BrandLogo } from "./BrandLogo";
 import { CareerPlanningProcessCard } from "./CareerPlanningProcessCard";
@@ -149,8 +151,10 @@ export interface ChatMessage {
   /** 富内容（段落、代码块、公式、表格等），由页面组装 */
   content: React.ReactNode;
   thinking?: ChatThinking;
-  status?: "done" | "streaming" | "error";
+  status?: "done" | "streaming" | "error" | "stopped";
   errorText?: string;
+  /** 改进工单 38：已提交的公开回合结果投影（交付/阻塞/恢复/等待） */
+  turnResult?: TurnResultProjection | null;
   /** Issue 20：本条助手消息绑定的分层检索轮次（含引用），无轮次为 null */
   retrieval?: RetrievalRoundProjection | null;
   /** Issue 21：本条助手消息绑定的公网搜索状态与真实引用 */
@@ -937,6 +941,30 @@ export function MessageList({
                   </div>
                 ) : (
                   message.content
+                )}
+
+                {/* 改进工单 38：已提交回合的公开结果投影（完成/待输入/
+                    部分/阻塞/取消 + 可信状态 + 真实恢复），只在原子提交后
+                    随权威历史出现；待核验草稿不在投影中。 */}
+                {message.turnResult && (
+                  <TurnResultCard
+                    result={message.turnResult}
+                    onContinue={onRetry ? () => onRetry(message.id) : undefined}
+                  />
+                )}
+
+                {message.status === "stopped" && (
+                  <p
+                    role="status"
+                    data-testid="message-stopped"
+                    style={{
+                      margin: 0,
+                      fontSize: "var(--text-sm)",
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
+                    已停止生成，不会自动继续。
+                  </p>
                 )}
 
                 {message.status === "streaming" && message.node != null && (

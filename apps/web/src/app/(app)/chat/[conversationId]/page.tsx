@@ -186,7 +186,7 @@ export default function ChatConversationPage() {
       // V2 Issue 11/12/13/14/15：重开对话时若最后一条模块消息仍在等澄清，恢复输入
       // 区的模块选择（只在本对话首次加载时判定一次），下一条回复从该处继续。
       // 论文、贴吧、资料与职业规划共用同一套等待合同，由 pendingClarificationModule
-      // 一并判定；通勤的等待状态形态不同，用自己那一个判定。
+      // 一并判定；通勤的等待形态不同，用自己那一个判定。
       if (!resumeModuleCheckedRef.current) {
         resumeModuleCheckedRef.current = true;
         const pendingModule = pendingClarificationModule(projection.messages ?? []);
@@ -196,13 +196,22 @@ export default function ChatConversationPage() {
           setModuleId("commute");
         }
       }
+      // Issue 02/38：权威历史刷新不打断进行中的订阅——轮询或错误收敛
+      // 触发的 load() 若仍看到同一条活跃运行，保留本地进行态（既有订阅
+      // 从服务端游标续读）；只有该消息终态/停止/换消息时才收敛，避免
+      // 重复订阅与正文回退。
+      const running = (projection.messages ?? []).find(
+        (item) => item.status === "streaming" && item.active_run
+      );
+      const current = activeRunRef.current;
+      if (!running || (current && current.messageId !== running.message_id)) {
+        activeRunRef.current = null;
+        setActiveRun(null);
+        setPendingUser(null);
+      }
     } catch (error) {
       setLoadState("error");
       setLoadError(error instanceof Error ? error.message : "对话加载失败。");
-    } finally {
-      // 权威历史接管后收敛 error 态渲染（见 handleStreamEvent error 分支）
-      activeRunRef.current = null;
-      setActiveRun(null);
     }
   }, [conversationId]);
 
