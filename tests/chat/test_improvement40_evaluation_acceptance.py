@@ -67,6 +67,17 @@ def test_selected_single_case_can_pass_and_missing_usage_cannot() -> None:
            "usage": {"prompt_tokens": 15900, "completion_tokens": 200}}], 16000, 16000)
 
 
+def test_incomplete_call_with_usage_is_still_bounded() -> None:
+    over = {"completed": None, "output_limit": 1024,
+            "usage": {"prompt_tokens": 16000, "completion_tokens": 100}}
+    within = {"completed": None, "output_limit": 1024,
+              "usage": {"prompt_tokens": 100, "completion_tokens": 100}}
+    assert not evaluation._provider_bounds([over], 16000, 16000)
+    assert evaluation._provider_bounds([within], 16000, 16000)
+    assert evaluation._provider_bounds(
+        [{"completed": None, "output_limit": 1024}], 16000, 16000)
+
+
 def test_provider_observer_equalizes_legacy_and_total_output_limits() -> None:
     class Client:
         def chat_completions(self, body: dict[str, Any]) -> dict[str, Any]:

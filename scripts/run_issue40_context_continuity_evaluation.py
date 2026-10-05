@@ -498,10 +498,12 @@ def _measure_provider(client_type: Any) -> list[dict[str, Any]]:
 
 
 def _provider_bounds(calls: list[dict[str, Any]], window: int, max_input: int) -> bool:
-    """供应商公开的总输出最多 10-token 误差另列；成功调用缺用量不通过。"""
+    """成功调用缺用量不通过；带用量的未完成调用同样核验，无用量失败计入未知。"""
     for call in calls:
         usage = call.get("usage") or {}
-        if not call.get("completed"):
+        if not usage:
+            if call.get("completed"):
+                return False
             continue
         prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
         if not isinstance(prompt, int) or not isinstance(completion, int):
@@ -932,8 +934,7 @@ def _run_case(
             for pair in pairs[-1:] for entry in pair.get("entries", [])),
         "provider_actual_bounds": _provider_bounds(
             app.state.issue40_provider_calls[provider_start:], 16000, 16000),
-        "long_chat_summary_observed": scenario.seed_pairs == 0 or extractor is None
-        or bool(measured_reads),
+        "long_chat_summary_observed": scenario.seed_pairs == 0 or bool(measured_reads),
         "short_chat_no_summary": scenario.seed_pairs > 0 or not measured_reads,
         "summary_source_bound": all(read["source_tokens_estimate"] <= summary_limits[
             "max_source_tokens"]
