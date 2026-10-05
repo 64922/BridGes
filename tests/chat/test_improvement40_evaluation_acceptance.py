@@ -67,6 +67,13 @@ def test_selected_single_case_can_pass_and_missing_usage_cannot() -> None:
            "usage": {"prompt_tokens": 15900, "completion_tokens": 200}}], 16000, 16000)
 
 
+def test_summary_reads_are_attributed_to_case_conversation() -> None:
+    own = {"message_ids": ["own-1", "own-2"]}
+    foreign = {"message_ids": ["other-1"]}
+    empty = {"message_ids": []}
+    assert evaluation._case_owned_reads([own, foreign, empty], {"own-1"}) == [own]
+
+
 def test_incomplete_call_with_usage_is_still_bounded() -> None:
     over = {"completed": None, "output_limit": 1024,
             "usage": {"prompt_tokens": 16000, "completion_tokens": 100}}

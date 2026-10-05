@@ -514,6 +514,13 @@ def _provider_bounds(calls: list[dict[str, Any]], window: int, max_input: int) -
     return True
 
 
+def _case_owned_reads(
+    reads: list[dict[str, Any]], case_message_ids: set[str]
+) -> list[dict[str, Any]]:
+    """后台摘要重试可能跨越 case：只保留消息属于本 case 会话的读取。"""
+    return [read for read in reads if set(read["message_ids"]) & case_message_ids]
+
+
 def _empty_cost() -> dict[str, int]:
     return {
         "calls": 0,
@@ -741,6 +748,8 @@ def _run_case(
     )
     started = time.monotonic()
     turn_results: list[dict[str, Any]] = []
+    initial_account_id = account_id
+    initial_conversation_id = conversation_id
     extractor = getattr(getattr(app.state, "chat_summary_service", None), "_extractor", None)
     read_start = len(extractor.reads) if isinstance(extractor, _MeasuredExtractor) else 0
     # 限制两棵树采用同一输入上界，不能沿用各时代不同的出厂窗口。
@@ -924,8 +933,16 @@ def _run_case(
                and "缩小" in (item.get("error_message") or "")]
     run_passed = all(item["status"] == "done" or item["index"] in limited
                      for item in turn_results)
-    measured_reads = (
-        extractor.reads[read_start:] if isinstance(extractor, _MeasuredExtractor) else [])
+    case_repo = app.state.chat_service._repo
+    case_message_ids: set[str] = set()
+    for owner, conversation in {(initial_account_id, initial_conversation_id),
+                                (account_id, conversation_id)}:
+        case_message_ids.update(
+            message.message_id for message in case_repo.list_messages(owner, conversation))
+    measured_reads = _case_owned_reads(
+        extractor.reads[read_start:] if isinstance(extractor, _MeasuredExtractor) else [],
+        case_message_ids,
+    )
     summary_limits = _constants().get("summaries") or {}
     hard_checks = {
         "old_photo_reread": scenario.scenario_id != "old-photo-detail" or any(
@@ -962,8 +979,7 @@ def _run_case(
         "quality_gated": gated,
         "explicitly_limited_turns": limited,
         "summary_events": summary_events,
-        "summary_reads": extractor.reads[read_start:]
-        if isinstance(extractor, _MeasuredExtractor) else [],
+        "summary_reads": measured_reads,
         "compiled_summary": compiled_summary,
         "turns": turn_results,
         "cost": {**case_cost, "elapsed_s": elapsed},
