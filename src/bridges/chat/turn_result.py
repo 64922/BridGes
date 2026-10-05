@@ -25,19 +25,20 @@ from bridges.contracts.chat import (
     TurnResultProjection,
 )
 from bridges.state_copy import error_recovery, render_state_copy
+from bridges.state_copy.catalog import COMPOSITE_MODULE_LABELS
 from bridges.state_copy.types import RecoveryAction
 
 #: 回合结果投影合同版本；字段增加保持向后兼容（旧读取忽略新字段）。
 TURN_RESULT_VERSION = "turn-result-v1"
 
-#: 领域投影字段 → （模块 ID，中文名）。与消息模块列和步骤登记保持一致。
-MODULE_PROJECTION_FIELDS: tuple[tuple[str, str, str], ...] = (
-    ("paper_search", "paper", "论文"),
-    ("tieba_research", "tieba", "贴吧取证"),
-    ("career_plan", "career", "岗位分析"),
-    ("learning_resources", "resources", "学习资料"),
-    ("commute_route", "commute", "校园通勤"),
-    ("github_projects", "github", "开源项目"),
+#: 领域投影字段 → 模块 ID（短标签复用登记表 COMPOSITE_MODULE_LABELS，单一源）。
+MODULE_PROJECTION_FIELDS: tuple[tuple[str, str], ...] = (
+    ("paper_search", "paper"),
+    ("tieba_research", "tieba"),
+    ("career_plan", "career"),
+    ("learning_resources", "resources"),
+    ("commute_route", "commute"),
+    ("github_projects", "github"),
 )
 
 #: 领域状态分类：只在公开投影中按真实结果选择，不虚构。只有 ``success``
@@ -110,10 +111,11 @@ def derive_turn_result(
     needs_input = False
     partial = False
 
-    for field, module_id, label in MODULE_PROJECTION_FIELDS:
+    for field, module_id in MODULE_PROJECTION_FIELDS:
         payload = (projections or {}).get(field)
         if not payload:
             continue
+        label = COMPOSITE_MODULE_LABELS.get(module_id, module_id)
         state = str(payload.get("status") or "")
         detail = str(payload.get("error_message") or "")
         if state in _NEEDS_INPUT_STATES:
