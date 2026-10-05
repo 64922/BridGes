@@ -168,6 +168,9 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
            FailureClass.UNSUPPORTED, RecoveryAction.RETRY, contextual=True),
     _error("study_review_scope_changed", "题目版本与当前复盘范围不一致，请重新开始复盘。",
            FailureClass.STATE_CONFLICT, RecoveryAction.REFRESH_STATE, contextual=True),
+    # 工单 35：追加页原子切换失败码；原有效书页与范围保留，可重试。
+    _error("study_page_update_changed", "小节书页状态已变化，本次追加未提交，请重试。",
+           FailureClass.STATE_CONFLICT, RecoveryAction.REFRESH_STATE, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
     _error("composite_plan_unavailable", "该组合尚未接入，请缩小为单项任务后重试。",
            FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST),

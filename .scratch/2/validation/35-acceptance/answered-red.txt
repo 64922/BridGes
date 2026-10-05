@@ -1,0 +1,30 @@
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests/chat/test_improvement35_acceptance.py::test_summary_distinguishes_received_answer_from_unanswered --junitxml=.scratch/2/validation/35-acceptance/answered-red.xml -q` failed. (See above for error)
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_summary_distinguishes_received_answer_from_unanswered __________
+
+    def test_summary_distinguishes_received_answer_from_unanswered() -> None:
+        from bridges.contracts.study import StudyState, StudySummary
+        from bridges.study.summary import render_summary
+    
+        state = StudyState.model_validate({
+            "subsection_id": "section", "review": {"questions": [{
+                "question_id": "received", "question": "已答题", "asked": True,
+                "answer": "学生已提交的答案", "coverage_units": [], "fragment_ids": [],
+            }, {
+                "question_id": "unanswered", "question": "未答题", "asked": True,
+                "unanswered": True, "coverage_units": [], "fragment_ids": [],
+            }]},
+        })
+        summary = StudySummary.model_validate({"points": [{
+            "kind": "gap", "text": "本次仍待确认的内容", "question_ids": ["received", "unanswered"],
+        }]})
+        rendered = render_summary(summary, state)
+>       assert "第1题「已答题」已作答（尚未判定，未计入掌握）" in rendered
+E       AssertionError: assert '第1题「已答题」已作答（尚未判定，未计入掌握）' in '本节学习总结（依据本节书页与复盘已判定题）\n\n学到了什么：\n- 本节没有可依据书页归纳的内容。\n\n复盘已掌握：\n- 本次复盘没有判定为正确的题目。\n\n还需补的点：\n- 本次仍待确认的内容\n  依据：第1题「已答题」未作答（已呈现，未计入掌握）；第2题「未答题」未作答（已呈现，未计入掌握）'
+
+tests\chat\test_improvement35_acceptance.py:151: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/chat/test_improvement35_acceptance.py::test_summary_distinguishes_received_answer_from_unanswered
+1 failed in 4.39s
+

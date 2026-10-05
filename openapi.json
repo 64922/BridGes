@@ -57229,6 +57229,13 @@
             },
             "type": "array",
             "title": "Recognition Paths"
+          },
+          "superseded_fragments": {
+            "items": {
+              "$ref": "#/components/schemas/StudyFragment"
+            },
+            "type": "array",
+            "title": "Superseded Fragments"
           }
         },
         "type": "object",
@@ -57609,6 +57616,11 @@
             "type": "boolean",
             "title": "Legacy",
             "default": false
+          },
+          "unanswered": {
+            "type": "boolean",
+            "title": "Unanswered",
+            "default": false
           }
         },
         "type": "object",
@@ -57856,6 +57868,13 @@
               }
             ]
           },
+          "summary_history": {
+            "items": {
+              "$ref": "#/components/schemas/StudySummaryRecord"
+            },
+            "type": "array",
+            "title": "Summary History"
+          },
           "pending_object_ids": {
             "items": {
               "type": "string"
@@ -57947,6 +57966,29 @@
         ],
         "title": "StudySummaryPoint",
         "description": "总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。"
+      },
+      "StudySummaryRecord": {
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/StudySummary"
+          },
+          "scope_version_id": {
+            "type": "string",
+            "title": "Scope Version Id",
+            "default": ""
+          },
+          "superseded_reason": {
+            "type": "string",
+            "title": "Superseded Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "title": "StudySummaryRecord",
+        "description": "一节历史总结及其依据范围版本（工单 35）。\n\n追加书页或范围变化使当前总结失效时，旧总结移入 ``StudyState.summary_history``\n保留，标注生成时的有效范围版本；后续总结不得冒用旧版本结论。"
       },
       "StudySupplementAttempt": {
         "properties": {

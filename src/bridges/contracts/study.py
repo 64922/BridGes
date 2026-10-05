@@ -47,6 +47,9 @@ class StudyPage(BaseModel):
     #: 本页实际启用的识别路径（当前未验证 OCR 优化时双路径全开，保留安全
     #: 双路径；代表性样本实测后才允许按风险收窄）。
     recognition_paths: list[str] = Field(default_factory=lambda: ["ocr", "vision"])
+    #: 补拍替换时被取代页的原识别片段（工单 35）：双方来源都保留，旧片段
+    #: 只作历史证据，不进入范围映射、不作为当前书页依据。
+    superseded_fragments: list[StudyFragment] = Field(default_factory=list)
 
 
 class StudyUnit(BaseModel):
@@ -293,6 +296,9 @@ class StudyReviewQuestion(BaseModel):
     verification: StudyQuestionCheck | None = None
     #: 旧评分合同题目：保留原判定，不宣称按新标准评分、不进入新核验。
     legacy: bool = False
+    #: 已呈现但未作答的题（工单 35）：暂停复盘或追加书页使当前激活题作废时
+    #: 单独记录。已呈现未答不得当作答对，继续复盘默认从未问题开始。
+    unanswered: bool = False
 
     def public_view(self) -> "StudyReviewQuestion":
         """私有读边界：未判定题不暴露评分要点与标准答案，仅保留题干。"""
@@ -346,6 +352,20 @@ class StudySummary(BaseModel):
     points: list[StudySummaryPoint] = Field(min_length=1)
 
 
+class StudySummaryRecord(BaseModel):
+    """一节历史总结及其依据范围版本（工单 35）。
+
+    追加书页或范围变化使当前总结失效时，旧总结移入 ``StudyState.summary_history``
+    保留，标注生成时的有效范围版本；后续总结不得冒用旧版本结论。
+    """
+
+    summary: StudySummary
+    #: 生成该总结时的有效范围版本（旧状态无范围时为空）。
+    scope_version_id: str = ""
+    #: 失效原因（如追加同节书页使范围更新）。
+    superseded_reason: str = ""
+
+
 class StudyState(BaseModel):
     subsection_id: str
     stage: Literal[
@@ -359,6 +379,9 @@ class StudyState(BaseModel):
     page_update: StudyPageUpdate | None = None
     review: StudyReview | None = None
     summary: StudySummary | None = None
+    #: 追加页/范围变化后失效的历史总结（工单 35）：旧总结保留对应范围版本，
+    #: 不再作为当前依据；新的总结按更新后的范围重新生成。
+    summary_history: list[StudySummaryRecord] = Field(default_factory=list)
     #: 因运行预算/批量限制尚未识别的书页附件（按上传顺序）。非空时保持
     #: 识别阶段，不宣布整节已读；恢复只处理这些页，已识别页按内容哈希复用。
     pending_object_ids: list[str] = Field(default_factory=list)
@@ -366,7 +389,8 @@ class StudyState(BaseModel):
     #: ``scope_history``，不静默宣称旧问题覆盖新增页（适用性由工单 35 更新）。
     scope: StudyScope | None = None
     scope_history: list[StudyScope] = Field(default_factory=list)
-    #: 状态 JSON 的合同版本（1 = 标题作为知识点键的旧状态；2 = 稳定 ID）。
+    #: 状态 JSON 的合同版本（1 = 标题作为知识点键的旧状态；2 = 稳定 ID；
+    #: 3 = 出题前核验；4 = 未答题记录与版本化总结历史）。
     state_version: int = 1
 
     def public_view(self) -> "StudyState":
@@ -378,7 +402,7 @@ class StudyState(BaseModel):
 
 
 #: 当前学习状态 JSON 合同版本（读取旧版本时由升级函数补齐稳定 ID 与遗留标记）。
-STUDY_STATE_VERSION = 3
+STUDY_STATE_VERSION = 4
 
 
 def _legacy_unit_id(index: int, title: str) -> str:
@@ -392,7 +416,9 @@ def upgrade_legacy_study_state(state: StudyState) -> StudyState:
 
     - v1 → v2：补齐稳定知识点 ID 与遗留范围版本；
     - v2 → v3（工单 33）：旧复盘题标记为遗留评分合同，保留原判定与
-      标准答案，不按新的出题前核验标准重新解释，也不改写任何正文。
+      标准答案，不按新的出题前核验标准重新解释，也不改写任何正文；
+    - v3 → v4（工单 35）：新增字段（未答题记录、版本化总结历史、补拍
+      取代片段）均有默认值，旧状态原样可读，不猜测性地改写历史。
 
     升级后的状态在下一次保存时以当前版本落库。
     """
