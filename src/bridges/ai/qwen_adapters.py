@@ -71,6 +71,10 @@ class QwenTextChatAdapter(CapabilityAdapter):
             timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY),
         )
         choice = first_choice(response_body)
+        if choice.get("finish_reason") == "length":
+            raise AdapterError(code="output_budget_exceeded",
+                               message="模型输出额度已耗尽，请缩小问题范围后重试。",
+                               retryable=False)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,
@@ -98,6 +102,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "stream": True,
         }
         last_body: dict[str, Any] | None = None
+        finish_reason: str | None = None
         for response_body in self._client.chat_completions_stream(request_body):
             last_body = response_body
             choices = response_body.get("choices")
@@ -106,6 +111,8 @@ class QwenTextChatAdapter(CapabilityAdapter):
             choice = choices[0]
             if not isinstance(choice, dict):
                 continue
+            if choice.get("finish_reason"):
+                finish_reason = choice["finish_reason"]
             delta = choice.get("delta")
             if isinstance(delta, dict):
                 content = delta.get("content")
@@ -113,7 +120,10 @@ class QwenTextChatAdapter(CapabilityAdapter):
                     yield StreamChunk(kind="delta", delta=content)
         # 空流（立即 [DONE]）时 last_body 为 None：不引用未定义变量
         yield StreamChunk(
-            kind="done",
+            kind="error" if finish_reason == "length" else "done",
+            error_code="output_budget_exceeded" if finish_reason == "length" else None,
+            error_message="模型输出额度已耗尽，请缩小问题范围后重试。"
+            if finish_reason == "length" else None,
             usage=last_body.get("usage") if last_body is not None else None,
             actual_model_id=(
                 last_body.get("model") if last_body is not None else capability.model_id

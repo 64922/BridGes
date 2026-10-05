@@ -189,7 +189,7 @@ SCENARIOS: tuple[Scenario, ...] = (
 # 各种材料走同一正式聊天调用，独立记录供应商用量；图片也走正式上传/绑定。
 SCENARIOS += tuple(
     Scenario(f"calibration-{name}", (), (Turn(
-        "以下材料仅用于用量校准，可以只回复『已收到』吗？\n" + material,
+        "你收到以下用量校准材料了吗？请仅回复『已收到』。\n" + material,
         exact_answers=("已收到",),
     ),))
     for name, material in (
@@ -201,7 +201,12 @@ SCENARIOS += tuple(
     )
 )
 SCENARIOS += (Scenario("calibration-image", (), (
-    Turn("这张图片仅用于用量校准，可以只回复『已收到』吗？", exact_answers=("已收到",)),
+    Turn("你收到这张用量校准图片了吗？请仅回复『已收到』。", exact_answers=("已收到",)),
+), photo=True),)
+SCENARIOS += (Scenario("old-photo-detail", ("reference_correctness",), (
+    Turn("这张图片的背景主色是什么？只回答颜色。", exact_answers=("白色", "白")),
+    Turn("先换个话题，打个招呼。"),
+    Turn("之前那张图片的背景主色是什么？只回答颜色。", exact_answers=("白色", "白")),
 ), photo=True),)
 SCENARIOS += (Scenario("long-history-batches", ("constraint_retention",), (
     Turn("只回答之前社团活动预算的数字。", exact_answers=("3000", "三千")),
@@ -381,10 +386,14 @@ def _send_turn(
         " FROM model_run_locks WHERE run_id = ? AND capability_name = 'qwen_text_chat'",
         (run_id,),
     ).fetchall()
+    events = repo.list_generation_events(account_id, run_id, 0)
+    run = repo.get_generation_run(account_id, run_id)
+    first_delta = next((event for event in events if event.kind == "delta"), None)
     return {
         "run_id": run_id,
         "status": record.status.value,
         "error_code": record.error_code,
+        "error_message": record.error_message,
         "model_id": record.model_id,
         "answer": record.content or "",
         "quota": (repo.get_generation_run(account_id, run_id).config or {}).get(
@@ -404,6 +413,9 @@ def _send_turn(
             if isinstance(event.payload.get("first_token_ms"), int)
         ), None),
         "elapsed_s": elapsed,
+        "queue_to_first_token_ms": round((first_delta.created_at - run.created_at).total_seconds()
+                                         * 1000) if first_delta else None,
+        "answer_elapsed_ms": run.duration_ms,
     }
 
 
@@ -564,7 +576,7 @@ def _payload_gate_records(
             actuals.append(actual)
             estimate = details.get(estimate_key)
             pairs.append({"object_refs": event.object_refs, "estimate": estimate,
-                          "actual": actual})
+                          "actual": actual, "entries": details.get("entries", [])})
     return len(events), estimates, actuals, pairs
 
 
@@ -734,6 +746,7 @@ def _run_case(
     if scenario.seed_pairs:
         _seed_history(app, account_id, conversation_id, scenario)
     object_id = None
+    photo_object_id = None
     attached_message_id = None
     if scenario.file_text:
         from urllib.parse import quote
@@ -792,11 +805,12 @@ def _run_case(
                 pixmap.clear_with(255)
                 uploaded = client.post("/chat/attachment-drafts", headers={
                     "X-Bridges-Filename": "calibration.png",
-                    "X-Bridges-Upload-Id": f"calibration-{repeat}",
+                    "X-Bridges-Upload-Id": f"{scenario.scenario_id}-{repeat}",
                 }, content=pixmap.tobytes("png"))
                 if uploaded.status_code != 201:
                     raise RuntimeError(f"photo_upload_failed:{uploaded.status_code}")
                 attachment_ids = [uploaded.json()["object_id"]]
+                photo_object_id = attachment_ids[0]
             if scenario.fresh_account_before_turn == index:
                 tag = str(int(datetime.now(UTC).timestamp() * 1_000_000))
                 account_id = _register(client, tag=tag)
@@ -818,16 +832,23 @@ def _run_case(
                 attached_message_id = next(message.message_id for message in reversed(messages)
                                            if message.role.value == "user")
             checks = _check_turn(outcome["answer"], turn)
+            if (outcome["error_code"] == "output_budget_exceeded" and not turn.exact_answers
+                    and index < len(scenario.turns)):
+                checks = _check_turn(outcome["error_message"] or "", turn)
+                checks["explicitly_limited"] = True
             turn_results.append(
                 {
                     "index": index,
                     "status": outcome["status"],
                     "error_code": outcome["error_code"],
+                    "error_message": outcome["error_message"],
                     "model_id": outcome["model_id"],
                     "checks": checks,
                     "answer": outcome["answer"],
                     "quota": outcome["quota"],
                     "first_token_ms": outcome["first_token_ms"],
+                    "queue_to_first_token_ms": outcome["queue_to_first_token_ms"],
+                    "answer_elapsed_ms": outcome["answer_elapsed_ms"],
                     "elapsed_s": outcome["elapsed_s"],
                     "output_tokens": outcome["output_tokens"],
                     "model_locks": outcome["model_locks"],
@@ -894,11 +915,21 @@ def _run_case(
     if scenario.delete_file_before_turn:
         citations = (turn_results[-1].get("retrieval") or {}).get("citations") or []
         content_passed = content_passed and not citations
-    run_passed = all(item["status"] == "done" for item in turn_results)
+    # 无指定结论的中间轮允许明确输出受限；终轮与指定结论仍须正常完成。
+    limited = [item["index"] for item, turn in zip(turn_results, scenario.turns, strict=True)
+               if item["error_code"] == "output_budget_exceeded" and not turn.exact_answers
+               and item["index"] < len(scenario.turns)
+               and "缩小" in (item.get("error_message") or "")]
+    run_passed = all(item["status"] == "done" or item["index"] in limited
+                     for item in turn_results)
     measured_reads = (
         extractor.reads[read_start:] if isinstance(extractor, _MeasuredExtractor) else [])
     summary_limits = _constants().get("summaries") or {}
     hard_checks = {
+        "old_photo_reread": scenario.scenario_id != "old-photo-detail" or any(
+            photo_object_id in entry["material_id"] and entry["adopted"]
+            and (entry.get("read_range") or "").startswith("历史原图")
+            for pair in pairs[-1:] for entry in pair.get("entries", [])),
         "provider_actual_bounds": _provider_bounds(
             app.state.issue40_provider_calls[provider_start:], 16000, 16000),
         "long_chat_summary_observed": scenario.seed_pairs == 0 or extractor is None
@@ -917,6 +948,7 @@ def _run_case(
         item["error_code"]
         for item in turn_results
         if item["status"] != "done" and (item["answer"] or "").strip()
+        and item["index"] not in limited
     ]
     return {
         "scenario_id": scenario.scenario_id,
@@ -927,6 +959,7 @@ def _run_case(
         "hard_checks": hard_checks,
         "provider_calls": app.state.issue40_provider_calls[provider_start:],
         "quality_gated": gated,
+        "explicitly_limited_turns": limited,
         "summary_events": summary_events,
         "summary_reads": extractor.reads[read_start:]
         if isinstance(extractor, _MeasuredExtractor) else [],
@@ -1334,7 +1367,8 @@ def _format_pairing_markdown(old: dict[str, Any], new: dict[str, Any]) -> str:
         "（工单 40 新增补记）；基线无补记，退化为编译估算与场景聊天输入的聚合对照。"
     )
     lines.append(
-        "- 质量门拦截计为失败，即使正文中的数字正确；不从连续性验收中排除。"
+        "- 质量门拦截计为失败，即使正文数字正确。无指定结论的中间轮允许明确输出"
+        "额度受限（单列 explicitly_limited_turns）；终轮与指定结论不按此例外放行。"
     )
     lines.append(
         "- 长聊场景预置历史后由真实模型回答；若编译在恢复/回退内即满足预算则不发生摘要"

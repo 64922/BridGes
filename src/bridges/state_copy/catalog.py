@@ -555,6 +555,12 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
         RecoveryAction.ADJUST_REQUEST,
     ),
     _error(
+        "output_budget_exceeded",
+        "本轮模型输出额度已耗尽，无法提供完整回答。请缩小问题范围后重试。",
+        FailureClass.UNSUPPORTED,
+        RecoveryAction.ADJUST_REQUEST,
+    ),
+    _error(
         "run_budget_exhausted",
         "本轮运行预算不足以识别全部书页；已完成的书页已保存，"
         "未处理页仍待识别。请重试本条消息继续。",

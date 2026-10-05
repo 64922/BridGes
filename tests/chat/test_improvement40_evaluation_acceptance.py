@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.ai.adapters import StreamChunk
 from scripts import run_issue40_context_continuity_evaluation as evaluation
 from tests.chat.test_chat_api import _create_conversation, _register
 from tests.chat.test_improvement03_model_quota import _MODEL_A, _activate
@@ -84,6 +85,30 @@ def test_provider_observer_equalizes_legacy_and_total_output_limits() -> None:
     assert len(calls) == 2
     assert calls[0]["request_sha256"] == calls[1]["request_sha256"]
     assert evaluation._provider_bounds(calls, 16000, 16000)
+
+
+def test_output_limit_keeps_request_and_explains_scope(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any],
+) -> None:
+    class Limited(_ReviewAdapter):
+        def stream_call(self, capability: Any, run_context: Any, payload: dict[str, Any]) -> Any:
+            self._record(capability, payload)
+            yield StreamChunk(kind="error", error_code="output_budget_exceeded",
+                              usage={"prompt_tokens": 100, "completion_tokens": 1024})
+
+    _register(client, tag="4042")
+    _install(sqlite_app, Limited())
+    _activate(sqlite_app, _MODEL_A, window=16000, max_input=16000)
+    conversation = _create_conversation(client)
+    generation_helpers["send"](client, conversation, content="预算为3000，请完整规划活动。")
+    generation_helpers["drive"](sqlite_app)
+    messages = client.get(f"/chat/conversations/{conversation}").json()["messages"]
+    assistant = messages[-1]
+    assert assistant["status"] == "error"
+    assert assistant["error_code"] == "output_budget_exceeded"
+    assert "输出额度" in assistant["error_message"] and "缩小" in assistant["error_message"]
+    assert any(message["role"] == "user" and "预算为3000" in message["content"]
+               for message in messages)
 
 
 def test_seeded_long_history_really_enters_formal_graph(

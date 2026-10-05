@@ -752,6 +752,7 @@ _RETRYABLE_CODES = frozenset(
         "budget_exceeded",
         # 改进工单 04：用户缩小范围后重试有望成功（幂等，不产生副作用）。
         "payload_budget_exceeded",
+        "output_budget_exceeded",
         # 改进工单 30：书页识别预算耗尽可重试（新运行重新计预算，
         # 已完成页按内容指纹复用，只继续未完成页）。
         "run_budget_exhausted",
