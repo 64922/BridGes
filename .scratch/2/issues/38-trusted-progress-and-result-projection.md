@@ -126,3 +126,25 @@
   快速失败），按环境限制排除。
 - 确定性脚本适配器只证明机制；真实模型体验与外部来源可得性按评测票验证。
 
+### 代码评审批次与修复（2026-10-05，提交 2）
+
+两轴评审（standards/spec）确认并修复：
+
+- **流式消息误投影**：`_turn_result_projection` 增加终态守卫，`streaming`
+  消息不发布结果投影，最终完成只在原子提交后出现。
+- **空结果/未知状态分类**：`empty` 归入未完成阻塞项；只有显式 `success`
+  视为已核验，未知状态按证据绑定交付，不再冒充合格。
+- **固定文案注册**：新增 `chat.result.blocked_detail` 取代 `turn_result.py`
+  与 `production.py` 两处硬编码回退；移除 `MessageList` 中与
+  `chat.result.outcome.cancelled` 重复的硬编码停止行，停止说明统一由结果卡
+  注册文案呈现。
+- **前端表达**：复合步骤状态补中文短标签（completed/failed/blocked/
+  invalidated）；冷却未到时禁用「继续生成」，到点后恢复可用。
+- **复核澄清**：建议点击的任务版本绑定已由既有 `_bind_suggestion_to_task`
+  （工单 12）实现（冲突返回 `task_state_conflict`），非本票缺口；
+  逐步 `result` SSE 仍为记录在案的剩余限制。
+- **修复后回归**：`tests/chat` 49 failed（与当前 main 逐一相同）/1351 passed
+  （含本票 16 条）；`tests/orchestration` 46 passed；`tests/contracts`+
+  `tests/state_copy` 33 passed；前端单测 231 passed；typecheck 仅 main 既有
+  错误；lint 无新增；`npm run build` 成功；e2e 6 passed（39.1s）。
+

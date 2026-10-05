@@ -953,20 +953,6 @@ export function MessageList({
                   />
                 )}
 
-                {message.status === "stopped" && (
-                  <p
-                    role="status"
-                    data-testid="message-stopped"
-                    style={{
-                      margin: 0,
-                      fontSize: "var(--text-sm)",
-                      color: "var(--color-text-tertiary)",
-                    }}
-                  >
-                    已停止生成，不会自动继续。
-                  </p>
-                )}
-
                 {message.status === "streaming" && message.node != null && (
                   <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
                     {NODE_LABEL[message.node.node] ?? "正在生成回答"}…

@@ -40,11 +40,15 @@ MODULE_PROJECTION_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("github_projects", "github", "开源项目"),
 )
 
-#: 领域状态分类：只在公开投影中按真实结果选择，不虚构。
-_PARTIAL_STATES = frozenset({"links_only", "metadata_only", "unverified"})
+#: 领域状态分类：只在公开投影中按真实结果选择，不虚构。只有 ``success``
+#: 视为已通过核验；``links_only``/``metadata_only``/``unverified`` 及未知
+#: 状态一律按证据绑定交付，绝不冒充「已通过核验」。
+_QUALIFIED_STATES = frozenset({"success"})
+_EMPTY_STATES = frozenset({"empty"})
 _NEEDS_INPUT_STATES = frozenset({"clarification"})
 _FAILED_STATES = frozenset({"error"})
 _STOPPED_STATES = frozenset({"stopped"})
+_INTERMEDIATE_STATES = frozenset({"searching"})
 
 _OUTCOME_COPY_PATHS: dict[TurnOutcome, str] = {
     TurnOutcome.COMPLETE: "chat.result.outcome.complete",
@@ -115,21 +119,21 @@ def derive_turn_result(
         if state in _NEEDS_INPUT_STATES:
             needs_input = True
             continue
-        if state in _FAILED_STATES:
+        if state in _STOPPED_STATES or state in _INTERMEDIATE_STATES or not state:
+            continue
+        if state in _FAILED_STATES or state in _EMPTY_STATES:
             partial = True
             blocks_blocked.append(
                 TurnResultBlock(
                     module_id=module_id, label=label, state=state,
                     trust=ResultTrust.EVIDENCE_BOUND,
-                    detail=detail or "该分支未形成可交付结果。",
+                    detail=detail or render_state_copy("chat.result.blocked_detail"),
                 )
             )
             continue
-        if state in _STOPPED_STATES or not state:
-            continue
         trust = (
-            ResultTrust.EVIDENCE_BOUND if state in _PARTIAL_STATES
-            else ResultTrust.QUALIFIED
+            ResultTrust.QUALIFIED if state in _QUALIFIED_STATES
+            else ResultTrust.EVIDENCE_BOUND
         )
         partial = partial or trust is ResultTrust.EVIDENCE_BOUND
         blocks_delivered.append(

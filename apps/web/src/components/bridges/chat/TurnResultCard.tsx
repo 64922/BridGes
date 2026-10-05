@@ -25,6 +25,7 @@ export function TurnResultCard({
   const delivered = result.delivered ?? [];
   const blocked = result.blocked ?? [];
   const gaps = result.gaps ?? [];
+  const waiting = isWaiting(result.recovery?.available_after ?? null);
   return (
     <section
       data-testid="turn-result"
@@ -124,6 +125,7 @@ export function TurnResultCard({
               type="button"
               data-testid="turn-result-retry"
               onClick={onContinue}
+              disabled={waiting}
               style={{
                 minHeight: "var(--target-size)",
                 padding: "var(--space-1) var(--space-3)",
@@ -133,7 +135,8 @@ export function TurnResultCard({
                 color: "var(--color-text-primary)",
                 font: "inherit",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: waiting ? "not-allowed" : "pointer",
+                opacity: waiting ? 0.6 : 1,
               }}
             >
               继续生成
@@ -198,14 +201,18 @@ const OUTCOME_TONE: Record<
   },
 };
 
-/** 结果块状态 → 面向用户的中文短标签（真实领域状态值，不做美化猜测）。 */
+/** 结果块状态 → 面向用户的中文短标签（真实领域/复合步骤状态值）。 */
 const BLOCK_STATE_LABEL: Record<string, string> = {
   success: "已完成",
+  completed: "已完成",
   links_only: "仅有链接",
   metadata_only: "仅元数据",
   unverified: "未核实",
   clarification: "待补充",
   error: "失败",
+  failed: "失败",
+  blocked: "已阻塞",
+  invalidated: "已失效",
   stopped: "已停止",
 };
 
@@ -278,4 +285,11 @@ function formatLocalTime(value: string): string {
     dateStyle: "short",
     timeStyle: "short",
   }).format(parsed);
+}
+
+/** 冷却未到时重试入口不可点击，避免在限流窗口内重复触发真实调用。 */
+function isWaiting(availableAfter: string | null): boolean {
+  if (!availableAfter) return false;
+  const parsed = new Date(availableAfter);
+  return !Number.isNaN(parsed.getTime()) && parsed.getTime() > Date.now();
 }

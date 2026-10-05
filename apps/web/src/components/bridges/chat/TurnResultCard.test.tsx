@@ -124,6 +124,56 @@ describe("TurnResultCard（工单 38）", () => {
     expect(onContinue).toHaveBeenCalledTimes(1);
   });
 
+  it("冷却未到时禁用重试入口，到点后才可继续", () => {
+    const onContinue = vi.fn();
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    render(
+      <TurnResultCard
+        onContinue={onContinue}
+        result={projection({
+          outcome: "failed",
+          outcome_label: "本轮未完成。",
+          trust: null,
+          trust_label: null,
+          delivered: [],
+          capability_list: [],
+          actual_module_id: null,
+          recovery: {
+            action: "wait",
+            label: "请稍后重试。",
+            retryable: true,
+            available_after: future,
+          },
+        })}
+      />
+    );
+    const retry = screen.getByTestId<HTMLButtonElement>("turn-result-retry");
+    expect(retry.disabled).toBe(true);
+    fireEvent.click(retry);
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("复合步骤状态用中文短标签呈现，不泄露内部英文值", () => {
+    render(
+      <TurnResultCard
+        result={projection({
+          outcome: "partial",
+          outcome_label: "本轮先交付有效部分，其余未完成。",
+          trust: "evidence_bound",
+          trust_label: "结果已附证据，仍有未完成核验的范围。",
+          delivered: [
+            { module_id: "paper", label: "论文", state: "completed", trust: "qualified", detail: "" },
+          ],
+          blocked: [
+            { module_id: "github", label: "开源项目", state: "invalidated", trust: "evidence_bound", detail: "上游步骤失效" },
+          ],
+        })}
+      />
+    );
+    expect(textOf("turn-result-delivered")).toContain("论文（已完成）");
+    expect(textOf("turn-result-blocked")).toContain("开源项目（已失效）");
+  });
+
   it("待输入展示等待原因且不提供自动续跑", () => {
     render(
       <TurnResultCard

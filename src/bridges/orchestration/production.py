@@ -423,7 +423,10 @@ def turn_result_for_outcome(
             detail = (
                 step.failure.message
                 if step.failure is not None
-                else (step.blocked_reason or "该分支未形成可交付结果。")
+                else (
+                    step.blocked_reason
+                    or render_state_copy("chat.result.blocked_detail")
+                )
             )
             blocked.append(
                 TurnResultBlock(

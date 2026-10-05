@@ -1485,6 +1485,15 @@ _PUBLIC_ENTRIES: tuple[CopyEntry, ...] = (
         text="请刷新后重试。",
         note="状态冲突类恢复只承诺刷新，不承诺重试必然成功。",
     ),
+    CopyEntry(
+        "chat.result.blocked_detail",
+        CopyCategory.PARTIAL,
+        "chat",
+        CopyStrategy.FIXED_TEMPLATE,
+        ("error", "empty", "blocked"),
+        text="该分支未形成可交付结果。",
+        note="领域或复合分支失败/空结果且无具体原因时的最小事实说明。",
+    ),
     # -- 检索：空结果、部分与降级 -----------------------------------------
     CopyEntry(
         "retrieval.status.sufficient",

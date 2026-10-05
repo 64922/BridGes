@@ -340,13 +340,13 @@ for (const viewport of VIEWPORTS) {
       expect(assistants).toHaveLength(1);
       expect(assistants[0].attempt_number).toBe(1);
 
-      // 刷新后终态一致：停止说明与取消分类可读，正文保留部分内容。
+      // 刷新后终态一致：取消分类与停止说明（注册文案）可读，正文保留部分内容。
       await page.reload();
-      const stoppedLine = page.getByTestId("message-stopped");
-      await expect(stoppedLine).toBeVisible({ timeout: 15_000 });
-      await expect(stoppedLine).toContainText("不会自动继续");
       const card = page.locator('[data-outcome="cancelled"]');
-      await expect(card).toBeVisible();
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await expect(card.getByTestId("turn-result-outcome")).toContainText(
+        "不会自动继续"
+      );
       await expect(thread).toContainText("第一段：甲 8");
       await expect(thread).not.toContainText("结尾不应出现");
 

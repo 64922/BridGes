@@ -36,6 +36,7 @@ from bridges.orchestration.contracts import (
     StepState,
 )
 from bridges.orchestration.production import turn_result_for_outcome
+from bridges.state_copy import render_state_copy
 from bridges.storage.database import MIGRATIONS, SCHEMA_VERSION, BridgesDatabase
 
 ACCOUNT = "acc-38"
@@ -197,6 +198,31 @@ def test_derive_unrecoverable_failures_are_blocked() -> None:
     assert "接口限流" in result.gaps
 
 
+def test_derive_empty_result_is_blocked_not_delivered() -> None:
+    result = derive_turn_result(
+        status=ChatMessageStatus.DONE,
+        route={"status": "matched", "capability_list": ["github"]},
+        projections={"github_projects": {"status": "empty"}},
+    )
+    assert result.outcome is TurnOutcome.BLOCKED
+    assert result.delivered == []
+    assert [block.state for block in result.blocked] == ["empty"]
+    # 没有具体原因时用注册表的最小事实说明，不编造结论。
+    assert result.blocked[0].detail == render_state_copy("chat.result.blocked_detail")
+
+
+def test_derive_unknown_state_never_claims_qualified() -> None:
+    result = derive_turn_result(
+        status=ChatMessageStatus.DONE,
+        route={"status": "matched", "capability_list": ["paper"]},
+        projections={"paper_search": {"status": "阅读完成"}},
+    )
+    assert result.outcome is TurnOutcome.PARTIAL
+    assert [block.module_id for block in result.delivered] == ["paper"]
+    assert result.delivered[0].trust is ResultTrust.EVIDENCE_BOUND
+    assert result.trust is ResultTrust.EVIDENCE_BOUND
+
+
 def test_derive_clarification_is_needs_input_with_wait_reason() -> None:
     result = derive_turn_result(
         status=ChatMessageStatus.DONE,
@@ -322,6 +348,19 @@ def test_projection_derives_legacy_row_with_run_wait_reason(tmp_path: Path) -> N
         _assistant_message(), SimpleNamespace(wait_reason="等用户确认后继续")
     )
     assert waiting is not None and waiting.outcome is TurnOutcome.NEEDS_INPUT
+
+
+def test_projection_skips_streaming_message_until_terminal(tmp_path: Path) -> None:
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    service = _bare_service(database)
+    streaming = _assistant_message(
+        status=ChatMessageStatus.STREAMING,
+        paper_search={"status": "success"},
+    )
+    # 最终完成只在原子提交后发出：流式中的消息不发布结果投影。
+    assert service._turn_result_projection(streaming, None) is None
+    database.close()
 
 
 def test_projection_ignores_corrupted_persisted_payload(tmp_path: Path) -> None:

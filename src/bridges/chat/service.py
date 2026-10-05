@@ -3407,6 +3407,9 @@ class ChatService:
         """
         if message.role is not ChatMessageRole.ASSISTANT:
             return None
+        # 终态守卫：流式中的消息不发布结果投影，最终完成只在原子提交后发出。
+        if message.status is ChatMessageStatus.STREAMING:
+            return None
         route = message.route if isinstance(message.route, dict) else None
         parsed: TurnResultProjection | None = None
         if isinstance(message.turn_result, dict):
