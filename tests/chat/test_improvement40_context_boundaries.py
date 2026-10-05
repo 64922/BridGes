@@ -487,7 +487,8 @@ def test_review_role_boundary_and_call_manifest_with_actual_usage(
     account = _register(client, tag="4014")
     adapter = _ReviewAdapter(usage={"prompt_tokens": 1234, "completion_tokens": 56})
     _install(sqlite_app, adapter)
-    _activate(sqlite_app, _MODEL_A, window=3000, max_input=3000)
+    # v2 计入数字/符号密度；本例验证角色封装，不以过小额度阻止正式调用。
+    _activate(sqlite_app, _MODEL_A, window=6000, max_input=6000)
     conversation_id = _create_conversation(client)
     secret_marker = "私密正文标记XYZ"
     items: list[tuple[ChatMessageRole, str]] = [

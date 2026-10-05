@@ -240,7 +240,7 @@ def test_dynamic_budget_reserves_and_compilation_record() -> None:
     assert record["model_id"] == CHAT_MODEL_ID
     assert record["budget_version"] == CONTEXT_BUDGET_VERSION
     assert record["summary_version"] == SUMMARY_VERSION
-    assert record["token_estimate_version"] == "token-estimate-v1"
+    assert record["token_estimate_version"] == "token-estimate-v2"
     assert record["adopted_message_ids"] == ["u1", "a1", "u2"]
     # 已验证窗口登记表：出厂主模型回退到出厂快照验证值；未知模型回退
     # 保守缺省窗口。

@@ -110,10 +110,11 @@ def _payload(text: str, *, output_tokens: int = 1024) -> dict[str, Any]:
 
 def test_estimator_counts_chinese_english_code_formula_and_long_url() -> None:
     assert estimate_tokens("") == 0
-    # CJK 每字 1 token；其余每 4 字符 1 token（向上取整）。
+    # CJK、数字和符号每字 1 token；拉丁字母和空白每 4 字符 1 token。
     assert estimate_tokens("中文测试") == 4
     assert estimate_tokens("abcd") == 1
     assert estimate_tokens("abcde") == 2
+    assert estimate_tokens("1234_/") == 6
     # 代码与公式（ASCII）按字符数折算，长 URL 同样计入（不为零）。
     assert estimate_tokens("def f(x):\n    return x ** 2") > 0
     assert estimate_tokens("E = m * c ** 2") == estimate_tokens("E = m * c ** 2")

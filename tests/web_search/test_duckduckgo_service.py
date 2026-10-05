@@ -52,6 +52,17 @@ def test_planner_only_triggers_on_explicit_fresh_or_fact_request() -> None:
     assert planner.plan("量子计算最新进展", ChatMode.STUDY).should_search is False
 
 
+def test_conversation_state_and_web_development_do_not_request_public_search() -> None:
+    planner = LocalQueryPlanner()
+    assert not planner.plan("只回答当前这条装修预算的数字。").should_search
+    assert not planner.plan("当前的人数与车辆数分别是多少？").should_search
+    assert not planner.plan("按编号列出：数据分析、网页开发、自动化脚本。").should_search
+    assert planner.plan("请联网核实当前装修预算对应的市场报价。").should_search
+    assert planner.plan("当前量子计算最新进展是什么？").should_search
+    assert planner.plan("当前美国国防预算是多少？").should_search
+    assert planner.plan("当前公司的员工人数是多少？").should_search
+
+
 def test_planner_persists_deterministic_rules_and_learning_force_metadata() -> None:
     planner = LocalQueryPlanner()
 

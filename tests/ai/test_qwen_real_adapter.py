@@ -129,7 +129,7 @@ def test_text_chat_request_shape_and_lock() -> None:
     assert result.output == {"content": "你好！"}
     assert captured["body"]["model"] == "qwen3.7-plus"
     assert captured["body"]["temperature"] == 0.7
-    assert captured["body"]["max_tokens"] == 1024
+    assert captured["body"]["max_completion_tokens"] == 1024
     assert captured["body"]["messages"][-1]["content"] == "compile_context"
     assert captured["auth"] is None
 
@@ -159,7 +159,7 @@ def test_text_chat_uses_prompt_when_provided() -> None:
 
     assert captured["body"]["messages"][-1]["content"] == "解释量子纠缠"
     assert captured["body"]["temperature"] == 0.5
-    assert captured["body"]["max_tokens"] == 512
+    assert captured["body"]["max_completion_tokens"] == 512
 
 
 def test_openai_client_error_includes_scrubbed_upstream_message() -> None:

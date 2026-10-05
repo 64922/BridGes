@@ -11,11 +11,8 @@
 7. 旧图细节跨轮重读原图（``test_corpus_old_photo_detail_survives_intervening_turns``）；
 8. 跨账户历史互不可见（``test_corpus_cross_account_history_is_isolated``）。
 
-附件末尾条件（工单情形 8）的页码/末尾段选择与已删除来源缺口由
-``tests/chat/test_improvement14_material_reads.py``
-（``test_select_file_segments_tail_and_section_gap``、
-``test_deleted_old_photo_yields_gap_not_description``）以正式读取断言覆盖；
-"普通→论文→GitHub"主题续接由工单 15 的任务材料回归与真实配对评测覆盖。
+附件末尾条件与普通→论文→GitHub 在本文件补充正式多轮路径；
+来源删除由工单 14 的正式上传、删除、失效与后续生成回归联合验证。
 本文件只证明确定性机制；真实模型语义由评测脚本配对给出。
 """
 
@@ -359,7 +356,8 @@ def test_corpus_summary_failure_falls_back_honestly(
     account = _register(client, tag="4026")
     adapter = _ReviewAdapter("收到。")
     _install(sqlite_app, adapter)
-    _activate(sqlite_app, _MODEL_A, window=6000, max_input=6000)
+    # 额度覆盖校准后的系统封装与必要原文，单独验证摘要失败的诚实回退。
+    _activate(sqlite_app, _MODEL_A, window=8000, max_input=8000)
     conversation_id = _create_conversation(client)
     items: list[tuple[ChatMessageRole, str]] = []
     for index in range(40):
@@ -504,3 +502,92 @@ def test_corpus_cross_account_history_is_isolated(
     assert "私密标记BETA" not in _payload_text(payload_a)
     assert "私密标记BETA" in _payload_text(payload_b)
     assert "私密标记ALPHA" not in _payload_text(payload_b)
+
+
+def test_corpus_file_tail_condition_enters_final_payload(
+    tmp_path: Path, monkeypatch: Any, generation_helpers: dict[str, Any],
+) -> None:
+    from tests.chat.test_v2_06_file_attachments import (
+        _app,
+        _drive_ingestion,
+        _gateway_with,
+        _last_assistant,
+        _register,
+        _send,
+        _start_conversation,
+        _upload_draft,
+    )
+    app = _app(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        _register(client, "issue40-file-tail")
+        from bridges.ingestion.embedding import DeterministicEmbeddingPort
+        app.state.retrieval_service._embedding = DeterministicEmbeddingPort()
+        adapter = _ReviewAdapter(lambda payload: (
+            "仅限校内报名，不接受校外人员。" if "不接受校外人员" in _payload_text(payload)
+            else "没有读到附件限定条件。"))
+        app.state.chat_service._gateway = _gateway_with(adapter)
+        draft = _upload_draft(client, filename="报名条件.md", upload_id="issue40-tail",
+                              content=("# 活动报名\n\n报名材料介绍。\n\n"
+                                       "## 末尾限定条件\n\n"
+                                       "仅限校内报名，不接受校外人员。\n").encode()).json()
+        _drive_ingestion(app)
+        conversation = _start_conversation(client, app)
+        _send(client, app, generation_helpers, conversation,
+              "根据我的文件，活动报名有什么要求？", [draft["object_id"]])
+        _send(client, app, generation_helpers, conversation, "先换个话题打个招呼。", [])
+        _send(client, app, generation_helpers, conversation,
+              "根据我的文件，附件末尾的报名限定条件是什么？", [])
+        assistant = _last_assistant(client, conversation)
+        assert assistant["status"] == "done"
+        assert "不接受校外人员" in assistant["content"], (
+            str(assistant.get("retrieval")), _payload_text(adapter.payloads[-1]))
+        assert "不接受校外人员" in _payload_text(adapter.payloads[-1])
+        citations = assistant["retrieval"]["citations"]
+        assert citations and all(item["source_layer"] == "attachment" for item in citations)
+        assert any(item["object_id"] == draft["object_id"] for item in citations)
+        manifest = _manifest_records(app)[-1]
+        segments = [item for item in manifest["entries"]
+                    if item["material_id"].startswith("parsed_segment:")]
+        assert segments and any(item["adopted"] and item["read_range"] for item in segments)
+
+
+def test_corpus_plain_paper_github_keeps_source_identity(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any],
+) -> None:
+    from tests.github.test_github_module_flow import (
+        _candidate,
+        _evidence,
+        _FakeReader,
+        _FakeSearchPort,
+        _install_github_service,
+        _run_and_read,
+        _send,
+    )
+    from tests.paper.test_paper_module_flow import (
+        ATTENTION_CANDIDATES,
+        _FakePaperSource,
+        _install_paper_source,
+    )
+    _register(client, tag="4042")
+    _install(sqlite_app, _ReviewAdapter())
+    _activate(sqlite_app, _MODEL_A, window=16000, max_input=16000)
+    source = _install_paper_source(sqlite_app, _FakePaperSource(candidates=ATTENTION_CANDIDATES))
+    port = _FakeSearchPort(per_query={"注意力机制": [
+        _candidate("demo/attention", description="注意力机制实现")
+    ]})
+    _install_github_service(sqlite_app, port=port, reader=_FakeReader({
+        "demo/attention": _evidence("demo/attention", description="注意力机制实现",
+                                    readme_text="本项目实现 Transformer 注意力机制。")
+    }))
+    conversation = _create_conversation(client)
+    _send(client, conversation, "先打个招呼。")
+    plain = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation)
+    assert plain["paper_search"] is None and plain["github_projects"] is None
+    _send(client, conversation, "注意力机制", module_id="paper")
+    paper = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation)
+    assert paper["paper_search"] is not None and source.queries
+    _send(client, conversation, "帮我找实现它的项目", module_id="github")
+    github = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation)
+    assert github["github_projects"]["scenario"] == "注意力机制"
+    assert port.queries == ["注意力机制"]
+    assert github["github_projects"]["context_source"]["message_id"] == paper["message_id"]

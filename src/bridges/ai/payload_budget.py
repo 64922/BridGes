@@ -38,11 +38,11 @@ from unicodedata import category
 from bridges.ai.model_quota import RunModelQuota
 
 #: 载荷预算合同版本（估算/裁剪/门公式变化时递增）。
-PAYLOAD_BUDGET_VERSION = "payload-budget-v1"
+PAYLOAD_BUDGET_VERSION = "payload-budget-v2"
 #: 材料清单合同版本（字段或语义变化时递增）。
 MATERIAL_MANIFEST_VERSION = "material-manifest-v1"
 #: token 估算版本（估算规则变化时递增）。单一事实源，``context_compiler`` 复用。
-TOKEN_ESTIMATE_VERSION = "token-estimate-v1"
+TOKEN_ESTIMATE_VERSION = "token-estimate-v2"
 
 #: 单张图片部件的输入成本估算（文本预算口径下的保守常量）。图片数量与输入
 #: 方式都进入预算，照片轮不再绕过编译。
@@ -76,9 +76,9 @@ MANIFEST_FORBIDDEN_FIELDS: tuple[str, ...] = (
 def estimate_tokens(text: str) -> int:
     """确定性 token 估算（:data:`TOKEN_ESTIMATE_VERSION`）。
 
-    CJK 汉字与全角/CJK 标点按 1 token/字、其余字符按 4 字符 1 token 向上
-    取整——对当前 Qwen 文本模型整体略偏保守，只用于预算控制，不冒充真实
-    分词结果。
+    CJK、数字与符号按 1 token/字，拉丁字母和空白按 4 字符 1 token 向上
+    取整。工单 40 实测发现公式和长 URL 的数字/符号密度导致旧规则低估
+    超过安全余量；新规则按该样本校准，仍不冒充供应商分词或全材料保证。
     """
     tokens = 0
     other = 0
@@ -91,8 +91,10 @@ def estimate_tokens(text: str) -> int:
             or (category(char).startswith("L") and code > 0x2E7F)
         ):
             tokens += 1
-        else:
+        elif char.isascii() and (char.isalpha() or char.isspace()):
             other += 1
+        else:
+            tokens += 1
     return tokens + (other + 3) // 4
 
 

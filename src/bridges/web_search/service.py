@@ -278,7 +278,7 @@ class LocalQueryPlanner:
     """只根据本地消息判断是否搜索，并删除私有内容。"""
 
     _EXPLICIT = re.compile(
-        r"联网|上网|网页|在线|搜索|查找|查一下|查查|查下|查一查|搜一下|帮我搜|帮我查"
+        r"联网|上网|网页(?!开发|设计)|在线|搜索|查找|查一下|查查|查下|查一查|搜一下|帮我搜|帮我查"
     )
     _FRESHNESS = re.compile(
         r"最新|最近|近期|当前|截至|本周|本月|本季度|本年|最新消息|变化|"
@@ -338,6 +338,11 @@ class LocalQueryPlanner:
             return SearchPlan(False, "", "论文请求由 arXiv 论文搜索处理")
         explicit = bool(self._EXPLICIT.search(content))
         fresh = bool(self._FRESHNESS.search(content))
+        # 对话内的预算、人数与车辆状态不依赖公网时效；显式联网仍优先。
+        if not explicit:
+            local_state_removed = re.sub(
+                r"当前这条[^。！？\n]{0,12}预算|当前的?人数与车辆数", "", content)
+            fresh = bool(self._FRESHNESS.search(local_state_removed))
         fact_check = bool(self._FACT_CHECK.search(content))
         should_search = force or (mode == ChatMode.COMPANION and (explicit or fresh or fact_check))
         reasons: list[str] = []

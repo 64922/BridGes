@@ -10,6 +10,7 @@ immutable run locks.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from typing import Any
 
@@ -30,6 +31,14 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import FourDimension
 from bridges.contracts.workflows import RunContextEnvelope
+
+
+def _output_limit(model_id: str, tokens: int) -> dict[str, int]:
+    """已支持的新 Qwen 型号按思考与正文合计额度限流，其余保留兼容参数。"""
+    match = re.match(r"^qwen3\.(\d+)-(plus|flash|max)(?:-|$)", model_id)
+    if match and (7 if match[2] == "max" else 5) <= int(match[1]) <= 8:
+        return {"max_completion_tokens": tokens}
+    return {"max_tokens": tokens}
 
 
 class QwenTextChatAdapter(CapabilityAdapter):
@@ -54,7 +63,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "model": capability.model_id,
             "messages": messages,
             "temperature": payload.get("temperature", 0.7),
-            "max_tokens": payload.get("max_tokens", 1024),
+            **_output_limit(capability.model_id, payload.get("max_tokens", 1024)),
         }
 
         response_body = self._client.chat_completions(
@@ -85,7 +94,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "model": capability.model_id,
             "messages": messages,
             "temperature": payload.get("temperature", 0.7),
-            "max_tokens": payload.get("max_tokens", 1024),
+            **_output_limit(capability.model_id, payload.get("max_tokens", 1024)),
             "stream": True,
         }
         last_body: dict[str, Any] | None = None
@@ -154,7 +163,7 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
             "messages": messages,
             "response_format": response_format,
             "temperature": payload.get("temperature", 0.7),
-            "max_tokens": payload.get("max_tokens", 2048),
+            **_output_limit(capability.model_id, payload.get("max_tokens", 2048)),
         }
 
         response_body = self._client.chat_completions(
