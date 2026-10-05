@@ -76,6 +76,16 @@ def test_selected_single_case_can_pass_and_missing_usage_cannot() -> None:
            "usage": {"prompt_tokens": 15900, "completion_tokens": 200}}], 16000, 16000)
 
 
+def test_partial_limited_turn_is_not_reported_as_quality_gate() -> None:
+    case = {"quality_gated": [], "explicitly_limited_turns": [2],
+            "turns": [{"status": "error", "error_code": "output_budget_exceeded",
+                       "answer": "部分正文"}]}
+    assert evaluation._case_gated(case) == []
+    legacy = {"turns": [{"status": "error", "error_code": "quality_gate",
+                         "answer": "正文"}]}
+    assert evaluation._case_gated(legacy) == ["quality_gate"]
+
+
 def test_summary_reads_are_attributed_to_case_conversation() -> None:
     own = {"message_ids": ["own-1", "own-2"]}
     foreign = {"message_ids": ["other-1"]}

@@ -1170,8 +1170,9 @@ def _case_content_passed(case: dict[str, Any]) -> bool:
 
 
 def _case_gated(case: dict[str, Any]) -> list[str]:
-    if case.get("quality_gated"):
-        return list(case["quality_gated"])
+    # 字段存在时以 run_case 的判定为准（已排除明确受限轮）；仅旧证据走回退。
+    if "quality_gated" in case:
+        return list(case["quality_gated"] or [])
     return [
         turn["error_code"] or "error"
         for turn in case.get("turns") or []
