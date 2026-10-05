@@ -92,7 +92,7 @@ from bridges.study.scope import (
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.tutoring import tutor
 
-STUDY_GRAPH_VERSION = "study-tutoring-review-v5"
+STUDY_GRAPH_VERSION = "study-tutoring-review-v6"
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用
@@ -298,6 +298,8 @@ class StudyWorkflow:
 
         def save_state_in_transaction() -> None:
             if updating:
+                # 候选写也会更新整份状态；先核对有效版本，避免抹掉并发修改。
+                _verify_update_commit()
                 pending = committed.model_copy(deep=True)
                 pending.pending_object_ids = list(state.pending_object_ids)
                 pending.page_update = StudyPageUpdate(
@@ -1062,6 +1064,11 @@ class StudyWorkflow:
             if stop_event is not None and stop_event.is_set():
                 raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
             decision = material_guard.verify()
+            if allow_message_terminal and decision.code == "message_terminal":
+                # 终态回调中消息已收敛，但跨进程持久停止仍必须生效。
+                current_run = self._repo.get_generation_run(run.account_id, run.run_id)
+                if current_run is not None and current_run.stop_requested:
+                    raise StudyWorkflowError(current_node, "stopped", STUDY_STOPPED_TEXT)
             if (
                 not decision.ok
                 and not (allow_message_terminal and decision.code == "message_terminal")
@@ -1075,14 +1082,14 @@ class StudyWorkflow:
             if latest is None or latest.model_dump(exclude=exclude) != expected:
                 raise StudyWorkflowError(current_node, code, message)
 
-        def _verify_update_commit() -> None:
+        def _verify_update_commit(*, allow_message_terminal: bool = False) -> None:
             """追加页原子切换：有效状态（不含待提交候选）未变且执行权在握。"""
             _verify_material_commit(
                 committed.model_dump(exclude={"page_update", "pending_object_ids"}),
                 "study_page_update_changed",
                 "小节状态已变化，本次追加结果未提交，请重试。",
                 exclude={"page_update", "pending_object_ids"},
-                allow_message_terminal=True,
+                allow_message_terminal=allow_message_terminal,
             )
 
         def _verify_review_commit() -> None:
@@ -1398,7 +1405,7 @@ class StudyWorkflow:
                 if output.get("updated_pages"):
                     # 追加页的原子版本切换：执行权与有效版本守卫通过才替换
                     # 有效书页/范围，失败整体回滚并保留原有效版本。
-                    _verify_update_commit()
+                    _verify_update_commit(allow_message_terminal=True)
                     self._states.save_in_transaction(
                         run.account_id, run.conversation_id,
                         StudyState.model_validate(output["updated_pages"]),
@@ -1441,6 +1448,7 @@ class StudyWorkflow:
             if updating and _is_recognition_node(current_node) and exc.code not in {
                 "stopped", "lease_lost", "lease_expired", "run_terminal", "run_missing",
                 "message_terminal", "message_missing", "task_version_changed",
+                "study_page_update_changed",
             }:
                 state.wait_reason = "recognition_failed"
                 save_state()

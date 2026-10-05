@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="5" time="9.758" timestamp="2026-10-05T12:48:14.436337+08:00" hostname="bababoyi"><testcase classname="tests.chat.test_improvement35_acceptance" name="test_candidate_write_preserves_concurrent_effective_state[recognition]" time="1.364"><failure message="AssertionError: assert None == 'study_page_update_changed'">tmp_path = WindowsPath('D:/BridGes/.worktrees/35-study-pause-and-appended-page-versions/.tmp/acceptance35-red/test_candidate_write_preserves0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001BB48B4D410&gt;
+boundary = 'recognition'
+
+    @pytest.mark.parametrize("boundary", ["recognition", "mapping"])
+    def test_candidate_write_preserves_concurrent_effective_state(
+        tmp_path: Any, monkeypatch: Any, boundary: str,
+    ) -&gt; None:
+        from bridges.study.service import StudyRepository
+    
+        app = _app(tmp_path, monkeypatch)
+        gateway = Ticket35Gateway()
+        app.state.chat_service._gateway = gateway
+        with TestClient(app) as client:
+            endpoint = _start(client, app)
+            account_id = client.get("/auth/session").json()["account"]["id"]
+            conversation_id = endpoint.rsplit("/", 1)[-1]
+            repository = StudyRepository(app.state.bridges_database)
+            before = repository.get(account_id, conversation_id)
+            assert before is not None
+            original = gateway.invoke
+            changed = False
+    
+            def concurrent(*args: Any, **kwargs: Any) -&gt; Any:
+                nonlocal changed
+                result = original(*args, **kwargs)
+                matches = (
+                    args[0] == "qwen_vision" if boundary == "recognition"
+                    else kwargs.get("payload", {}).get("task") == "study.map"
+                )
+                if matches and not changed:
+                    changed = True
+                    current = repository.get(account_id, conversation_id)
+                    assert current is not None
+                    current.tutoring.append(StudyExchange(
+                        user_message_id="concurrent-user", assistant_message_id="concurrent-assistant",
+                        question="并发提问", answer="必须保留的并发回答", sources=[],
+                    ))
+                    repository.save(account_id, conversation_id, current)
+                return result
+    
+            monkeypatch.setattr(gateway, "invoke", concurrent)
+            gateway.page_numbers = [12, 13]
+            photo = _upload_draft(client, upload_id="race", content=PNG_BYTES + b"-2").json()
+            result = _ask(client, app, endpoint, "追加一页", attachment_ids=[photo["object_id"]])
+            assert changed
+&gt;           assert result["messages"][-1]["error_code"] == "study_page_update_changed"
+E           AssertionError: assert None == 'study_page_update_changed'
+
+tests\chat\test_improvement35_acceptance.py:56: AssertionError</failure></testcase><testcase classname="tests.chat.test_improvement35_acceptance" name="test_candidate_write_preserves_concurrent_effective_state[mapping]" time="1.183"><failure message="AssertionError: assert None == 'study_page_update_changed'">tmp_path = WindowsPath('D:/BridGes/.worktrees/35-study-pause-and-appended-page-versions/.tmp/acceptance35-red/test_candidate_write_preserves1')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001BB4B3DAF10&gt;
+boundary = 'mapping'
+
+    @pytest.mark.parametrize("boundary", ["recognition", "mapping"])
+    def test_candidate_write_preserves_concurrent_effective_state(
+        tmp_path: Any, monkeypatch: Any, boundary: str,
+    ) -&gt; None:
+        from bridges.study.service import StudyRepository
+    
+        app = _app(tmp_path, monkeypatch)
+        gateway = Ticket35Gateway()
+        app.state.chat_service._gateway = gateway
+        with TestClient(app) as client:
+            endpoint = _start(client, app)
+            account_id = client.get("/auth/session").json()["account"]["id"]
+            conversation_id = endpoint.rsplit("/", 1)[-1]
+            repository = StudyRepository(app.state.bridges_database)
+            before = repository.get(account_id, conversation_id)
+            assert before is not None
+            original = gateway.invoke
+            changed = False
+    
+            def concurrent(*args: Any, **kwargs: Any) -&gt; Any:
+                nonlocal changed
+                result = original(*args, **kwargs)
+                matches = (
+                    args[0] == "qwen_vision" if boundary == "recognition"
+                    else kwargs.get("payload", {}).get("task") == "study.map"
+                )
+                if matches and not changed:
+                    changed = True
+                    current = repository.get(account_id, conversation_id)
+                    assert current is not None
+                    current.tutoring.append(StudyExchange(
+                        user_message_id="concurrent-user", assistant_message_id="concurrent-assistant",
+                        question="并发提问", answer="必须保留的并发回答", sources=[],
+                    ))
+                    repository.save(account_id, conversation_id, current)
+                return result
+    
+            monkeypatch.setattr(gateway, "invoke", concurrent)
+            gateway.page_numbers = [12, 13]
+            photo = _upload_draft(client, upload_id="race", content=PNG_BYTES + b"-2").json()
+            result = _ask(client, app, endpoint, "追加一页", attachment_ids=[photo["object_id"]])
+            assert changed
+&gt;           assert result["messages"][-1]["error_code"] == "study_page_update_changed"
+E           AssertionError: assert None == 'study_page_update_changed'
+
+tests\chat\test_improvement35_acceptance.py:56: AssertionError</failure></testcase><testcase classname="tests.chat.test_improvement35_acceptance" name="test_append_final_transaction_rejects_late_authority_change[stop]" time="1.084"><failure message="AssertionError: assert [{'object_id'...id': '', ...}] == [{'object_id'...id': '', ...}]&#10;  &#10;  Left contains one more item: {'object_id': 'mS7BWD9orIr1-RWpiVFKyA', 'ordinal': 2, 'content_hash': 'bd3be8a923fd38050161958a6238320eefa81806e6ad7595fefbee46b81e1f07', 'model_id': '', ...}&#10;  Use -v to get more diff">tmp_path = WindowsPath('D:/BridGes/.worktrees/35-study-pause-and-appended-page-versions/.tmp/acceptance35-red/test_append_final_transaction_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001BB49D83390&gt;
+change = 'stop'
+
+    @pytest.mark.parametrize("change", ["stop", "lease"])
+    def test_append_final_transaction_rejects_late_authority_change(
+        tmp_path: Any, monkeypatch: Any, change: str,
+    ) -&gt; None:
+        from bridges.study import service as study_service
+    
+        app = _app(tmp_path, monkeypatch)
+        gateway = Ticket35Gateway()
+        app.state.chat_service._gateway = gateway
+        with TestClient(app) as client:
+            endpoint = _start(client, app)
+            account_id = client.get("/auth/session").json()["account"]["id"]
+            before = client.get(endpoint).json()["study"]
+            original = study_service.finalize_message
+            changed = False
+    
+            def late(*args: Any, **kwargs: Any) -&gt; Any:
+                nonlocal changed
+                if kwargs.get("status").value == "done" and not changed:
+                    changed = True
+                    run = app.state.chat_service._repo.get_run_by_message(account_id, args[2])
+                    assert run is not None
+                    # 只设置持久停止，不依赖进程内 Event；模拟跨进程停止/租约转移。
+                    assignment = "stop_requested = 1" if change == "stop" else "lease_owner = 'new-worker'"
+                    app.state.bridges_database.connection.execute(
+                        f"UPDATE generation_runs SET {assignment} WHERE run_id = ?", (run.run_id,),
+                    )
+                return original(*args, **kwargs)
+    
+            monkeypatch.setattr(study_service, "finalize_message", late)
+            gateway.page_numbers = [12, 13]
+            photo = _upload_draft(client, upload_id="late", content=PNG_BYTES + b"-2").json()
+            result = _ask(client, app, endpoint, "追加一页", attachment_ids=[photo["object_id"]])
+            assert changed
+&gt;           assert result["study"]["pages"] == before["pages"]
+E           AssertionError: assert [{'object_id'...id': '', ...}] == [{'object_id'...id': '', ...}]
+E             
+E             Left contains one more item: {'object_id': 'mS7BWD9orIr1-RWpiVFKyA', 'ordinal': 2, 'content_hash': 'bd3be8a923fd38050161958a6238320eefa81806e6ad7595fefbee46b81e1f07', 'model_id': '', ...}
+E             Use -v to get more diff
+
+tests\chat\test_improvement35_acceptance.py:97: AssertionError</failure></testcase><testcase classname="tests.chat.test_improvement35_acceptance" name="test_append_final_transaction_rejects_late_authority_change[lease]" time="1.091" /><testcase classname="tests.chat.test_improvement35_acceptance" name="test_previous_graph_cannot_replay_pre_versioned_update" time="1.236"><failure message="AssertionError: assert 'study_internal_error' == 'study_graph_version_changed'&#10;  &#10;  - study_graph_version_changed&#10;  + study_internal_error">tmp_path = WindowsPath('D:/BridGes/.worktrees/35-study-pause-and-appended-page-versions/.tmp/acceptance35-red/test_previous_graph_cannot_rep0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001BB4FDA8590&gt;
+
+    def test_previous_graph_cannot_replay_pre_versioned_update(
+        tmp_path: Any, monkeypatch: Any,
+    ) -&gt; None:
+        app = _app(tmp_path, monkeypatch)
+        gateway = Ticket35Gateway()
+        app.state.chat_service._gateway = gateway
+        with TestClient(app) as client:
+            endpoint = _start(client, app)
+            account_id = client.get("/auth/session").json()["account"]["id"]
+            before = client.get(endpoint).json()["study"]
+            photo = _upload_draft(client, upload_id="old-graph", content=PNG_BYTES + b"-2").json()
+            client.post(endpoint + "/messages", json={
+                "content": "追加一页", "attachment_ids": [photo["object_id"]],
+            })
+            app.state.bridges_database.scoped(account_id).execute(
+                "UPDATE generation_runs SET graph_version = 'study-tutoring-review-v5'"
+                " WHERE account_id = ? AND conversation_id = ? AND status = 'queued'",
+                (account_id, endpoint.rsplit("/", 1)[-1]),
+            )
+            app.state.generation_executor.run_tick()
+            result = client.get(endpoint).json()
+&gt;           assert result["messages"][-1]["error_code"] == "study_graph_version_changed"
+E           AssertionError: assert 'study_internal_error' == 'study_graph_version_changed'
+E             
+E             - study_graph_version_changed
+E             + study_internal_error
+
+tests\chat\test_improvement35_acceptance.py:123: AssertionError</failure></testcase></testsuite></testsuites>

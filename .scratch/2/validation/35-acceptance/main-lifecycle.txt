@@ -1,0 +1,91 @@
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests/lifecycle/test_lifecycle_api.py --basetemp=.tmp/acceptance35-main-lifecycle --junitxml=.scratch/2/validation/35-review/independent-main-lifecycle.xml -q` failed. (See above for error)
+.F.F..F..F..F.                                                           [100%]
+================================== FAILURES ===================================
+____________________ test_export_preview_lists_categories _____________________
+
+client = <starlette.testclient.TestClient object at 0x000002BAE72CF590>
+
+>   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002BAE72CF590>
+
+>   ???
+E   assert 409 == 201
+E    +  where 409 = <Response [409 Conflict]>.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+_______________ test_export_returns_json_download_after_reauth ________________
+
+client = <starlette.testclient.TestClient object at 0x000002BAE70E3410>
+
+>   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002BAE70E3410>
+
+>   ???
+E   assert 409 == 201
+E    +  where 409 = <Response [409 Conflict]>.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+________________ test_delete_account_removes_data_and_session _________________
+
+client = <starlette.testclient.TestClient object at 0x000002BAE5EC5890>
+
+>   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002BAE5EC5890>
+
+>   ???
+E   assert 409 == 201
+E    +  where 409 = <Response [409 Conflict]>.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+__________________ test_create_backup_returns_encrypted_file __________________
+
+client = <starlette.testclient.TestClient object at 0x000002BAEAFE1210>
+
+>   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002BAEAFE1210>
+
+>   ???
+E   assert 409 == 201
+E    +  where 409 = <Response [409 Conflict]>.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+_________________ test_full_backup_restore_roundtrip_via_api __________________
+
+client = <starlette.testclient.TestClient object at 0x000002BAE494D310>
+
+>   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002BAE494D310>
+
+>   ???
+E   assert 409 == 201
+E    +  where 409 = <Response [409 Conflict]>.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_preview_lists_categories
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_returns_json_download_after_reauth
+FAILED tests/lifecycle/test_lifecycle_api.py::test_delete_account_removes_data_and_session
+FAILED tests/lifecycle/test_lifecycle_api.py::test_create_backup_returns_encrypted_file
+FAILED tests/lifecycle/test_lifecycle_api.py::test_full_backup_restore_roundtrip_via_api
+5 failed, 9 passed in 18.83s
+

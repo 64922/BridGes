@@ -200,6 +200,8 @@ def build_summary(
 def _question_label(state: StudyState, index: int, item: StudyReviewQuestion) -> str:
     prefix = f"第{index}题「{item.question}」"
     if not item.judgement:
+        if item.answer is not None:
+            return prefix + "已作答（尚未判定，未计入掌握）"
         return prefix + "未作答（已呈现，未计入掌握）"
     suffix = "" if question_basis_current(state, item) else "（依据已更新，需重新确认）"
     return f"{prefix}判定为{_JUDGEMENTS[item.judgement]}{suffix}"
