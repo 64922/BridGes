@@ -997,14 +997,16 @@ class StudyWorkflow:
                 state.review.complete = False
             # 书页范围变了：旧总结不再对应当前知识范围与题目，移入历史并
             # 标注原范围版本；当前总结置空，待重排后按新范围重新生成，
-            # 后续总结不冒用旧版本结论。
+            # 后续总结不冒用旧版本结论。优先采用总结自身绑定的生成版本
+            # （工单 36），旧状态缺失时回退到运行启动时的有效范围。
             if state.summary is not None:
                 state.summary_history = [
                     *state.summary_history,
                     StudySummaryRecord(
                         summary=state.summary,
                         scope_version_id=(
-                            committed.scope.scope_version_id if committed.scope else ""
+                            state.summary.scope_version_id
+                            or (committed.scope.scope_version_id if committed.scope else "")
                         ),
                         superseded_reason="追加或补拍书页使本节知识范围更新",
                     ),

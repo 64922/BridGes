@@ -22,7 +22,7 @@ class ReviewGateway(TutorGateway):
         self.judgement = "correct"
 
     def summarize(self, payload: dict[str, Any]) -> ModelCallResult:
-        """最后一题判定后触发的学习总结替身（工单 20）：三段均按实际判定写。"""
+        """最后一题判定后触发的学习总结替身（工单 20/36）：按实际判定分四类写。"""
         data = next(
             json.loads(message["content"])
             for message in payload["messages"]
@@ -34,7 +34,11 @@ class ReviewGateway(TutorGateway):
         ]
         weak = [
             item["question_id"] for item in data["questions"]
-            if item["judgement"] != "correct"
+            if item["judgement"] in {"incomplete", "incorrect"}
+        ]
+        pending = [
+            item["question_id"] for item in data["questions"]
+            if item["judgement"] is None
         ]
         points: list[dict[str, Any]] = [
             {
@@ -50,6 +54,14 @@ class ReviewGateway(TutorGateway):
         if weak:
             points.append(
                 {"kind": "gap", "text": "截距的几何意义还需要补。", "question_ids": weak}
+            )
+        if pending:
+            points.append(
+                {
+                    "kind": "unanswered",
+                    "text": "以下题目本次未作答或尚未判定，不计为掌握或错答。",
+                    "question_ids": pending,
+                }
             )
         return ModelCallResult(status=ModelCallStatus.SUCCESS, output={"points": points})
 

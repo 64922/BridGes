@@ -24885,17 +24885,26 @@ export interface components {
         StudySummary: {
             /** Points */
             points: components["schemas"]["StudySummaryPoint"][];
+            /**
+             * Scope Version Id
+             * @default
+             */
+            scope_version_id: string;
         };
         /**
          * StudySummaryPoint
-         * @description 总结的一条结论：掌握与漏洞都指向实际题目或本节书页片段。
+         * @description 总结的一条结论：掌握、漏洞与未答事实都指向实际题目或本节书页片段。
+         *
+         *     ``kind`` 四类分别对应本轮学过的知识、判定正确且依据仍有效的掌握、
+         *     判定不完整/错误或依据已更新的缺口，以及已呈现但未作答/尚未判定的题
+         *     （工单 36）：未答与未判必须单独列出，不得写成答对、错答或掌握。
          */
         StudySummaryPoint: {
             /**
              * Kind
              * @enum {string}
              */
-            kind: "learned" | "mastered" | "gap";
+            kind: "learned" | "mastered" | "gap" | "unanswered";
             /** Text */
             text: string;
             /** Question Ids */

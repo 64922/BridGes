@@ -51,7 +51,8 @@ def test_version_history_survives_lifecycle_and_legacy_read(tmp_path):
     current = repository.get(harness.acc1, conversation).model_dump()
     old = repository.get(harness.acc2, foreign).model_dump()
     assert old["state_version"] == 4 and old["summary_history"] == []
-    assert old["summary"] == legacy["summary"]
+    # 工单 36 追加总结范围版本字段：旧总结原文不变，仅补默认空值。
+    assert old["summary"] == {**legacy["summary"], "scope_version_id": ""}
     for account, own, other in ((harness.acc1, "原总结历史甲", "旧总结乙"),
                                 (harness.acc2, "旧总结乙", "原总结历史甲")):
         _, payload = harness.export.export_data(account)
