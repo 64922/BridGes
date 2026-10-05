@@ -93,10 +93,6 @@ def derive_turn_result(
     projections: Mapping[str, Mapping[str, Any] | None] | None = None,
     wait_reason: str | None = None,
     web_search: Mapping[str, Any] | None = None,
-    task_id: str | None = None,
-    task_version: int | None = None,
-    gaps: tuple[str, ...] = (),
-    blocked_details: tuple[str, ...] = (),
 ) -> TurnResultProjection:
     """按消息终态与真实领域投影推导公开回合结果。
 
@@ -170,11 +166,7 @@ def derive_turn_result(
             else ResultTrust.QUALIFIED
         )
 
-    gap_items = [
-        *gaps,
-        *blocked_details,
-        *(item.detail for item in blocks_blocked if item.detail),
-    ]
+    gap_items = [item.detail for item in blocks_blocked if item.detail]
     return TurnResultProjection(
         version=TURN_RESULT_VERSION,
         outcome=outcome,
@@ -201,8 +193,6 @@ def derive_turn_result(
             web_search=web_search,
         ),
         wait_reason=wait_reason if outcome is TurnOutcome.NEEDS_INPUT else None,
-        task_id=task_id,
-        task_version=task_version,
     )
 
 
