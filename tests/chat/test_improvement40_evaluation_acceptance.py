@@ -26,6 +26,15 @@ def test_invalid_answer_is_not_a_pass(answer: str, scenario: str, index: int) ->
     assert not evaluation._check_turn(answer, turn)["passed"]
 
 
+def test_legitimate_clarification_is_not_treated_as_fabrication() -> None:
+    turn = evaluation._scenario_by_id("missing-reference").turns[0]
+    answer = (
+        "我们好像还没聊过具体的方案呢。你提到的“第二个方案”是关于什么的？"
+        "稍微给我点背景，我来帮你梳理具体步骤。"
+    )
+    assert evaluation._check_turn(answer, turn)["passed"]
+
+
 @pytest.mark.parametrize("cases", [[], [{"passed": False}], [{"passed": True}, {"passed": False}]])
 def test_empty_or_failed_evaluation_exits_nonzero(cases: list[dict[str, Any]]) -> None:
     assert evaluation._result_exit_code({"cases": cases}) != 0

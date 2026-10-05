@@ -287,7 +287,9 @@ def _check_turn(answer: str, turn: Turn) -> dict[str, Any]:
         "must_ask": (not turn.must_ask) or (
             ("？" in text or "?" in text)
             and any(word in text for word in ("方案", "第二个", "哪个"))
-            and any(word in text for word in ("提供", "补充", "发", "指", "哪"))
+            and any(word in text for word in (
+                "提供", "补充", "发", "指", "哪", "什么", "背景", "话题", "项目",
+                "告诉", "说明", "说说", "梳理"))
             and not re.search(r"(?:步骤[一二三1-9]|1[.、]|首先)", text)
         ),
     }
