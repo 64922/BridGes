@@ -33,9 +33,9 @@ from bridges.contracts.profiles import FourDimension
 from bridges.contracts.workflows import RunContextEnvelope
 
 
-def _output_limit(model_id: str, tokens: int) -> dict[str, int]:
+def _output_limit(model_id: str | None, tokens: int) -> dict[str, int]:
     """已支持的新 Qwen 型号按思考与正文合计额度限流，其余保留兼容参数。"""
-    match = re.match(r"^qwen3\.(\d+)-(plus|flash|max)(?:-|$)", model_id)
+    match = re.match(r"^qwen3\.(\d+)-(plus|flash|max)(?:-|$)", model_id or "")
     if match and (7 if match[2] == "max" else 5) <= int(match[1]) <= 8:
         return {"max_completion_tokens": tokens}
     return {"max_tokens": tokens}
