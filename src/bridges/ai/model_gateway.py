@@ -581,6 +581,7 @@ class ModelGateway:
                             retry_count=connect_retry_count,
                             payload=payload,
                             call_contract=call_contract,
+                            usage=chunk.usage,
                         )
                         yield event
                         return
@@ -703,6 +704,7 @@ class ModelGateway:
         retry_count: int,
         payload: dict[str, Any] | None,
         call_contract: CallContractVersions | None = None,
+        usage: dict[str, Any] | None = None,
     ) -> tuple[ModelRunLock, StreamEvent]:
         """构造流式失败锁与 error 事件（Issue 03：三条错误路径共用）。
 
@@ -721,12 +723,14 @@ class ModelGateway:
             error_message=error_message,
             payload=payload,
             call_contract=call_contract,
+            usage=usage,
         )
         event = StreamEvent(
             kind="error",
             error_code=error_code,
             error_message=error_message,
             lock=lock,
+            usage=usage,
         )
         return lock, event
 

@@ -10,6 +10,7 @@ immutable run locks.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from typing import Any
 
@@ -30,6 +31,14 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import FourDimension
 from bridges.contracts.workflows import RunContextEnvelope
+
+
+def _output_limit(model_id: str | None, tokens: int) -> dict[str, int]:
+    """已支持的新 Qwen 型号按思考与正文合计额度限流，其余保留兼容参数。"""
+    match = re.match(r"^qwen3\.(\d+)-(plus|flash|max)(?:-|$)", model_id or "")
+    if match and (7 if match[2] == "max" else 5) <= int(match[1]) <= 8:
+        return {"max_completion_tokens": tokens}
+    return {"max_tokens": tokens}
 
 
 class QwenTextChatAdapter(CapabilityAdapter):
@@ -54,7 +63,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "model": capability.model_id,
             "messages": messages,
             "temperature": payload.get("temperature", 0.7),
-            "max_tokens": payload.get("max_tokens", 1024),
+            **_output_limit(capability.model_id, payload.get("max_tokens", 1024)),
         }
 
         response_body = self._client.chat_completions(
@@ -62,6 +71,10 @@ class QwenTextChatAdapter(CapabilityAdapter):
             timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY),
         )
         choice = first_choice(response_body)
+        if choice.get("finish_reason") == "length":
+            raise AdapterError(code="output_budget_exceeded",
+                               message="模型输出额度已耗尽，请缩小问题范围后重试。",
+                               retryable=False)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,
@@ -85,10 +98,11 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "model": capability.model_id,
             "messages": messages,
             "temperature": payload.get("temperature", 0.7),
-            "max_tokens": payload.get("max_tokens", 1024),
+            **_output_limit(capability.model_id, payload.get("max_tokens", 1024)),
             "stream": True,
         }
         last_body: dict[str, Any] | None = None
+        finish_reason: str | None = None
         for response_body in self._client.chat_completions_stream(request_body):
             last_body = response_body
             choices = response_body.get("choices")
@@ -97,6 +111,8 @@ class QwenTextChatAdapter(CapabilityAdapter):
             choice = choices[0]
             if not isinstance(choice, dict):
                 continue
+            if choice.get("finish_reason"):
+                finish_reason = choice["finish_reason"]
             delta = choice.get("delta")
             if isinstance(delta, dict):
                 content = delta.get("content")
@@ -104,7 +120,10 @@ class QwenTextChatAdapter(CapabilityAdapter):
                     yield StreamChunk(kind="delta", delta=content)
         # 空流（立即 [DONE]）时 last_body 为 None：不引用未定义变量
         yield StreamChunk(
-            kind="done",
+            kind="error" if finish_reason == "length" else "done",
+            error_code="output_budget_exceeded" if finish_reason == "length" else None,
+            error_message="模型输出额度已耗尽，请缩小问题范围后重试。"
+            if finish_reason == "length" else None,
             usage=last_body.get("usage") if last_body is not None else None,
             actual_model_id=(
                 last_body.get("model") if last_body is not None else capability.model_id
@@ -154,7 +173,7 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
             "messages": messages,
             "response_format": response_format,
             "temperature": payload.get("temperature", 0.7),
-            "max_tokens": payload.get("max_tokens", 2048),
+            **_output_limit(capability.model_id, payload.get("max_tokens", 2048)),
         }
 
         response_body = self._client.chat_completions(

@@ -294,6 +294,27 @@ def test_gateway_stream_deltas_then_done_with_lock() -> None:
     assert done.lock.actual_model_id == "qwen3.7-plus-2026-05-26"
 
 
+@pytest.mark.parametrize("partial", [False, True])
+def test_output_quota_exhaustion_is_not_empty_or_partial_success(partial: bool) -> None:
+    done = json.loads(_done_line())
+    done["choices"][0]["finish_reason"] = "length"
+    done["usage"] = {"prompt_tokens": 3, "completion_tokens": 1024}
+    lines = ([_delta_line("未完成正文")] if partial else []) + [json.dumps(done), "[DONE]"]
+    client = QwenApiClient(api_key=None, workspace_id=None, region="cn-beijing")
+    client._client = httpx.Client(transport=httpx.MockTransport(
+        lambda request: _sse_response(*lines)))
+    events = list(_gateway_with(QwenTextChatAdapter(client)).stream(
+        "qwen_text_chat", "1", _context(), {"prompt": "规划一下", "max_tokens": 1024}))
+    assert events[-1].kind == "error"
+    assert events[-1].error_code == "output_budget_exceeded"
+    assert events[-1].lock is not None
+    assert events[-1].lock.status == ModelCallStatus.BLOCKED
+    assert events[-1].lock.usage == done["usage"]
+    assert events[-1].usage == done["usage"]
+    assert [event.delta for event in events if event.kind == "delta"] == (
+        ["未完成正文"] if partial else [])
+
+
 def test_gateway_stream_connection_error_classifies_lock() -> None:
     gateway = _gateway_with(
         _ProgrammableStreamAdapter(connect_error=AuthError("bad key"))

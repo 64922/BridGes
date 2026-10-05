@@ -39,7 +39,8 @@ SUMMARY_MAX_OPEN_QUESTIONS = 8
 #: 一次摘要生成可读取的来源原文 token 估算上限（按最旧在前截取）。
 SUMMARY_MAX_SOURCE_TOKENS = 6000
 #: 摘要调用的输出额度（token）。
-SUMMARY_OUTPUT_TOKENS = 512
+# 工单 40 实测总输出（含思考）最高 668；1024 预留避免 JSON 被正文额度误截断。
+SUMMARY_OUTPUT_TOKENS = 1024
 #: 同步限时补齐的调用墙钟上限（毫秒）。
 SUMMARY_SYNC_TIMEOUT_MS = 8000
 #: 后台整次摘要任务共享的墙钟上限（毫秒）。

@@ -1,0 +1,2117 @@
+{
+  "old": {
+    "tree": "D:\\BridGes\\.worktrees\\40-baseline-7818c34",
+    "label": "40-baseline-7818c34",
+    "commit": "7818c34b1cc425081b54fd65cedf87d61c80fefb",
+    "started_at": "2026-10-04T16:29:03.533642+00:00",
+    "repeats": 2,
+    "scenarios": [
+      "tail-constraint",
+      "mid-correction",
+      "task-roundtrip",
+      "ordinal-list",
+      "missing-reference",
+      "cross-account-isolation",
+      "long-history-summary"
+    ],
+    "constants": {
+      "payload_budget": null,
+      "summaries": null
+    },
+    "inconclusive": false,
+    "reason": null,
+    "model_ids": [
+      "qwen3.7-plus-2026-05-26"
+    ],
+    "cases": [
+      {
+        "scenario_id": "tail-constraint",
+        "repeat": 1,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "为你准备了一份通用的社团活动方案框架，总预算控制在2500元以内。\n\n**活动主题**：社团破冰与技能分享交流会（可根据实际性质替换为户外拓展、观影等）\n**活动规模**：约30-50人\n\n**预算分配（总计2300元）**：\n- 场地与设备：500元（申请校内免费场地，租赁部分音响或投影设备）。\n- 物料与道具：600元（游戏道具、横幅、签到物资等）。\n- 餐饮与茶歇：1000元（饮用水、水果、零食及披萨等简餐）。\n- 奖品与纪念品：200元（实用小文具或社团定制周边）。\n\n**流程安排**：\n1. 前期准备：提前一周发布通知，采购物料并布置场地。\n2. 活动开场（30分钟）：签到，主持人介绍规则与流程。\n3. 破冰互动（40分钟）：分组进行趣味游戏，活跃气氛。\n4. 核心环节（60分钟）：技能分享、主题讨论或社团成果展示。\n5. 茶歇交流（30分钟）：享用餐饮，自由社交。\n6. 总结收尾（20分钟）：发放奖品，合影留念，清理场地。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "活动流程可以这样细化：\n\n1. 前期准备：提前完成物资采购，活动当天提前两小时到场布置场地、调试设备。\n2. 签到开场（30分钟）：参与者签到入场，主持人暖场，介绍活动背景、流程及注意事项。\n3. 破冰互动（40分钟）：随机分组，进行“你画我猜”或“名字接龙”等轻量级游戏，打破陌生感。\n4. 核心环节（60分钟）：开展主题分享或技能实操体验，确保大家有所收获。\n5. 茶歇交流（30分钟）：分发餐饮，大家自由走动、品尝食物并交流感受。\n6. 总结收尾（20分钟）：为互动环节的优胜组颁发奖品，拍摄大合影，最后安排专人清理场地。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "2500元。"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 3090,
+          "completion_tokens": 2416,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 3090,
+          "chat_completion_tokens": 2416,
+          "elapsed_s": 44.61
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            859,
+            1225,
+            1488
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 3090
+        }
+      },
+      {
+        "scenario_id": "mid-correction",
+        "repeat": 1,
+        "dimensions": [
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算先按五千元准备。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算已改为三千元，最终按这个数执行。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "3000"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 1286,
+          "completion_tokens": 910,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 1286,
+          "chat_completion_tokens": 910,
+          "elapsed_s": 17.95
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            200,
+            238,
+            277
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 1286
+        }
+      },
+      {
+        "scenario_id": "task-roundtrip",
+        "repeat": 1,
+        "dimensions": [
+          "constraint_retention",
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "周末四人徒步挺棒的，人数刚好。因为还不知道你们所在的城市和体力偏好，我先按“单日轻徒步”给你们个通用框架：\n\n- 装备：合脚的徒步鞋、双肩包、登山杖（可选）。\n- 补给：每人至少1.5L水，加上巧克力、坚果等路餐。\n- 安全：小急救包、充电宝、防晒/驱蚊，提前下载好离线轨迹。\n\n你们大概在哪个城市？偏好轻松看风景还是有点挑战的路线？告诉我后，我来帮你们挑具体的路线。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "推荐坂本龙一的《Aqua》。\n\n这首钢琴曲旋律简单温柔，节奏像水一样平缓。散步时听它不会抢走你对周围环境的注意力，反而能让脚步和心情都自然地慢下来，很适合边走边放空。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "6人分两辆车，每车3人刚好。两车出行建议提前共享实时位置，路上保持车距，到了目的地再汇合。\n\n你们打算在哪个城市周边走？偏好轻松看风景还是有点挑战的路线？定下来我帮你们挑具体路线。"
+          },
+          {
+            "index": 4,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "人数6、车辆2"
+          }
+        ],
+        "cost": {
+          "calls": 4,
+          "prompt_tokens": 2364,
+          "completion_tokens": 2908,
+          "chat_calls": 4,
+          "chat_prompt_tokens": 2364,
+          "chat_completion_tokens": 2908,
+          "elapsed_s": 52.89
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            198,
+            389,
+            492,
+            608
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 2364
+        }
+      },
+      {
+        "scenario_id": "ordinal-list",
+        "repeat": 1,
+        "dimensions": [
+          "object_resolution",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "1. 数据分析\n2. 网页开发\n3. 自动化脚本"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "网页开发主要用于构建各类网站和Web应用程序，比如企业官网、电商平台、在线工具、内容管理系统以及基于浏览器的后台管理系统。"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 865,
+          "completion_tokens": 515,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 865,
+          "chat_completion_tokens": 515,
+          "elapsed_s": 10.62
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            230,
+            261
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 865
+        }
+      },
+      {
+        "scenario_id": "missing-reference",
+        "repeat": 1,
+        "dimensions": [
+          "honest_clarification_gap",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "我这里没看到前面的上下文呢。你提到的“第二个方案”是关于什么主题的？稍微给我一点背景信息，我马上帮你梳理具体步骤。能告诉我具体是哪个话题吗？"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 417,
+          "completion_tokens": 632,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 417,
+          "chat_completion_tokens": 632,
+          "elapsed_s": 11.58
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            196
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 417
+        }
+      },
+      {
+        "scenario_id": "cross-account-isolation",
+        "repeat": 1,
+        "dimensions": [
+          "isolation"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "已记住。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "在我们刚才的对话里，你还没有说过任何口令，这是我们的第一句交流。这样回答清楚了吗？"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 938,
+          "completion_tokens": 543,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 938,
+          "chat_completion_tokens": 543,
+          "elapsed_s": 10.97
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            207,
+            194
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 938
+        }
+      },
+      {
+        "scenario_id": "long-history-summary",
+        "repeat": 1,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "三千元。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 417,
+          "completion_tokens": 221,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 417,
+          "chat_completion_tokens": 221,
+          "elapsed_s": 4.72
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            233
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 417
+        }
+      },
+      {
+        "scenario_id": "tail-constraint",
+        "repeat": 2,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "收到，预算控制在2500元以内没问题。不过前面的内容主要是重复的占位文本，缺少了活动的具体细节。你能先告诉我大概的活动主题、形式或者参与人数吗？有了这些，我就能帮你把方案具体落地。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "既然还没定具体主题，我先给你一个通用的活动流程框架：\n\n1. 签到与破冰（30分钟）：入场签到，通过小游戏活跃气氛并说明规则。\n2. 核心环节（60-90分钟）：开展活动主体内容（如比赛、体验、分享等）。\n3. 互动与展示（30分钟）：成果展示、自由交流或颁奖。\n4. 总结收尾（15分钟）：负责人总结，大合影，清理场地。\n\n等你确定了具体主题或形式，我们再往这个框架里填细节。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "2500"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 2577,
+          "completion_tokens": 1544,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 2577,
+          "chat_completion_tokens": 1544,
+          "elapsed_s": 29.42
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            859,
+            960,
+            1155
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 2577
+        }
+      },
+      {
+        "scenario_id": "mid-correction",
+        "repeat": 2,
+        "dimensions": [
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算先按五千元准备。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算已更正为三千元，最终按这个数执行。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "3000"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 1287,
+          "completion_tokens": 561,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 1287,
+          "chat_completion_tokens": 561,
+          "elapsed_s": 11.99
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            200,
+            238,
+            278
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 1287
+        }
+      },
+      {
+        "scenario_id": "task-roundtrip",
+        "repeat": 2,
+        "dimensions": [
+          "constraint_retention",
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "四人徒步，最关键的是分工和队形。建议一人领队控制节奏，一人收尾确保不掉队，大家还可以共用急救包和炉具来减轻单人负重，路线尽量选成熟、有明确路标的。\n\n想给你们规划得更具体些，你们打算在哪个城市周边？大家的体能和预期时长大概是怎样的？"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "推荐坂本龙一的《Aqua》。这首曲子节奏舒缓，像水一样平静，走在路上听能让脚步和呼吸都自然慢下来，很适合散步时放空。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "6人分两辆车，每车刚好3人。两车出行最重要的是协同，建议头车负责导航，尾车照应，遇到岔路口提前在群里同步，避免在起点走散。\n\n你们打算在哪个城市周边？我来看看有没有适合6人两车的具体路线。"
+          },
+          {
+            "index": 4,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "人数6、车辆2。"
+          }
+        ],
+        "cost": {
+          "calls": 4,
+          "prompt_tokens": 2193,
+          "completion_tokens": 2016,
+          "chat_calls": 4,
+          "chat_prompt_tokens": 2193,
+          "chat_completion_tokens": 2016,
+          "elapsed_s": 38.16
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            198,
+            334,
+            413,
+            533
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 2193
+        }
+      },
+      {
+        "scenario_id": "ordinal-list",
+        "repeat": 2,
+        "dimensions": [
+          "object_resolution",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "1. 数据分析\n2. 网页开发\n3. 自动化脚本"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "网页开发通常用来做企业官网、电商平台、Web应用（比如SaaS工具或后台管理系统），以及各种基于浏览器访问的交互项目。"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 865,
+          "completion_tokens": 431,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 865,
+          "chat_completion_tokens": 431,
+          "elapsed_s": 9.2
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            230,
+            261
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 865
+        }
+      },
+      {
+        "scenario_id": "missing-reference",
+        "repeat": 2,
+        "dimensions": [
+          "honest_clarification_gap",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "我们好像还没聊过具体的方案呢。你指的是哪个话题里的第二个方案？方便把前面的背景发我一下吗，这样我就能帮你梳理具体步骤了。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 417,
+          "completion_tokens": 501,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 417,
+          "chat_completion_tokens": 501,
+          "elapsed_s": 9.56
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            196
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 417
+        }
+      },
+      {
+        "scenario_id": "cross-account-isolation",
+        "repeat": 2,
+        "dimensions": [
+          "isolation"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "已记住。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "这是我们对话的第一句，你刚才还没说过任何口令呢。是不是记串啦，还是想跟我约定个什么暗号？需要我帮你记点什么吗？"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 938,
+          "completion_tokens": 573,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 938,
+          "chat_completion_tokens": 573,
+          "elapsed_s": 12.06
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            207,
+            194
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 938
+        }
+      },
+      {
+        "scenario_id": "long-history-summary",
+        "repeat": 2,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": null,
+          "summary_fallback_entries": null,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "三千元。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 417,
+          "completion_tokens": 134,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 417,
+          "chat_completion_tokens": 134,
+          "elapsed_s": 3.49
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            233
+          ],
+          "gate_actual_tokens": [],
+          "chat_prompt_tokens": 417
+        }
+      }
+    ],
+    "totals": {
+      "by_dimension": {
+        "constraint_retention": {
+          "passed": 6,
+          "total": 6
+        },
+        "correction_override": {
+          "passed": 4,
+          "total": 4
+        },
+        "object_resolution": {
+          "passed": 2,
+          "total": 2
+        },
+        "reference_correctness": {
+          "passed": 4,
+          "total": 4
+        },
+        "honest_clarification_gap": {
+          "passed": 2,
+          "total": 2
+        },
+        "isolation": {
+          "passed": 2,
+          "total": 2
+        }
+      },
+      "cost": {
+        "calls": 32,
+        "prompt_tokens": 18071,
+        "completion_tokens": 13905,
+        "chat_calls": 32,
+        "chat_prompt_tokens": 18071,
+        "chat_completion_tokens": 13905,
+        "elapsed_s": 267.22
+      }
+    },
+    "finished_at": "2026-10-04T16:33:31.641331+00:00"
+  },
+  "new": {
+    "tree": "D:\\BridGes\\.worktrees\\40-context-continuity-and-cost-evaluation",
+    "label": "40-context-continuity-and-cost-evaluation",
+    "commit": "3665008b2a008ca36d02e0cfeb3896525aa8f640",
+    "started_at": "2026-10-04T16:33:35.930261+00:00",
+    "repeats": 2,
+    "scenarios": [
+      "tail-constraint",
+      "mid-correction",
+      "task-roundtrip",
+      "ordinal-list",
+      "missing-reference",
+      "cross-account-isolation",
+      "long-history-summary"
+    ],
+    "constants": {
+      "payload_budget": {
+        "version": "payload-budget-v1",
+        "token_estimate_version": "token-estimate-v1",
+        "image_part_cost_tokens": 1024,
+        "safety_margin_tokens": 256
+      },
+      "summaries": {
+        "text_max_chars": 1200,
+        "max_source_tokens": 6000,
+        "output_tokens": 512,
+        "sync_timeout_ms": 8000,
+        "background_timeout_ms": 20000,
+        "max_attempts": 3,
+        "max_calls_per_task": 4,
+        "min_new_messages": 2
+      }
+    },
+    "inconclusive": false,
+    "reason": null,
+    "model_ids": [
+      "qwen3.7-plus-2026-05-26"
+    ],
+    "cases": [
+      {
+        "scenario_id": "tail-constraint",
+        "repeat": 1,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "收到，总预算控制在2500元以内。不过你还没提到具体的社团类型、活动形式和参与人数，能简单说说你想办什么样的活动吗？"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "既然还没定具体形式，我先给你搭个通用的活动流程框架，预算按2500元上限规划。\n\n1. 前期准备：确认场地，采购物料和茶歇（建议预算分配：场地设备500，核心物料800，茶歇零食700，备用金500）。\n2. 签到与破冰（15-20分钟）：成员入场，通过签到打卡或小游戏活跃气氛。\n3. 核心环节（60-90分钟）：开展主题分享、分组任务或互动游戏等活动主体内容。\n4. 茶歇与交流（20-30分钟）：提供零食饮料，让大家放松并自由交流。\n5. 总结与合影（10分钟）：简单总结活动，拍大合照留存素材。\n6. 收尾复盘：清理场地，核对账单，确保总花费不超2500元。\n\n等你定下具体形式，我们再往里面填细节。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "2500元"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 3082,
+          "completion_tokens": 2781,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 3082,
+          "chat_completion_tokens": 2781,
+          "elapsed_s": 50.51
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1359,
+            1428,
+            2087
+          ],
+          "gate_actual_tokens": [
+            836,
+            890,
+            1356
+          ],
+          "chat_prompt_tokens": 3082
+        }
+      },
+      {
+        "scenario_id": "mid-correction",
+        "repeat": 1,
+        "dimensions": [
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算先按五千元准备。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算已更正为三千元，最终按这个数执行。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "本轮未联网核实：\n3000"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 1953,
+          "completion_tokens": 689,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 1953,
+          "chat_completion_tokens": 689,
+          "elapsed_s": 22.92
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            700,
+            1121,
+            1099
+          ],
+          "gate_actual_tokens": [
+            469,
+            742,
+            742
+          ],
+          "chat_prompt_tokens": 1953
+        }
+      },
+      {
+        "scenario_id": "task-roundtrip",
+        "repeat": 1,
+        "dimensions": [
+          "constraint_retention",
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "四人徒步建议安排一人领队、一人收尾，另外两人在中段照应。基础行程可定为早8点集合，10点抵达起点热身，中午12点吃路餐，下午3点开始下撤。\n\n要规划具体路线，请告诉我你们所在的城市、期望的难度（休闲或进阶）以及计划徒步的总时长。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "推荐坂本龙一的《Aqua》。这首钢琴曲节奏平缓，像水一样安静流淌，很适合散步时让心静下来，感受脚步和呼吸的节奏。\n\n你可以先听听看。如果想换换口味，比如需要轻快一点、带点节奏感的，随时告诉我。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "6人分乘两车，每车3人。建议前车领航、后车收尾，途中保持通讯。徒步时依然建议1人领队、1人收尾，其余4人在中段。\n\n要规划具体路线，请提供你们所在的城市、期望的难度和计划时长。"
+          },
+          {
+            "index": 4,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "本轮未联网核实：\n人数6、车辆2。"
+          }
+        ],
+        "cost": {
+          "calls": 4,
+          "prompt_tokens": 3298,
+          "completion_tokens": 2340,
+          "chat_calls": 4,
+          "chat_prompt_tokens": 3298,
+          "chat_completion_tokens": 2340,
+          "elapsed_s": 52.56
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            698,
+            1311,
+            1428,
+            1532
+          ],
+          "gate_actual_tokens": [
+            466,
+            852,
+            943,
+            1037
+          ],
+          "chat_prompt_tokens": 3298
+        }
+      },
+      {
+        "scenario_id": "ordinal-list",
+        "repeat": 1,
+        "dimensions": [
+          "object_resolution",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "本轮未联网核实：\n1. 数据分析\n2. 网页开发\n3. 自动化脚本"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "网页开发主要用于构建各类网站和Web应用程序，比如企业官网、电商平台、内容管理系统，以及基于浏览器的在线工具或SaaS产品。"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 1224,
+          "completion_tokens": 478,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 1224,
+          "chat_completion_tokens": 478,
+          "elapsed_s": 18.17
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1051,
+            769
+          ],
+          "gate_actual_tokens": [
+            694,
+            530
+          ],
+          "chat_prompt_tokens": 1224
+        }
+      },
+      {
+        "scenario_id": "missing-reference",
+        "repeat": 1,
+        "dimensions": [
+          "honest_clarification_gap",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "咱们好像漏了上下文，我这边没看到前面提到的方案内容。你能把具体的背景或方案发我看看吗？看到后我马上帮你梳理步骤。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 500,
+          "completion_tokens": 653,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 500,
+          "chat_completion_tokens": 653,
+          "elapsed_s": 12.16
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            752
+          ],
+          "gate_actual_tokens": [
+            500
+          ],
+          "chat_prompt_tokens": 500
+        }
+      },
+      {
+        "scenario_id": "cross-account-isolation",
+        "repeat": 1,
+        "dimensions": [
+          "isolation"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "已记住"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "我在当前的对话记录里没有看到你提到的“口令”。是不是记混了，或者方便再告诉我一次？"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 1564,
+          "completion_tokens": 591,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 1564,
+          "chat_completion_tokens": 591,
+          "elapsed_s": 12.51
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1325,
+            1106
+          ],
+          "gate_actual_tokens": [
+            847,
+            717
+          ],
+          "chat_prompt_tokens": 1564
+        }
+      },
+      {
+        "scenario_id": "long-history-summary",
+        "repeat": 1,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "三千元。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 707,
+          "completion_tokens": 177,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 707,
+          "chat_completion_tokens": 177,
+          "elapsed_s": 4.56
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1091
+          ],
+          "gate_actual_tokens": [
+            707
+          ],
+          "chat_prompt_tokens": 707
+        }
+      },
+      {
+        "scenario_id": "tail-constraint",
+        "repeat": 2,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "收到，帮你梳理一个总预算控制在2500元以内的通用社团活动方案框架。\n\n**预算分配建议（总计2500元）**\n- 场地与布置：800元（若使用免费场地，可转为购买装饰或基础设备租赁）\n- 活动物料：700元（游戏道具、打印资料、手工材料等）\n- 餐饮茶歇：800元（饮用水、饮料、小零食）\n- 奖品与纪念品：200元（实用小物件）\n\n**活动流程简述**\n1. 开场签到（15分钟）：核对人数，发放基础物料。\n2. 核心环节（90分钟）：开展主题游戏、分享或比赛。\n3. 茶歇交流（30分钟）：休息并促进自由互动。\n4. 总结合影（15分钟）：发放奖品，合影留念并清理场地。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "1. 开场签到（15分钟）：工作人员提前半小时到场。安排两人在入口负责签到、发分组标识，引导大家入座。\n2. 破冰与核心环节（90分钟）：主持人简短开场后，先进行5分钟破冰游戏活跃气氛。随后进入主题活动（如桌游、手工或竞赛），按组进行，工作人员在各组间巡视协助。\n3. 茶歇交流（30分钟）：将零食和饮料集中放置，大家自由取用。可播放轻音乐，留出时间让大家跨组交流。\n4. 总结与收尾（15分钟）：主持人公布活动结果或展示成果，颁发小奖品。最后集体合影，结束后安排专人留下打扫场地、回收物料。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "2500"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 3367,
+          "completion_tokens": 2674,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 3367,
+          "chat_completion_tokens": 2674,
+          "elapsed_s": 48.64
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1359,
+            1610,
+            2257
+          ],
+          "gate_actual_tokens": [
+            836,
+            1054,
+            1477
+          ],
+          "chat_prompt_tokens": 3367
+        }
+      },
+      {
+        "scenario_id": "mid-correction",
+        "repeat": 2,
+        "dimensions": [
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记好了，装修预算先按五千元准备。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "记下了，装修预算更正为三千元，最终按这个数执行。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "本轮未联网核实：\n3000"
+          }
+        ],
+        "cost": {
+          "calls": 3,
+          "prompt_tokens": 1952,
+          "completion_tokens": 1088,
+          "chat_calls": 3,
+          "chat_prompt_tokens": 1952,
+          "chat_completion_tokens": 1088,
+          "elapsed_s": 29.64
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            700,
+            1121,
+            1098
+          ],
+          "gate_actual_tokens": [
+            469,
+            742,
+            741
+          ],
+          "chat_prompt_tokens": 1952
+        }
+      },
+      {
+        "scenario_id": "task-roundtrip",
+        "repeat": 2,
+        "dimensions": [
+          "constraint_retention",
+          "correction_override"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "四人周末徒步，建议先选一条单程5到8公里、爬升不超过500米的成熟路线，大家走起来节奏刚好。\n\n为了帮你挑具体的路线，能告诉我你们在哪个城市，以及大家是徒步新手还是有经验的老手吗？"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "推荐 Depapepe 的双吉他曲《Start》。\n\n旋律阳光轻快，听着会有种微风拂面、想迈步向前的感觉，很适合散步，也刚好能给周末的徒步预热。"
+          },
+          {
+            "index": 3,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "收到，按六人、两辆车来规划。\n\n六人队伍行进时容易拉开距离，路线还是建议选单程5到8公里的成熟步道，方便互相照应。两辆车的话，如果走起点和终点不同的穿越路线，得提前安排一辆车开到终点接应；如果是原路折返，车停在一起最省心。\n\n你们打算在哪个城市周边走？有想看山水还是纯森林的偏好？"
+          },
+          {
+            "index": 4,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "本轮未联网核实：\n人数6、车辆2。"
+          }
+        ],
+        "cost": {
+          "calls": 4,
+          "prompt_tokens": 3242,
+          "completion_tokens": 2430,
+          "chat_calls": 4,
+          "chat_prompt_tokens": 3242,
+          "chat_completion_tokens": 2430,
+          "elapsed_s": 53.88
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            698,
+            1288,
+            1373,
+            1530
+          ],
+          "gate_actual_tokens": [
+            466,
+            835,
+            907,
+            1034
+          ],
+          "chat_prompt_tokens": 3242
+        }
+      },
+      {
+        "scenario_id": "ordinal-list",
+        "repeat": 2,
+        "dimensions": [
+          "object_resolution",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "本轮未联网核实：\n1. 数据分析\n2. 网页开发\n3. 自动化脚本"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "网页开发主要用于构建网站和Web应用程序。常见项目包括企业官网、电商平台、SaaS产品、内容管理系统和交互式Web应用。"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 1224,
+          "completion_tokens": 571,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 1224,
+          "chat_completion_tokens": 571,
+          "elapsed_s": 19.58
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1051,
+            769
+          ],
+          "gate_actual_tokens": [
+            694,
+            530
+          ],
+          "chat_prompt_tokens": 1224
+        }
+      },
+      {
+        "scenario_id": "missing-reference",
+        "repeat": 2,
+        "dimensions": [
+          "honest_clarification_gap",
+          "reference_correctness"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": false
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "好像缺少了一点上下文，我不太确定你指的“第二个方案”是关于哪个话题的。能稍微提示一下，或者把前面的背景告诉我吗？这样我就能把具体的步骤整理给你了。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 500,
+          "completion_tokens": 336,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 500,
+          "chat_completion_tokens": 336,
+          "elapsed_s": 7.17
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            752
+          ],
+          "gate_actual_tokens": [
+            500
+          ],
+          "chat_prompt_tokens": 500
+        }
+      },
+      {
+        "scenario_id": "cross-account-isolation",
+        "repeat": 2,
+        "dimensions": [
+          "isolation"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "已记住。"
+          },
+          {
+            "index": 2,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "我在前面的记录里没找到你提到的口令。能再告诉我一下吗？"
+          }
+        ],
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 1564,
+          "completion_tokens": 599,
+          "chat_calls": 2,
+          "chat_prompt_tokens": 1564,
+          "chat_completion_tokens": 599,
+          "elapsed_s": 12.62
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1325,
+            1106
+          ],
+          "gate_actual_tokens": [
+            847,
+            717
+          ],
+          "chat_prompt_tokens": 1564
+        }
+      },
+      {
+        "scenario_id": "long-history-summary",
+        "repeat": 2,
+        "dimensions": [
+          "constraint_retention"
+        ],
+        "content_passed": true,
+        "passed": true,
+        "quality_gated": [],
+        "summary_events": [],
+        "compiled_summary": {
+          "summary_source_range": null,
+          "summary_cache_hit": true,
+          "summary_fallback_entries": 0,
+          "unresolved_reference": true
+        },
+        "turns": [
+          {
+            "index": 1,
+            "status": "done",
+            "error_code": null,
+            "model_id": "qwen3.7-plus-2026-05-26",
+            "checks": {
+              "must_include": true,
+              "must_include_any": true,
+              "must_exclude": true,
+              "must_ask": true,
+              "passed": true
+            },
+            "answer": "三千元。"
+          }
+        ],
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 707,
+          "completion_tokens": 291,
+          "chat_calls": 1,
+          "chat_prompt_tokens": 707,
+          "chat_completion_tokens": 291,
+          "elapsed_s": 6.16
+        },
+        "calibration": {
+          "gate_estimate_tokens": [
+            1091
+          ],
+          "gate_actual_tokens": [
+            707
+          ],
+          "chat_prompt_tokens": 707
+        }
+      }
+    ],
+    "totals": {
+      "by_dimension": {
+        "constraint_retention": {
+          "passed": 6,
+          "total": 6
+        },
+        "correction_override": {
+          "passed": 4,
+          "total": 4
+        },
+        "object_resolution": {
+          "passed": 2,
+          "total": 2
+        },
+        "reference_correctness": {
+          "passed": 4,
+          "total": 4
+        },
+        "honest_clarification_gap": {
+          "passed": 2,
+          "total": 2
+        },
+        "isolation": {
+          "passed": 2,
+          "total": 2
+        }
+      },
+      "cost": {
+        "calls": 32,
+        "prompt_tokens": 24884,
+        "completion_tokens": 15698,
+        "chat_calls": 32,
+        "chat_prompt_tokens": 24884,
+        "chat_completion_tokens": 15698,
+        "elapsed_s": 351.08
+      }
+    },
+    "finished_at": "2026-10-04T16:39:27.919516+00:00"
+  },
+  "markdown": "# 工单 40 上下文连续性与成本：新旧配对报告\n\n生成时间：2026-10-04T16:39:28.220766+00:00\n\n| 项目 | 旧（审查基线） | 新（本分支） |\n| --- | --- | --- |\n| 工作树 | `D:\\BridGes\\.worktrees\\40-baseline-7818c34` | `D:\\BridGes\\.worktrees\\40-context-continuity-and-cost-evaluation` |\n| 提交 | `7818c34b1cc425081b54fd65cedf87d61c80fefb` | `3665008b2a008ca36d02e0cfeb3896525aa8f640` |\n| 实际模型 | `qwen3.7-plus-2026-05-26` | `qwen3.7-plus-2026-05-26` |\n| repeats | 2 | 2 |\n\n## 量表通过率（维度 × 侧，按回答内容判定）\n\n> 维度通过以回答内容是否满足连续性检查为准；运行终态质量门拦截在下方单独列出，不计入连续性维度。\n\n| 维度 | 旧 通过/总数 | 新 通过/总数 |\n| --- | --- | --- |\n| constraint_retention | 6/6 | 6/6 |\n| correction_override | 4/4 | 4/4 |\n| object_resolution | 2/2 | 2/2 |\n| reference_correctness | 4/4 | 4/4 |\n| honest_clarification_gap | 2/2 | 2/2 |\n| isolation | 2/2 | 2/2 |\n\n## 场景 × repeat 波动\n\n| 场景 | 旧（按 repeat） | 新（按 repeat） |\n| --- | --- | --- |\n| tail-constraint | P/P | P/P |\n| mid-correction | P/P | P/P |\n| task-roundtrip | P/P | P/P |\n| ordinal-list | P/P | P/P |\n| missing-reference | P/P | P/P |\n| cross-account-isolation | P/P | P/P |\n| long-history-summary | P/P | P/P |\n\n- 旧侧质量门拦截（内容已产出但终态 error）：无\n- 新侧质量门拦截（内容已产出但终态 error）：无\n\n## 成本与耗时（实测）\n\n| 指标 | 旧 | 新 | 差值（新-旧） |\n| --- | --- | --- | --- |\n| 模型调用次数（含摘要） | 32 | 32 | 0.0 |\n| 输入 tokens（含摘要） | 18071 | 24884 | 6813.0 |\n| 输出 tokens（含摘要） | 13905 | 15698 | 1793.0 |\n| 其中聊天轮调用次数 | 32 | 32 | 0.0 |\n| 其中聊天轮输入 tokens | 18071 | 24884 | 6813.0 |\n| 其中聊天轮输出 tokens | 13905 | 15698 | 1793.0 |\n| 墙钟秒数 | 267.22 | 351.08 | 83.86 |\n\n- 旧侧摘要准备事件：无；发生摘要边界编译的场景数：0\n- 新侧摘要准备事件：无；发生摘要边界编译的场景数：0\n\n## 估算校准（网关最终载荷估算 vs 调用后补记实测）\n\n| 侧 | 网关估算合计 | 实测补记合计 | 实测/估算比 | 单次最大超出 | 余量256覆盖 | 场景聊天输入/估算 |\n| --- | --- | --- | --- | --- | --- | --- |\n| 旧 | 13784（32 次） | 无（基线未补记） | — | — | — | 1.311 |\n| 新 | 37985（32 次） | 24884 | 0.655 | -231 | 是 | 0.655 |\n\n- 实测/估算比来自工单 40 新增的调用后补记（``actual_input_tokens``）；基线只有调用前估算，故以场景聊天输入 tokens 近似对照。\n\n## 常数快照\n\n```json\n{\n  \"payload_budget\": {\n    \"version\": \"payload-budget-v1\",\n    \"token_estimate_version\": \"token-estimate-v1\",\n    \"image_part_cost_tokens\": 1024,\n    \"safety_margin_tokens\": 256\n  },\n  \"summaries\": {\n    \"text_max_chars\": 1200,\n    \"max_source_tokens\": 6000,\n    \"output_tokens\": 512,\n    \"sync_timeout_ms\": 8000,\n    \"background_timeout_ms\": 20000,\n    \"max_attempts\": 3,\n    \"max_calls_per_task\": 4,\n    \"min_new_messages\": 2\n  }\n}\n```\n\n## 限制\n\n- 真实语义只覆盖纯聊天固定语料；照片/附件读取、多列表投影歧义、摘要失败、来源删除与任务材料主题续接由确定性正式图测试承担，不做真实配对。\n- 新树估算校准为网关每次调用「编译估算 vs 调用后补记实测」配对（工单 40 新增补记）；基线无补记，退化为编译估算与场景聊天输入的聚合对照。\n- 首轮真实配对在推荐类追问上触发主树质量门 ``web_search_citation_invalid``；语料已调整为不含外部事实声明的连续性场景，避免把其它质量门噪声计入连续性量表。\n- 长聊场景预置历史后由真实模型回答；若编译在恢复/回退内即满足预算则不发生摘要模型调用（以 ``summary_events`` 与 ``compiled_summary`` 如实记录），摘要边界与失败路径由确定性正式图测试覆盖。\n"
+}
