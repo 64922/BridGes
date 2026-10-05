@@ -116,8 +116,9 @@
 - 结果块只在终态原子提交后发布，未增加每步渐进 `result` SSE 事件（执行器
   多线程下可能先于提交发布未过门结论）；流式进度仍由真实 `node`/`stage`
   事件承担。
-- 单模块路径的可信状态按领域终态分类推导（`success` 等视为合格），复合路径
-  以门与 `trust_state` 为准；未新增独立可信元数据。
+- 单模块路径的可信状态按领域终态分类推导（仅显式 `success` 视为合格，
+  `empty` 归入未完成，其余与未知状态按证据绑定），复合路径以门与
+  `trust_state` 为准；未新增独立可信元数据。
 - 历史 `module_id` 只读展示，建议点击绑定任务版本；本票不重写历史标识。
 - `tests/integration` 的
   `test_start_fails_with_empty_global_key_before_spawning` /
@@ -126,7 +127,7 @@
   快速失败），按环境限制排除。
 - 确定性脚本适配器只证明机制；真实模型体验与外部来源可得性按评测票验证。
 
-### 代码评审批次与修复（2026-10-05，提交 2）
+### 代码评审批次与修复（2026-10-05，提交 2–4）
 
 两轴评审（standards/spec）确认并修复：
 
@@ -138,6 +139,8 @@
   与 `production.py` 两处硬编码回退；移除 `MessageList` 中与
   `chat.result.outcome.cancelled` 重复的硬编码停止行，停止说明统一由结果卡
   注册文案呈现。
+- **单一源与精简**：模块短标签复用 `COMPOSITE_MODULE_LABELS`；移除推导入口
+  未被调用的推测参数（task/version/gaps）。
 - **前端表达**：复合步骤状态补中文短标签（completed/failed/blocked/
   invalidated）；冷却未到时禁用「继续生成」，到点后恢复可用。
 - **复核澄清**：建议点击的任务版本绑定已由既有 `_bind_suggestion_to_task`
