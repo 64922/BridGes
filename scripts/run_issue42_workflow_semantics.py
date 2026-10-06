@@ -139,6 +139,7 @@ def main() -> int:
             name: fingerprint((REPO_ROOT / name).read_text(encoding="utf-8"))
             for name in (
                 "src/bridges/evaluation/workflow_semantics.py",
+                "src/bridges/evaluation/workflow_semantics_scope.py",
                 "src/bridges/paper/assessment.py",
                 "src/bridges/study/review.py",
                 "src/bridges/study/summary.py",
