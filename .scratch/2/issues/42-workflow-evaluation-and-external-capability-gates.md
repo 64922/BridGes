@@ -4,7 +4,7 @@
 
 **Blocked by:** 36 — 按本次表现总结并单独恢复总结失败；37 — 执行跨模块依赖计划并统一核验综合结果；38 — 在正式界面展示真实进度、可信结果与恢复操作
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **优先级：** P1
 
@@ -96,4 +96,11 @@
 
 - 环境：conda `agent`；联网走系统代理 `http://127.0.0.1:7890`；凭据只从 OS 凭据库读取。
 - 命令：`python scripts/run_issue42_workflow_evidence.py`；`python scripts/run_issue42_external_probes.py --proxy http://127.0.0.1:7890`；`python scripts/run_issue42_workflow_pairing.py --repeats 2`（自动创建旧树 worktree）。
+
+### 交付（2026-10-06 收尾）
+
+- 提交：`a610c5cd`（验收修复与预算校准、外部探针 canonical 记录）→ `dff02e69`（语义指纹纳入范围量表模块）→ `ecf2512c`（配对脏标记只统计已跟踪修改）→ `8b8cbeb8`（建议类续接扩展输出额度，R07 复验通过）→ `080d21fa`（最终编号与 F6 记录）。
+- 证据绑定：配对 `pairing/final.json` 与语义 `semantics-final/workflow-semantics.json` 均绑定代码提交 `8b8cbeb8`（配对 `dirty=false`、`problems=[]`；语义 repeats=2、16 调用通过，L13 采样波动连续 4 次 1/2 后第 5 次 2/2）；确定性证据 39/39 场景、162 passed、0 问题；桌面日志与外部探针 canonical 产物归档 `.scratch/2/validation/42-acceptance/`。
+- 合并与推送：`624d9dd3` 无冲突合入 main（`--no-ff`），合并后定向复验 99 passed；经系统代理推送 `origin/main` 为 `1c6f9edd..624d9dd3` 并核对远端一致。
+- 清理：本票工作树与本地分支已删除；旧树 worktree `42-baseline-7818c34` 与工单 39 工作树保留；`.scratch/2/validation/42-acceptance` 已归档到主线工作树。
 
