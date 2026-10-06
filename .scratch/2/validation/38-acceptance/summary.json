@@ -3,6 +3,12 @@
   "baseline": "9f27c49bbf0eb7113a06a2910320df89bfce32c7",
   "final_code": "ced063ae96afd0cb403612e74d7280edaa2c22c7",
   "environment": "conda agent / Windows / Node24 / Chromium",
+  "merge_commit": "08a65d19b0e5aac8eb7c48a9925805ddc1fc2e77",
+  "postmerge_passed": 127,
+  "proxy_push_verified": true,
+  "issue_worktree_removed": true,
+  "issue_local_branch_removed": true,
+  "stale_worktree_records": 0,
   "broad_main": {
     "total": 5639,
     "passed": 5400,

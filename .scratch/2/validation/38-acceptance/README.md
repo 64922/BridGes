@@ -91,6 +91,23 @@ code-review 规范轴初审发现 3 项，最高 P1：
 错误文案和前端展示变化由上述完整受影响集合、冻结回归、真实浏览器和构建补齐复验。
 原始日志本机保存在主工作区的 `38-acceptance-preserved` 验收目录，摘要保留哈希。
 
+## 合并、推送与清理
+
+- 2026-10-06，无冲突合并到 main：`08a65d19b0e5aac8eb7c48a9925805ddc1fc2e77`。
+  合并树与验收分支完全一致；main 上本票新增回归/真实 API、编排、合同及文案
+  复验 **127 passed**（51.77 秒）。
+- 通过用户系统代理 `http://127.0.0.1:7890` 推送 origin，`ls-remote` 实际核对
+  远端 main 与本地合并提交一致。
+- 原始日志复制到 `.scratch/2/validation/38-acceptance-preserved` 并逐文件核对
+  SHA-256。Issue 树无未保存的源码或未提交修改后，依次删除
+  `D:/BridGes/.worktrees/38-trusted-progress-and-result-projection` 与本地
+  `codex/38-trusted-progress-and-result-projection` 分支。
+- `worktree prune --dry-run --verbose` 未发现失效项；实际 prune 完成，只剩主工作区。
+  其他任务的未跟踪产物、分支均保留。原始证据归档为本机未跟踪文件，未将大型
+  失败日志或其他工单产物推送；已提交摘要、双轴结论和三视口截图。
+- 本节仅补交付记录；之后的最终远端 tip 是包含本记录的文档提交，代码树保持
+  已验收合并结果。最终回答给出其提交号，避免在文件里自引用提交哈希。
+
 ## 已知边界
 
 确定性模型/来源替身只证明机制，不宣称真实模型体验或公网可得性已通过；这些
