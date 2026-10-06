@@ -340,6 +340,22 @@ def test_cost_summary_ignores_fewer_calls_than_baseline() -> None:
     assert summary["extra_calls"] == []
 
 
+def test_report_separates_executed_scenarios_from_runnable_corpus() -> None:
+    from bridges.evaluation.human_expression import build_real_report
+
+    report = build_real_report(
+        deterministic=run_deterministic_suite(),
+        results=[_arm_run("vent-experiment-failed", arm) for arm in StrategyArm],
+        environment={}, review_items=[], review_mapping={}, aggregate={}, release={},
+    )
+    distribution = report["scenario_distribution"]
+    assert sum(entry["executed"] for entry in distribution) == 1
+    venting = next(entry for entry in distribution if entry["category"] == "venting")
+    assert venting["real_runnable"] == 5
+    assert venting["executed"] == 1
+    assert not report["validation_scope"]["real_ablations_executed"]
+
+
 def test_run_lock_digest_changes_with_corpus() -> None:
     first = build_run_lock(
         lock_id="l1",

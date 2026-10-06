@@ -8,16 +8,18 @@ import pytest
 
 from bridges.evaluation.expression_corpus import SCENARIOS
 from bridges.evaluation.expression_policy_arms import StrategyArm
+from bridges.evaluation.expression_release import (
+    RELEASE_POLICY_VERSION,
+    evaluate_release,
+)
 from bridges.evaluation.expression_review import (
     CURRENT_ARM_ID,
     DEFAULT_COMPARISONS,
-    RELEASE_POLICY_VERSION,
     BlindPairItem,
     ScenarioTranscript,
     TranscriptTurn,
     aggregate_review,
     build_blind_review,
-    evaluate_release,
 )
 from bridges.evaluation.expression_scale import REVIEW_CHOICES, REVIEW_DIMENSIONS
 from bridges.evaluation.expression_submission import (

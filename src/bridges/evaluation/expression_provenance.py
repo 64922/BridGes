@@ -19,9 +19,9 @@ from bridges.evaluation.expression_scale import REVIEW_DIMENSIONS, SCALE_VERSION
 
 #: 评测套件身份（进入运行锁）。
 SUITE_ID = "human-expression-blind-evaluation"
-SUITE_VERSION = "1.0.0"
+SUITE_VERSION = "1.1.0"
 #: 确定性门禁与检查点版本。
-GATE_VERSION = "human-expression-gates-v1"
+GATE_VERSION = "human-expression-gates-v2"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 

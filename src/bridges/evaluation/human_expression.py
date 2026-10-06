@@ -157,7 +157,22 @@ def build_real_report(
             "submission_count": aggregate.get("submission_count", 0),
             "dimensions": aggregate.get("dimensions", []),
         },
-        "scenario_distribution": scenario_distribution(),
+        "scenario_distribution": [
+            {
+                **entry,
+                "executed": len({
+                    result.scenario.scenario_id for result in results
+                    if result.scenario.category.value == entry["category"]
+                }),
+            }
+            for entry in scenario_distribution()
+        ],
+        "validation_scope": {
+            "real_ablations_executed": False,
+            "formal_paths_executed": False,
+            "deployment_thresholds_defined": False,
+            "machine_hard_gates": "关键词诊断；通过不证明语义正确，须逐项人工核查。",
+        },
         "release": release,
         "rollback": {
             "production_prompt_change": (

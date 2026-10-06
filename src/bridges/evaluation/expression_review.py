@@ -17,10 +17,8 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
-from bridges.evaluation.expression_scale import REVIEW_DIMENSIONS
+from bridges.evaluation.expression_scale import REVIEW_CHOICES, REVIEW_DIMENSIONS
 
-#: 预注册放行策略版本。
-RELEASE_POLICY_VERSION = "human-expression-release-v1"
 #: 候选策略臂标识（主对照涉及它时按候选取向统计与放行）。
 CURRENT_ARM_ID = "current-v4"
 
@@ -247,8 +245,22 @@ def aggregate_review(
 ) -> dict[str, Any]:
     """按对照 × 维度统计臂取向胜/平/拒选与不确定性；保留评审者一致率。"""
 
+    item_by_id = {item.item_id: item for item in items}
+    seen: set[tuple[str, str, str]] = set()
+    valid_dimensions = {dimension.dimension_id for dimension in REVIEW_DIMENSIONS}
     by_item: dict[str, list[Any]] = {}
     for choice in choices:
+        item = item_by_id.get(choice.item_id)
+        key = (choice.reviewer_id, choice.item_id, choice.dimension_id)
+        if item is None or choice.item_id not in mapping:
+            raise ValueError(f"评审提交引用未知材料：{choice.item_id}。")
+        if choice.review_set_id is not None and choice.review_set_id != item.review_set_id:
+            raise ValueError("评审提交与材料的 review_set_id 不一致。")
+        if key in seen:
+            raise ValueError(f"同一评审者对同一材料维度重复投票：{key}。")
+        if choice.dimension_id not in valid_dimensions or choice.chosen not in REVIEW_CHOICES:
+            raise ValueError("评审维度或选择不合法。")
+        seen.add(key)
         by_item.setdefault(choice.item_id, []).append(choice)
     by_comparison: dict[str, list[BlindPairItem]] = {}
     for item in items:
@@ -265,6 +277,12 @@ def aggregate_review(
         arm_y = first_info["arm_y"]
         candidate = candidate_arm if candidate_arm in (arm_x, arm_y) else None
         for dimension in REVIEW_DIMENSIONS:
+            dimension_reviewers = {
+                choice.reviewer_id
+                for item in comparison_items
+                for choice in by_item.get(item.item_id, [])
+                if choice.dimension_id == dimension.dimension_id
+            }
             arm_wins: dict[str, int] = {arm_x: 0, arm_y: 0}
             ties = neither = 0
             agreement_hits = 0
@@ -322,7 +340,7 @@ def aggregate_review(
                     candidate_wilson_low=wilson_low,
                     candidate_wilson_high=wilson_high,
                     neither_rate=(neither / total_votes) if total_votes else 0.0,
-                    reviewer_count=len(reviewer_ids),
+                    reviewer_count=len(dimension_reviewers),
                     agreement=(
                         agreement_hits / agreement_denominator
                         if agreement_denominator
@@ -339,149 +357,15 @@ def aggregate_review(
     }
 
 
-@dataclass(frozen=True)
-class ExpressionReleasePolicy:
-    """预注册放行策略：帮助/分寸非劣先过门，再判断自然度。
-
-    「非劣」口径：在决定性投票中候选臂胜率不低于 0.5（平局与拒选单列，
-    不摊入胜率）；自然度要求候选臂胜率的 Wilson 下界高于 0.5，即显示
-    统计上可区分的优势。阈值在任何盲评提交之前固定。
-    """
-
-    policy_id: str = "human-expression-release-policy"
-    version: str = RELEASE_POLICY_VERSION
-    min_reviewers: int = 1
-    min_decisive_votes: int = 10
-    max_neither_rate: float = 0.34
-    naturalness_min_win_rate: float = 0.5
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "policy_id": self.policy_id,
-            "version": self.version,
-            "min_reviewers": self.min_reviewers,
-            "min_decisive_votes": self.min_decisive_votes,
-            "max_neither_rate": self.max_neither_rate,
-            "naturalness_min_win_rate": self.naturalness_min_win_rate,
-        }
-
-
-def _result(
-    aggregate: dict[str, Any], comparison_id: str, dimension_id: str
-) -> dict[str, Any] | None:
-    for entry in aggregate.get("dimensions", []):
-        if (
-            entry["comparison_id"] == comparison_id
-            and entry["dimension_id"] == dimension_id
-        ):
-            return dict(entry)
-    return None
-
-
-def primary_comparisons(candidate_arm: str) -> list[ComparisonSpec]:
-    """涉及候选臂的预注册对照（放行判断只看这些）。"""
-
-    return [
-        spec
-        for spec in DEFAULT_COMPARISONS
-        if candidate_arm in (spec.arm_x, spec.arm_y)
-    ]
-
-
-def evaluate_release(
-    aggregate: dict[str, Any],
-    *,
-    policy: ExpressionReleasePolicy | None = None,
-    candidate_arm: str = CURRENT_ARM_ID,
-    hard_gate_failures: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """按预注册策略给出放行结论；不足证据或硬失败明确不放行。"""
-
-    active = policy or ExpressionReleasePolicy()
-    blockers: list[str] = []
-    if aggregate.get("submission_count", 0) == 0 or aggregate.get("reviewer_count", 0) == 0:
-        return {
-            "status": "inconclusive",
-            "released": False,
-            "candidate_arm": candidate_arm,
-            "policy": active.to_dict(),
-            "reasons": ["尚无人工盲评提交：不放行，也不宣称自然度提升。"],
-            "blockers": [],
-            "hard_gate_failures": list(hard_gate_failures),
-        }
-    if aggregate["reviewer_count"] < active.min_reviewers:
-        blockers.append("评审人数不足。")
-    if hard_gate_failures:
-        blockers.append(f"候选策略存在硬门失败：{'；'.join(hard_gate_failures)}。")
-
-    comparisons = primary_comparisons(candidate_arm)
-    if not comparisons:
-        blockers.append(f"预注册对照缺少候选臂：{candidate_arm}。")
-    for comparison in comparisons:
-        for dimension_id, label in (("help", "帮助"), ("boundary", "分寸")):
-            result = _result(aggregate, comparison.comparison_id, dimension_id)
-            if result is None or result.get("candidate_win_rate") is None:
-                blockers.append(f"{comparison.comparison_id} 缺少候选臂{label}统计。")
-                continue
-            if result["decisive"] < active.min_decisive_votes:
-                blockers.append(
-                    f"{comparison.comparison_id}/{label} 有效投票不足"
-                    f"（{result['decisive']} < {active.min_decisive_votes}）。"
-                )
-            elif result["candidate_win_rate"] < 0.5:
-                blockers.append(
-                    f"{comparison.comparison_id}/{label} 未达到非劣"
-                    f"（候选胜率 {result['candidate_win_rate']:.2f} < 0.5）。"
-                )
-            if result["neither_rate"] > active.max_neither_rate:
-                blockers.append(
-                    f"{comparison.comparison_id}/{label} 拒选率过高"
-                    f"（{result['neither_rate']:.0%}）。"
-                )
-    # 帮助/分寸非劣通过后才读取自然度；任何自然度优势都以实际投票为准。
-    help_blocked = any("帮助" in blocker or "分寸" in blocker for blocker in blockers)
-    if not help_blocked:
-        for comparison in comparisons:
-            natural = _result(aggregate, comparison.comparison_id, "natural")
-            if natural is None or natural.get("candidate_win_rate") is None:
-                blockers.append(f"{comparison.comparison_id} 缺少候选臂自然度统计。")
-                continue
-            if natural["decisive"] < active.min_decisive_votes:
-                blockers.append(f"{comparison.comparison_id}/自然度 有效投票不足。")
-            elif (
-                natural["candidate_wilson_low"] is None
-                or natural["candidate_wilson_low"] <= active.naturalness_min_win_rate
-            ):
-                blockers.append(
-                    f"{comparison.comparison_id}/自然度 未显示统计上可区分的优势"
-                    f"（Wilson 下界 {natural['candidate_wilson_low']}）。"
-                )
-    status = "released" if not blockers else "not_released"
-    reasons = blockers or ["帮助/分寸非劣且自然度优势通过预注册门。"]
-    return {
-        "status": status,
-        "released": not blockers,
-        "candidate_arm": candidate_arm,
-        "policy": active.to_dict(),
-        "reasons": reasons,
-        "blockers": blockers,
-        "hard_gate_failures": list(hard_gate_failures),
-    }
-
-
 __all__ = [
     "BlindPairItem",
     "ComparisonSpec",
     "CURRENT_ARM_ID",
     "DEFAULT_COMPARISONS",
     "DimensionResult",
-    "ExpressionReleasePolicy",
-    "RELEASE_POLICY_VERSION",
     "ScenarioTranscript",
     "TranscriptTurn",
     "aggregate_review",
     "build_blind_review",
-    "evaluate_release",
-    "primary_comparisons",
     "wilson_interval",
 ]

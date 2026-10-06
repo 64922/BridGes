@@ -4,8 +4,9 @@
 
     python scripts/run_issue39_human_expression_evaluation.py            # 仅确定性机制
     python scripts/run_issue39_human_expression_evaluation.py --real-probes
-    python scripts/run_issue39_human_expression_evaluation.py --real-probes \
-        --scenarios 9 --submissions .scratch/2/validation/39-human-expression/submissions.json
+    python scripts/run_issue39_human_expression_evaluation.py --review-report \
+        .scratch/2/validation/39-human-expression/real-report.json \
+        --submissions submissions.json --output-dir .scratch/2/validation/39-review
 
 ``--real-probes`` 显式 opt-in 真实 Qwen 调用；缺少凭据/适配器时记录
 ``inconclusive`` 并非零退出，不伪装通过。真实调用有界：默认抽取 9 个
@@ -38,6 +39,10 @@ from bridges.evaluation.expression_corpus import (  # noqa: E402
 from bridges.evaluation.expression_deterministic import (  # noqa: E402
     run_deterministic_suite,
 )
+from bridges.evaluation.expression_frozen_review import (  # noqa: E402
+    load_frozen_report,
+    score_frozen_report,
+)
 from bridges.evaluation.expression_policy_arms import (  # noqa: E402
     ARM_STRATEGY_VERSIONS,
     StrategyArm,
@@ -49,16 +54,16 @@ from bridges.evaluation.expression_provenance import (  # noqa: E402
     code_commit,
 )
 from bridges.evaluation.expression_real_run import RealArmSender  # noqa: E402
+from bridges.evaluation.expression_release import evaluate_release  # noqa: E402
 from bridges.evaluation.expression_review import (  # noqa: E402
     CURRENT_ARM_ID,
     DEFAULT_COMPARISONS,
+    BlindPairItem,
     aggregate_review,
     build_blind_review,
-    evaluate_release,
 )
 from bridges.evaluation.expression_scale import SCALE_VERSION  # noqa: E402
 from bridges.evaluation.expression_submission import (  # noqa: E402
-    load_submissions,
     render_blind_material,
     submission_template,
 )
@@ -93,7 +98,7 @@ def _ensure_redacted(payload: Any) -> None:
     text = json.dumps(payload, ensure_ascii=False)
     match = _FORBIDDEN_PATTERN.search(text)
     if match:
-        raise SystemExit(f"报告疑似包含秘密字段：{match.group(0)[:24]}…")
+        raise SystemExit("报告疑似包含秘密字段，拒绝写入；请检查输入。")
 
 
 def _select_real_scenarios(limit: int) -> list[Any]:
@@ -203,14 +208,14 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
             "",
             "## 场景分布",
             "",
-            "| 类别 | 场景数 | 真实配对 | 多轮 |",
-            "| --- | --- | --- | --- |",
+            "| 类别 | 语料总数 | 可运行数 | 实际配对数 | 多轮语料数 |",
+            "| --- | --- | --- | --- | --- |",
         ]
     )
     for entry in payload.get("scenario_distribution", []):
         lines.append(
             f"| {entry['category']} | {entry['total']} | "
-            f"{entry['real_runnable']} | {entry['multi_turn']} |"
+            f"{entry['real_runnable']} | {entry.get('executed', 0)} | {entry['multi_turn']} |"
         )
     baseline = (payload.get("deployment_reference") or {}).get("measured")
     if baseline:
@@ -254,6 +259,7 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="工单 39 人味表达盲评")
     parser.add_argument("--real-probes", action="store_true", help="显式开启真实模型配对")
+    parser.add_argument("--review-report", type=Path, help="对冻结报告离线评分，不调用模型")
     parser.add_argument("--scenarios", type=int, default=9, help="真实运行场景数上限")
     parser.add_argument(
         "--submissions", type=Path, default=None, help="人工盲评提交 JSON"
@@ -262,10 +268,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--seed", type=int, default=39)
     args = parser.parse_args(argv)
+    if args.submissions is not None and args.review_report is None:
+        parser.error("--submissions 必须配合 --review-report，不能把旧评分用于新回答。")
+    if args.review_report is not None and args.real_probes:
+        parser.error("冻结评分不能与 --real-probes 同时使用。")
 
     started = time.monotonic()
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
+    if args.review_report is not None:
+        frozen = load_frozen_report(args.review_report)
+        if args.submissions is None:
+            items = [BlindPairItem(**item) for item in frozen["blind_review"]["items"]]
+            payload = submission_template(items)
+            material = render_blind_material(items)
+            _ensure_redacted(material)
+            (output_dir / "blind-review.md").write_text(material, encoding="utf-8")
+            name = "blind-review-submissions.template.json"
+        else:
+            submission = json.loads(args.submissions.read_text(encoding="utf-8"))
+            payload = score_frozen_report(frozen, submission)
+            name = "review-result.json"
+        _ensure_redacted(payload)
+        (output_dir / name).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(f"[39] 冻结材料处理完成：{output_dir / name}")
+        return 0 if "release" not in payload or payload["release"]["released"] else 5
 
     deterministic = run_deterministic_suite()
     (output_dir / "deterministic-report.json").write_text(
@@ -337,10 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
 
-    choices = []
-    if args.submissions is not None and args.submissions.exists():
-        choices = load_submissions(args.submissions)
-    aggregate = aggregate_review(review_items, mapping, choices)
+    aggregate = aggregate_review(review_items, mapping, [])
     hard_failures = tuple(
         f"{result.arm.value}/{result.scenario.scenario_id}#{gate.turn_index}:"
         f"{gate.detail}"

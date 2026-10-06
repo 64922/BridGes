@@ -10,7 +10,8 @@
 - 任务未完成：必答内容缺失或终态不是完成；
 - 过度主动：追加未被要求的动作或继续追问。
 
-规则保守且可解释；精确措辞不是字符串金标准，误判可在报告中复核。
+机器门仅做可解释的词表诊断，不能证明语义正确；真实放行还须人工逐项
+核查六门，不能以关键词命中证明任务完成或以未命中证明没有越界。
 """
 
 from __future__ import annotations
@@ -233,6 +234,12 @@ def _task_incomplete(
         )
     if not answer.strip():
         return GateResult(HardGateId.TASK_INCOMPLETE, False, "回答为空。", turn_index)
+    if scenario.detail_required and re.fullmatch(
+        r"(?:好的|好|明白了|收到)[。.!！\s]*", answer.strip()
+    ):
+        return GateResult(
+            HardGateId.TASK_INCOMPLETE, False, "详细任务仅确认收到，未完成任务。", turn_index
+        )
     # 任务必要内容按终态检查：场景的 required_any 指最终回答必须包含
     # 的内容（如排查结论、翻译用词）；中途轮次只检查完成状态与非空。
     if scenario.required_any and turn_index == len(scenario.turns):
