@@ -1,0 +1,14 @@
+..F                                                                      [100%]
+================================== FAILURES ===================================
+__________ test_chat_correction_uses_latest_record_and_is_idempotent __________
+
+>   ???
+E   AssertionError: assert '较新的知识兴趣' == 'CNN'
+E     
+E     - CNN
+E     + 较新的知识兴趣
+
+C:\Users\33755\Desktop\BridGes\tests\profiles\test_issue01_chat_profile_correction.py:192: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/profiles/test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent
+1 failed, 2 passed in 7.62s

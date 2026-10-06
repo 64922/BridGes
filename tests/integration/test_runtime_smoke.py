@@ -179,6 +179,8 @@ def test_start_fails_when_global_key_file_unreadable(tmp_path: Path) -> None:
     missing_file = tmp_path / "missing-qwen.key"
     result = _run_cli(
         "start",
+        "--profile",
+        "development",
         env=_dev_env(
             {
                 "BRIDGES_ENVIRONMENT": "development",
@@ -199,7 +201,10 @@ def test_start_fails_with_empty_global_key_before_spawning() -> None:
     GQ-08 AC6：空 Key 与缺失、不可读文件一样在启动边界失败；断言中文
     配置指引出现在输出中且没有"已启动"横幅（不产生孤儿进程）。
     """
-    result = _run_cli("start", env=_dev_env({"BRIDGES_QWEN_API_KEY": ""}))
+    # 默认桌面入口会读取本地启动配置；此处验收的是显式环境凭据硬门。
+    result = _run_cli(
+        "start", "--profile", "development", env=_dev_env({"BRIDGES_QWEN_API_KEY": ""})
+    )
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert "未配置全局百炼运行凭据" in combined
@@ -211,7 +216,7 @@ def test_start_fails_when_global_key_env_absent() -> None:
     """start 完全缺失全局 Key 环境变量时同样非零退出并给出中文指引。"""
     env = _dev_env()
     env.pop("BRIDGES_QWEN_API_KEY", None)
-    result = _run_cli("start", env=env)
+    result = _run_cli("start", "--profile", "development", env=env)
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert "未配置全局百炼运行凭据" in combined

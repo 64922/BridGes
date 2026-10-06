@@ -1,0 +1,4 @@
+覆盖对账：total=166 problems=0
+放行裁决：39=not_released；40=released；41=released_with_limits；42=released_with_degradation
+回滚演练：passed=True checks=15
+报告目录：.scratch\2\validation\43-integrated-migration-and-release-regression

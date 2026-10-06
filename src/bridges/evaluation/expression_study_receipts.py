@@ -279,7 +279,7 @@ def run_study_scope_receipt(gateway: Any, quota: Any) -> dict[str, Any]:
     from bridges.contracts.study import StudyQuestion
     from bridges.study.scope import preview_bounds, preview_coverage_problems
 
-    policy = ChatLightweightPolicyCompiler().compile(
+    policy = ChatLightweightPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.STUDY,
         user_text="生成本节预习问题",
         lesson=True,

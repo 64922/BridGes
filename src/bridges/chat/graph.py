@@ -109,6 +109,10 @@ if TYPE_CHECKING:
 #: （当时它们在 select 处被拒），续跑语义一致。
 DAILY_GRAPH_VERSION = "daily-parent-v2"
 
+#: 旧日常图版本运行的安全结束码（R06）：旧检查点谱系不套当前节点集恢复，
+#: 安全结束并保留历史；用户明确重试创建绑定当前版本的新运行。
+DAILY_GRAPH_VERSION_CHANGED = "daily_graph_version_changed"
+
 NODE_VALIDATE_TURN = "validate_turn"
 NODE_COMPILE_CONTEXT = "compile_context"
 NODE_SELECT_EXPLICIT_MODULE = "select_explicit_module"
@@ -1933,6 +1937,19 @@ def run_daily_turn(
         run_id=run.run_id,
     )
     deps = _GraphDeps(service, run, on_event=on_event, stop_event=stop_event)
+    if run.graph_version != DAILY_GRAPH_VERSION:
+        # 工单 43（R06）：旧版本图谱系可能已完成未原子提交的节点，不能套
+        # 当前节点集继续；安全结束并保留历史，明确重试创建新版本的新运行。
+        # NULL 仅表示没有版本记录，不能证明旧运行未执行；同样安全结束。
+        deps.converge_error(
+            DailyTurnError(
+                NODE_VALIDATE_TURN,
+                DAILY_GRAPH_VERSION_CHANGED,
+                render_state_copy(f"error.{DAILY_GRAPH_VERSION_CHANGED}"),
+                retryable=True,
+            )
+        )
+        return deps.last_kind
     state: DailyTurnState = {
         "account_id": run.account_id,
         "conversation_id": run.conversation_id,

@@ -427,6 +427,17 @@ for (const viewport of VIEWPORTS) {
       // 绝不把没通过的模型显示为可用（AC7 末句）。
       const mainModel = page.getByRole("region", { name: "Qwen 主模型" });
       await page.getByLabel("Qwen 主模型 ID").fill("qwen-acceptance-probe-does-not-exist");
+      // 隔离环境无凭据时先验证配置指引；未发起探测不能伪造验证报告。
+      const keyInput = page.getByLabel("Qwen API Key（可选：与主模型一起更换）");
+      if ((await mainModel.getByText("当前没有可用的 Qwen 密钥", { exact: false }).count()) > 0) {
+        const previousReport = await page.getByTestId("model-validation-report").allTextContents();
+        await mainModel.getByRole("button", { name: "验证并保存" }).click();
+        await expect(mainModel.getByRole("alert")).toContainText("当前没有可用的 Qwen 密钥");
+        // 最近报告是全局模型配置记录，可能来自前一个视口；缺凭据不得更新它。
+        expect(await page.getByTestId("model-validation-report").allTextContents()).toEqual(previousReport);
+      }
+      // 故意无效的非秘密测试值走真实元数据请求，失败不得改变当前模型或保存密钥。
+      await keyInput.fill("issue43-invalid-credential-for-acceptance");
       await mainModel.getByRole("button", { name: "验证并保存" }).click();
       const report = page.getByTestId("model-validation-report");
       await expect(report).toBeVisible({ timeout: 90_000 });

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="3.372" timestamp="2026-10-06T23:20:32.900241+08:00" hostname="bababoyi"><testcase classname="tests.chat.test_chat_service" name="test_conversation_lifecycle_persists_pin_rename_project_and_order" time="0.239"><failure message="bridges.chat.service.ChatDomainError: 学习项目归属已退役，请使用全局知识库。">service = &lt;bridges.chat.service.ChatService object at 0x0000026D55274410&gt;
+tmp_path = WindowsPath('D:/BridGes/.tmp/spec-main-legacy-project/test_conversation_lifecycle_pe0')
+
+    def test_conversation_lifecycle_persists_pin_rename_project_and_order(
+        service: ChatService,
+        tmp_path: Path,
+    ) -&gt; None:
+&gt;       recent = service.create_conversation("alice", title="最近对话", project_id="project-1")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\chat\test_chat_service.py:158: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.chat.service.ChatService object at 0x0000026D55274410&gt;
+account_id = 'alice', title = '最近对话', mode = &lt;ChatMode.COMPANION: 'companion'&gt;
+project_id = 'project-1', plugin_selection = None
+
+    def create_conversation(
+        self,
+        account_id: str,
+        title: str | None = None,
+        mode: ChatMode = ChatMode.COMPANION,
+        project_id: str | None = None,
+        plugin_selection: list[ChatPluginSelectionItem] | None = None,
+    ) -&gt; ChatConversationProjection:
+        """新建未锁定的日常对话草稿。
+    
+        ``plugin_selection`` 为新对话的初始插件选择（新聊天首页先选
+        插件再建对话）；调用方负责逐项校验可用性，这里原样持久化。
+        """
+        self._ensure_extension_payload_allowed(plugin_selection=plugin_selection)
+        if project_id is not None:
+&gt;           raise ChatDomainError(
+                "legacy_file_source_retired",
+                "学习项目归属已退役，请使用全局知识库。",
+                410,
+            )
+E           bridges.chat.service.ChatDomainError: 学习项目归属已退役，请使用全局知识库。
+
+src\bridges\chat\service.py:500: ChatDomainError</failure></testcase></testsuite></testsuites>

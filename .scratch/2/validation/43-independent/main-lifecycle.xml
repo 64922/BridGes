@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="14" time="26.341" timestamp="2026-10-06T23:30:02.140673+08:00" hostname="bababoyi"><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_preview_requires_login" time="1.798" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_preview_lists_categories" time="0.999"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001D515CC1E10&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001D515CC1E10&gt;
+
+&gt;   ???
+E   assert 409 == 201
+E    +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_requires_recent_auth" time="1.592" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_returns_json_download_after_reauth" time="0.850"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001D5159503D0&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001D5159503D0&gt;
+
+&gt;   ???
+E   assert 409 == 201
+E    +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_requires_reauth_and_confirmation" time="1.722" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_rejects_wrong_confirmation" time="1.749" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_account_removes_data_and_session" time="0.984"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001D5143F8150&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001D5143F8150&gt;
+
+&gt;   ???
+E   assert 409 == 201
+E    +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_status_and_retry" time="1.928" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_create_backup_requires_reauth" time="1.779" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_create_backup_returns_encrypted_file" time="1.008"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001D514468D10&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001D514468D10&gt;
+
+&gt;   ???
+E   assert 409 == 201
+E    +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_restore_requires_reauth_and_confirmation" time="1.756" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_restore_rejects_invalid_format_without_harm" time="1.752" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_full_backup_restore_roundtrip_via_api" time="0.897"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001D51455FA50&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001D51455FA50&gt;
+
+&gt;   ???
+E   assert 409 == 201
+E    +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+C:\Users\33755\Desktop\BridGes\tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_restore_wrong_passphrase_rejected" time="2.008" /></testsuite></testsuites>

@@ -1,0 +1,2207 @@
+{
+  "kind": "workflow-pairing",
+  "generated_at": "2026-10-06T11:04:07.906092+00:00",
+  "corpus_sha256": "4cffaaf039ac54d0d7ea3d99237c821e93e811c389e9d8c323e7c931499ea428",
+  "baseline_commit": "7818c34",
+  "old": {
+    "tree": "D:\\BridGes\\.worktrees\\42-baseline-7818c34",
+    "commit": "7818c34b1cc425081b54fd65cedf87d61c80fefb",
+    "dirty": false,
+    "source_lock": {
+      "source_sha256": "aeea7a86af72e5ecb8f7896fc249b5b9a4742610279a7d43fb0b5f0d972907cb",
+      "source_files": {
+        "src/bridges/__init__.py": "8972e310c9f1fcd0be443e02d53154eb5e70175332352ca5ee9c17804fc53d22",
+        "src/bridges/ai/__init__.py": "0d9f1a659f65542d9c514500619ec1fa08626428bcf179292b24470b9f646d8b",
+        "src/bridges/ai/adapters.py": "9363466cfb53a97d6d9c3b40214e753d7816311602697adbb83c23cd5fddcbf3",
+        "src/bridges/ai/capability_registry.py": "41f139aa8f290a8429467bce4a18ccf49b46aa8b899f68116f4c793a48edf14d",
+        "src/bridges/ai/composition.py": "72b9c9ffbe1f2ef28b4961ed64e03cc32e2b7be5f0a103e62a3ebe05ee68b588",
+        "src/bridges/ai/embedding_adapter.py": "2f8fcfd92ddd54b04842523b9bec1bbbce90ed64f5b6c8f0c88ccb843ebda297",
+        "src/bridges/ai/errors.py": "c0061b3f81924e71d8f00eb78317cec0427e3f328a6243866a3049b9393f830c",
+        "src/bridges/ai/fixed_models.py": "777742223da688b09533c93ba6cb15ab62993a6b6e16526de14d3337464f6e71",
+        "src/bridges/ai/image_request.py": "bbcb8f6626a32a52e6b28f45fe2fed81d0b6c0c104f27a4f9a3ed69f87b4cc17",
+        "src/bridges/ai/lock_scrub.py": "9b47827fae4aaa3a26b542155402a94cc505de2013fd519144ec5723603e0099",
+        "src/bridges/ai/matrix_probe.py": "ac51f1ed9f20f85fccf8266794c93dd5ceabeae7c89f3f7aae6e8c98e518b884",
+        "src/bridges/ai/metrics.py": "62df5e2e15a78593f6b5397061fef4e8cdb4080754650001fb4b65c8e31a08b9",
+        "src/bridges/ai/model_gateway.py": "1a4717789504fe3ab3d2a0dd5283191fef7065307777d1bf45e94429c8c51e52",
+        "src/bridges/ai/model_metadata.py": "5c462b43e71e23faca4c7a761f515346e1ff513b1a655bb2206bb18dd2c1cf52",
+        "src/bridges/ai/model_probe.py": "155ca9b1e4f7773d2d8419ac507860ec07102406787b67061cdef8f2b5ccb1c7",
+        "src/bridges/ai/ports.py": "7c36d982475036596a180cad2b59791f7170ba6e2521f05ee548f4f680a7f2bc",
+        "src/bridges/ai/production.py": "f3d890cfa9960ae874e49a4d22aa1e1d7cb6eb3e1262584f34f8fc98a29ad9b4",
+        "src/bridges/ai/qwen_adapters.py": "c2e5c43c3233bb6daf3d34bc12fe0c7f30a3fa8995c600f71ee83fc2a6cd693b",
+        "src/bridges/ai/qwen_asr_adapter.py": "20186bc3f018805d190f1a3c402210192d6d0f9c588f784b241fb85f18ea582c",
+        "src/bridges/ai/qwen_client.py": "7c28bb5a21d01258098236c8f12095494bddd99a336d63d69b5d34672b89f04a",
+        "src/bridges/ai/qwen_image_adapter.py": "a920c47f5b623d0306286ad62065f4971bef6f2580a099a3ccfb66b171a9a5a9",
+        "src/bridges/ai/qwen_tts_adapter.py": "cc1a2c57580f44a3aee1188db258c649dc2648f2f5b7181b8bcec8196cb65ed5",
+        "src/bridges/ai/qwen_vision_adapters.py": "0119f962dabc39bb8ad9c00a85abe20908621dfdc0160600b71b4091e8fe934c",
+        "src/bridges/ai/qwen_wan_adapter.py": "360edc2b70d71c3ed5a19a8e5e21791fb84653d8679ef88d52f44dbd41de8ff5",
+        "src/bridges/ai/run_model_config.py": "25cbfc375588ba863b33769e479b10c61f0d5c88411aa36dad8c97eeaddd328d",
+        "src/bridges/ai/sqlite_recorder.py": "53cb9e2fc00c821e50999628323de02d23e748f2dd55a6f1396ec79710251908",
+        "src/bridges/ai/startup_check.py": "c59205c3e535cc9de595156c21e7f26970ae6a05f73f7fd67a99128174347966",
+        "src/bridges/api/__init__.py": "8eb684b8f55aeb7429822a613cd363b3e78b0e1c37fdefbf74f109a8c1d3013f",
+        "src/bridges/api/auth.py": "3abf46bbb2648f92ee6c4b6b983eceba21bae5e7df326bb2e3fe08a72d86e431",
+        "src/bridges/api/chat.py": "afb59c942e92b2e1c7524921efc3476687d1a5697117c9e93d5d5243a0721f63",
+        "src/bridges/api/commute.py": "36c7e1cf54ebb0a1bd6f9e36030580155daf8714815e19899e92975e67fdf2a1",
+        "src/bridges/api/compatibility.py": "9d820a929f99c6ea1b656fc133dd03bbbe5e167dad9e90a919eff73aec0e930f",
+        "src/bridges/api/credential_state.py": "1351151d2c48131ee731dfbaf89668474c7f250945533c4aa600c2548519be88",
+        "src/bridges/api/credentials.py": "ad47126dbb53e77a6bd449b1a5c0ec5bd79bba2216318f211bdc7e175f5f74b0",
+        "src/bridges/api/csrf.py": "c2ab75dea32dfb21187b173fd9a7d507ec78c75d256da24ac2871b68764820cd",
+        "src/bridges/api/data.py": "dd2351c76277620551921678d3629a8fef7ea4d6f0fcb4d2d0ccf7c0291fe921",
+        "src/bridges/api/domain_packs.py": "045aff3c69eb71616bffb720672eb95f7dd7fb4618b4dc67973249934cf8b22e",
+        "src/bridges/api/evaluation.py": "5d14875d35da91ec12ba5f7d34ba02fb54c76cfedc45b5c1abefe6d6d62e6205",
+        "src/bridges/api/expression.py": "a2471eeef53343449647eb52e066496cb7999b9a3dcf5dc16ae48395714c289a",
+        "src/bridges/api/image.py": "7b640df9664aed5173d7e394bcdb2ea64a0f4e0155400befc3061cec19aaf3bd",
+        "src/bridges/api/ingestion.py": "44f99eb301d2a263510de14fd5c360043b03174370080ad2c999b3cc7d475e8b",
+        "src/bridges/api/institution.py": "eaf6a3ba1e95cd18258f46c60c1adbb1d6000ef6315c4be10610487c411ef4a6",
+        "src/bridges/api/knowledge_base.py": "b7bb4f6d85f937222626f1d235538dd9f8b10101dd0d10cad0a1be6c3deb608c",
+        "src/bridges/api/learning_project_migration.py": "ce0db486d2d002e649136aa3617d1871c8e6e309a576160f86083b02dbfc04da",
+        "src/bridges/api/learning_projects.py": "4bf25e617a47a6382a35451c477f437645585337bf08a34d47135b8b6389ff74",
+        "src/bridges/api/main.py": "bdb3fdfed8eab76e448a20e08be41afd2c23397ef0f25d60046d43dabbf0c9ec",
+        "src/bridges/api/mcp.py": "42b3f5a398edd741b041daa01ab818aeb78412dfe9a1bc32860dd1a02bcfb73f",
+        "src/bridges/api/media.py": "b0b65b85edac89677108a2707a90cb8ba9db28eec794c3c55314a7b3ce9e19d3",
+        "src/bridges/api/model_settings.py": "108045ac863c4f3ab195946cb9ce30c4ce6cc482a3e1403587878dad700b0d6c",
+        "src/bridges/api/plugins.py": "2e06783430e263d6fce02f7d1206cefe7468620bf4518c42f8690b8f52c39efa",
+        "src/bridges/api/projects.py": "586c3263a847a85fc278c18640215160cbef30cdd96bd0f1119bbb320e46f43b",
+        "src/bridges/api/qwen_settings.py": "f6ecab6b4df5cceacbc912a8ce3ae742828c82e94a910b8d47613572dcd0e7b0",
+        "src/bridges/api/reminder.py": "249d8ef99e806aade9b62ce529ad15da46296d28b2ff0d4d58093554f50c0554",
+        "src/bridges/api/science.py": "ac2e9986b13c73e9678ead7f574eea82c56d133b8107af8d7dff1142497f9860",
+        "src/bridges/api/scope.py": "1b867d1c2bd5b101126b2bd4d98bada019fbb2c53a31c48303b8cffdb8b93d6b",
+        "src/bridges/api/search.py": "fe4bec5342e906e66cc46709c5bc4f2b648ec4a6b468a2c8e5afa3dac17b5c77",
+        "src/bridges/api/sharing.py": "de9e31a0f8c04a0a6ff17d3530a8571631bc0f8de61f5b3d4d379c5e492bfb98",
+        "src/bridges/api/skills.py": "b342c3642bc26073bf8ff76c184443560721339b128f49e09573feb79bdb6168",
+        "src/bridges/api/speech.py": "2d1dfcae81f190de0998e01584fbebb31a1e5137a66f7ae011b3a142d23b6561",
+        "src/bridges/api/sync.py": "5a7288995f8cb4fdf6a148ff345c0225e53a074102f8c05a45f8019ccd3be542",
+        "src/bridges/api/vault.py": "501f6ca6a74ec0ada895e9fc24b5a42a1ba604c6ba316a6674b6ee534b3e5c19",
+        "src/bridges/api/video.py": "8a40ecafc12070fc942acc1e95d5ba72dbcffd4fc436c200b08dfd14e11fae3b",
+        "src/bridges/api/workflows.py": "5d9a4dca63e967a5b53e8d8b9888f1aa6b9c8fecdb5eb9e38e43c3c5d29f2fa0",
+        "src/bridges/arxiv_mcp/__init__.py": "525d9c80bd738a12303cf666d00cfbd64a3b321c107f165e8515c89f6d46affb",
+        "src/bridges/arxiv_mcp/cache.py": "f1f2fc2ab4028b0a889a0532b60cebe352e482cf042fbebcecf1dc211ed35cbb",
+        "src/bridges/arxiv_mcp/client.py": "1efef64a2fd47ee32a702491eeeb0ace0c3bfbf80743ea582b1667fd4d1d27c2",
+        "src/bridges/arxiv_mcp/contracts.py": "2ecf38ec4cbfc70e6b90fbc71d3ec66e68692aba6657dd84e1a99c3546d156e9",
+        "src/bridges/arxiv_mcp/guard.py": "83a132412a34ce53b767ff81f91e28edf6df2d95c2f8b04222c67eb10438b19f",
+        "src/bridges/arxiv_mcp/limits.py": "79471e9ea75b18a480e602a40d57b7e88f26ce06cff2e16229327958cfaf4e56",
+        "src/bridges/arxiv_mcp/manifest.py": "47f59c4ef111757afa461677273acc083b5628da5e37c1e6e1e2dd5809190fb6",
+        "src/bridges/arxiv_mcp/process.py": "721ae92b84b5a63d92d7805c723edcb9894c8f89e0077de367dcaf336bd7c989",
+        "src/bridges/arxiv_mcp/service.py": "526830fa734ca479623caa1c89278cf253c24945a7d505f7541547a3304e0c77",
+        "src/bridges/arxiv_mcp/worker.py": "d07b08a8394c6fe1f8bb175e61d3de2759708e18e4d2376d07cb299ec50be773",
+        "src/bridges/career/__init__.py": "d33465c7b6b3741705db18ce006f8ea1a137bbb91677d04743d8e831618599e8",
+        "src/bridges/career/intake.py": "03a779ba63bf51fb5995b5874408c5a3930df36545740d8dacf7939fb37c6848",
+        "src/bridges/career/intent.py": "9d02e129128f6eb4f9895ff3f049b7a75c4f6627f1076b73bb0141a2fd7759b1",
+        "src/bridges/career/metrics.py": "07048062d4a0f6664cd9f152a838ab36cc49fabe3a15ce4dc13b33fd18524ef6",
+        "src/bridges/career/review.py": "25d98fd9c4443e881f196eedc1f83478b101fda9428b4fab905e126017951f3c",
+        "src/bridges/career/service.py": "ffe31be72d86b461c4b760cf7e18b2dc75a78cac34c372ecdc710436e976a953",
+        "src/bridges/career_plan/__init__.py": "d2688fc098f3224ac91a4540902f77989c3a1ba9b27aec68f11ce2fdd1cf2958",
+        "src/bridges/career_plan/advising.py": "d34a5422ba1361576397b03087461b438ab35fb79e227b10900f864db79a1a0e",
+        "src/bridges/career_plan/analyzing.py": "024fe40577c7475a64f59c8d06f6312a7af0be351e4f62b1fe4483c18ea9cc11",
+        "src/bridges/career_plan/collecting.py": "ffc91f83e0373f458a312d6998f18167d4c6b612e9e88db78e7fc7cb4af37e67",
+        "src/bridges/career_plan/contracts.py": "e283490f8794e205e964271334bd61eab927603f801646a3460e6b79abbb255b",
+        "src/bridges/career_plan/filtering.py": "855739988d126e1ed193b783e9f30dbcc41c84c6dade7d6e766da0d0a26da274",
+        "src/bridges/career_plan/lexicon.py": "0ab07b3d025db9406bd540ae1475870eacff8e99edda5df63bda76c5d4c98eaa",
+        "src/bridges/career_plan/parsing.py": "3c693897942c7ab59967ba53d2283c09c1b283f4cc37901728395b3859d31fef",
+        "src/bridges/career_plan/planning.py": "644c3db8f82b29ef0b61f2b1a799136430f038b44f47d382f27495c80531d6eb",
+        "src/bridges/career_plan/presenting.py": "1d9146ca8016eff12c3b8f2572edd4568c2136ba7eba4ba6371eb97234b71fa4",
+        "src/bridges/career_plan/salary.py": "de66005be6c271ac6025fab2a3120f332912761a831c6ea08e67c61d89820951",
+        "src/bridges/career_plan/searching.py": "572170f6e889d0d0adaf7c69cd0e496b9ad0aa21ea67043e4de8492a02188242",
+        "src/bridges/career_plan/service.py": "e12efee6b5084d8e7a7b3e06f96956f03c4662eff3f38b97a26215f4a90192db",
+        "src/bridges/career_plan/suggestion.py": "26e65fae5c1bd1367c22cb334103605b072ba7a086a4f1fa3d126a08c43efc94",
+        "src/bridges/chat/__init__.py": "3ea9aae71136c5d283105204b858ee3e0bc0c4bbd984dc322fe636d365a66807",
+        "src/bridges/chat/attachments.py": "0185f3cde62a397cf55f4dffacc3092bb22dfe3e2ef222c2cb48b6e4c6c20c16",
+        "src/bridges/chat/attachments_repository.py": "6107a00413a4fa61549fe5088ae4a35e4ac26328c5dc1c50cf41783e397c38e8",
+        "src/bridges/chat/budget.py": "ad63bf9382aa37d48aac761fcc3c1cd8f770858ea3de4784d657c6a8d1acc2da",
+        "src/bridges/chat/checkpoints.py": "38ddc371d52eac1d6cb8b8bddff8735e32ddd6a1a87cbcd586faaba75612e383",
+        "src/bridges/chat/context_compiler.py": "ba20f260f50bea1f29e43accc39bbb21d5536a9c3d1f95338452cdd0d4318585",
+        "src/bridges/chat/global_writing_policy.py": "83a37a34ccae7efc2a77081a031088eface8ebcaaee8bb807a26f989533aec20",
+        "src/bridges/chat/graph.py": "dac66c84178d4c06583b1c0dd01efe256ef54d48f3e4c58758656b487158d234",
+        "src/bridges/chat/lifecycle.py": "d9169dad1fe2e9524c8ad48cf1d333a6c2ed1abb4090a18338067223190b06d0",
+        "src/bridges/chat/lightweight_policy.py": "cc0d5fac5c17a6e8f54658063db00516beb058270f6d75c8c4b9b76b290ac15f",
+        "src/bridges/chat/repository.py": "0a8eda6d2ee9b313a4725093a3b93cead34564502d25d9f85ba264d3552bc203",
+        "src/bridges/chat/routing.py": "fed367cee6feb0812e78b617a686beb6ba639324c5a3a94840610a63dcff01a2",
+        "src/bridges/chat/run_executor.py": "56ac42227d1d0ec27c8019bb549685bb8a51d484350b21476ef51855546cae82",
+        "src/bridges/chat/selections.py": "7ab14d2d100da89e18f35c7db0e172a7190a840236ffe202f2ee4b234f9cde98",
+        "src/bridges/chat/service.py": "46cc8e0b3fbb11b6a88f54abafb339d275e8aba3f0d67bdde83f7476f4444ddb",
+        "src/bridges/chat/terminal.py": "d47ef8c799336177b9394508106ddbcb32d87240a6f481e399dbd3c042b14d00",
+        "src/bridges/chat/turn.py": "88107c3b06a1da5e64462889f54b2df6bc1356e948d687e255a39204a68d5433",
+        "src/bridges/cli/__init__.py": "4af18001d86c470724bc1eab9d4d24c14929662abb77dfae21adecf578196f03",
+        "src/bridges/cli/evaluate.py": "7dc521677c25dce2464eef9082659a89e6d9255ae5cf0b4bde21bc5245f12283",
+        "src/bridges/cli/main.py": "4edc673a0edc043f230e65f7fc9c7f087e30869a753d0036e7eca3d82b1ff828",
+        "src/bridges/closeout/__init__.py": "085a4440f1363b2076a996a5937f7e953c95e073b531983bb0cd25a3325bcdf9",
+        "src/bridges/closeout/authenticity_gate.py": "c83429ec139163b6eebd598d27686b4e7b15f2c6c3b874f895f99851256c735c",
+        "src/bridges/closeout/fixtures.py": "ec8cc28fa156755405e22a509dabf1e3fb34cd83e78eaf3d124c0ca35e9db0ed",
+        "src/bridges/closeout/manifest.py": "baa843776987b88bc26e950ffbcdca89bbb2d1ad10cb8827912652c97bbca18b",
+        "src/bridges/closeout/release_gate.py": "cbdd07c329218ab65f41f780db2f50871e70f1b2180709e12480fad328082ad3",
+        "src/bridges/closeout/scans.py": "426445cb9fbfec5ca81cfe9b9a72b2da4b9ac583baa1eeba2ceb079115ac1670",
+        "src/bridges/commute/__init__.py": "0b727c8aa7b71d2fefbad223a6e170ae8627d485e843a9fde5373aab2d440cf8",
+        "src/bridges/commute/buffer.py": "fad2a7cbf17896919f7ea3b890601752ca11ef69c555bea015107c02190e8357",
+        "src/bridges/commute/contracts.py": "e93927e32342e51968b85d07a5cf82d8a440ac236e6c6bd381c889b5561a826a",
+        "src/bridges/commute/lexicon.py": "a555d1c0a90ae9f1d5974450cfb14a0f272603110c7a5c2c02abc49889d3a622",
+        "src/bridges/commute/parsing.py": "31f3e29e7f50e6b3a0b103797438f1c58f28a70cc46d72bd7cb4467184117bc6",
+        "src/bridges/commute/presenting.py": "f075dde9c61483a1969a00d14a77a53495513fc1b03b87be87e6952527c2e105",
+        "src/bridges/commute/resolving.py": "61e50c8a8faf2950903a4e467cd3ee80cb95bb1f6623293adb9da202cceded33",
+        "src/bridges/commute/service.py": "1f6ccbae054cbb698dba21c97aeed05bc97a3ea3515b19fe301d6dec90ffff7c",
+        "src/bridges/commute/sources.py": "f7b336855f77cc9171120700fbf737ec2addef69bbb0739f2028429c78882b4a",
+        "src/bridges/commute/suggestion.py": "aa21a5fefbd361643c21476337fd60b8c89b3232d3003f103169048f134ef5d2",
+        "src/bridges/config.py": "2279351d7b26a5f1305f8fdfaaa2d48b22e30061ed39409da6ca55a1aec5ebd6",
+        "src/bridges/contracts/__init__.py": "5466aac6854e77d7d864615ddcfd41d02398fe2fa5b264cfa691bea896f3ae02",
+        "src/bridges/contracts/ai.py": "e1b54cd714c5be6ee5ab1bdd669f3bf9bf5ad52bf1dd3ffc7de5d0837a28060c",
+        "src/bridges/contracts/atomic_profile.py": "747add21c44186ae5ca6012aa06bdb9101ddb616d0c0811c87a055ca9c2095ce",
+        "src/bridges/contracts/career.py": "316586b85fa2aec1ac112c29991f3c18226e6485c3594ebc97b94b7384b8d196",
+        "src/bridges/contracts/chat.py": "be749fb54132ac449f1cfc6d71a10b55e335894c397434f1d710094bed366a9b",
+        "src/bridges/contracts/domain.py": "6948645a53d3ff2414edd989af830ec27b3785fea312ad71a4d08e4e99c4eba9",
+        "src/bridges/contracts/evaluation.py": "8abb5411230aa038259d90d6583b247f7e1e8e722129713688d6c7b6fd232e14",
+        "src/bridges/contracts/evaluation_suite.py": "1e3b5eb9b778961741af19e23eb8f656378327f29e390947902eac41ea85dded",
+        "src/bridges/contracts/evidence_safety.py": "da5b85f5cfbe7dea2ffdc9522db0e363299986f3c32f9ce41bdc70ab6eb85876",
+        "src/bridges/contracts/expression.py": "3b2edff6ada7b9f3de1f9feae49cb80fafd85beaf508833ed3e5037ef91fa9b2",
+        "src/bridges/contracts/expression_review.py": "e5790a32bb8200d43fea87be0ccc1b7a239521cf2ab9f66354339ef46d61045d",
+        "src/bridges/contracts/expression_task.py": "d04305b9e7d236bdb42d45b61cf621bcb37bf40e20978c2fd5c600de6be950aa",
+        "src/bridges/contracts/feedback.py": "85d1b40f98cf579a91ef29d690871d65262700807c7c928d7f1300faf6d91e29",
+        "src/bridges/contracts/health.py": "a7a79b8cb5ee00c6fbbedce6bbf1945fd9753876bc9a7168eb11ed168a3b4e96",
+        "src/bridges/contracts/humanizer.py": "b7088b64a2835980358f4f44b6cd4b5b0118f401bd87e3f512f007a0617adb71",
+        "src/bridges/contracts/identity.py": "f9f9e7b29fab1f627240e8c61c02d8bea22415124e69cc51fd77aee2f0edf7d4",
+        "src/bridges/contracts/image.py": "2499f24e458a89c7f4fc5fa952994465c8e13bc14bce7e9dd24e72f3105370dd",
+        "src/bridges/contracts/ingestion.py": "7bf50960865384f6ead5de0179de090874d54dd5cbe544154f43cc1e719cbddd",
+        "src/bridges/contracts/institution.py": "d6c6ee5314a5e8d4038d104e102117628ea8de9b064e5cbc188a58a9c9a0a96b",
+        "src/bridges/contracts/invalidation.py": "bcc0d157c57851128ed5c2449475dd29eb2dc44f30f98b6c55c61d41a10e7d5d",
+        "src/bridges/contracts/knowledge_base.py": "eb4ec6d5b3da0ebc2deca5befe55ea124f2ffeab816db01218dab4b00408ef2b",
+        "src/bridges/contracts/learning.py": "d869b29cd97b25a2ece88a71ebaa9ba50ef869a9dd106f783733fe977d8bc2c6",
+        "src/bridges/contracts/learning_project_migration.py": "202e9281e05a2ff9d5d4db2e45ee785d8b1bb06992cffb19b91d588d629f4b04",
+        "src/bridges/contracts/learning_projects.py": "a97cf4c16ee6d90e8e447ba4519ba142b0023ad47a3c7433d4bfe0f8eba4849e",
+        "src/bridges/contracts/lifecycle.py": "72bd47d4343902ea32bb3d527e2d9da2a608d509a7d89758318561bc2c1191b2",
+        "src/bridges/contracts/mcp.py": "1e6ef45d3bf53b3fe411cc63dc98afdb11e37315ec31b32f96e3d5d86e3bd7b3",
+        "src/bridges/contracts/media.py": "5648389516d1fc5871166995e03bc1ddb1a052dcc25c745177931a1ef9c48ff5",
+        "src/bridges/contracts/modules.py": "b81023435f1a83b05cb1df449816e3c458bba4dcf9742f60d7244a08d3d9e546",
+        "src/bridges/contracts/observability.py": "142de2d5a9e6a5432c997e71b5ecb2ee8112c9d481a9ab03edaac56fe0486fe3",
+        "src/bridges/contracts/plugins.py": "1cc59b672a311e54e581fa411ba415f3eff5ef3ebc493df5810df87d54de54e6",
+        "src/bridges/contracts/profile_extraction.py": "651796212f8c36ae2350521942e11ef218adc7e14ee8e0c7572a217bae21b5f0",
+        "src/bridges/contracts/profiles.py": "87b5d297079f0bfe6c603d9a65ab86d2a92bfdcfc7e6e2dad915f3ab4e746c57",
+        "src/bridges/contracts/projects.py": "73490264a7b5d64527568015a2da978c13b8948807d02d6a0aa0a94832d569c6",
+        "src/bridges/contracts/reminder.py": "738a27c73c5c0f2f8da181b6aed8a5c57ff8171988c08b0efdfa8b168ebefa07",
+        "src/bridges/contracts/retirement.py": "e3f462c4e6aa99069d2fb0d67e1b86e197a030ff5098391b8c0b76e0c8307e14",
+        "src/bridges/contracts/retrieval.py": "eee39ceb1f79c471173f5608560e9c242172915a9cadcf954a6d86d2a88677ce",
+        "src/bridges/contracts/routing.py": "c3483d103cf222c6fd0fd59c414445fe4cecb6226b536faf00577954b456d951",
+        "src/bridges/contracts/science.py": "d7808a054605c6999fb0af025d1ec90798c1616ca37ff1c012592528cc4aa2df",
+        "src/bridges/contracts/scope.py": "4b85578bec763b3eae209b28684cf628fd719d7b5638d7d8742dce966bf6fe8b",
+        "src/bridges/contracts/search.py": "655ac443352b71779991a2467b13cc4aedd1a6634ae57a19b190281f685b24fa",
+        "src/bridges/contracts/sharing.py": "e3b456f1e47f7f51faaf3768c724a6f2900974e76f697e1e9fe0acea2d064fb9",
+        "src/bridges/contracts/speech.py": "207cdf3989fde87b949aa638ddecad51605f8a1e2898291a3094ca8c50a95f5e",
+        "src/bridges/contracts/study.py": "2f7d5b9f2c9b4dc201dcae3ad3aa98478fbc6d8412d418da20b921f4cb759b84",
+        "src/bridges/contracts/sync.py": "4b50f3337895a2fd1f9bab0a624f661e912fd02639d48a8a50103a49e2590ab4",
+        "src/bridges/contracts/teaching.py": "6c7db30958fea9cb9f40959c11af65000eaf2dadb3cd2dfcde9b784254811eba",
+        "src/bridges/contracts/teaching_progress.py": "06d972135c98015f18b4e66bd8a70ae7b6cb1a5bc9436755809b1fc01fc53885",
+        "src/bridges/contracts/vault.py": "d1462e2d0daba21e582b5a99ac6b46955988a6200335bd727952b9349b5bfbb5",
+        "src/bridges/contracts/video.py": "14c80bfc46134ee1e18beb86f961816fa75053d1d1897ce7a4fb95a883624fe6",
+        "src/bridges/contracts/workflows.py": "4405543eb2ffb81cc2c67036d6e06200bb1e482d17f89e186e470389a6e82327",
+        "src/bridges/credentials/__init__.py": "0a6b8db174ba17b98e10f39c1aa26907018a8cdd14d8074c8d2e28a21449b54b",
+        "src/bridges/credentials/amap_probes.py": "270c8a3b2b38832bf1e2a54af9c2e6a467f514a1fe5c82e8fb0a8fab224cea4a",
+        "src/bridges/credentials/global_credential.py": "b89c284d7f71ea7d77db8d69deb480e245b944d1e38238b1bbb0c4dfc0f9e56b",
+        "src/bridges/credentials/ids.py": "71834ae121f5b0859e6ecc2b5428527c07274c530bac380a292dfd9b7889ee0b",
+        "src/bridges/credentials/retire.py": "12b62b626258f4aee7556c6ffefba815bf3f34d9ac97699d03acc3a0f1463edb",
+        "src/bridges/credentials/runtime_resolver.py": "f5ddcffde1ff751172ee64f097fe149f27e8b2affc587806382a979638476eda",
+        "src/bridges/credentials/store.py": "7c109b9556964c0b6e87dfe9ac3b58d83c23061c61a44ab8026f020f52e2ac1a",
+        "src/bridges/domain/__init__.py": "ea9be6ba74d09c2a80ed5db0f0f71f0817ff950b781e6863d65de6dc42271a4b",
+        "src/bridges/domain/astronomy.py": "c849ae1b3cbb7451106870c4bb08de4d179549f7b3fd2d522c05035889258e4c",
+        "src/bridges/domain/computer_science.py": "615a00da5fa583385e6fd6a9492d917940db02d3987ff89f55e06c3de5bf8300",
+        "src/bridges/domain/earth_climate.py": "154169a66976f8eb2541ad3de73b979fb91c36458d3c4d24534fc2c0a737acf5",
+        "src/bridges/domain/life_science.py": "8c645adf9fb619fd4c60ab1366a5a5ac90bc241bdee9c7d4696ccf5a2996f825",
+        "src/bridges/domain/loader.py": "3394479bfe81ab2150b3f973fc99a5101a1f2301e6708c634e6c390e7e894eac",
+        "src/bridges/domain/math_formal_proof.py": "0993f20ad3bdc2c7e4adfef528b591dc50bfb96c5de723eaa750a86fcfc4f50f",
+        "src/bridges/domain/medical_high_risk.py": "bcb35ea0ed861e7e9dd760180db0b02cc778e7275200e6aa75958dba94c848a3",
+        "src/bridges/domain/pack_lifecycle.py": "95222e757868822e4655ab29340c441bfe79958ed133e006dec43b94d6b92939",
+        "src/bridges/domain/physics_chemistry.py": "0ec0f26985d88bd4b5b339200acb70dffdbad8ab0a2b8919e1604b3f0857a28e",
+        "src/bridges/domain/protocol.py": "8a286e2e9a8dc2b9a30b2c5b12117664317b95198d1982466e1ccaab16a06da7",
+        "src/bridges/domain/registry.py": "6e83548358af9fe798b845cdcd6e328189712c35de115055d76c994efd787cec",
+        "src/bridges/domain/runtime.py": "b5328f07585705069391cbf05ab4e931ff9d9e73e976ebaaf2caa7909c1421f6",
+        "src/bridges/domain/standards_datasets.py": "1015d5411268276062f025bea0f5ba5e5bb59981a08ead95cd85a7a95e6e4832",
+        "src/bridges/domain/workbench.py": "9c9b473eb09215d524cc34ea99de7e485f2ec9d43e30fb2ea5cade05cf0ef637",
+        "src/bridges/evaluation/__init__.py": "b403a02d0018e565ab2689cb530f97efab63838b4481b20809cae6884591921e",
+        "src/bridges/evaluation/blind_review.py": "e1f659a6754c5c98eae43a5b646b9570b1b9cbc88c5e7404202618e3b8d66e16",
+        "src/bridges/evaluation/case_executors.py": "2251e7fabc36e56eaeb5731145be191931031b0f4911c766fbd93ccd08931b82",
+        "src/bridges/evaluation/executors.py": "e85b2a8335dc8cf1170065b51a5539874bc735252f06f71ee2a6107bdc1de024",
+        "src/bridges/evaluation/gates.py": "be9701c11a0db184cf21b1cc3147b7c02b2a3695307900bbf8a8ae3a10c54add",
+        "src/bridges/evaluation/injection.py": "14079e79c91d3f609b9e5de4b992b70bf83516bbb6c936e6a2aa3a59ac34d7fe",
+        "src/bridges/evaluation/judges.py": "36fc579c750d768b9ce7161bd12f37b6c50fae85dd919fb41b4878aae9d12892",
+        "src/bridges/evaluation/metrics.py": "138baa8719f3912578a5810de254ef7b2c9436f2df1c798c0bc7fb996bfe8ce1",
+        "src/bridges/evaluation/reference_method.py": "240b7cc848a2280d967bddbd8e05120d677f2e1d889f451e44b083e8b210065a",
+        "src/bridges/evaluation/report.py": "8cafff1a4aedce24dadeac19f9d24971a69694b43f49767a2ce6d3fee4af91e2",
+        "src/bridges/evaluation/repository.py": "379540b0cf65265506da15efd305e549ab1d7d71c96558db2d95571450323256",
+        "src/bridges/evaluation/runner.py": "5a472e3131a60e894fea9ff0c3054ab60d2455d5c3e14c9ae7a02ddfad0a6faf",
+        "src/bridges/evaluation/service.py": "a0be00aa6042499ce599ef3d22d754559c3ed539d2e14c6796dce61bd232a202",
+        "src/bridges/evaluation/suite_data.py": "bc1657fc5e053e80c8a9292eea061fab5633874851e438e462bb95540a1d75af",
+        "src/bridges/evaluation/suite_registry.py": "d6bde0fff6dd27ac94aac79be5651126376b5fb61906f99469b20656e0adb062",
+        "src/bridges/evaluation/sut.py": "a5275f182084b2f034f45c91f92fe5bae3dc0aff50b1f0f50cb7109105923f96",
+        "src/bridges/expression/__init__.py": "cda6696f12ad9fcae5392091d22de04ab04be04c85657cf5e1e92cb7ac2d621f",
+        "src/bridges/expression/service.py": "d43eaf79134bd3d56221cb1747c9487be8921d27f485df54f8805d79bc5c16a0",
+        "src/bridges/expression/style.py": "a27005cd441b515a0782ca545db0639c9a1e680cca4f7d5cc2dfa66f356aaae9",
+        "src/bridges/expression_task/__init__.py": "9fcd1fcf32490fda4f17a4ee35ea10065c47c37303266bdf20c1112488a60a2c",
+        "src/bridges/expression_task/contract_compiler.py": "5889b9fb5e897648c3c05009e51cb7837dc66a706823bb62a596bc2a89d91561",
+        "src/bridges/github/__init__.py": "3963bcf8ea1784734d29a0419ca1aa33d3f898aee415755e14b2976090b85241",
+        "src/bridges/github/client.py": "059a02c59c0356f2a595dfe1761c9e4b9020d7fafe97c9aa4aa73f443cb685d6",
+        "src/bridges/github/contracts.py": "054a8480a4eb9e32f74464005d4b8e0607ae8c05044d92ee40c1a0896145ab91",
+        "src/bridges/github/inspecting.py": "757e6d48180ec40e1340c150ed320e614dfbd69f8997d50d860f304d27736f67",
+        "src/bridges/github/lexicon.py": "3dc888ee770e115f7c90909edad2a5208fd6134eb95545a26a525b1ef0aef04d",
+        "src/bridges/github/parsing.py": "9dee10942f7eddc49203a740ba541db692773a9578f38c04e799fe5c56cdfeef",
+        "src/bridges/github/presenting.py": "c7722edc551dd472a862d8ba6b156bacb51065b473c4c14f906aac76d33c58a9",
+        "src/bridges/github/ranking.py": "5aaad36dfb7544fbad7bae04fb4fe0dd7543973737c0903a478ce01d3da3401c",
+        "src/bridges/github/searching.py": "5f109cc53d0d619d3d114784edb96f27ce7576d677eca50acee1491f9391453c",
+        "src/bridges/github/service.py": "cc7c5a4a9967d127cde68c59924cf6c424ef933dc4fd92ab2fd8dec2748b57b0",
+        "src/bridges/github/suggestion.py": "027aa0d08d40f134cddb772117899963d6b8bf5ab961411e59cca174ba159dcf",
+        "src/bridges/health/__init__.py": "020cdfa9aeff379d3b456dce65e281bf09fa1a5a12dea3d721883e4c0fd21ca3",
+        "src/bridges/health/probe.py": "d07ed9a9393791a3cd21c79da4272b75187a15791050daee6faf600cd6f21ebc",
+        "src/bridges/identity/__init__.py": "63b55778cdfac23721e157e0614267fdf26ea91b35e73e1f5f29c4ad4b794c45",
+        "src/bridges/identity/service.py": "e17865f0059012b4565bcbb783bc38a07a718c56f3efe1ffe6725bbb7d28c036",
+        "src/bridges/image/service.py": "feeaa5e2dbd6e72157163e7b61aec2bc274ee5e7e0fb4a842e8fd48bd8dab697",
+        "src/bridges/ingestion/__init__.py": "c33a396df2d7dbddba4ad5edad43a1a73a8da3517a4d977ea81d73f4cd927a4c",
+        "src/bridges/ingestion/chunker.py": "6ebb709d4bac5e92d2fa4099741db9ba7ce27fb40c6d2df4d487ac7a4cc137c2",
+        "src/bridges/ingestion/embedding.py": "d636e63211def163bf3f2c36b1860a34d8c26b49e80c8ed856cc38bd67f0541d",
+        "src/bridges/ingestion/index.py": "f9acb0fb3dcbf43c086ad36be5f60cfac99a5fa3a9f1de01b000a57bd9814855",
+        "src/bridges/ingestion/ocr.py": "50f78b48778303ce8725a39341202ff6350d6f48ef00e9565f689b46d6b3837c",
+        "src/bridges/ingestion/parsers.py": "ca9ab935c744a81c1f8cfa0e7235e9923a34ee273341d4e30e15d79c5c07f03f",
+        "src/bridges/ingestion/service.py": "8d753f2e8be478d55ceb2b6dc1b366709f3706b74bc65fbcb7f3a337a0f3afb6",
+        "src/bridges/institution/__init__.py": "d159eedbfe10ad363da19b63f0e87129884c025ad7a6be311980093938076a32",
+        "src/bridges/institution/service.py": "ff3990c8498bd4258113650183f74c722b26df7e6406be703edca6d1638b2963",
+        "src/bridges/invalidation/__init__.py": "b1e621cef785d02c0e93a94fa633b0d0cad0dabe5d9fdd89dc23af51e0590e53",
+        "src/bridges/invalidation/service.py": "09e6f702a8933adca5d215fa074d38087ef0eaf0d73cbacedfffc71bf0421564",
+        "src/bridges/knowledge_base/__init__.py": "bb3590360ca1afbf986d02e948655b7c552ffeaa526247648eadbd4a22c337a2",
+        "src/bridges/knowledge_base/service.py": "ed3c001384b903fd9a84b7099a02db3186b78f26adff94b29d767b86367c03ad",
+        "src/bridges/learning/__init__.py": "c493191004f04fce0f756fbbe9bdf557d6dd1bfe3d50042acdfce516978ddda8",
+        "src/bridges/learning/adapters.py": "2dc5ce2838c9cb6d7bbfef7f24d38de21a7ad43339e169d925d50607040323e1",
+        "src/bridges/learning/api.py": "1ac7d628957695a2f75076bb9ea731eaf4bfba2d11254bb708365b45c4fe9702",
+        "src/bridges/learning/evidence_coverage.py": "21fbc1888686868fe3f7f180654dd1d7de11e57f29f9e472fc684f866d38ca99",
+        "src/bridges/learning/pathway.py": "9fcda6e6fe187b1bb7c91123a63a8a1a9c3d7aee5479ae83ece3c2cd90891bb4",
+        "src/bridges/learning/ports.py": "f86ade07774cf467edb59f1fbdccb7a487805b796b55d60f43446d01ee53612c",
+        "src/bridges/learning/progress.py": "ca0aa175185043cecbbaf8474cf1bd73b4ef7efcc9d2f36fc2d9081a8ebfaf68",
+        "src/bridges/learning/review_scheduler.py": "796be4af793474af7f6fb5edeb729bd575d25785811ba15433a1357353cd8639",
+        "src/bridges/learning/service.py": "7bad1f9c9e117934bb84587c69de8ee66611879327e20e7bef3fedc885e68ea6",
+        "src/bridges/learning/teaching.py": "33a0caa059b7c8ed58b28d98400f017bd938f759b1b8c450025d45fc9280b47f",
+        "src/bridges/learning/teaching_gate.py": "55d7ad1f73c78d7a3f4c256e68aae8d1d6569528f4338965f8e0fbc77c6de67a",
+        "src/bridges/learning_projects/__init__.py": "ee640743a104e9e714f41c1780ce000e246714bb0476a6b14d71da79479e367b",
+        "src/bridges/learning_projects/migration.py": "5eb10e258a5b4b241132fb084c6b5e44a612448c0dcb3eacc1e1189fc7c99259",
+        "src/bridges/learning_projects/service.py": "2dce7346f1630aed5735d7d6ebb687d76cfbaa95307915138c8cab6cd0ccfffb",
+        "src/bridges/lifecycle/backup.py": "f1ef3e112c432fb2c37908efcc2f4c0f6536e8a8c8a2b35e9928d06f019bb157",
+        "src/bridges/lifecycle/catalog.py": "6fa2774cdea37f514b19f821bed81f3730b33418907b2a6e109e71c4a5504077",
+        "src/bridges/lifecycle/deletion.py": "ea448973891e54cdd8ca04c2592c86d75ad5e29d03cf9740664a8191f50d147c",
+        "src/bridges/lifecycle/exports.py": "804e953c130177689f69c67d1e0217e5ccf67fcd96a71de9b4e7076d68bf1cf3",
+        "src/bridges/mcp/checker.py": "67529bb645ad9e6077758ee89cecf94b5231c30b3c5e9f478b578cf89b70a598",
+        "src/bridges/mcp/manifest.py": "f492bdcbf9e378f8bb23d367291dc9876b21204d09f61df74b54a751ac9615f3",
+        "src/bridges/mcp/process.py": "5ee1d71b03c038d961c74458bf3a2da8211278f157c3068fdd781b8970685dea",
+        "src/bridges/mcp/runtime.py": "635269972cff2396480dfce6d56f29e4dcc8f7d7a1d66f5b9e52c8fc4eb7a989",
+        "src/bridges/mcp/servers/__init__.py": "6771540016695e4a84164b7a60e8fb2de07a1920c638cb7f64c71458b27969d5",
+        "src/bridges/mcp/servers/base.py": "0bdbce3e12cefd698bae14fc0551e39d3cf706165f4de5b04e932b6c5bc81259",
+        "src/bridges/mcp/servers/echo.py": "e2ca6436300bdaf007e7f90bede567fe655d8101ebbacf980715eb306a96ddd3",
+        "src/bridges/mcp/servers/note.py": "2696ce6a409f1f922944c607a3b225185c2c98167815f2843114cdfdbdc2aa93",
+        "src/bridges/mcp/service.py": "d681bb184508fab5a566263eda6f9f5bc4f91c4c19a886c90167347b2de6db32",
+        "src/bridges/media/__init__.py": "04953ecd711a3d7cf815d00be8e29d2accbd45212d921e9e3ed569a9bf8087d3",
+        "src/bridges/media/accessibility_service.py": "3cde8a09cac93f73d97368928387c75ebd35e08212151c65f1009a209fe0f168",
+        "src/bridges/media/extraction.py": "f6ec475c4f1ff34013b087e603e53c98ce24aee5cf23d43b259a6a376646288b",
+        "src/bridges/media/generation.py": "4cf21d0f835cdc9b9850b923a8136eb2489af395232cff0f4e3cd6dbfd2dd2b3",
+        "src/bridges/media/publish_service.py": "d697f884d96b40b5eb688ef1d7a3fdaecd6dc363fa7ee03d80e38c6c5903b01a",
+        "src/bridges/media/qwen_extraction.py": "8e5b7de62fc50a37e0217642480399b8927c6652073f52f998513b902f671988",
+        "src/bridges/media/service.py": "5c67ecb856f8123f13031ad32ca7101a9a38ca22b029cea260040939d37383ef",
+        "src/bridges/media/storyboard_service.py": "3680af12883f72ea2f0a533e6c28113575355163ba3f55aa680e4a87010db87b",
+        "src/bridges/model_call_budget.py": "38ca22cc2408b1477230e523512d82b1a5be8fc41d0b699497f6f13610f2b297",
+        "src/bridges/observability/__init__.py": "5f6d48ad354be47da188e778b01ec4fd08fb4f483f9217d642d6d40aa97b3830",
+        "src/bridges/observability/alert_manager.py": "95e34ac250afa44312b4538cf890c039758d4b5f4865fcfa79c031c27d1392ff",
+        "src/bridges/observability/audit_event.py": "320683d39de3a2621cd7012172439e16e1b3eb3c7d44f5b35182980be9b41a2f",
+        "src/bridges/observability/run_summary.py": "b1acd573fa136118a0a3ca38e7c3d5e98363fe7bbd8784078ccb0d41d8796591",
+        "src/bridges/observability/scrubber.py": "a8c08cdc2486ccf057b2e0ce22a8f7481c9a89c96cdc34dd0e7ac0c539559b93",
+        "src/bridges/observability/service.py": "cf3c1262a07025e99593c73004d3dc784a7642f33017c302d8e3f1ed021fb3cf",
+        "src/bridges/observability/sli_registry.py": "a3f55b5422cefdb6e53a22a63e006e4c3e2de00201709bc5eb1e6484459a3362",
+        "src/bridges/observability/telemetry_context.py": "36680cac345b537598ce812c9f9d8917585819acd80a9feadca27510eb05b5a6",
+        "src/bridges/paper/__init__.py": "b4ad3a44cac63fb0a8f746c4a840639cbd6d14467c7e2a0dbb3c31cc913bd676",
+        "src/bridges/paper/contracts.py": "e6fc2d2fa3ffd3ea3c4cf266a87d552123af3fc1189c59d16a8948e942ec8217",
+        "src/bridges/paper/lexicon.py": "34279c4b40d9c6904d3e77dc344b66dd33d7ae97a5f931e095d74bd37ff93872",
+        "src/bridges/paper/parsing.py": "83e0c75a2b8359e79780b42dc91839430b108c15e6c8ac255cc237d118db5609",
+        "src/bridges/paper/planning.py": "9114b66888aefd1771d0e022d980c95b317a124c41cb256b82a9d4a4e80b43ae",
+        "src/bridges/paper/presenting.py": "974277d4b42891b85106252f9481d8ed3c89cb5ef78c694ef299e389ae0e5107",
+        "src/bridges/paper/ranking.py": "d7ca8e1dff5abdce012c395d315e1329161045fca256b9c0524dacf2ccdf29d3",
+        "src/bridges/paper/service.py": "bad9839fb8e005c4542d467fd354f7bbef56f4641509cadb5f9e72f222033eae",
+        "src/bridges/paper/sources.py": "a1601817228a92077b2bf19687db5df7b9cdacc5ba67a1274e1078b3580e5dec",
+        "src/bridges/paper/suggestion.py": "57566aa59545fb34da109a5f99a87d2f179947acbb103a953209363f80bd84cb",
+        "src/bridges/persistence.py": "3d182a7367a9176ed1678db42908982b382aeae4a5061d6cc7469e6f6e01b30f",
+        "src/bridges/plugins/checker.py": "7d1cef53a61e01e89c820331e2f8dac9ea4bb434793ff674dfa95d81145233be",
+        "src/bridges/plugins/registry.py": "21ec86c619a8937178c53dfab1bfefcce180f833740c772d61689b7cadc10c27",
+        "src/bridges/plugins/service.py": "295ca6e52714cf3d9b4546aca493a0c8254055b33f3ac45da2d03a9791176b97",
+        "src/bridges/profiles/__init__.py": "a053827605cb7c27bb69c1ed430bc457fe776a956a5dbda9567146c8ea4d6139",
+        "src/bridges/profiles/adapters.py": "91e4acfc58ec105e0c00204fb7ab7252c1c5a5800e26737c72a1a669f55c1703",
+        "src/bridges/profiles/api.py": "0976a252f5daabb4a742fba995f45a7dddfa3ff788575a14ab021757f53e82ec",
+        "src/bridges/profiles/atomic.py": "88b78de98bf48dc3333e119f8b4f80be2e8bb7f6e7555ac06b21d1495829a2df",
+        "src/bridges/profiles/automatic.py": "6da568692672d0c109ad325d1800822569943e35a4213d644dd6de39f6351f4c",
+        "src/bridges/profiles/commit.py": "19c2d8ec10603d1e0b4fec9fe88929e26d6021d8d1911121632de0d574c5cb5b",
+        "src/bridges/profiles/extraction.py": "098afcfea6df98774ee4d07fffe835d59ac28aee2492c404a74b9cfc41a9f39f",
+        "src/bridges/profiles/four_dimensions.py": "926d49589ca0f5bfafa3300882d8a2bd98935831f92f1446a930958f70632530",
+        "src/bridges/profiles/legacy_api.py": "61b04e7ba24dbc2fe8de60ba7930452449ccaba5e0c59b053903bc5947b2789a",
+        "src/bridges/profiles/ports.py": "90b2c94ac2ee1d55558ecf6cad970909d92e84265cd4eb00cd7f090b8b112e2e",
+        "src/bridges/profiles/replay.py": "55c80bd3cfc887aa79c0f0ed2e26bd490f4abf4e7310b363c2fe9e34e7082789",
+        "src/bridges/profiles/replay_repository.py": "b73d2c4e51314de7bcb4db2b98a8eb2b3c156065338787d5fb2af307e6f41bd3",
+        "src/bridges/profiles/service.py": "fcad9a55dc8c767b041b0b9325127acb9c29509dfa394b21228708a458895102",
+        "src/bridges/profiles/signals.py": "5f3fec1360f36e2fb08092bcb887c63b975db36c7226a4b18070ce63eea3c809",
+        "src/bridges/profiles/sqlite_repository.py": "0e07f6718be6fb438bcb8360aa099425cfe0652ffe66d79080d5ff50689f3cab",
+        "src/bridges/profiles/transactions.py": "28dcd0b5100cd2cff6e5c1299f665382501520ad120af4682bdf6a546beb78c6",
+        "src/bridges/projects/__init__.py": "3052e109996fdd3f17d98f6c8cfa03e6714e2a9b73dbcbe741c57909b4ae1675",
+        "src/bridges/projects/service.py": "47e811963552322b13a3d06adff996b8c7540e44e4eee9f9c47f2eba64676075",
+        "src/bridges/public_search_budget.py": "0b0336c1632b0a047c1e0f1f50c4175b599d1422c1bca197f18e46e9fd4c97ef",
+        "src/bridges/reminder/adaptation.py": "dbca562081864bf3dd3c8cbab99c111e0306395ab92b5c064f03491c9a253105",
+        "src/bridges/reminder/parser.py": "00b60a73e6692012d825e462913fd8dce3bf1c3fe906ac8f3a47add6c7b25e3b",
+        "src/bridges/reminder/rules.py": "83b9d9524d151b5fe17c42d9f4a3d388ec6c57aff5c7e30d6c09a65ccee1219d",
+        "src/bridges/reminder/service.py": "471c8e2815b9da84325cc5809ed61587aea9fefab33011fea28e1a8250b6c9a2",
+        "src/bridges/reminder/smtp.py": "a400969a61e713c7f0ff56dcb1ce6d944425dd7107e8c651a1862b1976a4020a",
+        "src/bridges/resources/__init__.py": "533abffa19fd11bbbacbb7bba4a29f405a85ee036191e96593971be886af5657",
+        "src/bridges/resources/contracts.py": "15986931624ebbeaf3a04eb03ac041ca2666c90134f98eede642d57c81c42b48",
+        "src/bridges/resources/lexicon.py": "a59387dcc2cb438b73ccc6933280b7aa7e5c41958da5aa6e95175fc262a2cbc0",
+        "src/bridges/resources/parsing.py": "14e09d53bf1560d3de9e69a904f659f977c4ef6020bab5f52d84407dc80a75fc",
+        "src/bridges/resources/planning.py": "e0eafb2cfecad50ef1dfa5e43e6e90face8234cd91df20754b1962d8d340d907",
+        "src/bridges/resources/presenting.py": "646457e5b8ec9c0f71602e4fa32ba0cced8412d49ee6440a014e77c490ba63ce",
+        "src/bridges/resources/ranking.py": "5dfec894baf7ce34c4c338a6011b64dc6d7d8fff6977e7854ed68f1babb8a2a9",
+        "src/bridges/resources/service.py": "c828cbcb24d94ed30a5f19af1acac215a7c578d83f95725579ac037f00cb0479",
+        "src/bridges/resources/sources.py": "e346f59465be0f8461ec80bffefbf8bd1a79dbfd0a2621397ab7fd176f911eca",
+        "src/bridges/resources/suggestion.py": "4828f66f57aabb1fb4ea12f1041701794341198d61d3b45fb3bbbb1e435f9263",
+        "src/bridges/retirement.py": "773cade91132727cfaecc5e95f9b31e23779255c586221f88382cb756b16d2da",
+        "src/bridges/retrieval/__init__.py": "e67287bc1c61d7dbc2814ac272e5ae38ef58716991504170bf20a9ca1c2b9f28",
+        "src/bridges/retrieval/decision.py": "1228b37682aa2fc8bd57e13f93c4869efef4747e416a08cc70835f95a224f203",
+        "src/bridges/retrieval/repository.py": "8b95049c10f33ebc734c156e94f88089fa6639a2aa133e9ddd682084565bf3e1",
+        "src/bridges/retrieval/search.py": "38ec026689ff752c22bb8acd557fc219139044fd2dabe6f1279761b1ced96c4a",
+        "src/bridges/retrieval/service.py": "1cd41ee6660d99210e164091a1a7404e14cb73ef29fb048c24f1209e69769d23",
+        "src/bridges/routing/__init__.py": "26e83c28b737637d344a20feccd27870016222488ed75db42bf5d6cf33b0f32a",
+        "src/bridges/routing/contracts.py": "0ff962f3bc339a5bb6ca2ea840084f5704eb472b3a5cc2354ad98415f0fac1d4",
+        "src/bridges/routing/registry.py": "ecca2ad0252b41ad611a17249bbcdbc2a0373fd238c7ef7f228958df0af9c3cd",
+        "src/bridges/routing/service.py": "3c423c2905893eeca1f47947f61386347b2738daa66fb56dbe2cb2cddedc4355",
+        "src/bridges/runtime/__init__.py": "ae8d2347204947ec3c34de113139cc3aa1e8e61db1fde0ab34c2ada21d0a2c02",
+        "src/bridges/runtime/bootstrap.py": "08fff5852471f4a3aa75242ecf55da3d6b84e49336e1a58c57d73c64b6ea1822",
+        "src/bridges/runtime/executor.py": "507b899c259152367f2b0e64aa02940e985d4868b6709bceefca89dcccd046bb",
+        "src/bridges/runtime/lock.py": "3baef89294ec875952de81e98f3b6c8b4d193374e2ff2fe3c1f8a9ee871e12d9",
+        "src/bridges/runtime/loop.py": "bebeed023ae932f1ecbddae89c6d21a6d1c15b14f6e7855e84353cde12f10f92",
+        "src/bridges/runtime/queue.py": "0e81e176f18b357af41c0b7905ffa179b9a8e447a81c5c84ffd5ce985b128363",
+        "src/bridges/runtime/scheduler.py": "7af63d78206183ac3ba7e9ecdec5cb310426ec2c8c1cc075d0e69f79c14ebf7a",
+        "src/bridges/science/__init__.py": "0364b98fc04016b91355907068d895472d9c1962c0ef255da8ea1809fc101825",
+        "src/bridges/science/claims.py": "7eb0821d72c114c1f3881fcc2c09ab48b2042291c8e3e41f9b70e041b281befa",
+        "src/bridges/science/fact_lock.py": "42a096b13cd93607fec80f0180ba979bb9ac33e32e92253e8e55c1db444a40ed",
+        "src/bridges/science/parser.py": "39e46a3764b3dea6acd0d8bfa6680f705fd73b5f21cb7e7f364c8d34f9905ea3",
+        "src/bridges/science/qwen_parser.py": "e30bb8a11678502884151d488845c1245fca66222c4e5ece487dc6781d994cec",
+        "src/bridges/science/search.py": "3289592534a331b0d1ef07d10a812502e84ec0dba75b67b5406c59d28bef75e3",
+        "src/bridges/science/service.py": "6d5ed41661a71fb7890ec207e44154bcd4d3d484d3efac6c48c36621c5b9420d",
+        "src/bridges/scope/__init__.py": "836c3d3d8bc9a0e3aa8346e548e0f02fb4fdca21de3df8300ab5f3be93a4b6db",
+        "src/bridges/scope/service.py": "15288877e74343bf3665619af8331b85a3c4b392262bb194c7a84b5bc2a2ef66",
+        "src/bridges/search/__init__.py": "edbc38c9b327806bf1e9bec7597f230b59f1d588ef3e6773294a24b007185ac4",
+        "src/bridges/search/repository.py": "b8f87c1526c3026f7d78d5c68f8e4fb470ce7fe6d0b321a85ef8ca76b5941ea4",
+        "src/bridges/search/service.py": "d6ac75b0f7c5004c7d8ae9cd54412c89a7507ffbe7009f0eb8b9e65b4cd911a8",
+        "src/bridges/sharing/__init__.py": "3d4f121f61f685b67f834ff5629a316f965812c89fff22be318ce94576a98e00",
+        "src/bridges/sharing/service.py": "ebbd05c8e2bb87fd910bf0f88f6f6d8c07fa23f2eb864fa2592ee85991f948de",
+        "src/bridges/skills/__init__.py": "60ce2e32c11c17b2da7d47e72125f5758277b7a5cfb54c9b73633a74280f804e",
+        "src/bridges/skills/registry.py": "9ada7dbdf79b0a897c0f747762ee7a1717c614eb30b2efc0d2652cf9f419b042",
+        "src/bridges/speech/__init__.py": "c7dbfff4b96b4f5bf6a58aca05cd689095c4743b207177a37284a4aa241c320a",
+        "src/bridges/speech/service.py": "cee62071473e8f226c4699270f3886117d49a9bb8b449985dea713486df0c815",
+        "src/bridges/storage/__init__.py": "a6ca29d88ec3d210adb8df3d20042ae654f432f7c8d9646582f4c5c24b3eeff5",
+        "src/bridges/storage/database.py": "1687339e4848dc513aa927269dc2084c43abe9b2889b905d08c1d2013c539c86",
+        "src/bridges/storage/errors.py": "c42816a296f7e9835756b6ba61847fe276e9469c57d74721fa90acf0ae5a3398",
+        "src/bridges/storage/object_store.py": "f91f1d42252eebf1f9168443bd176536e09508b9e9530172e88e91bc139ff09f",
+        "src/bridges/storage/repository.py": "dcf6d2c3e423e01220cc0f8f060cb8fa1815ccc01d6ec82346f9d6271bac2edf",
+        "src/bridges/study/__init__.py": "ce2f36e03025d37c28a28a8ad1467194677bd73e4dfbf0637968ed0db1033670",
+        "src/bridges/study/review.py": "8393c3dbcd5078a108d1683646e25ee06a0d7599dda7d27fa70ade2c23dcd8a2",
+        "src/bridges/study/service.py": "6215ff8f6ea0e69d3d8ac01d112884c7a3d371267e6099f6e6d97baa452e63b3",
+        "src/bridges/study/summary.py": "cc5151ee1a836349bd6547f62e46d697d24f5f197ce5a1813224eecef0ec8668",
+        "src/bridges/study/tutoring.py": "d1d1b1d1121a7317c137ccd7c71f2ec34005460a5487aa9479a51f2395be552f",
+        "src/bridges/sync/__init__.py": "d8cdc9be20bdd8d0b8894ca1b42dae4e3591109949f514e97b0814ec8816fff0",
+        "src/bridges/sync/service.py": "4a88b60a8a4d03a503ff950c36b40f14bb35716dc642cb1529e3c216cd137f46",
+        "src/bridges/tieba/__init__.py": "83ec94a58ad99198c43bb0cd49fd2e6f1ecda3b0098bf6c21e31e7cd1f5e1245",
+        "src/bridges/tieba/contracts.py": "ca0f34fcab79a0e8c24fbb1a4d5773faccc8fb543350b017563c1f6e02f02981",
+        "src/bridges/tieba/lexicon.py": "b53d15f0764dc3ca2bf17522c9917816f5f116178833b905ab26978ec6fc82e9",
+        "src/bridges/tieba/official.py": "41126ed511deea71cc25a4d2818ee1d4da0bc23f31984aa6be0b1546cb9dfd1a",
+        "src/bridges/tieba/parsing.py": "561d35586da99444b6f2a7ea475581ef792fba661aa43f19ce6b7ebea25c9bcf",
+        "src/bridges/tieba/presenting.py": "2e0aed9d6b2c4102b322dc9e6bb3e8be369b08d63002031db62112ba17dba484",
+        "src/bridges/tieba/reading.py": "b0797977868d168a7d23947d10cc8c6da1578afc3e5c3c0e696d31cd185d0dcc",
+        "src/bridges/tieba/searching.py": "4f354a07413e712237b121c52706ffcbb2a3e0e89f67a80d9f053bf6c4271903",
+        "src/bridges/tieba/service.py": "ba9685989150c2db7150a37a075b93bf5f0479388cc1097944edc43ba6468c3d",
+        "src/bridges/tieba/suggestion.py": "25ff9516f9ba252773301c1d2d651c633788b63e348ef03f7f67b0baef4702b6",
+        "src/bridges/vault/__init__.py": "139c360bf5bab113a63b21379e3ced504342dad9da296306f3a4fb81b1eb5336",
+        "src/bridges/vault/adapters.py": "15d6f3207fe4eb25b7d2d376d1af64369ed7f0c3c0c8ec8e463b0ec0b1b60442",
+        "src/bridges/vault/ports.py": "36652466e9c0101be7ab9c58a92d05bd1cbc925c9b2a593c8712c7bd26337782",
+        "src/bridges/vault/service.py": "ab369901699f28a91f76a010f98cc6e5a7aa6db35cb1183dad88e1cebd02afa3",
+        "src/bridges/video/constants.py": "b7b8fa150a0a61f903b5d094e0dd8c675d52e1cbc15689ca821b0ce612c56437",
+        "src/bridges/video/service.py": "a31ba9e753fe49207da75008ff2e7e7cd06bfc52c3312c59446b2691f9936e94",
+        "src/bridges/web_search/__init__.py": "82c319ae12981e6f0e444e46ef714ed51a21e3d9e99cfd70029c70f85c69ceae",
+        "src/bridges/web_search/client.py": "de6afb9f79161792d7f3b97bfffa4352cc43522d877f284985ffc307a881e19e",
+        "src/bridges/web_search/contracts.py": "0968786e0ceea1738c06bddd59ed0942151b120bce4153ede45f1faf09ebafee",
+        "src/bridges/web_search/health_monitor.py": "68ca0e8b5135a8f6df4d89d04179eb37c80b462f92f5a4af283ebff5b1bea2e1",
+        "src/bridges/web_search/providers.py": "e0cb1a28c6c26d85d914dd9bc54e4b871f21e8af680ea5563412893caa3fe439",
+        "src/bridges/web_search/repository.py": "d9a3cf8604f3b7b8d64a3cc6e3d26e01f5098cfdb7561126f1b01a8c1cb60e9c",
+        "src/bridges/web_search/service.py": "44ccf9c72f7d925476b4d45eee7ed75fcb7fe0bdfb8fc8a931c02b5ee8718cf2",
+        "src/bridges/web_search/tavily.py": "8c1092a5ec91c0666f783eab6719ab96a42af32ccd3e496fdf37fe989333ab15",
+        "src/bridges/workflows/__init__.py": "35273c018248c130dfd9583aee21508ab1238c3ef0fd7a2f49fe7586083fc68a",
+        "src/bridges/workflows/service.py": "64948c0ef77685c5444d25a8580132063ae41b6b843c89723a4d80acfd76328c"
+      },
+      "harness_files": {
+        "issue42_pairing_budget.py": "db48ea4ec6fd0071eab49e2c7e69e48555d8774f596009c5e6897a7a38589fd1",
+        "issue42_pairing_cases.py": "70fa302e612e9d08b1b3397b7cc4fd571001418f9d539c629e125361773baf37",
+        "issue42_pairing_lock.py": "18c99fd6ff59fe63ff6b0ed1960a150ddb4d23ae56bca1eb40c63b01e0eba6c9",
+        "issue42_pairing_report.py": "37744d6f0f1b3f46ee221551e4145590053ec0d4a3beba158b3bad46441a2493",
+        "issue42_pairing_runtime.py": "b7c101b9aeb15703cb98179f9a9c9fa802d1fb3bc0257be5bbf3a98497c900fe"
+      },
+      "clock": "UTC wall clock + monotonic elapsed",
+      "scope": "实际源文件包含提示/Schema/配方；外部实时来源未冻结，不构成严格等价配对"
+    },
+    "model_ids": [
+      "qwen3.7-plus-2026-05-26"
+    ],
+    "started_at": "2026-10-06T10:54:49.984242+00:00",
+    "finished_at": "2026-10-06T11:00:30.807732+00:00"
+  },
+  "new": {
+    "tree": "D:\\BridGes\\.worktrees\\42-workflow-evaluation-and-external-capability-gates",
+    "commit": "8b8cbeb8030d1607d675347673d0822363d4c982",
+    "dirty": false,
+    "source_lock": {
+      "source_sha256": "5d77c062afa059431fa41d59c7df2150535a925cd7b6c0ed85254ce4f7c57700",
+      "source_files": {
+        "src/bridges/__init__.py": "8972e310c9f1fcd0be443e02d53154eb5e70175332352ca5ee9c17804fc53d22",
+        "src/bridges/ai/__init__.py": "0d9f1a659f65542d9c514500619ec1fa08626428bcf179292b24470b9f646d8b",
+        "src/bridges/ai/adapters.py": "9363466cfb53a97d6d9c3b40214e753d7816311602697adbb83c23cd5fddcbf3",
+        "src/bridges/ai/capability_registry.py": "41f139aa8f290a8429467bce4a18ccf49b46aa8b899f68116f4c793a48edf14d",
+        "src/bridges/ai/composition.py": "72b9c9ffbe1f2ef28b4961ed64e03cc32e2b7be5f0a103e62a3ebe05ee68b588",
+        "src/bridges/ai/embedding_adapter.py": "2f8fcfd92ddd54b04842523b9bec1bbbce90ed64f5b6c8f0c88ccb843ebda297",
+        "src/bridges/ai/errors.py": "611ad97e5750f224aa8c1693c92c0609902144ceb8b727c4ce7d7489c3aeb404",
+        "src/bridges/ai/fixed_models.py": "777742223da688b09533c93ba6cb15ab62993a6b6e16526de14d3337464f6e71",
+        "src/bridges/ai/image_request.py": "bbcb8f6626a32a52e6b28f45fe2fed81d0b6c0c104f27a4f9a3ed69f87b4cc17",
+        "src/bridges/ai/lock_scrub.py": "9b47827fae4aaa3a26b542155402a94cc505de2013fd519144ec5723603e0099",
+        "src/bridges/ai/matrix_probe.py": "ac51f1ed9f20f85fccf8266794c93dd5ceabeae7c89f3f7aae6e8c98e518b884",
+        "src/bridges/ai/metrics.py": "62df5e2e15a78593f6b5397061fef4e8cdb4080754650001fb4b65c8e31a08b9",
+        "src/bridges/ai/model_gateway.py": "67b75b708132e360dd6d6664707e63e6b0ec7cd6453680450de6240a62a621b6",
+        "src/bridges/ai/model_metadata.py": "5c462b43e71e23faca4c7a761f515346e1ff513b1a655bb2206bb18dd2c1cf52",
+        "src/bridges/ai/model_probe.py": "155ca9b1e4f7773d2d8419ac507860ec07102406787b67061cdef8f2b5ccb1c7",
+        "src/bridges/ai/model_quota.py": "601e7232beb42cda9469fff5063bc9d2820870677b6369c6b8e08692bef05835",
+        "src/bridges/ai/payload_budget.py": "8684f6f1e549789a811786399da6864d32e4d98ef4176ec2db3b9dd06c63534e",
+        "src/bridges/ai/ports.py": "7c36d982475036596a180cad2b59791f7170ba6e2521f05ee548f4f680a7f2bc",
+        "src/bridges/ai/production.py": "f3d890cfa9960ae874e49a4d22aa1e1d7cb6eb3e1262584f34f8fc98a29ad9b4",
+        "src/bridges/ai/qwen_adapters.py": "c5585fb4223adce89efb107bf254c522df1a6faaf2c25752faa9a4ae2c605e37",
+        "src/bridges/ai/qwen_asr_adapter.py": "20186bc3f018805d190f1a3c402210192d6d0f9c588f784b241fb85f18ea582c",
+        "src/bridges/ai/qwen_client.py": "7c28bb5a21d01258098236c8f12095494bddd99a336d63d69b5d34672b89f04a",
+        "src/bridges/ai/qwen_image_adapter.py": "a920c47f5b623d0306286ad62065f4971bef6f2580a099a3ccfb66b171a9a5a9",
+        "src/bridges/ai/qwen_tts_adapter.py": "cc1a2c57580f44a3aee1188db258c649dc2648f2f5b7181b8bcec8196cb65ed5",
+        "src/bridges/ai/qwen_vision_adapters.py": "0119f962dabc39bb8ad9c00a85abe20908621dfdc0160600b71b4091e8fe934c",
+        "src/bridges/ai/qwen_wan_adapter.py": "360edc2b70d71c3ed5a19a8e5e21791fb84653d8679ef88d52f44dbd41de8ff5",
+        "src/bridges/ai/run_model_config.py": "25cbfc375588ba863b33769e479b10c61f0d5c88411aa36dad8c97eeaddd328d",
+        "src/bridges/ai/sqlite_recorder.py": "8ada85a07ed71a659ec2c9f97022d1b2b093c36bda9c09d89f2d0af08ee9d4ef",
+        "src/bridges/ai/startup_check.py": "c59205c3e535cc9de595156c21e7f26970ae6a05f73f7fd67a99128174347966",
+        "src/bridges/ai/stream_script_fixture.py": "d7b118bd737affb12ae50657d64b5bcb1ad59fc9ae5bc579ba5ac721177f1a4b",
+        "src/bridges/api/__init__.py": "8eb684b8f55aeb7429822a613cd363b3e78b0e1c37fdefbf74f109a8c1d3013f",
+        "src/bridges/api/auth.py": "3abf46bbb2648f92ee6c4b6b983eceba21bae5e7df326bb2e3fe08a72d86e431",
+        "src/bridges/api/chat.py": "bb92e3ecf0b3aad2ba215c1045ad0bdc96ce12ed0a537e012f5f60ad3169b782",
+        "src/bridges/api/commute.py": "36c7e1cf54ebb0a1bd6f9e36030580155daf8714815e19899e92975e67fdf2a1",
+        "src/bridges/api/compatibility.py": "9d820a929f99c6ea1b656fc133dd03bbbe5e167dad9e90a919eff73aec0e930f",
+        "src/bridges/api/credential_state.py": "1351151d2c48131ee731dfbaf89668474c7f250945533c4aa600c2548519be88",
+        "src/bridges/api/credentials.py": "ad47126dbb53e77a6bd449b1a5c0ec5bd79bba2216318f211bdc7e175f5f74b0",
+        "src/bridges/api/csrf.py": "c2ab75dea32dfb21187b173fd9a7d507ec78c75d256da24ac2871b68764820cd",
+        "src/bridges/api/data.py": "dd2351c76277620551921678d3629a8fef7ea4d6f0fcb4d2d0ccf7c0291fe921",
+        "src/bridges/api/domain_packs.py": "045aff3c69eb71616bffb720672eb95f7dd7fb4618b4dc67973249934cf8b22e",
+        "src/bridges/api/evaluation.py": "5d14875d35da91ec12ba5f7d34ba02fb54c76cfedc45b5c1abefe6d6d62e6205",
+        "src/bridges/api/expression.py": "a2471eeef53343449647eb52e066496cb7999b9a3dcf5dc16ae48395714c289a",
+        "src/bridges/api/image.py": "7b640df9664aed5173d7e394bcdb2ea64a0f4e0155400befc3061cec19aaf3bd",
+        "src/bridges/api/ingestion.py": "44f99eb301d2a263510de14fd5c360043b03174370080ad2c999b3cc7d475e8b",
+        "src/bridges/api/institution.py": "eaf6a3ba1e95cd18258f46c60c1adbb1d6000ef6315c4be10610487c411ef4a6",
+        "src/bridges/api/knowledge_base.py": "b7bb4f6d85f937222626f1d235538dd9f8b10101dd0d10cad0a1be6c3deb608c",
+        "src/bridges/api/learning_project_migration.py": "ce0db486d2d002e649136aa3617d1871c8e6e309a576160f86083b02dbfc04da",
+        "src/bridges/api/learning_projects.py": "4bf25e617a47a6382a35451c477f437645585337bf08a34d47135b8b6389ff74",
+        "src/bridges/api/main.py": "5782bc4caa6cb41ce6520586270a3c894fe1bb40f26a742368771fef20e0526a",
+        "src/bridges/api/mcp.py": "42b3f5a398edd741b041daa01ab818aeb78412dfe9a1bc32860dd1a02bcfb73f",
+        "src/bridges/api/media.py": "b0b65b85edac89677108a2707a90cb8ba9db28eec794c3c55314a7b3ce9e19d3",
+        "src/bridges/api/model_settings.py": "108045ac863c4f3ab195946cb9ce30c4ce6cc482a3e1403587878dad700b0d6c",
+        "src/bridges/api/plugins.py": "2e06783430e263d6fce02f7d1206cefe7468620bf4518c42f8690b8f52c39efa",
+        "src/bridges/api/projects.py": "586c3263a847a85fc278c18640215160cbef30cdd96bd0f1119bbb320e46f43b",
+        "src/bridges/api/qwen_settings.py": "f6ecab6b4df5cceacbc912a8ce3ae742828c82e94a910b8d47613572dcd0e7b0",
+        "src/bridges/api/reminder.py": "249d8ef99e806aade9b62ce529ad15da46296d28b2ff0d4d58093554f50c0554",
+        "src/bridges/api/science.py": "ac2e9986b13c73e9678ead7f574eea82c56d133b8107af8d7dff1142497f9860",
+        "src/bridges/api/scope.py": "1b867d1c2bd5b101126b2bd4d98bada019fbb2c53a31c48303b8cffdb8b93d6b",
+        "src/bridges/api/search.py": "fe4bec5342e906e66cc46709c5bc4f2b648ec4a6b468a2c8e5afa3dac17b5c77",
+        "src/bridges/api/sharing.py": "de9e31a0f8c04a0a6ff17d3530a8571631bc0f8de61f5b3d4d379c5e492bfb98",
+        "src/bridges/api/skills.py": "b342c3642bc26073bf8ff76c184443560721339b128f49e09573feb79bdb6168",
+        "src/bridges/api/speech.py": "2d1dfcae81f190de0998e01584fbebb31a1e5137a66f7ae011b3a142d23b6561",
+        "src/bridges/api/sync.py": "5a7288995f8cb4fdf6a148ff345c0225e53a074102f8c05a45f8019ccd3be542",
+        "src/bridges/api/tasks.py": "741620f2d8e28b851e1a306d84ccfd060d545c4f9991c31b3a63f304b76a9f34",
+        "src/bridges/api/vault.py": "501f6ca6a74ec0ada895e9fc24b5a42a1ba604c6ba316a6674b6ee534b3e5c19",
+        "src/bridges/api/video.py": "8a40ecafc12070fc942acc1e95d5ba72dbcffd4fc436c200b08dfd14e11fae3b",
+        "src/bridges/api/workflows.py": "5d9a4dca63e967a5b53e8d8b9888f1aa6b9c8fecdb5eb9e38e43c3c5d29f2fa0",
+        "src/bridges/arxiv_mcp/__init__.py": "525d9c80bd738a12303cf666d00cfbd64a3b321c107f165e8515c89f6d46affb",
+        "src/bridges/arxiv_mcp/cache.py": "f1f2fc2ab4028b0a889a0532b60cebe352e482cf042fbebcecf1dc211ed35cbb",
+        "src/bridges/arxiv_mcp/client.py": "1efef64a2fd47ee32a702491eeeb0ace0c3bfbf80743ea582b1667fd4d1d27c2",
+        "src/bridges/arxiv_mcp/contracts.py": "2ecf38ec4cbfc70e6b90fbc71d3ec66e68692aba6657dd84e1a99c3546d156e9",
+        "src/bridges/arxiv_mcp/guard.py": "83a132412a34ce53b767ff81f91e28edf6df2d95c2f8b04222c67eb10438b19f",
+        "src/bridges/arxiv_mcp/limits.py": "79471e9ea75b18a480e602a40d57b7e88f26ce06cff2e16229327958cfaf4e56",
+        "src/bridges/arxiv_mcp/manifest.py": "47f59c4ef111757afa461677273acc083b5628da5e37c1e6e1e2dd5809190fb6",
+        "src/bridges/arxiv_mcp/process.py": "721ae92b84b5a63d92d7805c723edcb9894c8f89e0077de367dcaf336bd7c989",
+        "src/bridges/arxiv_mcp/service.py": "526830fa734ca479623caa1c89278cf253c24945a7d505f7541547a3304e0c77",
+        "src/bridges/arxiv_mcp/worker.py": "d07b08a8394c6fe1f8bb175e61d3de2759708e18e4d2376d07cb299ec50be773",
+        "src/bridges/career/__init__.py": "d33465c7b6b3741705db18ce006f8ea1a137bbb91677d04743d8e831618599e8",
+        "src/bridges/career/intake.py": "03a779ba63bf51fb5995b5874408c5a3930df36545740d8dacf7939fb37c6848",
+        "src/bridges/career/intent.py": "9d02e129128f6eb4f9895ff3f049b7a75c4f6627f1076b73bb0141a2fd7759b1",
+        "src/bridges/career/metrics.py": "07048062d4a0f6664cd9f152a838ab36cc49fabe3a15ce4dc13b33fd18524ef6",
+        "src/bridges/career/review.py": "25d98fd9c4443e881f196eedc1f83478b101fda9428b4fab905e126017951f3c",
+        "src/bridges/career/service.py": "656860d91cac65bfa2fd211fb7f5e5442edd8198ca678991fb12bdf3c5d2578f",
+        "src/bridges/career_plan/__init__.py": "d2688fc098f3224ac91a4540902f77989c3a1ba9b27aec68f11ce2fdd1cf2958",
+        "src/bridges/career_plan/advising.py": "83607dd7d0ae299afc0114e54b60038305304834c5b1055eec90cbea8f1bdb82",
+        "src/bridges/career_plan/analyzing.py": "baa6f5c83286112c32c945dfce63fc56d7920c1da14877c5a4d04e5b3ecde72d",
+        "src/bridges/career_plan/background.py": "c11e98dc81eb30346563c03cc0a86d4f546f8e5bdd6d2a0b2e6411edac7538d9",
+        "src/bridges/career_plan/collecting.py": "a30829ca55bf3df1b9fe73fef9cb2246b1da4615abb75b06dc9bf6086369d6d8",
+        "src/bridges/career_plan/contracts.py": "48ca01b179dc1d2b1834da51844a60c750645e22b075129fb258d2d4c2fbee64",
+        "src/bridges/career_plan/filtering.py": "6c390d6ea3b0303d201fa4c647070f99b1cb462d08d096d3217e31534bfafb42",
+        "src/bridges/career_plan/gap.py": "488deeaa4a10dcc31a5be73097c83512f6ce757e080e9df7fda50fd23cb89a3a",
+        "src/bridges/career_plan/kernel.py": "7adea610643ce7f05cc5203f795874d9f7218f7b2f2b931178d5c7d3f8a13105",
+        "src/bridges/career_plan/lexicon.py": "5cf3c48f0628f174237e52f8aadc0ef09da4e5974bf31a9113f6a4587362117e",
+        "src/bridges/career_plan/parsing.py": "ceca67a2736c2e1c7408aab785bb77bd3dbb1392ffeb767b7d8684659e7f950f",
+        "src/bridges/career_plan/planning.py": "a0cd552220542f61dd05b54ef78dcb328edd1581149a4d1f036e33475fbf04eb",
+        "src/bridges/career_plan/presenting.py": "c529fc558ad2a09b0a51372777f856da5103c89a9f97a252722136a0429e93f3",
+        "src/bridges/career_plan/reviewing.py": "b0f991bf7b0e2d239efbaa0c4a50a43b89276a1f971986380f63c81252c9d8be",
+        "src/bridges/career_plan/salary.py": "c02d1d79915b59198b886f0fe0c7b40afa01eef62a0c8f02551bc290576e09d1",
+        "src/bridges/career_plan/searching.py": "572170f6e889d0d0adaf7c69cd0e496b9ad0aa21ea67043e4de8492a02188242",
+        "src/bridges/career_plan/service.py": "3eb601397c3123c157ecd4e2963006dc5acbe78b7033b5c1565ab50837c14d3b",
+        "src/bridges/career_plan/suggestion.py": "26e65fae5c1bd1367c22cb334103605b072ba7a086a4f1fa3d126a08c43efc94",
+        "src/bridges/chat/__init__.py": "3ea9aae71136c5d283105204b858ee3e0bc0c4bbd984dc322fe636d365a66807",
+        "src/bridges/chat/attachments.py": "d5cf2217f9eed976bedad2105bde0c1b16b060c4dba69c91005d279fd2b34a5f",
+        "src/bridges/chat/attachments_repository.py": "6107a00413a4fa61549fe5088ae4a35e4ac26328c5dc1c50cf41783e397c38e8",
+        "src/bridges/chat/budget.py": "4de690ebf29d12b2ff9cd1586d4caf215f1cf9041b3d3027f3dc34ed144af290",
+        "src/bridges/chat/budget_batches.py": "22485b0f2261efbcf7bf5b5069b7aee4a67924b5fc736d415e6bfe9476a9e596",
+        "src/bridges/chat/checkpoints.py": "38ddc371d52eac1d6cb8b8bddff8735e32ddd6a1a87cbcd586faaba75612e383",
+        "src/bridges/chat/context_compiler.py": "3a9d43f22df53f0d10be34a4fb171662ced4e243bbd1432b0c115cbd76c32382",
+        "src/bridges/chat/evidence_scope.py": "eab6eaede3fe51992558aeea9c6f57c3f7f8cd1c7603fc4b43516306b703e7fb",
+        "src/bridges/chat/fact_protection.py": "27a1bd73728050b683f71c5e9023104fd11a10abbe064e6a82a1238b0ffa7d19",
+        "src/bridges/chat/global_writing_policy.py": "657d7f32a7f74cc223b96d6f40018ebba12dd15e99503398ccccadfc9fb4022b",
+        "src/bridges/chat/graph.py": "53a1ebbc084f71905ca11dc195ba6618bcf46fd70df21c428840b86073c44b1f",
+        "src/bridges/chat/lifecycle.py": "d9169dad1fe2e9524c8ad48cf1d333a6c2ed1abb4090a18338067223190b06d0",
+        "src/bridges/chat/lightweight_policy.py": "af6a57c807519e3786f9e820361bf17b4185c4d1f4796b0ad0ec73aa8f159ecc",
+        "src/bridges/chat/material_reading.py": "f224bb0aa07e5b5d52af78d7d0f8c5bdbceb55d76598d8a2716d8282ca7930d7",
+        "src/bridges/chat/progressive_result.py": "416121d72f60cf320798b984b6f74ef416089c083782894125b1c5fd426f3616",
+        "src/bridges/chat/reference_resolution.py": "f8b479b2b597139170b00e9b356817e1280e2313095fcdb3120d0d464339ffa4",
+        "src/bridges/chat/repository.py": "fa558cc29d9b270e1848e6403ccf425368d2870a6cf8fcf2ffe589382b326a94",
+        "src/bridges/chat/routing.py": "fed367cee6feb0812e78b617a686beb6ba639324c5a3a94840610a63dcff01a2",
+        "src/bridges/chat/run_budget_ledger.py": "9d9b3c3cdbb3bdbab9df7972be84d8fbd5faac24a783b717b5a3b2aa77e6a580",
+        "src/bridges/chat/run_executor.py": "9378fbaf610afa0b474b9d990c71ba5ad12fe650617ee8108c78e6da3d31ccb5",
+        "src/bridges/chat/selections.py": "7ab14d2d100da89e18f35c7db0e172a7190a840236ffe202f2ee4b234f9cde98",
+        "src/bridges/chat/service.py": "7e16c3ff6bd1a732e8d229f6a7fe19bd30b5c8f8e1884e2f25fa352baee1340a",
+        "src/bridges/chat/stream_protection.py": "ac0dce2117b32227fe23632b48456e5c46aec4600c3e7400d9037cc94aa1ae65",
+        "src/bridges/chat/summary.py": "571ae48654a561e2d0b617b22f12b0c7010557dd7ba5b1925b776e99d435f28b",
+        "src/bridges/chat/task_materials.py": "1bf8d2d1fa32048bccadb76e3853aa737c8e873dd7023a4ffe17c14e069c9787",
+        "src/bridges/chat/terminal.py": "da93c65ee9d207f9b4851454196ef01a4012c807414fbff315574563256b117c",
+        "src/bridges/chat/topic_clarification.py": "468397957a0cfa70a2518b2ad6868ef81b39ecf980d89854ade5daba1534f636",
+        "src/bridges/chat/turn.py": "011a37aa1d11c772705692eacef343bfad3020a82e9c0d27719805d289e46ac3",
+        "src/bridges/chat/turn_result.py": "d46c269fe1da00db225b0063bf3f75b8c31491478d2222d5ce0c04b2f636588b",
+        "src/bridges/chat/understanding.py": "91d824238c655e9444d0c6a4e2e88be58d5a80354aef72d0566af01abd9a4f4f",
+        "src/bridges/cli/__init__.py": "4af18001d86c470724bc1eab9d4d24c14929662abb77dfae21adecf578196f03",
+        "src/bridges/cli/evaluate.py": "7dc521677c25dce2464eef9082659a89e6d9255ae5cf0b4bde21bc5245f12283",
+        "src/bridges/cli/main.py": "4edc673a0edc043f230e65f7fc9c7f087e30869a753d0036e7eca3d82b1ff828",
+        "src/bridges/closeout/__init__.py": "085a4440f1363b2076a996a5937f7e953c95e073b531983bb0cd25a3325bcdf9",
+        "src/bridges/closeout/authenticity_gate.py": "c83429ec139163b6eebd598d27686b4e7b15f2c6c3b874f895f99851256c735c",
+        "src/bridges/closeout/fixtures.py": "ec8cc28fa156755405e22a509dabf1e3fb34cd83e78eaf3d124c0ca35e9db0ed",
+        "src/bridges/closeout/manifest.py": "baa843776987b88bc26e950ffbcdca89bbb2d1ad10cb8827912652c97bbca18b",
+        "src/bridges/closeout/release_gate.py": "cbdd07c329218ab65f41f780db2f50871e70f1b2180709e12480fad328082ad3",
+        "src/bridges/closeout/scans.py": "426445cb9fbfec5ca81cfe9b9a72b2da4b9ac583baa1eeba2ceb079115ac1670",
+        "src/bridges/commute/__init__.py": "0b727c8aa7b71d2fefbad223a6e170ae8627d485e843a9fde5373aab2d440cf8",
+        "src/bridges/commute/buffer.py": "fad2a7cbf17896919f7ea3b890601752ca11ef69c555bea015107c02190e8357",
+        "src/bridges/commute/contracts.py": "e93927e32342e51968b85d07a5cf82d8a440ac236e6c6bd381c889b5561a826a",
+        "src/bridges/commute/kernel.py": "6e34d5d35181180bf69f6f18292a7123c182818e8a7555ee2e27eff23f755f59",
+        "src/bridges/commute/lexicon.py": "a555d1c0a90ae9f1d5974450cfb14a0f272603110c7a5c2c02abc49889d3a622",
+        "src/bridges/commute/parsing.py": "5fb0d4aae5ab5a62247c4a54ab347ef12f8082ce15efe42fb2159c36dee1d668",
+        "src/bridges/commute/presenting.py": "f075dde9c61483a1969a00d14a77a53495513fc1b03b87be87e6952527c2e105",
+        "src/bridges/commute/resolving.py": "61e50c8a8faf2950903a4e467cd3ee80cb95bb1f6623293adb9da202cceded33",
+        "src/bridges/commute/service.py": "523da887604e5484febd6ea7ad80c2a8638835fa42a399221a8c2ed31560e9af",
+        "src/bridges/commute/sources.py": "5ddd629cf6a5eb0d98f29242567f4867c72a21be44964be91febba89a6dd7592",
+        "src/bridges/commute/suggestion.py": "aa21a5fefbd361643c21476337fd60b8c89b3232d3003f103169048f134ef5d2",
+        "src/bridges/config.py": "2279351d7b26a5f1305f8fdfaaa2d48b22e30061ed39409da6ca55a1aec5ebd6",
+        "src/bridges/contracts/__init__.py": "5466aac6854e77d7d864615ddcfd41d02398fe2fa5b264cfa691bea896f3ae02",
+        "src/bridges/contracts/ai.py": "b04b8fc31ba92881031e32463496bd61216d73d2bcd706f98fb3e41f1b71d22c",
+        "src/bridges/contracts/atomic_profile.py": "adcd878b8e1370477d84bd011c079ef6ac676dc64f63d163532fad8bb2ad2864",
+        "src/bridges/contracts/career.py": "316586b85fa2aec1ac112c29991f3c18226e6485c3594ebc97b94b7384b8d196",
+        "src/bridges/contracts/chat.py": "72a1b0b3b57c3d7adf02cfb2d00a41b65625247a3b04d45650398e98a7c13052",
+        "src/bridges/contracts/domain.py": "6948645a53d3ff2414edd989af830ec27b3785fea312ad71a4d08e4e99c4eba9",
+        "src/bridges/contracts/evaluation.py": "8abb5411230aa038259d90d6583b247f7e1e8e722129713688d6c7b6fd232e14",
+        "src/bridges/contracts/evaluation_suite.py": "1e3b5eb9b778961741af19e23eb8f656378327f29e390947902eac41ea85dded",
+        "src/bridges/contracts/evidence_safety.py": "da5b85f5cfbe7dea2ffdc9522db0e363299986f3c32f9ce41bdc70ab6eb85876",
+        "src/bridges/contracts/expression.py": "3b2edff6ada7b9f3de1f9feae49cb80fafd85beaf508833ed3e5037ef91fa9b2",
+        "src/bridges/contracts/expression_review.py": "e5790a32bb8200d43fea87be0ccc1b7a239521cf2ab9f66354339ef46d61045d",
+        "src/bridges/contracts/expression_task.py": "d04305b9e7d236bdb42d45b61cf621bcb37bf40e20978c2fd5c600de6be950aa",
+        "src/bridges/contracts/feedback.py": "85d1b40f98cf579a91ef29d690871d65262700807c7c928d7f1300faf6d91e29",
+        "src/bridges/contracts/health.py": "a7a79b8cb5ee00c6fbbedce6bbf1945fd9753876bc9a7168eb11ed168a3b4e96",
+        "src/bridges/contracts/humanizer.py": "b7088b64a2835980358f4f44b6cd4b5b0118f401bd87e3f512f007a0617adb71",
+        "src/bridges/contracts/identity.py": "f9f9e7b29fab1f627240e8c61c02d8bea22415124e69cc51fd77aee2f0edf7d4",
+        "src/bridges/contracts/image.py": "2499f24e458a89c7f4fc5fa952994465c8e13bc14bce7e9dd24e72f3105370dd",
+        "src/bridges/contracts/ingestion.py": "7bf50960865384f6ead5de0179de090874d54dd5cbe544154f43cc1e719cbddd",
+        "src/bridges/contracts/institution.py": "d6c6ee5314a5e8d4038d104e102117628ea8de9b064e5cbc188a58a9c9a0a96b",
+        "src/bridges/contracts/invalidation.py": "bcc0d157c57851128ed5c2449475dd29eb2dc44f30f98b6c55c61d41a10e7d5d",
+        "src/bridges/contracts/knowledge_base.py": "eb4ec6d5b3da0ebc2deca5befe55ea124f2ffeab816db01218dab4b00408ef2b",
+        "src/bridges/contracts/learning.py": "d869b29cd97b25a2ece88a71ebaa9ba50ef869a9dd106f783733fe977d8bc2c6",
+        "src/bridges/contracts/learning_project_migration.py": "202e9281e05a2ff9d5d4db2e45ee785d8b1bb06992cffb19b91d588d629f4b04",
+        "src/bridges/contracts/learning_projects.py": "a97cf4c16ee6d90e8e447ba4519ba142b0023ad47a3c7433d4bfe0f8eba4849e",
+        "src/bridges/contracts/lifecycle.py": "72bd47d4343902ea32bb3d527e2d9da2a608d509a7d89758318561bc2c1191b2",
+        "src/bridges/contracts/mcp.py": "1e6ef45d3bf53b3fe411cc63dc98afdb11e37315ec31b32f96e3d5d86e3bd7b3",
+        "src/bridges/contracts/media.py": "5648389516d1fc5871166995e03bc1ddb1a052dcc25c745177931a1ef9c48ff5",
+        "src/bridges/contracts/modules.py": "f9f55b6338447f557bede0ebcac926c0c41bb0d87156b2ba7e41e0048de9dca9",
+        "src/bridges/contracts/observability.py": "080b88fd896c110ad472210852504a74441754b24306454f696008a629deb0a0",
+        "src/bridges/contracts/plugins.py": "1cc59b672a311e54e581fa411ba415f3eff5ef3ebc493df5810df87d54de54e6",
+        "src/bridges/contracts/profile_adoption.py": "b64ae03f188ded2a60ac5c911f96b18fa611b857dd20adb0708f57c8fe71db20",
+        "src/bridges/contracts/profile_extraction.py": "8f8317981138aac19d82f80568f5a38f82e21c837e982a111e5fba393dbc50ec",
+        "src/bridges/contracts/profiles.py": "fd48df6e1fc4434a9cd2b4ea17ebaf4298e5165b067fd4a05e7cc81069b88198",
+        "src/bridges/contracts/projects.py": "73490264a7b5d64527568015a2da978c13b8948807d02d6a0aa0a94832d569c6",
+        "src/bridges/contracts/references.py": "5098c955abe7e59915bd4a3fbd41a050a911b88c723102e79ba66c0c98d1884f",
+        "src/bridges/contracts/reminder.py": "738a27c73c5c0f2f8da181b6aed8a5c57ff8171988c08b0efdfa8b168ebefa07",
+        "src/bridges/contracts/retirement.py": "e3f462c4e6aa99069d2fb0d67e1b86e197a030ff5098391b8c0b76e0c8307e14",
+        "src/bridges/contracts/retrieval.py": "cdc4b311d5ba9f9e4dd2b353575cc07a2c140c79af62e856324bd4b2b3a05747",
+        "src/bridges/contracts/routing.py": "c3483d103cf222c6fd0fd59c414445fe4cecb6226b536faf00577954b456d951",
+        "src/bridges/contracts/science.py": "d7808a054605c6999fb0af025d1ec90798c1616ca37ff1c012592528cc4aa2df",
+        "src/bridges/contracts/scope.py": "4b85578bec763b3eae209b28684cf628fd719d7b5638d7d8742dce966bf6fe8b",
+        "src/bridges/contracts/search.py": "655ac443352b71779991a2467b13cc4aedd1a6634ae57a19b190281f685b24fa",
+        "src/bridges/contracts/sharing.py": "e3b456f1e47f7f51faaf3768c724a6f2900974e76f697e1e9fe0acea2d064fb9",
+        "src/bridges/contracts/speech.py": "207cdf3989fde87b949aa638ddecad51605f8a1e2898291a3094ca8c50a95f5e",
+        "src/bridges/contracts/study.py": "e34413e54dc23e1aa4a33772e7fbe56bc8b237a908a28eadbdf891caf5d1930e",
+        "src/bridges/contracts/summaries.py": "0d0ef99c89ac26a81bea8305352f8b6262341461d3a9dc15ddebf1e265336999",
+        "src/bridges/contracts/sync.py": "4b50f3337895a2fd1f9bab0a624f661e912fd02639d48a8a50103a49e2590ab4",
+        "src/bridges/contracts/tasks.py": "4df5b78a36502bf0cf5587a37904b295b1441fdbefbd64e08ed26a616fa640db",
+        "src/bridges/contracts/teaching.py": "6c7db30958fea9cb9f40959c11af65000eaf2dadb3cd2dfcde9b784254811eba",
+        "src/bridges/contracts/teaching_progress.py": "06d972135c98015f18b4e66bd8a70ae7b6cb1a5bc9436755809b1fc01fc53885",
+        "src/bridges/contracts/understanding.py": "90ea27ef5776387fd78640ccbe1a4c89e684b14f32a12de9de93729eabbd2329",
+        "src/bridges/contracts/vault.py": "d1462e2d0daba21e582b5a99ac6b46955988a6200335bd727952b9349b5bfbb5",
+        "src/bridges/contracts/video.py": "14c80bfc46134ee1e18beb86f961816fa75053d1d1897ce7a4fb95a883624fe6",
+        "src/bridges/contracts/workflows.py": "4405543eb2ffb81cc2c67036d6e06200bb1e482d17f89e186e470389a6e82327",
+        "src/bridges/credentials/__init__.py": "0a6b8db174ba17b98e10f39c1aa26907018a8cdd14d8074c8d2e28a21449b54b",
+        "src/bridges/credentials/amap_probes.py": "270c8a3b2b38832bf1e2a54af9c2e6a467f514a1fe5c82e8fb0a8fab224cea4a",
+        "src/bridges/credentials/global_credential.py": "b89c284d7f71ea7d77db8d69deb480e245b944d1e38238b1bbb0c4dfc0f9e56b",
+        "src/bridges/credentials/ids.py": "71834ae121f5b0859e6ecc2b5428527c07274c530bac380a292dfd9b7889ee0b",
+        "src/bridges/credentials/retire.py": "12b62b626258f4aee7556c6ffefba815bf3f34d9ac97699d03acc3a0f1463edb",
+        "src/bridges/credentials/runtime_resolver.py": "f5ddcffde1ff751172ee64f097fe149f27e8b2affc587806382a979638476eda",
+        "src/bridges/credentials/store.py": "7c109b9556964c0b6e87dfe9ac3b58d83c23061c61a44ab8026f020f52e2ac1a",
+        "src/bridges/domain/__init__.py": "ea9be6ba74d09c2a80ed5db0f0f71f0817ff950b781e6863d65de6dc42271a4b",
+        "src/bridges/domain/astronomy.py": "c849ae1b3cbb7451106870c4bb08de4d179549f7b3fd2d522c05035889258e4c",
+        "src/bridges/domain/computer_science.py": "615a00da5fa583385e6fd6a9492d917940db02d3987ff89f55e06c3de5bf8300",
+        "src/bridges/domain/earth_climate.py": "154169a66976f8eb2541ad3de73b979fb91c36458d3c4d24534fc2c0a737acf5",
+        "src/bridges/domain/life_science.py": "8c645adf9fb619fd4c60ab1366a5a5ac90bc241bdee9c7d4696ccf5a2996f825",
+        "src/bridges/domain/loader.py": "3394479bfe81ab2150b3f973fc99a5101a1f2301e6708c634e6c390e7e894eac",
+        "src/bridges/domain/math_formal_proof.py": "0993f20ad3bdc2c7e4adfef528b591dc50bfb96c5de723eaa750a86fcfc4f50f",
+        "src/bridges/domain/medical_high_risk.py": "bcb35ea0ed861e7e9dd760180db0b02cc778e7275200e6aa75958dba94c848a3",
+        "src/bridges/domain/pack_lifecycle.py": "95222e757868822e4655ab29340c441bfe79958ed133e006dec43b94d6b92939",
+        "src/bridges/domain/physics_chemistry.py": "0ec0f26985d88bd4b5b339200acb70dffdbad8ab0a2b8919e1604b3f0857a28e",
+        "src/bridges/domain/protocol.py": "8a286e2e9a8dc2b9a30b2c5b12117664317b95198d1982466e1ccaab16a06da7",
+        "src/bridges/domain/registry.py": "6e83548358af9fe798b845cdcd6e328189712c35de115055d76c994efd787cec",
+        "src/bridges/domain/runtime.py": "b5328f07585705069391cbf05ab4e931ff9d9e73e976ebaaf2caa7909c1421f6",
+        "src/bridges/domain/standards_datasets.py": "1015d5411268276062f025bea0f5ba5e5bb59981a08ead95cd85a7a95e6e4832",
+        "src/bridges/domain/workbench.py": "9c9b473eb09215d524cc34ea99de7e485f2ec9d43e30fb2ea5cade05cf0ef637",
+        "src/bridges/evaluation/__init__.py": "b403a02d0018e565ab2689cb530f97efab63838b4481b20809cae6884591921e",
+        "src/bridges/evaluation/blind_review.py": "e1f659a6754c5c98eae43a5b646b9570b1b9cbc88c5e7404202618e3b8d66e16",
+        "src/bridges/evaluation/case_executors.py": "2251e7fabc36e56eaeb5731145be191931031b0f4911c766fbd93ccd08931b82",
+        "src/bridges/evaluation/executors.py": "e85b2a8335dc8cf1170065b51a5539874bc735252f06f71ee2a6107bdc1de024",
+        "src/bridges/evaluation/external_probe_contracts.py": "aef6c41f8e8c875923dbf468c1215d785a7f9fb811ca05dbbe8b26372ceb5458",
+        "src/bridges/evaluation/external_probes.py": "8f6d3b6a866c08288cf3ef339ac12e5ae00237d1ea6b432f30366f44cc7b697d",
+        "src/bridges/evaluation/external_probes_academic_routes.py": "bad0571373bfdf0d64dc8ed5caaaeae5cbb814def00bbc4950f0a7bd57c6c010",
+        "src/bridges/evaluation/external_probes_model.py": "daef25023435cc52f17265b7ea8bca4438b22a622aafc5bd0082efff0d9ae9e4",
+        "src/bridges/evaluation/external_probes_public_pages.py": "eaff7fb294942c9c56be452fbc339807274b7e489ba5369f11fb6b373cdda0fa",
+        "src/bridges/evaluation/gates.py": "be9701c11a0db184cf21b1cc3147b7c02b2a3695307900bbf8a8ae3a10c54add",
+        "src/bridges/evaluation/injection.py": "963988403699ad812e886fc8261e1cab75954c429f34cb64d278f024c1494737",
+        "src/bridges/evaluation/judges.py": "36fc579c750d768b9ce7161bd12f37b6c50fae85dd919fb41b4878aae9d12892",
+        "src/bridges/evaluation/metrics.py": "d13c789185992b87fe51cce9e9ebb547866328b38742a5651fda17670f4c31fb",
+        "src/bridges/evaluation/paper_role_pairing.py": "8f1388248447cf26621939bf864bfcf818ec74c4b9fa11fbad82473d87c6d05c",
+        "src/bridges/evaluation/profile_pairing.py": "a3656c2d00cd438b2759421b4799eba37fff8dd237f6e53f1a57a5f966958167",
+        "src/bridges/evaluation/profile_quality.py": "902053b7a9858cdd8b50578ff2ac30f85fd84112cf7e3f5c761ca6ea8b6905a5",
+        "src/bridges/evaluation/reference_method.py": "240b7cc848a2280d967bddbd8e05120d677f2e1d889f451e44b083e8b210065a",
+        "src/bridges/evaluation/report.py": "8cafff1a4aedce24dadeac19f9d24971a69694b43f49767a2ce6d3fee4af91e2",
+        "src/bridges/evaluation/repository.py": "379540b0cf65265506da15efd305e549ab1d7d71c96558db2d95571450323256",
+        "src/bridges/evaluation/runner.py": "5a472e3131a60e894fea9ff0c3054ab60d2455d5c3e14c9ae7a02ddfad0a6faf",
+        "src/bridges/evaluation/service.py": "a0be00aa6042499ce599ef3d22d754559c3ed539d2e14c6796dce61bd232a202",
+        "src/bridges/evaluation/suite_data.py": "57ec7d64d991e849a1f76f74888dc5c3c14fccec1d209caf8e7c25a066c53a37",
+        "src/bridges/evaluation/suite_registry.py": "d6bde0fff6dd27ac94aac79be5651126376b5fb61906f99469b20656e0adb062",
+        "src/bridges/evaluation/sut.py": "a5275f182084b2f034f45c91f92fe5bae3dc0aff50b1f0f50cb7109105923f96",
+        "src/bridges/evaluation/workflow_evidence.py": "dd165aba956ec9b670845c8efbf9f6cfd10d01a642587113e725e69bf5dec793",
+        "src/bridges/evaluation/workflow_scenario_contracts.py": "8118c56cd8ac1414a5b33f42f9208db4a62013a92356d1d77031e8b446f690d1",
+        "src/bridges/evaluation/workflow_scenarios.py": "43531746d333912e1bab4c12a19fdad47133bf67e94efd2204b612458d1154a0",
+        "src/bridges/evaluation/workflow_scenarios_daily.py": "1069a7fa4e2a6c36e48d55631a475ea3378e3b962daa7e5871d6e93dd2f58311",
+        "src/bridges/evaluation/workflow_scenarios_resilience.py": "24704d44a89b8228a5aaf3fb65a83db4909d5d2edcda99dcf671a23a0a749a48",
+        "src/bridges/evaluation/workflow_scenarios_study.py": "a567dc0e6e15bdeddfd1c785ee54cbeaa334fce5bbc9d0c3c741e935856a3004",
+        "src/bridges/evaluation/workflow_semantics.py": "9593fb1eb3b57be1520c31394f34388a444c9774aed8c707875837d16b9360f8",
+        "src/bridges/evaluation/workflow_semantics_scope.py": "b6798613abfd9447981e398d91eefb2ac262154f36d54a0fc2cec8e341a60316",
+        "src/bridges/expression/__init__.py": "cda6696f12ad9fcae5392091d22de04ab04be04c85657cf5e1e92cb7ac2d621f",
+        "src/bridges/expression/service.py": "d43eaf79134bd3d56221cb1747c9487be8921d27f485df54f8805d79bc5c16a0",
+        "src/bridges/expression/style.py": "a27005cd441b515a0782ca545db0639c9a1e680cca4f7d5cc2dfa66f356aaae9",
+        "src/bridges/expression_task/__init__.py": "9fcd1fcf32490fda4f17a4ee35ea10065c47c37303266bdf20c1112488a60a2c",
+        "src/bridges/expression_task/contract_compiler.py": "5889b9fb5e897648c3c05009e51cb7837dc66a706823bb62a596bc2a89d91561",
+        "src/bridges/github/__init__.py": "3963bcf8ea1784734d29a0419ca1aa33d3f898aee415755e14b2976090b85241",
+        "src/bridges/github/client.py": "059a02c59c0356f2a595dfe1761c9e4b9020d7fafe97c9aa4aa73f443cb685d6",
+        "src/bridges/github/contracts.py": "c35bbc3478ea35d813cc864b7e118801468f315569c5e23874139e5d4cc27fc7",
+        "src/bridges/github/inspecting.py": "7bd09e144b487a19d30987aad3a265258c1df956185f5e52953710d676bc1132",
+        "src/bridges/github/kernel.py": "ad263750b0f3c4c1a842862aa564a7703d61a6c3211a4bda9b99e7b6c6968425",
+        "src/bridges/github/lexicon.py": "6c75124e096fc96220503ed11029586e797d5f903c70eadafc400996fa778539",
+        "src/bridges/github/parsing.py": "31bd16d19aa42c418794b6ed68daa7321a701dbccf46a38a29c5b8756065ed01",
+        "src/bridges/github/presenting.py": "289d2cc04700c29e4ef3e4594db492131b70bd7d2913a9f1de5cc7ae21ad1d32",
+        "src/bridges/github/ranking.py": "da40b8cf04c1be1f41621fd1056b3509566d6c2385fa9455cfe31b9d780b24d2",
+        "src/bridges/github/searching.py": "bfdb33192e74e9fa2c80f55ca1eb32fb077195f9e9de05f36ee39fdd10ae235a",
+        "src/bridges/github/service.py": "dc8f7f70e086706fcb9fc29f56782d50cd36e72abafcf72cdb3d26d85ee76332",
+        "src/bridges/github/suggestion.py": "027aa0d08d40f134cddb772117899963d6b8bf5ab961411e59cca174ba159dcf",
+        "src/bridges/health/__init__.py": "020cdfa9aeff379d3b456dce65e281bf09fa1a5a12dea3d721883e4c0fd21ca3",
+        "src/bridges/health/probe.py": "d07ed9a9393791a3cd21c79da4272b75187a15791050daee6faf600cd6f21ebc",
+        "src/bridges/identity/__init__.py": "63b55778cdfac23721e157e0614267fdf26ea91b35e73e1f5f29c4ad4b794c45",
+        "src/bridges/identity/service.py": "e17865f0059012b4565bcbb783bc38a07a718c56f3efe1ffe6725bbb7d28c036",
+        "src/bridges/image/service.py": "feeaa5e2dbd6e72157163e7b61aec2bc274ee5e7e0fb4a842e8fd48bd8dab697",
+        "src/bridges/ingestion/__init__.py": "c33a396df2d7dbddba4ad5edad43a1a73a8da3517a4d977ea81d73f4cd927a4c",
+        "src/bridges/ingestion/chunker.py": "6ebb709d4bac5e92d2fa4099741db9ba7ce27fb40c6d2df4d487ac7a4cc137c2",
+        "src/bridges/ingestion/embedding.py": "d636e63211def163bf3f2c36b1860a34d8c26b49e80c8ed856cc38bd67f0541d",
+        "src/bridges/ingestion/index.py": "f9acb0fb3dcbf43c086ad36be5f60cfac99a5fa3a9f1de01b000a57bd9814855",
+        "src/bridges/ingestion/ocr.py": "50f78b48778303ce8725a39341202ff6350d6f48ef00e9565f689b46d6b3837c",
+        "src/bridges/ingestion/parsers.py": "ca9ab935c744a81c1f8cfa0e7235e9923a34ee273341d4e30e15d79c5c07f03f",
+        "src/bridges/ingestion/service.py": "8d753f2e8be478d55ceb2b6dc1b366709f3706b74bc65fbcb7f3a337a0f3afb6",
+        "src/bridges/institution/__init__.py": "d159eedbfe10ad363da19b63f0e87129884c025ad7a6be311980093938076a32",
+        "src/bridges/institution/service.py": "ff3990c8498bd4258113650183f74c722b26df7e6406be703edca6d1638b2963",
+        "src/bridges/invalidation/__init__.py": "b1e621cef785d02c0e93a94fa633b0d0cad0dabe5d9fdd89dc23af51e0590e53",
+        "src/bridges/invalidation/service.py": "09e6f702a8933adca5d215fa074d38087ef0eaf0d73cbacedfffc71bf0421564",
+        "src/bridges/kernel/__init__.py": "e8f7bc75a5f2d285a43211f8c6269c6b4f7878a3404f6a23f6b97d6bcd032b18",
+        "src/bridges/kernel/contracts.py": "d21302e67cf609c64c44165cac2aefe33d39712098d77d32bdade1ea90720280",
+        "src/bridges/kernel/executor.py": "f2c17eedc2fadd537f8f74f0e24c6bf81de0b5c0669e301d37966ac10ed5cc7c",
+        "src/bridges/kernel/guard.py": "5e38d316775fc280268aa66f29c17ff8ea2a9f654afbacdc71bdb5a1e68ffca8",
+        "src/bridges/kernel/registry.py": "a461c3feffd63f3a836872222009f0be5df3957ded17206a33dadcfa4d6c1216",
+        "src/bridges/kernel/repository.py": "32db1929b7367f6d4f596774d3efbd2d7bf7c17a1e1413d4d5145127d387726c",
+        "src/bridges/knowledge_base/__init__.py": "bb3590360ca1afbf986d02e948655b7c552ffeaa526247648eadbd4a22c337a2",
+        "src/bridges/knowledge_base/service.py": "ed3c001384b903fd9a84b7099a02db3186b78f26adff94b29d767b86367c03ad",
+        "src/bridges/learning/__init__.py": "c493191004f04fce0f756fbbe9bdf557d6dd1bfe3d50042acdfce516978ddda8",
+        "src/bridges/learning/adapters.py": "2dc5ce2838c9cb6d7bbfef7f24d38de21a7ad43339e169d925d50607040323e1",
+        "src/bridges/learning/api.py": "1ac7d628957695a2f75076bb9ea731eaf4bfba2d11254bb708365b45c4fe9702",
+        "src/bridges/learning/evidence_coverage.py": "21fbc1888686868fe3f7f180654dd1d7de11e57f29f9e472fc684f866d38ca99",
+        "src/bridges/learning/pathway.py": "9fcda6e6fe187b1bb7c91123a63a8a1a9c3d7aee5479ae83ece3c2cd90891bb4",
+        "src/bridges/learning/ports.py": "f86ade07774cf467edb59f1fbdccb7a487805b796b55d60f43446d01ee53612c",
+        "src/bridges/learning/progress.py": "ca0aa175185043cecbbaf8474cf1bd73b4ef7efcc9d2f36fc2d9081a8ebfaf68",
+        "src/bridges/learning/review_scheduler.py": "796be4af793474af7f6fb5edeb729bd575d25785811ba15433a1357353cd8639",
+        "src/bridges/learning/service.py": "7bad1f9c9e117934bb84587c69de8ee66611879327e20e7bef3fedc885e68ea6",
+        "src/bridges/learning/teaching.py": "33a0caa059b7c8ed58b28d98400f017bd938f759b1b8c450025d45fc9280b47f",
+        "src/bridges/learning/teaching_gate.py": "55d7ad1f73c78d7a3f4c256e68aae8d1d6569528f4338965f8e0fbc77c6de67a",
+        "src/bridges/learning_projects/__init__.py": "ee640743a104e9e714f41c1780ce000e246714bb0476a6b14d71da79479e367b",
+        "src/bridges/learning_projects/migration.py": "5eb10e258a5b4b241132fb084c6b5e44a612448c0dcb3eacc1e1189fc7c99259",
+        "src/bridges/learning_projects/service.py": "2dce7346f1630aed5735d7d6ebb687d76cfbaa95307915138c8cab6cd0ccfffb",
+        "src/bridges/lifecycle/backup.py": "f1ef3e112c432fb2c37908efcc2f4c0f6536e8a8c8a2b35e9928d06f019bb157",
+        "src/bridges/lifecycle/catalog.py": "e2cfa0489d54a8c82fffdc7237d20aaca1a3f180b1a0e1f2a1c98ce7adc45f44",
+        "src/bridges/lifecycle/deletion.py": "ea448973891e54cdd8ca04c2592c86d75ad5e29d03cf9740664a8191f50d147c",
+        "src/bridges/lifecycle/exports.py": "804e953c130177689f69c67d1e0217e5ccf67fcd96a71de9b4e7076d68bf1cf3",
+        "src/bridges/mcp/checker.py": "67529bb645ad9e6077758ee89cecf94b5231c30b3c5e9f478b578cf89b70a598",
+        "src/bridges/mcp/manifest.py": "f492bdcbf9e378f8bb23d367291dc9876b21204d09f61df74b54a751ac9615f3",
+        "src/bridges/mcp/process.py": "5ee1d71b03c038d961c74458bf3a2da8211278f157c3068fdd781b8970685dea",
+        "src/bridges/mcp/runtime.py": "635269972cff2396480dfce6d56f29e4dcc8f7d7a1d66f5b9e52c8fc4eb7a989",
+        "src/bridges/mcp/servers/__init__.py": "6771540016695e4a84164b7a60e8fb2de07a1920c638cb7f64c71458b27969d5",
+        "src/bridges/mcp/servers/base.py": "0bdbce3e12cefd698bae14fc0551e39d3cf706165f4de5b04e932b6c5bc81259",
+        "src/bridges/mcp/servers/echo.py": "e2ca6436300bdaf007e7f90bede567fe655d8101ebbacf980715eb306a96ddd3",
+        "src/bridges/mcp/servers/note.py": "2696ce6a409f1f922944c607a3b225185c2c98167815f2843114cdfdbdc2aa93",
+        "src/bridges/mcp/service.py": "d681bb184508fab5a566263eda6f9f5bc4f91c4c19a886c90167347b2de6db32",
+        "src/bridges/media/__init__.py": "04953ecd711a3d7cf815d00be8e29d2accbd45212d921e9e3ed569a9bf8087d3",
+        "src/bridges/media/accessibility_service.py": "3cde8a09cac93f73d97368928387c75ebd35e08212151c65f1009a209fe0f168",
+        "src/bridges/media/extraction.py": "f6ec475c4f1ff34013b087e603e53c98ce24aee5cf23d43b259a6a376646288b",
+        "src/bridges/media/generation.py": "4cf21d0f835cdc9b9850b923a8136eb2489af395232cff0f4e3cd6dbfd2dd2b3",
+        "src/bridges/media/publish_service.py": "d697f884d96b40b5eb688ef1d7a3fdaecd6dc363fa7ee03d80e38c6c5903b01a",
+        "src/bridges/media/qwen_extraction.py": "8e5b7de62fc50a37e0217642480399b8927c6652073f52f998513b902f671988",
+        "src/bridges/media/service.py": "5c67ecb856f8123f13031ad32ca7101a9a38ca22b029cea260040939d37383ef",
+        "src/bridges/media/storyboard_service.py": "3680af12883f72ea2f0a533e6c28113575355163ba3f55aa680e4a87010db87b",
+        "src/bridges/model_call_budget.py": "38ca22cc2408b1477230e523512d82b1a5be8fc41d0b699497f6f13610f2b297",
+        "src/bridges/observability/__init__.py": "5f6d48ad354be47da188e778b01ec4fd08fb4f483f9217d642d6d40aa97b3830",
+        "src/bridges/observability/alert_manager.py": "95e34ac250afa44312b4538cf890c039758d4b5f4865fcfa79c031c27d1392ff",
+        "src/bridges/observability/audit_event.py": "320683d39de3a2621cd7012172439e16e1b3eb3c7d44f5b35182980be9b41a2f",
+        "src/bridges/observability/run_summary.py": "b1acd573fa136118a0a3ca38e7c3d5e98363fe7bbd8784078ccb0d41d8796591",
+        "src/bridges/observability/scrubber.py": "a8c08cdc2486ccf057b2e0ce22a8f7481c9a89c96cdc34dd0e7ac0c539559b93",
+        "src/bridges/observability/service.py": "cf3c1262a07025e99593c73004d3dc784a7642f33017c302d8e3f1ed021fb3cf",
+        "src/bridges/observability/sli_registry.py": "a3f55b5422cefdb6e53a22a63e006e4c3e2de00201709bc5eb1e6484459a3362",
+        "src/bridges/observability/telemetry_context.py": "36680cac345b537598ce812c9f9d8917585819acd80a9feadca27510eb05b5a6",
+        "src/bridges/orchestration/__init__.py": "b8b828c70f1114ebd7485699a69e24d6cd71f19a31d5c09baee14d0d1d2e77d5",
+        "src/bridges/orchestration/contracts.py": "075c8df2d1fc8ebb8b7d920dd6362e985755428e8b0f8a40b20e434df1ea25e2",
+        "src/bridges/orchestration/evidence.py": "2dde2e9bf04767e5fef97c029dd51a3ee2d67e206ebad4a906edda45b2db4739",
+        "src/bridges/orchestration/executor.py": "098ba71dce866fa03c624a23e5fed6da2577d816d909f0aa1a1430a154275435",
+        "src/bridges/orchestration/planner.py": "2cf2d7b40910a15c3bac3a6a4c520939d3a379a0dc004ce406a84175765a957d",
+        "src/bridges/orchestration/production.py": "4f2d6cfb48d3d88b1b7c005831f3feeaf441794d06baac46aad61ce28e5f2c04",
+        "src/bridges/orchestration/registry.py": "01cb8d3897d22f3e91df44093f4492d4c49b8e9f237785007e6eca9e5f7b1864",
+        "src/bridges/orchestration/synthesis.py": "3a8d4cca47cbb7cdee49af69d88618c2ad90370ac3e381d449565da479a22776",
+        "src/bridges/paper/__init__.py": "b4ad3a44cac63fb0a8f746c4a840639cbd6d14467c7e2a0dbb3c31cc913bd676",
+        "src/bridges/paper/assessment.py": "c17b27430fae834e6743834563b72d022cfb057e98e7060ea4e06cd3e487addd",
+        "src/bridges/paper/contracts.py": "739089926a7ccbbd33492896b7a5f73e6c90511a1b3cc8e6dd8d3d7562220813",
+        "src/bridges/paper/kernel.py": "50313ba1d8b53fc74e7bd843516661048628a81b381f9ee48742e8db9d8ff620",
+        "src/bridges/paper/lexicon.py": "34279c4b40d9c6904d3e77dc344b66dd33d7ae97a5f931e095d74bd37ff93872",
+        "src/bridges/paper/parsing.py": "ed8c4bb1df775f098e58a5855d5e30d433d55b09fb7937f9a47bca89ccdd616e",
+        "src/bridges/paper/planning.py": "7ab22985291fe4cd5bbb62c32cd76e34118e473e9ebc13e1df4fc05249e5c2fb",
+        "src/bridges/paper/presenting.py": "715f7c20c1515269fdcaccd8a92776cf84a0b5190907ca1931e5c88e167ea313",
+        "src/bridges/paper/ranking.py": "5e85bec54419643cc65bd49de9fbf626bf00c421a355ec42443d18b63abcd291",
+        "src/bridges/paper/reading.py": "dd359356c7276a0c13a615581bf932ecb63f0962d929fb97d183d275edae954b",
+        "src/bridges/paper/screening.py": "f9c742169dd4082a19f971b0f6e3753df6a23960079bb9df82f0b3c7196fe562",
+        "src/bridges/paper/service.py": "76f0f8d0264f99696de39bde642937038e328028832a4c970f7cba2981d75d37",
+        "src/bridges/paper/sources.py": "9db7c55cbaa7373108b60d034677117ecb8d1c6d31240c7165b5c5389f49905e",
+        "src/bridges/paper/suggestion.py": "57566aa59545fb34da109a5f99a87d2f179947acbb103a953209363f80bd84cb",
+        "src/bridges/persistence.py": "3d182a7367a9176ed1678db42908982b382aeae4a5061d6cc7469e6f6e01b30f",
+        "src/bridges/plugins/checker.py": "7d1cef53a61e01e89c820331e2f8dac9ea4bb434793ff674dfa95d81145233be",
+        "src/bridges/plugins/registry.py": "21ec86c619a8937178c53dfab1bfefcce180f833740c772d61689b7cadc10c27",
+        "src/bridges/plugins/service.py": "295ca6e52714cf3d9b4546aca493a0c8254055b33f3ac45da2d03a9791176b97",
+        "src/bridges/profiles/__init__.py": "5318c8b4b4dfcea49e1f40d5e778ab54986dd27b64844a4321847d54633b93a3",
+        "src/bridges/profiles/adapters.py": "91e4acfc58ec105e0c00204fb7ab7252c1c5a5800e26737c72a1a669f55c1703",
+        "src/bridges/profiles/api.py": "e8b9b96736e3db7cb90e5c88a8422f4b177263cc108bb3f21eace6a39d15f6e8",
+        "src/bridges/profiles/atomic.py": "d6c648d88c34809ad1f0603f87ffd360efb407b191a0e8ce3f3a0216e7d044c2",
+        "src/bridges/profiles/automatic.py": "fc797890ced947a4061daacd635467d9b8c7bb959cf5532cf722d01d2ce7eaeb",
+        "src/bridges/profiles/commit.py": "11df8c564d4455015ed00896fdd1e4ca74da38809ee43a8cc2a14943fa7b7c52",
+        "src/bridges/profiles/extraction.py": "098afcfea6df98774ee4d07fffe835d59ac28aee2492c404a74b9cfc41a9f39f",
+        "src/bridges/profiles/four_dimensions.py": "2cdf02354f2fb89449dcd460a28cf5173dd99f62e30ece8afe12b7cd6e06b39d",
+        "src/bridges/profiles/legacy_api.py": "61b04e7ba24dbc2fe8de60ba7930452449ccaba5e0c59b053903bc5947b2789a",
+        "src/bridges/profiles/ports.py": "90b2c94ac2ee1d55558ecf6cad970909d92e84265cd4eb00cd7f090b8b112e2e",
+        "src/bridges/profiles/purpose.py": "80ff05a7c6d49d41f1ac29f6dbd9dd59f8cd2e16007202e4a2fb7d150e2b572f",
+        "src/bridges/profiles/replay.py": "55c80bd3cfc887aa79c0f0ed2e26bd490f4abf4e7310b363c2fe9e34e7082789",
+        "src/bridges/profiles/replay_repository.py": "b73d2c4e51314de7bcb4db2b98a8eb2b3c156065338787d5fb2af307e6f41bd3",
+        "src/bridges/profiles/service.py": "fcad9a55dc8c767b041b0b9325127acb9c29509dfa394b21228708a458895102",
+        "src/bridges/profiles/signals.py": "dfe644edf17d32b19be83ea307419455993c9293182c035c00aea0edf1fc2c98",
+        "src/bridges/profiles/sqlite_repository.py": "0e07f6718be6fb438bcb8360aa099425cfe0652ffe66d79080d5ff50689f3cab",
+        "src/bridges/profiles/transactions.py": "28dcd0b5100cd2cff6e5c1299f665382501520ad120af4682bdf6a546beb78c6",
+        "src/bridges/projects/__init__.py": "3052e109996fdd3f17d98f6c8cfa03e6714e2a9b73dbcbe741c57909b4ae1675",
+        "src/bridges/projects/service.py": "47e811963552322b13a3d06adff996b8c7540e44e4eee9f9c47f2eba64676075",
+        "src/bridges/public_search_budget.py": "0b0336c1632b0a047c1e0f1f50c4175b599d1422c1bca197f18e46e9fd4c97ef",
+        "src/bridges/reminder/adaptation.py": "dbca562081864bf3dd3c8cbab99c111e0306395ab92b5c064f03491c9a253105",
+        "src/bridges/reminder/parser.py": "00b60a73e6692012d825e462913fd8dce3bf1c3fe906ac8f3a47add6c7b25e3b",
+        "src/bridges/reminder/rules.py": "83b9d9524d151b5fe17c42d9f4a3d388ec6c57aff5c7e30d6c09a65ccee1219d",
+        "src/bridges/reminder/service.py": "471c8e2815b9da84325cc5809ed61587aea9fefab33011fea28e1a8250b6c9a2",
+        "src/bridges/reminder/smtp.py": "a400969a61e713c7f0ff56dcb1ce6d944425dd7107e8c651a1862b1976a4020a",
+        "src/bridges/resources/__init__.py": "533abffa19fd11bbbacbb7bba4a29f405a85ee036191e96593971be886af5657",
+        "src/bridges/resources/contracts.py": "cea1e0c57d0eefb7d33fc9bf6fa83624d49c77e152eec74874e84494629753cf",
+        "src/bridges/resources/kernel.py": "fd8f9106805c89f14e36b250a2d281cee55d17207996dbff5d960dd335d3c2b9",
+        "src/bridges/resources/lexicon.py": "9fad7f84659db42d7d7204616430fe76b3e4b20fa77465ef8a3035f7e6f8a0e0",
+        "src/bridges/resources/matching.py": "978ec408b45056a02690641e22b9cf8b6c6ef9ab562db94efe4f269b83a21b03",
+        "src/bridges/resources/organizing.py": "313f2ecaf2d7386c0c1f88b46d8752d3e5d03d2c993f24f35c2d6c77ec997485",
+        "src/bridges/resources/parsing.py": "e5b22fc97eda1ff5bdf3472875048e58c39d470f2e3b582ba143439975834001",
+        "src/bridges/resources/planning.py": "a71043282b6be87c56ec62c7a63749ef9fc5c22e4b93fb97112a999f9a5efe1b",
+        "src/bridges/resources/presenting.py": "72a9cb8e4a2b472ed7a6aba8d09dbce6b9093cecc4fde596fc24aaa9f931a466",
+        "src/bridges/resources/reading.py": "93655be750d07cceec03fa26c449d5f433282610352f1e09d113515f17d9dbe5",
+        "src/bridges/resources/service.py": "3a0b1e69c2bc3e48eb014ca2ddeb155ee8bdf2eb6b2831566f325ecf5ea3f999",
+        "src/bridges/resources/sources.py": "d4505ccc66adde1f3598cb71465db50043114099f509ec679e517905f57bb4dd",
+        "src/bridges/resources/suggestion.py": "4828f66f57aabb1fb4ea12f1041701794341198d61d3b45fb3bbbb1e435f9263",
+        "src/bridges/retirement.py": "773cade91132727cfaecc5e95f9b31e23779255c586221f88382cb756b16d2da",
+        "src/bridges/retrieval/__init__.py": "e67287bc1c61d7dbc2814ac272e5ae38ef58716991504170bf20a9ca1c2b9f28",
+        "src/bridges/retrieval/decision.py": "0764d1575376b17b760c9ab7c9e155e7bc89a17fe29f47436fd0d4a4e68fbf15",
+        "src/bridges/retrieval/repository.py": "c8bfac75349524f8269a776d80d7bb77bfbeb6d2aed44d78c623f436736ea916",
+        "src/bridges/retrieval/search.py": "38ec026689ff752c22bb8acd557fc219139044fd2dabe6f1279761b1ced96c4a",
+        "src/bridges/retrieval/service.py": "75a2209ef13c13a325061db9ec2ed9c82cc19be767f97a2f6c391a3cf07f23df",
+        "src/bridges/routing/__init__.py": "f3548aa2159f91404ea04fab99dc98660ee6bcf50a066672500b76242776242f",
+        "src/bridges/routing/contracts.py": "949bb72449b5782075400ce3737193f042f3309fa31197ca6bd5fdd40d934c0d",
+        "src/bridges/routing/registry.py": "ecca2ad0252b41ad611a17249bbcdbc2a0373fd238c7ef7f228958df0af9c3cd",
+        "src/bridges/routing/service.py": "d2b1daba9ed69735f304bf7d087ef6b84a4ac0f18547255d8d029aa02ba76770",
+        "src/bridges/runtime/__init__.py": "ae8d2347204947ec3c34de113139cc3aa1e8e61db1fde0ab34c2ada21d0a2c02",
+        "src/bridges/runtime/bootstrap.py": "08fff5852471f4a3aa75242ecf55da3d6b84e49336e1a58c57d73c64b6ea1822",
+        "src/bridges/runtime/executor.py": "507b899c259152367f2b0e64aa02940e985d4868b6709bceefca89dcccd046bb",
+        "src/bridges/runtime/lock.py": "3baef89294ec875952de81e98f3b6c8b4d193374e2ff2fe3c1f8a9ee871e12d9",
+        "src/bridges/runtime/loop.py": "bebeed023ae932f1ecbddae89c6d21a6d1c15b14f6e7855e84353cde12f10f92",
+        "src/bridges/runtime/queue.py": "0e81e176f18b357af41c0b7905ffa179b9a8e447a81c5c84ffd5ce985b128363",
+        "src/bridges/runtime/scheduler.py": "7af63d78206183ac3ba7e9ecdec5cb310426ec2c8c1cc075d0e69f79c14ebf7a",
+        "src/bridges/science/__init__.py": "0364b98fc04016b91355907068d895472d9c1962c0ef255da8ea1809fc101825",
+        "src/bridges/science/claims.py": "7eb0821d72c114c1f3881fcc2c09ab48b2042291c8e3e41f9b70e041b281befa",
+        "src/bridges/science/fact_lock.py": "42a096b13cd93607fec80f0180ba979bb9ac33e32e92253e8e55c1db444a40ed",
+        "src/bridges/science/parser.py": "39e46a3764b3dea6acd0d8bfa6680f705fd73b5f21cb7e7f364c8d34f9905ea3",
+        "src/bridges/science/qwen_parser.py": "e30bb8a11678502884151d488845c1245fca66222c4e5ece487dc6781d994cec",
+        "src/bridges/science/search.py": "3289592534a331b0d1ef07d10a812502e84ec0dba75b67b5406c59d28bef75e3",
+        "src/bridges/science/service.py": "6d5ed41661a71fb7890ec207e44154bcd4d3d484d3efac6c48c36621c5b9420d",
+        "src/bridges/scope/__init__.py": "836c3d3d8bc9a0e3aa8346e548e0f02fb4fdca21de3df8300ab5f3be93a4b6db",
+        "src/bridges/scope/service.py": "15288877e74343bf3665619af8331b85a3c4b392262bb194c7a84b5bc2a2ef66",
+        "src/bridges/search/__init__.py": "edbc38c9b327806bf1e9bec7597f230b59f1d588ef3e6773294a24b007185ac4",
+        "src/bridges/search/repository.py": "b8f87c1526c3026f7d78d5c68f8e4fb470ce7fe6d0b321a85ef8ca76b5941ea4",
+        "src/bridges/search/service.py": "d6ac75b0f7c5004c7d8ae9cd54412c89a7507ffbe7009f0eb8b9e65b4cd911a8",
+        "src/bridges/sharing/__init__.py": "3d4f121f61f685b67f834ff5629a316f965812c89fff22be318ce94576a98e00",
+        "src/bridges/sharing/service.py": "ebbd05c8e2bb87fd910bf0f88f6f6d8c07fa23f2eb864fa2592ee85991f948de",
+        "src/bridges/skills/__init__.py": "60ce2e32c11c17b2da7d47e72125f5758277b7a5cfb54c9b73633a74280f804e",
+        "src/bridges/skills/registry.py": "9ada7dbdf79b0a897c0f747762ee7a1717c614eb30b2efc0d2652cf9f419b042",
+        "src/bridges/speech/__init__.py": "c7dbfff4b96b4f5bf6a58aca05cd689095c4743b207177a37284a4aa241c320a",
+        "src/bridges/speech/service.py": "cee62071473e8f226c4699270f3886117d49a9bb8b449985dea713486df0c815",
+        "src/bridges/state_copy/__init__.py": "7b1a06cfdc517b52967829cc31af1e850df030281b34c8c1d0f6d9fdc216bdb4",
+        "src/bridges/state_copy/catalog.py": "478812786d80df784a60f5d739a238c63773855646f8b859d4308ffb4eb56b59",
+        "src/bridges/state_copy/error_taxonomy.py": "78c387a462ceaa184d9dbedecbac130e79609fe16dd1f879d7743edd4ef51914",
+        "src/bridges/state_copy/registry.py": "d876618e100e1eef68703f02a7f8416c417cda42dad22b85dcae862ed05b83b6",
+        "src/bridges/state_copy/types.py": "7600e58bebe8806f527a280155c0ee89725c2c76a04949d40c3c12416c4d1316",
+        "src/bridges/storage/__init__.py": "a6ca29d88ec3d210adb8df3d20042ae654f432f7c8d9646582f4c5c24b3eeff5",
+        "src/bridges/storage/database.py": "7fe8828a4872ba77415861fe35c9ec16fd6d7d9d543825e33af575968375c27e",
+        "src/bridges/storage/errors.py": "c42816a296f7e9835756b6ba61847fe276e9469c57d74721fa90acf0ae5a3398",
+        "src/bridges/storage/object_store.py": "f91f1d42252eebf1f9168443bd176536e09508b9e9530172e88e91bc139ff09f",
+        "src/bridges/storage/repository.py": "dcf6d2c3e423e01220cc0f8f060cb8fa1815ccc01d6ec82346f9d6271bac2edf",
+        "src/bridges/study/__init__.py": "ce2f36e03025d37c28a28a8ad1467194677bd73e4dfbf0637968ed0db1033670",
+        "src/bridges/study/evidence.py": "7cdb48c3646ba15524614e5d4738f2ab19d376a912ad68d59cf5614fe5319fdc",
+        "src/bridges/study/grade_kernel.py": "1666f011aa605878f8e5f661adeece9195b3e0e1268758cfd3b01a08972f70bb",
+        "src/bridges/study/kernel.py": "328fc4a6f4cda2b191f9b6b49ed16c88d4ceb999e473394ec91c33a2643def27",
+        "src/bridges/study/review.py": "238c7b25be5f4fbf5e11f0f7d5aa5888c6f4c76d54d611b44d830316ec2c5abf",
+        "src/bridges/study/review_kernel.py": "6fbe0e4839b3e3db68198228621a91acbac438c9ac3b9b541ec989b85e43fcfc",
+        "src/bridges/study/scope.py": "384b2b1e5358d64214fb7f7fd8fa8dbac108869676347a0f3e4ebf47e7430606",
+        "src/bridges/study/service.py": "fa70bdff35539a6e03b0d6bde6a475d4c4288a8a1fbb6e87b3bcb2dc36e13255",
+        "src/bridges/study/summary.py": "51181e51d2d1ad2b690c509f1e9ad40d5a15dbe0f2ab88d23cfff298e50459b8",
+        "src/bridges/study/turn_result.py": "6f3d537b76c8c63576f745cfc233bc8504c4cdddbcae7a904c8f4125e7fc451d",
+        "src/bridges/study/tutoring.py": "bc31f747c86f677a8d2d184393e9b614da43af0a8d59d21bb704881755c44485",
+        "src/bridges/sync/__init__.py": "d8cdc9be20bdd8d0b8894ca1b42dae4e3591109949f514e97b0814ec8816fff0",
+        "src/bridges/sync/service.py": "4a88b60a8a4d03a503ff950c36b40f14bb35716dc642cb1529e3c216cd137f46",
+        "src/bridges/tasks/__init__.py": "8983850a95f54618302c57f0bb4599f439ad09c961ad2b729b72289441ac3f25",
+        "src/bridges/tasks/repository.py": "6692377139820035ace7f7430b765c299a0d163682876ae79462688d5597f7c2",
+        "src/bridges/tasks/service.py": "7e6b67e094c7be6df55981aacc2c479235358390980c6c0ad9d0550cedc58b5e",
+        "src/bridges/tieba/__init__.py": "83ec94a58ad99198c43bb0cd49fd2e6f1ecda3b0098bf6c21e31e7cd1f5e1245",
+        "src/bridges/tieba/contracts.py": "565bcfbf49c29e82cb6e71f88e8561c3ded8680157fc6ce0b50ea96decdc53ff",
+        "src/bridges/tieba/evidence.py": "63e5148a398ffd965aaba65fcbf4003d910576f2fb0cd2c486b81383a02b3632",
+        "src/bridges/tieba/kernel.py": "46d6cacc1435c9da24064a78a8b6e8fc7e4861348f4e5bc9b0d05eb758c84a35",
+        "src/bridges/tieba/lexicon.py": "5c8b021f5bb0571989b543391d9c1d6d9d89327ca589a74cbdb937bea2bf72b8",
+        "src/bridges/tieba/official.py": "41126ed511deea71cc25a4d2818ee1d4da0bc23f31984aa6be0b1546cb9dfd1a",
+        "src/bridges/tieba/parsing.py": "ddc36553b40429eac613cf750076a0fbce482045b579dfe051661bb844e5b2b2",
+        "src/bridges/tieba/presenting.py": "7b36e91ff1c514a2157d8cf4f6176a835986d17cea6a1131743a2f2c74c4af62",
+        "src/bridges/tieba/reading.py": "b0797977868d168a7d23947d10cc8c6da1578afc3e5c3c0e696d31cd185d0dcc",
+        "src/bridges/tieba/searching.py": "4f354a07413e712237b121c52706ffcbb2a3e0e89f67a80d9f053bf6c4271903",
+        "src/bridges/tieba/service.py": "6cf241998190190596e3dc9583cf68e6fbd6155e59d1dc44ec45c053d61014c8",
+        "src/bridges/tieba/suggestion.py": "25ff9516f9ba252773301c1d2d651c633788b63e348ef03f7f67b0baef4702b6",
+        "src/bridges/vault/__init__.py": "139c360bf5bab113a63b21379e3ced504342dad9da296306f3a4fb81b1eb5336",
+        "src/bridges/vault/adapters.py": "15d6f3207fe4eb25b7d2d376d1af64369ed7f0c3c0c8ec8e463b0ec0b1b60442",
+        "src/bridges/vault/ports.py": "36652466e9c0101be7ab9c58a92d05bd1cbc925c9b2a593c8712c7bd26337782",
+        "src/bridges/vault/service.py": "ab369901699f28a91f76a010f98cc6e5a7aa6db35cb1183dad88e1cebd02afa3",
+        "src/bridges/video/constants.py": "b7b8fa150a0a61f903b5d094e0dd8c675d52e1cbc15689ca821b0ce612c56437",
+        "src/bridges/video/service.py": "a31ba9e753fe49207da75008ff2e7e7cd06bfc52c3312c59446b2691f9936e94",
+        "src/bridges/web_search/__init__.py": "82c319ae12981e6f0e444e46ef714ed51a21e3d9e99cfd70029c70f85c69ceae",
+        "src/bridges/web_search/client.py": "de6afb9f79161792d7f3b97bfffa4352cc43522d877f284985ffc307a881e19e",
+        "src/bridges/web_search/contracts.py": "0968786e0ceea1738c06bddd59ed0942151b120bce4153ede45f1faf09ebafee",
+        "src/bridges/web_search/health_monitor.py": "68ca0e8b5135a8f6df4d89d04179eb37c80b462f92f5a4af283ebff5b1bea2e1",
+        "src/bridges/web_search/providers.py": "e0cb1a28c6c26d85d914dd9bc54e4b871f21e8af680ea5563412893caa3fe439",
+        "src/bridges/web_search/repository.py": "d9a3cf8604f3b7b8d64a3cc6e3d26e01f5098cfdb7561126f1b01a8c1cb60e9c",
+        "src/bridges/web_search/service.py": "0b8ccdbcc8b29f443fe05796f4998f80b254dd45ea7b3e60547e844dca57415d",
+        "src/bridges/web_search/tavily.py": "8c1092a5ec91c0666f783eab6719ab96a42af32ccd3e496fdf37fe989333ab15",
+        "src/bridges/workflows/__init__.py": "35273c018248c130dfd9583aee21508ab1238c3ef0fd7a2f49fe7586083fc68a",
+        "src/bridges/workflows/service.py": "64948c0ef77685c5444d25a8580132063ae41b6b843c89723a4d80acfd76328c"
+      },
+      "harness_files": {
+        "issue42_pairing_budget.py": "db48ea4ec6fd0071eab49e2c7e69e48555d8774f596009c5e6897a7a38589fd1",
+        "issue42_pairing_cases.py": "70fa302e612e9d08b1b3397b7cc4fd571001418f9d539c629e125361773baf37",
+        "issue42_pairing_lock.py": "18c99fd6ff59fe63ff6b0ed1960a150ddb4d23ae56bca1eb40c63b01e0eba6c9",
+        "issue42_pairing_report.py": "37744d6f0f1b3f46ee221551e4145590053ec0d4a3beba158b3bad46441a2493",
+        "issue42_pairing_runtime.py": "b7c101b9aeb15703cb98179f9a9c9fa802d1fb3bc0257be5bbf3a98497c900fe"
+      },
+      "clock": "UTC wall clock + monotonic elapsed",
+      "scope": "实际源文件包含提示/Schema/配方；外部实时来源未冻结，不构成严格等价配对"
+    },
+    "model_ids": [
+      "qwen3.7-plus-2026-05-26"
+    ],
+    "started_at": "2026-10-06T11:00:35.642818+00:00",
+    "finished_at": "2026-10-06T11:04:03.374197+00:00"
+  },
+  "cases": [
+    {
+      "case_id": "A01.lightweight",
+      "scenario_id": "A01",
+      "budget_class": "lightweight",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "single_chat_call": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_external_model_capability": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_task_created": {
+              "passed": 0,
+              "applicable": 0
+            },
+            "no_unnecessary_search": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 8,
+          "pass_rate": 0.75
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 846,
+          "completion_tokens": 841
+        },
+        "latency": {
+          "answer_p50_ms": 8141,
+          "answer_p95_ms": 8203,
+          "answer_samples": 2,
+          "first_token_p50_ms": 7705,
+          "first_token_p95_ms": 7831,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 57,
+          "first_progress_p95_ms": 72,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 8140,
+          "first_usable_p95_ms": 8193,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 8140,
+          "complete_p95_ms": 8193,
+          "complete_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "single_chat_call": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_external_model_capability": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_task_created": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_unnecessary_search": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 10,
+          "applicable": 10,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 1016,
+          "completion_tokens": 105
+        },
+        "latency": {
+          "answer_p50_ms": 1953,
+          "answer_p95_ms": 2250,
+          "answer_samples": 2,
+          "first_token_p50_ms": 917,
+          "first_token_p95_ms": 1252,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 49,
+          "first_progress_p95_ms": 107,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 1921,
+          "first_usable_p95_ms": 2283,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 1921,
+          "complete_p95_ms": 2283,
+          "complete_samples": 2
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "single_chat_call": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_external_model_capability": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_task_created": {
+          "old": [
+            null,
+            null
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_unnecessary_search": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "A02.hint_override",
+      "scenario_id": "A02",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 0,
+              "applicable": 2
+            },
+            "commute_route": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 6,
+          "pass_rate": 0.3333
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": 483,
+          "answer_p95_ms": 1266,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 46,
+          "first_progress_p95_ms": 52,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 516,
+          "first_usable_p95_ms": 1305,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 516,
+          "complete_p95_ms": 1305,
+          "complete_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "commute_route": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 6,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": 390,
+          "answer_p95_ms": 391,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 55,
+          "first_progress_p95_ms": 57,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 422,
+          "first_usable_p95_ms": 435,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 422,
+          "complete_p95_ms": 435,
+          "complete_samples": 2
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_paper_results": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "commute_route": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "A03.ambiguous",
+      "scenario_id": "A03",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "asks_one_clarification": {
+              "passed": 0,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 4,
+          "applicable": 6,
+          "pass_rate": 0.6667
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 780,
+          "completion_tokens": 1674
+        },
+        "latency": {
+          "answer_p50_ms": 14000,
+          "answer_p95_ms": 16155,
+          "answer_samples": 2,
+          "first_token_p50_ms": 11723,
+          "first_token_p95_ms": 14108,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 47,
+          "first_progress_p95_ms": 49,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 13976,
+          "first_usable_p95_ms": 16132,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 13976,
+          "complete_p95_ms": 16132,
+          "complete_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "asks_one_clarification": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 6,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": 125,
+          "answer_p95_ms": 157,
+          "answer_samples": 2,
+          "first_token_p50_ms": 116,
+          "first_token_p95_ms": 134,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 55,
+          "first_progress_p95_ms": 61,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 120,
+          "first_usable_p95_ms": 138,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 120,
+          "complete_p95_ms": 138,
+          "complete_samples": 2
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "asks_one_clarification": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_paper_results": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "A11.hard_condition",
+      "scenario_id": "A11",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "hard_condition_blocked": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 4,
+          "pass_rate": 0.5
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 810,
+          "completion_tokens": 2266
+        },
+        "latency": {
+          "answer_p50_ms": 18782,
+          "answer_p95_ms": 21703,
+          "answer_samples": 2,
+          "first_token_p50_ms": 14729,
+          "first_token_p95_ms": 18356,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 46,
+          "first_progress_p95_ms": 48,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 18761,
+          "first_usable_p95_ms": 21673,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 18761,
+          "complete_p95_ms": 21673,
+          "complete_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "hard_condition_blocked": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 4,
+          "applicable": 4,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": null,
+          "answer_p95_ms": null,
+          "answer_samples": 0,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0,
+          "failed_or_stopped_turns": 2,
+          "first_progress_p50_ms": null,
+          "first_progress_p95_ms": null,
+          "first_progress_samples": 0,
+          "first_usable_p50_ms": null,
+          "first_usable_p95_ms": null,
+          "first_usable_samples": 0,
+          "complete_p50_ms": null,
+          "complete_p95_ms": null,
+          "complete_samples": 0
+        }
+      },
+      "check_results": {
+        "no_paper_results": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "hard_condition_blocked": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "R07.stop_continue",
+      "scenario_id": "R07",
+      "budget_class": "normal",
+      "turns": 3,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "stop_no_auto_continue": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "continue_creates_new_run": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 6,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 4,
+          "prompt_tokens": 2147,
+          "completion_tokens": 6564
+        },
+        "latency": {
+          "answer_p50_ms": 25969,
+          "answer_p95_ms": 36187,
+          "answer_samples": 4,
+          "first_token_p50_ms": 22525,
+          "first_token_p95_ms": 30892,
+          "first_token_samples": 4,
+          "failed_or_stopped_turns": 2,
+          "first_progress_p50_ms": 47,
+          "first_progress_p95_ms": 54,
+          "first_progress_samples": 4,
+          "first_usable_p50_ms": 25957,
+          "first_usable_p95_ms": 36161,
+          "first_usable_samples": 4,
+          "complete_p50_ms": 25957,
+          "complete_p95_ms": 36161,
+          "complete_samples": 4
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "stop_no_auto_continue": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "continue_creates_new_run": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 6,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 2839,
+          "completion_tokens": 3594
+        },
+        "latency": {
+          "answer_p50_ms": 4828,
+          "answer_p95_ms": 34360,
+          "answer_samples": 4,
+          "first_token_p50_ms": 24264,
+          "first_token_p95_ms": 30341,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 2,
+          "first_progress_p50_ms": 56,
+          "first_progress_p95_ms": 75,
+          "first_progress_samples": 4,
+          "first_usable_p50_ms": 4861,
+          "first_usable_p95_ms": 34344,
+          "first_usable_samples": 4,
+          "complete_p50_ms": 4861,
+          "complete_p95_ms": 34344,
+          "complete_samples": 4
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "stop_no_auto_continue": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "continue_creates_new_run": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "C01.deep_paper",
+      "scenario_id": "C01",
+      "budget_class": "deep",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 2,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 808,
+          "completion_tokens": 3524
+        },
+        "latency": {
+          "answer_p50_ms": 27875,
+          "answer_p95_ms": 33608,
+          "answer_samples": 2,
+          "first_token_p50_ms": 21536,
+          "first_token_p95_ms": 25358,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 45,
+          "first_progress_p95_ms": 47,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 27839,
+          "first_usable_p95_ms": 33582,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 27839,
+          "complete_p95_ms": 33582,
+          "complete_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 2,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 3454,
+          "completion_tokens": 1315
+        },
+        "latency": {
+          "answer_p50_ms": 39358,
+          "answer_p95_ms": 39827,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 53,
+          "first_progress_p95_ms": 54,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 39395,
+          "first_usable_p95_ms": 39860,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 39395,
+          "complete_p95_ms": 39860,
+          "complete_samples": 2
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "C02.normal_composite",
+      "scenario_id": "C02",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 2,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 810,
+          "completion_tokens": 3586
+        },
+        "latency": {
+          "answer_p50_ms": 30922,
+          "answer_p95_ms": 31859,
+          "answer_samples": 2,
+          "first_token_p50_ms": 25880,
+          "first_token_p95_ms": 26613,
+          "first_token_samples": 2,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 46,
+          "first_progress_p95_ms": 47,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 30901,
+          "first_usable_p95_ms": 31830,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 30901,
+          "complete_p95_ms": 31830,
+          "complete_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 2,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 1,
+          "prompt_tokens": 1727,
+          "completion_tokens": 536
+        },
+        "latency": {
+          "answer_p50_ms": 4421,
+          "answer_p95_ms": 33171,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0,
+          "failed_or_stopped_turns": 0,
+          "first_progress_p50_ms": 57,
+          "first_progress_p95_ms": 59,
+          "first_progress_samples": 2,
+          "first_usable_p50_ms": 4457,
+          "first_usable_p95_ms": 33163,
+          "first_usable_samples": 2,
+          "complete_p50_ms": 4457,
+          "complete_p95_ms": 33212,
+          "complete_samples": 2
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    }
+  ],
+  "old_totals": {
+    "quality": {
+      "checks": {
+        "answer_nonempty": {
+          "passed": 12,
+          "applicable": 12
+        },
+        "single_chat_call": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_external_model_capability": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_task_created": {
+          "passed": 0,
+          "applicable": 0
+        },
+        "no_unnecessary_search": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "no_paper_results": {
+          "passed": 4,
+          "applicable": 6
+        },
+        "commute_route": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "asks_one_clarification": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "hard_condition_blocked": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "stop_no_auto_continue": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "continue_creates_new_run": {
+          "passed": 2,
+          "applicable": 2
+        }
+      },
+      "passed": 24,
+      "applicable": 34,
+      "pass_rate": 0.7059
+    },
+    "cost": {
+      "calls": 14,
+      "prompt_tokens": 6201,
+      "completion_tokens": 18455
+    },
+    "latency": {
+      "answer_p50_ms": 21703,
+      "answer_p95_ms": 36187,
+      "answer_samples": 16,
+      "first_token_p50_ms": 20901,
+      "first_token_p95_ms": 30892,
+      "first_token_samples": 14,
+      "failed_or_stopped_turns": 2,
+      "first_progress_p50_ms": 47,
+      "first_progress_p95_ms": 72,
+      "first_progress_samples": 16,
+      "first_usable_p50_ms": 21673,
+      "first_usable_p95_ms": 36161,
+      "first_usable_samples": 16,
+      "complete_p50_ms": 21673,
+      "complete_p95_ms": 36161,
+      "complete_samples": 16
+    },
+    "error_codes": {}
+  },
+  "new_totals": {
+    "quality": {
+      "checks": {
+        "answer_nonempty": {
+          "passed": 12,
+          "applicable": 12
+        },
+        "single_chat_call": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_external_model_capability": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_task_created": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_unnecessary_search": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_paper_results": {
+          "passed": 6,
+          "applicable": 6
+        },
+        "commute_route": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "asks_one_clarification": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "hard_condition_blocked": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "stop_no_auto_continue": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "continue_creates_new_run": {
+          "passed": 2,
+          "applicable": 2
+        }
+      },
+      "passed": 36,
+      "applicable": 36,
+      "pass_rate": 1.0
+    },
+    "cost": {
+      "calls": 7,
+      "prompt_tokens": 9036,
+      "completion_tokens": 5550
+    },
+    "latency": {
+      "answer_p50_ms": 4342,
+      "answer_p95_ms": 39827,
+      "answer_samples": 14,
+      "first_token_p50_ms": 917,
+      "first_token_p95_ms": 30341,
+      "first_token_samples": 6,
+      "failed_or_stopped_turns": 4,
+      "first_progress_p50_ms": 56,
+      "first_progress_p95_ms": 107,
+      "first_progress_samples": 14,
+      "first_usable_p50_ms": 4376,
+      "first_usable_p95_ms": 39860,
+      "first_usable_samples": 14,
+      "complete_p50_ms": 4376,
+      "complete_p95_ms": 39860,
+      "complete_samples": 14
+    },
+    "error_codes": {
+      "network_not_allowed": 2
+    }
+  },
+  "new_budget": {
+    "lightweight": {
+      "samples": 12,
+      "limits": {
+        "candidate_screen_max": 20,
+        "transient_retry_max": 1,
+        "verify_deliver_reserve_ms": 0,
+        "deep_read_max": 3,
+        "adjustment_rounds_max": 1,
+        "total_budget_ms": 120000,
+        "external_parallel_max": 2,
+        "model_call_limit": 6
+      },
+      "observed_max": {
+        "model_calls_used": 1,
+        "external_calls_used": 7,
+        "external_calls_active": 0,
+        "transient_retries_used": 0,
+        "adjustment_rounds_used": 0,
+        "input_tokens_used": 1421,
+        "output_tokens_used": 1945,
+        "external_peak": 2
+      },
+      "latency": {
+        "first_progress": [
+          107,
+          55,
+          61,
+          52,
+          56,
+          49,
+          57,
+          55,
+          56,
+          75
+        ],
+        "first_usable": [
+          2283,
+          422,
+          138,
+          4861,
+          34344,
+          1921,
+          435,
+          120,
+          4376,
+          28834
+        ],
+        "complete": [
+          2283,
+          422,
+          138,
+          4861,
+          34344,
+          1921,
+          435,
+          120,
+          4376,
+          28834
+        ]
+      },
+      "paper": {
+        "candidate_screens": 0,
+        "deep_reads": 0,
+        "papers": 0
+      },
+      "statuses": {
+        "closed": 12
+      },
+      "exhausted": [],
+      "entry_kinds": {
+        "closed": 12,
+        "model_call": 4,
+        "model_call_result": 4,
+        "external_call": 16,
+        "external_call_result": 16
+      },
+      "latency_p50": {
+        "first_progress": 56,
+        "first_usable": 1921,
+        "complete": 1921
+      },
+      "latency_p95": {
+        "first_progress": 107,
+        "first_usable": 34344,
+        "complete": 34344
+      }
+    },
+    "deep": {
+      "samples": 4,
+      "limits": {
+        "candidate_screen_max": 20,
+        "transient_retry_max": 1,
+        "verify_deliver_reserve_ms": 30000,
+        "deep_read_max": 5,
+        "adjustment_rounds_max": 1,
+        "total_budget_ms": 120000,
+        "external_parallel_max": 2,
+        "model_call_limit": 8
+      },
+      "observed_max": {
+        "model_calls_used": 1,
+        "external_calls_used": 11,
+        "external_calls_active": 0,
+        "transient_retries_used": 0,
+        "adjustment_rounds_used": 0,
+        "input_tokens_used": 3377,
+        "output_tokens_used": 941,
+        "external_peak": 1
+      },
+      "latency": {
+        "first_progress": [
+          58,
+          53,
+          58,
+          54
+        ],
+        "first_usable": [
+          39860,
+          39395
+        ],
+        "complete": [
+          39860,
+          39395
+        ]
+      },
+      "paper": {
+        "candidate_screens": 10,
+        "deep_reads": 0,
+        "papers": 5
+      },
+      "statuses": {
+        "closed": 4
+      },
+      "exhausted": [],
+      "entry_kinds": {
+        "closed": 4,
+        "external_call": 22,
+        "external_call_result": 22,
+        "model_call": 2,
+        "model_call_result": 2
+      },
+      "latency_p50": {
+        "first_progress": 54,
+        "first_usable": 39395,
+        "complete": 39395
+      },
+      "latency_p95": {
+        "first_progress": 58,
+        "first_usable": 39860,
+        "complete": 39860
+      }
+    },
+    "normal": {
+      "samples": 2,
+      "limits": {
+        "candidate_screen_max": 20,
+        "transient_retry_max": 1,
+        "verify_deliver_reserve_ms": 15000,
+        "deep_read_max": 3,
+        "adjustment_rounds_max": 1,
+        "total_budget_ms": 60000,
+        "external_parallel_max": 2,
+        "model_call_limit": 6
+      },
+      "observed_max": {
+        "model_calls_used": 1,
+        "external_calls_used": 14,
+        "external_calls_active": 0,
+        "transient_retries_used": 0,
+        "adjustment_rounds_used": 0,
+        "input_tokens_used": 3377,
+        "output_tokens_used": 941,
+        "external_peak": 2
+      },
+      "latency": {
+        "first_progress": [
+          59,
+          57
+        ],
+        "first_usable": [
+          4457,
+          33163
+        ],
+        "complete": [
+          4457,
+          33212
+        ]
+      },
+      "paper": {
+        "candidate_screens": 10,
+        "deep_reads": 0,
+        "papers": 5
+      },
+      "statuses": {
+        "closed": 2
+      },
+      "exhausted": [],
+      "entry_kinds": {
+        "closed": 2,
+        "external_call": 17,
+        "external_call_result": 17,
+        "model_call": 1,
+        "model_call_result": 1
+      },
+      "latency_p50": {
+        "first_progress": 57,
+        "first_usable": 4457,
+        "complete": 4457
+      },
+      "latency_p95": {
+        "first_progress": 59,
+        "first_usable": 33163,
+        "complete": 33212
+      }
+    }
+  },
+  "problems": [],
+  "budgets": {
+    "contract_version": "run-budget-v1",
+    "classes": {
+      "lightweight": {
+        "total_budget_ms": 120000,
+        "verify_deliver_reserve_ms": 0,
+        "model_call_limit": 6,
+        "external_parallel_max": 2,
+        "candidate_screen_max": 20,
+        "deep_read_max": 3,
+        "adjustment_rounds_max": 1,
+        "transient_retry_max": 1
+      },
+      "normal": {
+        "total_budget_ms": 60000,
+        "verify_deliver_reserve_ms": 15000,
+        "model_call_limit": 6,
+        "external_parallel_max": 2,
+        "candidate_screen_max": 20,
+        "deep_read_max": 3,
+        "adjustment_rounds_max": 1,
+        "transient_retry_max": 1
+      },
+      "deep": {
+        "total_budget_ms": 120000,
+        "verify_deliver_reserve_ms": 30000,
+        "model_call_limit": 8,
+        "external_parallel_max": 2,
+        "candidate_screen_max": 20,
+        "deep_read_max": 5,
+        "adjustment_rounds_max": 1,
+        "transient_retry_max": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+........................................................................ [ 44%]
+........................................................................ [ 88%]
+..................                                                       [100%]
+162 passed in 158.89s (0:02:38)
+证据报告：场景 39/39 通过，问题 0 个 -> D:\BridGes\.worktrees\43-integrated-migration-and-release-regression\.scratch\2\validation\43-independent\workflow-final\workflow-evidence.json

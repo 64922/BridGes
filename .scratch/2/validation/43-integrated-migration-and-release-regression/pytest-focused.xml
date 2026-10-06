@@ -1,0 +1,1129 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="523" time="132.998" timestamp="2026-10-06T21:30:10.856867+08:00" hostname="bababoyi"><testcase classname="tests.evaluation.test_blind_review" name="test_review_set_anonymizes_system_identity" time="0.002" /><testcase classname="tests.evaluation.test_blind_review" name="test_review_set_randomizes_order_with_fixed_seed" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_submission_recording_and_dedup" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_low_consistency_items_flagged_not_merged" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_consensus_requires_two_reviewers_on_shared_items" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_auto_judge_primary_flag_when_no_human_review" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_legacy_flag_defaults_false" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_legacy_set_rejects_new_submissions" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_consensus_summary_marks_legacy" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_legacy_serialization_round_trip" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_old_api_compatible" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_repository_reads_human_review_sets_as_legacy" time="0.243" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_create_evaluation_run_freezes_inputs_and_versions" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_replay_produces_comparable_bundle" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_same_lock_replay_produces_matching_results" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_build_digest_respects_environment_override" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_cross_account_access_is_rejected" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_create_evaluation_from_foreign_run_is_rejected" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_create_evaluation_rejects_non_terminal_run" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_replay_honors_execution_count" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_compare_requires_same_lock" time="0.002" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[fact_error]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[profile_overreach]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[profile_cliche_only]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[profile_overwrite]" time="0.002" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[risk_misjudgment]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[teaching_skip]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[multimodal_failure]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injected_fact_error_breaks_claim_present" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injected_profile_overreach_breaks_scope" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_prior_context_is_suppressed_only_in_absent_condition" time="0.002" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_explicit_preferences_require_adopted_slice" time="0.002" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_conditional_acknowledgement_signal_is_injected_and_removed" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_conditional_absent_compiler_ignores_pipeline_partial_signal" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_probe_scenarios_are_resolvable" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_signal_effect_requires_present_and_absent_difference" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_signal_effect_compares_last_turn_only" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_verify_ablation_evidence_rejects_unfinished_turns" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_verify_ablation_evidence_flags_missing_locks" time="0.001" /><testcase classname="tests.evaluation.test_issue39_ablation_evidence" name="test_verify_ablation_evidence_accepts_complete_payload" time="0.001" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_rejects_votes_for_another_frozen_set" time="0.002" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_rejects_duplicate_reviewers_and_unknown_items" time="0.002" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_aggregate_rejects_duplicate_votes_and_unknown_items" time="0.001" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_dimension_reviewer_count_does_not_include_other_dimensions" time="0.002" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_frozen_score_preserves_original_and_rejects_changed_answer" time="0.005" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_manual_candidate_hard_failure_blocks_release[fact_drift]" time="0.005" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_manual_candidate_hard_failure_blocks_release[fabricated_experience]" time="0.004" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_manual_candidate_hard_failure_blocks_release[boundary_violation]" time="0.005" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_manual_candidate_hard_failure_blocks_release[failure_disguised]" time="0.004" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_manual_candidate_hard_failure_blocks_release[task_incomplete]" time="0.004" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_manual_candidate_hard_failure_blocks_release[over_proactive]" time="0.004" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_missing_manual_gates_and_missing_real_evidence_block_release" time="0.007" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_unvoted_item_still_requires_manual_hard_review" time="0.005" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_natural_rejections_are_not_ignored_after_help_passes" time="0.003" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_hard_failure_is_explicit_even_without_preference_votes" time="0.001" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_detailed_task_cannot_pass_with_only_acknowledgement" time="0.001" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_secret_rejection_never_echoes_value" time="0.017" /><testcase classname="tests.evaluation.test_issue39_acceptance_regressions" name="test_cli_scores_frozen_answers_without_constructing_gateway" time="0.047" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_blind_review_hides_identity_and_keeps_multi_turn_context" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_blind_review_order_is_reproducible_with_same_seed" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_submission_template_allows_ties_and_neither" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_parse_submissions_rejects_invalid_choice" time="0.001" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_aggregate_counts_arm_oriented_wins_ties_and_neither" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_aggregate_counts_candidate_wins_despite_label_flip" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_release_inconclusive_without_human_submissions" time="0.001" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_release_blocks_on_candidate_hard_gate_failure" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_release_requires_help_non_inferiority_before_naturalness" time="0.002" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_release_can_pass_with_sufficient_synthetic_evidence" time="0.003" /><testcase classname="tests.evaluation.test_issue39_blind_review" name="test_release_blocks_on_high_neither_rate" time="0.002" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_deterministic_receipts_execute_real_renderers" time="0.002" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_fixed_copy_receipt_renders_all_templates" time="0.002" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_composite_receipt_is_executed_deterministic_render" time="0.001" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_verify_path_receipts_requires_model_locks_and_long_runs" time="0.002" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_deployment_thresholds_measure_candidate_against_baseline" time="0.001" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_derive_report_only_updates_validation_scope" time="0.103" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_derive_report_keeps_flags_false_when_evidence_incomplete" time="0.081" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_derive_report_refuses_missing_evidence_without_gateway" time="0.009" /><testcase classname="tests.evaluation.test_issue39_evidence_completion" name="test_retrying_gateway_raises_after_exhausted_attempts" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_coverage_matrix_has_40_to_60_multi_turn_scenarios" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_all_formal_paths_have_scenario_and_existing_evidence" time="0.003" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_arm_versions_are_distinct" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_baseline_arm_contains_only_contract" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_arm_output_budgets_are_comparable" time="0.002" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_legacy_white_list_drops_atomic_preference_but_current_keeps" time="0.002" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_fact_drift_gate_detects_changed_value" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_fabricated_experience_gate_detects_first_person_history" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_boundary_gate_blocks_advice_when_user_refused_it" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_boundary_gate_blocks_followup_question" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_failure_gate_blocks_success_claim_and_requires_honesty" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_partial_result_gate_requires_partial_wording" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_successful_tool_result_is_not_flagged_as_disguise" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_task_incomplete_gate_checks_required_content_on_final_turn" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_real_subset_has_self_contained_correction_and_bounded_continuation" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_over_proactive_gate_blocks_unsolicited_offer" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_all_hard_gates_reported_independently" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_hard_gate_evaluation_is_not_offset_by_warmth" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_cost_summary_flags_zero_extra_calls_for_current_and_legacy" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_cost_summary_detects_humanization_specific_extra_call" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_cost_summary_ignores_fewer_calls_than_baseline" time="0.001" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_report_separates_executed_scenarios_from_runnable_corpus" time="0.207" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_run_lock_digest_changes_with_corpus" time="0.097" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_real_arm_sender_multi_turn_with_scripted_gateway" time="0.231" /><testcase classname="tests.evaluation.test_issue39_human_expression" name="test_deterministic_suite_records_three_ablation_locks" time="0.178" /><testcase classname="tests.evaluation.test_issue41_extraction_probes" name="test_extraction_probes_reject_unrelated_and_duplicate_facts" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_all_conditions_pass_with_compliant_answers" time="0.003" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_correct_profile_without_concrete_improvement_fails_gate" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_outdated_fact_leak_fails_gate" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_cost_latency_and_condition_summary_recorded" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_blind_review_and_reports_written" time="0.019" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_identical_keyword_answers_do_not_prove_pairing_gain" time="0.002" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_time_budget_mention_does_not_allow_an_infeasible_plan" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_multiple_daily_sessions_must_fit_total_time_budget" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_two_week_total_is_not_a_daily_session" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_all_profile_quality_scenarios_pass" time="0.239" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_hard_gates_cover_safety_and_isolation" time="0.212" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_report_is_json_serializable_and_renders" time="0.217" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_two_synthetic_accounts_are_isolated" time="0.224" /><testcase classname="tests.evaluation.test_issue42_ambiguous_resources" name="test_a03_isolated_resources_domain_waits_before_any_model_or_tool" time="0.397" /><testcase classname="tests.evaluation.test_issue42_ambiguous_resources" name="test_a03_prior_user_domain_avoids_unnecessary_clarification" time="0.003" /><testcase classname="tests.evaluation.test_issue42_ambiguous_resources" name="test_a03_current_explicit_domain_and_ordinary_chat_are_preserved" time="0.002" /><testcase classname="tests.evaluation.test_issue42_ambiguous_resources" name="test_a03_resource_domain_answer_does_not_switch_to_paper" time="0.306" /><testcase classname="tests.evaluation.test_issue42_budget_calibration" name="test_contract_version_and_initials_are_frozen" time="0.002" /><testcase classname="tests.evaluation.test_issue42_budget_calibration" name="test_initials_keep_control_envelope_consistency" time="0.002" /><testcase classname="tests.evaluation.test_issue42_budget_calibration" name="test_pairing_report_budget_snapshot_matches_ledger" time="0.067" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_missing_credentials_stay_inconclusive_without_requests" time="0.001" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_tavily_probe_passes_and_records_verified_sources" time="0.002" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_amap_probe_measures_each_mode_on_its_own_endpoint" time="0.020" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_model_probe_uses_effective_model_and_context_window" time="0.003" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_claim_consistency_flags_only_gates_without_degradation_contract" time="0.001" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_probe_failure_never_leaks_secret_material" time="0.001" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_probe_registry_is_complete_and_levels_are_ordered" time="0.001" /><testcase classname="tests.evaluation.test_issue42_external_probes" name="test_public_source_filter_checks_hostname_and_path" time="0.002" /><testcase classname="tests.evaluation.test_issue42_paper_role_pairing" name="test_pairing_scores_same_truth_with_actual_cost" time="0.002" /><testcase classname="tests.evaluation.test_issue42_paper_role_pairing" name="test_incomplete_or_changed_real_receipt_is_rejected" time="0.001" /><testcase classname="tests.evaluation.test_issue42_paper_role_pairing" name="test_mismatched_candidate_pool_or_old_input_is_rejected" time="0.001" /><testcase classname="tests.evaluation.test_issue42_revocation_resume" name="test_r05_revoked_photo_is_not_reused_after_checkpoint_resume" time="1.937" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_structured_response_reserves_frozen_allowance_for_json[qwen3.5-plus-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_structured_response_reserves_frozen_allowance_for_json[qwen3.5-plus-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_structured_response_reserves_frozen_allowance_for_json[qwen3.6-flash-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_structured_response_reserves_frozen_allowance_for_json[qwen3.6-flash-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_structured_response_reserves_frozen_allowance_for_json[qwen3.7-plus-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_structured_response_reserves_frozen_allowance_for_json[qwen3.7-plus-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_social_check_in_does_not_plan_search[\u4f60\u597d\uff0c\u4eca\u5929\u60f3\u968f\u4fbf\u804a\u4e24\u53e5\uff0c\u4f60\u6700\u8fd1\u600e\u4e48\u6837\uff1f]" time="0.001" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_social_check_in_does_not_plan_search[\u4f60\u8fd1\u671f\u8fd8\u597d\u5417\uff1f]" time="0.001" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_social_check_in_does_not_plan_search[\u4f60\u597d\uff0c\u6700\u8fd1\u600e\u4e48\u6837\uff1f]" time="0.001" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_recent_external_requests_still_plan_search[\u80a1\u4ef7\u6700\u8fd1\u600e\u4e48\u6837\uff1f]" time="0.001" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_recent_external_requests_still_plan_search[\u4f60\u6700\u8fd1\u600e\u4e48\u6837\uff1f\u987a\u4fbf\u67e5\u4e00\u4e0b\u5929\u6c14\u3002]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_recent_external_requests_still_plan_search[\u4f60\u6700\u8fd1\u600e\u4e48\u6837\uff1f\u91cf\u5b50\u8ba1\u7b97\u6700\u65b0\u8fdb\u5c55\u662f\u4ec0\u4e48\uff1f]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_learning_force_overrides_social_check_in" time="0.001" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-plus-1024-None-False-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-plus-1024-None-False-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-plus-2048-None-None-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-plus-2048-None-None-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-plus-1024-True-True-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-plus-1024-True-True-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-max-1024-None-None-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.7-max-1024-None-None-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.8-plus-1024-None-None-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen3.8-plus-1024-None-None-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen-legacy-1024-None-None-False]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_runtime_seams" name="test_text_small_allowance_policy_preserves_explicit_and_large_requests[qwen-legacy-1024-None-None-True]" time="0.002" /><testcase classname="tests.evaluation.test_issue42_scenario_gaps" name="test_a02_paper_hint_with_commute_body_routes_commute" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_gaps" name="test_a02_service_keeps_requested_hint_and_uses_actual_route" time="0.256" /><testcase classname="tests.evaluation.test_issue42_scenario_gaps" name="test_a08_generic_continue_with_multiple_tasks_asks_one_clarification" time="0.002" /><testcase classname="tests.evaluation.test_issue42_scenario_gaps" name="test_a08_unique_task_term_resolves_continue_without_clarification" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_gaps" name="test_a09_video_timeout_keeps_books_and_reports_real_gap" time="1.299" /><testcase classname="tests.evaluation.test_issue42_scenario_gaps" name="test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task" time="4.384" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_manifest_declares_exactly_39_fixed_scenarios" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_every_scenario_binds_executable_test_evidence" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_every_manifest_test_node_resolves_to_a_real_test" time="0.104" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_external_gates_used_by_scenarios_are_registered_as_probes" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_probe_registry_and_product_claims_cover_same_gates" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_zero_tolerance_guards_cover_every_declared_kind" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_fault_injection_scenarios_are_declared" time="0.001" /><testcase classname="tests.evaluation.test_issue42_scenario_manifest" name="test_real_model_pairing_coverage_scenarios_exist_and_are_marked" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_evidence" name="test_full_pass_report_has_no_problems_and_covers_all_scenarios" time="0.314" /><testcase classname="tests.evaluation.test_issue42_workflow_evidence" name="test_failed_node_marks_scenario_and_reports_problem" time="0.003" /><testcase classname="tests.evaluation.test_issue42_workflow_evidence" name="test_missing_and_skipped_nodes_are_not_acceptable_evidence" time="0.003" /><testcase classname="tests.evaluation.test_issue42_workflow_evidence" name="test_zero_tolerance_guard_failure_is_a_blocking_problem" time="0.003" /><testcase classname="tests.evaluation.test_issue42_workflow_evidence" name="test_parametrized_node_requires_all_expansions_to_pass" time="0.002" /><testcase classname="tests.evaluation.test_issue42_workflow_evidence" name="test_markdown_lists_every_scenario" time="0.003" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_corpus_sha256_is_stable" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_pairing_corpus_covers_real_model_manifest" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_percentile_uses_nearest_rank" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_projection_empty_handles_shapes" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_evaluate_case_checks_a01_and_r07" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_summarize_pairing_flags_model_mismatch" time="0.003" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_render_markdown_reports_budget_calibration" time="0.002" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_budget_summary_flags_ledger_overrun_and_shortfall" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_error_with_partial_text_never_counts_as_answer_success" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_question_mark_and_network_word_are_not_behavior_evidence" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_failed_check_and_missing_repetition_reject_report" time="0.002" /><testcase classname="tests.evaluation.test_issue42_workflow_pairing" name="test_stop_requires_actual_stopped_status" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_semantics" name="test_semantic_rubric_requires_actual_quote_and_required_coverage" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_semantics" name="test_synonymous_requirement_label_still_requires_method_and_task_evidence" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_semantics" name="test_production_grading_and_summary_are_exercised" time="0.006" /><testcase classname="tests.evaluation.test_issue42_workflow_semantics" name="test_source_and_rubric_changes_invalidate_fingerprint" time="0.001" /><testcase classname="tests.evaluation.test_issue42_workflow_semantics" name="test_scope_scale_passes_when_coverage_isolation_and_unclear_symbol_hold" time="0.002" /><testcase classname="tests.evaluation.test_issue42_workflow_semantics" name="test_scope_scale_rejects_certified_unclear_symbol_and_same_name_mixing" time="0.002" /><testcase classname="tests.evaluation.test_issue43_coverage_reconciliation" name="test_reconciliation_covers_every_mapped_requirement_and_scenario" time="0.130" /><testcase classname="tests.evaluation.test_issue43_coverage_reconciliation" name="test_document_ids_parse_to_exactly_127_requirements" time="0.001" /><testcase classname="tests.evaluation.test_issue43_coverage_reconciliation" name="test_ticket_39_stays_not_released_and_others_released" time="0.001" /><testcase classname="tests.evaluation.test_issue43_coverage_reconciliation" name="test_every_item_has_owner_and_existing_evidence_anchor" time="0.043" /><testcase classname="tests.evaluation.test_issue43_natural_language_adoption" name="test_state_copy_registry_validates_and_covers_all_module_and_study_owners" time="0.003" /><testcase classname="tests.evaluation.test_issue43_natural_language_adoption" name="test_formal_paths_have_existing_seams_and_evidence" time="0.004" /><testcase classname="tests.evaluation.test_issue43_release_adjudication" name="test_adjudication_passed_and_not_released_for_ticket_39" time="0.003" /><testcase classname="tests.evaluation.test_issue43_release_adjudication" name="test_adjudication_matches_each_ticket_evidence" time="0.004" /><testcase classname="tests.evaluation.test_issue43_release_adjudication" name="test_degraded_tickets_record_external_limits" time="0.003" /><testcase classname="tests.evaluation.test_issue43_rollback_rehearsal" name="test_rollback_rehearsal_preserves_state_and_retires_capabilities" time="0.508" /><testcase classname="tests.evaluation.test_issue43_rollback_rehearsal" name="test_stop_new_writes_check_flags_shrunk_inventory" time="0.488" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_measure_loop_quality" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_reject_cliche_only_personalization" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_require_coexistence_and_source_support" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_detect_overreach" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_complete_relation_and_active_negation_are_required" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_precise_update_and_negation_guard" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_no_personalization_gets_zero_gain" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_metrics_good_answer" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_metrics_detect_hallucination" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_conflict_handling" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_medical_boundary" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_teaching_metrics" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_teaching_forced_web_search" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_teaching_length_not_gain" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_metrics_boundary" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_risk_misjudgment_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_no_diagnosis" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_diagnosis_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_multimodal_metrics_asset_flow" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_multimodal_failure_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_multimodal_asr_and_model_contract" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_security_metrics" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_security_secret_leak_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_all_cases_have_dimension_metrics" time="0.002" /><testcase classname="tests.evaluation.test_report_gates" name="test_confidence_interval_small_sample" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_welch_p_value_deterministic" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_report_contains_required_statistics" time="0.007" /><testcase classname="tests.evaluation.test_report_gates" name="test_release_gate_blocks_low_scores" time="0.003" /><testcase classname="tests.evaluation.test_report_gates" name="test_release_gate_passes_strong_scores" time="0.002" /><testcase classname="tests.evaluation.test_report_gates" name="test_release_gate_blocks_high_risk_failures" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_default_threshold_has_all_hard_metrics" time="0.001" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_migration_26_creates_eval_tables" time="0.237" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_suite_and_lock_persistence" time="0.262" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_results_are_append_only" time="0.252" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_reports_are_versioned_not_overwritten" time="0.263" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_review_set_persistence" time="0.234" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_all_datasets_have_license_records" time="0.001" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_all_licenses_are_clean_room" time="0.001" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_suite_data_contains_no_external_project_text" time="0.001" /><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_lock_freezes_reproducibility_metadata" time="0.364"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-56u5unti\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B418BD90&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x000001A1B416AC90&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-56u5unti/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-56u5unti/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-56u5unti'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x000001A1B1E3F7E0&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-56u5unti\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+tiny_runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B418BD90&gt;
+
+    def test_lock_freezes_reproducibility_metadata(tiny_runner: EvaluationRunner) -&gt; None:
+        """AC-1：运行锁冻结套件摘要、数据集、模型/SKILL、种子与执行次数。"""
+&gt;       outcome = tiny_runner.run()
+                  ^^^^^^^^^^^^^^^^^
+
+tests\evaluation\test_runner_reproducibility.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-56u5unti\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x000001A1B41F5300&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-56u5unti\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_build_digest_honors_environment_override" time="0.004" /><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_double_run_is_reproducible" time="0.318"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ga5rx4os\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B1E42E90&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x000001A1B1E43F10&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-ga5rx4os/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-ga5rx4os/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ga5rx4os'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x000001A1AF80C400&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ga5rx4os\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+tiny_runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B1E42E90&gt;
+
+    def test_double_run_is_reproducible(tiny_runner: EvaluationRunner) -&gt; None:
+        """Verification-1：干净环境连续两次固定评测，锁/样本/指标可复现。"""
+&gt;       first = tiny_runner.run()
+                ^^^^^^^^^^^^^^^^^
+
+tests\evaluation\test_runner_reproducibility.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ga5rx4os\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x000001A1B1E50C40&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ga5rx4os\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_reproduction_command_is_one_click_replayable" time="0.301"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-cqzj4i85\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B41132D0&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x000001A1B4125250&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-cqzj4i85/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-cqzj4i85/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-cqzj4i85'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x000001A1AF80D940&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-cqzj4i85\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+tiny_runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B41132D0&gt;
+
+    def test_reproduction_command_is_one_click_replayable(tiny_runner: EvaluationRunner) -&gt; None:
+        """Verification-5：失败案例的命令可一键重放（固定锁/案例/种子/序号）。"""
+&gt;       outcome = tiny_runner.run()
+                  ^^^^^^^^^^^^^^^^^
+
+tests\evaluation\test_runner_reproducibility.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-cqzj4i85\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x000001A1B417D400&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-cqzj4i85\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_suite_run_produces_all_suts_and_tasks" time="0.302"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ppu8dty1\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B1F0C910&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x000001A1AF607C90&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-ppu8dty1/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-ppu8dty1/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ppu8dty1'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x000001A1AF80DB20&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ppu8dty1\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x000001A1B1F0C910&gt;
+
+    def test_suite_run_produces_all_suts_and_tasks(runner: EvaluationRunner) -&gt; None:
+        """AC-8：运行覆盖完整/基线/参考/消融 × 全部任务。"""
+&gt;       outcome = runner.run()
+                  ^^^^^^^^^^^^
+
+tests\evaluation\test_runner_reproducibility.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ppu8dty1\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x000001A1B41A0640&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ppu8dty1\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_suite_registry" name="test_suite_registers_with_full_manifest" time="0.002" /><testcase classname="tests.evaluation.test_suite_registry" name="test_suite_digest_is_sensitive_to_any_change" time="0.010" /><testcase classname="tests.evaluation.test_suite_registry" name="test_register_rejects_silent_overwrite" time="0.004" /><testcase classname="tests.evaluation.test_suite_registry" name="test_register_same_content_is_idempotent" time="0.005" /><testcase classname="tests.evaluation.test_suite_registry" name="test_invalidate_keeps_history" time="0.004" /><testcase classname="tests.evaluation.test_suite_registry" name="test_reference_integrity_validation" time="0.005" /><testcase classname="tests.evaluation.test_suite_registry" name="test_every_case_has_expected_schema_and_scale" time="0.002" /><testcase classname="tests.evaluation.test_suite_registry" name="test_run_matrix_covers_all_suts_and_tasks" time="0.002" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_registry_validates_and_lists_every_required_category" time="0.003" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_manifest_registers_version_path_state_owner_and_strategy" time="0.002" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_registry_rejects_empty_path_segments[]" time="0.002" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_registry_rejects_empty_path_segments[.chat]" time="0.003" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_registry_rejects_empty_path_segments[chat.]" time="0.003" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_registry_rejects_empty_path_segments[chat..error]" time="0.003" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_render_substitutes_values_and_rejects_bad_calls" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_module_and_study_entries_resolve_to_real_renderers" time="0.003" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_module_outcomes_cover_success_partial_failure_empty_and_stopped" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_module_machine_fields_stay_with_deterministic_renderers" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_topic_mismatch_entries_keep_actual_terminal_states" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_review_completion_is_not_user_stop" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_study_fixed_explanations_have_auditable_sources" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_missing_fallback_credentials_keep_actionable_chat_copy" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_every_error_template_exposes_class_and_recovery" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_contextual_codes_are_registered_but_not_table_overrides" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_required_failure_classes_are_separately_registered" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_error_copy_states_the_real_gap_or_config" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_click_retry_copy_only_for_real_retryable_codes" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_client_error_taxonomy_keeps_rejection_honest" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_default_error_message_is_the_internal_error_template" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_registry" name="test_retrieval_sufficiency_copy_is_registry_sourced" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_chat_and_model_error_tables_are_registry_single_source" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_terminal_and_thinking_copy_come_from_registry" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_graph_failure_copy_uses_registered_templates" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_chat_web_search_projection_copy_comes_from_registry" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_understanding_clarifications_use_registry" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_routing_clarifications_use_registry" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_retrieval_notes_are_registry_sourced" time="0.001" /><testcase classname="tests.state_copy.test_issue23_state_copy_wiring" name="test_web_search_degraded_note_is_registry_sourced" time="0.002" /><testcase classname="tests.lifecycle.test_backup" name="test_backup_contains_manifest_and_encrypted_payload" time="0.583" /><testcase classname="tests.lifecycle.test_backup" name="test_backup_excludes_secrets_and_sessions" time="0.575" /><testcase classname="tests.lifecycle.test_backup" name="test_backup_requires_passphrase" time="0.484" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rejects_corrupted_magic" time="0.440" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rejects_tampered_payload" time="0.559" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rejects_wrong_passphrase" time="0.591" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rejects_wrong_confirmation" time="0.581" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rejects_future_format_version" time="0.535" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rejects_insufficient_space" time="0.640" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_rolls_back_data_and_objects" time="0.743" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_preserves_login_but_clears_external_credentials" time="0.760" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_schedules_index_rebuild_on_mismatch" time="1.038" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_swap_failure_rolls_back_atomically" time="0.783" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_audit_events" time="0.737" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_after_backup_without_objects" time="0.774" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_swap_midway_failure_rolls_back" time="0.704" /><testcase classname="tests.lifecycle.test_backup" name="test_restore_finalize_failure_rolls_back_identity" time="0.751" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_removes_every_table_row_and_identity" time="0.462" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_removes_four_dimension_records_and_migration_ledgers" time="0.479" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_removes_object_files_and_credentials" time="0.447" /><testcase classname="tests.lifecycle.test_deletion" name="test_shared_object_file_preserved_for_other_account" time="0.679" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_partial_failure_is_retryable_not_success" time="0.492" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_retry_runs_full_pipeline_when_transaction_failed" time="0.491" /><testcase classname="tests.lifecycle.test_deletion" name="test_stale_deleting_status_is_retryable_after_crash" time="0.942" /><testcase classname="tests.lifecycle.test_deletion" name="test_deleted_account_data_is_unreadable_by_services" time="0.454" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_audit_is_minimal_and_secret_free" time="0.486" /><testcase classname="tests.lifecycle.test_deletion" name="test_delete_other_account_data_unaffected_by_retry" time="0.464" /><testcase classname="tests.lifecycle.test_deletion" name="test_failed_deletion_is_queued_and_retried_by_worker" time="0.500" /><testcase classname="tests.lifecycle.test_deletion" name="test_failed_deletion_retry_is_queued_again" time="0.487" /><testcase classname="tests.lifecycle.test_exports" name="test_preview_lists_categories_and_estimates" time="0.440" /><testcase classname="tests.lifecycle.test_exports" name="test_export_contains_full_account_data_with_stable_identity" time="0.485" /><testcase classname="tests.lifecycle.test_exports" name="test_export_object_assets_are_metadata_only" time="0.455" /><testcase classname="tests.lifecycle.test_exports" name="test_export_excludes_all_secret_canaries" time="0.457" /><testcase classname="tests.lifecycle.test_exports" name="test_export_isolated_between_accounts" time="0.488" /><testcase classname="tests.lifecycle.test_exports" name="test_export_unknown_account_rejected" time="0.409" /><testcase classname="tests.lifecycle.test_exports" name="test_export_includes_study_section_state_with_summary" time="0.480" /><testcase classname="tests.lifecycle.test_exports" name="test_export_audit_contains_counts_not_content" time="0.484" /><testcase classname="tests.lifecycle.test_exports" name="test_export_matches_logical_summary" time="0.638" /><testcase classname="tests.lifecycle.test_issue07_profile_controls_lifecycle" name="test_controls_export_and_account_deletion_are_isolated" time="0.439" /><testcase classname="tests.lifecycle.test_issue07_profile_controls_lifecycle" name="test_controls_survive_backup_restore" time="0.642" /><testcase classname="tests.lifecycle.test_issue31_scope_lifecycle" name="test_scope_history_backup_restore_export_and_account_isolation" time="0.659" /><testcase classname="tests.lifecycle.test_issue33_review_lifecycle" name="test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak" time="0.683" /><testcase classname="tests.lifecycle.test_issue35_version_history_lifecycle" name="test_version_history_survives_lifecycle_and_legacy_read" time="0.675" /><testcase classname="tests.lifecycle.test_issue38_result_lifecycle" name="test_result_snapshot_survives_backup_and_is_deleted_only_with_owner" time="0.698" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_preview_requires_login" time="1.656" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_preview_lists_categories" time="1.351"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001A1B4836850&gt;
+
+    def test_export_preview_lists_categories(client: TestClient) -&gt; None:
+        _register(client, "alice", "10001@qq.com")
+&gt;       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001A1B4836850&gt;
+
+    def _create_chat(client: TestClient) -&gt; str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+&gt;       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_requires_recent_auth" time="1.616" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_export_returns_json_download_after_reauth" time="1.325"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001A1B5BBD7D0&gt;
+
+    def test_export_returns_json_download_after_reauth(client: TestClient) -&gt; None:
+        _register(client, "alice", "10001@qq.com")
+&gt;       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001A1B5BBD7D0&gt;
+
+    def _create_chat(client: TestClient) -&gt; str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+&gt;       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_requires_reauth_and_confirmation" time="1.815" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_rejects_wrong_confirmation" time="1.696" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_account_removes_data_and_session" time="1.026"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001A1B722B3D0&gt;
+
+    def test_delete_account_removes_data_and_session(client: TestClient) -&gt; None:
+        _register(client, "alice", "10001@qq.com")
+&gt;       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001A1B722B3D0&gt;
+
+    def _create_chat(client: TestClient) -&gt; str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+&gt;       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_delete_status_and_retry" time="2.092" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_create_backup_requires_reauth" time="1.955" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_create_backup_returns_encrypted_file" time="0.999"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001A1B41D1350&gt;
+
+    def test_create_backup_returns_encrypted_file(client: TestClient) -&gt; None:
+        _register(client, "alice", "10001@qq.com")
+&gt;       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001A1B41D1350&gt;
+
+    def _create_chat(client: TestClient) -&gt; str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+&gt;       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_restore_requires_reauth_and_confirmation" time="1.938" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_restore_rejects_invalid_format_without_harm" time="1.957" /><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_full_backup_restore_roundtrip_via_api" time="1.014"><failure message="assert 409 == 201&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x000001A1B4865210&gt;
+
+    def test_full_backup_restore_roundtrip_via_api(client: TestClient) -&gt; None:
+        _register(client, "alice", "10001@qq.com")
+&gt;       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;starlette.testclient.TestClient object at 0x000001A1B4865210&gt;
+
+    def _create_chat(client: TestClient) -&gt; str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+&gt;       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError</failure></testcase><testcase classname="tests.lifecycle.test_lifecycle_api" name="test_restore_wrong_passphrase_rejected" time="2.187" /><testcase classname="tests.lifecycle.test_model_quota_lifecycle" name="test_quota_and_call_contract_survive_backup_and_account_deletion" time="0.704" /><testcase classname="tests.lifecycle.test_restore_consistency" name="test_restore_preserves_logical_summary_for_all_accounts" time="0.817" /><testcase classname="tests.lifecycle.test_restore_consistency" name="test_backup_during_running_tasks_is_consistent" time="0.742" /><testcase classname="tests.lifecycle.test_restore_consistency" name="test_export_then_restore_roundtrip_matches_summary" time="0.508" /><testcase classname="tests.lifecycle.test_restore_consistency" name="test_backup_with_concurrent_writes_is_consistent" time="0.757" /><testcase classname="tests.lifecycle.test_run_budget_lifecycle" name="test_budget_backup_restore_keeps_plan_counters_and_entries" time="0.663" /><testcase classname="tests.lifecycle.test_task_state_lifecycle" name="test_task_tables_are_populated_and_exported" time="0.446" /><testcase classname="tests.lifecycle.test_task_state_lifecycle" name="test_account_deletion_clears_tasks_without_touching_other_account" time="0.450" /><testcase classname="tests.lifecycle.test_task_state_lifecycle" name="test_backup_and_restore_round_trip_tasks" time="0.704" /><testcase classname="tests.lifecycle.test_v2_21_retired_history_lifecycle" name="test_legacy_generated_results_are_exported_per_account" time="0.467" /><testcase classname="tests.lifecycle.test_v2_21_retired_history_lifecycle" name="test_export_categories_cover_retired_media_and_retrieval_decisions" time="0.001" /><testcase classname="tests.lifecycle.test_v2_21_retired_history_lifecycle" name="test_deletion_purges_new_state_tables_and_restore_brings_them_back" time="0.838" /><testcase classname="tests.lifecycle.test_v2_21_retired_history_lifecycle" name="test_deletion_removes_retired_media_results_and_new_runtime_tables" time="0.837" /><testcase classname="tests.lifecycle.test_v2_21_retired_history_lifecycle" name="test_account_catalog_covers_every_live_account_scoped_table" time="0.413" /><testcase classname="tests.orchestration.test_headless_deliveries" name="test_paper_defer_returns_delivery_and_keeps_message_streaming" time="0.640" /><testcase classname="tests.orchestration.test_headless_deliveries" name="test_paper_defer_failure_returns_error_delivery_instead_of_raising" time="0.289" /><testcase classname="tests.orchestration.test_headless_deliveries" name="test_resources_defer_returns_delivery_and_keeps_message_streaming" time="0.682" /><testcase classname="tests.orchestration.test_headless_deliveries" name="test_resources_defer_failure_returns_error_delivery_instead_of_raising" time="0.312" /><testcase classname="tests.orchestration.test_headless_deliveries" name="test_career_defer_returns_delivery_and_keeps_message_streaming" time="0.807" /><testcase classname="tests.orchestration.test_headless_deliveries" name="test_career_defer_failure_returns_error_delivery_instead_of_raising" time="0.271" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_paper_resources_run_in_parallel_with_one_shared_budget" time="0.275" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_github_cannot_claim_correspondence_when_paper_identity_unconfirmed" time="0.249" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_career_combo_never_sends_private_resume_to_public_steps" time="0.272" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_city_change_recomputes_career_but_reuses_resources" time="0.258" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_unrelated_step_reuses_without_changes" time="0.248" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_unsupported_claim_blocked_by_final_gate" time="0.002" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_plain_tool_does_not_require_model_judge" time="0.002" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_personal_gap_requires_independent_verification_and_structure" time="0.001" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_missing_qualification_blocks_gate" time="0.001" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_optional_branch_failure_keeps_valid_parts" time="0.271" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_required_failure_blocks_dependent_conclusions" time="0.243" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_second_adjustment_round_rejected" time="0.287" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_late_write_rejected_by_commit_guard" time="0.276" /><testcase classname="tests.orchestration.test_issue37_composite_engine" name="test_illegal_plans_rejected" time="0.269" /><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_real_github_delivery_is_accepted" time="0.001" /><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_final_gate_rejects_new_text_even_with_valid_refs" time="0.002" /><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_final_gate_rejects_unknown_step_without_refs" time="0.001" /><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_risk_verifier_cannot_opt_out_of_required_check" time="0.001" /><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_synthesis_keeps_clarification_question" time="0.001" /><testcase classname="tests.orchestration.test_issue37_review_regressions" name="test_synthesis_does_not_publish_unqualified_completed_body" time="0.001" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_qualify_extracts_short_claims_from_real_chain" time="0.271" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_done_without_real_artifacts_never_qualifies" time="0.239" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_tampered_payload_hash_blocks_qualification" time="0.289" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_artifact_from_other_conversation_is_rejected" time="0.268" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_stale_public_evidence_cannot_be_restored" time="0.276" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_capability_version_mismatch_blocks_qualification" time="0.287" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_schema_version_mismatch_blocks_qualification" time="0.455" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_invalidated_or_revoked_artifact_cannot_be_reused" time="0.278" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_career_private_background_stays_local" time="0.296" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_forged_conclusion_is_blocked_by_independent_verifier" time="0.299" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_gate_failure_triggers_one_controlled_repair" time="0.005" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_second_gate_repair_round_is_rejected" time="0.007" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_step_adjustment_and_gate_repair_share_one_round" time="0.007" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_planner_rejects_second_adjustment" time="0.002" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_synthesizer_excludes_unqualified_steps" time="0.006" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_planner_sorts_dependencies_before_dependents" time="0.001" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_evidence_bound_terminal_is_not_upgraded" time="0.282" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_restore_rejects_unqualified_step_record" time="0.274" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_draft_prerequisite_blocks_dependent_step" time="0.002" /><testcase classname="tests.orchestration.test_issue37_verified_synthesis" name="test_unqualified_projection_is_not_committed" time="0.310" /><testcase classname="tests.orchestration.test_issue43_compat_seams" name="test_planner_rejects_stale_recipe_and_capability_versions" time="0.001" /><testcase classname="tests.orchestration.test_issue43_compat_seams" name="test_prior_composite_rejected_when_contract_version_mismatches" time="0.244" /><testcase classname="tests.kernel.test_node_kernel" name="test_registry_rejects_unknown_capability_and_gate" time="0.001" /><testcase classname="tests.kernel.test_node_kernel" name="test_contract_upgrade_reruns_nodes_and_preserves_old_receipts" time="0.281" /><testcase classname="tests.kernel.test_node_kernel" name="test_recomputation_preserves_payload_referenced_by_old_receipt" time="0.283" /><testcase classname="tests.kernel.test_node_kernel" name="test_registry_rejects_skipped_prerequisite_and_cycle" time="0.002" /><testcase classname="tests.kernel.test_node_kernel" name="test_completed_receipts_reuse_without_rerun" time="0.260" /><testcase classname="tests.kernel.test_node_kernel" name="test_failed_receipt_is_not_reused_and_retries_only_that_node" time="0.276" /><testcase classname="tests.kernel.test_node_kernel" name="test_required_gate_failure_invalidates_artifact" time="0.272" /><testcase classname="tests.kernel.test_node_kernel" name="test_invalidate_nodes_marks_history_and_forces_rerun" time="0.285" /><testcase classname="tests.kernel.test_node_kernel" name="test_stop_request_rejects_without_artifacts" time="0.260" /><testcase classname="tests.kernel.test_node_kernel" name="test_lease_transfer_rejects_late_result" time="0.287" /><testcase classname="tests.kernel.test_node_kernel" name="test_final_commit_check_rejects_transfer_after_last_node" time="0.260" /><testcase classname="tests.kernel.test_node_kernel" name="test_message_terminal_rejects_late_result" time="0.260" /><testcase classname="tests.kernel.test_node_kernel" name="test_cross_run_artifact_reuse_and_invalidation" time="0.302" /><testcase classname="tests.kernel.test_node_kernel" name="test_account_isolation_for_artifacts" time="0.263" /><testcase classname="tests.kernel.test_node_kernel" name="test_parallel_group_rejects_intra_group_dependency" time="0.002" /><testcase classname="tests.kernel.test_node_kernel" name="test_parallel_group_rejects_split_registration" time="0.002" /><testcase classname="tests.kernel.test_node_kernel" name="test_parallel_group_runs_concurrently_and_keeps_recipe_order" time="0.424" /><testcase classname="tests.kernel.test_node_kernel" name="test_parallel_group_enforces_limit" time="0.313" /><testcase classname="tests.kernel.test_node_kernel" name="test_parallel_group_failure_keeps_sibling_artifact" time="0.291" /><testcase classname="tests.storage.test_database_migration" name="test_first_startup_transactionally_creates_versioned_sqlite_database" time="0.284" /><testcase classname="tests.storage.test_database_migration" name="test_repeated_startup_does_not_remigrate_or_corrupt_sqlite_data" time="0.285" /><testcase classname="tests.storage.test_database_migration" name="test_sqlite_database_rejects_newer_migration_version_in_chinese" time="0.041" /><testcase classname="tests.storage.test_database_migration" name="test_sqlite_database_corruption_reports_chinese_without_path" time="0.015" /><testcase classname="tests.storage.test_database_migration" name="test_invalid_legacy_conversation_mode_fails_migration_explicitly" time="0.452" /><testcase classname="tests.storage.test_database_migration" name="test_sqlite_foreign_keys_enforced_for_object_accounts" time="0.249" /><testcase classname="tests.storage.test_database_migration" name="test_legacy_database_preserved_readonly_and_never_scanned_on_migration" time="0.312" /><testcase classname="tests.storage.test_database_migration" name="test_app_first_startup_creates_versioned_sqlite_database" time="2.020" /><testcase classname="tests.storage.test_database_migration" name="test_scoped_connection_rejects_select_without_account_filter" time="0.254" /><testcase classname="tests.storage.test_database_migration" name="test_scoped_connection_rejects_update_and_delete_without_account_where" time="0.251" /><testcase classname="tests.storage.test_database_migration" name="test_scoped_connection_rejects_insert_without_account_column" time="0.264" /><testcase classname="tests.storage.test_database_migration" name="test_scoped_connection_allows_account_bound_sql" time="0.819" /><testcase classname="tests.storage.test_database_migration" name="test_upgrade_from_older_schema_overwrites_version_row" time="0.297" /><testcase classname="tests.storage.test_database_migration" name="test_upgrade_backfills_legacy_claimable_rows_into_task_claims" time="0.323" /><testcase classname="tests.storage.test_database_migration" name="test_initialize_from_empty_creates_all_core_tables_and_indexes" time="0.279" /><testcase classname="tests.storage.test_database_migration" name="test_initialize_is_idempotent_for_current_version" time="0.276" /><testcase classname="tests.storage.test_database_migration" name="test_initialize_from_old_schema_migrates_and_preserves_data" time="0.352" /><testcase classname="tests.storage.test_database_migration" name="test_initialize_fails_when_metadata_current_but_core_table_missing" time="0.611" /><testcase classname="tests.storage.test_database_migration" name="test_concurrent_initialize_is_serial_and_consistent" time="0.380" /><testcase classname="tests.chat.test_improvement43_legacy_graph_guard" name="test_old_daily_graph_run_ends_safely_and_retry_uses_current_graph" time="1.328" /><testcase classname="tests.chat.test_improvement43_legacy_graph_guard" name="test_pre_graph_run_without_version_still_executes_current_graph" time="1.274" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_short_fact_question_stays_direct" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_concept_anxiety_is_explanation_not_user_state" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_quoted_emotion_translation_is_direct_task" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_quoted_emotion_in_material_is_not_user_state" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_advice_request_with_emotion_completes_main_request" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_emotion_with_investigation_request_completes_task" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_article_topic_emotion_is_not_user_state" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_no_advice_boundary_suppresses_advice_route" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_no_comfort_boundary_keeps_advice_task" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_answer_only_boundary_shortens_answer" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_explicit_detail_requests_are_direct_tasks[\u8bf7\u8be6\u7ec6\u63a8\u5bfc\u4e00\u4e0b\u8fd9\u4e2a\u516c\u5f0f]" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_explicit_detail_requests_are_direct_tasks[\u5199\u4e00\u7bc7\u4e24\u5343\u5b57\u7684\u6545\u4e8b]" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_explicit_detail_requests_are_direct_tasks[\u8bf7\u5b8c\u6574\u5c55\u5f00\u8bb2\u8bb2\u8fd9\u4e2a\u5b9e\u9a8c]" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_negated_detail_is_not_a_long_request[\u4e0d\u7528\u8be6\u7ec6\u8bb2\uff0c\u7b80\u5355\u8bf4\u4e00\u4e0b]" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_negated_detail_is_not_a_long_request[\u522b\u8bb2\u5f97\u592a\u8be6\u7ec6\uff0c\u7ed9\u4e2a\u5927\u6982]" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_negated_detail_is_not_a_long_request[\u4e0d\u8981\u5c55\u5f00\uff0c\u4e00\u53e5\u8bdd\u5e26\u8fc7]" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_positive_detail_after_unrelated_negation_still_counts" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_quoted_boundaries_are_not_turn_constraints" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_short_translation_keeps_default_budget" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_no_follow_up_boundary_is_recorded" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_thanks_after_resolution_is_natural_closing" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_continuation_adopts_prior_task_form" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_missed_part_adopts_real_request" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_tool_outcomes_override_text_form" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_continuation_source_skips_pure_continuations" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_no_advice_snapshot_compiles_boundary_rules" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_empathy_rules_drop_forced_action" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_explanation_rules_drop_forced_confirmation" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_tool_result_states_real_status" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_tool_failure_requires_truthful_status" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_refusal_shapes_use_error_refusal_rules" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_closing_snapshot_does_not_reopen_task" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_direct_task_rules_follow_real_task_length" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_constraint_cap_matches_prompt_and_metadata" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_policy_priority_puts_task_and_boundaries_first" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_existing_snapshot_reuse_keeps_constraints_and_budget" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_metadata_records_constraints_without_body_text" time="0.002" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_safe_baseline_honors_explicit_boundaries" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_default_output_budget_is_unchanged" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_explicit_detail_uses_extended_task_ceiling" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_advice_continuation_uses_extended_task_ceiling" time="0.001" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_long_request_uses_extended_payload_budget_in_generation" time="0.280" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_continuation_uses_previous_request_without_copying_history" time="0.301" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_retry_reuses_issue21_snapshot" time="0.317" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_tool_failure_is_wired_into_expression_policy" time="0.504" /><testcase classname="tests.chat.test_improvement21_contextual_expression" name="test_parent_graph_end_to_end_uses_v3_policy" time="1.270" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_adopted_brevity_enters_policy_without_missing_profile_claim" time="0.002" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_fact_preference_rule_keeps_source_text_in_data_voice" time="0.002" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_adopted_rules_are_capped_and_ordered" time="0.002" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_unrelated_background_is_not_compiled_into_policy" time="0.002" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_explicit_long_derivation_overrides_default_brevity" time="0.001" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_profile_context_without_adopted_items_avoids_missing_claim" time="0.001" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_failed_profile_falls_back_to_safe_baseline" time="0.001" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_chat_policy_and_profile_block_share_adopted_snapshot" time="0.294" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_retry_after_preference_modify_recompiles_policy_and_slice" time="0.312" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_retry_after_delete_drops_rules_and_claims_no_profile" time="0.319" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_delete_between_compilation_and_send_drops_adopted_rules" time="0.289" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_retry_after_recreating_same_preference_rebinds_metadata" time="0.384" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_chat_policy_failure_drops_profile_and_updates_disclosure" time="0.307" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_study_tutoring_injects_policy_and_profile_from_same_snapshot" time="1.792" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_study_tutoring_next_question_after_delete_does_not_adopt" time="1.440" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_study_tutoring_profile_failure_falls_back_to_baseline[profile]" time="1.346" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_study_tutoring_profile_failure_falls_back_to_baseline[policy]" time="1.395" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_study_tutoring_delete_during_context_compilation_drops_profile" time="1.832" /><testcase classname="tests.chat.test_improvement22_unified_profile_expression" name="test_study_tutoring_isolates_accounts" time="1.692" /><testcase classname="tests.chat.test_issue38_acceptance_paths" name="test_review_wait_and_private_fields_use_real_graph" time="1.482" /><testcase classname="tests.chat.test_issue38_acceptance_paths" name="test_tutoring_partial_evidence_uses_real_graph" time="1.345" /><testcase classname="tests.chat.test_issue38_acceptance_paths" name="test_summary_failure_keeps_feedback_and_recovers_only_summary[timeout]" time="2.089" /><testcase classname="tests.chat.test_issue38_acceptance_paths" name="test_summary_failure_keeps_feedback_and_recovers_only_summary[structure]" time="1.679" /><testcase classname="tests.chat.test_issue38_acceptance_paths" name="test_domain_clarification_and_source_disclosure_use_real_graph[paper]" time="1.551" /><testcase classname="tests.chat.test_issue38_acceptance_paths" name="test_domain_clarification_and_source_disclosure_use_real_graph[github]" time="1.586" /></testsuite></testsuites>

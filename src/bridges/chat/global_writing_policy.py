@@ -62,11 +62,15 @@ class GlobalWritingPolicyCompiler:
     def __init__(
         self,
         resource: GlobalWritingPolicyResource | None | object = _DEFAULT_RESOURCE,
+        *,
+        candidate_enabled: bool = False,
     ) -> None:
         # ``None`` 是启动/测试环境模拟策略资源缺失的显式方式；
         # omitted resource 仍使用内置原创资源。
         if resource is _DEFAULT_RESOURCE:
-            self._delegate = ChatLightweightPolicyCompiler()
+            # 工单 43：候选人工质量门未过，生产新运行默认使用发布基线。
+            # 评测必须显式开启候选，不能把发布基线冒充候选重新计分。
+            self._delegate = ChatLightweightPolicyCompiler(candidate_enabled=candidate_enabled)
             self._custom_instruction = None
         elif resource is None:
             self._delegate = ChatLightweightPolicyCompiler(resource=None)
@@ -75,6 +79,7 @@ class GlobalWritingPolicyCompiler:
             self._delegate = ChatLightweightPolicyCompiler(
                 instruction=resource.instruction,
                 version=resource.version,
+                candidate_enabled=candidate_enabled,
             )
             self._custom_instruction = resource.instruction
         else:

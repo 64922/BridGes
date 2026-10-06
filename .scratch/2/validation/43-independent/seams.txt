@@ -1,0 +1,134 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [ 44%]
+..........................F..F..F..........F......F..................... [ 89%]
+.................                                                        [100%]
+================================== FAILURES ===================================
+________________ test_delete_account_removes_data_and_session _________________
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+
+client = <starlette.testclient.TestClient object at 0x000002A2F1B8F010>
+
+    def test_delete_account_removes_data_and_session(client: TestClient) -> None:
+        _register(client, "alice", "10001@qq.com")
+>       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002A2F1B8F010>
+
+    def _create_chat(client: TestClient) -> str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+>       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+_________________ test_full_backup_restore_roundtrip_via_api __________________
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+
+client = <starlette.testclient.TestClient object at 0x000001E3B4314810>
+
+    def test_full_backup_restore_roundtrip_via_api(client: TestClient) -> None:
+        _register(client, "alice", "10001@qq.com")
+>       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:213: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000001E3B4314810>
+
+    def _create_chat(client: TestClient) -> str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+>       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+____________________ test_export_preview_lists_categories _____________________
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+
+client = <starlette.testclient.TestClient object at 0x0000021C35D5CA50>
+
+    def test_export_preview_lists_categories(client: TestClient) -> None:
+        _register(client, "alice", "10001@qq.com")
+>       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x0000021C35D5CA50>
+
+    def _create_chat(client: TestClient) -> str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+>       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+_______________ test_export_returns_json_download_after_reauth ________________
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+
+client = <starlette.testclient.TestClient object at 0x0000021C3858AB50>
+
+    def test_export_returns_json_download_after_reauth(client: TestClient) -> None:
+        _register(client, "alice", "10001@qq.com")
+>       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x0000021C3858AB50>
+
+    def _create_chat(client: TestClient) -> str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+>       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+__________________ test_create_backup_returns_encrypted_file __________________
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+
+client = <starlette.testclient.TestClient object at 0x000002A2F430A990>
+
+    def test_create_backup_returns_encrypted_file(client: TestClient) -> None:
+        _register(client, "alice", "10001@qq.com")
+>       _create_chat(client)
+
+tests\lifecycle\test_lifecycle_api.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <starlette.testclient.TestClient object at 0x000002A2F430A990>
+
+    def _create_chat(client: TestClient) -> str:
+        response = client.post(
+            "/chat/conversations",
+            json={"title": "API 测试对话", "mode": "companion"},
+        )
+>       assert response.status_code == 201
+E       assert 409 == 201
+E        +  where 409 = <Response [409 Conflict]>.status_code
+
+tests\lifecycle\test_lifecycle_api.py:65: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/lifecycle/test_lifecycle_api.py::test_delete_account_removes_data_and_session
+FAILED tests/lifecycle/test_lifecycle_api.py::test_full_backup_restore_roundtrip_via_api
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_preview_lists_categories
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_returns_json_download_after_reauth
+FAILED tests/lifecycle/test_lifecycle_api.py::test_create_backup_returns_encrypted_file
+5 failed, 156 passed in 31.45s
