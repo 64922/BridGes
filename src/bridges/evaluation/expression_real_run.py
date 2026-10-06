@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,25 @@ from bridges.evaluation.expression_corpus import ExpressionScenario
 from bridges.evaluation.expression_gates import GateResult, evaluate_hard_gates
 from bridges.evaluation.expression_policy_arms import ArmPolicyCompiler, StrategyArm
 from bridges.evaluation.expression_review import ScenarioTranscript, TranscriptTurn
+
+
+def build_attachment_service(database: Any, account_id: str) -> Any:
+    """评测用附件服务：真实附件域，对象文件放临时目录（不进生产）。"""
+
+    import tempfile
+    import uuid
+    from pathlib import Path
+
+    from bridges.chat.attachments import ChatAttachmentService
+    from bridges.storage import BridgesObjectRepository, EncryptedFileObjectStore
+
+    store = EncryptedFileObjectStore(
+        Path(tempfile.gettempdir()) / f"eval39-objects-{uuid.uuid4().hex}",
+        encryption_key="eval39-evidence-only",
+    )
+    objects = BridgesObjectRepository(database, store)
+    objects.ensure_account(account_id, f"{account_id}@eval39.example")
+    return ChatAttachmentService(database, objects)
 
 
 @dataclass(frozen=True)
@@ -89,9 +109,20 @@ class ArmRunResult:
 class RealArmSender:
     """真实模型配对发送器：每场景每臂独立会话，多轮保留前文。"""
 
-    def __init__(self, gateway: Any, *, account_id: str = "eval39-account") -> None:
+    def __init__(
+        self,
+        gateway: Any,
+        *,
+        account_id: str = "eval39-account",
+        compiler_factory: Callable[[StrategyArm], Any] | None = None,
+        conversation_seed: Callable[[Any, str], None] | None = None,
+        run_label: str = "",
+    ) -> None:
         self._gateway = gateway
         self._account_id = account_id
+        self._compiler_factory = compiler_factory or ArmPolicyCompiler
+        self._conversation_seed = conversation_seed
+        self._run_label = run_label
 
     def run(self, scenario: ExpressionScenario, arm: StrategyArm) -> ArmRunResult:
         from datetime import UTC as _UTC
@@ -137,16 +168,24 @@ class RealArmSender:
                 source_message_id=f"{scenario.scenario_id}-profile-{index}",
                 source_at=now,
             )
+        mode = ChatMode.STUDY if scenario.mode == "study" else ChatMode.COMPANION
+        attachments = (
+            build_attachment_service(database, self._account_id)
+            if mode == ChatMode.STUDY
+            else None
+        )
         service = ChatService(
             repository=conversations,
             gateway=self._gateway,
             four_dimension_profile_service=four,
             atomic_profile_service=atomic,
             automatic_profile_service=automatic,
-            writing_policy_compiler=ArmPolicyCompiler(arm),  # type: ignore[arg-type]
+            writing_policy_compiler=self._compiler_factory(arm),  # type: ignore[arg-type]
+            attachment_service=attachments,
         )
-        mode = ChatMode.STUDY if scenario.mode == "study" else ChatMode.COMPANION
         conversation = service.create_conversation(self._account_id, mode=mode)
+        if self._conversation_seed is not None:
+            self._conversation_seed(service, conversation.conversation_id)
 
         turns: list[TranscriptTurn] = []
         measurements: list[TurnMeasurement] = []
@@ -158,7 +197,10 @@ class RealArmSender:
                 self._account_id, conversation.conversation_id, user_text
             )
             context = RunContextEnvelope(
-                run_id=f"eval39-{scenario.scenario_id}-{arm.value}-{turn_index}",
+                run_id=(
+                    f"eval39-{scenario.scenario_id}-{arm.value}-{turn_index}"
+                    + (f"-{self._run_label}" if self._run_label else "")
+                ),
                 account_id=self._account_id,
                 project_id=conversation.conversation_id,
                 workflow_name="chat",

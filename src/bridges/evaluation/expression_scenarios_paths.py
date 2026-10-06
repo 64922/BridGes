@@ -22,16 +22,24 @@ SCENARIOS: tuple[ExpressionScenario, ...] = (
         title="详细推导请求",
         category=ExpressionCategory.LONG_TASK,
         formal_path="chat.companion",
-        turns=("请详细推导一下这个公式，每一步都要。", "再补充适用条件。"),
+        turns=(
+            "请详细推导勾股定理 a² + b² = c² 的面积法证明，控制在三百字以内。",
+            "再补充适用条件。",
+        ),
         detail_required=True,
+        notes="验收修复：明确公式对象与长度上限，显式详细请求触发扩展额度，任务可完成。",
     ),
     scenario(
         scenario_id="long-comparison",
         title="详细对比请求",
         category=ExpressionCategory.LONG_TASK,
         formal_path="chat.companion",
-        turns=("详细对比一下这两方法，尽量完整。", "包括各自的失败场景。"),
+        turns=(
+            "详细分析快速排序和归并排序的差异，并给出时间复杂度和适用场景，控制在四百字以内。",
+            "再举一个具体例子说明。",
+        ),
         detail_required=True,
+        notes="验收修复：点名两种方法与长度上限，显式详细请求触发扩展额度。",
     ),
     scenario(
         scenario_id="long-plan",

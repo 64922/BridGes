@@ -53,6 +53,9 @@ from bridges.evaluation.expression_provenance import (  # noqa: E402
     build_run_lock,
     code_commit,
 )
+from bridges.evaluation.expression_real_gateway import (  # noqa: E402
+    build_real_gateway,
+)
 from bridges.evaluation.expression_real_run import RealArmSender  # noqa: E402
 from bridges.evaluation.expression_release import evaluate_release  # noqa: E402
 from bridges.evaluation.expression_review import (  # noqa: E402
@@ -119,34 +122,6 @@ def _select_real_scenarios(limit: int) -> list[Any]:
             if len(selected) >= limit:
                 break
     return selected
-
-
-def build_real_gateway(data_dir: Path) -> tuple[Any, Any]:
-    """从 OS 凭据库读取运行期 Qwen 凭据并装配生产组合；缺凭据报错。"""
-
-    from pydantic import SecretStr
-
-    from bridges.ai.production import build_production_composition
-    from bridges.config import get_settings
-    from bridges.credentials.runtime_resolver import RuntimeCredentialResolver
-    from bridges.credentials.store import build_credential_store
-
-    settings = get_settings()
-    store = build_credential_store(settings, data_dir, namespace="runtime")
-    resolver = RuntimeCredentialResolver(settings=settings, credential_store=store)
-    resolved = resolver.qwen_api_key()
-    if not resolved.configured or resolved.value is None:
-        raise RuntimeError("missing_global_qwen_key")
-    composition = build_production_composition(
-        settings.model_copy(
-            update={"qwen_api_key": SecretStr(resolved.value.get_secret_value())}
-        )
-    )
-    if not composition.global_key_configured:
-        raise RuntimeError("missing_global_qwen_key")
-    if composition.gateway.get_adapter("qwen_text_chat", "1") is None:
-        raise RuntimeError("missing_text_chat_adapter")
-    return composition, resolver
 
 
 def _environment(model_id: str | None) -> dict[str, Any]:
