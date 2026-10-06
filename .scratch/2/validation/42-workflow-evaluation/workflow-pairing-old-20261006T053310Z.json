@@ -1,0 +1,449 @@
+{
+  "tree": "D:\\BridGes\\.worktrees\\42-baseline-7818c34",
+  "commit": "7818c34b1cc425081b54fd65cedf87d61c80fefb",
+  "dirty": false,
+  "corpus_sha256": "6072356363b4cdf840cb403840ca8f26fa1ac6b7e141d07b15c2fd7d2e143fd1",
+  "repeats": 2,
+  "started_at": "2026-10-06T05:33:14.799062+00:00",
+  "cases": [
+    {
+      "case_id": "A01.lightweight",
+      "scenario_id": "A01",
+      "repeat": 0,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "Y3mltfBSiXWte0px1Rqdug",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": true,
+          "answer": "我挺好的，随时待命。你今天过得怎么样？有什么想聊的，还是就随便说说话？",
+          "elapsed_s": 7.38,
+          "answer_elapsed_ms": 7344,
+          "queue_to_first_token_ms": 6996,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 1,
+        "prompt_tokens": 423,
+        "completion_tokens": 355
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "single_chat_call": true,
+        "no_external_model_capability": true,
+        "no_task_created": null,
+        "no_unnecessary_search": false
+      }
+    },
+    {
+      "case_id": "A02.hint_override",
+      "scenario_id": "A02",
+      "repeat": 0,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "hW33PNUb0JvNGB1mldnqeg",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "已按论文模块检索 arXiv，实际查询词：从南区宿舍走到图书馆大概 多久？走路。\narXiv 没有返回结果，我没有可推荐的论文，也不会用记忆补造条目。\n- arXiv 对本主题没有返回结果；稀疏领域可换英文术语或放宽年份后重试。\n可以补充英文术语、放宽年份或换个相近方向后重试。",
+          "elapsed_s": 1.14,
+          "answer_elapsed_ms": 1110,
+          "queue_to_first_token_ms": null,
+          "capability_calls": {},
+          "paper_search_empty": false
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "no_paper_results": false
+      }
+    },
+    {
+      "case_id": "A03.ambiguous",
+      "scenario_id": "A03",
+      "repeat": 0,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "WHHXB9wM4e3NXTIoG0XbKg",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "最核心的起点是 2017 年的原始论文《Attention Is All You Need》（arXiv:1706.03762）。\n\n为了方便不同阶段的学习，推荐以下几份经典资料：\n- 代码级精读：Harvard NLP 的《The Annotated Transformer》。\n- 视频与实操：Andrej Karpathy 的《Let's build GPT from scratch》或李宏毅老师的 Transformer 专题课程。\n- 系统教程：Hugging Face 的官方 NLP 课程。",
+          "elapsed_s": 15.7,
+          "answer_elapsed_ms": 15671,
+          "queue_to_first_token_ms": 13985,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 1,
+        "prompt_tokens": 390,
+        "completion_tokens": 791
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "asks_one_clarification": false,
+        "no_paper_results": true
+      }
+    },
+    {
+      "case_id": "A11.hard_condition",
+      "scenario_id": "A11",
+      "repeat": 0,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "EOgy1bT1QU_BKXjE_NyC3Q",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "这里几篇 2020 年后具有代表性的 Transformer 论文：\n\n1. **An Image is Worth 16x16 Words (ViT, 2020)**：将 Transformer 直接应用于图像分类，证明了纯注意力机制在视觉领域的潜力。\n2. **Swin Transformer (2021)**：引入层级结构和移动窗口机制，解决了标准 Transformer 处理高分辨率图像时计算复杂度呈平方级增长的问题。\n3. **FlashAttention (2022)**：通过 IO 感知的分块计算优化注意力机制，在不改变数学结果的前提下大幅降低显存占用并提升计算速度。\n4. **Masked Autoencoders Are Scalable Vision Learners (MAE, 2021)**：提出高比例掩码的非对称自编码器架构，推动了视觉自监督学习的发展。",
+          "elapsed_s": 21.2,
+          "answer_elapsed_ms": 21187,
+          "queue_to_first_token_ms": 18533,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 1,
+        "prompt_tokens": 405,
+        "completion_tokens": 1178
+      },
+      "checks": {
+        "no_paper_results": true,
+        "hard_condition_blocked": false
+      }
+    },
+    {
+      "case_id": "R07.stop_continue",
+      "scenario_id": "R07",
+      "repeat": 0,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "a_cbu6udo0zSmP-ebVln1g",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "刚开始接触 Python，首推 **《Python编程：从入门到实践》**。它把基础语法和三个实战项目（小游戏、数据可视化、Web应用）结合得很好，适合完全零基础且希望尽快看到实际成果的人。如果你更倾向于钻研底层原理而不是做应用，它可能不够深入。\n\n如果你有其他编程语言基础，推荐 **《简明Python教程》**。它非常精简，能帮你快速过一遍 Python 的核心语法。但它缺乏详细的练习，不适合需要手把手带练的纯新手。\n\n如果你习惯通过大量动手敲代码来学习，可以看看 **《笨办法学Python 3》**。它通过密集的练习帮你形成肌肉记忆。但如果你更喜欢先理解理论概念再动手，这种学习方式可能会让你觉得枯燥。",
+          "elapsed_s": 29.52,
+          "answer_elapsed_ms": 29483,
+          "queue_to_first_token_ms": 27395,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        },
+        {
+          "run_id": "FboifX1pHgYqmQVVZGUyJQ",
+          "status": "stopped",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "",
+          "elapsed_s": 4.58,
+          "answer_elapsed_ms": null,
+          "queue_to_first_token_ms": null,
+          "capability_calls": {},
+          "paper_search_empty": true
+        },
+        {
+          "run_id": "zDw7RJWQwfAeZ-Fy4YPJWA",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "如果你想从“能写出代码”进阶到“写出地道的 Python 代码”，推荐《流畅的Python》。它深入讲解了 Python 的数据模型和高级特性，能帮你摆脱其他语言的编程思维。不过它有一定门槛，不适合刚学完基础语法的新手。\n\n如果你需要一本大而全的案头参考书，推荐《Python学习手册》。它非常系统地剖析了 Python 的方方面面，适合喜欢刨根问底、想全面掌握语言机制的人。但它的篇幅极长，不适合追求快速上手或喜欢轻量阅读的读者。\n\n如果你更习惯在线图文学习，可以看看廖雪峰的 Python 教程。它免费、更新及时，且支持在线运行代码，适合习惯在电脑前边看边练、随时查阅的人。但它的深度相对有限，且缺乏纸质书那种系统性的章节沉淀。\n\n如果你已经掌握了基础，主要目的是解决数据分析、爬虫或自动化等具体问题，推荐《Python Cookbook》。它按主题分类，提供了大量实用场景的代码片段和最佳实践。但它不是用来学语法的，而是用来查方案的，零基础直接看会很吃力。",
+          "elapsed_s": 22.33,
+          "answer_elapsed_ms": 22296,
+          "queue_to_first_token_ms": 19434,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": "FboifX1pHgYqmQVVZGUyJQ",
+      "stopped_run_status": "stopped",
+      "continued_run_id": "zDw7RJWQwfAeZ-Fy4YPJWA",
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 2,
+        "prompt_tokens": 971,
+        "completion_tokens": 2897
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "stop_no_auto_continue": true,
+        "continue_creates_new_run": true
+      }
+    },
+    {
+      "case_id": "A01.lightweight",
+      "scenario_id": "A01",
+      "repeat": 1,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "FE5Z4C6xum5fuvBeEPPuEw",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": true,
+          "answer": "你好呀，我挺好的，随时都在这里陪你。今天想聊点什么？是有什么新鲜事想分享，还是单纯想放松一下？",
+          "elapsed_s": 12.69,
+          "answer_elapsed_ms": 12656,
+          "queue_to_first_token_ms": 12192,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 1,
+        "prompt_tokens": 423,
+        "completion_tokens": 659
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "single_chat_call": true,
+        "no_external_model_capability": true,
+        "no_task_created": null,
+        "no_unnecessary_search": false
+      }
+    },
+    {
+      "case_id": "A02.hint_override",
+      "scenario_id": "A02",
+      "repeat": 1,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "2_FYwI_p2_SsLwaVEsB1QA",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "已按论文模块检索 arXiv，实际查询词：从南区宿舍走到图书馆大概 多久？走路。\narXiv 没有返回结果，我没有可推荐的论文，也不会用记忆补造条目。\n- arXiv 对本主题没有返回结果；稀疏领域可换英文术语或放宽年份后重试。\n可以补充英文术语、放宽年份或换个相近方向后重试。",
+          "elapsed_s": 0.5,
+          "answer_elapsed_ms": 483,
+          "queue_to_first_token_ms": null,
+          "capability_calls": {},
+          "paper_search_empty": false
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "no_paper_results": false
+      }
+    },
+    {
+      "case_id": "A03.ambiguous",
+      "scenario_id": "A03",
+      "repeat": 1,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "3Ysqt-wXJB5HM-k_9NUNvQ",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "最核心的资料是 2017 年的原始论文《Attention Is All You Need》（https://arxiv.org/abs/1706.03762）。\n\n想直观理解结构，推荐 Jay Alammar 的图解博客《The Illustrated Transformer》（https://jalammar.github.io/illustrated-transformer/）。\n\n需要结合代码学习，可以看 Harvard NLP 的《The Annotated Transformer》（https://nlp.seas.harvard.edu/annotated-transformer/），里面有完整的 PyTorch 实现和注释。",
+          "elapsed_s": 12.41,
+          "answer_elapsed_ms": 12389,
+          "queue_to_first_token_ms": 10862,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 1,
+        "prompt_tokens": 390,
+        "completion_tokens": 642
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "asks_one_clarification": false,
+        "no_paper_results": true
+      }
+    },
+    {
+      "case_id": "A11.hard_condition",
+      "scenario_id": "A11",
+      "repeat": 1,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "57c3Bq-7HLkre7VWykOSsA",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "帮你找了几篇 2020 年以后 Transformer 领域的代表性论文，涵盖视觉、效率和语言模型方向：\n\n1. **An Image is Worth 16x16 Words (ViT)** (2020)：将纯 Transformer 直接用于图像分类，证明无需 CNN 也能在视觉任务上达到顶尖效果。\n2. **Swin Transformer** (2021)：引入移位窗口机制，将视觉 Transformer 的计算复杂度降为线性，成为后续的通用视觉骨干网络。\n3. **FlashAttention** (2022)：通过 IO 感知的分块计算，大幅降低注意力机制的显存占用和计算时间且保持精确注意力，是长文本大模型训练的关键优化。\n4. **Masked Autoencoders Are Scalable Vision Learners (MAE)** (2021)：提出非对称掩码自编码器，通过高比例遮挡并重建图像块，实现了高效的视觉自监督学习。\n5. **LLaMA: Open and Efficient Foundation Language Models** (2023)：证明在高质量数据上训练较小参数的 Transformer，性能可超越大参数模型，奠定了当前开源大模型的高效训练范式。",
+          "elapsed_s": 44.45,
+          "answer_elapsed_ms": 44421,
+          "queue_to_first_token_ms": 40519,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": null,
+      "stopped_run_status": null,
+      "continued_run_id": null,
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 1,
+        "prompt_tokens": 405,
+        "completion_tokens": 1791
+      },
+      "checks": {
+        "no_paper_results": true,
+        "hard_condition_blocked": false
+      }
+    },
+    {
+      "case_id": "R07.stop_continue",
+      "scenario_id": "R07",
+      "repeat": 1,
+      "error": null,
+      "turns": [
+        {
+          "run_id": "INW8Bo6TTqeEXQGkp2bNUQ",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "给你挑了三本风格不同的 Python 入门书，你可以根据自己的学习习惯来选：\n\n1. **《Python编程：从入门到实践》**（Eric Matthes）\n综合首选。前半部分讲基础语法，后半部分带做三个实战项目（游戏、数据可视化、Web 应用）。\n- **适用**：绝大多数零基础新手，喜欢“学完就练手”看效果的人。\n- **不适用**：已有其他编程基础，觉得基础项目太简单的人。\n\n2. **《笨办法学Python 3》**（Zed A. Shaw）\n强调动手。通过 52 个习题让你不断敲代码，靠肌肉记忆掌握语法。\n- **适用**：喜欢通过大量实操来学习，或者看理论容易走神的人。\n- **不适用**：不喜欢机械重复练习，或想深入理解底层原理的人。\n\n3. **《Python学习手册》**（Mark Lutz）\n大而全的教材。非常厚，把 Python 的语法和底层机制讲得很透彻。\n- **适用**：想系统、扎实地掌握 Python，且有耐心啃大部头的人。\n- **不适用**：想快速上手做项目，或者容易被厚书劝退的人。\n\n如果你没有特别的偏好，直接看第一本《Python编程：从入门到实践》就好，它的节奏和反馈设计对新手最友好。",
+          "elapsed_s": 22.67,
+          "answer_elapsed_ms": 22640,
+          "queue_to_first_token_ms": 17658,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        },
+        {
+          "run_id": "l9ATmC2n6RxzH_siziplnQ",
+          "status": "stopped",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "",
+          "elapsed_s": 4.58,
+          "answer_elapsed_ms": null,
+          "queue_to_first_token_ms": null,
+          "capability_calls": {},
+          "paper_search_empty": true
+        },
+        {
+          "run_id": "ORUOvv6PwVBUxqesbZ2hGQ",
+          "status": "done",
+          "error_code": null,
+          "error_message": null,
+          "search_planned": false,
+          "answer": "这次给你补充三种不同形式的教程，包括在线图文、视频课和特色书籍，你可以根据自己偏好的学习媒介来选：\n\n1. **廖雪峰的 Python 教程**（在线图文）\n国内很经典的免费文字教程，从基础到进阶都有，排版清晰，支持在网页上直接运行代码。\n- **适用**：喜欢碎片化阅读、需要随时查阅语法，或者习惯看图文教程的人。\n- **不适用**：需要老师带着梳理知识体系，或者不喜欢看大段文字的人。\n\n2. **Coursera 的 \"Python for Everybody\"**（视频课程）\n密歇根大学 Charles Severances 教授主讲，讲解极其耐心，节奏很慢（国内 B站有带字幕的搬运版）。\n- **适用**：喜欢听课、需要老师引导建立知识框架，或者看文字容易走神的人。\n- **不适用**：习惯自己快速看书跳跃学习，或者觉得视频节奏太慢的人。\n\n3. **《Head First Python》（第三版）**（特色书籍）\n采用大量插图、对话和视觉化排版来讲解知识，刻意避免枯燥的长篇大论。\n- **适用**：视觉型学习者，或者看传统教材容易犯困、需要趣味性来保持注意力的人。\n- **不适用**：喜欢严谨学术风格，或者觉得插图太多干扰阅读的人。\n\n如果你平时习惯看视频跟着敲，可以直接去 B站搜 \"Python for Everybody\"；如果喜欢自己随时翻看，廖雪峰的在线教程最方便。",
+          "elapsed_s": 32.55,
+          "answer_elapsed_ms": 32516,
+          "queue_to_first_token_ms": 27101,
+          "capability_calls": {
+            "qwen_text_chat": 1
+          },
+          "paper_search_empty": true
+        }
+      ],
+      "tasks": null,
+      "stopped_run_id": "l9ATmC2n6RxzH_siziplnQ",
+      "stopped_run_status": "stopped",
+      "continued_run_id": "ORUOvv6PwVBUxqesbZ2hGQ",
+      "idle_new_runs": 0,
+      "cost": {
+        "calls": 2,
+        "prompt_tokens": 1110,
+        "completion_tokens": 3133
+      },
+      "checks": {
+        "answer_nonempty": true,
+        "stop_no_auto_continue": true,
+        "continue_creates_new_run": true
+      }
+    }
+  ],
+  "inconclusive": false,
+  "reason": null,
+  "model_ids": [
+    "qwen3.7-plus-2026-05-26"
+  ],
+  "notes": [],
+  "finished_at": "2026-10-06T05:37:09.291627+00:00"
+}

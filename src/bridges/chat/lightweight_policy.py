@@ -793,9 +793,16 @@ def continuation_source_text(
 
 
 def output_tokens_for_request(text: str, continuation_text: str = "") -> int:
-    """按任务给出有界输出额度：显式长文/推导用任务上限，其余保持默认。"""
+    """按任务给出有界输出额度：显式长文/推导用任务上限，其余保持默认。
+
+    工单 42 真实配对（R07）：资源推荐等建议类任务的续接会重放逐条交付
+    （用途、理由与核对证据），默认额度会在交付中途耗尽并显式截断；建议
+    类续接与显式长文共用同一有界任务上限，仍受最终载荷门与运行额度约束。
+    """
     classification = _classify_text(text, continuation_text)
     if "detail_requested" in classification.constraints:
+        return EXTENDED_OUTPUT_TOKENS
+    if continuation_text and classification.form is ChatResponseForm.ADVICE:
         return EXTENDED_OUTPUT_TOKENS
     return DEFAULT_OUTPUT_TOKENS
 

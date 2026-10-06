@@ -1,0 +1,724 @@
+{
+  "kind": "workflow-pairing",
+  "generated_at": "2026-10-06T05:39:22.912289+00:00",
+  "corpus_sha256": "6072356363b4cdf840cb403840ca8f26fa1ac6b7e141d07b15c2fd7d2e143fd1",
+  "baseline_commit": "7818c34",
+  "old": {
+    "tree": "D:\\BridGes\\.worktrees\\42-baseline-7818c34",
+    "commit": "7818c34b1cc425081b54fd65cedf87d61c80fefb",
+    "dirty": false,
+    "model_ids": [
+      "qwen3.7-plus-2026-05-26"
+    ],
+    "started_at": "2026-10-06T05:33:14.799062+00:00",
+    "finished_at": "2026-10-06T05:37:09.291627+00:00"
+  },
+  "new": {
+    "tree": "D:\\BridGes\\.worktrees\\42-workflow-evaluation-and-external-capability-gates",
+    "commit": "1c6f9edda00165de1b0bb19e02912037e65e5b54",
+    "dirty": true,
+    "model_ids": [
+      "qwen3.7-plus-2026-05-26"
+    ],
+    "started_at": "2026-10-06T05:37:14.166225+00:00",
+    "finished_at": "2026-10-06T05:39:17.844364+00:00"
+  },
+  "cases": [
+    {
+      "case_id": "A01.lightweight",
+      "scenario_id": "A01",
+      "budget_class": "lightweight",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "single_chat_call": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_external_model_capability": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_task_created": {
+              "passed": 0,
+              "applicable": 0
+            },
+            "no_unnecessary_search": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 8,
+          "pass_rate": 0.75
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 846,
+          "completion_tokens": 1014
+        },
+        "latency": {
+          "answer_p50_ms": 7344,
+          "answer_p95_ms": 12656,
+          "answer_samples": 2,
+          "first_token_p50_ms": 6996,
+          "first_token_p95_ms": 12192,
+          "first_token_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "single_chat_call": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_external_model_capability": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_task_created": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_unnecessary_search": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 8,
+          "applicable": 10,
+          "pass_rate": 0.8
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 3142,
+          "completion_tokens": 912
+        },
+        "latency": {
+          "answer_p50_ms": 11578,
+          "answer_p95_ms": 13921,
+          "answer_samples": 2,
+          "first_token_p50_ms": 11367,
+          "first_token_p95_ms": 13612,
+          "first_token_samples": 2
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "single_chat_call": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_external_model_capability": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_task_created": {
+          "old": [
+            null,
+            null
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_unnecessary_search": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            false,
+            false
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "A02.hint_override",
+      "scenario_id": "A02",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 4,
+          "pass_rate": 0.5
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": 483,
+          "answer_p95_ms": 1110,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 4,
+          "applicable": 4,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": 358,
+          "answer_p95_ms": 375,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "no_paper_results": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "A03.ambiguous",
+      "scenario_id": "A03",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "asks_one_clarification": {
+              "passed": 0,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 4,
+          "applicable": 6,
+          "pass_rate": 0.6667
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 780,
+          "completion_tokens": 1433
+        },
+        "latency": {
+          "answer_p50_ms": 12389,
+          "answer_p95_ms": 15671,
+          "answer_samples": 2,
+          "first_token_p50_ms": 10862,
+          "first_token_p95_ms": 13985,
+          "first_token_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 1,
+              "applicable": 2
+            },
+            "asks_one_clarification": {
+              "passed": 0,
+              "applicable": 2
+            },
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 3,
+          "applicable": 6,
+          "pass_rate": 0.5
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 930,
+          "completion_tokens": 2007
+        },
+        "latency": {
+          "answer_p50_ms": 17452,
+          "answer_p95_ms": 18266,
+          "answer_samples": 2,
+          "first_token_p50_ms": 15803,
+          "first_token_p95_ms": 15803,
+          "first_token_samples": 1
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            false
+          ]
+        },
+        "asks_one_clarification": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            false,
+            false
+          ]
+        },
+        "no_paper_results": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "A11.hard_condition",
+      "scenario_id": "A11",
+      "budget_class": "normal",
+      "turns": 1,
+      "old": {
+        "quality": {
+          "checks": {
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "hard_condition_blocked": {
+              "passed": 0,
+              "applicable": 2
+            }
+          },
+          "passed": 2,
+          "applicable": 4,
+          "pass_rate": 0.5
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 810,
+          "completion_tokens": 2969
+        },
+        "latency": {
+          "answer_p50_ms": 21187,
+          "answer_p95_ms": 44421,
+          "answer_samples": 2,
+          "first_token_p50_ms": 18533,
+          "first_token_p95_ms": 40519,
+          "first_token_samples": 2
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "no_paper_results": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "hard_condition_blocked": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 4,
+          "applicable": 4,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0
+        },
+        "latency": {
+          "answer_p50_ms": 78,
+          "answer_p95_ms": 78,
+          "answer_samples": 2,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0
+        }
+      },
+      "check_results": {
+        "no_paper_results": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "hard_condition_blocked": {
+          "old": [
+            false,
+            false
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "R07.stop_continue",
+      "scenario_id": "R07",
+      "budget_class": "normal",
+      "turns": 3,
+      "old": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "stop_no_auto_continue": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "continue_creates_new_run": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 6,
+          "applicable": 6,
+          "pass_rate": 1.0
+        },
+        "cost": {
+          "calls": 4,
+          "prompt_tokens": 2081,
+          "completion_tokens": 6030
+        },
+        "latency": {
+          "answer_p50_ms": 22640,
+          "answer_p95_ms": 32516,
+          "answer_samples": 4,
+          "first_token_p50_ms": 19434,
+          "first_token_p95_ms": 27395,
+          "first_token_samples": 4
+        }
+      },
+      "new": {
+        "quality": {
+          "checks": {
+            "answer_nonempty": {
+              "passed": 0,
+              "applicable": 2
+            },
+            "stop_no_auto_continue": {
+              "passed": 2,
+              "applicable": 2
+            },
+            "continue_creates_new_run": {
+              "passed": 2,
+              "applicable": 2
+            }
+          },
+          "passed": 4,
+          "applicable": 6,
+          "pass_rate": 0.6667
+        },
+        "cost": {
+          "calls": 2,
+          "prompt_tokens": 2824,
+          "completion_tokens": 2048
+        },
+        "latency": {
+          "answer_p50_ms": 6905,
+          "answer_p95_ms": 18703,
+          "answer_samples": 4,
+          "first_token_p50_ms": null,
+          "first_token_p95_ms": null,
+          "first_token_samples": 0
+        }
+      },
+      "check_results": {
+        "answer_nonempty": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            false,
+            false
+          ]
+        },
+        "stop_no_auto_continue": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        },
+        "continue_creates_new_run": {
+          "old": [
+            true,
+            true
+          ],
+          "new": [
+            true,
+            true
+          ]
+        }
+      }
+    }
+  ],
+  "old_totals": {
+    "quality": {
+      "checks": {
+        "answer_nonempty": {
+          "passed": 8,
+          "applicable": 8
+        },
+        "single_chat_call": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_external_model_capability": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_task_created": {
+          "passed": 0,
+          "applicable": 0
+        },
+        "no_unnecessary_search": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "no_paper_results": {
+          "passed": 4,
+          "applicable": 6
+        },
+        "asks_one_clarification": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "hard_condition_blocked": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "stop_no_auto_continue": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "continue_creates_new_run": {
+          "passed": 2,
+          "applicable": 2
+        }
+      },
+      "passed": 20,
+      "applicable": 28,
+      "pass_rate": 0.7143
+    },
+    "cost": {
+      "calls": 10,
+      "prompt_tokens": 4517,
+      "completion_tokens": 11446
+    },
+    "latency": {
+      "answer_p50_ms": 15671,
+      "answer_p95_ms": 44421,
+      "answer_samples": 12,
+      "first_token_p50_ms": 17658,
+      "first_token_p95_ms": 40519,
+      "first_token_samples": 10
+    },
+    "error_codes": {}
+  },
+  "new_totals": {
+    "quality": {
+      "checks": {
+        "answer_nonempty": {
+          "passed": 5,
+          "applicable": 8
+        },
+        "single_chat_call": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_external_model_capability": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_task_created": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "no_unnecessary_search": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "no_paper_results": {
+          "passed": 6,
+          "applicable": 6
+        },
+        "asks_one_clarification": {
+          "passed": 0,
+          "applicable": 2
+        },
+        "hard_condition_blocked": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "stop_no_auto_continue": {
+          "passed": 2,
+          "applicable": 2
+        },
+        "continue_creates_new_run": {
+          "passed": 2,
+          "applicable": 2
+        }
+      },
+      "passed": 23,
+      "applicable": 30,
+      "pass_rate": 0.7667
+    },
+    "cost": {
+      "calls": 6,
+      "prompt_tokens": 6896,
+      "completion_tokens": 4967
+    },
+    "latency": {
+      "answer_p50_ms": 6905,
+      "answer_p95_ms": 18703,
+      "answer_samples": 12,
+      "first_token_p50_ms": 13612,
+      "first_token_p95_ms": 15803,
+      "first_token_samples": 3
+    },
+    "error_codes": {
+      "web_search_citation_invalid": 2,
+      "network_not_allowed": 2,
+      "output_budget_exceeded": 3
+    }
+  },
+  "problems": [],
+  "budgets": {
+    "contract_version": "run-budget-v1",
+    "classes": {
+      "lightweight": {
+        "total_budget_ms": 120000,
+        "verify_deliver_reserve_ms": 0,
+        "model_call_limit": 6,
+        "external_parallel_max": 2,
+        "candidate_screen_max": 20,
+        "deep_read_max": 3,
+        "adjustment_rounds_max": 1,
+        "transient_retry_max": 1
+      },
+      "normal": {
+        "total_budget_ms": 60000,
+        "verify_deliver_reserve_ms": 15000,
+        "model_call_limit": 6,
+        "external_parallel_max": 2,
+        "candidate_screen_max": 20,
+        "deep_read_max": 3,
+        "adjustment_rounds_max": 1,
+        "transient_retry_max": 1
+      },
+      "deep": {
+        "total_budget_ms": 120000,
+        "verify_deliver_reserve_ms": 30000,
+        "model_call_limit": 8,
+        "external_parallel_max": 2,
+        "candidate_screen_max": 20,
+        "deep_read_max": 5,
+        "adjustment_rounds_max": 1,
+        "transient_retry_max": 1
+      }
+    }
+  }
+}

@@ -41,6 +41,26 @@ def _output_limit(model_id: str | None, tokens: int) -> dict[str, int]:
     return {"max_tokens": tokens}
 
 
+def _thinking_policy(
+    model_id: str | None, payload: dict[str, Any], *, structured: bool = False
+) -> dict[str, bool]:
+    """已核实混合型号的小额度/结构化请求优先交付正文，额度保持不变。
+
+    Qwen 3.5–3.7 Plus/Flash 与 3.6 Max 支持 enable_thinking；3.7 Max
+    只支持思考，不能关闭。明确调用策略优先；其他型号保持原有厂商默认。
+    """
+    match = re.match(r"^qwen3\.([567])-(plus|flash|max)(?:-|$)", model_id or "")
+    if match is None or (match[2] == "max" and match[1] != "6"):
+        return {}
+    explicit = payload.get("enable_thinking")
+    if isinstance(explicit, bool):
+        return {"enable_thinking": explicit}
+    tokens = payload.get("max_tokens", 2048 if structured else 1024)
+    if structured or (isinstance(tokens, int) and tokens <= 1024):
+        return {"enable_thinking": False}
+    return {}
+
+
 class QwenTextChatAdapter(CapabilityAdapter):
     """Adapter for the fixed ``qwen_text_chat`` binding (ADR-0009).
 
@@ -64,6 +84,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "messages": messages,
             "temperature": payload.get("temperature", 0.7),
             **_output_limit(capability.model_id, payload.get("max_tokens", 1024)),
+            **_thinking_policy(capability.model_id, payload),
         }
 
         response_body = self._client.chat_completions(
@@ -99,6 +120,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
             "messages": messages,
             "temperature": payload.get("temperature", 0.7),
             **_output_limit(capability.model_id, payload.get("max_tokens", 1024)),
+            **_thinking_policy(capability.model_id, payload),
             "stream": True,
         }
         last_body: dict[str, Any] | None = None
@@ -174,6 +196,7 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
             "response_format": response_format,
             "temperature": payload.get("temperature", 0.7),
             **_output_limit(capability.model_id, payload.get("max_tokens", 2048)),
+            **_thinking_policy(capability.model_id, payload, structured=True),
         }
 
         response_body = self._client.chat_completions(
@@ -181,6 +204,12 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
             timeout=payload.get(REQUEST_TIMEOUT_SECONDS_KEY),
         )
         choice = first_choice(response_body)
+        if choice.get("finish_reason") == "length":
+            raise AdapterError(
+                code="output_budget_exceeded",
+                message="模型输出额度已耗尽，请缩小问题范围后重试。",
+                retryable=False,
+            )
         message = choice.get("message")
         contract_error_code = (
             "profile_extraction_contract_invalid"

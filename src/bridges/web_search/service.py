@@ -284,6 +284,11 @@ class LocalQueryPlanner:
         r"最新|最近|近期|当前|截至|本周|本月|本季度|本年|最新消息|变化|"
         r"今天(?:新闻|消息|天气|股价|价格|汇率|比赛)|现在(?:新闻|消息|天气|股价|价格|汇率)|\b20\d{2}\b"
     )
+    # 只剔除对助手的近况问候，不剔除“股价最近怎么样”等外部事实对象。
+    _SOCIAL_CHECK_IN = re.compile(
+        r"(?:(?:你|您)|(?:^|[，。！？；;\n]))(?:最近|近期|现在|当前)"
+        r"(?:怎么样|如何|还好吗|过得怎样)"
+    )
     _CURRENT = re.compile(r"今天|现在|实时|当前|截至")
     _FACT_CHECK = re.compile(r"核实|查证|事实核查|属实|真假|可靠吗|是否正确|真的吗")
     _SECRET_ASSIGNMENT = re.compile(
@@ -342,6 +347,7 @@ class LocalQueryPlanner:
         if not explicit:
             local_state_removed = re.sub(
                 r"当前这条[^。！？\n]{0,12}预算|当前的?人数与车辆数", "", content)
+            local_state_removed = self._SOCIAL_CHECK_IN.sub("", local_state_removed)
             fresh = bool(self._FRESHNESS.search(local_state_removed))
         fact_check = bool(self._FACT_CHECK.search(content))
         should_search = force or (mode == ChatMode.COMPANION and (explicit or fresh or fact_check))

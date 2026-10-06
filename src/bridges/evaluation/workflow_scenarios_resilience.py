@@ -1,0 +1,104 @@
+"""韧性与恢复场景的证据绑定。"""
+
+from bridges.evaluation.workflow_scenario_contracts import Scenario, ZeroTolerance
+
+RESILIENCE_SCENARIOS: tuple[Scenario, ...] = (
+    # -- R：韧性、恢复与权限 ------------------------------------------------
+    Scenario(
+        scenario_id="R01",
+        title="同一请求重试、刷新/SSE 断线",
+        expectation="不重复消息、附件或判定；事件按游标可重放",
+        deterministic_tests=(
+            "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates",
+            "tests/chat/test_v2_02_resumable_runs.py::test_retry_idempotency_reuses_run",
+            "tests/chat/test_issue06_stream_replay_consistency.py::test_disconnect_cursor_replay_reconstructs_body",
+            "tests/chat/test_chat_attachments.py::test_upload_uses_content_sniffing_and_retries_idempotently",
+        ),
+        fault_injection_tests=(
+            "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates",
+        ),
+        zero_tolerance=(ZeroTolerance.DUPLICATE_JUDGEMENT,),
+    ),
+    Scenario(
+        scenario_id="R02",
+        title="节点产物已提交，图检查点尚未保存时进程失败",
+        expectation="从完成收据恢复，已完成本地效果不重复",
+        fault_injection_tests=(
+            "tests/chat/test_improvement30_study_pages_recognition.py::test_retry_recovers_committed_pages_from_receipts",
+            "tests/chat/test_terminal_recovery_and_replay.py::test_message_commit_window_recovery_repairs_without_second_model_call",
+            "tests/chat/test_study_recognition_failures.py::test_restart_after_partial_failure_recovers_without_duplicating_pages",
+        ),
+    ),
+    Scenario(
+        scenario_id="R03",
+        title="旧租约执行者晚返回，或用户已经停止",
+        expectation="拒绝旧尝试/取消后的提交，不覆盖新版本",
+        fault_injection_tests=(
+            "tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit",
+            "tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material",
+            "tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change",
+            "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing",
+        ),
+        zero_tolerance=(ZeroTolerance.WRITE_AFTER_STOP,),
+    ),
+    Scenario(
+        scenario_id="R04",
+        title="工具限流或多节点重试",
+        expectation="预算/计数不重置，有限重试，真实恢复时刻才展示",
+        fault_injection_tests=(
+            "tests/chat/test_improvement09_run_budget_ledger.py::test_lease_recovery_reloads_ledger_without_reset",
+            "tests/chat/test_improvement09_run_budget_ledger.py::test_transient_retry_capped_once_per_registered_call",
+            "tests/web_search/test_issue03_retry_matrix.py::test_attempts_match_actual_http_calls_on_consecutive_failures",
+            "tests/arxiv_mcp/test_retry_stale_warmup.py::test_stale_serve_after_persistent_timeout_with_annotation",
+        ),
+    ),
+    Scenario(
+        scenario_id="R05",
+        title="材料/画像撤回后恢复旧运行",
+        expectation="重新检查访问与依赖有效性，不重新召回被撤回切片",
+        deterministic_tests=(
+            "tests/evaluation/test_issue42_revocation_resume.py::test_r05_revoked_photo_is_not_reused_after_checkpoint_resume",
+            "tests/invalidation/test_invalidation_integration.py::test_revoke_between_submit_and_confirm_blocks_start",
+            "tests/retrieval/test_v2_07_knowledge_base_retrieval.py::test_deleted_material_is_not_recallable_but_citation_reports_deleted",
+            "tests/chat/test_improvement14_material_reads.py::test_deleted_old_photo_yields_gap_not_description",
+            "tests/chat/test_improvement11_reference_resolution.py::test_revoked_value_is_not_revived_and_reported_as_gap",
+        ),
+    ),
+    Scenario(
+        scenario_id="R06",
+        title="不兼容配方版本的历史运行",
+        expectation="安全结束或迁移到明确新运行，不盲目套新图继续",
+        deterministic_tests=(
+            "tests/resources/test_issue25_lifecycle_acceptance.py::test_resources_resume_without_calls_and_reject_old_recipe",
+            "tests/chat/test_improvement33_acceptance.py::test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification",
+            "tests/chat/test_improvement35_acceptance.py::test_previous_graph_cannot_replay_pre_versioned_update",
+            "tests/kernel/test_node_kernel.py::test_contract_upgrade_reruns_nodes_and_preserves_old_receipts",
+        ),
+    ),
+    Scenario(
+        scenario_id="R07",
+        title="用户停止、稍后明确继续",
+        expectation="停止不自动续跑；继续创建新运行并复用有效产物",
+        deterministic_tests=(
+            "tests/evaluation/test_issue42_scenario_gaps.py::test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task",
+            "tests/chat/test_improvement09_run_budget_ledger.py::test_new_budget_run_for_explicit_continue",
+        ),
+        fault_injection_tests=(
+            "tests/chat/test_improvement12_hybrid_entry.py::test_pause_continue_and_cancel_transitions",
+            "tests/chat/test_improvement12_hybrid_entry.py::test_stop_generation_pauses_current_task",
+        ),
+        real_model=True,
+        zero_tolerance=(ZeroTolerance.WRITE_AFTER_STOP,),
+    ),
+    Scenario(
+        scenario_id="R08",
+        title="模型建议调用未登记/退役能力或切换模式",
+        expectation="代码拒绝，不能绕过 API/模式/能力边界",
+        deterministic_tests=(
+            "tests/workflows/test_workflow_capability_integration.py::test_unregistered_capability_blocks_run",
+            "tests/ai/test_model_gateway.py::test_unregistered_capability_is_blocked",
+            "tests/ai/test_model_gateway.py::test_disabled_capability_is_blocked",
+            "tests/closeout/test_v2_21_horizontal_regression.py::test_first_turn_locks_mode_and_switching_is_retired",
+        ),
+    ),
+)
