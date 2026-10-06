@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-10-06T15:02:50+00:00",
+  "passed": true,
+  "decisions": [
+    {
+      "ticket": 39,
+      "scope": "人味化表达与交流边界",
+      "decision": "not_released",
+      "evidence": [
+        ".scratch/2/validation/39-independent/acceptance.md"
+      ],
+      "open_scope": "不开放：保持既有基线表达，不宣称人味收益。",
+      "limitations": [
+        "4 项人工硬门候选失败；帮助/分寸有效票 6/3 与 7/4，不足 10 票。",
+        "无人工盲评提交时判 inconclusive；重评分明确 not_released。"
+      ]
+    },
+    {
+      "ticket": 40,
+      "scope": "上下文连续性与成本",
+      "decision": "released",
+      "evidence": [
+        ".scratch/2/validation/40-context-continuity/independent-acceptance.md"
+      ],
+      "open_scope": "开放：同模型同预算连续性与成本报告范围。",
+      "limitations": [
+        "旧侧多门失败属基线身份，同 main 全新隔离目录一致。"
+      ]
+    },
+    {
+      "ticket": 41,
+      "scope": "画像提取、治理与实际回答改善",
+      "decision": "released_with_limits",
+      "evidence": [
+        ".scratch/2/validation/41-independent/acceptance.md"
+      ],
+      "open_scope": "开放：有效事实/撤回机制/实际内容改善的评测范围。",
+      "limitations": [
+        "真实抽取 14 次调用、配对 8/8 只证方向，不宣称准确率。",
+        "真实桌面 E2E 前端启动超时，未进入页面断言。",
+        "不宣称所有模型回答均正确或全仓测试通过。"
+      ]
+    },
+    {
+      "ticket": 42,
+      "scope": "工作流质量、预算与外部真实可得性",
+      "decision": "released_with_degradation",
+      "evidence": [
+        ".scratch/2/validation/42-workflow-evaluation/workflow-evidence.json",
+        ".scratch/2/validation/42-workflow-evaluation/external-probes.json"
+      ],
+      "open_scope": "开放：39 场景机制执行与预算初值轴；外部门按探针逐层开放。",
+      "limitations": [
+        "tieba 读取不可用：只交付线索，不总结未读回复。",
+        "GitHub 受共享出口配额失败：不据此宣称产品能力通过。",
+        "jobs 声明 partial 未实测；arxiv 产品保持摘要+书目层。"
+      ]
+    }
+  ],
+  "problems": []
+}

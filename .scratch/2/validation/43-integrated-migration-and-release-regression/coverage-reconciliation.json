@@ -1,0 +1,2479 @@
+{
+  "generated_at": "2026-10-06T15:02:50+00:00",
+  "total": 166,
+  "status_counts": {
+    "mechanism": 136,
+    "not_released": 2,
+    "verified": 19,
+    "degraded": 9
+  },
+  "problems": [],
+  "items": [
+    {
+      "item_id": "H-D1",
+      "requirement": "有分寸伙伴：自然交流、按语境调整主动度",
+      "owner_tickets": [
+        21,
+        39
+      ],
+      "evidence": [
+        "tests/chat/test_improvement21_contextual_expression.py",
+        "tests/evaluation/test_issue39_human_expression.py"
+      ],
+      "status": "mechanism",
+      "note": "接线与非劣硬门有机制证据；真人收益因 39 未放行不宣称提升。"
+    },
+    {
+      "item_id": "H-D2",
+      "requirement": "所有用户可见自然语言（模块/固定/澄清/错误/进度）纳入策略或模板",
+      "owner_tickets": [
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        30,
+        31,
+        32,
+        33,
+        34,
+        36,
+        38
+      ],
+      "evidence": [
+        "tests/state_copy/test_issue23_state_copy_registry.py::test_registry_validates_and_lists_every_required_category",
+        "tests/state_copy/test_issue23_state_copy_wiring.py",
+        "tests/evaluation/test_issue43_natural_language_adoption.py",
+        "tests/evaluation/test_issue39_evidence_completion.py::test_fixed_copy_receipt_renders_all_templates"
+      ],
+      "status": "mechanism",
+      "note": "注册表 216 条覆盖方向与六模块/学习状态（43 审计接缝测试复核）；图片/视频/语音与离线邮件等非生成来源未登记，作为已记录缺口保留（43 报告 R3）。"
+    },
+    {
+      "item_id": "H-D3",
+      "requirement": "原生成调用接入，零人味专属追加；确定性模板不全文模型重写",
+      "owner_tickets": [
+        21,
+        23,
+        39
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue39_evidence_completion.py",
+        "tests/evaluation/test_issue39_human_expression.py"
+      ],
+      "status": "mechanism",
+      "note": "39 部署限额已按基线实测通过（新增调用 0）；自然度结论仍不放行。"
+    },
+    {
+      "item_id": "H-D4",
+      "requirement": "相关时自然采用明确偏好与背景，不刻意展示记忆、不推断人格/情绪",
+      "owner_tickets": [
+        19,
+        22,
+        39
+      ],
+      "evidence": [
+        "tests/chat/test_improvement22_unified_profile_expression.py",
+        "tests/chat/test_improvement19_purpose_aware_slice.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-D5",
+      "requirement": "倾诉先具体承接、可陪聊/轻问、不强制建议，不固定选择题",
+      "owner_tickets": [
+        21,
+        39
+      ],
+      "evidence": [
+        "tests/chat/test_improvement21_contextual_expression.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-D6",
+      "requirement": "帮助与分寸不退化，再验证自然度；聊天时长/温暖词不算收益",
+      "owner_tickets": [
+        39
+      ],
+      "evidence": [
+        ".scratch/2/validation/39-independent/acceptance.md"
+      ],
+      "status": "not_released",
+      "note": "人工硬门 4 项失败、帮助/分寸有效票 6/3 与 7/4（<10），不开放。"
+    },
+    {
+      "item_id": "H-07",
+      "requirement": "弱形态路由处理否定、引语、话题、混合任务、长文和“继续”",
+      "owner_tickets": [
+        11,
+        21,
+        39
+      ],
+      "evidence": [
+        "tests/chat/test_improvement11_reference_resolution.py",
+        "tests/chat/test_improvement21_contextual_expression.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-08",
+      "requirement": "去掉解释必问与情绪必行动；允许有依据不同意见、不迎合错误/自贬",
+      "owner_tickets": [
+        21,
+        39
+      ],
+      "evidence": [
+        "tests/chat/test_improvement21_contextual_expression.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-09",
+      "requirement": "dimension 空值、旧白名单、无画像矛盾及通用偏好无词面匹配",
+      "owner_tickets": [
+        19,
+        22
+      ],
+      "evidence": [
+        "tests/chat/test_improvement19_purpose_aware_slice.py",
+        "tests/profiles/test_chat_slice_compiler.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-10",
+      "requirement": "真实工具结果/失败/策略拒答进入正式链，未发生拒答不可假定",
+      "owner_tickets": [
+        21,
+        23,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_improvement21_contextual_expression.py",
+        "tests/state_copy/test_issue23_state_copy_wiring.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-11",
+      "requirement": "逐条核对正式图分派；内部排名/分析不强行加人格；学习复用完整快照",
+      "owner_tickets": [
+        22,
+        24,
+        26,
+        30,
+        31,
+        32,
+        33,
+        34,
+        36,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_improvement22_unified_profile_expression.py",
+        "tests/paper/test_paper_issue24.py",
+        "tests/github/test_github_acceptance_insights.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-12",
+      "requirement": "逐一对象绑定、授权纠错、合法链接、非必需遗漏不补尾",
+      "owner_tickets": [
+        5
+      ],
+      "evidence": [
+        "tests/chat/test_issue05_intent_bound_fact_protection.py",
+        ".scratch/2/acceptance/05-intent-bound-fact-protection.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-13",
+      "requirement": "裸数字/中文单位、否定/条件/因果/结论强度有语义参考",
+      "owner_tickets": [
+        5,
+        37,
+        39
+      ],
+      "evidence": [
+        "tests/chat/test_issue05_intent_bound_fact_protection.py",
+        "tests/orchestration/test_issue37_verified_synthesis.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-14",
+      "requirement": "delta 追加语义、片段跨 chunk、替换/缓冲选一种，UI/事件/落库一致",
+      "owner_tickets": [
+        6,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_issue06_stream_replay_consistency.py",
+        "tests/chat/test_issue38_turn_result.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-15",
+      "requirement": "学习保真夹具在合法书页阶段正式回归",
+      "owner_tickets": [
+        30,
+        32
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-16",
+      "requirement": "策略版本/规则/快照/重试/降级；提示回滚与确定性修复解耦",
+      "owner_tickets": [
+        3,
+        5,
+        6,
+        21,
+        22,
+        43
+      ],
+      "evidence": [
+        "tests/chat/test_global_writing_policy.py",
+        "tests/chat/test_chat_lightweight_policy.py",
+        "src/bridges/evaluation/rollback_rehearsal.py"
+      ],
+      "status": "mechanism",
+      "note": "回滚演练由本票补齐：安全基线回退不删除画像数据，确定性保护不在提示策略回滚范围内。"
+    },
+    {
+      "item_id": "H-17",
+      "requirement": "输出 max_tokens 与真实长度任务/额度联动，不无界扩大或机械短答",
+      "owner_tickets": [
+        3,
+        4,
+        21
+      ],
+      "evidence": [
+        "tests/chat/test_improvement03_model_quota.py",
+        "tests/chat/test_improvement04_payload_budget.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "H-18",
+      "requirement": "旧/新/简洁三基线，多轮随机盲评、平局/拒选、五量表、消融、成本",
+      "owner_tickets": [
+        39
+      ],
+      "evidence": [
+        ".scratch/2/validation/39-independent/acceptance.md",
+        "tests/evaluation/test_issue39_blind_review.py"
+      ],
+      "status": "not_released",
+      "note": "机制与三项真实消融完成；人工有效票不足，不放行也不宣称提升。"
+    },
+    {
+      "item_id": "H-19",
+      "requirement": "原创净室、退役文章能力不恢复、授权/原创评测数据与日志保护",
+      "owner_tickets": [
+        1,
+        5,
+        21,
+        39,
+        43
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue39_human_expression.py",
+        "tests/integration/test_expression_retirement.py",
+        "tests/retirement/test_legacy_generation_exit.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D1",
+      "requirement": "同账户同会话连续性，保留底座，不扩跨会话记忆或新工作台",
+      "owner_tickets": [
+        1,
+        8,
+        40
+      ],
+      "evidence": [
+        "tests/chat/test_improvement40_continuity_corpus.py",
+        ".scratch/2/validation/40-context-continuity/independent-acceptance.md"
+      ],
+      "status": "verified",
+      "note": "工单 40 独立验收通过；真实多轮配对同模型同预算。"
+    },
+    {
+      "item_id": "C-D2",
+      "requirement": "用户明示直接生效，助手草案/模型推测不晋升事实，工具事实独立来源",
+      "owner_tickets": [
+        8,
+        13
+      ],
+      "evidence": [
+        "tests/chat/test_improvement12_task_relations.py",
+        "tests/chat/test_improvement13_summary_cache.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D3",
+      "requirement": "默认任务范围、明示扩会话、话题往返恢复最新值、模块切换非换任务",
+      "owner_tickets": [
+        8,
+        11,
+        12
+      ],
+      "evidence": [
+        "tests/chat/test_improvement11_reference_resolution.py",
+        "tests/chat/test_improvement12_task_relations.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D4",
+      "requirement": "按需模型结构化摘要与缓存；近期原文和关键纠正来源，原文重建",
+      "owner_tickets": [
+        13
+      ],
+      "evidence": [
+        "tests/chat/test_improvement13_summary_cache.py",
+        ".scratch/2/acceptance/13-bounded-summary-cache.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D5",
+      "requirement": "后台为主/必要限时补齐，预算压力非固定轮数，最新请求/纠正不等待",
+      "owner_tickets": [
+        9,
+        13
+      ],
+      "evidence": [
+        "tests/chat/test_improvement13_summary_cache.py",
+        "tests/chat/test_improvement09_run_budget_ledger.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D6",
+      "requirement": "唯一对象续接、实质歧义一个问题，不说用户从未讲过",
+      "owner_tickets": [
+        11,
+        12
+      ],
+      "evidence": [
+        "tests/chat/test_improvement11_reference_resolution.py",
+        "tests/chat/test_improvement12_hybrid_entry.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D7",
+      "requirement": "完整条件优先、任务必要性裁剪、可核验有界分批否则明确缩小范围",
+      "owner_tickets": [
+        4,
+        9,
+        40
+      ],
+      "evidence": [
+        "tests/chat/test_improvement04_payload_budget.py",
+        "tests/chat/test_improvement40_context_boundaries.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D8",
+      "requirement": "旧图/文件/模块按原始对象版本读取；摘要只定位，不自动刷新外部",
+      "owner_tickets": [
+        14,
+        15
+      ],
+      "evidence": [
+        "tests/chat/test_improvement14_material_reads.py",
+        "tests/chat/test_improvement15_module_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-D9",
+      "requirement": "预算/隔离/来源/快照硬门，真实多轮同模型同预算比较与成本",
+      "owner_tickets": [
+        40
+      ],
+      "evidence": [
+        ".scratch/2/validation/40-context-continuity/independent-acceptance.md"
+      ],
+      "status": "verified",
+      "note": "36/36 检查点、六维量表通过；调用/token/延迟配对已归档。"
+    },
+    {
+      "item_id": "C-10",
+      "requirement": "最终载荷包含所有后插材料、角色/图片/工具与输出预留，每调用重查",
+      "owner_tickets": [
+        3,
+        4,
+        14,
+        15,
+        24,
+        26,
+        30,
+        32,
+        33,
+        34,
+        36
+      ],
+      "evidence": [
+        "tests/chat/test_improvement04_payload_budget.py",
+        "tests/paper/test_paper_issue24.py",
+        "tests/chat/test_improvement40_context_boundaries.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-11",
+      "requirement": "121 条逐行摘要无法收敛、末尾约束缺失，状态/背景摘要分离",
+      "owner_tickets": [
+        8,
+        13,
+        40
+      ],
+      "evidence": [
+        "tests/chat/test_improvement13_summary_cache.py",
+        "tests/chat/test_improvement40_continuity_corpus.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-12",
+      "requirement": "无引号中文回指/“继续”、近期对象误报、回补相邻纠正轮",
+      "owner_tickets": [
+        11
+      ],
+      "evidence": [
+        "tests/chat/test_improvement11_reference_resolution.py",
+        ".scratch/2/acceptance/11-reference-resolution-and-original-recovery.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-13",
+      "requirement": "照片绕过 null、历史原图按需读取、数量输入方式共同预算",
+      "owner_tickets": [
+        4,
+        14
+      ],
+      "evidence": [
+        "tests/chat/test_improvement14_material_reads.py",
+        "tests/chat/test_improvement04_payload_budget.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-14",
+      "requirement": "旧自定义模型快照完整，未知窗口不以任意 32,768 冒充已验证",
+      "owner_tickets": [
+        3
+      ],
+      "evidence": [
+        "tests/chat/test_improvement03_model_quota.py",
+        ".scratch/2/acceptance/04-final-payload-budget-and-data-boundary.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-15",
+      "requirement": "模块不各取最近 6 条，理解/工作两阶段最小上下文，每调用自己额度与清单",
+      "owner_tickets": [
+        15,
+        24,
+        25,
+        26,
+        27,
+        28,
+        30,
+        32
+      ],
+      "evidence": [
+        "tests/chat/test_improvement15_module_acceptance.py",
+        "tests/chat/test_improvement15_manifest_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-16",
+      "requirement": "知识库/附件/画像用解析主题，公开工具仅最小公共查询",
+      "owner_tickets": [
+        15,
+        19,
+        32,
+        37
+      ],
+      "evidence": [
+        "tests/chat/test_improvement15_task_materials.py",
+        "tests/retrieval/test_v2_07_knowledge_base_retrieval.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-17",
+      "requirement": "画像 1 token 首条例外与 80 字截断消除，必要排除项整条保留",
+      "owner_tickets": [
+        4,
+        19
+      ],
+      "evidence": [
+        "tests/chat/test_improvement04_payload_budget.py",
+        "tests/chat/test_improvement19_purpose_aware_slice.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-18",
+      "requirement": "数据与指令分层，固定渲染次序、新纠正权威，不仅靠提示词管权限",
+      "owner_tickets": [
+        4,
+        8,
+        12
+      ],
+      "evidence": [
+        "tests/chat/test_improvement04_payload_budget.py",
+        "tests/chat/test_improvement12_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-19",
+      "requirement": "实际消息/片段/对象 ID、来源版本、摘要实例、采用/排除/预算与用量",
+      "owner_tickets": [
+        3,
+        4,
+        13,
+        15,
+        40
+      ],
+      "evidence": [
+        "tests/chat/test_improvement15_manifest_acceptance.py",
+        "tests/chat/test_improvement40_context_boundaries.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-20",
+      "requirement": "任务预算、估算余量、摘要阈值/长度/超时/重试、分批/召回/重复次数实测",
+      "owner_tickets": [
+        9,
+        13,
+        40
+      ],
+      "evidence": [
+        "tests/chat/test_improvement09_run_budget_ledger.py",
+        ".scratch/2/validation/40-context-continuity/independent-acceptance.md"
+      ],
+      "status": "verified",
+      "note": "40 真实配对记录调用/token/墙钟；摘要阈值保持编译内满足。"
+    },
+    {
+      "item_id": "C-21",
+      "requirement": "中文/英文/代码/公式/长 URL/图片估算校准，窗口非填满目标",
+      "owner_tickets": [
+        4,
+        40
+      ],
+      "evidence": [
+        "tests/chat/test_improvement40_context_boundaries.py",
+        "tests/chat/test_improvement04_payload_budget.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "C-22",
+      "requirement": "来源删除/失效衍生缓存不用；画像删除不自行改聊天原文删除语义",
+      "owner_tickets": [
+        13,
+        14,
+        18,
+        43
+      ],
+      "evidence": [
+        "tests/invalidation/test_invalidation_integration.py",
+        "tests/profiles/test_issue18_profile_validity_and_revocation.py",
+        "tests/retrieval/test_v2_07_knowledge_base_retrieval.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D01",
+      "requirement": "自动提取明确可复用事实/偏好/目标/约束；行为仅观察，无敏感推断",
+      "owner_tickets": [
+        2,
+        16,
+        17,
+        41
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py",
+        "tests/evaluation/test_issue41_extraction_probes.py"
+      ],
+      "status": "verified",
+      "note": "41 真实抽取探针 6/6（否定不反转、第三方/引用零写入）。"
+    },
+    {
+      "item_id": "P-D02",
+      "requirement": "长期与任务范围、明确期限及来源消息相对时间锚，无统一 TTL",
+      "owner_tickets": [
+        2,
+        18,
+        19
+      ],
+      "evidence": [
+        "tests/profiles/test_issue18_profile_validity_and_revocation.py",
+        "tests/profiles/test_issue19_purpose_aware_slice.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D03",
+      "requirement": "不互斥目标/属性默认并存，明确取消/替代/同事实变化才更新",
+      "owner_tickets": [
+        16
+      ],
+      "evidence": [
+        "tests/profiles/test_issue16_atomic_fact_identity.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D04",
+      "requirement": "确定同事实及近义普通提及受抑制，明确重新记住恢复",
+      "owner_tickets": [
+        2,
+        18
+      ],
+      "evidence": [
+        "tests/profiles/test_issue18_profile_validity_and_revocation.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D05",
+      "requirement": "本轮要求优先，偏好只默认；画像不改科学结论/任务；临时例外不改长期",
+      "owner_tickets": [
+        19,
+        21,
+        22,
+        29
+      ],
+      "evidence": [
+        "tests/chat/test_improvement19_purpose_aware_slice.py",
+        "tests/chat/test_improvement22_unified_profile_expression.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D06",
+      "requirement": "记录/使用独立，主动记住/修改/忘掉/删除仍可操作",
+      "owner_tickets": [
+        7
+      ],
+      "evidence": [
+        "tests/profiles/test_issue07_profile_controls.py",
+        "tests/profiles/test_issue07_profile_controls_api.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D07",
+      "requirement": "本地控制加模型候选、精确原话+系统验证，普通回答后异步，成本有界",
+      "owner_tickets": [
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py",
+        ".scratch/2/acceptance/17-asynchronous-evidence-based-profile-extraction.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D08",
+      "requirement": "简洁无分类列表、按需展开依据/范围/期限、编辑删除可见",
+      "owner_tickets": [
+        1,
+        2,
+        20
+      ],
+      "evidence": [
+        "tests/profiles/test_issue20_profile_evidence_disclosure.py",
+        "tests/profiles/test_v2_08_atomic_profile_api.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-D09",
+      "requirement": "后台不阻塞，生成前只读已提交，本轮原文即时，明确指令同步",
+      "owner_tickets": [
+        7,
+        17,
+        19,
+        41
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py",
+        "tests/chat/test_v2_08_profile_immediate_effect.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-Q09",
+      "requirement": "画像整体规格未决项（期限/异常终态/恢复/预算字段）已确认",
+      "owner_tickets": [
+        2
+      ],
+      "evidence": [
+        "docs/用户画像/画像规格与验收合同.md",
+        "docs/adr/0032-profile-facts-controls-and-history-suppression.md"
+      ],
+      "status": "verified",
+      "note": "R01–R08 与用户整体确认；业务实现由 16–20/41 各自验收。"
+    },
+    {
+      "item_id": "P-10",
+      "requirement": "扩提取偏好/限制；否定偏好不等于拒绝记录，混合用户/第三方逐候选",
+      "owner_tickets": [
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-11",
+      "requirement": "一消息零到多事实，敏感/情绪部分不使合规事实整句丢失",
+      "owner_tickets": [
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-12",
+      "requirement": "关系不丢：喜欢与正在学分开；“这个专业”靠必要原文消歧",
+      "owner_tickets": [
+        16,
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue16_atomic_fact_identity.py",
+        "tests/profiles/test_issue17_async_evidence_extraction.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-13",
+      "requirement": "年级/专业、考研/六级不按维度互相覆盖，旧数据可对账迁移",
+      "owner_tickets": [
+        16
+      ],
+      "evidence": [
+        "tests/profiles/test_issue16_atomic_fact_identity.py",
+        "tests/profiles/test_four_dimension_profile.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-14",
+      "requirement": "正文只展示、身份支持合并/编辑抑制/删除；相似度不是自动覆盖依据",
+      "owner_tickets": [
+        16,
+        18
+      ],
+      "evidence": [
+        "tests/profiles/test_v2_08_atomic_profile.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-15",
+      "requirement": "跨词面有效基础/偏好，任务/前文/模块/阶段相关性；允许零条",
+      "owner_tickets": [
+        19,
+        41
+      ],
+      "evidence": [
+        "tests/chat/test_improvement19_purpose_aware_slice.py",
+        "tests/evaluation/test_issue41_profile_pairing.py"
+      ],
+      "status": "verified",
+      "note": "41 四条件配对 8/8：正确画像进入具体内容、错误画像可测退化。"
+    },
+    {
+      "item_id": "P-16",
+      "requirement": "LOW 镜像/迁移/纠错降级使用门，用户编辑权威与自动可靠度分开",
+      "owner_tickets": [
+        16,
+        18,
+        19
+      ],
+      "evidence": [
+        "tests/profiles/test_issue18_profile_validity_and_revocation.py",
+        "tests/profiles/test_four_dimension_profile.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-17",
+      "requirement": "过期下周不注入，长条目保留尾部否定/条件，整条预算选择",
+      "owner_tickets": [
+        18,
+        19
+      ],
+      "evidence": [
+        "tests/profiles/test_issue18_profile_validity_and_revocation.py",
+        "tests/chat/test_improvement19_purpose_aware_slice.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-18",
+      "requirement": "原子无类别用途适配，统一表达/画像采用结果，无“已注入却没有”",
+      "owner_tickets": [
+        19,
+        22
+      ],
+      "evidence": [
+        "tests/chat/test_improvement22_unified_profile_expression.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-19",
+      "requirement": "普通提取离开前台/长事务；队列恢复、模型事务外、短事务复核",
+      "owner_tickets": [
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py",
+        "tests/profiles/test_automatic_profile_extraction.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-20",
+      "requirement": "停止记录后忘掉失败 P0 探针修复，主动操作结果如实反馈",
+      "owner_tickets": [
+        7
+      ],
+      "evidence": [
+        "tests/profiles/test_issue07_profile_controls.py",
+        ".scratch/2/acceptance/17-asynchronous-evidence-based-profile-extraction.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-21",
+      "requirement": "精确原话区间支持主体/关系/否定/时间；消息 ID 或引语不代表成立",
+      "owner_tickets": [
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-22",
+      "requirement": "AMBIGUOUS/观察/CREATE UPDATE 门禁按候选证据协调，避免无收益调用",
+      "owner_tickets": [
+        17
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-23",
+      "requirement": "来源数量升级可查看依据；记错/过期/不适用/未执行偏好反馈分开",
+      "owner_tickets": [
+        20,
+        41
+      ],
+      "evidence": [
+        "tests/profiles/test_issue20_profile_evidence_disclosure.py",
+        ".scratch/2/validation/41-independent/acceptance.md"
+      ],
+      "status": "verified",
+      "note": "41 独立验收确认依据/反馈 API 与页面路径。"
+    },
+    {
+      "item_id": "P-24",
+      "requirement": "评测不奖励同维度唯一或套话，复用现有纵向基线与消融",
+      "owner_tickets": [
+        41
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue41_profile_quality.py",
+        "tests/evaluation/test_issue41_profile_pairing.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-25",
+      "requirement": "自述基础与实际答题知识状态分开，一次困惑/答题不形成永久标签",
+      "owner_tickets": [
+        2,
+        19,
+        36,
+        41
+      ],
+      "evidence": [
+        "tests/chat/test_improvement36_status_acceptance.py",
+        "tests/evaluation/test_issue41_profile_quality.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-26",
+      "requirement": "读取是后端显式最小切片；关闭使用不读长期正文但当前原文仍可用",
+      "owner_tickets": [
+        7,
+        19
+      ],
+      "evidence": [
+        "tests/profiles/test_issue07_profile_controls.py",
+        "tests/chat/test_improvement19_purpose_aware_slice.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-27",
+      "requirement": "画像应用改变起点/例子/结构/节奏，不额外调用生成应用计划",
+      "owner_tickets": [
+        19,
+        22,
+        29,
+        41
+      ],
+      "evidence": [
+        "tests/chat/test_improvement19_purpose_aware_slice.py",
+        "tests/evaluation/test_issue41_profile_pairing.py"
+      ],
+      "status": "verified",
+      "note": "41 配对实测具体内容改善（举例先于公式、每日 30 分钟约束）。"
+    },
+    {
+      "item_id": "P-28",
+      "requirement": "同轮固定已提交版本，后续子集/重试可追溯，撤回后旧切片重编译",
+      "owner_tickets": [
+        18,
+        19,
+        22
+      ],
+      "evidence": [
+        "tests/chat/test_improvement22_unified_profile_expression.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-29",
+      "requirement": "已发送上下文不可收回，删除阻后续调用；忘掉与原历史关系单独确认",
+      "owner_tickets": [
+        2,
+        18
+      ],
+      "evidence": [
+        "tests/profiles/test_issue18_profile_validity_and_revocation.py",
+        "docs/用户画像/画像规格与验收合同.md"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "P-30",
+      "requirement": "概率入门→贝叶斯→详细推导→记住先结论→忘掉偏好连续例子",
+      "owner_tickets": [
+        7,
+        17,
+        18,
+        19,
+        41
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py",
+        "tests/evaluation/test_issue41_profile_pairing.py"
+      ],
+      "status": "verified",
+      "note": "41 纵向配对覆盖连续例子；跨会话延迟有真实记录。"
+    },
+    {
+      "item_id": "P-31",
+      "requirement": "跨会话已提交信息使用与异步未完成短暂延迟，不扩会话原文跨域召回",
+      "owner_tickets": [
+        17,
+        19,
+        41
+      ],
+      "evidence": [
+        "tests/profiles/test_issue17_async_evidence_extraction.py",
+        ".scratch/2/validation/41-independent/acceptance.md"
+      ],
+      "status": "verified",
+      "note": "41 独立验收记录异步/跨会话延迟与版本可追溯。"
+    },
+    {
+      "item_id": "P-32",
+      "requirement": "有/无/错误/过期画像比较实际可行性、起点、结构/正确性而非条数",
+      "owner_tickets": [
+        41
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue41_profile_pairing.py",
+        ".scratch/2/validation/41-profile-quality/pairing-report.md"
+      ],
+      "status": "verified",
+      "note": "四条件 8/8；过时画像 0 条被采用且无过期回声。"
+    },
+    {
+      "item_id": "P-33",
+      "requirement": "110 通过只是基线；真实 Qwen 抽取/网络延迟/收益仍待评测",
+      "owner_tickets": [
+        17,
+        41
+      ],
+      "evidence": [
+        ".scratch/2/validation/41-independent/acceptance.md"
+      ],
+      "status": "verified",
+      "note": "真实抽取与配对已完成（14 次调用），小样本只证方向不宣称准确率。"
+    },
+    {
+      "item_id": "W-D01",
+      "requirement": "保留菜单+明确自然语言直启、歧义澄清、可停止",
+      "owner_tickets": [
+        1,
+        12,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_improvement12_hybrid_entry.py",
+        "tests/chat/test_issue38_acceptance_paths.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D02",
+      "requirement": "主智能体规划，专业按需；代码权限/预算/状态，确定工作直调服务",
+      "owner_tickets": [
+        10,
+        12,
+        37
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_composite_engine.py",
+        "tests/kernel/test_node_kernel.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D03",
+      "requirement": "跨模块有限 DAG，模块内仅登记补证/改查/重排，不跳步骤",
+      "owner_tickets": [
+        10,
+        12,
+        37
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_composite_engine.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D04",
+      "requirement": "会话多任务、任务跨轮、运行本轮，暂停/新话题/澄清归属",
+      "owner_tickets": [
+        8,
+        11,
+        12
+      ],
+      "evidence": [
+        "tests/tasks/test_task_state.py",
+        "tests/chat/test_improvement12_task_relations.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D05",
+      "requirement": "确定性/关键结论证据/风险独立复核三层，引用存在不是支持",
+      "owner_tickets": [
+        10,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        31,
+        32,
+        33,
+        34,
+        37
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_verified_synthesis.py",
+        "tests/paper/test_paper_issue24.py",
+        "tests/github/test_github_acceptance_evidence.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D06",
+      "requirement": "节点局部恢复，有效部分交付，必要失败阻塞依赖",
+      "owner_tickets": [
+        10,
+        24,
+        25,
+        26,
+        27,
+        28,
+        30,
+        34,
+        36,
+        37
+      ],
+      "evidence": [
+        "tests/kernel/test_node_kernel.py",
+        "tests/chat/test_terminal_recovery_and_replay.py",
+        "tests/orchestration/test_issue37_composite_engine.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D07",
+      "requirement": "一次覆盖复盘，反馈后继续，不自动补救/迁移题/原题补答",
+      "owner_tickets": [
+        34,
+        35,
+        36
+      ],
+      "evidence": [
+        "tests/chat/test_improvement34_verified_grading_feedback.py",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D08",
+      "requirement": "教材优先，问题不足才知识库/自动公网；来源限制与范围不扩",
+      "owner_tickets": [
+        32
+      ],
+      "evidence": [
+        "tests/chat/test_improvement32_study_tutoring_evidence.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D09",
+      "requirement": "提问前评分要点/等价答案/误解冻结核验，判定据此，单次对非长期掌握",
+      "owner_tickets": [
+        33,
+        34,
+        36
+      ],
+      "evidence": [
+        "tests/chat/test_improvement33_preverified_questions.py",
+        "tests/chat/test_improvement34_verified_grading_feedback.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D10",
+      "requirement": "原话+硬条件，证据语义匹配允许不同术语，关键词仅线索",
+      "owner_tickets": [
+        24,
+        25,
+        26,
+        28,
+        37
+      ],
+      "evidence": [
+        "tests/paper/test_paper_issue24.py",
+        "tests/resources/test_issue25_acceptance_regressions.py",
+        "tests/github/test_github_requirement_matrix.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D11",
+      "requirement": "先筛后按断言逐级深读，论文/代码/资料读取范围诚实",
+      "owner_tickets": [
+        24,
+        25,
+        26
+      ],
+      "evidence": [
+        "tests/paper/test_paper_issue24_acceptance.py",
+        "tests/resources/test_issue25_reading_acceptance.py",
+        "tests/github/test_github_acceptance_evidence.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D12",
+      "requirement": "目标/基础/时间驱动精简资料，数量/媒介动态，用户明确要求保留",
+      "owner_tickets": [
+        25
+      ],
+      "evidence": [
+        "tests/resources/test_issue25_conditions_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D13",
+      "requirement": "岗位分析与个人规划分支，最小背景，未知能力待确认",
+      "owner_tickets": [
+        28,
+        29
+      ],
+      "evidence": [
+        "tests/career_plan/test_issue28_review_regressions.py",
+        "tests/career_plan/test_issue29_personal_career_gap.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D14",
+      "requirement": "规定/体验/混合不同顺序；日期/场景/冲突保留，无回复仅线索",
+      "owner_tickets": [
+        27
+      ],
+      "evidence": [
+        "tests/tieba/test_issue27_acceptance_regressions.py",
+        "tests/tieba/test_improvement27_question_driven.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D15",
+      "requirement": "正文明确优先 module 提示，存原请求/实际路由，不改历史或模式",
+      "owner_tickets": [
+        1,
+        12,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_improvement12_acceptance.py",
+        "tests/evaluation/test_issue42_scenario_gaps.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D16",
+      "requirement": "及时可信交付，一整次最多一轮补证，更深预算由任务代码决定",
+      "owner_tickets": [
+        9,
+        37,
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement09_run_budget_ledger.py",
+        "tests/orchestration/test_issue37_composite_engine.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-D17",
+      "requirement": "公共内核共享，模式策略/领域写模型独立，学习当前小节/阶段门",
+      "owner_tickets": [
+        10,
+        12,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        43
+      ],
+      "evidence": [
+        "tests/kernel/test_node_kernel.py",
+        "tests/chat/test_improvement30_study_pages_recognition.py",
+        "tests/chat/test_issue31_independent_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-18",
+      "requirement": "主/专业/核验/内核/领域/适配器逻辑职责，模块化单体，不自由互调",
+      "owner_tickets": [
+        10,
+        12,
+        37
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_composite_engine.py",
+        "tests/kernel/test_node_kernel.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-19",
+      "requirement": "轻量一次理解可直接回复，单模块稳定配方，无统一模型裁判",
+      "owner_tickets": [
+        12,
+        21,
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement12_hybrid_entry.py",
+        "tests/evaluation/test_issue42_scenario_gaps.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-20",
+      "requirement": "任务/计划不可变版本、前台每会话一运行，等待/暂停释放租约",
+      "owner_tickets": [
+        8,
+        9,
+        10
+      ],
+      "evidence": [
+        "tests/tasks/test_task_state.py",
+        "tests/chat/test_v2_02_resumable_runs.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-21",
+      "requirement": "任务关系 new/continue/revise/pause/cancel、建议点击绑定",
+      "owner_tickets": [
+        8,
+        12,
+        35
+      ],
+      "evidence": [
+        "tests/chat/test_improvement12_task_relations.py",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-22",
+      "requirement": "DONE/任务完成/产物可信分开，质量门结构化；六只读模块无旧审批",
+      "owner_tickets": [
+        8,
+        10,
+        37,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_issue38_turn_result.py",
+        "tests/chat/test_issue38_progressive_result.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-23",
+      "requirement": "登记配方 I/O/模式/工具/必经/恢复；拒绝循环、越界、未知/退役/放宽",
+      "owner_tickets": [
+        10,
+        12,
+        37
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_composite_engine.py",
+        "tests/orchestration/test_issue43_compat_seams.py",
+        "tests/ai/test_model_gateway.py"
+      ],
+      "status": "mechanism",
+      "note": "本票补充过期配方/能力版本拒绝与旧综合产物契约不复用的接缝回归。"
+    },
+    {
+      "item_id": "W-24",
+      "requirement": "目的最小节点输入/类型化输出含来源范围/版本/依赖/覆盖/未确认",
+      "owner_tickets": [
+        10,
+        15,
+        37
+      ],
+      "evidence": [
+        "tests/chat/test_improvement15_manifest_acceptance.py",
+        "tests/kernel/test_node_kernel.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-25",
+      "requirement": "理解前小上下文，动作后材料，每实际调用模型/能力/提示/Schema/质量锁",
+      "owner_tickets": [
+        3,
+        4,
+        15
+      ],
+      "evidence": [
+        "tests/chat/test_improvement03_model_quota.py",
+        "tests/chat/test_improvement15_manifest_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-26",
+      "requirement": "失效按输入依赖/哈希/时效/权限/版本传播，无依赖不重跑",
+      "owner_tickets": [
+        10,
+        18,
+        28,
+        29,
+        35,
+        37
+      ],
+      "evidence": [
+        "tests/chat/test_issue37_composite_reuse.py",
+        "tests/invalidation/test_invalidation_integration.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-27",
+      "requirement": "收据事务先于可能后到的检查点，至少一次外部、本地唯一键防重复",
+      "owner_tickets": [
+        10,
+        34,
+        42
+      ],
+      "evidence": [
+        "tests/kernel/test_node_kernel.py",
+        "tests/chat/test_improvement34_verified_grading_feedback.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-28",
+      "requirement": "提交前租约/停止/任务版本/权限守卫，迟到拒绝；图引用为权威",
+      "owner_tickets": [
+        10,
+        30,
+        34,
+        35,
+        36,
+        43
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py",
+        "tests/chat/test_v2_02_resumable_runs.py",
+        "tests/chat/test_improvement43_legacy_graph_guard.py"
+      ],
+      "status": "mechanism",
+      "note": "本票补齐日常旧图版本守卫（R06 同语义）。"
+    },
+    {
+      "item_id": "W-29",
+      "requirement": "独立核验同证据不同调用；最终综合门查新事实/条件/引用",
+      "owner_tickets": [
+        37
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_verified_synthesis.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-30",
+      "requirement": "可信进度/结果门后显示、草稿内部、轻量流式、最终提交后完成",
+      "owner_tickets": [
+        6,
+        37,
+        38
+      ],
+      "evidence": [
+        "tests/chat/test_issue06_stream_replay_consistency.py",
+        "tests/chat/test_issue38_progressive_result.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-31",
+      "requirement": "60/120 秒、15/30 预留、2 并行、20 初筛、3/5 深读初值按配方冻结",
+      "owner_tickets": [
+        9,
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_budget_calibration.py",
+        "tests/chat/test_improvement09_run_budget_ledger.py"
+      ],
+      "status": "verified",
+      "note": "42 真实样本校准全部落在初值内（deep 深读 0/5，未接线全文）。"
+    },
+    {
+      "item_id": "W-32",
+      "requirement": "传输最多 1 重试、全运行 1 修复轮、冷却/恢复不重置、停止无自动续跑",
+      "owner_tickets": [
+        9,
+        10,
+        37,
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement09_run_budget_ledger.py",
+        "tests/evaluation/test_issue42_scenario_gaps.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-33",
+      "requirement": "论文身份/3–5 习惯/来源登记，enrich 可选、摘要/全文强度及引用限制",
+      "owner_tickets": [
+        24
+      ],
+      "evidence": [
+        "tests/paper/test_paper_issue24_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-34",
+      "requirement": "通勤校内范围/允许方式/POI/真实路线、八高峰±10 分钟+5 规则/地图一致",
+      "owner_tickets": [
+        10
+      ],
+      "evidence": [
+        "tests/commute/test_commute_module_flow.py",
+        "tests/commute/test_commute_buffer.py",
+        "tests/commute/test_issue42_route_duration.py"
+      ],
+      "status": "verified",
+      "note": "42 高德校内三方式探针 3/3 通过（declared partial）。"
+    },
+    {
+      "item_id": "W-35",
+      "requirement": "资料书视频独立并行、目录/介绍证据、主线/补充/先修、可选失败不凑数",
+      "owner_tickets": [
+        25
+      ],
+      "evidence": [
+        "tests/resources/test_issue25_acceptance_regressions.py",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-36",
+      "requirement": "目标贴吧/真实楼层/时间/官方主体校区用途版本，不绕登录、不声称普遍",
+      "owner_tickets": [
+        27
+      ],
+      "evidence": [
+        "tests/tieba/test_issue27_acceptance_regressions.py"
+      ],
+      "status": "degraded",
+      "note": "42 探针 tieba 读取受限（failed/unavailable），只交付线索不总结回复。"
+    },
+    {
+      "item_id": "W-37",
+      "requirement": "公开岗位样本/职责/城市经验/去重过期/薪资币种单位，不代表全国",
+      "owner_tickets": [
+        28
+      ],
+      "evidence": [
+        "tests/career_plan/test_issue28_review_regressions.py"
+      ],
+      "status": "degraded",
+      "note": "42 探针未能定位公开岗位详情（inconclusive），不宣称样本已可得。"
+    },
+    {
+      "item_id": "W-38",
+      "requirement": "个人差距双侧证据、可行优先级、背景不足先岗位后关键问题，私料不发公网",
+      "owner_tickets": [
+        19,
+        29,
+        37
+      ],
+      "evidence": [
+        "tests/career_plan/test_issue29_personal_career_gap.py",
+        "tests/chat/test_improvement19_purpose_aware_slice.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-39",
+      "requirement": "GitHub 必要功能矩阵/整体组件/文档静态运行层/许可未知/2–3 习惯",
+      "owner_tickets": [
+        26
+      ],
+      "evidence": [
+        "tests/github/test_github_requirement_matrix.py",
+        "tests/github/test_github_acceptance_gates.py"
+      ],
+      "status": "degraded",
+      "note": "42 GitHub 探针受共享出口配额失败，不据此宣称产品能力通过。"
+    },
+    {
+      "item_id": "W-40",
+      "requirement": "书页状态领域权威、稳定点 ID/片段/覆盖/题目/表现/总结，无重复权威机",
+      "owner_tickets": [
+        30,
+        31,
+        33,
+        34,
+        35,
+        36
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py",
+        "tests/chat/test_improvement31_study_scope_preview.py",
+        "tests/chat/test_improvement36_evidence_bound_summary.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-41",
+      "requirement": "OCR 风险路径未测沿双路径、关键符号门、页序归属、用户补录与原文分开",
+      "owner_tickets": [
+        30,
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py",
+        "tests/chat/test_improvement32_evidence_review.py"
+      ],
+      "status": "mechanism",
+      "note": "42 deep 深读 0/5 如实记录；关键符号门为确定性路径。"
+    },
+    {
+      "item_id": "W-42",
+      "requirement": "每实质片段映射或排除、定义公式关系核验、预习提交后辅导",
+      "owner_tickets": [
+        31
+      ],
+      "evidence": [
+        "tests/chat/test_improvement31_study_scope_preview.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-43",
+      "requirement": "辅导充分性、公式假设/新增事实依据、冲突/可支持部分、外部不替书页",
+      "owner_tickets": [
+        32
+      ],
+      "evidence": [
+        "tests/chat/test_improvement32_tutoring_gate.py",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-44",
+      "requirement": "题目/评分/范围冻结、题目内容门、未来题/标准答案私有、呈现事务幂等",
+      "owner_tickets": [
+        33
+      ],
+      "evidence": [
+        "tests/chat/test_improvement33_preverified_questions.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-45",
+      "requirement": "答案/解释/暂停分流、等价争议复核、系统失败不跳题、判定/反馈边界",
+      "owner_tickets": [
+        34
+      ],
+      "evidence": [
+        "tests/chat/test_improvement34_verified_grading_feedback.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-46",
+      "requirement": "暂停继续未问题，已呈现未答单列；追加先暂存新版本、失败旧有效",
+      "owner_tickets": [
+        35
+      ],
+      "evidence": [
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py",
+        "tests/chat/test_improvement35_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-47",
+      "requirement": "已题判定保历史、补录/新页冲突、旧预习/总结标范围/依据变化",
+      "owner_tickets": [
+        35,
+        36
+      ],
+      "evidence": [
+        "tests/chat/test_improvement35_acceptance.py",
+        "tests/chat/test_improvement36_evidence_bound_summary.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-48",
+      "requirement": "总结本次涉及/答对/漏洞/未答/未判，无长期掌握/百分比/自动新课",
+      "owner_tickets": [
+        36
+      ],
+      "evidence": [
+        "tests/chat/test_improvement36_evidence_bound_summary.py",
+        "tests/chat/test_improvement36_status_acceptance.py"
+      ],
+      "status": "mechanism",
+      "note": ""
+    },
+    {
+      "item_id": "W-49",
+      "requirement": "S01–S08 纵向迁移，权限/预算从骨架起，旧读/图谱系/题/合同同步",
+      "owner_tickets": [
+        1,
+        8,
+        9,
+        10,
+        12,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        42,
+        43
+      ],
+      "evidence": [
+        "tests/lifecycle/test_task_state_lifecycle.py",
+        "tests/evaluation/test_issue42_scenario_manifest.py",
+        "docs/adr/0033-confirmed-workflow-contract-replacements-and-incremental-migration.md"
+      ],
+      "status": "mechanism",
+      "note": "本票逐票复核迁移/导出/删除/审计/恢复并由覆盖账本登记。"
+    },
+    {
+      "item_id": "W-50",
+      "requirement": "路由/证据/推荐/教学/稳定/成本/P50 P95，同任务运行锁配对",
+      "owner_tickets": [
+        39,
+        40,
+        41,
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_workflow_pairing.py",
+        "tests/chat/test_improvement40_evaluation_acceptance.py",
+        "tests/evaluation/test_issue41_profile_pairing.py",
+        "tests/evaluation/test_issue39_human_expression.py"
+      ],
+      "status": "mechanism",
+      "note": "各票配对报告独立裁决；39 收益不放行，40/41/42 已独立验收。"
+    },
+    {
+      "item_id": "W-51",
+      "requirement": "真实全文/校内地图/贴吧/岗位/视频/GitHub/模型能力门，只开放已验证层",
+      "owner_tickets": [
+        24,
+        25,
+        26,
+        27,
+        28,
+        30,
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_external_probes.py",
+        ".scratch/2/validation/42-workflow-evaluation/external-probes.json"
+      ],
+      "status": "degraded",
+      "note": "arxiv 全文技术通过但产品保持摘要层；tieba/岗位/GitHub 未通过项如实降级。"
+    },
+    {
+      "item_id": "W-52",
+      "requirement": "回滚停新写保历史，不清库/丢任务/恢复退役，三桌面视口真实 API",
+      "owner_tickets": [
+        38,
+        43
+      ],
+      "evidence": [
+        ".scratch/2/acceptance/38-browser/README.md",
+        "tests/chat/test_issue38_acceptance_paths.py",
+        "src/bridges/evaluation/rollback_rehearsal.py",
+        "apps/web/e2e/issue21-desktop-acceptance.spec.ts"
+      ],
+      "status": "mechanism",
+      "note": "本票执行回滚演练与三视口真实 API/执行器复验。"
+    },
+    {
+      "item_id": "A01",
+      "requirement": "普通问候/陪伴",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_budget_class_derivation",
+        "tests/retrieval/test_decision.py::test_companion_greeting_skips_global_knowledge_base",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_ordinary_chat_creates_no_task_relation",
+        "tests/chat/test_chat_lightweight_policy.py::test_ordinary_generation_uses_exactly_one_model_call"
+      ],
+      "status": "verified",
+      "note": "工单 42 真实模型配对覆盖（每任务重复 2 次，只证方向）。"
+    },
+    {
+      "item_id": "A02",
+      "requirement": "保留论文提示，正文明确问校内通勤",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a02_paper_hint_with_commute_body_routes_commute",
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a02_service_keeps_requested_hint_and_uses_actual_route",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_body_intent_overrides_module_hint"
+      ],
+      "status": "verified",
+      "note": "工单 42 真实模型配对覆盖（每任务重复 2 次，只证方向）。"
+    },
+    {
+      "item_id": "A03",
+      "requirement": "孤立歧义主题，前文无法消歧",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_ambiguous_resources.py::test_a03_isolated_resources_domain_waits_before_any_model_or_tool",
+        "tests/evaluation/test_issue42_ambiguous_resources.py::test_a03_prior_user_domain_avoids_unnecessary_clarification",
+        "tests/paper/test_paper_module_core.py::test_isolated_transformer_asks_one_clarification",
+        "tests/paper/test_paper_module_flow.py::test_body_intent_ambiguous_term_dispatches_and_asks_one_question",
+        "tests/chat/test_natural_language_paper_route.py::test_ambiguous_paper_request_asks_before_any_side_effect"
+      ],
+      "status": "verified",
+      "note": "工单 42 真实模型配对覆盖（每任务重复 2 次，只证方向）。"
+    },
+    {
+      "item_id": "A04",
+      "requirement": "查入门论文和学习资料",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_composite_engine.py::test_paper_resources_run_in_parallel_with_one_shared_budget",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_registered_composite_freezes_one_normal_budget",
+        "tests/chat/test_issue37_composite_dispatch.py::test_composite_dispatch_commits_all_projections_once"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "A05",
+      "requirement": "查选中论文的对应实现",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/orchestration/test_issue37_composite_engine.py::test_github_cannot_claim_correspondence_when_paper_identity_unconfirmed",
+        "tests/github/test_github_module_flow.py::test_reference_to_prior_paper_turn_uses_its_original_phrase"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "A06",
+      "requirement": "求职城市从上海改杭州",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/career_plan/test_career_plan_module_flow.py::test_city_change_starts_a_new_revision_without_reusing_old_city_stats",
+        "tests/orchestration/test_issue37_composite_engine.py::test_city_change_recomputes_career_but_reuses_resources",
+        "tests/chat/test_issue37_composite_reuse.py::test_city_change_reruns_career_and_reuses_resources",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_city_revision_updates_task_version_and_condition"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "A07",
+      "requirement": "澄清未答时用户换话题，稍后说“好的”",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/tasks/test_task_state.py::test_topic_switch_does_not_fill_old_wait_and_cancel_releases",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_meta_reply_does_not_fill_open_wait",
+        "tests/chat/test_improvement12_task_relations.py::test_unrelated_or_stale_wait_does_not_consume_answer",
+        "tests/chat/test_improvement12_task_relations.py::test_profile_or_new_topic_does_not_answer_wait"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "A08",
+      "requirement": "多个历史任务都可能被“继续那个”指代",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a08_generic_continue_with_multiple_tasks_asks_one_clarification",
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a08_unique_task_term_resolves_continue_without_clarification"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。 依赖真实外部门，当前证据到机制层。"
+    },
+    {
+      "item_id": "A09",
+      "requirement": "资料视频来源失败，书目仍可核验",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a09_video_timeout_keeps_books_and_reports_real_gap",
+        "tests/resources/test_resources_module_core.py::test_organize_keeps_one_side_when_other_has_gap",
+        "tests/resources/test_resources_module_flow.py::test_book_gap_is_limited_to_its_own_source"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。 依赖真实外部门，当前证据到机制层。"
+    },
+    {
+      "item_id": "A10",
+      "requirement": "候选使用不同术语，但证据支持需求；另一个只命中词",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/paper/test_paper_issue24.py::test_synonym_evidence_passes_without_literal_primary_term",
+        "tests/paper/test_paper_issue24.py::test_primary_keyword_only_false_positive_is_excluded",
+        "tests/paper/test_paper_issue24_acceptance.py::test_synonym_evidence_survives_evaluate",
+        "tests/paper/test_paper_issue24_acceptance.py::test_unrelated_survey_is_not_topic_evidence"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "A11",
+      "requirement": "用户限定年份/城市/不联网",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/paper/test_paper_issue24.py::test_year_hard_condition_blocks_instead_of_widening",
+        "tests/paper/test_paper_issue24_acceptance.py::test_excluded_arxiv_source_blocks_before_any_search",
+        "tests/chat/test_improvement12_acceptance.py::test_direct_paper_stream_does_not_call_network_when_forbidden",
+        "tests/resources/test_issue25_lifecycle_acceptance.py::test_explicit_network_prohibition_blocks_all_resources_sources"
+      ],
+      "status": "verified",
+      "note": "工单 42 真实模型配对覆盖（每任务重复 2 次，只证方向）。"
+    },
+    {
+      "item_id": "A12",
+      "requirement": "通勤某方式无真实路线",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/commute/test_commute_sources.py::test_route_without_any_plan_is_honest_failure_for_that_mode",
+        "tests/commute/test_commute_sources.py::test_each_mode_uses_its_own_endpoint_and_its_own_duration",
+        "tests/commute/test_commute_module_flow.py::test_missing_path_points_marks_unverified_and_draws_nothing"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。 依赖真实外部门，当前证据到机制层。"
+    },
+    {
+      "item_id": "A13",
+      "requirement": "高峰前后 10 分钟边界",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/commute/test_commute_buffer.py::test_ten_minute_boundaries_are_inclusive",
+        "tests/commute/test_commute_buffer.py::test_checked_at_is_reported_in_shanghai_time",
+        "tests/commute/test_commute_buffer.py::test_notes_say_this_is_a_rule_not_realtime_crowd_data"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。 依赖真实外部门，当前证据到机制层。"
+    },
+    {
+      "item_id": "A14",
+      "requirement": "贴吧只有标题/搜索摘要",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/tieba/test_improvement27_question_driven.py::test_links_only_never_summarizes_unread_replies",
+        "tests/tieba/test_tieba_core.py::test_sections_only_use_read_replies_and_cite_floor_and_time",
+        "tests/tieba/test_tieba_module_flow.py::test_snippet_claiming_target_forum_still_needs_a_real_read"
+      ],
+      "status": "degraded",
+      "note": "真实外部门按探针结论如实降级，未通过层次不宣称。"
+    },
+    {
+      "item_id": "A15",
+      "requirement": "官方规定与帖子经历冲突",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/tieba/test_improvement27_question_driven.py::test_conflict_with_newer_official_rule_uses_time_and_scope_basis",
+        "tests/tieba/test_improvement27_question_driven.py::test_conflict_without_supersession_keeps_both_sides",
+        "tests/tieba/test_issue27_acceptance_regressions.py::test_no_proven_supersession_keeps_both"
+      ],
+      "status": "degraded",
+      "note": "真实外部门按探针结论如实降级，未通过层次不宣称。"
+    },
+    {
+      "item_id": "A16",
+      "requirement": "无用户技能背景的岗位查询",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/career_plan/test_issue29_personal_career_gap.py::test_personal_request_without_profile_delivers_job_part_and_boundary",
+        "tests/career_plan/test_issue29_personal_career_gap.py::test_job_only_request_never_touches_profile_source",
+        "tests/career_plan/test_career_plan_module_flow.py::test_plain_chat_explicit_job_query_starts_career_without_profile"
+      ],
+      "status": "degraded",
+      "note": "真实外部门按探针结论如实降级，未通过层次不宣称。"
+    },
+    {
+      "item_id": "A17",
+      "requirement": "GitHub 可选功能很多，必要功能未支持",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/github/test_github_requirement_matrix.py::test_required_unsupported_is_not_whole_even_with_ratio_stars_and_optionals",
+        "tests/github/test_github_requirement_matrix.py::test_optional_rows_are_listed_but_do_not_offset_required_gaps",
+        "tests/github/test_github_core.py::test_stars_are_only_a_tie_break_between_equal_matches"
+      ],
+      "status": "degraded",
+      "note": "真实外部门按探针结论如实降级，未通过层次不宣称。"
+    },
+    {
+      "item_id": "A18",
+      "requirement": "README 有架构说明但未读实现、未运行",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/github/test_github_core.py::test_render_states_evidence_boundary_and_never_claims_architecture",
+        "tests/github/test_github_acceptance_evidence.py::test_requested_implementation_is_not_satisfied_by_readme",
+        "tests/github/test_github_requirement_matrix.py::test_runtime_requirement_is_never_reported_as_runnable"
+      ],
+      "status": "degraded",
+      "note": "真实外部门按探针结论如实降级，未通过层次不宣称。"
+    },
+    {
+      "item_id": "L01",
+      "requirement": "书页关键负号/上标不清",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_critical_doubt_requests_exact_position_and_blocks_questions",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_position_level_critical_doubt_is_not_downgraded",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_dual_path_mismatch_is_critical_even_with_high_confidence",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_targeted_unclear_page_asks_for_retake_without_external_replacement"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L02",
+      "requirement": "不同知识点同名、多个页含不同公式",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement31_study_scope_preview.py::test_same_title_on_different_pages_keeps_distinct_ids_and_evidence",
+        "tests/chat/test_improvement33_preverified_questions.py::test_same_title_different_pages_keep_question_evidence_separate",
+        "tests/chat/test_improvement31_study_scope_preview.py::test_formula_conflict_blocks_until_repaired_content"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L03",
+      "requirement": "书页足以回答",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_sufficient_pages_do_not_search_knowledge_base_or_web"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L04",
+      "requirement": "书页不足，知识库/公网其中一路失败",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_page_only_delivery_without_review_or_scope_expansion",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_disabled_knowledge_base_and_no_network_keep_gaps_unverified",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_conflicting_public_sources_are_listed_not_merged",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_assessment_cannot_fabricate_support_sources"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。 依赖真实外部门，当前证据到机制层。"
+    },
+    {
+      "item_id": "L05",
+      "requirement": "“还没学完”或引用“开始复盘”",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement12_hybrid_entry.py::test_review_stage_gate_negation_quote_and_pause",
+        "tests/chat/test_v2_19_study_review.py::test_only_explicit_request_starts_review",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_tutoring_without_review_never_generates_summary"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L06",
+      "requirement": "学生使用等价表述/推导",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_equivalent_answer_passes_recheck_and_frozen_standard_does_not_drift",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_disputed_recheck_keeps_question_without_student_error"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L07",
+      "requirement": "批改调用失败或判定结构不合法",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_judgement_and_next_question_have_separate_commit_boundaries",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L08",
+      "requirement": "暂停复盘后要求讲解，随后继续",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_pause_is_not_graded_and_resume_defaults_to_next_unasked",
+        "tests/chat/test_v2_19_study_review.py::test_pause_tutor_and_resume_keep_asked_questions"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L09",
+      "requirement": "本节追加书页识别失败后重试",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_append_after_summary_versions_history_and_preview_questions",
+        "tests/chat/test_v2_19_study_review.py::test_append_pages_replans_only_unasked_and_preserves_grades",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_append_failure_keeps_effective_scope_and_reuses_recognized_pages",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_stop_during_append_keeps_effective_state_and_recovers"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L10",
+      "requirement": "最后一题判定已提交，总结失败",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_last_judgement_survives_summary_failure_and_retry_does_not_regrade",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_failure_persists_pending_and_retries_only_summary"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L11",
+      "requirement": "原题已判错后继续复盘",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_wrong_feedback_continues_frozen_plan_without_remediation",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_creates_no_followup_work_and_no_profile_fact_from_summary"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L12",
+      "requirement": "直接读取会话/重放事件",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement33_preverified_questions.py::test_plan_freezes_private_rubric_and_reads_never_leak_it",
+        "tests/chat/test_improvement33_acceptance.py::test_failed_verification_hides_private_details_in_api_and_replay",
+        "tests/chat/test_improvement33_acceptance.py::test_plan_receipt_records_registered_calculation_without_replay_leak"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "L13",
+      "requirement": "总结存在未答题或未判定题",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_separates_mastery_gaps_and_unanswered_with_real_evidence",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_unanswered_must_be_listed_separately",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_unanswered_question_never_counts_as_mastered",
+        "tests/chat/test_improvement36_status_acceptance.py::test_pending_text_comes_from_actual_state"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R01",
+      "requirement": "同一请求重试、刷新/SSE 断线",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates",
+        "tests/chat/test_v2_02_resumable_runs.py::test_retry_idempotency_reuses_run",
+        "tests/chat/test_issue06_stream_replay_consistency.py::test_disconnect_cursor_replay_reconstructs_body",
+        "tests/chat/test_chat_attachments.py::test_upload_uses_content_sniffing_and_retries_idempotently",
+        "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R02",
+      "requirement": "节点产物已提交，图检查点尚未保存时进程失败",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_retry_recovers_committed_pages_from_receipts",
+        "tests/chat/test_terminal_recovery_and_replay.py::test_message_commit_window_recovery_repairs_without_second_model_call",
+        "tests/chat/test_study_recognition_failures.py::test_restart_after_partial_failure_recovers_without_duplicating_pages"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R03",
+      "requirement": "旧租约执行者晚返回，或用户已经停止",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material",
+        "tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R04",
+      "requirement": "工具限流或多节点重试",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_lease_recovery_reloads_ledger_without_reset",
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_transient_retry_capped_once_per_registered_call",
+        "tests/web_search/test_issue03_retry_matrix.py::test_attempts_match_actual_http_calls_on_consecutive_failures",
+        "tests/arxiv_mcp/test_retry_stale_warmup.py::test_stale_serve_after_persistent_timeout_with_annotation"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R05",
+      "requirement": "材料/画像撤回后恢复旧运行",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_revocation_resume.py::test_r05_revoked_photo_is_not_reused_after_checkpoint_resume",
+        "tests/invalidation/test_invalidation_integration.py::test_revoke_between_submit_and_confirm_blocks_start",
+        "tests/retrieval/test_v2_07_knowledge_base_retrieval.py::test_deleted_material_is_not_recallable_but_citation_reports_deleted",
+        "tests/chat/test_improvement14_material_reads.py::test_deleted_old_photo_yields_gap_not_description",
+        "tests/chat/test_improvement11_reference_resolution.py::test_revoked_value_is_not_revived_and_reported_as_gap"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R06",
+      "requirement": "不兼容配方版本的历史运行",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/resources/test_issue25_lifecycle_acceptance.py::test_resources_resume_without_calls_and_reject_old_recipe",
+        "tests/chat/test_improvement33_acceptance.py::test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification",
+        "tests/chat/test_improvement35_acceptance.py::test_previous_graph_cannot_replay_pre_versioned_update",
+        "tests/kernel/test_node_kernel.py::test_contract_upgrade_reruns_nodes_and_preserves_old_receipts"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    },
+    {
+      "item_id": "R07",
+      "requirement": "用户停止、稍后明确继续",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task",
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_new_budget_run_for_explicit_continue",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_pause_continue_and_cancel_transitions",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_stop_generation_pauses_current_task"
+      ],
+      "status": "verified",
+      "note": "工单 42 真实模型配对覆盖（每任务重复 2 次，只证方向）。"
+    },
+    {
+      "item_id": "R08",
+      "requirement": "模型建议调用未登记/退役能力或切换模式",
+      "owner_tickets": [
+        42
+      ],
+      "evidence": [
+        "tests/workflows/test_workflow_capability_integration.py::test_unregistered_capability_blocks_run",
+        "tests/ai/test_model_gateway.py::test_unregistered_capability_is_blocked",
+        "tests/ai/test_model_gateway.py::test_disabled_capability_is_blocked",
+        "tests/closeout/test_v2_21_horizontal_regression.py::test_first_turn_locks_mode_and_switching_is_retired"
+      ],
+      "status": "mechanism",
+      "note": "确定性行为断言；真实外部门按 42 探针报告。"
+    }
+  ]
+}
