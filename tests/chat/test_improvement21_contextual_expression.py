@@ -32,6 +32,7 @@ from bridges.chat.lightweight_policy import (
     DEFAULT_OUTPUT_TOKENS,
     EXTENDED_OUTPUT_TOKENS,
     GLOBAL_CHAT_LIGHTWEIGHT_VERSION,
+    RELEASE_BASELINE_POLICY_VERSION,
     ChatResponseForm,
     ToolOutcome,
     continuation_source_text,
@@ -99,7 +100,7 @@ def test_emotion_with_investigation_request_completes_task() -> None:
     """焦虑又请求排查：完成排查主请求，不只做情绪承接。"""
     text = "我好焦虑，帮我看看这个问题出在哪"
     assert detect_response_form(text, ChatMode.COMPANION) == ChatResponseForm.DIRECT_TASK
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text=text
     )
     assert snapshot.form == ChatResponseForm.DIRECT_TASK
@@ -254,7 +255,7 @@ def test_continuation_source_skips_pure_continuations() -> None:
 
 
 def test_no_advice_snapshot_compiles_boundary_rules() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="我今天很难过，不想听建议，只想聊聊"
     )
 
@@ -267,7 +268,7 @@ def test_no_advice_snapshot_compiles_boundary_rules() -> None:
 
 
 def test_empathy_rules_drop_forced_action() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="今天好难过"
     )
 
@@ -282,7 +283,7 @@ def test_empathy_rules_drop_forced_action() -> None:
 
 
 def test_explanation_rules_drop_forced_confirmation() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="什么是黑洞？讲讲原理"
     )
 
@@ -293,7 +294,7 @@ def test_explanation_rules_drop_forced_confirmation() -> None:
 
 
 def test_tool_result_states_real_status() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="查一下这个结果",
         tool_outcome=ToolOutcome.PARTIAL,
@@ -307,7 +308,7 @@ def test_tool_result_states_real_status() -> None:
 
 
 def test_tool_failure_requires_truthful_status() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="查一下这个结果",
         tool_outcome=ToolOutcome.ERROR,
@@ -319,7 +320,7 @@ def test_tool_failure_requires_truthful_status() -> None:
 
 
 def test_refusal_shapes_use_error_refusal_rules() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="查一下", refusal=True
     )
 
@@ -328,7 +329,7 @@ def test_refusal_shapes_use_error_refusal_rules() -> None:
 
 
 def test_closing_snapshot_does_not_reopen_task() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="谢谢你，刚才的方法帮我解决了"
     )
 
@@ -339,7 +340,7 @@ def test_closing_snapshot_does_not_reopen_task() -> None:
 
 
 def test_direct_task_rules_follow_real_task_length() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="写一篇两千字的故事"
     )
 
@@ -351,7 +352,7 @@ def test_direct_task_rules_follow_real_task_length() -> None:
 
 def test_constraint_cap_matches_prompt_and_metadata() -> None:
     """提示词渲染与审计快照只保留同一批前三条约束，形态/额度用全部信号。"""
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="不要安慰我，只给答案，别追问，请详细推导这个公式",
     )
@@ -367,7 +368,7 @@ def test_constraint_cap_matches_prompt_and_metadata() -> None:
 
 
 def test_policy_priority_puts_task_and_boundaries_first() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="只给答案，别解释"
     )
 
@@ -378,7 +379,7 @@ def test_policy_priority_puts_task_and_boundaries_first() -> None:
 
 
 def test_existing_snapshot_reuse_keeps_constraints_and_budget() -> None:
-    compiler = GlobalWritingPolicyCompiler()
+    compiler = GlobalWritingPolicyCompiler(candidate_enabled=True)
     first = compiler.compile(ChatMode.COMPANION, user_text="写一篇两千字的故事")
     reused = compiler.compile(
         ChatMode.COMPANION,
@@ -393,7 +394,7 @@ def test_existing_snapshot_reuse_keeps_constraints_and_budget() -> None:
 
 
 def test_metadata_records_constraints_without_body_text() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="不想听建议，只想聊聊今天的事"
     )
 
@@ -422,7 +423,7 @@ def test_safe_baseline_honors_explicit_boundaries() -> None:
 
 def test_default_output_budget_is_unchanged() -> None:
     assert output_tokens_for_request("5 公里是多少米？") == DEFAULT_OUTPUT_TOKENS
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="5 公里是多少米？"
     )
     assert snapshot.output_tokens == DEFAULT_OUTPUT_TOKENS
@@ -436,7 +437,7 @@ def test_explicit_detail_uses_extended_task_ceiling() -> None:
         output_tokens_for_request("继续", continuation_text="请详细推导这个公式")
         == EXTENDED_OUTPUT_TOKENS
     )
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="写一篇两千字的故事"
     )
     assert snapshot.output_tokens == EXTENDED_OUTPUT_TOKENS
@@ -557,7 +558,7 @@ def test_long_request_uses_extended_payload_budget_in_generation(
     payload = adapter.payloads[0]
     assert payload["max_tokens"] == EXTENDED_OUTPUT_TOKENS
     metadata = payload["global_writing_policy"]
-    assert metadata["version"] == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    assert metadata["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert metadata["form"] == ChatResponseForm.DIRECT_TASK.value
     assert metadata["output_tokens"] == EXTENDED_OUTPUT_TOKENS
     assert "detail_requested" in metadata["constraints"]
@@ -731,7 +732,7 @@ def test_parent_graph_end_to_end_uses_v3_policy(
         account["id"], assistant_id
     )
     stored = (run.config or {})["global_writing_policy"]
-    assert stored["version"] == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    assert stored["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert stored["form"] == ChatResponseForm.EMPATHY.value
     assert "no_advice" in stored["constraints"]
     assert "no-unsolicited-advice" in stored["rule_ids"]

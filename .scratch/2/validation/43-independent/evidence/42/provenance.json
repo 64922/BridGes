@@ -1,0 +1,29 @@
+{
+  "说明": "工单42最终独立验收的既有脱敏报告，未新增真实调用、未改写旧失败或门结论。仅复制裁决必要报告，排除原始凭据/日志目录。",
+  "files": [
+    {
+      "source": "D:\\BridGes\\.scratch\\2\\validation\\42-acceptance\\deterministic-final\\workflow-evidence.json",
+      "copy": ".scratch\\2\\validation\\43-independent\\evidence\\42\\workflow-evidence.json",
+      "sha256": "e8c78bf19621b5bcafbbeec5dbff175bd16bdddc236c394552137cf54c4c7f92",
+      "byte_identical": true
+    },
+    {
+      "source": "D:\\BridGes\\.scratch\\2\\validation\\42-acceptance\\external-final\\external-probes.json",
+      "copy": ".scratch\\2\\validation\\43-independent\\evidence\\42\\external-probes.json",
+      "sha256": "879be5baba7d76297719f07c30d614c74ca9958a872226bf7830deac156bde95",
+      "byte_identical": true
+    },
+    {
+      "source": "D:\\BridGes\\.scratch\\2\\validation\\42-acceptance\\pairing\\final.json",
+      "copy": ".scratch\\2\\validation\\43-independent\\evidence\\42\\workflow-pairing.json",
+      "sha256": "eb80c25809bf4328dd03565871c3e451daee2440300f59719103c92c117f0b34",
+      "byte_identical": true
+    },
+    {
+      "source": "D:\\BridGes\\.scratch\\2\\validation\\42-acceptance\\semantics-final\\workflow-semantics.json",
+      "copy": ".scratch\\2\\validation\\43-independent\\evidence\\42\\workflow-semantics.json",
+      "sha256": "fc0e68c1522e0266b3e9c81330083067e89e401ad6e777619e091ed65ef9fa83",
+      "byte_identical": true
+    }
+  ]
+}

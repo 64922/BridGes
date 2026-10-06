@@ -18,6 +18,7 @@ from bridges.contracts.profiles import FourDimensionConfidence
 from bridges.evaluation.rollback_rehearsal import (
     rehearsal_stop_new_writes,
     run_rollback_rehearsal,
+    snapshot_content,
     snapshot_inventory,
 )
 from bridges.profiles.atomic import SqliteAtomicProfileRepository
@@ -189,3 +190,37 @@ def test_stop_new_writes_check_flags_shrunk_inventory(tmp_path: Path) -> None:
     }
     assert checks["no_data_loss_after_stop"].passed is False
     assert checks["database_integrity_ok"].passed is True
+
+
+def test_rollback_detects_content_change_with_equal_counts(tmp_path: Path) -> None:
+    harness, account_id, _ = _build_harness(tmp_path)
+    before = snapshot_inventory(harness.database, account_id)
+    content = snapshot_content(harness.database, account_id)
+    harness.database.scoped(account_id).execute(
+        "UPDATE messages SET content = '历史内容被替换' WHERE account_id = ?", (account_id,)
+    )
+    checks = {check.name: check for check in rehearsal_stop_new_writes(
+        harness.database, account_id, before, content
+    )}
+    assert checks["no_data_loss_after_stop"].passed
+    assert not checks["historical_content_preserved"].passed
+    assert checks["readonly_connection_rejects_writes"].passed
+    assert checks["connection_mode_restored"].passed
+
+
+def test_integrated_backup_restore_preserves_new_and_old_state(tmp_path: Path) -> None:
+    harness, account_id, _ = _build_harness(tmp_path)
+    before = snapshot_content(harness.database, account_id)
+    other_before = snapshot_content(harness.database, harness.acc2)
+    _, backup = harness.backup.create_backup("集成演练口令")
+    harness.database.scoped(account_id).execute(
+        "DELETE FROM node_artifacts WHERE account_id = ?", (account_id,)
+    )
+    harness.database.scoped(account_id).execute(
+        "UPDATE messages SET content = '损坏正文' WHERE account_id = ?", (account_id,)
+    )
+    preview = harness.backup.restore_backup("集成演练口令", backup, confirmation="恢复")
+    assert preview.ok, preview.reasons
+    assert snapshot_content(harness.database, account_id) == before
+    assert snapshot_content(harness.database, harness.acc2) == other_before
+    assert run_rollback_rehearsal(harness.database, account_id).passed

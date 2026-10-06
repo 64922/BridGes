@@ -1937,10 +1937,10 @@ def run_daily_turn(
         run_id=run.run_id,
     )
     deps = _GraphDeps(service, run, on_event=on_event, stop_event=stop_event)
-    if run.graph_version is not None and run.graph_version != DAILY_GRAPH_VERSION:
+    if run.graph_version != DAILY_GRAPH_VERSION:
         # 工单 43（R06）：旧版本图谱系可能已完成未原子提交的节点，不能套
         # 当前节点集继续；安全结束并保留历史，明确重试创建新版本的新运行。
-        # ``None`` 是迁移 49 之前的历史运行：没有图谱系，首次执行即新图。
+        # NULL 仅表示没有版本记录，不能证明旧运行未执行；同样安全结束。
         deps.converge_error(
             DailyTurnError(
                 NODE_VALIDATE_TURN,

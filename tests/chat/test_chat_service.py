@@ -17,7 +17,7 @@ import pytest
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import AdapterError, AuthError, RateLimitError, StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
-from bridges.chat.lightweight_policy import GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+from bridges.chat.lightweight_policy import RELEASE_BASELINE_POLICY_VERSION
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import (
     STREAM_INTERRUPTED_MESSAGE,
@@ -284,7 +284,7 @@ def test_ordinary_generation_uses_one_global_policy_snapshot(
     _, assistant = _start(service, created.conversation_id, "解释一下这个概念")
     queued = service.run_view_of("alice", assistant.message_id)
     assert queued is not None
-    assert queued.global_writing_policy_version == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    assert queued.global_writing_policy_version == RELEASE_BASELINE_POLICY_VERSION
     list(
         service.stream_generation(
             "alice", created.conversation_id, assistant.message_id, _context()
@@ -294,7 +294,7 @@ def test_ordinary_generation_uses_one_global_policy_snapshot(
     assert len(adapter.payloads) == 1
     payload = adapter.payloads[0]
     metadata = payload["global_writing_policy"]
-    assert metadata["version"] == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    assert metadata["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert metadata["form"] == "explanation"
     assert any(
         message["role"] == "system"

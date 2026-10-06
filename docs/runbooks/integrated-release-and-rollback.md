@@ -18,6 +18,11 @@
 `src/bridges/evaluation/release_adjudication.py` 只依据跟踪在库的独立验收
 记录，不因合并升级 39 的结论。
 
+独立验收修复后，新运行默认使用 `global-chat-release-baseline-v1`，不注入
+39 未通过人工质量门的候选全局/形态规则；明确交流边界、画像采用、预算、
+任务合同与确定性保护继续有效。候选仅由评测显式开启；完整历史快照仍可读、
+重试原样复用。裁决校验读取结构化执行与评分证据，缺失或失败时对应范围不放行。
+
 ## 2. 本批收敛的迁移事实（expand–migrate–contract）
 
 - **数据库**：`SCHEMA_VERSION = 69`；启动迁移前经在线备份 API 落快照
@@ -27,7 +32,8 @@
 - **旧运行**：日常图与学习图各自带 `graph_version`；非空且不等于当前
   版本的运行以 `daily_graph_version_changed` / `study_graph_version_changed`
   安全结束（可重试创建绑定当前版本的新运行），不把新图套旧谱系；
-  迁移 49 之前的 `NULL` 版本按首次执行兼容放行。
+  迁移 49 之前的 `NULL` 版本同样安全结束：缺少版本记录不能证明未执行，
+  用户明确重试后创建绑定当前版本的新运行；历史读取/导出仍保留。
 - **配方/产物契约**：计划步骤引用过期配方或能力版本被
   `RECIPE_VERSION_MISMATCH` 拒绝；`composite-orchestration-v1` 之外的旧
   综合产物不复用，按新契约生成明确新运行；内核按
@@ -73,10 +79,18 @@ npx playwright test e2e/issue06-stream-replay-consistency.spec.ts --project=chro
 
 回滚 = 停新写/策略路径并部署上一版本，**不清库、不丢任务/事件/产物、
 不恢复退役能力**。演练模块 `src/bridges/evaluation/rollback_rehearsal.py`
-在真实文件数据库上执行 12 项断言（表达式策略资源缺失降级、旧快照重试
+在真实文件数据库上执行 15 项断言（表达策略资源缺失降级、旧快照重试
 复用、画像条目与采用快照保留且资源恢复后可重新采用、事实保护协议常量
 与保护区绑定不随提示策略回滚撤销、停新写后库完整且全部登记表可读、
-清单不缩水、技能/插件/提醒保持退役且清理幂等）。
+清单不缩水、逐表身份/正文/产物内容摘要一致、真实只读连接拒绝写入且恢复
+原连接模式、技能/插件/提醒保持退役且清理幂等）。内容比较在退役处理之后执行。
+
+生产回滚顺序：停止接入新请求，关闭 API 内生成执行器及独立 worker，等待
+全部写入者退出；使用现有备份接口保存数据库和对象，记录版本与内容清单；
+回退策略/应用版本并保持当前 Schema 和确定性保护补丁，不执行降级 DDL；
+只读检查历史任务、事件、产物与导出；先在隔离恢复目录验证备份，再恢复服务。
+`PRAGMA query_only` 只约束一个连接，不能代替停止全部进程。本票演练的是隔离
+连接与备份恢复机制，没有在运行中的生产部署上执行停机或版本切换。
 
 ```powershell
 python -m scripts.run_issue43_acceptance_reports  # 含 rollback-rehearsal.json
@@ -84,6 +98,8 @@ python -m scripts.run_issue43_acceptance_reports  # 含 rollback-rehearsal.json
 
 - 备份恢复路径会重跑退役清理（`tests/lifecycle/test_restore_consistency.py`
   断言恢复后提醒状态为 `retired`）。
+- `test_integrated_backup_restore_preserves_new_and_old_state` 从真实加密备份
+  恢复被删除的产物与被修改的正文，按双账户逐表内容摘要核对，不只比较行数。
 - 旧版本运行不会复活失效材料或重置预算：恢复前重查权限、材料/画像、
   任务/小节版本与原预算由各票守卫负责；不兼容配方按第 2 节安全处理。
 - 提示策略回滚只影响表达快照选择，不撤销 `fact_protection` 等确定性
@@ -98,15 +114,16 @@ python -m scripts.run_issue43_acceptance_reports  # 含 rollback-rehearsal.json
 
 待实测或环境受限（不包装成功）：
 
-- 39 人味收益：人工盲评票数不足，`not_released`，接口开放但收益不宣称。
+- 39 人味收益：人工盲评票数不足且候选有硬门失败，`not_released`，
+  新运行候选默认关闭；不宣称收益。
 - 41 画像真实收益：14 次调用、配对 8/8 只证方向；桌面 E2E 页面断言受限。
-- 42 外部门：tieba/GitHub 探针未通过（诚实降级），jobs 声明 partial 未实测，
+- 42 外部门：最终 tieba/GitHub 探针未通过（诚实降级），jobs 为 inconclusive，
   arxiv 产品保持摘要层。
-- 桌面模型验证路径：「失败验证给出未通过结论」需要先在设置页配置有效
-  Qwen 密钥；隔离 E2E 环境无凭据，该 3 个断言与 main 同样失败，属实
-  显示「未配置」而不是伪造通过。
-- 全量回归 226 项失败/错误在 main `a9dda10a` 全新隔离环境逐项相同，
-  属既有基线（评测底座、旧模块、环境占用等），本票未处理。
+- 桌面模型验证分别检查无凭据配置指引与故意无效测试密钥的真实失败报告，
+  不依赖用户有效密钥、不保存无效凭据；不把该失败探针当作模型能力通过证据。
+- 编码代理原全量记录为 226 项失败/错误；独立验收修复临时目录权限并在
+  同一环境对比两树，最终结果见 `43-independent/independent-acceptance.md`，
+  不能用原报告数字代替本次验证。
 
 ## 6. 证据索引
 
@@ -118,3 +135,5 @@ python -m scripts.run_issue43_acceptance_reports  # 含 rollback-rehearsal.json
 - 阻塞票独立验收：`.scratch/2/validation/39-independent/acceptance.md`、
   `40-context-continuity/independent-acceptance.md`、
   `41-independent/acceptance.md`、42 场景/探针产物。
+- 最终独立验收与两轴审查：`.scratch/2/validation/43-independent/`；42 最终
+  canonical 脱敏副本位于 `evidence/42/`，`provenance.json` 记录来源和 SHA256。

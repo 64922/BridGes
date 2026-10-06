@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from bridges.chat.lightweight_policy import RELEASE_BASELINE_POLICY_VERSION
 from bridges.contracts.ai import ModelCallResult, ModelCallStatus
 from bridges.lifecycle.catalog import export_rows
 from bridges.study.scope import assign_unit_id
@@ -254,6 +255,16 @@ def test_same_title_on_different_pages_keeps_distinct_ids_and_evidence(
         assert (
             run.config or {}
         ).get("global_writing_policy", {}).get("snapshot_complete") is True
+        policy = run.config["global_writing_policy"]
+        # 范围/预习路径不能因直接调用低层编译器绕过候选放行门。
+        assert policy["version"] == RELEASE_BASELINE_POLICY_VERSION
+        assert "release-task-baseline" in policy["rule_ids"]
+        assert "answer-first" not in policy["rule_ids"]
+        assert any(
+            RELEASE_BASELINE_POLICY_VERSION in message["content"]
+            for message in gateway.preview_calls[0]["messages"]
+            if message["role"] == "system"
+        )
 
 
 def test_unmapped_teaching_fragment_needs_reason_and_repair_is_bounded(

@@ -83,7 +83,7 @@ class ArmPolicyCompiler:
         delegate: GlobalWritingPolicyCompiler | None = None,
     ) -> None:
         self.arm = arm
-        self._delegate = delegate or GlobalWritingPolicyCompiler()
+        self._delegate = delegate or GlobalWritingPolicyCompiler(candidate_enabled=True)
         self._legacy = LegacyV2LightweightPolicyCompiler()
 
     @property

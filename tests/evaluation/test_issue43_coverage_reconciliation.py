@@ -24,7 +24,7 @@ def test_reconciliation_covers_every_mapped_requirement_and_scenario() -> None:
     assert report.passed is True
     assert report.total == 166
     assert len(expected_coverage_ids()) == 166
-    assert report.status_counts["verified"] >= 19
+    assert report.status_counts["verified"] >= 17
     assert report.status_counts["degraded"] >= 9
 
 
@@ -61,3 +61,11 @@ def test_every_item_has_owner_and_existing_evidence_anchor() -> None:
         for ref in item.evidence:
             path_part = ref.partition("::")[0]
             assert (root / path_part).exists(), f"{item.item_id}: {ref}"
+
+
+def test_partial_profile_evidence_is_not_promoted_to_verified() -> None:
+    by_id = {item.item_id: item for item in coverage_items()}
+    assert by_id["P-23"].status is CoverageStatus.MECHANISM
+    assert "未进入页面断言" in by_id["P-23"].note
+    assert by_id["P-30"].status is CoverageStatus.MECHANISM
+    assert "未证明整条" in by_id["P-30"].note

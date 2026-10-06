@@ -10,11 +10,14 @@
 5. 退役能力复核：重跑退役清理保持幂等，历史行保留，不恢复启用态。
 
 本模块只读业务数据（退役清理为幂等 UPDATE，不删除历史），供测试与
-``scripts/run_issue43_rollback_rehearsal.py`` 复用。
+``scripts/run_issue43_acceptance_reports.py`` 复用。
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -114,6 +117,22 @@ def snapshot_inventory(
     return counts
 
 
+def snapshot_content(database: BridgesDatabase, account_id: str) -> dict[str, str]:
+    """对登记表逐行身份与内容取摘要，避免等量替换或修改历史逃过检查。"""
+    result: dict[str, str] = {}
+    for table in INVENTORY_TABLES:
+        rows = database.connection.execute(
+            f"SELECT * FROM {table} WHERE account_id = ?", (account_id,)
+        ).fetchall()
+        encoded = sorted(
+            json.dumps(dict(row), sort_keys=True, ensure_ascii=False,
+                       default=lambda value: value.hex())
+            for row in rows
+        )
+        result[table] = hashlib.sha256("\n".join(encoded).encode("utf-8")).hexdigest()
+    return result
+
+
 def rehearsal_expression_rollback(
     database: BridgesDatabase, account_id: str
 ) -> tuple[RehearsalCheck, ...]:
@@ -200,8 +219,27 @@ def rehearsal_stop_new_writes(
     database: BridgesDatabase,
     account_id: str,
     before: Mapping[str, int],
+    before_content: Mapping[str, str] | None = None,
 ) -> tuple[RehearsalCheck, ...]:
-    """停新写后复核库完整、表可读、清单不缩水。"""
+    """验证当前连接只读时拒绝写入，并复核回滚后的数据。
+
+    生产回滚须先停止 API/worker 全部写入者；query_only 只约束本连接，
+    不能代替停机。本演练在隔离数据库验证只读阶段，finally 恢复连接状态。
+    """
+
+    connection = database.connection
+    original_mode = int(connection.execute("PRAGMA query_only").fetchone()[0])
+    write_rejected = False
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        try:
+            connection.execute(
+                "UPDATE messages SET content = content WHERE account_id = ?", (account_id,)
+            )
+        except sqlite3.OperationalError as exc:
+            write_rejected = exc.sqlite_errorcode == sqlite3.SQLITE_READONLY
+    finally:
+        connection.execute(f"PRAGMA query_only = {original_mode}")
 
     integrity = database.connection.execute("PRAGMA integrity_check").fetchone()[0]
     after = snapshot_inventory(database, account_id)
@@ -221,6 +259,16 @@ def rehearsal_stop_new_writes(
             unreadable.append(table)
     return (
         RehearsalCheck(
+            "readonly_connection_rejects_writes",
+            write_rejected,
+            "隔离只读连接真实拒绝写入；生产停机仍需停止全部写入者。",
+        ),
+        RehearsalCheck(
+            "connection_mode_restored",
+            int(connection.execute("PRAGMA query_only").fetchone()[0]) == original_mode,
+            "只读演练后恢复原连接模式。",
+        ),
+        RehearsalCheck(
             "database_integrity_ok",
             str(integrity) == "ok",
             f"PRAGMA integrity_check={integrity}。",
@@ -235,6 +283,12 @@ def rehearsal_stop_new_writes(
             "no_data_loss_after_stop",
             not shrunk,
             "回滚不清库、不丢任务/事件/产物；缩水：" + (str(shrunk) if shrunk else "无"),
+        ),
+        RehearsalCheck(
+            "historical_content_preserved",
+            before_content is not None
+            and dict(before_content) == snapshot_content(database, account_id),
+            "全部回滚步骤后逐表核对原记录身份与内容摘要；缺少前快照则不通过。",
         ),
     )
 
@@ -299,11 +353,12 @@ def run_rollback_rehearsal(
     """执行完整回滚演练并返回可复核报告。"""
 
     before = snapshot_inventory(database, account_id)
+    before_content = snapshot_content(database, account_id)
     checks: list[RehearsalCheck] = []
     checks.extend(rehearsal_expression_rollback(database, account_id))
     checks.extend(rehearsal_deterministic_protection())
-    checks.extend(rehearsal_stop_new_writes(database, account_id, before))
     checks.extend(rehearsal_retired_capabilities(database))
+    checks.extend(rehearsal_stop_new_writes(database, account_id, before, before_content))
     after = snapshot_inventory(database, account_id)
     return RollbackRehearsalReport(
         checks=tuple(checks),

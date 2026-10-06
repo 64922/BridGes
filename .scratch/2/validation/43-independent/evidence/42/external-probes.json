@@ -1,0 +1,277 @@
+{
+  "kind": "external-probes",
+  "generated_at": "2026-10-06T08:37:23.761380+00:00",
+  "credential_presence": {
+    "qwen": true,
+    "tavily": true,
+    "amap": true
+  },
+  "model_config": {
+    "model_id": "qwen3.7-plus-2026-05-26",
+    "source": "factory",
+    "context_window": 1000000,
+    "capabilities": [
+      "text",
+      "image",
+      "tool_calling",
+      "structured_output"
+    ]
+  },
+  "claims": {
+    "arxiv.full_text": {
+      "declared_level": "degraded",
+      "degradation_contract": true,
+      "degradation_basis": "A10：未读全文时结论只基于已读证据"
+    },
+    "amap.campus_routes": {
+      "declared_level": "partial",
+      "degradation_contract": true,
+      "degradation_basis": "A12：某方式无路线按方式如实失败"
+    },
+    "tieba.replies": {
+      "declared_level": "partial",
+      "degradation_contract": true,
+      "degradation_basis": "A14：只交付线索，不总结未读回复"
+    },
+    "jobs.public_detail": {
+      "declared_level": "partial",
+      "degradation_contract": true,
+      "degradation_basis": "A16：不可读时只给未核实链接"
+    },
+    "video.intro": {
+      "declared_level": "partial",
+      "degradation_contract": true,
+      "degradation_basis": "A09：视频失败仍交付书目与真实缺口"
+    },
+    "github.files": {
+      "declared_level": "partial",
+      "degradation_contract": true,
+      "degradation_basis": "A17/A18：只基于已读文件下结论"
+    },
+    "model.configured_capabilities": {
+      "declared_level": "full",
+      "degradation_contract": false,
+      "degradation_basis": "无降级：声明能力未实测通过不得激活"
+    },
+    "web_search.tavily": {
+      "declared_level": "full",
+      "degradation_contract": true,
+      "degradation_basis": "L04：一路失败只交付可支持部分并标缺口"
+    }
+  },
+  "probes": [
+    {
+      "gate": "arxiv.full_text",
+      "status": "passed",
+      "level": "full",
+      "declared_level": "degraded",
+      "declared_basis": "PaperSearchService 未装配全文读取，界面按摘要+书目层交付",
+      "degradation_contract": true,
+      "degradation_basis": "A10：未读全文时结论只基于已读证据",
+      "summary": "技术实测可下载并提取正文（前 3 页 15015 字符）；产品未接线全文读取，界面保持摘要层。",
+      "measurements": {
+        "arxiv_id": "2610.06848v1",
+        "pdf_bytes": 1648031,
+        "pdf_pages": 13,
+        "extracted_chars_first_pages": 15015
+      },
+      "degradation": "产品未宣称全文深读；接线扩展需另行审查。",
+      "checked_at": "2026-10-06T08:37:06.274280+00:00",
+      "duration_ms": 3562
+    },
+    {
+      "gate": "amap.campus_routes",
+      "status": "passed",
+      "level": "full",
+      "declared_level": "partial",
+      "declared_basis": "三种方式独立调用；某方式无路线按方式如实失败",
+      "degradation_contract": true,
+      "degradation_basis": "A12：某方式无路线按方式如实失败",
+      "summary": "校内起终点检索成功；三种方式 3/3 返回路线，3 条含路径点。",
+      "measurements": {
+        "origin": "华东交通大学南区宅",
+        "destination": "华东交通大学南区图书馆",
+        "modes": {
+          "walking": {
+            "ok": true,
+            "distance_m": 559,
+            "duration_seconds": 447,
+            "polyline_points": 28,
+            "error_code": null
+          },
+          "bicycling": {
+            "ok": true,
+            "distance_m": 536,
+            "duration_seconds": 144,
+            "polyline_points": 26,
+            "error_code": null
+          },
+          "electrobike": {
+            "ok": true,
+            "distance_m": 536,
+            "duration_seconds": 138,
+            "polyline_points": 26,
+            "error_code": null
+          }
+        }
+      },
+      "degradation": "某方式无路线时按方式如实失败，不拿其他耗时或猜测地图替代。",
+      "checked_at": "2026-10-06T08:37:07.179475+00:00",
+      "duration_ms": 906
+    },
+    {
+      "gate": "web_search.tavily",
+      "status": "passed",
+      "level": "full",
+      "declared_level": "full",
+      "declared_basis": "Tavily 公网搜索服务按预算、缓存与审计路径交付",
+      "degradation_contract": true,
+      "degradation_basis": "L04：一路失败只交付可支持部分并标缺口",
+      "summary": "公网搜索返回 5 条结果。",
+      "measurements": {
+        "result_count": 5,
+        "first_title": "关于暑假期间图书馆开放安排的通知-华东交通大学图书馆",
+        "first_url": "https://lib.ecjtu.edu.cn/info/1076/5881.htm"
+      },
+      "degradation": "搜索不可用时相关模块如实标注缺口，不编造来源。",
+      "checked_at": "2026-10-06T08:37:08.860714+00:00",
+      "duration_ms": 1671
+    },
+    {
+      "gate": "tieba.replies",
+      "status": "failed",
+      "level": "unavailable",
+      "declared_level": "partial",
+      "declared_basis": "公开页有界读取；受限时只交付帖链，不总结未读回复",
+      "degradation_contract": true,
+      "degradation_basis": "A14：只交付线索，不总结未读回复",
+      "summary": "帖子读取受限或不可用（status=access_restricted，error=tieba_read_access_restricted）。",
+      "measurements": {
+        "url": "https://tieba.baidu.com/p/10745250786",
+        "status": "access_restricted",
+        "replies": 0,
+        "pages_read": 0,
+        "title": null
+      },
+      "degradation": "回复读不到时只交付帖链与标题，不总结未读回复、不称普遍共识。",
+      "checked_at": "2026-10-06T08:37:09.302072+00:00",
+      "duration_ms": 453
+    },
+    {
+      "gate": "jobs.public_detail",
+      "status": "inconclusive",
+      "level": "unavailable",
+      "declared_level": "partial",
+      "declared_basis": "只把公开可读岗位纳入样本；读不到只给未核实链接",
+      "degradation_contract": true,
+      "degradation_basis": "A16：不可读时只给未核实链接",
+      "summary": "未能通过公网搜索定位到公开岗位详情页。",
+      "measurements": {},
+      "degradation": "只交付未核实链接，不推断岗位要求。",
+      "checked_at": "2026-10-06T08:37:11.651437+00:00",
+      "duration_ms": 2343
+    },
+    {
+      "gate": "video.intro",
+      "status": "passed",
+      "level": "full",
+      "declared_level": "partial",
+      "declared_basis": "只交付核对过的公开元数据（标题/时长/简介）",
+      "degradation_contract": true,
+      "degradation_basis": "A09：视频失败仍交付书目与真实缺口",
+      "summary": "公开元数据核对通过：【兆筱】轻松入门高等数学 | 高数先导课 1.6 实数集的界（含简介）",
+      "measurements": {
+        "video_id": "BV1Wv411C7Wo",
+        "duration_seconds": 1707,
+        "has_uploader": true,
+        "has_description": true,
+        "attempted": 2
+      },
+      "degradation": "只交付核对过的元数据，不宣称看过视频内容或字幕。",
+      "checked_at": "2026-10-06T08:37:12.617842+00:00",
+      "duration_ms": 969
+    },
+    {
+      "gate": "github.files",
+      "status": "failed",
+      "level": "unavailable",
+      "declared_level": "partial",
+      "declared_basis": "公开 REST API 只读；受限时只基于已读文件下结论",
+      "degradation_contract": true,
+      "degradation_basis": "A17/A18：只基于已读文件下结论",
+      "summary": "仓库元数据 失败，README 失败，许可 失败。",
+      "measurements": {
+        "status_codes": {
+          "repo": 403,
+          "readme": null,
+          "license": null
+        },
+        "core_remaining": 0,
+        "limited": true,
+        "core_reset_at": "2026-10-06T08:37:18+00:00"
+      },
+      "degradation": "README 只当项目自述；未读实现不作架构或可运行断言。",
+      "checked_at": "2026-10-06T08:37:12.960553+00:00",
+      "duration_ms": 342
+    },
+    {
+      "gate": "model.configured_capabilities",
+      "status": "passed",
+      "level": "full",
+      "declared_level": "full",
+      "declared_basis": "四项能力（文本/图片/工具/结构化）须实测通过才激活",
+      "degradation_contract": false,
+      "degradation_basis": "无降级：声明能力未实测通过不得激活",
+      "summary": "生效模型 qwen3.7-plus-2026-05-26（factory）四项能力与有界上下文样本实测通过。",
+      "measurements": {
+        "model_id": "qwen3.7-plus-2026-05-26",
+        "config_source": "factory",
+        "context_window": 1000000,
+        "context_sample": {
+          "ok": true,
+          "input_chars": 2935,
+          "usage": {
+            "completion_tokens": 13,
+            "prompt_tokens": 1491,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 1491
+            },
+            "total_tokens": 1504
+          },
+          "scope": "仅本次合成输入范围；未验证配置窗口上限"
+        },
+        "context_window_note": "窗口上限为配置元数据；有界样本通过不证明整个窗口可靠。",
+        "capabilities": {
+          "text": {
+            "ok": true,
+            "error_code": null,
+            "message": null
+          },
+          "image": {
+            "ok": true,
+            "error_code": null,
+            "message": null
+          },
+          "tool_calling": {
+            "ok": true,
+            "error_code": null,
+            "message": null
+          },
+          "structured_output": {
+            "ok": true,
+            "error_code": null,
+            "message": null
+          }
+        }
+      },
+      "degradation": "未实测通过的能力不得激活或宣称为可用。",
+      "checked_at": "2026-10-06T08:37:23.761380+00:00",
+      "duration_ms": 10797
+    }
+  ],
+  "consistency_problems": [],
+  "inconclusive_gates": [
+    "jobs.public_detail"
+  ]
+}

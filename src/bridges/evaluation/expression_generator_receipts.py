@@ -17,7 +17,7 @@ from bridges.evaluation.expression_real_gateway import receipt_run_context
 def _expression_policy() -> Any:
     from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 
-    return GlobalWritingPolicyCompiler().compile(
+    return GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         "companion", user_text="按证据给中文概述，不编造。"
     )
 

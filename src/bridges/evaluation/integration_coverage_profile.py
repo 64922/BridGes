@@ -199,8 +199,8 @@ PROFILE_COVERAGE: tuple[CoverageItem, ...] = (
         (20, 41),
         ("tests/profiles/test_issue20_profile_evidence_disclosure.py",
          _41_ACCEPTANCE),
-        CoverageStatus.VERIFIED,
-        "41 独立验收确认依据/反馈 API 与页面路径。",
+        CoverageStatus.MECHANISM,
+        "41 验证依据/反馈 API 和页面组件；真实桌面 E2E 未进入页面断言。",
     ),
     CoverageItem(
         "P-24",
@@ -256,8 +256,8 @@ PROFILE_COVERAGE: tuple[CoverageItem, ...] = (
         (7, 17, 18, 19, 41),
         ("tests/profiles/test_issue17_async_evidence_extraction.py",
          "tests/evaluation/test_issue41_profile_pairing.py"),
-        CoverageStatus.VERIFIED,
-        "41 纵向配对覆盖连续例子；跨会话延迟有真实记录。",
+        CoverageStatus.MECHANISM,
+        "41 两任务四条件配对支持内容方向，未证明整条概率→详细→记住→忘掉连续例子。",
     ),
     CoverageItem(
         "P-31",

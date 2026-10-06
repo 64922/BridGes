@@ -7,17 +7,18 @@
 - 旧 ``graph_version`` 的运行不再进入当前节点集，直接以稳定错误码安全
   结束，保留历史消息与运行，且不产生任何模型调用或图检查点；
 - 用户明确重试创建绑定当前 ``daily-parent-v2`` 的新运行并正常完成；
-- 迁移 49 之前无图版本（``NULL``）的历史运行没有旧谱系，仍按首次执行
-  进入当前图（兼容读取不被一刀切拒绝）。
+- 无图版本（``NULL``）同样无法证明安全恢复，保留历史后明确重试。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai.adapters import StreamChunk
+from bridges.chat.lightweight_policy import RELEASE_BASELINE_POLICY_VERSION
 from tests.chat.test_chat_api import (
     _create_conversation,
     _gateway_with,
@@ -66,10 +67,14 @@ def _set_queued_run_graph_version(app: Any, account_id: str, version: str | None
     )
 
 
+@pytest.mark.parametrize("version", [_OLD_DAILY_GRAPH_VERSION, None])
+@pytest.mark.parametrize("legacy_status", ["queued", "running"])
 def test_old_daily_graph_run_ends_safely_and_retry_uses_current_graph(
     sqlite_app: Any,  # noqa: F811 - pytest 夹具
     client: TestClient,  # noqa: F811 - pytest 夹具
     generation_helpers: dict[str, Any],
+    version: str | None,
+    legacy_status: str,
 ) -> None:
     account = _register(client)
     adapter = _CountingAdapter("新版本回答")
@@ -77,8 +82,16 @@ def test_old_daily_graph_run_ends_safely_and_retry_uses_current_graph(
     conversation_id = _create_conversation(client)
     created = _send(client, conversation_id, "介绍一下你自己")
     _set_queued_run_graph_version(
-        sqlite_app, account["id"], _OLD_DAILY_GRAPH_VERSION
+        sqlite_app, account["id"], version
     )
+    if legacy_status == "running":
+        # 模拟升级前已有执行尝试、进程死亡后租约到期的历史运行。
+        sqlite_app.state.chat_service._repo.database.scoped(account["id"]).execute(
+            "UPDATE generation_runs SET status = 'running', attempt_count = 1,"
+            " lease_expires_at = '2000-01-01T00:00:00+00:00', stage = 'generating'"
+            " WHERE account_id = ? AND run_id = ?",
+            (account["id"], created["run_id"]),
+        )
 
     sqlite_app.state.generation_executor.run_tick()
 
@@ -114,26 +127,5 @@ def test_old_daily_graph_run_ends_safely_and_retry_uses_current_graph(
         account["id"], retried.json()["run_id"]
     )
     assert new_run is not None and new_run.graph_version == "daily-parent-v2"
+    assert new_run.config["global_writing_policy"]["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert adapter.stream_calls == 1
-
-
-def test_pre_graph_run_without_version_still_executes_current_graph(
-    sqlite_app: Any,  # noqa: F811 - pytest 夹具
-    client: TestClient,  # noqa: F811 - pytest 夹具
-    generation_helpers: dict[str, Any],
-) -> None:
-    """迁移 49 前的历史运行没有图谱系，按首次执行进入当前图（兼容不拒绝）。"""
-
-    account = _register(client)
-    adapter = _CountingAdapter("兼容回答")
-    sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
-    conversation_id = _create_conversation(client)
-    _send(client, conversation_id, "历史运行兼容")
-    _set_queued_run_graph_version(sqlite_app, account["id"], None)
-
-    sqlite_app.state.generation_executor.run_tick()
-
-    projection = client.get(f"/chat/conversations/{conversation_id}").json()
-    final = projection["messages"][-1]
-    assert final["status"] == "done"
-    assert final["content"] == "兼容回答"

@@ -24,6 +24,7 @@ from bridges.chat.global_writing_policy import (
 )
 from bridges.chat.lightweight_policy import (
     GLOBAL_CHAT_LIGHTWEIGHT_VERSION,
+    RELEASE_BASELINE_POLICY_VERSION,
     ChatLightweightPolicySnapshot,
     ChatResponseForm,
     detect_response_form,
@@ -211,7 +212,7 @@ def test_detect_form_lesson_only_with_learning_signal() -> None:
 def test_compile_snapshot_per_form_rule_count_within_limit(
     text: str, expected_form: ChatResponseForm
 ) -> None:
-    compiler = GlobalWritingPolicyCompiler()
+    compiler = GlobalWritingPolicyCompiler(candidate_enabled=True)
     snapshot = compiler.compile(ChatMode.COMPANION, user_text=text)
 
     assert snapshot.version == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
@@ -229,13 +230,13 @@ def test_compile_snapshot_per_form_rule_count_within_limit(
 
 def test_compile_snapshot_for_system_signal_forms() -> None:
     """工具结果/错误拒答/学习课时形态由系统信号确定（非文本）。"""
-    tool_snapshot = GlobalWritingPolicyCompiler().compile(
+    tool_snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="查询结果如下", tool_result=True
     )
-    error_snapshot = GlobalWritingPolicyCompiler().compile(
+    error_snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="查一下", tool_error=True
     )
-    lesson_snapshot = GlobalWritingPolicyCompiler().compile(
+    lesson_snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.STUDY, user_text="继续上课", lesson=True
     )
 
@@ -247,7 +248,7 @@ def test_compile_snapshot_for_system_signal_forms() -> None:
 
 
 def test_compile_snapshot_renders_rules_without_article_or_method_ids() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="什么是黑洞？讲讲原理"
     )
 
@@ -262,7 +263,7 @@ def test_compile_snapshot_renders_rules_without_article_or_method_ids() -> None:
 
 
 def test_compile_snapshot_rule_ids_cover_global_and_form_rules() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="今天很难过"
     )
 
@@ -279,7 +280,7 @@ def test_compile_snapshot_rule_ids_cover_global_and_form_rules() -> None:
 
 
 def test_compile_consumes_expression_contract() -> None:
-    compiler = GlobalWritingPolicyCompiler()
+    compiler = GlobalWritingPolicyCompiler(candidate_enabled=True)
     contract = _chat_contract()
 
     snapshot = compiler.compile(
@@ -295,7 +296,7 @@ def test_compile_consumes_expression_contract() -> None:
 
 def test_compile_rejects_article_contract() -> None:
     with pytest.raises(ValueError, match="非聊天表面契约"):
-        GlobalWritingPolicyCompiler().compile(
+        GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
             ChatMode.COMPANION,
             user_text="帮我润色这段",
             expression_contract=_article_contract(),
@@ -303,10 +304,10 @@ def test_compile_rejects_article_contract() -> None:
 
 
 def test_compile_internal_contract_keeps_snapshot_bound() -> None:
-    first = GlobalWritingPolicyCompiler().compile(
+    first = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="什么是黑洞？"
     )
-    second = GlobalWritingPolicyCompiler().compile(
+    second = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="什么是黑洞？"
     )
 
@@ -327,7 +328,7 @@ def test_compile_legacy_profile_items_are_not_dimension_filtered() -> None:
     未启用原子画像的退化环境保留全部非空条目，不再静默丢维度。
     """
 
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="什么是黑洞？",
         profile_slice_id="slice-alice-1",
@@ -356,7 +357,7 @@ def test_compile_legacy_profile_items_are_not_dimension_filtered() -> None:
 
 
 def test_compile_profile_missing_uses_restrained_default() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="什么是黑洞？",
         profile_items=[_profile_item("本科在读，专业是物理", "academic_status")],
@@ -370,7 +371,7 @@ def test_compile_profile_missing_uses_restrained_default() -> None:
 
 
 def test_compile_empty_profile_does_not_invent_details() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="什么是黑洞？"
     )
 
@@ -384,7 +385,7 @@ def test_compile_empty_profile_does_not_invent_details() -> None:
 
 
 def test_compile_system_block_declares_protected_regions() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION, user_text="帮我运行这段代码"
     )
 
@@ -395,7 +396,7 @@ def test_compile_system_block_declares_protected_regions() -> None:
 def test_policy_yields_to_user_tone_length_and_task_contract() -> None:
     """V2 issue 04：表达规则优先级低于用户语气、篇幅与任务合同。"""
     for mode in (ChatMode.COMPANION, ChatMode.STUDY):
-        snapshot = GlobalWritingPolicyCompiler().compile(
+        snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
             mode, user_text="用轻松的语气两句话讲清楚"
         )
         assert "优先级低于用户本轮明确表达的语气与篇幅要求" in snapshot.system_block
@@ -443,7 +444,7 @@ def test_compile_fallback_when_resource_missing() -> None:
 
 
 def test_study_short_question_does_not_load_lesson_structure() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.STUDY, user_text="光速是多少？"
     )
 
@@ -456,7 +457,7 @@ def test_study_short_question_does_not_load_lesson_structure() -> None:
 
 
 def test_study_lesson_signal_loads_lesson_rules() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.STUDY, user_text="继续上课", lesson=True
     )
 
@@ -477,7 +478,7 @@ def test_retry_reuses_original_snapshot_even_after_resource_update() -> None:
         GlobalWritingPolicyResource(version="global-chat-lightweight-v0")
     ).compile(ChatMode.COMPANION, user_text="什么是黑洞？")
 
-    updated = GlobalWritingPolicyCompiler().compile(
+    updated = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="什么是黑洞？",
         existing_snapshot=first,
@@ -503,7 +504,7 @@ def test_legacy_snapshot_retry_stays_compatible() -> None:
         "system_block": "旧版策略正文",
     }
 
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="什么是黑洞？",
         existing_snapshot=legacy,
@@ -522,7 +523,7 @@ def test_legacy_snapshot_retry_stays_compatible() -> None:
 
 
 def test_metadata_never_contains_body_text() -> None:
-    snapshot = GlobalWritingPolicyCompiler().compile(
+    snapshot = GlobalWritingPolicyCompiler(candidate_enabled=True).compile(
         ChatMode.COMPANION,
         user_text="什么是黑洞？量子纠缠又是怎么回事",
         profile_slice_id="slice-alice-1",
@@ -542,7 +543,7 @@ def test_metadata_never_contains_body_text() -> None:
 
 
 def test_seed_produces_unbound_snapshot() -> None:
-    seed = GlobalWritingPolicyCompiler().seed(ChatMode.COMPANION)
+    seed = GlobalWritingPolicyCompiler(candidate_enabled=True).seed(ChatMode.COMPANION)
 
     assert seed.snapshot_complete is False
     assert seed.version == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
@@ -640,7 +641,7 @@ def test_ordinary_generation_uses_exactly_one_model_call(counting_env) -> None:
     assert len(adapter.payloads) == 1
     payload = adapter.payloads[0]
     metadata = payload["global_writing_policy"]
-    assert metadata["version"] == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    assert metadata["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert metadata["form"] == ChatResponseForm.EXPLANATION.value
     run = service._repo.get_run_by_message("alice", assistant.message_id)
     stored = (run.config or {})["global_writing_policy"]

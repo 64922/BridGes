@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.lightweight_policy import (
-    GLOBAL_CHAT_LIGHTWEIGHT_VERSION,
+    RELEASE_BASELINE_POLICY_VERSION,
     ChatLightweightPolicyCompiler,
 )
 from bridges.contracts.atomic_profile import AtomicProfileItemModifyRequest
@@ -223,7 +223,7 @@ def test_chat_policy_and_profile_block_share_adopted_snapshot(env: _Env) -> None
     metadata = payload["global_writing_policy"]
     run = env.chat._repo.get_run_by_message(ACCOUNT, final.message_id)  # noqa: SLF001
     stored = run.config["adopted_profile_slice"]
-    assert metadata["version"] == GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+    assert metadata["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert metadata["profile_slice_id"] == stored["slice_id"]
     assert metadata["profile_revocation_version"] == stored["revocation_version"]
     assert metadata["profile_decisions"] == ["expression_length"]
@@ -413,6 +413,11 @@ def test_study_tutoring_injects_policy_and_profile_from_same_snapshot(
         )
         stored_policy = run.config["global_writing_policy"]
         stored_slice = run.config["adopted_profile_slice"]
+        # 学习辅导直接使用低层编译器，也必须保持未放行候选停用。
+        assert stored_policy["version"] == RELEASE_BASELINE_POLICY_VERSION
+        assert "release-task-baseline" in stored_policy["rule_ids"]
+        assert "answer-first" not in stored_policy["rule_ids"]
+        assert RELEASE_BASELINE_POLICY_VERSION in policy_blocks[0]
         assert stored_policy["profile_decisions"] == ["expression_length"]
         assert stored_policy["profile_slice_id"] == stored_slice["slice_id"]
         assert (

@@ -84,6 +84,18 @@ from bridges.profiles.purpose import (
 GLOBAL_CHAT_LIGHTWEIGHT_VERSION = "global-chat-lightweight-v4"
 #: 安全基线版本（资源缺失或画像不可用时使用，值保持不变以兼容旧快照）。
 SAFE_BASELINE_POLICY_VERSION = "global-humanized-writing-safe-baseline-v1"
+RELEASE_BASELINE_POLICY_VERSION = "global-chat-release-baseline-v1"
+
+# 工单 39 的候选帮助/分寸门未过；发布基线只约束任务完成方式，保留
+# 本轮边界、画像采用、任务合同与确定性保护，不注入候选人格/形态规则。
+RELEASE_BASELINE_RULES: tuple[tuple[str, str], ...] = (
+    (
+        "release-task-baseline",
+        "只完成用户当前任务，使用清楚、诚实的中文；不编造经历、来源或引用。"
+        "不把未核实内容说成工具已成功。"
+        "未被要求时不追加建议、安慰或追问。",
+    ),
+)
 GLOBAL_CHAT_LIGHTWEIGHT_SOURCE = (
     "BridGes 原创净室规则（文章人味化 SKILL 已于 Issue 21 退役，"
     "规则正文保留在本模块与 bridges/expression_task/contract_compiler.py）"
@@ -982,12 +994,17 @@ class ChatLightweightPolicyCompiler:
         *,
         instruction: str | None = None,
         version: str | None = None,
+        candidate_enabled: bool = False,
     ) -> None:
         # ``None`` 是启动/测试环境模拟策略资源缺失的显式方式；
         # 省略时使用内置原创资源（自定义 instruction/version 由调用方显式传入）。
         self._resource = None if resource is None else object()
         self._instruction = instruction
-        self._version = version or GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+        self._candidate_enabled = candidate_enabled
+        self._version = version or (
+            GLOBAL_CHAT_LIGHTWEIGHT_VERSION
+            if candidate_enabled else RELEASE_BASELINE_POLICY_VERSION
+        )
 
     def compile(
         self,
@@ -1080,11 +1097,14 @@ class ChatLightweightPolicyCompiler:
         constraint_rules = tuple(
             CONSTRAINT_RULES[name] for name in ordered_constraints
         )
+        default_rules = (
+            GLOBAL_DEFAULT_RULES + FORM_RULES[form]
+            if self._candidate_enabled else RELEASE_BASELINE_RULES
+        )
         rules = (
             *constraint_rules,
             *adopted_rules,
-            *GLOBAL_DEFAULT_RULES,
-            *FORM_RULES[form],
+            *default_rules,
         )
         degradation = None
         if form == ChatResponseForm.COMPACT_DEFAULT and user_text.strip():
@@ -1114,7 +1134,7 @@ class ChatLightweightPolicyCompiler:
                 form,
                 constraint_rules,
                 adopted_rules,
-                GLOBAL_DEFAULT_RULES + FORM_RULES[form],
+                default_rules,
                 values if adopted_slice is None else (),
                 has_adopted_items=has_adopted_items,
                 has_profile_context=profile_context is not None,
@@ -1136,7 +1156,7 @@ class ChatLightweightPolicyCompiler:
                 ChatResponseForm.COMPACT_DEFAULT,
                 (),
                 (),
-                GLOBAL_DEFAULT_RULES,
+                GLOBAL_DEFAULT_RULES if self._candidate_enabled else RELEASE_BASELINE_RULES,
                 (),
             ),
         )
@@ -1250,6 +1270,7 @@ __all__ = [
     "GLOBAL_CHAT_LIGHTWEIGHT_VERSION",
     "GLOBAL_CHAT_LIGHTWEIGHT_SOURCE",
     "SAFE_BASELINE_POLICY_VERSION",
+    "RELEASE_BASELINE_POLICY_VERSION",
     "CONSTRAINT_RULES",
     "ChatResponseForm",
     "ChatLightweightPolicyCompiler",
