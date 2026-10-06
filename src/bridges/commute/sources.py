@@ -298,7 +298,7 @@ class AmapRouteClient:
                 ),
             )
         path = _path_from_payload(
-            paths[0], route_block if isinstance(route_block, dict) else {}, len(paths)
+            paths[0], route_block if isinstance(route_block, dict) else {}, len(paths), mode
         )
         if path is None:
             return RouteOutcome(
@@ -313,7 +313,7 @@ class AmapRouteClient:
                     error_code="amap_route_unusable",
                     error_message="高德返回的路线缺少距离或耗时字段，本轮不展示不可核验的结果。",
                     retryable=True,
-                    detail="路径规划响应缺少 distance/cost.duration。",
+                    detail="路径规划响应缺少该方式的有效距离或耗时字段。",
                 ),
             )
         return RouteOutcome(
@@ -586,13 +586,17 @@ def _pois_from_payload(payload: dict[str, object]) -> list[AmapPoi]:
 
 
 def _path_from_payload(
-    path: object, route_block: dict[str, object], plan_count: int
+    path: object, route_block: dict[str, object], plan_count: int, mode: CommuteMode
 ) -> RoutePath | None:
     if not isinstance(path, dict):
         return None
     distance = _int(path.get("distance"))
     cost = path.get("cost")
     duration = _int(cost.get("duration")) if isinstance(cost, dict) else None
+    # 工单 42 公网实测：骑行接口可能把本方式耗时放在 path.duration。
+    # 仅对这两种方式接受该位置，仍只解析当前请求返回的路线。
+    if duration is None and mode in {CommuteMode.BICYCLING, CommuteMode.ELECTROBIKE}:
+        duration = _int(path.get("duration"))
     if distance is None or duration is None:
         return None
     steps = _steps_from_path(path)

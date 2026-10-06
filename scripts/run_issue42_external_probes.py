@@ -34,12 +34,14 @@ from bridges.ai.run_model_config import (  # noqa: E402
 from bridges.config import get_settings  # noqa: E402
 from bridges.credentials.runtime_resolver import RuntimeCredentialResolver  # noqa: E402
 from bridges.credentials.store import build_credential_store  # noqa: E402
-from bridges.evaluation.external_probes import (  # noqa: E402
+from bridges.evaluation.external_probe_contracts import (  # noqa: E402
     PRODUCT_CLAIMS,
     PRODUCT_DEGRADATION_BASIS,
     PRODUCT_DEGRADATION_CONTRACT,
     ProbeContext,
     ProbeStatus,
+)
+from bridges.evaluation.external_probes import (  # noqa: E402
     claim_consistency_problems,
     run_all_probes,
 )

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from html import unescape
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -254,6 +255,13 @@ class HttpJobPageReader:
                 target, JobReadStatus.ACCESS_RESTRICTED, "career_read_access_restricted",
                 "岗位页是访问验证／登录提示，未取得岗位内容。", retrieved_at,
             )
+        # 猎聘 city-* / zhaopin 是岗位列表；列表里的职责/薪资不能归给单一岗位。
+        final_url = str(response.url)
+        if _is_liepin_listing(target) or _is_liepin_listing(final_url):
+            return _failure(
+                target, JobReadStatus.UNRECOGNIZED, "career_read_listing",
+                "读取到的是岗位列表，未取得可核实的单个岗位详情。", retrieved_at,
+            )
         page = parse_job_page(body, reference=retrieved_at)
         if not page.structure_found:
             return JobPageReadResult(
@@ -308,12 +316,41 @@ def _expired_evidence(body: str) -> str | None:
     return None
 
 
+def _is_liepin_listing(url: str) -> bool:
+    """只识别已知列表路由；岗位详情 /job/ 不受影响。"""
+    parsed = urlsplit(url)
+    host = parsed.hostname or ""
+    return (host == "liepin.com" or host.endswith(".liepin.com")) and (
+        parsed.path.startswith("/city-") or parsed.path.startswith("/zhaopin/")
+    )
+
+
 def parse_job_page(html: str, *, reference: datetime) -> ParsedJobPage:
     """解析岗位页；优先页面自己的 ``JobPosting`` 结构化数据。"""
+    for match in _LD_JSON.finditer(html):
+        try:
+            metadata = json.loads(match.group("body"))
+        except json.JSONDecodeError:
+            continue
+        if _contains_job_list(metadata):
+            return ParsedJobPage(structure_note="页面声明岗位列表，不作为单个岗位详情")
     posting = _job_posting(html)
     if posting is not None:
         return _from_posting(posting, html=html, reference=reference)
     return _from_metadata(html, reference=reference)
+
+
+def _contains_job_list(data: object) -> bool:
+    """列表中的 JobPosting 只代表列表条目，不能成为当前页的岗位身份。"""
+    if isinstance(data, list):
+        return any(_contains_job_list(item) for item in data)
+    if not isinstance(data, dict):
+        return False
+    kind = data.get("@type")
+    types = kind if isinstance(kind, list) else [kind]
+    if any(str(item).casefold() == "itemlist" for item in types):
+        return True
+    return _contains_job_list(data.get("@graph"))
 
 
 def _job_posting(html: str) -> dict[str, Any] | None:

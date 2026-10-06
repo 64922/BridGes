@@ -12,11 +12,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from bridges.evaluation.workflow_scenario_contracts import Scenario, ZeroToleranceGuard
 from bridges.evaluation.workflow_scenarios import (
     WORKFLOW_SCENARIOS,
     ZERO_TOLERANCE_GUARDS,
-    Scenario,
-    ZeroToleranceGuard,
 )
 
 

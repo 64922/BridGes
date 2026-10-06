@@ -56,7 +56,7 @@
 
 ## 实施记录（2026-10-06）
 
-分支 `codex/42-workflow-evaluation-and-external-capability-gates`（基于 main `1c6f9edd`）。本票只新增评测代码与产物，不改运行时产品路径，无持久状态迁移。
+分支 `codex/42-workflow-evaluation-and-external-capability-gates`（基于 main `1c6f9edd`）。本票以评测代码与产物为主；为满足独立需求审查提出的行为修复与场景/探针证据，同步修正了五处运行时接缝（见「接口/迁移变化」），无持久状态迁移。
 
 ### 交付内容
 
@@ -65,29 +65,31 @@
 - `src/bridges/evaluation/external_probes.py` + `scripts/run_issue42_external_probes.py`：8 个真实探针（arxiv 全文、高德三方式、tavily、贴吧、岗位、视频、GitHub、生效模型四能力），外部门宣称/降级合同与一致性检查；密钥不进报告。
 - `scripts/run_issue42_workflow_pairing.py`：旧 V2（`7818c34b`）与新编排同任务数据、同模型配置配对；父进程对每棵树自重启子进程，隔离 `sys.path` 与临时库，记录质量检查点、调用/token 与整答/首字 P50/P95。
 - 测试：`tests/evaluation/test_issue42_scenario_gaps.py`、`test_issue42_scenario_manifest.py`、`test_issue42_external_probes.py`、`test_issue42_workflow_evidence.py`、`test_issue42_workflow_pairing.py`、`test_issue42_budget_calibration.py`。
-- 产物：`.scratch/2/validation/42-workflow-evaluation/`（workflow-evidence、external-probes、workflow-pairing-20261006T053310Z 及 pytest-junit.xml）。
+- 产物（验收归档）：`.scratch/2/validation/42-acceptance/`（pairing/final.json+md、semantics-final、paper-role-pairing、external-final、deterministic）；历史过程产物在 `.scratch/2/validation/42-workflow-evaluation/`。
 
 ### 验证结果
 
 - 场景证据：159 passed；39/39 场景通过、0 问题；外部门探针另行报告（不混入确定性通过）。
 - 零容忍：cross_account / hard_condition_bypass / system_failure_as_student_error / duplicate_judgement / write_after_stop 全部有守卫并通过。
-- 配对（repeats=2，corpus sha256 `60723563…`）：质量检查点旧 20/28 vs 新 23/30；模型调用旧 10 vs 新 6；整答 P50 旧 15.7s vs 新 6.9s；A02 旧树仍出论文结果、新树正确；A11 新树按硬条件阻断；R07 新树无自动续跑、继续创建新运行。
-- 预算：`test_issue42_budget_calibration.py` 锁定 `run-budget-v1` 初值；新树实测 P95 均在初值内，未上调，无未测性能承诺。
-- 外部探针（2026-10-06T05:41Z）：arxiv full（技术实测可提取正文，产品按合同保持摘要层）、tavily full、jobs full（猎聘）、video full、model full；amap partial（walking 1/3）；tieba restricted（403，如实降级）；github failed（共享出口 IP core 配额 0，reset 2026-10-06T06:37Z，不代表产品能力）。
+- 配对（repeats=2，corpus sha256 `4cffaaf0…`）：质量检查点旧 24/34 vs 新 36/36；模型调用旧 14 vs 新 6；整答 P50 旧 19.8s vs 新 4.0s；A02 旧树仍出论文结果、新树正确；A11 新树按硬条件阻断；R07 新树无自动续跑、继续创建新运行。
+- 预算校准（同一次配对，产物 `pairing/final.json`、`final.md`）：lightweight 12 样本、deep 4 样本、normal 2 样本，均为真实模型运行。lightweight 完整 P95 11.6s ≤120s；deep 完整 P95 36.9s ≤120s（工作截止 90s 内），候选初筛 10/20、模型调用 1/8；normal 完整 P95 4.1s ≤60s，外部调用累计 3、并发峰值 2/2。并发峰值由账本流水重放；deep 深读 0/5（产品按合同保持摘要层，全文未接线，不作深读承诺）。`test_issue42_budget_calibration.py` 锁定 `run-budget-v1` 初值，实测均在初值内，未上调。
+- C01（deep 论文）与 C02（normal 跨模块）为真实预算校准样本；C02 见证并发位被姊妹分支占满时被拒分支按合同如实降级。
+- 外部探针（canonical `external-final/`，2026-10-06T08:37Z）：arxiv 全文技术实测通过（产品按合同保持摘要层，declared degraded）；高德校内三方式 3/3 通过（declared partial）；tavily 通过；video 元数据通过；model 四能力通过；tieba 读取受限（failed/unavailable，如实降级）；jobs 未能定位公开详情（inconclusive，列入 `inconclusive_gates`）；github 三项失败（共享出口配额，不代表产品能力）。`consistency_problems` 为空。
 
 ### 发现与限制（跨票，本票只留证据）
 
-- F1：新树理解/继续调用出现 `output_budget_exceeded`（R07 停止后继续 2/2、A03 间歇；旧树无）。根因线索：`src/bridges/ai/qwen_adapters.py` 输出额度 1024 被思考耗尽。需后续工单修复。
-- F2：问候含「最近」触发不必要 web 搜索计划并以 `web_search_citation_invalid` 结束（新旧树都观察到），与 A01 期望冲突；`no_unnecessary_search` 检查点已固化为回归。
-- F3：A03 澄清行为随模型波动（旧树早批 2/2 追问、后续 0/2；新树 0/2），配对报告如实记录，不宣称稳定。
-- F4：高德 bicycling/electrobike 响应把时长放 `path.duration` 而非 `cost.duration`，适配器判 `amap_route_unusable`；探针 `raw_diagnosis` 实测（bicycling paths=1，字段 distance/duration/steps；electrobike 该起终点 paths=0）。需后续工单对齐解析。
-- 既有失败（非本票）：`tests/evaluation/test_runner_reproducibility.py` 4 项在 main `1c6f9edd` 同样失败（旧评测底座 `executors.py` 仍向 `ChatService` 传 `image_service`），本票未处理。
+- F1（已修复，待提交）：新树理解/继续调用曾出现 `output_budget_exceeded`（R07 停止后继续 2/2、A03 间歇；旧树无）。根因：`src/bridges/ai/qwen_adapters.py` 输出额度被思考耗尽。修复：对已核实混合型号的小额/结构化请求显式 `enable_thinking=false`，`finish_reason=length` 时抛显式 `output_budget_exceeded`。最终配对 A03 澄清 2/2、R07 三项 2/2。
+- F2（已修复）：问候含「最近」曾触发不必要 web 搜索计划并以 `web_search_citation_invalid` 结束；`web_search/service.py` 只剔除助手近况问候。最终配对 `no_unnecessary_search` 新树 2/2 通过、旧树 0/2，检查点已固化为回归。
+- F3：A03 澄清行为随模型波动；修复后新树最终配对 2/2 追问、旧树 0/2，配对报告如实记录，不宣称稳定。
+- F4（已修复）：高德 bicycling/electrobike 把时长放 `path.duration` 曾被判 `amap_route_unusable`；`commute/sources.py` 骑行类接受该位置，高德校内探针 3/3 通过，新增 `tests/commute/test_issue42_route_duration.py`。
+- F5：复合运行中姊妹分支占满 `external_parallel_max=2` 时，论文分支首次检索即被并发门拒绝并给出「运行预算已用尽」误导文案，整轮按合同降级为阻塞交付（C02 两次重复均复现：normal 类、外部调用 3、并发峰值 2/2、模型调用 0、约 4s；旧 V2 同样提示可交付 3 篇论文）。根因线索：`paper/kernel.py` 把 `register_external` 拒绝一概归因为 `run_budget_exhausted`，且首查不等待/重试；复合调度各分支共享同一并发位。需后续工单在调度或论文首查上处理并区分拒绝原因。
+- 既有失败（非本票）：`tests/evaluation/test_runner_reproducibility.py` 4 项在 main `1c6f9edd` 同样失败（旧评测底座 `executors.py` 仍向 `ChatService` 传 `image_service`），本票未处理。`tests/chat` 全量 49 项在 main 同样失败（career/MCP/selections/附件等旧模块），逐项对账后仅 `test_improvement14_material_reads.py::test_old_photo_question_rereads_original_and_manifest_scope` 属运行顺序波动，单跑两树均通过。
 - 真实模型配对每任务 2 次，只证明机制与方向，不宣称统计准确率；tieba/GitHub 外部不可控因素已如实记录。
 
 ### 接口/迁移变化
 
-- 仅新增 `bridges.evaluation` 只读评测模块与脚本入口；不改运行时产品路径、合同与数据库，无迁移。
-- 外部探针对高德原始响应做只读诊断，不改 `commute` 适配器行为。
+- 新增 `bridges.evaluation` 只读评测模块与 `scripts/` 脚本入口；新增 `bridges.chat.topic_clarification` 资料领域澄清服务；无数据库/合同迁移。
+- 运行时行为修复（独立审查、场景或探针证据驱动的最小接缝）：`ai/qwen_adapters.py` 混合型号小额/结构化请求关闭思考并在 `length` 时显式报错（F1）；`chat/understanding.py` 明确「找资料」入口与资料领域消歧（A03）；`web_search/service.py` 只把助手近况问候排除出时效检索（F2/A01）；`commute/sources.py` 骑行类接受 `path.duration`（F4/A02）；`career_plan/collecting.py` 识别猎聘列表路由与 `ItemList`，避免列表页冒充岗位详情（岗位探针）。
 
 ### 复现
 

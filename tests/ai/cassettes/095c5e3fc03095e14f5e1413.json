@@ -15,7 +15,8 @@
       "type": "json_object"
     },
     "temperature": 0.7,
-    "max_completion_tokens": 2048
+    "max_completion_tokens": 2048,
+    "enable_thinking": false
   },
   "response": {
     "id": "chatcmpl-test-structured",

@@ -6,17 +6,20 @@ import json
 
 import httpx
 
+from bridges.evaluation import external_probe_contracts as contracts
 from bridges.evaluation import external_probes as probes
-from bridges.evaluation.external_probes import (
+from bridges.evaluation.external_probe_contracts import (
     AvailabilityLevel,
     ProbeContext,
     ProbeResult,
     ProbeStatus,
+)
+from bridges.evaluation.external_probes import (
     claim_consistency_problems,
     run_all_probes,
     run_probe,
 )
-from bridges.evaluation.workflow_scenarios import ExternalGate
+from bridges.evaluation.workflow_scenario_contracts import ExternalGate
 
 _QWEN_KEY = "test-qwen-key"
 
@@ -63,9 +66,7 @@ def test_tavily_probe_passes_and_records_verified_sources() -> None:
             },
         )
 
-    result = run_probe(
-        ExternalGate.WEB_SEARCH, _context(handler, tavily_key="tavily-test-key")
-    )
+    result = run_probe(ExternalGate.WEB_SEARCH, _context(handler, tavily_key="tavily-test-key"))
     assert result.status is ProbeStatus.PASSED
     assert result.level is AvailabilityLevel.FULL
     assert result.measurements["result_count"] == 1
@@ -121,9 +122,7 @@ def test_amap_probe_measures_each_mode_on_its_own_endpoint() -> None:
             },
         )
 
-    result = run_probe(
-        ExternalGate.AMAP_CAMPUS_ROUTES, _context(handler, amap_key="amap-test-key")
-    )
+    result = run_probe(ExternalGate.AMAP_CAMPUS_ROUTES, _context(handler, amap_key="amap-test-key"))
     assert result.status is ProbeStatus.PASSED
     assert result.level is AvailabilityLevel.FULL
     modes = result.measurements["modes"]
@@ -151,9 +150,13 @@ def test_model_probe_uses_effective_model_and_context_window() -> None:
             }
         elif "response_format" in payload:
             message = {"content": '{"pong": true}'}
+        elif "开头标记" in str(payload["messages"]):
+            message = {"content": '["bridge-alpha", "bridge-beta", "bridge-gamma"]'}
         else:
             message = {"content": "pong"}
-        return httpx.Response(200, json={"choices": [{"message": message}]})
+        return httpx.Response(
+            200, json={"choices": [{"message": message, "finish_reason": "stop"}]}
+        )
 
     result = run_probe(
         ExternalGate.MODEL_CAPABILITIES,
@@ -171,7 +174,8 @@ def test_model_probe_uses_effective_model_and_context_window() -> None:
     assert result.measurements["model_id"] == "qwen-test-model"
     assert result.measurements["context_window"] == 131072
     assert result.measurements["config_source"] == "settings"
-    assert len(seen) == 4
+    assert len(seen) == 5
+    assert result.measurements["context_sample"]["ok"]
 
 
 def test_claim_consistency_flags_only_gates_without_degradation_contract() -> None:
@@ -199,20 +203,34 @@ def test_probe_failure_never_leaks_secret_material() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError(f"connect failed for {secret}")
 
-    result = run_probe(
-        ExternalGate.WEB_SEARCH, _context(handler, tavily_key=secret)
-    )
+    result = run_probe(ExternalGate.WEB_SEARCH, _context(handler, tavily_key=secret))
     assert result.status is ProbeStatus.INCONCLUSIVE
     assert result.level is AvailabilityLevel.CONFIGURED_UNVERIFIED
     assert secret not in json.dumps(result.to_dict(), ensure_ascii=False)
 
 
 def test_probe_registry_is_complete_and_levels_are_ordered() -> None:
-    assert set(probes.PROBE_REGISTRY) == set(probes.PRODUCT_CLAIMS)
+    assert set(probes.PROBE_REGISTRY) == set(contracts.PRODUCT_CLAIMS)
     assert (
-        probes.LEVEL_ORDER[AvailabilityLevel.FULL]
-        > probes.LEVEL_ORDER[AvailabilityLevel.PARTIAL]
-        > probes.LEVEL_ORDER[AvailabilityLevel.DEGRADED]
-        > probes.LEVEL_ORDER[AvailabilityLevel.UNAVAILABLE]
-        > probes.LEVEL_ORDER[AvailabilityLevel.CONFIGURED_UNVERIFIED]
+        contracts.LEVEL_ORDER[AvailabilityLevel.FULL]
+        > contracts.LEVEL_ORDER[AvailabilityLevel.PARTIAL]
+        > contracts.LEVEL_ORDER[AvailabilityLevel.DEGRADED]
+        > contracts.LEVEL_ORDER[AvailabilityLevel.UNAVAILABLE]
+        > contracts.LEVEL_ORDER[AvailabilityLevel.CONFIGURED_UNVERIFIED]
     )
+
+
+def test_public_source_filter_checks_hostname_and_path() -> None:
+    from bridges.evaluation.external_probes_public_pages import _matches_public_source
+
+    assert _matches_public_source("https://www.bilibili.com/video/BV123", "bilibili.com/video/BV")
+    assert _matches_public_source("https://jobs.zhipin.com/job/123", "zhipin.com")
+    for url in (
+        "https://bilibili.com.evil.example/video/BV123",
+        "https://evil.example/?next=bilibili.com/video/BV123",
+        "https://www.bilibili.com/other/video/BV123",
+        "https://user@www.bilibili.com/video/BV123",
+        "file://www.bilibili.com/video/BV123",
+        "https://[invalid/video/BV123",
+    ):
+        assert not _matches_public_source(url, "bilibili.com/video/BV"), url
