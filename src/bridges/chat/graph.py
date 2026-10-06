@@ -752,6 +752,13 @@ def _invoke_composite_plan(
             state["assistant_message_id"], node, status, duration_ms=duration_ms
         )
 
+    from bridges.chat.progressive_result import ProgressiveResultPublisher  # noqa: PLC0415
+
+    publisher = ProgressiveResultPublisher(
+        deps.repo, run,
+        (task.task_id, task.current_version) if task is not None else (None, None),
+        deps.stop_event,
+    )
     context = StepRunContext(
         account_id=run.account_id,
         conversation_id=run.conversation_id,
@@ -764,6 +771,7 @@ def _invoke_composite_plan(
         ),
         stop_event=deps.stop_event,
         emit_node=emit_node,
+        emit_result=publisher.publish,
         task_id=task.task_id if task is not None else None,
         task_version=task.current_version if task is not None else None,
     )
@@ -1193,6 +1201,7 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
         persist_synthesis_artifact,
         projection_updates,
         render_final_content,
+        turn_result_for_outcome,
     )
 
     if not state.get("composite_verified"):
@@ -1263,6 +1272,7 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
         message = deps.repo.get_message(run.account_id, run.assistant_message_id)
         # 提交后检查点尚未保存的恢复：相同交付只回放，不重复写入。
         if message is None or message.status == ChatMessageStatus.STREAMING:
+            task_ref = state.get("composite_task_ref") or [None, None]
             finalize_message(
                 deps.repo, run.account_id, run.assistant_message_id,
                 status=status,
@@ -1286,10 +1296,16 @@ def _persist_composite_result(deps: _GraphDeps, state: DailyTurnState) -> None:
                 learning_resources=projections.get("learning_resources"),
                 commute_route=projections.get("commute_route"),
                 github_projects=projections.get("github_projects"),
+                # 工单 38：精确回合结果（含阻塞结论与步骤可信状态）随
+                # 投影、正文与终态在同一守卫事务内提交。
+                turn_result=turn_result_for_outcome(
+                    outcome,
+                    task_id=task_ref[0],
+                    task_version=task_ref[1],
+                ),
             )
             # 同一守卫事务内保存脱敏综合产物：计划/步骤/证据引用、任务版本、
             # 条件快照与门裁决；不重复保存模块正文或私人原文。
-            task_ref = state.get("composite_task_ref") or [None, None]
             persist_synthesis_artifact(
                 NodeKernelRepository(deps.repo.database),
                 account_id=run.account_id,

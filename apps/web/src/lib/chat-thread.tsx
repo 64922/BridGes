@@ -81,7 +81,16 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       image: latest.image ?? null,
       // Issue 32：本条助手消息的视频任务/资产状态快照（任务卡与资产卡）
       video: latest.video ?? null,
-      status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
+      // 改进工单 38：已提交的公开回合结果投影（交付/阻塞/恢复/等待）
+      turnResult: latest.turn_result ?? null,
+      status:
+        latest.status === "streaming"
+          ? "streaming"
+          : latest.status === "error"
+            ? "error"
+            : latest.status === "stopped"
+              ? "stopped"
+              : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({
         attemptNumber: attempt.attempt_number,

@@ -33332,6 +33332,17 @@
             "title": "Error Message",
             "description": "可操作的中文错误说明。"
           },
+          "turn_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnResultProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的公开回合结果投影（含能力/可信/恢复）。"
+          },
           "duration_ms": {
             "anyOf": [
               {
@@ -34071,6 +34082,9 @@
                 "$ref": "#/components/schemas/ChatStreamNodeData"
               },
               {
+                "$ref": "#/components/schemas/ChatStreamResultData"
+              },
+              {
                 "$ref": "#/components/schemas/ChatStreamDeltaData"
               },
               {
@@ -34108,6 +34122,7 @@
                 "image": "#/components/schemas/ChatStreamImageData",
                 "mcp_call": "#/components/schemas/ChatStreamMcpData",
                 "node": "#/components/schemas/ChatStreamNodeData",
+                "result": "#/components/schemas/ChatStreamResultData",
                 "stage": "#/components/schemas/ChatStreamStageData",
                 "started": "#/components/schemas/ChatStreamStartedData",
                 "video": "#/components/schemas/ChatStreamVideoData"
@@ -34129,6 +34144,7 @@
           "started",
           "stage",
           "node",
+          "result",
           "delta",
           "error",
           "done",
@@ -34299,6 +34315,30 @@
         ],
         "title": "ChatStreamNodeData",
         "description": "node 事件载荷：日常父图节点的真实开始/完成进度（V2 Issue 02）。\n\n``node`` 只映射日常父图实际开始或完成的固定节点（validate_turn → …\n→ persist_result）：started 在节点体执行前发出，completed 仅在节点\n体成功返回后发出——失败节点只有 started 与随后的 error 事件，绝不\n伪造完成。前端据此展示真实执行进度，失败时按运行视图 ``current_node``\n定位。"
+      },
+      "ChatStreamResultData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result",
+            "title": "Kind",
+            "default": "result"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/TurnResultProjection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "result"
+        ],
+        "title": "ChatStreamResultData",
+        "description": "已通过模块质量门的渐进结果；不代表本轮最终完成。"
       },
       "ChatStreamStageData": {
         "properties": {
@@ -52759,6 +52799,15 @@
         "title": "RestorePreview",
         "description": "恢复预检结果：备份内容摘要与目标状态检查（供确认与失败原因）。"
       },
+      "ResultTrust": {
+        "type": "string",
+        "enum": [
+          "qualified",
+          "evidence_bound"
+        ],
+        "title": "ResultTrust",
+        "description": "已交付结果块的公开可信状态（工单 38）。\n\n只发布已经过对应质量门的结果块：``QUALIFIED`` 为通过核验的完整结果，\n``EVIDENCE_BOUND`` 为证据已绑定但如实保留范围/读取缺口的有效部分。\n待核验草稿不进入公开投影。"
+      },
       "RetiredCapabilityError": {
         "properties": {
           "error": {
@@ -62121,6 +62170,262 @@
         ],
         "title": "TranscriptWord",
         "description": "A single word inside a transcript segment."
+      },
+      "TurnOutcome": {
+        "type": "string",
+        "enum": [
+          "running",
+          "complete",
+          "needs_input",
+          "partial",
+          "blocked",
+          "cancelled",
+          "failed"
+        ],
+        "title": "TurnOutcome",
+        "description": "一次回合的公开交付分类（工单 38）。\n\n与运行状态（``ChatRunStatus``）和产物可信状态分开：运行完成不等于\n结果可用，部分交付不等于失败。澄清成功提交的消息对应 ``NEEDS_INPUT``\n——任务仍等待输入，不是任务完成。"
+      },
+      "TurnRecoveryProjection": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "RecoveryAction 值（retry/wait/reconfigure/…）。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "中文恢复说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "是否可点击重试。",
+            "default": false
+          },
+          "available_after": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available After",
+            "description": "真实可用的恢复时刻；没有真实时刻为 None。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "label"
+        ],
+        "title": "TurnRecoveryProjection",
+        "description": "一次回合的真实恢复方式（工单 38，复用固定状态文案注册表）。\n\n只承诺真实可用的恢复：可重试才给重试，限流/冷却给等待，配置类失败\n只提示联系管理员；``available_after`` 仅在领域结果给出真实恢复时刻时\n携带，前端按用户时区展示。"
+      },
+      "TurnResultBlock": {
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "title": "Module Id",
+            "description": "已登记模块标识。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "模块中文名。"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "领域投影的真实状态值。"
+          },
+          "trust": {
+            "$ref": "#/components/schemas/ResultTrust",
+            "description": "该块的可信状态。"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "可操作中文说明；无补充为空。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "module_id",
+          "label",
+          "state",
+          "trust"
+        ],
+        "title": "TurnResultBlock",
+        "description": "一个已交付/被阻塞的模块结果块（不含正文与内部证据）。\n\n``state`` 保留领域模块的真实状态值，``detail`` 为可操作的中文说明；\n两者都来自真实投影，不交给模型改写。"
+      },
+      "TurnResultProjection": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "结果投影合同版本。",
+            "default": "turn-result-v1"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/TurnOutcome",
+            "description": "本轮交付分类。"
+          },
+          "outcome_label": {
+            "type": "string",
+            "title": "Outcome Label",
+            "description": "交付分类的中文自然文案。"
+          },
+          "trust": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultTrust"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "整体可信状态；无可信结果块为 None。"
+          },
+          "trust_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trust Label",
+            "description": "可信状态中文说明。"
+          },
+          "requested_module_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Module Id",
+            "description": "请求携带的模块提示（历史标识，不重写）。"
+          },
+          "actual_module_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Module Id",
+            "description": "代码校验后实际执行的模块；未派发为 None。"
+          },
+          "capability_list": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capability List",
+            "description": "本轮实际路由的能力列表（模块 ID）。"
+          },
+          "route_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Source",
+            "description": "实际路由来源（正文意图/模块提示/建议点击等）。"
+          },
+          "delivered": {
+            "items": {
+              "$ref": "#/components/schemas/TurnResultBlock"
+            },
+            "type": "array",
+            "title": "Delivered",
+            "description": "已交付的通过门结果块。"
+          },
+          "blocked": {
+            "items": {
+              "$ref": "#/components/schemas/TurnResultBlock"
+            },
+            "type": "array",
+            "title": "Blocked",
+            "description": "被阻塞/失败的模块项及真实原因。"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gaps",
+            "description": "本轮未完成的缺口（来自真实限制与阻塞结论）。"
+          },
+          "recovery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnRecoveryProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "真实可用的恢复方式；无需恢复为 None。"
+          },
+          "wait_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Reason",
+            "description": "待输入原因（澄清/补充信息）；非等待为 None。"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id",
+            "description": "关联跨轮任务标识；无任务为 None。"
+          },
+          "task_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Version",
+            "description": "关联任务版本；建议点击据此绑定，不改写历史。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "outcome_label"
+        ],
+        "title": "TurnResultProjection",
+        "description": "一条助手消息的公开回合结果投影（工单 38）。\n\n只包含用户可理解的交付面：请求模块提示与实际执行能力分开、实际交付\n的结果块、被阻塞项、真实恢复方式与等待语义；不包含内部步骤、证据\n原文、模型思维链或私有评分依据。"
       },
       "UserFeedback": {
         "properties": {

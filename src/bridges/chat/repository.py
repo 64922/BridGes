@@ -155,6 +155,9 @@ class MessageRecord:
     commute_route: dict[str, Any] | None = None
     #: V2 Issue 16：GitHub 项目推荐投影（场景与要点/逐仓库证据/覆盖范围/限流）。
     github_projects: dict[str, Any] | None = None
+    #: 改进工单 38：公开回合结果投影（复合提交写入精确结果；其余路径读取
+    #: 时按消息与领域投影推导，历史行缺省 None 无需迁移）。
+    turn_result: dict[str, Any] | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -596,7 +599,7 @@ class ConversationRepository:
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
             " learning_resources, commute_route, tieba_research,"
-            " career_plan, github_projects"
+            " career_plan, github_projects, turn_result"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -612,7 +615,7 @@ class ConversationRepository:
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
             " mcp_call, route, module_id, paper_search, module_suggestion,"
             " learning_resources, commute_route, tieba_research,"
-            " career_plan, github_projects"
+            " career_plan, github_projects, turn_result"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -948,6 +951,7 @@ class ConversationRepository:
         tieba_research: dict[str, Any] | None = None,
         career_plan: dict[str, Any] | None = None,
         github_projects: dict[str, Any] | None = None,
+        turn_result: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -955,6 +959,9 @@ class ConversationRepository:
 
         Issue 10：如果传入 ``lock``，在同一事务内通过 ``ModelRunLockRecorder``
         持久化运行锁并建立到本消息的业务关联，确保消息终态与锁原子提交。
+
+        工单 38：``turn_result`` 是复合运行的精确回合结果投影，随消息终态
+        在同一事务内提交；单模块/聊天路径不传，读取时确定性推导。
         """
         effective_run_lock_id = run_lock_id
         if lock is not None:
@@ -1129,6 +1136,12 @@ class ConversationRepository:
                     "UPDATE messages SET teaching = ?"
                     " WHERE message_id = ? AND account_id = ? AND status = ?",
                     (_json_dumps(teaching), message_id, account_id, status.value),
+                )
+            if cursor.rowcount and turn_result is not None:
+                self._db.scoped(account_id).execute(
+                    "UPDATE messages SET turn_result = ?"
+                    " WHERE message_id = ? AND account_id = ? AND status = ?",
+                    (_json_dumps(turn_result), message_id, account_id, status.value),
                 )
             if cursor.rowcount and final_content is not None:
                 self._db.scoped(account_id).execute(
@@ -2342,6 +2355,7 @@ class ConversationRepository:
             tieba_research=_json_loads_any(row["tieba_research"]),
             career_plan=_json_loads_any(row["career_plan"]),
             github_projects=_json_loads_any(row["github_projects"]),
+            turn_result=_json_loads_any(row["turn_result"]),
         )
 
 

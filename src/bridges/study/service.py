@@ -49,7 +49,7 @@ from bridges.contracts.study import (
 from bridges.kernel.executor import NodeKernel
 from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.repository import NodeKernelRepository
-from bridges.state_copy import STUDY_STOPPED_TEXT
+from bridges.state_copy import STUDY_STOPPED_TEXT, error_template
 from bridges.storage.database import BridgesDatabase
 from bridges.study.grade_kernel import ReviewGradeKernel
 from bridges.study.kernel import (
@@ -90,6 +90,7 @@ from bridges.study.scope import (
     study_scope_recipe_registry,
 )
 from bridges.study.summary import build_summary, render_summary
+from bridges.study.turn_result import finalize_study_message
 from bridges.study.tutoring import tutor
 
 STUDY_GRAPH_VERSION = "study-tutoring-review-v6"
@@ -163,6 +164,15 @@ def model_failure_message(error_code: str | None) -> str:
     return user_facing_error(error_code, fallback)
 
 
+def _public_failure_message(code: str) -> str:
+    """控制节点与外部异常原文留在内部，公共错误只用登记的自然文案。"""
+    if code == "stopped":
+        return STUDY_STOPPED_TEXT
+    template = error_template(code) or error_template("study_internal_error")
+    assert template is not None, "学习内部错误必须登记固定文案"
+    return template.text
+
+
 class StudyRepository:
     def __init__(self, database: BridgesDatabase) -> None:
         self._db = database
@@ -233,6 +243,13 @@ class StudyWorkflow:
     def state(self, account_id: str, conversation_id: str) -> StudyState | None:
         return self._states.get(account_id, conversation_id)
 
+    def _finalize_message(self, run: Any, **kwargs: Any) -> int:
+        return finalize_study_message(
+            self._repo, run, finalizer=finalize_message,
+            state_provider=lambda: self._states.get(run.account_id, run.conversation_id),
+            **kwargs,
+        )
+
     def run(
         self,
         run: Any,
@@ -243,16 +260,16 @@ class StudyWorkflow:
         started = time.monotonic()
         if run.graph_version != STUDY_GRAPH_VERSION:
             # 旧检查点可能已经完成未原子提交的预习节点，不能套用新图恢复。
-            finalize_message(
-                self._repo, run.account_id, run.assistant_message_id,
+            self._finalize_message(
+                run,
                 status=ChatMessageStatus.ERROR,
                 error_code="study_graph_version_changed",
-                error_message="学习流程版本已更新，原书页和历史已保留，请重试。",
+                error_message=_public_failure_message("study_graph_version_changed"),
                 duration_ms=None, model_id=None, started=started, now=datetime.now(UTC),
             )
             on_event(StreamEvent(
                 kind="error", error_code="study_graph_version_changed",
-                error_message="学习流程版本已更新，请重试。",
+                error_message=_public_failure_message("study_graph_version_changed"),
             ))
             return "error"
         last_lock: ModelRunLock | None = None
@@ -1424,10 +1441,8 @@ class StudyWorkflow:
                 self._repo.update_message_content(
                     run.account_id, run.assistant_message_id, answer, datetime.now(UTC)
                 )
-            finalize_message(
-                self._repo,
-                run.account_id,
-                run.assistant_message_id,
+            self._finalize_message(
+                run,
                 status=ChatMessageStatus.DONE,
                 error_code=None,
                 error_message=None,
@@ -1457,13 +1472,11 @@ class StudyWorkflow:
             message_status = (
                 ChatMessageStatus.STOPPED if exc.code == "stopped" else ChatMessageStatus.ERROR
             )
-            finalize_message(
-                self._repo,
-                run.account_id,
-                run.assistant_message_id,
+            self._finalize_message(
+                run,
                 status=message_status,
                 error_code=exc.code,
-                error_message=f"在「{exc.node}」步骤失败：{exc.message}",
+                error_message=_public_failure_message(exc.code),
                 duration_ms=None,
                 model_id=failure_lock.actual_model_id if failure_lock else None,
                 lock=failure_lock,
@@ -1471,19 +1484,18 @@ class StudyWorkflow:
                 now=datetime.now(UTC),
                 thinking=failed_thinking(initial_thinking(ChatMode.STUDY), exc.code),
             )
-            on_event(StreamEvent(kind="error", error_code=exc.code, error_message=exc.message))
+            on_event(StreamEvent(kind="error", error_code=exc.code,
+                                 error_message=_public_failure_message(exc.code)))
             return "error"
         except Exception:
             if updating and _is_recognition_node(current_node):
                 state.wait_reason = "recognition_failed"
                 save_state()
-            finalize_message(
-                self._repo,
-                run.account_id,
-                run.assistant_message_id,
+            self._finalize_message(
+                run,
                 status=ChatMessageStatus.ERROR,
                 error_code="study_internal_error",
-                error_message=f"在「{current_node}」步骤失败，请重试。",
+                error_message=_public_failure_message("study_internal_error"),
                 duration_ms=None,
                 model_id=None,
                 started=started,
@@ -1494,7 +1506,7 @@ class StudyWorkflow:
                 StreamEvent(
                     kind="error",
                     error_code="study_internal_error",
-                    error_message=f"在「{current_node}」步骤失败，请重试。",
+                    error_message=_public_failure_message("study_internal_error"),
                 )
             )
             return "error"

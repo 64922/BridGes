@@ -120,6 +120,7 @@ class StepRunContext:
     attempt: int = 0
     stop_event: threading.Event | None = None
     emit_node: Callable[[str, str, int | None], None] | None = None
+    emit_result: Callable[[StepResult], None] | None = None
     task_id: str | None = None
     task_version: int | None = None
 
@@ -255,6 +256,7 @@ class CompositeExecutor:
                     attempt=1,
                     stop_event=context.stop_event,
                     emit_node=context.emit_node,
+                    emit_result=context.emit_result,
                     task_id=context.task_id,
                     task_version=context.task_version,
                 )
@@ -434,6 +436,7 @@ class CompositeExecutor:
                     attempt=context.attempt,
                     stop_event=stop_event,
                     emit_node=context.emit_node,
+                    emit_result=context.emit_result,
                     task_id=context.task_id,
                     task_version=context.task_version,
                 )
@@ -454,6 +457,8 @@ class CompositeExecutor:
                     results[step.step_id] = previous.model_copy(
                         update={"reused": True}
                     )
+                    if context.emit_result is not None:
+                        context.emit_result(results[step.step_id])
                     continue
                 prepared.append((step, runner, resolved, fingerprint, step_context))
             if not prepared:
@@ -469,6 +474,8 @@ class CompositeExecutor:
                     results[step.step_id] = self._execute_step(
                         step, runner, step_context, resolved, fingerprint
                     )
+                    if context.emit_result is not None:
+                        context.emit_result(results[step.step_id])
             else:
                 outcomes: dict[str, StepResult] = {}
                 with ThreadPoolExecutor(
@@ -488,7 +495,10 @@ class CompositeExecutor:
                             )
                         ] = step.step_id
                     for future in as_completed(futures):
-                        outcomes[futures[future]] = future.result()
+                        result = future.result()
+                        outcomes[futures[future]] = result
+                        if context.emit_result is not None:
+                            context.emit_result(result)
                 for step in ready:
                     if step.step_id in outcomes:
                         results[step.step_id] = outcomes[step.step_id]

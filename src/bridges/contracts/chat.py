@@ -237,6 +237,113 @@ class ModuleSuggestionProjection(BaseModel):
     )
 
 
+class TurnOutcome(StrEnum):
+    """一次回合的公开交付分类（工单 38）。
+
+    与运行状态（``ChatRunStatus``）和产物可信状态分开：运行完成不等于
+    结果可用，部分交付不等于失败。澄清成功提交的消息对应 ``NEEDS_INPUT``
+    ——任务仍等待输入，不是任务完成。
+    """
+
+    RUNNING = "running"
+    COMPLETE = "complete"
+    NEEDS_INPUT = "needs_input"
+    PARTIAL = "partial"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class ResultTrust(StrEnum):
+    """已交付结果块的公开可信状态（工单 38）。
+
+    只发布已经过对应质量门的结果块：``QUALIFIED`` 为通过核验的完整结果，
+    ``EVIDENCE_BOUND`` 为证据已绑定但如实保留范围/读取缺口的有效部分。
+    待核验草稿不进入公开投影。
+    """
+
+    QUALIFIED = "qualified"
+    EVIDENCE_BOUND = "evidence_bound"
+
+
+class TurnResultBlock(BaseModel):
+    """一个已交付/被阻塞的模块结果块（不含正文与内部证据）。
+
+    ``state`` 保留领域模块的真实状态值，``detail`` 为可操作的中文说明；
+    两者都来自真实投影，不交给模型改写。
+    """
+
+    module_id: str = Field(description="已登记模块标识。")
+    label: str = Field(description="模块中文名。")
+    state: str = Field(description="领域投影的真实状态值。")
+    trust: ResultTrust = Field(description="该块的可信状态。")
+    detail: str = Field(default="", description="可操作中文说明；无补充为空。")
+
+
+class TurnRecoveryProjection(BaseModel):
+    """一次回合的真实恢复方式（工单 38，复用固定状态文案注册表）。
+
+    只承诺真实可用的恢复：可重试才给重试，限流/冷却给等待，配置类失败
+    只提示联系管理员；``available_after`` 仅在领域结果给出真实恢复时刻时
+    携带，前端按用户时区展示。
+    """
+
+    action: str = Field(description="RecoveryAction 值（retry/wait/reconfigure/…）。")
+    label: str = Field(description="中文恢复说明。")
+    retryable: bool = Field(default=False, description="是否可点击重试。")
+    available_after: datetime | None = Field(
+        default=None, description="真实可用的恢复时刻；没有真实时刻为 None。"
+    )
+
+
+class TurnResultProjection(BaseModel):
+    """一条助手消息的公开回合结果投影（工单 38）。
+
+    只包含用户可理解的交付面：请求模块提示与实际执行能力分开、实际交付
+    的结果块、被阻塞项、真实恢复方式与等待语义；不包含内部步骤、证据
+    原文、模型思维链或私有评分依据。
+    """
+
+    version: str = Field(default="turn-result-v1", description="结果投影合同版本。")
+    outcome: TurnOutcome = Field(description="本轮交付分类。")
+    outcome_label: str = Field(description="交付分类的中文自然文案。")
+    trust: ResultTrust | None = Field(
+        default=None, description="整体可信状态；无可信结果块为 None。"
+    )
+    trust_label: str | None = Field(default=None, description="可信状态中文说明。")
+    requested_module_id: str | None = Field(
+        default=None, description="请求携带的模块提示（历史标识，不重写）。"
+    )
+    actual_module_id: str | None = Field(
+        default=None, description="代码校验后实际执行的模块；未派发为 None。"
+    )
+    capability_list: list[str] = Field(
+        default_factory=list, description="本轮实际路由的能力列表（模块 ID）。"
+    )
+    route_source: str | None = Field(
+        default=None, description="实际路由来源（正文意图/模块提示/建议点击等）。"
+    )
+    delivered: list[TurnResultBlock] = Field(
+        default_factory=list, description="已交付的通过门结果块。"
+    )
+    blocked: list[TurnResultBlock] = Field(
+        default_factory=list, description="被阻塞/失败的模块项及真实原因。"
+    )
+    gaps: list[str] = Field(
+        default_factory=list, description="本轮未完成的缺口（来自真实限制与阻塞结论）。"
+    )
+    recovery: TurnRecoveryProjection | None = Field(
+        default=None, description="真实可用的恢复方式；无需恢复为 None。"
+    )
+    wait_reason: str | None = Field(
+        default=None, description="待输入原因（澄清/补充信息）；非等待为 None。"
+    )
+    task_id: str | None = Field(default=None, description="关联跨轮任务标识；无任务为 None。")
+    task_version: int | None = Field(
+        default=None, description="关联任务版本；建议点击据此绑定，不改写历史。"
+    )
+
+
 class ChatMessageProjection(BaseModel):
     """单条消息的公开投影。
 
@@ -318,6 +425,12 @@ class ChatMessageProjection(BaseModel):
     )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
+    # 工单 38：公开回合结果投影（交付分类/可信状态/实际能力/恢复与等待）。
+    # 复合运行在提交事务内写入精确结果；其余路径由消息与真实投影在读取时
+    # 确定性推导，旧消息缺省为 None 时同样可推导，不迁移历史行。
+    turn_result: TurnResultProjection | None = Field(
+        default=None, description="本条助手消息的公开回合结果投影（含能力/可信/恢复）。"
+    )
     duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
     model_id: str | None = Field(default=None, description="实际使用的固定模型快照。")
     run_lock_id: str | None = Field(default=None, description="绑定的模型运行锁标识。")
@@ -888,6 +1001,7 @@ class ChatStreamEventKind(StrEnum):
     STARTED = "started"
     STAGE = "stage"
     NODE = "node"
+    RESULT = "result"
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
@@ -969,6 +1083,14 @@ class ChatStreamNodeData(BaseModel):
     duration_ms: int | None = Field(
         default=None, description="节点耗时（毫秒，completed 携带）。"
     )
+
+
+class ChatStreamResultData(BaseModel):
+    """已通过模块质量门的渐进结果；不代表本轮最终完成。"""
+
+    kind: Literal["result"] = "result"
+    message_id: str
+    result: TurnResultProjection
 
 
 class ChatStreamErrorDetail(BaseModel):
@@ -1098,6 +1220,7 @@ class ChatStreamEvent(BaseModel):
         ChatStreamStartedData
         | ChatStreamStageData
         | ChatStreamNodeData
+        | ChatStreamResultData
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData

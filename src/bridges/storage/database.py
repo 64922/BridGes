@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 68
+SCHEMA_VERSION = 69
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3164,6 +3164,14 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX IF NOT EXISTS idx_profile_item_feedback_item
             ON profile_item_feedback(account_id, profile_item_id, created_at)
+        """,
+    ],
+    # 改进工单 38：公开回合结果投影（交付分类/可信状态/恢复与等待）。
+    # 只由终态提交写入；历史行缺省 NULL，读取时按消息与领域投影确定性
+    # 推导，不迁移旧数据。内容只含公开交付面，不含证据原文或私有评分依据。
+    69: [
+        """
+        ALTER TABLE messages ADD COLUMN turn_result TEXT
         """,
     ],
 }

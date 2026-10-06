@@ -398,7 +398,8 @@ def test_persistent_content_conflict_never_publishes_preview(
         message = projection["messages"][-1]
         assert message["status"] == "error"
         assert message["error_code"] == "study_scope_content_conflict"
-        assert "核对未通过" in message["error_message"]
+        assert "原文冲突" in message["error_message"]
+        assert "未通过核验" in message["error_message"]
         study = projection["study"]
         assert study["stage"] == "recognizing"
         assert study["questions"] == [] and study["units"] == []

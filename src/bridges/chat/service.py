@@ -99,6 +99,7 @@ from bridges.chat.turn import (
     result_summary,
     user_facing_error,  # noqa: F401 - re-export
 )
+from bridges.chat.turn_result import derive_turn_result
 from bridges.chat.understanding import MainAgentUnderstanding, task_turn_request
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.commute.service import CommuteService
@@ -129,6 +130,8 @@ from bridges.contracts.chat import (
     McpCallStatus,
     ModuleSuggestionProjection,
     RemovedPluginSelection,
+    TurnOutcome,
+    TurnResultProjection,
     VideoRequestPayload,
 )
 from bridges.contracts.feedback import (
@@ -3391,6 +3394,105 @@ class ChatService:
             model_lock_id=run.model_lock_id,
         )
 
+    def _turn_result_projection(
+        self,
+        message: MessageRecord,
+        run_view: ChatRunView | None,
+    ) -> TurnResultProjection | None:
+        """公开回合结果投影（工单 38）。
+
+        复合运行随终态写入了精确结果（含阻塞结论与步骤可信状态），这里
+        只补齐消息级路由能力字段；其余路径（单模块/聊天/学习/历史消息）
+        按同一规则从消息终态、领域投影与路由快照确定性推导，不迁移旧行。
+        只发布已提交投影，待核验草稿不在任何输入中。
+        """
+        if message.role is not ChatMessageRole.ASSISTANT:
+            return None
+        # 流式阶段只允许已持久的渐进快照；最终完成只在原子提交后发出。
+        streaming = message.status is ChatMessageStatus.STREAMING
+        route = message.route if isinstance(message.route, dict) else None
+        parsed: TurnResultProjection | None = None
+        if isinstance(message.turn_result, dict):
+            try:
+                parsed = TurnResultProjection.model_validate(message.turn_result)
+            except ValidationError:
+                parsed = None
+        if streaming:
+            return (
+                parsed if parsed is not None and parsed.outcome is TurnOutcome.RUNNING else None
+            )
+        progressive = (
+            parsed if parsed is not None and parsed.outcome is TurnOutcome.RUNNING else None
+        )
+        if progressive is not None:
+            parsed = None
+        if parsed is None:
+            # 历史读取也需要本条运行的等待与学习来源；不能把会话当前阶段
+            # 套到此前消息，或只在仍活跃的 SSE 回合中显示等待。
+            run = self._repo.get_run_by_message(message.account_id, message.message_id)
+            study = (
+                StudyRepository(self._repo.database).get(
+                    message.account_id, message.conversation_id,
+                )
+                if run is not None and (run.graph_version or "").startswith("study-")
+                else None
+            )
+            parsed = derive_turn_result(
+                status=message.status,
+                error_code=message.error_code,
+                route=route,
+                projections={
+                    "paper_search": message.paper_search,
+                    "tieba_research": message.tieba_research,
+                    "career_plan": message.career_plan,
+                    "learning_resources": message.learning_resources,
+                    "commute_route": message.commute_route,
+                    "github_projects": message.github_projects,
+                },
+                wait_reason=(run_view.wait_reason if run_view is not None
+                             else run.wait_reason if run is not None else None),
+                web_search=message.web_search,
+                study=study.public_view() if study is not None else None,
+                study_node=run.current_node if run is not None else None,
+                user_message_id=run.user_message_id if run is not None else None,
+                assistant_message_id=message.message_id,
+            )
+        if progressive is not None:
+            parsed = parsed.model_copy(update={
+                "delivered": progressive.delivered,
+                "trust": progressive.trust,
+                "trust_label": progressive.trust_label,
+                "task_id": progressive.task_id,
+                "task_version": progressive.task_version,
+            })
+        actual = parsed.actual_module_id
+        if actual is None and route is not None:
+            actual = route.get("module_id") if isinstance(route.get("module_id"), str) else None
+        capabilities = parsed.capability_list or [
+            str(item)
+            for item in (route or {}).get("capability_list") or []
+            if isinstance(item, str)
+        ]
+        return parsed.model_copy(
+            update={
+                "requested_module_id": parsed.requested_module_id
+                or (
+                    route.get("requested_module_id")
+                    if route is not None
+                    and isinstance(route.get("requested_module_id"), str)
+                    else None
+                ),
+                "actual_module_id": actual,
+                "capability_list": capabilities,
+                "route_source": parsed.route_source
+                or (
+                    route.get("route_source")
+                    if route is not None and isinstance(route.get("route_source"), str)
+                    else None
+                ),
+            }
+        )
+
     def _project_message(
         self,
         message: MessageRecord,
@@ -3561,6 +3663,7 @@ class ChatService:
             ),
             error_code=message.error_code,
             error_message=message.error_message,
+            turn_result=self._turn_result_projection(message, run_view),
             duration_ms=message.duration_ms,
             model_id=message.model_id,
             run_lock_id=message.run_lock_id,
