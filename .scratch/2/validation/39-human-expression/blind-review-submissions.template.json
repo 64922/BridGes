@@ -1,0 +1,201 @@
+{
+  "review_set_id": "issue39-1791265664",
+  "instructions": "每个 item 的五个维度各填 label_a / label_b / tie / neither。",
+  "reviewers": [
+    {
+      "reviewer_id": "请填写评审者标识",
+      "choices": {
+        "item-001": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-002": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-003": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-004": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-005": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-006": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-007": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-008": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-009": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-010": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-011": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-012": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-013": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-014": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-015": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-016": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-017": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-018": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-019": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-020": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-021": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-022": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-023": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-024": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-025": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-026": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-027": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        }
+      },
+      "comments": {}
+    }
+  ]
+}
