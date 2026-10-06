@@ -113,8 +113,8 @@ python -m scripts.run_issue43_acceptance_reports  # 含 rollback-rehearsal.json
 - `.scratch/2/validation/43-integrated-migration-and-release-regression/`
   `coverage-reconciliation.json`、`release-adjudication.json`、
   `rollback-rehearsal.json`、`pytest-full.xml`、`pytest-focused.xml`、
-  `desktop-three-viewports.log`、`desktop-stream-replay.log`、
-  `desktop-1920-modules-retry.log`、`baseline-comparison.json`
+  `desktop-three-viewports.txt`、`desktop-stream-replay.txt`、
+  `desktop-1920-modules-retry.txt`、`baseline-comparison.json`
 - 阻塞票独立验收：`.scratch/2/validation/39-independent/acceptance.md`、
   `40-context-continuity/independent-acceptance.md`、
   `41-independent/acceptance.md`、42 场景/探针产物。
