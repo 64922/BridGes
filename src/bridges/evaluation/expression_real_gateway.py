@@ -77,6 +77,7 @@ class RetryingStructuredGateway:
         if payload is None:
             payload = next((arg for arg in args if isinstance(arg, dict)), None)
         task = str((payload or {}).get("task") or "")
+        result = None
         for attempt in range(1, self.max_attempts + 1):
             result = self._wrapped.invoke(*args, **kwargs)
             error_code = getattr(result, "error_code", None)
@@ -100,7 +101,11 @@ class RetryingStructuredGateway:
                     "error_code": error_code,
                 }
             )
-        return result
+        #: 有界重试耗尽后必须显式失败：把失败当成功返回会让调用方收到
+        #: 空载荷（`output=None`）并误报为数据校验错误，掩盖真实失败原因。
+        raise RuntimeError(
+            f"structured_output_parse_failed（有界重试 {self.max_attempts} 次后仍失败）"
+        )
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._wrapped, name)

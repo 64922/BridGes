@@ -263,3 +263,26 @@ def test_derive_report_refuses_missing_evidence_without_gateway(
     report_path.write_text(json.dumps(_minimal_report()), encoding="utf-8")
     argv = ["--derive-report", "--output-dir", str(empty), "--report", str(report_path)]
     assert script["main"](argv) == 2
+
+
+def test_retrying_gateway_raises_after_exhausted_attempts() -> None:
+    from types import SimpleNamespace
+
+    from bridges.evaluation.expression_real_gateway import RetryingStructuredGateway
+
+    calls: list[tuple[Any, ...]] = []
+
+    class _Gateway:
+        def invoke(self, *args: Any, **kwargs: Any) -> Any:
+            calls.append(args)
+            return SimpleNamespace(
+                error_code="structured_output_parse_failed", output=None
+            )
+
+    gateway = RetryingStructuredGateway(_Gateway(), max_attempts=3)
+    with pytest.raises(RuntimeError):
+        gateway.invoke(
+            "qwen_structured_output", "1", payload={"task": "study.tutor"}
+        )
+    assert len(calls) == 3
+    assert [entry["succeeded"] for entry in gateway.retry_log] == [False, False, False]

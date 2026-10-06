@@ -199,6 +199,12 @@ def _study_invoke(service: Any, run: Any) -> tuple[Any, Any, list[Any]]:
         )
         if result.lock is not None:
             locks.append(result.lock)
+        if not isinstance(result.output, dict):
+            # 与生产 `study/service.py` 的运行闭包同口径：失败结果不得作为
+            # 载荷继续传入数据模型，否则会把失败误报成结构校验错误。
+            raise RuntimeError(
+                f"study 模型结果不完整：{(result.error_code or 'unknown')}"
+            )
         return result.output
 
     return invoke, budget, locks
