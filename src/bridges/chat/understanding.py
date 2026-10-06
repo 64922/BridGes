@@ -264,8 +264,12 @@ class MainAgentUnderstanding:
         if answer_fields and target_task is not None:
             relation = TaskRelation.CONTINUE
             if "topic" in answer_fields:
-                detected = ["paper"]
-                goal = text
+                if "resources" in self._detect_modules(target_task.goal):
+                    detected = ["resources"]
+                    goal = f"{target_task.goal}；{text}"
+                else:
+                    detected = ["paper"]
+                    goal = text
             elif {"direction", "stage"} & set(answer_fields):
                 detected = ["career"]
                 goal = f"{target_task.goal}；{text}"
@@ -299,6 +303,15 @@ class MainAgentUnderstanding:
         )
         classification_text = goal if "career" in detected and goal else text
         classified = self._router.classify(classification_text)
+        if clarification is None and "resources" in detected and not answer_fields:
+            # 资料与论文共用已有术语语境；不先检索模型猜测的领域。
+            from bridges.chat.topic_clarification import resources_domain_question
+
+            clarification = resources_domain_question(
+                text, messages=messages, current_message_id=user_message_id
+            )
+            if clarification is not None:
+                missing = ["topic"]
         if (
             clarification is None
             and not answer_fields
@@ -688,6 +701,14 @@ class MainAgentUnderstanding:
         detected: list[str] = []
         for module_id, detector in _MODULE_DETECTORS:
             payload = detector(text)  # type: ignore[operator]
+            if payload is None and module_id == "resources" and re.search(
+                r"(?:找|搜|查|推荐)[^。！？?]{0,80}资料", text
+            ):
+                # 明确找资料不依赖旧“想学/教材”建议词；领域仍需独立消歧。
+                from bridges.resources.parsing import extract_topic_phrase
+
+                if extract_topic_phrase(text) is not None:
+                    payload = {"module_id": "resources"}
             if payload is None and module_id == "paper":
                 # 论文以统一路由器为权威（如「研究文章」这类建议词表未覆盖
                 # 的明确表达）；建议检测器命中仍视为明确意图。

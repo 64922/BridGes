@@ -442,6 +442,21 @@ def test_explicit_detail_uses_extended_task_ceiling() -> None:
     assert snapshot.output_tokens == EXTENDED_OUTPUT_TOKENS
 
 
+def test_advice_continuation_uses_extended_task_ceiling() -> None:
+    """推荐类任务续接会重放逐条交付，默认额度不足以容纳完整条目（工单 42 R07）。"""
+    assert (
+        output_tokens_for_request(
+            "继续刚才的任务，接着推荐。",
+            continuation_text="推荐一些 Python 入门教材。",
+        )
+        == EXTENDED_OUTPUT_TOKENS
+    )
+    assert (
+        output_tokens_for_request("推荐一些 Python 入门教材。")
+        == DEFAULT_OUTPUT_TOKENS
+    )
+
+
 # ---------------------------------------------------------------------------
 # 正式生成链：一次调用、续接与工具状态（验收 3、4、6）
 # ---------------------------------------------------------------------------
