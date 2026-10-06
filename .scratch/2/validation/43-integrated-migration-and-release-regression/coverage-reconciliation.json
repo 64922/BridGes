@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-06T15:02:50+00:00",
+  "generated_at": "2026-10-06T15:51:12+00:00",
   "total": 166,
   "status_counts": {
-    "mechanism": 136,
+    "mechanism": 138,
     "not_released": 2,
-    "verified": 19,
+    "verified": 17,
     "degraded": 9
   },
   "problems": [],
@@ -962,8 +962,8 @@
         "tests/profiles/test_issue20_profile_evidence_disclosure.py",
         ".scratch/2/validation/41-independent/acceptance.md"
       ],
-      "status": "verified",
-      "note": "41 独立验收确认依据/反馈 API 与页面路径。"
+      "status": "mechanism",
+      "note": "41 验证依据/反馈 API 和页面组件；真实桌面 E2E 未进入页面断言。"
     },
     {
       "item_id": "P-24",
@@ -1066,8 +1066,8 @@
         "tests/profiles/test_issue17_async_evidence_extraction.py",
         "tests/evaluation/test_issue41_profile_pairing.py"
       ],
-      "status": "verified",
-      "note": "41 纵向配对覆盖连续例子；跨会话延迟有真实记录。"
+      "status": "mechanism",
+      "note": "41 两任务四条件配对支持内容方向，未证明整条概率→详细→记住→忘掉连续例子。"
     },
     {
       "item_id": "P-31",

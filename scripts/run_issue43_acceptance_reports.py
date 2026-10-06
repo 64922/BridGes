@@ -36,6 +36,8 @@ def _now() -> str:
 
 
 def _seed_tasks_and_artifacts(database, account_id: str, conversation_id: str) -> None:
+    # 正式报告维护稳定种子；回归夹具还要组合旧契约和故障注入，独立维护，
+    # 暂不抽象，避免报告执行依赖 pytest 夹具生命周期。
     """与 ``tests/evaluation/test_issue43_rollback_rehearsal.py`` 同构的演练数据。"""
 
     now = _now()

@@ -1,0 +1,203 @@
+[WebServer] INFO:     Started server process [31816]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+[WebServer] (node:30036) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:29540) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 15 tests using 2 workers
+
+(node:39472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:30360) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:29540) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[WebServer] (node:32532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:10668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  2 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:206:9 › 桌面验收 1280×720 › 首页模式、+ 菜单顺序与说明、输入与菜单键盘（1280×720） (4.0s)
+[WebServer] (node:12872) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:17044) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › e2e\issue06-stream-replay-consistency.spec.ts:160:7 › Issue 06 流式正文 / 终态存储 / 断线重放 › 跨 chunk 受保护片段：流式不泄露改写前缀，UI、重放与落库逐字一致 (8.6s)
+[WebServer] (node:36168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:30084) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:15528) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:39476) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  4 [chromium] › e2e\issue06-stream-replay-consistency.spec.ts:212:7 › Issue 06 流式正文 / 终态存储 / 断线重放 › 中途刷新断线重连：按游标续读，正文不重复、终态仍逐字一致 (9.6s)
+[WebServer] (node:19716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:18504) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:5852) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:10488) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:540) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  5 [chromium] › e2e\issue06-stream-replay-consistency.spec.ts:265:7 › Issue 06 流式正文 / 终态存储 / 断线重放 › 停止生成：已确认正文保留，迟到数据不推进正文、不新增模型调用 (9.2s)
+  ok  3 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:302:9 › 桌面验收 1280×720 › 六模块连接真实服务（1280×720） (24.6s)
+[WebServer] (node:36488) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  7 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1280×720 › 画像空态、设置与模型验证结果（1280×720） (4.9s)
+[WebServer] (node:30872) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  8 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:206:9 › 桌面验收 1440×900 › 首页模式、+ 菜单顺序与说明、输入与菜单键盘（1440×900） (2.5s)
+[WebServer] (node:35076) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  x   6 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:331:9 › 桌面验收 1280×720 › 附件与学习阶段连接真实服务（1280×720） (9.9s)
+(node:36504) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32376) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32568) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:39772) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:31448) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok 10 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:331:9 › 桌面验收 1440×900 › 附件与学习阶段连接真实服务（1440×900） (1.9s)
+[WebServer] (node:27132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:26736) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:25692) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok  9 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:302:9 › 桌面验收 1440×900 › 六模块连接真实服务（1440×900） (9.9s)
+  x  11 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1440×900 › 画像空态、设置与模型验证结果（1440×900） (7.6s)
+(node:27352) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:31584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok 12 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:206:9 › 桌面验收 1920×1080 › 首页模式、+ 菜单顺序与说明、输入与菜单键盘（1920×1080） (2.7s)
+[WebServer] (node:36168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32036) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:28968) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ok 14 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:331:9 › 桌面验收 1920×1080 › 附件与学习阶段连接真实服务（1920×1080） (5.6s)
+  x  15 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1920×1080 › 画像空态、设置与模型验证结果（1920×1080） (7.7s)
+  x  13 [chromium] › e2e\issue21-desktop-acceptance.spec.ts:302:9 › 桌面验收 1920×1080 › 六模块连接真实服务（1920×1080） (3.1m)
+
+
+  1) [chromium] › e2e\issue21-desktop-acceptance.spec.ts:331:9 › 桌面验收 1280×720 › 附件与学习阶段连接真实服务（1280×720） 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('composer-attachments')
+    Expected substring: "第 1 张"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('composer-attachments')
+
+
+      360 |       await attachFile(page, "书页-1.png", "image/png", PNG_PIXEL);
+      361 |       await expect(page.getByTestId("composer-attachments")).toContainText("书页-1.png");
+    > 362 |       await expect(page.getByTestId("composer-attachments")).toContainText("第 1 张");
+          |                                                              ^
+      363 |       await page.getByLabel("输入消息").fill("本节书页，请开始预习");
+      364 |       const studyTurn = await sendFirstTurn(page);
+      365 |       expect(studyTurn.mode).toBe("study");
+        at D:\BridGes\.worktrees\43-integrated-migration-and-release-regression\apps\web\e2e\issue21-desktop-acceptance.spec.ts:362:62
+
+    Error Context: test-results\issue21-desktop-acceptance-1fe5b-720-附件与学习阶段连接真实服务（1280×720）-chromium\error-context.md
+
+  2) [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1440×900 › 画像空态、设置与模型验证结果（1440×900） 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByTestId('model-validation-report')
+    Expected: 0
+    Received: 1
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 5000ms
+      - waiting for getByTestId('model-validation-report')
+        14 × locator resolved to 1 element
+           - unexpected value "1"
+
+
+      433 |         await mainModel.getByRole("button", { name: "验证并保存" }).click();
+      434 |         await expect(mainModel.getByRole("alert")).toContainText("当前没有可用的 Qwen 密钥");
+    > 435 |         await expect(page.getByTestId("model-validation-report")).toHaveCount(0);
+          |                                                                   ^
+      436 |       }
+      437 |       // 故意无效的非秘密测试值走真实元数据请求，失败不得改变当前模型或保存密钥。
+      438 |       await keyInput.fill("issue43-invalid-credential-for-acceptance");
+        at D:\BridGes\.worktrees\43-integrated-migration-and-release-regression\apps\web\e2e\issue21-desktop-acceptance.spec.ts:435:67
+
+    Error Context: test-results\issue21-desktop-acceptance-7a4e8-00-画像空态、设置与模型验证结果（1440×900）-chromium\error-context.md
+
+  3) [chromium] › e2e\issue21-desktop-acceptance.spec.ts:302:9 › 桌面验收 1920×1080 › 六模块连接真实服务（1920×1080） 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId(/^resources-card/).first()
+    Expected: visible
+    Timeout: 180000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 180000ms
+      - waiting for getByTestId(/^resources-card/).first()
+
+
+      317 |         // 上游证据源不可达时，模块自带的有界期限（检索 30 秒／读取 20 秒）
+      318 |         // 会把该轮收敛成如实降级卡，因此这里等的是「终态」而不是「成功」。
+    > 319 |         await expect(page.getByTestId(MODULE_CARD_PREFIX[module.label]).first()).toBeVisible({
+          |                                                                                  ^
+      320 |           timeout: 180_000,
+      321 |         });
+      322 |         await expect(threadMessages(page)).toHaveCount(2, { timeout: 60_000 });
+        at D:\BridGes\.worktrees\43-integrated-migration-and-release-regression\apps\web\e2e\issue21-desktop-acceptance.spec.ts:319:82
+
+    Error Context: test-results\issue21-desktop-acceptance-0049f-0×1080-六模块连接真实服务（1920×1080）-chromium\error-context.md
+
+  4) [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1920×1080 › 画像空态、设置与模型验证结果（1920×1080） 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByTestId('model-validation-report')
+    Expected: 0
+    Received: 1
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 5000ms
+      - waiting for getByTestId('model-validation-report')
+        14 × locator resolved to 1 element
+           - unexpected value "1"
+
+
+      433 |         await mainModel.getByRole("button", { name: "验证并保存" }).click();
+      434 |         await expect(mainModel.getByRole("alert")).toContainText("当前没有可用的 Qwen 密钥");
+    > 435 |         await expect(page.getByTestId("model-validation-report")).toHaveCount(0);
+          |                                                                   ^
+      436 |       }
+      437 |       // 故意无效的非秘密测试值走真实元数据请求，失败不得改变当前模型或保存密钥。
+      438 |       await keyInput.fill("issue43-invalid-credential-for-acceptance");
+        at D:\BridGes\.worktrees\43-integrated-migration-and-release-regression\apps\web\e2e\issue21-desktop-acceptance.spec.ts:435:67
+
+    Error Context: test-results\issue21-desktop-acceptance-d9ae4-0-画像空态、设置与模型验证结果（1920×1080）-chromium\error-context.md
+
+  4 failed
+    [chromium] › e2e\issue21-desktop-acceptance.spec.ts:331:9 › 桌面验收 1280×720 › 附件与学习阶段连接真实服务（1280×720） 
+    [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1440×900 › 画像空态、设置与模型验证结果（1440×900） 
+    [chromium] › e2e\issue21-desktop-acceptance.spec.ts:302:9 › 桌面验收 1920×1080 › 六模块连接真实服务（1920×1080） 
+    [chromium] › e2e\issue21-desktop-acceptance.spec.ts:387:9 › 桌面验收 1920×1080 › 画像空态、设置与模型验证结果（1920×1080） 
+  11 passed (4.2m)

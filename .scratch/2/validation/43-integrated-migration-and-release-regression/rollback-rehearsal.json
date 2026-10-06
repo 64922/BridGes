@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-06T15:02:50+00:00",
+  "generated_at": "2026-10-06T15:51:12+00:00",
   "passed": true,
   "checks": [
     {
@@ -20,7 +20,7 @@
     {
       "name": "profile_adoption_recovered",
       "passed": true,
-      "detail": "资源恢复后重新采用同一快照：slice-547e39ada4346be5448777f594c22942。"
+      "detail": "资源恢复后重新采用同一快照：slice-96c7a6e296bada74f6bf9e904480002a。"
     },
     {
       "name": "fact_protection_protocol_registered",
@@ -31,6 +31,31 @@
       "name": "fact_protection_still_binds_fragments",
       "passed": true,
       "detail": "保护区恢复不依赖提示策略快照；缺失片段：无"
+    },
+    {
+      "name": "user_extensions_remain_disabled",
+      "passed": true,
+      "detail": "技能/插件未复活：0；MCP 未启用：0。"
+    },
+    {
+      "name": "reminders_remain_retired",
+      "passed": true,
+      "detail": "提醒未复活：0 条启用；历史保留 1 条。"
+    },
+    {
+      "name": "retirement_idempotent",
+      "passed": true,
+      "detail": "退役清理可重跑：{'status': 'completed', 'skill_packages_disabled': 1, 'mcp_servers_disabled': 1, 'pending_calls_terminated': 0}；completed。"
+    },
+    {
+      "name": "readonly_connection_rejects_writes",
+      "passed": true,
+      "detail": "隔离只读连接真实拒绝写入；生产停机仍需停止全部写入者。"
+    },
+    {
+      "name": "connection_mode_restored",
+      "passed": true,
+      "detail": "只读演练后恢复原连接模式。"
     },
     {
       "name": "database_integrity_ok",
@@ -48,19 +73,9 @@
       "detail": "回滚不清库、不丢任务/事件/产物；缩水：无"
     },
     {
-      "name": "user_extensions_remain_disabled",
+      "name": "historical_content_preserved",
       "passed": true,
-      "detail": "技能/插件未复活：0；MCP 未启用：0。"
-    },
-    {
-      "name": "reminders_remain_retired",
-      "passed": true,
-      "detail": "提醒未复活：0 条启用；历史保留 1 条。"
-    },
-    {
-      "name": "retirement_idempotent",
-      "passed": true,
-      "detail": "退役清理可重跑：{'status': 'completed', 'skill_packages_disabled': 1, 'mcp_servers_disabled': 1, 'pending_calls_terminated': 0}；completed。"
+      "detail": "全部回滚步骤后逐表核对原记录身份与内容摘要；缺少前快照则不通过。"
     }
   ],
   "inventory_before": {

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-06T15:02:50+00:00",
+  "generated_at": "2026-10-06T15:51:12+00:00",
   "passed": true,
   "decisions": [
     {
@@ -7,7 +7,8 @@
       "scope": "人味化表达与交流边界",
       "decision": "not_released",
       "evidence": [
-        ".scratch/2/validation/39-independent/acceptance.md"
+        ".scratch/2/validation/39-independent/acceptance.md",
+        ".scratch/2/validation/39-independent/scored-review-v2/review-result.json"
       ],
       "open_scope": "不开放：保持既有基线表达，不宣称人味收益。",
       "limitations": [
@@ -20,7 +21,9 @@
       "scope": "上下文连续性与成本",
       "decision": "released",
       "evidence": [
-        ".scratch/2/validation/40-context-continuity/independent-acceptance.md"
+        ".scratch/2/validation/40-context-continuity/independent-acceptance.md",
+        ".scratch/2/validation/40-context-continuity/tree-40-context-continuity-and-cost-evaluation-20261005T075002Z.json",
+        ".scratch/2/validation/40-context-continuity/tree-40-baseline-7818c34-20261005T075002Z.json"
       ],
       "open_scope": "开放：同模型同预算连续性与成本报告范围。",
       "limitations": [
@@ -32,7 +35,9 @@
       "scope": "画像提取、治理与实际回答改善",
       "decision": "released_with_limits",
       "evidence": [
-        ".scratch/2/validation/41-independent/acceptance.md"
+        ".scratch/2/validation/41-independent/acceptance.md",
+        ".scratch/2/validation/41-independent/rejudged/pairing-report.json",
+        ".scratch/2/validation/41-independent/final-real/pairing-report.json"
       ],
       "open_scope": "开放：有效事实/撤回机制/实际内容改善的评测范围。",
       "limitations": [
@@ -46,14 +51,17 @@
       "scope": "工作流质量、预算与外部真实可得性",
       "decision": "released_with_degradation",
       "evidence": [
-        ".scratch/2/validation/42-workflow-evaluation/workflow-evidence.json",
-        ".scratch/2/validation/42-workflow-evaluation/external-probes.json"
+        ".scratch/2/validation/43-independent/evidence/42/workflow-evidence.json",
+        ".scratch/2/validation/43-independent/evidence/42/external-probes.json",
+        ".scratch/2/validation/43-independent/evidence/42/workflow-pairing.json",
+        ".scratch/2/validation/43-independent/evidence/42/workflow-semantics.json"
       ],
       "open_scope": "开放：39 场景机制执行与预算初值轴；外部门按探针逐层开放。",
       "limitations": [
         "tieba 读取不可用：只交付线索，不总结未读回复。",
         "GitHub 受共享出口配额失败：不据此宣称产品能力通过。",
-        "jobs 声明 partial 未实测；arxiv 产品保持摘要+书目层。"
+        "最终 jobs 探针为 inconclusive；arxiv 产品保持摘要+书目层。",
+        "7 个配对场景、10 个语义量表各重复 2 次；只证明已测范围，不代表完整教学质量。"
       ]
     }
   ],

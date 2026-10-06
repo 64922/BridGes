@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="7.613" timestamp="2026-10-07T00:04:43.733963+08:00" hostname="bababoyi"><testcase classname="tests.closeout.test_arxiv_worker_reliability" name="test_handshake_timeout_maps_to_arxiv_handshake" time="3.098" /><testcase classname="tests.closeout.test_arxiv_worker_reliability" name="test_warmup_pre_spawns_worker_and_first_search_has_no_cold_start" time="2.045" /><testcase classname="tests.profiles.test_issue01_chat_profile_correction" name="test_chat_correction_uses_latest_record_and_is_idempotent" time="0.002"><failure message="AssertionError: assert '较新的知识兴趣' == 'CNN'&#10;  &#10;  - CNN&#10;  + 较新的知识兴趣">&gt;   ???
+E   AssertionError: assert '较新的知识兴趣' == 'CNN'
+E     
+E     - CNN
+E     + 较新的知识兴趣
+
+C:\Users\33755\Desktop\BridGes\tests\profiles\test_issue01_chat_profile_correction.py:192: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,64 @@
+
+> @bridges/web@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.28
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+
+./src/app/(app)/(modules)/search/search-page-client.tsx
+140:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/bridges/chat/ImageTaskCard.tsx
+220:7  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/bridges/Composer.tsx
+545:5  Warning: React Hook useEffect has a missing dependency: 'cancelRecording'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/23) ...
+   Generating static pages (5/23) 
+   Generating static pages (11/23) 
+   Generating static pages (17/23) 
+ ✓ Generating static pages (23/23)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                   Size     First Load JS
+┌ ƒ /                                         5.64 kB         133 kB
+├ ○ /_not-found                               873 B          88.1 kB
+├ ○ /account                                  2.36 kB         104 kB
+├ ○ /account/domain-packs                     6.24 kB        98.8 kB
+├ ƒ /account/domain-packs/[packId]/[version]  13.7 kB         106 kB
+├ ○ /account/profile                          5.5 kB           98 kB
+├ ○ /account/settings                         177 B          96.1 kB
+├ ○ /account/settings/data                    11.8 kB         104 kB
+├ ƒ /account/settings/models                  11 kB           112 kB
+├ ○ /account/settings/profile                 9.08 kB         102 kB
+├ ƒ /chat/[conversationId]                    7.92 kB         175 kB
+├ ○ /icon.svg                                 0 B                0 B
+├ ○ /knowledge-base                           9.61 kB         108 kB
+├ ○ /login                                    7.2 kB          108 kB
+├ ○ /register                                 7.44 kB         109 kB
+├ ○ /search                                   9.93 kB         102 kB
+├ ○ /templates                                177 B          96.1 kB
+├ ○ /templates/chat                           6.45 kB         167 kB
+├ ○ /templates/detail                         3.94 kB         109 kB
+├ ○ /templates/list                           4.81 kB         110 kB
+├ ○ /templates/login                          6.98 kB        94.2 kB
+├ ○ /templates/register                       6.92 kB        94.1 kB
+└ ○ /templates/settings                       4.38 kB         109 kB
++ First Load JS shared by all                 87.2 kB
+  ├ chunks/117-148bf5dca8222120.js            31.6 kB
+  ├ chunks/fd9d1056-dee8cd88671f73fc.js       53.6 kB
+  └ other shared chunks (total)               2 kB
+
+
+ƒ Middleware                                  27 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

@@ -30,6 +30,8 @@ def _now() -> str:
 
 
 def _seed_tasks_and_artifacts(database, account_id: str, conversation_id: str) -> None:
+    # 此夹具组合旧/新契约并供故障注入，和正式报告的稳定种子独立演进；
+    # 暂不抽象，避免正式报告依赖 pytest 夹具生命周期。
     now = _now()
     with database.transaction():
         scoped = database.scoped(account_id)

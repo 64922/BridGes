@@ -1,0 +1,834 @@
+{
+  "kind": "workflow-evidence",
+  "generated_at": "2026-10-06T15:42:45.642533+00:00",
+  "pytest_exit_code": 0,
+  "pytest_command": "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe -m pytest tests/ai/test_model_gateway.py::test_disabled_capability_is_blocked tests/ai/test_model_gateway.py::test_unregistered_capability_is_blocked tests/arxiv_mcp/test_retry_stale_warmup.py::test_stale_serve_after_persistent_timeout_with_annotation tests/career_plan/test_career_plan_module_flow.py::test_city_change_starts_a_new_revision_without_reusing_old_city_stats tests/career_plan/test_career_plan_module_flow.py::test_plain_chat_explicit_job_query_starts_career_without_profile tests/career_plan/test_issue29_personal_career_gap.py::test_job_only_request_never_touches_profile_source tests/career_plan/test_issue29_personal_career_gap.py::test_personal_request_without_profile_delivers_job_part_and_boundary tests/chat/test_chat_attachments.py::test_upload_uses_content_sniffing_and_retries_idempotently tests/chat/test_chat_lightweight_policy.py::test_ordinary_generation_uses_exactly_one_model_call tests/chat/test_chat_service.py::test_get_conversation_account_isolation tests/chat/test_improvement04_payload_budget.py::test_cross_account_material_is_not_recallable_through_the_gate tests/chat/test_improvement09_run_budget_ledger.py::test_budget_class_derivation tests/chat/test_improvement09_run_budget_ledger.py::test_lease_recovery_reloads_ledger_without_reset tests/chat/test_improvement09_run_budget_ledger.py::test_new_budget_run_for_explicit_continue tests/chat/test_improvement09_run_budget_ledger.py::test_transient_retry_capped_once_per_registered_call tests/chat/test_improvement11_reference_resolution.py::test_cross_account_material_is_not_recallable tests/chat/test_improvement11_reference_resolution.py::test_revoked_value_is_not_revived_and_reported_as_gap tests/chat/test_improvement12_acceptance.py::test_direct_paper_stream_does_not_call_network_when_forbidden tests/chat/test_improvement12_hybrid_entry.py::test_body_intent_overrides_module_hint tests/chat/test_improvement12_hybrid_entry.py::test_city_revision_updates_task_version_and_condition tests/chat/test_improvement12_hybrid_entry.py::test_meta_reply_does_not_fill_open_wait tests/chat/test_improvement12_hybrid_entry.py::test_ordinary_chat_creates_no_task_relation tests/chat/test_improvement12_hybrid_entry.py::test_pause_continue_and_cancel_transitions tests/chat/test_improvement12_hybrid_entry.py::test_registered_composite_freezes_one_normal_budget tests/chat/test_improvement12_hybrid_entry.py::test_review_stage_gate_negation_quote_and_pause tests/chat/test_improvement12_hybrid_entry.py::test_stop_generation_pauses_current_task tests/chat/test_improvement12_task_relations.py::test_profile_or_new_topic_does_not_answer_wait tests/chat/test_improvement12_task_relations.py::test_unrelated_or_stale_wait_does_not_consume_answer tests/chat/test_improvement14_material_reads.py::test_deleted_old_photo_yields_gap_not_description tests/chat/test_improvement15_task_materials.py::test_task_queries_do_not_cross_account_scope tests/chat/test_improvement30_study_pages_recognition.py::test_critical_doubt_requests_exact_position_and_blocks_questions tests/chat/test_improvement30_study_pages_recognition.py::test_dual_path_mismatch_is_critical_even_with_high_confidence tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit tests/chat/test_improvement30_study_pages_recognition.py::test_position_level_critical_doubt_is_not_downgraded tests/chat/test_improvement30_study_pages_recognition.py::test_retry_recovers_committed_pages_from_receipts tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material tests/chat/test_improvement31_study_scope_preview.py::test_formula_conflict_blocks_until_repaired_content tests/chat/test_improvement31_study_scope_preview.py::test_same_title_on_different_pages_keeps_distinct_ids_and_evidence tests/chat/test_improvement32_study_tutoring_evidence.py::test_assessment_cannot_fabricate_support_sources tests/chat/test_improvement32_study_tutoring_evidence.py::test_conflicting_public_sources_are_listed_not_merged tests/chat/test_improvement32_study_tutoring_evidence.py::test_disabled_knowledge_base_and_no_network_keep_gaps_unverified tests/chat/test_improvement32_study_tutoring_evidence.py::test_page_only_delivery_without_review_or_scope_expansion tests/chat/test_improvement32_study_tutoring_evidence.py::test_sufficient_pages_do_not_search_knowledge_base_or_web tests/chat/test_improvement32_study_tutoring_evidence.py::test_targeted_unclear_page_asks_for_retake_without_external_replacement tests/chat/test_improvement33_acceptance.py::test_failed_verification_hides_private_details_in_api_and_replay tests/chat/test_improvement33_acceptance.py::test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification tests/chat/test_improvement33_acceptance.py::test_plan_receipt_records_registered_calculation_without_replay_leak tests/chat/test_improvement33_preverified_questions.py::test_plan_freezes_private_rubric_and_reads_never_leak_it tests/chat/test_improvement33_preverified_questions.py::test_same_title_different_pages_keep_question_evidence_separate tests/chat/test_improvement34_verified_grading_feedback.py::test_disputed_recheck_keeps_question_without_student_error tests/chat/test_improvement34_verified_grading_feedback.py::test_equivalent_answer_passes_recheck_and_frozen_standard_does_not_drift tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once tests/chat/test_improvement34_verified_grading_feedback.py::test_judgement_and_next_question_have_separate_commit_boundaries tests/chat/test_improvement34_verified_grading_feedback.py::test_last_judgement_survives_summary_failure_and_retry_does_not_regrade tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing tests/chat/test_improvement34_verified_grading_feedback.py::test_wrong_feedback_continues_frozen_plan_without_remediation tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change tests/chat/test_improvement35_acceptance.py::test_previous_graph_cannot_replay_pre_versioned_update tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_append_after_summary_versions_history_and_preview_questions tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_append_failure_keeps_effective_scope_and_reuses_recognized_pages tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_pause_is_not_graded_and_resume_defaults_to_next_unasked tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_stop_during_append_keeps_effective_state_and_recovers tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_unanswered_question_never_counts_as_mastered tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_creates_no_followup_work_and_no_profile_fact_from_summary tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_failure_persists_pending_and_retries_only_summary tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_separates_mastery_gaps_and_unanswered_with_real_evidence tests/chat/test_improvement36_evidence_bound_summary.py::test_tutoring_without_review_never_generates_summary tests/chat/test_improvement36_evidence_bound_summary.py::test_unanswered_must_be_listed_separately tests/chat/test_improvement36_status_acceptance.py::test_pending_text_comes_from_actual_state tests/chat/test_issue06_stream_replay_consistency.py::test_disconnect_cursor_replay_reconstructs_body tests/chat/test_issue37_composite_dispatch.py::test_composite_dispatch_commits_all_projections_once tests/chat/test_issue37_composite_reuse.py::test_city_change_reruns_career_and_reuses_resources tests/chat/test_natural_language_paper_route.py::test_ambiguous_paper_request_asks_before_any_side_effect tests/chat/test_study_recognition_failures.py::test_restart_after_partial_failure_recovers_without_duplicating_pages tests/chat/test_terminal_recovery_and_replay.py::test_message_commit_window_recovery_repairs_without_second_model_call tests/chat/test_v2_02_resumable_runs.py::test_checkpoint_run_event_isolation_across_accounts tests/chat/test_v2_02_resumable_runs.py::test_retry_idempotency_reuses_run tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates tests/chat/test_v2_03_conversation_context.py::test_cross_account_history_not_recallable tests/chat/test_v2_19_study_review.py::test_append_pages_replans_only_unasked_and_preserves_grades tests/chat/test_v2_19_study_review.py::test_only_explicit_request_starts_review tests/chat/test_v2_19_study_review.py::test_pause_tutor_and_resume_keep_asked_questions tests/closeout/test_v2_21_horizontal_regression.py::test_first_turn_locks_mode_and_switching_is_retired tests/commute/test_commute_buffer.py::test_checked_at_is_reported_in_shanghai_time tests/commute/test_commute_buffer.py::test_notes_say_this_is_a_rule_not_realtime_crowd_data tests/commute/test_commute_buffer.py::test_ten_minute_boundaries_are_inclusive tests/commute/test_commute_module_flow.py::test_missing_path_points_marks_unverified_and_draws_nothing tests/commute/test_commute_sources.py::test_each_mode_uses_its_own_endpoint_and_its_own_duration tests/commute/test_commute_sources.py::test_route_without_any_plan_is_honest_failure_for_that_mode tests/evaluation/test_issue42_ambiguous_resources.py::test_a03_isolated_resources_domain_waits_before_any_model_or_tool tests/evaluation/test_issue42_ambiguous_resources.py::test_a03_prior_user_domain_avoids_unnecessary_clarification tests/evaluation/test_issue42_revocation_resume.py::test_r05_revoked_photo_is_not_reused_after_checkpoint_resume tests/evaluation/test_issue42_scenario_gaps.py::test_a02_paper_hint_with_commute_body_routes_commute tests/evaluation/test_issue42_scenario_gaps.py::test_a02_service_keeps_requested_hint_and_uses_actual_route tests/evaluation/test_issue42_scenario_gaps.py::test_a08_generic_continue_with_multiple_tasks_asks_one_clarification tests/evaluation/test_issue42_scenario_gaps.py::test_a08_unique_task_term_resolves_continue_without_clarification tests/evaluation/test_issue42_scenario_gaps.py::test_a09_video_timeout_keeps_books_and_reports_real_gap tests/evaluation/test_issue42_scenario_gaps.py::test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task tests/github/test_github_acceptance_evidence.py::test_requested_implementation_is_not_satisfied_by_readme tests/github/test_github_core.py::test_render_states_evidence_boundary_and_never_claims_architecture tests/github/test_github_core.py::test_stars_are_only_a_tie_break_between_equal_matches tests/github/test_github_module_flow.py::test_reference_to_prior_paper_turn_uses_its_original_phrase tests/github/test_github_requirement_matrix.py::test_optional_rows_are_listed_but_do_not_offset_required_gaps tests/github/test_github_requirement_matrix.py::test_required_unsupported_is_not_whole_even_with_ratio_stars_and_optionals tests/github/test_github_requirement_matrix.py::test_runtime_requirement_is_never_reported_as_runnable tests/invalidation/test_invalidation_integration.py::test_revoke_between_submit_and_confirm_blocks_start tests/kernel/test_node_kernel.py::test_account_isolation_for_artifacts tests/kernel/test_node_kernel.py::test_contract_upgrade_reruns_nodes_and_preserves_old_receipts tests/orchestration/test_issue37_composite_engine.py::test_city_change_recomputes_career_but_reuses_resources tests/orchestration/test_issue37_composite_engine.py::test_github_cannot_claim_correspondence_when_paper_identity_unconfirmed tests/orchestration/test_issue37_composite_engine.py::test_paper_resources_run_in_parallel_with_one_shared_budget tests/paper/test_paper_issue24.py::test_primary_keyword_only_false_positive_is_excluded tests/paper/test_paper_issue24.py::test_synonym_evidence_passes_without_literal_primary_term tests/paper/test_paper_issue24.py::test_year_hard_condition_blocks_instead_of_widening tests/paper/test_paper_issue24_acceptance.py::test_excluded_arxiv_source_blocks_before_any_search tests/paper/test_paper_issue24_acceptance.py::test_synonym_evidence_survives_evaluate tests/paper/test_paper_issue24_acceptance.py::test_unrelated_survey_is_not_topic_evidence tests/paper/test_paper_module_core.py::test_isolated_transformer_asks_one_clarification tests/paper/test_paper_module_flow.py::test_body_intent_ambiguous_term_dispatches_and_asks_one_question tests/resources/test_issue25_lifecycle_acceptance.py::test_explicit_network_prohibition_blocks_all_resources_sources tests/resources/test_issue25_lifecycle_acceptance.py::test_resources_resume_without_calls_and_reject_old_recipe tests/resources/test_resources_module_core.py::test_organize_keeps_one_side_when_other_has_gap tests/resources/test_resources_module_flow.py::test_book_gap_is_limited_to_its_own_source tests/retrieval/test_decision.py::test_companion_greeting_skips_global_knowledge_base tests/retrieval/test_v2_07_knowledge_base_retrieval.py::test_deleted_material_is_not_recallable_but_citation_reports_deleted tests/tasks/test_task_state.py::test_account_isolation_hides_other_account_tasks tests/tasks/test_task_state.py::test_topic_switch_does_not_fill_old_wait_and_cancel_releases tests/tieba/test_improvement27_question_driven.py::test_conflict_with_newer_official_rule_uses_time_and_scope_basis tests/tieba/test_improvement27_question_driven.py::test_conflict_without_supersession_keeps_both_sides tests/tieba/test_improvement27_question_driven.py::test_links_only_never_summarizes_unread_replies tests/tieba/test_issue27_acceptance_regressions.py::test_no_proven_supersession_keeps_both tests/tieba/test_tieba_core.py::test_sections_only_use_read_replies_and_cite_floor_and_time tests/tieba/test_tieba_module_flow.py::test_snippet_claiming_target_forum_still_needs_a_real_read tests/web_search/test_issue03_retry_matrix.py::test_attempts_match_actual_http_calls_on_consecutive_failures tests/workflows/test_workflow_capability_integration.py::test_unregistered_capability_blocks_run -p no:cacheprovider -q --junitxml=D:\\BridGes\\.worktrees\\43-integrated-migration-and-release-regression\\.scratch\\2\\validation\\43-independent\\workflow-final\\pytest-junit.xml",
+  "scenario_count": 39,
+  "scenarios": [
+    {
+      "scenario_id": "A01",
+      "title": "普通问候/陪伴",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_budget_class_derivation": "passed",
+        "tests/retrieval/test_decision.py::test_companion_greeting_skips_global_knowledge_base": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_ordinary_chat_creates_no_task_relation": "passed",
+        "tests/chat/test_chat_lightweight_policy.py::test_ordinary_generation_uses_exactly_one_model_call": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A02",
+      "title": "保留论文提示，正文明确问校内通勤",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a02_paper_hint_with_commute_body_routes_commute": "passed",
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a02_service_keeps_requested_hint_and_uses_actual_route": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_body_intent_overrides_module_hint": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A03",
+      "title": "孤立歧义主题，前文无法消歧",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/evaluation/test_issue42_ambiguous_resources.py::test_a03_isolated_resources_domain_waits_before_any_model_or_tool": "passed",
+        "tests/evaluation/test_issue42_ambiguous_resources.py::test_a03_prior_user_domain_avoids_unnecessary_clarification": "passed",
+        "tests/paper/test_paper_module_core.py::test_isolated_transformer_asks_one_clarification": "passed",
+        "tests/paper/test_paper_module_flow.py::test_body_intent_ambiguous_term_dispatches_and_asks_one_question": "passed",
+        "tests/chat/test_natural_language_paper_route.py::test_ambiguous_paper_request_asks_before_any_side_effect": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A04",
+      "title": "查入门论文和学习资料",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "arxiv.full_text",
+        "video.intro"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/orchestration/test_issue37_composite_engine.py::test_paper_resources_run_in_parallel_with_one_shared_budget": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_registered_composite_freezes_one_normal_budget": "passed",
+        "tests/chat/test_issue37_composite_dispatch.py::test_composite_dispatch_commits_all_projections_once": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A05",
+      "title": "查选中论文的对应实现",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "github.files"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/orchestration/test_issue37_composite_engine.py::test_github_cannot_claim_correspondence_when_paper_identity_unconfirmed": "passed",
+        "tests/github/test_github_module_flow.py::test_reference_to_prior_paper_turn_uses_its_original_phrase": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A06",
+      "title": "求职城市从上海改杭州",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/career_plan/test_career_plan_module_flow.py::test_city_change_starts_a_new_revision_without_reusing_old_city_stats": "passed",
+        "tests/orchestration/test_issue37_composite_engine.py::test_city_change_recomputes_career_but_reuses_resources": "passed",
+        "tests/chat/test_issue37_composite_reuse.py::test_city_change_reruns_career_and_reuses_resources": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_city_revision_updates_task_version_and_condition": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A07",
+      "title": "澄清未答时用户换话题，稍后说“好的”",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/tasks/test_task_state.py::test_topic_switch_does_not_fill_old_wait_and_cancel_releases": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_meta_reply_does_not_fill_open_wait": "passed",
+        "tests/chat/test_improvement12_task_relations.py::test_unrelated_or_stale_wait_does_not_consume_answer": "passed",
+        "tests/chat/test_improvement12_task_relations.py::test_profile_or_new_topic_does_not_answer_wait": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A08",
+      "title": "多个历史任务都可能被“继续那个”指代",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a08_generic_continue_with_multiple_tasks_asks_one_clarification": "passed",
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a08_unique_task_term_resolves_continue_without_clarification": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A09",
+      "title": "资料视频来源失败，书目仍可核验",
+      "layers": [
+        "deterministic",
+        "external_probe"
+      ],
+      "external_gates": [
+        "video.intro",
+        "web_search.tavily"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_a09_video_timeout_keeps_books_and_reports_real_gap": "passed",
+        "tests/resources/test_resources_module_core.py::test_organize_keeps_one_side_when_other_has_gap": "passed",
+        "tests/resources/test_resources_module_flow.py::test_book_gap_is_limited_to_its_own_source": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A10",
+      "title": "候选使用不同术语，但证据支持需求；另一个只命中词",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "arxiv.full_text"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/paper/test_paper_issue24.py::test_synonym_evidence_passes_without_literal_primary_term": "passed",
+        "tests/paper/test_paper_issue24.py::test_primary_keyword_only_false_positive_is_excluded": "passed",
+        "tests/paper/test_paper_issue24_acceptance.py::test_synonym_evidence_survives_evaluate": "passed",
+        "tests/paper/test_paper_issue24_acceptance.py::test_unrelated_survey_is_not_topic_evidence": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A11",
+      "title": "用户限定年份/城市/不联网",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [
+        "hard_condition_bypass"
+      ],
+      "evidence": {
+        "tests/paper/test_paper_issue24.py::test_year_hard_condition_blocks_instead_of_widening": "passed",
+        "tests/paper/test_paper_issue24_acceptance.py::test_excluded_arxiv_source_blocks_before_any_search": "passed",
+        "tests/chat/test_improvement12_acceptance.py::test_direct_paper_stream_does_not_call_network_when_forbidden": "passed",
+        "tests/resources/test_issue25_lifecycle_acceptance.py::test_explicit_network_prohibition_blocks_all_resources_sources": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A12",
+      "title": "通勤某方式无真实路线",
+      "layers": [
+        "deterministic",
+        "external_probe"
+      ],
+      "external_gates": [
+        "amap.campus_routes"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/commute/test_commute_sources.py::test_route_without_any_plan_is_honest_failure_for_that_mode": "passed",
+        "tests/commute/test_commute_sources.py::test_each_mode_uses_its_own_endpoint_and_its_own_duration": "passed",
+        "tests/commute/test_commute_module_flow.py::test_missing_path_points_marks_unverified_and_draws_nothing": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A13",
+      "title": "高峰前后 10 分钟边界",
+      "layers": [
+        "deterministic",
+        "external_probe"
+      ],
+      "external_gates": [
+        "amap.campus_routes"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/commute/test_commute_buffer.py::test_ten_minute_boundaries_are_inclusive": "passed",
+        "tests/commute/test_commute_buffer.py::test_checked_at_is_reported_in_shanghai_time": "passed",
+        "tests/commute/test_commute_buffer.py::test_notes_say_this_is_a_rule_not_realtime_crowd_data": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A14",
+      "title": "贴吧只有标题/搜索摘要",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "tieba.replies",
+        "web_search.tavily"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/tieba/test_improvement27_question_driven.py::test_links_only_never_summarizes_unread_replies": "passed",
+        "tests/tieba/test_tieba_core.py::test_sections_only_use_read_replies_and_cite_floor_and_time": "passed",
+        "tests/tieba/test_tieba_module_flow.py::test_snippet_claiming_target_forum_still_needs_a_real_read": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A15",
+      "title": "官方规定与帖子经历冲突",
+      "layers": [
+        "deterministic",
+        "external_probe"
+      ],
+      "external_gates": [
+        "tieba.replies",
+        "web_search.tavily"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/tieba/test_improvement27_question_driven.py::test_conflict_with_newer_official_rule_uses_time_and_scope_basis": "passed",
+        "tests/tieba/test_improvement27_question_driven.py::test_conflict_without_supersession_keeps_both_sides": "passed",
+        "tests/tieba/test_issue27_acceptance_regressions.py::test_no_proven_supersession_keeps_both": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A16",
+      "title": "无用户技能背景的岗位查询",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "jobs.public_detail",
+        "web_search.tavily"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/career_plan/test_issue29_personal_career_gap.py::test_personal_request_without_profile_delivers_job_part_and_boundary": "passed",
+        "tests/career_plan/test_issue29_personal_career_gap.py::test_job_only_request_never_touches_profile_source": "passed",
+        "tests/career_plan/test_career_plan_module_flow.py::test_plain_chat_explicit_job_query_starts_career_without_profile": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A17",
+      "title": "GitHub 可选功能很多，必要功能未支持",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "github.files"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/github/test_github_requirement_matrix.py::test_required_unsupported_is_not_whole_even_with_ratio_stars_and_optionals": "passed",
+        "tests/github/test_github_requirement_matrix.py::test_optional_rows_are_listed_but_do_not_offset_required_gaps": "passed",
+        "tests/github/test_github_core.py::test_stars_are_only_a_tie_break_between_equal_matches": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "A18",
+      "title": "README 有架构说明但未读实现、未运行",
+      "layers": [
+        "deterministic",
+        "real_model",
+        "external_probe"
+      ],
+      "external_gates": [
+        "github.files"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/github/test_github_core.py::test_render_states_evidence_boundary_and_never_claims_architecture": "passed",
+        "tests/github/test_github_acceptance_evidence.py::test_requested_implementation_is_not_satisfied_by_readme": "passed",
+        "tests/github/test_github_requirement_matrix.py::test_runtime_requirement_is_never_reported_as_runnable": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L01",
+      "title": "书页关键负号/上标不清",
+      "layers": [
+        "deterministic",
+        "external_probe"
+      ],
+      "external_gates": [
+        "model.configured_capabilities"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_critical_doubt_requests_exact_position_and_blocks_questions": "passed",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_position_level_critical_doubt_is_not_downgraded": "passed",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_dual_path_mismatch_is_critical_even_with_high_confidence": "passed",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_targeted_unclear_page_asks_for_retake_without_external_replacement": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L02",
+      "title": "不同知识点同名、多个页含不同公式",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement31_study_scope_preview.py::test_same_title_on_different_pages_keeps_distinct_ids_and_evidence": "passed",
+        "tests/chat/test_improvement33_preverified_questions.py::test_same_title_different_pages_keep_question_evidence_separate": "passed",
+        "tests/chat/test_improvement31_study_scope_preview.py::test_formula_conflict_blocks_until_repaired_content": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L03",
+      "title": "书页足以回答",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_sufficient_pages_do_not_search_knowledge_base_or_web": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L04",
+      "title": "书页不足，知识库/公网其中一路失败",
+      "layers": [
+        "deterministic",
+        "external_probe"
+      ],
+      "external_gates": [
+        "web_search.tavily"
+      ],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_page_only_delivery_without_review_or_scope_expansion": "passed",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_disabled_knowledge_base_and_no_network_keep_gaps_unverified": "passed",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_conflicting_public_sources_are_listed_not_merged": "passed",
+        "tests/chat/test_improvement32_study_tutoring_evidence.py::test_assessment_cannot_fabricate_support_sources": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L05",
+      "title": "“还没学完”或引用“开始复盘”",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement12_hybrid_entry.py::test_review_stage_gate_negation_quote_and_pause": "passed",
+        "tests/chat/test_v2_19_study_review.py::test_only_explicit_request_starts_review": "passed",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_tutoring_without_review_never_generates_summary": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L06",
+      "title": "学生使用等价表述/推导",
+      "layers": [
+        "deterministic",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_equivalent_answer_passes_recheck_and_frozen_standard_does_not_drift": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_disputed_recheck_keeps_question_without_student_error": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L07",
+      "title": "批改调用失败或判定结构不合法",
+      "layers": [
+        "fault_injection",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [
+        "system_failure_as_student_error"
+      ],
+      "evidence": {
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_judgement_and_next_question_have_separate_commit_boundaries": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L08",
+      "title": "暂停复盘后要求讲解，随后继续",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_pause_is_not_graded_and_resume_defaults_to_next_unasked": "passed",
+        "tests/chat/test_v2_19_study_review.py::test_pause_tutor_and_resume_keep_asked_questions": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L09",
+      "title": "本节追加书页识别失败后重试",
+      "layers": [
+        "deterministic",
+        "fault_injection"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_append_after_summary_versions_history_and_preview_questions": "passed",
+        "tests/chat/test_v2_19_study_review.py::test_append_pages_replans_only_unasked_and_preserves_grades": "passed",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_append_failure_keeps_effective_scope_and_reuses_recognized_pages": "passed",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_stop_during_append_keeps_effective_state_and_recovers": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L10",
+      "title": "最后一题判定已提交，总结失败",
+      "layers": [
+        "fault_injection"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_last_judgement_survives_summary_failure_and_retry_does_not_regrade": "passed",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_failure_persists_pending_and_retries_only_summary": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L11",
+      "title": "原题已判错后继续复盘",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_wrong_feedback_continues_frozen_plan_without_remediation": "passed",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_creates_no_followup_work_and_no_profile_fact_from_summary": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L12",
+      "title": "直接读取会话/重放事件",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement33_preverified_questions.py::test_plan_freezes_private_rubric_and_reads_never_leak_it": "passed",
+        "tests/chat/test_improvement33_acceptance.py::test_failed_verification_hides_private_details_in_api_and_replay": "passed",
+        "tests/chat/test_improvement33_acceptance.py::test_plan_receipt_records_registered_calculation_without_replay_leak": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "L13",
+      "title": "总结存在未答题或未判定题",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_summary_separates_mastery_gaps_and_unanswered_with_real_evidence": "passed",
+        "tests/chat/test_improvement36_evidence_bound_summary.py::test_unanswered_must_be_listed_separately": "passed",
+        "tests/chat/test_improvement35_study_pause_and_appended_versions.py::test_unanswered_question_never_counts_as_mastered": "passed",
+        "tests/chat/test_improvement36_status_acceptance.py::test_pending_text_comes_from_actual_state": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R01",
+      "title": "同一请求重试、刷新/SSE 断线",
+      "layers": [
+        "deterministic",
+        "fault_injection"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [
+        "duplicate_judgement"
+      ],
+      "evidence": {
+        "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates": "passed",
+        "tests/chat/test_v2_02_resumable_runs.py::test_retry_idempotency_reuses_run": "passed",
+        "tests/chat/test_issue06_stream_replay_consistency.py::test_disconnect_cursor_replay_reconstructs_body": "passed",
+        "tests/chat/test_chat_attachments.py::test_upload_uses_content_sniffing_and_retries_idempotently": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R02",
+      "title": "节点产物已提交，图检查点尚未保存时进程失败",
+      "layers": [
+        "fault_injection"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_retry_recovers_committed_pages_from_receipts": "passed",
+        "tests/chat/test_terminal_recovery_and_replay.py::test_message_commit_window_recovery_repairs_without_second_model_call": "passed",
+        "tests/chat/test_study_recognition_failures.py::test_restart_after_partial_failure_recovers_without_duplicating_pages": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R03",
+      "title": "旧租约执行者晚返回，或用户已经停止",
+      "layers": [
+        "fault_injection"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [
+        "write_after_stop"
+      ],
+      "evidence": {
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit": "passed",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material": "passed",
+        "tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R04",
+      "title": "工具限流或多节点重试",
+      "layers": [
+        "fault_injection"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_lease_recovery_reloads_ledger_without_reset": "passed",
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_transient_retry_capped_once_per_registered_call": "passed",
+        "tests/web_search/test_issue03_retry_matrix.py::test_attempts_match_actual_http_calls_on_consecutive_failures": "passed",
+        "tests/arxiv_mcp/test_retry_stale_warmup.py::test_stale_serve_after_persistent_timeout_with_annotation": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R05",
+      "title": "材料/画像撤回后恢复旧运行",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/evaluation/test_issue42_revocation_resume.py::test_r05_revoked_photo_is_not_reused_after_checkpoint_resume": "passed",
+        "tests/invalidation/test_invalidation_integration.py::test_revoke_between_submit_and_confirm_blocks_start": "passed",
+        "tests/retrieval/test_v2_07_knowledge_base_retrieval.py::test_deleted_material_is_not_recallable_but_citation_reports_deleted": "passed",
+        "tests/chat/test_improvement14_material_reads.py::test_deleted_old_photo_yields_gap_not_description": "passed",
+        "tests/chat/test_improvement11_reference_resolution.py::test_revoked_value_is_not_revived_and_reported_as_gap": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R06",
+      "title": "不兼容配方版本的历史运行",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/resources/test_issue25_lifecycle_acceptance.py::test_resources_resume_without_calls_and_reject_old_recipe": "passed",
+        "tests/chat/test_improvement33_acceptance.py::test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification": "passed",
+        "tests/chat/test_improvement35_acceptance.py::test_previous_graph_cannot_replay_pre_versioned_update": "passed",
+        "tests/kernel/test_node_kernel.py::test_contract_upgrade_reruns_nodes_and_preserves_old_receipts": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R07",
+      "title": "用户停止、稍后明确继续",
+      "layers": [
+        "deterministic",
+        "fault_injection",
+        "real_model"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [
+        "write_after_stop"
+      ],
+      "evidence": {
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task": "passed",
+        "tests/chat/test_improvement09_run_budget_ledger.py::test_new_budget_run_for_explicit_continue": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_pause_continue_and_cancel_transitions": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_stop_generation_pauses_current_task": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "scenario_id": "R08",
+      "title": "模型建议调用未登记/退役能力或切换模式",
+      "layers": [
+        "deterministic"
+      ],
+      "external_gates": [],
+      "zero_tolerance": [],
+      "evidence": {
+        "tests/workflows/test_workflow_capability_integration.py::test_unregistered_capability_blocks_run": "passed",
+        "tests/ai/test_model_gateway.py::test_unregistered_capability_is_blocked": "passed",
+        "tests/ai/test_model_gateway.py::test_disabled_capability_is_blocked": "passed",
+        "tests/closeout/test_v2_21_horizontal_regression.py::test_first_turn_locks_mode_and_switching_is_retired": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    }
+  ],
+  "zero_tolerance": [
+    {
+      "kind": "cross_account",
+      "description": "任何工作流对象在同一标识下不得跨账户读写",
+      "evidence": {
+        "tests/chat/test_chat_service.py::test_get_conversation_account_isolation": "passed",
+        "tests/chat/test_improvement04_payload_budget.py::test_cross_account_material_is_not_recallable_through_the_gate": "passed",
+        "tests/chat/test_improvement11_reference_resolution.py::test_cross_account_material_is_not_recallable": "passed",
+        "tests/chat/test_improvement15_task_materials.py::test_task_queries_do_not_cross_account_scope": "passed",
+        "tests/chat/test_v2_02_resumable_runs.py::test_checkpoint_run_event_isolation_across_accounts": "passed",
+        "tests/chat/test_v2_03_conversation_context.py::test_cross_account_history_not_recallable": "passed",
+        "tests/tasks/test_task_state.py::test_account_isolation_hides_other_account_tasks": "passed",
+        "tests/kernel/test_node_kernel.py::test_account_isolation_for_artifacts": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "kind": "hard_condition_bypass",
+      "description": "用户限定的年份/城市/不联网等硬条件不得被语义扩展或补证放宽",
+      "evidence": {
+        "tests/paper/test_paper_issue24.py::test_year_hard_condition_blocks_instead_of_widening": "passed",
+        "tests/paper/test_paper_issue24_acceptance.py::test_excluded_arxiv_source_blocks_before_any_search": "passed",
+        "tests/chat/test_improvement12_acceptance.py::test_direct_paper_stream_does_not_call_network_when_forbidden": "passed",
+        "tests/resources/test_issue25_lifecycle_acceptance.py::test_explicit_network_prohibition_blocks_all_resources_sources": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "kind": "system_failure_as_student_error",
+      "description": "批改/调用系统失败不得推进题号或记为学生错答",
+      "evidence": {
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_judgement_and_next_question_have_separate_commit_boundaries": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "kind": "duplicate_judgement",
+      "description": "同一请求重试/断线不得重复消息、附件或判定",
+      "evidence": {
+        "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates": "passed",
+        "tests/chat/test_v2_02_resumable_runs.py::test_retry_idempotency_reuses_run": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    },
+    {
+      "kind": "write_after_stop",
+      "description": "停止或租约转移后迟到提交必须被拒绝，不得覆盖新版本",
+      "evidence": {
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material": "passed",
+        "tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit": "passed",
+        "tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change": "passed",
+        "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing": "passed",
+        "tests/evaluation/test_issue42_scenario_gaps.py::test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task": "passed",
+        "tests/chat/test_improvement12_hybrid_entry.py::test_stop_generation_pauses_current_task": "passed"
+      },
+      "missing": [],
+      "failed": [],
+      "ok": true
+    }
+  ],
+  "summary": {
+    "passed_nodes": 128,
+    "problems": 0,
+    "scenarios_ok": 39
+  },
+  "problems": []
+}
