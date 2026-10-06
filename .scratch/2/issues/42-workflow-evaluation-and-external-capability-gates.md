@@ -71,18 +71,19 @@
 
 - 场景证据：159 passed；39/39 场景通过、0 问题；外部门探针另行报告（不混入确定性通过）。
 - 零容忍：cross_account / hard_condition_bypass / system_failure_as_student_error / duplicate_judgement / write_after_stop 全部有守卫并通过。
-- 配对（repeats=2，corpus sha256 `4cffaaf0…`）：质量检查点旧 24/34 vs 新 36/36；模型调用旧 14 vs 新 6；整答 P50 旧 19.8s vs 新 4.0s；A02 旧树仍出论文结果、新树正确；A11 新树按硬条件阻断；R07 新树无自动续跑、继续创建新运行。
-- 预算校准（同一次配对，产物 `pairing/final.json`、`final.md`）：lightweight 12 样本、deep 4 样本、normal 2 样本，均为真实模型运行。lightweight 完整 P95 11.6s ≤120s；deep 完整 P95 36.9s ≤120s（工作截止 90s 内），候选初筛 10/20、模型调用 1/8；normal 完整 P95 4.1s ≤60s，外部调用累计 3、并发峰值 2/2。并发峰值由账本流水重放；deep 深读 0/5（产品按合同保持摘要层，全文未接线，不作深读承诺）。`test_issue42_budget_calibration.py` 锁定 `run-budget-v1` 初值，实测均在初值内，未上调。
-- C01（deep 论文）与 C02（normal 跨模块）为真实预算校准样本；C02 见证并发位被姊妹分支占满时被拒分支按合同如实降级。
+- 配对（repeats=2，corpus sha256 `4cffaaf0…`，新树 `8b8cbeb8`、`dirty=false`、`problems=[]`）：质量检查点旧 24/34 vs 新 36/36；模型调用旧 14 vs 新 7；整答 P50 旧 21.7s vs 新 4.3s；A02 旧树仍出论文结果、新树正确；A11 新树按硬条件阻断；R07 新树无自动续跑、继续创建新运行，两个重复的继续回合均完整交付。
+- 预算校准（同一次配对，产物 `pairing/final.json`、`final.md`）：lightweight 12 样本、deep 4 样本、normal 2 样本，均为真实模型运行。lightweight 完整 P95 34.3s ≤120s；deep 完整 P95 39.9s ≤120s（工作截止 90s 内），候选初筛 10/20、模型调用 1/8；normal 完整 P95 33.2s ≤60s，外部调用累计 14、并发峰值 2/2。并发峰值由账本流水重放；deep 深读 0/5（产品按合同保持摘要层，全文未接线，不作深读承诺）。`test_issue42_budget_calibration.py` 锁定 `run-budget-v1` 初值，实测均在初值内，未上调。
+- C01（deep 论文）与 C02（normal 跨模块）为真实预算校准样本；C02 在最终配对中 r0 见证并发位被姊妹分支占满时被拒分支按合同如实降级，r1 正常交付论文。
 - 外部探针（canonical `external-final/`，2026-10-06T08:37Z）：arxiv 全文技术实测通过（产品按合同保持摘要层，declared degraded）；高德校内三方式 3/3 通过（declared partial）；tavily 通过；video 元数据通过；model 四能力通过；tieba 读取受限（failed/unavailable，如实降级）；jobs 未能定位公开详情（inconclusive，列入 `inconclusive_gates`）；github 三项失败（共享出口配额，不代表产品能力）。`consistency_problems` 为空。
 
 ### 发现与限制（跨票，本票只留证据）
 
-- F1（已修复，待提交）：新树理解/继续调用曾出现 `output_budget_exceeded`（R07 停止后继续 2/2、A03 间歇；旧树无）。根因：`src/bridges/ai/qwen_adapters.py` 输出额度被思考耗尽。修复：对已核实混合型号的小额/结构化请求显式 `enable_thinking=false`，`finish_reason=length` 时抛显式 `output_budget_exceeded`。最终配对 A03 澄清 2/2、R07 三项 2/2。
+- F1（已修复）：新树 R07 停止后继续曾 `output_budget_exceeded`（旧树无），分两层修复：（a）`src/bridges/ai/qwen_adapters.py` 对被思考耗尽额度的混合型号小额/结构化请求显式 `enable_thinking=false`，`finish_reason=length` 时抛显式 `output_budget_exceeded`（`a610c5cd`）；（b）思考修复真实重跑后暴露第二层根因——资料推荐续接会重放逐条交付，默认 1024 输出额度不足以容纳完整条目而被 `length` 截断，建议类任务续接改用扩展额度 2048（`8b8cbeb8`，`lightweight_policy.py`，仍受载荷门约束）。最终配对 A03 澄清 2/2、R07 三项 2/2。
 - F2（已修复）：问候含「最近」曾触发不必要 web 搜索计划并以 `web_search_citation_invalid` 结束；`web_search/service.py` 只剔除助手近况问候。最终配对 `no_unnecessary_search` 新树 2/2 通过、旧树 0/2，检查点已固化为回归。
 - F3：A03 澄清行为随模型波动；修复后新树最终配对 2/2 追问、旧树 0/2，配对报告如实记录，不宣称稳定。
 - F4（已修复）：高德 bicycling/electrobike 把时长放 `path.duration` 曾被判 `amap_route_unusable`；`commute/sources.py` 骑行类接受该位置，高德校内探针 3/3 通过，新增 `tests/commute/test_issue42_route_duration.py`。
-- F5：复合运行中姊妹分支占满 `external_parallel_max=2` 时，论文分支首次检索即被并发门拒绝并给出「运行预算已用尽」误导文案，整轮按合同降级为阻塞交付（C02 两次重复均复现：normal 类、外部调用 3、并发峰值 2/2、模型调用 0、约 4s；旧 V2 同样提示可交付 3 篇论文）。根因线索：`paper/kernel.py` 把 `register_external` 拒绝一概归因为 `run_budget_exhausted`，且首查不等待/重试；复合调度各分支共享同一并发位。需后续工单在调度或论文首查上处理并区分拒绝原因。
+- F5：复合运行中姊妹分支占满 `external_parallel_max=2` 时，论文分支首次检索即被并发门拒绝并给出「运行预算已用尽」误导文案，整轮按合同降级为阻塞交付（092704 运行两次重复均复现；最终配对仅 r0 复现——normal 类、外部调用累计 14、并发峰值 2/2、模型调用 1，r1 正常交付论文；旧 V2 同样提示可交付 3 篇论文）。根因线索：`paper/kernel.py` 把 `register_external` 拒绝一概归因为 `run_budget_exhausted`，且首查不等待/重试；复合调度各分支共享同一并发位。需后续工单在调度或论文首查上处理并区分拒绝原因。
+- F6（真实运行观察）：语义量表 L13「已答未判与未答总结」对模型采样敏感：模型漏列待判题时生产 `build_summary` 以 `summary_evidence_invalid` 如实拒绝（绑定 `8b8cbeb8` 的首次运行与重试前两次各 1/2 重复命中，连续 4 次运行未获 2/2，第 5 次 2/2 通过）。属模型波动而非产品缺陷；每任务 2 次重复只证方向，已按既有口径记录。
 - 既有失败（非本票）：`tests/evaluation/test_runner_reproducibility.py` 4 项在 main `1c6f9edd` 同样失败（旧评测底座 `executors.py` 仍向 `ChatService` 传 `image_service`），本票未处理。`tests/chat` 全量 49 项在 main 同样失败（career/MCP/selections/附件等旧模块），逐项对账后仅 `test_improvement14_material_reads.py::test_old_photo_question_rereads_original_and_manifest_scope` 属运行顺序波动，单跑两树均通过。
 - 真实模型配对每任务 2 次，只证明机制与方向，不宣称统计准确率；tieba/GitHub 外部不可控因素已如实记录。
 
