@@ -142,3 +142,17 @@ ready-for-human 表示目前需要实际人员评审，并不表示其余实现�
 - 定点回归 73 passed；未修改生产提示/迁移；其他任务资产保留。
 - 按用户明确指示，本分支将在保持不放行结论的前提下合并到 main 并推送。
 
+### 合并推送与清理（2026-10-06）
+
+- 先把 main 合入本分支（合并提交 `0dba6586`，无冲突），再将
+  main 快进 `ae3c24f6..0dba6586`；合并后在 main 复核工单 39 五个测试
+  文件 73 passed。
+- 经用户代理推送：`git -c http.proxy=http://127.0.0.1:7890 push origin main`
+  （`ae3c24f6..0dba6586 main -> main`）；推送后 `HEAD == origin/main ==
+  0dba6586`，远程仅 `refs/heads/main`。
+- `tests/evaluation` 在 main 全量复核 247 passed、4 failed 为 main 相同的
+  既有 Windows 临时库清理失败（`test_runner_reproducibility.py`，两处同败）。
+- 已删除工单 39 工作树与本地分支并 `worktree prune`；`42-baseline-7818c34`
+  工作树与 `codex/issue-03-learning-evidence-consistency` 分支为其他任务
+  资产，原样保留。结论仍为 `not_released`。
+
