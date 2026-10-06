@@ -172,6 +172,12 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
     _error("study_page_update_changed", "小节书页状态已变化，本次追加未提交，请重试。",
            FailureClass.STATE_CONFLICT, RecoveryAction.REFRESH_STATE, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
+    _error("study_summary_invalid", "总结未通过核验，判定与反馈已保留，可单独重试总结。",
+           FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
+    _error("study_internal_error", "本轮学习处理未完成，已提交的书页与反馈已保留，请重试。",
+           FailureClass.INTERNAL, RecoveryAction.RETRY, contextual=True),
+    _error("timeout", "本次模型请求超时，已提交的内容已保留，可重试未完成部分。",
+           FailureClass.RATE_LIMIT_TIMEOUT, RecoveryAction.RETRY),
     _error("composite_plan_unavailable", "该组合尚未接入，请缩小为单项任务后重试。",
            FailureClass.UNSUPPORTED, RecoveryAction.ADJUST_REQUEST),
     _error("composite_plan_rejected", "组合计划未通过条件校验，请调整请求后重试。",
@@ -1405,6 +1411,15 @@ _PUBLIC_ENTRIES: tuple[CopyEntry, ...] = (
     ),
     # -- 回合结果投影（工单 38）：交付分类、可信状态与真实恢复 -----------
     CopyEntry(
+        "chat.result.outcome.running",
+        CopyCategory.PROGRESS,
+        "chat",
+        CopyStrategy.FIXED_TEMPLATE,
+        ("running",),
+        text="已交付以下部分，本轮仍在进行。",
+        note="已过模块质量门的渐进结果，不代表最终完成。",
+    ),
+    CopyEntry(
         "chat.result.outcome.complete",
         CopyCategory.PROGRESS,
         "chat",
@@ -1493,6 +1508,53 @@ _PUBLIC_ENTRIES: tuple[CopyEntry, ...] = (
         ("error", "empty", "blocked"),
         text="该分支未形成可交付结果。",
         note="领域或复合分支失败/空结果且无具体原因时的最小事实说明。",
+    ),
+    CopyEntry(
+        "chat.result.study.tutor", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="学习辅导",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.gap", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="证据缺口",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.evidence_gap", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="部分解释尚缺可核实依据，请补充相关材料。",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.feedback", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="复盘判定与反馈",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.pages", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="请补充本节书页或确认页序。",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.answer", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="请回答当前复盘题。",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.summary_gap", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done", "partial", "waiting"),
+        text="总结尚未完成；已提交的判定与反馈已保留，可单独重试总结。",
+        note="工单 38：按本轮已提交学习事实投影，不含私有评分依据。",
+    ),
+    CopyEntry(
+        "chat.result.study.summary", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("done",), text="学习总结",
+        note="工单 38：本次总结节点已提交真实学习总结。",
     ),
     # -- 检索：空结果、部分与降级 -----------------------------------------
     CopyEntry(

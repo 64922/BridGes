@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { chatModuleIcon, chatModuleLabel } from "@/lib/chat-modules";
 import type { TurnResultBlock, TurnResultProjection } from "@/lib/api";
@@ -19,13 +20,26 @@ export function TurnResultCard({
   /** 可重试恢复：用户明确继续时创建新运行（绝不自动续跑）。 */
   onContinue?: () => void;
 }) {
+  const availableAfter = result?.recovery?.available_after ?? null;
+  const [cooldownRevision, refreshCooldown] = useState(0);
+  useEffect(() => {
+    if (!availableAfter) return;
+    const remaining = new Date(availableAfter).getTime() - Date.now();
+    if (!(remaining > 0)) return;
+    // 到期主动更新入口；较长冷却分段等待，避免浏览器定时器溢出。
+    const timer = window.setTimeout(
+      () => refreshCooldown((revision) => revision + 1),
+      Math.min(remaining, 2_147_483_647)
+    );
+    return () => window.clearTimeout(timer);
+  }, [availableAfter, cooldownRevision]);
   if (!result) return null;
   const tone = OUTCOME_TONE[result.outcome] ?? OUTCOME_TONE.unknown;
   const capability = capabilitySummary(result);
   const delivered = result.delivered ?? [];
   const blocked = result.blocked ?? [];
   const gaps = result.gaps ?? [];
-  const waiting = isWaiting(result.recovery?.available_after ?? null);
+  const waiting = isWaiting(availableAfter);
   return (
     <section
       data-testid="turn-result"
@@ -157,6 +171,12 @@ const OUTCOME_TONE: Record<
     icon: "check" | "alert" | "info" | "stopSquare";
   }
 > = {
+  running: {
+    color: "var(--color-status-info)",
+    background: "var(--color-status-info-bg)",
+    border: "var(--color-status-info)",
+    icon: "info",
+  },
   complete: {
     color: "var(--color-status-success)",
     background: "var(--color-status-success-bg)",
@@ -209,6 +229,7 @@ const BLOCK_STATE_LABEL: Record<string, string> = {
   metadata_only: "仅元数据",
   unverified: "未核实",
   clarification: "待补充",
+  empty: "无结果",
   error: "失败",
   failed: "失败",
   blocked: "已阻塞",
@@ -237,7 +258,7 @@ function ResultBlocks({
             <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
               {block.label}
               <span style={{ color: "var(--color-text-tertiary)" }}>
-                （{BLOCK_STATE_LABEL[block.state] ?? block.state}）
+                （{BLOCK_STATE_LABEL[block.state] ?? "未核实"}）
               </span>
               {block.detail ? `：${block.detail}` : ""}
             </span>
@@ -269,7 +290,8 @@ function capabilitySummary(result: TurnResultProjection): string | null {
     parts.push(`实际执行：${actual}`);
   } else if (actual) {
     parts.push(`实际执行：${actual}`);
-  } else if (capabilityLabels.length > 0) {
+  }
+  if (capabilityLabels.length > 1 || (!actual && capabilityLabels.length > 0)) {
     parts.push(`实际能力：${capabilityLabels.join("、")}`);
   }
   const routeSource = result.route_source ? ROUTE_SOURCE_LABEL[result.route_source] : null;

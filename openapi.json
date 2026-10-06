@@ -34082,6 +34082,9 @@
                 "$ref": "#/components/schemas/ChatStreamNodeData"
               },
               {
+                "$ref": "#/components/schemas/ChatStreamResultData"
+              },
+              {
                 "$ref": "#/components/schemas/ChatStreamDeltaData"
               },
               {
@@ -34119,6 +34122,7 @@
                 "image": "#/components/schemas/ChatStreamImageData",
                 "mcp_call": "#/components/schemas/ChatStreamMcpData",
                 "node": "#/components/schemas/ChatStreamNodeData",
+                "result": "#/components/schemas/ChatStreamResultData",
                 "stage": "#/components/schemas/ChatStreamStageData",
                 "started": "#/components/schemas/ChatStreamStartedData",
                 "video": "#/components/schemas/ChatStreamVideoData"
@@ -34140,6 +34144,7 @@
           "started",
           "stage",
           "node",
+          "result",
           "delta",
           "error",
           "done",
@@ -34310,6 +34315,30 @@
         ],
         "title": "ChatStreamNodeData",
         "description": "node 事件载荷：日常父图节点的真实开始/完成进度（V2 Issue 02）。\n\n``node`` 只映射日常父图实际开始或完成的固定节点（validate_turn → …\n→ persist_result）：started 在节点体执行前发出，completed 仅在节点\n体成功返回后发出——失败节点只有 started 与随后的 error 事件，绝不\n伪造完成。前端据此展示真实执行进度，失败时按运行视图 ``current_node``\n定位。"
+      },
+      "ChatStreamResultData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result",
+            "title": "Kind",
+            "default": "result"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "result": {
+            "$ref": "#/components/schemas/TurnResultProjection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "result"
+        ],
+        "title": "ChatStreamResultData",
+        "description": "已通过模块质量门的渐进结果；不代表本轮最终完成。"
       },
       "ChatStreamStageData": {
         "properties": {
@@ -62145,6 +62174,7 @@
       "TurnOutcome": {
         "type": "string",
         "enum": [
+          "running",
           "complete",
           "needs_input",
           "partial",

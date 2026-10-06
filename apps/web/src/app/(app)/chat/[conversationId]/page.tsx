@@ -31,6 +31,7 @@ import {
   type ArxivSearchProjection,
   type TeachingTurnProjection,
   type WebSearchProjection,
+  type TurnResultProjection,
 } from "@/lib/api";
 import {
   hasPendingCommuteClarification,
@@ -58,6 +59,7 @@ import styles from "@/components/bridges/chat/chat.module.css";
 const MEDIA_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
 
 interface ActiveRun {
+  turnResult?: TurnResultProjection | null;
   messageId: string;
   content: string;
   /** send=新发送；retry=重试；resume=页面重开恢复进行中的运行 */
@@ -118,6 +120,7 @@ function activeRunFromAssistant(
     webSearch: assistant.web_search ?? null,
     arxivSearch: assistant.arxiv_search ?? null,
     teaching: assistant.teaching ?? null,
+    turnResult: assistant.turn_result ?? null,
     // Issue 06：创建即入队——首个真实阶段事件到达前显示"排队中"
     stage: { kind: "stage", message_id: assistant.message_id, stage: "queued", status: "active" },
     node: null,
@@ -155,9 +158,9 @@ export default function ChatConversationPage() {
   const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
-  // V2 Issue 11：等待状态的输入区恢复只在本对话首次加载时判定一次，
-  // 之后用户移除模块标签的选择必须被尊重（刷新历史不得自动选回）。
-  const resumeModuleCheckedRef = useRef(false);
+  // 每条新终态只恢复一次澄清模块；同一终态刷新不覆盖用户移除/切换。
+  // 首次加载若仍在生成，等待其终态出现后再判定。
+  const resumeModuleCheckedRef = useRef<string | null>(null);
   const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
   const firstTurnRetryRef = useRef(false);
   // V2 Issue 02：发送/重试幂等键（同文本/同消息的失败重发复用，成功后清除）。
@@ -184,11 +187,14 @@ export default function ChatConversationPage() {
       setConversation(projection);
       setLoadState("ready");
       // V2 Issue 11/12/13/14/15：重开对话时若最后一条模块消息仍在等澄清，恢复输入
-      // 区的模块选择（只在本对话首次加载时判定一次），下一条回复从该处继续。
+      // 区的模块选择（每条新终态只恢复一次），下一条回复从该处继续。
       // 论文、贴吧、资料与职业规划共用同一套等待合同，由 pendingClarificationModule
       // 一并判定；通勤的等待形态不同，用自己那一个判定。
-      if (!resumeModuleCheckedRef.current) {
-        resumeModuleCheckedRef.current = true;
+      const latestAssistant = [...(projection.messages ?? [])]
+        .reverse().find((message) => message.role === "assistant");
+      if (latestAssistant && latestAssistant.status !== "streaming" &&
+          resumeModuleCheckedRef.current !== latestAssistant.message_id) {
+        resumeModuleCheckedRef.current = latestAssistant.message_id;
         const pendingModule = pendingClarificationModule(projection.messages ?? []);
         if (pendingModule) {
           setModuleId(pendingModule);
@@ -218,7 +224,7 @@ export default function ChatConversationPage() {
   useEffect(() => {
     firstTurnIdempotencyKeyRef.current = null;
     firstTurnRetryRef.current = false;
-    resumeModuleCheckedRef.current = false;
+    resumeModuleCheckedRef.current = null;
     setConversation(null);
     setActiveRun(null);
     setPendingUser(null);
@@ -339,6 +345,11 @@ export default function ChatConversationPage() {
           }
           setActiveRun(run);
           setAnnouncement("正在生成回答");
+        } else if (isChatStreamEventOf(event, "result")) {
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            activeRunRef.current = { ...activeRunRef.current, turnResult: event.data.result };
+            setActiveRun((run) => run ? { ...run, turnResult: event.data.result } : run);
+          }
         } else if (isChatStreamEventOf(event, "node")) {
           // V2 Issue 02：父图节点进度（只映射真实开始/完成的节点）。
           // started 显示节点中文标签；completed 清空节点与阶段——显示权
@@ -757,6 +768,7 @@ export default function ChatConversationPage() {
       webSearch: activeRun.webSearch,
       arxivSearch: activeRun.arxivSearch,
       teaching: activeRun.teaching,
+      turnResult: activeRun.turnResult,
       stage: activeRun.stage,
       node: activeRun.node,
       humanizerProcess: activeRun.humanizerProcess,

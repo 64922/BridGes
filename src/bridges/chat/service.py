@@ -130,6 +130,7 @@ from bridges.contracts.chat import (
     McpCallStatus,
     ModuleSuggestionProjection,
     RemovedPluginSelection,
+    TurnOutcome,
     TurnResultProjection,
     VideoRequestPayload,
 )
@@ -3407,9 +3408,8 @@ class ChatService:
         """
         if message.role is not ChatMessageRole.ASSISTANT:
             return None
-        # 终态守卫：流式中的消息不发布结果投影，最终完成只在原子提交后发出。
-        if message.status is ChatMessageStatus.STREAMING:
-            return None
+        # 流式阶段只允许已持久的渐进快照；最终完成只在原子提交后发出。
+        streaming = message.status is ChatMessageStatus.STREAMING
         route = message.route if isinstance(message.route, dict) else None
         parsed: TurnResultProjection | None = None
         if isinstance(message.turn_result, dict):
@@ -3417,7 +3417,26 @@ class ChatService:
                 parsed = TurnResultProjection.model_validate(message.turn_result)
             except ValidationError:
                 parsed = None
+        if streaming:
+            return (
+                parsed if parsed is not None and parsed.outcome is TurnOutcome.RUNNING else None
+            )
+        progressive = (
+            parsed if parsed is not None and parsed.outcome is TurnOutcome.RUNNING else None
+        )
+        if progressive is not None:
+            parsed = None
         if parsed is None:
+            # 历史读取也需要本条运行的等待与学习来源；不能把会话当前阶段
+            # 套到此前消息，或只在仍活跃的 SSE 回合中显示等待。
+            run = self._repo.get_run_by_message(message.account_id, message.message_id)
+            study = (
+                StudyRepository(self._repo.database).get(
+                    message.account_id, message.conversation_id,
+                )
+                if run is not None and (run.graph_version or "").startswith("study-")
+                else None
+            )
             parsed = derive_turn_result(
                 status=message.status,
                 error_code=message.error_code,
@@ -3430,9 +3449,22 @@ class ChatService:
                     "commute_route": message.commute_route,
                     "github_projects": message.github_projects,
                 },
-                wait_reason=run_view.wait_reason if run_view is not None else None,
+                wait_reason=(run_view.wait_reason if run_view is not None
+                             else run.wait_reason if run is not None else None),
                 web_search=message.web_search,
+                study=study.public_view() if study is not None else None,
+                study_node=run.current_node if run is not None else None,
+                user_message_id=run.user_message_id if run is not None else None,
+                assistant_message_id=message.message_id,
             )
+        if progressive is not None:
+            parsed = parsed.model_copy(update={
+                "delivered": progressive.delivered,
+                "trust": progressive.trust,
+                "trust_label": progressive.trust_label,
+                "task_id": progressive.task_id,
+                "task_version": progressive.task_version,
+            })
         actual = parsed.actual_module_id
         if actual is None and route is not None:
             actual = route.get("module_id") if isinstance(route.get("module_id"), str) else None

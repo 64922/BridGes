@@ -898,6 +898,9 @@ export function MessageList({
                 )}
 
                 {message.status === "error" && message.skill == null ? (
+                  <>
+                  {/* 部分交付的正文已经过提交门，例如总结失败前的判定反馈。 */}
+                  {message.turnResult?.outcome === "partial" && message.content}
                   <div
                     role="alert"
                     style={{
@@ -915,6 +918,7 @@ export function MessageList({
                     <Icon name="alert" size={18} aria-hidden />
                     <span style={{ fontSize: "var(--text-sm)" }}>{message.errorText}</span>
                   </div>
+                  </>
                 ) : message.humanizer?.article?.delivery_status === "failed" ? (
                   /* Issue 08：交付失败时正文区域明确「未交付」，
                      不把违规候选显示为最终正文；展示稳定失败原因
@@ -945,7 +949,7 @@ export function MessageList({
 
                 {/* 改进工单 38：已提交回合的公开结果投影（完成/待输入/
                     部分/阻塞/取消 + 可信状态 + 真实恢复），只在原子提交后
-                    随权威历史出现；待核验草稿不在投影中。 */}
+                    随权威历史或已核验渐进快照出现；待核验草稿不在投影中。 */}
                 {message.turnResult && (
                   <TurnResultCard
                     result={message.turnResult}

@@ -24,6 +24,7 @@ from bridges.contracts.chat import (
     TurnResultBlock,
     TurnResultProjection,
 )
+from bridges.contracts.study import StudyState
 from bridges.state_copy import error_recovery, render_state_copy
 from bridges.state_copy.catalog import COMPOSITE_MODULE_LABELS
 from bridges.state_copy.types import RecoveryAction
@@ -52,6 +53,7 @@ _STOPPED_STATES = frozenset({"stopped"})
 _INTERMEDIATE_STATES = frozenset({"searching"})
 
 _OUTCOME_COPY_PATHS: dict[TurnOutcome, str] = {
+    TurnOutcome.RUNNING: "chat.result.outcome.running",
     TurnOutcome.COMPLETE: "chat.result.outcome.complete",
     TurnOutcome.NEEDS_INPUT: "chat.result.outcome.needs_input",
     TurnOutcome.PARTIAL: "chat.result.outcome.partial",
@@ -93,6 +95,10 @@ def derive_turn_result(
     projections: Mapping[str, Mapping[str, Any] | None] | None = None,
     wait_reason: str | None = None,
     web_search: Mapping[str, Any] | None = None,
+    study: StudyState | None = None,
+    study_node: str | None = None,
+    user_message_id: str | None = None,
+    assistant_message_id: str | None = None,
 ) -> TurnResultProjection:
     """按消息终态与真实领域投影推导公开回合结果。
 
@@ -113,7 +119,8 @@ def derive_turn_result(
             continue
         label = COMPOSITE_MODULE_LABELS.get(module_id, module_id)
         state = str(payload.get("status") or "")
-        detail = str(payload.get("error_message") or "")
+        # 错误原文可能来自外部工具，不复制到新的公共投影中。
+        detail = ""
         if state in _NEEDS_INPUT_STATES:
             needs_input = True
             continue
@@ -129,10 +136,12 @@ def derive_turn_result(
                 )
             )
             continue
-        trust = (
-            ResultTrust.QUALIFIED if state in _QUALIFIED_STATES
-            else ResultTrust.EVIDENCE_BOUND
+        # 资料 SUCCESS 也可能只是补充候选；正式领域门只有主线核实后
+        # 才授予 QUALIFIED。历史未记录 path_verified 时不推测降级。
+        qualified = state in _QUALIFIED_STATES and not (
+            module_id == "resources" and payload.get("path_verified") is False
         )
+        trust = ResultTrust.QUALIFIED if qualified else ResultTrust.EVIDENCE_BOUND
         partial = partial or trust is ResultTrust.EVIDENCE_BOUND
         blocks_delivered.append(
             TurnResultBlock(
@@ -145,10 +154,45 @@ def derive_turn_result(
     if route_status == "clarify":
         needs_input = True
 
+    if study is not None:
+        exchange = next((item for item in study.tutoring
+                         if item.assistant_message_id == assistant_message_id), None)
+        if exchange is not None:
+            partial = bool(exchange.gap)
+            blocks_delivered.append(TurnResultBlock(
+                module_id="study", label=render_state_copy("chat.result.study.tutor"),
+                state="success", trust=(ResultTrust.EVIDENCE_BOUND if partial
+                                        else ResultTrust.QUALIFIED),
+            ))
+            if partial:
+                blocks_blocked.append(TurnResultBlock(
+                    module_id="study", label=render_state_copy("chat.result.study.gap"),
+                    state="blocked", trust=ResultTrust.EVIDENCE_BOUND,
+                    detail=render_state_copy("chat.result.study.evidence_gap"),
+                ))
+        judged = bool(study.review and user_message_id and any(
+            item.asked and item.judgement is not None
+            and item.user_message_id == user_message_id
+            for item in study.review.questions
+        ))
+        if judged:
+            blocks_delivered.append(TurnResultBlock(
+                module_id="study", label=render_state_copy("chat.result.study.feedback"),
+                state="success", trust=ResultTrust.QUALIFIED,
+            ))
+        if status is ChatMessageStatus.DONE and study_node in {
+            "study.recognize", "study.plan_review", "study.grade",
+        }:
+            needs_input = True
+            wait_reason = render_state_copy(
+                "chat.result.study.pages" if study_node == "study.recognize"
+                else "chat.result.study.answer"
+            )
+
     if status is ChatMessageStatus.STOPPED:
         outcome = TurnOutcome.CANCELLED
     elif status is ChatMessageStatus.ERROR:
-        outcome = TurnOutcome.FAILED
+        outcome = TurnOutcome.PARTIAL if blocks_delivered else TurnOutcome.FAILED
     elif needs_input or wait_reason:
         outcome = TurnOutcome.NEEDS_INPUT
     elif blocks_blocked and not blocks_delivered:
@@ -162,11 +206,19 @@ def derive_turn_result(
     if blocks_delivered:
         overall_trust = (
             ResultTrust.EVIDENCE_BOUND
-            if any(item.trust is ResultTrust.EVIDENCE_BOUND for item in blocks_delivered)
+            if blocks_blocked or any(
+                item.trust is ResultTrust.EVIDENCE_BOUND for item in blocks_delivered
+            )
             else ResultTrust.QUALIFIED
         )
 
     gap_items = [item.detail for item in blocks_blocked if item.detail]
+    recovery = _recovery_for(outcome=outcome, error_code=error_code,
+                             web_search=web_search)
+    # 总结失败只恢复总结，本轮已提交反馈继续有效。
+    if study_node == "study.summarize" and status is ChatMessageStatus.ERROR:
+        gap_items.append(render_state_copy("chat.result.study.summary_gap"))
+        recovery = recovery_for_error(error_code, web_search=web_search)
     return TurnResultProjection(
         version=TURN_RESULT_VERSION,
         outcome=outcome,
@@ -187,11 +239,7 @@ def derive_turn_result(
         delivered=blocks_delivered,
         blocked=blocks_blocked,
         gaps=list(dict.fromkeys(gap_items)),
-        recovery=_recovery_for(
-            outcome=outcome,
-            error_code=error_code,
-            web_search=web_search,
-        ),
+        recovery=recovery,
         wait_reason=wait_reason if outcome is TurnOutcome.NEEDS_INPUT else None,
     )
 

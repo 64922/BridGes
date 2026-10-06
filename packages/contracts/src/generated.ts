@@ -10434,14 +10434,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamNodeData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamNodeData"] | components["schemas"]["ChatStreamResultData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "stage" | "node" | "delta" | "error" | "done" | "humanizer" | "career" | "image" | "video" | "mcp_call";
+        ChatStreamEventKind: "started" | "stage" | "node" | "result" | "delta" | "error" | "done" | "humanizer" | "career" | "image" | "video" | "mcp_call";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -10565,6 +10565,20 @@ export interface components {
              * @description 节点耗时（毫秒，completed 携带）。
              */
             duration_ms?: number | null;
+        };
+        /**
+         * ChatStreamResultData
+         * @description 已通过模块质量门的渐进结果；不代表本轮最终完成。
+         */
+        ChatStreamResultData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "result";
+            /** Message Id */
+            message_id: string;
+            result: components["schemas"]["TurnResultProjection"];
         };
         /**
          * ChatStreamStageData
@@ -27397,7 +27411,7 @@ export interface components {
          *     ——任务仍等待输入，不是任务完成。
          * @enum {string}
          */
-        TurnOutcome: "complete" | "needs_input" | "partial" | "blocked" | "cancelled" | "failed";
+        TurnOutcome: "running" | "complete" | "needs_input" | "partial" | "blocked" | "cancelled" | "failed";
         /**
          * TurnRecoveryProjection
          * @description 一次回合的真实恢复方式（工单 38，复用固定状态文案注册表）。

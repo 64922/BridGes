@@ -752,6 +752,13 @@ def _invoke_composite_plan(
             state["assistant_message_id"], node, status, duration_ms=duration_ms
         )
 
+    from bridges.chat.progressive_result import ProgressiveResultPublisher  # noqa: PLC0415
+
+    publisher = ProgressiveResultPublisher(
+        deps.repo, run,
+        (task.task_id, task.current_version) if task is not None else (None, None),
+        deps.stop_event,
+    )
     context = StepRunContext(
         account_id=run.account_id,
         conversation_id=run.conversation_id,
@@ -764,6 +771,7 @@ def _invoke_composite_plan(
         ),
         stop_event=deps.stop_event,
         emit_node=emit_node,
+        emit_result=publisher.publish,
         task_id=task.task_id if task is not None else None,
         task_version=task.current_version if task is not None else None,
     )

@@ -194,8 +194,10 @@ def test_derive_unrecoverable_failures_are_blocked() -> None:
     )
     assert result.outcome is TurnOutcome.BLOCKED
     assert result.delivered == []
-    assert [block.detail for block in result.blocked] == ["接口限流"]
-    assert "接口限流" in result.gaps
+    assert [block.detail for block in result.blocked] == [
+        render_state_copy("chat.result.blocked_detail")
+    ]
+    assert render_state_copy("chat.result.blocked_detail") in result.gaps
 
 
 def test_derive_empty_result_is_blocked_not_delivered() -> None:
@@ -289,7 +291,8 @@ def test_composite_result_keeps_only_gate_qualified_deliveries() -> None:
     assert [block.module_id for block in result.delivered] == ["paper"]
     assert {block.module_id for block in result.blocked} == {"resources", "github"}
     assert result.task_id == "task-38" and result.task_version == 3
-    assert any("GitHub 接口限流" in gap for gap in result.gaps)
+    assert all("GitHub 接口限流" not in gap for gap in result.gaps)
+    assert result.gaps
 
 
 def test_composite_stopped_is_cancelled_without_recovery() -> None:

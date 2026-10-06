@@ -245,6 +245,7 @@ class TurnOutcome(StrEnum):
     ——任务仍等待输入，不是任务完成。
     """
 
+    RUNNING = "running"
     COMPLETE = "complete"
     NEEDS_INPUT = "needs_input"
     PARTIAL = "partial"
@@ -1000,6 +1001,7 @@ class ChatStreamEventKind(StrEnum):
     STARTED = "started"
     STAGE = "stage"
     NODE = "node"
+    RESULT = "result"
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
@@ -1081,6 +1083,14 @@ class ChatStreamNodeData(BaseModel):
     duration_ms: int | None = Field(
         default=None, description="节点耗时（毫秒，completed 携带）。"
     )
+
+
+class ChatStreamResultData(BaseModel):
+    """已通过模块质量门的渐进结果；不代表本轮最终完成。"""
+
+    kind: Literal["result"] = "result"
+    message_id: str
+    result: TurnResultProjection
 
 
 class ChatStreamErrorDetail(BaseModel):
@@ -1210,6 +1220,7 @@ class ChatStreamEvent(BaseModel):
         ChatStreamStartedData
         | ChatStreamStageData
         | ChatStreamNodeData
+        | ChatStreamResultData
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData

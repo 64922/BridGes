@@ -1,10 +1,13 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TurnResultCard } from "./TurnResultCard";
 import type { TurnResultProjection } from "@/lib/api";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function projection(
   overrides: Partial<TurnResultProjection> = {}
@@ -125,6 +128,8 @@ describe("TurnResultCard（工单 38）", () => {
   });
 
   it("冷却未到时禁用重试入口，到点后才可继续", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-06T00:00:00Z"));
     const onContinue = vi.fn();
     const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     render(
@@ -151,6 +156,35 @@ describe("TurnResultCard（工单 38）", () => {
     expect(retry.disabled).toBe(true);
     fireEvent.click(retry);
     expect(onContinue).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(60 * 60 * 1000 - 1));
+    expect(retry.disabled).toBe(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(retry.disabled).toBe(false);
+    fireEvent.click(retry);
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("主模块存在时仍展示复合运行的全部实际能力", () => {
+    render(
+      <TurnResultCard
+        result={projection({ capability_list: ["paper", "github", "paper"] })}
+      />
+    );
+    expect(textOf("turn-result-capability")).toContain(
+      "实际能力：论文搜索、GitHub 项目推荐"
+    );
+  });
+
+  it.each([
+    ["ordinary_chat", "普通对话"],
+    ["body_intent", "正文意图"],
+    ["module_hint", "模块菜单选择"],
+    ["suggestion_click", "建议一键启动"],
+    ["task_continuation", "任务续接"],
+    ["learning_strategy", "学习策略"],
+  ])("路由来源 %s 使用契约对应中文文案", (source, label) => {
+    render(<TurnResultCard result={projection({ route_source: source })} />);
+    expect(textOf("turn-result-capability")).toContain(`来源：${label}`);
   });
 
   it("复合步骤状态用中文短标签呈现，不泄露内部英文值", () => {
@@ -172,6 +206,22 @@ describe("TurnResultCard（工单 38）", () => {
     );
     expect(textOf("turn-result-delivered")).toContain("论文（已完成）");
     expect(textOf("turn-result-blocked")).toContain("开源项目（已失效）");
+  });
+
+  it("空结果和未知状态使用中文说明", () => {
+    render(
+      <TurnResultCard
+        result={projection({
+          blocked: [
+            { module_id: "github", label: "开源项目", state: "empty", trust: "evidence_bound", detail: "" },
+            { module_id: "resources", label: "学习资料", state: "future_internal_state", trust: "evidence_bound", detail: "" },
+          ],
+        })}
+      />
+    );
+    expect(textOf("turn-result-blocked")).toContain("开源项目（无结果）");
+    expect(textOf("turn-result-blocked")).toContain("学习资料（未核实）");
+    expect(textOf("turn-result-blocked")).not.toContain("future_internal_state");
   });
 
   it("待输入展示等待原因且不提供自动续跑", () => {

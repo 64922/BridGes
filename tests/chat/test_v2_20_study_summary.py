@@ -234,7 +234,15 @@ def test_unverified_summary_keeps_judgements_and_retries_once(
         failed = _ask(client, app, endpoint, "a 是斜率")
         assert failed["messages"][-1]["status"] == "error"
         assert failed["messages"][-1]["error_code"] == code
-        assert "study.summarize" in failed["messages"][-1]["error_message"]
+        # 用户只读自然失败说明，诊断节点仍保留在运行记录中。
+        message = failed["messages"][-1]
+        assert "study.summarize" not in message["error_message"]
+        assert ("超时" if failure == "timeout" else "总结") in message["error_message"]
+        node = app.state.chat_service._repo.database.connection.execute(
+            "SELECT current_node FROM generation_runs WHERE assistant_message_id = ?",
+            (message["message_id"],),
+        ).fetchone()
+        assert node["current_node"] == "study.summarize"
         # 工单 34：最后一题判定先提交；总结失败只保留待总结状态，不丢判定与反馈。
         failed_question = failed["study"]["review"]["questions"][0]
         assert failed_question["answer"] == "a 是斜率"

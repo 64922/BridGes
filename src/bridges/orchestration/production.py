@@ -390,7 +390,7 @@ def turn_result_for_outcome(
         recovery_for_error,
         trust_label,
     )
-    from bridges.state_copy import render_state_copy  # noqa: PLC0415
+    from bridges.state_copy import error_template, render_state_copy  # noqa: PLC0415
     from bridges.state_copy.catalog import COMPOSITE_MODULE_LABELS  # noqa: PLC0415
 
     delivered: list[TurnResultBlock] = []
@@ -420,14 +420,9 @@ def turn_result_for_outcome(
         elif step.state is StepState.NEEDS_INPUT:
             continue
         elif step.state is not StepState.SKIPPED and step.state is not StepState.PENDING:
-            detail = (
-                step.failure.message
-                if step.failure is not None
-                else (
-                    step.blocked_reason
-                    or render_state_copy("chat.result.blocked_detail")
-                )
-            )
+            template = error_template(step.failure.code) if step.failure else None
+            # 外部异常原文可含请求与凭据，公开边界只采用登记的错误分类文案。
+            detail = template.text if template else render_state_copy("chat.result.blocked_detail")
             blocked.append(
                 TurnResultBlock(
                     module_id=step.module_id,
@@ -451,7 +446,6 @@ def turn_result_for_outcome(
     gaps = list(
         dict.fromkeys(
             [
-                *outcome.blocked_conclusions,
                 *(item.detail for item in blocked if item.detail),
             ]
         )
