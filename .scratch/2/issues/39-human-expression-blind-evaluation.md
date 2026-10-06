@@ -53,3 +53,45 @@
 
 记录实际代码/合同版本、运行环境、测试及其限制。确定性模型/工具响应只能证明机制，真实模型体验和外部可得性分别按评测票验证。本票完成时补充实现说明、接口/迁移变化与验证结果，维护阻塞消费者可用的接缝；设计文档和历史基线通过数不能充当本次实施通过证据。
 
+## 实施记录（2026-10-06，待独立验收）
+
+> 下列为编码代理的实施记录，不代替独立证据；自然度收益结论须待人工盲评提交后按预注册策略判定。
+
+### 代码与产物
+
+- 新增 `src/bridges/evaluation/expression_corpus.py`：59 组原创多轮场景，覆盖倾诉/混合排查/引语情绪/感谢收尾/纠正/续接/长任务/工具失败/明确边界/明确偏好与全部正式路径（14 条，含接线证据接缝）；`real_runnable` 标记真实配对子集。
+- 新增 `src/bridges/evaluation/expression_policy_arms.py`：三臂统一编译接缝（`current-v4`=`global-chat-lightweight-v4`；`legacy-v2`=079faab6 冻结回放；`concise-baseline`=仅事实/任务合同）；三臂统一 `output_tokens_for_request` 证据额度，保证可比输出预算。
+- 新增 `src/bridges/evaluation/legacy_v2_policy.py`：按 079faab6 冻结回放 v2 策略，仅适配 import 路径与现行快照超集类型（两处，非重新实现）。
+- 新增 `src/bridges/evaluation/expression_gates.py`：事实漂移/伪造经历/越界/失败伪装成功/任务未完成/过度主动六类独立硬门；任务必要内容按终态回答检查，中途轮次只检查完成状态与非空。
+- 新增 `src/bridges/evaluation/expression_review.py`：盲化（隐藏臂身份、按种子随机交换 A/B）、五维量表 `human-expression-scale-v1`（听懂/帮助/自然度/分寸/连续性，含平局与均不愿选择）、提交解析与聚合（Wilson 区间、评审者一致率）、预注册放行策略 `human-expression-release-v1`。
+- 新增 `src/bridges/evaluation/human_expression.py`：确定性套件（31 检查点：覆盖矩阵、三臂差异、三项消融、5 组固定文案路径）、真实发送器（每臂独立内存会话、多轮保留前文、采集运行锁/首字延迟/用量）、成本汇总、运行锁与报告。
+- 新增 `scripts/run_issue39_human_expression_evaluation.py`：确定性默认 + `--real-probes` 显式真实配对；输出 `.scratch/2/validation/39-human-expression/` 下 report.md、deterministic-report.json、real-report.json、blind-review.md、提交模板、run-lock.json。
+- 新增 `tests/evaluation/test_issue39_human_expression.py`：32 项机制测试（无真实模型调用）。
+
+### 接口/合同变化
+
+- 不新增业务持久状态、对外 API 或迁移；全部为评测域新模块，复用生产 ChatService 的 `writing_policy_compiler` 接缝与既有评测运行锁。
+- 新增评测版本：套件 `human-expression-blind-evaluation/1.0.0`、量表 `human-expression-scale-v1`、硬门 `human-expression-gates-v1`、放行策略 `human-expression-release-v1`。
+- 放行口径：无人工盲评提交、帮助/分寸非劣未过门或候选臂硬失败 → 不放行；平局与拒选计入统计，不以套话命中替代体验收益。
+
+### 环境
+
+- conda `agent`；Windows；固定模型 `qwen3.7-plus-2026-05-26`（qwen_text_chat/1）；运行期凭据取自 OS 凭据库，未写入报告/日志/提交。
+- 真实配对：9 场景 × 3 臂 = 51 次聊天调用（约 7–12 分钟）；`--scenarios` 可调，上限 12。
+
+### 验证结果
+
+- 确定性：31/31 检查点通过（覆盖矩阵、三臂版本差异、三项消融、固定文案路径）。
+- 机制测试：本票 32 passed；`tests/evaluation` 124 passed（4 项 `test_runner_reproducibility` 为 main 相同的既有 Windows 临时库清理失败）；表达/画像相关 chat 测试 124 passed。
+- 静态检查：ruff 通过；`python -m mypy src` 与 main 基线一致（108 项既有错误，本票新增模块 0 项）。
+- 真实配对：51 次调用完成；仅 1 个非候选臂回合因输出额度截断记为 error；候选臂六类硬门 0 失败；人味专属新增调用为 0；首字延迟均值 6.8–8.8s、总延迟均值 7.7–9.3s（按臂见报告）。盲评 27 项材料与提交模板已生成；无人工提交 → `inconclusive` 不放行。
+- 运行锁记录模型、参数、prompt 版本与全部观察锁；报告含 `run_lock`/`run_lock_digest`/`observed_locks_digest`，可重放。
+
+### 限制与后续
+
+- 真实配对为 9 场景小样本，只证明机制与方向；自然度收益须待人工盲评提交后判定，当前不宣称提升。
+- 学习/模块/固定文案路径与工具失败场景不在真实配对内，由确定性覆盖矩阵与既有消费者验收记录核对。
+- 排查类回答在模型随机性下可能触及 1024 输出上限（生产用户同样会看到额度提示），报告如实记录该回合终态为 error，不用重试掩盖。
+- 人工盲评提交需按 `blind-review.md` 量表填写并注入 `--submissions`；评审人数与判定阈值由放行策略预注册。
+
+
