@@ -172,6 +172,10 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
     _error("study_page_update_changed", "小节书页状态已变化，本次追加未提交，请重试。",
            FailureClass.STATE_CONFLICT, RecoveryAction.REFRESH_STATE, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
+    # 工单 43：旧日常图版本的运行不套当前节点集恢复；安全结束并保留历史，
+    # 明确重试创建绑定当前版本的新运行（与学习图同语义）。
+    _error("daily_graph_version_changed", "对话流程版本已更新，历史已保留，请重试。",
+           FailureClass.STATE_CONFLICT, RecoveryAction.RETRY, contextual=True),
     _error("study_summary_invalid", "总结未通过核验，判定与反馈已保留，可单独重试总结。",
            FailureClass.UNVERIFIABLE, RecoveryAction.RETRY, contextual=True),
     _error("study_internal_error", "本轮学习处理未完成，已提交的书页与反馈已保留，请重试。",
