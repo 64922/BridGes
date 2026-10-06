@@ -1,0 +1,2204 @@
+{
+  "generated_at": "2026-10-06T12:48:02.512762+00:00",
+  "code_commit": "1c797faae9c9f06d98154ca5cd116b4a11a48639",
+  "suite": {
+    "suite_id": "human-expression-blind-evaluation",
+    "suite_version": "1.1.0"
+  },
+  "paths": [
+    {
+      "path_id": "commute.result",
+      "title": "通勤路线结果",
+      "render_kind": "deterministic_renderer",
+      "seam": "commute/presenting.py::render_result_content",
+      "execution_kind": "real_renderer_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:37:57.042381+00:00",
+      "output_digest": "8d64600e2b067feab1c4a631056b58c35211e5db0eec2f15f1316bdf6c6f8c20",
+      "output_chars": 224,
+      "output_preview": "已按校园通勤模块规划步行路线（高德路线规划 2.0）。 起点：学生宿舍（坐标 校园东区，起点·未确认校内·高德 POI） 终点：实验楼（坐标 校园西区，终点·未确认校内·高德 POI） 距离：1.2 公里 高德基础耗时：15 分钟 地图：已取得高德返回的 0 个路径点，可在下面路线卡中缩放查看，并适合截图保存。 路线文字： 1. 沿主干道向西步行 800 米。 2. 在实验楼路口左转步行 400 米。 课间提示按规则估计，不是实时人流数据。",
+      "model_locks": [],
+      "notes": ""
+    },
+    {
+      "path_id": "resources.result",
+      "title": "学习资料路径结果",
+      "render_kind": "deterministic_renderer",
+      "seam": "resources/presenting.py",
+      "execution_kind": "real_renderer_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:37:57.042381+00:00",
+      "output_digest": "2471aff3c26606d76dd2ede943ce3135fbd9df5eda303d0eea23d52a3298c953",
+      "output_chars": 350,
+      "output_preview": "本轮学习资料推荐（原始说法：线性代数），计划图书查询词：线性代数 教材。 计划视频发现查询词：线性代数 视频。 按原词优先，同时给教材与视频。 共 1 条，按已读内容标注的阶段排序（未确认者列候选）（主线 0 条、补充 1 条）： 补充/候选（按需查看）： 1. 图书《线性代数（示例教材）》【补充】 用途： 适用阶段：入门 选择理由：覆盖向量、矩阵与特征值的入门教材。 核对依据：标题与原词一致 实际读取：（证据层次：仅标题/公开计数（弱信号）） 链接：https://exam",
+      "model_locks": [],
+      "notes": ""
+    },
+    {
+      "path_id": "tieba.research",
+      "title": "贴吧取证与研究说明",
+      "render_kind": "deterministic_renderer",
+      "seam": "tieba/presenting.py",
+      "execution_kind": "real_renderer_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:37:57.042381+00:00",
+      "output_digest": "be7265e4ec66a07d512b01e814734247c2076eae19a5f2d5a530769f9879c4c7",
+      "output_chars": 252,
+      "output_preview": "华东交通大学吧信息搜集（体验类）：转专业 · 原问题：转专业需要准备什么 · 原始名词：转专业 · 时间条件：本轮问题没有提出时间条件。 【确认属于「华东交通大学吧」的公开帖子】 1. 转专业经验交流 链接：https://tieba.example.org/p/1001 归属依据：吧内帖子，明确标注学院与年级。 已读范围：已读取 1/1 页；时间 2026-09-01–2026-09-01 第 1 楼（2026-09-01）：转专业要先修完大一核心课，再参加学院考核。",
+      "model_locks": [],
+      "notes": ""
+    },
+    {
+      "path_id": "career_plan.result",
+      "title": "职业规划结果",
+      "render_kind": "deterministic_renderer",
+      "seam": "career_plan/presenting.py",
+      "execution_kind": "real_renderer_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:37:57.042381+00:00",
+      "output_digest": "0c86b526ba267ed347bea007818c3db1fe93bcf3e2b3630cd0b35a3840f50a06",
+      "output_chars": 346,
+      "output_preview": "职业规划分析：后端开发实习 · 原始请求：帮我规划后端开发实习路径 · 期望城市：未给出 【公开可读且匹配的岗位样本（1 个）】 1. 后端开发实习生 城市：杭州 薪资原文：页面未给出 发布日期：页面未给出 直达链接：https://example.org/job/1 抓取时间：2026-10-06 16:00（来源：示例岗位源） 岗位匹配依据：岗位标题逐字来自榜单。 城市核对：岗位卡片标注城市。 【技能与薪资分析（只基于上面的样本）】 · 样本口径：公开可读样本 1 个。 ",
+      "model_locks": [],
+      "notes": ""
+    },
+    {
+      "path_id": "fixed_copy",
+      "title": "澄清/错误/空结果/进度/部分成功固定文案",
+      "render_kind": "fixed_template",
+      "seam": "state_copy/registry.py::render_state_copy",
+      "execution_kind": "real_template_render",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:37:57.043381+00:00",
+      "output_digest": "6bea0034fcdb3b75541893a9c7497113ef05548d1291d4a72469450307073507",
+      "output_chars": 15869,
+      "output_preview": "chat.clarification.multiple_tasks 03423cc1048681f3b7391c500ca402c22d66ead896332132da5c32ba6c004473 chat.clarification.reference_ambiguity f8358c8c16fb31e0d8b4dfe79a17cb6edf11afd71c390632b9bee40f9a00fe74 chat.clarification.task_ambiguity 2f2",
+      "model_locks": [],
+      "notes": "fixed_template 共 169 条；成功渲染 169 条；失败 0 条。",
+      "rendered_count": 169,
+      "expected_count": 169,
+      "rendered_entries": [
+        {
+          "path": "chat.clarification.multiple_tasks",
+          "chars": 27,
+          "digest": "03423cc1048681f3b7391c500ca402c22d66ead896332132da5c32ba6c004473"
+        },
+        {
+          "path": "chat.clarification.reference_ambiguity",
+          "chars": 14,
+          "digest": "f8358c8c16fb31e0d8b4dfe79a17cb6edf11afd71c390632b9bee40f9a00fe74"
+        },
+        {
+          "path": "chat.clarification.task_ambiguity",
+          "chars": 21,
+          "digest": "2f2d2833179bc22c7d99b8b0a7f3b8273697be83573ad45287e2045eaae62b0c"
+        },
+        {
+          "path": "chat.clarification.task_history_ambiguity",
+          "chars": 19,
+          "digest": "6ce0655bee5e0f08734195723fdd219032784d8f15ee713d1e9d65c1501e8158"
+        },
+        {
+          "path": "chat.progress.node_failure",
+          "chars": 22,
+          "digest": "6e96d487aa0791a14a32ef92dc53ba78f5e33a31489c56e3a3fe62d4606f092a"
+        },
+        {
+          "path": "chat.progress.recovery_adjust",
+          "chars": 7,
+          "digest": "9deffd26ba74ee74f35717e996c04992088e7cd86924482d2706d79a108b9bc2"
+        },
+        {
+          "path": "chat.progress.recovery_reconfigure",
+          "chars": 7,
+          "digest": "4d1b8188b022a7d5545fa74a7a15ab98b87a56e297d25040221137b2079fb328"
+        },
+        {
+          "path": "chat.progress.recovery_retry",
+          "chars": 6,
+          "digest": "62d9f46491fed65cbb1ef24efec19572c49a1f1d7711d7e834fc82017c5b3f15"
+        },
+        {
+          "path": "chat.progress.recovery_retry_plain",
+          "chars": 4,
+          "digest": "f0bd6ea08cbe163a8d902770fb7d1ffcab530ec98c268dc389e011335d619364"
+        },
+        {
+          "path": "chat.progress.recovery_wait",
+          "chars": 6,
+          "digest": "efc81ced18eb3bb01e154c8d390317de92e94208cfce9b29824c03d17aa5bbaa"
+        },
+        {
+          "path": "chat.progress.thinking_budget_warning",
+          "chars": 34,
+          "digest": "d6a7dd44c5d20911d33680563768c7eee129878cecd6c8933f53d965d0ce6dfb"
+        },
+        {
+          "path": "chat.progress.thinking_done",
+          "chars": 10,
+          "digest": "8ff3d68e3deb50f3d17f64b14f99b50c349250a02a3ab9ded0b37d9a8d0d0f7c"
+        },
+        {
+          "path": "chat.progress.thinking_failed",
+          "chars": 14,
+          "digest": "d76a0dfdf744c2c0b09c0199009f6d263db19b1ec35d44e12fd6f0a6e8c3272a"
+        },
+        {
+          "path": "chat.progress.thinking_stopped",
+          "chars": 14,
+          "digest": "0e120ab8b70a55c94d8140bb5ca135c7ba189c2773695563912ba917260b6296"
+        },
+        {
+          "path": "chat.result.blocked_detail",
+          "chars": 12,
+          "digest": "9d6fb1b876fc299ac22ce89444cf9f13cd19ab1ab8ff9b342e1995e2d58c5f8e"
+        },
+        {
+          "path": "chat.result.outcome.blocked",
+          "chars": 18,
+          "digest": "d04f9f45f374d18b8f0a8c0d8f811c2223a1241c175e9cab96c47e3bc796bf9a"
+        },
+        {
+          "path": "chat.result.outcome.cancelled",
+          "chars": 13,
+          "digest": "e9c4fa06f5ad0a1d0ea141a7109a3e5d28475cef7b451a4c428c9af818c95b15"
+        },
+        {
+          "path": "chat.result.outcome.complete",
+          "chars": 6,
+          "digest": "66cdcce6314458ed0d7128b7381bff15ec460214360167e049bf5bbf0602bebb"
+        },
+        {
+          "path": "chat.result.outcome.failed",
+          "chars": 6,
+          "digest": "3425f8a6dfc51e6b93a0e16cd52491143c65f2d42e23d1149f129225ec539873"
+        },
+        {
+          "path": "chat.result.outcome.needs_input",
+          "chars": 19,
+          "digest": "7412333ed476175dee74150666cfc395f9c737055b0ab84f65debf4ed2abcfa6"
+        },
+        {
+          "path": "chat.result.outcome.partial",
+          "chars": 16,
+          "digest": "41dac5de96859892b6d8ad07c08cf5dd5ed693f79c753e25d3acdd928bd9db85"
+        },
+        {
+          "path": "chat.result.outcome.running",
+          "chars": 15,
+          "digest": "6f8018b3d02f9f9647e1e35c5b3fbf43312ea358c3f0bc4b04a1fcb3adebabf9"
+        },
+        {
+          "path": "chat.result.recovery_refresh",
+          "chars": 7,
+          "digest": "5448ceb91a80e26017a07c82fe4254d70ca15fb94a42c9211064d998cf54ab4e"
+        },
+        {
+          "path": "chat.result.study.answer",
+          "chars": 9,
+          "digest": "efa306a35477d08f0c7637eae482d2cd375194bdf13de7181e3ac7e32c550698"
+        },
+        {
+          "path": "chat.result.study.evidence_gap",
+          "chars": 20,
+          "digest": "be58273f1315f9eb4bcc9dc7bf26f8d59188a9805fbae1d634bdc9f0bf7130e1"
+        },
+        {
+          "path": "chat.result.study.feedback",
+          "chars": 7,
+          "digest": "915cae8c29a35a3732465251f07763818d5ff9cbe85810da2cab121d3b1c24c7"
+        },
+        {
+          "path": "chat.result.study.gap",
+          "chars": 4,
+          "digest": "d2e662809cdd71d3d61e760675e7990bc90446578e86f1e1682cb86ba0f1531a"
+        },
+        {
+          "path": "chat.result.study.pages",
+          "chars": 13,
+          "digest": "92e4e4e407169fe0d97f5869d9314844d4c9f64bfe6fc9dee7041a245ed6ae62"
+        },
+        {
+          "path": "chat.result.study.summary",
+          "chars": 4,
+          "digest": "b97027a2e51b5d93248e83cbae0d472553bc48b2e6907c35adb71a22136ded9f"
+        },
+        {
+          "path": "chat.result.study.summary_gap",
+          "chars": 28,
+          "digest": "1634458665c74ef0ec52d2535f60422c8cc91484922c09a1ca875349f4a65159"
+        },
+        {
+          "path": "chat.result.study.tutor",
+          "chars": 4,
+          "digest": "7493904e83cddfabdb8335b27ee0b6d8ab431a5c8b1daa4bb4b80402d34c50f2"
+        },
+        {
+          "path": "chat.result.trust.evidence_bound",
+          "chars": 18,
+          "digest": "92900ff54d70a073670031ecbd77747e169cd2bd528c7d467bc440db957e78c0"
+        },
+        {
+          "path": "chat.result.trust.qualified",
+          "chars": 8,
+          "digest": "1673d4661b74a2b9d60b8169eb7da2b549e46e802a0a6eb75a61d2c2fa7d8870"
+        },
+        {
+          "path": "chat.stop.user_stopped",
+          "chars": 6,
+          "digest": "e46d20c81255f4acce840e378bd187f6e1b2b8e96c6047898b5ef3a51f3f2cf9"
+        },
+        {
+          "path": "chat.wait.delete_in_progress",
+          "chars": 17,
+          "digest": "ea40a6f1b7929fbbcdc10b52d063824303a99d57c0e0104adfc7b6b10c4cc8ad"
+        },
+        {
+          "path": "chat.wait.generation_in_progress",
+          "chars": 21,
+          "digest": "4f0ac72e7927b73acff44227c8a6bea69b7c006a8f20ccbe1e604a013f046b2e"
+        },
+        {
+          "path": "composite.result.blocked",
+          "chars": 29,
+          "digest": "f466523e9efd40765640bf846deda7fb95b80b44b718802e1ecdee5a8cbf9527"
+        },
+        {
+          "path": "composite.result.completed",
+          "chars": 33,
+          "digest": "b878c9e1c2c60c5e9c24bcf5bedaef4eb4a517414d7cfcc40fcec30c3df57e18"
+        },
+        {
+          "path": "composite.result.empty",
+          "chars": 33,
+          "digest": "e831a3cddd6c7a6f305e772346c539273aab50f980df5d1ed6180c8f0e3eb7e1"
+        },
+        {
+          "path": "composite.result.unqualified",
+          "chars": 20,
+          "digest": "5f90721567dadff22f44f9ef5be2ccfbaae2fd96ab16d102019133f966f3c3de"
+        },
+        {
+          "path": "error.arxiv_cancelled",
+          "chars": 10,
+          "digest": "f24e7c22603a038f62c8e1dafbcf7fe3ffeec49da6827de2983ae648ad65ce1d"
+        },
+        {
+          "path": "error.arxiv_citation_invalid",
+          "chars": 24,
+          "digest": "c8a70404f31d8da346e37907e66e27c9125f21f5f94ebf78dd27723157848ecf"
+        },
+        {
+          "path": "error.arxiv_handshake",
+          "chars": 19,
+          "digest": "e98794ae0286c167a0419ee0e46477dab5d8b0140ee7c29a3c6b2adbbe309188"
+        },
+        {
+          "path": "error.arxiv_internal",
+          "chars": 17,
+          "digest": "96936e574793db7a9085428304f38afc37736d5ba4ec6bad4c6f8d932e7c8409"
+        },
+        {
+          "path": "error.arxiv_no_relevant_results",
+          "chars": 32,
+          "digest": "d6fab1a42c8ff207f986ce4bb2559255fa8c65ad90f11310c69e2908074363b2"
+        },
+        {
+          "path": "error.arxiv_no_results",
+          "chars": 29,
+          "digest": "65564da0dab82aa03fef2688e735396d40f2643363683f173a1e1ebba2a58b22"
+        },
+        {
+          "path": "error.arxiv_offline",
+          "chars": 22,
+          "digest": "b8ec9ef634b1ca239677d480ab699ec61d7afc52eacdf1fe851dce9bb3899629"
+        },
+        {
+          "path": "error.arxiv_parse",
+          "chars": 22,
+          "digest": "9bdb12251f92208212b05dcf91a9a87f408c6b5ecdd12bf754f138f5484604c2"
+        },
+        {
+          "path": "error.arxiv_permission",
+          "chars": 27,
+          "digest": "02aa9a82b801f8be7c25ea0c05fd6376ac5778d2b0aa6e59402c7300901e2da1"
+        },
+        {
+          "path": "error.arxiv_rate_limit",
+          "chars": 19,
+          "digest": "8e3a0472dd91f2bddbfa23c8d7def3142914d0f3316498a5a334df70321c5705"
+        },
+        {
+          "path": "error.arxiv_request",
+          "chars": 18,
+          "digest": "9e7e681d38fd654056dbcac2bd12c8f2776d20d6119b5aa2a23c498ade15665a"
+        },
+        {
+          "path": "error.arxiv_startup",
+          "chars": 19,
+          "digest": "e98794ae0286c167a0419ee0e46477dab5d8b0140ee7c29a3c6b2adbbe309188"
+        },
+        {
+          "path": "error.arxiv_timeout",
+          "chars": 15,
+          "digest": "fb42ae2601c804051ff3919b0f2c8cd9669ee43784d7b6c4ec7d9683bd0f3d9f"
+        },
+        {
+          "path": "error.arxiv_worker_exit",
+          "chars": 20,
+          "digest": "c9c49fa743b7b6b3d90eece4ee711311d65d6fff290d58a7963823e41c9cc189"
+        },
+        {
+          "path": "error.auth_error",
+          "chars": 38,
+          "digest": "0aa2a2fd8d4d692bfc038a1c0eca511e4368b83cbe377328ab12f9b0b225fdf7"
+        },
+        {
+          "path": "error.budget_exceeded",
+          "chars": 30,
+          "digest": "2d29749ae574066600af46596609bd898ae09ccc0beaadcd0263d47a7a673f8f"
+        },
+        {
+          "path": "error.capability_not_verified",
+          "chars": 30,
+          "digest": "3af86b5ef619d158111a4f1c2f120a4939f527079a702960bea07eb708754fc3"
+        },
+        {
+          "path": "error.cassette_missing",
+          "chars": 19,
+          "digest": "ec9a0df01d71df795d4b860ff1f9c9f736fb620c4dae548ba8a6a4758a9e386f"
+        },
+        {
+          "path": "error.composite_delivery_unverified",
+          "chars": 21,
+          "digest": "3f5d7b34ad9bc853d9facd21a819851b8edd7e8265685d31224ec8a41d8c00cd"
+        },
+        {
+          "path": "error.composite_gate_failed",
+          "chars": 27,
+          "digest": "e6daf5836eeb61a51a57b1e449789e40d3db658d3835e0966ded64596169a7db"
+        },
+        {
+          "path": "error.composite_plan_rejected",
+          "chars": 21,
+          "digest": "adf7833a337d39298a7f88b8a4a0236825480beb0268f69143098b9de024c9aa"
+        },
+        {
+          "path": "error.composite_plan_unavailable",
+          "chars": 20,
+          "digest": "c559fb8abb7488e018c23407b5f4da64c041b1a311f8f3b7d26c20ee24df54e9"
+        },
+        {
+          "path": "error.empty_response",
+          "chars": 13,
+          "digest": "f78b14c3fd243db2931d124b184bdb675ed5284fb5ed262d4caf7a203aad9c25"
+        },
+        {
+          "path": "error.fact_protection_inconsistent",
+          "chars": 23,
+          "digest": "3b7f35bed07995ded805a39fd48582692b7e6f85371c15623845f04d3ddc124a"
+        },
+        {
+          "path": "error.generation_worker_lost",
+          "chars": 24,
+          "digest": "f7031099a41f83f004eecc0c1c6c2c56d0e5e7e71946171d2b3894594bc70d93"
+        },
+        {
+          "path": "error.internal_error",
+          "chars": 15,
+          "digest": "988e1b0069d86fb1b4d51fba191d394a7ccae32304255c496bea0f78d8d81e73"
+        },
+        {
+          "path": "error.invalid_response_format",
+          "chars": 20,
+          "digest": "ff815d08d966008959f7055ae2af84f70d6979aa252957f0764cbc2e3eca4424"
+        },
+        {
+          "path": "error.module_mode_conflict",
+          "chars": 13,
+          "digest": "354fc6a8979f5f1c0d27127d9c9b831f840308f5768772e912a671274179226a"
+        },
+        {
+          "path": "error.module_not_available",
+          "chars": 16,
+          "digest": "7109759f5ec232797910a8eecd62681a55ae133e5518a90a20326d3d526ee396"
+        },
+        {
+          "path": "error.network_not_allowed",
+          "chars": 22,
+          "digest": "d958d69807f00faf0b566a6ab076d5c0b6d728ef6db4934e6bc79f1917342cf4"
+        },
+        {
+          "path": "error.no_adapter",
+          "chars": 25,
+          "digest": "363b7b4aa0e75464a3cb34c34757362bf6746a29cfc923e2fdbb7bad7ef96f1d"
+        },
+        {
+          "path": "error.output_budget_exceeded",
+          "chars": 32,
+          "digest": "a76cc77a44870b69664bdb041a31de19852f77e6276ac051f85935cf0c99bfb9"
+        },
+        {
+          "path": "error.payload_budget_exceeded",
+          "chars": 59,
+          "digest": "2770c9bfdade9fc6fb98de01fd9b60ff5c183fc0d745d490788f64577e60ebb7"
+        },
+        {
+          "path": "error.provider_rejected",
+          "chars": 17,
+          "digest": "aafb2f617e780542b1cda0d37850981a2385ac48f77ab2bef434559183f074d6"
+        },
+        {
+          "path": "error.rate_limit",
+          "chars": 20,
+          "digest": "3ede7925cc5238ec8fc80114e807c41d0d075e68ebf70944be2a53d0e788c057"
+        },
+        {
+          "path": "error.region_dns",
+          "chars": 29,
+          "digest": "d416b9b28749f2850251a1a3ed8f40d3fdcf806191e9520d8fb4f7d9ab844da0"
+        },
+        {
+          "path": "error.region_error",
+          "chars": 22,
+          "digest": "ecd3df7b278243f359adfaf027d5db3d5a025f1945f3917d84dbde6cd9e08e44"
+        },
+        {
+          "path": "error.region_proxy",
+          "chars": 16,
+          "digest": "bbf798ede69789ee6d8a7f6680205b5396805db494b155ae7ee68d73e8c37263"
+        },
+        {
+          "path": "error.region_tls",
+          "chars": 31,
+          "digest": "2e42952a309e0a80876643dcc6746e4f8fd7aca236231eae60acebba341e267e"
+        },
+        {
+          "path": "error.route_rejected",
+          "chars": 17,
+          "digest": "b5994b2e935bae1dd08ba747d8dced6086e515d3529d80cdb1b54603d455e0e6"
+        },
+        {
+          "path": "error.run_budget_call_limit",
+          "chars": 28,
+          "digest": "0ffbf488265fa3c212a5eee6d236ba25cf0b1d1607d0a6f62ded69ab25605805"
+        },
+        {
+          "path": "error.run_budget_exhausted",
+          "chars": 45,
+          "digest": "f945fe922651a219c278c271c28553d53f669218548166833538fb71047ace82"
+        },
+        {
+          "path": "error.safety_refusal",
+          "chars": 19,
+          "digest": "e6f1a58fbdaaa456f123554086c7292790b611335c24bcfd1badfa3e2ae7f459"
+        },
+        {
+          "path": "error.skill_unavailable",
+          "chars": 19,
+          "digest": "b6aec1213ed7d15e1ae21edc94f829064b25d549e4104a9e10bddd6582ad6384"
+        },
+        {
+          "path": "error.source_not_allowed",
+          "chars": 17,
+          "digest": "16e2d5b865d546b9ff3e3bfb6ec4c7f209a0e9ae1255e6568b5da7b7ae2806be"
+        },
+        {
+          "path": "error.stream_interrupted",
+          "chars": 20,
+          "digest": "5b981ddc5105bb7a26e802bec996386f52597a95b5df1aa6cc8b42dc0184e128"
+        },
+        {
+          "path": "error.structured_output_parse_failed",
+          "chars": 18,
+          "digest": "0f98c74b71acfeb2b0fb3d2064357a69ac8f364b7c6858013ac3e4b8adb0408b"
+        },
+        {
+          "path": "error.study_grade_budget",
+          "chars": 21,
+          "digest": "82374b79bfaec654ecce7099ffc33567dce6881d3ac8cfe1c6efd60146458e08"
+        },
+        {
+          "path": "error.study_grade_invalid",
+          "chars": 21,
+          "digest": "c4a2f063cdc918581c4e5c3676f60e29d4544ad13a2a16354cf8926d33a70217"
+        },
+        {
+          "path": "error.study_graph_version_changed",
+          "chars": 20,
+          "digest": "6d4f1f9a718d9a103c33475af74cb480807fa7f8b326f01b4acc8e20af667d9e"
+        },
+        {
+          "path": "error.study_internal_error",
+          "chars": 27,
+          "digest": "0b1617aa9bd9db57d02d8f06c1f4e8808b761383c54f23f22ce022ad4f227dbd"
+        },
+        {
+          "path": "error.study_map_invalid",
+          "chars": 16,
+          "digest": "330262f6fc423c0a094f4b1c974aa9b7beb73d9cd05824853db991fbf735a7f2"
+        },
+        {
+          "path": "error.study_page_update_changed",
+          "chars": 22,
+          "digest": "63938ea501220882d6a6a8ac91f5fb7ce032051bf9ad170bf415f7895d02e53f"
+        },
+        {
+          "path": "error.study_preview_budget",
+          "chars": 21,
+          "digest": "0ff8f3cbabc1ad6e3b5861f499db95d4767b0750d3b0d3543f924d52db6c5c65"
+        },
+        {
+          "path": "error.study_preview_incomplete",
+          "chars": 16,
+          "digest": "fcf98c46b910436aa57c3014b4eff5b3654d4c87e7176ccd387cbe9b75061144"
+        },
+        {
+          "path": "error.study_preview_missing",
+          "chars": 13,
+          "digest": "3fd6298a9649a926a2f389f1d562736530db9766be4a3cb23d507067a0253150"
+        },
+        {
+          "path": "error.study_recheck_failed",
+          "chars": 20,
+          "digest": "f1228fee496ebc2de0ce1f957b92948674d42e9facf0becbce8444e28f7928a5"
+        },
+        {
+          "path": "error.study_review_budget",
+          "chars": 23,
+          "digest": "e066de4d628691b0c95aef96c1acbc993525824bb60a89c4a46d917887793f33"
+        },
+        {
+          "path": "error.study_review_calculation",
+          "chars": 27,
+          "digest": "dcaf19695704e7595c4abfecd13ab182e9afd5fbc66cc56d552c447d0e1f7aeb"
+        },
+        {
+          "path": "error.study_review_disputed",
+          "chars": 28,
+          "digest": "055f36e7f5456e75d51f5dcc8975a3fa1351fa0e387b05e79f139028f9bc9c14"
+        },
+        {
+          "path": "error.study_review_invalid",
+          "chars": 23,
+          "digest": "cc4f330a71d0d1244d21b3afde555d4b141b84b49f8ac43797f85652672f1beb"
+        },
+        {
+          "path": "error.study_review_plan_incomplete",
+          "chars": 25,
+          "digest": "ac272588bc04eea3151f14d02f4d1512e89df73302b4fc75a79b76274ae9cc28"
+        },
+        {
+          "path": "error.study_review_scope_changed",
+          "chars": 23,
+          "digest": "6df52af72058906f3c837e76ea25b9450004315e0f498f0fc943050d5c3dc561"
+        },
+        {
+          "path": "error.study_review_verify_conflict",
+          "chars": 26,
+          "digest": "757cad8b0e93a4992f7ab359467b87d730c376c581f0a0f3a4a6eefc0ae39f6a"
+        },
+        {
+          "path": "error.study_review_verify_unverified",
+          "chars": 25,
+          "digest": "c291a5781cfdee1f6e463e50224afefbb34f73c95964225b99850efab4b87661"
+        },
+        {
+          "path": "error.study_scope_content_conflict",
+          "chars": 22,
+          "digest": "f1219ea293803be02174cadd2b48749d42fd93a511c85ddbec9c1656fd9b57fa"
+        },
+        {
+          "path": "error.study_scope_content_unverified",
+          "chars": 13,
+          "digest": "b3d56e8b8afbd227ff871fd97de2bab1e205ce4015e80570d0b5723420d1a0d4"
+        },
+        {
+          "path": "error.study_scope_failed",
+          "chars": 14,
+          "digest": "b6d0b78a7cc4d914ae140b498ce8ae94cc0f215d1147f34b014de82dc723b238"
+        },
+        {
+          "path": "error.study_scope_incomplete",
+          "chars": 16,
+          "digest": "a1b268403df1c886c21ed95d3ddc592da79441db47fdf8f3f87db19020b989d8"
+        },
+        {
+          "path": "error.study_scope_missing",
+          "chars": 13,
+          "digest": "a337373c8b5a251f2e9d4d842847ffcb0174530059df2128aedefe61bc342c81"
+        },
+        {
+          "path": "error.study_summary_invalid",
+          "chars": 25,
+          "digest": "bb1a361f1ddb5ade262d17a3f178c6334439f16a7af0bf72523430d03da8aae9"
+        },
+        {
+          "path": "error.task_state_conflict",
+          "chars": 21,
+          "digest": "49d02ec6458c3f91f2e9a6e6f9ec372bb21c535147cac66f73a2744b862ef12f"
+        },
+        {
+          "path": "error.timeout",
+          "chars": 28,
+          "digest": "087383460354af569e5db1e8333bb95928bf2fdc955d1cd0cd6f2c2b25a092e8"
+        },
+        {
+          "path": "error.transient",
+          "chars": 22,
+          "digest": "8b8b31efe5089c2555dec141817c2da4e37073572d9ab9c9ccd0ed0315cbab7b"
+        },
+        {
+          "path": "error.unregistered_capability",
+          "chars": 17,
+          "digest": "bd45e77b831f34d736741ae857575718713cf3f640d54b8bd8d720564d8eeb9a"
+        },
+        {
+          "path": "error.unsupported_structured_output_format",
+          "chars": 20,
+          "digest": "c21eac38448ae1b517f0b2241931610e1916a95a1b1411443cdcc88a04b12094"
+        },
+        {
+          "path": "error.web_search_all_providers_failed",
+          "chars": 20,
+          "digest": "05aabb8b0f73eca7bd95309e8e9522c9ced8a5966397c1d770a042a3d425159c"
+        },
+        {
+          "path": "error.web_search_cancelled",
+          "chars": 10,
+          "digest": "8f87a975ad4f648047eebb9c2835899bca1c040b98072a3c441bba44073a44d9"
+        },
+        {
+          "path": "error.web_search_citation_invalid",
+          "chars": 16,
+          "digest": "7708f2ac39a41b73b0bdf013f215219dbdbaff492e30717a886290ad2927a0e6"
+        },
+        {
+          "path": "error.web_search_configuration",
+          "chars": 51,
+          "digest": "ca511e23ed2eb1540f9465f2a9619a1895d74df7b9e338124421dc7a2aa6ee98"
+        },
+        {
+          "path": "error.web_search_connect",
+          "chars": 20,
+          "digest": "778ca733e7e7eeaaef4bb9f7856a7866c43e3b0339f1241adc7cf1a4b751aba3"
+        },
+        {
+          "path": "error.web_search_contract",
+          "chars": 28,
+          "digest": "5e1de88485b13eac02cd5e4f0fa0803368fcacbeafa573657f2521b7693f6ea3"
+        },
+        {
+          "path": "error.web_search_credentials",
+          "chars": 72,
+          "digest": "1739948c0ec2a5ac742e25d755ea14dab5e40809c7746f437f8eb548737a53f4"
+        },
+        {
+          "path": "error.web_search_dns",
+          "chars": 26,
+          "digest": "bae8d074fa66899f7c84397851e326d155f44f906dd363831635d93b5a0e216f"
+        },
+        {
+          "path": "error.web_search_evidence_insufficient",
+          "chars": 25,
+          "digest": "655fb265f9817f8a886118fe087f7cc899419fe688b7c75e779b28d657810025"
+        },
+        {
+          "path": "error.web_search_fallback_connect",
+          "chars": 19,
+          "digest": "57543f1e2595de0a7744ee6dffabbc093c6a12d7101828f7b60176f750c502ab"
+        },
+        {
+          "path": "error.web_search_fallback_credentials",
+          "chars": 20,
+          "digest": "0bc97eb63dfe04441a155636d30b1e5de42b2699f73203e2a6784415681aef26"
+        },
+        {
+          "path": "error.web_search_fallback_dns",
+          "chars": 19,
+          "digest": "57543f1e2595de0a7744ee6dffabbc093c6a12d7101828f7b60176f750c502ab"
+        },
+        {
+          "path": "error.web_search_fallback_not_configured",
+          "chars": 18,
+          "digest": "62a185e941d1c56a54cd7295a25e3314f554b5eea3f385387f039890b7a1fe0d"
+        },
+        {
+          "path": "error.web_search_fallback_not_started",
+          "chars": 25,
+          "digest": "a330556bd42682f7feff4939f50104b691c936e57239beaef834ff926ecfa6af"
+        },
+        {
+          "path": "error.web_search_fallback_offline",
+          "chars": 19,
+          "digest": "57543f1e2595de0a7744ee6dffabbc093c6a12d7101828f7b60176f750c502ab"
+        },
+        {
+          "path": "error.web_search_fallback_parse",
+          "chars": 18,
+          "digest": "2198b57e5e3554595b699d9fcd1d05c71cdf3b7866c3d3956418f6ff21df9a1d"
+        },
+        {
+          "path": "error.web_search_fallback_permission",
+          "chars": 24,
+          "digest": "18528ff48dc7047b6bbb86466f466cc36c87a5d3505e9e5b460029e69ccf9c40"
+        },
+        {
+          "path": "error.web_search_fallback_provider",
+          "chars": 21,
+          "digest": "99c9d9aefec20841df1f74da06a1e6a2e47536ff81647d72935b440e1471826e"
+        },
+        {
+          "path": "error.web_search_fallback_rate_limit",
+          "chars": 19,
+          "digest": "c2dedea04b8d7f886d33acf6ea0156a639ff50c66d283ce8244a181f32330eaf"
+        },
+        {
+          "path": "error.web_search_fallback_redirect",
+          "chars": 22,
+          "digest": "d8670f342d06de54e9eb84abb24167cd04f3860b2d9f66a695528578b1294a50"
+        },
+        {
+          "path": "error.web_search_fallback_request",
+          "chars": 16,
+          "digest": "9ca1062578b1d48d7ca574df62d18e5a45bf086d24d391bb1bb2c1784021bc08"
+        },
+        {
+          "path": "error.web_search_fallback_response_too_large",
+          "chars": 17,
+          "digest": "611ce6d7677c6dcbe94302046eb56e4dc1e12ac68a32357882eb95e58e369219"
+        },
+        {
+          "path": "error.web_search_fallback_timeout",
+          "chars": 15,
+          "digest": "999db34700ed5da97675af2ec4437670c5b099eeb6fe839cf80de4365a997bba"
+        },
+        {
+          "path": "error.web_search_internal",
+          "chars": 17,
+          "digest": "b6148002155387a65664364fd23b75490b5dfac40fe5dfcff943e9257665cde0"
+        },
+        {
+          "path": "error.web_search_no_results",
+          "chars": 15,
+          "digest": "940366810dba89ec02ea0d05a8fd04d2ec667148f1ee0a05df070077fe21e85e"
+        },
+        {
+          "path": "error.web_search_offline",
+          "chars": 20,
+          "digest": "778ca733e7e7eeaaef4bb9f7856a7866c43e3b0339f1241adc7cf1a4b751aba3"
+        },
+        {
+          "path": "error.web_search_parse",
+          "chars": 15,
+          "digest": "3b8b7ddb817927e13e0f6d1fedd224a4f05510d36325d35ad65a46c994929f8e"
+        },
+        {
+          "path": "error.web_search_permission",
+          "chars": 25,
+          "digest": "1eb93696c2e2b15b71fc59ae579b46f3f0ac41b5fa9699c84c1648092fa42eaf"
+        },
+        {
+          "path": "error.web_search_provider",
+          "chars": 19,
+          "digest": "2e20abda48977d4efe94ce2659d46fbddff4b0bdc8dab9d48c77c1d6820fa66e"
+        },
+        {
+          "path": "error.web_search_provider_challenge",
+          "chars": 45,
+          "digest": "0d53041deb08b5c9cdb72ec916ec501768dc3d599ad2b92b6a96b055f16c6ac7"
+        },
+        {
+          "path": "error.web_search_quota",
+          "chars": 38,
+          "digest": "328783dacac34971242c42e728c681bf764c77baae9900e4d43497f46d0ba1e0"
+        },
+        {
+          "path": "error.web_search_rate_limit",
+          "chars": 17,
+          "digest": "5415ca70b020eed4e1bf79fdb12d0497bc29ffb1b7b4128ce529da69ebb05c42"
+        },
+        {
+          "path": "error.web_search_redirect",
+          "chars": 20,
+          "digest": "c2744da136ed22e6f3bcc70a02dd4374b0cab3dc9d77b031c3837ae681c2a9d9"
+        },
+        {
+          "path": "error.web_search_request",
+          "chars": 14,
+          "digest": "8c79dffe95172a758f59098640d055022de975f2de13dbffe370e35d3a4e7ca6"
+        },
+        {
+          "path": "error.web_search_response_too_large",
+          "chars": 15,
+          "digest": "abef097bccb1a4f99704719babbbcc689c04d0e11d2c0adaf81da79aa5b5e76a"
+        },
+        {
+          "path": "error.web_search_source_conflict",
+          "chars": 28,
+          "digest": "0048788bce5d7d07d026a9fd682255cce8b02d5b984d844cfe78e8343c8e0f60"
+        },
+        {
+          "path": "error.web_search_stage_timeout",
+          "chars": 21,
+          "digest": "c60514f013a348c067d7d540e0c871f59205c9d7f5132097828e24311484206d"
+        },
+        {
+          "path": "error.web_search_timeout",
+          "chars": 11,
+          "digest": "901b5b09bd9534681460c316459efcbcb8ec9811093f553560e54bce7f47afd7"
+        },
+        {
+          "path": "retrieval.degradation.index_unavailable",
+          "chars": 24,
+          "digest": "17898dd725b452224f1345dc352a2fbe233d3b4e2a7893342beaa6d95b18d950"
+        },
+        {
+          "path": "retrieval.degradation.vector_unavailable",
+          "chars": 20,
+          "digest": "8d2aedce6e243b5680c093361081b19f483f45b148dee9dbe4d028bf0f12c477"
+        },
+        {
+          "path": "retrieval.empty.attachments_pending",
+          "chars": 16,
+          "digest": "cf52f533f1fac3e3796db3520f6b5ec9a13131a631350a42097cb3568472b0b4"
+        },
+        {
+          "path": "retrieval.empty.knowledge_base_not_ready",
+          "chars": 11,
+          "digest": "59d51b78750a146c8ac3dd1ef69f2d41fafe1544d646fbb08911dc98f23d1223"
+        },
+        {
+          "path": "retrieval.empty.no_hits",
+          "chars": 15,
+          "digest": "1b3ed53c4392b5127ad957a391d1c3179805001d2cbfdde5a7c8c0934c922200"
+        },
+        {
+          "path": "retrieval.empty.project_retired",
+          "chars": 12,
+          "digest": "170debc95be93229a67fccdf14c622a55f01ce110df8d0ca5c1de34fdefcc24b"
+        },
+        {
+          "path": "retrieval.partial.conflict",
+          "chars": 21,
+          "digest": "a47e5e643510ca99eb2503c99b3fb547386dad1731e55db8c0815329623ed516"
+        },
+        {
+          "path": "retrieval.partial.insufficient_coverage",
+          "chars": 13,
+          "digest": "50f013d1312421650d98bbf3d47885a1a00a82e9d857934f3723b84f6083c425"
+        },
+        {
+          "path": "retrieval.status.sufficient",
+          "chars": 12,
+          "digest": "fe75d66b8450d51a5e87d1565b3fe86641ca3b16027de19ecaed6d403143fb6d"
+        },
+        {
+          "path": "route.clarification.multiple_paper_or_other",
+          "chars": 31,
+          "digest": "1b597aab5ef5d705426d7bd3ab9ded9eb937f349b4e61edb87592f92df803a2d"
+        },
+        {
+          "path": "route.clarification.multiple_text_capabilities",
+          "chars": 21,
+          "digest": "558b4d43befef62b3cbf3610648e7c6853b5659ac3feae0b7bda04848bdd545b"
+        },
+        {
+          "path": "route.clarification.paper_query_parts",
+          "chars": 25,
+          "digest": "62272120fb85e513b6bf5522cada682275ba8071997844b179f2048fd5d4fbff"
+        },
+        {
+          "path": "route.clarification.paper_topic",
+          "chars": 11,
+          "digest": "bed02659fd41cf6b553ef2bd25f429ae180188d586e71791b9af57c8a707cb68"
+        },
+        {
+          "path": "study.stopped",
+          "chars": 8,
+          "digest": "5c2bcfde037d56eca5ad9d94399d103271afd6aa720b45dff25957f6d94af30a"
+        },
+        {
+          "path": "web_search.degradation.provider_unready",
+          "chars": 26,
+          "digest": "1ad2f0183e21a236cbeef88f55f7d85b5c025a0b0741a3f0c05728cf86f9fe02"
+        }
+      ],
+      "failures": []
+    },
+    {
+      "path_id": "chat.companion",
+      "title": "日常陪伴普通聊天",
+      "render_kind": "model_with_policy",
+      "seam": "chat/turn.py::_compile_writing_policy → assemble_payload",
+      "execution_kind": "real_chat_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:38:05.640731+00:00",
+      "output_digest": "b57e181d0b6933941aa8f0bd7f1592c9a6ed8e0ab55a1bc19358f3d3c321e3f0",
+      "output_chars": 94,
+      "output_preview": "用户：用一句话解释浮点数为什么会有精度误差。 助手：因为计算机用有限位数的二进制小数来存储实数，导致许多十进制小数（比如0.1）无法被精确的二进制小数表示，只能截断近似存储，从而产生误差。",
+      "model_locks": [
+        {
+          "lock_id": "t_OC2JB2ZYTDcOqbWq-v6Q",
+          "run_id": "eval39-receipt-chat-companion-current-v4-1",
+          "account_id": "eval39-account",
+          "project_id": "hESCViDNMkQ8g-_7tSsCOQ",
+          "capability_name": "qwen_text_chat",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 1024,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "companion",
+            "global_writing_policy_form": "explanation",
+            "global_writing_policy_rule_count": 8,
+            "global_writing_policy_profile_slice_id": "slice-386bd8ac80d0168ef1e8f25277353d05",
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": null
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "chat-messages-v1",
+            "output_schema_version": "chat-completion-v1",
+            "recipe_version": "daily-parent-v2",
+            "context_compile_version": "ctx-budget-v1",
+            "quality_policy_version": "global-chat-lightweight-v4",
+            "estimate_version": "token-estimate-v2",
+            "quota_version": "model-quota-v1",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_text_chat@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:38:05.639151Z",
+          "usage": {
+            "completion_tokens": 443,
+            "completion_tokens_details": {
+              "reasoning_tokens": 398,
+              "text_tokens": 443
+            },
+            "prompt_tokens": 504,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 504
+            },
+            "total_tokens": 947
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "场景 receipt-chat-companion；候选臂真实模型调用。",
+      "attempts": 1
+    },
+    {
+      "path_id": "chat.study",
+      "title": "学习模式普通聊天（非课时任务）",
+      "render_kind": "model_with_policy",
+      "seam": "chat/turn.py::_compile_writing_policy（mode=study）",
+      "execution_kind": "real_chat_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:38:10.704998+00:00",
+      "output_digest": "931bff210be447e6fcd38a3ed84ae817478f99314dbc07fe3d62f52349b16a09",
+      "output_chars": 36,
+      "output_preview": "用户：明天再继续，今天先到这里。 助手：本轮未联网核实： 好的，明天见。",
+      "model_locks": [
+        {
+          "lock_id": "G7vUPTQA0xV0QFqDs4KNhQ",
+          "run_id": "eval39-receipt-chat-study-current-v4-1",
+          "account_id": "eval39-account",
+          "project_id": "ayK2Q1wHlLpx0XcTOcrazA",
+          "capability_name": "qwen_text_chat",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 1024,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "study",
+            "global_writing_policy_form": "lesson",
+            "global_writing_policy_rule_count": 9,
+            "global_writing_policy_profile_slice_id": "slice-a666cdf4236eb41942fe55a92338f162",
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": null
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "chat-messages-v1",
+            "output_schema_version": "chat-completion-v1",
+            "recipe_version": "daily-parent-v2",
+            "context_compile_version": "ctx-budget-v1",
+            "quality_policy_version": "global-chat-lightweight-v4",
+            "estimate_version": "token-estimate-v2",
+            "quota_version": "model-quota-v1",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_text_chat@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:38:10.700134Z",
+          "usage": {
+            "completion_tokens": 229,
+            "completion_tokens_details": {
+              "reasoning_tokens": 221,
+              "text_tokens": 229
+            },
+            "prompt_tokens": 912,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 912
+            },
+            "total_tokens": 1141
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "场景 receipt-chat-study；候选臂真实模型调用。",
+      "attempts": 1
+    },
+    {
+      "path_id": "study.tutoring",
+      "title": "学习辅导生成",
+      "render_kind": "model_with_policy",
+      "seam": "study/tutoring.py::_tutoring_policy",
+      "execution_kind": "real_study_seam_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:42:09.423156+00:00",
+      "output_digest": "1a5b7b5988afccbdb4d5717e4130b5e2c12a39d62703cde1c1294b8d51a8b5c7",
+      "output_chars": 179,
+      "output_preview": "{\"answer\": \"尚未核实：本轮未核实：当前问题。\\n\\n本节书页：本节我们主要学习线性函数 y=ax+b。在这个公式里，a 代表直线的斜率，b 代表纵截距。\\n\\n依据：上传第1页 · 正文：线性函数 y=ax+b 中，a 是斜率，b 是纵截距。\\n\\n未核实缺口：当前问题。以上未核实内容不作确定结论。\", \"gap\": \"本轮未核实：当前问题\"}",
+      "model_locks": [
+        {
+          "lock_id": "NIYSJwpxip1mJvN9V7VYOw",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.0,
+            "max_tokens": 640,
+            "request_timeout_seconds": 60.0
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:41:27.128378Z",
+          "usage": {
+            "completion_tokens": 244,
+            "completion_tokens_details": {
+              "reasoning_tokens": 229,
+              "text_tokens": 244
+            },
+            "prompt_tokens": 321,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 321
+            },
+            "total_tokens": 565
+          },
+          "cost_estimate": null
+        },
+        {
+          "lock_id": "7mrnkfN8yUF_0pte2EA3GA",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.2,
+            "max_tokens": 1024,
+            "request_timeout_seconds": 60.0
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:41:35.261592Z",
+          "usage": {
+            "completion_tokens": 424,
+            "completion_tokens_details": {
+              "reasoning_tokens": 334,
+              "text_tokens": 424
+            },
+            "prompt_tokens": 774,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 774
+            },
+            "total_tokens": 1198
+          },
+          "cost_estimate": null
+        },
+        {
+          "lock_id": "5IHPfgJt5cVxxiyyY4aaeQ",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.0,
+            "max_tokens": 640,
+            "request_timeout_seconds": 39.872
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:42:09.422148Z",
+          "usage": {
+            "completion_tokens": 598,
+            "completion_tokens_details": {
+              "reasoning_tokens": 518,
+              "text_tokens": 598
+            },
+            "prompt_tokens": 389,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 389
+            },
+            "total_tokens": 987
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "通过真实 ChatService 运行行调用 tutor 接缝，真实模型回答。 早前 2 次尝试失败：RuntimeError: study 模型结果不完整：transient; RuntimeError: study 模型结果不完整：transient",
+      "attempts": 3
+    },
+    {
+      "path_id": "study.review",
+      "title": "复盘出题与判定反馈",
+      "render_kind": "model_with_policy",
+      "seam": "study/review.py::_call（读取冻结策略快照）",
+      "execution_kind": "real_study_seam_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:42:37.608785+00:00",
+      "output_digest": "01d7cf574defa6890b50b2fb9b8d9d3c6434aaf867596c7d8bd1f84bd12dda59",
+      "output_chars": 35,
+      "output_preview": "[\"在线性函数 y=ax+b 中，斜率和纵截距分别由哪个字母表示？\"]",
+      "model_locks": [
+        {
+          "lock_id": "mff6X0sYvwcjk4Dw_x0prw",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.01,
+            "max_tokens": 2048,
+            "request_timeout_seconds": 60.0
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:42:25.001488Z",
+          "usage": {
+            "completion_tokens": 850,
+            "completion_tokens_details": {
+              "reasoning_tokens": 596,
+              "text_tokens": 850
+            },
+            "prompt_tokens": 775,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 775
+            },
+            "total_tokens": 1625
+          },
+          "cost_estimate": null
+        },
+        {
+          "lock_id": "FHGk0B4fwChbPl48952ydg",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.01,
+            "max_tokens": 2048,
+            "request_timeout_seconds": 60.0
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:42:37.607827Z",
+          "usage": {
+            "completion_tokens": 716,
+            "completion_tokens_details": {
+              "reasoning_tokens": 590,
+              "text_tokens": 716
+            },
+            "prompt_tokens": 739,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 739
+            },
+            "total_tokens": 1455
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "通过真实 ChatService 运行行调用 plan_review 接缝，真实模型出题。",
+      "attempts": 1
+    },
+    {
+      "path_id": "study.summary",
+      "title": "学习总结生成",
+      "render_kind": "model_with_policy",
+      "seam": "study/summary.py::_tutoring_policy",
+      "execution_kind": "real_study_seam_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:42:50.423020+00:00",
+      "output_digest": "8cf00d087b56fb6fbdb11d2f2deacb6f0fabe8bbafe061a8a04a234e265b9b01",
+      "output_chars": 202,
+      "output_preview": "本节学习总结（依据本节书页与复盘记录） 学到了什么： - 线性函数 y=ax+b 中，a 是斜率，b 是纵截距。 依据：上传第1页 · 正文 复盘已掌握： - 明确 y=ax+b 中 a 表示斜率。 依据：第1题「y=ax+b 中 a 表示什么？」判定为正确 还需补的点： - 本次没有判定不完整、错误或依据需重新确认的题目。 未作答或尚未判定： - 本次复盘没有未作答或尚未判定的题目。",
+      "model_locks": [
+        {
+          "lock_id": "t0iVvfsjCTQRkWsUtoXyUA",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.01,
+            "max_tokens": 1024,
+            "request_timeout_seconds": 60.0
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:42:50.423020Z",
+          "usage": {
+            "completion_tokens": 678,
+            "completion_tokens_details": {
+              "reasoning_tokens": 537,
+              "text_tokens": 678
+            },
+            "prompt_tokens": 911,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 911
+            },
+            "total_tokens": 1589
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "通过真实 ChatService 运行行调用 build_summary 接缝，真实模型回答。",
+      "attempts": 1
+    },
+    {
+      "path_id": "study.scope",
+      "title": "学习范围/预习说明",
+      "render_kind": "model_with_policy",
+      "seam": "study/service.py::preview_policy_block",
+      "execution_kind": "policy_seam_model_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:43:41.720955+00:00",
+      "output_digest": "7b046c4c43718a2e83ae2794e86536e96274c6275d1ad6edecdf1e8fac39a464",
+      "output_chars": 181,
+      "output_preview": "{\"questions\": [{\"question\": \"预习时，请思考线性函数表达式中的斜率和截距，在函数图像上分别对应着怎样的几何特征和实际意义？\", \"unit_ids\": [\"ku-eval39-linear\"], \"unit_titles\": [\"线性函数的斜率与截距\"], \"scope_version_id\": \"scope-receipt\"}]}",
+      "model_locks": [
+        {
+          "lock_id": "_ZKrHlagxRvf6dt0XJO_Bw",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.2,
+            "max_tokens": 1024
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:43:41.719950Z",
+          "usage": {
+            "completion_tokens": 843,
+            "completion_tokens_details": {
+              "reasoning_tokens": 767,
+              "text_tokens": 843
+            },
+            "prompt_tokens": 556,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 556
+            },
+            "total_tokens": 1399
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "用同一预习提示合同与覆盖门直连模型；完整 NodeKernel 节点校验不在评测进程内复现（如实标注）。",
+      "review_problems": [],
+      "attempts": 1
+    },
+    {
+      "path_id": "paper.summary",
+      "title": "论文概述生成",
+      "render_kind": "model_with_policy",
+      "seam": "paper/presenting.py::SUMMARY_SYSTEM_PROMPT + expression.system_block",
+      "execution_kind": "real_generator_model_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:46:42.328307+00:00",
+      "output_digest": "b330cd0a4a1db093e43663571a31b2d5a3c49c173dddf13c96fcb6331b995674",
+      "output_chars": 97,
+      "output_preview": "{\"summaries\": {\"2401.00001\": \"该综述面向初学者，旨在通过实例介绍向量空间和矩阵分解等线性代数基础知识。\"}, \"note\": null, \"dropped\": 0}",
+      "model_locks": [
+        {
+          "lock_id": "Y2yyIEIPL0pCo_xBJSoRUw",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.3,
+            "max_tokens": 1024
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:46:42.328307Z",
+          "usage": {
+            "completion_tokens": 1019,
+            "completion_tokens_details": {
+              "reasoning_tokens": 918,
+              "text_tokens": 1019
+            },
+            "prompt_tokens": 558,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 558
+            },
+            "total_tokens": 1577
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "论文概述生成器真实调用；概述受证据逐字门控。",
+      "attempts": 1
+    },
+    {
+      "path_id": "github.insights",
+      "title": "GitHub 借鉴角度生成",
+      "render_kind": "model_with_policy",
+      "seam": "github/presenting.py（追加 system_block 与 global_writing_policy）",
+      "execution_kind": "real_generator_model_call",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:46:50.174771+00:00",
+      "output_digest": "43dd69bbee92891196e17b5dae64e3bc471f23431726b90fd81d89562b3a2461",
+      "output_chars": 116,
+      "output_preview": "{\"insights\": {\"demo/bookswap\": \"可先阅读 README 中的「发布书籍：学生发布想卖的书，再与其他同学交换。」，再核对是否适用于你的需求。\"}, \"note\": null, \"dropped\": 0}",
+      "model_locks": [
+        {
+          "lock_id": "n2X36-kWuLJep9U493nJxQ",
+          "run_id": "eval39-receipt-run",
+          "account_id": "eval39-account",
+          "project_id": "eval39-receipt",
+          "capability_name": "qwen_structured_output",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.3,
+            "max_tokens": 900,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "companion",
+            "global_writing_policy_form": "compact_default",
+            "global_writing_policy_rule_count": 7,
+            "global_writing_policy_profile_slice_id": null,
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": "low_confidence_compact_default"
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_structured_output:structured-messages-v1->json-schema-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "structured-messages-v1",
+            "output_schema_version": "json-schema-v1",
+            "recipe_version": "unknown",
+            "context_compile_version": "unknown",
+            "quality_policy_version": "unknown",
+            "estimate_version": "unknown",
+            "quota_version": "unknown",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_structured_output@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:46:50.174771Z",
+          "usage": {
+            "completion_tokens": 430,
+            "completion_tokens_details": {
+              "reasoning_tokens": 358,
+              "text_tokens": 430
+            },
+            "prompt_tokens": 638,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 638
+            },
+            "total_tokens": 1068
+          },
+          "cost_estimate": null
+        }
+      ],
+      "notes": "GitHub 借鉴角度生成器真实调用；只接受逐字安全句。",
+      "attempts": 1
+    },
+    {
+      "path_id": "composite",
+      "title": "复合计划统一综合结果",
+      "render_kind": "model_with_policy",
+      "seam": "chat/graph.py::_invoke_composite_plan",
+      "execution_kind": "composite_synthesis_render",
+      "status": "executed",
+      "executed_at": "2026-10-06T12:46:50.178346+00:00",
+      "output_digest": "6b8977297c05b011b92ae5a06a25c7d46e10e1d4a8bfb512c6b3a43ff6b0df36",
+      "output_chars": 61,
+      "output_preview": "围绕「先找论文再找 GitHub 项目，最后给综合建议」，本轮完成了：论文。 论文概述：给出线性代数入门综述与阅读顺序。",
+      "model_locks": [],
+      "notes": "真实执行复合计划的确定性综合与最终渲染；承载模型的 paper/github 步骤另有独立真实生成收据。",
+      "attempts": 1
+    }
+  ],
+  "long_task_runs": [
+    {
+      "scenario_id": "long-derivation",
+      "title": "详细推导请求",
+      "status": "executed",
+      "turns": [
+        "请详细推导勾股定理 a² + b² = c² 的面积法证明，控制在三百字以内。",
+        "再补充适用条件。"
+      ],
+      "transcript": "用户：请详细推导勾股定理 a² + b² = c² 的面积法证明，控制在三百字以内。\n助手：构造边长为 $a+b$ 的大正方形，内部拼入四个全等直角三角形（直角边 $a, b$，斜边 $c$）与一个边长为 $c$ 的小正方形。\n\n大正方形面积可表示为边长平方：$(a+b)^2 = a^2 + 2ab + b^2$。\n\n同时，它也等于四个三角形与中间小正方形面积之和：$4 \\times (\\frac{1}{2}ab) + c^2 = 2ab + c^2$。\n\n因两者表示同一面积，建立等式：$a^2 + 2ab + b^2 = 2ab + c^2$。\n\n等式两边同减 $2ab$，即得：$a^2 + b^2 = c^2$。\n用户：再补充适用条件。\n助手：此证明仅适用于直角三角形，且 $a, b$ 须为直角边，$c$ 为斜边，边长均为正实数。\n\n其核心几何前提是：利用直角三角形两锐角互余的特性，确保四个三角形斜边拼合的内角恰好为 90 度，从而在中间构成边长为 $c$ 的标准正方形。",
+      "measurements": [
+        {
+          "arm": "current-v4",
+          "scenario_id": "long-derivation",
+          "turn_index": 1,
+          "status": "done",
+          "answer_chars": 266,
+          "latency_ms": 20717,
+          "first_token_ms": 17750,
+          "input_tokens": 563,
+          "output_tokens": 1176,
+          "retry_count": 0,
+          "capability_names": [
+            "qwen_text_chat"
+          ],
+          "model_id": "qwen3.7-plus-2026-05-26",
+          "error_code": null
+        },
+        {
+          "arm": "current-v4",
+          "scenario_id": "long-derivation",
+          "turn_index": 2,
+          "status": "done",
+          "answer_chars": 116,
+          "latency_ms": 10110,
+          "first_token_ms": 8812,
+          "input_tokens": 673,
+          "output_tokens": 551,
+          "retry_count": 0,
+          "capability_names": [
+            "qwen_text_chat"
+          ],
+          "model_id": "qwen3.7-plus-2026-05-26",
+          "error_code": null
+        }
+      ],
+      "model_locks": [
+        {
+          "lock_id": "19PGv4mfemytzx4fqZEMFQ",
+          "run_id": "eval39-long-derivation-current-v4-1",
+          "account_id": "eval39-account",
+          "project_id": "P4qELsqFvMe3vly4U1OBoA",
+          "capability_name": "qwen_text_chat",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "companion",
+            "global_writing_policy_form": "direct_task",
+            "global_writing_policy_rule_count": 9,
+            "global_writing_policy_profile_slice_id": "slice-da493a62fc06bec3d60cce89543569f4",
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": null
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "chat-messages-v1",
+            "output_schema_version": "chat-completion-v1",
+            "recipe_version": "daily-parent-v2",
+            "context_compile_version": "ctx-budget-v1",
+            "quality_policy_version": "global-chat-lightweight-v4",
+            "estimate_version": "token-estimate-v2",
+            "quota_version": "model-quota-v1",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_text_chat@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:47:11.091344Z",
+          "usage": {
+            "completion_tokens": 1176,
+            "completion_tokens_details": {
+              "reasoning_tokens": 996,
+              "text_tokens": 1176
+            },
+            "prompt_tokens": 563,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 563
+            },
+            "total_tokens": 1739
+          },
+          "cost_estimate": null
+        },
+        {
+          "lock_id": "6AML9GfzIesIiQ4rFiwHNA",
+          "run_id": "eval39-long-derivation-current-v4-2",
+          "account_id": "eval39-account",
+          "project_id": "P4qELsqFvMe3vly4U1OBoA",
+          "capability_name": "qwen_text_chat",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 1024,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "companion",
+            "global_writing_policy_form": "compact_default",
+            "global_writing_policy_rule_count": 7,
+            "global_writing_policy_profile_slice_id": "slice-288db5a499a3c62b8d023dd35120db4c",
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": "low_confidence_compact_default"
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "chat-messages-v1",
+            "output_schema_version": "chat-completion-v1",
+            "recipe_version": "daily-parent-v2",
+            "context_compile_version": "ctx-budget-v1",
+            "quality_policy_version": "global-chat-lightweight-v4",
+            "estimate_version": "token-estimate-v2",
+            "quota_version": "model-quota-v1",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_text_chat@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:47:21.203759Z",
+          "usage": {
+            "completion_tokens": 551,
+            "completion_tokens_details": {
+              "reasoning_tokens": 468,
+              "text_tokens": 551
+            },
+            "prompt_tokens": 673,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 673
+            },
+            "total_tokens": 1224
+          },
+          "cost_estimate": null
+        }
+      ]
+    },
+    {
+      "scenario_id": "long-comparison",
+      "title": "详细对比请求",
+      "status": "executed",
+      "turns": [
+        "详细分析快速排序和归并排序的差异，并给出时间复杂度和适用场景，控制在四百字以内。",
+        "再举一个具体例子说明。"
+      ],
+      "transcript": "用户：详细分析快速排序和归并排序的差异，并给出时间复杂度和适用场景，控制在四百字以内。\n助手：快速排序与归并排序虽同属分治算法，但机制与特性差异显著。\n\n**核心差异**\n快排通过选取基准值将数组分区并原地交换，是不稳定排序；归并排序先递归平分数组，再合并有序子序列，需额外O(n)空间，是稳定排序。\n\n**时间复杂度**\n快排平均为O(n log n)，但极端情况下（如基准选择不当）会退化至O(n²)；归并排序无论何种情况，均严格保持在O(n log n)。\n\n**适用场景**\n快排：常数因子小，缓存命中率高。适合内存受限、对平均性能要求高的通用数组排序，是多数编程语言标准库的默认选择。\n归并排序：适合要求排序稳定性的场景；在链表排序中无需额外空间，效率极高；因其分块合并特性，也极适合无法一次性载入内存的海量数据“外部排序”。\n用户：再举一个具体例子说明。\n助手：假设你要整理一摞厚度不同的书。\n\n用快速排序的思路：你随手抽出一本书作为“标准”，把比它薄的放左边，比它厚的放右边，然后对左右两堆重复此操作。好处是直接在原桌面操作，不需要额外空间；但如果原本有两本厚度相同的书，经过左右分配后，它们的前后顺序可能会被打乱（不稳定）。\n\n用归并排序的思路：你先把书堆不断对半平分，直到每堆只有一本。接着开始两两合并，合并时为了按厚度排好序，你需要一张额外的空桌子来暂存和比对（需要额外空间）。但好处是，如果两本书厚度相同，你总是先放左边那本再放右边那本，它们原本的先后顺序能完美保留（稳定）。",
+      "measurements": [
+        {
+          "arm": "current-v4",
+          "scenario_id": "long-comparison",
+          "turn_index": 1,
+          "status": "done",
+          "answer_chars": 321,
+          "latency_ms": 22125,
+          "first_token_ms": 18828,
+          "input_tokens": 562,
+          "output_tokens": 1225,
+          "retry_count": 0,
+          "capability_names": [
+            "qwen_text_chat"
+          ],
+          "model_id": "qwen3.7-plus-2026-05-26",
+          "error_code": null
+        },
+        {
+          "arm": "current-v4",
+          "scenario_id": "long-comparison",
+          "turn_index": 2,
+          "status": "done",
+          "answer_chars": 262,
+          "latency_ms": 18969,
+          "first_token_ms": 16203,
+          "input_tokens": 777,
+          "output_tokens": 1084,
+          "retry_count": 0,
+          "capability_names": [
+            "qwen_text_chat"
+          ],
+          "model_id": "qwen3.7-plus-2026-05-26",
+          "error_code": null
+        }
+      ],
+      "model_locks": [
+        {
+          "lock_id": "CFKcghS2TXSbz9B0MfxaYA",
+          "run_id": "eval39-long-comparison-current-v4-1",
+          "account_id": "eval39-account",
+          "project_id": "_l_VbA3GXTk4oeIuXMeVVQ",
+          "capability_name": "qwen_text_chat",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "companion",
+            "global_writing_policy_form": "direct_task",
+            "global_writing_policy_rule_count": 9,
+            "global_writing_policy_profile_slice_id": "slice-2ca588cf9ab9bf8a8326889836815e61",
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": null
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "chat-messages-v1",
+            "output_schema_version": "chat-completion-v1",
+            "recipe_version": "daily-parent-v2",
+            "context_compile_version": "ctx-budget-v1",
+            "quality_policy_version": "global-chat-lightweight-v4",
+            "estimate_version": "token-estimate-v2",
+            "quota_version": "model-quota-v1",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_text_chat@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:47:43.540430Z",
+          "usage": {
+            "completion_tokens": 1225,
+            "completion_tokens_details": {
+              "reasoning_tokens": 1024,
+              "text_tokens": 1225
+            },
+            "prompt_tokens": 562,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 562
+            },
+            "total_tokens": 1787
+          },
+          "cost_estimate": null
+        },
+        {
+          "lock_id": "nIiw4TBkVnC2qmC8uCF66A",
+          "run_id": "eval39-long-comparison-current-v4-2",
+          "account_id": "eval39-account",
+          "project_id": "_l_VbA3GXTk4oeIuXMeVVQ",
+          "capability_name": "qwen_text_chat",
+          "capability_version": "1",
+          "actual_model_id": "qwen3.7-plus-2026-05-26",
+          "region": "cn-beijing",
+          "parameters": {
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "global_writing_policy_version": "global-chat-lightweight-v4",
+            "global_writing_policy_mode": "companion",
+            "global_writing_policy_form": "direct_task",
+            "global_writing_policy_rule_count": 9,
+            "global_writing_policy_profile_slice_id": "slice-b7d4f1ed312093bba88d2a62d14c939e",
+            "global_writing_policy_profile_item_count": 0,
+            "global_writing_policy_snapshot_complete": true,
+            "global_writing_policy_fallback_reason": null,
+            "global_writing_policy_degradation_reason": null
+          },
+          "prompt_version": "2026-07-24",
+          "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+          "call_contract": {
+            "prompt_version": "2026-07-24",
+            "input_schema_version": "chat-messages-v1",
+            "output_schema_version": "chat-completion-v1",
+            "recipe_version": "daily-parent-v2",
+            "context_compile_version": "ctx-budget-v1",
+            "quality_policy_version": "global-chat-lightweight-v4",
+            "estimate_version": "token-estimate-v2",
+            "quota_version": "model-quota-v1",
+            "contract_version": "call-contract-v1"
+          },
+          "fallback_path": [
+            "qwen_text_chat@1"
+          ],
+          "status": "success",
+          "retry_count": 0,
+          "degradation_reason": null,
+          "error_code": null,
+          "error_message": null,
+          "created_at": "2026-10-06T12:48:02.511222Z",
+          "usage": {
+            "completion_tokens": 1084,
+            "completion_tokens_details": {
+              "reasoning_tokens": 914,
+              "text_tokens": 1084
+            },
+            "prompt_tokens": 777,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 777
+            },
+            "total_tokens": 1861
+          },
+          "cost_estimate": null
+        }
+      ]
+    }
+  ],
+  "model_lock_count": 11,
+  "gateway_retries": [
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.tutor",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.tutor",
+      "attempt": 2,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.tutor",
+      "attempts": 3,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 2,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempts": 3,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.tutor",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.tutor",
+      "attempts": 2,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 2,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 3,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 4,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempts": 5,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.assess_evidence",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.assess_evidence",
+      "attempts": 2,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempt": 2,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.verify_tutoring",
+      "attempts": 3,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.preview",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.preview",
+      "attempt": 2,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "study.preview",
+      "attempts": 3,
+      "succeeded": true
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 1,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 2,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 3,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 4,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 5,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 6,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 7,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 8,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempt": 9,
+      "succeeded": false,
+      "error_code": "structured_output_parse_failed"
+    },
+    {
+      "capability": "qwen_structured_output",
+      "task": "",
+      "attempts": 10,
+      "succeeded": true
+    }
+  ],
+  "verification_problems": []
+}

@@ -1,0 +1,88 @@
+{
+  "threshold_version": "human-expression-deployment-thresholds-v1",
+  "generated_at": "2026-10-06T12:48:02.598959+00:00",
+  "source_report": {
+    "code_commit": "efe94f33f395233f49d0dc26d5469e591177ed01",
+    "run_lock_digest": "6a3e0d6090da09a2b77e07b098dc7b7f40407c9d581535a649d7de835882b29b",
+    "report_digest": "08826a1902982013e4bc384072983de99d9f8b8bdcae6f54da091ffc480d7a2e"
+  },
+  "thresholds": {
+    "threshold_version": "human-expression-deployment-thresholds-v1",
+    "basis": "简洁基线臂在冻结主报告中的独立测量；延迟余量 25%、首字余量 50%、输出 token 余量 25%、每回合重试余量 0.2、错误率上限 0.1。",
+    "max_calls_per_turn_increase": 0.0,
+    "max_mean_latency_ratio": 1.25,
+    "max_mean_first_token_ratio": 1.5,
+    "max_mean_output_tokens_per_call_ratio": 1.25,
+    "max_retries_per_turn_increase": 0.2,
+    "max_errors_per_turn": 0.1,
+    "require_zero_humanization_specific_calls": true
+  },
+  "measured": {
+    "baseline_arm": "concise-baseline",
+    "candidate_arm": "current-v4",
+    "baseline": {
+      "calls_per_turn": 1.0,
+      "mean_latency_ms": 8779,
+      "mean_first_token_ms": 7210,
+      "output_tokens_per_call": 469.1764705882353,
+      "retries_per_turn": 0.0,
+      "errors_per_turn": 0.11764705882352941
+    },
+    "candidate": {
+      "calls_per_turn": 1.0,
+      "mean_latency_ms": 9524,
+      "mean_first_token_ms": 9011,
+      "output_tokens_per_call": 502.3529411764706,
+      "retries_per_turn": 0.0,
+      "errors_per_turn": 0.0
+    },
+    "humanization_specific_calls_zero": true,
+    "release_status": "inconclusive"
+  },
+  "checks": [
+    {
+      "check_id": "calls_per_turn_increase",
+      "limit": 0.0,
+      "actual": 0.0,
+      "passed": true
+    },
+    {
+      "check_id": "mean_latency_ratio",
+      "limit": 1.25,
+      "actual": 1.0849,
+      "passed": true
+    },
+    {
+      "check_id": "mean_first_token_ratio",
+      "limit": 1.5,
+      "actual": 1.2498,
+      "passed": true
+    },
+    {
+      "check_id": "mean_output_tokens_per_call_ratio",
+      "limit": 1.25,
+      "actual": 1.0707,
+      "passed": true
+    },
+    {
+      "check_id": "retries_per_turn_increase",
+      "limit": 0.2,
+      "actual": 0.0,
+      "passed": true
+    },
+    {
+      "check_id": "errors_per_turn",
+      "limit": 0.1,
+      "actual": 0.0,
+      "passed": true
+    },
+    {
+      "check_id": "humanization_specific_calls_zero",
+      "limit": true,
+      "actual": true,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "problems": []
+}

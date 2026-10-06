@@ -1,0 +1,1777 @@
+{
+  "generated_at": "2026-10-06T12:37:56.982367+00:00",
+  "code_commit": "1c797faae9c9f06d98154ca5cd116b4a11a48639",
+  "suite": {
+    "suite_id": "human-expression-blind-evaluation",
+    "suite_version": "1.1.0"
+  },
+  "scale_version": "human-expression-scale-v2",
+  "candidate_arm": "current-v4",
+  "model_ids": [
+    "qwen3.7-plus-2026-05-26"
+  ],
+  "model_call_count": 12,
+  "ablations": [
+    {
+      "ablation_id": "prior-context",
+      "title": "使用前文（续接信号）",
+      "description": "候选臂在同一连续会话中，对照抑制传给策略编译器的续接文本；观察长任务/续接约束是否仍被识别并影响真实回答。",
+      "probe": {
+        "scenario_id": "ablation-prior-context",
+        "turns": [
+          "完整写一个雨天搬家的短故事，三百字以内。",
+          "继续，把后半段写完。"
+        ],
+        "profile_facts": [],
+        "tool_signal": "none"
+      },
+      "conditions": [
+        {
+          "condition": "signal-present",
+          "transcript": [
+            {
+              "user": "完整写一个雨天搬家的短故事，三百字以内。",
+              "assistant": "雨下得正大，林晓抱着最后一个纸箱冲进新公寓的楼道。纸箱边缘洇出了一圈水渍，她顾不上擦脸上的雨水，先用肩膀顶开了沉重的单元门。\n\n“这鬼天气搬家，真是辛苦你了。”房东王阿姨站在走廊里，递来一条干毛巾，“快擦擦，别感冒了。屋里提前开了暖气，挺暖和的。”\n\n林晓接过毛巾擦了擦头发。看着客厅里昨天提前送来的几盆绿植，虽然外面风雨交加，纸箱也湿了一角，但踩在干爽温热的木地板上，闻着空气里淡淡的香薰味，她忽然觉得，这场狼狈的雨天搬家，似乎也是个不错的开始。",
+              "status": "done",
+              "error_code": null
+            },
+            {
+              "user": "继续，把后半段写完。",
+              "assistant": "她放下纸箱，撕开胶带。里面装的是常用的马克杯和半袋咖啡豆。虽然最上面的一本书角被雨水打湿了一点，但无伤大雅。\n\n林晓挑出杯子去厨房接水。老式饮水机发出轻微的嗡嗡声，热水很快冲开了咖啡的香气，和屋里的香薰味融在一起。她端着杯子走到窗边，玻璃外是灰蒙蒙的雨幕和摇晃的树枝，玻璃内是暖黄色的灯光。\n\n她窝进刚铺好垫子的单人沙发里，喝了一口热咖啡。胃里的暖意渐渐化开了奔波的疲惫，窗外的雨声此刻听起来不再像催促，倒像是为新生活鼓掌的白噪音。",
+              "status": "done",
+              "error_code": null
+            }
+          ],
+          "measurements": [
+            {
+              "arm": "current-v4",
+              "scenario_id": "ablation-prior-context",
+              "turn_index": 1,
+              "status": "done",
+              "answer_chars": 224,
+              "latency_ms": 15172,
+              "first_token_ms": 12750,
+              "input_tokens": 552,
+              "output_tokens": 723,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            },
+            {
+              "arm": "current-v4",
+              "scenario_id": "ablation-prior-context",
+              "turn_index": 2,
+              "status": "done",
+              "answer_chars": 216,
+              "latency_ms": 14640,
+              "first_token_ms": 12843,
+              "input_tokens": 715,
+              "output_tokens": 797,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            }
+          ],
+          "compiled_snapshots": [
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "detail-follows-request",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "task-output-first",
+                "length-follows-request",
+                "no-extra-commentary",
+                "source-completeness"
+              ],
+              "constraints": [
+                "detail_requested"
+              ],
+              "output_tokens": 2048,
+              "system_block_digest": "8b612a8415cbcf2f6edf7d26603c53503a62d30978e73cb17661b27bd0b582b5"
+            },
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "detail-follows-request",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "task-output-first",
+                "length-follows-request",
+                "no-extra-commentary",
+                "source-completeness"
+              ],
+              "constraints": [
+                "detail_requested"
+              ],
+              "output_tokens": 2048,
+              "system_block_digest": "8b612a8415cbcf2f6edf7d26603c53503a62d30978e73cb17661b27bd0b582b5"
+            }
+          ],
+          "model_locks": [
+            {
+              "lock_id": "NriXxTn8ZPwdDjKvCUS4nA",
+              "run_id": "eval39-ablation-prior-context-current-v4-1-prior-context-signal-present",
+              "account_id": "eval39-account",
+              "project_id": "eralLF305z95dclf3b9pHg",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "direct_task",
+                "global_writing_policy_rule_count": 9,
+                "global_writing_policy_profile_slice_id": "slice-1f9da1d56369da7d7d8f07486c73c49d",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:35:50.133003Z",
+              "usage": {
+                "completion_tokens": 723,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 574,
+                  "text_tokens": 723
+                },
+                "prompt_tokens": 552,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 552
+                },
+                "total_tokens": 1275
+              },
+              "cost_estimate": null
+            },
+            {
+              "lock_id": "vw2DvV9EwpCv8idxHFagIA",
+              "run_id": "eval39-ablation-prior-context-current-v4-2-prior-context-signal-present",
+              "account_id": "eval39-account",
+              "project_id": "eralLF305z95dclf3b9pHg",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "direct_task",
+                "global_writing_policy_rule_count": 9,
+                "global_writing_policy_profile_slice_id": "slice-47a881e83ba39e7d613024751902aef2",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:36:04.776876Z",
+              "usage": {
+                "completion_tokens": 797,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 649,
+                  "text_tokens": 797
+                },
+                "prompt_tokens": 715,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 715
+                },
+                "total_tokens": 1512
+              },
+              "cost_estimate": null
+            }
+          ],
+          "gates": [
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 1
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 1
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 1
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 1
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 2
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 2
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 2
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 2
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 2
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 2
+            }
+          ]
+        },
+        {
+          "condition": "signal-absent",
+          "transcript": [
+            {
+              "user": "完整写一个雨天搬家的短故事，三百字以内。",
+              "assistant": "雨点砸在防水布上，噼啪作响。林夏抹去脸上的雨水，将最后一个纸箱塞进货车。司机探出头喊：“齐了没？雨越来越大了！”\n\n“齐了！”她拉紧绳索，坐进副驾驶。湿透的帆布鞋在脚垫上留下泥印。\n\n这是她在这座城市的第三次搬家。前两次都是晴天，却搬得满心疲惫。这次撞上大雨，反而有种破釜沉舟的痛快。\n\n货车驶入雨幕，雨刷器规律地摆动。车厢里装着她的全部家当，不多，但足够撑起新生活。林夏看向窗外模糊的街景，深吸了一口带着泥土腥气的冷空气。\n\n虽然浑身湿透、略显狼狈，但看着导航上逐渐缩短的距离，她忍不住弯了弯嘴角。\n\n“前面转弯就到了。”司机说。\n\n林夏点点头，望向雨雾中逐渐清晰的小区轮廓。新家，终于到了。",
+              "status": "done",
+              "error_code": null
+            },
+            {
+              "user": "继续，把后半段写完。",
+              "assistant": "师傅们披着雨衣迅速卸货，林夏拿着钥匙跑上四楼，拧开了新家的门。\n\n屋里空荡荡的，纸箱堆满客厅。空气中还有些未散尽的空置味，但窗外的雨声把屋子衬得很安静。\n\n她没急着拆包，先去厨房烧了一壶热水。水汽氤氲中，她捧着马克杯靠在窗边。楼下的梧桐树在风雨里摇晃，雨水顺着玻璃蜿蜒流下。\n\n喝了一口热水，暖意终于驱散了骨头里的寒气。湿透的头发贴在脸颊上，有些发痒。\n\n看着满地狼藉的纸箱，林夏长长地舒了一口气。外面的雨还在下，但她知道，自己终于安顿下来了。",
+              "status": "done",
+              "error_code": null
+            }
+          ],
+          "measurements": [
+            {
+              "arm": "current-v4",
+              "scenario_id": "ablation-prior-context",
+              "turn_index": 1,
+              "status": "done",
+              "answer_chars": 297,
+              "latency_ms": 15266,
+              "first_token_ms": 12233,
+              "input_tokens": 552,
+              "output_tokens": 848,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            },
+            {
+              "arm": "current-v4",
+              "scenario_id": "ablation-prior-context",
+              "turn_index": 2,
+              "status": "done",
+              "answer_chars": 222,
+              "latency_ms": 15328,
+              "first_token_ms": 13328,
+              "input_tokens": 684,
+              "output_tokens": 782,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            }
+          ],
+          "compiled_snapshots": [
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "detail-follows-request",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "task-output-first",
+                "length-follows-request",
+                "no-extra-commentary",
+                "source-completeness"
+              ],
+              "constraints": [
+                "detail_requested"
+              ],
+              "output_tokens": 2048,
+              "system_block_digest": "8b612a8415cbcf2f6edf7d26603c53503a62d30978e73cb17661b27bd0b582b5"
+            },
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "minimal-answer",
+                "no-expansion",
+                "stop-when-done"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "83a070a931fb0c4c9050058a50435ebc45c117987930bfe32568ba934b479f92"
+            }
+          ],
+          "model_locks": [
+            {
+              "lock_id": "J-EZjruOlpYrnog2FHsh6g",
+              "run_id": "eval39-ablation-prior-context-current-v4-1-prior-context-signal-absent",
+              "account_id": "eval39-account",
+              "project_id": "Iz6vJNcXCbgLZLCliLs_Ww",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 2048,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "direct_task",
+                "global_writing_policy_rule_count": 9,
+                "global_writing_policy_profile_slice_id": "slice-e0bd2983ab7dee23e4aed375f0555495",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:36:20.234976Z",
+              "usage": {
+                "completion_tokens": 848,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 648,
+                  "text_tokens": 848
+                },
+                "prompt_tokens": 552,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 552
+                },
+                "total_tokens": 1400
+              },
+              "cost_estimate": null
+            },
+            {
+              "lock_id": "cU2DCO4vwIRusdkYMwK3Gg",
+              "run_id": "eval39-ablation-prior-context-current-v4-2-prior-context-signal-absent",
+              "account_id": "eval39-account",
+              "project_id": "Iz6vJNcXCbgLZLCliLs_Ww",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "compact_default",
+                "global_writing_policy_rule_count": 7,
+                "global_writing_policy_profile_slice_id": "slice-3018445a759068c3f66dbe9545c2e10a",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": "low_confidence_compact_default"
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:36:35.564627Z",
+              "usage": {
+                "completion_tokens": 782,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 628,
+                  "text_tokens": 782
+                },
+                "prompt_tokens": 684,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 684
+                },
+                "total_tokens": 1466
+              },
+              "cost_estimate": null
+            }
+          ],
+          "gates": [
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 1
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 1
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 1
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 1
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 2
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 2
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 2
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 2
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 2
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 2
+            }
+          ]
+        }
+      ],
+      "signal_effective": true,
+      "signal_evidence": "present=['detail_requested'], absent=[]"
+    },
+    {
+      "ablation_id": "explicit-preferences",
+      "title": "明确偏好（采用切片）",
+      "description": "候选臂在存在明确偏好画像事实时，对照不注入采用切片；观察 adopted-* 偏好规则是否进入系统块并影响真实回答。",
+      "probe": {
+        "scenario_id": "pref-brief",
+        "turns": [
+          "解释一下熵是什么，回答简短直接一点。",
+          "一句话版本呢？"
+        ],
+        "profile_facts": [
+          "回答喜欢简短直接"
+        ],
+        "tool_signal": "none"
+      },
+      "conditions": [
+        {
+          "condition": "signal-present",
+          "transcript": [
+            {
+              "user": "解释一下熵是什么，回答简短直接一点。",
+              "assistant": "熵是衡量一个系统混乱或无序程度的物理量。系统越乱、越不可预测，熵就越大。\n\n举个例子，整齐排列的扑克牌熵很低，洗乱之后熵就变高了。在自然界中，孤立系统总是自发地从有序走向无序（也就是熵增），比如热水会自动变凉，打碎的杯子不会自动复原。",
+              "status": "done",
+              "error_code": null
+            },
+            {
+              "user": "一句话版本呢？",
+              "assistant": "熵是衡量一个系统混乱或无序程度的物理量。",
+              "status": "done",
+              "error_code": null
+            }
+          ],
+          "measurements": [
+            {
+              "arm": "current-v4",
+              "scenario_id": "pref-brief",
+              "turn_index": 1,
+              "status": "done",
+              "answer_chars": 117,
+              "latency_ms": 9562,
+              "first_token_ms": 8281,
+              "input_tokens": 753,
+              "output_tokens": 500,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            },
+            {
+              "arm": "current-v4",
+              "scenario_id": "pref-brief",
+              "turn_index": 2,
+              "status": "done",
+              "answer_chars": 20,
+              "latency_ms": 3532,
+              "first_token_ms": 3328,
+              "input_tokens": 808,
+              "output_tokens": 155,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            }
+          ],
+          "compiled_snapshots": [
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "adopted-brevity-default",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "level-adapted",
+                "concrete-example",
+                "scope-limited",
+                "no-forced-check"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "f62ad0aa62ea354f2f91dd913a64a6490b02217e67c7f2f62959d0dce8ca6a3f"
+            },
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "adopted-brevity-default",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "minimal-answer",
+                "no-expansion",
+                "stop-when-done"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "7c9d171122d990a8d9fcabf8609ae49c260e28e22433c2f9a502b021457523ca"
+            }
+          ],
+          "model_locks": [
+            {
+              "lock_id": "4aOEvI-u8kwJPa4PE555KA",
+              "run_id": "eval39-pref-brief-current-v4-1-explicit-preferences-signal-present",
+              "account_id": "eval39-account",
+              "project_id": "uz2v-UEbydMuZpNHkVTs9w",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "explanation",
+                "global_writing_policy_rule_count": 9,
+                "global_writing_policy_profile_slice_id": "slice-292818e80e8b22bb425568ad66836b53",
+                "global_writing_policy_profile_item_count": 1,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:36:45.333570Z",
+              "usage": {
+                "completion_tokens": 500,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 419,
+                  "text_tokens": 500
+                },
+                "prompt_tokens": 753,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 753
+                },
+                "total_tokens": 1253
+              },
+              "cost_estimate": null
+            },
+            {
+              "lock_id": "y7yAJOmC-oUC2MMAV0eiMg",
+              "run_id": "eval39-pref-brief-current-v4-2-explicit-preferences-signal-present",
+              "account_id": "eval39-account",
+              "project_id": "uz2v-UEbydMuZpNHkVTs9w",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "compact_default",
+                "global_writing_policy_rule_count": 8,
+                "global_writing_policy_profile_slice_id": "slice-0b123543eb96cc0fd828731e0705364e",
+                "global_writing_policy_profile_item_count": 1,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": "low_confidence_compact_default"
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:36:48.861239Z",
+              "usage": {
+                "completion_tokens": 155,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 139,
+                  "text_tokens": 155
+                },
+                "prompt_tokens": 808,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 808
+                },
+                "total_tokens": 963
+              },
+              "cost_estimate": null
+            }
+          ],
+          "gates": [
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 1
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 1
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 1
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 1
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 2
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 2
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 2
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 2
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 2
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 2
+            }
+          ]
+        },
+        {
+          "condition": "signal-absent",
+          "transcript": [
+            {
+              "user": "解释一下熵是什么，回答简短直接一点。",
+              "assistant": "熵是衡量一个系统混乱或无序程度的物理量。简单来说，系统越混乱，熵就越大。\n\n就像把一滴墨水滴进水里，墨水慢慢散开变均匀，这就是熵增（越来越无序）；想让散开的墨水重新聚回一滴，就必须额外消耗能量去干预。在自然状态下，孤立事物总是自发地朝着更混乱、熵更高的方向发展。",
+              "status": "done",
+              "error_code": null
+            },
+            {
+              "user": "一句话版本呢？",
+              "assistant": "熵是衡量系统混乱或无序程度的物理量，代表事物自发走向无序的趋势。",
+              "status": "done",
+              "error_code": null
+            }
+          ],
+          "measurements": [
+            {
+              "arm": "current-v4",
+              "scenario_id": "pref-brief",
+              "turn_index": 1,
+              "status": "done",
+              "answer_chars": 131,
+              "latency_ms": 11358,
+              "first_token_ms": 10016,
+              "input_tokens": 505,
+              "output_tokens": 639,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            },
+            {
+              "arm": "current-v4",
+              "scenario_id": "pref-brief",
+              "turn_index": 2,
+              "status": "done",
+              "answer_chars": 32,
+              "latency_ms": 6203,
+              "first_token_ms": 5937,
+              "input_tokens": 565,
+              "output_tokens": 321,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            }
+          ],
+          "compiled_snapshots": [
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "level-adapted",
+                "concrete-example",
+                "scope-limited",
+                "no-forced-check"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "0cf8401ff3d0a933685b074b719c5713c35ce65b3ae86e3be4fce276b631d7cb"
+            },
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "minimal-answer",
+                "no-expansion",
+                "stop-when-done"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "83a070a931fb0c4c9050058a50435ebc45c117987930bfe32568ba934b479f92"
+            }
+          ],
+          "model_locks": [
+            {
+              "lock_id": "1RCV6qozlwFUYOiGxSJ9LA",
+              "run_id": "eval39-pref-brief-current-v4-1-explicit-preferences-signal-absent",
+              "account_id": "eval39-account",
+              "project_id": "zzSnEE-NgoHTsxCSCS29Pw",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "explanation",
+                "global_writing_policy_rule_count": 8,
+                "global_writing_policy_profile_slice_id": null,
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:37:00.415213Z",
+              "usage": {
+                "completion_tokens": 639,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 553,
+                  "text_tokens": 639
+                },
+                "prompt_tokens": 505,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 505
+                },
+                "total_tokens": 1144
+              },
+              "cost_estimate": null
+            },
+            {
+              "lock_id": "gRnD1KAq7Mtg6tV2fecjow",
+              "run_id": "eval39-pref-brief-current-v4-2-explicit-preferences-signal-absent",
+              "account_id": "eval39-account",
+              "project_id": "zzSnEE-NgoHTsxCSCS29Pw",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "compact_default",
+                "global_writing_policy_rule_count": 7,
+                "global_writing_policy_profile_slice_id": null,
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": "low_confidence_compact_default"
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:37:06.617126Z",
+              "usage": {
+                "completion_tokens": 321,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 299,
+                  "text_tokens": 321
+                },
+                "prompt_tokens": 565,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 565
+                },
+                "total_tokens": 886
+              },
+              "cost_estimate": null
+            }
+          ],
+          "gates": [
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 1
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 1
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 1
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 1
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 2
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 2
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 2
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": true,
+              "detail": "本轮无工具失败信号。",
+              "turn_index": 2
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 2
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 2
+            }
+          ]
+        }
+      ],
+      "signal_effective": true,
+      "signal_evidence": "present_adopted=['adopted-brevity-default'], absent_adopted=[]"
+    },
+    {
+      "ablation_id": "conditional-acknowledgement",
+      "title": "条件承接（部分结果如实说明）",
+      "description": "候选臂在部分结果信号下，对照移除该信号；评测发送器不执行检索工具，信号在策略接缝上注入，真实模型回答与运行锁仍然可查。",
+      "probe": {
+        "scenario_id": "tool-search-partial",
+        "turns": [
+          "帮我找一下这三个问题的资料。",
+          "先给能确认的部分。"
+        ],
+        "profile_facts": [],
+        "tool_signal": "partial"
+      },
+      "conditions": [
+        {
+          "condition": "signal-present",
+          "transcript": [
+            {
+              "user": "帮我找一下这三个问题的资料。",
+              "assistant": "你好像还没把这三个问题发过来呢。把具体的问题发给我吧，我来帮你找资料。",
+              "status": "done",
+              "error_code": null
+            },
+            {
+              "user": "先给能确认的部分。",
+              "assistant": "我这边确实没看到那三个问题，所以暂时没有任何能确认的资料。是不是发送的时候卡住了，或者漏发了？你把问题发过来，我接着帮你找。",
+              "status": "done",
+              "error_code": null
+            }
+          ],
+          "measurements": [
+            {
+              "arm": "current-v4",
+              "scenario_id": "tool-search-partial",
+              "turn_index": 1,
+              "status": "done",
+              "answer_chars": 35,
+              "latency_ms": 6030,
+              "first_token_ms": 5703,
+              "input_tokens": 519,
+              "output_tokens": 322,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            },
+            {
+              "arm": "current-v4",
+              "scenario_id": "tool-search-partial",
+              "turn_index": 2,
+              "status": "done",
+              "answer_chars": 62,
+              "latency_ms": 11625,
+              "first_token_ms": 11157,
+              "input_tokens": 557,
+              "output_tokens": 565,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            }
+          ],
+          "compiled_snapshots": [
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "partial-results-stated",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "result-first",
+                "evidence-verbatim",
+                "brief-interpretation",
+                "status-accurate"
+              ],
+              "constraints": [
+                "partial_results"
+              ],
+              "output_tokens": 1024,
+              "system_block_digest": "fc70752c8a72d7891b610a6db6e0751b7d03374753261d3dc8ca683997d05e22"
+            },
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "partial-results-stated",
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "result-first",
+                "evidence-verbatim",
+                "brief-interpretation",
+                "status-accurate"
+              ],
+              "constraints": [
+                "partial_results"
+              ],
+              "output_tokens": 1024,
+              "system_block_digest": "fc70752c8a72d7891b610a6db6e0751b7d03374753261d3dc8ca683997d05e22"
+            }
+          ],
+          "model_locks": [
+            {
+              "lock_id": "e88sd52kreGfNaW5PMhyRQ",
+              "run_id": "eval39-tool-search-partial-current-v4-1-conditional-acknowledgement-signal-present",
+              "account_id": "eval39-account",
+              "project_id": "dg-CvKVOqk93KcklMdkyjA",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "tool_result",
+                "global_writing_policy_rule_count": 9,
+                "global_writing_policy_profile_slice_id": "slice-a5a9d60ce2783e363589b03e07250ae1",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:37:12.830976Z",
+              "usage": {
+                "completion_tokens": 322,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 297,
+                  "text_tokens": 322
+                },
+                "prompt_tokens": 519,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 519
+                },
+                "total_tokens": 841
+              },
+              "cost_estimate": null
+            },
+            {
+              "lock_id": "Y0SzS-kbslkEP0bZpAsayQ",
+              "run_id": "eval39-tool-search-partial-current-v4-2-conditional-acknowledgement-signal-present",
+              "account_id": "eval39-account",
+              "project_id": "dg-CvKVOqk93KcklMdkyjA",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "tool_result",
+                "global_writing_policy_rule_count": 9,
+                "global_writing_policy_profile_slice_id": "slice-abc0c4bded2919ac98b42061fcbb4498",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:37:24.465157Z",
+              "usage": {
+                "completion_tokens": 565,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 526,
+                  "text_tokens": 565
+                },
+                "prompt_tokens": 557,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 557
+                },
+                "total_tokens": 1122
+              },
+              "cost_estimate": null
+            }
+          ],
+          "gates": [
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 1
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 1
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": false,
+              "detail": "未如实说明只拿到部分结果。",
+              "turn_index": 1
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 1
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 2
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 2
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 2
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": false,
+              "detail": "未如实说明只拿到部分结果。",
+              "turn_index": 2
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 2
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 2
+            }
+          ]
+        },
+        {
+          "condition": "signal-absent",
+          "transcript": [
+            {
+              "user": "帮我找一下这三个问题的资料。",
+              "assistant": "好，不过你好像还没把问题发出来呢。发给我吧，我来帮你找。",
+              "status": "done",
+              "error_code": null
+            },
+            {
+              "user": "先给能确认的部分。",
+              "assistant": "能确认的是你需要找三个问题的资料，我已经准备好了。发来吧。",
+              "status": "done",
+              "error_code": null
+            }
+          ],
+          "measurements": [
+            {
+              "arm": "current-v4",
+              "scenario_id": "tool-search-partial",
+              "turn_index": 1,
+              "status": "done",
+              "answer_chars": 28,
+              "latency_ms": 18108,
+              "first_token_ms": 17828,
+              "input_tokens": 532,
+              "output_tokens": 969,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            },
+            {
+              "arm": "current-v4",
+              "scenario_id": "tool-search-partial",
+              "turn_index": 2,
+              "status": "done",
+              "answer_chars": 29,
+              "latency_ms": 14187,
+              "first_token_ms": 13953,
+              "input_tokens": 500,
+              "output_tokens": 725,
+              "retry_count": 0,
+              "capability_names": [
+                "qwen_text_chat"
+              ],
+              "model_id": "qwen3.7-plus-2026-05-26",
+              "error_code": null
+            }
+          ],
+          "compiled_snapshots": [
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "task-output-first",
+                "length-follows-request",
+                "no-extra-commentary",
+                "source-completeness"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "33b33aeae42170b280b2df2c5f5a518e2051dac9f9e813d50039821817684b34"
+            },
+            {
+              "version": "global-chat-lightweight-v4",
+              "rule_ids": [
+                "answer-first",
+                "brief-answer",
+                "structure-optional",
+                "no-filler-ending",
+                "minimal-answer",
+                "no-expansion",
+                "stop-when-done"
+              ],
+              "constraints": [],
+              "output_tokens": 1024,
+              "system_block_digest": "83a070a931fb0c4c9050058a50435ebc45c117987930bfe32568ba934b479f92"
+            }
+          ],
+          "model_locks": [
+            {
+              "lock_id": "ynZml2FL9phhTdqD0f35lA",
+              "run_id": "eval39-tool-search-partial-current-v4-1-conditional-acknowledgement-signal-absent",
+              "account_id": "eval39-account",
+              "project_id": "cARxDYhP29eckDomehktwQ",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "direct_task",
+                "global_writing_policy_rule_count": 8,
+                "global_writing_policy_profile_slice_id": "slice-1aab2afd31f031cdb522ed986146d611",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": null
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:37:42.782927Z",
+              "usage": {
+                "completion_tokens": 969,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 946,
+                  "text_tokens": 969
+                },
+                "prompt_tokens": 532,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 532
+                },
+                "total_tokens": 1501
+              },
+              "cost_estimate": null
+            },
+            {
+              "lock_id": "FoGsy49vd6o1qMvFW2lpGQ",
+              "run_id": "eval39-tool-search-partial-current-v4-2-conditional-acknowledgement-signal-absent",
+              "account_id": "eval39-account",
+              "project_id": "cARxDYhP29eckDomehktwQ",
+              "capability_name": "qwen_text_chat",
+              "capability_version": "1",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "region": "cn-beijing",
+              "parameters": {
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "global_writing_policy_version": "global-chat-lightweight-v4",
+                "global_writing_policy_mode": "companion",
+                "global_writing_policy_form": "compact_default",
+                "global_writing_policy_rule_count": 7,
+                "global_writing_policy_profile_slice_id": "slice-79195c1a2304fd9a44f77e75a986a4af",
+                "global_writing_policy_profile_item_count": 0,
+                "global_writing_policy_snapshot_complete": true,
+                "global_writing_policy_fallback_reason": null,
+                "global_writing_policy_degradation_reason": "low_confidence_compact_default"
+              },
+              "prompt_version": "2026-07-24",
+              "input_output_contract": "qwen_text_chat:chat-messages-v1->chat-completion-v1",
+              "call_contract": {
+                "prompt_version": "2026-07-24",
+                "input_schema_version": "chat-messages-v1",
+                "output_schema_version": "chat-completion-v1",
+                "recipe_version": "daily-parent-v2",
+                "context_compile_version": "ctx-budget-v1",
+                "quality_policy_version": "global-chat-lightweight-v4",
+                "estimate_version": "token-estimate-v2",
+                "quota_version": "model-quota-v1",
+                "contract_version": "call-contract-v1"
+              },
+              "fallback_path": [
+                "qwen_text_chat@1"
+              ],
+              "status": "success",
+              "retry_count": 0,
+              "degradation_reason": null,
+              "error_code": null,
+              "error_message": null,
+              "created_at": "2026-10-06T12:37:56.978921Z",
+              "usage": {
+                "completion_tokens": 725,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 707,
+                  "text_tokens": 725
+                },
+                "prompt_tokens": 500,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0,
+                  "text_tokens": 500
+                },
+                "total_tokens": 1225
+              },
+              "cost_estimate": null
+            }
+          ],
+          "gates": [
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 1
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 1
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": false,
+              "detail": "未如实说明只拿到部分结果。",
+              "turn_index": 1
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 1
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 1
+            },
+            {
+              "gate": "fact_drift",
+              "passed": true,
+              "detail": "未声明受保护事实。",
+              "turn_index": 2
+            },
+            {
+              "gate": "fabricated_experience",
+              "passed": true,
+              "detail": "未发现编造经历。",
+              "turn_index": 2
+            },
+            {
+              "gate": "boundary_violation",
+              "passed": true,
+              "detail": "无本轮明确边界。",
+              "turn_index": 2
+            },
+            {
+              "gate": "failure_disguised",
+              "passed": false,
+              "detail": "未如实说明只拿到部分结果。",
+              "turn_index": 2
+            },
+            {
+              "gate": "task_incomplete",
+              "passed": true,
+              "detail": "任务必要内容完整。",
+              "turn_index": 2
+            },
+            {
+              "gate": "over_proactive",
+              "passed": true,
+              "detail": "未发现过度主动。",
+              "turn_index": 2
+            }
+          ]
+        }
+      ],
+      "signal_effective": true,
+      "signal_evidence": "present=['partial_results'], absent=[]"
+    }
+  ],
+  "limitations": [
+    "工具部分结果信号由评测侧在策略接缝注入；评测发送器不执行检索工具。",
+    "每项消融每条件一轮真实候选臂会话，样本用于信号效果核查，不单独宣称收益。",
+    "消融回答未进行新增人工评分；主盲评与放行结论仍以冻结评分入口为准。"
+  ],
+  "verification_problems": []
+}
