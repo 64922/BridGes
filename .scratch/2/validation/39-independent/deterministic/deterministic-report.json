@@ -1,0 +1,1404 @@
+{
+  "passed": true,
+  "checkpoint_count": 31,
+  "checkpoint_passed": 31,
+  "checkpoints": [
+    {
+      "checkpoint_id": "coverage-matrix",
+      "title": "原创场景矩阵覆盖全部类别与正式路径",
+      "passed": true,
+      "detail": "场景 59 组"
+    },
+    {
+      "checkpoint_id": "arm-compile-sweep",
+      "title": "全部场景三臂编译版本/额度一致",
+      "passed": true,
+      "detail": "检查 110 个回合"
+    },
+    {
+      "checkpoint_id": "formal-path-chat.companion",
+      "title": "正式路径有场景与接线证据：日常陪伴普通聊天",
+      "passed": true,
+      "detail": "scenarios=38, evidence=tests/chat/test_improvement21_contextual_expression.py"
+    },
+    {
+      "checkpoint_id": "formal-path-chat.study",
+      "title": "正式路径有场景与接线证据：学习模式普通聊天（非课时任务）",
+      "passed": true,
+      "detail": "scenarios=1, evidence=tests/chat/test_v2_18_study_tutoring.py"
+    },
+    {
+      "checkpoint_id": "formal-path-study.tutoring",
+      "title": "正式路径有场景与接线证据：学习辅导生成",
+      "passed": true,
+      "detail": "scenarios=2, evidence=tests/chat/test_improvement22_unified_profile_expression.py"
+    },
+    {
+      "checkpoint_id": "formal-path-study.review",
+      "title": "正式路径有场景与接线证据：复盘出题与判定反馈",
+      "passed": true,
+      "detail": "scenarios=2, evidence=tests/chat/test_v2_19_study_review.py"
+    },
+    {
+      "checkpoint_id": "formal-path-study.summary",
+      "title": "正式路径有场景与接线证据：学习总结生成",
+      "passed": true,
+      "detail": "scenarios=1, evidence=tests/chat/test_improvement36_policy_acceptance.py"
+    },
+    {
+      "checkpoint_id": "formal-path-study.scope",
+      "title": "正式路径有场景与接线证据：学习范围/预习说明",
+      "passed": true,
+      "detail": "scenarios=1, evidence=tests/chat/test_improvement31_study_scope_preview.py"
+    },
+    {
+      "checkpoint_id": "formal-path-paper.summary",
+      "title": "正式路径有场景与接线证据：论文概述生成",
+      "passed": true,
+      "detail": "scenarios=2, evidence=tests/paper/test_paper_issue24.py::test_summary_generator_uses_policy_system_block_and_output_budget"
+    },
+    {
+      "checkpoint_id": "formal-path-github.insights",
+      "title": "正式路径有场景与接线证据：GitHub 借鉴角度生成",
+      "passed": true,
+      "detail": "scenarios=2, evidence=tests/github/test_github_acceptance_insights.py"
+    },
+    {
+      "checkpoint_id": "formal-path-commute.result",
+      "title": "正式路径有场景与接线证据：通勤路线结果",
+      "passed": true,
+      "detail": "scenarios=1, evidence=src/bridges/commute/presenting.py"
+    },
+    {
+      "checkpoint_id": "formal-path-resources.result",
+      "title": "正式路径有场景与接线证据：学习资料路径结果",
+      "passed": true,
+      "detail": "scenarios=1, evidence=src/bridges/resources/presenting.py"
+    },
+    {
+      "checkpoint_id": "formal-path-tieba.research",
+      "title": "正式路径有场景与接线证据：贴吧取证与研究说明",
+      "passed": true,
+      "detail": "scenarios=1, evidence=src/bridges/tieba/presenting.py"
+    },
+    {
+      "checkpoint_id": "formal-path-career_plan.result",
+      "title": "正式路径有场景与接线证据：职业规划结果",
+      "passed": true,
+      "detail": "scenarios=1, evidence=src/bridges/career_plan/presenting.py"
+    },
+    {
+      "checkpoint_id": "formal-path-composite",
+      "title": "正式路径有场景与接线证据：复合计划统一综合结果",
+      "passed": true,
+      "detail": "scenarios=1, evidence=tests/chat/test_issue37_composite_dispatch.py"
+    },
+    {
+      "checkpoint_id": "formal-path-fixed_copy",
+      "title": "正式路径有场景与接线证据：澄清/错误/空结果/进度/部分成功固定文案",
+      "passed": true,
+      "detail": "scenarios=5, evidence=tests/state_copy/test_issue23_state_copy_registry.py"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-error-web-web_search.degradation.provider_unready",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "web_search.degradation.provider_unready: states=['degraded', 'provider_unready']"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-empty-retrieval-retrieval.empty.no_hits",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "retrieval.empty.no_hits: states=['empty']"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-clarification-route-chat.clarification.task_ambiguity",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "chat.clarification.task_ambiguity: states=['clarification', 'task_ambiguity']"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-progress-stop-chat.stop.user_stopped",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "chat.stop.user_stopped: states=['stopped']"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-progress-stop-chat.progress.thinking_stopped",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "chat.progress.thinking_stopped: states=['stopped']"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-partial-result-retrieval.partial.conflict",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "retrieval.partial.conflict: states=['partial', 'conflict']"
+    },
+    {
+      "checkpoint_id": "fixed-copy-fixed-partial-result-chat.result.outcome.partial",
+      "title": "固定文案路径已登记真实状态",
+      "passed": true,
+      "detail": "chat.result.outcome.partial: states=['partial']"
+    },
+    {
+      "checkpoint_id": "ablation-prior-context-prior-context-detail-retained",
+      "title": "使用前文时保留长任务额度与详细约束",
+      "passed": true,
+      "detail": "constraints=('detail_requested',), tokens=2048"
+    },
+    {
+      "checkpoint_id": "ablation-prior-context-prior-context-ablated",
+      "title": "去掉前文后不再推断长任务",
+      "passed": true,
+      "detail": "constraints=()"
+    },
+    {
+      "checkpoint_id": "ablation-explicit-preferences-preference-rules-present",
+      "title": "明确偏好进入现行策略（adopted-* 规则）",
+      "passed": true,
+      "detail": "rule_ids=('adopted-brevity-default', 'answer-first', 'brief-answer', 'structure-optional', 'no-filler-ending', 'level-adapted', 'concrete-example', 'scope-limited', 'no-forced-check')"
+    },
+    {
+      "checkpoint_id": "ablation-explicit-preferences-preference-rules-ablated",
+      "title": "去掉采用切片后不再注入偏好规则",
+      "passed": true,
+      "detail": "rule_ids=('answer-first', 'brief-answer', 'structure-optional', 'no-filler-ending', 'level-adapted', 'concrete-example', 'scope-limited', 'no-forced-check')"
+    },
+    {
+      "checkpoint_id": "ablation-explicit-preferences-legacy-white-list-drops-atomic",
+      "title": "历史 v2 白名单丢弃无类别原子条目（历史事实对照）",
+      "passed": true,
+      "detail": "rule_ids=('answer-first', 'brief-answer', 'structure-optional', 'no-filler-ending', 'level-adapted', 'concrete-example', 'scope-limited', 'check-understanding'), profile=()"
+    },
+    {
+      "checkpoint_id": "ablation-conditional-acknowledgement-partial-acknowledgement-present",
+      "title": "部分结果触发如实说明约束",
+      "passed": true,
+      "detail": "constraints=('partial_results',)"
+    },
+    {
+      "checkpoint_id": "ablation-conditional-acknowledgement-partial-acknowledgement-ablated",
+      "title": "去掉部分结果信号后不再要求如实说明",
+      "passed": true,
+      "detail": "constraints=()"
+    },
+    {
+      "checkpoint_id": "ablation-conditional-acknowledgement-legacy-no-partial-signal",
+      "title": "历史 v2 无部分结果条件承接信号（历史事实对照）",
+      "passed": true,
+      "detail": "constraints=()"
+    }
+  ],
+  "ablations": {
+    "prior-context": [
+      {
+        "checkpoint_id": "prior-context-detail-retained",
+        "title": "使用前文时保留长任务额度与详细约束",
+        "passed": true,
+        "detail": "constraints=('detail_requested',), tokens=2048"
+      },
+      {
+        "checkpoint_id": "prior-context-ablated",
+        "title": "去掉前文后不再推断长任务",
+        "passed": true,
+        "detail": "constraints=()"
+      }
+    ],
+    "explicit-preferences": [
+      {
+        "checkpoint_id": "preference-rules-present",
+        "title": "明确偏好进入现行策略（adopted-* 规则）",
+        "passed": true,
+        "detail": "rule_ids=('adopted-brevity-default', 'answer-first', 'brief-answer', 'structure-optional', 'no-filler-ending', 'level-adapted', 'concrete-example', 'scope-limited', 'no-forced-check')"
+      },
+      {
+        "checkpoint_id": "preference-rules-ablated",
+        "title": "去掉采用切片后不再注入偏好规则",
+        "passed": true,
+        "detail": "rule_ids=('answer-first', 'brief-answer', 'structure-optional', 'no-filler-ending', 'level-adapted', 'concrete-example', 'scope-limited', 'no-forced-check')"
+      },
+      {
+        "checkpoint_id": "legacy-white-list-drops-atomic",
+        "title": "历史 v2 白名单丢弃无类别原子条目（历史事实对照）",
+        "passed": true,
+        "detail": "rule_ids=('answer-first', 'brief-answer', 'structure-optional', 'no-filler-ending', 'level-adapted', 'concrete-example', 'scope-limited', 'check-understanding'), profile=()"
+      }
+    ],
+    "conditional-acknowledgement": [
+      {
+        "checkpoint_id": "partial-acknowledgement-present",
+        "title": "部分结果触发如实说明约束",
+        "passed": true,
+        "detail": "constraints=('partial_results',)"
+      },
+      {
+        "checkpoint_id": "partial-acknowledgement-ablated",
+        "title": "去掉部分结果信号后不再要求如实说明",
+        "passed": true,
+        "detail": "constraints=()"
+      },
+      {
+        "checkpoint_id": "legacy-no-partial-signal",
+        "title": "历史 v2 无部分结果条件承接信号（历史事实对照）",
+        "passed": true,
+        "detail": "constraints=()"
+      }
+    ]
+  },
+  "corpus_digest": "6d55b5ce93bd1685766a8051909688f90fefb2b77b7f69c1fee04240f658c7f2",
+  "coverage_problems": [],
+  "formal_paths": [
+    {
+      "path_id": "chat.companion",
+      "title": "日常陪伴普通聊天",
+      "render_kind": "model_with_policy",
+      "seam": "chat/turn.py::_compile_writing_policy → assemble_payload",
+      "evidence": "tests/chat/test_improvement21_contextual_expression.py",
+      "scenario_count": 38,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "chat.study",
+      "title": "学习模式普通聊天（非课时任务）",
+      "render_kind": "model_with_policy",
+      "seam": "chat/turn.py::_compile_writing_policy（mode=study）",
+      "evidence": "tests/chat/test_v2_18_study_tutoring.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "study.tutoring",
+      "title": "学习辅导生成",
+      "render_kind": "model_with_policy",
+      "seam": "study/tutoring.py::_tutoring_policy",
+      "evidence": "tests/chat/test_improvement22_unified_profile_expression.py",
+      "scenario_count": 2,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "study.review",
+      "title": "复盘出题与判定反馈",
+      "render_kind": "model_with_policy",
+      "seam": "study/review.py::_call（读取冻结策略快照）",
+      "evidence": "tests/chat/test_v2_19_study_review.py",
+      "scenario_count": 2,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "study.summary",
+      "title": "学习总结生成",
+      "render_kind": "model_with_policy",
+      "seam": "study/summary.py::_tutoring_policy",
+      "evidence": "tests/chat/test_improvement36_policy_acceptance.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "study.scope",
+      "title": "学习范围/预习说明",
+      "render_kind": "model_with_policy",
+      "seam": "study/service.py::preview_policy_block",
+      "evidence": "tests/chat/test_improvement31_study_scope_preview.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "paper.summary",
+      "title": "论文概述生成",
+      "render_kind": "model_with_policy",
+      "seam": "paper/presenting.py::SUMMARY_SYSTEM_PROMPT + expression.system_block",
+      "evidence": "tests/paper/test_paper_issue24.py::test_summary_generator_uses_policy_system_block_and_output_budget",
+      "scenario_count": 2,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "github.insights",
+      "title": "GitHub 借鉴角度生成",
+      "render_kind": "model_with_policy",
+      "seam": "github/presenting.py（追加 system_block 与 global_writing_policy）",
+      "evidence": "tests/github/test_github_acceptance_insights.py",
+      "scenario_count": 2,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "commute.result",
+      "title": "通勤路线结果",
+      "render_kind": "deterministic_renderer",
+      "seam": "commute/presenting.py::render_result_content",
+      "evidence": "src/bridges/commute/presenting.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "resources.result",
+      "title": "学习资料路径结果",
+      "render_kind": "deterministic_renderer",
+      "seam": "resources/presenting.py",
+      "evidence": "src/bridges/resources/presenting.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "tieba.research",
+      "title": "贴吧取证与研究说明",
+      "render_kind": "deterministic_renderer",
+      "seam": "tieba/presenting.py",
+      "evidence": "src/bridges/tieba/presenting.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "career_plan.result",
+      "title": "职业规划结果",
+      "render_kind": "deterministic_renderer",
+      "seam": "career_plan/presenting.py",
+      "evidence": "src/bridges/career_plan/presenting.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "composite",
+      "title": "复合计划统一综合结果",
+      "render_kind": "model_with_policy",
+      "seam": "chat/graph.py::_invoke_composite_plan",
+      "evidence": "tests/chat/test_issue37_composite_dispatch.py",
+      "scenario_count": 1,
+      "evidence_exists": true
+    },
+    {
+      "path_id": "fixed_copy",
+      "title": "澄清/错误/空结果/进度/部分成功固定文案",
+      "render_kind": "fixed_template",
+      "seam": "state_copy/registry.py::render_state_copy",
+      "evidence": "tests/state_copy/test_issue23_state_copy_registry.py",
+      "scenario_count": 5,
+      "evidence_exists": true
+    }
+  ],
+  "coverage": [
+    {
+      "scenario_id": "vent-experiment-failed",
+      "title": "实验失败后的倾诉",
+      "category": "venting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "no_forced_advice"
+      ]
+    },
+    {
+      "scenario_id": "vent-thesis-pressure",
+      "title": "论文压力倾诉",
+      "category": "venting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "no_forced_advice"
+      ]
+    },
+    {
+      "scenario_id": "vent-no-advice",
+      "title": "明确不想听建议只想聊",
+      "category": "venting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": "no_advice",
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "vent-misunderstood",
+      "title": "被误会后的连续倾诉",
+      "category": "venting",
+      "formal_path": "chat.companion",
+      "turn_count": 3,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "vent-exhausted",
+      "title": "疲惫状态倾诉",
+      "category": "venting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "no_forced_advice"
+      ]
+    },
+    {
+      "scenario_id": "mixed-anxious-bug",
+      "title": "焦虑同时请求排查",
+      "category": "mixed_troubleshooting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "mixed-angry-500",
+      "title": "烦躁同时请求定位接口错误",
+      "category": "mixed_troubleshooting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "mixed-anxious-priority",
+      "title": "焦虑同时请求排优先级",
+      "category": "mixed_troubleshooting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "mixed-tired-explain",
+      "title": "疲惫同时请求解释概念",
+      "category": "mixed_troubleshooting",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "quote-translate-anxious",
+      "title": "翻译引语中的情绪",
+      "category": "quoted_emotion",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "quote-article-anxiety",
+      "title": "讨论焦虑主题的文章",
+      "category": "quoted_emotion",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "quote-meaning-followup",
+      "title": "解释引语中“别追问我了”的含义",
+      "category": "quoted_emotion",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "quote-fiction-emotion",
+      "title": "小说引语的英文用词",
+      "category": "quoted_emotion",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "thanks-solved",
+      "title": "问题解决后的感谢",
+      "category": "thanks_closing",
+      "formal_path": "chat.companion",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "thanks-clear",
+      "title": "解释清楚后的感谢",
+      "category": "thanks_closing",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "thanks-long-task",
+      "title": "长任务完成后的感谢",
+      "category": "thanks_closing",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "thanks-apology",
+      "title": "纠正后用户致谢",
+      "category": "thanks_closing",
+      "formal_path": "chat.companion",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "correction-missed-unit",
+      "title": "用户指出漏答单位",
+      "category": "correction",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": true,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "correction-wrong-answer",
+      "title": "用户纠正答案错误",
+      "category": "correction",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "correction-code",
+      "title": "用户授权纠正代码中的数值",
+      "category": "correction",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": true,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 1,
+      "tags": []
+    },
+    {
+      "scenario_id": "correction-preference",
+      "title": "用户纠正回答偏好",
+      "category": "correction",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": true,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "continuation-reply-draft",
+      "title": "续接润色周末约定",
+      "category": "continuation",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": true,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "continuation-long-story",
+      "title": "续接两千字故事任务",
+      "category": "continuation",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": true,
+      "detail_required": true,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "long-derivation",
+      "title": "详细推导请求",
+      "category": "long_task",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": true,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "long-comparison",
+      "title": "详细对比请求",
+      "category": "long_task",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": true,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "long-plan",
+      "title": "完整学习计划请求",
+      "category": "long_task",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": true,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "long-explanation",
+      "title": "系统讲解请求",
+      "category": "long_task",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": true,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "tool-search-error",
+      "title": "联网搜索失败",
+      "category": "tool_failure",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "error",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "tool-search-partial",
+      "title": "联网搜索部分命中",
+      "category": "tool_failure",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "partial",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "tool-arxiv-empty",
+      "title": "论文库空结果",
+      "category": "tool_failure",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "partial",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "tool-retrieval-timeout",
+      "title": "本地知识库检索超时",
+      "category": "tool_failure",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "error",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "boundary-no-comfort",
+      "title": "不要安慰",
+      "category": "boundary",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": "no_comfort",
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "boundary-answer-only",
+      "title": "只要答案",
+      "category": "boundary",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": "answer_only",
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "boundary-no-followup",
+      "title": "不要追问",
+      "category": "boundary",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": "no_followup",
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "boundary-detail",
+      "title": "要求详细讲",
+      "category": "boundary",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": "detail",
+      "expects_continuation": false,
+      "detail_required": true,
+      "real_runnable": true,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "pref-brief",
+      "title": "明确简短偏好",
+      "category": "preference",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 1,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "pref-example-first",
+      "title": "先例后公式偏好",
+      "category": "preference",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 1,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "pref-format",
+      "title": "结论先行与结构偏好",
+      "category": "preference",
+      "formal_path": "chat.companion",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": true,
+      "profile_fact_count": 1,
+      "protected_fact_count": 0,
+      "tags": []
+    },
+    {
+      "scenario_id": "study-mode-ordinary",
+      "title": "学习模式普通提问",
+      "category": "formal_path",
+      "formal_path": "chat.study",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "study-tutoring-concept",
+      "title": "书页辅导概念提问",
+      "category": "formal_path",
+      "formal_path": "study.tutoring",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "study-tutoring-step",
+      "title": "书页辅导分步推进",
+      "category": "formal_path",
+      "formal_path": "study.tutoring",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "study-review-question",
+      "title": "复盘出题提问",
+      "category": "formal_path",
+      "formal_path": "study.review",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "study-review-feedback",
+      "title": "复盘判定反馈",
+      "category": "formal_path",
+      "formal_path": "study.review",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "study-summary",
+      "title": "学习总结",
+      "category": "formal_path",
+      "formal_path": "study.summary",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "study-scope-preview",
+      "title": "学习范围与预习",
+      "category": "formal_path",
+      "formal_path": "study.scope",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "study"
+      ]
+    },
+    {
+      "scenario_id": "paper-summary",
+      "title": "论文概述",
+      "category": "formal_path",
+      "formal_path": "paper.summary",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "paper"
+      ]
+    },
+    {
+      "scenario_id": "paper-compare",
+      "title": "论文对比阅读",
+      "category": "formal_path",
+      "formal_path": "paper.summary",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "paper"
+      ]
+    },
+    {
+      "scenario_id": "github-insight",
+      "title": "GitHub 项目借鉴角度",
+      "category": "formal_path",
+      "formal_path": "github.insights",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "github"
+      ]
+    },
+    {
+      "scenario_id": "github-compare",
+      "title": "GitHub 项目对比",
+      "category": "formal_path",
+      "formal_path": "github.insights",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "github"
+      ]
+    },
+    {
+      "scenario_id": "commute-route",
+      "title": "通勤路线结果文案",
+      "category": "formal_path",
+      "formal_path": "commute.result",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "renderer"
+      ]
+    },
+    {
+      "scenario_id": "resources-path",
+      "title": "学习资料路径文案",
+      "category": "formal_path",
+      "formal_path": "resources.result",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "renderer"
+      ]
+    },
+    {
+      "scenario_id": "tieba-research",
+      "title": "贴吧取证说明",
+      "category": "formal_path",
+      "formal_path": "tieba.research",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "renderer"
+      ]
+    },
+    {
+      "scenario_id": "career-plan-result",
+      "title": "职业规划结果",
+      "category": "formal_path",
+      "formal_path": "career_plan.result",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "renderer"
+      ]
+    },
+    {
+      "scenario_id": "composite-paper-github",
+      "title": "复合计划综合结果",
+      "category": "formal_path",
+      "formal_path": "composite",
+      "turn_count": 2,
+      "multi_turn": true,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "composite"
+      ]
+    },
+    {
+      "scenario_id": "fixed-error-web",
+      "title": "联网失败固定文案",
+      "category": "formal_path",
+      "formal_path": "fixed_copy",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "fixed_copy",
+        "error"
+      ]
+    },
+    {
+      "scenario_id": "fixed-empty-retrieval",
+      "title": "检索空结果固定文案",
+      "category": "formal_path",
+      "formal_path": "fixed_copy",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "fixed_copy",
+        "empty"
+      ]
+    },
+    {
+      "scenario_id": "fixed-clarification-route",
+      "title": "路由澄清固定文案",
+      "category": "formal_path",
+      "formal_path": "fixed_copy",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "fixed_copy",
+        "clarification"
+      ]
+    },
+    {
+      "scenario_id": "fixed-progress-stop",
+      "title": "进度与停止固定文案",
+      "category": "formal_path",
+      "formal_path": "fixed_copy",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "none",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "fixed_copy",
+        "progress"
+      ]
+    },
+    {
+      "scenario_id": "fixed-partial-result",
+      "title": "部分成功固定文案",
+      "category": "formal_path",
+      "formal_path": "fixed_copy",
+      "turn_count": 1,
+      "multi_turn": false,
+      "tool_outcome": "partial",
+      "boundary": null,
+      "expects_continuation": false,
+      "detail_required": false,
+      "real_runnable": false,
+      "profile_fact_count": 0,
+      "protected_fact_count": 0,
+      "tags": [
+        "formal_path",
+        "fixed_copy",
+        "partial"
+      ]
+    }
+  ],
+  "locks": {
+    "prior-context": "45485a7b56aefe914b9ad35b80f652f3732f10490e9d2ca03643d47e0df7b9be",
+    "explicit-preferences": "a97860583d07ac062f1a52cb1040b042fe9ce760b43d42df25adb47a1c9a1db8",
+    "conditional-acknowledgement": "871c3e4fe979d7cd53fbfd303038e640d16816f9188784615d173f4e9e900c13"
+  }
+}

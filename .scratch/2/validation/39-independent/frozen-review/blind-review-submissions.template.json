@@ -1,0 +1,691 @@
+{
+  "review_set_id": "issue39-1791265664",
+  "review_protocol_version": "human-expression-frozen-review-v1",
+  "material_digest": "24724ab48d1bf2cefecb56e71b54385599d6ce9dbf156b23fa9fff83e0ae2005",
+  "instructions": "五维填 label_a / label_b / tie / neither；每侧六类硬门另填 pass / fail / uncertain，词表未命中不能代替人工核查。",
+  "reviewers": [
+    {
+      "reviewer_id": "请填写评审者标识",
+      "choices": {
+        "item-001": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-002": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-003": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-004": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-005": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-006": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-007": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-008": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-009": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-010": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-011": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-012": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-013": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-014": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-015": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-016": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-017": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-018": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-019": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-020": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-021": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-022": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-023": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-024": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-025": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-026": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        },
+        "item-027": {
+          "understand": "",
+          "help": "",
+          "natural": "",
+          "boundary": "",
+          "continuity": ""
+        }
+      },
+      "comments": {},
+      "hard_gates": {
+        "item-001": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-002": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-003": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-004": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-005": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-006": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-007": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-008": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-009": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-010": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-011": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-012": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-013": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-014": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-015": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-016": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-017": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-018": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-019": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-020": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-021": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-022": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-023": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-024": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-025": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-026": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        },
+        "item-027": {
+          "label_a": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          },
+          "label_b": {
+            "fact_drift": "",
+            "fabricated_experience": "",
+            "boundary_violation": "",
+            "failure_disguised": "",
+            "task_incomplete": "",
+            "over_proactive": ""
+          }
+        }
+      }
+    }
+  ]
+}

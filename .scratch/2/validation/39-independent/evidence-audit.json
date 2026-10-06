@@ -1,0 +1,68 @@
+{
+  "source_commit": "efe94f33f395233f49d0dc26d5469e591177ed01",
+  "source_file_count": 498,
+  "source_hash_mismatches": [],
+  "lock_matches_report": true,
+  "lock_digest_matches": true,
+  "observed_digest_matches": true,
+  "models": {
+    "qwen3.7-plus-2026-05-26": 51
+  },
+  "max_tokens": {
+    "1024": 48,
+    "2048": 3
+  },
+  "temperature": {
+    "0.7": 51
+  },
+  "original_reviewer_count": 0,
+  "executed_scenarios": [
+    "boundary-no-comfort",
+    "continuation-reply-draft",
+    "correction-wrong-answer",
+    "long-derivation",
+    "mixed-anxious-bug",
+    "pref-brief",
+    "quote-translate-anxious",
+    "thanks-solved",
+    "vent-experiment-failed"
+  ],
+  "executed_distribution": {
+    "quoted_emotion": 1,
+    "thanks_closing": 1,
+    "mixed_troubleshooting": 1,
+    "continuation": 1,
+    "preference": 1,
+    "boundary": 1,
+    "long_task": 1,
+    "correction": 1,
+    "venting": 1
+  },
+  "replayed_blind_items_equal": true,
+  "replayed_blind_mapping_equal": true,
+  "blind_material_identity_leaks": [],
+  "legacy_rule_table_ast_equal": true,
+  "current_diagnostic_gate_failures_on_frozen_answers": [
+    {
+      "arm": "concise-baseline",
+      "scenario_id": "vent-experiment-failed",
+      "gate": "task_incomplete",
+      "passed": false,
+      "detail": "终态为 error，任务未完成。",
+      "turn_index": 1
+    },
+    {
+      "arm": "concise-baseline",
+      "scenario_id": "mixed-anxious-bug",
+      "gate": "task_incomplete",
+      "passed": false,
+      "detail": "终态为 error，任务未完成。",
+      "turn_index": 2
+    }
+  ],
+  "limits": [
+    "运行锁是仓库产物，未向供应商查询独立账单。",
+    "机器门只作诊断，不能代替语义硬失败的人工核查。",
+    "未重新调用模型；不将冻结样本当作修复后新真实运行。"
+  ]
+}

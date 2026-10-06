@@ -1,0 +1,1017 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="96" time="7.949" timestamp="2026-10-06T16:10:10.762502+08:00" hostname="bababoyi"><testcase classname="tests.evaluation.test_blind_review" name="test_review_set_anonymizes_system_identity" time="0.002" /><testcase classname="tests.evaluation.test_blind_review" name="test_review_set_randomizes_order_with_fixed_seed" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_submission_recording_and_dedup" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_low_consistency_items_flagged_not_merged" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_consensus_requires_two_reviewers_on_shared_items" time="0.001" /><testcase classname="tests.evaluation.test_blind_review" name="test_auto_judge_primary_flag_when_no_human_review" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_legacy_flag_defaults_false" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_legacy_set_rejects_new_submissions" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_consensus_summary_marks_legacy" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_legacy_serialization_round_trip" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_old_api_compatible" time="0.001" /><testcase classname="tests.evaluation.test_blind_review_legacy" name="test_repository_reads_human_review_sets_as_legacy" time="0.233" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_create_evaluation_run_freezes_inputs_and_versions" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_replay_produces_comparable_bundle" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_same_lock_replay_produces_matching_results" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_build_digest_respects_environment_override" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_cross_account_access_is_rejected" time="0.002" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_create_evaluation_from_foreign_run_is_rejected" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_create_evaluation_rejects_non_terminal_run" time="0.001" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_replay_honors_execution_count" time="0.003" /><testcase classname="tests.evaluation.test_evaluation_service" name="test_compare_requires_same_lock" time="0.002" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[fact_error]" time="0.002" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[profile_overreach]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[profile_cliche_only]" time="0.002" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[profile_overwrite]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[risk_misjudgment]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[teaching_skip]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injection_is_detected[multimodal_failure]" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injected_fact_error_breaks_claim_present" time="0.001" /><testcase classname="tests.evaluation.test_injection" name="test_injected_profile_overreach_breaks_scope" time="0.001" /><testcase classname="tests.evaluation.test_issue41_extraction_probes" name="test_extraction_probes_reject_unrelated_and_duplicate_facts" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_all_conditions_pass_with_compliant_answers" time="0.002" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_correct_profile_without_concrete_improvement_fails_gate" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_outdated_fact_leak_fails_gate" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_cost_latency_and_condition_summary_recorded" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_blind_review_and_reports_written" time="0.019" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_identical_keyword_answers_do_not_prove_pairing_gain" time="0.002" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_time_budget_mention_does_not_allow_an_infeasible_plan" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_multiple_daily_sessions_must_fit_total_time_budget" time="0.002" /><testcase classname="tests.evaluation.test_issue41_profile_pairing" name="test_two_week_total_is_not_a_daily_session" time="0.001" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_all_profile_quality_scenarios_pass" time="0.232" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_hard_gates_cover_safety_and_isolation" time="0.228" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_report_is_json_serializable_and_renders" time="0.181" /><testcase classname="tests.evaluation.test_issue41_profile_quality" name="test_two_synthetic_accounts_are_isolated" time="0.225" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_measure_loop_quality" time="0.002" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_reject_cliche_only_personalization" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_require_coexistence_and_source_support" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_detect_overreach" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_complete_relation_and_active_negation_are_required" time="0.002" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_metrics_precise_update_and_negation_guard" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_profile_no_personalization_gets_zero_gain" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_metrics_good_answer" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_metrics_detect_hallucination" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_conflict_handling" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_science_medical_boundary" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_teaching_metrics" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_teaching_forced_web_search" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_teaching_length_not_gain" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_metrics_boundary" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_risk_misjudgment_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_no_diagnosis" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_career_diagnosis_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_multimodal_metrics_asset_flow" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_multimodal_failure_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_multimodal_asr_and_model_contract" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_security_metrics" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_security_secret_leak_detected" time="0.001" /><testcase classname="tests.evaluation.test_metrics" name="test_all_cases_have_dimension_metrics" time="0.002" /><testcase classname="tests.evaluation.test_report_gates" name="test_confidence_interval_small_sample" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_welch_p_value_deterministic" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_report_contains_required_statistics" time="0.002" /><testcase classname="tests.evaluation.test_report_gates" name="test_release_gate_blocks_low_scores" time="0.002" /><testcase classname="tests.evaluation.test_report_gates" name="test_release_gate_passes_strong_scores" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_release_gate_blocks_high_risk_failures" time="0.001" /><testcase classname="tests.evaluation.test_report_gates" name="test_default_threshold_has_all_hard_metrics" time="0.001" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_migration_26_creates_eval_tables" time="0.234" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_suite_and_lock_persistence" time="0.251" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_results_are_append_only" time="0.246" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_reports_are_versioned_not_overwritten" time="0.243" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_review_set_persistence" time="0.198" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_all_datasets_have_license_records" time="0.001" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_all_licenses_are_clean_room" time="0.001" /><testcase classname="tests.evaluation.test_repository_and_license" name="test_suite_data_contains_no_external_project_text" time="0.001" /><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_lock_freezes_reproducibility_metadata" time="0.447"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ycmwllii\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E0154D490&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x0000021E0155F510&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-ycmwllii/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-ycmwllii/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ycmwllii'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x0000021E025E4400&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ycmwllii\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+tiny_runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E0154D490&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\evaluation\test_runner_reproducibility.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ycmwllii\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x0000021E025E0180&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-ycmwllii\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_build_digest_honors_environment_override" time="0.004" /><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_double_run_is_reproducible" time="0.300"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-sbnssyns\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E02B96090&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x0000021E01512790&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-sbnssyns/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-sbnssyns/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-sbnssyns'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x0000021E02687EC0&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-sbnssyns\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+tiny_runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E02B96090&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\evaluation\test_runner_reproducibility.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-sbnssyns\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x0000021E02A2FD80&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-sbnssyns\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_reproduction_command_is_one_click_replayable" time="0.260"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-6134e2nq\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E02DA9C90&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x0000021E02DAA590&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-6134e2nq/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-6134e2nq/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-6134e2nq'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x0000021E014F32E0&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-6134e2nq\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+tiny_runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E02DA9C90&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\evaluation\test_runner_reproducibility.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-6134e2nq\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x0000021E02E800C0&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-6134e2nq\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_runner_reproducibility" name="test_suite_run_produces_all_suts_and_tasks" time="0.306"><failure message="PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-f6n_tvi5\\env-0.db'">self = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E02E09290&gt;
+db_path = None
+
+    def run(
+        self,
+        *,
+        db_path: str | os.PathLike[str] | None = None,
+    ) -&gt; RunOutcome:
+        """执行套件运行矩阵，返回运行锁、结果与报告。"""
+        seeds = self._seeds
+        execution_count = self._execution_count
+        lock = self._build_plan_lock(seeds, execution_count)
+        # 每个案例执行使用独立环境（模板库拷贝），保证跨案例/跨种子不
+        # 累积知识库与画像状态（双跑可复现的前提）。
+        import tempfile
+    
+        cases = {case.case_id: case for case in suite_data.CASES}
+        results: list[CaseResult] = []
+        observed_locks: list[ModelRunLock] = []
+        with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+            template_path = Path(tmp_dir) / "template.db"
+            template = BridgesDatabase(template_path)
+            template.initialize()
+            template.close()
+    
+            execution_index_total = 0
+            for entry in self._suite.run_matrix.entries:
+                sut = self._suts.get(entry.sut_id)
+                if sut is None:
+                    raise EvaluationRunnerError(
+                        f"运行矩阵引用的被测系统未注册：{entry.sut_id}"
+                    )
+                for case_id in entry.case_ids:
+                    case = cases.get(case_id)
+                    if case is None:
+                        raise EvaluationRunnerError(f"案例不存在：{case_id}")
+                    for seed in entry.seeds or seeds:
+                        for execution_index in range(
+                            entry.execution_count or execution_count
+                        ):
+                            env_path = (
+                                Path(tmp_dir) / f"env-{execution_index_total}.db"
+                            )
+&gt;                           env = EvalEnvironment(
+                                db_path=env_path, template_path=template_path
+                            )
+
+src\bridges\evaluation\runner.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;bridges.evaluation.executors.EvalEnvironment object at 0x0000021E02E0BB10&gt;
+db_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-f6n_tvi5/env-0.db')
+template_path = WindowsPath('C:/Users/33755/AppData/Local/Temp/bridges-eval-f6n_tvi5/template.db')
+
+    def __init__(
+        self,
+        *,
+        db_path: str | Path | None = None,
+        template_path: str | Path | None = None,
+    ) -&gt; None:
+        if template_path is not None:
+            if db_path is None:
+                raise ValueError("使用模板库时必须提供 db_path。")
+            import shutil
+    
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(template_path, db_path)
+        self.database = BridgesDatabase(db_path or ":memory:")
+        if template_path is None:
+            self.database.initialize()
+        root = Path(db_path).parent if db_path else Path(tempfile.gettempdir())
+        self.object_repository = BridgesObjectRepository(
+            self.database,
+            EncryptedFileObjectStore(
+                root / f"eval-objects-{id(self)}",
+                encryption_key=SecretStr("eval-secret-key"),
+            ),
+        )
+        self.observability = ObservabilityService()
+        # 合成评测账户（不来自真实用户）；注册返回稳定内部账户 ID。
+        self.account_id = self.object_repository.register_account(EVAL_QQ_EMAIL)
+        self.conversations = ConversationRepository(self.database)
+        self.registry = CapabilityRegistry()
+        for record in (
+            _chat_capability(),
+            _structured_capability(),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
+        ):
+            self.registry.register(record)
+        self.scripted = ScriptedAdapter(self._script_for_case)
+        self.gateway = ModelGateway(self.registry)
+        for name in (
+            "qwen_text_chat",
+            "qwen_structured_output",
+            "qwen_asr_short",
+            "qwen_tts",
+            "qwen_image",
+            "qwen_wan",
+        ):
+            self.gateway.register_adapter(name, "1", self.scripted)
+    
+        self.embedding = DeterministicEmbeddingPort()
+        self.ingestion = IngestionService(
+            database=self.database,
+            object_repository=self.object_repository,
+            embedding=self.embedding,
+            index=VersionedIndex(self.database, self.embedding),
+        )
+        self.retrieval = LayeredRetrievalService(
+            database=self.database,
+            embedding=self.embedding,
+            object_repository=self.object_repository,
+        )
+        self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
+        self.learning = LearningService(repository=InMemoryLearningRepository())
+        self.career = CareerPlannerService(
+            gateway=self.gateway,
+            profile_service=self.profiles,
+            learning_service=self.learning,
+            observability_service=self.observability,
+        )
+        self.speech = SpeechService(
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+            # 本地资产下载不走系统代理（环境代理会劫持 127.0.0.1）。
+            download_client=httpx.Client(timeout=10.0, trust_env=False),
+        )
+        self.image = ImageService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.video = VideoService(
+            database=self.database,
+            gateway=self.gateway,
+            object_repository=self.object_repository,
+            chat_repository=self.conversations,
+            observability_service=self.observability,
+        )
+        self.reminder = ReminderService(
+            database=self.database,
+            credential_store=_InMemorySmtpStore(),
+            observability_service=self.observability,
+            qq_email_provider=lambda account_id: EVAL_QQ_EMAIL,
+            profile_service=self.profiles,
+            gateway=_FakeMailGateway(),
+            verify_async=False,
+        )
+        self.mail_gateway = self.reminder._gateway  # noqa: SLF001 - 同包注入失败用
+        self.web_search = WebSearchService(
+            client=_FakeSearchClient(), observability=self.observability
+        )
+        self.arxiv_search = ArxivSearchService(
+            client=_FakeArxivClient(), observability=self.observability
+        )
+&gt;       self.chat = ChatService(
+            repository=self.conversations,
+            gateway=self.gateway,
+            retrieval_service=self.retrieval,
+            web_search_service=self.web_search,
+            arxiv_search_service=self.arxiv_search,
+            profile_service=self.profiles,
+            observability_service=self.observability,
+            career_planner_service=self.career,
+            image_service=self.image,
+            video_service=self.video,
+            teaching_service=TeachingTurnService(),
+        )
+E       TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+src\bridges\evaluation\executors.py:572: TypeError
+
+During handling of the above exception, another exception occurred:
+
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-f6n_tvi5'
+onerror = &lt;function TemporaryDirectory._rmtree.&lt;locals&gt;.onerror at 0x0000021E02A909A0&gt;
+
+    def _rmtree_unsafe(path, onerror):
+        try:
+            with os.scandir(path) as scandir_it:
+                entries = list(scandir_it)
+        except OSError:
+            onerror(os.scandir, path, sys.exc_info())
+            entries = []
+        for entry in entries:
+            fullname = entry.path
+            if _rmtree_isdir(entry):
+                try:
+                    if entry.is_symlink():
+                        # This can only happen if someone replaces
+                        # a directory with a symlink after the call to
+                        # os.scandir or entry.is_dir above.
+                        raise OSError("Cannot call rmtree on a symbolic link")
+                except OSError:
+                    onerror(os.path.islink, fullname, sys.exc_info())
+                    continue
+                _rmtree_unsafe(fullname, onerror)
+            else:
+                try:
+&gt;                   os.unlink(fullname)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-f6n_tvi5\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+runner = &lt;bridges.evaluation.runner.EvaluationRunner object at 0x0000021E02E09290&gt;
+
+&gt;   ???
+
+C:\Users\33755\Desktop\BridGes\tests\evaluation\test_runner_reproducibility.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+func = &lt;built-in function unlink&gt;
+path = 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-f6n_tvi5\\env-0.db'
+exc_info = (&lt;class 'PermissionError'&gt;, PermissionError(13, '另一个程序正在使用此文件，进程无法访问。'), &lt;traceback object at 0x0000021E0155D740&gt;)
+
+    def onerror(func, path, exc_info):
+        if issubclass(exc_info[0], PermissionError):
+            if repeated and path == name:
+                if ignore_errors:
+                    return
+                raise
+    
+            try:
+                if path != name:
+                    _resetperms(_os.path.dirname(path))
+                _resetperms(path)
+    
+                try:
+&gt;                   _os.unlink(path)
+E                   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-f6n_tvi5\\env-0.db'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError</failure></testcase><testcase classname="tests.evaluation.test_suite_registry" name="test_suite_registers_with_full_manifest" time="0.002" /><testcase classname="tests.evaluation.test_suite_registry" name="test_suite_digest_is_sensitive_to_any_change" time="0.010" /><testcase classname="tests.evaluation.test_suite_registry" name="test_register_rejects_silent_overwrite" time="0.006" /><testcase classname="tests.evaluation.test_suite_registry" name="test_register_same_content_is_idempotent" time="0.006" /><testcase classname="tests.evaluation.test_suite_registry" name="test_invalidate_keeps_history" time="0.005" /><testcase classname="tests.evaluation.test_suite_registry" name="test_reference_integrity_validation" time="0.005" /><testcase classname="tests.evaluation.test_suite_registry" name="test_every_case_has_expected_schema_and_scale" time="0.002" /><testcase classname="tests.evaluation.test_suite_registry" name="test_run_matrix_covers_all_suts_and_tasks" time="0.002" /></testsuite></testsuites>

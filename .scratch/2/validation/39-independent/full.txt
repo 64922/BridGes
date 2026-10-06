@@ -1,0 +1,1268 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  1%]
+........................................................................ [  2%]
+........................................................................ [  3%]
+.....................................................s.................. [  5%]
+.............................................F.......................... [  6%]
+........................................................................ [  7%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 11%]
+........................................................................ [ 12%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+................................................................s....... [ 18%]
+.................F.........F...F..F..F.....F..FF..FF.F.........F.......F [ 20%]
+................F..F..F.....F.....F.........................F..F.F...... [ 21%]
+........................................................................ [ 22%]
+........................................................................ [ 23%]
+....................F....................................F.............. [ 25%]
+........................................................................ [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 31%]
+........................................................................ [ 32%]
+........................................................................ [ 33%]
+........................................................................ [ 35%]
+........................................................................ [ 36%]
+........................................................................ [ 37%]
+..........................................s..F...F....F.........F..F.... [ 38%]
+..........................................F.......F.ss......F..........F [ 40%]
+.........F...........F.................................................. [ 41%]
+........................................................................ [ 42%]
+...............................................F..F.F...F.F........F.... [ 43%]
+ss.............F......................F....FF.F......................... [ 45%]
+..........FF.FFFF....................................................... [ 46%]
+........................................................................ [ 47%]
+......................F...F.F..F...F...F.F...F..F....................... [ 48%]
+...F.FF.F............................................................... [ 50%]
+.................................................F...................... [ 51%]
+................................................ss...................... [ 52%]
+...................................................F..................F. [ 53%]
+........................................................................ [ 55%]
+..........................................................F.........F... [ 56%]
+....FFFFFFFFFFFFFFFFFF.FFFFF.FF.FFFFF.FFFFFFF.F......................... [ 57%]
+........................................................................ [ 58%]
+................................F....................................... [ 60%]
+...................FF....................................F..F.F...F..... [ 61%]
+..F............F.............F.....F...............................F.... [ 62%]
+F.................F..................................................... [ 63%]
+.................................................F...................... [ 65%]
+..............F...............................F......................... [ 66%]
+..................................F.F...FF..F..F...FF..F...F..FF...F...F [ 67%]
+F.F....F.....F.....F....FF............ssssssssssssssss.F...ssssssss...F. [ 69%]
+F..F.F.FF.F..FFFF.FF.FFFFFFFFFFF.FFFFFFFFFFF......F.FF...F.FF..F....F... [ 70%]
+........................................F....................FF...F..F.. [ 71%]
+..........................................................F............. [ 72%]
+............................F...........F............................... [ 74%]
+...F...............F.................................................... [ 75%]
+........F............................................................... [ 76%]
+........................................................................ [ 77%]
+...................................................E.................... [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 81%]
+.............................................................F.......... [ 82%]
+........................................................................ [ 84%]
+.............................F.......F.......F..............E....F...... [ 85%]
+.......F.............F........F.....F.........F.............F.......ss.. [ 86%]
+...F..................................F................................. [ 87%]
+.......................................................F................ [ 89%]
+........................................................................ [ 90%]
+.................F......................F................F.ss........... [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 95%]
+...................................................................s.... [ 96%]
+........................................................................ [ 97%]
+.......................................................................s [ 99%]
+................................................FF.                      [100%]
+=================================== ERRORS ====================================
+______ ERROR at setup of test_health_endpoints_return_unified_projection ______
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TimeoutError: API did not become healthy: <urlopen error timed out>
+---------------------------- Captured stderr setup ----------------------------
+C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+
+______________ ERROR at setup of test_api_gracefully_shuts_down _______________
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TimeoutError: API did not become healthy: <urlopen error timed out>
+---------------------------- Captured stderr setup ----------------------------
+C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+
+================================== FAILURES ===================================
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.chat.service.ChatDomainError: 学习项目归属已退役，请使用全局知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\chat\service.py:500: bridges.chat.service.ChatDomainError: 学习项目归属已退役，请使用全局知识库。
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+    assert 410 == 201
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_attachment_project.py:52: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_attachment_project.py:61: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+    assert 410 == 201
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_attachment_project.py:52: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+    assert 410 == 201
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_attachment_project.py:52: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+    assert 410 == 201
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_attachment_project.py:52: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   ValueError: 待补理解点必须关联判定不完整、错误或依据已更新的题。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\study\summary.py:256: ValueError: 待补理解点必须关联判定不完整、错误或依据已更新的题。
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\ingestion\test_api.py:45: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\ingestion\test_api.py:45: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\ingestion\test_api.py:45: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\ingestion\test_api.py:45: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\ingestion\test_api.py:45: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_mcp_call_chat.py:61: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_mcp_call_chat.py:61: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_mcp_call_chat.py:61: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_mcp_call_chat.py:61: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_mcp_call_chat.py:61: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_mcp_call_chat.py:61: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+    assert 410 == 201
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:91: AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_issue06_budget_truncation.py:491: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+    assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:154: AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_issue06_budget_truncation.py:491: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+    assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:165: AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:81: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:91: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+    assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:81: AssertionError: {"detail":{"error":"user_extensions_retired","message":"该能力已退役，请在学习模式聊天中继续。","replacement_path":"/templates/chat","endpoint":"legacy.mcp.install","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+    assert 410 == 201
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_selections.py:91: AssertionError: {"detail":{"error":"user_extensions_retired","message":"用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.chat.service.ChatDomainError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\chat\service.py:448: bridges.chat.service.ChatDomainError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.chat.service.ChatDomainError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\chat\service.py:448: bridges.chat.service.ChatDomainError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'doctor'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_cli_contract.py:39: assert 1 == 0
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'doctor'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_cli_contract.py:54: assert 1 == 0
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'migrate'], r...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_cli_contract.py:60: assert 1 == 0
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'api', '--hel...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_cli_contract.py:66: assert 1 == 0
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'web', '--hel...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_cli_contract.py:72: assert 1 == 0
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'serve', '--h...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_cli_contract.py:78: assert 1 == 0
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\chat\test_career_planning_chat.py:196: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-fltsuf0j\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-fltsuf0j\\env-0.db'
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-fltsuf0j\\env-0.db'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-j53qydgd\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-j53qydgd\\env-0.db'
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-j53qydgd\\env-0.db'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-_j_t8szf\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-_j_t8szf\\env-0.db'
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-_j_t8szf\\env-0.db'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-tesqjgwv\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-tesqjgwv\\env-0.db'
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-tesqjgwv\\env-0.db'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_gq08_golden_path.py:70: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert {'status': 'clarification', 'scenario': '', 'original_request': '有没有人做过类似的项目', 'features': [], ...} is None
+     +  where {'status': 'clarification', 'scenario': '', 'original_request': '有没有人做过类似的项目', 'features': [], ...} = <built-in method get of dict object at 0x000001CCEDCC9CC0>('github_projects')
+     +    where <built-in method get of dict object at 0x000001CCEDCC9CC0> = {'message_id': 'vNpzn7KTfNWDQjSuT_S1Eg', 'conversation_id': 'Vhioqwoa_7tUczeaR0n1HQ', 'role': 'assistant', 'attempt_number': 1, ...}.get
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\github\test_github_module_flow.py:735: AssertionError: assert {'status': 'clarification', 'scenario': '', 'original_request': '有没有人做过类似的项目', 'features': [], ...} is None
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.ingestion.service.IngestionError: 聊天附件和项目文件已退役，请改用全局知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\ingestion\service.py:264: bridges.ingestion.service.IngestionError: 聊天附件和项目文件已退役，请改用全局知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.learning_projects.service.LearningProjectError: 项目文件已退役，请改用全局知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\learning_projects\service.py:366: bridges.learning_projects.service.LearningProjectError: 项目文件已退役，请改用全局知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+     +    where <Response [410 Gone]> = post('/learning-projects', json={'name': '   '})
+     +      where post = <starlette.testclient.TestClient object at 0x000001CCEC167790>.post
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\test_learning_projects_api.py:64: AssertionError: assert 410 == 422
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert '未锁定' in '用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。'
+     +  where '用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。' = str(McpError('用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。'))
+     +    where McpError('用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。') = <ExceptionInfo McpError('用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。') tblen=3>.value
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_service.py:128: AssertionError: assert '未锁定' in '用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert '来源' in '用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。'
+     +  where '用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。' = str(McpError('用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。'))
+     +    where McpError('用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。') = <ExceptionInfo McpError('用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。') tblen=3>.value
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_service.py:139: AssertionError: assert '来源' in '用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   RuntimeError: API 进程提前退出，退出码如下所示。
+    退出码 1，脱敏日志尾部：
+    C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\conftest.py:436: RuntimeError: API 进程提前退出，退出码如下所示。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\mcp\service.py:178: bridges.contracts.mcp.McpError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert <WorkflowRunS...ED: 'blocked'> == <WorkflowRunS...: 'succeeded'>
+      
+      - succeeded
+      + blocked
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\observability\test_observability_seam.py:178: AssertionError: assert <WorkflowRunS...ED: 'blocked'> == <WorkflowRunS...: 'succeeded'>
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert <WorkflowRunS...ED: 'blocked'> == <WorkflowRunS...: 'succeeded'>
+      
+      - succeeded
+      + blocked
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\observability\test_observability_seam.py:197: AssertionError: assert <WorkflowRunS...ED: 'blocked'> == <WorkflowRunS...: 'succeeded'>
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   RuntimeError: API 进程提前退出，退出码如下所示。
+    退出码 1，脱敏日志尾部：
+    C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\conftest.py:436: RuntimeError: API 进程提前退出，退出码如下所示。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\learning_projects\lp_support.py:38: AssertionError: {"detail":{"error":"legacy_file_source_retired","message":"项目文件和聊天附件已退役，请使用全局知识库。","replacement_path":"/knowledge-base","endpoint":"legacy.learning_projects.create","service_version":"0.1.0"}}
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert {'change_note...e_quote', ...} == {'content', '...'status', ...}
+      
+      Extra items in the left set:
+      'evidence_quote'
+      'change_note'
+      'updated_at'
+      'evidence_message_id'
+      'confidence'
+      Use -v to get more diff
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_issue16_profile_contract.py:146: AssertionError: assert {'change_note...e_quote', ...} == {'content', '...'status', ...}
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'failed' == 'passed'
+      
+      - passed
+      + failed
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\test_authenticity_gate.py:361: AssertionError: assert 'failed' == 'passed'
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert [ManifestViol...清单项分类。'), ...] == []
+      
+      Left contains 22 more items, first extra item: ManifestViolation(code='unclassified_capability', target='GET /settings/credentials', detail='公开路由未被任何清单项分类。')
+      Use -v to get more diff
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\test_capability_manifest.py:222: AssertionError: assert [ManifestViol...清单项分类。'), ...] == []
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\lifecycle\test_lifecycle_api.py:65: assert 409 == 201
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 401
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:73: assert 410 == 401
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:79: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\lifecycle\test_lifecycle_api.py:65: assert 409 == 201
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:96: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:109: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 413
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:125: assert 410 == 413
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\lifecycle\test_lifecycle_api.py:65: assert 409 == 201
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 400
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:132: assert 410 == 400
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:143: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\lifecycle\test_lifecycle_api.py:65: assert 409 == 201
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:169: assert 410 == 422
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+     +    where <Response [410 Gone]> = _post_zip(<starlette.testclient.TestClient object at 0x000001809AB9F010>, '/plugins/install', 'todo.zip', b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xbc\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00')
+     +      where b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xbc\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00' = build_valid_zip()
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:181: AssertionError: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+     +    where <Response [410 Gone]> = _post_zip(<starlette.testclient.TestClient object at 0x000001809C2A5850>, '/plugins/install', 'x.zip', b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xbc\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...x00\x00\x00\x80\x01w\x01\x00\x00evil.pyPK\x05\x06\x00\x00\x00\x00\x02\x00\x02\x00k\x00\x00\x00\x9f\x01\x00\x00\x00\x00')
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:190: AssertionError: assert 410 == 422
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\lifecycle\test_lifecycle_api.py:65: assert 409 == 201
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+     +    where <Response [410 Gone]> = _post_zip(<starlette.testclient.TestClient object at 0x0000018091AA4990>, '/plugins/install', 'todo.zip', b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xbd\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00')
+     +      where b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xbd\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00' = build_valid_zip()
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:206: AssertionError: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'builtin'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:218: KeyError: 'builtin'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 403
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:226: assert 410 == 403
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 404
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:233: assert 410 == 404
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+     +    where <Response [410 Gone]> = _post_zip(<starlette.testclient.TestClient object at 0x000001809C847C90>, '/plugins/install', 'todo.zip', b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xc3\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00')
+     +      where b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xc3\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00' = build_valid_zip()
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:243: AssertionError: assert 410 == 200
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+    assert 409 == 201
+     +  where 409 = <Response [409 Conflict]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_media_retirement.py:674: AssertionError: {"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:264: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 409
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:280: assert 410 == 409
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 401
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:71: assert 410 == 401
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:289: assert 410 == 422
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:77: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:304: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:89: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+     +    where <Response [410 Gone]> = _post_zip(<starlette.testclient.TestClient object at 0x00000180A02CC950>, '/plugins/install', 'todo.zip', b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xc7\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00')
+     +      where b'PK\x03\x04\x14\x00\x00\x00\x08\x00\xc7\x84F]\x04\x8cU\x90Q\x01\x00\x00\xd1\x01\x00\x00\x08\x00\x00\x00SKILL.mdu\x90_...80\x01v\x02\x00\x00references/notes.txtPK\x05\x06\x00\x00\x00\x00\x05\x00\x05\x009\x01\x00\x00\xbb\x02\x00\x00\x00\x00' = build_valid_zip()
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_api.py:309: AssertionError: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:102: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'user_extensions_retired' == 'builtin_not_mutable'
+      
+      - builtin_not_mutable
+      + user_extensions_retired
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:108: AssertionError: assert 'user_extensions_retired' == 'builtin_not_mutable'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'user_extensions_retired' == 'package_conflict'
+      
+      - package_conflict
+      + user_extensions_retired
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:119: AssertionError: assert 'user_extensions_retired' == 'package_conflict'
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+      
+    assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'doctor'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:114: AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+      
+    assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'migrate'], r...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:123: AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+      
+    assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'doctor'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:135: AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 'FAIL' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+     +  where "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n" = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'doctor'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").stderr
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:158: assert 'FAIL' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+      
+    assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'doctor'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:167: AssertionError: C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 'BRIDGES_QWEN_API_KEY' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:192: assert 'BRIDGES_QWEN_API_KEY' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 'BRIDGES_QWEN_API_KEY' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+     +  where "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n" = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'api'], retur...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").stderr
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:225: assert 'BRIDGES_QWEN_API_KEY' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw1] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 'BRIDGES_QWEN_API_KEY' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+     +  where "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n" = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'worker'], re...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").stderr
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\integration\test_runtime_smoke.py:232: assert 'BRIDGES_QWEN_API_KEY' in "C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n"
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'user_extensions_retired' == 'unsupported_package'
+      
+      - unsupported_package
+      + user_extensions_retired
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:179: AssertionError: assert 'user_extensions_retired' == 'unsupported_package'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:111: assert 410 == 422
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   IndexError: list index out of range
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:214: IndexError: list index out of range
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'user_extensions_retired' == 'install_failed'
+      
+      - install_failed
+      + user_extensions_retired
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:269: AssertionError: assert 'user_extensions_retired' == 'install_failed'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'user_extensions_retired' == 'plugin_not_found'
+      
+      - plugin_not_found
+      + user_extensions_retired
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:277: AssertionError: assert 'user_extensions_retired' == 'plugin_not_found'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:118: assert 410 == 200
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'user_extensions_retired' == 'demo_parse_failed'
+      
+      - demo_parse_failed
+      + user_extensions_retired
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\plugins\test_plugin_service.py:365: AssertionError: assert 'user_extensions_retired' == 'demo_parse_failed'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:129: assert 410 == 422
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   RuntimeError: API 进程提前退出，退出码如下所示。
+    退出码 1，脱敏日志尾部：
+    C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\conftest.py:436: RuntimeError: API 进程提前退出，退出码如下所示。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 409
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:137: assert 410 == 409
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:150: assert 410 == 200
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   RuntimeError: API 进程提前退出，退出码如下所示。
+    退出码 1，脱敏日志尾部：
+    C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\conftest.py:436: RuntimeError: API 进程提前退出，退出码如下所示。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:187: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 422
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:206: assert 410 == 422
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   RuntimeError: API 进程提前退出，退出码如下所示。
+    退出码 1，脱敏日志尾部：
+    C:\Users\33755\anaconda3\envs\agent\python.exe: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\conftest.py:436: RuntimeError: API 进程提前退出，退出码如下所示。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:221: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 403
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:242: assert 410 == 403
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: {"detail":{"error":"study_pages_required","message":"请至少上传一张本节书页照片开始学习。"}}
+    assert 422 == 201
+     +  where 422 = <Response [422 Unprocessable Content]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\closeout\test_three_journeys.py:57: AssertionError: {"detail":{"error":"study_pages_required","message":"请至少上传一张本节书页照片开始学习。"}}
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\plugins\service.py:109: bridges.contracts.plugins.PluginError: 用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:267: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'confirmation'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:302: KeyError: 'confirmation'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:319: assert 410 == 200
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 200
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:340: assert 410 == 200
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert '较新的知识兴趣' == 'CNN'
+      
+      - CNN
+      + 较新的知识兴趣
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\profiles\test_issue01_chat_profile_correction.py:192: AssertionError: assert '较新的知识兴趣' == 'CNN'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 410 == 503
+     +  where 410 = <Response [410 Gone]>.status_code
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\mcp\test_mcp_api.py:367: assert 410 == 503
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.ingestion.service.IngestionError: 聊天附件和项目文件已退役，请改用全局知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\ingestion\service.py:264: bridges.ingestion.service.IngestionError: 聊天附件和项目文件已退役，请改用全局知识库。
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   bridges.ingestion.service.IngestionError: 聊天附件和项目文件已退役，请改用全局知识库。
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\src\bridges\ingestion\service.py:264: bridges.ingestion.service.IngestionError: 聊天附件和项目文件已退役，请改用全局知识库。
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   KeyError: 'traffic_class'
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\retirement\test_user_extensions_retirement.py:66: KeyError: 'traffic_class'
+[gw3] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: [AssertionError('{"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+      assert 409 == 201
+       +  where 40...turn_required","message":"请发送首条消息以创建会话。"}}
+      assert 409 == 201
+       +  where 409 = <Response [409 Conflict]>.status_code')]
+    assert not [AssertionError('{"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}\nassert 409 == 201\n +  where 40...turn_required","message":"请发送首条消息以创建会话。"}}\nassert 409 == 201\n +  where 409 = <Response [409 Conflict]>.status_code')]
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\security\test_object_authorization.py:282: AssertionError: [AssertionError('{"detail":{"error":"first_turn_required","message":"请发送首条消息以创建会话。"}}
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   Failed: DID NOT RAISE RuntimeLockError
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\tmp4amjfzsr\\.bridges.lock'
+
+During handling of the above exception, another exception occurred:
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\tmp4amjfzsr\\.bridges.lock'
+---------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+
+  File "<string>", line 1, in <module>
+
+ModuleNotFoundError: No module named 'bridges'
+
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\tmp4amjfzsr\\.bridges.lock'
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'worker', '--...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\runtime\test_runtime_contract.py:245: assert 1 == 0
+[gw0] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   assert 1 == 0
+     +  where 1 = CompletedProcess(args=['C:\\Users\\33755\\anaconda3\\envs\\agent\\python.exe', '-m', 'bridges.cli.main', 'start', '--h...e: Error while finding module specification for 'bridges.cli.main' (ModuleNotFoundError: No module named 'bridges')\n").returncode
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\runtime\test_runtime_contract.py:255: assert 1 == 0
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   AssertionError: assert 'done' == 'error'
+      
+      - error
+      + done
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\tieba\test_tieba_module_flow.py:1001: AssertionError: assert 'done' == 'error'
+[gw2] win32 -- Python 3.11.15 C:\Users\33755\anaconda3\envs\agent\python.exe
+E   TypeError: 'NoneType' object is not subscriptable
+D:\BridGes\.worktrees\39-human-expression-blind-evaluation\tests\tieba\test_tieba_module_flow.py:1023: TypeError: 'NoneType' object is not subscriptable
+=========================== short test summary info ===========================
+FAILED tests/chat/test_chat_service.py::test_conversation_lifecycle_persists_pin_rename_project_and_order
+FAILED tests/chat/test_attachment_project.py::test_attachment_carries_conversation_project
+FAILED tests/chat/test_attachment_project.py::test_attachment_without_project_stays_unbound
+FAILED tests/chat/test_attachment_project.py::test_cleared_project_attachment_not_carried
+FAILED tests/chat/test_attachment_project.py::test_project_layer_includes_chat_attachments
+FAILED tests/chat/test_attachment_project.py::test_cross_account_attachment_project_hidden
+FAILED tests/chat/test_career_planning_chat.py::test_career_message_flows_through_real_message_stream
+FAILED tests/chat/test_career_planning_chat.py::test_career_process_events_carry_chinese_states
+FAILED tests/chat/test_career_planning_chat.py::test_career_persists_and_restores_for_same_account_only
+FAILED tests/chat/test_career_planning_chat.py::test_career_uses_minimal_authorized_profile_slice
+FAILED tests/chat/test_career_planning_chat.py::test_career_always_uses_the_current_four_dimension_slice
+FAILED tests/chat/test_career_planning_chat.py::test_career_without_profile_has_empty_disclosure
+FAILED tests/chat/test_career_planning_chat.py::test_career_learning_records_enter_evidence
+FAILED tests/chat/test_career_planning_chat.py::test_career_model_failure_is_recoverable_and_retry_keeps_input
+FAILED tests/chat/test_career_planning_chat.py::test_natural_language_career_route_is_persisted_before_generation
+FAILED tests/chat/test_career_planning_chat.py::test_conflicting_natural_language_tasks_only_ask_one_question
+FAILED tests/chat/test_career_planning_chat.py::test_career_chat_rejects_message_attachments
+FAILED tests/chat/test_career_planning_chat.py::test_career_boundary_violation_blocks_delivery
+FAILED tests/chat/test_career_planning_chat.py::test_career_item_feedback_is_idempotent_and_scoped
+FAILED tests/chat/test_career_planning_chat.py::test_career_item_ref_requires_career_message
+FAILED tests/chat/test_career_planning_chat.py::test_career_audit_does_not_leak_body
+FAILED tests/chat/test_career_planning_chat.py::test_second_account_planning_is_isolated_from_first
+FAILED tests/closeout/test_v2_21_horizontal_regression.py::test_wrong_or_unanswered_questions_never_count_as_mastered
+FAILED tests/chat/test_issue09_career_resilience.py::test_retry_creates_new_attempt_keeping_old_failure
+FAILED tests/ingestion/test_api.py::test_upload_enqueues_and_detail_shows_queued_then_ready
+FAILED tests/ingestion/test_api.py::test_detail_and_retry_for_failed_document
+FAILED tests/ingestion/test_api.py::test_cross_account_detail_is_404 - Assert...
+FAILED tests/ingestion/test_api.py::test_unsupported_type_shows_none_status
+FAILED tests/ingestion/test_api.py::test_index_status_shows_real_versions_after_worker_build
+FAILED tests/chat/test_mcp_call_chat.py::test_selected_mcp_call_succeeds - As...
+FAILED tests/chat/test_mcp_call_chat.py::test_unselected_mcp_call_rejected - ...
+FAILED tests/chat/test_mcp_call_chat.py::test_sensitive_pending_approve_flow
+FAILED tests/chat/test_mcp_call_chat.py::test_sensitive_pending_deny_flow - A...
+FAILED tests/chat/test_mcp_call_chat.py::test_mcp_call_conflicts_with_image_payload
+FAILED tests/chat/test_mcp_call_chat.py::test_cross_account_confirmation_404
+FAILED tests/chat/test_selections.py::test_builtin_skill_selection_persists_on_create
+FAILED tests/chat/test_issue06_budget_truncation.py::test_career_slow_call_terminates_within_scaled_budget
+FAILED tests/chat/test_selections.py::test_disabled_skill_rejected_on_create
+FAILED tests/chat/test_issue06_budget_truncation.py::test_career_over_budget_with_real_result_delivers_plan
+FAILED tests/chat/test_selections.py::test_unknown_plugin_rejected - Assertio...
+FAILED tests/chat/test_selections.py::test_mcp_selection_and_disable_read_cleanup
+FAILED tests/chat/test_selections.py::test_patch_selection_and_clear - Assert...
+FAILED tests/chat/test_selections.py::test_revoke_permissions_removes_selection
+FAILED tests/chat/test_selections.py::test_selection_scoped_to_account - Asse...
+FAILED tests/chat/test_selections.py::test_tools_context_injected_when_selected
+FAILED tests/chat/test_selections.py::test_tools_context_not_injected_after_clear
+FAILED tests/integration/test_cli_contract.py::test_doctor_reports_basic_diagnostics
+FAILED tests/integration/test_cli_contract.py::test_doctor_reports_no_conda_dependency_when_not_in_conda
+FAILED tests/integration/test_cli_contract.py::test_migrate_exits_successfully
+FAILED tests/integration/test_cli_contract.py::test_api_help_exits_successfully
+FAILED tests/integration/test_cli_contract.py::test_web_help_exits_successfully
+FAILED tests/integration/test_cli_contract.py::test_serve_help_exits_successfully
+FAILED tests/chat/test_issue09_career_resilience.py::test_vague_request_returns_clarification_without_model_call
+FAILED tests/chat/test_issue09_career_resilience.py::test_clarification_reply_continues_career_planning
+FAILED tests/chat/test_issue09_career_resilience.py::test_sufficient_request_generates_full_plan
+FAILED tests/chat/test_issue09_career_resilience.py::test_invalid_first_output_repairs_once_then_succeeds
+FAILED tests/chat/test_issue09_career_resilience.py::test_parse_failure_repairs_once_then_succeeds
+FAILED tests/chat/test_issue09_career_resilience.py::test_consistently_invalid_output_fails_within_budget
+FAILED tests/chat/test_issue09_career_resilience.py::test_slow_model_completes_durably_across_conversation_switch
+FAILED tests/chat/test_issue09_career_resilience.py::test_model_over_budget_with_real_result_delivers_plan
+FAILED tests/chat/test_issue09_career_resilience.py::test_missing_external_evidence_delivers_skeleton_with_open_questions
+FAILED tests/evaluation/test_runner_reproducibility.py::test_lock_freezes_reproducibility_metadata
+FAILED tests/evaluation/test_runner_reproducibility.py::test_double_run_is_reproducible
+FAILED tests/evaluation/test_runner_reproducibility.py::test_reproduction_command_is_one_click_replayable
+FAILED tests/evaluation/test_runner_reproducibility.py::test_suite_run_produces_all_suts_and_tasks
+FAILED tests/integration/test_gq08_golden_path.py::test_fresh_install_golden_path_all_capabilities_zero_key_config
+FAILED tests/github/test_github_module_flow.py::test_plain_chat_without_the_module_never_starts_github
+FAILED tests/knowledge_base/test_knowledge_base_service.py::test_chat_attachment_record_not_mutable_via_kb_path
+FAILED tests/learning_projects/test_learning_project_service.py::test_project_file_processed_by_worker_becomes_ready
+FAILED tests/learning_projects/test_learning_projects_api.py::test_project_crud_happy_path
+FAILED tests/mcp/test_mcp_service.py::test_install_locks_integrity_and_persists
+FAILED tests/learning_projects/test_learning_projects_api.py::test_project_validation_errors
+FAILED tests/mcp/test_mcp_service.py::test_install_rejects_bad_descriptor_without_side_effects
+FAILED tests/mcp/test_mcp_service.py::test_install_rejects_unknown_source - A...
+FAILED tests/mcp/test_mcp_service.py::test_install_conflict_when_same_id_installed
+FAILED tests/mcp/test_mcp_service.py::test_failed_then_reinstall_overwrites
+FAILED tests/mcp/test_mcp_service.py::test_install_failed_state_cannot_enable
+FAILED tests/mcp/test_mcp_service.py::test_disable_stops_process - bridges.co...
+FAILED tests/mcp/test_mcp_service.py::test_disabled_invoke_rejected - bridges...
+FAILED tests/learning_projects/test_learning_projects_api.py::test_project_list_orders_by_recent_update
+FAILED tests/mcp/test_mcp_service.py::test_uninstall_removes_record_object_and_process
+FAILED tests/mcp/test_mcp_service.py::test_malicious_secret_reader_fails_closed
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[path-reader-path_reader.py-read_file]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[network-connector-network_connector.py-http_get]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[command-launcher-command_launcher.py-run_command]
+FAILED tests/learning_projects/test_learning_projects_api.py::test_summary_counts_conversations_and_files
+FAILED tests/mcp/test_mcp_service.py::test_malicious_tool_attempts_fail_closed[cross-account-cross_account.py-read_file]
+FAILED tests/mcp/test_mcp_service.py::test_malicious_cross_account_slice_is_minimal
+FAILED tests/mcp/test_mcp_service.py::test_malicious_zombie_becomes_failed - ...
+FAILED tests/mcp/test_mcp_service.py::test_malicious_slow_start_times_out - b...
+FAILED tests/learning_projects/test_learning_projects_api.py::test_create_conversation_with_project_id_uses_learning_projects
+FAILED tests/mcp/test_mcp_service.py::test_undeclared_data_slice_rejected - b...
+FAILED tests/mcp/test_mcp_service.py::test_attachment_slice_requires_declaration
+FAILED tests/mcp/test_mcp_service.py::test_sensitive_approve_full_flow - brid...
+FAILED tests/mcp/test_mcp_service.py::test_sensitive_deny_terminates_call - b...
+FAILED tests/mcp/test_mcp_service.py::test_confirmation_not_reusable - bridge...
+FAILED tests/learning_projects/test_learning_projects_api.py::test_move_conversation_between_projects_and_detach
+FAILED tests/mcp/test_mcp_service.py::test_revoke_permissions_uses_new_manifest
+FAILED tests/mcp/test_mcp_service.py::test_revoke_sensitive_permission_terminates_running_process
+FAILED tests/mcp/test_mcp_service.py::test_call_stats_and_failure_reasons - b...
+FAILED tests/mcp/test_mcp_service.py::test_audit_never_contains_secrets_or_body
+FAILED tests/learning_projects/test_learning_projects_api.py::test_move_preserves_messages_mode_events_and_attachments
+FAILED tests/mcp/test_mcp_service.py::test_restart_restores_legal_configuration
+FAILED tests/mcp/test_mcp_service.py::test_reap_orphans_kills_leftover_process
+FAILED tests/mcp/test_mcp_service.py::test_account_isolation_for_all_operations
+FAILED tests/closeout/test_api_boot.py::test_api_starts_from_unique_absolute_sqlite_path_and_health_passes
+FAILED tests/mcp/test_mcp_service.py::test_cross_account_rejected_by_scope_enforcer
+FAILED tests/mcp/test_mcp_service.py::test_same_mcp_id_across_accounts_both_authorized
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_keep_detaches_conversations_and_removes_files
+FAILED tests/observability/test_observability_seam.py::test_success_task_emits_audit_and_summary
+FAILED tests/observability/test_observability_seam.py::test_retry_task_records_retryable_failure_then_success
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_contents_delete_removes_everything
+FAILED tests/closeout/test_api_boot.py::test_two_api_runs_do_not_collide_on_ports_or_data_dirs
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_rolls_back_on_mid_delete_failure
+FAILED tests/learning_projects/test_learning_projects_api.py::test_delete_contents_delete_refuses_while_streaming
+FAILED tests/learning_projects/test_learning_projects_api.py::test_cross_account_access_is_uniform_404
+FAILED tests/learning_projects/test_learning_projects_api.py::test_patch_title_and_project_applies_atomically
+FAILED tests/learning_projects/test_learning_projects_api.py::test_patch_invalid_title_leaves_project_membership_unchanged
+FAILED tests/learning_projects/test_learning_projects_api.py::test_patch_mid_write_failure_rolls_back_title_and_project
+FAILED tests/learning_projects/test_project_files_api.py::test_file_upload_list_download_delete_roundtrip
+FAILED tests/learning_projects/test_project_files_api.py::test_file_upload_validation_and_missing_project
+FAILED tests/learning_projects/test_project_files_api.py::test_file_delete_conflicts_while_processing
+FAILED tests/integration/test_issue16_profile_contract.py::test_four_dimension_public_contract_keeps_only_read_modify_withdraw
+FAILED tests/closeout/test_authenticity_gate.py::test_gate_deterministic_checks_pass_but_gate_blocks_without_key
+FAILED tests/closeout/test_capability_manifest.py::test_real_app_routes_are_fully_classified
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_preview_lists_categories
+FAILED tests/plugins/test_plugin_api.py::test_list_plugins_requires_login - a...
+FAILED tests/plugins/test_plugin_api.py::test_list_plugins_returns_builtin_and_empty_user
+FAILED tests/lifecycle/test_lifecycle_api.py::test_export_returns_json_download_after_reauth
+FAILED tests/plugins/test_plugin_api.py::test_check_valid_package_returns_manifest
+FAILED tests/plugins/test_plugin_api.py::test_check_rejected_package_lists_reasons
+FAILED tests/plugins/test_plugin_api.py::test_check_oversized_package_413 - a...
+FAILED tests/lifecycle/test_lifecycle_api.py::test_delete_account_removes_data_and_session
+FAILED tests/plugins/test_plugin_api.py::test_check_missing_filename_400 - as...
+FAILED tests/plugins/test_plugin_api.py::test_install_success_and_audit - ass...
+FAILED tests/lifecycle/test_lifecycle_api.py::test_create_backup_returns_encrypted_file
+FAILED tests/plugins/test_plugin_api.py::test_install_rejected_package_422_with_recoverable_failure
+FAILED tests/plugins/test_plugin_api.py::test_install_conflict_when_already_installed
+FAILED tests/plugins/test_plugin_api.py::test_failed_package_reinstall_success
+FAILED tests/lifecycle/test_lifecycle_api.py::test_full_backup_restore_roundtrip_via_api
+FAILED tests/plugins/test_plugin_api.py::test_enable_disable_and_uninstall - ...
+FAILED tests/plugins/test_plugin_api.py::test_builtin_disable_and_enable - Ke...
+FAILED tests/plugins/test_plugin_api.py::test_builtin_cannot_be_uninstalled
+FAILED tests/plugins/test_plugin_api.py::test_enable_unknown_plugin_404 - ass...
+FAILED tests/plugins/test_plugin_api.py::test_other_account_cannot_see_or_touch_user_package
+FAILED tests/integration/test_media_retirement.py::test_chat_image_chain_does_not_route_to_legacy_media_services
+FAILED tests/plugins/test_plugin_api.py::test_demo_parses_markdown_for_real
+FAILED tests/plugins/test_plugin_api.py::test_demo_disabled_builtin_conflict
+FAILED tests/mcp/test_mcp_api.py::test_list_requires_login - assert 410 == 401
+FAILED tests/plugins/test_plugin_api.py::test_demo_parse_failure_422 - assert...
+FAILED tests/mcp/test_mcp_api.py::test_list_empty_after_register - assert 410...
+FAILED tests/plugins/test_plugin_api.py::test_demo_builtin_enabled_state_is_per_account
+FAILED tests/mcp/test_mcp_api.py::test_check_valid_descriptor - assert 410 ==...
+FAILED tests/plugins/test_plugin_api.py::test_install_and_toggle_audit_records
+FAILED tests/mcp/test_mcp_api.py::test_check_rejected_descriptor_lists_reasons
+FAILED tests/plugins/test_plugin_service.py::test_builtin_toggle_persists_per_account
+FAILED tests/plugins/test_plugin_service.py::test_builtin_cannot_be_uninstalled
+FAILED tests/plugins/test_plugin_service.py::test_user_package_cannot_collide_with_builtin
+FAILED tests/integration/test_runtime_smoke.py::test_doctor_smoke - Assertion...
+FAILED tests/integration/test_runtime_smoke.py::test_migrate_smoke - Assertio...
+FAILED tests/integration/test_runtime_smoke.py::test_doctor_notices_test_environment_needs_no_global_key
+FAILED tests/integration/test_runtime_smoke.py::test_doctor_fails_without_global_key_in_development
+FAILED tests/plugins/test_plugin_service.py::test_install_success_stores_object_and_record_and_audit
+FAILED tests/integration/test_runtime_smoke.py::test_doctor_reports_configured_global_key_without_tail
+FAILED tests/integration/test_runtime_smoke.py::test_start_fails_when_global_key_file_unreadable
+FAILED tests/integration/test_runtime_smoke.py::test_api_command_fails_without_global_key
+FAILED tests/plugins/test_plugin_service.py::test_check_package_is_side_effect_free
+FAILED tests/integration/test_runtime_smoke.py::test_worker_command_fails_without_global_key
+FAILED tests/plugins/test_plugin_service.py::test_install_rejected_creates_recoverable_failure_not_running_entry
+FAILED tests/mcp/test_mcp_api.py::test_check_non_yaml_rejected - assert 410 =...
+FAILED tests/plugins/test_plugin_service.py::test_duplicate_install_same_version_conflicts
+FAILED tests/plugins/test_plugin_service.py::test_failed_package_can_be_fixed_and_reinstalled
+FAILED tests/plugins/test_plugin_service.py::test_failed_install_does_not_enter_running_registry
+FAILED tests/plugins/test_plugin_service.py::test_user_package_toggle_and_uninstall
+FAILED tests/plugins/test_plugin_service.py::test_toggle_failed_package_rejected
+FAILED tests/plugins/test_plugin_service.py::test_uninstall_unknown_package_404
+FAILED tests/plugins/test_plugin_service.py::test_state_survives_service_recreation
+FAILED tests/plugins/test_plugin_service.py::test_account_isolation_for_all_operations
+FAILED tests/plugins/test_plugin_service.py::test_demo_parses_markdown_attachment_for_real
+FAILED tests/plugins/test_plugin_service.py::test_demo_rejects_disabled_builtin
+FAILED tests/mcp/test_mcp_api.py::test_install_valid_descriptor - assert 410 ...
+FAILED tests/plugins/test_plugin_service.py::test_demo_parse_failure_reports_chinese_reason
+FAILED tests/mcp/test_mcp_api.py::test_install_rejected_descriptor_422 - asse...
+FAILED tests/closeout/test_mail_verification.py::test_immediate_delivery_verifies
+FAILED tests/mcp/test_mcp_api.py::test_install_conflict_409 - assert 410 == 409
+FAILED tests/mcp/test_mcp_api.py::test_enable_disable_and_uninstall - assert ...
+FAILED tests/closeout/test_mail_verification.py::test_mail_verification_converges_to_verified_after_10_second_delivery
+FAILED tests/mcp/test_mcp_api.py::test_revoke_permissions_endpoint - assert 4...
+FAILED tests/mcp/test_mcp_api.py::test_revoke_permissions_invalid_422 - asser...
+FAILED tests/closeout/test_mail_verification.py::test_dropped_mail_times_out_to_failed
+FAILED tests/mcp/test_mcp_api.py::test_invoke_success - assert 410 == 200
+FAILED tests/mcp/test_mcp_api.py::test_invoke_undeclared_slice_403 - assert 4...
+FAILED tests/closeout/test_three_journeys.py::test_three_journeys_persist_profile_and_isolate_accounts
+FAILED tests/plugins/test_plugin_service.py::test_demo_parses_real_pdf - brid...
+FAILED tests/plugins/test_plugin_service.py::test_audit_never_contains_package_content
+FAILED tests/mcp/test_mcp_api.py::test_sensitive_pending_then_approve - asser...
+FAILED tests/mcp/test_mcp_api.py::test_sensitive_deny_403 - KeyError: 'confir...
+FAILED tests/mcp/test_mcp_api.py::test_calls_endpoint - assert 410 == 200
+FAILED tests/mcp/test_mcp_api.py::test_cross_account_404 - assert 410 == 200
+FAILED tests/profiles/test_issue01_chat_profile_correction.py::test_chat_correction_uses_latest_record_and_is_idempotent
+FAILED tests/mcp/test_mcp_api.py::test_unmounted_service_503 - assert 410 == 503
+FAILED tests/retrieval/test_retrieval_service.py::test_scope_attachment_then_project_then_kb
+FAILED tests/retrieval/test_retrieval_service.py::test_citation_detail_project_layer_uses_project_download_entry
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[get-/plugins]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/plugins/check]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/plugins/install]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/plugins/anything/enable]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[delete-/plugins/anything]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[get-/mcp]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/check]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/install]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/anything/invoke]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[post-/mcp/anything/confirmations/c1/approve]
+FAILED tests/retirement/test_user_extensions_retirement.py::test_legacy_extension_routes_are_safe_410[get-/mcp/anything/calls]
+FAILED tests/security/test_object_authorization.py::test_concurrent_two_account_operations_do_not_cross_contaminate
+FAILED tests/runtime/test_runtime_contract.py::test_runtime_lock_auto_released_after_process_death
+FAILED tests/runtime/test_runtime_contract.py::test_cli_worker_scheduler_help_exits_successfully
+FAILED tests/runtime/test_runtime_contract.py::test_cli_start_help_mentions_all_services
+FAILED tests/tieba/test_tieba_module_flow.py::test_other_modules_still_rejected_and_no_silent_search
+FAILED tests/tieba/test_tieba_module_flow.py::test_plain_chat_suggests_tieba_without_searching
+ERROR tests/integration/test_runtime_smoke.py::test_health_endpoints_return_unified_projection
+ERROR tests/integration/test_runtime_smoke.py::test_api_gracefully_shuts_down
+220 failed, 5478 passed, 39 skipped, 2 errors in 641.38s (0:10:41)
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests -n 4 -q -p no:cacheprovider --tb=line -k not test_start_fails_with_empty_global_key_before_spawning and not test_start_fails_when_global_key_env_absent --basetemp=.tmp/issue39-full --junitxml=.scratch/2/validation/39-full.xml` failed. (See above for error)

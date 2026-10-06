@@ -1,0 +1,138 @@
+........................................................................ [ 54%]
+..............................................F.FFF........              [100%]
+================================== FAILURES ===================================
+_________________ test_lock_freezes_reproducibility_metadata __________________
+src\bridges\evaluation\runner.py:189: in run
+    env = EvalEnvironment(
+src\bridges\evaluation\executors.py:572: in __init__
+    self.chat = ChatService(
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: in _rmtree_unsafe
+    os.unlink(fullname)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-bziqs2ya\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+tests\evaluation\test_runner_reproducibility.py:51: in test_lock_freezes_reproducibility_metadata
+    outcome = tiny_runner.run()
+              ^^^^^^^^^^^^^^^^^
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: in onerror
+    _os.unlink(path)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-bziqs2ya\\env-0.db'
+_______________________ test_double_run_is_reproducible _______________________
+src\bridges\evaluation\runner.py:189: in run
+    env = EvalEnvironment(
+src\bridges\evaluation\executors.py:572: in __init__
+    self.chat = ChatService(
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: in _rmtree_unsafe
+    os.unlink(fullname)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-nt9flppp\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+tests\evaluation\test_runner_reproducibility.py:88: in test_double_run_is_reproducible
+    first = tiny_runner.run()
+            ^^^^^^^^^^^^^^^^^
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: in onerror
+    _os.unlink(path)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-nt9flppp\\env-0.db'
+______________ test_reproduction_command_is_one_click_replayable ______________
+src\bridges\evaluation\runner.py:189: in run
+    env = EvalEnvironment(
+src\bridges\evaluation\executors.py:572: in __init__
+    self.chat = ChatService(
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: in _rmtree_unsafe
+    os.unlink(fullname)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-kno73up4\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+tests\evaluation\test_runner_reproducibility.py:111: in test_reproduction_command_is_one_click_replayable
+    outcome = tiny_runner.run()
+              ^^^^^^^^^^^^^^^^^
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: in onerror
+    _os.unlink(path)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-kno73up4\\env-0.db'
+_________________ test_suite_run_produces_all_suts_and_tasks __________________
+src\bridges\evaluation\runner.py:189: in run
+    env = EvalEnvironment(
+src\bridges\evaluation\executors.py:572: in __init__
+    self.chat = ChatService(
+E   TypeError: ChatService.__init__() got an unexpected keyword argument 'image_service'
+
+During handling of the above exception, another exception occurred:
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:632: in _rmtree_unsafe
+    os.unlink(fullname)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-yo5spba9\\env-0.db'
+
+During handling of the above exception, another exception occurred:
+tests\evaluation\test_runner_reproducibility.py:121: in test_suite_run_produces_all_suts_and_tasks
+    outcome = runner.run()
+              ^^^^^^^^^^^^
+src\bridges\evaluation\runner.py:165: in run
+    with tempfile.TemporaryDirectory(prefix="bridges-eval-") as tmp_dir:
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:943: in __exit__
+    self.cleanup()
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:947: in cleanup
+    self._rmtree(self.name, ignore_errors=self._ignore_cleanup_errors)
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:929: in _rmtree
+    _shutil.rmtree(name, onerror=onerror)
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:787: in rmtree
+    return _rmtree_unsafe(path, onerror)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\33755\anaconda3\envs\agent\Lib\shutil.py:634: in _rmtree_unsafe
+    onerror(os.unlink, fullname, sys.exc_info())
+C:\Users\33755\anaconda3\envs\agent\Lib\tempfile.py:893: in onerror
+    _os.unlink(path)
+E   PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'C:\\Users\\33755\\AppData\\Local\\Temp\\bridges-eval-yo5spba9\\env-0.db'
+=========================== short test summary info ===========================
+FAILED tests/evaluation/test_runner_reproducibility.py::test_lock_freezes_reproducibility_metadata
+FAILED tests/evaluation/test_runner_reproducibility.py::test_double_run_is_reproducible
+FAILED tests/evaluation/test_runner_reproducibility.py::test_reproduction_command_is_one_click_replayable
+FAILED tests/evaluation/test_runner_reproducibility.py::test_suite_run_produces_all_suts_and_tasks
+4 failed, 127 passed in 9.09s
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests/evaluation -q -p no:cacheprovider --tb=short --junitxml=.scratch/2/validation/39-independent/evaluation.xml` failed. (See above for error)
