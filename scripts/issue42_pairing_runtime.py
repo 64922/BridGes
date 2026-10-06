@@ -74,7 +74,9 @@ def run_tree(
     result: dict[str, Any] = {
         "tree": str(tree),
         "commit": _git(tree, "rev-parse", "HEAD"),
-        "dirty": bool(_git(tree, "status", "--porcelain")),
+        "dirty": bool(
+            _git(tree, "status", "--porcelain", "--untracked-files=no")
+        ),
         "source_lock": source_lock(tree, Path(__file__).parent),
         "corpus_sha256": corpus_sha256(),
         "repeats": repeats,
