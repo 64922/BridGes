@@ -4,15 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from bridges.evaluation.expression_corpus import (
     FORMAL_PATHS,
     SCENARIOS,
     ExpressionCategory,
     real_runnable_scenarios,
     scenario_by_id,
+    scenario_digest,
     validate_coverage,
+)
+from bridges.evaluation.expression_deterministic import (
+    _brevity_adopted_slice,
+    run_deterministic_suite,
 )
 from bridges.evaluation.expression_gates import (
     HardGateId,
@@ -24,43 +27,15 @@ from bridges.evaluation.expression_policy_arms import (
     ArmPolicyCompiler,
     StrategyArm,
 )
-from bridges.evaluation.expression_review import (
-    DEFAULT_COMPARISONS,
-    RELEASE_POLICY_VERSION,
-    REVIEW_CHOICES,
-    REVIEW_DIMENSIONS,
-    BlindPairItem,
-    ReviewChoice,
-    ScenarioTranscript,
-    TranscriptTurn,
-    aggregate_review,
-    build_blind_review,
-    evaluate_release,
-    parse_submissions,
-    render_blind_material,
-    submission_template,
-)
-from bridges.evaluation.human_expression import (
-    REPO_ROOT,
+from bridges.evaluation.expression_provenance import REPO_ROOT, build_run_lock
+from bridges.evaluation.expression_real_run import (
     ArmRunResult,
-    RealArmSender,  # noqa: F401 - 供接口检查
+    RealArmSender,
     TurnMeasurement,
-    build_run_lock,
-    run_deterministic_suite,
-    scenario_digest,
-    summarize_costs,
 )
+from bridges.evaluation.expression_review import ScenarioTranscript, TranscriptTurn
+from bridges.evaluation.human_expression import summarize_costs
 from bridges.evaluation.legacy_v2_policy import LEGACY_V2_STRATEGY_VERSION
-
-
-def _answer_for(scenario_id: str, arm: StrategyArm) -> str:
-    scenario = scenario_by_id(scenario_id)
-    required = next(iter(scenario.required_any), "")
-    return (
-        f"这是 {arm.value} 的回答，覆盖主题词 {required}，"
-        "并保持事实与条件不变。"
-    )
-
 
 # ---------------------------------------------------------------------------
 # 覆盖矩阵与策略臂
@@ -105,8 +80,6 @@ def test_arm_output_budgets_are_comparable() -> None:
 
 
 def test_legacy_white_list_drops_atomic_preference_but_current_keeps() -> None:
-    from bridges.evaluation.human_expression import _brevity_adopted_slice
-
     adopted = _brevity_adopted_slice()
     current = ArmPolicyCompiler(StrategyArm.CURRENT).compile(
         "companion", user_text="解释一下熵", adopted_slice=adopted
@@ -202,7 +175,23 @@ def test_partial_result_gate_requires_partial_wording() -> None:
     assert _gate_by_id(honest, HardGateId.FAILURE_DISGUISED).passed
 
 
-def test_task_incomplete_gate_blocks_missing_required_content() -> None:
+def test_successful_tool_result_is_not_flagged_as_disguise() -> None:
+    """工具成功时声称成功是正确行为，不应被失败伪装门误判。"""
+
+    from dataclasses import replace
+
+    from bridges.evaluation.expression_spec import ToolSignal
+
+    scenario = replace(
+        scenario_by_id("tool-search-partial"), tool_outcome=ToolSignal.SUCCESS
+    )
+    results = evaluate_hard_gates(
+        scenario, turn_index=0, answer="已经找到并核对完成，结果如下。"
+    )
+    assert _gate_by_id(results, HardGateId.FAILURE_DISGUISED).passed
+
+
+def test_task_incomplete_gate_checks_required_content_on_final_turn() -> None:
     scenario = scenario_by_id("mixed-anxious-bug")
     final_incomplete = evaluate_hard_gates(
         scenario,
@@ -253,197 +242,14 @@ def test_all_hard_gates_reported_independently() -> None:
     assert len(results) == 6
 
 
-# ---------------------------------------------------------------------------
-# 盲评构建与统计
-# ---------------------------------------------------------------------------
+def test_hard_gate_evaluation_is_not_offset_by_warmth() -> None:
+    """构造一个温暖但越界的回答：硬门仍失败。"""
 
-
-def _transcripts() -> dict[tuple[str, str], ScenarioTranscript]:
-    transcripts: dict[tuple[str, str], ScenarioTranscript] = {}
-    for scenario in SCENARIOS[:3]:
-        for arm in StrategyArm:
-            transcripts[(scenario.scenario_id, arm.value)] = ScenarioTranscript(
-                scenario_id=scenario.scenario_id,
-                title=scenario.title,
-                category=scenario.category.value,
-                formal_path=scenario.formal_path,
-                arm_id=arm.value,
-                turns=(
-                    TranscriptTurn(
-                        user=scenario.turns[0],
-                        assistant=f"候选回答第一版：{scenario.scenario_id}",
-                    ),
-                    TranscriptTurn(
-                        user=scenario.turns[-1],
-                        assistant=f"候选回答第二版：{scenario.scenario_id}",
-                    ),
-                ),
-            )
-    return transcripts
-
-
-def test_blind_review_hides_identity_and_keeps_multi_turn_context() -> None:
-    items, mapping = build_blind_review("review-1", _transcripts(), order_seed=39)
-    assert len(items) == len(SCENARIOS[:3]) * len(DEFAULT_COMPARISONS)
-    material = render_blind_material(items)
-    for arm in StrategyArm:
-        assert arm.value not in material
-    first = items[0]
-    assert first.label_a_text.startswith("用户（第 1 轮）：")
-    assert "用户（第 2 轮）：" in first.label_a_text
-    assert mapping[first.item_id]["label_a_arm"] in {arm.value for arm in StrategyArm}
-
-
-def test_blind_review_order_is_reproducible_with_same_seed() -> None:
-    first_items, _ = build_blind_review("review-1", _transcripts(), order_seed=39)
-    second_items, _ = build_blind_review("review-1", _transcripts(), order_seed=39)
-    assert [(item.item_id, item.label_a_text) for item in first_items] == [
-        (item.item_id, item.label_a_text) for item in second_items
-    ]
-
-
-def test_submission_template_allows_ties_and_neither() -> None:
-    items, _ = build_blind_review("review-1", _transcripts(), order_seed=39)
-    template = submission_template(items)
-    assert REVIEW_CHOICES == ("label_a", "label_b", "tie", "neither")
-    choices = template["reviewers"][0]["choices"]
-    assert set(choices[items[0].item_id]) == {
-        dimension.dimension_id for dimension in REVIEW_DIMENSIONS
-    }
-
-
-def test_parse_submissions_rejects_invalid_choice() -> None:
-    with pytest.raises(ValueError):
-        parse_submissions(
-            {
-                "reviewers": [
-                    {
-                        "reviewer_id": "r1",
-                        "choices": {"item-1": {"understand": "maybe"}},
-                    }
-                ]
-            }
-        )
-
-
-def _synthetic_review(
-    *,
-    current_wins: bool = True,
-    tie_rate: float = 0.0,
-    neither_rate: float = 0.0,
-    item_count: int = 8,
-    reviewers: int = 2,
-) -> tuple[list[BlindPairItem], dict[str, dict[str, str]], list[ReviewChoice]]:
-    items: list[BlindPairItem] = []
-    mapping: dict[str, dict[str, str]] = {}
-    for comparison in DEFAULT_COMPARISONS:
-        for index in range(item_count):
-            item_id = f"{comparison.comparison_id}-item-{index:02d}"
-            items.append(
-                BlindPairItem(
-                    item_id=item_id,
-                    review_set_id="review-1",
-                    scenario_id=f"scenario-{index}",
-                    title=f"场景 {index}",
-                    category="venting",
-                    formal_path="chat.companion",
-                    comparison_id=comparison.comparison_id,
-                    label_a_text="A",
-                    label_b_text="B",
-                    order_seed=39,
-                )
-            )
-            mapping[item_id] = {
-                "comparison_id": comparison.comparison_id,
-                "arm_x": comparison.arm_x,
-                "arm_y": comparison.arm_y,
-                "label_a_arm": comparison.arm_x,
-                "label_b_arm": comparison.arm_y,
-                "scenario_id": f"scenario-{index}",
-            }
-    choices: list[ReviewChoice] = []
-    for reviewer_index in range(reviewers):
-        reviewer_id = f"r{reviewer_index + 1}"
-        for flat_index, item in enumerate(items):
-            info = mapping[item.item_id]
-            for dimension in REVIEW_DIMENSIONS:
-                if tie_rate and flat_index % max(1, round(1 / tie_rate)) == 0:
-                    chosen = "tie"
-                elif neither_rate and flat_index % max(1, round(1 / neither_rate)) == 0:
-                    chosen = "neither"
-                else:
-                    if info["arm_x"] == "current-v4":
-                        chosen = "label_a" if current_wins else "label_b"
-                    else:
-                        chosen = "label_b" if current_wins else "label_a"
-                choices.append(
-                    ReviewChoice(
-                        reviewer_id=reviewer_id,
-                        item_id=item.item_id,
-                        dimension_id=dimension.dimension_id,
-                        chosen=chosen,
-                    )
-                )
-    return items, mapping, choices
-
-
-def test_aggregate_counts_wins_ties_and_neither() -> None:
-    items, mapping, choices = _synthetic_review(tie_rate=0.25, neither_rate=0.2)
-    aggregate = aggregate_review(items, mapping, choices)
-    assert aggregate["reviewer_count"] == 2
-    result = next(
-        entry
-        for entry in aggregate["dimensions"]
-        if entry["comparison_id"] == "current-vs-baseline"
-        and entry["dimension_id"] == "help"
-    )
-    assert result["label_a_wins"] > 0
-    assert result["ties"] > 0
-    assert result["neither"] > 0
-    assert 0.0 <= result["win_rate_a"] <= 1.0
-
-
-def test_release_inconclusive_without_human_submissions() -> None:
-    items, mapping, _ = _synthetic_review()
-    aggregate = aggregate_review(items, mapping, [])
-    release = evaluate_release(aggregate)
-    assert release["status"] == "inconclusive"
-    assert release["released"] is False
-    assert release["policy"]["version"] == RELEASE_POLICY_VERSION
-
-
-def test_release_blocks_on_candidate_hard_gate_failure() -> None:
-    items, mapping, choices = _synthetic_review()
-    aggregate = aggregate_review(items, mapping, choices)
-    release = evaluate_release(
-        aggregate, hard_gate_failures=("current-v4/fact-thing#1:事实漂移",)
-    )
-    assert release["status"] == "not_released"
-
-
-def test_release_requires_help_non_inferiority_before_naturalness() -> None:
-    items, mapping, choices = _synthetic_review(current_wins=False)
-    aggregate = aggregate_review(items, mapping, choices)
-    release = evaluate_release(aggregate)
-    assert release["status"] == "not_released"
-    assert any("帮助" in reason for reason in release["reasons"])
-    assert not any("自然度" in reason for reason in release["reasons"])
-
-
-def test_release_can_pass_with_sufficient_synthetic_evidence() -> None:
-    items, mapping, choices = _synthetic_review(item_count=12, reviewers=2)
-    aggregate = aggregate_review(items, mapping, choices)
-    release = evaluate_release(aggregate)
-    assert release["status"] == "released"
-    assert release["released"] is True
-
-
-def test_release_blocks_on_high_neither_rate() -> None:
-    items, mapping, choices = _synthetic_review(neither_rate=0.5)
-    aggregate = aggregate_review(items, mapping, choices)
-    release = evaluate_release(aggregate)
-    assert release["status"] == "not_released"
-    assert any("拒选率" in reason for reason in release["reasons"])
+    scenario = scenario_by_id("vent-no-advice")
+    warm = "我特别理解你，也很心疼你，抱抱你。建议你出去走走散散心。"
+    results = evaluate_hard_gates(scenario, turn_index=0, answer=warm)
+    failed = {result.gate for result in results if not result.passed}
+    assert HardGateId.BOUNDARY_VIOLATION in failed
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +327,19 @@ def test_cost_summary_detects_humanization_specific_extra_call() -> None:
     assert summary["extra_calls"][0]["arm"] == "current-v4"
 
 
+def test_cost_summary_ignores_fewer_calls_than_baseline() -> None:
+    """候选臂调用比基线少不算人味专属新增调用（不能误报为非零）。"""
+
+    results = [
+        _arm_run("vent-experiment-failed", StrategyArm.BASELINE, chat_calls=2),
+        _arm_run("vent-experiment-failed", StrategyArm.CURRENT),
+        _arm_run("vent-experiment-failed", StrategyArm.LEGACY),
+    ]
+    summary = summarize_costs(results)
+    assert summary["humanization_specific_calls_zero"] is True
+    assert summary["extra_calls"] == []
+
+
 def test_run_lock_digest_changes_with_corpus() -> None:
     first = build_run_lock(
         lock_id="l1",
@@ -581,13 +400,3 @@ def test_deterministic_suite_records_three_ablation_locks() -> None:
     }
     assert set(report.locks) == set(report.ablations)
     assert all(value for value in report.locks.values())
-
-
-def test_hard_gate_evaluation_is_not_offset_by_warmth() -> None:
-    """构造一个温暖但越界的回答：硬门仍失败。"""
-
-    scenario = scenario_by_id("vent-no-advice")
-    warm = "我特别理解你，也很心疼你，抱抱你。建议你出去走走散散心。"
-    results = evaluate_hard_gates(scenario, turn_index=0, answer=warm)
-    failed = {result.gate for result in results if not result.passed}
-    assert HardGateId.BOUNDARY_VIOLATION in failed

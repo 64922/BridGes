@@ -94,4 +94,15 @@
 - 排查类回答在模型随机性下可能触及 1024 输出上限（生产用户同样会看到额度提示），报告如实记录该回合终态为 error，不用重试掩盖。
 - 人工盲评提交需按 `blind-review.md` 量表填写并注入 `--submissions`；评审人数与判定阈值由放行策略预注册。
 
+### 评审修复（2026-10-06，两轴 code-review 后）
+
+- 统计取向：盲评聚合改为按策略臂取向（`arm_x/arm_y`、`candidate_wins/candidate_win_rate` + Wilson），修复原先按随机 A/B 标签统计导致候选胜率随洗牌漂移的问题；放行改读候选臂胜率与 Wilson 下界，新增「标签翻转仍按臂取向」回归。
+- 盲化：对照项改用匿名编号（item-001…），材料不再打印对照名/场景标识/策略臂；新增材料无身份泄漏断言。
+- 硬门：修复工具成功被误判为失败伪装（SUCCESS 直接通过，SUCCESS/ERROR/PARTIAL 分支重构）并补回归；任务必要内容明确按终态回答检查。
+- 成本：`humanization_specific_calls_zero` 仅在候选调用数多于基线时判非零（原实现把更少调用误报），补回归。
+- 模块边界：按「单文件 ≤500 行」拆分——语料拆为 `expression_spec` / `expression_scenarios_daily` / `expression_scenarios_paths` / `expression_corpus`；评测拆为 `expression_provenance` / `expression_deterministic` / `expression_real_run` / `human_expression`；量表与提交拆为 `expression_scale` / `expression_submission`；测试拆为机制与盲评两个文件。场景数据逐字段对照旧实现零差异。
+- 报告：新增场景分布与「部署参照（简洁基线实测）」块，供发布票按测量设门槛；回滚说明明确本票不修改生产提示（回滚面为零）；`legacy_v2_policy.py` 为工单任务 2 要求的历史 v2 对照，按 079faab6 冻结回放。
+- 量表版本 `human-expression-scale-v1 → v2`（锚点改为两两相对判定，消除 0–5 分锚点与 A/B 四选一不一致）。
+- 修复后复核：确定性 31/31；本票 35 passed；`tests/evaluation` 127 passed（4 项为 main 相同的既有 Windows 临时库清理失败）；ruff 通过；`python -m mypy src` 108 项既有错误、本票模块 0 项。
+
 

@@ -1,74 +1,27 @@
-"""工单 39：人味表达多轮盲评的匿名化、量表与统计（无模型调用）。
+"""工单 39：人味表达多轮盲评的匿名化与统计（无模型调用）。
 
 职责：
 
-- 把三个策略臂的完整多轮会话匿名化：随机交换 A/B 顺序（固定种子进入
-  运行锁），只暴露匿名标签；映射单独保存，评审者只见盲评材料。
-- 五个独立维度（是否听懂、帮助、自然度、分寸、连续性）分别选择
-  A / B / 平局 / 都不选；不用套话计数代替收益判断。
-- 统计胜/平/拒选、评审一致性与 Wilson 区间；按预注册策略先判
-  「帮助/分寸非劣」，通过后再看自然度，样本不足时明确不放行。
+- 把策略臂的完整多轮会话匿名化：随机交换 A/B 顺序（固定种子进入
+  运行锁），评审者只见到匿名项；de-blind 映射保留在评测侧。
+- 统计按策略臂取向（不按随机的 A/B 标签）：每个对照 × 维度记录各臂
+  胜场、候选臂胜率、平局与拒选，并给出候选臂胜率的 Wilson 区间。
+- 按预注册策略先判「帮助/分寸非劣」，通过后再看自然度；样本不足时
+  明确不放行，不用套话计数代替收益判断。
 """
 
 from __future__ import annotations
 
-import json
 import math
 import random
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-#: 量表版本进入运行锁与报告，任何问题/选项变化都必须升版本。
-SCALE_VERSION = "human-expression-scale-v1"
+from bridges.evaluation.expression_scale import REVIEW_DIMENSIONS
+
 #: 预注册放行策略版本。
 RELEASE_POLICY_VERSION = "human-expression-release-v1"
-
-
-@dataclass(frozen=True)
-class ReviewDimension:
-    dimension_id: str
-    label: str
-    question: str
-    anchors: str
-
-
-#: 五个独立维度；自然度只在帮助/分寸非劣之后参与放行判断。
-REVIEW_DIMENSIONS: tuple[ReviewDimension, ...] = (
-    ReviewDimension(
-        "understand",
-        "听懂",
-        "回答是否理解并回应了用户在本轮的真实请求？",
-        "0=误解或答非所问；3=基本听懂；5=准确抓住意图与约束",
-    ),
-    ReviewDimension(
-        "help",
-        "帮助",
-        "回答是否实际完成了任务或推进了问题？",
-        "0=没有帮助；3=部分推进；5=明确完成或给出可执行下一步",
-    ),
-    ReviewDimension(
-        "natural",
-        "自然度",
-        "表达是否像有分寸的伙伴，而不是套话或机械模板？",
-        "0=明显机械或堆砌温暖词；3=自然可读；5=自然且贴合语境",
-    ),
-    ReviewDimension(
-        "boundary",
-        "分寸",
-        "是否尊重用户本轮明确边界（不要建议/安慰/追问，只给答案，要求详细等）？",
-        "0=明显越界；3=基本尊重；5=完全尊重且不丢失必要信息",
-    ),
-    ReviewDimension(
-        "continuity",
-        "连续性",
-        "多轮对话中是否承接了前文任务、纠正或未完成事项，而不是只看最后一句？",
-        "0=断片或重复；3=基本承接；5=准确接回前文并推进",
-    ),
-)
-
-REVIEW_CHOICES: tuple[str, ...] = ("label_a", "label_b", "tie", "neither")
-#: 主对照（涉及候选策略臂 `current-v4`）与其他配对分开统计。
+#: 候选策略臂标识（主对照涉及它时按候选取向统计与放行）。
 CURRENT_ARM_ID = "current-v4"
 
 
@@ -93,9 +46,6 @@ class ScenarioTranscript:
     formal_path: str
     arm_id: str
     turns: tuple[TranscriptTurn, ...]
-
-    def completed_turns(self) -> int:
-        return sum(1 for turn in self.turns if turn.status == "done")
 
     def render(self) -> str:
         lines: list[str] = []
@@ -148,10 +98,6 @@ class ComparisonSpec:
     arm_x: str
     arm_y: str
 
-    @property
-    def primary(self) -> bool:
-        return self.arm_x == CURRENT_ARM_ID or self.arm_y == CURRENT_ARM_ID
-
 
 #: 三个策略臂的全部两两配对（三组真实模型配对）。
 DEFAULT_COMPARISONS: tuple[ComparisonSpec, ...] = (
@@ -168,23 +114,29 @@ def build_blind_review(
     comparisons: tuple[ComparisonSpec, ...] = DEFAULT_COMPARISONS,
     order_seed: int = 39,
 ) -> tuple[list[BlindPairItem], dict[str, dict[str, str]]]:
-    """构建匿名单个对照项与 de-blind 映射；固定种子保证可复现。"""
+    """构建匿名对照项与 de-blind 映射；固定种子保证可复现。
+
+    对照项标识按固定顺序生成匿名编号（item-001…），不包含场景、策略或
+    对照名；评审材料因此不泄漏身份，映射只留在评测侧。
+    """
 
     items: list[BlindPairItem] = []
     mapping: dict[str, dict[str, str]] = {}
     scenario_ids = {key[0] for key in transcripts}
+    index = 0
     for scenario_id in sorted(scenario_ids):
         for comparison in comparisons:
             left = transcripts.get((scenario_id, comparison.arm_x))
             right = transcripts.get((scenario_id, comparison.arm_y))
             if left is None or right is None:
                 continue
+            index += 1
             key = f"{scenario_id}-{comparison.comparison_id}"
             rng = random.Random(f"{order_seed}:{key}")
             flip = rng.random() < 0.5
             text_x = left.render() if left.turns else ""
             text_y = right.render() if right.turns else ""
-            item_id = key
+            item_id = f"item-{index:03d}"
             items.append(
                 BlindPairItem(
                     item_id=item_id,
@@ -199,126 +151,15 @@ def build_blind_review(
                     order_seed=order_seed,
                 )
             )
-            label_a_arm = comparison.arm_y if flip else comparison.arm_x
-            label_b_arm = comparison.arm_x if flip else comparison.arm_y
             mapping[item_id] = {
                 "comparison_id": comparison.comparison_id,
                 "arm_x": comparison.arm_x,
                 "arm_y": comparison.arm_y,
-                "label_a_arm": label_a_arm,
-                "label_b_arm": label_b_arm,
+                "label_a_arm": comparison.arm_y if flip else comparison.arm_x,
+                "label_b_arm": comparison.arm_x if flip else comparison.arm_y,
                 "scenario_id": scenario_id,
             }
     return items, mapping
-
-
-def render_blind_material(
-    items: list[BlindPairItem],
-    *,
-    comparison_labels: dict[str, str] | None = None,
-) -> str:
-    """渲染评审者可见的盲评材料（只有匿名标签，无系统身份）。"""
-
-    labels = comparison_labels or {}
-    lines = [
-        "# 人味表达多轮盲评材料",
-        "",
-        "同一模型的两种表达策略分别生成了同一组连续多轮对话，顺序已随机交换。",
-        "请对每一项的五个维度分别选择：A、B、平局、都不选；不看系统身份，",
-        "只判断回答本身。事实/状态/边界硬失败由确定性检查单列，不进入下面的选择。",
-        "",
-    ]
-    for dimension in REVIEW_DIMENSIONS:
-        lines.append(f"- {dimension.label}：{dimension.question}（{dimension.anchors}）")
-    lines.extend(["", "---", ""])
-    for item in items:
-        label = labels.get(item.comparison_id, item.comparison_id)
-        lines.extend(
-            [
-                f"## {item.item_id}（场景：{item.title}；对照：{label}）",
-                "",
-                "### 会话 A",
-                "",
-                item.label_a_text or "（无内容）",
-                "",
-                "### 会话 B",
-                "",
-                item.label_b_text or "（无内容）",
-                "",
-                "评审表（把选择填入下方，可加理由）：",
-                "",
-                "| 维度 | A | B | 平局 | 都不选 | 理由（可选） |",
-                "| --- | --- | --- | --- | --- | --- |",
-            ]
-        )
-        for dimension in REVIEW_DIMENSIONS:
-            lines.append(f"| {dimension.label} |  |  |  |  |  |")
-        lines.append("")
-    return "\n".join(lines)
-
-
-def submission_template(items: list[BlindPairItem]) -> dict[str, Any]:
-    """供评审者填写的 JSON 模板（含全部对照项与维度）。"""
-
-    return {
-        "review_set_id": items[0].review_set_id if items else "",
-        "instructions": "每个 item 的五个维度各填 label_a / label_b / tie / neither。",
-        "reviewers": [
-            {
-                "reviewer_id": "请填写评审者标识",
-                "choices": {
-                    item.item_id: {
-                        dimension.dimension_id: "" for dimension in REVIEW_DIMENSIONS
-                    }
-                    for item in items
-                },
-                "comments": {},
-            }
-        ],
-    }
-
-
-@dataclass(frozen=True)
-class ReviewChoice:
-    reviewer_id: str
-    item_id: str
-    dimension_id: str
-    chosen: str
-    rationale: str | None = None
-
-
-def parse_submissions(payload: dict[str, Any]) -> list[ReviewChoice]:
-    """解析评审提交 JSON；非法选择抛 ValueError（不静默丢弃）。"""
-
-    choices: list[ReviewChoice] = []
-    valid_dimensions = {dimension.dimension_id for dimension in REVIEW_DIMENSIONS}
-    for reviewer in payload.get("reviewers", []):
-        reviewer_id = str(reviewer.get("reviewer_id", "")).strip()
-        if not reviewer_id:
-            raise ValueError("评审提交缺少 reviewer_id。")
-        for item_id, dimension_choices in (reviewer.get("choices") or {}).items():
-            for dimension_id, chosen in (dimension_choices or {}).items():
-                if dimension_id not in valid_dimensions:
-                    raise ValueError(f"未登记的评审维度：{dimension_id}。")
-                if not chosen:
-                    continue
-                if chosen not in REVIEW_CHOICES:
-                    raise ValueError(
-                        f"评审选择不合法：{item_id}/{dimension_id}={chosen}。"
-                    )
-                choices.append(
-                    ReviewChoice(
-                        reviewer_id=reviewer_id,
-                        item_id=str(item_id),
-                        dimension_id=dimension_id,
-                        chosen=str(chosen),
-                    )
-                )
-    return choices
-
-
-def load_submissions(path: str | Path) -> list[ReviewChoice]:
-    return parse_submissions(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
 # ---------------------------------------------------------------------------
@@ -344,48 +185,69 @@ def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float,
 
 @dataclass(frozen=True)
 class DimensionResult:
+    """一个对照 × 维度按策略臂取向的统计结果。
+
+    胜场按真实策略臂归属（`label_a_arm`/`label_b_arm` 经映射还原），
+    不按随机的 A/B 标签，避免候选臂胜率随洗牌漂移。
+    """
+
     comparison_id: str
     dimension_id: str
     item_count: int
     decisive: int
-    label_a_wins: int
-    label_b_wins: int
+    arm_x: str
+    arm_y: str
+    arm_x_wins: int
+    arm_y_wins: int
     ties: int
     neither: int
-    win_rate_a: float
-    wilson_low: float
-    wilson_high: float
+    arm_x_win_rate: float
+    candidate_arm: str | None
+    candidate_wins: int | None
+    candidate_win_rate: float | None
+    candidate_wilson_low: float | None
+    candidate_wilson_high: float | None
     neither_rate: float
     reviewer_count: int
     agreement: float
 
     def to_dict(self) -> dict[str, Any]:
+        def rounded(value: float | None) -> float | None:
+            return round(value, 4) if value is not None else None
+
         return {
             "comparison_id": self.comparison_id,
             "dimension_id": self.dimension_id,
             "item_count": self.item_count,
             "decisive": self.decisive,
-            "label_a_wins": self.label_a_wins,
-            "label_b_wins": self.label_b_wins,
+            "arm_x": self.arm_x,
+            "arm_y": self.arm_y,
+            "arm_x_wins": self.arm_x_wins,
+            "arm_y_wins": self.arm_y_wins,
             "ties": self.ties,
             "neither": self.neither,
-            "win_rate_a": round(self.win_rate_a, 4),
-            "wilson_low": round(self.wilson_low, 4),
-            "wilson_high": round(self.wilson_high, 4),
-            "neither_rate": round(self.neither_rate, 4),
+            "arm_x_win_rate": rounded(self.arm_x_win_rate),
+            "candidate_arm": self.candidate_arm,
+            "candidate_wins": self.candidate_wins,
+            "candidate_win_rate": rounded(self.candidate_win_rate),
+            "candidate_wilson_low": rounded(self.candidate_wilson_low),
+            "candidate_wilson_high": rounded(self.candidate_wilson_high),
+            "neither_rate": rounded(self.neither_rate),
             "reviewer_count": self.reviewer_count,
-            "agreement": round(self.agreement, 4),
+            "agreement": rounded(self.agreement),
         }
 
 
 def aggregate_review(
     items: list[BlindPairItem],
     mapping: dict[str, dict[str, str]],
-    choices: list[ReviewChoice],
+    choices: list[Any],
+    *,
+    candidate_arm: str = CURRENT_ARM_ID,
 ) -> dict[str, Any]:
-    """按对照 × 维度统计胜/平/拒选与不确定性；保留评审者一致率。"""
+    """按对照 × 维度统计臂取向胜/平/拒选与不确定性；保留评审者一致率。"""
 
-    by_item: dict[str, list[ReviewChoice]] = {}
+    by_item: dict[str, list[Any]] = {}
     for choice in choices:
         by_item.setdefault(choice.item_id, []).append(choice)
     by_comparison: dict[str, list[BlindPairItem]] = {}
@@ -398,8 +260,13 @@ def aggregate_review(
     results: list[DimensionResult] = []
     reviewer_ids = {choice.reviewer_id for choice in choices}
     for comparison_id, comparison_items in sorted(by_comparison.items()):
+        first_info = mapping[comparison_items[0].item_id]
+        arm_x = first_info["arm_x"]
+        arm_y = first_info["arm_y"]
+        candidate = candidate_arm if candidate_arm in (arm_x, arm_y) else None
         for dimension in REVIEW_DIMENSIONS:
-            a_wins = b_wins = ties = neither = 0
+            arm_wins: dict[str, int] = {arm_x: 0, arm_y: 0}
+            ties = neither = 0
             agreement_hits = 0
             agreement_denominator = 0
             for item in comparison_items:
@@ -416,29 +283,44 @@ def aggregate_review(
                         neither += 1
                     else:
                         arm = info.get(f"{vote}_arm")
-                        if arm == info.get("arm_x"):
-                            a_wins += 1
-                        else:
-                            b_wins += 1
+                        if arm in arm_wins:
+                            arm_wins[arm] += 1
                 if len(votes) >= 2:
                     agreement_denominator += 1
                     if len(set(votes)) == 1:
                         agreement_hits += 1
-            decisive = a_wins + b_wins
+            decisive = arm_wins[arm_x] + arm_wins[arm_y]
             total_votes = decisive + ties + neither
+            candidate_wins = (
+                arm_wins[candidate] if candidate is not None else None
+            )
+            candidate_rate = (
+                candidate_wins / decisive
+                if candidate_wins is not None and decisive
+                else None
+            )
+            wilson_low: float | None = None
+            wilson_high: float | None = None
+            if candidate_wins is not None and decisive:
+                wilson_low, wilson_high = wilson_interval(candidate_wins, decisive)
             results.append(
                 DimensionResult(
                     comparison_id=comparison_id,
                     dimension_id=dimension.dimension_id,
                     item_count=len(comparison_items),
                     decisive=decisive,
-                    label_a_wins=a_wins,
-                    label_b_wins=b_wins,
+                    arm_x=arm_x,
+                    arm_y=arm_y,
+                    arm_x_wins=arm_wins[arm_x],
+                    arm_y_wins=arm_wins[arm_y],
                     ties=ties,
                     neither=neither,
-                    win_rate_a=(a_wins / decisive) if decisive else 0.0,
-                    wilson_low=wilson_interval(a_wins, decisive)[0],
-                    wilson_high=wilson_interval(a_wins, decisive)[1],
+                    arm_x_win_rate=(arm_wins[arm_x] / decisive) if decisive else 0.0,
+                    candidate_arm=candidate,
+                    candidate_wins=candidate_wins,
+                    candidate_win_rate=candidate_rate,
+                    candidate_wilson_low=wilson_low,
+                    candidate_wilson_high=wilson_high,
                     neither_rate=(neither / total_votes) if total_votes else 0.0,
                     reviewer_count=len(reviewer_ids),
                     agreement=(
@@ -452,13 +334,19 @@ def aggregate_review(
         "reviewer_count": len(reviewer_ids),
         "submission_count": len(choices),
         "item_count": len(items),
+        "candidate_arm": candidate_arm,
         "dimensions": [result.to_dict() for result in results],
     }
 
 
 @dataclass(frozen=True)
 class ExpressionReleasePolicy:
-    """预注册放行策略：帮助/分寸非劣先过门，再判断自然度。"""
+    """预注册放行策略：帮助/分寸非劣先过门，再判断自然度。
+
+    「非劣」口径：在决定性投票中候选臂胜率不低于 0.5（平局与拒选单列，
+    不摊入胜率）；自然度要求候选臂胜率的 Wilson 下界高于 0.5，即显示
+    统计上可区分的优势。阈值在任何盲评提交之前固定。
+    """
 
     policy_id: str = "human-expression-release-policy"
     version: str = RELEASE_POLICY_VERSION
@@ -490,6 +378,16 @@ def _result(
     return None
 
 
+def primary_comparisons(candidate_arm: str) -> list[ComparisonSpec]:
+    """涉及候选臂的预注册对照（放行判断只看这些）。"""
+
+    return [
+        spec
+        for spec in DEFAULT_COMPARISONS
+        if candidate_arm in (spec.arm_x, spec.arm_y)
+    ]
+
+
 def evaluate_release(
     aggregate: dict[str, Any],
     *,
@@ -516,39 +414,47 @@ def evaluate_release(
     if hard_gate_failures:
         blockers.append(f"候选策略存在硬门失败：{'；'.join(hard_gate_failures)}。")
 
-    for comparison_id in ("current-vs-baseline", "current-vs-legacy"):
-        help_result = _result(aggregate, comparison_id, "help")
-        boundary_result = _result(aggregate, comparison_id, "boundary")
-        if help_result is None or boundary_result is None:
-            blockers.append(f"{comparison_id} 缺少帮助/分寸维度。")
-            continue
-        for label, result in (("帮助", help_result), ("分寸", boundary_result)):
+    comparisons = primary_comparisons(candidate_arm)
+    if not comparisons:
+        blockers.append(f"预注册对照缺少候选臂：{candidate_arm}。")
+    for comparison in comparisons:
+        for dimension_id, label in (("help", "帮助"), ("boundary", "分寸")):
+            result = _result(aggregate, comparison.comparison_id, dimension_id)
+            if result is None or result.get("candidate_win_rate") is None:
+                blockers.append(f"{comparison.comparison_id} 缺少候选臂{label}统计。")
+                continue
             if result["decisive"] < active.min_decisive_votes:
                 blockers.append(
-                    f"{comparison_id}/{label} 有效投票不足"
+                    f"{comparison.comparison_id}/{label} 有效投票不足"
                     f"（{result['decisive']} < {active.min_decisive_votes}）。"
                 )
-            elif result["win_rate_a"] < 0.5:
-                blockers.append(f"{comparison_id}/{label} 未达到非劣（胜率 < 0.5）。")
+            elif result["candidate_win_rate"] < 0.5:
+                blockers.append(
+                    f"{comparison.comparison_id}/{label} 未达到非劣"
+                    f"（候选胜率 {result['candidate_win_rate']:.2f} < 0.5）。"
+                )
             if result["neither_rate"] > active.max_neither_rate:
                 blockers.append(
-                    f"{comparison_id}/{label} 拒选率过高"
+                    f"{comparison.comparison_id}/{label} 拒选率过高"
                     f"（{result['neither_rate']:.0%}）。"
                 )
     # 帮助/分寸非劣通过后才读取自然度；任何自然度优势都以实际投票为准。
     help_blocked = any("帮助" in blocker or "分寸" in blocker for blocker in blockers)
     if not help_blocked:
-        for comparison_id in ("current-vs-baseline", "current-vs-legacy"):
-            natural = _result(aggregate, comparison_id, "natural")
-            if natural is None:
-                blockers.append(f"{comparison_id} 缺少自然度维度。")
+        for comparison in comparisons:
+            natural = _result(aggregate, comparison.comparison_id, "natural")
+            if natural is None or natural.get("candidate_win_rate") is None:
+                blockers.append(f"{comparison.comparison_id} 缺少候选臂自然度统计。")
                 continue
             if natural["decisive"] < active.min_decisive_votes:
-                blockers.append(f"{comparison_id}/自然度 有效投票不足。")
-            elif natural["wilson_low"] <= active.naturalness_min_win_rate:
+                blockers.append(f"{comparison.comparison_id}/自然度 有效投票不足。")
+            elif (
+                natural["candidate_wilson_low"] is None
+                or natural["candidate_wilson_low"] <= active.naturalness_min_win_rate
+            ):
                 blockers.append(
-                    f"{comparison_id}/自然度 未显示统计上可区分的优势"
-                    f"（Wilson 下界 {natural['wilson_low']:.2f}）。"
+                    f"{comparison.comparison_id}/自然度 未显示统计上可区分的优势"
+                    f"（Wilson 下界 {natural['candidate_wilson_low']}）。"
                 )
     status = "released" if not blockers else "not_released"
     reasons = blockers or ["帮助/分寸非劣且自然度优势通过预注册门。"]
@@ -571,19 +477,11 @@ __all__ = [
     "DimensionResult",
     "ExpressionReleasePolicy",
     "RELEASE_POLICY_VERSION",
-    "REVIEW_CHOICES",
-    "REVIEW_DIMENSIONS",
-    "ReviewChoice",
-    "ReviewDimension",
-    "SCALE_VERSION",
     "ScenarioTranscript",
     "TranscriptTurn",
     "aggregate_review",
     "build_blind_review",
     "evaluate_release",
-    "load_submissions",
-    "parse_submissions",
-    "render_blind_material",
-    "submission_template",
+    "primary_comparisons",
     "wilson_interval",
 ]

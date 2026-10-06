@@ -21,7 +21,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -34,31 +33,36 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from bridges.evaluation.expression_corpus import (  # noqa: E402
     real_runnable_scenarios,
+    scenario_digest,
+)
+from bridges.evaluation.expression_deterministic import (  # noqa: E402
+    run_deterministic_suite,
 )
 from bridges.evaluation.expression_policy_arms import (  # noqa: E402
     ARM_STRATEGY_VERSIONS,
     StrategyArm,
 )
+from bridges.evaluation.expression_provenance import (  # noqa: E402
+    SUITE_ID,
+    SUITE_VERSION,
+    build_run_lock,
+    code_commit,
+)
+from bridges.evaluation.expression_real_run import RealArmSender  # noqa: E402
 from bridges.evaluation.expression_review import (  # noqa: E402
     CURRENT_ARM_ID,
     DEFAULT_COMPARISONS,
-    SCALE_VERSION,
     aggregate_review,
     build_blind_review,
     evaluate_release,
+)
+from bridges.evaluation.expression_scale import SCALE_VERSION  # noqa: E402
+from bridges.evaluation.expression_submission import (  # noqa: E402
     load_submissions,
     render_blind_material,
     submission_template,
 )
-from bridges.evaluation.human_expression import (  # noqa: E402
-    SUITE_ID,
-    SUITE_VERSION,
-    RealArmSender,
-    build_real_report,
-    build_run_lock,
-    run_deterministic_suite,
-    scenario_digest,
-)
+from bridges.evaluation.human_expression import build_real_report  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = REPO_ROOT / ".scratch" / "2" / "validation" / "39-human-expression"
 _FORBIDDEN_PATTERN = re.compile(
@@ -72,20 +76,6 @@ def _local_app_data() -> Path:
 
 
 DEFAULT_DATA_DIR = _local_app_data() / "BridGes/data"
-
-
-def _code_commit() -> str | None:
-    try:
-        completed = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return completed.stdout.strip() or None
 
 
 def _source_hashes() -> dict[str, str]:
@@ -157,7 +147,7 @@ def build_real_gateway(data_dir: Path) -> tuple[Any, Any]:
 def _environment(model_id: str | None) -> dict[str, Any]:
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        "code_commit": _code_commit(),
+        "code_commit": code_commit(),
         "source_hashes": _source_hashes(),
         "python": sys.version.split()[0],
         "python_executable": sys.executable,
@@ -210,6 +200,32 @@ def _render_report_markdown(payload: dict[str, Any]) -> str:
             "",
             "- 人味专属新增调用为零："
             f"{'是' if payload['cost']['humanization_specific_calls_zero'] else '否'}",
+            "",
+            "## 场景分布",
+            "",
+            "| 类别 | 场景数 | 真实配对 | 多轮 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for entry in payload.get("scenario_distribution", []):
+        lines.append(
+            f"| {entry['category']} | {entry['total']} | "
+            f"{entry['real_runnable']} | {entry['multi_turn']} |"
+        )
+    baseline = (payload.get("deployment_reference") or {}).get("measured")
+    if baseline:
+        lines.extend(
+            [
+                "",
+                "- 部署参照（简洁基线实测）："
+                f"调用 {baseline['calls']}、输入 {baseline['input_tokens']} token、"
+                f"输出 {baseline['output_tokens']} token、"
+                f"首字延迟均值 {baseline['first_token_ms_mean']}ms；"
+                "部署门槛由发布票按本测量与预注册策略设定。",
+            ]
+        )
+    lines.extend(
+        [
             "",
             "## 硬门（独立于温暖感得分）",
             "",
