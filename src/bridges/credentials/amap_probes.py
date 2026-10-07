@@ -360,6 +360,13 @@ def probe_data_service(
         "output": "JSON",
     }
     if security_code:
+        # 官方 JS SDK 的数据请求同时携带 platform=JS 与 s=rsv3。真实请求实测
+        # 仅追加 platform/jscode 仍返回 10009；s=rsv3 才路由到 JS 数据服务，
+        # 正确配对返回 10000，错误安全码返回 10008。代理会保留 SDK 参数，
+        # 这里主动构造请求，必须同时补上平台与路由标识。
+        # 参考：https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode
+        params["platform"] = "JS"
+        params["s"] = "rsv3"
         params["jscode"] = security_code
     try:
         response = client.get(

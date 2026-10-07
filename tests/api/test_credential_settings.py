@@ -284,6 +284,15 @@ def test_browser_map_key_and_security_code_are_stored_as_one_secret_pair() -> No
         assert request.url.path == "/v3/geocode/geo"
         assert request.url.params["key"] == candidate_key
         assert request.url.params["jscode"] == candidate_code
+        # 真实请求实测：仅 platform=JS 仍返回 10009，必须同时携带 SDK 的 s=rsv3。
+        if (
+            request.url.params.get("platform") != "JS"
+            or request.url.params.get("s") != "rsv3"
+        ):
+            return httpx.Response(
+                200,
+                json={"status": "0", "info": "USERKEY_PLAT_NOMATCH", "infocode": "10009"},
+            )
         return httpx.Response(
             200,
             json={
