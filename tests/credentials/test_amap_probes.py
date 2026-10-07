@@ -277,6 +277,10 @@ def test_data_service_probe_sends_the_security_code_only_when_given() -> None:
 
     assert seen[0].url.path == f"/{GEOCODE_PATH}"
     assert "jscode" not in seen[0].url.params
+    assert "platform" not in seen[0].url.params
+    assert "s" not in seen[0].url.params
+    assert seen[1].url.params["platform"] == "JS"
+    assert seen[1].url.params["s"] == "rsv3"
     assert seen[1].url.params["jscode"] == "js-security-code"
     assert seen[1].url.params["key"] == "js-key"
 
