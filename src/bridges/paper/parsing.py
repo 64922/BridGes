@@ -25,21 +25,17 @@ from bridges.paper.contracts import (
     PaperClarification,
     PaperConstraints,
     PaperContextCandidate,
-    PaperSortIntent,
     PaperTermAnalysis,
 )
 from bridges.paper.lexicon import (
     AMBIGUOUS_TERMS,
-    BEGINNER_HINTS,
-    CHINESE_YEAR_OFFSETS,
-    CLASSIC_HINTS,
-    INTENT_STOPWORDS,
-    LATEST_HINTS,
     SURVEY_HINTS,
     TERM_ENGLISH,
     AmbiguousTerm,
     TermContext,
 )
+from bridges.paper.request_constraints import parse_constraints, parse_intent, parse_years
+from bridges.paper.topics import extract_topic_phrase, normalize_phrase
 
 if TYPE_CHECKING:
     from bridges.chat.task_materials import EffectiveCondition
@@ -53,25 +49,8 @@ PENDING_CONSTRAINTS = "constraints"
 #: 参与上下文消歧的最近用户消息条数上限（够用即止，不把整段历史塞进解析）。
 CONTEXT_LOOKBACK_MESSAGES = 6
 
-_QUOTED = re.compile(r"[「“\"']([^」”\"']{1,80})[」”\"']")
-_LATIN_SEQUENCE = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*(?:\s+[A-Za-z][A-Za-z0-9+.\-]*)*")
-_YEAR_RANGE = re.compile(r"(\d{4})\s*[-–—~～至到]\s*(\d{4})")
-_YEAR_SINCE = re.compile(r"(\d{4})\s*年?\s*(?:以后|之后|以来|起|后)")
-_YEAR_PLAIN = re.compile(r"(\d{4})\s*年")
-_YEARS_BACK = re.compile(r"近\s*([一二三四五六七八九十\d]+)\s*年")
-_WHITESPACE = re.compile(r"\s+")
 _CJK = re.compile(r"[\u4e00-\u9fff]")
 _LATIN_ONLY = re.compile(r"[a-z0-9 ]+")
-_ARXIV_ID = re.compile(r"(?:arxiv(?:\.org/(?:abs|pdf)/|\s*[:：]?\s*))"
-    r"([a-z-]+/\d{7}|\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE)
-#: 无 ``arxiv`` 前缀的裸标识（仅在原文确实提到 arXiv 时启用，避免误抓数字）。
-_ARXIV_ID_BARE = re.compile(r"\b([a-z-]+/\d{7}|\d{4}\.\d{4,5}(?:v\d+)?)\b")
-_PAPER_TITLE = re.compile(r"《([^》]+)》")
-#: 明确标注“标题/题目/paper”的引号标题（与主题引号区分）。
-_PAPER_TITLE_QUOTED = re.compile(
-    r"(?:标题|题目|论文名)\s*(?:是|为|：|:)?\s*[“\"「『']([^”\"」』']{2,120})[”\"」』']"
-)
-
 #: 语境候选的稳定顺序（平局时的确定性依据）。
 _CONTEXT_ORDER: tuple[str, ...] = tuple(
     context.key for term in AMBIGUOUS_TERMS for context in term.contexts
@@ -110,20 +89,24 @@ def parse_paper_request(
         )
     # 有效快照补齐续接条件；本轮明确纠正优先，旧等待限制不复活。
     if task_conditions is not None:
-        parsed.constraints = _parse_constraints(text, now=current)
+        current_constraints = parse_constraints(text, now=current)
+        current_constraints.requested_count = (
+            current_constraints.requested_count or parsed.constraints.requested_count
+        )
+        parsed.constraints = current_constraints
     for condition in task_conditions or ():
         if condition.kind in {"year", "time"} and (
             parsed.constraints.year_from is None and parsed.constraints.year_to is None
         ):
-            parsed.constraints.year_from, parsed.constraints.year_to = _parse_years(
+            parsed.constraints.year_from, parsed.constraints.year_to = parse_years(
                 condition.text, now=current
             )
         elif condition.kind == "paper_type" and not any(
             hint in text.lower() for hint in (*SURVEY_HINTS, "原创", "研究论文")
         ):
-            parsed.constraints.prefer_survey = _parse_intent(condition.text.lower())[1]
+            parsed.constraints.prefer_survey = parse_intent(condition.text.lower())[1]
         elif condition.kind in {"source", "allowed_source", "excluded_source", "paper"}:
-            saved = _parse_constraints(condition.text, now=current)
+            saved = parse_constraints(condition.text, now=current)
             if not parsed.constraints.allowed_sources:
                 parsed.constraints.allowed_sources = saved.allowed_sources
             parsed.constraints.excluded_sources = list(dict.fromkeys(
@@ -163,7 +146,7 @@ def _parse_fresh(
     now: datetime,
     task_topic_hint: str | None = None,
 ) -> PaperTermAnalysis:
-    constraints = _parse_constraints(text, now=now)
+    constraints = parse_constraints(text, now=now)
     candidates = _context_candidates(prior_context)
     ambiguity = detect_ambiguous_term(text)
     if ambiguity is not None:
@@ -179,9 +162,9 @@ def _parse_fresh(
         topic = None
     if topic is None and task_topic_hint:
         # 工单 15：原文没有主题时用任务快照的主题条件续接（有来源，非推测）。
-        topic = task_topic_hint.strip()
+        topic = extract_topic_phrase(task_topic_hint)
     if topic is None:
-        return _needs_topic(text)
+        return _needs_topic(text, constraints=constraints)
     return _analysis_for_topic(
         original_phrase=topic,
         text=text,
@@ -192,14 +175,14 @@ def _parse_fresh(
     )
 
 
-def _needs_topic(text: str) -> PaperTermAnalysis:
+def _needs_topic(text: str, *, constraints: PaperConstraints) -> PaperTermAnalysis:
     question = "想找哪个研究主题的论文？请给出术语或研究方向的名称。"
     return PaperTermAnalysis(
         original_phrase=text[:80],
         normalized_term="",
         expansions=[],
         confidence=0.0,
-        constraints=PaperConstraints(),
+        constraints=constraints,
         final_query="",
         clarification=PaperClarification(
             question=question,
@@ -244,7 +227,7 @@ def _domain_clarification(
     """语境未能消歧（首次提问或回答仍不明确）：保留原词，只问那一项。"""
     return PaperTermAnalysis(
         original_phrase=original_phrase,
-        normalized_term=_normalize(original_phrase),
+        normalized_term=normalize_phrase(original_phrase),
         expansions=[],
         confidence=0.3,
         constraints=constraints,
@@ -297,7 +280,10 @@ def _resume_from_clarification(
     constraints = _constraints_from_payload(payload, now=now)
     if term is None:
         # 等待状态没有可用的消歧载荷：按全新请求解析回答本身。
-        return _parse_fresh(answer, prior_context=prior_context, now=now)
+        resumed = _parse_fresh(answer, prior_context=prior_context, now=now)
+        if resumed.constraints.requested_count is None:
+            resumed.constraints.requested_count = constraints.requested_count
+        return resumed
     hits = _context_hits(answer, term)
     if hits:
         key, count = max(hits.items(), key=lambda item: item[1])
@@ -321,59 +307,6 @@ def _resume_from_clarification(
 # ---------------------------------------------------------------------------
 
 
-def extract_topic_phrase(text: str) -> str | None:
-    """抽取主题短语：引号内 > 词表术语 > 英文串 > 剥离意图词后的剩余短语。"""
-    quoted = _QUOTED.search(text)
-    if quoted is not None and quoted.group(1).strip():
-        return _normalize(quoted.group(1))
-    lexicon_hit = _longest_lexicon_term(text)
-    if lexicon_hit is not None:
-        return lexicon_hit
-    latin = _longest_latin_sequence(text)
-    if latin is not None and not _is_stopword_only(latin):
-        return _normalize(latin)
-    stripped = _strip_intent_words(text)
-    if len(stripped) >= 2 and not _is_stopword_only(stripped):
-        return stripped
-    return None
-
-
-def _longest_lexicon_term(text: str) -> str | None:
-    lowered = text.lower()
-    hits: list[str] = []
-    for chinese in TERM_ENGLISH:
-        if chinese in text:
-            hits.append(chinese)
-    for term in AMBIGUOUS_TERMS:
-        for alias in term.aliases:
-            if alias.lower() in lowered:
-                hits.append(alias)
-    if not hits:
-        return None
-    return max(hits, key=len)
-
-
-def _longest_latin_sequence(text: str) -> str | None:
-    sequences = [match.group(0).strip() for match in _LATIN_SEQUENCE.finditer(text)]
-    meaningful = [item for item in sequences if not _is_stopword_only(item)]
-    if not meaningful:
-        return None
-    return max(meaningful, key=lambda item: (len(item.split()), len(item)))
-
-
-def _strip_intent_words(text: str) -> str:
-    stripped = text
-    for word in sorted(INTENT_STOPWORDS, key=len, reverse=True):
-        stripped = stripped.replace(word, " ")
-    stripped = _WHITESPACE.sub(" ", stripped).strip(" ，。！？、；：,.!?;:-—~～")
-    return stripped.strip()
-
-
-def _is_stopword_only(value: str) -> bool:
-    remaining = _strip_intent_words(value)
-    return not remaining or len(remaining) < 2
-
-
 def _analysis_for_topic(
     *,
     original_phrase: str,
@@ -384,7 +317,7 @@ def _analysis_for_topic(
     context_confidence: float | None,
     context_query_terms: tuple[str, ...] = (),
 ) -> PaperTermAnalysis:
-    normalized = _normalize(original_phrase)
+    normalized = normalize_phrase(original_phrase)
     expansions, query_term, confidence = _expansions_and_query(
         normalized, text, context_query_terms=context_query_terms
     )
@@ -447,11 +380,6 @@ def _lexicon_expansions(text: str, *, exclude: set[str]) -> list[str]:
         if chinese in text and english not in exclude:
             found.append(english)
     return found
-
-
-def _normalize(value: str) -> str:
-    collapsed = _WHITESPACE.sub(" ", value).strip(" 「」“”\"'，。！？、；：,.!?;:")
-    return collapsed.strip()
 
 
 def _original_phrase_for(text: str, term: AmbiguousTerm) -> str:
@@ -540,77 +468,6 @@ def _context_by_key(term: AmbiguousTerm, key: str) -> TermContext:
 # ---------------------------------------------------------------------------
 # 限制（年份/排序意图/类型）
 # ---------------------------------------------------------------------------
-
-
-def _parse_constraints(text: str, *, now: datetime) -> PaperConstraints:
-    lowered = text.lower()
-    year_from, year_to = _parse_years(text, now=now)
-    sort_intent, prefer_survey = _parse_intent(lowered)
-    allowed: list[str] = []
-    excluded: list[str] = []
-    for clause in re.split(r"[，。；;,]|(?:但|不过)", lowered):
-        sources = [name for name in ("arxiv", "crossref", "openalex") if name in clause]
-        if re.search(r"不要|不用|禁止|排除|不查|别查|不使用|without|exclude|avoid", clause):
-            excluded.extend(sources)
-        elif re.search(r"仅|只|限定|来源为|来源是|only|from", clause):
-            allowed.extend(sources)
-    identity = _ARXIV_ID.search(text)
-    if identity is None and "arxiv" in lowered:
-        identity = _ARXIV_ID_BARE.search(text)
-    title = _PAPER_TITLE.search(text) or _PAPER_TITLE_QUOTED.search(text)
-    return PaperConstraints(
-        year_from=year_from,
-        year_to=year_to,
-        sort_intent=sort_intent,
-        prefer_survey=prefer_survey,
-        arxiv_id=identity.group(1) if identity else None,
-        paper_title=title.group(1).strip() if title else None,
-        allowed_sources=list(dict.fromkeys(allowed)),
-        excluded_sources=list(dict.fromkeys(excluded)),
-    )
-
-
-def _parse_years(text: str, *, now: datetime) -> tuple[int | None, int | None]:
-    match = _YEAR_RANGE.search(text)
-    if match is not None:
-        start, end = int(match.group(1)), int(match.group(2))
-        return (min(start, end), max(start, end))
-    match = _YEAR_SINCE.search(text)
-    if match is not None:
-        return int(match.group(1)), None
-    match = _YEARS_BACK.search(text)
-    if match is not None:
-        token = match.group(1)
-        span = int(token) if token.isdigit() else CHINESE_YEAR_OFFSETS.get(token, 0)
-        if span > 0:
-            return now.year - span, None
-    match = _YEAR_PLAIN.search(text)
-    if match is not None:
-        year = int(match.group(1))
-        return year, year
-    return None, None
-
-
-def _parse_intent(lowered: str) -> tuple[PaperSortIntent, bool]:
-    prefer_survey = any(hint in lowered for hint in SURVEY_HINTS)
-    scores = {
-        PaperSortIntent.CLASSIC: sum(1 for hint in CLASSIC_HINTS if hint in lowered),
-        PaperSortIntent.LATEST: sum(1 for hint in LATEST_HINTS if hint in lowered),
-        PaperSortIntent.BEGINNER: sum(1 for hint in BEGINNER_HINTS if hint in lowered),
-    }
-    # 命中数多者优先；平局按 CLASSIC > LATEST > BEGINNER 的固定顺序（确定性）。
-    best = max(scores, key=lambda intent: (scores[intent], -_INTENT_ORDER.index(intent)))
-    if scores[best] == 0:
-        return PaperSortIntent.RELEVANCE, prefer_survey
-    return best, prefer_survey
-
-
-_INTENT_ORDER: tuple[PaperSortIntent, ...] = (
-    PaperSortIntent.CLASSIC,
-    PaperSortIntent.LATEST,
-    PaperSortIntent.BEGINNER,
-    PaperSortIntent.RELEVANCE,
-)
 
 
 def _constraints_from_payload(payload: dict[str, object], *, now: datetime) -> PaperConstraints:

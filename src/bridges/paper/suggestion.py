@@ -12,7 +12,8 @@ arXiv/综述」等请求词，且原文里存在研究主题（引号术语、�
 
 from __future__ import annotations
 
-from bridges.paper.parsing import detect_ambiguous_term, extract_topic_phrase
+from bridges.paper.parsing import detect_ambiguous_term
+from bridges.paper.topics import extract_topic_phrase
 
 PAPER_SUGGESTION_LABEL = "使用论文搜索"
 PAPER_SUGGESTION_REASON = "这条消息看起来要找论文，可一键用论文搜索以原文启动，不会自动检索。"

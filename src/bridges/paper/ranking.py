@@ -66,7 +66,7 @@ def rank_candidates(
     词时，还必须有扩展词语境覆盖——否则「电力系统的 transformer」会混进机
     器学习结果（反之亦然）。
     """
-    target = max(MIN_TARGET_COUNT, min(MAX_TARGET_COUNT, target_count))
+    target = max(1, min(MAX_TARGET_COUNT, target_count))
     primary = primary_keyword(analysis)
     context_keywords = _context_keywords(analysis)
     context_rejected = 0

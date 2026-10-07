@@ -33,7 +33,10 @@ def plan_queries(analysis: PaperTermAnalysis) -> tuple[PaperQueryPlan, ...]:
     primary = analysis.final_query.strip() or analysis.normalized_term.strip()
     expansions = [item for item in analysis.expansions if item.strip()][:MAX_QUERY_EXPANSIONS]
     sort_by, sort_order = _sorting(analysis.constraints.sort_intent)
-    max_results = _candidate_limit(DEFAULT_TARGET_COUNT)
+    target_count = min(
+        MAX_TARGET_COUNT, analysis.constraints.requested_count or DEFAULT_TARGET_COUNT
+    )
+    max_results = _candidate_limit(target_count)
     precise_query = _join_query(primary, expansions)
     plans: list[PaperQueryPlan] = [
         PaperQueryPlan(
@@ -41,7 +44,7 @@ def plan_queries(analysis: PaperTermAnalysis) -> tuple[PaperQueryPlan, ...]:
             sort_by=sort_by,
             sort_order=sort_order,
             max_results=max_results,
-            target_count=DEFAULT_TARGET_COUNT,
+            target_count=target_count,
             expansions_used=expansions,
             rationale=(
                 f"主词「{primary}」对应你的原始术语；"
@@ -62,7 +65,7 @@ def plan_queries(analysis: PaperTermAnalysis) -> tuple[PaperQueryPlan, ...]:
                 sort_by=sort_by,
                 sort_order=sort_order,
                 max_results=max_results,
-                target_count=DEFAULT_TARGET_COUNT,
+                target_count=target_count,
                 expansions_used=[],
                 rationale=f"相关候选不足，按原主题「{primary}」调整查询一次，保持硬条件。",
             )

@@ -97,6 +97,7 @@ class PaperConstraints(BaseModel):
 
     year_from: int | None = Field(default=None, description="起始年份（含）。")
     year_to: int | None = Field(default=None, description="结束年份（含）。")
+    requested_count: int | None = Field(default=None, ge=1, description="用户明确要求的篇数。")
     sort_intent: PaperSortIntent = Field(
         default=PaperSortIntent.RELEVANCE, description="排序意图（最新/经典/入门/相关）。"
     )
