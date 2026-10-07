@@ -69,4 +69,4 @@ def _is_stopword_only(value: str) -> bool:
 
 def normalize_phrase(value: str) -> str:
     collapsed = _WHITESPACE.sub(" ", value).strip(" 「」“”\"'，。！？、；：,.!?;:")
-    return collapsed.strip()\n
+    return collapsed.strip()

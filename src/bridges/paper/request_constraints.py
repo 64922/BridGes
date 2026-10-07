@@ -105,4 +105,4 @@ _INTENT_ORDER: tuple[PaperSortIntent, ...] = (
     PaperSortIntent.LATEST,
     PaperSortIntent.BEGINNER,
     PaperSortIntent.RELEVANCE,
-)\n
+)
