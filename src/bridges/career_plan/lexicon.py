@@ -38,6 +38,13 @@ class JobFamily:
 #: 岗位族表（覆盖校园招聘常见方向；同义=同一岗位，相邻=不同岗位）。
 JOB_FAMILIES: tuple[JobFamily, ...] = (
     JobFamily(
+        key="agent",
+        title="Agent开发工程师",
+        synonyms=("Agent开发", "Agent研发", "Agent算法工程师", "智能体开发", "智能体工程师"),
+        adjacent=("产品经理", "数据分析师", "测试工程师"),
+        heads=("Agent", "agent", "AGENT", "智能体"),
+    ),
+    JobFamily(
         key="algorithm",
         title="算法工程师",
         synonyms=(
@@ -927,6 +934,7 @@ def experience_matches(condition: str, page_experience: str | None) -> bool:
 
 #: 按岗位族记录的职责锚点（只覆盖技术方向；表外的族不做职责匹配，避免误判）。
 DUTY_ANCHORS: dict[str, tuple[str, ...]] = {
+    "agent": ("Agent", "智能体", "大模型", "RAG", "工具调用", "LangChain", "评测"),
     "backend": (
         "服务端", "后端", "接口设计", "接口开发", "高并发", "分布式", "微服务",
         "数据库设计", "Spring Boot", "Spring Cloud", "MyBatis", "Redis", "MySQL",
@@ -1029,6 +1037,7 @@ SKILL_TERMS: tuple[str, ...] = (
     # 方法与概念
     "数据结构", "算法", "机器学习", "深度学习", "神经网络", "大模型", "LLM", "NLP",
     "自然语言处理", "计算机视觉", "推荐系统", "搜索", "数据挖掘", "特征工程", "数据建模",
+    "Agent", "智能体", "RAG", "LangChain", "LangGraph", "提示词", "工具调用",
     "数据分析", "数据可视化", "统计学", "概率论", "运筹优化", "自动化测试", "单元测试",
     "性能优化", "高并发", "分布式", "微服务", "网络编程", "并发编程", "设计模式",
     "嵌入式", "PLC", "单片机", "AutoCAD", "SolidWorks", "CATIA", "ANSYS", "有限元",
@@ -1087,6 +1096,7 @@ SOURCE_LABELS: dict[str, str] = {
 
 #: 公开招聘站点主机（岗位页）。
 PUBLIC_JOB_HOSTS: tuple[str, ...] = (
+    "shixiseng.com",
     "zhipin.com",
     "zhaopin.com",
     "51job.com",

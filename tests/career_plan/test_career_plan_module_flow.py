@@ -260,7 +260,7 @@ def test_samples_are_rendered_with_plan_analysis_and_evidence(
     assert career["cities"] == ["南昌"]
     # 三类来源各一条实际查询，计划里逐条展示
     assert [item["source"] for item in career["plan"]] == ["boss", "corporate", "campus"]
-    assert port.query_texts[0].startswith("zhipin.com ")
+    assert port.query_texts[0].startswith("site:zhipin.com/job_detail/ ")
     assert len(career["queries"]) == 3
     # 主样本字段：抓取时间、发布日期、薪资原文、要求与直达链接
     sample = career["samples"][0]

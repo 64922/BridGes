@@ -642,7 +642,11 @@ class CareerPlanService:
         return CareerRequestAnalysis.model_validate(payload)
 
     def _plan_items(self, result: KernelResult) -> list[CareerQueryPlanItem]:
-        artifact = result.artifact(NODE_PLAN)
+        collected = result.artifact(NODE_COLLECT)
+        artifact = (
+            collected if collected is not None and "plan" in collected.payload
+            else result.artifact(NODE_PLAN)
+        )
         if artifact is None:
             return []
         return [

@@ -1,7 +1,7 @@
 """``career.plan``：生成并展示实际查询词与筛选条件。
 
 分别对三类来源各发一条有界查询：公开招聘职位页（BOSS 等岗位页）、企业招聘
-页、校招页。查询词只用用户说出的岗位锚点原话、城市与阶段，加上固定字面量；
+页、校招页。查询词只用岗位锚点原话、城市及由阶段确定的招聘口径，加上固定字面量；
 筛选条件逐条列出，用户看到的就是将要执行的东西。
 """
 
@@ -13,11 +13,11 @@ from bridges.career_plan.lexicon import (
     SOURCE_CAMPUS,
     SOURCE_CORPORATE,
     SOURCE_LABELS,
+    family_for,
 )
 
-#: 各来源的固定查询字面量（域名字面量必须完整发送才能被召回）。
-BOSS_HOST = "zhipin.com"
-CAMPUS_HOST = "yingjiesheng.com"
+#: 公开招聘限定到岗位详情路径，避免列表页占满结果。
+BOSS_HOST = "site:zhipin.com/job_detail/"
 
 #: 每条查询最多使用的岗位锚点数。
 MAX_QUERY_JOBS = 2
@@ -55,12 +55,12 @@ def build_plan(
         CareerQueryPlanItem(
             source=SOURCE_CAMPUS,
             source_label=SOURCE_LABELS[SOURCE_CAMPUS],
-            query=_join(CAMPUS_HOST, jobs, city_part, "校园招聘", stage_part),
+            query=_join(jobs, city_part, "校园招聘", _recruitment_stage(analysis)),
             reason=(
                 "最后找校招页，补充面向在校生与应届生的岗位。"
                 if not stage_part
-                else f"最后找校招页，补充面向在校生与应届生的岗位；"
-                f"查询带上你给的阶段「{stage_part}」。"
+                else f"最后找校招与实习详情页；你的阶段是「{stage_part}」，"
+                f"实际检索口径为「{_recruitment_stage(analysis)}」。"
             ),
             filters=[*filters, "校园招聘/应届生口径"],
         ),
@@ -70,6 +70,38 @@ def build_plan(
 def _query_jobs(analysis: CareerRequestAnalysis) -> tuple[str, ...]:
     """检索锚点：用户原话岗位词（最多两条，避免查询过窄）。"""
     return tuple(analysis.job_terms[:MAX_QUERY_JOBS])
+
+
+def _recruitment_stage(analysis: CareerRequestAnalysis) -> str:
+    """招聘页使用实习／届别口径，年级原话保留在解析结果里。"""
+    if analysis.graduation_year is not None:
+        return f"{analysis.graduation_year}届"
+    if analysis.stage in {"大一", "大二", "大三", "研一", "研二"}:
+        return "实习"
+    return analysis.stage or ""
+
+
+def build_recovery_plan(analysis: CareerRequestAnalysis) -> tuple[CareerQueryPlanItem, ...]:
+    """Agent 详情全部不可用时，同岗位方向最多补搜两次，不放宽匹配条件。"""
+    if not any(
+        family is not None and family.key == "agent"
+        for family in (family_for(term) for term in analysis.job_terms)
+    ):
+        return ()
+    city = analysis.cities[0] if analysis.cities else None
+    stage = _recruitment_stage(analysis)
+    return tuple(
+        CareerQueryPlanItem(
+            source=source, source_label=SOURCE_LABELS[source],
+            query=_join(words, city or "", stage, "招聘", "岗位职责"),
+            reason="原查询没有取得可用详情，按同一 Agent 方向的招聘说法补搜；取得样本即结束。",
+            filters=_filters(analysis, city),
+        )
+        for source, words in (
+            (SOURCE_CORPORATE, "Agent 大模型 算法"),
+            (SOURCE_CAMPUS, "Agent 智能体 开发"),
+        )
+    )
 
 
 def _stage_part(analysis: CareerRequestAnalysis) -> str:

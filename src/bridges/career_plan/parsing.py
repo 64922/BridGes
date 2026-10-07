@@ -203,7 +203,17 @@ def parse_career_request(
         )
         experience_hint = _first(detect_experience, current, resumed, *task_texts)
 
-    family = family_for(terms[0]) if terms else None
+    # 澄清回答细化岗位时仍保留首次请求的具体方向，不让泛称覆盖 Agent 目标。
+    if resumed and current_terms and any(
+        (family := family_for(term)) and family.key == "algorithm" for term in current_terms
+    ):
+        original_agent = [
+            term for term in extract_job_terms(resumed)
+            if (family := family_for(term)) and family.key == "agent"
+        ]
+        terms = list(dict.fromkeys([*original_agent, *terms]))
+    agent_terms = [term for term in terms if (f := family_for(term)) and f.key == "agent"]
+    family = family_for(agent_terms[0] if agent_terms else terms[0]) if terms else None
     branch = (
         CareerBranch.PERSONAL_PLANNING
         if not _JOB_ONLY_RE.search(current) and any(
@@ -224,8 +234,8 @@ def parse_career_request(
         job_terms=terms,
         job_title=terms[0] if terms else None,
         family_title=family.title if family is not None else None,
-        synonyms=synonym_terms(terms),
-        adjacent_jobs=adjacent_terms(terms),
+        synonyms=synonym_terms(agent_terms or terms),
+        adjacent_jobs=adjacent_terms(agent_terms or terms),
         stage=stage,
         graduation_year=graduation_year,
         cities=cities,

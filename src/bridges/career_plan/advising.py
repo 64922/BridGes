@@ -17,6 +17,7 @@ from bridges.career_plan.contracts import (
     CareerRequestAnalysis,
     JobSample,
 )
+from bridges.career_plan.preparation import agent_preparation
 
 #: 技能建议最多列出的条数。
 MAX_SKILL_ADVICES = 5
@@ -49,7 +50,10 @@ def build_advice(
     if not samples or report is None or report.sample_count == 0:
         return [], adjacent
     if personal:
-        return _action_advices(analysis, report, samples, adjacent), adjacent
+        return [
+            *agent_preparation(analysis, samples),
+            *_action_advices(analysis, report, samples, adjacent),
+        ], adjacent
     advices = [
         *_skill_advices(report, samples),
         *_project_advice(analysis, report, samples),

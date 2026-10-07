@@ -146,7 +146,7 @@ def test_plan_covers_public_corporate_and_campus_sources() -> None:
     assert [item.source for item in plan] == ["boss", "corporate", "campus"]
     queries = [item.query for item in plan]
     assert len(set(queries)) == 3, "三类来源必须是三条不同的实际查询"
-    assert queries[0].startswith("zhipin.com ")
+    assert queries[0].startswith("site:zhipin.com/job_detail/ ")
     assert "校园招聘" in queries[2]
     for item in plan:
         assert item.filters, "每条计划都要展示筛选条件"

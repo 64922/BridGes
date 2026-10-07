@@ -25,6 +25,7 @@ import httpx
 
 from bridges.career_plan.contracts import JobReadStatus
 from bridges.career_plan.lexicon import CITY_TERMS, detect_experience, detect_skills
+from bridges.career_plan.public_text import detail_scope, location_from_text, requirements_text
 from bridges.career_plan.salary import currency_label
 
 #: 单个岗位页的读取墙钟上限。
@@ -85,7 +86,10 @@ _DUTY_MARKERS: tuple[str, ...] = (
 )
 
 #: 薪资文本特征（判断这页是不是岗位卡）。
-_SALARY_HINT = re.compile(r"\d+\s*[-~—]\s*\d+\s*[Kk千万]|\d+\s*[Kk]\s*[·・]?\s*\d*\s*薪|面议")
+_SALARY_HINT = re.compile(
+    r"\d+(?:\.\d+)?\s*[-~—]\s*\d+(?:\.\d+)?\s*(?:[Kk千万]|元\s*[／/]\s*[天日月年])"
+    r"|\d+\s*[Kk]\s*[·・]?\s*\d*\s*薪|面议"
+)
 
 #: 岗位名尾缀（标题像岗位名的判断）。
 _TITLE_TAIL = re.compile(
@@ -444,8 +448,8 @@ def _from_metadata(html: str, *, reference: datetime) -> ParsedJobPage:
     og_title = meta.get("og:title") or meta.get("twitter:title") or ""
     document_title = _clean_text(_first_group(_TITLE_TAG, html))
     heading = _clean_text(_first_group(_H1_TAG, html))
-    title = _clean_text(og_title) or heading or document_title
-    body_text = _html_to_text(html)
+    title = heading or _clean_text(og_title) or document_title
+    body_text = _html_to_text(detail_scope(html, heading=heading))
     has_duty = any(marker in body_text for marker in _DUTY_MARKERS)
     has_salary = _SALARY_HINT.search(body_text) is not None
     looks_like_job = bool(title) and _TITLE_TAIL.search(title) is not None
@@ -458,13 +462,13 @@ def _from_metadata(html: str, *, reference: datetime) -> ParsedJobPage:
         # 元数据里的 og:site_name 是**站点名**（招聘网站自己的名字），不是雇主，
         # 拿它当公司名会误导用户，也会让去重键把不同公司的岗位判成重复。
         company=None,
-        city=_city_from_text(title),
+        city=location_from_text(body_text) or _city_from_text(title),
         salary_raw=_salary_hint_text(body_text),
         published_raw=published_raw,
         published_date=published_date,
         experience=detect_experience(body_text),
         education=_education_from_text(body_text),
-        requirements=_requirement_lines(body_text),
+        requirements=_requirement_lines(requirements_text(body_text, _DUTY_MARKERS)),
         is_job_posting=structure_found and has_duty,
         expired=expired_evidence is not None,
         expired_evidence=expired_evidence,

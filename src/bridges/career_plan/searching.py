@@ -7,10 +7,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
 
+from bridges.career_plan.job_urls import job_url_priority
 from bridges.career_plan.lexicon import SOURCE_LABELS, classify_source
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
 
@@ -23,6 +24,8 @@ class CareerSearchHit:
     title: str
     snippet: str
     source: str
+    page_content: str = ""
+    page_fetched_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -51,7 +54,8 @@ class CareerSearchPort(Protocol):
 def classify_hits(
     results: list[tuple[str, str, str]], *, source: str
 ) -> tuple[tuple[CareerSearchHit, ...], int]:
-    """按来源挑选招聘页链接；返回 ``(候选, 被丢弃的非招聘页条数)``。"""
+    """保留招聘链接并按真实来源分类；查询类别不能丢弃另一类的有效详情。"""
+    del source  # 查询的预期来源与结果实际来源分别留痕。
     kept: list[CareerSearchHit] = []
     dropped = 0
     seen: set[str] = set()
@@ -59,15 +63,16 @@ def classify_hits(
         if not url or url in seen:
             continue
         seen.add(url)
-        if classify_source(url) != source:
+        actual_source = classify_source(url)
+        if actual_source is None:
             dropped += 1
             continue
         kept.append(
             CareerSearchHit(
-                url=url, title=title, snippet=snippet or "", source=source
+                url=url, title=title, snippet=snippet or "", source=actual_source
             )
         )
-    return tuple(kept), dropped
+    return tuple(sorted(kept, key=lambda hit: job_url_priority(hit.url))), dropped
 
 
 def query_record(
@@ -146,6 +151,18 @@ class WebSearchServiceAdapter:
             for item in projection.results
         ]
         hits, dropped = classify_hits(results, source=source)
+        # Tavily Extract 已实际抓取的正文与搜索摘要分开；时间和状态缺一不可。
+        pages = {
+            item.url: item for item in projection.results
+            if item.verification.value in {"verified", "cross_verified"}
+            and item.fetched_at is not None and item.content_summary
+        }
+        hits = tuple(
+            replace(hit, page_content=pages[hit.url].content_summary,
+                    page_fetched_at=pages[hit.url].fetched_at)
+            if hit.url in pages else hit
+            for hit in hits
+        )
         detail_parts = []
         if dropped:
             detail_parts.append(f"另有 {dropped} 条结果不是招聘页，未作为候选")

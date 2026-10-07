@@ -69,6 +69,7 @@ from bridges.career_plan.contracts import (
     JobReadStatus,
     JobSample,
 )
+from bridges.career_plan.extracted_pages import read_extracted_hit
 from bridges.career_plan.filtering import (
     JobCandidate,
     filter_candidates,
@@ -79,13 +80,14 @@ from bridges.career_plan.gap import (
     build_personal_advice,
     personal_boundary_notes,
 )
+from bridges.career_plan.job_urls import job_url_priority
 from bridges.career_plan.lexicon import (
     SOURCE_LABELS,
     experience_matches,
     normalize_for_match,
 )
 from bridges.career_plan.parsing import parse_career_request
-from bridges.career_plan.planning import build_plan
+from bridges.career_plan.planning import build_plan, build_recovery_plan
 from bridges.career_plan.searching import CareerSearchHit, CareerSearchPort
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
 from bridges.kernel.contracts import (
@@ -120,7 +122,7 @@ NODE_ADVISE = "career.advise"
 NODE_VERIFY = "career.verify"
 
 CAREER_RECIPE_ID = "career-job-sample"
-CAREER_RECIPE_VERSION = "career-job-sample-recipe-v3"
+CAREER_RECIPE_VERSION = "career-job-sample-recipe-v5"
 
 #: 节点的用户可读中文名（父图失败信息按此标注真实失败位置）。
 CAREER_NODE_LABELS: dict[str, str] = {
@@ -137,14 +139,14 @@ CAREER_NODE_LABELS: dict[str, str] = {
 
 #: 已登记的确定性能力与版本（代码拒绝未登记能力）。
 CAREER_CAPABILITY_VERSIONS: dict[str, str] = {
-    "career.parse_request": "career-parse-v4",
-    "career.plan_query": "career-plan-v2",
-    "career.collect_jobs": "career-collect-v2",
+    "career.parse_request": "career-parse-v5",
+    "career.plan_query": "career-plan-v4",
+    "career.collect_jobs": "career-collect-v4",
     "career.filter_jobs": "career-filter-v3",
     "career.analyze_jobs": "career-analyze-v4",
     "career.load_background": "career-background-v2",
     "career.match_gap": "career-gap-v2",
-    "career.advise_actions": "career-advise-v3",
+    "career.advise_actions": "career-advise-v4",
     "career.verify_delivery": "career-verify-v3",
 }
 
@@ -166,6 +168,7 @@ READ_DEADLINE_SECONDS = 20.0
 
 #: 每条来源查询最多读取的岗位页数（每个页面一次真实公开读取）。
 READS_PER_SOURCE = 3
+MAX_CANDIDATES = 20
 
 #: 记为失败的查询状态（检索成功的空结果不算失败，它有自己的终态）。
 FAILED_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
@@ -229,6 +232,19 @@ class CareerBudget:
             run_id=self._run_id,
             call_key=call_key,
             outcome_code=outcome_code,
+            now=datetime.now(UTC),
+        )
+
+    def begin_recovery(self) -> bool:
+        return self._ledger.begin_adjustment(
+            account_id=self._account_id, run_id=self._run_id,
+            reason_code="career_no_verified_detail", now=datetime.now(UTC),
+        )
+
+    def finish_recovery(self, *, recovered: bool) -> None:
+        self._ledger.end_adjustment(
+            account_id=self._account_id, run_id=self._run_id,
+            outcome_code="career_recovered" if recovered else "career_no_verified_detail",
             now=datetime.now(UTC),
         )
 
@@ -623,6 +639,7 @@ def _collect_key(inputs: RecipeInputs) -> str:
     return _digest(
         {
             "plan": inputs.artifacts[NODE_PLAN].content_hash,
+            "parse": inputs.artifacts[NODE_PARSE].content_hash,
             "capability": CAREER_CAPABILITY_VERSIONS["career.collect_jobs"],
         }
     )
@@ -734,7 +751,7 @@ def build_career_recipe(
                 capability_version=CAREER_CAPABILITY_VERSIONS["career.collect_jobs"],
                 artifact_type="career.collected_candidates",
                 input_key=_collect_key,
-                depends_on=(NODE_PLAN,),
+                depends_on=(NODE_PARSE, NODE_PLAN),
                 recovery=RecoveryPolicy.RETRY_NODE,
                 description="逐来源检索并逐页公开读取；每次调用都留统一查询记录。",
             ),
@@ -1182,6 +1199,7 @@ class CareerNodeFlow:
         )
 
     def _run_collect(self, invocation: NodeInvocation) -> NodeExecution:
+        analysis = self._analysis(invocation)
         plan = [
             CareerQueryPlanItem.model_validate(item)
             for item in self._dep(invocation, NODE_PLAN).get("plan") or []
@@ -1191,14 +1209,16 @@ class CareerNodeFlow:
         unread: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
         search_deadline = time.monotonic() + self._search_deadline_seconds
-        read_deadline = time.monotonic() + self._read_deadline_seconds
+        read_seconds_left = self._read_deadline_seconds
         if self._budget is not None:
             budget_seconds = self._budget.deadline_seconds()
             search_deadline = min(search_deadline, time.monotonic() + budget_seconds)
-            read_deadline = min(read_deadline, time.monotonic() + budget_seconds)
         budget_exhausted = False
-        for item in plan:
-            if self._stopped(search_deadline):
+        executed_plan: list[CareerQueryPlanItem] = []
+        recovery_plan = list(build_recovery_plan(analysis))
+        recovery_started = False
+        for plan_index, item in enumerate(plan):
+            if self._stopped(search_deadline) or len(candidates) >= MAX_CANDIDATES:
                 break
             call_key = f"career.search:{item.source}:{_digest(item.query)[:16]}"
             if self._budget is not None and not self._budget.register_external(
@@ -1234,8 +1254,39 @@ class CareerNodeFlow:
                             call_key, outcome_code=outcome_code
                         )
             records.append(outcome.record)
-            fresh = [hit for hit in outcome.hits if hit.url not in seen_urls]
+            executed_plan.append(item)
+            # 搜索耗时不预先扣掉读取预算；全轮预算仍逐调用核验。
+            read_started = time.monotonic()
+            read_deadline = read_started + read_seconds_left
+            if self._budget is not None:
+                read_deadline = min(read_deadline, read_started + self._budget.deadline_seconds())
+            fresh = sorted(
+                [hit for hit in outcome.hits if hit.url not in seen_urls],
+                key=lambda hit: job_url_priority(hit.url),
+            )
+            read_count = 0
             for index, hit in enumerate(fresh):
+                if len(candidates) >= MAX_CANDIDATES:
+                    unread.extend({
+                        **_hit_dict(remaining),
+                        "note": "未核实：本轮已达到候选核对上限，未继续读取。",
+                    } for remaining in fresh[index:])
+                    budget_exhausted = True
+                    break
+                if job_url_priority(hit.url) == 2:
+                    seen_urls.add(hit.url)
+                    unread.append({
+                        **_hit_dict(hit),
+                        "note": "未核实：这是招聘列表或入口页，不是单个岗位详情。",
+                    })
+                    continue
+                extracted = read_extracted_hit(hit)
+                if extracted is not None:
+                    seen_urls.add(hit.url)
+                    candidates.append(JobCandidate(
+                        url=hit.url, source=hit.source, label=hit.title, read=extracted,
+                    ))
+                    continue
                 if self._stopped(read_deadline):
                     for remaining in fresh[index:]:
                         seen_urls.add(remaining.url)
@@ -1247,7 +1298,7 @@ class CareerNodeFlow:
                         )
                     budget_exhausted = True
                     break
-                if index >= self._reads_per_source:
+                if read_count >= self._reads_per_source:
                     seen_urls.add(hit.url)
                     unread.append(
                         {
@@ -1285,19 +1336,35 @@ class CareerNodeFlow:
                                 read_key, outcome_code=read_outcome_code
                             )
                 seen_urls.add(hit.url)
+                read_count += 1
                 candidates.append(
                     JobCandidate(
                         url=hit.url,
-                        source=item.source,
+                        source=hit.source,
                         label=hit.title or site_label(hit.url),
                         read=read,
                     )
                 )
+            read_seconds_left = max(0.0, read_seconds_left - (time.monotonic() - read_started))
             if budget_exhausted:
                 break
+            if plan_index == len(plan) - 1 and recovery_plan and (
+                any(record.status is ModuleQueryStatus.SUCCESS for record in records)
+                and not filter_candidates(candidates, analysis, reference=self._clock()).samples
+            ):
+                # 初始三条结束后逐条补搜，成功即停，最多使用两个同方向查询。
+                if not recovery_started:
+                    if self._budget is not None and not self._budget.begin_recovery():
+                        break
+                    recovery_started = True
+                plan.append(recovery_plan.pop(0))
+        if recovery_started and self._budget is not None:
+            self._budget.finish_recovery(recovered=bool(
+                filter_candidates(candidates, analysis, reference=self._clock()).samples
+            ))
         read_scope = (
-            f"本轮实际读取 {len(candidates)} 个岗位页"
-            f"（每条来源最多 {self._reads_per_source} 个；另有 {len(unread)} 个候选未读取）"
+            f"本轮实际核对 {len(candidates)} 个岗位页"
+            f"（每条查询最多新增读取 {self._reads_per_source} 个；另有 {len(unread)} 个候选未读取）"
         )
         if records and all(record.status in FAILED_QUERY_STATUSES for record in records):
             error = _error_record(records)
@@ -1306,6 +1373,7 @@ class CareerNodeFlow:
             return self._failure_execution(
                 invocation,
                 payload={
+                    "plan": [item.model_dump(mode="json") for item in executed_plan],
                     "records": [record.model_dump(mode="json") for record in records],
                     "candidates": [_candidate_dict(candidate) for candidate in candidates],
                     "unread_links": unread,
@@ -1327,6 +1395,7 @@ class CareerNodeFlow:
                 invocation,
                 trust_state=ArtifactTrust.EVIDENCE_BOUND,
                 payload={
+                    "plan": [item.model_dump(mode="json") for item in executed_plan],
                     "records": [
                         record.model_dump(mode="json") for record in records
                     ],
@@ -1629,6 +1698,8 @@ class CareerNodeFlow:
             for item in self._dep(invocation, NODE_PLAN).get("plan") or []
         ]
         collect_payload = self._dep(invocation, NODE_COLLECT)
+        if "plan" in collect_payload:
+            plan = [CareerQueryPlanItem.model_validate(item) for item in collect_payload["plan"]]
         records = [
             ModuleQueryRecord.model_validate(item)
             for item in collect_payload.get("records") or []
@@ -1676,6 +1747,14 @@ class CareerNodeFlow:
             background=background,
             gaps=gaps,
         )
+        if any(
+            "Tavily Extract" in str(item.get("read", {}).get("page", {}).get("structure_note"))
+            for item in collect_payload.get("candidates", [])
+        ):
+            boundary.append(
+                "部分岗位复用了公网搜索服务已实际抓取的有界正文（Tavily Extract），"
+                "仍逐条核对岗位、城市与过期条件；搜索摘要未用作样本，缺失字段保持空值。"
+            )
         projection = _build_projection(
             analysis=analysis,
             plan=plan,

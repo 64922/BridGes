@@ -77,17 +77,8 @@ def render_clarification_content(analysis: CareerRequestAnalysis) -> str:
 
 
 def render_result_content(projection: CareerPlanProjection) -> str:
-    """有主样本时的正文：样本 → 分析 → 建议，逐段带口径。"""
+    """有主样本时先交付分析与建议，再展示岗位证据和查询记录。"""
     lines: list[str] = [f"职业规划分析：{projection.topic}", ""]
-    lines.extend(_requirement_lines_block(projection))
-    lines.extend(_plan_lines(projection))
-    lines.extend(_query_lines(projection))
-
-    lines.extend(["", f"【公开可读且匹配的岗位样本（{len(projection.samples)} 个）】"])
-    for index, sample in enumerate(projection.samples, start=1):
-        lines.append("")
-        lines.extend(_sample_lines(index, sample))
-
     if projection.analysis is not None:
         lines.extend(_analysis_lines(projection))
 
@@ -100,6 +91,13 @@ def render_result_content(projection: CareerPlanProjection) -> str:
                 lines.append(f"    依据：{basis}")
 
     lines.extend(_personal_lines(projection))
+    lines.extend(["", f"【公开可读且匹配的岗位样本（{len(projection.samples)} 个）】"])
+    for index, sample in enumerate(projection.samples, start=1):
+        lines.append("")
+        lines.extend(_sample_lines(index, sample))
+    lines.extend(_requirement_lines_block(projection))
+    lines.extend(_plan_lines(projection))
+    lines.extend(_query_lines(projection))
     lines.extend(_adjacent_lines(projection))
     lines.extend(_rejected_lines(projection))
     lines.extend(_boundary_lines(projection))
@@ -111,6 +109,7 @@ def render_links_only_content(projection: CareerPlanProjection) -> str:
     lines: list[str] = [f"职业规划分析：{projection.topic}", ""]
     if projection.empty_reason:
         lines.append(projection.empty_reason)
+    lines.extend(_recovery_lines(projection))
     lines.extend(_requirement_lines_block(projection))
     lines.extend(_plan_lines(projection))
     lines.extend(_query_lines(projection))
@@ -126,6 +125,7 @@ def render_empty_content(projection: CareerPlanProjection) -> str:
     lines: list[str] = [f"职业规划分析：{projection.topic}", ""]
     if projection.empty_reason:
         lines.append(projection.empty_reason)
+    lines.extend(_recovery_lines(projection))
     lines.extend(_requirement_lines_block(projection))
     lines.extend(_plan_lines(projection))
     lines.extend(_query_lines(projection))
@@ -150,6 +150,19 @@ def render_stopped_content(projection: CareerPlanProjection) -> str:
     lines.append("")
     lines.append("已停止：本轮没有继续读取岗位页，可以在同一会话里重试。")
     return "\n".join(lines).rstrip()
+
+
+def _recovery_lines(projection: CareerPlanProjection) -> list[str]:
+    """没有样本时仍交付恢复动作；不凭空生成技能或薪资结论。"""
+    job = projection.topic or "目标岗位"
+    return [
+        "", "【接下来可以怎么推进】",
+        f"· 保留「{job}」目标，在职业规划模块重试相同请求，可重新读取公开岗位。",
+        "· 下方候选链接只作为查找入口；打开后确认是否有单个职位的职责、"
+        "工作地点和投递条件，再用岗位详情链接继续核对。",
+        "· 如需个人准备路线，可补充已经做过的编程或项目经历；"
+        "在取得岗位要求前，不把你的能力判为不足，也不据此估计薪资。",
+    ]
 
 
 def _requirement_lines_block(projection: CareerPlanProjection) -> list[str]:
