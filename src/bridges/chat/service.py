@@ -69,6 +69,7 @@ from bridges.chat.run_budget_ledger import (
     anchor_run_budget_deadline,
     derive_run_budget_class,
     derive_run_budget_plan,
+    derive_study_run_budget_plan,
 )
 from bridges.chat.selections import (
     ChatSelectionsService,
@@ -2109,7 +2110,8 @@ class ChatService:
         不能延时或扩容。明确深入（论文/学习书页/多模态）在创建时获更高
         预算；普通轻量交流沿用已验证前台硬上限（120 秒、无预留）；token
         上限从本轮运行额度快照派生（已验证输入上限 × 调用上限），额度未
-        验证时只计量不强制。
+        验证时只计量不强制。学习书页轮按本条消息绑定的照片数量扩展时间与
+        调用上限，并受固定硬上限约束。
         """
         budget_class = derive_run_budget_class(
             mode=mode.value,
@@ -2120,16 +2122,33 @@ class ChatService:
         quota = RunModelQuota.from_config(
             (run_record.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)
         )
-        token_budget = (
-            quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
-            if quota is not None and quota.is_verified and quota.max_input_tokens is not None
-            else None
-        )
-        plan = derive_run_budget_plan(
-            budget_class,
-            deadline_at=anchor_run_budget_deadline(run_record.created_at, budget_class),
-            token_budget=token_budget,
-        )
+        if mode == ChatMode.STUDY:
+            photo_count = 0
+            if self._attachments is not None:
+                photo_count = sum(
+                    attachment.media_type in PHOTO_MEDIA_TYPES
+                    for attachment in self._attachments.list_for_message(
+                        run_record.account_id,
+                        run_record.conversation_id,
+                        run_record.user_message_id,
+                    )
+                )
+            plan = derive_study_run_budget_plan(
+                page_count=photo_count, created_at=run_record.created_at
+            )
+            if quota is not None and quota.is_verified and quota.max_input_tokens is not None:
+                plan = replace(plan, token_budget=quota.max_input_tokens * plan.model_call_limit)
+        else:
+            token_budget = (
+                quota.max_input_tokens * RUN_BUDGET_INITIALS[budget_class].model_call_limit
+                if quota is not None and quota.is_verified and quota.max_input_tokens is not None
+                else None
+            )
+            plan = derive_run_budget_plan(
+                budget_class,
+                deadline_at=anchor_run_budget_deadline(run_record.created_at, budget_class),
+                token_budget=token_budget,
+            )
         RunBudgetLedgerRepository(self._repo.database).freeze_for_run(
             account_id=run_record.account_id,
             run_id=run_record.run_id,
@@ -2502,14 +2521,6 @@ class ChatService:
             and route.is_paper_search
             else None
         )
-        teaching = (
-            self._teaching.initial(owner.content, recovery=True)
-            if (
-                mode == ChatMode.STUDY
-                and not (route is not None and route.is_paper_search)
-            )
-            else None
-        )
         new_attempt = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -2531,7 +2542,6 @@ class ChatService:
             updated_at=now,
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
-            teaching=(teaching.model_dump(mode="json") if teaching else None),
             route=(route.model_dump(mode="json") if route is not None else owner.route),
         )
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，

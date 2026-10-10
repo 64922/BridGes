@@ -348,9 +348,14 @@ def test_retry_stays_on_same_capability_when_no_fallback_configured() -> None:
     assert result.lock.capability_name == "primary"
 
 
-@pytest.mark.parametrize("explicit_seconds", [180.0, 0.5])
-def test_explicit_timeout_cannot_exceed_run_budget(explicit_seconds: float) -> None:
-    """正式网关传给适配器的显式超时受整轮剩余预算约束。"""
+@pytest.mark.parametrize(
+    ("explicit_seconds", "total_ms", "maximum_seconds"),
+    [(180.0, 300_000, 180.0), (0.5, 300_000, 0.5), (180.0, 5_000, 4.0)],
+)
+def test_explicit_timeout_respects_run_budget(
+    explicit_seconds: float, total_ms: int, maximum_seconds: float
+) -> None:
+    """显式超时可扩展默认窗口，但仍不越过整轮剩余预算。"""
     from bridges.chat.budget import RunBudget
 
     registry = CapabilityRegistry()
@@ -364,10 +369,12 @@ def test_explicit_timeout_cannot_exceed_run_budget(explicit_seconds: float) -> N
             return _success_result("primary-model")
 
     gateway.register_adapter("primary", "1", Adapter())
-    budget = RunBudget("run-1", total_ms=5000)
+    budget = RunBudget("run-1", total_ms=total_ms)
     result = gateway.invoke(
         "primary", "1", _context(),
         payload={"request_timeout_seconds": explicit_seconds}, budget=budget,
     )
     assert result.status is ModelCallStatus.SUCCESS
-    assert 0 < captured["request_timeout_seconds"] <= min(4.0, explicit_seconds)
+    assert 0 < captured["request_timeout_seconds"] <= maximum_seconds
+    if total_ms > 60_000 and explicit_seconds > 60:
+        assert captured["request_timeout_seconds"] > 60

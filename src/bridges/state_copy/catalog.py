@@ -640,7 +640,7 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
     ),
     _error(
         "transient",
-        "连接中断或服务暂时不可用，请检查网络后重试。",
+        "请求超时、连接中断或服务暂时不可用，请重试。",
         FailureClass.UNAVAILABLE,
         RecoveryAction.RETRY,
         shared=True,

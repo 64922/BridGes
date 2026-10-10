@@ -52,6 +52,7 @@ from bridges.contracts.ai import (
     ModelRunLock,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.model_call_budget import model_call_timeout_ms
 
 if TYPE_CHECKING:
     from bridges.chat.budget import RunBudget
@@ -1239,13 +1240,16 @@ def _capability_call_key(capability: CapabilityRecord) -> str:
 def _payload_with_budget_timeout(
     payload: dict[str, Any], budget: RunBudget | None
 ) -> dict[str, Any]:
-    """所有单次超时受运行剩余预算截断，显式值只能进一步缩短窗口。"""
+    """显式超时可延长默认窗口，但始终受运行剩余预算和交接预留约束。"""
     if budget is None:
         return payload
-    timeout_seconds = budget.model_call_timeout_ms() / 1000
     explicit = payload.get(REQUEST_TIMEOUT_SECONDS_KEY)
     if isinstance(explicit, (int, float)) and explicit > 0:
-        timeout_seconds = min(timeout_seconds, explicit)
+        timeout_seconds = model_call_timeout_ms(
+            budget.work_remaining_ms(), default_ms=int(explicit * 1000)
+        ) / 1000
+    else:
+        timeout_seconds = budget.model_call_timeout_ms() / 1000
     return {**payload, REQUEST_TIMEOUT_SECONDS_KEY: timeout_seconds}
 
 

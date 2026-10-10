@@ -282,12 +282,18 @@ def test_interpretation_is_separate_from_page_source_text(
 
 
 class _RecordingGateway(StudyGateway):
-    """按图片字节记录 OCR/视觉调用，并可在第 N 次视觉调用注入一次失败。"""
+    """记录图片调用，可注入一次失败或模拟预算耗尽。"""
 
-    def __init__(self, *, fail_vision_at: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        fail_vision_at: int | None = None,
+        exhaust_after_vision_calls: tuple[int, ...] = (),
+    ) -> None:
         super().__init__()
         self.seen: list[tuple[str, bytes]] = []
         self._fail_vision_at = fail_vision_at
+        self._exhaust_after_vision_calls = frozenset(exhaust_after_vision_calls)
         self._vision_calls = 0
 
     def invoke(
@@ -319,7 +325,15 @@ class _RecordingGateway(StudyGateway):
                     error_code="transient",
                     error_message="Qwen request timeout.",
                 )
-        return super().invoke(capability, version, context, payload, **kwargs)
+        result = super().invoke(capability, version, context, payload, **kwargs)
+        if (
+            capability == "qwen_vision"
+            and self._vision_calls in self._exhaust_after_vision_calls
+            and budget is not None
+        ):
+            # 显式模拟模型调用消耗完运行时间，避免测试依赖旧的固定 8 次调用上限。
+            budget.mark_exhausted(reason_code="run_budget_exhausted")
+        return result
 
     def ocr_calls_for(self, tag: bytes) -> int:
         return sum(
@@ -381,7 +395,7 @@ def test_budget_batching_keeps_unfinished_pages_pending(
 ) -> None:
     """超预算时按页保存已完成结果，剩余页保持待处理，重试只识别未完成页。"""
     app = _app(tmp_path, monkeypatch)
-    gateway = _RecordingGateway()
+    gateway = _RecordingGateway(exhaust_after_vision_calls=(4,))
     app.state.chat_service._gateway = gateway
     with TestClient(app) as client:
         _register(client, "study30budget")
@@ -424,7 +438,7 @@ def test_new_upload_does_not_drop_previous_pending_pages(
 ) -> None:
     """新上传不会静默丢弃上一轮未完成页：旧页仍待处理，重试原消息只补它。"""
     app = _app(tmp_path, monkeypatch)
-    gateway = _RecordingGateway()
+    gateway = _RecordingGateway(exhaust_after_vision_calls=(4,))
     app.state.chat_service._gateway = gateway
     with TestClient(app) as client:
         _register(client, "study30pending")
@@ -623,7 +637,7 @@ def test_second_budget_batch_keeps_all_pending_pages(
 ) -> None:
     """初始识别和辅导后追加均保存跨批次未处理页，随后逐批重试。"""
     app = _app(tmp_path, monkeypatch)
-    gateway = _RecordingGateway()
+    gateway = _RecordingGateway(exhaust_after_vision_calls=(5, 9))
     app.state.chat_service._gateway = gateway
     with TestClient(app) as client:
         _register(client, "study30batches")

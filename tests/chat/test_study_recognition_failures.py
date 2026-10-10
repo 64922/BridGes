@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import AdapterError
 from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -359,11 +360,22 @@ def test_transient_failure_keeps_retry_and_recognizes_three_pages(
     gateway = _TransientOnceGateway(fail_capability="qwen_ocr")
     app.state.chat_service._gateway = gateway
     with TestClient(app) as client:
-        _register(client, "studyissue04retry")
+        account = _register(client, "studyissue04retry")
         pages = _three_pages(client)
         first = _first(client, pages, "issue04-retry-first")
         assert first.status_code == 201, first.text
         conversation_id = first.json()["conversation"]["conversation_id"]
+        database = app.state.chat_service._repo.database
+        run_row = database.scoped(account["id"]).execute(
+            "SELECT run_id FROM generation_runs WHERE conversation_id = ? AND account_id = ?",
+            (conversation_id, account["id"]),
+        ).fetchone()
+        assert run_row is not None
+        ledger = RunBudgetLedgerRepository(database)
+        initial_budget = ledger.load(account["id"], str(run_row["run_id"]))
+        assert initial_budget is not None
+        assert initial_budget.plan.total_budget_ms == 780_000
+        assert initial_budget.plan.model_call_limit == 18
         app.state.generation_executor.run_tick()
 
         failed = client.get(f"/chat/conversations/{conversation_id}").json()
@@ -380,6 +392,8 @@ def test_transient_failure_keeps_retry_and_recognizes_three_pages(
             json={"idempotency_key": "issue04-retry-attempt"},
         )
         assert retry.status_code == 200, retry.text
+        retried = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert retried["messages"][-1]["teaching"] is None
         app.state.generation_executor.run_tick()
 
         reloaded = client.get(f"/chat/conversations/{conversation_id}").json()

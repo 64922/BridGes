@@ -31,6 +31,7 @@ from bridges.chat.run_budget_ledger import (
     RunBudgetLedgerRepository,
     derive_run_budget_class,
     derive_run_budget_plan,
+    derive_study_run_budget_plan,
 )
 from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.storage.database import SCHEMA_VERSION, BridgesDatabase
@@ -145,6 +146,20 @@ def test_budget_class_derivation() -> None:
     ) is RunBudgetClass.DEEP
     assert derive_run_budget_class(has_image=True) is RunBudgetClass.DEEP
     assert derive_run_budget_class(has_video=True) is RunBudgetClass.DEEP
+
+
+def test_study_budget_scales_with_pages_and_has_a_hard_cap() -> None:
+    three_pages = derive_study_run_budget_plan(page_count=3, created_at=_NOW)
+    assert three_pages.total_budget_ms == 780_000
+    assert three_pages.deadline_at == _NOW + timedelta(seconds=780)
+    assert three_pages.model_call_limit == 18
+
+    capped = derive_study_run_budget_plan(page_count=10, created_at=_NOW)
+    assert capped.total_budget_ms == 900_000
+    assert capped.model_call_limit == 46
+
+    no_photos = derive_study_run_budget_plan(page_count=0, created_at=_NOW)
+    assert no_photos.total_budget_ms == RUN_BUDGET_INITIALS[RunBudgetClass.DEEP].total_budget_ms
 
 
 # ---------------------------------------------------------------------------

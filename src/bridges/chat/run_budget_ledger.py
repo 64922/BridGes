@@ -10,7 +10,8 @@
 不构成性能承诺）：
 
 - 普通检索运行（normal）：总预算 60 秒，核验/交付预留 15 秒；
-- 明确深入/书页/多模态运行（deep）：总预算最多 120 秒，预留 30 秒；
+- 明确深入及其他 deep 运行：总预算 120 秒，预留 30 秒；带照片的学习
+  批次由 ``derive_study_run_budget_plan`` 按页数分配专用预算，最多 15 分钟；
 - 普通轻量交流（lightweight）：沿用已验证前台硬上限与调用超时；
 - 外部独立并行初期最多 2，初筛最多 20 个候选，普通重点深读 3、深入 5；
 - 自动补证/调整整次运行最多一轮（结构与内容修复共享）；每个登记的
@@ -27,7 +28,7 @@ import secrets
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -104,6 +105,13 @@ RUN_BUDGET_INITIALS: dict[RunBudgetClass, RunBudgetInitials] = {
     ),
 }
 
+# 学习书页批次每页预算 OCR 与视觉识别时间，随后还需映射、核验范围与
+# 生成预习问题；另保留 deep 初值的核验/交付预留。该专用预算最多 15 分钟。
+STUDY_PAGE_BUDGET_MS = 180_000
+STUDY_FOLLOW_UP_BUDGET_MS = 210_000
+STUDY_MAX_RUN_BUDGET_MS = 900_000
+STUDY_FOLLOW_UP_CALLS = 3
+
 
 #: 创建时即确定走重材料/重流程路线的主能力（保留 120 秒/30 秒预留的
 #: 深入信封）；论文深入分析在其中，图片/视频/职业规划同理保守处理。
@@ -126,8 +134,9 @@ def derive_run_budget_class(
 ) -> RunBudgetClass:
     """从创建时可见的信号派生预算类别（内核职责，模型不可指定）。
 
-    - 书页处理（学习模式）、论文深入分析、图片/视频多模态与职业规划
-      等重材料/重流程运行 → ``deep``（120 秒/30 秒预留，保住已验证信封）；
+    - 学习模式、论文深入分析、图片/视频多模态与职业规划等重材料/重流程
+      运行 → ``deep``；带照片的学习轮随后由 ``derive_study_run_budget_plan``
+      按页数应用专用预算，其他 deep 运行使用 120 秒/30 秒预留；
     - 其余（普通闲聊、澄清、润色等纯交流）→ ``lightweight``（沿用已验证
       前台硬上限 120 秒、无预留——普通交流不占任务预算）。
     ``normal``（普通检索运行 60 秒）留给配方驱动的检索编排运行，由
@@ -231,6 +240,36 @@ def derive_run_budget_plan(
         adjustment_rounds_max=initials.adjustment_rounds_max,
         transient_retry_max=initials.transient_retry_max,
         recipe_costs=recipe_costs,
+    )
+
+
+def derive_study_run_budget_plan(
+    *, page_count: int, created_at: datetime, token_budget: int | None = None
+) -> RunBudgetPlan:
+    """按待识别书页数冻结专用预算；无书页时沿用 deep 初值。"""
+    if page_count < 1:
+        return derive_run_budget_plan(
+            RunBudgetClass.DEEP,
+            deadline_at=anchor_run_budget_deadline(created_at, RunBudgetClass.DEEP),
+            token_budget=token_budget,
+        )
+
+    total_budget_ms = min(
+        STUDY_MAX_RUN_BUDGET_MS,
+        page_count * STUDY_PAGE_BUDGET_MS
+        + STUDY_FOLLOW_UP_BUDGET_MS
+        + RUN_BUDGET_INITIALS[RunBudgetClass.DEEP].verify_deliver_reserve_ms,
+    )
+    necessary_calls = page_count * 2 + STUDY_FOLLOW_UP_CALLS
+    plan = derive_run_budget_plan(
+        RunBudgetClass.DEEP,
+        deadline_at=created_at + timedelta(milliseconds=total_budget_ms),
+        token_budget=token_budget,
+    )
+    return replace(
+        plan,
+        total_budget_ms=total_budget_ms,
+        model_call_limit=necessary_calls * (1 + plan.transient_retry_max),
     )
 
 
