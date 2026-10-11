@@ -17,7 +17,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
@@ -86,7 +86,7 @@ NODE_SYNTHESIZE = "tieba.synthesize"
 NODE_VERIFY = "tieba.verify"
 
 TIEBA_RECIPE_ID = "tieba-research"
-TIEBA_RECIPE_VERSION = "tieba-recipe-v2"
+TIEBA_RECIPE_VERSION = "tieba-recipe-v4"
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
@@ -94,8 +94,8 @@ TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
     "tieba.plan_evidence": "tieba-plan-v4",
     "tieba.verify_official_pages": "tieba-official-v5",
     "tieba.search_threads": "tieba-search-v7",
-    "tieba.read_threads": "tieba-read-v5",
-    "tieba.synthesize_evidence": "tieba-synthesize-v4",
+    "tieba.read_threads": "tieba-read-v6",
+    "tieba.synthesize_evidence": "tieba-synthesize-v5",
     "tieba.verify_evidence": "tieba-verify-v4",
 }
 
@@ -129,6 +129,13 @@ def _digest(value: Any) -> str:
     return sha256(material.encode("utf-8")).hexdigest()
 
 
+def _dependency_identity(inputs: Any, *nodes: str) -> dict[str, tuple[str, str]]:
+    return {
+        node: (inputs.artifacts[node].artifact_id, inputs.artifacts[node].content_hash)
+        for node in nodes
+    }
+
+
 def _parse_key(inputs: Any) -> str:
     return _digest(
         {
@@ -140,54 +147,44 @@ def _parse_key(inputs: Any) -> str:
 
 
 def _plan_key(inputs: Any) -> str:
-    return _digest(inputs.artifacts[NODE_PARSE].content_hash)
+    return _digest(_dependency_identity(inputs, NODE_PARSE))
 
 
 def _official_key(inputs: Any) -> str:
-    return _digest(
-        {
-            "plan": inputs.artifacts[NODE_PLAN].content_hash,
-            "parse": inputs.artifacts[NODE_PARSE].content_hash,
-        }
-    )
+    return _digest(_dependency_identity(inputs, NODE_PARSE, NODE_PLAN))
 
 
 def _search_key(inputs: Any) -> str:
-    return _digest(
-        {
-            "plan": inputs.artifacts[NODE_PLAN].content_hash,
-            "parse": inputs.artifacts[NODE_PARSE].content_hash,
-        }
-    )
+    return _digest(_dependency_identity(inputs, NODE_PARSE, NODE_PLAN))
 
 
 def _read_key(inputs: Any) -> str:
-    return _digest(
-        {
-            "search": inputs.artifacts[NODE_SEARCH].content_hash,
-            "plan": inputs.artifacts[NODE_PLAN].content_hash,
-            "parse": inputs.artifacts[NODE_PARSE].content_hash,
-        }
-    )
+    return _digest(_dependency_identity(inputs, NODE_PARSE, NODE_PLAN, NODE_SEARCH))
 
 
 def _synthesize_key(inputs: Any) -> str:
     return _digest(
-        {
-            "read": inputs.artifacts[NODE_READ].content_hash,
-            "official": inputs.artifacts[NODE_VERIFY_OFFICIAL].content_hash,
-            "parse": inputs.artifacts[NODE_PARSE].content_hash,
-        }
+        _dependency_identity(
+            inputs,
+            NODE_PARSE,
+            NODE_PLAN,
+            NODE_VERIFY_OFFICIAL,
+            NODE_SEARCH,
+            NODE_READ,
+        )
     )
 
 
 def _verify_key(inputs: Any) -> str:
     return _digest(
-        {
-            "synthesize": inputs.artifacts[NODE_SYNTHESIZE].content_hash,
-            "official": inputs.artifacts[NODE_VERIFY_OFFICIAL].content_hash,
-            "read": inputs.artifacts[NODE_READ].content_hash,
-        }
+        _dependency_identity(
+            inputs,
+            NODE_PARSE,
+            NODE_PLAN,
+            NODE_VERIFY_OFFICIAL,
+            NODE_READ,
+            NODE_SYNTHESIZE,
+        )
     )
 
 
@@ -614,6 +611,8 @@ def _read_scope_consistent(
         if (
             item.pages_read != source.pages_read
             or item.pages_limit != source.pages_limit
+            or item.scroll_rounds != source.scroll_rounds
+            or item.scroll_rounds_limit != source.scroll_rounds_limit
             or item.total_pages != source.total_pages
             or item.read_status != source.read_status
             or item.retrieved_at != source.retrieved_at
@@ -679,14 +678,17 @@ def _summary_traceable(
             return False
         if any(item not in citations for item in claim.citation_ids):
             return False
-    if projection.summary and not projection.summary_claims:
-        return False
-    return not (
-        projection.summary_claims
-        and projection.summary != "；".join(
-            claim.text for claim in projection.summary_claims
-        )
-    )
+    if projection.summary:
+        if not projection.summary_claims or not citations:
+            return False
+        claim_citation_ids = {
+            citation_id
+            for claim in projection.summary_claims
+            for citation_id in claim.citation_ids
+        }
+        if not claim_citation_ids.issubset(citations):
+            return False
+    return True
 
 
 def _official_scope_consistent(
@@ -989,6 +991,7 @@ class TiebaNodeFlow:
             "not_attempted": reads.not_attempted,
             "unconfirmed_total": reads.unconfirmed_total,
             "attempted_urls": list(reads.attempted_urls),
+            "retry_urls": list(reads.retry_urls),
             "partial": reads.partial,
         }
         return NodeExecution(
@@ -1041,6 +1044,7 @@ class TiebaNodeFlow:
                 self._run_context,
                 confirmed,
                 topic=analysis.original_question,
+                time_requirement=analysis.time_requirement,
                 model_id=self._run_model_id,
                 model_quota=self._model_quota,
                 budget=self._budget.model_budget if self._budget is not None else None,
@@ -1218,6 +1222,7 @@ class TiebaNodeFlow:
             not_attempted=int(payload.get("not_attempted") or 0),
             unconfirmed_total=int(payload.get("unconfirmed_total") or len(unconfirmed)),
             attempted_urls=tuple(str(url) for url in payload.get("attempted_urls", [])),
+            retry_urls=tuple(str(url) for url in payload.get("retry_urls", [])),
             partial=bool(payload.get("partial")),
         )
 
@@ -1238,11 +1243,70 @@ class TiebaNodeFlow:
         artifact = self._repository.find_artifact(
             invocation.account_id, invocation.conversation_id, node, input_key
         )
+        if artifact is None:
+            if node == NODE_SEARCH:
+                artifact = self._search_resume_after_auth_wait(invocation)
+            elif node == NODE_READ:
+                artifact = self._read_resume_after_search_extension(invocation)
         if artifact is None or artifact.capability_version != invocation.spec.capability_version:
             return None
         if artifact.payload.get("partial") is not True:
             return None
         return dict(artifact.payload)
+
+    def _search_resume_after_auth_wait(
+        self, invocation: NodeInvocation
+    ) -> NodeArtifact | None:
+        """认证续接时保留已成功的查询，只重试认证失败的查询。"""
+        return self._auth_resume_artifact(invocation, NODE_SEARCH)
+
+    def _read_resume_after_search_extension(
+        self, invocation: NodeInvocation
+    ) -> NodeArtifact | None:
+        """保留认证等待前的读取进度，即使续接搜索新增了候选。"""
+        return self._auth_resume_artifact(invocation, NODE_READ)
+
+    def _auth_resume_artifact(
+        self, invocation: NodeInvocation, node: str
+    ) -> NodeArtifact | None:
+        """只从同一认证等待任务内恢复依赖解析和计划未变的部分产物。"""
+        if getattr(self._pending_wait, "kind", None) != "authentication":
+            return None
+        if self._repository is None:
+            return None
+        stable_dependencies = {
+            node: invocation.dependencies.get(node) for node in (NODE_PARSE, NODE_PLAN)
+        }
+        if any(artifact is None for artifact in stable_dependencies.values()):
+            return None
+        expected_hashes = {
+            node: artifact.content_hash
+            for node, artifact in stable_dependencies.items()
+            if artifact is not None
+        }
+        artifacts = self._repository.list_artifacts(
+            invocation.account_id, invocation.conversation_id
+        )
+        for artifact in reversed(artifacts):
+            if (
+                artifact.node != node
+                or artifact.recipe_id != TIEBA_RECIPE_ID
+                or artifact.recipe_version != TIEBA_RECIPE_VERSION
+                or artifact.capability_version != invocation.spec.capability_version
+                or artifact.artifact_type != invocation.spec.artifact_type
+                or artifact.task_id != invocation.inputs.task_id
+                or artifact.task_version != invocation.inputs.task_version
+                or artifact.payload.get("partial") is not True
+                or not artifact.verify_hash()
+            ):
+                continue
+            dependency_hashes = {dep.node: dep.content_hash for dep in artifact.input_deps}
+            if all(
+                dependency_hashes.get(node) == content_hash
+                for node, content_hash in expected_hashes.items()
+            ):
+                return cast(NodeArtifact, artifact)
+        return None
 
     def _artifact(
         self,

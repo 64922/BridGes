@@ -251,7 +251,7 @@ export function TiebaResearchCard({
           ))}
         </div>
       )}
-      {!research.summary && research.summary_note && (
+      {research.summary_note && (
         <p data-testid="tieba-summary-note" style={{ margin: 0 }}>{research.summary_note}</p>
       )}
 

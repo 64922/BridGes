@@ -146,7 +146,7 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
         )
         summary = projection.summary + (f" 依据 {citations}" if citations else "")
         lines.extend(["", "【讨论总结】", summary])
-    elif projection.summary_note:
+    if projection.summary_note:
         lines.extend(["", f"总结说明：{projection.summary_note}"])
     for record in projection.queries:
         lines.append(
@@ -319,6 +319,8 @@ def _rejected_lines(projection: TiebaResearchProjection) -> list[str]:
 
 def _read_scope(post: TiebaPostProjection) -> str:
     parts = [f"已读取 {post.pages_read}/{post.pages_limit} 页"]
+    if post.scroll_rounds_limit:
+        parts.append(f"向下加载 {post.scroll_rounds}/{post.scroll_rounds_limit} 轮")
     if post.total_pages is not None:
         parts.append(f"页面声明共 {post.total_pages} 页")
     if post.floor_min is not None and post.floor_max is not None:

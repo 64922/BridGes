@@ -60,7 +60,7 @@ def parse_tieba_request(
     original_question = resumed_question or current
 
     terms = extract_topic_terms(current)
-    continue_only = current.replace(" ", "") in {"继续", "接着", "继续刚才", "恢复刚才"}
+    continue_only = is_continue_request(current)
     if pending and (not _has_substantive(terms) or continue_only) and resumed_question:
         terms = extract_topic_terms(resumed_question)
     task_topic = _task_topic(module_context)
@@ -106,6 +106,12 @@ def parse_tieba_request(
             }
         )
     return analysis
+
+
+def is_continue_request(content: str) -> bool:
+    """只把明确的续接短句识别为恢复指令，避免新问题误用旧任务条件。"""
+    normalized = "".join(content.split())
+    return normalized in {"继续", "接着", "继续刚才", "恢复刚才"}
 
 
 def pending_payload(analysis: TiebaQuestionAnalysis) -> dict[str, Any]:

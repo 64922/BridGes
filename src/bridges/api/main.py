@@ -58,7 +58,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api import commute as commute_api
-from bridges.api import tieba as tieba_api
+from bridges.api import tieba as tieba_compatibility_api
 from bridges.api.csrf import CsrfOriginMiddleware
 from bridges.api.data import router as data_router
 from bridges.api.image import router as image_router
@@ -2186,9 +2186,9 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(credentials.router)
     app.include_router(commute_api.router)
-    app.include_router(tieba_api.router)
     app.include_router(model_settings.router)
     app.include_router(compatibility.router)
+    app.include_router(tieba_compatibility_api.router)
     app.include_router(chat.router)
     app.include_router(ingestion.router)
     app.include_router(knowledge_base.router)

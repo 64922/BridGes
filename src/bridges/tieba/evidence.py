@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import calendar
 import re
 import threading
 import time
@@ -178,6 +179,8 @@ class ReadOutcome:
     unconfirmed_total: int = 0
     #: 已经真实读取过页面的链接（恢复时跳过，不重复取证）。
     attempted_urls: tuple[str, ...] = ()
+    #: 认证等待完成后必须重读的链接；失败尝试不能作为完成证据复用。
+    retry_urls: tuple[str, ...] = ()
     partial: bool = False
 
 
@@ -240,6 +243,7 @@ def search_candidates(
                 continue
         rounds.extend(str(note) for note in resume.get("rounds", []))
         raw_hits += int(resume.get("raw_hits") or 0)
+        usable += int(resume.get("usable", len(seeded_hits)) or 0)
     partial = False
     found_by_url: dict[str, TiebaSearchHit] = {
         hit.url: hit for hit in seeded_hits
@@ -274,7 +278,13 @@ def search_candidates(
         for hit in outcome.candidates:
             found_by_url.setdefault(hit.url, hit)
         if not _plan_continues(outcome.record):
-            partial = outcome.record.retryable and outcome.record.status in FAILED_QUERY_STATUSES
+            auth_required = outcome.record.error_code in {
+                "tieba_browser_auth_required",
+                "tieba_browser_auth_interrupted",
+            }
+            partial = auth_required or (
+                outcome.record.retryable and outcome.record.status in FAILED_QUERY_STATUSES
+            )
             break
     if len(records) < len(queries) and not any(
         record.status in STOP_QUERY_STATUSES for record in records
@@ -310,6 +320,7 @@ def read_candidates(
     links: list[TiebaCandidateLink] = []
     unreadable = 0
     attempted: set[str] = set()
+    retry_urls: set[str] = set()
     prior_links: dict[str, TiebaCandidateLink] = {}
     if resume is not None:
         for raw in resume.get("confirmed", []):
@@ -334,11 +345,16 @@ def read_candidates(
                 continue
             prior_links[link.url] = link
         attempted.update(str(url) for url in resume.get("attempted_urls", []))
+        retry_urls.update(str(url) for url in resume.get("retry_urls", []))
+        attempted.difference_update(retry_urls)
         unreadable += int(resume.get("unreadable") or 0)
     partial = False
     new_attempted: set[str] = set()
+    auth_blocked = False
+    stopped_index: int | None = None
     deadline = time.monotonic() + deadline_seconds
-    for hit in attempts.hits[:READ_POSTS_LIMIT]:
+    read_hits = attempts.hits[:READ_POSTS_LIMIT]
+    for index, hit in enumerate(read_hits):
         if hit.url in attempted:
             prior = prior_links.get(hit.url)
             if prior is not None:
@@ -346,9 +362,28 @@ def read_candidates(
             continue
         if stop_event is not None and stop_event.is_set():
             partial = True
+            stopped_index = index - 1
             break
         result = reader.read(hit.url, stop_event=stop_event, deadline=deadline)
+        deadline += max(0, result.excluded_wait_ms) / 1000
         new_attempted.add(hit.url)
+        if result.error_code in {
+            "tieba_browser_auth_required",
+            "tieba_browser_auth_interrupted",
+        }:
+            links.append(
+                _unconfirmed_link(
+                    hit,
+                    _read_block_reason(result),
+                    read_error_code=result.error_code,
+                )
+            )
+            retry_urls.add(hit.url)
+            auth_blocked = True
+            partial = True
+            stopped_index = index
+            break
+        retry_urls.discard(hit.url)
         if result.forum_matches_target:
             if not post_matches_topic(result, analysis):
                 rejected.append(TiebaRejectedCandidate(
@@ -370,24 +405,52 @@ def read_candidates(
             )
             continue
         unreadable += 1
-        links.append(_unconfirmed_link(hit, _read_block_reason(result)))
+        links.append(
+            _unconfirmed_link(
+                hit,
+                _read_block_reason(result),
+                read_error_code=result.error_code,
+            )
+        )
     not_attempted = 0
-    for hit in attempts.hits[READ_POSTS_LIMIT:]:
+    remaining_hits = list(
+        read_hits[stopped_index + 1 :] if stopped_index is not None else []
+    )
+    remaining_hits.extend(attempts.hits[READ_POSTS_LIMIT:])
+    for hit in remaining_hits:
         if hit.url in attempted or hit.url in new_attempted:
             prior = prior_links.get(hit.url)
             if prior is not None:
                 links.append(prior)
             continue
         not_attempted += 1
-        links.append(_unconfirmed_link(hit, "未读取：超出本轮读取条数上限"))
+        reason = (
+            "未读取：当前会话认证待完成，之后可继续"
+            if auth_blocked
+            else "未读取：本轮停止或超出读取条数上限"
+        )
+        links.append(_unconfirmed_link(hit, reason))
+    visible_links = links[:CANDIDATE_LINKS_LIMIT]
+    auth_link = next(
+        (
+            link
+            for link in links
+            if link.read_error_code
+            in {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+        ),
+        None,
+    )
+    if auth_link is not None and all(link.url != auth_link.url for link in visible_links):
+        visible_links = [*visible_links[: CANDIDATE_LINKS_LIMIT - 1], auth_link]
     return ReadOutcome(
         confirmed=confirmed,
         rejected=rejected,
-        unconfirmed=links[:CANDIDATE_LINKS_LIMIT],
+        unconfirmed=visible_links,
         unreadable=unreadable,
         not_attempted=not_attempted,
         unconfirmed_total=len(links),
         attempted_urls=tuple(sorted(attempted | new_attempted)),
+        retry_urls=tuple(sorted(retry_urls)),
         partial=partial,
     )
 
@@ -717,27 +780,17 @@ def apply_time_condition(
     """按实际发言时间标记近期、历史与未知，不丢弃老帖中的近期回复。"""
     anchor = max((post.retrieved_at for post in posts), default=datetime.now(UTC))
     anchor_date = anchor.date()
-    since = _requested_since(analysis, anchor_date)
+    since, until, supported = _requested_window(analysis, anchor_date)
     recent = historical = unknown = 0
     tagged: list[TiebaPostProjection] = []
     for post in posts:
         replies = []
         for reply in post.replies:
             moment = _parse_posted_date(reply.posted_at, anchor_date)
-            if moment is None:
+            if moment is None or not supported:
                 scope = TiebaTemporalScope.UNKNOWN
                 unknown += 1
-            elif analysis.time_year is not None:
-                scope = (
-                    TiebaTemporalScope.RECENT
-                    if moment.year == analysis.time_year
-                    else TiebaTemporalScope.HISTORICAL
-                )
-                if scope is TiebaTemporalScope.RECENT:
-                    recent += 1
-                else:
-                    historical += 1
-            elif moment >= since:
+            elif since <= moment <= until:
                 scope = TiebaTemporalScope.RECENT
                 recent += 1
             else:
@@ -747,7 +800,12 @@ def apply_time_condition(
         tagged.append(post.model_copy(update={"replies": replies}))
     applied = recent + historical > 0
     requirement = analysis.time_requirement
-    if not applied:
+    if requirement and not supported:
+        note = (
+            f"保留了时间条件「{requirement}」，但当前无法可靠换算成日历区间；"
+            "本轮不会把默认近十二个月窗口冒充为该条件，相关发言的时间匹配状态标为未知。"
+        )
+    elif not applied:
         note = (
             f"保留了时间条件「{requirement or '默认近十二个月'}」；"
             "本轮没有读到带发帖时间的楼层，因此未能判断哪些发言落入时间范围。"
@@ -760,12 +818,12 @@ def apply_time_condition(
         )
     elif requirement:
         note = (
-            f"已按默认近十二个月窗口并保留你的时间条件「{requirement}」："
+            f"已按实际时间区间 {since.isoformat()} 至 {until.isoformat()} 核对「{requirement}」："
             f"近期 {recent} 条、历史 {historical} 条、时间未知 {unknown} 条。"
         )
     else:
         note = (
-            f"未指定时间：优先近十二个月（起点 {since.isoformat()}），"
+            f"未指定时间：优先近十二个月（{since.isoformat()} 至 {until.isoformat()}），"
             f"近期 {recent} 条、历史 {historical} 条、时间未知 {unknown} 条；"
             "历史内容仅作上下文，时间未知的发言不标为近期。"
         )
@@ -774,7 +832,12 @@ def apply_time_condition(
             requirement=requirement,
             year=analysis.time_year,
             applied=applied,
-            since=datetime.combine(since, datetime.min.time(), UTC),
+            since=(
+                datetime.combine(since, datetime.min.time(), UTC)
+                if supported
+                else None
+            ),
+            until=datetime.combine(until, datetime.min.time(), UTC) if supported else None,
             recent_count=recent,
             historical_count=historical,
             unknown_count=unknown,
@@ -792,19 +855,176 @@ def time_filter_state(
     return state
 
 
-def _requested_since(analysis: TiebaQuestionAnalysis, anchor: date) -> date:
+def _requested_window(
+    analysis: TiebaQuestionAnalysis, anchor: date
+) -> tuple[date, date, bool]:
+    """返回实际日历区间；无法可靠解释的显式条件不回退到默认窗口。"""
+    requirement = re.sub(r"\s+", "", analysis.time_requirement or "")
+    if not requirement:
+        return _one_year_before(anchor), anchor, True
+
+    date_range = re.fullmatch(
+        r"(20\d{2})年(\d{1,2})月(?:(\d{1,2})日)?(?:至|到)"
+        r"(?:(20\d{2})年)?(\d{1,2})月(?:(\d{1,2})日)?",
+        requirement,
+    )
+    if date_range:
+        (
+            start_year_text,
+            start_month_text,
+            start_day_text,
+            end_year_text,
+            end_month_text,
+            end_day_text,
+        ) = date_range.groups()
+        start_year, start_month = int(start_year_text), int(start_month_text)
+        end_year = int(end_year_text) if end_year_text is not None else start_year
+        end_month = int(end_month_text)
+        start_day = int(start_day_text) if start_day_text is not None else 1
+        _, _, start_valid = _month_window(start_year, start_month)
+        _, end_month_end, end_valid = _month_window(end_year, end_month)
+        if not start_valid or not end_valid:
+            return anchor, anchor, False
+        try:
+            start = date(start_year, start_month, start_day)
+            end = date(
+                end_year,
+                end_month,
+                int(end_day_text) if end_day_text is not None else end_month_end.day,
+            )
+        except ValueError:
+            return anchor, anchor, False
+        if start > end:
+            return anchor, anchor, False
+        return start, end, True
+
+    absolute = _DATE.fullmatch(requirement)
+    if absolute:
+        year, month, day = (int(value) for value in absolute.groups())
+        try:
+            point = date(year, month, day)
+        except ValueError:
+            return anchor, anchor, False
+        return point, point, True
+    year_month = re.fullmatch(r"(20\d{2})年(\d{1,2})月", requirement)
+    if year_month:
+        year, month = (int(value) for value in year_month.groups())
+        return _month_window(year, month)
+    iso_month = re.fullmatch(r"(20\d{2})-(\d{1,2})", requirement)
+    if iso_month:
+        year, month = (int(value) for value in iso_month.groups())
+        return _month_window(year, month)
+    month_day = re.fullmatch(r"(\d{1,2})月(\d{1,2})日?", requirement)
+    if month_day:
+        month, day = (int(value) for value in month_day.groups())
+        year = anchor.year if (month, day) <= (anchor.month, anchor.day) else anchor.year - 1
+        try:
+            point = date(year, month, day)
+        except ValueError:
+            return anchor, anchor, False
+        return point, point, True
+    month_only = re.fullmatch(r"(\d{1,2})月", requirement)
+    if month_only:
+        month = int(month_only.group(1))
+        year = anchor.year if month <= anchor.month else anchor.year - 1
+        return _month_window(year, month)
+    year_only = re.fullmatch(r"(20\d{2})年", requirement)
+    if year_only:
+        year = int(year_only.group(1))
+        return date(year, 1, 1), date(year, 12, 31), True
     if analysis.time_year is not None:
-        return date(analysis.time_year, 1, 1)
-    requirement = (analysis.time_requirement or "").lower()
-    match = re.search(r"近\s*(\d+|一|两|三|六|十二)\s*个?月", requirement)
-    months = {"一": 1, "两": 2, "三": 3, "六": 6, "十二": 12}
-    if match:
-        count = int(match.group(1)) if match.group(1).isdigit() else months[match.group(1)]
-        month_index = anchor.year * 12 + anchor.month - 1 - count
-        year, month0 = divmod(month_index, 12)
-        month = month0 + 1
-        return date(year, month, min(anchor.day, 28))
-    return _one_year_before(anchor)
+        return date(analysis.time_year, 1, 1), date(analysis.time_year, 12, 31), True
+
+    if requirement in {"去年", "前年", "今年"}:
+        offset = {"去年": 1, "前年": 2, "今年": 0}[requirement]
+        year = anchor.year - offset
+        return date(year, 1, 1), min(date(year, 12, 31), anchor), True
+    if requirement in {"上个月", "这个月", "本月"}:
+        year, month = anchor.year, anchor.month
+        if requirement == "上个月":
+            year, month = _shift_month(year, month, -1)
+        start, end, valid = _month_window(year, month)
+        return start, min(end, anchor), valid
+    if requirement in {"上周", "本周", "这周"}:
+        monday = anchor - timedelta(days=anchor.weekday())
+        start = monday - timedelta(days=7) if requirement == "上周" else monday
+        end = start + timedelta(days=6)
+        return start, min(end, anchor), True
+    if requirement in {"最近", "近期"}:
+        return anchor - timedelta(days=29), anchor, True
+    if requirement == "这几天":
+        return anchor - timedelta(days=6), anchor, True
+    if requirement == "这两天":
+        return anchor - timedelta(days=1), anchor, True
+
+    relative_days = re.fullmatch(
+        r"(?:近|最近|过去)(\d+|一|两|三|五|七|十|十四|十五|二十|三十)天",
+        requirement,
+    )
+    day_count = {
+        "一": 1,
+        "两": 2,
+        "三": 3,
+        "五": 5,
+        "七": 7,
+        "十": 10,
+        "十四": 14,
+        "十五": 15,
+        "二十": 20,
+        "三十": 30,
+    }
+    if relative_days:
+        value = relative_days.group(1)
+        count = int(value) if value.isdigit() else day_count[value]
+        return anchor - timedelta(days=count - 1), anchor, True
+
+    relative_weeks = re.fullmatch(
+        r"(?:近|最近|过去)(\d+|一|两|三|四|五|六|七|八|九|十|十一|十二)(?:周|星期)",
+        requirement,
+    )
+    week_count = {
+        "一": 1,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+        "十一": 11,
+        "十二": 12,
+    }
+    if relative_weeks:
+        value = relative_weeks.group(1)
+        count = int(value) if value.isdigit() else week_count[value]
+        days = count * 7
+        return anchor - timedelta(days=days - 1), anchor, True
+
+    relative_months = re.fullmatch(
+        r"(?:近|最近|过去)(\d+|一|两|三|六|十二)个?月", requirement
+    )
+    month_count = {"一": 1, "两": 2, "三": 3, "六": 6, "十二": 12}
+    if relative_months:
+        value = relative_months.group(1)
+        count = int(value) if value.isdigit() else month_count[value]
+        year, month = _shift_month(anchor.year, anchor.month, -count)
+        day = min(anchor.day, calendar.monthrange(year, month)[1])
+        return date(year, month, day), anchor, True
+    return anchor, anchor, False
+
+
+def _month_window(year: int, month: int) -> tuple[date, date, bool]:
+    if not 1 <= month <= 12:
+        return date(year, 1, 1), date(year, 1, 1), False
+    return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1]), True
+
+
+def _shift_month(year: int, month: int, offset: int) -> tuple[int, int]:
+    index = year * 12 + month - 1 + offset
+    shifted_year, shifted_month = divmod(index, 12)
+    return shifted_year, shifted_month + 1
 
 
 def _one_year_before(value: date) -> date:
@@ -980,6 +1200,8 @@ def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPro
         read_status=result.status,
         pages_read=result.pages_read,
         pages_limit=result.pages_limit,
+        scroll_rounds=result.scroll_rounds,
+        scroll_rounds_limit=result.scroll_rounds_limit,
         total_pages=result.total_pages,
         total_replies=result.total_replies,
         floor_min=result.floor_min,
@@ -1032,17 +1254,20 @@ def evidence_boundary(
             f"其中可用候选 {attempts.diagnostics.usable} 条："
             "原始命中数不等于确认帖子数。"
         )
-    notes.append("本模块不调用模型生成内容，正文与引文都来自实际取得的页面文本。")
+    notes.append("总结仅基于实际取得的页面原文生成，引用指向本轮读取的发言；不补写未取得内容。")
     return notes
 
 
-def _unconfirmed_link(hit: TiebaSearchHit, reason: str) -> TiebaCandidateLink:
+def _unconfirmed_link(
+    hit: TiebaSearchHit, reason: str, *, read_error_code: str | None = None
+) -> TiebaCandidateLink:
     """仅帖链降级：来源标识与「为什么只有帖链」分开记，不把原因塞进来源字段。"""
     return TiebaCandidateLink(
         url=hit.url,
         title=hit.title,
         source=hit.source,
         unconfirmed_reason=reason,
+        read_error_code=read_error_code,
     )
 
 

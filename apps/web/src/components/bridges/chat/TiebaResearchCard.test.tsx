@@ -62,6 +62,8 @@ const confirmedPost: TiebaPostProjection = {
   read_status: "read",
   pages_read: 1,
   pages_limit: 2,
+  scroll_rounds: 0,
+  scroll_rounds_limit: 0,
   total_pages: 3,
   floor_min: 1,
   floor_max: 12,
@@ -84,7 +86,12 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
   it("显示模型总结的可点击引用并默认折叠原文", () => {
     render(<TiebaResearchCard research={projection({
       summary: "部分回复提到晚间热水供应不稳定。",
-      summary_claims: [{ text: "部分回复提到晚间热水供应不稳定。", citation_ids: ["E1"] }],
+      summary_note: "另有历史发言仅供上下文，未作为总结依据。",
+      summary_claims: [{
+        kind: "finding",
+        text: "部分回复提到晚间热水供应不稳定。",
+        citation_ids: ["E1"],
+      }],
       summary_citations: [{
         citation_id: "E1", url: "https://tieba.baidu.com/p/123", title: "宿舍讨论",
         reply_id: "reply-3", parent_reply_id: null, floor: 3,
@@ -92,6 +99,7 @@ describe("TiebaResearchCard（V2 Issue 14）", () => {
       }],
     })} streaming={false} />);
     expect(screen.getByTestId("tieba-research-summary")).toBeTruthy();
+    expect(screen.getByTestId("tieba-summary-note").textContent).toContain("仅供上下文");
     expect(screen.getByRole("link", { name: "查看引用 E1" }).getAttribute("href")).toBe("#tieba-citation-E1");
     expect(screen.getByText("晚上热水供应不太稳定。").closest("details")?.open).toBe(false);
   });

@@ -1715,104 +1715,6 @@
         }
       }
     },
-    "/tieba/browser/open": {
-      "post": {
-        "tags": [
-          "贴吧信息搜集"
-        ],
-        "summary": "Open Browser",
-        "operationId": "open_browser_tieba_browser_open_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TiebaBrowserSetupResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/tieba/browser/complete": {
-      "post": {
-        "tags": [
-          "贴吧信息搜集"
-        ],
-        "summary": "Complete Browser",
-        "operationId": "complete_browser_tieba_browser_complete_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TiebaBrowserSetupResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/settings/models": {
       "get": {
         "tags": [
@@ -1943,6 +1845,130 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tieba/browser/open": {
+      "post": {
+        "tags": [
+          "贴吧信息搜集"
+        ],
+        "summary": "Open Browser",
+        "description": "稳定退役旧的手动打开登录窗口入口。",
+        "operationId": "open_browser_tieba_browser_open_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Open Browser Tieba Browser Open Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tieba/browser/complete": {
+      "post": {
+        "tags": [
+          "贴吧信息搜集"
+        ],
+        "summary": "Complete Browser",
+        "description": "稳定退役旧的手动完成登录入口。",
+        "operationId": "complete_browser_tieba_browser_complete_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Complete Browser Tieba Browser Complete Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
           },
           "422": {
             "description": "Validation Error",
@@ -61352,25 +61378,6 @@
         "title": "TemporaryTaskCapsule",
         "description": "Encrypted minimal context for a single task run.\n\nA temporary task capsule binds subject, purpose, objects, run, authorization\nversion, key epoch, and TTL. It is the only long-information carrier that may\nbe sent to cloud workers or model gateways."
       },
-      "TiebaBrowserSetupResponse": {
-        "properties": {
-          "state": {
-            "type": "string",
-            "title": "State"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "state",
-          "message"
-        ],
-        "title": "TiebaBrowserSetupResponse",
-        "description": "窗口状态不等于已验证登录状态，登录可用性由实际检索判定。"
-      },
       "TiebaCandidateLink": {
         "properties": {
           "url": {
@@ -61398,6 +61405,18 @@
             ],
             "title": "Unconfirmed Reason",
             "description": "归属未确认的具体原因（页面不可读／未读取）。"
+          },
+          "read_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Error Code",
+            "description": "页面读取失败分类码；用于认证续接与故障说明。"
           }
         },
         "type": "object",
@@ -61799,6 +61818,18 @@
             "type": "integer",
             "title": "Pages Limit",
             "description": "本轮页数上限。",
+            "default": 0
+          },
+          "scroll_rounds": {
+            "type": "integer",
+            "title": "Scroll Rounds",
+            "description": "实际执行的页面向下加载轮数。",
+            "default": 0
+          },
+          "scroll_rounds_limit": {
+            "type": "integer",
+            "title": "Scroll Rounds Limit",
+            "description": "本轮允许执行的向下加载轮数。",
             "default": 0
           },
           "total_pages": {
@@ -62209,7 +62240,7 @@
               }
             ],
             "title": "Summary Note",
-            "description": "总结未生成或被核验拒绝的原因。"
+            "description": "总结结果的范围、限制或未生成原因说明。"
           },
           "sections": {
             "items": {
@@ -62411,6 +62442,18 @@
       },
       "TiebaSummaryClaim": {
         "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "finding",
+              "difference",
+              "uncertainty",
+              "time_change"
+            ],
+            "title": "Kind",
+            "description": "观点类别：finding、difference、uncertainty 或 time_change。",
+            "default": "finding"
+          },
           "text": {
             "type": "string",
             "title": "Text",
@@ -62485,7 +62528,20 @@
               }
             ],
             "title": "Since",
-            "description": "近十二个月窗口起点。"
+            "description": "实际采用时间区间的起点（含）。"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "实际采用时间区间的终点（含）；未知时为 None。"
           },
           "recent_count": {
             "type": "integer",

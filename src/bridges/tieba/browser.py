@@ -23,6 +23,8 @@ from bridges.tieba.searching import (
     thread_id_of,
 )
 
+BROWSER_SCROLL_ROUNDS_LIMIT = 8
+
 
 def browser_terms(query: str) -> str:
     words = query.split()
@@ -33,9 +35,7 @@ def browser_terms(query: str) -> str:
     ]
 
 
-def read_projection(
-    url: str, value: dict[str, Any], *, pages_limit: int = 2
-) -> TiebaReadResult:
+def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
     replies: list[TiebaReply] = []
     original = str(value.get("original", "")).strip()
     if original:
@@ -62,7 +62,9 @@ def read_projection(
     loaded_reply_count = int(value.get("loaded_reply_count") or sum(
         not item.get("nested", False) for item in value.get("replies", [])
     ))
-    complete = total_replies is not None and loaded_reply_count >= int(total_replies)
+    complete = total_replies == 0 and loaded_reply_count == 0
+    scroll_rounds = int(value.get("scroll_rounds") or 0)
+    scroll_rounds_limit = int(value.get("scroll_rounds_limit") or 0)
     return TiebaReadResult(
         url=canonical_url(url),
         thread_id=thread_id_of(url),
@@ -71,7 +73,9 @@ def read_projection(
         title=value.get("title"),
         replies=replies,
         pages_read=1,
-        pages_limit=pages_limit,
+        pages_limit=1,
+        scroll_rounds=scroll_rounds,
+        scroll_rounds_limit=scroll_rounds_limit,
         total_replies=total_replies,
         floor_min=min((reply.floor for reply in replies if reply.floor is not None), default=None),
         floor_max=max((reply.floor for reply in replies if reply.floor is not None), default=None),
@@ -81,7 +85,9 @@ def read_projection(
         error_message=None if complete else (
             f"已读取 {loaded_reply_count} 条普通楼层，"
             f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
-            "未穷尽全部回复、楼中楼或图片内容，不作未读取内容的推断。"
+            f"向下加载 {scroll_rounds}/{scroll_rounds_limit} 轮；"
+            "页面路径不提供楼中楼全量状态，未穷尽全部回复、楼中楼或图片内容，"
+            "不作未读取内容的推断。"
         ),
     )
 
@@ -195,11 +201,15 @@ class BrowserTiebaThreadReader:
         try:
             value = self._runtime.request(
                 self._account_id,
-                {"action": "read", "url": canonical_url(url), "pages_limit": pages_limit},
+                {
+                    "action": "read",
+                    "url": canonical_url(url),
+                    "scroll_rounds_limit": BROWSER_SCROLL_ROUNDS_LIMIT,
+                },
                 stop_event=stop_event,
                 deadline=deadline,
             )
-            return read_projection(url, value, pages_limit=pages_limit)
+            return read_projection(url, value)
         except TiebaBrowserError as error:
             return TiebaReadResult(
                 url=canonical_url(url),

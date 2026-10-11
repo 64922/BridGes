@@ -1,50 +1,50 @@
-"""认证账户的专用贴吧窗口；不接受 URL、账户 ID 或 Cookie。"""
+"""贴吧专用浏览器手动控制端点的 410 兼容合同。"""
 
-from typing import cast
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Request, status
 
 from bridges.api.auth import SubjectDep
-from bridges.tieba.browser_runtime import TiebaBrowserError, TiebaBrowserRuntime
+from bridges.contracts.retirement import RetiredCapabilityError
+from bridges.retirement import raise_retired_capability
 
 router = APIRouter(prefix="/tieba/browser", tags=["贴吧信息搜集"])
+_RETIRED_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status.HTTP_410_GONE: {"model": RetiredCapabilityError, "description": "Gone"},
+    status.HTTP_401_UNAUTHORIZED: {"model": dict},
+}
 
 
-class TiebaBrowserSetupResponse(BaseModel):
-    """窗口状态不等于已验证登录状态，登录可用性由实际检索判定。"""
-
-    state: str
-    message: str
-
-
-def runtime_of(request: Request) -> TiebaBrowserRuntime:
-    runtime = getattr(request.app.state, "tieba_browser_runtime", None)
-    if runtime is None:
-        raise HTTPException(
-            503,
-            detail={
-                "error": "tieba_browser_unavailable",
-                "message": "当前运行环境未启用本地专用贴吧浏览器。",
-            },
-        )
-    return cast(TiebaBrowserRuntime, runtime)
-
-
-@router.post("/open", response_model=TiebaBrowserSetupResponse)
-def open_browser(request: Request, subject: SubjectDep) -> TiebaBrowserSetupResponse:
-    try:
-        runtime_of(request).open(subject.account_id)
-    except TiebaBrowserError as error:
-        raise HTTPException(503, detail={"error": error.code, "message": str(error)}) from None
-    return TiebaBrowserSetupResponse(
-        state="opened", message="请在专用 Chrome 中手动完成贴吧验证或登录，再点击完成。"
+def _retired(request: Request, endpoint: str) -> None:
+    raise_retired_capability(
+        request,
+        endpoint=endpoint,
+        error="tieba_browser_controls_retired",
+        replacement_path="/",
+        message="手动打开或关闭贴吧浏览器的接口已退役；请从聊天入口使用贴吧信息搜集，登录检查与任务续接会自动处理。",
     )
 
 
-@router.post("/complete", response_model=TiebaBrowserSetupResponse)
-def complete_browser(request: Request, subject: SubjectDep) -> TiebaBrowserSetupResponse:
-    runtime_of(request).complete(subject.account_id)
-    return TiebaBrowserSetupResponse(
-        state="closed", message="专用窗口已关闭，会话已保存；请重新检索以核验是否可用。"
-    )
+@router.post(
+    "/open",
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
+)
+def open_browser(request: Request, _subject: SubjectDep) -> None:
+    """稳定退役旧的手动打开登录窗口入口。"""
+    _retired(request, "legacy.tieba.browser.open")
+
+
+@router.post(
+    "/complete",
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
+    responses=_RETIRED_RESPONSES,
+)
+def complete_browser(request: Request, _subject: SubjectDep) -> None:
+    """稳定退役旧的手动完成登录入口。"""
+    _retired(request, "legacy.tieba.browser.complete")
+
+
+__all__ = ["router"]

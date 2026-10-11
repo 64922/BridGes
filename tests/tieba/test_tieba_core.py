@@ -409,6 +409,8 @@ def test_render_result_content_states_read_scope() -> None:
         topic="转专业",
         original_question="华东交通大学吧 转专业",
         topic_terms=["转专业"],
+        summary="近期回复提到部分课程转专业名额有限。",
+        summary_note="另有历史回复仅供解释近期楼中楼，没有作为总结依据。",
         time_filter=TiebaTimeFilter(
             requirement=None, year=None, applied=False, note="本轮问题没有提出时间条件。"
         ),
@@ -421,6 +423,8 @@ def test_render_result_content_states_read_scope() -> None:
     assert "已读取 1/2 页" in content
     assert "楼层 1–9" in content
     assert post.url in content
+    assert "【讨论总结】" in content
+    assert "总结说明：另有历史回复仅供解释近期楼中楼" in content
     assert REPLIES_NOT_OBTAINED not in content
 
 

@@ -1,52 +1,38 @@
 """专用窗口操作必须来自认证会话，不能由请求体选择另一账户。"""
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bridges.api.main import create_app
-from bridges.closeout.manifest import check_route_coverage, discover_api_routes
+from bridges.closeout.manifest import discover_api_routes
 from bridges.config import get_settings
+from bridges.contracts.modules import ModuleQueryStatus
+from bridges.tieba.contracts import ReadStatus, TiebaReply, TiebaSearchHit
+from bridges.tieba.parsing import parse_tieba_request
+from bridges.tieba.searching import HitDiagnostics, SearchOutcome, plan_queries, query_record
 from tests.chat.test_chat_api import _register
 
 
-def test_browser_setup_is_authenticated_and_account_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_legacy_manual_browser_setup_routes_return_410(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("BRIDGES_DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "browser-api-test-secret")
     monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
     get_settings.cache_clear()
     app = create_app()
-    browser_routes = [
-        route for route in discover_api_routes(app) if route.path.startswith("/tieba/browser/")
-    ]
-    assert len(browser_routes) == 2 and check_route_coverage(browser_routes) == []
-
-    class Runtime:
-        calls: list[tuple[str, str]] = []
-
-        def open(self, account_id: str) -> None:
-            self.calls.append(("open", account_id))
-
-        def complete(self, account_id: str) -> None:
-            self.calls.append(("complete", account_id))
-
-    runtime = Runtime()
-    app.state.tieba_browser_runtime = runtime
-    first, second = TestClient(app), TestClient(app)
-    assert first.post("/tieba/browser/open").status_code == 401
-    _register(first, "801")
-    _register(second, "802")
-    account_a: Any = first.get("/me").json()["account_id"]
-    account_b: Any = second.get("/me").json()["account_id"]
-    assert first.post("/tieba/browser/open", json={"account_id": account_b}).status_code == 200
-    assert second.post("/tieba/browser/open").status_code == 200
-    assert first.post("/tieba/browser/complete").status_code == 200
-    assert runtime.calls == [("open", account_a), ("open", account_b), ("complete", account_a)]
-    assert (
-        first.post("/tieba/browser/open", headers={"Origin": "https://evil.example"}).status_code
-        == 403
-    )
+    paths = {route.path for route in discover_api_routes(app)}
+    assert "/tieba/browser/open" in paths
+    assert "/tieba/browser/complete" in paths
+    client = TestClient(app)
+    _register(client, "802")
+    for path in ("/tieba/browser/open", "/tieba/browser/complete"):
+        response = client.post(path)
+        assert response.status_code == 410
+        assert response.json()["detail"]["error"] == "tieba_browser_controls_retired"
 
 
 def test_original_question_uses_account_bound_browser_through_chat(
@@ -113,3 +99,139 @@ def test_original_question_uses_account_bound_browser_through_chat(
     assert "订个票" in research["confirmed_posts"][0]["replies"][0]["content"]
     assert research["confirmed_posts"][0]["read_status"] == "partial"
     service.close()
+
+
+def test_continue_retries_auth_and_reuses_completed_read_evidence(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    generation_helpers: dict[str, Any],
+) -> None:
+    from tests.chat.test_chat_api import _create_conversation
+    from tests.tieba.test_tieba_module_flow import (
+        _FakeReader,
+        _install_tieba_service,
+        _read_result,
+        _run_and_read,
+        _send,
+    )
+
+    monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'read-auth.db'}")
+    monkeypatch.setenv("BRIDGES_SECRET_KEY", "browser-read-auth-test-secret")
+    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
+    get_settings.cache_clear()
+    app = create_app()
+    client = TestClient(app)
+    _register(client, "804")
+    original_question = "华东交通大学吧 宿舍条件"
+    initial_url = "https://tieba.baidu.com/p/10745250786"
+    auth_url = "https://tieba.baidu.com/p/10745250787"
+    added_url = "https://tieba.baidu.com/p/10745250788"
+    analysis = parse_tieba_request(original_question)
+    queries = plan_queries(analysis)
+    assert len(queries) >= 2
+    initial_hits = [
+        TiebaSearchHit(url=initial_url, title="宿舍条件讨论", snippet=""),
+        TiebaSearchHit(url=auth_url, title="宿舍条件讨论", snippet=""),
+    ]
+    added_hit = TiebaSearchHit(url=added_url, title="宿舍条件补充", snippet="")
+
+    class ResumingSearchPort:
+        signed_in = False
+        calls: list[str] = []
+
+        def search_public(self, account_id: str, *, query: str, **kwargs: Any) -> SearchOutcome:
+            del account_id, kwargs
+            self.calls.append(query)
+            if query == queries[0]:
+                hits = tuple(initial_hits)
+                status = ModuleQueryStatus.SUCCESS
+                error_code = None
+                error_message = None
+            elif not self.signed_in:
+                hits = ()
+                status = ModuleQueryStatus.ERROR
+                error_code = "tieba_browser_auth_required"
+                error_message = "需要登录"
+            elif query == queries[1]:
+                hits = (added_hit,)
+                status = ModuleQueryStatus.SUCCESS
+                error_code = None
+                error_message = None
+            else:
+                hits = ()
+                status = ModuleQueryStatus.SUCCESS
+                error_code = None
+                error_message = None
+            return SearchOutcome(
+                record=query_record(
+                    query=query,
+                    status=status,
+                    evidence_count=len(hits),
+                    error_code=error_code,
+                    error_message=error_message,
+                    retryable=error_code is not None,
+                ),
+                hits=hits,
+                candidates=hits,
+                rejected=(),
+                diagnostics=HitDiagnostics(raw_hits=len(hits), usable=len(hits)),
+            )
+
+    auth_result = _read_result(url=auth_url, status=ReadStatus.ACCESS_RESTRICTED).model_copy(
+        update={
+            "error_code": "tieba_browser_auth_required",
+            "error_message": "需要登录",
+            "retrieved_at": datetime.now(UTC),
+        }
+    )
+    reader_results = {
+        initial_url: _read_result(
+            url=initial_url,
+            status=ReadStatus.READ,
+            title="宿舍条件讨论",
+            replies=(TiebaReply(floor=1, content="宿舍热水条件还可以。"),),
+        ),
+        auth_url: auth_result,
+        added_url: _read_result(
+            url=added_url,
+            status=ReadStatus.READ,
+            title="宿舍条件补充",
+            replies=(TiebaReply(floor=1, content="宿舍洗衣房需要排队。"),),
+        ),
+    }
+    reader = _FakeReader(reader_results)
+    port = ResumingSearchPort()
+    _install_tieba_service(app, port=port, reader=reader)
+    conversation = _create_conversation(client)
+    _send(client, conversation, original_question, module_id="tieba")
+    assistant = _run_and_read(app, client, generation_helpers["drive"], conversation)
+
+    research = assistant["tieba_research"]
+    assert research is not None, assistant
+    assert research["status"] == "waiting_auth"
+    assert research["pending"]["context"]["original_question"] == original_question
+    assert reader.read_urls == [initial_url, auth_url]
+
+    port.signed_in = True
+    reader_results[auth_url] = _read_result(
+        url=auth_url,
+        status=ReadStatus.READ,
+        title="宿舍条件讨论",
+        replies=(TiebaReply(floor=2, content="宿舍热水晚上比较稳定。"),),
+    )
+    _send(client, conversation, "继续", module_id="tieba")
+    resumed = _run_and_read(app, client, generation_helpers["drive"], conversation)
+
+    resumed_research = resumed["tieba_research"]
+    assert resumed_research is not None, (
+        resumed.get("status"), resumed.get("error_code"), resumed.get("error_message")
+    )
+    assert resumed_research["original_question"] == original_question
+    assert {post["url"] for post in resumed_research["confirmed_posts"]} == {
+        initial_url,
+        auth_url,
+        added_url,
+    }
+    assert reader.read_urls == [initial_url, auth_url, auth_url, added_url]
+    assert port.calls.count(queries[0]) == 1
+    assert port.calls.count(queries[1]) == 2

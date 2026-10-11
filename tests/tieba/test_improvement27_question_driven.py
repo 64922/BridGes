@@ -581,10 +581,12 @@ def test_resume_reuses_completed_search_reads_and_official_checks() -> None:
             "rejected": [],
             "rounds": ["上一轮已完成精确词查询。"],
             "raw_hits": 1,
+            "usable": 1,
         },
     )
     assert search_port.queries == list(plan_queries(analysis)[1:])
     assert [item.url for item in attempts.hits] == [CONFIRMED_URL]
+    assert attempts.diagnostics.usable == 1
     assert attempts.partial is False
 
     post = TiebaPostProjection(

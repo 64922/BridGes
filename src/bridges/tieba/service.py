@@ -61,7 +61,7 @@ from bridges.tieba.kernel import (
     verified_projection,
 )
 from bridges.tieba.official import TiebaOfficialReader
-from bridges.tieba.parsing import pending_payload
+from bridges.tieba.parsing import is_continue_request, pending_payload
 from bridges.tieba.presenting import (
     render_clarification_content,
     render_empty_content,
@@ -95,6 +95,9 @@ WAIT_KIND_AUTH = "authentication"
 WAIT_REASON_CLARIFICATION = "tieba_clarification"
 WAIT_REASON_AUTH = "tieba_authentication"
 TIEBA_TOTAL_BUDGET_MS = 300_000
+_AUTH_WAIT_ERROR_CODES = frozenset(
+    {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+)
 
 #: 各阶段的墙钟预算（节点内核按剩余运行预算再收紧）。
 SEARCH_DEADLINE_SECONDS = 25.0
@@ -113,6 +116,10 @@ class TiebaModuleError(Exception):
         self.code = code
         self.message = message
         self.retryable = retryable
+
+
+def _is_auth_wait_error(code: str | None) -> bool:
+    return code in _AUTH_WAIT_ERROR_CODES
 
 
 @dataclass(frozen=True)
@@ -196,7 +203,7 @@ class TiebaResearchService:
         if (
             pending is not None
             and pending.kind == WAIT_KIND_AUTH
-            and not _is_continue_request(user_message.content)
+            and not is_continue_request(user_message.content)
         ):
             pending = None
         remaining_budget_ms = None
@@ -347,9 +354,12 @@ class TiebaResearchService:
                 "贴吧模块缺少已核验的结果产物，本轮未提交。",
                 retryable=True,
             )
-        auth_errors = {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
-        needs_auth = any(record.error_code in auth_errors for record in projection.queries) or any(
-            post.read_error_code in auth_errors for post in projection.confirmed_posts
+        needs_auth = any(
+            _is_auth_wait_error(record.error_code) for record in projection.queries
+        ) or any(
+            _is_auth_wait_error(post.read_error_code) for post in projection.confirmed_posts
+        ) or any(
+            _is_auth_wait_error(link.read_error_code) for link in projection.candidate_links
         )
         if needs_auth:
             analysis = _analysis_of(result)
@@ -497,14 +507,16 @@ class TiebaResearchService:
                 and pending.context.get("original_question") == actual.original_question
                 and (
                     any(
-                        record.error_code
-                        in {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+                        _is_auth_wait_error(record.error_code)
                         for record in actual.queries
                     )
                     or any(
-                        post.read_error_code
-                        in {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+                        _is_auth_wait_error(post.read_error_code)
                         for post in actual.confirmed_posts
+                    )
+                    or any(
+                        _is_auth_wait_error(link.read_error_code)
+                        for link in actual.candidate_links
                     )
                 )
                 and actual.confirmed_posts == projection.confirmed_posts
@@ -871,11 +883,6 @@ def _base_projection(
 
 def _empty_analysis() -> TiebaQuestionAnalysis:
     return TiebaQuestionAnalysis(original_question="", topic_terms=[])
-
-
-def _is_continue_request(content: str) -> bool:
-    normalized = content.strip().replace(" ", "")
-    return any(term in normalized for term in ("继续", "接着", "恢复刚才", "继续刚才"))
 
 
 def _stopped_result(result: KernelResult) -> KernelResult:

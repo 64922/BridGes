@@ -123,14 +123,43 @@ def _artifact(
     )
 
 
+def test_partial_trusted_artifacts_remain_reusable_for_delivery() -> None:
+    for partial in (True, False):
+        artifact = NodeArtifact.build(
+            account_id=ACCOUNT,
+            conversation_id=CONVERSATION,
+            run_id=RUN,
+            task_id=None,
+            task_version=None,
+            recipe_id="test-recipe",
+            recipe_version="v1",
+            node="read",
+            artifact_type="test.read",
+            capability_version="read-v1",
+            trust_state=ArtifactTrust.EVIDENCE_BOUND,
+            input_key="read:question",
+            input_deps=(),
+            source_refs=(),
+            read_scope="test",
+            requirement_coverage=(),
+            unconfirmed=(),
+            error=None,
+            payload={"partial": partial},
+            now=NOW,
+        )
+
+        assert artifact.reusable is True
+
+
 class _Runner:
     """可注入失败/副作用的节点执行体：记录调用顺序并返回类型化产物。"""
 
-    def __init__(self, on_call: Any = None) -> None:
+    def __init__(self, on_call: Any = None, partial_nodes: tuple[str, ...] = ()) -> None:
         self.calls: list[str] = []
         self.fail_next: dict[str, int] = {}
         self.invalidate: dict[str, tuple[str, ...]] = {}
         self.on_call = on_call
+        self.partial_nodes = set(partial_nodes)
 
     def __call__(self, invocation: NodeInvocation) -> NodeExecution:
         name = invocation.spec.name
@@ -155,7 +184,14 @@ class _Runner:
                 stop_recipe=True,
             )
         return NodeExecution(
-            artifact=_artifact(invocation),
+            artifact=_artifact(
+                invocation,
+                payload=(
+                    {"node": name, "partial": True}
+                    if name in self.partial_nodes
+                    else None
+                ),
+            ),
             verdict=QualityVerdict.PASS,
             status=NodeReceiptStatus.COMPLETED,
             invalidate_nodes=self.invalidate.get(name, ()),
@@ -672,6 +708,21 @@ def test_cross_run_artifact_reuse_and_invalidation(database: BridgesDatabase) ->
     )
     assert changed.status is KernelStatus.COMPLETED
     assert third_runner.calls == ["a", "b", "c"]
+
+
+def test_cross_run_partial_artifact_is_recomputed(database: BridgesDatabase) -> None:
+    _seed(database)
+    first_runner = _Runner(partial_nodes=("a",))
+    assert _execute(_kernel(database, first_runner)).status is KernelStatus.COMPLETED
+
+    _seed(database, run_id="run-2")
+    second_runner = _Runner()
+    result = _kernel(database, second_runner, run_id="run-2").execute(
+        recipe=_recipe(), inputs=_inputs(run_id="run-2")
+    )
+
+    assert result.status is KernelStatus.COMPLETED
+    assert second_runner.calls == ["a", "b"]
 
 
 def test_account_isolation_for_artifacts(database: BridgesDatabase) -> None:

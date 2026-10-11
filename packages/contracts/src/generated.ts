@@ -509,40 +509,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tieba/browser/open": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Open Browser */
-        post: operations["open_browser_tieba_browser_open_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tieba/browser/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Complete Browser */
-        post: operations["complete_browser_tieba_browser_complete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/settings/models": {
         parameters: {
             query?: never;
@@ -585,6 +551,46 @@ export interface paths {
          * @description 记录一次旧页面重定向，不读取账户、查询参数或请求正文。
          */
         post: operations["observe_retired_page_redirect_compatibility_pages__endpoint_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tieba/browser/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Browser
+         * @description 稳定退役旧的手动打开登录窗口入口。
+         */
+        post: operations["open_browser_tieba_browser_open_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tieba/browser/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Browser
+         * @description 稳定退役旧的手动完成登录入口。
+         */
+        post: operations["complete_browser_tieba_browser_complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -26845,16 +26851,6 @@ export interface components {
             status: components["schemas"]["CapsuleStatus"];
         };
         /**
-         * TiebaBrowserSetupResponse
-         * @description 窗口状态不等于已验证登录状态，登录可用性由实际检索判定。
-         */
-        TiebaBrowserSetupResponse: {
-            /** State */
-            state: string;
-            /** Message */
-            message: string;
-        };
-        /**
          * TiebaCandidateLink
          * @description 仅有搜索摘要时的帖链降级（归属未确认，不含任何回复内容）。
          */
@@ -26876,6 +26872,11 @@ export interface components {
              * @description 归属未确认的具体原因（页面不可读／未读取）。
              */
             unconfirmed_reason?: string | null;
+            /**
+             * Read Error Code
+             * @description 页面读取失败分类码；用于认证续接与故障说明。
+             */
+            read_error_code?: string | null;
         };
         /**
          * TiebaConflict
@@ -27128,6 +27129,18 @@ export interface components {
              */
             pages_limit: number;
             /**
+             * Scroll Rounds
+             * @description 实际执行的页面向下加载轮数。
+             * @default 0
+             */
+            scroll_rounds: number;
+            /**
+             * Scroll Rounds Limit
+             * @description 本轮允许执行的向下加载轮数。
+             * @default 0
+             */
+            scroll_rounds_limit: number;
+            /**
              * Total Pages
              * @description 页面声明的总页数。
              */
@@ -27364,7 +27377,7 @@ export interface components {
             summary_citations?: components["schemas"]["TiebaSummaryCitation"][];
             /**
              * Summary Note
-             * @description 总结未生成或被核验拒绝的原因。
+             * @description 总结结果的范围、限制或未生成原因说明。
              */
             summary_note?: string | null;
             /**
@@ -27446,6 +27459,13 @@ export interface components {
          */
         TiebaSummaryClaim: {
             /**
+             * Kind
+             * @description 观点类别：finding、difference、uncertainty 或 time_change。
+             * @default finding
+             * @enum {string}
+             */
+            kind: "finding" | "difference" | "uncertainty" | "time_change";
+            /**
              * Text
              * @description 一条有证据支持的中文观点。
              */
@@ -27485,9 +27505,14 @@ export interface components {
             applied: boolean;
             /**
              * Since
-             * @description 近十二个月窗口起点。
+             * @description 实际采用时间区间的起点（含）。
              */
             since?: string | null;
+            /**
+             * Until
+             * @description 实际采用时间区间的终点（含）；未知时为 None。
+             */
+            until?: string | null;
             /**
              * Recent Count
              * @description 实际读到且落在近期窗口的发言数。
@@ -30267,68 +30292,6 @@ export interface operations {
             };
         };
     };
-    open_browser_tieba_browser_open_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TiebaBrowserSetupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    complete_browser_tieba_browser_complete_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TiebaBrowserSetupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_model_settings_settings_models_get: {
         parameters: {
             query?: never;
@@ -30412,6 +30375,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_browser_tieba_browser_open_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_browser_tieba_browser_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
             };
             /** @description Validation Error */
             422: {

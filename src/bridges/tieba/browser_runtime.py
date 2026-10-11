@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,12 @@ class TiebaBrowserError(RuntimeError):
         self.excluded_wait_ms = max(0, excluded_wait_ms)
 
 
+@dataclass(eq=False)
+class _BrowserWorker:
+    process: subprocess.Popen[str]
+    output: queue.Queue[str | None]
+
+
 def profile_path(data_dir: Path, account_id: str) -> Path:
     """目录由服务端认证账户生成，账户标识不能成为路径片段。"""
     digest = hashlib.sha256(account_id.encode()).hexdigest()
@@ -30,13 +37,16 @@ def profile_path(data_dir: Path, account_id: str) -> Path:
 
 
 class TiebaBrowserRuntime:
-    """按账户隔离并串行复用专用浏览器配置；登录等待不消耗工作截止。"""
+    """按账户隔离、串行复用浏览器上下文；登录等待不消耗工作截止。"""
+
+    _MAX_WORKERS = 4
 
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
-        self._setups: dict[str, subprocess.Popen[str]] = {}
-        self._active: set[subprocess.Popen[str]] = set()
+        self._workers: dict[str, _BrowserWorker] = {}
         self._account_locks: dict[str, threading.Lock] = {}
+        self._last_used: dict[str, float] = {}
+        self._starting_workers = 0
         self._lock = threading.RLock()
         self._closed = False
 
@@ -66,84 +76,157 @@ class TiebaBrowserRuntime:
                     "tieba_browser_timeout", "等待账户专用会话超时，请稍后重试。"
                 )
             profile.mkdir(parents=True, exist_ok=True)
-            process = self._spawn(profile, payload)
+            worker = self._worker_for(account_id, profile, deadline=deadline)
+            if deadline is not None and deadline <= time.monotonic():
+                raise TiebaBrowserError("tieba_browser_timeout", "贴吧浏览器读取超时。")
+            self._send(worker, payload)
             try:
-                return self._receive(process, stop_event, deadline or time.monotonic() + 25)
-            finally:
-                self._dispose(process)
+                result = self._receive(
+                    worker, stop_event, deadline or time.monotonic() + 25
+                )
+            except TiebaBrowserError as error:
+                with self._lock:
+                    self._last_used[account_id] = time.monotonic()
+                if error.code in {
+                    "tieba_browser_cancelled",
+                    "tieba_browser_timeout",
+                    "tieba_browser_unavailable",
+                }:
+                    self._drop_worker(account_id, worker)
+                raise
+            with self._lock:
+                self._last_used[account_id] = time.monotonic()
+            return result
         finally:
             account_lock.release()
-
-    def open(self, account_id: str) -> None:
-        with self._lock:
-            prior = self._setups.get(account_id)
-            if prior is not None and prior.poll() is None:
-                return
-            profile = profile_path(self._data_dir, account_id)
-            profile.mkdir(parents=True, exist_ok=True)
-            process = self._spawn(profile, {"action": "setup"})
-            try:
-                self._receive(process, None, time.monotonic() + 25)
-            except TiebaBrowserError:
-                self._dispose(process)
-                raise
-            self._setups[account_id] = process
-
-    def complete(self, account_id: str) -> None:
-        with self._lock:
-            process = self._setups.pop(account_id, None)
-        if process is not None:
-            self._dispose(process)
 
     def close(self) -> None:
         with self._lock:
             self._closed = True
-            active = tuple(self._active)
-            self._setups.clear()
-        for process in active:
-            self._dispose(process)
+            workers = tuple(self._workers.values())
+            self._workers.clear()
+            self._last_used.clear()
+        for worker in workers:
+            self._dispose(worker)
 
-    def _spawn(self, profile: Path, payload: dict[str, Any]) -> subprocess.Popen[str]:
+    def _worker_for(
+        self, account_id: str, profile: Path, *, deadline: float | None
+    ) -> _BrowserWorker:
+        stale: _BrowserWorker | None = None
+        evicted: _BrowserWorker | None = None
+        evicted_lock: threading.Lock | None = None
         with self._lock:
-            self._active = {p for p in self._active if p.poll() is None}
-            if self._closed or len(self._active) >= 4:
-                raise TiebaBrowserError("tieba_browser_busy", "贴吧浏览器正在使用，请稍后重试。")
-            process = subprocess.Popen(
-                [sys.executable, "-m", "bridges.tieba.browser_worker", str(profile)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                encoding="utf-8",
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-            self._active.add(process)
-            assert process.stdin is not None
-            process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            process.stdin.flush()
-            return process
+            if self._closed:
+                raise TiebaBrowserError("tieba_browser_busy", "贴吧浏览器运行时已关闭。")
+            existing = self._workers.get(account_id)
+            if existing is not None and existing.process.poll() is None:
+                return existing
+            if existing is not None:
+                stale = existing
+                self._workers.pop(account_id, None)
+                self._last_used.pop(account_id, None)
+            if len(self._workers) + self._starting_workers >= self._MAX_WORKERS:
+                idle = self._take_idle_worker_locked()
+                if idle is None:
+                    raise TiebaBrowserError(
+                        "tieba_browser_busy", "四个账户专用浏览器均在使用，请稍后重试。"
+                    )
+                evicted, evicted_lock = idle
+            self._starting_workers += 1
 
-    def _receive(
+        reserved = True
+        worker: _BrowserWorker | None = None
+        closed = False
+        try:
+            if stale is not None:
+                self._dispose(stale)
+            if evicted is not None:
+                self._dispose(evicted)
+            if deadline is not None and deadline <= time.monotonic():
+                raise TiebaBrowserError(
+                    "tieba_browser_timeout", "等待账户专用会话超时，请稍后重试。"
+                )
+            worker = self._spawn(profile)
+            with self._lock:
+                self._starting_workers -= 1
+                reserved = False
+                closed = self._closed
+                if not closed:
+                    self._workers[account_id] = worker
+                    self._last_used[account_id] = time.monotonic()
+            if closed:
+                self._dispose(worker)
+                raise TiebaBrowserError(
+                    "tieba_browser_busy", "贴吧浏览器运行时已关闭。"
+                )
+            return worker
+        finally:
+            if reserved:
+                with self._lock:
+                    self._starting_workers -= 1
+            if evicted_lock is not None:
+                evicted_lock.release()
+
+    def _take_idle_worker_locked(
         self,
-        process: subprocess.Popen[str],
-        stop_event: object | None,
-        deadline: float,
-    ) -> dict[str, Any]:
-        output: queue.Queue[str] = queue.Queue()
-        assert process.stdout is not None
-        stream = process.stdout
+    ) -> tuple[_BrowserWorker, threading.Lock] | None:
+        for account_id in sorted(
+            self._workers, key=lambda key: self._last_used.get(key, 0)
+        ):
+            account_lock = self._account_locks.get(account_id)
+            worker = self._workers.get(account_id)
+            if account_lock is None or worker is None or not account_lock.acquire(blocking=False):
+                continue
+            self._workers.pop(account_id, None)
+            self._last_used.pop(account_id, None)
+            return worker, account_lock
+        return None
 
-        def receive_line() -> None:
+    def _spawn(self, profile: Path) -> _BrowserWorker:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "bridges.tieba.browser_worker", str(profile)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        output: queue.Queue[str | None] = queue.Queue()
+        worker = _BrowserWorker(process=process, output=output)
+        stdout = process.stdout
+        assert stdout is not None
+
+        def receive_lines() -> None:
             try:
-                for line in stream:
+                for line in stdout:
                     output.put(line[:100_000])
             except (OSError, ValueError):
                 pass
             finally:
-                output.put("")
+                output.put(None)
 
-        threading.Thread(target=receive_line, daemon=True).start()
+        threading.Thread(target=receive_lines, daemon=True).start()
+        return worker
+
+    def _send(self, worker: _BrowserWorker, payload: dict[str, Any]) -> None:
+        if worker.process.poll() is not None or worker.process.stdin is None:
+            raise TiebaBrowserError("tieba_browser_unavailable", "专用浏览器进程已退出。")
+        try:
+            worker.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            worker.process.stdin.flush()
+        except (OSError, ValueError):
+            raise TiebaBrowserError(
+                "tieba_browser_unavailable", "专用浏览器进程未能接收读取请求。"
+            ) from None
+
+    def _receive(
+        self,
+        worker: _BrowserWorker,
+        stop_event: object | None,
+        deadline: float,
+    ) -> dict[str, Any]:
         auth_wait_started: float | None = None
         auth_wait_total = 0.0
         while True:
@@ -161,9 +244,13 @@ class TiebaBrowserRuntime:
                     excluded_wait_ms=int(auth_wait_total * 1000),
                 )
             try:
-                line = output.get(timeout=0.1)
+                line = worker.output.get(timeout=0.1)
             except queue.Empty:
                 continue
+            if line is None:
+                raise TiebaBrowserError(
+                    "tieba_browser_unavailable", "专用浏览器未返回可读取内容。"
+                )
             try:
                 value = json.loads(line)
                 if not isinstance(value, dict):
@@ -177,7 +264,8 @@ class TiebaBrowserRuntime:
                     auth_wait_total += time.monotonic() - auth_wait_started
                     value["excluded_wait_ms"] = int(auth_wait_total * 1000)
                 raise TiebaBrowserError(
-                    str(value["error"]), str(value["message"]),
+                    str(value["error"]),
+                    str(value["message"]),
                     excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
                 )
             if value.get("waiting_for_auth"):
@@ -188,11 +276,18 @@ class TiebaBrowserRuntime:
                 waited = time.monotonic() - auth_wait_started
                 auth_wait_total += waited
                 deadline += waited
-                auth_wait_started = None
                 value["excluded_wait_ms"] = int(auth_wait_total * 1000)
             return value
 
-    def _dispose(self, process: subprocess.Popen[str]) -> None:
+    def _drop_worker(self, account_id: str, worker: _BrowserWorker) -> None:
+        with self._lock:
+            if self._workers.get(account_id) is worker:
+                self._workers.pop(account_id, None)
+                self._last_used.pop(account_id, None)
+        self._dispose(worker)
+
+    def _dispose(self, worker: _BrowserWorker) -> None:
+        process = worker.process
         if process.poll() is None:
             try:
                 if process.stdin is not None:
@@ -216,5 +311,6 @@ class TiebaBrowserRuntime:
         for stream in (process.stdin, process.stdout):
             if stream is not None:
                 stream.close()
-        with self._lock:
-            self._active.discard(process)
+
+
+__all__ = ["TiebaBrowserError", "TiebaBrowserRuntime", "profile_path"]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -198,6 +199,8 @@ class TiebaReadResult(BaseModel):
     title: str | None = Field(default=None, description="页面上的帖子标题。")
     pages_read: int = Field(default=0, description="实际读取成功的页数。")
     pages_limit: int = Field(default=0, description="本轮允许读取的最大页数。")
+    scroll_rounds: int = Field(default=0, description="实际执行的页面向下加载轮数。")
+    scroll_rounds_limit: int = Field(default=0, description="本轮允许执行的向下加载轮数。")
     total_pages: int | None = Field(default=None, description="页面声明的总页数上限。")
     total_replies: int | None = Field(default=None, description="页面声明的回复数；未知时为 None。")
     floor_min: int | None = Field(default=None, description="实际读到的最小楼层。")
@@ -273,6 +276,8 @@ class TiebaPostProjection(BaseModel):
     read_status: ReadStatus = Field(description="读取结果分类。")
     pages_read: int = Field(default=0, description="实际读取页数。")
     pages_limit: int = Field(default=0, description="本轮页数上限。")
+    scroll_rounds: int = Field(default=0, description="实际执行的页面向下加载轮数。")
+    scroll_rounds_limit: int = Field(default=0, description="本轮允许执行的向下加载轮数。")
     total_pages: int | None = Field(default=None, description="页面声明的总页数。")
     total_replies: int | None = Field(default=None, description="页面声明的回复数；未知时为 None。")
     floor_min: int | None = Field(default=None, description="实际读到的最小楼层。")
@@ -295,6 +300,9 @@ class TiebaCandidateLink(BaseModel):
     unconfirmed_reason: str | None = Field(
         default=None, description="归属未确认的具体原因（页面不可读／未读取）。"
     )
+    read_error_code: str | None = Field(
+        default=None, description="页面读取失败分类码；用于认证续接与故障说明。"
+    )
 
 
 class TiebaTimeFilter(BaseModel):
@@ -303,7 +311,10 @@ class TiebaTimeFilter(BaseModel):
     requirement: str | None = Field(default=None, description="时间条件原话。")
     year: int | None = Field(default=None, description="绝对年份；相对说法为 None。")
     applied: bool = Field(default=False, description="是否真的按帖子时间过滤过。")
-    since: datetime | None = Field(default=None, description="近十二个月窗口起点。")
+    since: datetime | None = Field(default=None, description="实际采用时间区间的起点（含）。")
+    until: datetime | None = Field(
+        default=None, description="实际采用时间区间的终点（含）；未知时为 None。"
+    )
     recent_count: int = Field(default=0, description="实际读到且落在近期窗口的发言数。")
     historical_count: int = Field(default=0, description="实际读到的历史发言数。")
     unknown_count: int = Field(default=0, description="实际读到但无法确认时间的发言数。")
@@ -362,9 +373,16 @@ class TiebaVerification(BaseModel):
     unconfirmed: list[str] = Field(default_factory=list, description="仍未确认的事项。")
 
 
+TiebaSummaryClaimKind = Literal["finding", "difference", "uncertainty", "time_change"]
+
+
 class TiebaSummaryClaim(BaseModel):
     """模型总结中的单项观点及其可验证引用。"""
 
+    kind: TiebaSummaryClaimKind = Field(
+        default="finding",
+        description="观点类别：finding、difference、uncertainty 或 time_change。",
+    )
     text: str = Field(description="一条有证据支持的中文观点。")
     citation_ids: list[str] = Field(default_factory=list, description="引用的已读证据 ID。")
 
@@ -435,7 +453,9 @@ class TiebaResearchProjection(BaseModel):
     summary_citations: list[TiebaSummaryCitation] = Field(
         default_factory=list, description="只指向本轮已读原文的引用。"
     )
-    summary_note: str | None = Field(default=None, description="总结未生成或被核验拒绝的原因。")
+    summary_note: str | None = Field(
+        default=None, description="总结结果的范围、限制或未生成原因说明。"
+    )
     sections: list[str] = Field(
         default_factory=list,
         description="只由已读文本分出的段落（可核验的个人经历／不同看法／不确定点）。",

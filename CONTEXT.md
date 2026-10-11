@@ -83,7 +83,7 @@ _Avoid_: 项目主壳、各功能各自独立的应用
 _Avoid_: 任务舞台、原始模型思维链、不可操作的加载动画
 
 **贴吧信息搜集**：
-围绕华东交通大学吧的指定话题，基于实际取得的帖子、回复及楼中楼形成带来源引用的文字总结，区分网友说法与已核实规定。已确认的改造合同见 [ADR-0040](docs/adr/0040-topic-driven-tieba-collection-and-auto-login.md)，尚未实施。
+围绕华东交通大学吧的指定话题，基于实际取得的帖子、回复及楼中楼形成带来源引用的文字总结，区分网友说法与已核实规定。设计合同见 [ADR-0040](docs/adr/0040-topic-driven-tieba-collection-and-auto-login.md)；代码已部分实现，真实端到端验收进度见[本票工单](.scratch/tieba/issues/01-topic-driven-tieba-research.md)。
 _Avoid_: 用链接或分类摘录代替总结、用搜索摘要冒充已读回复、将网友说法当作官方规定
 
 **思考摘要**：

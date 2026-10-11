@@ -520,7 +520,11 @@ class NodeKernel:
         artifact = self._repository.get_artifact(receipt.account_id, receipt.artifact_id)
         if artifact is None or artifact.node != node:
             return None
-        if not artifact.reusable or not artifact.verify_hash():
+        if (
+            not artifact.reusable
+            or artifact.payload.get("partial") is True
+            or not artifact.verify_hash()
+        ):
             return None
         if receipt.output_key != output_identity(artifact.content_hash, receipt.quality_verdict):
             return None
@@ -532,7 +536,12 @@ class NodeKernel:
         artifact = self._repository.find_artifact(
             inputs.account_id, inputs.conversation_id, node, input_key
         )
-        if artifact is None or not artifact.reusable or not artifact.verify_hash():
+        if (
+            artifact is None
+            or not artifact.reusable
+            or artifact.payload.get("partial") is True
+            or not artifact.verify_hash()
+        ):
             return None
         return artifact
 

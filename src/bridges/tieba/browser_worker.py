@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import sys
 import threading
 import time
@@ -104,6 +105,18 @@ def auth_required(page: Page) -> str | None:
     return None
 
 
+def wait_for_thread_page_or_auth(page: Page) -> str | None:
+    """帖子主体和认证标记任一出现后再分类，避免登录页被误报为超时。"""
+    page.wait_for_function(
+        """() => document.querySelector(
+            '.pb-content-wrap, .login-guide-placeholder, #captcha, .pass-sms-wrap'
+        ) ||
+        /百度安全验证/.test(document.title)""",
+        timeout=9000,
+    )
+    return auth_required(page)
+
+
 def official_login(context: BrowserContext, return_url: str, closed: threading.Event) -> Page:
     login = context.new_page()
     login.goto(
@@ -141,7 +154,9 @@ def search(page: Page, terms: str, closed: threading.Event) -> list[dict[str, ob
         page.wait_for_function(
             """() => document.querySelector('.tbm-post-thread, .tbm-floor-thread') ||
             document.querySelector('.login-guide-placeholder') ||
-            /没有找到|暂无.*结果|百度安全验证/.test(document.body.innerText)""",
+            document.querySelector('#captcha, .pass-sms-wrap') ||
+            /没有找到|暂无.*结果|百度安全验证/.test(document.body.innerText) ||
+            /百度安全验证/.test(document.title)""",
             timeout=9000,
         )
         reason = auth_required(page)
@@ -155,23 +170,24 @@ def search(page: Page, terms: str, closed: threading.Event) -> list[dict[str, ob
 
 
 def read_thread(
-    page: Page, url: str, pages_limit: int, closed: threading.Event
+    page: Page, url: str, scroll_rounds_limit: int, closed: threading.Event
 ) -> dict[str, object]:
     parsed = urlparse(url)
     if parsed.hostname != "tieba.baidu.com" or not parsed.path.startswith("/p/"):
         raise ValueError("只允许读取贴吧帖子")
     page.goto(url, wait_until="domcontentloaded", timeout=16000)
-    page.wait_for_selector(".pb-content-wrap", timeout=9000)
-    if auth_required(page):
+    if wait_for_thread_page_or_auth(page):
         page = official_login(page.context, url, closed)
         page.goto(url, wait_until="domcontentloaded", timeout=16000)
-        page.wait_for_selector(".pb-content-wrap", timeout=9000)
-    limit = max(1, min(int(pages_limit or 1), 8))
+    page.wait_for_selector(".pb-content-wrap", timeout=9000)
+    limit = max(1, min(int(scroll_rounds_limit or 1), 8))
     prior_count = -1
     stable = 0
+    scroll_rounds = 0
     for _ in range(limit):
         if closed.is_set():
             break
+        scroll_rounds += 1
         count = page.locator(".pb-comment-item, .pb-lzl-item").count()
         if count == prior_count:
             stable += 1
@@ -185,19 +201,80 @@ def read_thread(
     result = page.evaluate(THREAD_DOM)
     if not isinstance(result, dict):
         raise RuntimeError("贴吧帖子页面未返回结构化内容")
-    return {str(key): value for key, value in result.items()}
+    return {
+        **{str(key): value for key, value in result.items()},
+        "scroll_rounds": scroll_rounds,
+        "scroll_rounds_limit": limit,
+    }
+
+
+def _run_action(
+    context: BrowserContext,
+    page: Page,
+    payload: dict[str, object],
+    closed: threading.Event,
+) -> tuple[dict[str, object], Page]:
+    page.set_default_timeout(8000)
+    action = payload.get("action")
+    if action == "search":
+        result: dict[str, object] = {"hits": search(page, str(payload["terms"]), closed)}
+    elif action == "read":
+        raw_scroll_limit = payload.get("scroll_rounds_limit")
+        scroll_limit = int(str(raw_scroll_limit or 8))
+        result = read_thread(
+            page,
+            str(payload["url"]),
+            scroll_limit,
+            closed,
+        )
+    else:
+        raise ValueError("不支持的动作")
+    return result, (context.pages[-1] if context.pages else context.new_page())
+
+
+def _error_payload(error: Exception) -> dict[str, str]:
+    if isinstance(error, PermissionError):
+        code = (
+            "tieba_browser_auth_interrupted"
+            if "interrupted" in str(error)
+            else "tieba_browser_auth_required"
+        )
+        return {
+            "error": code,
+            "message": "专用贴吧登录或验证未完成，请在打开的官方页面完成后说“继续”。",
+        }
+    if isinstance(error, BrowserTimeoutError):
+        return {
+            "error": "tieba_browser_timeout",
+            "message": "贴吧页面加载超时或结构已变化，请稍后重试。",
+        }
+    return {
+        "error": "tieba_browser_unavailable",
+        "message": "专用浏览器未取得可识别页面，请确认 Chrome 已安装并重试。",
+    }
 
 
 def main() -> None:
     profile = Path(sys.argv[1])
-    payload = json.loads(sys.stdin.readline())
     closed = threading.Event()
+    requests: queue.Queue[dict[str, object] | None] = queue.Queue()
 
-    def watch_close() -> None:
-        sys.stdin.readline()
-        closed.set()
+    def read_requests() -> None:
+        try:
+            for line in sys.stdin:
+                if line.strip() == "close":
+                    closed.set()
+                    break
+                try:
+                    payload = json.loads(line)
+                    requests.put(payload if isinstance(payload, dict) else {})
+                except (ValueError, TypeError):
+                    requests.put({})
+        finally:
+            closed.set()
+            requests.put(None)
 
-    threading.Thread(target=watch_close, daemon=True).start()
+    threading.Thread(target=read_requests, daemon=True).start()
     try:
         with (
             DataDirectoryLock(profile),
@@ -207,56 +284,21 @@ def main() -> None:
             ) as context,
         ):
             page = context.pages[0] if context.pages else context.new_page()
-            page.set_default_timeout(8000)
-            action = payload["action"]
-            if action == "setup":
-                login = context.new_page()
-                login.goto(
-                    "https://passport.baidu.com/v2/?"
-                    + urlencode({"login": "", "tpl": "tb", "u": TARGET_FORUM_URL}),
-                    wait_until="domcontentloaded",
-                    timeout=18000,
-                )
-                emit({"opened": True})
-                while not closed.is_set() and not login.is_closed():
-                    login.wait_for_timeout(250)
-            elif action == "search":
-                hits = search(page, str(payload["terms"]), closed)
-                emit({"hits": hits})
-            elif action == "read":
-                thread = read_thread(
-                    page,
-                    str(payload["url"]),
-                    int(payload.get("pages_limit", 2)),
-                    closed,
-                )
-                emit(thread)
-            else:
-                raise ValueError("不支持的动作")
+            while not closed.is_set():
+                payload = requests.get()
+                if payload is None:
+                    break
+                try:
+                    result, page = _run_action(context, page, payload, closed)
+                    emit(result)
+                except Exception as error:  # 每个请求独立失败，保留本账户浏览器上下文
+                    emit(_error_payload(error))
+                    page = context.pages[-1] if context.pages else context.new_page()
     except RuntimeLockError:
         emit(
             {
                 "error": "tieba_browser_busy",
                 "message": "该账户的专用贴吧会话正在处理另一项采集，请稍后重试。",
-            }
-        )
-    except PermissionError as error:
-        code = (
-            "tieba_browser_auth_interrupted"
-            if "interrupted" in str(error)
-            else "tieba_browser_auth_required"
-        )
-        emit(
-            {
-                "error": code,
-                "message": "专用贴吧登录或验证未完成，请在打开的官方页面完成后说“继续”。",
-            }
-        )
-    except BrowserTimeoutError:
-        emit(
-            {
-                "error": "tieba_browser_timeout",
-                "message": "贴吧页面加载超时或结构已变化，请稍后重试。",
             }
         )
     except Exception:
