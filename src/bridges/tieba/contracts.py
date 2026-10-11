@@ -132,6 +132,7 @@ class TiebaSearchHit(BaseModel):
     title: str = Field(description="搜索服务给出的标题（未核实页面）。")
     snippet: str = Field(default="", description="搜索摘要（只作排除他吧的证据使用）。")
     thread_id: str | None = Field(default=None, description="帖子 ID；非帖子链接为 None。")
+    source: str = Field(default="tavily", description="候选实际发现来源。")
 
 
 class TiebaRejectedCandidate(BaseModel):

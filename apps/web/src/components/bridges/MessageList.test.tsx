@@ -6,6 +6,7 @@ import type {
   ChatAttachmentProjection,
   LearningResourcesProjection,
   PaperSearchProjection,
+  TiebaResearchProjection,
 } from "@/lib/api";
 
 afterEach(cleanup);
@@ -74,6 +75,23 @@ function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     ...overrides,
   };
 }
+
+it("贴吧结构化卡片只展示一次结果，正文仍保留用于复制", () => {
+  const tieba: TiebaResearchProjection = {
+    status: "empty", topic: "国庆节 假期", original_question: "我想了解国庆节假期的讨论",
+    question_kind: "mixed", parallel_evidence: false, official_check_requested: true, retryable: false,
+    forum: "华东交通大学吧", topic_terms: ["国庆节", "假期"],
+    time_filter: { applied: false, note: "未指定年份" },
+    empty_reason: "没有取得相关讨论",
+  };
+  render(<MessageList conversationId="conversation-1" messages={[assistantMessage({
+    status: "done", tiebaResearch: tieba,
+    plainText: "完整导出正文", content: <p>完整导出正文</p>,
+  })]} />);
+  expect(screen.getAllByTestId("tieba-research-card-empty")).toHaveLength(1);
+  expect(screen.queryByText("完整导出正文")).toBeNull();
+  expect(screen.getByText("没有取得相关讨论")).toBeTruthy();
+});
 
 describe("MessageList 附件卡片（V2 Issue 05/06）", () => {
   function attachment(

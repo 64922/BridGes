@@ -943,6 +943,9 @@ export function MessageList({
                       {message.humanizer.error_message ?? "正文未交付。"}
                     </span>
                   </div>
+                ) : conversationId && message.tiebaResearch ? (
+                  // 贴吧卡片已经呈现完整证据；保留正文用于复制、导出与朗读。
+                  null
                 ) : (
                   message.content
                 )}

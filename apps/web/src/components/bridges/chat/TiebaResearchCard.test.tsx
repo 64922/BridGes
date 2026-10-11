@@ -11,12 +11,12 @@ function projection(
 ): TiebaResearchProjection {
   return {
     status: "success",
+    question_kind: "experience",
+    parallel_evidence: false,
     topic: "宿舍条件",
     original_question: "华东交通大学吧里最近说的宿舍条件怎么样",
     topic_terms: ["宿舍", "条件"],
     place_or_event: [],
-    question_kind: "experience",
-    parallel_evidence: false,
     time_filter: {
       requirement: "最近",
       year: null,
@@ -77,6 +77,74 @@ const confirmedPost: TiebaPostProjection = {
 };
 
 describe("TiebaResearchCard（V2 Issue 14）", () => {
+  it("部分回复限制默认可见，完整原文默认折叠", () => {
+    render(<TiebaResearchCard research={projection({ confirmed_posts: [{
+      ...confirmedPost, read_status: "partial", read_error_message: "未穷尽全部回复。",
+    }] })} streaming={false} />);
+    expect(screen.getByText("未穷尽全部回复。").closest("details")).toBeNull();
+    expect(screen.getByTestId(`tieba-post-${confirmedPost.thread_id}-replies`).closest("details")?.open).toBe(false);
+  });
+
+  it("浏览器会话受限时显示专用窗口恢复操作", () => {
+    render(<TiebaResearchCard research={projection({ status: "empty", queries: [{
+      source: "tieba_browser", query: "国庆", status: "error", evidence_count: 0,
+      error_code: "tieba_browser_setup_required", error_message: "请登录", retryable: true,
+    }] })} streaming={false} />);
+    expect(screen.getByRole("button", { name: "打开专用贴吧浏览器" })).toBeTruthy();
+  });
+  it("未取得讨论时交付官方通知的具体安排，并说明公开索引的限制", () => {
+    render(<TiebaResearchCard research={projection({
+      status: "empty", official_check_requested: true,
+      official_checks: [{
+        title: "2026年国庆节图书馆开放安排", host: "lib.ecjtu.edu.cn",
+        url: "https://lib.ecjtu.edu.cn/info/1076/7501.htm",
+        fetched_at: "2026-10-07T12:47:35Z", status: "verified",
+        excerpt: "根据学校通知，开放时间安排如下：\n1.10月1日至3日，8:00-17:00。",
+        matched_terms: ["国庆节"], applicability: {
+          subject: "图书馆", subject_confirmed: true, purpose_terms: ["国庆节"],
+          purpose_confirmed: true, applicable: true, note: "仅为图书馆开放安排。",
+        },
+      }],
+    })} streaming={false} />);
+    expect(screen.getByText("已取得官方信息，贴吧讨论尚未取得")).toBeTruthy();
+    expect(screen.getByTestId("tieba-official-lib.ecjtu.edu.cn-excerpt").textContent)
+      .toContain("10月1日至3日，8:00-17:00");
+    expect(screen.getByText(/未召回帖子不代表吧内没有相关讨论/)).toBeTruthy();
+  });
+  it("压缩展示仍保留未核实提示和官方与帖子的冲突", () => {
+    render(<TiebaResearchCard research={projection({
+      official_unverified_note: "官方规定仍未核实。",
+      conflicts: [{
+        topic_terms: ["国庆节"], official_title: "国庆节通知",
+        official_url: "https://www.ecjtu.edu.cn/info/1.htm",
+        official_statement: "假期安排以学校通知为准。",
+        post_refs: [{ url: "https://tieba.baidu.com/p/1", floor: 2,
+          posted_at: "2025-10-01", quote: "我去年提前回家了。" }],
+        time_basis: "年份不同。", scope_basis: "个人经历不等于学校规定。",
+        resolution: "kept_both", note: "保留冲突，不归纳为共同结论。",
+      }],
+    })} streaming={false} />);
+    expect(screen.getByText("官方规定仍未核实。").closest("details")).toBeNull();
+    const conflict = screen.getByTestId("tieba-research-conflicts");
+    expect(conflict.textContent).toContain("我去年提前回家了。");
+    expect(conflict.textContent).toContain("保留冲突，不归纳为共同结论。");
+    expect(conflict.closest("details")).toBeNull();
+  });
+  it("固定来源入口可见，查询与剔除记录默认折叠", () => {
+    render(<TiebaResearchCard research={projection({
+      rejected_candidates: [{ url: "https://www.douyin.com/video/123", title: "无关视频", evidence: "站外" }],
+      evidence_boundary: ["仅核对目标贴吧"],
+    })} streaming={false} />);
+    const entry = screen.getByRole("link", { name: "华东交通大学吧" });
+    expect(entry.getAttribute("href")).toBe(
+      "https://tieba.baidu.com/f?kw=%E5%8D%8E%E4%B8%9C%E4%BA%A4%E9%80%9A%E5%A4%A7%E5%AD%A6"
+    );
+    for (const testId of ["tieba-research-queries", "tieba-rejected-candidates", "tieba-research-notes"]) {
+      const details = screen.getByTestId(testId).closest("details");
+      expect(details).not.toBeNull();
+      expect(details?.hasAttribute("open")).toBe(false);
+    }
+  });
   it("呈现原始问题、时间条件执行状态与真实外部调用记录", () => {
     render(<TiebaResearchCard research={projection()} streaming={false} />);
     const card = screen.getByTestId("tieba-research-card-success");

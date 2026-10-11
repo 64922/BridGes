@@ -509,6 +509,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tieba/browser/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open Browser */
+        post: operations["open_browser_tieba_browser_open_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tieba/browser/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Browser */
+        post: operations["complete_browser_tieba_browser_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/models": {
         parameters: {
             query?: never;
@@ -26811,6 +26845,16 @@ export interface components {
             status: components["schemas"]["CapsuleStatus"];
         };
         /**
+         * TiebaBrowserSetupResponse
+         * @description 窗口状态不等于已验证登录状态，登录可用性由实际检索判定。
+         */
+        TiebaBrowserSetupResponse: {
+            /** State */
+            state: string;
+            /** Message */
+            message: string;
+        };
+        /**
          * TiebaCandidateLink
          * @description 仅有搜索摘要时的帖链降级（归属未确认，不含任何回复内容）。
          */
@@ -30103,6 +30147,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_browser_tieba_browser_open_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TiebaBrowserSetupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_browser_tieba_browser_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TiebaBrowserSetupResponse"];
                 };
             };
             /** @description Validation Error */

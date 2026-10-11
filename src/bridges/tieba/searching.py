@@ -1,8 +1,7 @@
 """``tieba.search``：最小公开查询词、允许搜索服务的窄接口与归属判定。
 
-查询词只用原始名词与固定字面量拼装，逐字保留用户说法；域名提示
-（``tieba.baidu.com``）必须完整发送——实测把它拆成 word token 后贴吧帖子
-不再被召回。外部调用只经允许的搜索服务，每次调用都留下统一查询记录。
+查询词只用原始名词与固定来源拼装；主查询与备用查询均限定贴吧帖子域名。
+外部调用只经允许的搜索服务，每次调用都留下统一查询记录。
 
 归属判定只认「真的读到帖子页面、页面自身声明该吧」这一种确认；搜索摘要只
 用于**排除**他吧同名帖（摘要可能混入侧栏推荐，实测同一链接在不同查询下会
@@ -11,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,7 +27,9 @@ from bridges.tieba.lexicon import (
     TARGET_FORUM_NAME,
     TARGET_SCHOOL_ALIASES,
     TIEBA_HOST,
+    relaxed_topic_terms,
 )
+from bridges.web_search.scope import query_scopes, url_in_scopes
 
 #: 候选帖链接形态（含移动端与桌面端主机）。
 _THREAD_URL = re.compile(
@@ -84,6 +86,7 @@ class SearchOutcome:
     candidates: tuple[TiebaSearchHit, ...]
     rejected: tuple[TiebaRejectedCandidate, ...]
     diagnostics: HitDiagnostics = HitDiagnostics()
+    prior_records: tuple[ModuleQueryRecord, ...] = ()
 
 
 class TiebaSearchPort(Protocol):
@@ -105,8 +108,11 @@ def plan_queries(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
     terms = list(analysis.topic_terms)[:MAX_QUERY_TERMS]
     if not terms:
         return ()
-    primary = " ".join([TIEBA_HOST, TARGET_FORUM_NAME, *terms])
-    relaxed = " ".join([TARGET_FORUM_NAME, *terms, "贴吧"])
+    scope = [f"site:{TIEBA_HOST}/p/", TARGET_FORUM_NAME]
+    primary = " ".join([*scope, *terms])
+    # 只减少主题条件；没有可减少的主题时，用原词查询保持相同来源边界。
+    relaxed_terms = ["国庆" if term == "国庆节" else term for term in relaxed_topic_terms(terms)]
+    relaxed = " ".join([*scope, *relaxed_terms, "贴吧"])
     return (primary,) if relaxed == primary else (primary, relaxed)
 
 
@@ -266,6 +272,8 @@ class WebSearchServiceAdapter:
             reason=reason,
             queries=(query,),
             max_results=self._max_results,
+            # 来源约束改变后，不复用旧版无域名约束的公网缓存。
+            query_hash=hashlib.sha256(f"tieba-source-scope-v1:{query}".encode()).hexdigest(),
         )
         projection = self._service.search(  # type: ignore[attr-defined]
             account_id, plan, stop_event=stop_event, deadline=deadline
@@ -293,6 +301,7 @@ class WebSearchServiceAdapter:
                 snippet=result.snippet,
             )
             for result in projection.results
+            if url_in_scopes(result.url, query_scopes(query))
         )
         candidates, rejected, diagnostics = classify_hits_with_diagnostics(hits)
         return SearchOutcome(

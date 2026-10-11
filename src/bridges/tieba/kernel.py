@@ -89,11 +89,11 @@ TIEBA_RECIPE_VERSION = "tieba-recipe-v1"
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
-    "tieba.parse_request": "tieba-parse-v2",
-    "tieba.plan_evidence": "tieba-plan-v2",
-    "tieba.verify_official_pages": "tieba-official-v3",
-    "tieba.search_threads": "tieba-search-v3",
-    "tieba.read_threads": "tieba-read-v2",
+    "tieba.parse_request": "tieba-parse-v3",
+    "tieba.plan_evidence": "tieba-plan-v3",
+    "tieba.verify_official_pages": "tieba-official-v5",
+    "tieba.search_threads": "tieba-search-v6",
+    "tieba.read_threads": "tieba-read-v4",
     "tieba.synthesize_evidence": "tieba-synthesize-v3",
     "tieba.verify_evidence": "tieba-verify-v3",
 }
@@ -903,6 +903,7 @@ class TiebaNodeFlow:
         reads = evidence.read_candidates(
             self._reader,
             attempts,
+            analysis=self._analysis(invocation),
             stop_event=self._stop_event,
             deadline_seconds=self._remaining_seconds(
                 invocation, self._read_deadline_seconds

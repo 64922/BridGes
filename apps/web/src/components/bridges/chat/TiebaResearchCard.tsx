@@ -1,14 +1,16 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
-import type {
-  ModuleQueryRecord,
-  TiebaCandidateLink,
-  TiebaOfficialCheck,
-  TiebaPostProjection,
-  TiebaRejectedCandidate,
-  TiebaResearchProjection,
-} from "@/lib/api";
+import type { TiebaResearchProjection } from "@/lib/api";
+import { TiebaBrowserSetup } from "./TiebaBrowserSetup";
+import {
+  CandidateLinkRow,
+  OfficialCheckRow,
+  PostRow,
+  QueryRecordRow,
+  RejectedRow,
+  formatTime,
+} from "./TiebaEvidenceRows";
 
 /** V2 Issue 14：贴吧模块状态的中文标题（每条助手消息内如实显示）。 */
 const STATUS_TITLES: Record<string, string> = {
@@ -20,185 +22,6 @@ const STATUS_TITLES: Record<string, string> = {
   error: "贴吧信息搜集未完成",
   stopped: "已停止贴吧检索",
 };
-
-const QUERY_STATUS_LABELS: Record<string, string> = {
-  success: "成功",
-  empty: "无结果",
-  skipped: "未执行",
-  timeout: "超时",
-  cancelled: "已取消",
-  rate_limited: "被上游限流",
-  error: "失败",
-};
-
-const READ_STATUS_LABELS: Record<string, string> = {
-  read: "已读到正文",
-  partial: "只读到部分楼层",
-  access_restricted: "访问受限（登录或验证要求），未绕过",
-  unrecognized: "页面结构无法解析",
-  not_found: "帖子不存在或已删除",
-  timeout: "读取超时",
-  error: "读取失败",
-  cancelled: "已取消",
-};
-
-const OFFICIAL_STATUS_LABELS: Record<string, string> = {
-  verified: "已定位相关段落",
-  excerpt_not_found: "已取得页面，但未定位到相关段落",
-  fetch_failed: "未能取得该页面",
-  domain_rejected: "链接不属于学校官方域名，未作为官方依据",
-};
-
-function formatTime(value: string | null | undefined): string {
-  if (!value) return "时间未知";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
-}
-
-/** 一次外部调用的真实记录：来源、实际查询词、结果分类、取得时间与错误。 */
-function QueryRecordRow({ record }: { record: ModuleQueryRecord }) {
-  const failed = record.status === "error" || record.status === "timeout";
-  return (
-    <li style={{ color: failed ? "var(--color-status-error)" : "var(--color-text-secondary)" }}>
-      <strong>{record.source}</strong>
-      {" · 查询「"}
-      {record.query}
-      {"」 · "}
-      {QUERY_STATUS_LABELS[record.status] ?? record.status}
-      {`（${record.evidence_count} 条）`}
-      {" · "}
-      {formatTime(record.retrieved_at)}
-      {record.detail ? `：${record.detail}` : ""}
-      {record.error_message ? `：${record.error_message}` : ""}
-    </li>
-  );
-}
-
-/** 一个真实读到的帖子：读到的页数/楼层/时间，以及未取得回复时的原因。 */
-function PostRow({ post }: { post: TiebaPostProjection }) {
-  const floors =
-    post.floor_min != null && post.floor_max != null
-      ? `第 ${post.floor_min}–${post.floor_max} 楼`
-      : null;
-  const replies = post.replies ?? [];
-  return (
-    <li
-      data-testid={`tieba-post-${post.thread_id ?? post.url}`}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-1)",
-        paddingBottom: "var(--space-2)",
-        borderBottom: "1px solid var(--color-border)",
-      }}
-    >
-      <a href={post.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
-        {post.title ?? post.url}
-      </a>
-      <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-        归属确认：{post.affiliation_evidence} ·{" "}
-        {READ_STATUS_LABELS[post.read_status] ?? post.read_status} · 已读{" "}
-        {post.pages_read}/{post.pages_limit} 页
-        {post.total_pages ? `（页面声明共 ${post.total_pages} 页）` : ""}
-        {floors ? ` · ${floors}` : ""} · 读取于 {formatTime(post.retrieved_at)}
-      </span>
-      {!post.replies_obtained && (
-        <span
-          data-testid={`tieba-post-${post.thread_id ?? post.url}-no-replies`}
-          style={{ color: "var(--color-status-wait)" }}
-        >
-          未取得回复内容
-          {post.read_error_message ? `：${post.read_error_message}` : "。"}
-        </span>
-      )}
-      {replies.length > 0 && (
-        <ul
-          data-testid={`tieba-post-${post.thread_id ?? post.url}-replies`}
-          style={{
-            margin: 0,
-            paddingLeft: "var(--space-5)",
-            listStyle: "disc",
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--space-1)",
-          }}
-        >
-          {replies.map((reply, index) => (
-            <li key={`${reply.floor ?? index}-${index}`}>
-              <span style={{ color: "var(--color-text-tertiary)" }}>
-                {reply.floor != null ? `第 ${reply.floor} 楼` : "楼层未知"}
-                {reply.is_original_poster ? "（楼主）" : ""}
-                {reply.posted_at ? ` · ${reply.posted_at}` : " · 时间未给出"}：
-              </span>
-              {reply.content}
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-/** 仅有搜索摘要的帖链：逐条展示未确认归属的具体原因（页面不可读／未读取）。 */
-function CandidateLinkRow({ link }: { link: TiebaCandidateLink }) {
-  const reason = link.unconfirmed_reason ? `（${link.unconfirmed_reason}）` : "";
-  return (
-    <li style={{ color: "var(--color-text-secondary)" }}>
-      <a href={link.url} target="_blank" rel="noreferrer">
-        {link.title || link.url}
-      </a>
-      <span style={{ color: "var(--color-status-wait)" }}>
-        {" "}
-        · {link.source}
-        {reason} · 归属未确认
-      </span>
-    </li>
-  );
-}
-
-/** 被剔除的候选：非帖子链接与他吧证据的剔除依据（不静默丢弃）。 */
-function RejectedRow({ candidate }: { candidate: TiebaRejectedCandidate }) {
-  return (
-    <li style={{ color: "var(--color-text-tertiary)" }}>
-      {candidate.title || candidate.url}：{candidate.evidence}
-    </li>
-  );
-}
-
-/** 学校官方页面核验结果（与吧友个人经历分开展示）。 */
-function OfficialCheckRow({ check }: { check: TiebaOfficialCheck }) {
-  const matched = check.matched_terms ?? [];
-  return (
-    <li data-testid={`tieba-official-${check.host}`} style={{ color: "var(--color-text-secondary)" }}>
-      <a href={check.url} target="_blank" rel="noreferrer">
-        {check.title || check.url}
-      </a>
-      {" · "}
-      {check.host}
-      {" · "}
-      {OFFICIAL_STATUS_LABELS[check.status] ?? check.status}
-      {" · "}
-      {formatTime(check.fetched_at)}
-      {matched.length > 0 ? ` · 命中原词：${matched.join("、")}` : ""}
-      {check.excerpt ? (
-        <blockquote
-          data-testid={`tieba-official-${check.host}-excerpt`}
-          style={{
-            margin: "var(--space-1) 0 0",
-            paddingLeft: "var(--space-3)",
-            borderLeft: "2px solid var(--color-border)",
-            color: "var(--color-text-tertiary)",
-          }}
-        >
-          {check.excerpt}
-        </blockquote>
-      ) : null}
-      {check.error_message ? (
-        <span style={{ color: "var(--color-status-error)" }}> · {check.error_message}</span>
-      ) : null}
-    </li>
-  );
-}
 
 /**
  * 贴吧信息搜集结果卡（V2 Issue 14）。
@@ -237,6 +60,9 @@ export function TiebaResearchCard({
   const links = research.candidate_links ?? [];
   const rejected = research.rejected_candidates ?? [];
   const official = research.official_checks ?? [];
+  const hasOfficialEvidence = official.some((check) =>
+    check.status === "verified" && check.excerpt && check.applicability?.applicable,
+  );
   const queries = research.queries ?? [];
   const sections = research.sections ?? [];
   const notes = research.evidence_boundary ?? [];
@@ -261,7 +87,9 @@ export function TiebaResearchCard({
           aria-hidden
         />
         <strong style={{ color: failed ? "var(--color-status-error)" : "var(--color-text-primary)" }}>
-          {STATUS_TITLES[research.status] ?? "贴吧信息搜集"}
+          {research.status === "empty" && hasOfficialEvidence
+            ? "已取得官方信息，贴吧讨论尚未取得"
+            : STATUS_TITLES[research.status] ?? "贴吧信息搜集"}
         </strong>
         {research.status === "success" && (
           <span
@@ -299,7 +127,7 @@ export function TiebaResearchCard({
 
       {/* AC1：原始问题逐字保留，只按解析出的原词检索。 */}
       <p style={{ margin: 0 }}>
-        所在贴吧：<strong>{research.forum}</strong>
+        检索范围：<a href={`https://tieba.baidu.com/f?kw=${encodeURIComponent(research.forum.replace(/吧$/, ""))}`} target="_blank" rel="noreferrer"><strong>{research.forum}</strong></a>{research.official_check_requested && " · 学校官方域名 ecjtu.edu.cn"}
         {terms.length > 0 ? (
           <>
             {" · 原始名词："}
@@ -312,6 +140,17 @@ export function TiebaResearchCard({
         时间条件：{timeFilter.requirement ? `「${timeFilter.requirement}」` : "未提出"} ·{" "}
         {timeFilter.note}
       </p>
+      {(research.status === "empty" || degraded) && (
+        <p style={{ margin: 0 }}>
+          未召回帖子不代表吧内没有相关讨论。
+        </p>
+      )}
+      {!streaming && research.status !== "stopped" && queries.some(query =>
+        ["tieba_browser_setup_required", "tieba_browser_unavailable", "tieba_browser_busy"].includes(query.error_code ?? "") ||
+        (degraded && query.source === "tieba_browser")
+      ) && (
+        <TiebaBrowserSetup onRetry={onRetry} />
+      )}
 
       {waiting && research.pending && (
         <div
@@ -340,12 +179,18 @@ export function TiebaResearchCard({
       )}
 
       {research.empty_reason && <p style={{ margin: 0 }}>{research.empty_reason}</p>}
+      {research.official_blocked_reason && (
+        <p style={{ margin: 0 }}>来源限制：{research.official_blocked_reason}</p>
+      )}
+      {research.official_unverified_note && (
+        <p style={{ margin: 0, color: "var(--color-status-wait)" }}>
+          {research.official_unverified_note}
+        </p>
+      )}
 
       {queries.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            本次外部调用记录
-          </p>
+        <details>
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)", fontWeight: 600 }}>本次外部调用记录</summary>
           <ul
             data-testid="tieba-research-queries"
             style={{
@@ -362,7 +207,7 @@ export function TiebaResearchCard({
               <QueryRecordRow key={`${record.source}-${record.query}-${index}`} record={record} />
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {posts.length > 0 && (
@@ -389,10 +234,10 @@ export function TiebaResearchCard({
       )}
 
       {links.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
+        <details open={posts.length === 0}>
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)", fontWeight: 600 }}>
             帖链（未取得回复内容，归属以页面为准）
-          </p>
+          </summary>
           <ul
             data-testid="tieba-candidate-links"
             style={{
@@ -408,14 +253,12 @@ export function TiebaResearchCard({
               <CandidateLinkRow key={link.url} link={link} />
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {rejected.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            已剔除的候选（每条附剔除依据）
-          </p>
+        <details>
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)", fontWeight: 600 }}>已剔除的候选（每条附剔除依据）</summary>
           <ul
             data-testid="tieba-rejected-candidates"
             style={{
@@ -432,7 +275,7 @@ export function TiebaResearchCard({
               <RejectedRow key={`${candidate.url}-${index}`} candidate={candidate} />
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {sections.length > 0 && (
@@ -489,9 +332,33 @@ export function TiebaResearchCard({
         </div>
       )}
 
+      {(research.conflicts ?? []).length > 0 && (
+        <div data-testid="tieba-research-conflicts">
+          <strong>官方与帖子经历存在冲突</strong>
+          <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
+            {research.conflicts?.map((conflict, index) => (
+              <li key={`${conflict.official_url}-${index}`}>
+                <a href={conflict.official_url} target="_blank" rel="noreferrer">
+                  {conflict.official_title}
+                </a>：{conflict.official_statement}
+                {conflict.post_refs?.map((ref, offset) => (
+                  <p key={`${ref.url}-${offset}`} style={{ margin: 0 }}>
+                    <a href={ref.url} target="_blank" rel="noreferrer">帖子</a>
+                    {ref.floor != null ? `第 ${ref.floor} 楼` : "（楼层未知）"}
+                    {ref.posted_at ? ` · ${ref.posted_at}` : ""}：{ref.quote}
+                  </p>
+                ))}
+                <p style={{ margin: 0 }}>{conflict.time_basis} {conflict.scope_basis}</p>
+                <p style={{ margin: 0 }}>{conflict.note}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {notes.length > 0 && (
-        <div>
-          <p style={{ margin: 0, fontWeight: 600 }}>证据边界</p>
+        <details>
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)", fontWeight: 600 }}>证据边界</summary>
           <ul
             data-testid="tieba-research-notes"
             style={{
@@ -508,7 +375,7 @@ export function TiebaResearchCard({
               <li key={`note-${index}`}>{note}</li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>

@@ -1,0 +1,171 @@
+{
+  "question": "我想了解国庆节假期的讨论",
+  "queries": [
+    {
+      "source": "tieba_browser",
+      "query": "site:tieba.baidu.com/p/ 华东交通大学吧 国庆节 假期",
+      "status": "success",
+      "evidence_count": 5,
+      "retrieved_at": "2026-10-07T15:03:14.733720Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "固定华东交通大学吧内检索，帖子归属由读取阶段确认。"
+    }
+  ],
+  "confirmed": [
+    {
+      "thread_id": "11081457230",
+      "url": "https://tieba.baidu.com/p/11081457230",
+      "title": "✋😡假来～✋😡假来～✋😡假来～",
+      "affiliation_evidence": "已读取帖子页面，页面声明所属贴吧为「华东交通大学吧」",
+      "read_status": "partial",
+      "pages_read": 1,
+      "pages_limit": 1,
+      "total_pages": null,
+      "floor_min": null,
+      "floor_max": null,
+      "replies_obtained": true,
+      "replies": [
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": true,
+          "content": "怎么国庆只剩两天了，不行得找吧u借假期了。✋😡假来～✋😡假来～✋😡假来～✋😡假来～✋😡假来～✋😡假来～✋😡假来～✋😡假来～✋😡假来～✋😡假来～假来～"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "怎么这么快"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "假回"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "lh同学这么活跃，都到11级了"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "回复説綏:gzh同学管的真多捏"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "回复根号八八:真棒呢"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "3"
+        },
+        {
+          "floor": null,
+          "posted_at": "10-06",
+          "is_original_poster": false,
+          "content": "给小吧主👻辣"
+        },
+        {
+          "floor": null,
+          "posted_at": "23小时前",
+          "is_original_poster": false,
+          "content": "3"
+        }
+      ],
+      "read_error_code": "tieba_browser_partial_replies",
+      "read_error_message": "已取得当前页面加载的正文与回复；未穷尽全部回复、楼中楼或图片内容。",
+      "retrieved_at": "2026-10-07T15:03:18.527616Z"
+    },
+    {
+      "thread_id": "11025516257",
+      "url": "https://tieba.baidu.com/p/11025516257",
+      "title": "真拿你没办法",
+      "affiliation_evidence": "已读取帖子页面，页面声明所属贴吧为「华东交通大学吧」",
+      "read_status": "partial",
+      "pages_read": 1,
+      "pages_limit": 1,
+      "total_pages": null,
+      "floor_min": null,
+      "floor_max": null,
+      "replies_obtained": true,
+      "replies": [
+        {
+          "floor": null,
+          "posted_at": "09-15",
+          "is_original_poster": true,
+          "content": "真拿你没办法，坐好喽。那是华东交通大学校园里的一则通知，足以载入“别人家大学”史册的休假奇迹。日历翻过，中秋与国庆悄然相拥，十三天的连休如黄金般铺开，整个校园瞬间从课业的紧绷中松绑，欢呼与雀跃在宿舍楼间来回弹跳，每一次确认日期、每一回计算天数，都是幸福感最直白的注脚。十余载寒窗苦读，无数次早八挣扎、无数轮考试鏖战，命运终于将这份慷慨的馈赠，稳稳递到每一位华东交大学子手中。这所由国家铁路集团与江西省人民政府、教育部共建的巍巍学府，“日新其德，止于至善”的校训、深耕轨道交通强国建设的血脉早已融入筋骨。它是江西高水平大学建设的中坚力量，更是国内轨道交通、交通运输工程领域里从不缺席的硬核担当。作为南方轨道、土木与电气英才的摇篮，常年扎根轨道交通装备、交通工程、电气工程、信息工程的尖端科研，历经无数国家级重大课题与技术攻关，它早已习惯在图纸与实验数据间锚定方向，是无数青年心中永不黯淡的“轨道工科灯塔”。历经数月漫长课季，跨过无数DDL的生死线，熬过无数咖啡续命的深夜，华东交通大学终于在九月末尾送出这份重磅惊喜——十三天的假期，如一场久旱逢甘霖的和煦秋风，送来满校晴空。"
+        },
+        {
+          "floor": null,
+          "posted_at": "09-16",
+          "is_original_poster": false,
+          "content": "3"
+        },
+        {
+          "floor": null,
+          "posted_at": "09-16",
+          "is_original_poster": false,
+          "content": "3"
+        }
+      ],
+      "read_error_code": "tieba_browser_partial_replies",
+      "read_error_message": "已取得当前页面加载的正文与回复；未穷尽全部回复、楼中楼或图片内容。",
+      "retrieved_at": "2026-10-07T15:03:22.631492Z"
+    },
+    {
+      "thread_id": "11023199670",
+      "url": "https://tieba.baidu.com/p/11023199670",
+      "title": "论该丝的中秋国庆假期通知",
+      "affiliation_evidence": "已读取帖子页面，页面声明所属贴吧为「华东交通大学吧」",
+      "read_status": "partial",
+      "pages_read": 1,
+      "pages_limit": 1,
+      "total_pages": null,
+      "floor_min": null,
+      "floor_max": null,
+      "replies_obtained": true,
+      "replies": [
+        {
+          "floor": null,
+          "posted_at": "09-14",
+          "is_original_poster": true,
+          "content": "啊啊啊啊啊啊啊怎么现在还没下来啊😫，我就想订个票我容易吗我"
+        },
+        {
+          "floor": null,
+          "posted_at": "09-14",
+          "is_original_poster": false,
+          "content": "同问"
+        }
+      ],
+      "read_error_code": "tieba_browser_partial_replies",
+      "read_error_message": "已取得当前页面加载的正文与回复；未穷尽全部回复、楼中楼或图片内容。",
+      "retrieved_at": "2026-10-07T15:03:26.173466Z"
+    }
+  ],
+  "unconfirmed": [
+    {
+      "url": "https://tieba.baidu.com/p/10108199410",
+      "title": "失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了失败了。从结果上来说，我失败了。时间机器的故障并没有完全排除，降落在国庆前一天的我失去了记忆，我完全忘记了自己是谁，也忘记了自己来到这个时间的使命，这七天时间里，我",
+      "source": "tieba_browser",
+      "unconfirmed_reason": "未读取：超出本轮读取条数上限"
+    },
+    {
+      "url": "https://tieba.baidu.com/p/9185424361",
+      "title": "求助想问问国庆假期的安排",
+      "source": "tieba_browser",
+      "unconfirmed_reason": "未读取：超出本轮读取条数上限"
+    }
+  ],
+  "rejected": []
+}

@@ -36,7 +36,8 @@ from bridges.ai.fixed_models import MODEL_BY_CAPABILITY
 #: 适配器与发布门真实探针保留，历史结果按只读面继续可查可导出。
 #: v4（Issue 21）：文章人味化编排与评测框架整体移除——``humanizer``
 #: 由 ``qwen_model`` 改判 ``retired``，只保留历史投影读取与 410 守卫。
-CAPABILITY_MANIFEST_VERSION = 4
+#: v5：贴吧专用浏览器窗口归入本地会话管理，不引入通用搜索提供方。
+CAPABILITY_MANIFEST_VERSION = 5
 
 #: 稳定门禁错误码（Issue 17 Observability 合同）。
 UNCLASSIFIED_CAPABILITY = "unclassified_capability"
@@ -357,6 +358,16 @@ PRODUCTION_CAPABILITY_MANIFEST: tuple[CapabilityManifestEntry, ...] = (
         truth_contract="检索 worker 不继承 Qwen Key；最终自然语言综合另计聊天模型调用。",
     ),
     # ── local_deterministic：本地确定性能力，不调用模型、不造锁 ─────────
+    CapabilityManifestEntry(
+        id="tieba_browser_session",
+        journey="专用贴吧浏览器会话管理",
+        category=CapabilityCategory.LOCAL_DETERMINISTIC,
+        route_patterns=(
+            _p("/tieba/browser/open", "POST"),
+            _p("/tieba/browser/complete", "POST"),
+        ),
+        truth_contract="只管理当前认证账户的本地窗口，不接受地址、脚本或凭据参数。",
+    ),
     CapabilityManifestEntry(
         id="profile_local_rules",
         journey="Profile 明确信号、更正和撤回",

@@ -34,7 +34,7 @@ from bridges.tieba.contracts import (
     TiebaSearchHit,
     TiebaTimeFilter,
 )
-from bridges.tieba.lexicon import HOLIDAY_ARRANGEMENT_TERMS, TARGET_FORUM_NAME
+from bridges.tieba.lexicon import HOLIDAY_ARRANGEMENT_TERMS, TARGET_FORUM_NAME, TARGET_FORUM_URL
 from bridges.tieba.official import (
     OFFICIAL_FETCH_LIMIT,
     STATUS_VERIFIED,
@@ -45,6 +45,7 @@ from bridges.tieba.official import (
 )
 from bridges.tieba.presenting import build_sections
 from bridges.tieba.reading import TiebaThreadReader
+from bridges.tieba.relevance import post_matches_topic
 from bridges.tieba.searching import (
     REJECT_NOT_A_THREAD,
     HitDiagnostics,
@@ -103,7 +104,8 @@ OFFICIAL_TRIGGER_NOTE = (
 #: 放假安排未指定年份时的说明：不假定年份，也不把历史通知当作本次安排。
 HOLIDAY_YEAR_NOTE = (
     "问题没有指定年份：本轮不假定年份，也不把历史通知或旧帖当作本次安排；"
-    "官方页面按原始名词与当前年份 {year} 优先挑选（只用于排序），"
+    "官方页面按原始名词与当前年份 {year} 优先挑选；已有该年份通知时，"
+    "不混入标题注明其他年份的假期通知，"
     "并按原文摘录与取得时间呈现。"
 )
 
@@ -260,6 +262,7 @@ def search_candidates(
             stop_event=stop_event,
             deadline=deadline,
         )
+        records.extend(outcome.prior_records)
         records.append(outcome.record)
         raw_hits += outcome.diagnostics.raw_hits
         usable = outcome.diagnostics.usable
@@ -297,6 +300,7 @@ def read_candidates(
     reader: TiebaThreadReader,
     attempts: SearchAttempts,
     *,
+    analysis: TiebaQuestionAnalysis,
     stop_event: threading.Event | None,
     deadline_seconds: float,
     resume: dict[str, Any] | None = None,
@@ -351,6 +355,12 @@ def read_candidates(
         result = reader.read(hit.url, stop_event=stop_event, deadline=deadline)
         new_attempted.add(hit.url)
         if result.forum_matches_target:
+            if not post_matches_topic(result, analysis):
+                rejected.append(TiebaRejectedCandidate(
+                    url=result.url, title=result.title or hit.title,
+                    evidence="已读取目标贴吧页面，但标题与已读楼层未涉及本轮主题。",
+                ))
+                continue
             confirmed.append(confirmed_post(hit, result))
             continue
         if result.forum_name and result.status in {ReadStatus.READ, ReadStatus.PARTIAL}:
@@ -398,7 +408,7 @@ def verify_official(
     blocked: bool = False,
     resume: dict[str, Any] | None = None,
 ) -> OfficialOutcome:
-    """官网核验：先按官方域名检索，未命中再用一条去域名限定的查询。
+    """官网核验：两轮均按官方域名检索，未命中时只减少主题条件。
 
     ``blocked`` 为用户硬条件（只查贴吧）阻止官方路径：不做任何外部调用。
     ``resume`` 是上一轮的部分核验产物：已取得的页面按原结果续用。
@@ -509,6 +519,12 @@ def assess_applicability(
         )
     )
     date_requirement = analysis.time_requirement
+    notice_year = _year_of(check.title) or _year_of(check.excerpt or "")
+    historical_holiday = bool(
+        _holiday_without_year(analysis)
+        and notice_year is not None
+        and notice_year != check.fetched_at.year
+    )
     date_confirmed: bool | None = None
     if date_requirement:
         date_confirmed = (
@@ -522,6 +538,7 @@ def assess_applicability(
         and campus_confirmed is not False
         and (not date_requirement or date_confirmed is True)
         and not _expired_notice(text, analysis, check.fetched_at)
+        and not historical_holiday
     )
     parts: list[str] = []
     parts.append(
@@ -531,6 +548,8 @@ def assess_applicability(
     )
     if _expired_notice(text, analysis, check.fetched_at):
         parts.append("页面明确受理期限已过，不能作为当前适用规定。")
+    if historical_holiday:
+        parts.append(f"这是 {notice_year} 年的历史假期通知，不能作为当前安排。")
     parts.append(
         "已定位到相关规定用途。"
         if purpose_confirmed
@@ -777,12 +796,12 @@ def official_terms(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
 def official_candidates(
     outcome: SearchOutcome, terms: Sequence[str], *, preferred_year: int
 ) -> list[str]:
-    """官方页面按「点题且提到目标年份」优先排序，只作证据挑选顺序。
+    """官方页面按「点题且提到目标年份」优先挑选。
 
     真实取证里「放假」类查询的第一条官方命中可能是几年前的活动报道，排序
     把标题同时含原始名词与目标年份的通知类页面提到前面，避免旧帖顶在首位；
-    目标年份取用户问题里的年份，问题没写年份时取当前年份。排序结果不影响
-    任何结论，年份也不会写进用户问题或官方结论。
+    目标年份取用户问题里的年份，问题没写年份时取当前年份。已取得目标年份
+    假期通知时不混入其他已注明年份的通知；不把选择年份写进用户问题。
     """
 
     def rank(hit: TiebaSearchHit) -> int:
@@ -794,6 +813,8 @@ def official_candidates(
 
     candidates = [hit for hit in outcome.hits if is_official_url(hit.url)]
     ordered = sorted(candidates, key=rank)  # 稳定排序：同档保持检索顺序
+    if set(terms) & HOLIDAY_ARRANGEMENT_TERMS and any(rank(hit) == 0 for hit in ordered):
+        ordered = [hit for hit in ordered if _year_of(hit.title) in {None, preferred_year}]
     seen: set[str] = set()
     urls: list[str] = []
     for hit in ordered:
@@ -931,6 +952,7 @@ def evidence_boundary(
     reads: ReadOutcome | None,
 ) -> list[str]:
     notes = [
+        f"固定贴吧入口：[{TARGET_FORUM_NAME}]({TARGET_FORUM_URL})",
         f"只纳入有证据确认属于「{FORUM_NAME}」的帖子；确认依据是真的读到了帖子页面。",
     ]
     if attempts is not None:
@@ -970,7 +992,7 @@ def _unconfirmed_link(hit: TiebaSearchHit, reason: str) -> TiebaCandidateLink:
     return TiebaCandidateLink(
         url=hit.url,
         title=hit.title,
-        source="tavily",
+        source=hit.source,
         unconfirmed_reason=reason,
     )
 

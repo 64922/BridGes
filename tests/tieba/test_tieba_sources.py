@@ -277,7 +277,7 @@ def test_official_queries_name_original_terms() -> None:
 
     assert official_query(analysis).startswith("site:ecjtu.edu.cn")
     assert "转专业" in official_query(analysis)
-    assert "site:" not in official_fallback_query(analysis)
+    assert official_fallback_query(analysis).startswith("site:ecjtu.edu.cn")
 
 
 def test_extract_page_text_and_locate_excerpt_ignore_markup() -> None:

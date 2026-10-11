@@ -16,7 +16,13 @@ from typing import Protocol
 import httpx
 
 from bridges.tieba.contracts import TiebaOfficialCheck, TiebaQuestionAnalysis
-from bridges.tieba.lexicon import OFFICIAL_DOMAIN_SUFFIX
+from bridges.tieba.lexicon import (
+    OFFICIAL_DOMAIN_SUFFIX,
+    OFFICIAL_TRIGGERS,
+    PLACE_EVENT_TERMS,
+    relaxed_topic_terms,
+)
+from bridges.tieba.official_content import notice_body
 from bridges.tieba.reading import USER_AGENT
 
 #: 官方检索最多采用的候选页面数（每页一次真实请求）。
@@ -30,7 +36,7 @@ OFFICIAL_MAX_BYTES = 600_000
 
 #: 摘录窗口（命中词前后各取一段）与单条摘录最大长度。
 EXCERPT_WINDOW = 120
-EXCERPT_MAX_CHARS = 320
+EXCERPT_MAX_CHARS = 1200
 
 STATUS_VERIFIED = "verified"
 STATUS_EXCERPT_NOT_FOUND = "excerpt_not_found"
@@ -38,6 +44,13 @@ STATUS_FETCH_FAILED = "fetch_failed"
 STATUS_DOMAIN_REJECTED = "domain_rejected"
 
 _SCRIPT_STYLE = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
+_PAGE_CHROME = re.compile(
+    r"<(head|nav|header|footer|aside)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL
+)
+_MAIN_CONTENT = re.compile(
+    r"<(article|main)\b[^>]*>(.*?)</\1>", re.IGNORECASE | re.DOTALL
+)
+_HEADINGS = re.compile(r"<h[1-6]\b[^>]*>.*?</h[1-6]>", re.IGNORECASE | re.DOTALL)
 _BLOCK_TAGS = re.compile(
     r"</?(p|div|br|li|tr|td|h[1-6]|section|article|table|ul|ol)\b[^>]*>",
     re.IGNORECASE,
@@ -66,8 +79,10 @@ def official_query(analysis: TiebaQuestionAnalysis) -> str:
 
 
 def official_fallback_query(analysis: TiebaQuestionAnalysis) -> str:
-    """官方域名没有命中时的第二查询：只用校名与原始名词再找一次官方页面。"""
-    return f"华东交通大学 {_official_terms(analysis)} 官方".strip()
+    """备用查询只减少主题条件，始终保留学校官方域名。"""
+    terms = _official_terms(analysis).split()
+    relaxed = " ".join(relaxed_topic_terms(terms))
+    return f"site:{OFFICIAL_DOMAIN_SUFFIX} 华东交通大学 {relaxed} 官方".strip()
 
 
 def _official_terms(analysis: TiebaQuestionAnalysis) -> str:
@@ -165,6 +180,11 @@ class HttpOfficialSiteReader:
         html = _bounded_text(response, self._max_bytes)
         text = extract_page_text(html)
         title = _clean_title(html) or host
+        # 通知标题可用于发现页面，但不能单独充当已定位到正文的依据。
+        text = "\n".join(
+            line for line in text.splitlines()
+            if line not in {title, title.split("-", 1)[0]}
+        )
         excerpt, matched = locate_excerpt(text, terms)
         if excerpt is None:
             return TiebaOfficialCheck(
@@ -191,6 +211,14 @@ class HttpOfficialSiteReader:
 def extract_page_text(html: str) -> str:
     """把公开页面转成纯文本（去脚本样式与标签，保留段落边界）。"""
     text = _SCRIPT_STYLE.sub(" ", html)
+    text = _PAGE_CHROME.sub(" ", text)
+    main = _MAIN_CONTENT.search(text)
+    if main is not None:
+        text = main.group(2)
+    text = _HEADINGS.sub(" ", text)
+    body = notice_body(text)
+    if body is not None:
+        text = body
     text = _BLOCK_TAGS.sub("\n", text)
     text = _TAG.sub(" ", text)
     text = unescape(text)
@@ -202,14 +230,33 @@ def locate_excerpt(
     text: str, terms: tuple[str, ...]
 ) -> tuple[str | None, tuple[str, ...]]:
     """在页面文本里定位原始名词，返回真实文本窗口与命中的名词。"""
-    matched = tuple(term for term in terms if term and term in text)
-    if not matched:
+    # 按段落选取实质内容，避免标题首次命中截走正文。
+    paragraphs = [line.strip() for line in text.splitlines() if line.strip()]
+    anchors = tuple(
+        term
+        for term in terms
+        if term and (term not in OFFICIAL_TRIGGERS or term in PLACE_EVENT_TERMS)
+    ) or terms
+    matching = [i for i, line in enumerate(paragraphs)
+                if any(term and term in line for term in anchors)]
+    if not matching:
         return None, ()
-    first = min(text.find(term) for term in matched)
+    index = max(matching, key=lambda i: (
+        sum(term in paragraphs[i] for term in terms), len(paragraphs[i])
+    ))
+    paragraph = paragraphs[index]
+    # “安排如下”是列表引导句，后续日期、时段可能完全不重复检索词。
+    # 保留同一正文容器内的后续段落，最多十二段／1200 字，不能只交付引导句。
+    if "如下" in paragraph:
+        excerpt = "\n".join(paragraphs[index:index + 12])[:EXCERPT_MAX_CHARS]
+        return excerpt, tuple(term for term in terms if term and term in excerpt)
+    matched = tuple(term for term in terms if term and term in paragraph)
+    first = next(paragraph.find(term) for term in anchors if term and term in paragraph)
     start = max(0, first - EXCERPT_WINDOW)
-    end = min(len(text), first + EXCERPT_WINDOW)
-    excerpt = _WHITESPACE.sub(" ", text[start:end]).strip()
-    return excerpt[:EXCERPT_MAX_CHARS], matched
+    end = min(len(paragraph), first + EXCERPT_WINDOW)
+    excerpt = _WHITESPACE.sub(" ", paragraph[start:end]).strip()
+    excerpt = excerpt[:EXCERPT_MAX_CHARS]
+    return excerpt, tuple(term for term in matched if term in excerpt)
 
 
 def _failed(

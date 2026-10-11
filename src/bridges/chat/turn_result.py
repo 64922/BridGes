@@ -128,6 +128,19 @@ def derive_turn_result(
             continue
         if state in _FAILED_STATES or state in _EMPTY_STATES:
             partial = True
+            # 贴吧讨论与官网通知是独立证据；没有帖子不应抹掉已核实的通知。
+            if module_id == "tieba" and any(
+                check.get("status") == "verified" and check.get("excerpt")
+                and (check.get("applicability") or {}).get("applicable") is True
+                for check in payload.get("official_checks", [])
+                if isinstance(check, Mapping)
+            ):
+                blocks_delivered.append(TurnResultBlock(
+                    module_id=module_id, label="学校官方信息", state="official_only",
+                    trust=ResultTrust.EVIDENCE_BOUND,
+                    detail="已取得相关官方通知；仅适用于该通知说明的部门、用途和日期。",
+                ))
+                detail = "尚未取得目标贴吧的相关帖子与回复，不能总结吧友讨论。"
             blocks_blocked.append(
                 TurnResultBlock(
                     module_id=module_id, label=label, state=state,

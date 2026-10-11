@@ -18,6 +18,12 @@ TARGET_SCHOOL_ALIASES: tuple[str, ...] = ("华东交通大学", "华东交大", 
 #: 贴吧帖子页面的固定主机（最小公开查询词里的域名提示，真实召回需要它）。
 TIEBA_HOST = "tieba.baidu.com"
 
+#: 固定来源入口；主题变化只影响查询词，不改变贴吧边界。
+TARGET_FORUM_URL = (
+    "https://tieba.baidu.com/f?kw=%E5%8D%8E%E4%B8%9C%E4%BA%A4"
+    "%E9%80%9A%E5%A4%A7%E5%AD%A6"
+)
+
 #: 模块自身用语：这些词不能进入检索查询词。
 MODULE_STOPWORDS: frozenset[str] = frozenset(
     {
@@ -58,6 +64,8 @@ MODULE_STOPWORDS: frozenset[str] = frozenset(
         "请问",
         "想问",
         "想知道",
+        "了解",
+        "讨论",
         "the",
         "and",
     }
@@ -66,6 +74,8 @@ MODULE_STOPWORDS: frozenset[str] = frozenset(
 #: 事件／地点类名词（校园语境）。命中即作为事件／地点记录并参与检索。
 PLACE_EVENT_TERMS: frozenset[str] = frozenset(
     {
+        "国庆节",
+        "国庆",
         "宿舍",
         "寝室",
         "食堂",
@@ -143,6 +153,7 @@ HOLIDAY_ARRANGEMENT_TERMS: frozenset[str] = frozenset(
 #: 体验侧信号词：用户想听真实经历／评价／实际做法时命中（不构成官方核验）。
 EXPERIENCE_SIGNALS: frozenset[str] = frozenset(
     {
+        "讨论",
         "经历",
         "体验",
         "感受",
@@ -334,6 +345,18 @@ _LATIN_RUN = re.compile(r"[A-Za-z][A-Za-z0-9_+#.-]{1,30}")
 MAX_QUERY_TERMS = 4
 
 
+def relaxed_topic_terms(terms: list[str]) -> list[str]:
+    """备用检索只减少泛化条件，保留事件与地点，避免把国庆主题放宽成任意假期。"""
+    generic = OFFICIAL_TRIGGERS | {"安排", "条件", "时间", "情况"}
+    for index in range(len(terms) - 1, -1, -1):
+        if terms[index] in generic and any(
+            term not in generic or term in PLACE_EVENT_TERMS
+            for offset, term in enumerate(terms) if offset != index
+        ):
+            return terms[:index] + terms[index + 1:]
+    return terms
+
+
 def detect_time_requirement(question: str) -> str | None:
     """返回问题里出现的时间条件原话；没有则 None（保持原文，不归一化改写）。"""
     for pattern in _TIME_PATTERNS:
@@ -362,7 +385,7 @@ def extract_topic_terms(question: str) -> list[str]:
     """
     remainder = question
     terms: list[str] = []
-    for term in sorted(PLACE_EVENT_TERMS | OFFICIAL_TRIGGERS, key=len, reverse=True):
+    for term in sorted(PLACE_EVENT_TERMS | OFFICIAL_TRIGGERS, key=lambda term: (-len(term), term)):
         if term in remainder and term not in terms:
             terms.append(term)
             remainder = remainder.replace(term, " ")

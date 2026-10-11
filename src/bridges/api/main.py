@@ -58,6 +58,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api import commute as commute_api
+from bridges.api import tieba as tieba_api
 from bridges.api.csrf import CsrfOriginMiddleware
 from bridges.api.data import router as data_router
 from bridges.api.image import router as image_router
@@ -78,6 +79,8 @@ from bridges.github.presenting import GithubInsightGenerator
 from bridges.github.searching import GithubApiSearchAdapter
 from bridges.github.service import GithubProjectsService
 from bridges.tieba.official import HttpOfficialSiteReader
+from bridges.tieba.browser import BrowserTiebaSearch, BrowserTiebaThreadReader
+from bridges.tieba.browser_runtime import TiebaBrowserRuntime
 from bridges.tieba.reading import HttpTiebaThreadReader
 from bridges.tieba.searching import WebSearchServiceAdapter
 from bridges.tieba.service import TiebaResearchService
@@ -1616,12 +1619,23 @@ def create_app(
             ),
         )
         app.router.add_event_handler("shutdown", app.state.paper_search_service.close)
-        # V2 Issue 14：贴吧信息搜集模块子图——检索复用唯一通用公网搜索服务
-        # （审计/缓存/预算同一路径），帖子页面按公开 GET 有界读取，访问受限
-        # 时如实降级为「仅帖链」；官方核验只取学校官方域名页面。
+        # 贴吧原生检索使用账户隔离会话；公开索引只作有记录的后备，官方路径独立。
+        public_tieba_search = WebSearchServiceAdapter(app.state.web_search_service)
+        tieba_browser = TiebaBrowserRuntime(data_dir) if data_dir is not None else None
+        app.state.tieba_browser_runtime = tieba_browser
+        if tieba_browser is not None:
+            app.router.add_event_handler("shutdown", tieba_browser.close)
         app.state.tieba_research_service = TiebaResearchService(
-            search=WebSearchServiceAdapter(app.state.web_search_service),
+            search=(
+                BrowserTiebaSearch(tieba_browser, public_tieba_search)
+                if tieba_browser else public_tieba_search
+            ),
             reader=HttpTiebaThreadReader(),
+            reader_for_account=(
+                (lambda account_id: BrowserTiebaThreadReader(tieba_browser, account_id))
+                if tieba_browser else None
+            ),
+            read_deadline_seconds=35.0 if tieba_browser else 12.0,
             official_reader=HttpOfficialSiteReader(),
             # 改进工单 27：贴吧节点内核的提交守卫读取当前任务版本（惰性求值）。
             task_version_provider=lambda account_id, conversation_id: (
@@ -2171,6 +2185,7 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(credentials.router)
     app.include_router(commute_api.router)
+    app.include_router(tieba_api.router)
     app.include_router(model_settings.router)
     app.include_router(compatibility.router)
     app.include_router(chat.router)

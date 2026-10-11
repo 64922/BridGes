@@ -44,6 +44,7 @@ from bridges.web_search.contracts import (
     WebSearchResult,
     WebSearchVerification,
 )
+from bridges.web_search.scope import query_scopes, url_in_scopes
 
 TAVILY_SEARCH_PROVIDER = "tavily"
 TAVILY_SEARCH_PROVIDER_VERSION = "tavily-search-api-v1"
@@ -189,13 +190,18 @@ class TavilySearchClient:
         deadline: float | None,
         stop_event: Event | None,
     ) -> TavilySearchResults:
-        payload = {
+        scopes = query_scopes(query)
+        payload: dict[str, Any] = {
             "query": query,
             "search_depth": "basic",
             "max_results": self._max_results,
             "include_answer": False,
             "include_raw_content": False,
         }
+        if scopes:
+            # site: 不能只是自然语言提示：API 域名限制与本地路径门共同生效。
+            payload["include_domains"] = list(dict.fromkeys(domain for domain, _ in scopes))
+            payload["include_domains_mode"] = "restrict"
         try:
             with self._client.stream(
                 "POST",
@@ -233,7 +239,15 @@ class TavilySearchClient:
             raise WebSearchError("web_search_cancelled", "已取消本轮联网搜索。")
         if deadline is not None and deadline <= monotonic():
             raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
-        return _parse_tavily_results(body, status_category, self._max_results)
+        results = _parse_tavily_results(body, status_category, self._max_results)
+        if not scopes:
+            return results
+        # 先过滤再 Extract，提供方越界结果不会触发站外正文读取。
+        return TavilySearchResults(
+            [result for result in results if url_in_scopes(result.url, scopes)],
+            page_classification=results.page_classification,
+            http_status_category=results.http_status_category,
+        )
 
     def _fill_source_contents(
         self,

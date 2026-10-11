@@ -2,19 +2,22 @@
   <img src="apps/web/public/brand/bridges-logo-on-dark.svg" alt="BridGes" width="320">
   <p>面向华东交通大学学生的校园学习助手</p>
   <p>日常交流 · 校园信息 · 书页学习 · 职业准备</p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  </p>
 </div>
 
-BridGes V2 是在个人电脑上运行、通过桌面浏览器使用的聊天应用。你可以围绕日常问题交流，主动选择六个任务模块查找资料，也可以上传教材书页，完成一个小节的预习、辅导、复盘与总结。
+BridGes V2 是在个人电脑上运行、通过桌面浏览器使用的聊天应用。你可以围绕日常问题交流，直接提出需求或选择六个任务模块查找资料，也可以上传教材书页，完成一个小节的预习、辅导、复盘与总结。
 
 项目面向华东交通大学学生的使用场景，不核验学籍。账户数据在本机按账户隔离保存；模型理解与生成、联网检索和地图查询仍会调用外部服务，并非离线应用。
 
-本说明对应仓库中的 V2 实现。产品边界由 [ADR-0030](docs/adr/0030-v2-campus-assistant-and-approved-desktop-interaction.md) 和 [V2 产品契约](docs/v2/product-contract.md)定义；模型与凭据更新规则见 [ADR-0031](docs/adr/0031-runtime-qwen-credential-and-main-model-activation.md)。V2 文档保留了设计阶段的背景说明，不能仅凭其中的“待实施”或“已批准”判断当前交付状态。
+本说明对应仓库中的 V2 实现。V2 仍在持续交付与验收中：本地功能验证不替代模型、检索与地图等外部服务的真实可得性验证。产品边界由 [ADR-0030](docs/adr/0030-v2-campus-assistant-and-approved-desktop-interaction.md) 和 [V2 产品契约](docs/v2/product-contract.md)定义；模型与凭据更新规则见 [ADR-0031](docs/adr/0031-runtime-qwen-credential-and-main-model-activation.md)。V2 文档保留了设计阶段的背景说明，不能仅凭其中的“待实施”或“已批准”判断当前交付状态。
 
 ## 可以用它做什么
 
 ### 日常陪伴与六个模块
 
-新聊天默认进入日常陪伴。直接输入即可普通聊天；点击输入框左侧的 `+`，选择模块后发送请求。选中的模块显示为可移除标签，同一日常会话可以切换模块并保留前文。系统可以建议使用某个模块，但需要你明确选择后才会启动。
+新聊天默认进入日常陪伴。直接输入即可普通聊天；也可以点击输入框左侧的 `+` 选择模块，或直接用自然语言提出明确请求——系统按正文识别并直接启动或组合对应模块，多个能力同样合理时先澄清一个必要问题。选中的模块显示为可移除标签，同一日常会话可以切换模块并保留前文。模块选择是可选辅助，正文意图优先。
 
 | 模块 | 用法示例 | 结果与边界 |
 | --- | --- | --- |
@@ -73,7 +76,7 @@ BridGes start
 1. 创建本机配置和数据目录。
 2. 按需执行 `npm ci` 和 `npm run build`，安装并构建 Web。
 3. 在交互式终端隐藏询问 Qwen API Key 与 Tavily API Key，保存到操作系统凭据库；后续启动复用。
-4. 执行数据库迁移，启动 Web、API 和后台执行器，并等待就绪。
+4. 执行数据库迁移，启动 Web、API、后台执行器与旧提醒兼容清理进程，并等待就绪。
 
 Qwen 凭据是正式启动的必需项。当前交互式桌面首启也要求 Tavily 输入非空，直接回车会取消启动；非交互启动、显式 profile 或容器允许缺少 Tavily，相关搜索会提示未配置。首次安装需要网络。应用配置**不自动读取 `.env`**，无需创建该文件。
 
@@ -91,7 +94,7 @@ Qwen 凭据是正式启动的必需项。当前交互式桌面首启也要求 Ta
 | 高德 Web Service Key | 地点与路线查询 | 未配置时通勤模块提示补充。 |
 | 高德 JavaScript Key／安全密钥 | 交互地图展示及代理校验 | 与路线 Key 分开配置。 |
 
-模型切换从下一条消息生效，在途轮次保留启动时的模型，历史回复不会改写。向量模型与索引版本独立固定，不随主模型切换。设置页验证会调用外部服务；Qwen 凭据更换后 API 就地生效，其他进程需重启读取，具体边界见 [ADR-0031](docs/adr/0031-runtime-qwen-credential-and-main-model-activation.md)。
+模型切换从下一条消息生效，在途轮次保留启动时的模型，历史回复不会改写。向量模型与索引版本独立固定，不随主模型切换。设置页验证会调用外部服务；Qwen 凭据更换后 API 就地生效，后台执行器下一轮自动重读生效。由环境变量或 `_FILE` 引用提供的凭据始终优先，在设置页保存新值不会改变实际生效值，页面会如实标注来源；具体边界见 [ADR-0031](docs/adr/0031-runtime-qwen-credential-and-main-model-activation.md)。
 
 自动化部署可使用 `BRIDGES_*` 环境变量或密钥文件引用，例如 `BRIDGES_QWEN_API_KEY_FILE`。显式 `development`／`production` 启动不会执行桌面初始化，需要自行提供数据库、状态密钥和 Qwen 凭据。完整说明见[运行与配置手册](infra/manual/README.md)。
 
@@ -131,6 +134,8 @@ cd ../..
 | `BridGes api` / `BridGes web --dev` / `BridGes worker` | 分进程运行；API 与后台执行器需要完整运行配置。 |
 | `BridGes doctor` | 检查当前进程读取到的配置；不会自动加载桌面 `config.json`。 |
 | `BridGes migrate` | 对当前配置的数据库执行迁移。 |
+| `BridGes evaluate` | 可复现 A/B 科学评测：运行、重放、盲评、报告与发布门判定。 |
+| `BridGes profile-replay` | 画像回放工具链：检查数据库身份、备份、试运行、回放与受监督 worker。 |
 
 ## Docker / Podman
 

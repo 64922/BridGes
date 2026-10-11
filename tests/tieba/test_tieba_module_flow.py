@@ -323,7 +323,7 @@ def test_confirmed_thread_is_read_with_floors_times_and_sections(
     tieba = assistant["tieba_research"]
     assert tieba["status"] == "success"
     assert tieba["original_question"] == "华东交通大学吧 东北电力和华东交通哪个好"
-    assert port.queries == ["tieba.baidu.com 华东交通大学吧 东北电力 华东交通"]
+    assert port.queries == ["site:tieba.baidu.com/p/ 华东交通大学吧 东北电力 华东交通"]
     assert reader.read_urls == [CONFIRMED_URL]
     post = tieba["confirmed_posts"][0]
     assert post["url"] == CONFIRMED_URL
@@ -467,7 +467,7 @@ def test_official_check_is_separate_from_forum_experience(
     )
     port = _FakeSearchPort(
         per_query={
-            "tieba.baidu.com 华东交通大学吧 转专业 条件": [
+            "site:tieba.baidu.com/p/ 华东交通大学吧 转专业 条件": [
                 TiebaSearchHit(
                     url="https://tieba.baidu.com/p/10745250786",
                     title="转专业经验",
@@ -591,7 +591,7 @@ def test_clarification_then_resume_keeps_original_question_and_boundary(
 
     assert second["tieba_research"]["status"] == "success"
     assert second["tieba_research"]["original_question"] == "贴吧里大家都怎么说？"
-    assert port.queries == ["tieba.baidu.com 华东交通大学吧 宿舍 条件"]
+    assert port.queries == ["site:tieba.baidu.com/p/ 华东交通大学吧 宿舍 条件"]
     assert second["tieba_research"]["pending"] is None
 
 
@@ -618,7 +618,7 @@ def test_search_failure_keeps_query_and_is_retryable(
     assert assistant["error_code"] == "web_search_provider"
     tieba = assistant["tieba_research"]
     assert tieba["status"] == "error"
-    assert tieba["queries"][0]["query"] == "tieba.baidu.com 华东交通大学吧 转专业 条件"
+    assert tieba["queries"][0]["query"] == "site:tieba.baidu.com/p/ 华东交通大学吧 转专业 条件"
     assert tieba["retryable"] is True
 
 
@@ -1106,3 +1106,38 @@ def test_retryable_transient_failure_still_uses_the_fallback_query() -> None:
 
     assert port.queries == [primary, relaxed]
     assert [hit.url for hit in attempts.hits] == [fallback_hit.url]
+
+
+def test_holiday_discussion_uses_scoped_fallback_and_real_replies(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """用户原句经真实聊天入口执行：两轮均限站，最终引用实际读取的讨论。"""
+    _register(client)
+    question = "我想了解国庆节假期的讨论"
+    analysis = parse_tieba_request(question)
+    primary, fallback = plan_queries(analysis)
+    port = _FakeSearchPort(per_query={
+        primary: [],
+        fallback: [TiebaSearchHit(url=CONFIRMED_URL, title="国庆假期讨论", snippet="")],
+    })
+    reply = TiebaReply(floor=2, posted_at="2026-10-01", content="我们国庆假期准备回家。")
+    reader = _FakeReader({CONFIRMED_URL: _read_result(
+        url=CONFIRMED_URL, title="国庆假期讨论", status=ReadStatus.READ, replies=(reply,),
+    )})
+    _install_tieba_service(sqlite_app, port=port, reader=reader)
+    adapter = _SilentAdapter()
+    sqlite_app.state.chat_service._gateway = _gateway_with(adapter)  # noqa: SLF001
+    conversation_id = _create_conversation(client)
+    _send(client, conversation_id, question, module_id="tieba")
+    assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
+
+    result = assistant["tieba_research"]
+    assert result["status"] == "success"
+    assert result["topic_terms"] == ["国庆节", "假期"]
+    assert result["question_kind"] == "mixed"
+    assert result["time_filter"]["year"] is None
+    assert port.queries == [primary, fallback]
+    assert all(query.startswith("site:tieba.baidu.com/p/") for query in port.queries)
+    assert result["confirmed_posts"][0]["replies"][0]["content"] == reply.content
+    assert reply.content in assistant["content"]
+    assert adapter.calls == 0

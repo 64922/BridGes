@@ -589,6 +589,7 @@ def test_resume_reuses_completed_search_reads_and_official_checks() -> None:
     reads = evidence.read_candidates(
         thread_reader,
         attempts,
+        analysis=analysis,
         stop_event=None,
         deadline_seconds=5.0,
         resume={

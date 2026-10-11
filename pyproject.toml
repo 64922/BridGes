@@ -20,6 +20,8 @@ dependencies = [
     "pymupdf>=1.28",
     "cryptography>=42.0",
     "keyring>=25.0",
+    # 贴吧登录态取证使用隔离浏览器目录，避免依赖桌面 GPT 扩展或导出 Cookie。
+    "playwright>=1.58,<2",
     # V2 Issue 02：日常父图（validate_turn → … → persist_result）用
     # LangGraph 编排；检查点经本仓库事务 SQLite 适配器持久化。
     "langgraph>=1.2,<2",

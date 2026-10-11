@@ -127,6 +127,7 @@ class TiebaResearchService:
         *,
         search: TiebaSearchPort,
         reader: TiebaThreadReader,
+        reader_for_account: Callable[[str], TiebaThreadReader] | None = None,
         official_reader: TiebaOfficialReader | None = None,
         search_deadline_seconds: float = SEARCH_DEADLINE_SECONDS,
         read_deadline_seconds: float = READ_DEADLINE_SECONDS,
@@ -138,6 +139,7 @@ class TiebaResearchService:
     ) -> None:
         self._search = search
         self._reader = reader
+        self._reader_for_account = reader_for_account
         self._official_reader = official_reader
         self._search_deadline_seconds = search_deadline_seconds
         self._read_deadline_seconds = read_deadline_seconds
@@ -197,7 +199,9 @@ class TiebaResearchService:
         )
         flow = TiebaNodeFlow(
             search=self._search,
-            reader=self._reader,
+            reader=(
+                self._reader_for_account(account_id) if self._reader_for_account else self._reader
+            ),
             official_reader=self._official_reader,
             clock=self._clock,
             module_context=module_context,

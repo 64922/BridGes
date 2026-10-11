@@ -80,7 +80,7 @@ def test_query_words_keep_original_terms_and_host_hint() -> None:
     analysis = parse_tieba_request("华东交通大学吧 转专业 条件")
 
     queries = plan_queries(analysis)
-    assert queries[0] == "tieba.baidu.com 华东交通大学吧 转专业 条件"
+    assert queries[0] == "site:tieba.baidu.com/p/ 华东交通大学吧 转专业 条件"
     assert "转专业" in queries[0] and "条件" in queries[0]
     assert queries[1].endswith("贴吧")
 
@@ -111,11 +111,15 @@ def test_topic_terms_keep_real_phrases_containing_positional_chars(
     # 同长度词的先后顺序由集合遍历决定，这里比较词集本身。
     assert sorted(analysis.topic_terms) == sorted(expected)
     # 检索查询词逐字带上原始名词，不含被拆剩的半截词。
-    for query in plan_queries(analysis):
+    queries = plan_queries(analysis)
+    for query in queries:
         assert "秋节" not in query.split()
-        for term in expected:
-            if term in question:
-                assert term in query
+    for term in expected:
+        assert term in queries[0]
+    # 备用查询允许减少放假、条件等泛词，保留完整事件与地点词。
+    for term in expected:
+        if term in {"中秋节", "上铺", "下铺", "中午", "外语", "家里", "下课后"}:
+            assert term in queries[1]
 
 
 def test_holiday_question_requests_official_check_without_inventing_a_year() -> None:
