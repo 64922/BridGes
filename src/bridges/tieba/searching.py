@@ -87,6 +87,7 @@ class SearchOutcome:
     rejected: tuple[TiebaRejectedCandidate, ...]
     diagnostics: HitDiagnostics = HitDiagnostics()
     prior_records: tuple[ModuleQueryRecord, ...] = ()
+    excluded_wait_ms: int = 0
 
 
 class TiebaSearchPort(Protocol):
@@ -104,16 +105,42 @@ class TiebaSearchPort(Protocol):
 
 
 def plan_queries(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
-    """生成有界的查询词：先精确词，召回为零时用一条放宽词再试一次。"""
+    """生成有界的原词、常用说法与放宽查询；每条仍固定在目标贴吧。"""
     terms = list(analysis.topic_terms)[:MAX_QUERY_TERMS]
     if not terms:
         return ()
     scope = [f"site:{TIEBA_HOST}/p/", TARGET_FORUM_NAME]
     primary = " ".join([*scope, *terms])
-    # 只减少主题条件；没有可减少的主题时，用原词查询保持相同来源边界。
+    queries = [primary]
+    alternatives = _topic_alternatives(terms)
+    for alternative in alternatives:
+        query = " ".join([*scope, *alternative])
+        if query not in queries:
+            queries.append(query)
+    # 最后才放宽泛化词；地点、事件和明确的原始主题条件仍保留。
     relaxed_terms = ["国庆" if term == "国庆节" else term for term in relaxed_topic_terms(terms)]
     relaxed = " ".join([*scope, *relaxed_terms, "贴吧"])
-    return (primary,) if relaxed == primary else (primary, relaxed)
+    if relaxed not in queries:
+        queries.append(relaxed)
+    return tuple(queries[:4])
+
+
+def _topic_alternatives(terms: list[str]) -> list[list[str]]:
+    """仅扩展有明确常用说法的校园话题，不改动用户的其他检索条件。"""
+    variants: dict[str, tuple[str, ...]] = {
+        "宿舍": ("寝室",),
+        "宿舍条件": ("寝室条件", "住宿条件"),
+        "寝室": ("宿舍",),
+        "寝室条件": ("宿舍条件", "住宿条件"),
+        "食堂": ("餐厅", "饭堂"),
+        "转专业": ("转专业流程",),
+        "就业": ("找工作", "毕业去向"),
+    }
+    result: list[list[str]] = []
+    for term in terms:
+        for alternative in variants.get(term, ()):
+            result.append([alternative if item == term else item for item in terms])
+    return result
 
 
 def canonical_url(url: str) -> str:

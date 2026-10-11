@@ -27133,6 +27133,11 @@ export interface components {
              */
             total_pages?: number | null;
             /**
+             * Total Replies
+             * @description 页面声明的回复数；未知时为 None。
+             */
+            total_replies?: number | null;
+            /**
              * Floor Min
              * @description 实际读到的最小楼层。
              */
@@ -27205,10 +27210,25 @@ export interface components {
              */
             floor?: number | null;
             /**
+             * Reply Id
+             * @description 页面提供的发言 ID；缺失时为 None。
+             */
+            reply_id?: string | null;
+            /**
+             * Parent Reply Id
+             * @description 楼中楼所属的父楼层 ID；未知时为 None。
+             */
+            parent_reply_id?: string | null;
+            /**
              * Posted At
              * @description 页面上的发帖时间原文。
              */
             posted_at?: string | null;
+            /**
+             * @description 按实际发言时间确定的近期、历史或未知分类。
+             * @default unknown
+             */
+            temporal_scope: components["schemas"]["TiebaTemporalScope"];
             /**
              * Is Original Poster
              * @description 是否楼主本人发言。
@@ -27328,6 +27348,26 @@ export interface components {
              */
             conflicts?: components["schemas"]["TiebaConflict"][];
             /**
+             * Summary
+             * @description 经现有模型网关生成并核验的连贯总结。
+             */
+            summary?: string | null;
+            /**
+             * Summary Claims
+             * @description 逐条绑定引用的总结观点。
+             */
+            summary_claims?: components["schemas"]["TiebaSummaryClaim"][];
+            /**
+             * Summary Citations
+             * @description 只指向本轮已读原文的引用。
+             */
+            summary_citations?: components["schemas"]["TiebaSummaryCitation"][];
+            /**
+             * Summary Note
+             * @description 总结未生成或被核验拒绝的原因。
+             */
+            summary_note?: string | null;
+            /**
              * Sections
              * @description 只由已读文本分出的段落（可核验的个人经历／不同看法／不确定点）。
              */
@@ -27377,7 +27417,51 @@ export interface components {
          *     可用候选才是 ``EMPTY``。
          * @enum {string}
          */
-        TiebaResearchStatus: "clarification" | "searching" | "success" | "links_only" | "empty" | "error" | "stopped";
+        TiebaResearchStatus: "clarification" | "waiting_auth" | "searching" | "success" | "links_only" | "empty" | "error" | "stopped";
+        /**
+         * TiebaSummaryCitation
+         * @description 指向实际读取发言的可展开引用。
+         */
+        TiebaSummaryCitation: {
+            /** Citation Id */
+            citation_id: string;
+            /** Url */
+            url: string;
+            /** Title */
+            title?: string | null;
+            /** Reply Id */
+            reply_id?: string | null;
+            /** Parent Reply Id */
+            parent_reply_id?: string | null;
+            /** Floor */
+            floor?: number | null;
+            /** Posted At */
+            posted_at?: string | null;
+            /** Quote */
+            quote: string;
+        };
+        /**
+         * TiebaSummaryClaim
+         * @description 模型总结中的单项观点及其可验证引用。
+         */
+        TiebaSummaryClaim: {
+            /**
+             * Text
+             * @description 一条有证据支持的中文观点。
+             */
+            text: string;
+            /**
+             * Citation Ids
+             * @description 引用的已读证据 ID。
+             */
+            citation_ids?: string[];
+        };
+        /**
+         * TiebaTemporalScope
+         * @description 实际发言时间相对本轮条件的分类。
+         * @enum {string}
+         */
+        TiebaTemporalScope: "recent" | "historical" | "unknown";
         /**
          * TiebaTimeFilter
          * @description 时间条件的真实执行状态：解析到了什么、有没有真的用上。
@@ -27399,6 +27483,29 @@ export interface components {
              * @default false
              */
             applied: boolean;
+            /**
+             * Since
+             * @description 近十二个月窗口起点。
+             */
+            since?: string | null;
+            /**
+             * Recent Count
+             * @description 实际读到且落在近期窗口的发言数。
+             * @default 0
+             */
+            recent_count: number;
+            /**
+             * Historical Count
+             * @description 实际读到的历史发言数。
+             * @default 0
+             */
+            historical_count: number;
+            /**
+             * Unknown Count
+             * @description 实际读到但无法确认时间的发言数。
+             * @default 0
+             */
+            unknown_count: number;
             /**
              * Note
              * @description 面向用户的中文说明（含未执行时的原因）。

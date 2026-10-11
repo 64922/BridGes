@@ -70,6 +70,7 @@ from bridges.chat.run_budget_ledger import (
     derive_run_budget_class,
     derive_run_budget_plan,
     derive_study_run_budget_plan,
+    derive_tieba_run_budget_plan,
 )
 from bridges.chat.selections import (
     ChatSelectionsService,
@@ -2144,11 +2145,21 @@ class ChatService:
                 if quota is not None and quota.is_verified and quota.max_input_tokens is not None
                 else None
             )
-            plan = derive_run_budget_plan(
-                budget_class,
-                deadline_at=anchor_run_budget_deadline(run_record.created_at, budget_class),
-                token_budget=token_budget,
-            )
+            if (
+                route is not None
+                and route.status is RouteStatus.MATCHED
+                and route.main_capability is MainCapability.TIEBA
+            ):
+                plan = derive_tieba_run_budget_plan(
+                    created_at=run_record.created_at,
+                    token_budget=token_budget,
+                )
+            else:
+                plan = derive_run_budget_plan(
+                    budget_class,
+                    deadline_at=anchor_run_budget_deadline(run_record.created_at, budget_class),
+                    token_budget=token_budget,
+                )
         RunBudgetLedgerRepository(self._repo.database).freeze_for_run(
             account_id=run_record.account_id,
             run_id=run_record.run_id,

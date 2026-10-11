@@ -74,7 +74,6 @@ def test_original_question_uses_account_bound_browser_through_chat(
         def request(self, account: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
             assert account == account_id
             if payload["action"] == "search":
-                assert payload["terms"] == "国庆 假期"
                 return {
                     "hits": [
                         {

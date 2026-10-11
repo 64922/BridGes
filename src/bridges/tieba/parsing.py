@@ -60,6 +60,9 @@ def parse_tieba_request(
     original_question = resumed_question or current
 
     terms = extract_topic_terms(current)
+    continue_only = current.replace(" ", "") in {"继续", "接着", "继续刚才", "恢复刚才"}
+    if pending and (not _has_substantive(terms) or continue_only) and resumed_question:
+        terms = extract_topic_terms(resumed_question)
     task_topic = _task_topic(module_context)
     if task_topic and not _has_substantive(terms):
         merged = list(terms)

@@ -32,6 +32,7 @@ from bridges.chat.run_budget_ledger import (
     derive_run_budget_class,
     derive_run_budget_plan,
     derive_study_run_budget_plan,
+    derive_tieba_run_budget_plan,
 )
 from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.storage.database import SCHEMA_VERSION, BridgesDatabase
@@ -144,6 +145,9 @@ def test_budget_class_derivation() -> None:
     assert derive_run_budget_class(
         route=_route(MainCapability.CAREER)
     ) is RunBudgetClass.DEEP
+    assert derive_run_budget_class(
+        route=_route(MainCapability.TIEBA)
+    ) is RunBudgetClass.DEEP
     assert derive_run_budget_class(has_image=True) is RunBudgetClass.DEEP
     assert derive_run_budget_class(has_video=True) is RunBudgetClass.DEEP
 
@@ -160,6 +164,15 @@ def test_study_budget_scales_with_pages_and_has_a_hard_cap() -> None:
 
     no_photos = derive_study_run_budget_plan(page_count=0, created_at=_NOW)
     assert no_photos.total_budget_ms == RUN_BUDGET_INITIALS[RunBudgetClass.DEEP].total_budget_ms
+
+
+def test_tieba_budget_has_five_minute_cap_and_delivery_reserve() -> None:
+    plan = derive_tieba_run_budget_plan(created_at=_NOW, token_budget=96_000)
+    assert plan.total_budget_ms == 300_000
+    assert plan.deadline_at == _NOW + timedelta(minutes=5)
+    assert plan.verify_deliver_reserve_ms == 45_000
+    assert plan.deep_read_max == 8
+    assert plan.token_budget == 96_000
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +228,26 @@ def test_parallel_and_serial_consume_same_ledger(repo: Any) -> None:
     assert snapshot.model_calls_used == 1
     assert snapshot.external_calls_used == 2
     assert snapshot.external_calls_active == 1
+
+
+def test_external_auth_wait_extends_deadline_without_resetting_counters(repo: Any) -> None:
+    before = _freeze_normal(repo)
+    assert repo.register_external_call(
+        account_id="acc-1", run_id="run-1", call_key="tieba.search:1", now=_NOW
+    )
+    repo.record_external_call_result(
+        account_id="acc-1",
+        run_id="run-1",
+        call_key="tieba.search:1",
+        outcome_code="completed",
+        excluded_wait_ms=9_500,
+        now=_NOW + timedelta(seconds=2),
+    )
+    after = repo.load("acc-1", "run-1")
+    assert after is not None
+    assert after.plan.deadline_at == before.plan.deadline_at + timedelta(milliseconds=9_500)
+    assert after.external_calls_used == before.external_calls_used + 1
+    assert repo.list_entries("acc-1", "run-1")[-1].detail["excluded_wait_ms"] == 9_500
 
 
 def test_lease_recovery_reloads_ledger_without_reset(

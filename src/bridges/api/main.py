@@ -1637,6 +1637,7 @@ def create_app(
             ),
             read_deadline_seconds=35.0 if tieba_browser else 12.0,
             official_reader=HttpOfficialSiteReader(),
+            model_gateway=app.state.model_gateway,
             # 改进工单 27：贴吧节点内核的提交守卫读取当前任务版本（惰性求值）。
             task_version_provider=lambda account_id, conversation_id: (
                 _current_task_reference(app, account_id, conversation_id)

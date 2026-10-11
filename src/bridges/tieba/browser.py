@@ -8,7 +8,12 @@ from typing import Any
 
 from bridges.contracts.modules import ModuleQueryStatus
 from bridges.tieba.browser_runtime import TiebaBrowserError, TiebaBrowserRuntime
-from bridges.tieba.contracts import ReadStatus, TiebaReadResult, TiebaReply, TiebaSearchHit
+from bridges.tieba.contracts import (
+    ReadStatus,
+    TiebaReadResult,
+    TiebaReply,
+    TiebaSearchHit,
+)
 from bridges.tieba.searching import (
     SearchOutcome,
     TiebaSearchPort,
@@ -28,28 +33,56 @@ def browser_terms(query: str) -> str:
     ]
 
 
-def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
-    replies = [
-        TiebaReply(
-            content=str(value.get("original", ""))[:500],
-            posted_at=value.get("posted_at") or None,
-            is_original_poster=True,
+def read_projection(
+    url: str, value: dict[str, Any], *, pages_limit: int = 2
+) -> TiebaReadResult:
+    replies: list[TiebaReply] = []
+    original = str(value.get("original", "")).strip()
+    if original:
+        replies.append(
+            TiebaReply(
+                content=original[:2000],
+                posted_at=value.get("posted_at") or None,
+                is_original_poster=True,
+            )
         )
-    ]
-    replies.extend(TiebaReply.model_validate(item) for item in value.get("replies", [])[:39])
+    for item in value.get("replies", [])[:120]:
+        replies.append(
+            TiebaReply(
+                content=str(item.get("content") or "")[:600],
+                floor=item.get("floor"),
+                reply_id=item.get("reply_id"),
+                parent_reply_id=item.get("parent_reply_id"),
+                posted_at=item.get("posted_at"),
+                is_original_poster=False,
+            )
+        )
     replies = [reply for reply in replies if reply.content.strip()]
+    total_replies = value.get("total_replies")
+    loaded_reply_count = int(value.get("loaded_reply_count") or sum(
+        not item.get("nested", False) for item in value.get("replies", [])
+    ))
+    complete = total_replies is not None and loaded_reply_count >= int(total_replies)
     return TiebaReadResult(
         url=canonical_url(url),
         thread_id=thread_id_of(url),
-        status=ReadStatus.PARTIAL,
+        status=ReadStatus.READ if complete else ReadStatus.PARTIAL,
         forum_name=value.get("forum"),
         title=value.get("title"),
         replies=replies,
         pages_read=1,
-        pages_limit=1,
+        pages_limit=pages_limit,
+        total_replies=total_replies,
+        floor_min=min((reply.floor for reply in replies if reply.floor is not None), default=None),
+        floor_max=max((reply.floor for reply in replies if reply.floor is not None), default=None),
         retrieved_at=datetime.now(UTC),
-        error_code="tieba_browser_partial_replies",
-        error_message="已取得当前页面加载的正文与回复；未穷尽全部回复、楼中楼或图片内容。",
+        excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
+        error_code=None if complete else "tieba_browser_partial_replies",
+        error_message=None if complete else (
+            f"已读取 {loaded_reply_count} 条普通楼层，"
+            f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
+            "未穷尽全部回复、楼中楼或图片内容，不作未读取内容的推断。"
+        ),
     )
 
 
@@ -98,6 +131,7 @@ class BrowserTiebaSearch:
                 candidates=kept,
                 rejected=rejected,
                 diagnostics=diagnostics,
+                excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
             )
         except TiebaBrowserError as error:
             cancelled = error.code == "tieba_browser_cancelled"
@@ -108,10 +142,27 @@ class BrowserTiebaSearch:
                 status=ModuleQueryStatus.CANCELLED if cancelled else ModuleQueryStatus.ERROR,
                 error_code=error.code,
                 error_message=str(error),
-                retryable=not cancelled,
+                retryable=not cancelled and error.code not in {
+                    "tieba_browser_auth_required",
+                    "tieba_browser_auth_interrupted",
+                },
             )
             if cancelled or (deadline is not None and time.monotonic() >= deadline):
-                return SearchOutcome(record=record, hits=(), candidates=(), rejected=())
+                return SearchOutcome(
+                    record=record,
+                    hits=(),
+                    candidates=(),
+                    rejected=(),
+                    excluded_wait_ms=error.excluded_wait_ms,
+                )
+            if error.code in {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}:
+                return SearchOutcome(
+                    record=record,
+                    hits=(),
+                    candidates=(),
+                    rejected=(),
+                    excluded_wait_ms=error.excluded_wait_ms,
+                )
             outcome = self._public.search_public(
                 account_id, query=query, reason=reason, stop_event=stop_event, deadline=deadline
             )
@@ -122,6 +173,7 @@ class BrowserTiebaSearch:
                 rejected=outcome.rejected,
                 diagnostics=outcome.diagnostics,
                 prior_records=(record,),
+                excluded_wait_ms=error.excluded_wait_ms + outcome.excluded_wait_ms,
             )
 
 
@@ -140,15 +192,14 @@ class BrowserTiebaThreadReader:
         stop_event: object | None = None,
         deadline: float | None = None,
     ) -> TiebaReadResult:
-        del pages_limit  # 新版滚动页面不伪造分页；范围在投影里说明。
         try:
             value = self._runtime.request(
                 self._account_id,
-                {"action": "read", "url": canonical_url(url)},
+                {"action": "read", "url": canonical_url(url), "pages_limit": pages_limit},
                 stop_event=stop_event,
                 deadline=deadline,
             )
-            return read_projection(url, value)
+            return read_projection(url, value, pages_limit=pages_limit)
         except TiebaBrowserError as error:
             return TiebaReadResult(
                 url=canonical_url(url),
@@ -158,5 +209,6 @@ class BrowserTiebaThreadReader:
                 else ReadStatus.ACCESS_RESTRICTED,
                 error_code=error.code,
                 error_message=str(error),
+                excluded_wait_ms=error.excluded_wait_ms,
                 retrieved_at=datetime.now(UTC),
             )

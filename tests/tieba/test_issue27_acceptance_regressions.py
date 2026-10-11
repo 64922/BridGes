@@ -159,8 +159,8 @@ def test_real_search_payload_reuses_successful_empty_query() -> None:
         deadline_seconds=5,
         resume={"records": [record.model_dump(mode="json")], "candidates": [], "partial": True},
     )
-    assert port.queries == [queries[1]]
-    assert len(attempts.records) == 2
+    assert port.queries == list(queries[1:])
+    assert len(attempts.records) == len(queries)
 
 
 def test_official_resume_reuses_discovery_and_read_pages() -> None:

@@ -43,6 +43,39 @@ def test_rendered_replies_are_partial_and_never_invent_floors() -> None:
     assert all(reply.floor is None for reply in result.replies)
     assert result.replies[0].is_original_poster
     assert "未穷尽" in (result.error_message or "")
+    assert result.replies[1].posted_at == "10-06"
+
+
+def test_read_projection_preserves_reply_identity_and_nested_parent() -> None:
+    result = read_projection(
+        "https://tieba.baidu.com/p/123",
+        {
+            "forum": "华东交通大学吧",
+            "original": "主题正文",
+            "loaded_reply_count": 2,
+            "total_replies": 20,
+            "replies": [
+                {
+                    "content": "楼层回复",
+                    "reply_id": "floor-1",
+                    "floor": 3,
+                    "posted_at": "2026-09-01",
+                },
+                {
+                    "content": "楼中楼补充",
+                    "reply_id": "sub-2",
+                    "parent_reply_id": "floor-1",
+                    "floor": 3,
+                    "posted_at": "2026-09-02",
+                    "nested": True,
+                },
+            ],
+        },
+    )
+    assert result.status.value == "partial"
+    assert result.total_replies == 20
+    assert result.replies[2].reply_id == "sub-2"
+    assert result.replies[2].parent_reply_id == "floor-1"
 
 
 def test_forum_sidebar_cannot_confirm_a_different_thread() -> None:
@@ -104,6 +137,24 @@ def test_browser_failure_is_kept_when_falling_back_to_scoped_index() -> None:
     )
     assert outcome.prior_records[0].source == "tieba_browser"
     assert outcome.prior_records[0].error_code == "tieba_browser_setup_required"
+
+
+def test_auth_interruption_is_not_hidden_by_public_search_fallback() -> None:
+    class NeedsLogin:
+        def request(self, *args: Any, **kwargs: Any) -> Any:
+            raise TiebaBrowserError(
+                "tieba_browser_auth_interrupted", "登录未完成", excluded_wait_ms=4200
+            )
+
+    class MustNotFallback:
+        def search_public(self, *args: Any, **kwargs: Any) -> SearchOutcome:
+            raise AssertionError("认证中断不能回退成普通公开索引成功")
+
+    result = BrowserTiebaSearch(NeedsLogin(), MustNotFallback()).search_public(  # type: ignore[arg-type]
+        "alice", query="site:tieba.baidu.com/p/ 华东交通大学吧 宿舍", reason="测试"
+    )
+    assert result.record.error_code == "tieba_browser_auth_interrupted"
+    assert result.excluded_wait_ms == 4200
 
 
 def test_official_query_never_uses_the_tieba_login_session() -> None:

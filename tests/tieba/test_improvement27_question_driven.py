@@ -125,9 +125,24 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
     delivered: list[Any] = []
     original_delivery = TiebaResearchService._deliver_completed
 
-    def capture(self: Any, repo: Any, account_id: str, message_id: str, result: Any) -> Any:
+    def capture(
+        self: Any,
+        repo: Any,
+        account_id: str,
+        message_id: str,
+        result: Any,
+        *,
+        remaining_budget_ms: int | None,
+    ) -> Any:
         delivered.append(result)
-        return original_delivery(self, repo, account_id, message_id, result)
+        return original_delivery(
+            self,
+            repo,
+            account_id,
+            message_id,
+            result,
+            remaining_budget_ms=remaining_budget_ms,
+        )
 
     monkeypatch.setattr(TiebaResearchService, "_deliver_completed", capture)
     conversation_id = _create_conversation(client)
@@ -139,7 +154,7 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
 
     assert assistant["status"] == "done"
     # 执行顺序：官方域名检索先于贴吧检索（官方域名不自动放行，仍逐页核对适用性）。
-    assert port.queries == [official, tieba_query]
+    assert port.queries == [official, *plan_queries(analysis)]
     assert official_reader.fetched == [OFFICIAL_URL]
     tieba = assistant["tieba_research"]
     assert tieba["question_kind"] == "policy"
@@ -163,7 +178,9 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
     assert len(rows) == 1
     snapshot = RunBudgetLedgerRepository(database).load(account["id"], rows[0]["run_id"])
     assert snapshot is not None
-    assert snapshot.external_calls_used == 4
+    assert snapshot.external_calls_used == (
+        len(port.queries) + len(official_reader.fetched) + len(reader.read_urls)
+    )
     assert snapshot.external_calls_active == 0
     result = delivered[0]
     assert verified_projection(result) is not None
@@ -244,7 +261,7 @@ def test_experience_question_keeps_forum_only_scope(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )
 
-    assert port.queries == [plan_queries(analysis)[0]]
+    assert port.queries == list(plan_queries(analysis))
     assert official_reader.fetched == []
     tieba = assistant["tieba_research"]
     assert tieba["question_kind"] == "experience"
@@ -290,7 +307,7 @@ def test_mixed_question_runs_both_routes_in_order(
         sqlite_app, client, generation_helpers["drive"], conversation_id
     )
 
-    assert port.queries == [official, tieba_query]
+    assert port.queries == [official, *plan_queries(analysis)]
     tieba = assistant["tieba_research"]
     assert tieba["question_kind"] == "mixed"
     assert tieba["source_priority"] == ["official", "tieba"]
@@ -305,7 +322,6 @@ def test_tieba_only_restriction_blocks_official_route(
     """只查贴吧：规定类也不得绕过来源限制访问官方页面，保持未核实。"""
     _register(client)
     analysis = parse_tieba_request("只在贴吧查 转专业 规定 流程")
-    tieba_query = plan_queries(analysis)[0]
     port = _FakeSearchPort(
         hits=[TiebaSearchHit(url=CONFIRMED_URL, title="转专业经验", snippet="")]
     )
@@ -326,7 +342,7 @@ def test_tieba_only_restriction_blocks_official_route(
     )
 
     tieba = assistant["tieba_research"]
-    assert port.queries == [tieba_query]
+    assert port.queries == list(plan_queries(analysis))
     assert official_reader.fetched == []
     assert tieba["official_check_requested"] is True
     assert tieba["official_checks"] == []
@@ -552,7 +568,7 @@ def test_resume_reuses_completed_search_reads_and_official_checks() -> None:
         status=ModuleQueryStatus.SUCCESS,
         evidence_count=1,
     )
-    search_port = _FakeSearchPort(status=ModuleQueryStatus.ERROR)
+    search_port = _FakeSearchPort()
     attempts = evidence.search_candidates(
         search_port,
         "acc-27",
@@ -567,7 +583,7 @@ def test_resume_reuses_completed_search_reads_and_official_checks() -> None:
             "raw_hits": 1,
         },
     )
-    assert search_port.queries == []
+    assert search_port.queries == list(plan_queries(analysis)[1:])
     assert [item.url for item in attempts.hits] == [CONFIRMED_URL]
     assert attempts.partial is False
 

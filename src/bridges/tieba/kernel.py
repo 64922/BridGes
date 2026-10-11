@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
@@ -71,6 +71,7 @@ from bridges.tieba.searching import (
     query_record,
     thread_id_of,
 )
+from bridges.tieba.summary import TiebaSummaryGenerator
 
 if TYPE_CHECKING:
     from bridges.chat.run_budget_ledger import RunBudgetLedgerRepository
@@ -85,17 +86,17 @@ NODE_SYNTHESIZE = "tieba.synthesize"
 NODE_VERIFY = "tieba.verify"
 
 TIEBA_RECIPE_ID = "tieba-research"
-TIEBA_RECIPE_VERSION = "tieba-recipe-v1"
+TIEBA_RECIPE_VERSION = "tieba-recipe-v2"
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
-    "tieba.parse_request": "tieba-parse-v3",
-    "tieba.plan_evidence": "tieba-plan-v3",
+    "tieba.parse_request": "tieba-parse-v4",
+    "tieba.plan_evidence": "tieba-plan-v4",
     "tieba.verify_official_pages": "tieba-official-v5",
-    "tieba.search_threads": "tieba-search-v6",
-    "tieba.read_threads": "tieba-read-v4",
-    "tieba.synthesize_evidence": "tieba-synthesize-v3",
-    "tieba.verify_evidence": "tieba-verify-v3",
+    "tieba.search_threads": "tieba-search-v7",
+    "tieba.read_threads": "tieba-read-v5",
+    "tieba.synthesize_evidence": "tieba-synthesize-v4",
+    "tieba.verify_evidence": "tieba-verify-v4",
 }
 
 TIEBA_GATES: tuple[str, ...] = (
@@ -307,11 +308,13 @@ class TiebaBudget:
         account_id: str,
         run_id: str,
         work_deadline: datetime,
+        model_budget: Any = None,
     ) -> None:
         self._ledger = ledger
         self._account_id = account_id
         self._run_id = run_id
         self._work_deadline = work_deadline
+        self.model_budget = model_budget
 
     def remaining_work_ms(self, now: datetime | None = None) -> int:
         moment = now or datetime.now(UTC)
@@ -326,14 +329,21 @@ class TiebaBudget:
             now=datetime.now(UTC),
         )
 
-    def release_external(self, call_key: str, *, outcome_code: str) -> None:
+    def release_external(
+        self, call_key: str, *, outcome_code: str, excluded_wait_ms: int = 0
+    ) -> None:
         self._ledger.record_external_call_result(
             account_id=self._account_id,
             run_id=self._run_id,
             call_key=call_key,
             outcome_code=outcome_code,
+            excluded_wait_ms=excluded_wait_ms,
             now=datetime.now(UTC),
         )
+        if excluded_wait_ms > 0:
+            self._work_deadline += timedelta(milliseconds=excluded_wait_ms)
+            if self.model_budget is not None:
+                self.model_budget.exclude_wait(excluded_wait_ms)
 
 
 class _CallKeys:
@@ -385,16 +395,22 @@ class _BudgetedSearchPort:
                 rejected=(),
                 diagnostics=HitDiagnostics(),
             )
+        outcome = None
         try:
-            return self._port.search_public(
+            outcome = self._port.search_public(
                 account_id,
                 query=query,
                 reason=reason,
                 stop_event=stop_event,
                 deadline=deadline,
             )
+            return outcome
         finally:
-            self._budget.release_external(key, outcome_code="completed")
+            self._budget.release_external(
+                key,
+                outcome_code="completed" if outcome is not None else "failed",
+                excluded_wait_ms=(outcome.excluded_wait_ms if outcome is not None else 0),
+            )
 
 
 class _BudgetedReader:
@@ -423,17 +439,24 @@ class _BudgetedReader:
                 error_message="本轮运行预算已用尽，未读取该帖子页面。",
                 retrieved_at=datetime.now(UTC),
             )
+        result = None
         try:
             if pages_limit is None:
-                return self._reader.read(url, stop_event=stop_event, deadline=deadline)
-            return self._reader.read(
-                url,
-                pages_limit=pages_limit,
-                stop_event=stop_event,
-                deadline=deadline,
-            )
+                result = self._reader.read(url, stop_event=stop_event, deadline=deadline)
+            else:
+                result = self._reader.read(
+                    url,
+                    pages_limit=pages_limit,
+                    stop_event=stop_event,
+                    deadline=deadline,
+                )
+            return result
         finally:
-            self._budget.release_external(key, outcome_code="completed")
+            self._budget.release_external(
+                key,
+                outcome_code="completed" if result is not None else "failed",
+                excluded_wait_ms=(result.excluded_wait_ms if result is not None else 0),
+            )
 
 
 class _BudgetedOfficialReader:
@@ -536,9 +559,11 @@ def run_verification(
         and post.affiliation_evidence.startswith("已读取帖子页面")
         for post in projection.confirmed_posts
     )
-    read_scope = _read_scope_consistent(projection.confirmed_posts, posts)
     _, filtered_posts = evidence.apply_time_condition(analysis, list(posts))
-    unread_absent = _quotes_traceable(projection.sections, filtered_posts)
+    read_scope = _read_scope_consistent(projection.confirmed_posts, filtered_posts)
+    unread_absent = _quotes_traceable(projection.sections, filtered_posts) and _summary_traceable(
+        projection, filtered_posts
+    )
     consensus_absent = not _has_consensus_phrases(projection)
     official_scope = _official_scope_consistent(analysis, plan, projection, checks)
     recomputed = evidence.detect_conflicts(analysis, checks, posts)
@@ -623,8 +648,45 @@ def _has_consensus_phrases(projection: TiebaResearchProjection) -> bool:
         *(item.note for item in projection.conflicts),
         *(item.time_basis for item in projection.conflicts),
         *(item.scope_basis for item in projection.conflicts),
+        *(claim.text for claim in projection.summary_claims),
     ]
     return any(phrase in text for phrase in CONSENSUS_PHRASES for text in generated)
+
+
+def _summary_traceable(
+    projection: TiebaResearchProjection, posts: Sequence[TiebaPostProjection]
+) -> bool:
+    citations = {item.citation_id: item for item in projection.summary_citations}
+    if len(citations) != len(projection.summary_citations):
+        return False
+    source_posts = {post.url: post for post in posts}
+    for citation in projection.summary_citations:
+        post = source_posts.get(citation.url)
+        if post is None:
+            return False
+        matches = [
+            reply for reply in post.replies
+            if reply.reply_id == citation.reply_id
+            and reply.parent_reply_id == citation.parent_reply_id
+            and reply.floor == citation.floor
+            and reply.posted_at == citation.posted_at
+            and citation.quote and citation.quote in reply.content
+        ]
+        if len(matches) != 1:
+            return False
+    for claim in projection.summary_claims:
+        if not claim.text.strip() or not claim.citation_ids:
+            return False
+        if any(item not in citations for item in claim.citation_ids):
+            return False
+    if projection.summary and not projection.summary_claims:
+        return False
+    return not (
+        projection.summary_claims
+        and projection.summary != "；".join(
+            claim.text for claim in projection.summary_claims
+        )
+    )
 
 
 def _official_scope_consistent(
@@ -660,7 +722,7 @@ def _official_scope_consistent(
 
 
 class TiebaNodeFlow:
-    """贴吧节点的确定性执行体（不调用模型，全部基于真实外部结果）。"""
+    """贴吧节点执行体：模型只负责有证据引用的总结，其他结论由代码核验。"""
 
     def __init__(
         self,
@@ -678,6 +740,10 @@ class TiebaNodeFlow:
         read_deadline_seconds: float = evidence.READ_DEADLINE_SECONDS,
         official_deadline_seconds: float = evidence.OFFICIAL_DEADLINE_SECONDS,
         repository: Any = None,
+        summary_generator: TiebaSummaryGenerator | None = None,
+        run_context: Any = None,
+        run_model_id: str | None = None,
+        model_quota: Any = None,
     ) -> None:
         if budget is not None:
             search = _BudgetedSearchPort(search, budget, purpose="tieba.search")
@@ -687,6 +753,7 @@ class TiebaNodeFlow:
         self._search = search
         self._reader = reader
         self._official_reader = official_reader
+        self._budget = budget
         self._clock = clock or (lambda: datetime.now(UTC))
         self._module_context = module_context
         self._pending_wait = pending_wait
@@ -696,6 +763,10 @@ class TiebaNodeFlow:
         self._read_deadline_seconds = read_deadline_seconds
         self._official_deadline_seconds = official_deadline_seconds
         self._repository = repository
+        self._summary_generator = summary_generator
+        self._run_context = run_context
+        self._run_model_id = run_model_id
+        self._model_quota = model_quota
 
     @property
     def prior_digest(self) -> str | None:
@@ -965,6 +1036,27 @@ class TiebaNodeFlow:
         note = _official_unverified_note(analysis, plan, checks)
         if note is not None:
             projection = projection.model_copy(update={"official_unverified_note": note})
+        if self._summary_generator is not None:
+            summary = self._summary_generator.generate(
+                self._run_context,
+                confirmed,
+                topic=analysis.original_question,
+                model_id=self._run_model_id,
+                model_quota=self._model_quota,
+                budget=self._budget.model_budget if self._budget is not None else None,
+            )
+            projection = projection.model_copy(
+                update={
+                    "summary": summary.summary,
+                    "summary_claims": summary.claims,
+                    "summary_citations": summary.citations,
+                    "summary_note": summary.note,
+                }
+            )
+        else:
+            projection = projection.model_copy(
+                update={"summary_note": "总结未生成：当前运行没有可用的模型网关。"}
+            )
         return NodeExecution(
             artifact=self._artifact(
                 invocation,

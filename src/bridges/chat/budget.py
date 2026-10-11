@@ -339,6 +339,11 @@ class RunBudget:
         """交付前阶段的截止（绝对截止 − 核验/交付预留；单调时刻）。"""
         return self._deadline - self._reserve_ms / 1000
 
+    def exclude_wait(self, wait_ms: int) -> None:
+        """将明确登记的人工等待从本地运行截止中扣除，不重置已用预算。"""
+        if wait_ms > 0:
+            self._deadline += wait_ms / 1000
+
     def public_search_deadlines(
         self, active_sources: Iterable[str], *, scale: float = 1.0
     ) -> PublicSearchDeadlines:

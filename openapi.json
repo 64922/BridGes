@@ -61813,6 +61813,18 @@
             "title": "Total Pages",
             "description": "页面声明的总页数。"
           },
+          "total_replies": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Replies",
+            "description": "页面声明的回复数；未知时为 None。"
+          },
           "floor_min": {
             "anyOf": [
               {
@@ -61941,6 +61953,30 @@
             "title": "Floor",
             "description": "楼层号；页面未给出为 None。"
           },
+          "reply_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Id",
+            "description": "页面提供的发言 ID；缺失时为 None。"
+          },
+          "parent_reply_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Reply Id",
+            "description": "楼中楼所属的父楼层 ID；未知时为 None。"
+          },
           "posted_at": {
             "anyOf": [
               {
@@ -61952,6 +61988,11 @@
             ],
             "title": "Posted At",
             "description": "页面上的发帖时间原文。"
+          },
+          "temporal_scope": {
+            "$ref": "#/components/schemas/TiebaTemporalScope",
+            "description": "按实际发言时间确定的近期、历史或未知分类。",
+            "default": "unknown"
           },
           "is_original_poster": {
             "type": "boolean",
@@ -62130,6 +62171,46 @@
             "title": "Conflicts",
             "description": "官方与帖子经历按时间／范围核对后仍冲突的条目。"
           },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "经现有模型网关生成并核验的连贯总结。"
+          },
+          "summary_claims": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaSummaryClaim"
+            },
+            "type": "array",
+            "title": "Summary Claims",
+            "description": "逐条绑定引用的总结观点。"
+          },
+          "summary_citations": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaSummaryCitation"
+            },
+            "type": "array",
+            "title": "Summary Citations",
+            "description": "只指向本轮已读原文的引用。"
+          },
+          "summary_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Note",
+            "description": "总结未生成或被核验拒绝的原因。"
+          },
           "sections": {
             "items": {
               "type": "string"
@@ -62238,6 +62319,7 @@
         "type": "string",
         "enum": [
           "clarification",
+          "waiting_auth",
           "searching",
           "success",
           "links_only",
@@ -62247,6 +62329,118 @@
         ],
         "title": "TiebaResearchStatus",
         "description": "一轮贴吧信息搜集的终态。\n\n``SUCCESS`` 只表示真的读到了确认属于目标贴吧的帖子；只拿到候选帖链时\n是 ``LINKS_ONLY``（如实标注归属未确认、未取得回复内容），检索完全没有\n可用候选才是 ``EMPTY``。"
+      },
+      "TiebaSummaryCitation": {
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "title": "Citation Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "reply_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Id"
+          },
+          "parent_reply_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Reply Id"
+          },
+          "floor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor"
+          },
+          "posted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted At"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          }
+        },
+        "type": "object",
+        "required": [
+          "citation_id",
+          "url",
+          "quote"
+        ],
+        "title": "TiebaSummaryCitation",
+        "description": "指向实际读取发言的可展开引用。"
+      },
+      "TiebaSummaryClaim": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "一条有证据支持的中文观点。"
+          },
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citation Ids",
+            "description": "引用的已读证据 ID。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TiebaSummaryClaim",
+        "description": "模型总结中的单项观点及其可验证引用。"
+      },
+      "TiebaTemporalScope": {
+        "type": "string",
+        "enum": [
+          "recent",
+          "historical",
+          "unknown"
+        ],
+        "title": "TiebaTemporalScope",
+        "description": "实际发言时间相对本轮条件的分类。"
       },
       "TiebaTimeFilter": {
         "properties": {
@@ -62279,6 +62473,37 @@
             "title": "Applied",
             "description": "是否真的按帖子时间过滤过。",
             "default": false
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since",
+            "description": "近十二个月窗口起点。"
+          },
+          "recent_count": {
+            "type": "integer",
+            "title": "Recent Count",
+            "description": "实际读到且落在近期窗口的发言数。",
+            "default": 0
+          },
+          "historical_count": {
+            "type": "integer",
+            "title": "Historical Count",
+            "description": "实际读到的历史发言数。",
+            "default": 0
+          },
+          "unknown_count": {
+            "type": "integer",
+            "title": "Unknown Count",
+            "description": "实际读到但无法确认时间的发言数。",
+            "default": 0
           },
           "note": {
             "type": "string",

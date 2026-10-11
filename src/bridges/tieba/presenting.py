@@ -2,8 +2,8 @@
 
 分段只用确定性的标记词判断，并且每条都带引文与楼层／时间出处分；没有真实
 回复文本时不产出任何个人经历或「吧友普遍认为」式表述，只保留帖链与
-「未取得回复内容」的说明。正文完全由真实证据渲染，不依赖模型，因此不存在
-用它填内容的空间。
+「未取得回复内容」的说明。证据分段由代码生成；独立的模型总结必须通过引用
+与语义支持核验，否则只保留真实采集证据和失败说明。
 """
 
 from __future__ import annotations
@@ -112,6 +112,16 @@ def render_clarification_content(analysis: TiebaQuestionAnalysis) -> str:
     )
 
 
+def render_waiting_auth_content(projection: TiebaResearchProjection) -> str:
+    pending = projection.pending
+    question = pending.question if pending is not None else "请完成专用贴吧会话的登录或安全验证。"
+    return (
+        f"{TARGET_FORUM_NAME}信息搜集已暂停，尚未完成本轮采集。\n\n"
+        f"{question}\n\n"
+        "完成后回复“继续”即可接着原话题；人工等待不计入本任务的五分钟工作预算。"
+    )
+
+
 def render_result_content(projection: TiebaResearchProjection) -> str:
     """把真实证据渲染成中文正文（零虚构：每个数字与引文都来自投影）。"""
     lines: list[str] = [
@@ -130,6 +140,14 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
     if projection.official_blocked_reason:
         lines.append(f"· 来源限制：{projection.official_blocked_reason}")
     lines.append(f"· 时间条件：{projection.time_filter.note}")
+    if projection.summary:
+        citations = "、".join(
+            f"[{item.citation_id}]" for item in projection.summary_citations
+        )
+        summary = projection.summary + (f" 依据 {citations}" if citations else "")
+        lines.extend(["", "【讨论总结】", summary])
+    elif projection.summary_note:
+        lines.extend(["", f"总结说明：{projection.summary_note}"])
     for record in projection.queries:
         lines.append(
             f"· 实际查询词：{record.query}（来源：{record.source}，"

@@ -323,7 +323,11 @@ def test_confirmed_thread_is_read_with_floors_times_and_sections(
     tieba = assistant["tieba_research"]
     assert tieba["status"] == "success"
     assert tieba["original_question"] == "华东交通大学吧 东北电力和华东交通哪个好"
-    assert port.queries == ["site:tieba.baidu.com/p/ 华东交通大学吧 东北电力 华东交通"]
+    assert port.queries == list(
+        plan_queries(
+            parse_tieba_request("华东交通大学吧 东北电力和华东交通哪个好")
+        )
+    )
     assert reader.read_urls == [CONFIRMED_URL]
     post = tieba["confirmed_posts"][0]
     assert post["url"] == CONFIRMED_URL
@@ -591,7 +595,9 @@ def test_clarification_then_resume_keeps_original_question_and_boundary(
 
     assert second["tieba_research"]["status"] == "success"
     assert second["tieba_research"]["original_question"] == "贴吧里大家都怎么说？"
-    assert port.queries == ["site:tieba.baidu.com/p/ 华东交通大学吧 宿舍 条件"]
+    assert port.queries == list(
+        plan_queries(parse_tieba_request("华东交通大学吧 宿舍 条件"))
+    )
     assert second["tieba_research"]["pending"] is None
 
 

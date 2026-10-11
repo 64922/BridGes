@@ -75,6 +75,15 @@ def test_clarification_answer_resumes_with_original_question() -> None:
     assert resumed.clarification is None
 
 
+def test_auth_continue_resumes_original_topic_terms() -> None:
+    resumed = parse_tieba_request(
+        "继续",
+        pending={"original_question": "华东交通大学吧宿舍条件怎么样？"},
+    )
+    assert resumed.original_question == "华东交通大学吧宿舍条件怎么样？"
+    assert "宿舍" in resumed.topic_terms
+
+
 def test_query_words_keep_original_terms_and_host_hint() -> None:
     """查询词只用原始名词与固定字面量，域名提示保持完整。"""
     analysis = parse_tieba_request("华东交通大学吧 转专业 条件")
@@ -82,7 +91,8 @@ def test_query_words_keep_original_terms_and_host_hint() -> None:
     queries = plan_queries(analysis)
     assert queries[0] == "site:tieba.baidu.com/p/ 华东交通大学吧 转专业 条件"
     assert "转专业" in queries[0] and "条件" in queries[0]
-    assert queries[1].endswith("贴吧")
+    assert "转专业流程" in queries[1]
+    assert queries[-1].endswith("贴吧")
 
 
 @pytest.mark.parametrize(
@@ -339,8 +349,8 @@ def test_render_marks_unconfirmed_links_and_missing_replies() -> None:
     assert "https://tieba.baidu.com/p/10745250786" in content
 
 
-def test_time_condition_filters_read_replies_when_year_is_known() -> None:
-    """时间条件在读到了带时间的楼层时真的参与过滤，并如实报剔除条数。"""
+def test_explicit_year_classifies_replies_without_dropping_historical_context() -> None:
+    """明确年份按实际发言时间分类，旧回复保留为上下文。"""
     analysis = parse_tieba_request("华东交通大学吧 2025年 转专业")
     post = _post(
         TiebaReply(floor=1, posted_at="2024-09-01 10:00", content="我是 2024 年转的。"),
@@ -350,8 +360,27 @@ def test_time_condition_filters_read_replies_when_year_is_known() -> None:
     state, filtered = _apply_time_condition(analysis, [post])
 
     assert state.applied is True
-    assert "保留 1 条、剔除 1 条" in state.note
-    assert [reply.floor for reply in filtered[0].replies] == [2]
+    assert state.recent_count == 1
+    assert state.historical_count == 1
+    assert [reply.floor for reply in filtered[0].replies] == [1, 2]
+    assert [reply.temporal_scope.value for reply in filtered[0].replies] == ["historical", "recent"]
+
+
+def test_default_time_window_uses_reply_time_even_when_original_post_is_old() -> None:
+    analysis = parse_tieba_request("华东交通大学吧宿舍怎么样？")
+    post = _post(
+        TiebaReply(
+            floor=None,
+            posted_at="2024-02-01",
+            is_original_poster=True,
+            content="旧帖主题。",
+        ),
+        TiebaReply(floor=9, posted_at="2026-09-20", content="最近的回复补充了情况。"),
+    )
+    state, tagged = _apply_time_condition(analysis, [post])
+    assert state.since == datetime(2025, 9, 25, tzinfo=UTC)
+    assert state.recent_count == 1 and state.historical_count == 1
+    assert [reply.temporal_scope.value for reply in tagged[0].replies] == ["historical", "recent"]
 
 
 def test_time_condition_without_times_says_it_was_not_applied() -> None:

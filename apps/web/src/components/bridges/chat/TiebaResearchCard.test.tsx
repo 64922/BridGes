@@ -21,6 +21,9 @@ function projection(
       requirement: "最近",
       year: null,
       applied: false,
+      recent_count: 0,
+      historical_count: 0,
+      unknown_count: 0,
       note: "相对时间说法没有绝对年份，按页面时间如实标注，未做年份过滤。",
     },
     queries: [
@@ -66,6 +69,7 @@ const confirmedPost: TiebaPostProjection = {
   replies: [
     {
       floor: 3,
+      temporal_scope: "unknown",
       posted_at: "2026-09-20 21:14",
       is_original_poster: false,
       content: "南区六人间，有空调，热水要刷卡。",
@@ -77,21 +81,44 @@ const confirmedPost: TiebaPostProjection = {
 };
 
 describe("TiebaResearchCard（V2 Issue 14）", () => {
+  it("显示模型总结的可点击引用并默认折叠原文", () => {
+    render(<TiebaResearchCard research={projection({
+      summary: "部分回复提到晚间热水供应不稳定。",
+      summary_claims: [{ text: "部分回复提到晚间热水供应不稳定。", citation_ids: ["E1"] }],
+      summary_citations: [{
+        citation_id: "E1", url: "https://tieba.baidu.com/p/123", title: "宿舍讨论",
+        reply_id: "reply-3", parent_reply_id: null, floor: 3,
+        posted_at: "2026-09-01", quote: "晚上热水供应不太稳定。",
+      }],
+    })} streaming={false} />);
+    expect(screen.getByTestId("tieba-research-summary")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "查看引用 E1" }).getAttribute("href")).toBe("#tieba-citation-E1");
+    expect(screen.getByText("晚上热水供应不太稳定。").closest("details")?.open).toBe(false);
+  });
+
+  it("认证等待不显示手动打开或完成登录的按钮", () => {
+    render(<TiebaResearchCard research={projection({
+      status: "waiting_auth",
+      pending: {
+        module_id: "tieba", kind: "authentication", question: "登录后说继续。",
+        origin_message_id: "assistant-1", context: { original_question: "宿舍条件", remaining_work_ms: 200000 },
+        created_at: "2026-10-11T00:00:00Z",
+      },
+    })} streaming={false} />);
+    expect(screen.getByTestId("tieba-research-card-waiting_auth")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /打开专用贴吧浏览器|保存并重新检索/ })).toBeNull();
+  });
+
   it("部分回复限制默认可见，完整原文默认折叠", () => {
     render(<TiebaResearchCard research={projection({ confirmed_posts: [{
       ...confirmedPost, read_status: "partial", read_error_message: "未穷尽全部回复。",
     }] })} streaming={false} />);
-    expect(screen.getByText("未穷尽全部回复。").closest("details")).toBeNull();
+    const coverage = screen.getByTestId("tieba-research-coverage");
+    expect(coverage.textContent).toContain("未穷尽全部回复。");
+    expect(coverage.closest("details")).toBeNull();
     expect(screen.getByTestId(`tieba-post-${confirmedPost.thread_id}-replies`).closest("details")?.open).toBe(false);
   });
 
-  it("浏览器会话受限时显示专用窗口恢复操作", () => {
-    render(<TiebaResearchCard research={projection({ status: "empty", queries: [{
-      source: "tieba_browser", query: "国庆", status: "error", evidence_count: 0,
-      error_code: "tieba_browser_setup_required", error_message: "请登录", retryable: true,
-    }] })} streaming={false} />);
-    expect(screen.getByRole("button", { name: "打开专用贴吧浏览器" })).toBeTruthy();
-  });
   it("未取得讨论时交付官方通知的具体安排，并说明公开索引的限制", () => {
     render(<TiebaResearchCard research={projection({
       status: "empty", official_check_requested: true,

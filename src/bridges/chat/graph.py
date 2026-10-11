@@ -1419,6 +1419,8 @@ def _invoke_tieba_module(deps: _GraphDeps, state: DailyTurnState) -> dict[str, A
             user_message_id=run.user_message_id,
             assistant_message_id=run.assistant_message_id,
             run_context=chat_run_context(run.account_id, run.conversation_id, run.run_id),
+            run_model_id=state.get("run_model_id"),
+            model_quota=deps.service.run_model_quota(run),
             emit_node=emit_node,
             stop_event=deps.stop_event,
             module_context=deps.service.module_task_context(run, TIEBA_MODULE_ID),

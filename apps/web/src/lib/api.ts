@@ -271,16 +271,6 @@ export type ProfileAccountControlsProjection =
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
-/** 只管理当前认证账户的专用贴吧窗口；不传入账户标识或 Cookie。 */
-export type TiebaBrowserSetupResponse = components["schemas"]["TiebaBrowserSetupResponse"];
-export async function manageTiebaBrowser(action: "open" | "complete"): Promise<TiebaBrowserSetupResponse> {
-  const res = await fetch(`${API_BASE}/tieba/browser/${action}`, {
-    method: "POST", credentials: "same-origin",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
 function deviceOperationHeaders(operationId?: number): Record<string, string> {
   return operationId
     ? { "X-Bridges-Account-Operation": String(operationId) }

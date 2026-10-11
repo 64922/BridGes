@@ -112,6 +112,10 @@ STUDY_FOLLOW_UP_BUDGET_MS = 210_000
 STUDY_MAX_RUN_BUDGET_MS = 900_000
 STUDY_FOLLOW_UP_CALLS = 3
 
+# 贴吧采集/总结需要一个统一的任务截止，登录验证等待通过账本截止扩展扣除。
+TIEBA_RUN_TOTAL_BUDGET_MS = 300_000
+TIEBA_RUN_VERIFY_RESERVE_MS = 45_000
+
 
 #: 创建时即确定走重材料/重流程路线的主能力（保留 120 秒/30 秒预留的
 #: 深入信封）；论文深入分析在其中，图片/视频/职业规划同理保守处理。
@@ -143,6 +147,8 @@ def derive_run_budget_class(
     票 10/12/37 接线后启用。
     """
     capability = route.main_capability if route is not None else None
+    if capability is MainCapability.TIEBA:
+        return RunBudgetClass.DEEP
     if (
         route is not None
         and route.status is RouteStatus.MATCHED
@@ -270,6 +276,24 @@ def derive_study_run_budget_plan(
         plan,
         total_budget_ms=total_budget_ms,
         model_call_limit=necessary_calls * (1 + plan.transient_retry_max),
+    )
+
+
+def derive_tieba_run_budget_plan(
+    *, created_at: datetime, token_budget: int | None = None
+) -> RunBudgetPlan:
+    """为贴吧研究冻结五分钟任务预算，并为核验与交付保留时间。"""
+    plan = derive_run_budget_plan(
+        RunBudgetClass.DEEP,
+        deadline_at=created_at + timedelta(milliseconds=TIEBA_RUN_TOTAL_BUDGET_MS),
+        token_budget=token_budget,
+    )
+    return replace(
+        plan,
+        total_budget_ms=TIEBA_RUN_TOTAL_BUDGET_MS,
+        verify_deliver_reserve_ms=TIEBA_RUN_VERIFY_RESERVE_MS,
+        candidate_screen_max=40,
+        deep_read_max=8,
     )
 
 
@@ -664,6 +688,7 @@ class RunBudgetLedgerRepository:
         run_id: str,
         call_key: str,
         outcome_code: str | None = None,
+        excluded_wait_ms: int = 0,
         now: datetime,
     ) -> None:
         """释放一次外部调用的并发占位（结果只记结果码；重复释放安全）。"""
@@ -678,7 +703,10 @@ class RunBudgetLedgerRepository:
             return bool(row["active"] and row["active"] > 0)
 
         def extra_fields(snapshot: RunBudgetSnapshot) -> dict[str, Any]:
-            return {"external_calls_active": max(0, snapshot.external_calls_active - 1)}
+            return {
+                "external_calls_active": max(0, snapshot.external_calls_active - 1),
+                "excluded_wait_ms": max(0, excluded_wait_ms),
+            }
 
         self._mutate(
             account_id,
@@ -690,6 +718,7 @@ class RunBudgetLedgerRepository:
             counter_updates={"external_calls_active": -1},
             gate=consume,
             extra_detail=extra_fields,
+            deadline_extension_ms=max(0, excluded_wait_ms),
             allow_closed=True,
         )
 
@@ -960,6 +989,7 @@ class RunBudgetLedgerRepository:
         output_tokens: int | None = None,
         extra_detail: Callable[[RunBudgetSnapshot], dict[str, Any]] | None = None,
         extra_detail_values: dict[str, Any] | None = None,
+        deadline_extension_ms: int = 0,
         allow_closed: bool = False,
     ) -> bool:
         """在同一写事务中检查许可、更新版本和追加流水，避免取消竞争。"""
@@ -1012,9 +1042,17 @@ class RunBudgetLedgerRepository:
             assignments = [
                 f"{column} = MAX(0, {column} + ?)" for column in counter_updates
             ]
+            if deadline_extension_ms:
+                assignments.append("deadline_at = ?")
             assignments.append("updated_at = ?")
             set_clause = ", ".join(assignments)
-            params = [*counter_updates.values(), _iso(now), run_id, account_id, snapshot.version]
+            params: list[int | str] = [*counter_updates.values()]
+            if deadline_extension_ms:
+                deadline = snapshot.plan.deadline_at + timedelta(
+                    milliseconds=deadline_extension_ms
+                )
+                params.append(_iso(deadline))
+            params.extend((_iso(now), run_id, account_id, snapshot.version))
             updated = self._db.scoped(account_id).execute(
                 f"UPDATE run_budget_ledger SET {set_clause}, version = version + 1"
                 " WHERE run_id = ? AND account_id = ? AND version = ?", params,

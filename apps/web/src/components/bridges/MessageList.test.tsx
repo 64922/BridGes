@@ -81,7 +81,7 @@ it("贴吧结构化卡片只展示一次结果，正文仍保留用于复制", (
     status: "empty", topic: "国庆节 假期", original_question: "我想了解国庆节假期的讨论",
     question_kind: "mixed", parallel_evidence: false, official_check_requested: true, retryable: false,
     forum: "华东交通大学吧", topic_terms: ["国庆节", "假期"],
-    time_filter: { applied: false, note: "未指定年份" },
+    time_filter: { applied: false, recent_count: 0, historical_count: 0, unknown_count: 0, note: "未指定年份" },
     empty_reason: "没有取得相关讨论",
   };
   render(<MessageList conversationId="conversation-1" messages={[assistantMessage({

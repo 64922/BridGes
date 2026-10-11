@@ -67,9 +67,11 @@ from bridges.tieba.presenting import (
     render_empty_content,
     render_result_content,
     render_stopped_content,
+    render_waiting_auth_content,
 )
 from bridges.tieba.reading import TiebaThreadReader
 from bridges.tieba.searching import TiebaSearchPort
+from bridges.tieba.summary import TiebaSummaryGenerator
 
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository
@@ -89,7 +91,10 @@ TIEBA_NODE_LABELS: dict[str, str] = {
 #: 显式模块标识与等待原因（父图与前端都依赖）。
 TIEBA_MODULE_ID = "tieba"
 WAIT_KIND_CLARIFICATION = "clarification"
+WAIT_KIND_AUTH = "authentication"
 WAIT_REASON_CLARIFICATION = "tieba_clarification"
+WAIT_REASON_AUTH = "tieba_authentication"
+TIEBA_TOTAL_BUDGET_MS = 300_000
 
 #: 各阶段的墙钟预算（节点内核按剩余运行预算再收紧）。
 SEARCH_DEADLINE_SECONDS = 25.0
@@ -136,6 +141,7 @@ class TiebaResearchService:
             Callable[[str, str], tuple[str | None, int | None] | None] | None
         ) = None,
         clock: Callable[[], datetime] | None = None,
+        model_gateway: Any = None,
     ) -> None:
         self._search = search
         self._reader = reader
@@ -146,6 +152,9 @@ class TiebaResearchService:
         self._official_deadline_seconds = official_deadline_seconds
         self._task_version_provider = task_version_provider
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._summary_generator = (
+            TiebaSummaryGenerator(model_gateway) if model_gateway is not None else None
+        )
         self._registry = tieba_recipe_registry()
         self._recipe = build_tieba_recipe()
 
@@ -167,13 +176,13 @@ class TiebaResearchService:
         assistant_message_id: str,
         run_context: object | None = None,
         run_model_id: str | None = None,
+        model_quota: Any = None,
         emit_node: Callable[[str, str, int | None], None],
         stop_event: threading.Event | None,
         module_context: ModuleTaskContext | None = None,
         official_blocked_reason: str | None = None,
     ) -> TiebaRunOutcome:
         """执行一轮贴吧信息搜集；终态全部写回同一条助手消息。"""
-        del run_model_id  # 本模块不调用模型，不存在模型生成的断言。
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise TiebaModuleError(
@@ -184,7 +193,20 @@ class TiebaResearchService:
             )
         run_id = getattr(run_context, "run_id", None)
         pending = self._pending_wait(repo, account_id, conversation_id)
-        budget = self._load_budget(repo, account_id, run_id)
+        if (
+            pending is not None
+            and pending.kind == WAIT_KIND_AUTH
+            and not _is_continue_request(user_message.content)
+        ):
+            pending = None
+        remaining_budget_ms = None
+        if (
+            pending is not None
+            and pending.kind == WAIT_KIND_AUTH
+            and isinstance(pending.context, dict)
+        ):
+            remaining_budget_ms = pending.context.get("remaining_work_ms")
+        budget = self._load_budget(repo, account_id, run_id, max_work_ms=remaining_budget_ms)
         task_ref = self._current_task_ref(account_id, conversation_id)
         guard = RunCommitGuard(
             repo,
@@ -213,6 +235,10 @@ class TiebaResearchService:
             read_deadline_seconds=self._read_deadline_seconds,
             official_deadline_seconds=self._official_deadline_seconds,
             repository=NodeKernelRepository(repo.database),
+            summary_generator=self._summary_generator,
+            run_context=run_context,
+            run_model_id=run_model_id,
+            model_quota=model_quota,
         )
         kernel = NodeKernel(
             registry=self._registry,
@@ -261,6 +287,9 @@ class TiebaResearchService:
                     assistant_message_id=assistant_message_id,
                     result=result,
                     stop_event=stop_event,
+                    remaining_budget_ms=(
+                        budget.remaining_work_ms() if budget is not None else None
+                    ),
                 )
             except TiebaModuleError as error:
                 # 失败投影提交后，再通知父图收敛错误，避免异常回滚投影。
@@ -277,10 +306,12 @@ class TiebaResearchService:
         assistant_message_id: str,
         result: KernelResult,
         stop_event: threading.Event | None,
+        remaining_budget_ms: int | None,
     ) -> TiebaRunOutcome:
         if result.status is KernelStatus.COMPLETED:
             return self._deliver_completed(
-                repo, account_id, assistant_message_id, result
+                repo, account_id, assistant_message_id, result,
+                remaining_budget_ms=remaining_budget_ms,
             )
         if result.status is KernelStatus.NEEDS_INPUT:
             return self._deliver_clarification(
@@ -305,6 +336,8 @@ class TiebaResearchService:
         account_id: str,
         assistant_message_id: str,
         result: KernelResult,
+        *,
+        remaining_budget_ms: int | None,
     ) -> TiebaRunOutcome:
         projection = verified_projection(result)
         if projection is None:
@@ -314,6 +347,21 @@ class TiebaResearchService:
                 "贴吧模块缺少已核验的结果产物，本轮未提交。",
                 retryable=True,
             )
+        auth_errors = {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+        needs_auth = any(record.error_code in auth_errors for record in projection.queries) or any(
+            post.read_error_code in auth_errors for post in projection.confirmed_posts
+        )
+        if needs_auth:
+            analysis = _analysis_of(result)
+            if analysis is not None:
+                return self._deliver_auth_wait(
+                    repo,
+                    account_id,
+                    assistant_message_id,
+                    projection,
+                    analysis,
+                    remaining_budget_ms=remaining_budget_ms,
+                )
         if projection.status is TiebaResearchStatus.ERROR:
             self._finalize(
                 repo,
@@ -345,6 +393,57 @@ class TiebaResearchService:
             status=projection.status,
             wait_reason=None,
             queries=list(projection.queries),
+        )
+
+    def _deliver_auth_wait(
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        assistant_message_id: str,
+        projection: TiebaResearchProjection,
+        analysis: TiebaQuestionAnalysis,
+        *,
+        remaining_budget_ms: int | None,
+    ) -> TiebaRunOutcome:
+        now = self._clock()
+        context = pending_payload(analysis)
+        context["remaining_work_ms"] = max(
+            0,
+            min(
+                TIEBA_TOTAL_BUDGET_MS,
+                TIEBA_TOTAL_BUDGET_MS if remaining_budget_ms is None else remaining_budget_ms,
+            ),
+        )
+        pending = ModuleWaitState(
+            module_id=TIEBA_MODULE_ID,
+            kind=WAIT_KIND_AUTH,
+            question="已打开当前账户专用的百度贴吧登录或安全验证页面。完成后在聊天中说“继续”，我会接着原话题检索。",
+            origin_message_id=assistant_message_id,
+            context=context,
+            created_at=now,
+        )
+        waiting = projection.model_copy(
+            update={
+                "status": TiebaResearchStatus.WAITING_AUTH,
+                "pending": pending,
+                "completed_at": now,
+                "error_code": None,
+                "error_message": None,
+                "retryable": False,
+            }
+        )
+        self._finalize(
+            repo,
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            projection=waiting,
+            content=render_waiting_auth_content(waiting),
+        )
+        return TiebaRunOutcome(
+            status=TiebaResearchStatus.WAITING_AUTH,
+            wait_reason=WAIT_REASON_AUTH,
+            queries=list(waiting.queries),
         )
 
     def verify_message(
@@ -390,6 +489,27 @@ class TiebaResearchService:
             actual = TiebaResearchProjection.model_validate(message.tieba_research)
         except ValueError:
             return False
+        if actual.status is TiebaResearchStatus.WAITING_AUTH:
+            pending = actual.pending
+            return bool(
+                pending is not None
+                and pending.kind == WAIT_KIND_AUTH
+                and pending.context.get("original_question") == actual.original_question
+                and (
+                    any(
+                        record.error_code
+                        in {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+                        for record in actual.queries
+                    )
+                    or any(
+                        post.read_error_code
+                        in {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
+                        for post in actual.confirmed_posts
+                    )
+                )
+                and actual.confirmed_posts == projection.confirmed_posts
+                and message.content == render_waiting_auth_content(actual)
+            )
         # 完成时间由终态事务填写，证据字段与正文仍逐项相等。
         return (
             actual.completed_at is not None
@@ -563,7 +683,8 @@ class TiebaResearchService:
         return self._task_version_provider(account_id, conversation_id)
 
     def _load_budget(
-        self, repo: ConversationRepository, account_id: str, run_id: str | None
+        self, repo: ConversationRepository, account_id: str, run_id: str | None,
+        *, max_work_ms: int | None = None,
     ) -> TiebaBudget | None:
         """从持久账本加载共享预算（缺失行时按无预算模式保留本地截止）。"""
         if run_id is None:
@@ -576,14 +697,40 @@ class TiebaResearchService:
         if snapshot is None:
             return None
         ledger.recover_external_calls(account_id, run_id, now=self._clock())
+        snapshot = ledger.load(account_id, run_id)
+        if snapshot is None:
+            return None
+        from bridges.chat.budget import RunBudget
+
+        now = self._clock()
         work_deadline = snapshot.plan.deadline_at - timedelta(
             milliseconds=snapshot.plan.verify_deliver_reserve_ms
+        )
+        total_budget_ms = snapshot.plan.total_budget_ms
+        deadline_at = snapshot.plan.deadline_at
+        if max_work_ms is not None:
+            max_work_ms = max(0, min(TIEBA_TOTAL_BUDGET_MS, int(max_work_ms)))
+            work_deadline = min(work_deadline, now + timedelta(milliseconds=max_work_ms))
+            total_budget_ms = max_work_ms + snapshot.plan.verify_deliver_reserve_ms
+            deadline_at = min(
+                deadline_at,
+                now + timedelta(milliseconds=total_budget_ms),
+            )
+        model_budget = RunBudget.from_ledger_snapshot(
+            run_id,
+            total_budget_ms=total_budget_ms,
+            deadline_utc=deadline_at,
+            reserve_ms=snapshot.plan.verify_deliver_reserve_ms,
+            ledger=ledger,
+            account_id=account_id,
+            active=snapshot.active,
         )
         return TiebaBudget(
             ledger=ledger,
             account_id=account_id,
             run_id=run_id,
             work_deadline=work_deadline,
+            model_budget=model_budget,
         )
 
     # -- 落库 ------------------------------------------------------------
@@ -726,6 +873,11 @@ def _empty_analysis() -> TiebaQuestionAnalysis:
     return TiebaQuestionAnalysis(original_question="", topic_terms=[])
 
 
+def _is_continue_request(content: str) -> bool:
+    normalized = content.strip().replace(" ", "")
+    return any(term in normalized for term in ("继续", "接着", "恢复刚才", "继续刚才"))
+
+
 def _stopped_result(result: KernelResult) -> KernelResult:
     from dataclasses import replace
 
@@ -745,7 +897,9 @@ __all__ = [
     "TiebaResearchService",
     "TiebaRunOutcome",
     "WAIT_KIND_CLARIFICATION",
+    "WAIT_KIND_AUTH",
     "WAIT_REASON_CLARIFICATION",
+    "WAIT_REASON_AUTH",
     # 兼容既有测试与调用方的确定性规则入口。
     "_apply_time_condition",
     "_official_candidates",

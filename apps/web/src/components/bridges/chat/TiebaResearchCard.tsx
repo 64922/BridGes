@@ -2,7 +2,6 @@
 
 import { Icon } from "@/components/design-system/Icon";
 import type { TiebaResearchProjection } from "@/lib/api";
-import { TiebaBrowserSetup } from "./TiebaBrowserSetup";
 import {
   CandidateLinkRow,
   OfficialCheckRow,
@@ -15,6 +14,7 @@ import {
 /** V2 Issue 14：贴吧模块状态的中文标题（每条助手消息内如实显示）。 */
 const STATUS_TITLES: Record<string, string> = {
   clarification: "需要先确认一个问题",
+  waiting_auth: "等待贴吧登录或安全验证",
   searching: "正在检索贴吧帖子",
   success: "贴吧信息搜集",
   links_only: "只取得帖链（未取得回复内容）",
@@ -54,9 +54,12 @@ export function TiebaResearchCard({
     color: "var(--color-text-secondary)",
   };
   const failed = research.status === "error";
-  const waiting = research.status === "clarification";
+  const waiting = research.status === "clarification" || research.status === "waiting_auth";
   const degraded = research.status === "links_only";
   const posts = research.confirmed_posts ?? [];
+  const partialPosts = posts.filter(
+    (post) => post.read_status === "partial" && post.read_error_message,
+  );
   const links = research.candidate_links ?? [];
   const rejected = research.rejected_candidates ?? [];
   const official = research.official_checks ?? [];
@@ -145,13 +148,6 @@ export function TiebaResearchCard({
           未召回帖子不代表吧内没有相关讨论。
         </p>
       )}
-      {!streaming && research.status !== "stopped" && queries.some(query =>
-        ["tieba_browser_setup_required", "tieba_browser_unavailable", "tieba_browser_busy"].includes(query.error_code ?? "") ||
-        (degraded && query.source === "tieba_browser")
-      ) && (
-        <TiebaBrowserSetup onRetry={onRetry} />
-      )}
-
       {waiting && research.pending && (
         <div
           data-testid="tieba-research-clarification"
@@ -166,7 +162,9 @@ export function TiebaResearchCard({
             {research.pending.question}
           </p>
           <p style={{ margin: "var(--space-1) 0 0", fontSize: "var(--text-xs)" }}>
-            直接在下方回复即可；回复会带着「贴吧信息搜集」模块发出（输入框上方的模块标签可随时移除）。
+            {research.status === "waiting_auth"
+              ? "完成专用浏览器中的登录或验证后，在聊天中回复“继续”；系统会沿用原话题。"
+              : "直接在下方回复即可；回复会带着「贴吧信息搜集」模块发出（输入框上方的模块标签可随时移除）。"}
           </p>
         </div>
       )}
@@ -179,6 +177,18 @@ export function TiebaResearchCard({
       )}
 
       {research.empty_reason && <p style={{ margin: 0 }}>{research.empty_reason}</p>}
+      {partialPosts.length > 0 && (
+        <ul
+          data-testid="tieba-research-coverage"
+          style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-status-wait)" }}
+        >
+          {partialPosts.map((post) => (
+            <li key={post.thread_id ?? post.url}>
+              {post.title ?? "帖子"}：{post.read_error_message}
+            </li>
+          ))}
+        </ul>
+      )}
       {research.official_blocked_reason && (
         <p style={{ margin: 0 }}>来源限制：{research.official_blocked_reason}</p>
       )}
@@ -210,11 +220,46 @@ export function TiebaResearchCard({
         </details>
       )}
 
-      {posts.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>
-            已确认属于{research.forum}的帖子
+      {research.summary && (
+        <div data-testid="tieba-research-summary">
+          <p style={{ margin: 0, color: "var(--color-text-primary)", lineHeight: 1.6 }}>
+            {research.summary}
           </p>
+          {research.summary_claims?.length ? (
+            <ul style={{ margin: "var(--space-1) 0 0", paddingLeft: "var(--space-5)" }}>
+              {research.summary_claims.map((claim, index) => (
+                <li key={`claim-${index}`}>
+                  {claim.text}{" "}
+                  {claim.citation_ids?.map((citationId) => (
+                    <a key={citationId} href={`#tieba-citation-${citationId}`} aria-label={`查看引用 ${citationId}`}>
+                      [{citationId}]
+                    </a>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {(research.summary_citations ?? []).map((citation) => (
+            <details id={`tieba-citation-${citation.citation_id}`} key={citation.citation_id}>
+              <summary style={{ cursor: "pointer", minHeight: "var(--target-size)" }}>
+                引用 {citation.citation_id} · {citation.floor != null ? `第 ${citation.floor} 楼` : "楼层未知"}
+                {citation.posted_at ? ` · ${citation.posted_at}` : ""}
+              </summary>
+              <blockquote style={{ margin: 0, whiteSpace: "pre-wrap" }}>{citation.quote}</blockquote>
+              <a href={citation.url} target="_blank" rel="noreferrer">打开原帖</a>
+            </details>
+          ))}
+        </div>
+      )}
+      {!research.summary && research.summary_note && (
+        <p data-testid="tieba-summary-note" style={{ margin: 0 }}>{research.summary_note}</p>
+      )}
+
+      {posts.length > 0 && (
+        <details>
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)", fontWeight: 600 }}>
+            已确认属于{research.forum}的帖子与实际采集范围（{posts.length} 帖）
+          </summary>
           <ul
             data-testid="tieba-research-posts"
             style={{
@@ -230,7 +275,7 @@ export function TiebaResearchCard({
               <PostRow key={post.thread_id ?? post.url} post={post} />
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {links.length > 0 && (
@@ -279,8 +324,8 @@ export function TiebaResearchCard({
       )}
 
       {sections.length > 0 && (
-        <div>
-          <p style={{ margin: 0, marginBottom: "var(--space-1)", fontWeight: 600 }}>吧友说法</p>
+        <details>
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)", fontWeight: 600 }}>按规则摘录的已读原文</summary>
           <ul
             data-testid="tieba-research-sections"
             style={{
@@ -298,7 +343,7 @@ export function TiebaResearchCard({
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {/* AC3：官方规定只在真的取到官方页面时呈现，且与吧友经历分区。 */}

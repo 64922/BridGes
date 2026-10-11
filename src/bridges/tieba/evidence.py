@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
@@ -32,6 +32,7 @@ from bridges.tieba.contracts import (
     TiebaResearchProjection,
     TiebaResearchStatus,
     TiebaSearchHit,
+    TiebaTemporalScope,
     TiebaTimeFilter,
 )
 from bridges.tieba.lexicon import HOLIDAY_ARRANGEMENT_TERMS, TARGET_FORUM_NAME, TARGET_FORUM_URL
@@ -63,7 +64,7 @@ READ_DEADLINE_SECONDS = 12.0
 OFFICIAL_DEADLINE_SECONDS = 12.0
 
 #: 单轮最多读取的帖子数（每个帖子一次真实公开读取）。
-READ_POSTS_LIMIT = 3
+READ_POSTS_LIMIT = 8
 
 #: 帖链降级最多给出的候选链接数。
 CANDIDATE_LINKS_LIMIT = 6
@@ -79,7 +80,12 @@ FAILED_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
 )
 
 #: 逐轮查询的中文标签；有界计划固定为精确词 + 一条备用放宽词（见 ``plan_queries``）。
-QUERY_ROUND_LABELS: tuple[str, str] = ("精确词查询", "备用放宽词查询")
+QUERY_ROUND_LABELS: tuple[str, ...] = (
+    "原词查询",
+    "常用说法查询",
+    "相关说法查询",
+    "备用放宽词查询",
+)
 
 #: 归零终止：这些查询状态下不再跑计划内的后续查询。
 STOP_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
@@ -234,25 +240,17 @@ def search_candidates(
                 continue
         rounds.extend(str(note) for note in resume.get("rounds", []))
         raw_hits += int(resume.get("raw_hits") or 0)
-    if seeded_hits:
-        diagnostics = _deduped_diagnostics(
-            rejected, raw_hits=raw_hits, usable=max(usable, len(seeded_hits))
-        )
-        return SearchAttempts(
-            hits=tuple(seeded_hits),
-            rejected=tuple(rejected),
-            records=records,
-            diagnostics=diagnostics,
-            rounds=tuple(rounds),
-            partial=False,
-        )
     partial = False
+    found_by_url: dict[str, TiebaSearchHit] = {
+        hit.url: hit for hit in seeded_hits
+    }
+    queries = plan_queries(analysis)
     deadline = time.monotonic() + deadline_seconds
-    for position, query in enumerate(plan_queries(analysis)):
+    for position, query in enumerate(queries):
         if query in completed:
             continue
         if position and _budget_exhausted(stop_event, deadline):
-            rounds.append(_skipped_round_note(position, stop_event))
+            rounds.append(_skipped_round_note(position, stop_event, len(queries)))
             partial = True
             break
         outcome = port.search_public(
@@ -262,31 +260,28 @@ def search_candidates(
             stop_event=stop_event,
             deadline=deadline,
         )
+        deadline += max(0, outcome.excluded_wait_ms) / 1000
         records.extend(outcome.prior_records)
         records.append(outcome.record)
         raw_hits += outcome.diagnostics.raw_hits
-        usable = outcome.diagnostics.usable
+        usable += outcome.diagnostics.usable
         # 去重跨轮生效：同一条链接在两轮里都出现时只留一条剔除记录，多出来的
         # 那次仍算进原始命中数（计入重复链接），正文里不会同一条链接列两遍。
         fresh = [item for item in outcome.rejected if item.url not in rejected_urls]
         rejected_urls.update(item.url for item in fresh)
         rejected.extend(fresh)
-        rounds.append(_round_note(position, outcome))
-        if outcome.candidates:
-            return SearchAttempts(
-                hits=outcome.candidates,
-                rejected=tuple(rejected),
-                records=records,
-                diagnostics=_deduped_diagnostics(
-                    rejected, raw_hits=raw_hits, usable=usable
-                ),
-                rounds=tuple(rounds),
-            )
+        rounds.append(_round_note(position, outcome, len(queries)))
+        for hit in outcome.candidates:
+            found_by_url.setdefault(hit.url, hit)
         if not _plan_continues(outcome.record):
             partial = outcome.record.retryable and outcome.record.status in FAILED_QUERY_STATUSES
             break
+    if len(records) < len(queries) and not any(
+        record.status in STOP_QUERY_STATUSES for record in records
+    ):
+        partial = partial or len(found_by_url) > 0
     return SearchAttempts(
-        hits=(),
+        hits=tuple(found_by_url.values()),
         rejected=tuple(rejected),
         records=records,
         diagnostics=_deduped_diagnostics(rejected, raw_hits=raw_hits, usable=usable),
@@ -719,71 +714,124 @@ def summarize(
 def apply_time_condition(
     analysis: TiebaQuestionAnalysis, posts: list[TiebaPostProjection]
 ) -> tuple[TiebaTimeFilter, list[TiebaPostProjection]]:
-    """有时间条件且读到了带时间的楼层时，按条件过滤楼层（如实记录结果）。"""
-    year = analysis.time_year
-    if not analysis.time_requirement or year is None:
-        return time_filter_state(analysis, posts), posts
-    total = sum(len(post.replies) for post in posts)
-    filtered: list[TiebaPostProjection] = []
-    kept = 0
+    """按实际发言时间标记近期、历史与未知，不丢弃老帖中的近期回复。"""
+    anchor = max((post.retrieved_at for post in posts), default=datetime.now(UTC))
+    anchor_date = anchor.date()
+    since = _requested_since(analysis, anchor_date)
+    recent = historical = unknown = 0
+    tagged: list[TiebaPostProjection] = []
     for post in posts:
-        replies = [
-            reply
-            for reply in post.replies
-            if not reply.posted_at or str(year) in reply.posted_at
-        ]
-        kept += len(replies)
-        filtered.append(
-            post.model_copy(
-                update={
-                    "replies": replies,
-                    "replies_obtained": bool(replies),
-                    "read_error_message": post.read_error_message
-                    if replies
-                    else f"时间条件「{analysis.time_requirement}」内没有读到回复。",
-                }
-            )
+        replies = []
+        for reply in post.replies:
+            moment = _parse_posted_date(reply.posted_at, anchor_date)
+            if moment is None:
+                scope = TiebaTemporalScope.UNKNOWN
+                unknown += 1
+            elif analysis.time_year is not None:
+                scope = (
+                    TiebaTemporalScope.RECENT
+                    if moment.year == analysis.time_year
+                    else TiebaTemporalScope.HISTORICAL
+                )
+                if scope is TiebaTemporalScope.RECENT:
+                    recent += 1
+                else:
+                    historical += 1
+            elif moment >= since:
+                scope = TiebaTemporalScope.RECENT
+                recent += 1
+            else:
+                scope = TiebaTemporalScope.HISTORICAL
+                historical += 1
+            replies.append(reply.model_copy(update={"temporal_scope": scope}))
+        tagged.append(post.model_copy(update={"replies": replies}))
+    applied = recent + historical > 0
+    requirement = analysis.time_requirement
+    if not applied:
+        note = (
+            f"保留了时间条件「{requirement or '默认近十二个月'}」；"
+            "本轮没有读到带发帖时间的楼层，因此未能判断哪些发言落入时间范围。"
         )
-    state = TiebaTimeFilter(
-        requirement=analysis.time_requirement,
-        year=year,
-        applied=True,
-        note=(
-            f"已按时间条件「{analysis.time_requirement}」核对楼层发帖时间："
-            f"保留 {kept} 条、剔除 {total - kept} 条。"
+    elif analysis.time_year is not None:
+        note = (
+            f"已按实际发言时间核对「{requirement or str(analysis.time_year)}」："
+            f"匹配 {recent} 条、历史 {historical} 条、时间未知 {unknown} 条；"
+            "历史内容仅作上下文。"
+        )
+    elif requirement:
+        note = (
+            f"已按默认近十二个月窗口并保留你的时间条件「{requirement}」："
+            f"近期 {recent} 条、历史 {historical} 条、时间未知 {unknown} 条。"
+        )
+    else:
+        note = (
+            f"未指定时间：优先近十二个月（起点 {since.isoformat()}），"
+            f"近期 {recent} 条、历史 {historical} 条、时间未知 {unknown} 条；"
+            "历史内容仅作上下文，时间未知的发言不标为近期。"
+        )
+    return (
+        TiebaTimeFilter(
+            requirement=requirement,
+            year=analysis.time_year,
+            applied=applied,
+            since=datetime.combine(since, datetime.min.time(), UTC),
+            recent_count=recent,
+            historical_count=historical,
+            unknown_count=unknown,
+            note=note,
         ),
+        tagged,
     )
-    return state, filtered
 
 
 def time_filter_state(
     analysis: TiebaQuestionAnalysis, posts: list[TiebaPostProjection]
 ) -> TiebaTimeFilter:
     """时间条件的执行状态：有没有可核对的时间、能不能真的过滤。"""
-    if not analysis.time_requirement:
-        return TiebaTimeFilter(
-            requirement=None,
-            year=None,
-            applied=False,
-            note="本轮问题没有提出时间条件。",
-        )
-    has_times = any(reply.posted_at for post in posts for reply in post.replies)
-    if not has_times:
-        return TiebaTimeFilter(
-            requirement=analysis.time_requirement,
-            year=analysis.time_year,
-            applied=False,
-            note=(
-                f"保留了你提出的时间条件「{analysis.time_requirement}」；"
-                "本轮没有读到带发帖时间的楼层，因此没有按时间过滤。"
-            ),
-        )
-    return TiebaTimeFilter(
-        requirement=analysis.time_requirement,
-        year=analysis.time_year,
-        applied=False,
-        note=f"已取得带时间的楼层，可核对你提出的时间条件「{analysis.time_requirement}」。",
-    )
+    state, _ = apply_time_condition(analysis, posts)
+    return state
+
+
+def _requested_since(analysis: TiebaQuestionAnalysis, anchor: date) -> date:
+    if analysis.time_year is not None:
+        return date(analysis.time_year, 1, 1)
+    requirement = (analysis.time_requirement or "").lower()
+    match = re.search(r"近\s*(\d+|一|两|三|六|十二)\s*个?月", requirement)
+    months = {"一": 1, "两": 2, "三": 3, "六": 6, "十二": 12}
+    if match:
+        count = int(match.group(1)) if match.group(1).isdigit() else months[match.group(1)]
+        month_index = anchor.year * 12 + anchor.month - 1 - count
+        year, month0 = divmod(month_index, 12)
+        month = month0 + 1
+        return date(year, month, min(anchor.day, 28))
+    return _one_year_before(anchor)
+
+
+def _one_year_before(value: date) -> date:
+    try:
+        return value.replace(year=value.year - 1)
+    except ValueError:
+        return value.replace(year=value.year - 1, day=28)
+
+
+def _parse_posted_date(value: str | None, anchor: date) -> date | None:
+    if not value:
+        return None
+    match = re.search(r"(?:(20\d{2})[-/.年])?(\d{1,2})[-/.月](\d{1,2})", value)
+    if match is None:
+        return None
+    year_text, month_text, day_text = match.groups()
+    year = int(year_text) if year_text else anchor.year
+    try:
+        moment = date(year, int(month_text), int(day_text))
+    except ValueError:
+        return None
+    if year_text is None and moment > anchor + timedelta(days=30):
+        try:
+            moment = moment.replace(year=year - 1)
+        except ValueError:
+            return None
+    return moment
 
 
 def official_terms(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
@@ -933,6 +981,7 @@ def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPro
         pages_read=result.pages_read,
         pages_limit=result.pages_limit,
         total_pages=result.total_pages,
+        total_replies=result.total_replies,
         floor_min=result.floor_min,
         floor_max=result.floor_max,
         replies_obtained=bool(result.replies),
@@ -1046,9 +1095,9 @@ def _plan_continues(record: ModuleQueryRecord) -> bool:
     return True
 
 
-def _round_note(position: int, outcome: SearchOutcome) -> str:
+def _round_note(position: int, outcome: SearchOutcome, query_count: int) -> str:
     """逐轮诊断：查询词、原始结果数、可用候选数与剔除数（脱敏，只记计数）。"""
-    label = QUERY_ROUND_LABELS[position]
+    label = _query_round_label(position, query_count)
     if outcome.record.status in FAILED_QUERY_STATUSES:
         reason = outcome.record.error_message or outcome.record.status.value
         return (
@@ -1063,12 +1112,22 @@ def _round_note(position: int, outcome: SearchOutcome) -> str:
     )
 
 
-def _skipped_round_note(position: int, stop_event: threading.Event | None) -> str:
+def _skipped_round_note(
+    position: int, stop_event: threading.Event | None, query_count: int
+) -> str:
     """备用查询没有执行时的原因：停止还是预算耗尽。"""
-    label = QUERY_ROUND_LABELS[position]
+    label = _query_round_label(position, query_count)
     if stop_event is not None and stop_event.is_set():
         return f"{label}因你已停止而未执行。"
     return f"{label}因超出本轮检索预算而未执行。"
+
+
+def _query_round_label(position: int, query_count: int) -> str:
+    if position == 0:
+        return QUERY_ROUND_LABELS[0]
+    if position == query_count - 1:
+        return QUERY_ROUND_LABELS[-1]
+    return QUERY_ROUND_LABELS[min(position, len(QUERY_ROUND_LABELS) - 2)]
 
 
 def _holiday_without_year(analysis: TiebaQuestionAnalysis) -> bool:
