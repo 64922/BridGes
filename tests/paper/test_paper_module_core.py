@@ -141,14 +141,13 @@ def test_clarification_answer_still_ambiguous_asks_again() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_plan_is_original_first_with_bounded_attempts() -> None:
+def test_plan_emits_one_bounded_query_without_a_preplanned_broadening_query() -> None:
     analysis = parse_paper_request("Transformer 的注意力机制入门", now=NOW)
     plans = plan_queries(analysis)
-    assert plans[0].query.split()[0].lower() == "transformer"
+    assert len(plans) == 1
+    assert plans[0].query
     assert "attention mechanism" in plans[0].expansions_used
-    assert len(plans) == 2, "扩展词生效时保留一次只用主词的放宽尝试"
-    assert plans[1].query.lower() == "transformer"
-    assert plans[0].max_results >= 9
+    assert plans[0].max_results <= 10
 
 
 def test_latest_intent_uses_submitted_date_sorting() -> None:
@@ -181,8 +180,8 @@ def test_year_range_really_filters_and_reports_excluded_count() -> None:
     assert any("2020 年起" in note and "1 篇" in note for note in outcome.notes)
 
 
-def test_year_range_widens_instead_of_silently_returning_nothing() -> None:
-    """范围外才有结果时保留候选并如实说明（不悄悄忽略范围，也不假装没有结果）。"""
+def test_year_range_remains_hard_when_no_in_range_results_exist() -> None:
+    """没有范围内结果时保持空结果，不通过补搜或排序放宽用户条件。"""
     analysis = parse_paper_request(
         "2020年以后的 Transformer 注意力机制论文", now=NOW
     )
@@ -193,9 +192,9 @@ def test_year_range_widens_instead_of_silently_returning_nothing() -> None:
         [_candidate("2401.3", "Transformer Attention in 2018", "attention", year=2018)],
         {},
     )
-    assert [item.title for item in outcome.recommendations] == ["Transformer Attention in 2018"]
+    assert outcome.recommendations == []
     assert not outcome.topic_mismatch
-    assert any("范围外" in note for note in outcome.notes)
+    assert any("排除 1 篇范围外" in note for note in outcome.notes)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +251,7 @@ def test_rank_reports_mismatch_when_nothing_matches() -> None:
 
 
 def test_rank_counts_arxiv_pdf_as_available_full_text() -> None:
-    """arXiv 候选自带来源给出的 PDF 链接时，就是已取得全文（不误报"未确认"）。"""
+    """来源 PDF 链接表示全文可获取；本轮读取范围仍只在 read_scope 中确认。"""
     analysis = parse_paper_request("Transformer 的注意力机制入门", now=NOW)
     plan = plan_queries(analysis)[0]
     outcome = rank_candidates(
@@ -264,6 +263,7 @@ def test_rank_counts_arxiv_pdf_as_available_full_text() -> None:
     paper = outcome.recommendations[0]
     assert paper.pdf_url
     assert paper.full_text_available is True
+    assert paper.read_scope.value == "abstract"
     assert not any("全文链接" in item for item in paper.unverified)
 
 

@@ -8,8 +8,8 @@
 ／OpenAlex 补充）分辨，较新研究按来源年份排在后面。没有引用数据时如实写进
 未核实项，不假装知道哪篇是奠基作。
 
-用户提到的年份范围是真实过滤条件（不是摆设）：范围外有命中就报出被排除的篇数，
-范围外才有结果时保留候选并说明，绝不悄悄忽略用户说过的范围。
+用户提到的年份范围是真实硬条件：范围外有命中就报出被排除的篇数；
+若范围内没有结果，就交付空结果，不替用户放宽年份。
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from bridges.paper.contracts import (
     ROLE_FOUNDATION,
     ROLE_LABELS,
     ROLE_RECENT,
+    ROLE_RELATED,
     ROLE_SURVEY,
     ROLE_TUTORIAL,
     PaperQueryPlan,
@@ -30,7 +31,6 @@ from bridges.paper.contracts import (
 )
 from bridges.paper.planning import (
     DEFAULT_TARGET_COUNT,
-    MAX_TARGET_COUNT,
     MIN_TARGET_COUNT,
 )
 from bridges.paper.sources import EnrichedMetadata, PaperCandidate
@@ -66,19 +66,22 @@ def rank_candidates(
     词时，还必须有扩展词语境覆盖——否则「电力系统的 transformer」会混进机
     器学习结果（反之亦然）。
     """
-    target = max(1, min(MAX_TARGET_COUNT, target_count))
+    target = max(1, target_count)
     primary = primary_keyword(analysis)
     context_keywords = _context_keywords(analysis)
     context_rejected = 0
     matched: list[tuple[PaperCandidate, list[str]]] = []
     seen: set[str] = set()
     for candidate in candidates:
-        if candidate.arxiv_id in seen:
+        candidate_key = candidate.arxiv_id or candidate.candidate_id
+        if candidate_key in seen:
             continue
         if evidence_matches is not None:
-            matches = evidence_matches.get(candidate.arxiv_id)
+            matches = evidence_matches.get(candidate_key) or evidence_matches.get(
+                candidate.candidate_id
+            )
             if matches:
-                seen.add(candidate.arxiv_id)
+                seen.add(candidate_key)
                 matched.append((candidate, matches))
             continue
         matched_primary = matched_keywords(candidate, [primary]) if primary else []
@@ -88,7 +91,7 @@ def rank_candidates(
         if context_keywords and not matched_context:
             context_rejected += 1
             continue
-        seen.add(candidate.arxiv_id)
+        seen.add(candidate_key)
         matched.append((candidate, [*matched_primary, *matched_context]))
     if not matched:
         rejected_notes = ["检索结果里没有标题或摘要覆盖原始术语的论文，未生成推荐。"]
@@ -108,8 +111,8 @@ def rank_candidates(
             index=index,
             candidate=candidate,
             matches=matches,
-            role=roles[candidate.arxiv_id],
-            metadata=metadata.get(candidate.arxiv_id),
+            role=roles[_candidate_key(candidate)],
+            metadata=metadata.get(_candidate_key(candidate)),
             sort_intent=analysis.constraints.sort_intent,
             total=len(selected),
         )
@@ -134,13 +137,13 @@ def rank_candidates(
                 f"排除 {len(year_dropped)} 篇范围外的论文。"
             )
     if analysis.constraints.prefer_survey and not any(
-        roles[candidate.arxiv_id] in {ROLE_SURVEY, ROLE_TUTORIAL} for candidate, _ in selected
+        roles[_candidate_key(candidate)] in {ROLE_SURVEY, ROLE_TUTORIAL}
+        for candidate, _ in selected
     ):
         notes.append("你提到要综述/回顾类论文，但本轮命中的结果里没有综述或教程标记，未替你补造。")
     if len(selected) < target:
         notes.append(
-            f"本轮只找到 {len(selected)} 篇主题匹配的真实论文（目标 {target} 篇），"
-            "没有补造结果。"
+            f"本轮只找到 {len(selected)} 篇主题匹配的真实论文（目标 {target} 篇），没有补造结果。"
         )
     if analysis.constraints.sort_intent is PaperSortIntent.CLASSIC and not any(
         item.cited_by_count is not None for item in metadata.values()
@@ -152,7 +155,7 @@ def rank_candidates(
 def _filter_by_year(
     analysis: PaperTermAnalysis, matched: list[tuple[PaperCandidate, list[str]]]
 ) -> tuple[list[tuple[PaperCandidate, list[str]]], list[tuple[PaperCandidate, list[str]]], bool]:
-    """按用户提到的年份范围过滤；范围外会清空结果时保留全部并如实说明（不悄悄忽略）。"""
+    """按用户提到的年份硬过滤；范围外的候选始终排除。"""
     year_from = analysis.constraints.year_from
     year_to = analysis.constraints.year_to
     if year_from is None and year_to is None:
@@ -160,13 +163,15 @@ def _filter_by_year(
     kept: list[tuple[PaperCandidate, list[str]]] = []
     dropped: list[tuple[PaperCandidate, list[str]]] = []
     for item in matched:
-        year = item[0].published_at.year
-        if (year_from is None or year >= year_from) and (year_to is None or year <= year_to):
+        year = item[0].published_year
+        if (
+            year is not None
+            and (year_from is None or year >= year_from)
+            and (year_to is None or year <= year_to)
+        ):
             kept.append(item)
         else:
             dropped.append(item)
-    if not kept:
-        return matched, dropped, True
     return kept, dropped, False
 
 
@@ -193,9 +198,7 @@ def cover_original_phrase(
         if item.match_evidence:
             return True
         haystack = f"{item.title} {item.match_basis}".lower()
-        if primary in haystack or all(
-            word in haystack for word in _WORD.findall(primary)
-        ):
+        if primary in haystack or all(word in haystack for word in _WORD.findall(primary)):
             return True
     return False
 
@@ -234,34 +237,24 @@ def _assign_roles(
     metadata: dict[str, EnrichedMetadata],
 ) -> dict[str, str]:
     roles: dict[str, str] = {}
-    citation_values = [
-        item.cited_by_count
-        for item in metadata.values()
-        if item.cited_by_count is not None
-    ]
-    citation_median = (
-        sorted(citation_values)[len(citation_values) // 2] if citation_values else None
+    newest_year = max(
+        (year for candidate, _matched in scored if (year := candidate.published_year) is not None),
+        default=0,
     )
-    newest_year = max((item[0].published_at.year for item in scored), default=0)
     for candidate, _matched in scored:
         lowered = f"{candidate.title} {candidate.abstract}".lower()
-        enriched = metadata.get(candidate.arxiv_id)
-        citations = enriched.cited_by_count if enriched is not None else None
+        year = candidate.published_year
         if any(marker in lowered for marker in SURVEY_MARKERS):
-            roles[candidate.arxiv_id] = ROLE_SURVEY
+            roles[_candidate_key(candidate)] = ROLE_SURVEY
         elif any(marker in lowered for marker in TUTORIAL_MARKERS):
-            roles[candidate.arxiv_id] = ROLE_TUTORIAL
-        elif (
-            citations is not None
-            and citation_median is not None
-            and citations >= citation_median
-            and candidate.published_at.year <= newest_year - 1
-        ):
-            roles[candidate.arxiv_id] = ROLE_FOUNDATION
-        elif candidate.published_at.year >= newest_year - (RECENT_WINDOW_YEARS - 1):
-            roles[candidate.arxiv_id] = ROLE_RECENT
+            roles[_candidate_key(candidate)] = ROLE_TUTORIAL
+        elif year is None:
+            roles[_candidate_key(candidate)] = ROLE_RELATED
+        elif year >= newest_year - (RECENT_WINDOW_YEARS - 1):
+            roles[_candidate_key(candidate)] = ROLE_RECENT
         else:
-            roles[candidate.arxiv_id] = ROLE_FOUNDATION
+            # 年份与引用量无法证明奠基地位；只表达本轮取得的相关研究。
+            roles[_candidate_key(candidate)] = ROLE_RELATED
     return roles
 
 
@@ -281,6 +274,7 @@ def _reading_order(
         ROLE_TUTORIAL: 1,
         ROLE_FOUNDATION: 2,
         ROLE_RECENT: 3,
+        ROLE_RELATED: 4,
     }
     if sort_intent is PaperSortIntent.LATEST:
         priority = {
@@ -288,6 +282,7 @@ def _reading_order(
             ROLE_RECENT: 1,
             ROLE_TUTORIAL: 2,
             ROLE_FOUNDATION: 3,
+            ROLE_RELATED: 4,
         }
     elif sort_intent is PaperSortIntent.CLASSIC:
         priority = {
@@ -295,15 +290,16 @@ def _reading_order(
             ROLE_FOUNDATION: 1,
             ROLE_TUTORIAL: 2,
             ROLE_RECENT: 3,
+            ROLE_RELATED: 4,
         }
 
     def key(item: tuple[PaperCandidate, list[str]]) -> tuple[int, int, str]:
         candidate = item[0]
-        enriched = metadata.get(candidate.arxiv_id)
-        citations = enriched.cited_by_count if enriched is not None else None
+        enriched = metadata.get(_candidate_key(candidate))
+        citations = enriched.cited_by_count if enriched is not None else candidate.cited_by_count
         # 同角色内：有引用数据时按引用降序（取负值），否则按年份降序。
         citation_rank = -(citations or 0)
-        return (priority[roles[candidate.arxiv_id]], citation_rank, candidate.title)
+        return (priority[roles[_candidate_key(candidate)]], citation_rank, candidate.title)
 
     return sorted(scored, key=key)
 
@@ -321,22 +317,33 @@ def _recommendation(
     unverified: list[str] = ["未通读全文，判断依据为标题、摘要与来源元数据。"]
     if metadata is None:
         unverified.append("未取得 Crossref／OpenAlex 发表信息。")
-    # arXiv 候选自带来源给出的 PDF 链接；元数据补充发现开放获取链接时同样算取得全文。
-    full_text_available = bool(candidate.pdf_url) or bool(metadata and metadata.full_text_url)
+    # 全文链接可用性与本轮读取范围分开表达；read_scope 由读取阶段更新。
+    full_text_available = bool(candidate.pdf_url or (metadata and metadata.full_text_url))
     if not full_text_available:
         unverified.append("来源未返回可获取的全文链接，本轮只核对标题与摘要。")
-    year = candidate.published_at.year
+    year = candidate.published_year
     venue = metadata.venue if metadata is not None else None
     cited = metadata.cited_by_count if metadata is not None else None
     return PaperRecommendation(
         order=index,
+        candidate_id=candidate.candidate_id,
         arxiv_id=candidate.arxiv_id,
+        doi=(metadata.doi if metadata and metadata.doi else candidate.doi),
         title=candidate.title,
         authors=list(candidate.authors),
         published_year=year,
-        source="arxiv",
+        source=candidate.source,
+        sources=list(candidate.sources or (candidate.source,)),
+        source_ids=list(candidate.source_ids),
+        venue=metadata.venue if metadata else candidate.venue,
+        cited_by_count=(
+            metadata.cited_by_count
+            if metadata and metadata.cited_by_count is not None
+            else candidate.cited_by_count
+        ),
         abs_url=candidate.abs_url,
         pdf_url=candidate.pdf_url,
+        full_text_url=(metadata.full_text_url if metadata else candidate.full_text_url),
         primary_category=candidate.primary_category,
         full_text_available=full_text_available,
         role=role,
@@ -364,7 +371,7 @@ def _recommendation(
 def _reason_zh(
     *,
     role: str,
-    year: int,
+    year: int | None,
     venue: str | None,
     cited: int | None,
     index: int,
@@ -372,10 +379,9 @@ def _reason_zh(
     sort_intent: PaperSortIntent,
 ) -> str:
     label = ROLE_LABELS.get(role, "相关研究")
-    position = (
-        "建议第 1 篇先读" if index == 1 else f"建议第 {index} 篇读（共 {total} 篇）"
-    )
-    pieces = [f"{year} 年，{label}，{position}"]
+    position = "建议第 1 篇先读" if index == 1 else f"建议第 {index} 篇读（共 {total} 篇）"
+    year_label = f"{year} 年" if year is not None else "年份未知"
+    pieces = [f"{year_label}，{label}，{position}"]
     if venue:
         pieces.append(f"发表信息（Crossref／OpenAlex）：{venue}")
     if cited is not None:
@@ -385,3 +391,7 @@ def _reason_zh(
     if sort_intent is PaperSortIntent.CLASSIC and role is ROLE_FOUNDATION:
         pieces.append("你提到经典，按实际取得的年份与引用证据排前")
     return "；".join(pieces) + "。"
+
+
+def _candidate_key(candidate: PaperCandidate) -> str:
+    return candidate.arxiv_id or candidate.candidate_id

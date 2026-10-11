@@ -20480,6 +20480,101 @@ export interface components {
             requires_author_confirm: boolean;
         };
         /**
+         * PaperCandidateProjection
+         * @description 完整候选列表中的单篇论文摘要投影。
+         */
+        PaperCandidateProjection: {
+            /**
+             * Candidate Id
+             * @description 跨来源融合后的稳定候选身份。
+             */
+            candidate_id: string;
+            /** Arxiv Id */
+            arxiv_id?: string | null;
+            /** Doi */
+            doi?: string | null;
+            /** Title */
+            title: string;
+            /** Authors */
+            authors?: string[];
+            /** Published Year */
+            published_year?: number | null;
+            /** Primary Source */
+            primary_source: string;
+            /** Sources */
+            sources?: string[];
+            /** Source Ids */
+            source_ids?: string[];
+            /** Abs Url */
+            abs_url: string;
+            /**
+             * Pdf Url
+             * @description 全文链接；不代表本轮已读取。
+             */
+            pdf_url?: string | null;
+            /**
+             * Full Text Url
+             * @description 已核对的开放全文链接；不代表本轮已读取。
+             */
+            full_text_url?: string | null;
+            /**
+             * Abstract
+             * @default
+             */
+            abstract: string;
+            /** @default direct */
+            relevance: components["schemas"]["PaperRelevance"];
+            /**
+             * Research Group
+             * @default
+             */
+            research_group: string;
+            /** Match Evidence */
+            match_evidence?: components["schemas"]["PaperRequirementEvidence"][];
+            /** Discovery Paths */
+            discovery_paths?: string[];
+        };
+        /**
+         * PaperCitationEdge
+         * @description 来自真实 OpenAlex 引用记录的一条有向关系。
+         */
+        PaperCitationEdge: {
+            /** Citing Candidate Id */
+            citing_candidate_id: string;
+            /** Cited Candidate Id */
+            cited_candidate_id: string;
+            /** Citing Title */
+            citing_title: string;
+            /** Cited Title */
+            cited_title: string;
+            /**
+             * Source
+             * @default openalex
+             */
+            source: string;
+        };
+        /**
+         * PaperConditionSource
+         * @description 硬条件与用户原话片段的对应。
+         */
+        PaperConditionSource: {
+            /**
+             * Kind
+             * @description year/count/source/paper/type。
+             */
+            kind: string;
+            /**
+             * Value
+             * @description 由代码解析出的条件值。
+             */
+            value: string;
+            /**
+             * Source Phrase
+             * @description 原请求中支持该条件的片段。
+             */
+            source_phrase: string;
+        };
+        /**
          * PaperIdentity
          * @description 选定论文的可核实身份（工单 24：供后续模块精确引用，不靠自然语言猜）。
          */
@@ -20489,6 +20584,12 @@ export interface components {
              * @description 阅读顺序。
              */
             order: number;
+            /**
+             * Candidate Id
+             * @description 跨来源融合后的稳定候选身份。
+             * @default
+             */
+            candidate_id: string;
             /**
              * Arxiv Id
              * @description arXiv 标识符。
@@ -20538,6 +20639,12 @@ export interface components {
              */
             order: number;
             /**
+             * Candidate Id
+             * @description 跨来源融合后的稳定候选身份。
+             * @default
+             */
+            candidate_id: string;
+            /**
              * Arxiv Id
              * @description arXiv 标识符；非 arXiv 来源为 None。
              */
@@ -20567,6 +20674,16 @@ export interface components {
              * @description 元数据来源（arxiv / crossref / openalex）。
              */
             source: string;
+            /**
+             * Sources
+             * @description 实际提供该论文记录的来源。
+             */
+            sources?: string[];
+            /**
+             * Source Ids
+             * @description 融合记录中的来源原生标识。
+             */
+            source_ids?: string[];
             /**
              * Venue
              * @description 核对的发表venue；缺失为 None。
@@ -20599,7 +20716,7 @@ export interface components {
             primary_category?: string | null;
             /**
              * Full Text Available
-             * @description 是否确认取得全文（仅摘要时为 False）。
+             * @description 是否有已核对的全文链接；本轮实际读取范围见 read_scope。
              * @default false
              */
             full_text_available: boolean;
@@ -20613,6 +20730,14 @@ export interface components {
              * @description 在阅读顺序中的角色：survey / foundation / recent / tutorial。
              */
             role: string;
+            /** @default direct */
+            relevance: components["schemas"]["PaperRelevance"];
+            /**
+             * Research Group
+             * @description 按子问题或方法路线分组。
+             * @default
+             */
+            research_group: string;
             /**
              * Reason Zh
              * @description 中文选择理由（含搭配与顺序依据）。
@@ -20657,6 +20782,12 @@ export interface components {
              */
             unverified?: string[];
         };
+        /**
+         * PaperRelevance
+         * @description 相关程度只描述需求覆盖，不代表论文质量。
+         * @enum {string}
+         */
+        PaperRelevance: "direct" | "partial" | "exploratory";
         /**
          * PaperRequirementEvidence
          * @description 一条「需求 → 证据」对应（工单 24：专业角色判断语义相关性并给出片段）。
@@ -20766,9 +20897,35 @@ export interface components {
             final_query: string;
             /**
              * Papers
-             * @description 按阅读顺序排列的真实论文结果。
+             * @description 按阅读顺序排列的重点推荐（默认 5–8 篇）。
              */
             papers?: components["schemas"]["PaperRecommendation"][];
+            /**
+             * Candidates
+             * @description 通过硬条件与证据门的完整候选列表。
+             */
+            candidates?: components["schemas"]["PaperCandidateProjection"][];
+            /**
+             * Citation Edges
+             * @description 真实取得的引用边；为空时不提供引用图。
+             */
+            citation_edges?: components["schemas"]["PaperCitationEdge"][];
+            /**
+             * Research Question
+             * @description 本轮理解后的研究问题。
+             * @default
+             */
+            research_question: string;
+            /**
+             * Selected Sources
+             * @description 本轮实际启用的来源。
+             */
+            selected_sources?: string[];
+            /**
+             * Condition Sources
+             * @description 本轮硬条件及其来自请求/任务条件的原话片段。
+             */
+            condition_sources?: components["schemas"]["PaperConditionSource"][];
             /**
              * Selected
              * @description 选定论文的可核实身份列表（供 GitHub 等精确引用）。
@@ -20776,7 +20933,7 @@ export interface components {
             selected?: components["schemas"]["PaperIdentity"][];
             /**
              * Requested Count
-             * @description 本轮目标篇数（3–5）。
+             * @description 本轮重点推荐目标篇数。
              * @default 0
              */
             requested_count: number;

@@ -127,6 +127,7 @@ class MaterialCategory(StrEnum):
     WRITING_POLICY = "writing_policy"
     CORRECTION = "correction"
     MEMORY = "memory"
+    USER_REQUEST = "user_request"
 
 
 @dataclass(frozen=True)

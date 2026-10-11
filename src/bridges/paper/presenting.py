@@ -27,6 +27,7 @@ from bridges.contracts.ai import ModelCallResult, ModelRunLock
 from bridges.paper.contracts import (
     ROLE_LABELS,
     PaperQueryPlan,
+    PaperReadScope,
     PaperRecommendation,
     PaperRequirementEvidence,
     PaperSearchProjection,
@@ -53,13 +54,14 @@ SUMMARY_JSON_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
+                    "candidate_id": {"type": "string"},
                     "arxiv_id": {"type": "string"},
                     "summary_zh": {"type": "string"},
                     "evidence_source": {"type": "string", "enum": ["title", "abstract"]},
                     "evidence_quote": {"type": "string"},
                 },
                 "required": [
-                    "arxiv_id",
+                    "candidate_id",
                     "summary_zh",
                     "evidence_source",
                     "evidence_quote",
@@ -102,28 +104,48 @@ def render_result_content(
 ) -> str:
     """成功结果的正文：查询词、阅读顺序、每篇链接与理由、证据边界。"""
     lines: list[str] = []
+    source_names = _source_names(projection.selected_sources or [plan.source])
     term_note = ""
     if analysis.original_phrase and analysis.original_phrase != plan.query:
         term_note = f"（原始术语：{analysis.original_phrase}）"
-    lines.append(
-        f"已按论文模块检索 arXiv{term_note}，实际查询词：{plan.query}。"
-    )
+    lines.append(f"已按论文模块检索 {source_names}{term_note}，主要查询概念：{plan.query}。")
     if analysis.context_label:
         lines.append(f"语境：{analysis.context_label}。")
     lines.append("")
-    lines.append(f"共 {len(projection.papers)} 篇，按入门阅读顺序：")
+    question = projection.research_question or analysis.research_question
+    if question:
+        lines.append(f"研究问题：{question}。")
+    lines.append(
+        f"本轮概览：核验 {len(projection.candidates) or len(projection.papers)} 篇候选，"
+        f"重点推荐 {len(projection.papers)} 篇；仅反映本轮取得的证据。"
+    )
+    groups = list(dict.fromkeys(item.research_group for item in projection.candidates
+                               if item.research_group))
+    if groups:
+        lines.append(f"覆盖问题或方法路线：{'、'.join(groups)}。")
+    lines.append(f"共 {len(projection.papers)} 篇，按本轮证据组织阅读顺序：")
     for paper in projection.papers:
         role_label = ROLE_LABELS.get(paper.role, "相关研究")
+        year_label = (
+            f"{paper.published_year} 年" if paper.published_year is not None else "年份未知"
+        )
         lines.append("")
-        lines.append(f"{paper.order}. 《{paper.title}》（{paper.published_year}，{role_label}）")
+        lines.append(f"{paper.order}. 《{paper.title}》（{year_label}，{role_label}）")
         lines.append(f"   选择理由：{paper.reason_zh}")
         if paper.summary_zh:
             lines.append(f"   中文概述：{paper.summary_zh}")
         lines.append(f"   来源：{paper.abs_url}")
-        if paper.full_text_available and paper.pdf_url:
-            lines.append(f"   全文：{paper.pdf_url}")
+        full_text_url = paper.pdf_url or paper.full_text_url
+        if paper.full_text_available and full_text_url:
+            lines.append(f"   全文链接：{full_text_url}")
         else:
-            lines.append("   全文：未确认可获取的开放全文链接，本轮只核对标题与摘要。")
+            lines.append("   全文链接：来源未返回或未核实。")
+        read_scope = {
+            PaperReadScope.ABSTRACT: "本轮只读取标题与摘要",
+            PaperReadScope.PARTIAL: "本轮读取了部分正文",
+            PaperReadScope.FULL_TEXT: "本轮读取了全文",
+        }[paper.read_scope]
+        lines.append(f"   {read_scope}。")
     if projection.evidence_notes:
         lines.append("")
         lines.append("证据边界：")
@@ -132,16 +154,25 @@ def render_result_content(
 
 
 def render_empty_content(
-    analysis: PaperTermAnalysis, plan: PaperQueryPlan, notes: list[str]
+    analysis: PaperTermAnalysis,
+    plan: PaperQueryPlan,
+    notes: list[str],
+    *,
+    sources: list[str] | None = None,
 ) -> str:
     del analysis
     lines = [
-        f"已按论文模块检索 arXiv，实际查询词：{plan.query}。",
-        "arXiv 没有返回结果，我没有可推荐的论文，也不会用记忆补造条目。",
+        f"已按论文模块检索 {_source_names(sources or [plan.source])}，主要查询概念：{plan.query}。",
+        "本轮没有返回可推荐的论文，我不会用记忆补造条目。",
     ]
     lines.extend(f"- {note}" for note in notes)
     lines.append("可以补充英文术语、放宽年份或换个相近方向后重试。")
     return "\n".join(lines)
+
+
+def _source_names(sources: list[str]) -> str:
+    labels = {"arxiv": "arXiv", "crossref": "Crossref", "openalex": "OpenAlex"}
+    return "、".join(labels.get(source, source) for source in dict.fromkeys(sources))
 
 
 def render_mismatch_content(
@@ -156,9 +187,7 @@ def render_mismatch_content(
     return "\n".join(lines)
 
 
-def render_stopped_content(
-    analysis: PaperTermAnalysis, plan: PaperQueryPlan | None
-) -> str:
+def render_stopped_content(analysis: PaperTermAnalysis, plan: PaperQueryPlan | None) -> str:
     query = plan.query if plan is not None else (analysis.final_query or analysis.original_phrase)
     return f"论文检索已停止，实际查询词：{query}。已完成的步骤保留在本条消息内。"
 
@@ -201,14 +230,10 @@ class PaperSummaryGenerator:
         system_prompt = SUMMARY_SYSTEM_PROMPT
         # 工单 21：本轮用户可见概述沿用同一表达策略快照（有界输出额度
         # 单独预留，不挤占任务步骤预算；快照缺失时回退既有安全基线）。
-        expression_block = (
-            str(expression.system_block) if expression is not None else ""
-        )
+        expression_block = str(expression.system_block) if expression is not None else ""
         if expression_block:
             system_prompt = f"{SUMMARY_SYSTEM_PROMPT}\n\n{expression_block}"
-        output_tokens = (
-            int(expression.output_tokens) if expression is not None else 1200
-        )
+        output_tokens = int(expression.output_tokens) if expression is not None else 1200
         payload = {
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -234,8 +259,7 @@ class PaperSummaryGenerator:
                     adopted=True,
                     reason="概述系统规则、表达策略与输出契约",
                     estimated_tokens=estimate_tokens(system_prompt),
-                    source_version="sha256:"
-                    + hashlib.sha256(system_prompt.encode()).hexdigest(),
+                    source_version="sha256:" + hashlib.sha256(system_prompt.encode()).hexdigest(),
                     read_range="完整系统规则",
                 ),
                 MaterialManifestEntry(
@@ -261,7 +285,7 @@ class PaperSummaryGenerator:
                 ),
                 *[
                     MaterialManifestEntry(
-                        material_id=f"arxiv:{paper.arxiv_id}" if paper.arxiv_id else paper.abs_url,
+                        material_id=_material_id(paper),
                         category=MaterialCategory.TOOL.value,
                         necessity="required",
                         adopted=True,
@@ -271,7 +295,7 @@ class PaperSummaryGenerator:
                         + hashlib.sha256(_summary_candidate(paper, abstracts).encode()).hexdigest(),
                         read_range=(
                             "标题、类别；摘要字符[0:"
-                            f"{len((abstracts.get(paper.arxiv_id or '') or '').strip()[:1200])}]"
+                            f"{len((abstracts.get(_paper_key(paper)) or '').strip()[:1200])}]"
                         ),
                     )
                     for paper in papers
@@ -307,7 +331,11 @@ class PaperSummaryGenerator:
                 lock=lock,
                 manifest=manifest,
             )
-        allowed = {paper.arxiv_id: paper for paper in papers if paper.arxiv_id}
+        allowed: dict[str, PaperRecommendation] = {}
+        for paper in papers:
+            allowed[_paper_key(paper)] = paper
+            if paper.arxiv_id:
+                allowed[paper.arxiv_id] = paper
         summaries: dict[str, str] = {}
         evidence: dict[str, PaperRequirementEvidence] = {}
         dropped = 0
@@ -315,17 +343,17 @@ class PaperSummaryGenerator:
             if not isinstance(item, dict):
                 dropped += 1
                 continue
-            arxiv_id = str(item.get("arxiv_id") or "")
+            candidate_id = str(item.get("candidate_id") or item.get("arxiv_id") or "")
             text = str(item.get("summary_zh") or "").strip()
             source = str(item.get("evidence_source") or "").strip().lower()
             quote = str(item.get("evidence_quote") or "").strip()
             # 门控：概述必须绑定本轮真实候选标题/摘要里的逐字片段；
             # 空值/超长/未知标识/无法定位的证据一律丢弃，绝不保留自由文本。
             source_text = None
-            if arxiv_id in allowed:
+            if candidate_id in allowed:
                 source_text = {
-                    "title": allowed[arxiv_id].title,
-                    "abstract": abstracts.get(arxiv_id, ""),
+                    "title": allowed[candidate_id].title,
+                    "abstract": abstracts.get(_paper_key(allowed[candidate_id]), ""),
                 }.get(source)
             if (
                 source_text is None
@@ -336,8 +364,9 @@ class PaperSummaryGenerator:
             ):
                 dropped += 1
                 continue
-            summaries[arxiv_id] = text
-            evidence[arxiv_id] = PaperRequirementEvidence(
+            key = _paper_key(allowed[candidate_id])
+            summaries[key] = text
+            evidence[key] = PaperRequirementEvidence(
                 requirement="source_summary", source=source, quote=quote[:400]
             )
         note = None
@@ -359,10 +388,12 @@ class PaperSummaryGenerator:
 def _summary_candidate(paper: PaperRecommendation, abstracts: dict[str, str]) -> str:
     """候选实际发送切片，供提示词与脱敏清单共用。"""
     lines: list[str] = []
-    lines.append(f"- arxiv_id: {paper.arxiv_id}")
+    lines.append(f"- candidate_id: {_material_id(paper)}")
+    lines.append(f"  arxiv_id: {paper.arxiv_id or '无'}")
+    lines.append(f"  来源: {paper.source}")
     lines.append(f"  标题: {paper.title}")
     lines.append(f"  类别: {paper.primary_category or '未标注'}")
-    abstract = (abstracts.get(paper.arxiv_id or "") or "").strip()
+    abstract = (abstracts.get(_paper_key(paper)) or "").strip()
     lines.append(f"  摘要: {abstract[:1200] if abstract else '来源未返回摘要'}")
     return "\n".join(lines)
 
@@ -371,5 +402,17 @@ def _summary_prompt(papers: list[PaperRecommendation], abstracts: dict[str, str]
     lines = ["请为下列论文各写一句中文概述（只依据给出的标题与摘要）："]
     for paper in papers:
         lines.append(_summary_candidate(paper, abstracts))
-    lines.append('输出 JSON：{"summaries": [{"arxiv_id": "...", "summary_zh": "..."}]}')
+    lines.append(
+        '输出 JSON：{"summaries": [{"candidate_id": "...", "summary_zh": "...", '
+        '"evidence_source": "abstract", "evidence_quote": "..."}]}'
+    )
     return "\n".join(lines)
+
+
+def _paper_key(paper: PaperRecommendation) -> str:
+    return paper.arxiv_id or paper.candidate_id
+
+
+def _material_id(paper: PaperRecommendation) -> str:
+    """历史推荐也以真实学术标识定位发送材料，不能退化为未登记的 URL。"""
+    return paper.candidate_id or (f"arxiv:{paper.arxiv_id}" if paper.arxiv_id else paper.abs_url)

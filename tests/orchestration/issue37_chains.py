@@ -178,10 +178,13 @@ def seed_paper(
     content: str = "论文正文：一篇入门论文。",
     created_at: datetime | None = None,
 ) -> tuple[dict[str, NodeArtifact], ModuleDelivery]:
-    from bridges.paper.contracts import PaperSearchProjection
+    from bridges.paper.contracts import PaperIdentity, PaperRecommendation, PaperSearchProjection
 
-    papers = recommendations or [paper_recommendation()]
-    chosen = selection if selection is not None else [paper_identity()]
+    # 夹具按当前合同生成两份一致载荷，不能让新默认字段只出现在交付投影中。
+    papers = [PaperRecommendation.model_validate(item).model_dump(mode="json")
+              for item in recommendations or [paper_recommendation()]]
+    chosen = [PaperIdentity.model_validate(item).model_dump(mode="json")
+              for item in (selection if selection is not None else [paper_identity()])]
     chain = seed_chain(
         database,
         module="paper",

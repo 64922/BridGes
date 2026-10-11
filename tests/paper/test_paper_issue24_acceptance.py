@@ -165,16 +165,16 @@ def test_independent_review_veto_blocks(tmp_path: Path, verdict: dict[str, Any])
     assert result.failure.code == "paper_independent_review_failed"
 
 
-def test_relevance_shortfall_adjusts_once(tmp_path: Path) -> None:
+def test_legacy_parser_does_not_retry_without_a_concrete_gap(tmp_path: Path) -> None:
     irrelevant = [
         _candidate("Power Transformer", "Power grid voltage", arxiv_id=f"2401.0000{i}")
         for i in range(3)
     ]
     source = _StagedPaperSource(irrelevant, ATTENTION_CANDIDATES)
     result = _run(tmp_path, PaperNodeFlow(source=source, enricher=None))
-    assert result.status is KernelStatus.COMPLETED
-    assert len(source.queries) == 2
-    assert result.artifact(NODE_EVALUATE).payload["selection"]
+    assert result.status is KernelStatus.NEEDS_INPUT
+    assert len(source.queries) == 1
+    assert result.failure.code == "paper_topic_mismatch"
 
 
 class Budget:
@@ -568,33 +568,22 @@ def test_summary_with_verbatim_evidence_keeps_binding() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_adjustment_without_expansions_is_traceable(tmp_path: Path) -> None:
-    sparse = [
+def test_legacy_parser_keeps_irrelevant_candidates_out_without_retry(tmp_path: Path) -> None:
+    irrelevant = [
         _candidate("Power Transformer", "Power grid voltage", arxiv_id=f"2401.3000{i}")
         for i in range(3)
     ]
-    federated = [
-        _candidate(
-            f"Federated Learning Study {index}",
-            "federated learning methods for devices",
-            arxiv_id=f"2401.4000{index}",
-        )
-        for index in range(3)
-    ]
-    source = _StagedPaperSource(sparse, federated)
+    source = _StagedPaperSource(irrelevant, ATTENTION_CANDIDATES)
     result = _run(
         tmp_path,
         PaperNodeFlow(source=source, enricher=None),
         "帮我找联邦学习论文",
     )
-    assert result.status is KernelStatus.COMPLETED
-    assert len(source.queries) == 2, "整次运行最多一轮调整"
+    assert result.status is KernelStatus.NEEDS_INPUT
+    assert len(source.queries) == 1, "没有具体缺口时不生成补搜"
     search = result.artifact(NODE_SEARCH).payload
-    assert search["adjustment"]["used"] is True
-    assert search["adjustment"]["reason"] == "paper_relevance_insufficient"
-    assert search["adjustment"]["outcome"] == "success"
-    assert [item["adopted"] for item in search["attempts"]] == [False, True]
-    assert search["attempts"][1]["relevant_count"] >= 3
+    assert search["adjustment"]["used"] is False
+    assert len(search["attempts"]) == 1
 
 
 # ---------------------------------------------------------------------------

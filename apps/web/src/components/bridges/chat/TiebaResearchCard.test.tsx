@@ -15,6 +15,8 @@ function projection(
     original_question: "华东交通大学吧里最近说的宿舍条件怎么样",
     topic_terms: ["宿舍", "条件"],
     place_or_event: [],
+    question_kind: "experience",
+    parallel_evidence: false,
     time_filter: {
       requirement: "最近",
       year: null,

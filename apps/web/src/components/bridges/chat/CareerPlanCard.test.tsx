@@ -11,6 +11,7 @@ function projection(overrides: Partial<CareerPlanProjection> = {}): CareerPlanPr
     status: "success",
     topic: "后端开发",
     original_request: "我想找 Java 后端开发的工作，城市南昌",
+    branch: "job_intel",
     job_terms: ["Java 后端开发"],
     family_title: "后端开发",
     stage: "应届生",
@@ -68,6 +69,7 @@ const sample: JobSample = {
   requirements: ["熟悉 Java 与 Spring Boot", "了解 MySQL 索引优化"],
   skills: ["Java", "Spring Boot", "MySQL"],
   title_evidence: "页面岗位名「Java后端开发工程师」命中目标说法「Java 后端开发」。",
+  match_basis: "title",
   city_evidence: "页面工作地点为「南昌」，与期望城市一致。",
   retrieved_at: "2026-09-26T02:00:02Z",
   read_status: "read",
@@ -118,12 +120,15 @@ describe("CareerPlanCard（V2 Issue 15）", () => {
           samples: [sample],
           analysis: {
             sample_count: 1,
+              missing_salary_count: 0,
+              experience_unverified_count: 0,
             city_composition: [{ city: "南昌", count: 1 }],
             published_span: "2026-09-20 至 2026-09-20",
             skill_stats: [{ term: "Java", count: 1, urls: [sample.url] }],
             salary_intervals: [
               {
                 unit: "元/月",
+                currency: "CNY",
                 sample_count: 1,
                 amount_min: 15000,
                 amount_max: 25000,
@@ -166,6 +171,7 @@ describe("CareerPlanCard（V2 Issue 15）", () => {
               detail: "样本要求里两次提到 Spring Boot。",
               basis: ["熟悉 Java 与 Spring Boot"],
               inference: false,
+              priority: 1,
             },
             {
               kind: "action",
@@ -173,6 +179,7 @@ describe("CareerPlanCard（V2 Issue 15）", () => {
               detail: "相邻岗位也在招人。",
               basis: [],
               inference: true,
+              priority: 2,
             },
           ],
           adjacent_suggestions: [

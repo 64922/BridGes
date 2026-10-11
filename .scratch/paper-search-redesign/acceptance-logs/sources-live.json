@@ -1,0 +1,328 @@
+[
+  {
+    "source": "arxiv",
+    "query": "convolutional neural network",
+    "elapsed_seconds": 2.625,
+    "record": {
+      "source": "arxiv",
+      "query": "convolutional neural network",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:26.282701Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "上游请求 1 次"
+    },
+    "candidates": [
+      {
+        "id": "arxiv:2610.12317",
+        "title": "Data Representation Matters: Optimizing Machine Learning for X-ray Source Classification by Leveraging Spatio-Spectral Information",
+        "year": 2026
+      },
+      {
+        "id": "arxiv:2610.12147",
+        "title": "Healthy Counterfactual Generation via Diffusion Inpainting for Mammography Classification",
+        "year": 2026
+      }
+    ]
+  },
+  {
+    "source": "openalex",
+    "query": "convolutional neural network",
+    "elapsed_seconds": 3.281,
+    "record": {
+      "source": "openalex",
+      "query": "convolutional neural network",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:26.947336Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.1109/icengtechnol.2017.8308186",
+        "title": "Understanding of a convolutional neural network",
+        "year": 2017
+      },
+      {
+        "id": "doi:10.48550/arxiv.1511.08458",
+        "title": "An Introduction to Convolutional Neural Networks",
+        "year": 2015
+      }
+    ]
+  },
+  {
+    "source": "crossref",
+    "query": "convolutional neural network",
+    "elapsed_seconds": 2.484,
+    "record": {
+      "source": "crossref",
+      "query": "convolutional neural network",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:26.155813Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.37099/mtu.dc.etdr/487",
+        "title": "Performance Comparison of Binarized Neural Network with Convolutional Neural Network",
+        "year": null
+      },
+      {
+        "id": "doi:10.7717/peerj.19645/fig-3",
+        "title": "Figure 3: Convolutional neural network.",
+        "year": null
+      }
+    ]
+  },
+  {
+    "source": "arxiv",
+    "query": "deep learning bearing fault diagnosis",
+    "elapsed_seconds": 1.11,
+    "record": {
+      "source": "arxiv",
+      "query": "deep learning bearing fault diagnosis",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:31.051925Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "上游请求 1 次"
+    },
+    "candidates": [
+      {
+        "id": "arxiv:2607.16493",
+        "title": "Leakage-Robust Evaluation and Data-Scale Sensitivity of Attention-Enhanced Multi-Task Learning for Joint Fault Diagnosis and Remaining Useful Life Estimation",
+        "year": 2026
+      },
+      {
+        "id": "arxiv:2607.13368",
+        "title": "Fine-Grained Open-Set Fault Diagnosis via Metric-Guided Time-Frequency Configuration Selection and Class-Specific Autoencoders",
+        "year": 2026
+      }
+    ]
+  },
+  {
+    "source": "openalex",
+    "query": "deep learning bearing fault diagnosis",
+    "elapsed_seconds": 1.25,
+    "record": {
+      "source": "openalex",
+      "query": "deep learning bearing fault diagnosis",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:31.199384Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.1016/j.neucom.2018.06.078",
+        "title": "A survey on Deep Learning based bearing fault diagnosis",
+        "year": 2018
+      },
+      {
+        "id": "doi:10.1109/tia.2017.2661250",
+        "title": "Deep Learning Based Approach for Bearing Fault Diagnosis",
+        "year": 2017
+      }
+    ]
+  },
+  {
+    "source": "crossref",
+    "query": "deep learning bearing fault diagnosis",
+    "elapsed_seconds": 1.36,
+    "record": {
+      "source": "crossref",
+      "query": "deep learning bearing fault diagnosis",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:31.310541Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.5220/0013596500004664",
+        "title": "A Novel Deep Learning Approach for Automated Rolling Bearing Fault Diagnosis (ARBFD) Using Graph Neural Networks and Physics Informed Deep Learning",
+        "year": 2025
+      },
+      {
+        "id": "doi:10.2139/ssrn.5479988",
+        "title": "Symmetric Positive Definite manifold deep metric learning for bearing fault diagnosis",
+        "year": 2025
+      }
+    ]
+  },
+  {
+    "source": "arxiv",
+    "query": "transformer traffic flow prediction",
+    "elapsed_seconds": 2.078,
+    "record": {
+      "source": "arxiv",
+      "query": "transformer traffic flow prediction",
+      "status": "success",
+      "evidence_count": 1,
+      "retrieved_at": "2026-10-11T08:38:36.404867Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "上游请求 1 次"
+    },
+    "candidates": [
+      {
+        "id": "arxiv:2609.16528",
+        "title": "FlowATC: Aircraft Trajectory Prediction via Flow Matching",
+        "year": 2026
+      }
+    ]
+  },
+  {
+    "source": "openalex",
+    "query": "transformer traffic flow prediction",
+    "elapsed_seconds": 1.875,
+    "record": {
+      "source": "openalex",
+      "query": "transformer traffic flow prediction",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:36.188765Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.1177/09544070251341953",
+        "title": "Auto-correlation based spatio-temporal adaptive transformer traffic flow prediction",
+        "year": 2025
+      },
+      {
+        "id": "doi:10.12677/sea.2023.122029",
+        "title": "Spatial-Temporal Transformer Traffic Flow Prediction Based on Spatial Information Delay Awareness",
+        "year": 2023
+      }
+    ]
+  },
+  {
+    "source": "crossref",
+    "query": "transformer traffic flow prediction",
+    "elapsed_seconds": 1.938,
+    "record": {
+      "source": "crossref",
+      "query": "transformer traffic flow prediction",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:36.263639Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.21203/rs.3.rs-8770196/v1",
+        "title": "MFTFormer: Meteorological-Frequency-Temporal Transformer with Block-Aligned Fusion for Traffic Flow Prediction",
+        "year": 2026
+      },
+      {
+        "id": "doi:10.21203/rs.3.rs-4424020/v1",
+        "title": "Traffic Flow Prediction Based on Transformer And Multi-Graph Fusion Convolution",
+        "year": 2024
+      }
+    ]
+  },
+  {
+    "source": "arxiv",
+    "query": "convolutional neural network few-shot image classification",
+    "elapsed_seconds": 1.031,
+    "record": {
+      "source": "arxiv",
+      "query": "convolutional neural network few-shot image classification",
+      "status": "success",
+      "evidence_count": 1,
+      "retrieved_at": "2026-10-11T08:38:40.452129Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "上游请求 1 次"
+    },
+    "candidates": [
+      {
+        "id": "arxiv:2605.05034",
+        "title": "Few-Shot Learning Pipeline for Monkeypox Skin Disease Classification Using CNN Feature Extractors",
+        "year": 2026
+      }
+    ]
+  },
+  {
+    "source": "openalex",
+    "query": "convolutional neural network few-shot image classification",
+    "elapsed_seconds": 1.188,
+    "record": {
+      "source": "openalex",
+      "query": "convolutional neural network few-shot image classification",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:40.604209Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.1109/prai53619.2021.9551078",
+        "title": "Decoupled Adaptive Convolutional Neural Networks for the Few-Shot Image Classification",
+        "year": 2021
+      },
+      {
+        "id": "doi:10.1016/j.eswa.2023.122418",
+        "title": "Transformers, convolutional neural networks, and few-shot learning for classification of histopathological images of oral cancer",
+        "year": 2023
+      }
+    ]
+  },
+  {
+    "source": "crossref",
+    "query": "convolutional neural network few-shot image classification",
+    "elapsed_seconds": 1.141,
+    "record": {
+      "source": "crossref",
+      "query": "convolutional neural network few-shot image classification",
+      "status": "success",
+      "evidence_count": 2,
+      "retrieved_at": "2026-10-11T08:38:40.556860Z",
+      "error_code": null,
+      "error_message": null,
+      "retryable": false,
+      "detail": "返回 2 条记录；单次上限 2。"
+    },
+    "candidates": [
+      {
+        "id": "doi:10.1007/s00530-024-01330-y",
+        "title": "PathNet: a novel multi-pathway convolutional neural network for few-shot image classification from scratch",
+        "year": 2024
+      },
+      {
+        "id": "doi:10.1109/tgrs.2024.3490537/v1/review2",
+        "title": "Review for \"Few-Shot Hyperspectral Image Classification Using Relational Generative Adversarial Network\"",
+        "year": 2024
+      }
+    ]
+  }
+]

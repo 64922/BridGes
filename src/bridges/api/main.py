@@ -12,6 +12,9 @@ from typing import Annotated, Any, cast
 
 import httpx
 
+from bridges.paper.discovery import CrossrefPaperSource, OpenAlexPaperSource
+from bridges.paper.intent import PaperResearchIntentAnalyzer
+
 logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -1581,15 +1584,33 @@ def create_app(
                 observability=app.state.observability_service,
             )
         )
+        paper_sources: dict[str, Any] = {
+            "arxiv": ArxivPaperSource(app.state.arxiv_search_service),
+        }
+        if not use_closeout_fixtures:
+            paper_sources.update({
+                "openalex": OpenAlexPaperSource(
+                    client=_paper_metadata_client(),
+                    observability=app.state.observability_service,
+                ),
+                "crossref": CrossrefPaperSource(
+                    client=_paper_metadata_client(),
+                    observability=app.state.observability_service,
+                ),
+            })
         # 改进工单 10：论文内核的提交守卫读取当前任务版本（惰性求值：
         # task_service 在本装配段之后创建，调用发生在请求期）。
         app.state.paper_search_service = PaperSearchService(
-            source=ArxivPaperSource(app.state.arxiv_search_service),
+            source=paper_sources["arxiv"],
+            sources=paper_sources,
             enricher=paper_enricher,
             summarizer=PaperSummaryGenerator(model_gateway),
             # 工单 24：生产 judge/reviewer 复用同一登记网关、运行额度与
             # 载荷预算；每批候选一次语义判断，比较/冲突触发独立复核。
             gateway=model_gateway,
+            intent_analyzer_factory=(
+                None if use_closeout_fixtures else PaperResearchIntentAnalyzer
+            ),
             task_version_provider=lambda account_id, conversation_id: (
                 _current_task_reference(app, account_id, conversation_id)
             ),

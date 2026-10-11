@@ -50329,6 +50329,203 @@
         "title": "PaperAssistElement",
         "description": "A structural element for the paper-assist genre contract (T027).\n\nPaper-assist elements make the system's assistance scope visible: it may\nsuggest structure, language, citation checks and argument improvements, but\nmust not fabricate data, experiments or author decisions."
       },
+      "PaperCandidateProjection": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "跨来源融合后的稳定候选身份。"
+          },
+          "arxiv_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arxiv Id"
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doi"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "authors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Authors"
+          },
+          "published_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Year"
+          },
+          "primary_source": {
+            "type": "string",
+            "title": "Primary Source"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "abs_url": {
+            "type": "string",
+            "title": "Abs Url"
+          },
+          "pdf_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Url",
+            "description": "全文链接；不代表本轮已读取。"
+          },
+          "full_text_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Text Url",
+            "description": "已核对的开放全文链接；不代表本轮已读取。"
+          },
+          "abstract": {
+            "type": "string",
+            "title": "Abstract",
+            "default": ""
+          },
+          "relevance": {
+            "$ref": "#/components/schemas/PaperRelevance",
+            "default": "direct"
+          },
+          "research_group": {
+            "type": "string",
+            "title": "Research Group",
+            "default": ""
+          },
+          "match_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/PaperRequirementEvidence"
+            },
+            "type": "array",
+            "title": "Match Evidence"
+          },
+          "discovery_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Discovery Paths"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "title",
+          "primary_source",
+          "abs_url"
+        ],
+        "title": "PaperCandidateProjection",
+        "description": "完整候选列表中的单篇论文摘要投影。"
+      },
+      "PaperCitationEdge": {
+        "properties": {
+          "citing_candidate_id": {
+            "type": "string",
+            "title": "Citing Candidate Id"
+          },
+          "cited_candidate_id": {
+            "type": "string",
+            "title": "Cited Candidate Id"
+          },
+          "citing_title": {
+            "type": "string",
+            "title": "Citing Title"
+          },
+          "cited_title": {
+            "type": "string",
+            "title": "Cited Title"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "openalex"
+          }
+        },
+        "type": "object",
+        "required": [
+          "citing_candidate_id",
+          "cited_candidate_id",
+          "citing_title",
+          "cited_title"
+        ],
+        "title": "PaperCitationEdge",
+        "description": "来自真实 OpenAlex 引用记录的一条有向关系。"
+      },
+      "PaperConditionSource": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "year/count/source/paper/type。"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "由代码解析出的条件值。"
+          },
+          "source_phrase": {
+            "type": "string",
+            "title": "Source Phrase",
+            "description": "原请求中支持该条件的片段。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "source_phrase"
+        ],
+        "title": "PaperConditionSource",
+        "description": "硬条件与用户原话片段的对应。"
+      },
       "PaperIdentity": {
         "properties": {
           "order": {
@@ -50336,6 +50533,12 @@
             "minimum": 1.0,
             "title": "Order",
             "description": "阅读顺序。"
+          },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "跨来源融合后的稳定候选身份。",
+            "default": ""
           },
           "arxiv_id": {
             "anyOf": [
@@ -50417,6 +50620,12 @@
             "title": "Order",
             "description": "入门阅读顺序（从 1 开始）。"
           },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "跨来源融合后的稳定候选身份。",
+            "default": ""
+          },
           "arxiv_id": {
             "anyOf": [
               {
@@ -50470,6 +50679,22 @@
             "type": "string",
             "title": "Source",
             "description": "元数据来源（arxiv / crossref / openalex）。"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources",
+            "description": "实际提供该论文记录的来源。"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids",
+            "description": "融合记录中的来源原生标识。"
           },
           "venue": {
             "anyOf": [
@@ -50539,7 +50764,7 @@
           "full_text_available": {
             "type": "boolean",
             "title": "Full Text Available",
-            "description": "是否确认取得全文（仅摘要时为 False）。",
+            "description": "是否有已核对的全文链接；本轮实际读取范围见 read_scope。",
             "default": false
           },
           "read_scope": {
@@ -50551,6 +50776,16 @@
             "type": "string",
             "title": "Role",
             "description": "在阅读顺序中的角色：survey / foundation / recent / tutorial。"
+          },
+          "relevance": {
+            "$ref": "#/components/schemas/PaperRelevance",
+            "default": "direct"
+          },
+          "research_group": {
+            "type": "string",
+            "title": "Research Group",
+            "description": "按子问题或方法路线分组。",
+            "default": ""
           },
           "reason_zh": {
             "type": "string",
@@ -50636,6 +50871,16 @@
         ],
         "title": "PaperRecommendation",
         "description": "一篇经主题与来源核对后的推荐（阅读顺序见 ``order``）。"
+      },
+      "PaperRelevance": {
+        "type": "string",
+        "enum": [
+          "direct",
+          "partial",
+          "exploratory"
+        ],
+        "title": "PaperRelevance",
+        "description": "相关程度只描述需求覆盖，不代表论文质量。"
       },
       "PaperRequirementEvidence": {
         "properties": {
@@ -50858,7 +51103,45 @@
             },
             "type": "array",
             "title": "Papers",
-            "description": "按阅读顺序排列的真实论文结果。"
+            "description": "按阅读顺序排列的重点推荐（默认 5–8 篇）。"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PaperCandidateProjection"
+            },
+            "type": "array",
+            "title": "Candidates",
+            "description": "通过硬条件与证据门的完整候选列表。"
+          },
+          "citation_edges": {
+            "items": {
+              "$ref": "#/components/schemas/PaperCitationEdge"
+            },
+            "type": "array",
+            "title": "Citation Edges",
+            "description": "真实取得的引用边；为空时不提供引用图。"
+          },
+          "research_question": {
+            "type": "string",
+            "title": "Research Question",
+            "description": "本轮理解后的研究问题。",
+            "default": ""
+          },
+          "selected_sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Sources",
+            "description": "本轮实际启用的来源。"
+          },
+          "condition_sources": {
+            "items": {
+              "$ref": "#/components/schemas/PaperConditionSource"
+            },
+            "type": "array",
+            "title": "Condition Sources",
+            "description": "本轮硬条件及其来自请求/任务条件的原话片段。"
           },
           "selected": {
             "items": {
@@ -50872,7 +51155,7 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Requested Count",
-            "description": "本轮目标篇数（3–5）。",
+            "description": "本轮重点推荐目标篇数。",
             "default": 0
           },
           "artifacts": {

@@ -1,11 +1,8 @@
-"""``paper.plan``：精确词优先的 arXiv 查询与排序。
+"""``paper.plan``：将动态研究意图映射到受约束的来源查询。
 
-规则（``docs/v2/workflows.md`` 第 2 节）：生成精确词优先的 arXiv 查询；译名／
-同义词只作为扩展，不能替掉原词；按「最新／经典／入门」意图设置排序。
-
-查询尝试有界：先按「主词 + 扩展词」精确检索；结果过少时第二次只用主词放宽
-召回——两次都仍不足时如实报实际数量，不凑篇数。上限由本模块返回的计划条数
-决定（无扩展词时只有一条），调用方不再另设次数。
+使用模型识别出的研究概念和英文检索表达，按用户指定范围与来源能力选择
+最多三个已登记来源。首轮不预先生成放宽查询；有明确缺口时由筛选节点最多
+发起一次针对性补搜，仍须保留所有明确条件。
 """
 
 from __future__ import annotations
@@ -16,79 +13,95 @@ from bridges.paper.contracts import (
     PaperTermAnalysis,
 )
 
-#: 本轮默认目标篇数（验收要求默认 3–5 篇）。
-DEFAULT_TARGET_COUNT = 5
+#: 普通请求重点推荐目标；完整候选仍独立展示。
+DEFAULT_TARGET_COUNT = 8
 MIN_TARGET_COUNT = 3
-MAX_TARGET_COUNT = 5
+MAX_TARGET_COUNT = 30
 
 #: 进入查询的扩展词上限（扩展只作补充，避免把查询收窄到无结果）。
-MAX_QUERY_EXPANSIONS = 2
+MAX_QUERY_EXPANSIONS = 12
 
-#: 候选请求量：高于目标篇数以留出去重与主题筛除的余量。
-CANDIDATE_MULTIPLIER = 3
-
-
-def plan_queries(analysis: PaperTermAnalysis) -> tuple[PaperQueryPlan, ...]:
-    """按解析结果生成有界的查询计划（第一条为精确词优先）。"""
-    primary = analysis.final_query.strip() or analysis.normalized_term.strip()
-    expansions = [item for item in analysis.expansions if item.strip()][:MAX_QUERY_EXPANSIONS]
+def plan_queries(
+    analysis: PaperTermAnalysis,
+    *,
+    available_sources: tuple[str, ...] = ("arxiv",),
+    missing_requirements: tuple[str, ...] = (),
+) -> tuple[PaperQueryPlan, ...]:
+    """为有限个已登记来源生成首轮或一次针对缺口的查询。"""
+    all_terms = [item.strip() for item in analysis.expansions if item.strip()]
+    if analysis.concepts:
+        terms = [
+            concept.english_search_terms[0].strip()
+            for concept in analysis.concepts
+            if concept.english_search_terms and concept.english_search_terms[0].strip()
+        ]
+    else:
+        terms = all_terms[:MAX_QUERY_EXPANSIONS]
+    if missing_requirements:
+        focus = set(missing_requirements)
+        alternatives = [
+            term.strip()
+            for concept in analysis.concepts
+            if concept.source_phrase in focus or concept.concept in focus
+            for term in concept.english_search_terms[1:]
+            if term.strip()
+        ]
+        terms = list(dict.fromkeys([*terms, *alternatives]))[:MAX_QUERY_EXPANSIONS]
+    query = " ".join(dict.fromkeys(terms)).strip()
+    if not query:
+        query = analysis.final_query.strip() or analysis.normalized_term.strip()
     sort_by, sort_order = _sorting(analysis.constraints.sort_intent)
-    target_count = min(
-        MAX_TARGET_COUNT, analysis.constraints.requested_count or DEFAULT_TARGET_COUNT
-    )
-    max_results = _candidate_limit(target_count)
-    precise_query = _join_query(primary, expansions)
-    plans: list[PaperQueryPlan] = [
+    target_count = analysis.constraints.requested_count or DEFAULT_TARGET_COUNT
+    max_results = _candidate_limit(analysis.constraints.requested_count or 10)
+    excluded = set(analysis.constraints.excluded_sources)
+    available = list(dict.fromkeys(available_sources))
+    if analysis.constraints.allowed_sources:
+        selected = [
+            item for item in available if item in analysis.constraints.allowed_sources
+        ]
+    elif analysis.recommended_sources:
+        selected = [
+            item
+            for item in analysis.recommended_sources
+            if item in available and item not in excluded
+        ][:3]
+        fallback = [item for item in available if item not in excluded]
+        desired_count = min(2, len(fallback))
+        for item in fallback:
+            if len(selected) >= desired_count or len(selected) >= 3:
+                break
+            if item not in selected:
+                selected.append(item)
+    else:
+        # 仅旧版确定性解析结果没有模型来源建议；动态意图路径不得把所有来源补选。
+        selected = available[:3]
+    selected = [item for item in selected if item not in excluded]
+    plans = [
         PaperQueryPlan(
-            query=precise_query,
+            query=query,
+            source=source,
             sort_by=sort_by,
             sort_order=sort_order,
-            max_results=max_results,
+            max_results=min(10, max_results),
             target_count=target_count,
-            expansions_used=expansions,
+            expansions_used=terms,
             rationale=(
-                f"主词「{primary}」对应你的原始术语；"
-                + (
-                    f"扩展词 {'、'.join(expansions)} 作为补充线索。"
-                    if expansions
-                    else "未使用扩展词。"
-                )
-                + _sort_rationale(analysis.constraints.sort_intent)
+                f"保留研究对象「{analysis.research_object or analysis.original_phrase}」、"
+                f"问题「{analysis.research_question or analysis.original_phrase}」及方法/应用概念；"
+                f"由 {source} 执行查询。" + _sort_rationale(analysis.constraints.sort_intent)
             ),
         )
+        for source in selected
     ]
-    if not analysis.constraints.arxiv_id and not analysis.constraints.paper_title:
-        # 精确词 + 扩展词没有足够结果时，放宽为只用主词（仍然保留原词）。
-        plans.append(
-            PaperQueryPlan(
-                query=primary if expansions else f"title:{primary}",
-                sort_by=sort_by,
-                sort_order=sort_order,
-                max_results=max_results,
-                target_count=target_count,
-                expansions_used=[],
-                rationale=f"相关候选不足，按原主题「{primary}」调整查询一次，保持硬条件。",
-            )
-        )
     return tuple(plans)
 
 
-def _join_query(primary: str, expansions: list[str]) -> str:
-    parts = [primary.strip()] if primary.strip() else []
-    parts.extend(item.strip() for item in expansions)
-    return " ".join(part for part in parts if part)
-
-
 def _candidate_limit(target: int) -> int:
-    return max(MIN_TARGET_COUNT, min(MAX_TARGET_COUNT, target)) * CANDIDATE_MULTIPLIER
+    return max(MIN_TARGET_COUNT, min(10, target))
 
 
 def _sorting(intent: PaperSortIntent) -> tuple[str, str]:
-    """arXiv 只提供 submittedDate/relevance/lastUpdatedDate；经典无原生排序。
-
-    「最新」用提交时间倒序；其余用相关度——经典与入门只能在排序阶段用真实
-    取得的引用/年份证据重排，绝不假装 arXiv 支持引用排序。
-    """
+    """将用户排序意图映射为通用偏好，来源适配器按自身能力应用。"""
     if intent is PaperSortIntent.LATEST:
         return "submittedDate", "descending"
     return "relevance", "descending"

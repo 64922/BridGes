@@ -31,6 +31,21 @@ _PAPER_TITLE_QUOTED = re.compile(
     r"(?:标题|题目|论文名)\s*(?:是|为|：|:)?\s*[“\"「『']([^”\"」』']{2,120})[”\"」』']"
 )
 
+_SOURCE_ALIASES: tuple[tuple[str, str], ...] = (
+    ("semantic scholar", "semantic_scholar"),
+    ("web of science", "web_of_science"),
+    ("google scholar", "google_scholar"),
+    ("ieee xplore", "ieee_xplore"),
+    ("pubmed", "pubmed"),
+    ("scopus", "scopus"),
+    ("wos", "web_of_science"),
+    ("arxiv.org", "arxiv"),
+    ("arxiv", "arxiv"),
+    ("crossref", "crossref"),
+    ("openalex", "openalex"),
+)
+_SUPPORTED_SOURCES = frozenset({"arxiv", "crossref", "openalex"})
+
 
 
 def parse_constraints(text: str, *, now: datetime) -> PaperConstraints:
@@ -39,12 +54,16 @@ def parse_constraints(text: str, *, now: datetime) -> PaperConstraints:
     sort_intent, prefer_survey = parse_intent(lowered)
     allowed: list[str] = []
     excluded: list[str] = []
+    unsupported: list[str] = []
     for clause in re.split(r"[，。；;,]|(?:但|不过)", lowered):
-        sources = [name for name in ("arxiv", "crossref", "openalex") if name in clause]
+        sources = list(dict.fromkeys(
+            canonical for alias, canonical in _SOURCE_ALIASES if alias in clause
+        ))
         if re.search(r"不要|不用|禁止|排除|不查|别查|不使用|without|exclude|avoid", clause):
-            excluded.extend(sources)
+            excluded.extend(source for source in sources if source in _SUPPORTED_SOURCES)
         elif re.search(r"仅|只|限定|来源为|来源是|only|from", clause):
-            allowed.extend(sources)
+            allowed.extend(source for source in sources if source in _SUPPORTED_SOURCES)
+            unsupported.extend(source for source in sources if source not in _SUPPORTED_SOURCES)
     identity = _ARXIV_ID.search(text)
     if identity is None and "arxiv" in lowered:
         identity = _ARXIV_ID_BARE.search(text)
@@ -58,10 +77,16 @@ def parse_constraints(text: str, *, now: datetime) -> PaperConstraints:
         year_to=year_to,
         sort_intent=sort_intent,
         prefer_survey=prefer_survey,
+        exclude_survey=bool(re.search(
+            r"(?:不要|不看|排除|不包括|不含|exclude|without).{0,8}(?:综述|review|survey)"
+            r"|(?:综述|review|survey).{0,8}(?:不要|不看|排除|不包括|不含)",
+            lowered,
+        )),
         arxiv_id=identity.group(1) if identity else None,
         paper_title=title.group(1).strip() if title else None,
         allowed_sources=list(dict.fromkeys(allowed)),
         excluded_sources=list(dict.fromkeys(excluded)),
+        unsupported_sources=list(dict.fromkeys(unsupported)),
     )
 
 

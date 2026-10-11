@@ -399,7 +399,8 @@ def test_explicit_paper_module_returns_real_results_with_reasons(
     paper = assistant["paper_search"]
     assert paper["status"] == "success"
     assert paper["original_phrase"].lower() == "transformer"
-    assert "transformer" in paper["final_query"].lower()
+    assert "attention" in paper["final_query"].lower()
+    assert paper["final_query"] in paper["queries"][0]["query"]
     assert paper["queries"][0]["source"] == "arxiv"
     assert paper["queries"][0]["status"] == "success"
     assert paper["queries"][0]["evidence_count"] == len(paper["papers"])
@@ -742,10 +743,10 @@ def test_error_does_not_leave_waiting_state_behind(
     assert assistant["paper_search"]["status"] == "error"
     assert assistant["paper_search"]["pending"] is None
 
-def test_sparse_precise_query_relaxes_once_and_keeps_both_records(
+def test_sparse_results_do_not_trigger_unspecific_relaxation(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """稀疏领域：精确查询偏少时用主词放宽一次，两条查询记录都如实保留。"""
+    """旧解析路径没有模型给出的具体缺口时，不自动放宽查询。"""
     _register(client)
     source = _StagedPaperSource(
         sparse=ATTENTION_CANDIDATES[:1],
@@ -761,24 +762,20 @@ def test_sparse_precise_query_relaxes_once_and_keeps_both_records(
     )
 
     paper = assistant["paper_search"]
-    assert len(source.queries) == 2, "精确查询偏少才放宽一次，且只放宽一次"
-    relaxed_query = source.queries[1]
-    assert relaxed_query.lower() in source.queries[0].lower()
-    assert source.queries[0].lower().startswith(relaxed_query.lower())
+    assert len(source.queries) == 1
     assert [record["query"] for record in paper["queries"]] == source.queries
     assert paper["status"] == "success"
-    assert len(paper["papers"]) > 1, "结果取自放宽召回的那次调用"
+    assert len(paper["papers"]) == 1, "只交付本轮实际取得且通过筛选的候选"
 
 
-def test_relaxed_attempt_failure_keeps_first_result_and_both_records(
+def test_no_unspecific_relaxation_means_no_phantom_failure_record(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """放宽检索失败不掩盖已取得的真实结果：两条记录都留着，超时如实标出。"""
+    """没有具体缺口时不发起补搜，也不伪造失败记录。"""
     _register(client)
     source = _StagedPaperSource(
         sparse=ATTENTION_CANDIDATES[:1],
         relaxed=ATTENTION_CANDIDATES,
-        relaxed_error="arxiv_timeout",
     )
     _install_paper_source(sqlite_app, source)
     conversation_id = _create_conversation(client)
@@ -790,12 +787,9 @@ def test_relaxed_attempt_failure_keeps_first_result_and_both_records(
     )
 
     paper = assistant["paper_search"]
-    assert len(source.queries) == 2
+    assert len(source.queries) == 1
     statuses = [record["status"] for record in paper["queries"]]
-    assert statuses[0] == "success"
-    assert statuses[1] == "timeout"
-    assert paper["queries"][1]["error_code"] == "arxiv_timeout"
-    # 采用候选更多的那次（放宽失败返回 0 篇）：结果仍来自第一次成功调用。
+    assert statuses == ["success"]
     assert assistant["status"] == "done"
     assert paper["status"] == "success"
     assert [item["title"] for item in paper["papers"]] == [

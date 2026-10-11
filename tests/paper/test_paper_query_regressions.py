@@ -29,7 +29,7 @@ from tests.paper.test_paper_module_flow import (
         ("给我找三篇关于机器学习的论文", "机器学习", "machine learning", 3),
         ("给我找3篇关于机器学习的论文", "机器学习", "machine learning", 3),
         ("帮我找两篇深度学习论文", "深度学习", "deep learning", 2),
-        ("找 machine learning 论文", "machine learning", "machine learning", 5),
+        ("找 machine learning 论文", "machine learning", "machine learning", 8),
     ],
 )
 def test_topic_and_quantity_are_separate(

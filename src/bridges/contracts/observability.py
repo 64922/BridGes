@@ -84,6 +84,7 @@ class AuditAction(str, Enum):
     HUMANIZER_PROFILE_LEAK = "humanizer_profile_leak"
     CAREER_PLANNING_GENERATED = "career_planning_generated"
     ASR_TRANSCRIBE = "asr_transcribe"
+    ACADEMIC_SEARCH = "academic_search"
     READ_ALOUD_GENERATE = "read_aloud_generate"
     READ_ALOUD_DELETE = "read_aloud_delete"
     IMAGE_TASK_SUBMIT = "image_task_submit"

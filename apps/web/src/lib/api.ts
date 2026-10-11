@@ -126,6 +126,10 @@ export type ModuleQueryStatus = components["schemas"]["ModuleQueryStatus"];
 export type PaperSearchProjection = components["schemas"]["PaperSearchProjection"];
 export type PaperSearchStatus = components["schemas"]["PaperSearchStatus"];
 export type PaperRecommendation = components["schemas"]["PaperRecommendation"];
+export type PaperRequirementEvidence = components["schemas"]["PaperRequirementEvidence"];
+export type PaperConditionSource = components["schemas"]["PaperConditionSource"];
+export type PaperCandidateProjection = components["schemas"]["PaperCandidateProjection"];
+export type PaperCitationEdge = components["schemas"]["PaperCitationEdge"];
 // V2 Issue 14：贴吧信息搜集模块投影（真实读到的帖子/楼层、帖链降级与官方核验）。
 export type TiebaResearchProjection = components["schemas"]["TiebaResearchProjection"];
 export type TiebaResearchStatus = components["schemas"]["TiebaResearchStatus"];

@@ -120,8 +120,9 @@ class ReadCoordinator:
         if not wanted or self._reader is None:
             # 纯摘要读取：范围如实标为 abstract。
             for item in selected:
-                readings[item.candidate.arxiv_id] = PaperReading(
-                    arxiv_id=item.candidate.arxiv_id,
+                key = _candidate_key(item.candidate)
+                readings[key] = PaperReading(
+                    arxiv_id=key,
                     scope="abstract",
                 )
             early_notes = []
@@ -144,11 +145,12 @@ class ReadCoordinator:
         attempts = 0
         for item in selected:
             candidate = item.candidate
+            candidate_key = _candidate_key(candidate)
             if attempts >= self._deep_read_max or time.monotonic() >= deadline:
                 break
             if stop_event is not None and stop_event.is_set():
                 break
-            call_key = f"paper.read:{candidate.arxiv_id}"
+            call_key = f"paper.read:{candidate_key}"
             if budget_view is not None and not budget_view.register_external(
                 call_key, purpose="full_text_read"
             ):
@@ -165,20 +167,20 @@ class ReadCoordinator:
                 outcome_code = "success" if reading.sections else "no_body_evidence"
             except Exception:  # noqa: BLE001 - 可选读取失败只降级，不阻断其余候选
                 reading = PaperReading(
-                    arxiv_id=candidate.arxiv_id,
+                    arxiv_id=candidate_key,
                     scope="abstract",
                     notes=("全文读取失败，本篇降级为摘要级。",),
                 )
             finally:
                 if budget_view is not None:
                     budget_view.release_external(call_key, outcome_code=outcome_code)
-            readings[candidate.arxiv_id] = reading
+            readings[candidate_key] = reading
             if reading.scope in {"full_text", "partial"}:
                 deep_reads += 1
         for item in selected:
-            arxiv_id = item.candidate.arxiv_id
-            if arxiv_id not in readings:
-                readings[arxiv_id] = PaperReading(arxiv_id=arxiv_id, scope="abstract")
+            key = _candidate_key(item.candidate)
+            if key not in readings:
+                readings[key] = PaperReading(arxiv_id=key, scope="abstract")
         if deep_reads:
             notes.append(
                 f"已对 {deep_reads} 篇重点候选按本轮结论需要读取正文；"
@@ -206,6 +208,10 @@ def _as_budget(budget: object | None) -> _BudgetView | None:
     if hasattr(budget, "register_external") and hasattr(budget, "deadline_seconds"):
         return cast(_BudgetView, budget)
     return None
+
+
+def _candidate_key(candidate: PaperCandidate) -> str:
+    return candidate.arxiv_id or candidate.candidate_id
 
 
 def supported_claims(reading: PaperReading | None) -> list[str]:
