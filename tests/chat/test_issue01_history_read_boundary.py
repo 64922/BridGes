@@ -175,7 +175,25 @@ def test_history_projection_matches_public_view_with_unanswered_update_and_delet
                 ]
             }
         )
-        state.page_update = StudyPageUpdate(pages=state.pages, units=state.units)
+        original_page = state.pages[0]
+        original_fragment = original_page.fragments[0]
+        updated_page = original_page.model_copy(
+            update={
+                "fragments": [
+                    original_fragment.model_copy(
+                        update={"text": f"{original_fragment.text}（依据更新）"}
+                    ),
+                    *original_page.fragments[1:],
+                ]
+            }
+        )
+        updated_pages = list(state.pages)
+        updated_pages[0] = updated_page
+        state.page_update = StudyPageUpdate(pages=updated_pages, units=state.units)
+        assert (
+            state.page_update.pages[0].fragments[0].text
+            != state.pages[0].fragments[0].text
+        )
         baseline = state.public_view().model_dump(mode="json")
         database.scoped(account_id).execute(
             "UPDATE study_states SET state_json = ?"
@@ -213,3 +231,7 @@ def test_history_projection_matches_public_view_with_unanswered_update_and_delet
         assert projection["study"]["tutoring"]
         assert projection["study"]["review"]["questions"][-1]["unanswered"] is True
         assert projection["study"]["page_update"] is not None
+        assert (
+            projection["study"]["page_update"]["pages"][0]["fragments"][0]["text"]
+            != projection["study"]["pages"][0]["fragments"][0]["text"]
+        )
