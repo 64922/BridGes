@@ -92,7 +92,7 @@ export function NewChatHome() {
           <div className={styles.blankState} data-testid="new-chat-home">
             <div className={styles.blankStateInner}>
               {mode === "study" ? (
-                <p className={styles.greetingTitle}>上传本节书页照片开始预习</p>
+                <p className={styles.greetingTitle}>想弄懂什么？直接提问或说说学习目标</p>
               ) : (
                 <RotatingQuote />
               )}

@@ -16,15 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.career_plan.contracts import CareerPlanProjection
 from bridges.commute.contracts import CommuteRouteProjection
-from bridges.github.contracts import GithubProjectsProjection
-from bridges.paper.contracts import PaperSearchProjection
-from bridges.resources.contracts import LearningResourcesProjection
-from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
 )
-from bridges.contracts.routing import RouteDecision
 from bridges.contracts.humanizer import (
     HumanizerProcessState,
     HumanizerResultProjection,
@@ -36,14 +31,20 @@ from bridges.contracts.retrieval import (
     RetrievalDecisionProjection,
     RetrievalRoundProjection,
 )
+from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
     StudyHistoryStatusProjection,
 )
+from bridges.contracts.study_local_progress import StudyLocalProgressProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
+from bridges.github.contracts import GithubProjectsProjection
+from bridges.paper.contracts import PaperSearchProjection
+from bridges.resources.contracts import LearningResourcesProjection
 from bridges.routing import CapabilityRoute
+from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.web_search.contracts import WebSearchProjection
 
 
@@ -550,6 +551,9 @@ class ChatConversationProjection(BaseModel):
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
     study: StudyHistoryProjection | None = Field(
         default=None, description="学习小节的持久化阶段、页级证据和预习问题。"
+    )
+    study_local_progress: StudyLocalProgressProjection | None = Field(
+        default=None, description="会话局部学习进展；仅含公开摘要和来源消息标识。"
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,

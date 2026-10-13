@@ -63,6 +63,7 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "node_receipts",
     "node_artifacts",
     "retrieval_decisions",
+    "study_local_progress",
     "study_states",
     "image_tasks",
     "image_versions",
@@ -172,6 +173,9 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     # V2 学习小节的阶段状态（书页证据、复盘题目与判定、学习总结）全在
     # state_json 一列，按行导出即完整可读。
     ExportCategory("study", "学习小节状态", ("study_states",), 4096),
+    ExportCategory(
+        "study_local_progress", "会话局部学习进展", ("study_local_progress",), 1024
+    ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
     ExportCategory("generation_runs", "生成运行额度", ("generation_runs",), 512),
@@ -390,6 +394,7 @@ def logical_summary(
         "graph_checkpoints",
         "graph_checkpoint_writes",
         "retrieval_decisions",
+        "study_local_progress",
         "image_tasks",
         "image_versions",
         "image_assets",

@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ALL_COMPLETED, Future, wait
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from inspect import Parameter, signature
 from typing import Any, Literal, Protocol
 
@@ -185,6 +186,7 @@ from bridges.state_copy import (
     WEB_SEARCH_INTERNAL_TEXT,
     WEB_SEARCH_STAGE_TIMEOUT_TEXT,
 )
+from bridges.study.tutor_prompt import STUDY_TUTOR_SYSTEM_PROMPT
 from bridges.web_search.client import WebSearchError
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import SearchPlan, WebSearchService
@@ -2565,6 +2567,7 @@ def finalize_message(
     arxiv_search: dict[str, Any] | None = None,
     teaching: dict[str, Any] | None = None,
     persist_learning: Callable[[], None] | None = None,
+    persist_study_progress: Callable[[], None] | None = None,
     final_content: str | None = None,
     paper_search: dict[str, Any] | None = None,
     tieba_research: dict[str, Any] | None = None,
@@ -2613,6 +2616,7 @@ def finalize_message(
         github_projects=github_projects,
         teaching=teaching,
         persist_learning=persist_learning,
+        persist_study_progress=persist_study_progress,
         final_content=final_content,
         turn_result=(
             turn_result.model_dump(mode="json")
@@ -2730,6 +2734,8 @@ class TurnOrchestrator:
         model_quota: RunModelQuota | None = None,
         context_budget: dict[str, Any] | None = None,
         web_search_allowed: bool = True,
+        study_tutor: bool = False,
+        persist_study_progress: Callable[[str], None] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
@@ -2817,6 +2823,15 @@ class TurnOrchestrator:
                     account_id, conversation_id, until_user_message_id
                 )
             )
+            if study_tutor:
+                history = [dict(message) for message in history]
+                if history and history[0].get("role") == "system":
+                    history[0]["content"] = STUDY_TUTOR_SYSTEM_PROMPT
+                else:
+                    history.insert(
+                        0,
+                        {"role": "system", "content": STUDY_TUTOR_SYSTEM_PROMPT},
+                    )
             # 改进工单 14：按编译记录里的读取计划读取本轮实际原图（当前照片 +
             # 按问题定位的同会话历史原图）。图片部件只在载荷组装时进入内存，
             # 不写入检查点；读取失败转为如实缺口，绝不用旧描述顶替原图。
@@ -3165,7 +3180,9 @@ class TurnOrchestrator:
             study_profile_compiled = False
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
-                if current.teaching is not None and mode == ChatMode.STUDY
+                if current.teaching is not None
+                and mode == ChatMode.STUDY
+                and not study_tutor
                 else None
             )
             if current.teaching is not None and mode != ChatMode.STUDY:
@@ -3198,7 +3215,7 @@ class TurnOrchestrator:
 
             # 学习模式先检查三层本地材料，再按证据门结果自动选择公开来源。
             # 普通陪伴模式继续沿用“用户明确要求/时效/核查才联网”的规则。
-            if mode == ChatMode.STUDY and not paper_route:
+            if mode == ChatMode.STUDY and not paper_route and not study_tutor:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -3695,7 +3712,7 @@ class TurnOrchestrator:
             # closed（不让模型用记忆伪装成真实结论）。Issue 06 T3：彼此
             # 独立且都已确定需要的来源并行执行，总耗时接近较慢者；结果
             # 按固定顺序（先论文后公网）处理，顺序确定。
-            if mode != ChatMode.STUDY or paper_route:
+            if mode != ChatMode.STUDY or paper_route or study_tutor:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -4916,6 +4933,11 @@ class TurnOrchestrator:
                         persist_learning=(
                             learning_publication.commit
                             if learning_publication is not None
+                            else None
+                        ),
+                        persist_study_progress=(
+                            partial(persist_study_progress, content)
+                            if persist_study_progress is not None
                             else None
                         ),
                     )

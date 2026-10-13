@@ -44,7 +44,9 @@ from bridges.routing import (
     MainCapability,
     RouteStatus,
 )
-from bridges.study.service import STUDY_GRAPH_VERSION
+from bridges.study.local_progress import StudyLocalProgressRepository
+from bridges.study.service import StudyRepository
+from bridges.study.versions import STUDY_GRAPH_VERSION, STUDY_TUTOR_GRAPH_VERSION
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
@@ -65,6 +67,7 @@ class _ServiceGenerationRecordsMixin:
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
+        has_attachments: bool = False,
         module_id: str | None = None,
         idempotency_key: str | None = None,
         understanding: MainUnderstanding | None = None,
@@ -182,10 +185,17 @@ class _ServiceGenerationRecordsMixin:
             created_at=now,
             updated_at=now,
             graph_version=(
-                STUDY_GRAPH_VERSION if mode == ChatMode.STUDY else DAILY_GRAPH_VERSION
+                self._study_graph_version(
+                    account_id,
+                    conversation_id,
+                    has_attachments=has_attachments,
+                )
+                if mode == ChatMode.STUDY
+                else DAILY_GRAPH_VERSION
             ),
             idempotency_key=idempotency_key,
         )
+
         started_payload = _started_event_payload(
             conversation_id=conversation_id,
             user_message_id=user_message.message_id,
@@ -194,6 +204,25 @@ class _ServiceGenerationRecordsMixin:
             message=assistant_message,
         )
         return user_message, assistant_message, run_record, started_payload
+
+    def _study_graph_version(
+        self: ChatService,
+        account_id: str,
+        conversation_id: str,
+        *,
+        has_attachments: bool,
+    ) -> str:
+        """Keep page-based study sessions on their workflow; route text-only study to tutor."""
+        if StudyLocalProgressRepository(self._repo.database).get(
+            account_id, conversation_id
+        ) is not None:
+            return STUDY_TUTOR_GRAPH_VERSION
+        if has_attachments or StudyRepository(self._repo.database).get(
+            account_id, conversation_id
+        ) is not None:
+            return STUDY_GRAPH_VERSION
+        return STUDY_TUTOR_GRAPH_VERSION
+
     def _apply_task_understanding(
         self: ChatService,
         *,

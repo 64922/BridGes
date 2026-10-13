@@ -9636,6 +9636,8 @@ export interface components {
             mode: components["schemas"]["ChatMode"];
             /** @description 学习小节的持久化阶段、页级证据和预习问题。 */
             study?: components["schemas"]["StudyState"] | null;
+            /** @description 会话局部学习进展；仅含公开摘要和来源消息标识。 */
+            study_local_progress?: components["schemas"]["StudyLocalProgressProjection"] | null;
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
@@ -24829,6 +24831,49 @@ export interface components {
              * @description 面向用户的固定说明。
              */
             message: string;
+        };
+        /**
+         * StudyLocalProgressProjection
+         * @description 单个学习对话的轻量进展，不包含模型提示词或完整上下文。
+         */
+        StudyLocalProgressProjection: {
+            /**
+             * Topic
+             * @description 当前对话主题。
+             */
+            topic: string;
+            /**
+             * Knowledge Context
+             * @description 最近一次已完成讲解的短摘录。
+             * @default
+             */
+            knowledge_context: string;
+            /**
+             * Current Focus
+             * @description 最近一次成功回复对应的问题。
+             */
+            current_focus: string;
+            /**
+             * Source Message Ids
+             * @description 进展所依据的用户与助手消息标识。
+             */
+            source_message_ids?: string[];
+            /**
+             * Version
+             * @description 局部进展的递增版本。
+             */
+            version: number;
+            /**
+             * Runtime Run Id
+             * @description 最近一次成功写入进展的运行标识。
+             */
+            runtime_run_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近一次成功更新进展的时间。
+             */
+            updated_at: string;
         };
         /**
          * StudyMaterialStatusProjection

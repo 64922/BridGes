@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 69
+SCHEMA_VERSION = 70
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3174,6 +3174,25 @@ MIGRATIONS: dict[int, list[str]] = {
         ALTER TABLE messages ADD COLUMN turn_result TEXT
         """,
     ],
+    # Issue 02：仅保存学习对话可公开的局部进展；成功回复时与消息终态同事务提交。
+    70: [
+        """
+        CREATE TABLE study_local_progress (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            knowledge_context TEXT NOT NULL DEFAULT '',
+            current_focus TEXT NOT NULL DEFAULT '',
+            source_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            version INTEGER NOT NULL CHECK (version >= 1),
+            runtime_run_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, conversation_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3183,6 +3202,7 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "objects",
     "conversations",
     "study_states",
+    "study_local_progress",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3232,6 +3252,17 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
 #: 同名对象存在但列不齐（例如被同名旧表顶替）时属于未知不兼容结构：必须失败
 #: 关闭，不能仅凭对象名存在就报告健康。这里只登记查询路径真正依赖的列。
 REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
+    "study_local_progress": frozenset({
+        "account_id",
+        "conversation_id",
+        "topic",
+        "knowledge_context",
+        "current_focus",
+        "source_message_ids_json",
+        "version",
+        "runtime_run_id",
+        "updated_at",
+    }),
     "profile_items": frozenset({
         "profile_item_id",
         "account_id",

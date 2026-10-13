@@ -30,6 +30,8 @@ from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.study.local_progress import StudyLocalProgressRepository
+from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
@@ -73,6 +75,20 @@ class _ServiceStreamMixin:
         # 改进工单 12：正文硬条件（不要联网/只用本地/只查论文）进入生成门禁；
         # 学习模式的强制补搜索同样受该门禁约束，语义扩展不得放宽。
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        study_tutor = (
+            run is not None and run.graph_version == STUDY_TUTOR_GRAPH_VERSION
+        )
+        persist_study_progress = None
+        if study_tutor and run is not None:
+            user_message = self._repo.get_message(account_id, run.user_message_id)
+            if user_message is not None:
+                progress_repository = StudyLocalProgressRepository(self._repo.database)
+
+                def persist_study_progress(content: str) -> None:
+                    progress_repository.save_completed_turn_in_transaction(
+                        self._repo, run, user_message, content
+                    )
+
         understanding = understanding_from_snapshot(
             (run.config or {}).get("understanding") if run is not None else None
         )
@@ -95,6 +111,8 @@ class _ServiceStreamMixin:
             model_quota=quota,
             context_budget=context_budget,
             web_search_allowed=web_search_allowed,
+            study_tutor=study_tutor,
+            persist_study_progress=persist_study_progress,
         )
         # 改进工单 17：不在执行器后台链路上的直接编排（测试/脚本）同样
         # 只在回答正常完成后登记普通画像提取；调度幂等，后台执行器路径

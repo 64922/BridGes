@@ -62,13 +62,24 @@ function evidenceLabels(
   return labels;
 }
 
-export function StudyProgress({ study: state, historyStatus, busy = false, onAction }: {
+export function StudyProgress({ study: state, studyLocalProgress, historyStatus, busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
+  studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   historyStatus?: ChatConversationProjection["study_history_status"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
 }) {
   const [sending, setSending] = useState(false);
+  if (studyLocalProgress) {
+    return (
+      <section className={styles.studyProgress} aria-label="局部学习进展">
+        <p className={styles.studySummaryNote}>正在学习：{studyLocalProgress.topic}</p>
+        {studyLocalProgress.current_focus && (
+          <p role="status">当前关注：{studyLocalProgress.current_focus}</p>
+        )}
+      </section>
+    );
+  }
   if (!state && historyStatus) {
     return (
       <section className={styles.studyProgress} aria-label="学习历史">
@@ -76,6 +87,7 @@ export function StudyProgress({ study: state, historyStatus, busy = false, onAct
       </section>
     );
   }
+  if (!state) return null;
   const current = state?.stage === "awaiting_pages" ? "recognizing" : state?.stage ?? "recognizing";
   const action = state?.stage === "review" ? "暂停复盘回辅导"
     : state?.review ? "继续复盘" : "开始复盘";

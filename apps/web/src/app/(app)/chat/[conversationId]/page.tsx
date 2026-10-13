@@ -831,6 +831,7 @@ export default function ChatConversationPage() {
               {conversation?.mode === "study" && (
                 <StudyProgress
                   study={conversation.study}
+                  studyLocalProgress={conversation.study_local_progress}
                   historyStatus={conversation.study_history_status}
                   busy={generating} onAction={sendMessage}
                 />

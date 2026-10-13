@@ -49,7 +49,8 @@ from bridges.routing import (
 from bridges.state_copy import (
     WAIT_GENERATION_IN_PROGRESS_TEXT,
 )
-from bridges.study.service import STUDY_GRAPH_VERSION, StudyRepository
+from bridges.study.service import StudyRepository
+from bridges.study.versions import STUDY_GRAPH_VERSION, STUDY_TUTOR_GRAPH_VERSION
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 
 if TYPE_CHECKING:
@@ -341,7 +342,21 @@ class _ServiceRetryMixin:
             created_at=now,
             updated_at=now,
             graph_version=(
-                STUDY_GRAPH_VERSION if mode == ChatMode.STUDY else DAILY_GRAPH_VERSION
+                (
+                    STUDY_TUTOR_GRAPH_VERSION
+                    if previous_run is not None
+                    and previous_run.graph_version == STUDY_TUTOR_GRAPH_VERSION
+                    else STUDY_GRAPH_VERSION
+                    if previous_run is not None
+                    and (previous_run.graph_version or "").startswith("study-")
+                    else self._study_graph_version(
+                        account_id,
+                        conversation_id,
+                        has_attachments=False,
+                    )
+                )
+                if mode == ChatMode.STUDY
+                else DAILY_GRAPH_VERSION
             ),
             idempotency_key=idempotency_key,
         )

@@ -58,6 +58,7 @@ from bridges.resources.service import LearningResourcesService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.study.ports import StudyExecutionPorts
 from bridges.study.service import StudyWorkflow
+from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 from bridges.tieba.service import TiebaResearchService
 
 if TYPE_CHECKING:
@@ -401,7 +402,7 @@ class _ServiceContextMixin:
             conversation is not None
             and conversation.mode == ChatMode.STUDY.value
         ) or (run.graph_version or "").startswith("study-")
-        if is_study:
+        if is_study and run.graph_version != STUDY_TUTOR_GRAPH_VERSION:
             return StudyWorkflow(self._study_execution_ports()).run(
                 run, on_event=on_event, stop_event=stop_event
             )

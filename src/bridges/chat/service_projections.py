@@ -53,6 +53,7 @@ from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
+from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.versions import KNOWN_STUDY_GRAPH_VERSION_SET
 from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.web_search.contracts import WebSearchProjection
@@ -382,11 +383,19 @@ class _ServiceProjectionsMixin:
             if mode == ChatMode.STUDY
             else None
         )
+        study_local_progress = (
+            StudyLocalProgressRepository(self._repo.database).get(
+                account_id, conversation_id
+            )
+            if mode == ChatMode.STUDY
+            else None
+        )
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,
             mode=mode,
             study=study_history.study if study_history is not None else None,
+            study_local_progress=study_local_progress,
             study_history_status=(
                 study_history.status if study_history is not None else None
             ),
