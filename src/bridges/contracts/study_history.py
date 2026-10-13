@@ -40,6 +40,15 @@ class StudyHistoryStatusProjection(BaseModel):
     message: str = Field(min_length=1, description="面向用户的固定说明。")
 
 
+class StudyMaterialStatusProjection(BaseModel):
+    """材料对象的账户范围内存储状态；不包含材料内容。"""
+
+    object_id: str = Field(description="学习历史引用的材料对象标识。")
+    status: StudyMaterialStatus = Field(
+        description="对象存储中的当前状态。"
+    )
+
+
 # 历史读取 DTO 保留既有 OpenAPI StudyState schema 名与 JSON 结构。
 class StudyState(BaseModel):
 
@@ -60,15 +69,10 @@ class StudyState(BaseModel):
     scope: StudyScope | None = None
     scope_history: list[StudyScope] = Field(default_factory=list)
     state_version: int = 1
+    materials: list[StudyMaterialStatusProjection] = Field(
+        default_factory=list,
+        description="学习历史引用材料的当前对象存储状态，不包含材料内容。",
+    )
 
 
 StudyHistoryProjection = StudyState
-
-
-class StudyMaterialStatusProjection(BaseModel):
-    """材料对象的账户范围内存储状态；不包含材料内容。"""
-
-    object_id: str = Field(description="学习历史引用的材料对象标识。")
-    status: StudyMaterialStatus = Field(
-        description="对象存储中的当前状态。"
-    )

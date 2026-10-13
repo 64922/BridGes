@@ -9639,11 +9639,6 @@ export interface components {
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
-             * Study Materials
-             * @description 学习历史引用材料的当前对象存储状态，不包含材料内容。
-             */
-            study_materials?: components["schemas"]["StudyMaterialStatusProjection"][];
-            /**
              * Mode Locked
              * @description 首条用户消息提交后是否已锁定当前模式。
              * @default false
@@ -25159,6 +25154,11 @@ export interface components {
              * @default 1
              */
             state_version: number;
+            /**
+             * Materials
+             * @description 学习历史引用材料的当前对象存储状态，不包含材料内容。
+             */
+            materials?: components["schemas"]["StudyMaterialStatusProjection"][];
         };
         /** StudySummary */
         StudySummary: {

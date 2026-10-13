@@ -8,6 +8,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.contracts.study import (
+    StudyPageUpdate,
+    StudyState,
+    StudySummaryPoint,
+    upgrade_legacy_study_state,
+)
 from bridges.lifecycle.catalog import export_rows
 from tests.chat.test_v2_05_photo_attachments import _app
 from tests.chat.test_v2_18_study_tutoring import _ask, _start
@@ -93,6 +99,14 @@ def test_history_read_explains_versions_without_running_or_writing(
         if expected_status == "legacy":
             assert projection["study"]["state_version"] == 4
             assert projection["study"] == completed["study"]
+            baseline = upgrade_legacy_study_state(
+                StudyState.model_validate(json.loads(original_json))
+            )
+            legacy_projection = baseline.public_view().model_dump(mode="json")
+            assert {
+                key: value for key, value in projection["study"].items()
+                if key != "materials"
+            } == legacy_projection
         elif expected_status == "unsupported":
             assert projection["study"] is None
             assert "future-private-value" not in response.text
@@ -109,7 +123,7 @@ def test_history_read_explains_versions_without_running_or_writing(
         assert len(exported) == 1 and exported[0]["state_json"] == original_json
 
 
-def test_history_reports_deleted_material_without_rewriting_page_evidence(
+def test_history_projection_matches_public_view_with_unanswered_update_and_deleted_material(
     tmp_path: Any, monkeypatch: Any
 ) -> None:
     app = _app(tmp_path, monkeypatch)
@@ -124,6 +138,50 @@ def test_history_reports_deleted_material_without_rewriting_page_evidence(
         account_id = client.get("/auth/session").json()["account"]["id"]
         conversation_id = endpoint.rsplit("/", 1)[-1]
         page = completed["study"]["pages"][0]
+        database = app.state.bridges_database
+        row = database.scoped(account_id).execute(
+            "SELECT state_json FROM study_states"
+            " WHERE account_id = ? AND conversation_id = ?",
+            (account_id, conversation_id),
+        ).fetchone()
+        assert row is not None
+        state = StudyState.model_validate(json.loads(row["state_json"]))
+        assert state.review is not None and state.review.questions
+        unanswered = state.review.questions[0].model_copy(
+            update={
+                "question_id": "history-unanswered",
+                "question": "截距如何影响图像？",
+                "answer": None,
+                "judgement": None,
+                "canonical_answer": None,
+                "explanation": None,
+                "feedback": None,
+                "unanswered": True,
+            }
+        )
+        state.review = state.review.model_copy(
+            update={"questions": [*state.review.questions, unanswered]}
+        )
+        assert state.summary is not None
+        state.summary = state.summary.model_copy(
+            update={
+                "points": [
+                    *state.summary.points,
+                    StudySummaryPoint(
+                        kind="unanswered",
+                        text="截距问题已呈现，尚未作答。",
+                        question_ids=[unanswered.question_id],
+                    ),
+                ]
+            }
+        )
+        state.page_update = StudyPageUpdate(pages=state.pages, units=state.units)
+        baseline = state.public_view().model_dump(mode="json")
+        database.scoped(account_id).execute(
+            "UPDATE study_states SET state_json = ?"
+            " WHERE account_id = ? AND conversation_id = ?",
+            (state.model_dump_json(), account_id, conversation_id),
+        )
         source_message = next(
             message
             for message in completed["messages"]
@@ -145,8 +203,13 @@ def test_history_reports_deleted_material_without_rewriting_page_evidence(
         result = client.get(endpoint)
         assert result.status_code == 200, result.text
         projection = result.json()
-        assert projection["study_materials"] == [
+        assert projection["study"]["materials"] == [
             {"object_id": page["object_id"], "status": "deleted"}
         ]
-        assert projection["study"]["pages"] == completed["study"]["pages"]
-        assert projection["study"]["summary"] == completed["study"]["summary"]
+        assert {
+            key: value for key, value in projection["study"].items()
+            if key != "materials"
+        } == baseline
+        assert projection["study"]["tutoring"]
+        assert projection["study"]["review"]["questions"][-1]["unanswered"] is True
+        assert projection["study"]["page_update"] is not None

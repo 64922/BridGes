@@ -33,14 +33,16 @@ describe("学习阶段与页级证据", () => {
 
   it("已删除材料的内容明确标记为历史识别记录", () => {
     render(<StudyProgress
-      study={{ subsection_id: "s", stage: "tutoring", state_version: 4, pages: [{
-        ordinal: 1, object_id: "photo-1", content_hash: "hash", model_id: "test",
-        same_section: true, fragments: [{ fragment_id: "f1", kind: "text",
-          position: "页首", text: "历史材料内容", confidence: 1, source: "photo",
-          recognition_path: "vision", interpretation: "" }], unclear: [],
-      }], summary: { scope_version_id: "", points: [{ kind: "learned",
-        text: "线性函数斜率", fragment_ids: ["f1"] }] }}}
-      materials={[{ object_id: "photo-1", status: "deleted" }]}
+      study={{
+        subsection_id: "s", stage: "tutoring", state_version: 4,
+        materials: [{ object_id: "photo-1", status: "deleted" }],
+        pages: [{ ordinal: 1, object_id: "photo-1", content_hash: "hash", model_id: "test",
+          same_section: true, fragments: [{ fragment_id: "f1", kind: "text",
+            position: "页首", text: "历史材料内容", confidence: 1, source: "photo",
+            recognition_path: "vision", interpretation: "" }], unclear: [] }],
+        summary: { scope_version_id: "", points: [{ kind: "learned",
+          text: "线性函数斜率", fragment_ids: ["f1"] }] },
+      }}
     />);
     expect(screen.getByText(/原材料已删除，以下内容仅是保留的历史识别记录/)).toBeTruthy();
     expect(screen.getByText(/已删除材料的历史记录：上传第1页/)).toBeTruthy();

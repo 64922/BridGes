@@ -32630,14 +32630,6 @@
             ],
             "description": "旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。"
           },
-          "study_materials": {
-            "items": {
-              "$ref": "#/components/schemas/StudyMaterialStatusProjection"
-            },
-            "type": "array",
-            "title": "Study Materials",
-            "description": "学习历史引用材料的当前对象存储状态，不包含材料内容。"
-          },
           "mode_locked": {
             "type": "boolean",
             "title": "Mode Locked",
@@ -58467,6 +58459,14 @@
             "type": "integer",
             "title": "State Version",
             "default": 1
+          },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/StudyMaterialStatusProjection"
+            },
+            "type": "array",
+            "title": "Materials",
+            "description": "学习历史引用材料的当前对象存储状态，不包含材料内容。"
           }
         },
         "type": "object",

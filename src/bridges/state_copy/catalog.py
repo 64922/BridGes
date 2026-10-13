@@ -1173,6 +1173,8 @@ _STUDY_ENTRIES: tuple[CopyEntry, ...] = (
     ),
 )
 
+_STUDY_ENTRIES += STUDY_HISTORY_COPY_ENTRIES
+
 
 def _error_entries() -> tuple[CopyEntry, ...]:
     entries: list[CopyEntry] = []
@@ -1657,9 +1659,5 @@ _PUBLIC_ENTRIES: tuple[CopyEntry, ...] = (
 
 #: 全部登记项（模块与学习部分不重复实现文案，领域票据按此复核）。
 STATE_COPY_ENTRIES: tuple[CopyEntry, ...] = (
-    _PUBLIC_ENTRIES
-    + _error_entries()
-    + _MODULE_ENTRIES
-    + _STUDY_ENTRIES
-    + STUDY_HISTORY_COPY_ENTRIES
+    _PUBLIC_ENTRIES + _error_entries() + _MODULE_ENTRIES + _STUDY_ENTRIES
 )

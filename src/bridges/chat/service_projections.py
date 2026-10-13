@@ -390,9 +390,6 @@ class _ServiceProjectionsMixin:
             study_history_status=(
                 study_history.status if study_history is not None else None
             ),
-            study_materials=(
-                study_history.materials if study_history is not None else []
-            ),
             mode_locked=mode_locked,
             pinned=pinned,
             project_id=project_id,

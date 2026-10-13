@@ -30,7 +30,6 @@ class StudyHistoryRead:
 
     study: StudyHistoryProjection | None
     status: StudyHistoryStatusProjection | None
-    materials: list[StudyMaterialStatusProjection]
 
 
 class StudyHistoryReader:
@@ -59,7 +58,7 @@ class StudyHistoryReader:
             .fetchone()
         )
         if row is None:
-            return StudyHistoryRead(study=None, status=None, materials=[])
+            return StudyHistoryRead(study=None, status=None)
 
         try:
             payload = json.loads(row["state_json"])
@@ -81,7 +80,6 @@ class StudyHistoryReader:
                         "study.history.unsupported", version=version
                     ),
                 ),
-                materials=[],
             )
 
         try:
@@ -99,12 +97,13 @@ class StudyHistoryReader:
             )
         materials = self._project_materials(account_id, state)
         public_state = state.public_view()
+        payload = public_state.model_dump(mode="python")
+        payload["materials"] = materials
         return StudyHistoryRead(
             study=StudyHistoryProjection.model_validate(
-                public_state.model_dump(mode="python")
+                payload
             ),
             status=status,
-            materials=materials,
         )
 
     def _project_materials(
@@ -141,5 +140,4 @@ class StudyHistoryReader:
                 version=version,
                 message=render_state_copy("study.history.unreadable"),
             ),
-            materials=[],
         )

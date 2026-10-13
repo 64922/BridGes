@@ -40,7 +40,6 @@ from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
     StudyHistoryStatusProjection,
-    StudyMaterialStatusProjection,
 )
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
@@ -555,10 +554,6 @@ class ChatConversationProjection(BaseModel):
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,
         description="旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。",
-    )
-    study_materials: list[StudyMaterialStatusProjection] = Field(
-        default_factory=list,
-        description="学习历史引用材料的当前对象存储状态，不包含材料内容。",
     )
     mode_locked: bool = Field(
         default=False,
