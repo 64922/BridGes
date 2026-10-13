@@ -82,30 +82,15 @@ class ModuleRegistry:
     @classmethod
     def production(cls) -> ModuleRegistry:
         """绑定真实领域配方的生产登记表。"""
-        from bridges.career_plan.kernel import (
-            CAREER_CAPABILITY_VERSIONS,
-            CAREER_RECIPE_ID,
-            CAREER_RECIPE_VERSION,
-        )
         from bridges.commute.kernel import (
             COMMUTE_CAPABILITY_VERSIONS,
             COMMUTE_RECIPE_ID,
             COMMUTE_RECIPE_VERSION,
         )
-        from bridges.github.kernel import (
-            GITHUB_CAPABILITY_VERSIONS,
-            GITHUB_RECIPE_ID,
-            GITHUB_RECIPE_VERSION,
-        )
         from bridges.paper.kernel import (
             PAPER_CAPABILITY_VERSIONS,
             PAPER_RECIPE_ID,
             PAPER_RECIPE_VERSION,
-        )
-        from bridges.resources.kernel import (
-            RESOURCES_CAPABILITY_VERSIONS,
-            RESOURCES_RECIPE_ID,
-            RESOURCES_RECIPE_VERSION,
         )
         from bridges.tieba.recipe import (
             TIEBA_CAPABILITY_VERSIONS,
@@ -130,35 +115,6 @@ class ModuleRegistry:
                     public_parameters=("topic", "year_range", "count"),
                     condition_keys=("topic", "year_range"),
                 ),
-                "resources": ModuleDescriptor(
-                    module_id="resources",
-                    recipe_id=RESOURCES_RECIPE_ID,
-                    recipe_version=RESOURCES_RECIPE_VERSION,
-                    capabilities=RESOURCES_CAPABILITY_VERSIONS,
-                    entry_capability="resources.parse_request",
-                    projection_field="learning_resources",
-                    wait_reason="resources_clarification",
-                    public_network=True,
-                    purpose="按学习目标组织有证据支持的精简资料路径。",
-                    private_parameters=("basis_evidence", "level_basis", "profile_slice"),
-                    public_parameters=("topic", "goal", "level", "language"),
-                    condition_keys=("topic", "language", "time_budget"),
-                ),
-                "github": ModuleDescriptor(
-                    module_id="github",
-                    recipe_id=GITHUB_RECIPE_ID,
-                    recipe_version=GITHUB_RECIPE_VERSION,
-                    capabilities=GITHUB_CAPABILITY_VERSIONS,
-                    entry_capability="github.parse_request",
-                    projection_field="github_projects",
-                    wait_reason="github_clarification",
-                    public_network=True,
-                    purpose="按必要功能证据矩阵推荐可核实的开源项目。",
-                    identity_consumer=True,
-                    private_parameters=("resume", "background", "profile_slice"),
-                    public_parameters=("topic", "phrase", "features", "tech", "license"),
-                    condition_keys=("topic", "requirements"),
-                ),
                 "tieba": ModuleDescriptor(
                     module_id="tieba",
                     recipe_id=TIEBA_RECIPE_ID,
@@ -173,20 +129,6 @@ class ModuleRegistry:
                     public_parameters=("event", "topic", "time_range"),
                     condition_keys=("topic", "time_range"),
                     composite_ready=False,
-                ),
-                "career": ModuleDescriptor(
-                    module_id="career",
-                    recipe_id=CAREER_RECIPE_ID,
-                    recipe_version=CAREER_RECIPE_VERSION,
-                    capabilities=CAREER_CAPABILITY_VERSIONS,
-                    entry_capability="career.parse_request",
-                    projection_field="career_plan",
-                    wait_reason="career_clarification",
-                    public_network=True,
-                    purpose="用可核验岗位样本交付职责、薪资与个人差距。",
-                    private_parameters=("resume", "background", "profile_slice"),
-                    public_parameters=("job_terms", "city", "stage", "direction"),
-                    condition_keys=("job_terms", "city", "stage"),
                 ),
                 "commute": ModuleDescriptor(
                     module_id="commute",
@@ -208,39 +150,13 @@ class ModuleRegistry:
 
 
 #: 登记的跨模块组合（模块集合 → 模块依赖表）。
-#: 只登记服务目标的最小组合：论文+资料并行；选定论文→GitHub 先确认身份；
-#: 岗位需求/差距→资料/GitHub 只在用户目标包含资料或实践项目时启动。
-COMPOSITE_COMBINATIONS: dict[frozenset[str], dict[str, tuple[str, ...]]] = {
-    frozenset({"paper", "resources"}): {
-        "paper": (),
-        "resources": (),
-    },
-    frozenset({"paper", "github"}): {
-        "paper": (),
-        "github": ("paper",),
-    },
-    frozenset({"career", "resources"}): {
-        "career": (),
-        "resources": ("career",),
-    },
-    frozenset({"career", "github"}): {
-        "career": (),
-        "github": ("career",),
-    },
-    frozenset({"career", "resources", "github"}): {
-        "career": (),
-        "resources": ("career",),
-        "github": ("career",),
-    },
-}
+#: 原有组合均包含已退役模块；当前三个模块没有登记跨模块执行组合。
+COMPOSITE_COMBINATIONS: dict[frozenset[str], dict[str, tuple[str, ...]]] = {}
 
 
 #: 每个模块在复合计划中的默认目的与参数绑定说明（供计划构造与审计）。
 DEFAULT_PURPOSES: dict[str, str] = {
     "paper": "检索并核实用户主题下的入门论文候选。",
-    "resources": "围绕共同主题与基础组织学习资料路径。",
-    "github": "按必要功能证据筛选可借鉴或练手的开源项目。",
-    "career": "核实目标岗位样本并给出与个人背景相关的差距与行动。",
     "tieba": "按问题类型编排规定与体验证据。",
     "commute": "用真实路线数据解释校内通勤。",
 }

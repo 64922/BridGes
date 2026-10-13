@@ -6,7 +6,7 @@
 
 - 旧 ``graph_version`` 的运行不再进入当前节点集，直接以稳定错误码安全
   结束，保留历史消息与运行，且不产生任何模型调用或图检查点；
-- 用户明确重试创建绑定当前 ``daily-parent-v2`` 的新运行并正常完成；
+- 用户明确重试创建绑定当前日常图版本的新运行并正常完成；
 - 无图版本（``NULL``）同样无法证明安全恢复，保留历史后明确重试。
 """
 
@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai.adapters import StreamChunk
+from bridges.chat.graph_contracts import DAILY_GRAPH_VERSION
 from bridges.chat.lightweight_policy import RELEASE_BASELINE_POLICY_VERSION
 from tests.chat.test_chat_api import (
     _create_conversation,
@@ -126,6 +127,6 @@ def test_old_daily_graph_run_ends_safely_and_retry_uses_current_graph(
     new_run = sqlite_app.state.chat_service.generation_run(
         account["id"], retried.json()["run_id"]
     )
-    assert new_run is not None and new_run.graph_version == "daily-parent-v2"
+    assert new_run is not None and new_run.graph_version == DAILY_GRAPH_VERSION
     assert new_run.config["global_writing_policy"]["version"] == RELEASE_BASELINE_POLICY_VERSION
     assert adapter.stream_calls == 1

@@ -311,14 +311,6 @@ class _ServiceGenerationRecordsMixin:
                     "web_search_allowed": classified.web_search_allowed and web_allowed,
                     "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
                 })
-        if module_id == "career":
-            classified = self._router.classify(content)
-            if classified.status == RouteStatus.ORDINARY:
-                classified = self._router.classify(f"职业规划：{content}")
-            if classified.is_career:
-                return classified.model_copy(
-                    update={**metadata, "module_id": "career", **flags}
-                )
         if module_id != "paper" and module_id in MODULE_CAPABILITIES:
             return CapabilityRoute(
                 status=RouteStatus.MATCHED,

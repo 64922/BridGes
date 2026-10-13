@@ -5,10 +5,10 @@ import { message, careerPlan, pendingPaperClarification } from "./chat-modules.t
 describe("chat-modules 职业规划（V2 Issue 15）", () => {
   it("职业规划在菜单里给中文名与岗位图标", () => {
     expect(chatModuleLabel("career")).toBe("职业规划");
-    expect(chatModuleIcon("career")).toBe("careerPlan");
+    expect(chatModuleIcon("career")).toBe("chatBubble");
   });
 
-  it("最后一条职业规划消息还在等澄清时恢复模块选择", () => {
+  it("历史职业规划消息等待澄清时不恢复模块选择", () => {
     const pending = careerPlan({
       status: "clarification",
       pending: {
@@ -20,9 +20,7 @@ describe("chat-modules 职业规划（V2 Issue 15）", () => {
         created_at: "2026-09-26T02:00:00Z",
       },
     });
-    expect(pendingClarificationModule([message("m-1", null, null, null, pending)])).toBe(
-      "career"
-    );
+    expect(pendingClarificationModule([message("m-1", null, null, null, pending)])).toBeNull();
     // 其他模块的历史判定不受职业规划等待影响（互不冒充）。
     expect(pendingClarificationModule([message("m-1", pendingPaperClarification)])).toBe(
       "paper"

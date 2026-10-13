@@ -7,7 +7,7 @@ import { signUp, uniqueCredentials } from "./helpers/auth";
  *
  * 与既有专项脚本的分工：issue12/13/23/25 等各自核对一个切片，大多用协议
  * mock 驱动；本脚本是「正式界面验收」的合并口径——只经真实 HTTP 链路
- * （API + 后台执行器 + 前端），核对 AC4 的六个面（模式、六模块、附件、
+ * （API + 后台执行器 + 前端），核对 AC4 的六个面（模式、三模块、附件、
  * 学习阶段、画像、设置）与 AC7 的六项桌面回归（`+` 菜单顺序与说明、输入框
  * 与菜单键盘操作、消息来源行、学习阶段条、画像空态、模型验证结果），并在
  * 1280×720、1440×900、1920×1080 三个视口各跑一遍。
@@ -19,7 +19,7 @@ import { signUp, uniqueCredentials } from "./helpers/auth";
  * 结果当作可用（AC7 末句）。退役能力不得出现在任何入口。
  *
  * 模块选择只发生在空白会话首轮前（对话内输入区不提供模块选择），因此
- * 六模块的真实派发各建一个会话。
+ * 三模块的真实派发各建一个会话。
  */
 
 const VIEWPORTS = [
@@ -32,7 +32,7 @@ const PASSWORD = "correct-horse-acceptance";
 const PLUS_MENU_LABEL = "添加功能或文件";
 
 // 本脚本等待真实执行器处理（解析、模块派发、模型轮次），比默认 30 秒更长；
-// 六模块逐个真实派发（各自带 30/20 秒的上游期限）也要留足总预算。
+// 三模块逐个真实派发（各自带 30/20 秒的上游期限）也要留足总预算。
 test.describe.configure({ timeout: 600_000 });
 
 /** `+` 菜单的完整顺序与说明（Composer.tsx + lib/chat-modules.ts）。 */
@@ -50,44 +50,26 @@ const PLUS_MENU = [
     description: "按步行／自行车／电动车查校内路线，只画高德返回的路径",
   },
   {
-    label: "学习资料推荐",
-    description: "按技术方向给出图书与哔哩哔哩视频清单，按由浅入深排列",
-  },
-  {
     label: "贴吧信息搜集",
     description: "只看华东交通大学吧的公开帖子，拿不到回复时只给帖链",
   },
-  {
-    label: "职业规划",
-    description: "按目标岗位与城市读公开岗位样本，不足时不称市场行情",
-  },
-  {
-    label: "GitHub 项目推荐",
-    description: "按你的 idea 检索公开仓库，逐项给出功能匹配与维护许可证据",
-  },
 ] as const;
 
-/** 六模块 = `+` 菜单第 2..7 项（第一项是文件选择，不是模块）。 */
+/** 三模块 = `+` 菜单第 2..4 项（第一项是文件选择，不是模块）。 */
 const MODULES = PLUS_MENU.slice(1);
 
 /** 各模块结果卡的 testid 前缀（状态后缀由真实结果决定）。 */
 const MODULE_CARD_PREFIX: Record<string, RegExp> = {
   论文搜索: /^(paper-search-card|arxiv-search-card)/,
   校园通勤: /^commute-route-card/,
-  学习资料推荐: /^resources-card/,
   贴吧信息搜集: /^tieba-research-card/,
-  职业规划: /^(career-plan|career-result|career-process)/,
-  "GitHub 项目推荐": /^github-projects-card/,
 };
 
 /** 各模块首轮的输入（模块需要的最小主题，避免「缺主题」被当成不可用）。 */
 const MODULE_PROMPT: Record<string, string> = {
   论文搜索: "Transformer 架构",
   校园通勤: "从南区宿舍到图书馆怎么走",
-  学习资料推荐: "数据结构入门",
   贴吧信息搜集: "华东交通大学吧里的自习室讨论",
-  职业规划: "数据开发方向在南昌的岗位",
-  "GitHub 项目推荐": "找一个小型待办清单 Web 应用",
 };
 
 /** 退役能力不得出现在任何桌面入口（AC1/AC7：未通过的模块不显示为可用）。 */
@@ -260,7 +242,7 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByRole("menu", { name: PLUS_MENU_LABEL })).toHaveCount(0);
       await expect(trigger).toBeFocused();
 
-      // 六模块：每个都能选中成可见标签，也能按标签移除（模块标识不隐藏）。
+      // 三模块：每个都能选中成可见标签，也能按标签移除（模块标识不隐藏）。
       for (const module of MODULES) {
         const chip = await selectModule(page, module.label);
         await chip.getByRole("button", { name: `移除${module.label}模块` }).click();
@@ -299,7 +281,7 @@ for (const viewport of VIEWPORTS) {
       await page.screenshot({ path: testInfo.outputPath(`chat-${size}.png`) });
     });
 
-    test(`六模块连接真实服务（${size}）`, async ({ page }, testInfo) => {
+    test(`三模块连接真实服务（${size}）`, async ({ page }, testInfo) => {
       await signUpAndLand(page, "i21-modules", size, testInfo);
 
       for (const module of MODULES) {

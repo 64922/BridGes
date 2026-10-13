@@ -9852,8 +9852,11 @@ export interface components {
              * @description 客户端生成的一次性幂等键；同账户同键重放返回同一份数据。
              */
             idempotency_key: string;
-            /** @description 日常模式显式模块标识（V2 Issue 02）；随首条用户消息持久化。 */
-            module_id?: components["schemas"]["ChatModuleId"] | null;
+            /**
+             * Module Id
+             * @description 日常模式显式模块标识（V2 Issue 02）；随首条用户消息持久化。
+             */
+            module_id?: ("paper" | "commute" | "tieba") | null;
             /**
              * Conversation Id
              * @description 已预建的空会话标识（附件上传路径）；缺省在事务内新建会话。
@@ -9952,8 +9955,11 @@ export interface components {
              * @default true
              */
             use_knowledge_base: boolean;
-            /** @description 日常模式显式模块标识（V2 Issue 02）；服务端按枚举校验并随用户消息持久化，模型不得从正文改写。普通对话为 None。 */
-            module_id?: components["schemas"]["ChatModuleId"] | null;
+            /**
+             * Module Id
+             * @description 日常模式显式模块标识（V2 Issue 02）；服务端按枚举校验并随用户消息持久化，模型不得从正文改写。普通对话为 None。
+             */
+            module_id?: ("paper" | "commute" | "tieba") | null;
             /**
              * Idempotency Key
              * @description 客户端生成的一次性幂等键（V2 Issue 02）；同一会话同键重试复用同一运行标识，不重复写用户/助手消息。缺省不启用幂等。
@@ -10171,11 +10177,10 @@ export interface components {
         };
         /**
          * ChatModuleId
-         * @description 日常模式逐消息显式模块标识（V2 Issue 02 编排合同）。
+         * @description 历史消息模块标识；退役值仅用于读取已有消息。
          *
-         *     只允许六个显式值：服务端按此枚举校验请求，随用户消息持久化；日常
-         *     父图 ``select_explicit_module`` 节点只读该持久化值派发子图，模型
-         *     不得从正文改写或自行启动模块。普通对话为 ``None``。
+         *     新请求只接受 ``ActiveChatModuleId``，执行白名单由
+         *     ``CHAT_MODULE_VALUES`` 限定。历史枚举不代表模块仍可启动。
          * @enum {string}
          */
         ChatModuleId: "paper" | "commute" | "resources" | "tieba" | "career" | "github";
@@ -10213,8 +10218,11 @@ export interface components {
              * @description 客户端生成的一次性幂等键；同一会话同键重试复用同一运行。
              */
             idempotency_key?: string | null;
-            /** @description 点击模块建议时显式启动的模块 ID（V2 Issue 11）：复用同一条用户消息原文派发到该模块，只在该轮没有模块时生效，绝不改写历史标识。 */
-            module_id?: components["schemas"]["ChatModuleId"] | null;
+            /**
+             * Module Id
+             * @description 点击模块建议时显式启动的模块 ID（V2 Issue 11）：复用同一条用户消息原文派发到该模块，只在该轮没有模块时生效，绝不改写历史标识。
+             */
+            module_id?: ("paper" | "commute" | "tieba") | null;
         };
         /**
          * ChatRunStartedResponse

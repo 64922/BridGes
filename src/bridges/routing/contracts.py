@@ -59,10 +59,7 @@ class MainCapability(StrEnum):
 MODULE_CAPABILITIES: dict[str, MainCapability] = {
     "paper": MainCapability.PAPER_SEARCH,
     "commute": MainCapability.COMMUTE,
-    "resources": MainCapability.RESOURCES,
     "tieba": MainCapability.TIEBA,
-    "career": MainCapability.CAREER,
-    "github": MainCapability.GITHUB,
 }
 
 

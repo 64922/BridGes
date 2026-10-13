@@ -691,16 +691,16 @@ def test_modules_not_yet_available_are_still_rejected(
 ) -> None:
     """请求契约内但子图尚未接入的模块仍被明确拒绝；普通聊天不产生任何通勤记录。"""
     _register(client)
-    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
+    # 三个日常模块已接入，这里把 paper 临时从可用集合摘掉，复现
     # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
     monkeypatch.setattr(
         "bridges.chat.graph.AVAILABLE_MODULE_IDS",
-        frozenset({"paper", "commute", "resources", "tieba", "github"}),
+        frozenset({"commute", "tieba"}),
     )
     _install_commute(sqlite_app, _FakeAmap())
     sqlite_app.state.chat_service._gateway = _gateway_with(_SilentAdapter())  # noqa: SLF001
     conversation_id = _create_conversation(client)
-    _send(client, conversation_id, "我是应届生，帮我规划数据分析职业方向", module_id="career")
+    _send(client, conversation_id, "找深度学习入门论文", module_id="paper")
     assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
 
     assert assistant["status"] == "error"

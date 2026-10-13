@@ -24,6 +24,7 @@ from bridges.chat.turn_result import derive_turn_result
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.contracts.career import CareerPlanningProjection
 from bridges.contracts.chat import (
+    CHAT_MODULE_VALUES,
     ChatConversationProjection,
     ChatMessageProjection,
     ChatMessageRole,
@@ -249,6 +250,7 @@ class _ServiceProjectionsMixin:
             module_suggestion=(
                 ModuleSuggestionProjection.model_validate(message.module_suggestion)
                 if message.module_suggestion is not None
+                and message.module_suggestion.get("module_id") in CHAT_MODULE_VALUES
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

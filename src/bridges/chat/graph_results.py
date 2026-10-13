@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
 
-from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.graph_composite_result import (
     _persist_composite_result,
     _verify_composite_result,
@@ -33,9 +32,7 @@ from bridges.github.service import (
     GithubDelivery,
     GithubSupersededError,
 )
-from bridges.github.suggestion import detect_github_suggestion
 from bridges.paper.suggestion import detect_paper_suggestion
-from bridges.resources.suggestion import detect_resources_suggestion
 from bridges.tieba.suggestion import detect_tieba_suggestion
 
 if TYPE_CHECKING:
@@ -181,10 +178,7 @@ def _node_persist_result(
             suggestion = (
                 paper_suggestion_detector(user_message.content)
                 or detect_tieba_suggestion(user_message.content)
-                or detect_github_suggestion(user_message.content)
                 or detect_commute_suggestion(user_message.content)
-                or detect_resources_suggestion(user_message.content)
-                or detect_career_suggestion(user_message.content)
             )
             if suggestion is not None:
                 deps.repo.update_message_module_suggestion(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +9,9 @@ from fastapi import FastAPI
 
 from bridges.ai import CapabilityRegistry, CapabilityRegistryError
 from bridges.api import commute as commute_api
-from bridges.career_plan.background import snapshot_from_adopted_slice as career_snapshot_from_slice
-from bridges.career_plan.background import unavailable_snapshot as career_background_unavailable
-from bridges.career_plan.contracts import CareerBackgroundSnapshot
 from bridges.chat import ConversationRepository
 from bridges.config import Settings
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus
-from bridges.contracts.profile_adoption import AdoptedProfileSlice
 from bridges.contracts.workflows import WorkflowRunStatus
 from bridges.credentials.global_credential import is_global_qwen_key_configured
 from bridges.credentials.store import CredentialStorePort, build_credential_store
@@ -31,12 +26,9 @@ from bridges.domain import (
     create_physics_chemistry_pack,
     create_standards_datasets_pack,
 )
-from bridges.github.client import GITHUB_TIMEOUT_SECONDS
 from bridges.invalidation import AffectedDownstream, InvalidationService
 from bridges.paper.sources import ENRICH_TIMEOUT_SECONDS
 from bridges.profiles import PROFILE_EXTRACTION_MAX_NEIGHBORS, ProfileSourceMessage
-from bridges.profiles.purpose import build_purpose as build_profile_purpose
-from bridges.resources.sources import BOOK_TIMEOUT_SECONDS
 from bridges.workflows import WorkflowService
 
 RETIRED_EXPRESSION_CAPABILITY = "expression_draft_generation"
@@ -251,89 +243,6 @@ def _current_task_reference(
     return (context.task_id, context.version)
 
 
-class CareerBackgroundLoader:
-    """工单 29：个人规划分支的长期背景提供者（只读、按用途、每次核对版本）。
-
-    只在 ``career.background`` 节点（个人规划分支）被调用；每次调用都重新读取
-    画像使用开关、按用途编译采用切片并核对撤回版本。任何失败都如实降级为
-    「本轮没有长期背景」，绝不让旧切片或未采用正文进入回答；公开岗位检索
-    从不经过这里，因此背景正文不会发往公网。
-    """
-
-    def __init__(self, app: Any) -> None:
-        self._app = app
-
-    def load(
-        self,
-        account_id: str,
-        *,
-        run_id: str,
-        query: str | None,
-        current_user_message_id: str | None = None,
-        now: Any = None,
-    ) -> CareerBackgroundSnapshot:
-        moment = now if now is not None else datetime.now(UTC)
-        try:
-            atomic = getattr(self._app.state, "atomic_profile_service", None)
-            automatic = getattr(self._app.state, "automatic_profile_service", None)
-            if atomic is None or automatic is None:
-                return career_background_unavailable(
-                    "本轮没有装配可用的长期画像服务，只使用当前陈述。",
-                    checked_at=moment,
-                )
-            if not automatic.is_profile_usage_enabled(account_id):
-                return career_background_unavailable(
-                    "长期画像使用已关闭，本轮只使用当前陈述。", checked_at=moment,
-                )
-            database = getattr(self._app.state, "bridges_database", None)
-            repo = ConversationRepository(database) if database is not None else None
-            run = repo.get_generation_run(account_id, run_id) if repo is not None else None
-            saved = (run.config or {}).get("adopted_profile_slice") if run else None
-            adopted = None
-            if isinstance(saved, dict):
-                try:
-                    candidate = AdoptedProfileSlice.model_validate(saved)
-                    if candidate.owner_account_id == account_id and atomic.is_adopted_slice_current(
-                        account_id, candidate, now=moment
-                    ):
-                        adopted = candidate
-                except ValueError:
-                    pass
-            if adopted is None:
-                adopted = atomic.compile_adopted_slice(
-                    account_id, run_id=run_id,
-                    purpose=build_profile_purpose(
-                        mode="companion", query=query, module_id="career"
-                    ),
-                    current_user_message_id=current_user_message_id, now=moment,
-                )
-                if adopted.owner_account_id != account_id or not atomic.is_adopted_slice_current(
-                    account_id, adopted, now=moment
-                ):
-                    return career_background_unavailable(
-                        "个人背景在本轮已变更，旧的已记住信息不采用。", checked_at=moment,
-                    )
-                if run is not None and repo is not None:
-                    stored = adopted.model_copy(update={
-                        "purpose": adopted.purpose.model_copy(update={"query": None}),
-                        "excluded_items": tuple(
-                            item.model_copy(update={"fact_text": ""})
-                            for item in adopted.excluded_items
-                        ),
-                    })
-                    config = dict(run.config or {})
-                    config["adopted_profile_slice"] = stored.model_dump(mode="json")
-                    if not repo.update_generation_config(account_id, run_id, config):
-                        return career_background_unavailable(
-                            "本轮背景快照未能保存，只使用当前陈述。", checked_at=moment,
-                        )
-            # 后续节点只能从同轮冻结快照选子集，不因新画像重新召回。
-            subset = adopted.with_items(adopted.select_subset())
-            return career_snapshot_from_slice(subset, checked_at=moment)
-        except Exception:  # noqa: BLE001 - 背景失败不阻断公开岗位部分
-            return career_background_unavailable(
-                "个人背景来源本轮不可用，只使用当前陈述。", checked_at=moment,
-            )
 
 
 def _paper_metadata_client() -> httpx.Client:
@@ -384,13 +293,3 @@ def _atomic_profile_source_reader(
         )
 
     return read
-
-
-def _github_api_client() -> httpx.Client:
-    """GitHub 公开接口客户端（独立短超时；不承载账户凭据，只用公开只读接口）。"""
-    return httpx.Client(timeout=GITHUB_TIMEOUT_SECONDS)
-
-
-def _resource_metadata_client() -> httpx.Client:
-    """资料模块的书目／视频元数据客户端（独立短超时；不承载账户凭据）。"""
-    return httpx.Client(timeout=BOOK_TIMEOUT_SECONDS)

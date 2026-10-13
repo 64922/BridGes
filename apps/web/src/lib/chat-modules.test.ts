@@ -7,24 +7,21 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     expect(chatModuleLabel("paper")).toBe("论文搜索");
     expect(chatModuleIcon("paper")).toBe("paperSearch");
     expect(chatModuleLabel("resources")).toBe("学习资料推荐");
-    expect(chatModuleIcon("resources")).toBe("learningProject");
+    expect(chatModuleIcon("resources")).toBe("chatBubble");
     expect(chatModuleLabel("github")).toBe("GitHub 项目推荐");
-    expect(chatModuleIcon("github")).toBe("githubRepo");
-    // 六个日常模块已全部接入；未知（或尚未接入的）取值没有中文名：
+    expect(chatModuleIcon("github")).toBe("chatBubble");
+    // 三个日常模块已全部接入；未知（或尚未接入的）取值没有中文名：
     // 宁可不显示标签，也不在中文界面回显英文枚举值。
     expect(chatModuleLabel("unknown_module")).toBeNull();
     expect(chatModuleIcon("unknown_module")).toBe("chatBubble");
     expect(chatModuleLabel(null)).toBeNull();
   });
 
-  it("菜单里六个已接入模块的 ID 与后端枚举一致", () => {
+  it("菜单里三个已接入模块的 ID 与后端枚举一致", () => {
     expect(CHAT_MODULES.map((module) => module.id)).toEqual([
       "paper",
       "commute",
-      "resources",
       "tieba",
-      "career",
-      "github",
     ]);
   });
 
@@ -34,19 +31,19 @@ describe("chat-modules（V2 Issue 11/13）", () => {
     );
   });
 
-  it("最后一条资料消息还在等澄清时恢复资料模块选择", () => {
+  it("历史资料模块的澄清不恢复已退役选择", () => {
     expect(
       pendingClarificationModule([message("m-1", null, null, pendingResourcesClarification)])
-    ).toBe("resources");
+    ).toBeNull();
   });
 
-  it("两个模块都留过等待时只恢复更晚的那个（不误恢复陈旧等待）", () => {
+  it("最新投影属于退役模块时不恢复它或更早的等待", () => {
     expect(
       pendingClarificationModule([
         message("m-1", pendingPaperClarification),
         message("m-2", null, null, pendingResourcesClarification),
       ])
-    ).toBe("resources");
+    ).toBeNull();
   });
 
   it("已有更晚的完成结果时不恢复（等待状态已被取代）", () => {

@@ -161,11 +161,11 @@ def test_other_modules_still_rejected_and_no_silent_search(
 ) -> None:
     """请求契约内但子图尚未接入的模块仍被显式拒绝，且不产生任何检索。"""
     _register(client)
-    # 六个日常模块已全部接入，这里把 career 临时从可用集合摘掉，复现
+    # 三个日常模块已接入，这里把 paper 临时从可用集合摘掉，复现
     # 「请求契约合法、子图尚未接入」的构造（拒绝路径与具体模块无关）。
     monkeypatch.setattr(
         "bridges.chat.graph.AVAILABLE_MODULE_IDS",
-        frozenset({"paper", "commute", "resources", "tieba", "github"}),
+        frozenset({"commute", "tieba"}),
     )
     port = _FakeSearchPort(hits=[])
     _install_tieba_service(sqlite_app, port=port)
@@ -175,8 +175,8 @@ def test_other_modules_still_rejected_and_no_silent_search(
     _send(
         client,
         conversation_id,
-        "我现在是大二，想做职业规划，方向是数据分析，毕业后找实习",
-        module_id="career",
+        "找深度学习入门论文",
+        module_id="paper",
     )
     assistant = _run_and_read(sqlite_app, client, generation_helpers["drive"], conversation_id)
 

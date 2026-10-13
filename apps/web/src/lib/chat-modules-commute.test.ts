@@ -9,10 +9,7 @@ describe("chat-modules 校园通勤（V2 Issue 12）", () => {
     expect(CHAT_MODULES.map((module) => module.id)).toEqual([
       "paper",
       "commute",
-      "resources",
       "tieba",
-      "career",
-      "github",
     ]);
   });
 

@@ -54,6 +54,7 @@ from bridges.chat.context_compiler import (
     compile_turn_context,
     is_verified_context_window,
 )
+from bridges.chat.graph_contracts import DAILY_GRAPH_VERSION
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.chat.service import ChatDomainError, ChatService
 from bridges.contracts.ai import (
@@ -680,7 +681,7 @@ def test_call_contract_is_persisted_and_read_back(tmp_path: Path) -> None:
     assert len(locks) == 1
     contract = locks[0].call_contract
     assert contract is not None
-    assert contract.recipe_version == "daily-parent-v2"
+    assert contract.recipe_version == DAILY_GRAPH_VERSION
     assert contract.quota_version == MODEL_QUOTA_VERSION
 
 

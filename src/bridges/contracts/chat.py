@@ -64,11 +64,10 @@ class ChatMode(StrEnum):
 
 
 class ChatModuleId(StrEnum):
-    """日常模式逐消息显式模块标识（V2 Issue 02 编排合同）。
+    """历史消息模块标识；退役值仅用于读取已有消息。
 
-    只允许六个显式值：服务端按此枚举校验请求，随用户消息持久化；日常
-    父图 ``select_explicit_module`` 节点只读该持久化值派发子图，模型
-    不得从正文改写或自行启动模块。普通对话为 ``None``。
+    新请求只接受 ``ActiveChatModuleId``，执行白名单由
+    ``CHAT_MODULE_VALUES`` 限定。历史枚举不代表模块仍可启动。
     """
 
     PAPER = "paper"
@@ -79,8 +78,9 @@ class ChatModuleId(StrEnum):
     GITHUB = "github"
 
 
-#: 允许的模块 ID 取值集合（校验只此一处，新增模块不必逐个改判断）。
-CHAT_MODULE_VALUES: frozenset[str] = frozenset(item.value for item in ChatModuleId)
+#: 当前可启动模块；历史消息的枚举与新请求的执行边界分开。
+ActiveChatModuleId = Literal["paper", "commute", "tieba"]
+CHAT_MODULE_VALUES: frozenset[str] = frozenset({"paper", "commute", "tieba"})
 
 
 class ChatThinkingSummary(BaseModel):
@@ -712,7 +712,7 @@ class ChatMessageCreateRequest(BaseModel):
     use_knowledge_base: bool = Field(
         default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
     )
-    module_id: ChatModuleId | None = Field(
+    module_id: ActiveChatModuleId | None = Field(
         default=None,
         description="日常模式显式模块标识（V2 Issue 02）；服务端按枚举校验并随"
         "用户消息持久化，模型不得从正文改写。普通对话为 None。",
@@ -780,7 +780,7 @@ class ChatFirstTurnRequest(BaseModel):
         max_length=128,
         description="客户端生成的一次性幂等键；同账户同键重放返回同一份数据。",
     )
-    module_id: ChatModuleId | None = Field(
+    module_id: ActiveChatModuleId | None = Field(
         default=None,
         description="日常模式显式模块标识（V2 Issue 02）；随首条用户消息持久化。",
     )
@@ -986,7 +986,7 @@ class ChatRetryRequest(BaseModel):
         max_length=128,
         description="客户端生成的一次性幂等键；同一会话同键重试复用同一运行。",
     )
-    module_id: ChatModuleId | None = Field(
+    module_id: ActiveChatModuleId | None = Field(
         default=None,
         description=(
             "点击模块建议时显式启动的模块 ID（V2 Issue 11）：复用同一条用户"

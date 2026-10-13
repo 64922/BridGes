@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Any
 from bridges.chat.repository import (
     MessageRecord,
 )
+from bridges.chat.service_contract import ChatDomainError
 from bridges.contracts.chat import (
+    CHAT_MODULE_VALUES,
     ChatMode,
     VideoRequestPayload,
 )
@@ -51,6 +53,8 @@ class _ServiceTurnRoutingMixin:
         未装配任务领域时按无任务处理（普通聊天仍保持轻量）。
         """
 
+        if module_id is not None and module_id not in CHAT_MODULE_VALUES:
+            raise ChatDomainError("module_not_allowed", "该模块已取消，无法启动。", 400)
         task_context = None
         tasks: list[TaskRecord] = []
         open_waits: list[TaskWait] = []
@@ -218,25 +222,6 @@ class _ServiceTurnRoutingMixin:
                     "web_search_allowed": classified.web_search_allowed and web_allowed,
                     "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
                 })
-        if module == "career":
-            career_request = (
-                understanding.goal if understanding is not None
-                and {"direction", "stage"} & set(understanding.answer_fields)
-                and understanding.goal else content
-            )
-            classified = self._router.classify(career_request)
-            if classified.status == RouteStatus.ORDINARY:
-                classified = self._router.classify(f"职业规划：{career_request}")
-            if classified.is_career:
-                return classified.model_copy(
-                    update={
-                        **metadata, "module_id": "career",
-                        "web_search_allowed": classified.web_search_allowed and web_allowed,
-                        "knowledge_base_allowed": classified.knowledge_base_allowed and kb_allowed,
-                    }
-                )
-            if classified.status in {RouteStatus.CLARIFY, RouteStatus.REJECTED}:
-                return classified.model_copy(update=metadata)
         if module is not None and module != "paper" and module in MODULE_CAPABILITIES:
             return CapabilityRoute(
                 status=RouteStatus.MATCHED,

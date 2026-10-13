@@ -32949,12 +32949,18 @@
           "module_id": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChatModuleId"
+                "type": "string",
+                "enum": [
+                  "paper",
+                  "commute",
+                  "tieba"
+                ]
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Module Id",
             "description": "日常模式显式模块标识（V2 Issue 02）；随首条用户消息持久化。"
           },
           "conversation_id": {
@@ -33137,12 +33143,18 @@
           "module_id": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChatModuleId"
+                "type": "string",
+                "enum": [
+                  "paper",
+                  "commute",
+                  "tieba"
+                ]
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Module Id",
             "description": "日常模式显式模块标识（V2 Issue 02）；服务端按枚举校验并随用户消息持久化，模型不得从正文改写。普通对话为 None。"
           },
           "idempotency_key": {
@@ -33719,7 +33731,7 @@
           "github"
         ],
         "title": "ChatModuleId",
-        "description": "日常模式逐消息显式模块标识（V2 Issue 02 编排合同）。\n\n只允许六个显式值：服务端按此枚举校验请求，随用户消息持久化；日常\n父图 ``select_explicit_module`` 节点只读该持久化值派发子图，模型\n不得从正文改写或自行启动模块。普通对话为 ``None``。"
+        "description": "历史消息模块标识；退役值仅用于读取已有消息。\n\n新请求只接受 ``ActiveChatModuleId``，执行白名单由\n``CHAT_MODULE_VALUES`` 限定。历史枚举不代表模块仍可启动。"
       },
       "ChatPluginSelectionItem": {
         "properties": {
@@ -33767,12 +33779,18 @@
           "module_id": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ChatModuleId"
+                "type": "string",
+                "enum": [
+                  "paper",
+                  "commute",
+                  "tieba"
+                ]
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Module Id",
             "description": "点击模块建议时显式启动的模块 ID（V2 Issue 11）：复用同一条用户消息原文派发到该模块，只在该轮没有模块时生效，绝不改写历史标识。"
           }
         },

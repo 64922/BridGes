@@ -33,10 +33,6 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from langchain_core.runnables import RunnableConfig
 
 from bridges.ai.adapters import StreamEvent
-from bridges.career_plan.service import (
-    CAREER_MODULE_ID,
-    CAREER_NODE_LABELS,
-)
 from bridges.chat.terminal import (
     TerminalOutcome,
     stopped_outcome,
@@ -49,17 +45,9 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatStreamNodeData,
 )
-from bridges.github.service import (
-    GITHUB_MODULE_ID,
-    GITHUB_NODE_LABELS,
-)
 from bridges.paper.service import (
     PAPER_MODULE_ID,
     PAPER_NODE_LABELS,
-)
-from bridges.resources.service import (
-    RESOURCES_MODULE_ID,
-    RESOURCES_NODE_LABELS,
 )
 from bridges.state_copy import RecoveryAction, error_recovery, render_state_copy
 from bridges.tieba.service import (
@@ -73,10 +61,8 @@ if TYPE_CHECKING:
 
 #: 日常父图名称/版本（运行状态关联字段；节点集变化时递增）。
 #: v2：论文子图接入 invoke_subgraph_or_chat（首个显式模块，Issue 11）。
-#: v2 不变：Issue 12（通勤）与 Issue 13（资料）都只放开显式模块白名单，
-#: 复用同一派发节点，节点集没有变化——旧检查点不会出现这两个模块的派发
-#: （当时它们在 select 处被拒），续跑语义一致。
-DAILY_GRAPH_VERSION = "daily-parent-v2"
+#: v3：收敛为论文、通勤和贴吧；旧检查点安全结束，避免恢复已退役模块。
+DAILY_GRAPH_VERSION = "daily-parent-v3"
 
 #: 旧日常图版本运行的安全结束码（R06）：旧检查点谱系不套当前节点集恢复，
 #: 安全结束并保留历史；用户明确重试创建绑定当前版本的新运行。
@@ -102,15 +88,12 @@ DAILY_GRAPH_NODES: tuple[str, ...] = (
 #: 运行配置中的显式模块覆盖键（仅服务端在「点击建议启动」时写入）。
 RUN_CONFIG_MODULE_ID = "module_id"
 
-#: 已接入日常父图的显式模块（其余模块仍在开发：显式拒绝，绝不悄悄降级）。
+#: 当前日常模块白名单；退役模块不得派发或恢复执行。
 AVAILABLE_MODULE_IDS: frozenset[str] = frozenset(
     {
         PAPER_MODULE_ID,
         COMMUTE_MODULE_ID,
-        RESOURCES_MODULE_ID,
         TIEBA_MODULE_ID,
-        CAREER_MODULE_ID,
-        GITHUB_MODULE_ID,
     }
 )
 
@@ -125,10 +108,7 @@ NODE_LABELS: dict[str, str] = {
     # 子图节点：失败信息按真实失败的子图步骤标注位置（Issue 11 起）。
     **PAPER_NODE_LABELS,
     **TIEBA_NODE_LABELS,
-    **GITHUB_NODE_LABELS,
-    **RESOURCES_NODE_LABELS,
     **COMMUTE_NODE_LABELS,
-    **CAREER_NODE_LABELS,
 }
 
 

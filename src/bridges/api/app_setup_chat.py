@@ -72,13 +72,6 @@ def configure_chat_services(app: FastAPI) -> None:
         tieba_research_service=getattr(
             app.state, "tieba_research_service", None
         ),
-        career_plan_service=getattr(app.state, "career_plan_service", None),
-        github_projects_service=getattr(
-            app.state, "github_projects_service", None
-        ),
-        learning_resources_service=getattr(
-            app.state, "learning_resources_service", None
-        ),
         commute_service=getattr(app.state, "commute_service", None),
         profile_service=getattr(app.state, "profile_service", None),
         teaching_progress_service=getattr(

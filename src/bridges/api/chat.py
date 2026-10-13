@@ -489,7 +489,7 @@ def create_first_turn(
                 else None
             ),
             use_knowledge_base=body.use_knowledge_base,
-            module_id=body.module_id.value if body.module_id else None,
+            module_id=body.module_id,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -1006,7 +1006,7 @@ async def send_message(
                 else None
             ),
             use_knowledge_base=body.use_knowledge_base,
-            module_id=body.module_id.value if body.module_id else None,
+            module_id=body.module_id,
             idempotency_key=body.idempotency_key,
         )
     except ChatDomainError as exc:
@@ -1287,7 +1287,7 @@ async def retry_message(
             use_knowledge_base=use_knowledge_base,
             idempotency_key=body.idempotency_key if body is not None else None,
             module_id=(
-                body.module_id.value
+                body.module_id
                 if body is not None and body.module_id is not None
                 else None
             ),

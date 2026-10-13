@@ -8,9 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
 
-from bridges.career_plan.service import (
-    CAREER_MODULE_ID,
-)
 from bridges.chat.run_executor import chat_run_context
 from bridges.commute.service import (
     COMMUTE_MODULE_ID,
@@ -23,14 +20,8 @@ from bridges.contracts.tasks import TaskRelation, TaskStatus
 from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
-from bridges.github.service import (
-    GITHUB_MODULE_ID,
-)
 from bridges.paper.service import (
     PAPER_MODULE_ID,
-)
-from bridges.resources.service import (
-    RESOURCES_MODULE_ID,
 )
 from bridges.routing.contracts import MODULE_CAPABILITIES, RouteStatus
 from bridges.state_copy import render_state_copy
@@ -61,11 +52,8 @@ from bridges.chat.graph_contracts import (
     _GraphDeps,
 )
 from bridges.chat.graph_module_invokers import (
-    _invoke_career_module,
     _invoke_commute_module,
-    _invoke_github_module,
     _invoke_paper_module,
-    _invoke_resources_module,
     _invoke_tieba_module,
 )
 
@@ -227,6 +215,18 @@ def _node_invoke_subgraph_or_chat(
              if value.value == route.get("main_capability")),
             "chat",
         )
+    if dispatch not in {"chat", *available_module_ids}:
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "module_not_available",
+            "该模块已取消，无法继续执行。", retryable=False,
+        )
+    if understanding is not None and any(
+        module not in available_module_ids for module in understanding.capability_list
+    ):
+        raise DailyTurnError(
+            NODE_INVOKE_SUBGRAPH_OR_CHAT, "module_not_available",
+            "任务包含已取消的模块，请发送新的消息。", retryable=False,
+        )
     if route.get("status") in {RouteStatus.CLARIFY, RouteStatus.REJECTED} or (
         understanding is not None
         and understanding.task_relation in {TaskRelation.PAUSE, TaskRelation.CANCEL}
@@ -312,14 +312,8 @@ def _node_invoke_subgraph_or_chat(
         return _invoke_paper_module(deps, state)
     if dispatch == TIEBA_MODULE_ID:
         return _invoke_tieba_module(deps, state)
-    if dispatch == GITHUB_MODULE_ID:
-        return _invoke_github_module(deps, state)
-    if dispatch == RESOURCES_MODULE_ID:
-        return _invoke_resources_module(deps, state)
     if dispatch == COMMUTE_MODULE_ID:
         return _invoke_commute_module(deps, state)
-    if dispatch == CAREER_MODULE_ID:
-        return _invoke_career_module(deps, state)
     run = deps.run
     stream = deps.service.stream_generation(
         run.account_id,

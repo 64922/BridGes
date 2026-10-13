@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
-import { chatModuleIcon, chatModuleLabel } from "@/lib/chat-modules";
+import { chatModuleIcon, chatModuleLabel, isActiveChatModule } from "@/lib/chat-modules";
 import type { ModuleSuggestionProjection } from "@/lib/api";
 
 /**
@@ -18,7 +18,7 @@ export function ModuleSuggestionCard({
   suggestion: ModuleSuggestionProjection | null;
   onUse: (suggestion: ModuleSuggestionProjection) => void;
 }) {
-  if (!suggestion) return null;
+  if (!suggestion || !isActiveChatModule(suggestion.module_id)) return null;
   const label = suggestion.label || `使用${chatModuleLabel(suggestion.module_id) ?? "模块"}`;
   return (
     <section

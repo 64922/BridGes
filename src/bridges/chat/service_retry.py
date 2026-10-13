@@ -115,6 +115,30 @@ class _ServiceRetryMixin:
             raise ChatDomainError(
                 "not_retryable_message", "找不到该助手消息对应的用户消息。", 400
             )
+        previous_run = self._repo.get_run_by_message(account_id, message_id)
+        previous_config = (previous_run.config or {}) if previous_run is not None else {}
+        previous_understanding = understanding_from_snapshot(
+            previous_config.get("understanding")
+        )
+        previous_modules = {
+            owner.module_id,
+            (message.route or {}).get("module_id"),
+            previous_config.get("module_id"),
+            *(previous_understanding.capability_list if previous_understanding else []),
+        }
+        legacy_capability = (message.route or {}).get("main_capability")
+        if legacy_capability in {"career", "resources", "github"}:
+            previous_modules.add(legacy_capability)
+        previous_modules.update(module for module, has_result in {
+            "career": message.career_plan is not None or message.career_planning is not None,
+            "resources": message.learning_resources is not None,
+            "github": message.github_projects is not None,
+        }.items() if has_result)
+        if any(value is not None and value not in CHAT_MODULE_VALUES
+               for value in previous_modules):
+            raise ChatDomainError(
+                "module_not_allowed", "该模块已取消，历史结果可查看，请发送新的消息。", 400
+            )
         if record.mode == ChatMode.STUDY.value:
             study = StudyRepository(self._repo.database).get(account_id, conversation_id)
             if study is not None and study.review is not None:
@@ -230,13 +254,9 @@ class _ServiceRetryMixin:
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
         run_id = secrets.token_urlsafe(16)
-        previous_run = self._repo.get_run_by_message(account_id, message_id)
-        previous_config = (previous_run.config or {}) if previous_run is not None else {}
         # 改进工单 12：理解快照随重试沿用——原消息的硬条件（不要联网等）
         # 不因重试或点击建议而放宽。
-        understanding_snapshot = understanding_from_snapshot(
-            (previous_config or {}).get("understanding")
-        )
+        understanding_snapshot = previous_understanding
         module_override: str | None = None
         if module_id is not None:
             # V2 Issue 11：点击建议一键启动论文模块——只在逐消息无模块时

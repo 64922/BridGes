@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { CHAT_MODULES, chatModuleIcon, chatModuleLabel, pendingClarificationModule } from "./chat-modules";
+import { chatModuleIcon, chatModuleLabel, pendingClarificationModule } from "./chat-modules";
 import { message, githubProjects, pendingPaperClarification } from "./chat-modules.test-support";
 
 describe("chat-modules GitHub 项目推荐（V2 Issue 16）", () => {
-  it("GitHub 在菜单里给中文名与仓库图标", () => {
+  it("GitHub 历史消息保留中文标签，退役模块使用通用图标", () => {
     expect(chatModuleLabel("github")).toBe("GitHub 项目推荐");
-    expect(chatModuleIcon("github")).toBe("githubRepo");
-    expect(CHAT_MODULES.find((module) => module.id === "github")?.description).toContain(
-      "公开仓库"
-    );
+    expect(chatModuleIcon("github")).toBe("chatBubble");
+
   });
 
-  it("最后一条 GitHub 消息还在等澄清时恢复 GitHub 模块选择", () => {
+  it("最后一条 GitHub 消息还在等澄清时不恢复 GitHub 模块选择", () => {
     const pending = githubProjects({
       status: "clarification",
       pending: {
@@ -25,7 +23,7 @@ describe("chat-modules GitHub 项目推荐（V2 Issue 16）", () => {
     });
     expect(
       pendingClarificationModule([message("m-1", null, null, null, null, pending)])
-    ).toBe("github");
+    ).toBeNull();
     // 论文的历史判定不受 GitHub 等待影响（两者互不冒充）。
     expect(pendingClarificationModule([message("m-1", pendingPaperClarification)])).toBe(
       "paper"

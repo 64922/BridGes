@@ -24,9 +24,6 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from bridges.career.intake import assess_intake
-from bridges.career.intent import is_study_planning_request
-from bridges.career_plan.suggestion import detect_career_suggestion
 from bridges.chat.reference_resolution import resolve_references
 from bridges.commute.suggestion import detect_commute_suggestion
 from bridges.contracts.chat import ChatMode
@@ -53,9 +50,7 @@ from bridges.contracts.understanding import (
     MainUnderstanding,
     RouteSource,
 )
-from bridges.github.suggestion import detect_github_suggestion
 from bridges.paper.suggestion import PAPER_REQUEST_HINTS, detect_paper_suggestion
-from bridges.resources.suggestion import detect_resources_suggestion
 from bridges.routing import NaturalLanguageRouter, RouteStatus
 from bridges.state_copy import (
     CLARIFICATION_REFERENCE_AMBIGUITY_TEXT,
@@ -65,22 +60,12 @@ from bridges.state_copy import (
 )
 from bridges.tieba.suggestion import detect_tieba_suggestion
 
-#: 正文模块识别器：按既有建议优先级排列（论文最先，职业最后），命中即止
+#: 正文模块识别器：只识别当前可用的论文、贴吧和通勤模块，命中即止
 #: 用于「明确单模块」判定；多个命中时交给澄清，不猜测组合。
 _MODULE_DETECTORS: tuple[tuple[str, object], ...] = (
     ("paper", detect_paper_suggestion),
     ("tieba", detect_tieba_suggestion),
-    ("github", detect_github_suggestion),
     ("commute", detect_commute_suggestion),
-    ("resources", detect_resources_suggestion),
-    ("career", detect_career_suggestion),
-)
-
-#: 资源模块直启的明确检索诉求词；只有「想学/学习/课程安排」这类规划或
-#: 泛泛学习意图时不直启（保留为下一次建议或普通聊天），避免把含糊主题
-#: 猜测成领域检索。
-_DIRECT_RESOURCE_RE = re.compile(
-    r"找|搜|查|推荐|看看|看一下|有什么|有哪些|求推荐|来个|盘点|书单|教程|教材|网课"
 )
 
 #: 取消当前任务（任务级动作，不是内容里的「不用联网」等硬条件）。
@@ -263,16 +248,9 @@ class MainAgentUnderstanding:
         )
         if answer_fields and target_task is not None:
             relation = TaskRelation.CONTINUE
-            if "topic" in answer_fields:
-                if "resources" in self._detect_modules(target_task.goal):
-                    detected = ["resources"]
-                    goal = f"{target_task.goal}；{text}"
-                else:
-                    detected = ["paper"]
-                    goal = text
-            elif {"direction", "stage"} & set(answer_fields):
-                detected = ["career"]
-                goal = f"{target_task.goal}；{text}"
+            if "topic" in answer_fields and "paper" in self._detect_modules(target_task.goal):
+                detected = ["paper"]
+                goal = text
         touches_task = relation in {
             TaskRelation.CONTINUE,
             TaskRelation.REVISE,
@@ -301,17 +279,7 @@ class MainAgentUnderstanding:
             requested_module_id=requested_module_id,
             resolution=resolution,
         )
-        classification_text = goal if "career" in detected and goal else text
-        classified = self._router.classify(classification_text)
-        if clarification is None and "resources" in detected and not answer_fields:
-            # 资料与论文共用已有术语语境；不先检索模型猜测的领域。
-            from bridges.chat.topic_clarification import resources_domain_question
-
-            clarification = resources_domain_question(
-                text, messages=messages, current_message_id=user_message_id
-            )
-            if clarification is not None:
-                missing = ["topic"]
+        classified = self._router.classify(text)
         if (
             clarification is None
             and not answer_fields
@@ -321,18 +289,6 @@ class MainAgentUnderstanding:
         ):
             clarification = classified.clarification_question
             missing = ["topic"]
-            if relation is None:
-                relation, goal = TaskRelation.NEW, text
-        if (
-            clarification is None
-            and classified.is_career
-            and not is_study_planning_request(text)
-            and classified.career_contract is not None
-            and classified.career_contract.open_questions
-        ):
-            intake = assess_intake(goal or text)
-            clarification = intake.question
-            missing = [intake.missing_dimension] if intake.missing_dimension else []
             if relation is None:
                 relation, goal = TaskRelation.NEW, text
         actual_module, route_source, reason = self._route(
@@ -680,10 +636,6 @@ class MainAgentUnderstanding:
             answered.append("year")
         if "goal" in missing and self._looks_like_task_goal(text):
             answered.append("goal")
-        if "direction" in missing and assess_intake(text).missing_dimension != "direction":
-            answered.append("direction")
-        if "stage" in missing and assess_intake(f"数据分析；{text}").enough:
-            answered.append("stage")
         if (
             "topic" in missing
             and not detected
@@ -701,14 +653,6 @@ class MainAgentUnderstanding:
         detected: list[str] = []
         for module_id, detector in _MODULE_DETECTORS:
             payload = detector(text)  # type: ignore[operator]
-            if payload is None and module_id == "resources" and re.search(
-                r"(?:找|搜|查|推荐)[^。！？?]{0,80}资料", text
-            ):
-                # 明确找资料不依赖旧“想学/教材”建议词；领域仍需独立消歧。
-                from bridges.resources.parsing import extract_topic_phrase
-
-                if extract_topic_phrase(text) is not None:
-                    payload = {"module_id": "resources"}
             if payload is None and module_id == "paper":
                 # 论文以统一路由器为权威（如「研究文章」这类建议词表未覆盖
                 # 的明确表达）；建议检测器命中仍视为明确意图。
@@ -718,9 +662,6 @@ class MainAgentUnderstanding:
                     else None
                 )
             if payload is None:
-                continue
-            if module_id == "resources" and not _DIRECT_RESOURCE_RE.search(text):
-                # 「学习计划/课程安排/学习任务」这类规划意图不当作资料检索。
                 continue
             detected.append(module_id)
         return detected

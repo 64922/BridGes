@@ -2,15 +2,14 @@ import type { IconName } from "@/components/design-system/Icon";
 import type { ChatMessageProjection } from "@/lib/api";
 
 /**
- * V2 Issue 11/12/13/14/15/16：日常聊天可显式选择的模块（论文搜索、校园通勤、
- * 学习资料推荐、贴吧信息搜集、职业规划、GitHub 项目推荐）。
+ * 日常聊天可选择的三个模块：论文搜索、校园通勤、贴吧信息搜集。
  *
  * 这里只有菜单/历史标签用的中文名称与说明；模块的检索行为完全由服务端
- * 在显式派发后执行。``id`` 与后端 ``ChatModuleId`` 取值一致，
+ * 在派发后执行。``id`` 与后端 ``ActiveChatModuleId`` 取值一致，
  * 随每条用户消息持久化——历史的模块标识只读消息记录，不随新选择改变。
  */
 export interface ChatModuleOption {
-  id: "paper" | "commute" | "resources" | "tieba" | "career" | "github";
+  id: "paper" | "commute" | "tieba";
   label: string;
   description: string;
   icon: IconName;
@@ -30,37 +29,31 @@ export const CHAT_MODULES: readonly ChatModuleOption[] = [
     icon: "route",
   },
   {
-    id: "resources",
-    label: "学习资料推荐",
-    description: "按技术方向给出图书与哔哩哔哩视频清单，按由浅入深排列",
-    icon: "learningProject",
-  },
-  {
     id: "tieba",
     label: "贴吧信息搜集",
     description: "只看华东交通大学吧的公开帖子，拿不到回复时只给帖链",
     icon: "tiebaThread",
   },
-  {
-    id: "career",
-    label: "职业规划",
-    description: "按目标岗位与城市读公开岗位样本，不足时不称市场行情",
-    icon: "careerPlan",
-  },
-  {
-    id: "github",
-    label: "GitHub 项目推荐",
-    description: "按你的 idea 检索公开仓库，逐项给出功能匹配与维护许可证据",
-    icon: "githubRepo",
-  },
 ];
 
 export type ChatModuleSelectionId = ChatModuleOption["id"];
 
+/** 退役模块仅用于历史结果的中文标签，不进入菜单或等待恢复。 */
+const HISTORICAL_MODULE_LABELS = new Map([
+  ["resources", "学习资料推荐"],
+  ["career", "职业规划"],
+  ["github", "GitHub 项目推荐"],
+]);
+
+export function isActiveChatModule(moduleId: string): moduleId is ChatModuleSelectionId {
+  return CHAT_MODULES.some((module) => module.id === moduleId);
+}
+
 /** 模块 ID → 中文名称（历史消息标识；未接入的模块没有中文名，不臆造也不回显英文 ID）。 */
 export function chatModuleLabel(moduleId: string | null | undefined): string | null {
   if (!moduleId) return null;
-  return CHAT_MODULES.find((module) => module.id === moduleId)?.label ?? null;
+  return CHAT_MODULES.find((module) => module.id === moduleId)?.label
+    ?? HISTORICAL_MODULE_LABELS.get(moduleId) ?? null;
 }
 
 /** 模块 ID → 图标名（未知取值用模块通用图标兜底）。 */

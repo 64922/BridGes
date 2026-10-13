@@ -41,9 +41,6 @@ from bridges.chat.graph_contracts import (
 #: 可执行复合计划的模块到服务属性映射。
 _COMPOSITE_SERVICE_ATTRS: dict[str, str] = {
     PAPER_MODULE_ID: "paper_search_service",
-    RESOURCES_MODULE_ID: "learning_resources_service",
-    GITHUB_MODULE_ID: "github_projects_service",
-    CAREER_MODULE_ID: "career_plan_service",
 }
 
 #: 中文序数词（“第二篇”）。

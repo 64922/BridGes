@@ -69,7 +69,6 @@ def create_default_route_registry() -> CapabilityRouteRegistry:
             RouteRegistration(RouteCapability.PAPER_SEARCH, "1", ("查论文", "找论文", "论文检索", "arxiv")),
             RouteRegistration(RouteCapability.HUMANIZER, "1", ("润色", "改写", "去模板腔", "更自然")),
             RouteRegistration(RouteCapability.VIDEO, "1", ("生成视频", "做视频", "视频生成")),
-            RouteRegistration(RouteCapability.CAREER, "1", ("职业规划", "生涯规划", "规划职业")),
         )
     )
 
