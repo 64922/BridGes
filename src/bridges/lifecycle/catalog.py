@@ -64,6 +64,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "node_artifacts",
     "retrieval_decisions",
     "study_local_progress",
+    # Issue 03：待答问题与学习证据。证据先于待答问题删除，二者都先于
+    # conversations（外键 CASCADE，仍显式删除不依赖级联）。
+    "study_evidence",
+    "study_pending_checks",
     "study_states",
     "image_tasks",
     "image_versions",
@@ -175,6 +179,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("study", "学习小节状态", ("study_states",), 4096),
     ExportCategory(
         "study_local_progress", "会话局部学习进展", ("study_local_progress",), 1024
+    ),
+    # Issue 03：当前待答问题（含展示前冻结的私有评价依据）与学习证据
+    # （实际作答、提示程度、来源版本与不确定性），随账户导出与删除。
+    ExportCategory(
+        "study_verification",
+        "学习验证与证据",
+        ("study_pending_checks", "study_evidence"),
+        1024,
     ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
@@ -395,6 +407,8 @@ def logical_summary(
         "graph_checkpoint_writes",
         "retrieval_decisions",
         "study_local_progress",
+        "study_pending_checks",
+        "study_evidence",
         "image_tasks",
         "image_versions",
         "image_assets",

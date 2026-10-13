@@ -832,6 +832,7 @@ export default function ChatConversationPage() {
                 <StudyProgress
                   study={conversation.study}
                   studyLocalProgress={conversation.study_local_progress}
+                  studyPendingCheck={conversation.study_pending_check}
                   historyStatus={conversation.study_history_status}
                   busy={generating} onAction={sendMessage}
                 />
