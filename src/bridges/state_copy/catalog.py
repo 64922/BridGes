@@ -1560,6 +1560,27 @@ _PUBLIC_ENTRIES: tuple[CopyEntry, ...] = (
         CopyStrategy.FIXED_TEMPLATE, ("done",), text="学习总结",
         note="工单 38：本次总结节点已提交真实学习总结。",
     ),
+    CopyEntry(
+        "study.history.legacy", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("legacy",),
+        text="此学习记录采用旧格式（版本 {version}）；已按原记录只读展示。",
+        note="工单 01：支持旧状态的读取升级只在内存中完成，不写回学习状态。",
+    ),
+    CopyEntry(
+        "study.history.unsupported", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("unsupported",),
+        text=(
+            "此学习记录采用当前不支持的格式（版本 {version}）；"
+            "消息历史仍可查看，学习阶段暂无法解读。"
+        ),
+        note="工单 01：未知学习状态版本不套用当前学习流程或当前投影。",
+    ),
+    CopyEntry(
+        "study.history.unreadable", CopyCategory.STUDY, "study",
+        CopyStrategy.FIXED_TEMPLATE, ("unreadable",),
+        text="学习状态记录暂时无法解读；原始消息历史仍保留。",
+        note="工单 01：损坏或结构不兼容的状态不阻断消息历史读取。",
+    ),
     # -- 检索：空结果、部分与降级 -----------------------------------------
     CopyEntry(
         "retrieval.status.sufficient",

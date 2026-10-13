@@ -53,7 +53,7 @@ from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
-from bridges.study.service import StudyRepository
+from bridges.study.versions import KNOWN_STUDY_GRAPH_VERSION_SET
 from bridges.tieba.contracts import TiebaResearchProjection
 from bridges.web_search.contracts import WebSearchProjection
 
@@ -118,10 +118,11 @@ class _ServiceProjectionsMixin:
             # 套到此前消息，或只在仍活跃的 SSE 回合中显示等待。
             run = self._repo.get_run_by_message(message.account_id, message.message_id)
             study = (
-                StudyRepository(self._repo.database).get(
+                self._study_history.read(
                     message.account_id, message.conversation_id,
-                )
-                if run is not None and (run.graph_version or "").startswith("study-")
+                ).study
+                if run is not None
+                and run.graph_version in KNOWN_STUDY_GRAPH_VERSION_SET
                 else None
             )
             parsed = derive_turn_result(
@@ -139,7 +140,7 @@ class _ServiceProjectionsMixin:
                 wait_reason=(run_view.wait_reason if run_view is not None
                              else run.wait_reason if run is not None else None),
                 web_search=message.web_search,
-                study=study.public_view() if study is not None else None,
+                study=study,
                 study_node=run.current_node if run is not None else None,
                 user_message_id=run.user_message_id if run is not None else None,
                 assistant_message_id=message.message_id,
@@ -376,17 +377,18 @@ class _ServiceProjectionsMixin:
         run_views: dict[str, ChatRunView] | None = None,
         mode_locked: bool = False,
     ) -> ChatConversationProjection:
+        study_history = (
+            self._study_history.read(account_id, conversation_id)
+            if mode == ChatMode.STUDY
+            else None
+        )
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,
             mode=mode,
-            study=(
-                state.public_view()
-                if mode == ChatMode.STUDY
-                and (state := StudyRepository(self._repo.database).get(
-                    account_id, conversation_id
-                )) is not None
-                else None
+            study=study_history.study if study_history is not None else None,
+            study_history_status=(
+                study_history.status if study_history is not None else None
             ),
             mode_locked=mode_locked,
             pinned=pinned,

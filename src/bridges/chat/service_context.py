@@ -56,7 +56,7 @@ from bridges.github.service import GithubProjectsService
 from bridges.paper.service import PaperSearchService
 from bridges.resources.service import LearningResourcesService
 from bridges.retrieval.decision import capability_route_for_request
-from bridges.study.service import STUDY_GRAPH_VERSION, StudyWorkflow
+from bridges.study.service import StudyWorkflow
 from bridges.tieba.service import TiebaResearchService
 
 if TYPE_CHECKING:
@@ -379,11 +379,14 @@ class _ServiceContextMixin:
         执行器把 ``on_event`` 接到游标事件持久化上；停止信号与终态收敛
         语义见 :mod:`bridges.chat.graph`。
         """
-        if run.graph_version in {
-            STUDY_GRAPH_VERSION, "study-pages-v1", "study-scope-v2", "study-tutoring-v3",
-            "study-tutoring-review-v4",
-            "study-tutoring-review-v5",
-        }:
+        conversation = self._repo.get_conversation(
+            run.account_id, run.conversation_id
+        )
+        is_study = (
+            conversation is not None
+            and conversation.mode == ChatMode.STUDY.value
+        ) or (run.graph_version or "").startswith("study-")
+        if is_study:
             return StudyWorkflow(self).run(
                 run, on_event=on_event, stop_event=stop_event
             )

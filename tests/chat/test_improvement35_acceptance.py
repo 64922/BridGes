@@ -101,8 +101,13 @@ def test_append_final_transaction_rejects_late_authority_change(
         assert result["messages"][-1]["status"] == ("stopped" if change == "stop" else "error")
 
 
-def test_previous_graph_cannot_replay_pre_versioned_update(
+@pytest.mark.parametrize(
+    "graph_version",
+    ["study-tutoring-review-v5", "study-tutoring-review-v99", None],
+)
+def test_previous_unknown_or_unversioned_graph_cannot_replay_pre_versioned_update(
     tmp_path: Any, monkeypatch: Any,
+    graph_version: str | None,
 ) -> None:
     app = _app(tmp_path, monkeypatch)
     gateway = Ticket35Gateway()
@@ -116,9 +121,9 @@ def test_previous_graph_cannot_replay_pre_versioned_update(
             "content": "追加一页", "attachment_ids": [photo["object_id"]],
         })
         app.state.bridges_database.scoped(account_id).execute(
-            "UPDATE generation_runs SET graph_version = 'study-tutoring-review-v5'"
+            "UPDATE generation_runs SET graph_version = ?"
             " WHERE account_id = ? AND conversation_id = ? AND status = 'queued'",
-            (account_id, endpoint.rsplit("/", 1)[-1]),
+            (graph_version, account_id, endpoint.rsplit("/", 1)[-1]),
         )
         app.state.generation_executor.run_tick()
         result = client.get(endpoint).json()

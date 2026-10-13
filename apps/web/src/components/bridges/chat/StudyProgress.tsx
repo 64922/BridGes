@@ -53,12 +53,20 @@ function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>)
   return labels;
 }
 
-export function StudyProgress({ study: state, busy = false, onAction }: {
+export function StudyProgress({ study: state, historyStatus, busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
+  historyStatus?: ChatConversationProjection["study_history_status"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
 }) {
   const [sending, setSending] = useState(false);
+  if (!state && historyStatus) {
+    return (
+      <section className={styles.studyProgress} aria-label="学习历史">
+        <p className={styles.studySummaryNote} role="status">{historyStatus.message}</p>
+      </section>
+    );
+  }
   const current = state?.stage === "awaiting_pages" ? "recognizing" : state?.stage ?? "recognizing";
   const action = state?.stage === "review" ? "暂停复盘回辅导"
     : state?.review ? "继续复盘" : "开始复盘";
@@ -71,6 +79,9 @@ export function StudyProgress({ study: state, busy = false, onAction }: {
   const labels = summary && state ? evidenceLabels(state) : null;
   return (
     <section className={styles.studyProgress} aria-label="学习阶段">
+      {historyStatus && (
+        <p className={styles.studySummaryNote} role="status">{historyStatus.message}</p>
+      )}
       <ol className={styles.studyStages}>
         {STAGES.map((stage) => (
           <li

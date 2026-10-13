@@ -92,8 +92,7 @@ from bridges.study.scope import (
 from bridges.study.summary import build_summary, render_summary
 from bridges.study.turn_result import finalize_study_message
 from bridges.study.tutoring import tutor
-
-STUDY_GRAPH_VERSION = "study-tutoring-review-v6"
+from bridges.study.versions import STUDY_GRAPH_VERSION
 
 #: 书页图片调用（OCR／视觉）的单次超时（秒）。原始教材整页的实测耗时：
 #: OCR 30—44 秒、视觉 45—59 秒（issue 04 三张原图实测），而默认模型调用

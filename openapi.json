@@ -32619,6 +32619,17 @@
             ],
             "description": "学习小节的持久化阶段、页级证据和预习问题。"
           },
+          "study_history_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyHistoryStatusProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。"
+          },
           "mode_locked": {
             "type": "boolean",
             "title": "Mode Locked",
@@ -57640,6 +57651,50 @@
         "type": "object",
         "title": "StudyGradeRecord",
         "description": "一次作答判定的逐项核对与必要复核记录（工单 34，仅内部保存）。\n\n判定输出结构与复核规则变化时递增 ``protocol_version``；旧题没有该记录。"
+      },
+      "StudyHistoryStatus": {
+        "type": "string",
+        "enum": [
+          "legacy",
+          "unsupported",
+          "unreadable"
+        ],
+        "title": "StudyHistoryStatus",
+        "description": "学习状态行在只读历史投影中的解释状态。"
+      },
+      "StudyHistoryStatusProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/StudyHistoryStatus",
+            "description": "历史学习状态的解释结果。"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "原记录声明的学习状态合同版本。"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Message",
+            "description": "面向用户的固定说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "StudyHistoryStatusProjection",
+        "description": "旧版、未知版或不可解码学习状态的公开说明。"
       },
       "StudyPage": {
         "properties": {

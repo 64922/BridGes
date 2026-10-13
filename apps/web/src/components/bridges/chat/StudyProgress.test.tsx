@@ -6,6 +6,31 @@ import { StudyProgress } from "./StudyProgress";
 afterEach(cleanup);
 
 describe("学习阶段与页级证据", () => {
+  it("旧状态显示只读说明并保留可解释阶段", () => {
+    render(<StudyProgress
+      study={{ subsection_id: "s", stage: "tutoring", state_version: 4 }}
+      historyStatus={{
+        status: "legacy",
+        version: 3,
+        message: "此学习记录采用旧格式（版本 3）；已按原记录只读展示。",
+      }}
+    />);
+    expect(screen.getByRole("status").textContent).toContain("旧格式");
+    expect(screen.getByText("辅导")).toBeTruthy();
+  });
+
+  it("未知状态版本显示说明，不虚构学习阶段", () => {
+    render(<StudyProgress
+      historyStatus={{
+        status: "unsupported",
+        version: 5,
+        message: "此学习记录采用当前不支持的格式（版本 5）；消息历史仍可查看，学习阶段暂无法解读。",
+      }}
+    />);
+    expect(screen.getByRole("status").textContent).toContain("当前不支持");
+    expect(screen.queryByText("书页识别")).toBeNull();
+  });
+
   it("开始操作等待请求完成，失败后仍可重试", async () => {
     let finish!: (value: boolean) => void;
     const onAction = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));

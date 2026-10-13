@@ -59,6 +59,7 @@ from bridges.retrieval.service import LayeredRetrievalService
 from bridges.routing import (
     NaturalLanguageRouter,
 )
+from bridges.study.history import StudyHistoryReader
 from bridges.tieba.service import TiebaResearchService
 from bridges.web_search.service import WebSearchService
 
@@ -113,6 +114,7 @@ class ChatService(
         summary_service: ChatSummaryService | None = None,
     ) -> None:
         self._repo = repository
+        self._study_history = StudyHistoryReader(repository.database)
         self._gateway = gateway
         #: V2 Issue 09：主模型运行配置（手填并验证通过的主模型 ID）。运行创建
         #: 时解析一次并随运行配置持久化，进行中的轮次不因换配置而切换模型。

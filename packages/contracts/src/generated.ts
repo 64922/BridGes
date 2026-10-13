@@ -9636,6 +9636,8 @@ export interface components {
             mode: components["schemas"]["ChatMode"];
             /** @description 学习小节的持久化阶段、页级证据和预习问题。 */
             study?: components["schemas"]["StudyState"] | null;
+            /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
+            study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
              * Mode Locked
              * @description 首条用户消息提交后是否已锁定当前模式。
@@ -24803,6 +24805,30 @@ export interface components {
              * @default
              */
             recheck_detail: string;
+        };
+        /**
+         * StudyHistoryStatus
+         * @description 学习状态行在只读历史投影中的解释状态。
+         * @enum {string}
+         */
+        StudyHistoryStatus: "legacy" | "unsupported" | "unreadable";
+        /**
+         * StudyHistoryStatusProjection
+         * @description 旧版、未知版或不可解码学习状态的公开说明。
+         */
+        StudyHistoryStatusProjection: {
+            /** @description 历史学习状态的解释结果。 */
+            status: components["schemas"]["StudyHistoryStatus"];
+            /**
+             * Version
+             * @description 原记录声明的学习状态合同版本。
+             */
+            version?: number | null;
+            /**
+             * Message
+             * @description 面向用户的固定说明。
+             */
+            message: string;
         };
         /** StudyPage */
         StudyPage: {
