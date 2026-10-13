@@ -1,0 +1,3 @@
+tests.closeout.test_mail_verification::test_dropped_mail_times_out_to_failed
+tests.closeout.test_mail_verification::test_immediate_delivery_verifies
+tests.closeout.test_mail_verification::test_mail_verification_converges_to_verified_after_10_second_delivery

@@ -1,0 +1,3 @@
+tests.closeout.test_capability_manifest::test_real_app_routes_are_fully_classified
+tests.tieba.test_tieba_module_flow::test_other_modules_still_rejected_and_no_silent_search
+tests.tieba.test_tieba_module_flow::test_plain_chat_suggests_tieba_without_searching

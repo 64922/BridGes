@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-12",
+  "kind": "real_edge_public_search_and_bridges_run",
+  "connection": {
+    "browser": "Microsoft Edge",
+    "debug_port": 60918,
+    "proxy": "web-access localhost:3456",
+    "scope": "只使用本任务创建的后台标签读取公开贴吧 DOM 和本地 BridGes 页面；用户原有标签未操作",
+    "cookies_storage_headers_read": false
+  },
+  "user_confirmation": {
+    "tieba_account_and_production_model_prepared": true,
+    "source": "用户确认；本记录不将自述当作专用会话认证或模型调用证据"
+  },
+  "public_search": {
+    "exact_terms": {
+      "query": "宿舍 收费 热水 洗澡",
+      "thread_cards": 0
+    },
+    "relaxed_terms": {
+      "query": "宿舍 热水 洗澡 贴吧",
+      "thread_cards": 7,
+      "page_end_text": "暂无更多数据",
+      "visible_examples": [
+        {
+          "post_id": "10405678421",
+          "title": "花椒为啥洗澡热水这么贵"
+        },
+        {
+          "post_id": "10018550387",
+          "title": "求助怎样热水洗澡"
+        },
+        {
+          "post_id": "7277994066",
+          "title": "汇总一下交大各宿舍楼的住宿条件"
+        }
+      ],
+      "completeness": "只观察当前结果页；未验证搜索第二页"
+    }
+  },
+  "bridges_run": {
+    "conversation_id": "EfcyGSa6HZQLysJ-4G1emg",
+    "run_id": "z6LEhDBH6TVTEUcIZTVgPw",
+    "idempotency_key": "codex-tieba-e2e-20261012-03",
+    "http_status": 201,
+    "run_status": "done",
+    "module_id": "tieba",
+    "topic_terms": [
+      "宿舍",
+      "收费",
+      "热水",
+      "洗澡"
+    ],
+    "default_time_window": "近 12 个月",
+    "search_attempts": [
+      {
+        "status": "success",
+        "evidence_count": 0
+      },
+      {
+        "status": "error",
+        "error_code": "tieba_browser_timeout",
+        "evidence_count": 0
+      }
+    ],
+    "tieba_status": "empty",
+    "model_id": null,
+    "model_invoked": false,
+    "run_lock_created": false,
+    "explanation": "工作线程在尝试更宽的候选检索前超时；此请求没有调用生产模型。"
+  },
+  "limitations": [
+    "Edge 的公开页面结果不代表 BridGes 专用贴吧会话已认证。",
+    "本次运行没有验证生产模型、模型额度、认证状态或搜索分页完整性。",
+    "同幂等键 POST 重发被自动审查拦截；之后只使用 GET 查询运行状态，没有再次提交。",
+    "用户批准的一次全新请求已执行并返回 HTTP 201；助手消息以 tieba_browser_timeout 结束，model_id 为空，没有证据表明调用了生产模型。未重发。",
+    "尝试通过只读 GET 获取该次运行的详细贴吧查询投影时，Edge 代理返回 Runtime.evaluate 超时，因此候选数和具体失败查询不可确认。",
+    "API 组合根、预算账本和后台执行器均已拆到 500 行以内；真实模型与贴吧专用认证/完整分页仍因本次运行超时而未验收。"
+  ],
+  "approved_fresh_run": {
+    "conversation_id": "5hwe2A1vxFswGEKXGgTXcg",
+    "run_id": "KloFg3I6WfnGAA1fvD63KQ",
+    "idempotency_key": "codex-tieba-e2e-20261012-04",
+    "user_approval": "批准一次",
+    "http_status": 201,
+    "assistant_message_status": "done",
+    "module_id": "tieba",
+    "topic_terms": [
+      "宿舍",
+      "热水",
+      "洗澡"
+    ],
+    "assistant_error_code": "tieba_browser_timeout",
+    "model_id": null,
+    "model_invoked": false,
+    "query_evidence_projection": "not retrieved; the task-created tab later timed out during Runtime.evaluate",
+    "additional_post_requests": 0
+  },
+  "implementation_refactor": {
+    "api_composition_root_lines": 38,
+    "largest_new_api_module_lines": 396,
+    "run_budget_ledger_largest_module_lines": 429,
+    "background_executor_lines": 494,
+    "tieba_api_and_executor_changed_modules_over_500_lines": false,
+    "new_dependencies": 0,
+    "focused_validation": {
+      "pytest": "323 passed in 65.46s",
+      "mypy": "21 API/ledger/media/cleanup source files passed",
+      "ruff": "changed API/ledger/runtime modules passed",
+      "compileall": "api, chat, runtime, tieba passed",
+      "git_diff_check": "passed"
+    }
+  }
+}

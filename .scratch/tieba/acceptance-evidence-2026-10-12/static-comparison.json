@@ -1,0 +1,10 @@
+{
+  "mypy_current": 154,
+  "mypy_baseline": 154,
+  "mypy_normalized_new": 0,
+  "ruff_current": 520,
+  "ruff_baseline": 520,
+  "ruff_new": [],
+  "ruff_baseline_only": [],
+  "excluded_instrumentation": "tests/test_acceptance_provenance.py"
+}

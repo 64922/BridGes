@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_repository_contains_no_committed_secrets ________________
+C:\Users\33755\Desktop\BridGes\tests\security\test_secret_scan.py:139: in test_repository_contains_no_committed_secrets
+    ???
+E   AssertionError: �������Ʊ��ύ�����ܣ�ֻ����λ�ã�������ֵ����
+E     .codex-test-tmp\pytest-all-followup-20261011\test_report_scan_fails_closed_0\report.json:1 [tavily_key]
+E     scripts\issue42_pairing_runtime.py:33 [credential]
+E   assert ['.codex-test...[credential]'] == []
+E     
+E     Left contains 2 more items, first extra item: '.codex-test-tmp\\pytest-all-followup-20261011\\test_report_scan_fails_closed_0\\report.json:1 [tavily_key]'
+E     Use -v to get more diff
+=========================== short test summary info ===========================
+FAILED tests/security/test_secret_scan.py::test_repository_contains_no_committed_secrets
+1 failed in 17.22s

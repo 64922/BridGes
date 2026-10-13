@@ -1,0 +1,30 @@
+{
+  "current_failed": 206,
+  "baseline_failed": 206,
+  "new_failures": [
+    "tests.closeout.test_api_boot::test_api_starts_from_unique_absolute_sqlite_path_and_health_passes",
+    "tests.closeout.test_api_boot::test_two_api_runs_do_not_collide_on_ports_or_data_dirs"
+  ],
+  "baseline_only": [
+    "tests.evaluation.test_issue39_evidence_completion::test_derive_report_keeps_flags_false_when_evidence_incomplete",
+    "tests.evaluation.test_issue39_evidence_completion::test_derive_report_only_updates_validation_scope"
+  ],
+  "changed_failure_messages": [
+    "tests.closeout.test_mail_verification::test_dropped_mail_times_out_to_failed",
+    "tests.closeout.test_mail_verification::test_immediate_delivery_verifies",
+    "tests.closeout.test_mail_verification::test_mail_verification_converges_to_verified_after_10_second_delivery",
+    "tests.closeout.test_search_release_gate::test_manifest_version_bumped_for_issue07",
+    "tests.evaluation.test_runner_reproducibility::test_double_run_is_reproducible",
+    "tests.evaluation.test_runner_reproducibility::test_lock_freezes_reproducibility_metadata",
+    "tests.evaluation.test_runner_reproducibility::test_reproduction_command_is_one_click_replayable",
+    "tests.evaluation.test_runner_reproducibility::test_suite_run_produces_all_suts_and_tasks",
+    "tests.github.test_github_module_flow::test_plain_chat_without_the_module_never_starts_github",
+    "tests.integration.test_issue16_profile_contract::test_four_dimension_public_contract_keeps_only_read_modify_withdraw",
+    "tests.plugins.test_plugin_api::test_enable_disable_and_uninstall",
+    "tests.plugins.test_plugin_api::test_failed_package_reinstall_success",
+    "tests.plugins.test_plugin_api::test_install_and_toggle_audit_records",
+    "tests.plugins.test_plugin_api::test_install_conflict_when_already_installed",
+    "tests.plugins.test_plugin_api::test_other_account_cannot_see_or_touch_user_package",
+    "tests.security.test_secret_scan::test_repository_contains_no_committed_secrets"
+  ]
+}

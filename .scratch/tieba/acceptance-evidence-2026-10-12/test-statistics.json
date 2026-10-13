@@ -1,0 +1,30 @@
+{
+  "initial_current": {
+    "tests": "6044",
+    "failures": "206",
+    "errors": "0",
+    "skipped": "37",
+    "time": "1541.868"
+  },
+  "baseline": {
+    "tests": "6006",
+    "failures": "206",
+    "errors": "0",
+    "skipped": "39",
+    "time": "1513.250"
+  },
+  "final_related": {
+    "tests": "257",
+    "failures": "3",
+    "errors": "0",
+    "skipped": "0",
+    "time": "51.571"
+  },
+  "agent_child_process": {
+    "tests": "5",
+    "failures": "3",
+    "errors": "0",
+    "skipped": "0",
+    "time": "29.487"
+  }
+}
