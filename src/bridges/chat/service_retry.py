@@ -322,6 +322,11 @@ class _ServiceRetryMixin:
         profile_correction = (previous_config or {}).get("profile_correction")
         if isinstance(profile_correction, dict):
             run_config["profile_correction"] = dict(profile_correction)
+        # Issue 03：重试沿用本轮评价快照——旧作答重试仍绑定当时的待答
+        # 问题与版本，不会被判到之后的新问题上，也不重复记账。
+        verification_snapshot = (previous_config or {}).get("study_verification")
+        if isinstance(verification_snapshot, dict):
+            run_config["study_verification"] = verification_snapshot
         run_record = GenerationRunRecord(
             run_id=run_id,
             account_id=account_id,

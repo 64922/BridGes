@@ -32630,6 +32630,17 @@
             ],
             "description": "会话局部学习进展；仅含公开摘要和来源消息标识。"
           },
+          "study_pending_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyPendingCheckProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前待答问题与帮助状态；只含已展示的问题，不含评价依据或未提出的问题。"
+          },
           "study_history_status": {
             "anyOf": [
               {
@@ -57328,6 +57339,24 @@
         "title": "StoryboardStatus",
         "description": "结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。"
       },
+      "StudyCheckAssistance": {
+        "type": "string",
+        "enum": [
+          "none",
+          "hinted"
+        ],
+        "title": "StudyCheckAssistance",
+        "description": "待答问题实际获得过的帮助状态（按确实提供的提示派生）。"
+      },
+      "StudyCheckKind": {
+        "type": "string",
+        "enum": [
+          "open_probe",
+          "formal_check"
+        ],
+        "title": "StudyCheckKind",
+        "description": "检查类型：开放探查记录理解线索，正式练习有固定评价依据。"
+      },
       "StudyContentCheck": {
         "properties": {
           "unit_id": {
@@ -57926,6 +57955,63 @@
         ],
         "title": "StudyPageUpdate",
         "description": "追加页的候选范围，全部核对并合并成功后才替换已确认范围。"
+      },
+      "StudyPendingCheckProjection": {
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "title": "Check Id",
+            "description": "稳定检查标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StudyCheckKind",
+            "description": "检查类型：开放探查或正式练习。"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "description": "已经展示给用户的题目或探查问题。"
+          },
+          "knowledge_context": {
+            "type": "string",
+            "title": "Knowledge Context",
+            "description": "展示问题时固定的知识上下文摘要。",
+            "default": ""
+          },
+          "assistance": {
+            "$ref": "#/components/schemas/StudyCheckAssistance",
+            "description": "本问题至今实际提供过的帮助状态。",
+            "default": "none"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "同一对话内检查的递增版本。"
+          },
+          "source_message_id": {
+            "type": "string",
+            "title": "Source Message Id",
+            "description": "展示该问题的助手消息标识。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "问题首次展示时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_id",
+          "kind",
+          "question",
+          "version",
+          "source_message_id",
+          "created_at"
+        ],
+        "title": "StudyPendingCheckProjection",
+        "description": "待答问题的用户可见投影；不含评价依据或未提出的问题。"
       },
       "StudyPointCheck": {
         "properties": {

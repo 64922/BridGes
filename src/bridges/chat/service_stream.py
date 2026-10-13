@@ -31,6 +31,7 @@ from bridges.contracts.understanding import (
 )
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.study.local_progress import StudyLocalProgressRepository
+from bridges.study.verification import StudyVerificationRepository
 from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 
 if TYPE_CHECKING:
@@ -83,8 +84,21 @@ class _ServiceStreamMixin:
             user_message = self._repo.get_message(account_id, run.user_message_id)
             if user_message is not None:
                 progress_repository = StudyLocalProgressRepository(self._repo.database)
+                verification_repository = StudyVerificationRepository(
+                    self._repo.database
+                )
 
                 def persist_study_progress(content: str) -> None:
+                    # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
+                    # 局部进展；两者与消息 streaming→done 同事务，原子可见。
+                    # 停止/失败路径不进入本回调，未展示的问题绝不激活。
+                    verification_repository.commit_turn_in_transaction(
+                        self._repo,
+                        run,
+                        user_message,
+                        assistant_message_id,
+                        content,
+                    )
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
                     )

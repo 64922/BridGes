@@ -62,9 +62,10 @@ function evidenceLabels(
   return labels;
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, historyStatus, busy = false, onAction }: {
+export function StudyProgress({ study: state, studyLocalProgress, studyPendingCheck, historyStatus, busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
+  studyPendingCheck?: ChatConversationProjection["study_pending_check"];
   historyStatus?: ChatConversationProjection["study_history_status"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
@@ -76,6 +77,12 @@ export function StudyProgress({ study: state, studyLocalProgress, historyStatus,
         <p className={styles.studySummaryNote}>正在学习：{studyLocalProgress.topic}</p>
         {studyLocalProgress.current_focus && (
           <p role="status">当前关注：{studyLocalProgress.current_focus}</p>
+        )}
+        {studyPendingCheck && (
+          <p role="status" aria-label="当前待答问题">
+            待答：{studyPendingCheck.question}
+            {studyPendingCheck.assistance === "hinted" && "（已提供提示，本次将按提示后完成记录）"}
+          </p>
         )}
       </section>
     );
