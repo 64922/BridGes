@@ -92,7 +92,7 @@ def test_history_read_explains_versions_without_running_or_writing(
         assert projection["messages"] == before_messages
         if expected_status == "legacy":
             assert projection["study"]["state_version"] == 4
-            assert projection["study"]["summary"] == completed["study"]["summary"]
+            assert projection["study"] == completed["study"]
         elif expected_status == "unsupported":
             assert projection["study"] is None
             assert "future-private-value" not in response.text
@@ -107,3 +107,46 @@ def test_history_read_explains_versions_without_running_or_writing(
         assert unchanged is not None and unchanged["state_json"] == original_json
         exported = export_rows(database, account_id, "study_states")
         assert len(exported) == 1 and exported[0]["state_json"] == original_json
+
+
+def test_history_reports_deleted_material_without_rewriting_page_evidence(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    app = _app(tmp_path, monkeypatch)
+    gateway = SummaryGateway()
+    gateway.question_count = 1
+    app.state.chat_service._gateway = gateway
+
+    with TestClient(app) as client:
+        endpoint = _start(client, app)
+        _ask(client, app, endpoint, "请解释线性函数中的斜率。")
+        completed = _finish_review(client, app, endpoint)
+        account_id = client.get("/auth/session").json()["account"]["id"]
+        conversation_id = endpoint.rsplit("/", 1)[-1]
+        page = completed["study"]["pages"][0]
+        source_message = next(
+            message
+            for message in completed["messages"]
+            if any(
+                attachment["object_id"] == page["object_id"]
+                for attachment in message["attachments"]
+            )
+        )
+        attachments = app.state.chat_service._attachments
+        assert attachments is not None
+
+        attachments.delete(
+            account_id,
+            conversation_id,
+            page["object_id"],
+            message_id=source_message["message_id"],
+        )
+
+        result = client.get(endpoint)
+        assert result.status_code == 200, result.text
+        projection = result.json()
+        assert projection["study_materials"] == [
+            {"object_id": page["object_id"], "status": "deleted"}
+        ]
+        assert projection["study"]["pages"] == completed["study"]["pages"]
+        assert projection["study"]["summary"] == completed["study"]["summary"]

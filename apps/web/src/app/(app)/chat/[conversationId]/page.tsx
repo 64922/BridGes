@@ -832,6 +832,7 @@ export default function ChatConversationPage() {
                 <StudyProgress
                   study={conversation.study}
                   historyStatus={conversation.study_history_status}
+                  materials={conversation.study_materials}
                   busy={generating}
                   onAction={sendMessage}
                 />

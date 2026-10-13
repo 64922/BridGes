@@ -32,6 +32,7 @@ from bridges.contracts.study import (
 from bridges.profiles.atomic import RECALL_LOW_CONFIDENCE_REASON
 from bridges.profiles.purpose import build_purpose
 from bridges.study.evidence import EvidenceBundle, gather_evidence
+from bridges.study.ports import StudyExecutionPorts
 
 
 class _Part(BaseModel):
@@ -192,10 +193,10 @@ def _reuse_tutoring_profile(service: Any, run: Any) -> AdoptedProfileSlice | Non
     关闭时不读取任何长期正文。
     """
 
-    atomic = getattr(service, "_atomic_profiles", None)
+    atomic = getattr(service, "atomic_profiles", None)
     if atomic is None:
         return None
-    automatic = getattr(service, "_automatic_profiles", None)
+    automatic = getattr(service, "automatic_profiles", None)
     if automatic is not None and not automatic.is_profile_usage_enabled(run.account_id):
         return None
     config = dict(run.config or {})
@@ -209,7 +210,12 @@ def _reuse_tutoring_profile(service: Any, run: Any) -> AdoptedProfileSlice | Non
             run.account_id, candidate
         ):
             return candidate
-    message = service._repo.get_message(run.account_id, run.user_message_id)
+    repository = getattr(service, "repository", None)
+    message = (
+        repository.get_message(run.account_id, run.user_message_id)
+        if repository is not None
+        else None
+    )
     adopted = atomic.compile_adopted_slice(
         run.account_id,
         run_id=run.run_id,
@@ -229,7 +235,8 @@ def _reuse_tutoring_profile(service: Any, run: Any) -> AdoptedProfileSlice | Non
         }
     )
     config["adopted_profile_slice"] = stored.model_dump(mode="json")
-    service._repo.update_generation_config(run.account_id, run.run_id, config)
+    if repository is not None:
+        repository.update_generation_config(run.account_id, run.run_id, config)
     run.config = config
     return cast(AdoptedProfileSlice, adopted)
 
@@ -275,7 +282,9 @@ def _tutoring_policy(
         return _tutoring_baseline(service, run), None
     config = dict(run.config or {})
     config["global_writing_policy"] = snapshot.model_dump(mode="json")
-    service._repo.update_generation_config(run.account_id, run.run_id, config)
+    repository = getattr(service, "repository", None)
+    if repository is not None:
+        repository.update_generation_config(run.account_id, run.run_id, config)
     run.config = config
     return snapshot, profile_context
 
@@ -286,7 +295,9 @@ def _tutoring_baseline(service: Any, run: Any) -> Any:
     config = dict(run.config or {})
     config.pop("adopted_profile_slice", None)
     config["global_writing_policy"] = policy.model_dump(mode="json")
-    service._repo.update_generation_config(run.account_id, run.run_id, config)
+    repository = getattr(service, "repository", None)
+    if repository is not None:
+        repository.update_generation_config(run.account_id, run.run_id, config)
     run.config = config
     return policy
 
@@ -314,7 +325,7 @@ def _assessment_block(assessment: StudyEvidenceAssessment) -> str:
 
 
 def tutor(
-    service: Any,
+    service: StudyExecutionPorts,
     run: Any,
     state: StudyState,
     question: str,
@@ -362,10 +373,11 @@ def tutor(
     )
     if profile_context is not None:
         try:
-            automatic = getattr(service, "_automatic_profiles", None)
+            automatic = getattr(service, "automatic_profiles", None)
             current = (
                 (automatic is None or automatic.is_profile_usage_enabled(run.account_id))
-                and service._atomic_profiles.is_adopted_slice_current(
+                and service.atomic_profiles is not None
+                and service.atomic_profiles.is_adopted_slice_current(
                     run.account_id,
                     AdoptedProfileSlice.model_validate(run.config["adopted_profile_slice"]),
                 )

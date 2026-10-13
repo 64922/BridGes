@@ -66,6 +66,7 @@ from bridges.study.kernel import (
     _json_object_text,  # noqa: F401 - 再导出，兼容既有测试导入路径
     study_recipe_registry,
 )
+from bridges.study.ports import StudyExecutionPorts
 from bridges.study.review import (
     ReviewGradeError,
     ReviewPlanError,
@@ -233,10 +234,10 @@ _NodeResult = TypeVar("_NodeResult")
 
 
 class StudyWorkflow:
-    def __init__(self, service: Any) -> None:
-        self._service = service
-        self._repo = service._repo
-        self._attachments = service._require_attachment_service()
+    def __init__(self, ports: StudyExecutionPorts) -> None:
+        self._ports = ports
+        self._repo = ports.repository
+        self._attachments = ports.attachments
         self._states = StudyRepository(self._repo.database)
 
     def state(self, account_id: str, conversation_id: str) -> StudyState | None:
@@ -376,7 +377,7 @@ class StudyWorkflow:
         budget = load_run_budget(
             self._repo, run.account_id, run.run_id, mode_hint="study"
         )
-        model_quota = self._service.run_model_quota(run)
+        model_quota = self._ports.run_model_quota(run)
 
         def invoke(capability: str, payload: dict[str, Any]) -> dict[str, Any]:
             nonlocal failure_lock, last_lock
@@ -399,7 +400,7 @@ class StudyWorkflow:
                     **payload,
                     REQUEST_TIMEOUT_SECONDS_KEY: STUDY_IMAGE_CALL_TIMEOUT_SECONDS,
                 }
-            result = self._service._gateway.invoke(
+            result = self._ports.gateway.invoke(
                 capability,
                 "1",
                 chat_run_context(run.account_id, run.conversation_id, run.run_id),
@@ -510,7 +511,7 @@ class StudyWorkflow:
         def compile_preview_context(
             system_prompt: str, data: dict[str, Any]
         ) -> tuple[list[dict[str, str]] | None, bool]:
-            messages, context_budget = self._service.compile_turn_context(
+            messages, context_budget = self._ports.compile_turn_context(
                 run,
                 system_prompt=system_prompt,
                 evidence=[
@@ -1047,7 +1048,7 @@ class StudyWorkflow:
                 return {"answer": existing.answer, "tutoring": existing.model_dump()}
             try:
                 exchange = tutor(
-                    self._service,
+                    self._ports,
                     run,
                     state,
                     user.content,
@@ -1203,7 +1204,7 @@ class StudyWorkflow:
                     current_node, "study_review_invalid", "当前没有待判定的复盘题，已保留原阶段。"
                 )
             grading = ReviewGradeKernel(
-                self._service, run, invoke,
+                self._ports, run, invoke,
                 stop_event=stop_event, event_sink=kernel_event,
                 commit_outcome=_commit_judgement,
             )
@@ -1242,7 +1243,7 @@ class StudyWorkflow:
                 try:
                     summary = run_node(
                         "study.summarize",
-                        lambda: build_summary(self._service, run, state, invoke),
+                        lambda: build_summary(self._ports, run, state, invoke),
                     )
                 except ValueError as exc:
                     raise StudyWorkflowError(
@@ -1261,7 +1262,7 @@ class StudyWorkflow:
         def plan_with_repair() -> Any:
             """出题前核验失败时按公共预算做一次有界修复；再失败不上报坏题。"""
             planner = ReviewPlanKernel(
-                self._service, run, invoke,
+                self._ports, run, invoke,
                 stop_event=stop_event, event_sink=kernel_event,
             )
             try:

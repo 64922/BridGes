@@ -32630,6 +32630,14 @@
             ],
             "description": "旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。"
           },
+          "study_materials": {
+            "items": {
+              "$ref": "#/components/schemas/StudyMaterialStatusProjection"
+            },
+            "type": "array",
+            "title": "Study Materials",
+            "description": "学习历史引用材料的当前对象存储状态，不包含材料内容。"
+          },
           "mode_locked": {
             "type": "boolean",
             "title": "Mode Locked",
@@ -57695,6 +57703,33 @@
         ],
         "title": "StudyHistoryStatusProjection",
         "description": "旧版、未知版或不可解码学习状态的公开说明。"
+      },
+      "StudyMaterialStatusProjection": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "学习历史引用的材料对象标识。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "pending_cleanup",
+              "deleted",
+              "unknown"
+            ],
+            "title": "Status",
+            "description": "对象存储中的当前状态。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "status"
+        ],
+        "title": "StudyMaterialStatusProjection",
+        "description": "材料对象的账户范围内存储状态；不包含材料内容。"
       },
       "StudyPage": {
         "properties": {

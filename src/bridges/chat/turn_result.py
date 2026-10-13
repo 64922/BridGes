@@ -25,6 +25,7 @@ from bridges.contracts.chat import (
     TurnResultProjection,
 )
 from bridges.contracts.study import StudyState
+from bridges.contracts.study_history import StudyHistoryProjection
 from bridges.state_copy import error_recovery, render_state_copy
 from bridges.state_copy.catalog import COMPOSITE_MODULE_LABELS
 from bridges.state_copy.types import RecoveryAction
@@ -95,7 +96,7 @@ def derive_turn_result(
     projections: Mapping[str, Mapping[str, Any] | None] | None = None,
     wait_reason: str | None = None,
     web_search: Mapping[str, Any] | None = None,
-    study: StudyState | None = None,
+    study: StudyState | StudyHistoryProjection | None = None,
     study_node: str | None = None,
     user_message_id: str | None = None,
     assistant_message_id: str | None = None,

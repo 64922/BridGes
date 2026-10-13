@@ -28,8 +28,12 @@ const SUMMARY_SECTIONS = [
   { kind: "unanswered", label: "未作答或尚未判定", empty: "本次复盘没有未作答或尚未判定的题目。" },
 ] as const;
 
-function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>) {
+function evidenceLabels(
+  state: NonNullable<ChatConversationProjection["study"]>,
+  materials: ChatConversationProjection["study_materials"] = [],
+) {
   const labels = new Map<string, string>();
+  const materialStatus = new Map(materials.map((item) => [item.object_id, item.status]));
   (state.review?.questions ?? []).forEach((item, index) => {
     labels.set(
       item.question_id,
@@ -41,9 +45,13 @@ function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>)
   });
   for (const page of state.pages ?? []) {
     for (const fragment of page.fragments) {
+      const status = materialStatus.get(page.object_id);
+      const source = status === "deleted" || status === "pending_cleanup"
+        ? "已删除材料的历史记录："
+        : status === "unknown" ? "材料状态未知：" : "";
       labels.set(
         fragment.fragment_id,
-        `上传第${page.ordinal}页`
+        `${source}上传第${page.ordinal}页`
           + (page.page_number != null ? `（书上第${page.page_number}页）` : "")
           + ` · ${fragment.position}`
           + (fragment.source === "user" ? " · 用户补录" : ""),
@@ -53,9 +61,10 @@ function evidenceLabels(state: NonNullable<ChatConversationProjection["study"]>)
   return labels;
 }
 
-export function StudyProgress({ study: state, historyStatus, busy = false, onAction }: {
+export function StudyProgress({ study: state, historyStatus, materials = [], busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
   historyStatus?: ChatConversationProjection["study_history_status"];
+  materials?: ChatConversationProjection["study_materials"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
 }) {
@@ -76,7 +85,7 @@ export function StudyProgress({ study: state, historyStatus, busy = false, onAct
     try { await onAction(action); } finally { setSending(false); }
   }
   const summary = state?.summary;
-  const labels = summary && state ? evidenceLabels(state) : null;
+  const labels = summary && state ? evidenceLabels(state, materials) : null;
   return (
     <section className={styles.studyProgress} aria-label="学习阶段">
       {historyStatus && (
@@ -160,6 +169,12 @@ export function StudyProgress({ study: state, historyStatus, busy = false, onAct
             {state.page_update.pages.map((page) => (
               <li key={page.object_id}>
                 上传第{page.ordinal}页
+              {materials.find((item) => item.object_id === page.object_id)?.status === "deleted"
+                && " · 原材料已删除，保留的识别内容仍是历史记录"}
+              {materials.find((item) => item.object_id === page.object_id)?.status === "pending_cleanup"
+                && " · 原材料正在删除，保留的识别内容仍是历史记录"}
+              {materials.find((item) => item.object_id === page.object_id)?.status === "unknown"
+                && " · 暂时无法核验原材料状态"}
                 {page.page_number != null && `（书上第${page.page_number}页）`}
                 {!page.same_section && " · 同节归属待确认"}
                 {page.unclear?.map((issue) => ` · ${issue.position}：${issue.reason}`).join("")}
@@ -175,6 +190,12 @@ export function StudyProgress({ study: state, historyStatus, busy = false, onAct
             {state.pages.map((page) => (
               <li key={page.object_id}>
                 <strong>第{page.ordinal}页</strong>
+                {materials.find((item) => item.object_id === page.object_id)?.status === "deleted"
+                  && <span> · 原材料已删除，以下内容仅是保留的历史识别记录</span>}
+                {materials.find((item) => item.object_id === page.object_id)?.status === "pending_cleanup"
+                  && <span> · 原材料正在删除，以下内容仅是保留的历史识别记录</span>}
+                {materials.find((item) => item.object_id === page.object_id)?.status === "unknown"
+                  && <span> · 暂时无法核验原材料状态</span>}
                 {page.page_number != null && `（书上第${page.page_number}页）`}
                 {page.replaced_object_ids && page.replaced_object_ids.length > 0 && "（已补拍更新）"}
                 <ul>

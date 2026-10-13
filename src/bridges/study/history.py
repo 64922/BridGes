@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from pydantic import ValidationError
 
-from bridges.contracts.chat import StudyHistoryStatus, StudyHistoryStatusProjection
 from bridges.contracts.study import (
     STUDY_STATE_VERSION,
     StudyState,
     upgrade_legacy_study_state,
+)
+from bridges.contracts.study_history import (
+    StudyHistoryProjection,
+    StudyHistoryStatus,
+    StudyHistoryStatusProjection,
+    StudyMaterialStatus,
+    StudyMaterialStatusProjection,
 )
 from bridges.state_copy.registry import render_state_copy
 from bridges.storage.database import BridgesDatabase
@@ -21,8 +28,9 @@ from bridges.storage.database import BridgesDatabase
 class StudyHistoryRead:
     """一次账户范围内的只读学习历史结果。"""
 
-    study: StudyState | None
+    study: StudyHistoryProjection | None
     status: StudyHistoryStatusProjection | None
+    materials: list[StudyMaterialStatusProjection]
 
 
 class StudyHistoryReader:
@@ -32,8 +40,13 @@ class StudyHistoryReader:
     不保存升级结果；未来版本与损坏记录保留消息历史，但不伪造学习阶段。
     """
 
-    def __init__(self, database: BridgesDatabase) -> None:
+    def __init__(
+        self,
+        database: BridgesDatabase,
+        material_status: Callable[[str, str], str | None] | None = None,
+    ) -> None:
         self._database = database
+        self._material_status = material_status
 
     def read(self, account_id: str, conversation_id: str) -> StudyHistoryRead:
         row = (
@@ -46,7 +59,7 @@ class StudyHistoryReader:
             .fetchone()
         )
         if row is None:
-            return StudyHistoryRead(study=None, status=None)
+            return StudyHistoryRead(study=None, status=None, materials=[])
 
         try:
             payload = json.loads(row["state_json"])
@@ -68,6 +81,7 @@ class StudyHistoryReader:
                         "study.history.unsupported", version=version
                     ),
                 ),
+                materials=[],
             )
 
         try:
@@ -83,7 +97,40 @@ class StudyHistoryReader:
                 version=version,
                 message=render_state_copy("study.history.legacy", version=version),
             )
-        return StudyHistoryRead(study=state.public_view(), status=status)
+        materials = self._project_materials(account_id, state)
+        public_state = state.public_view()
+        return StudyHistoryRead(
+            study=StudyHistoryProjection.model_validate(
+                public_state.model_dump(mode="python")
+            ),
+            status=status,
+            materials=materials,
+        )
+
+    def _project_materials(
+        self, account_id: str, state: StudyState
+    ) -> list[StudyMaterialStatusProjection]:
+        object_ids = {page.object_id for page in state.pages}
+        if state.page_update is not None:
+            object_ids.update(page.object_id for page in state.page_update.pages)
+        projected = []
+        for object_id in sorted(object_ids):
+            if self._material_status is None:
+                status: StudyMaterialStatus = "unknown"
+            else:
+                stored_status = self._material_status(account_id, object_id)
+                if stored_status == "active":
+                    status = "active"
+                elif stored_status == "pending_cleanup":
+                    status = "pending_cleanup"
+                elif stored_status is None:
+                    status = "deleted"
+                else:
+                    status = "unknown"
+            projected.append(
+                StudyMaterialStatusProjection(object_id=object_id, status=status)
+            )
+        return projected
 
     @staticmethod
     def _unreadable(version: int | None = None) -> StudyHistoryRead:
@@ -94,4 +141,5 @@ class StudyHistoryReader:
                 version=version,
                 message=render_state_copy("study.history.unreadable"),
             ),
+            materials=[],
         )

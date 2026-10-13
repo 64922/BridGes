@@ -157,7 +157,9 @@ def seed_recognized_study_state(
         )
         run = service._repo.get_run_by_message(account_id, assistant.message_id)
         assert run is not None
-        StudyWorkflow(service).run(run, on_event=lambda event: None, stop_event=None)
+        StudyWorkflow(service._study_execution_ports()).run(
+            run, on_event=lambda event: None, stop_event=None
+        )
     finally:
         service._gateway = original_gateway
     state = StudyRepository(database).get(account_id, conversation_id)

@@ -332,7 +332,7 @@ def _knowledge_base_sources(
 
     from bridges.chat.task_materials import MaterialDomain, select_task_materials
 
-    retrieval = getattr(service, "_retrieval", None)
+    retrieval = getattr(service, "retrieval", None)
     if retrieval is None:
         return [], StudySupplementAttempt(
             layer="knowledge_base", status="failed", detail="知识库检索服务未装配。"
@@ -455,7 +455,7 @@ def persisted_web_projection(service: Any, run: Any) -> WebSearchProjection | No
     避免重试重复请求外部服务。只复用投影，不改变任何领域状态。
     """
 
-    repo = getattr(service, "_repo", None)
+    repo = getattr(service, "repository", None)
     if repo is None:
         return None
     user_message_id = getattr(run, "user_message_id", None)
@@ -494,7 +494,7 @@ def _web_sources(
 ) -> tuple[list[StudySource], list[str], StudySupplementAttempt]:
     """执行公开补证：只发脱敏最小查询，失败/冲突分列且不阻断交付。"""
 
-    web = getattr(service, "_web_search", None)
+    web = getattr(service, "web_search", None)
     if persisted is not None:
         projection = persisted
     else:
@@ -544,7 +544,7 @@ def _web_sources(
             return [], [], StudySupplementAttempt(
                 layer="web", status="empty", detail="联网检索没有返回结果。"
             )
-        repo = getattr(service, "_repo", None)
+        repo = getattr(service, "repository", None)
         if repo is not None:
             # 投影随尝试固化：界面呈现与重试复用同一份结果，不重复外呼。
             repo.update_message_web_search(
@@ -694,7 +694,7 @@ def gather_evidence(
 
     try:
         kb_cached = None
-        retrieval = getattr(service, "_retrieval", None)
+        retrieval = getattr(service, "retrieval", None)
         if kb_trigger is not None and retrieval is not None:
             # 只读查询失败时仍走新补证的预算许可，不绕过硬门。
             with suppress(Exception):

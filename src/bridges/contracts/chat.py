@@ -37,7 +37,11 @@ from bridges.contracts.retrieval import (
     RetrievalRoundProjection,
 )
 from bridges.contracts.speech import ReadAloudProjection
-from bridges.contracts.study import StudyState
+from bridges.contracts.study_history import (
+    StudyHistoryProjection,
+    StudyHistoryStatusProjection,
+    StudyMaterialStatusProjection,
+)
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
 from bridges.routing import CapabilityRoute
@@ -539,36 +543,22 @@ class ChatConversationListProjection(BaseModel):
     conversations: list[ChatConversationSummary] = Field(default_factory=list)
 
 
-class StudyHistoryStatus(StrEnum):
-    """学习状态行在只读历史投影中的解释状态。"""
-
-    LEGACY = "legacy"
-    UNSUPPORTED = "unsupported"
-    UNREADABLE = "unreadable"
-
-
-class StudyHistoryStatusProjection(BaseModel):
-    """旧版、未知版或不可解码学习状态的公开说明。"""
-
-    status: StudyHistoryStatus = Field(description="历史学习状态的解释结果。")
-    version: int | None = Field(
-        default=None, ge=1, description="原记录声明的学习状态合同版本。"
-    )
-    message: str = Field(min_length=1, description="面向用户的固定说明。")
-
-
 class ChatConversationProjection(BaseModel):
     """单个对话的完整只读投影（含消息历史与历史模式事件）。"""
 
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
-    study: StudyState | None = Field(
+    study: StudyHistoryProjection | None = Field(
         default=None, description="学习小节的持久化阶段、页级证据和预习问题。"
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,
         description="旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。",
+    )
+    study_materials: list[StudyMaterialStatusProjection] = Field(
+        default_factory=list,
+        description="学习历史引用材料的当前对象存储状态，不包含材料内容。",
     )
     mode_locked: bool = Field(
         default=False,

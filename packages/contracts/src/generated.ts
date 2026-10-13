@@ -9639,6 +9639,11 @@ export interface components {
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
+             * Study Materials
+             * @description 学习历史引用材料的当前对象存储状态，不包含材料内容。
+             */
+            study_materials?: components["schemas"]["StudyMaterialStatusProjection"][];
+            /**
              * Mode Locked
              * @description 首条用户消息提交后是否已锁定当前模式。
              * @default false
@@ -24829,6 +24834,23 @@ export interface components {
              * @description 面向用户的固定说明。
              */
             message: string;
+        };
+        /**
+         * StudyMaterialStatusProjection
+         * @description 材料对象的账户范围内存储状态；不包含材料内容。
+         */
+        StudyMaterialStatusProjection: {
+            /**
+             * Object Id
+             * @description 学习历史引用的材料对象标识。
+             */
+            object_id: string;
+            /**
+             * Status
+             * @description 对象存储中的当前状态。
+             * @enum {string}
+             */
+            status: "active" | "pending_cleanup" | "deleted" | "unknown";
         };
         /** StudyPage */
         StudyPage: {

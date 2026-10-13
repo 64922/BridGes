@@ -25,6 +25,7 @@ from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.registry import RecipeRegistry
 from bridges.kernel.repository import NodeKernelRepository
 from bridges.study.kernel import StoppedError, SupersededError, _digest
+from bridges.study.ports import StudyExecutionPorts
 from bridges.study.review import (
     REVIEW_CAPABILITY_VERSIONS,
     REVIEW_PROTOCOL_VERSION,
@@ -73,12 +74,12 @@ class ReviewPlanKernel:
     """只持久化通过独立核验的完整计划；事件只发布节点状态。"""
 
     def __init__(
-        self, service: Any, run: Any,
+        self, ports: StudyExecutionPorts, run: Any,
         invoke: Callable[[str, dict[str, Any]], dict[str, Any]],
         *, stop_event: Any,
         event_sink: Callable[[str, str, int | None], None],
     ) -> None:
-        self._service = service
+        self._ports = ports
         self._run = run
         self._invoke = invoke
         self._stop_event = stop_event
@@ -131,7 +132,7 @@ class ReviewPlanKernel:
 
         def execute(invocation: NodeInvocation) -> NodeExecution:
             review = plan_review(
-                self._service, self._run, state, self._invoke,
+                self._ports, self._run, state, self._invoke,
                 repair=repair, calculate=calculate,
             )
             artifact = NodeArtifact.build(
@@ -158,9 +159,9 @@ class ReviewPlanKernel:
         run = self._run
         kernel = NodeKernel(
             registry=self._registry,
-            repository=NodeKernelRepository(self._service._repo.database),
+            repository=NodeKernelRepository(self._ports.repository.database),
             guard=RunCommitGuard(
-                self._service._repo, account_id=run.account_id, run_id=run.run_id,
+                self._ports.repository, account_id=run.account_id, run_id=run.run_id,
                 conversation_id=run.conversation_id,
                 assistant_message_id=run.assistant_message_id, stop_event=self._stop_event,
             ),

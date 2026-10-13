@@ -312,6 +312,10 @@ class ChatAttachmentService:
         row = self._attachments.get_row(account_id, conversation_id, object_id)
         return self._row_to_record(row) if row is not None else None
 
+    def object_status(self, account_id: str, object_id: str) -> str | None:
+        """按账户读取存储对象状态，供历史投影标记材料删除状态。"""
+        return self._objects.object_status(account_id, object_id)
+
     def list_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ChatAttachmentRecord]:

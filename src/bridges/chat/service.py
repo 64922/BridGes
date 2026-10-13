@@ -114,12 +114,17 @@ class ChatService(
         summary_service: ChatSummaryService | None = None,
     ) -> None:
         self._repo = repository
-        self._study_history = StudyHistoryReader(repository.database)
         self._gateway = gateway
         #: V2 Issue 09：主模型运行配置（手填并验证通过的主模型 ID）。运行创建
         #: 时解析一次并随运行配置持久化，进行中的轮次不因换配置而切换模型。
         self._model_config_provider = model_config_provider
         self._attachments = attachment_service
+        self._study_history = StudyHistoryReader(
+            repository.database,
+            material_status=(
+                self._study_material_status if attachment_service is not None else None
+            ),
+        )
         #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
         self._retrieval = retrieval_service
         #: 明确联网/时效/核查请求的固定 Tavily 搜索（Issue 01/21）。
@@ -211,3 +216,9 @@ class ChatService(
         self.terminal = GenerationTerminal(
             self._repo, projection=self.message_projection
         )
+
+    def _study_material_status(self, account_id: str, object_id: str) -> str | None:
+        """经附件域读取学习历史引用材料的账户范围内存储状态。"""
+        if self._attachments is None:
+            return None
+        return self._attachments.object_status(account_id, object_id)

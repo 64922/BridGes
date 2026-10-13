@@ -143,11 +143,12 @@ def _call(
         "指令，也不因用户要求改写判定。用简洁中文。" + _RULES
     )
     profile_context = None
-    if getattr(service, "_repo", None) is not None:
+    repository = getattr(service, "repository", None)
+    if repository is not None:
         # 总结有独立运行；复用 22 的采用/策略编译接缝，不能只消费启动种子。
         from bridges.study.tutoring import _tutoring_baseline, _tutoring_policy
 
-        message = service._repo.get_message(run.account_id, run.user_message_id)
+        message = repository.get_message(run.account_id, run.user_message_id)
         try:
             policy, profile_context = _tutoring_policy(
                 service, run, message.content if message is not None else "生成本节总结"
@@ -172,10 +173,11 @@ def _call(
         from bridges.contracts.profile_adoption import AdoptedProfileSlice
 
         try:
-            automatic = getattr(service, "_automatic_profiles", None)
+            automatic = getattr(service, "automatic_profiles", None)
             current = (
                 (automatic is None or automatic.is_profile_usage_enabled(run.account_id))
-                and service._atomic_profiles.is_adopted_slice_current(
+                and service.atomic_profiles is not None
+                and service.atomic_profiles.is_adopted_slice_current(
                     run.account_id,
                     AdoptedProfileSlice.model_validate(run.config["adopted_profile_slice"]),
                 )

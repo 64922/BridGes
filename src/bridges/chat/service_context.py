@@ -56,6 +56,7 @@ from bridges.github.service import GithubProjectsService
 from bridges.paper.service import PaperSearchService
 from bridges.resources.service import LearningResourcesService
 from bridges.retrieval.decision import capability_route_for_request
+from bridges.study.ports import StudyExecutionPorts
 from bridges.study.service import StudyWorkflow
 from bridges.tieba.service import TiebaResearchService
 
@@ -64,6 +65,20 @@ if TYPE_CHECKING:
 
 
 class _ServiceContextMixin:
+    def _study_execution_ports(self: ChatService) -> StudyExecutionPorts:
+        """把聊天服务能力一次性适配为学习图的显式执行端口。"""
+        return StudyExecutionPorts(
+            repository=self._repo,
+            attachments=self._require_attachment_service(),
+            gateway=self._gateway,
+            context_compiler=self.compile_turn_context,
+            quota_provider=self.run_model_quota,
+            atomic_profiles=self._atomic_profiles,
+            automatic_profiles=self._automatic_profiles,
+            retrieval=self._retrieval,
+            web_search=self._web_search,
+        )
+
     def ensure_turn_context(self: ChatService, run: GenerationRunRecord) -> None:
         """编译本轮上下文基础：检索决策（幂等；Issue 03 扩展为编译器）。
 
@@ -387,7 +402,7 @@ class _ServiceContextMixin:
             and conversation.mode == ChatMode.STUDY.value
         ) or (run.graph_version or "").startswith("study-")
         if is_study:
-            return StudyWorkflow(self).run(
+            return StudyWorkflow(self._study_execution_ports()).run(
                 run, on_event=on_event, stop_event=stop_event
             )
         return run_daily_turn(

@@ -31,6 +31,7 @@ from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.registry import RecipeRegistry
 from bridges.kernel.repository import NodeKernelRepository
 from bridges.study.kernel import StoppedError, SupersededError, _digest
+from bridges.study.ports import StudyExecutionPorts
 from bridges.study.review import (
     ERROR_GRADE_INVALID,
     GRADE_PROTOCOL_VERSION,
@@ -83,13 +84,13 @@ class ReviewGradeKernel:
     """持久化判定与反馈产物；事件只发布节点状态与判定摘要。"""
 
     def __init__(
-        self, service: Any, run: Any,
+        self, ports: StudyExecutionPorts, run: Any,
         invoke: Callable[[str, dict[str, Any]], dict[str, Any]],
         *, stop_event: Any,
         event_sink: Callable[[str, str, int | None], None],
         commit_outcome: Callable[[GradeOutcome], None],
     ) -> None:
-        self._service = service
+        self._ports = ports
         self._run = run
         self._invoke = invoke
         self._stop_event = stop_event
@@ -164,7 +165,7 @@ class ReviewGradeKernel:
 
         def execute(invocation: NodeInvocation) -> NodeExecution:
             outcome = grade_question(
-                self._service, self._run, state, question, answer, self._invoke
+                self._ports, self._run, state, question, answer, self._invoke
             )
             artifact = NodeArtifact.build(
                 account_id=invocation.account_id,
@@ -213,9 +214,9 @@ class ReviewGradeKernel:
         run = self._run
         kernel = NodeKernel(
             registry=self._registry,
-            repository=NodeKernelRepository(self._service._repo.database),
+            repository=NodeKernelRepository(self._ports.repository.database),
             guard=RunCommitGuard(
-                self._service._repo, account_id=run.account_id, run_id=run.run_id,
+                self._ports.repository, account_id=run.account_id, run_id=run.run_id,
                 conversation_id=run.conversation_id,
                 assistant_message_id=run.assistant_message_id, stop_event=self._stop_event,
             ),

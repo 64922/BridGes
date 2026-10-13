@@ -153,7 +153,7 @@ def test_knowledge_base_conflict_is_not_an_adoptable_source(with_citation):
     run = SimpleNamespace(account_id="a", conversation_id="c", assistant_message_id="m",
                           user_message_id="u")
     sources, attempt = evidence._knowledge_base_sources(
-        SimpleNamespace(_retrieval=retrieval), run, "斜率", [],
+        SimpleNamespace(retrieval=retrieval), run, "斜率", [],
     )
     assert sources == []
     assert attempt.status == "conflict"
@@ -181,7 +181,7 @@ def test_public_call_obeys_budget_and_releases_slot_after_failure(allowed):
         provider_deadline=12.0, stage_deadline=13.0,
     )
     sources, _, attempt = evidence._web_sources(
-        SimpleNamespace(_web_search=web), SimpleNamespace(account_id="a", user_message_id="u"),
+        SimpleNamespace(web_search=web), SimpleNamespace(account_id="a", user_message_id="u"),
         "斜率应用", stop_event=None, budget=budget,
     )
     assert sources == []
@@ -208,7 +208,7 @@ def test_stopped_search_result_is_not_written_to_message():
 
     web.search.side_effect = late_result
     sources, _, attempt = evidence._web_sources(
-        SimpleNamespace(_web_search=web, _repo=repo),
+        SimpleNamespace(web_search=web, repository=repo),
         SimpleNamespace(account_id="a", user_message_id="u"),
         "斜率应用", stop_event=stop,
     )
