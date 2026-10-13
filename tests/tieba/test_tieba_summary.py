@@ -14,7 +14,7 @@ from bridges.tieba.contracts import (
     TiebaTemporalScope,
     TiebaTimeFilter,
 )
-from bridges.tieba.kernel import _summary_traceable
+from bridges.tieba.evidence_verification import _summary_traceable
 from bridges.tieba.summary import TiebaSummaryGenerator
 
 
@@ -95,8 +95,12 @@ def test_summary_requires_known_read_evidence_and_second_support_check() -> None
         ]
     )
     outcome = TiebaSummaryGenerator(gateway).generate(
-        SimpleNamespace(), [_post()], topic="宿舍条件", model_id="verified-model",
-        model_quota=_quota(), budget=None,
+        SimpleNamespace(),
+        [_post()],
+        topic="宿舍条件",
+        model_id="verified-model",
+        model_quota=_quota(),
+        budget=None,
     )
     assert outcome.summary == "部分学生提到东区宿舍热水供应不稳定。"
     assert outcome.citations[0].reply_id == "reply-3"
@@ -110,8 +114,12 @@ def test_unknown_citation_is_dropped_before_support_verification() -> None:
         [{"claims": [{"kind": "finding", "text": "没有证据的观点。", "citation_ids": ["E999"]}]}]
     )
     outcome = TiebaSummaryGenerator(gateway).generate(
-        SimpleNamespace(), [_post()], topic="宿舍", model_id="verified-model",
-        model_quota=_quota(), budget=None,
+        SimpleNamespace(),
+        [_post()],
+        topic="宿舍",
+        model_id="verified-model",
+        model_quota=_quota(),
+        budget=None,
     )
     assert outcome.summary is None
     assert not outcome.citations
@@ -156,8 +164,7 @@ def test_multiple_evidence_batches_are_semantically_aggregated_before_verificati
             },
             {
                 "summary": (
-                    "讨论中对宿舍热水稳定性存在不同描述，"
-                    "有人认为供应不稳定，也有人认为较稳定。"
+                    "讨论中对宿舍热水稳定性存在不同描述，有人认为供应不稳定，也有人认为较稳定。"
                 ),
                 "claims": [
                     {
@@ -165,29 +172,30 @@ def test_multiple_evidence_batches_are_semantically_aggregated_before_verificati
                         "text": "回复对热水供应稳定性存在不同描述。",
                         "citation_ids": ["E1", "E9"],
                     }
-                ]
+                ],
             },
             {"supported": [0, 1]},
         ]
     )
 
     outcome = TiebaSummaryGenerator(gateway).generate(
-        SimpleNamespace(), [post], topic="宿舍", model_id="verified-model",
-        model_quota=_quota(), budget=None,
+        SimpleNamespace(),
+        [post],
+        topic="宿舍",
+        model_id="verified-model",
+        model_quota=_quota(),
+        budget=None,
     )
 
     assert outcome.summary == (
-        "讨论中对宿舍热水稳定性存在不同描述，"
-        "有人认为供应不稳定，也有人认为较稳定。"
+        "讨论中对宿舍热水稳定性存在不同描述，有人认为供应不稳定，也有人认为较稳定。"
     )
     assert outcome.claims[0].kind == "difference"
     assert len(gateway.calls) == 4
     aggregation = json.loads(gateway.payloads[2]["messages"][1]["content"])
     assert len(aggregation["claims"]) == 2
     assert {"E1", "E9"} <= {
-        citation_id
-        for claim in aggregation["claims"]
-        for citation_id in claim["citation_ids"]
+        citation_id for claim in aggregation["claims"] for citation_id in claim["citation_ids"]
     }
 
 

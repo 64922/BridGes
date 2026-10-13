@@ -167,8 +167,8 @@ DAILY_SCENARIOS: tuple[Scenario, ...] = (
         title="贴吧只有标题/搜索摘要",
         expectation="只交付线索，未读回复不总结，不称普遍共识",
         deterministic_tests=(
-            "tests/tieba/test_improvement27_question_driven.py::test_links_only_never_summarizes_unread_replies",
-            "tests/tieba/test_tieba_core.py::test_sections_only_use_read_replies_and_cite_floor_and_time",
+            "tests/tieba/test_improvement27_recovery.py::test_links_only_never_summarizes_unread_replies",
+            "tests/tieba/test_tieba_evidence_presentation.py::test_sections_only_use_read_replies_and_cite_floor_and_time",
             "tests/tieba/test_tieba_module_flow.py::test_snippet_claiming_target_forum_still_needs_a_real_read",
         ),
         real_model=True,
@@ -180,8 +180,8 @@ DAILY_SCENARIOS: tuple[Scenario, ...] = (
         title="官方规定与帖子经历冲突",
         expectation="按日期/范围核对，仍冲突时分别呈现",
         deterministic_tests=(
-            "tests/tieba/test_improvement27_question_driven.py::test_conflict_with_newer_official_rule_uses_time_and_scope_basis",
-            "tests/tieba/test_improvement27_question_driven.py::test_conflict_without_supersession_keeps_both_sides",
+            "tests/tieba/test_improvement27_conflicts.py::test_conflict_with_newer_official_rule_uses_time_and_scope_basis",
+            "tests/tieba/test_improvement27_conflicts.py::test_conflict_without_supersession_keeps_both_sides",
             "tests/tieba/test_issue27_acceptance_regressions.py::test_no_proven_supersession_keeps_both",
         ),
         external_gates=(ExternalGate.TIEBA_REPLIES, ExternalGate.WEB_SEARCH),

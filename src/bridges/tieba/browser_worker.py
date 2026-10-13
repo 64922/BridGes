@@ -14,83 +14,10 @@ from playwright.sync_api import BrowserContext, Page, sync_playwright
 from playwright.sync_api import TimeoutError as BrowserTimeoutError
 
 from bridges.runtime.lock import DataDirectoryLock, RuntimeLockError
+from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM
+from bridges.tieba.browser_requests import BrowserRequestTracker
+from bridges.tieba.browser_runtime import account_profile_is_fenced
 from bridges.tieba.lexicon import TARGET_FORUM_URL
-
-SEARCH_DOM = r"""(tab) => {
-    const text = e => e?.innerText?.trim() || '';
-    const thread = tab === '1';
-    const selector = thread ? '.tbm-post-thread' : '.tbm-floor-thread';
-    return [...document.querySelectorAll(selector)].slice(0, 12).map(e => {
-        const linkSelector = thread
-            ? 'a[href*="/p/"]'
-            : '.comment-link-zone[href*="/p/"], a[href*="/p/"]';
-        const titleSelector = thread
-            ? '.thread-title, .tbm-post-thread-title'
-            : '.tbm-floor-thread-post-thread';
-        const link = e.querySelector(linkSelector);
-        const title = text(e.querySelector(titleSelector));
-        const reply = text(e.querySelector('.tbm-floor-thread-rich-text'));
-        const forum = text(e.querySelector('.forum-name, .tbm-floor-thread-forum'));
-        const body = reply || text(e);
-        return {
-            url: link?.href || '',
-            title: (title || text(e.querySelector('a[href*="/p/"]'))).slice(0, 160),
-            snippet: [forum, body].join(String.fromCharCode(10)).slice(0, 900),
-            discovery_type: thread ? 'thread' : 'reply',
-            matched_reply: reply || null
-        };
-    }).filter(item => item.url);
-}"""
-
-THREAD_DOM = r"""() => {
-    const text = e => e?.innerText?.trim() || '';
-    const forum = document.querySelector('.main-content .forum-name');
-    const rows = [...document.querySelectorAll('.pb-comment-item')];
-    const replies = [];
-    for (const row of rows) {
-        const parentId = row.getAttribute('data-id') || null;
-        const floorText = text(row.querySelector('.comment-desc-left'));
-        const floorMatch = floorText.match(/第\s*(\d+)\s*楼/);
-        const direct = [...row.querySelectorAll('.pb-rich-text .pb-content-item')].filter(
-            node => node.closest('.pb-comment-item') === row && !node.closest('.pb-lzl-item')
-        );
-        const content = direct.map(text).join('').slice(0, 600);
-        if (content) replies.push({
-            content, reply_id: parentId,
-            floor: floorMatch ? Number(floorMatch[1]) : null,
-            posted_at: floorText || null,
-            parent_reply_id: null, nested: false
-        });
-        for (const nested of row.querySelectorAll('.pb-lzl-item')) {
-            const nestedText = text(nested);
-            const body = [...nested.querySelectorAll('.pb-content-item')]
-                .map(text).join('').slice(0, 600);
-            if (!body) continue;
-            const id = nested.getAttribute('data-id') || nested.getAttribute('data-spid') || null;
-            const datePattern = new RegExp(
-                String.raw`(?:20\d{2}[-/.年])?\d{1,2}[-/.月]\d{1,2}` +
-                String.raw`(?:日)?(?:\s+\d{1,2}:\d{2})?`
-            );
-            replies.push({
-                content: body, reply_id: id, floor: floorMatch ? Number(floorMatch[1]) : null,
-                posted_at: nestedText.match(datePattern)?.[0] || null,
-                parent_reply_id: parentId, nested: true
-            });
-        }
-    }
-    const countText = [...document.querySelectorAll('button, a, span')]
-        .map(text).find(value => /全部回复\s*[（(]\s*\d+\s*[)）]/.test(value)) || '';
-    const count = countText.match(/全部回复\s*[（(]\s*(\d+)/);
-    return {
-        forum: text(forum).replace(/\s/g, ''),
-        title: document.title.replace(/-百度贴吧$/, ''),
-        original: text(document.querySelector('.center-content .pb-content-wrap')).slice(0, 2000),
-        posted_at: text(document.querySelector('.center-content .post-num')) || null,
-        loaded_reply_count: rows.length,
-        total_replies: count ? Number(count[1]) : null,
-        replies
-    };
-}"""
 
 
 def emit(value: object) -> None:
@@ -105,24 +32,48 @@ def auth_required(page: Page) -> str | None:
     return None
 
 
-def wait_for_thread_page_or_auth(page: Page) -> str | None:
+def _request_timeout_ms(
+    closed: threading.Event,
+    deadline: float | None,
+    maximum_ms: int,
+) -> int:
+    if closed.is_set():
+        raise InterruptedError("tieba_browser_cancelled")
+    if deadline is None:
+        return maximum_ms
+    remaining_ms = int((deadline - time.monotonic()) * 1000)
+    if remaining_ms <= 0:
+        raise BrowserTimeoutError("贴吧浏览器运行预算已耗尽。")
+    return min(maximum_ms, remaining_ms)
+
+
+def wait_for_thread_page_or_auth(
+    page: Page,
+    closed: threading.Event,
+    deadline: float | None = None,
+) -> str | None:
     """帖子主体和认证标记任一出现后再分类，避免登录页被误报为超时。"""
     page.wait_for_function(
         """() => document.querySelector(
             '.pb-content-wrap, .login-guide-placeholder, #captcha, .pass-sms-wrap'
         ) ||
         /百度安全验证/.test(document.title)""",
-        timeout=9000,
+        timeout=_request_timeout_ms(closed, deadline, 9000),
     )
     return auth_required(page)
 
 
-def official_login(context: BrowserContext, return_url: str, closed: threading.Event) -> Page:
+def official_login(
+    context: BrowserContext,
+    return_url: str,
+    closed: threading.Event,
+    deadline: float | None = None,
+) -> Page:
     login = context.new_page()
     login.goto(
         "https://passport.baidu.com/v2/?" + urlencode({"login": "", "tpl": "tb", "u": return_url}),
         wait_until="domcontentloaded",
-        timeout=18000,
+        timeout=_request_timeout_ms(closed, deadline, 18000),
     )
     emit({"waiting_for_auth": True})
     until = time.monotonic() + 600
@@ -135,69 +86,180 @@ def official_login(context: BrowserContext, return_url: str, closed: threading.E
             has_content = login.locator(
                 ".main-content .forum-name, .tbm-post-thread, .tbm-floor-thread"
             ).count()
-            if reason is None and (
-                has_content
-                or "没有找到" in login.locator("body").inner_text()
-            ):
-                return login
+            if reason is None and (has_content or "没有找到" in login.locator("body").inner_text()):
+                raise PermissionError("tieba_browser_auth_unverified")
+    if closed.is_set():
+        raise InterruptedError("tieba_browser_cancelled")
     raise PermissionError("tieba_browser_auth_interrupted")
 
 
-def search(page: Page, terms: str, closed: threading.Event) -> list[dict[str, object]]:
+def search(
+    page: Page,
+    terms: str,
+    closed: threading.Event,
+    deadline: float | None = None,
+) -> list[dict[str, object]]:
     parsed = urlparse(TARGET_FORUM_URL)
     base = f"{parsed.scheme}://{parsed.netloc}/f/search/res?"
     found: dict[str, dict[str, object]] = {}
     for tab in ("1", "2"):
         params = {"kw": "华东交通大学", "qw": terms[:80], "ie": "utf-8", "tab": tab}
         target = base + urlencode(params)
-        page.goto(target, wait_until="domcontentloaded", timeout=18000)
+        page.goto(
+            target,
+            wait_until="domcontentloaded",
+            timeout=_request_timeout_ms(closed, deadline, 18000),
+        )
         page.wait_for_function(
-            """() => document.querySelector('.tbm-post-thread, .tbm-floor-thread') ||
+            """() => document.querySelector('.tbm-post-thread, .tbm-floor-thread, .thread-new3') ||
             document.querySelector('.login-guide-placeholder') ||
             document.querySelector('#captcha, .pass-sms-wrap') ||
             /没有找到|暂无.*结果|百度安全验证/.test(document.body.innerText) ||
             /百度安全验证/.test(document.title)""",
-            timeout=9000,
+            timeout=_request_timeout_ms(closed, deadline, 9000),
         )
         reason = auth_required(page)
         if reason:
-            page = official_login(page.context, target, closed)
-            page.goto(target, wait_until="domcontentloaded", timeout=18000)
-            page.wait_for_timeout(700)
+            auth_started = time.monotonic()
+            page = official_login(page.context, target, closed, deadline)
+            if deadline is not None:
+                deadline += time.monotonic() - auth_started
+            page.goto(
+                target,
+                wait_until="domcontentloaded",
+                timeout=_request_timeout_ms(closed, deadline, 18000),
+            )
+            page.wait_for_timeout(min(700, _request_timeout_ms(closed, deadline, 700)))
         for hit in page.evaluate(SEARCH_DOM, tab):
             found.setdefault(str(hit["url"]), hit)
     return list(found.values())
 
 
+def scroll_thread_replies(
+    page: Page,
+    limit: int,
+    closed: threading.Event,
+    deadline: float | None = None,
+) -> int:
+    container = page.locator(".pc-pb-box").first
+    has_container = container.count() > 0
+    prior_count = -1
+    stable_rounds = 0
+    rounds = 0
+    for _ in range(limit):
+        if closed.is_set() or (deadline is not None and time.monotonic() >= deadline):
+            break
+        rounds += 1
+        count = page.locator(".pb-comment-item, .pb-lzl-item").count()
+        if has_container:
+            before = container.evaluate(
+                "element => ({top: element.scrollTop, height: element.scrollHeight})"
+            )
+            container.hover()
+        else:
+            before = page.evaluate(
+                "() => ({top: window.scrollY, height: document.documentElement.scrollHeight})"
+            )
+        page.mouse.wheel(0, 800)
+        wait_ms = 350
+        if deadline is not None:
+            wait_ms = min(wait_ms, max(0, int((deadline - time.monotonic()) * 1000)))
+        if wait_ms:
+            page.wait_for_timeout(wait_ms)
+        if has_container:
+            after = container.evaluate(
+                "element => ({top: element.scrollTop, height: element.scrollHeight})"
+            )
+        else:
+            after = page.evaluate(
+                "() => ({top: window.scrollY, height: document.documentElement.scrollHeight})"
+            )
+        next_count = page.locator(".pb-comment-item, .pb-lzl-item").count()
+        progressed = before != after or count != next_count
+        if progressed or next_count != prior_count:
+            stable_rounds = 0
+        else:
+            stable_rounds += 1
+            if stable_rounds >= 2:
+                break
+        prior_count = next_count
+    return rounds
+
+
+def expand_thread_nested_replies(
+    page: Page,
+    closed: threading.Event,
+    deadline: float | None = None,
+) -> int:
+    stop_at = time.monotonic() + 4
+    if deadline is not None:
+        stop_at = min(stop_at, deadline)
+    expanded = 0
+    for _ in range(120):
+        remaining = stop_at - time.monotonic()
+        if closed.is_set() or remaining <= 0.1:
+            break
+        control = page.locator(".show-more-lzl").first
+        if control.count() == 0:
+            break
+        prior_count = page.locator(".pb-lzl-item").count()
+        try:
+            timeout_ms = _request_timeout_ms(
+                closed, deadline, min(800, max(1, int((remaining - 0.1) * 1000)))
+            )
+            control.click(timeout=timeout_ms)
+        except BrowserTimeoutError:
+            break
+        remaining = stop_at - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            page.wait_for_function(
+                "count => document.querySelectorAll('.pb-lzl-item').length > count "
+                "|| !document.querySelector('.show-more-lzl')",
+                arg=prior_count,
+                timeout=min(1200, max(1, int(remaining * 1000))),
+            )
+        except BrowserTimeoutError:
+            break
+        next_count = page.locator(".pb-lzl-item").count()
+        if next_count <= prior_count:
+            break
+        expanded += next_count - prior_count
+    return expanded
+
+
 def read_thread(
-    page: Page, url: str, scroll_rounds_limit: int, closed: threading.Event
+    page: Page,
+    url: str,
+    scroll_rounds_limit: int,
+    closed: threading.Event,
+    deadline: float | None = None,
 ) -> dict[str, object]:
     parsed = urlparse(url)
     if parsed.hostname != "tieba.baidu.com" or not parsed.path.startswith("/p/"):
         raise ValueError("只允许读取贴吧帖子")
-    page.goto(url, wait_until="domcontentloaded", timeout=16000)
-    if wait_for_thread_page_or_auth(page):
-        page = official_login(page.context, url, closed)
-        page.goto(url, wait_until="domcontentloaded", timeout=16000)
-    page.wait_for_selector(".pb-content-wrap", timeout=9000)
+    page.goto(
+        url,
+        wait_until="domcontentloaded",
+        timeout=_request_timeout_ms(closed, deadline, 16000),
+    )
+    if wait_for_thread_page_or_auth(page, closed, deadline):
+        auth_started = time.monotonic()
+        page = official_login(page.context, url, closed, deadline)
+        if deadline is not None:
+            deadline += time.monotonic() - auth_started
+        page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=_request_timeout_ms(closed, deadline, 16000),
+        )
+    page.wait_for_selector(
+        ".pb-content-wrap", timeout=_request_timeout_ms(closed, deadline, 9000)
+    )
     limit = max(1, min(int(scroll_rounds_limit or 1), 8))
-    prior_count = -1
-    stable = 0
-    scroll_rounds = 0
-    for _ in range(limit):
-        if closed.is_set():
-            break
-        scroll_rounds += 1
-        count = page.locator(".pb-comment-item, .pb-lzl-item").count()
-        if count == prior_count:
-            stable += 1
-            if stable >= 2:
-                break
-        else:
-            stable = 0
-        prior_count = count
-        page.mouse.wheel(0, 800)
-        page.wait_for_timeout(350)
+    scroll_rounds = scroll_thread_replies(page, limit, closed, deadline)
+    expand_thread_nested_replies(page, closed, deadline)
     result = page.evaluate(THREAD_DOM)
     if not isinstance(result, dict):
         raise RuntimeError("贴吧帖子页面未返回结构化内容")
@@ -216,8 +278,12 @@ def _run_action(
 ) -> tuple[dict[str, object], Page]:
     page.set_default_timeout(8000)
     action = payload.get("action")
+    raw_deadline = payload.get("deadline_monotonic")
+    deadline = float(raw_deadline) if isinstance(raw_deadline, (float, int)) else None
     if action == "search":
-        result: dict[str, object] = {"hits": search(page, str(payload["terms"]), closed)}
+        result: dict[str, object] = {
+            "hits": search(page, str(payload["terms"]), closed, deadline)
+        }
     elif action == "read":
         raw_scroll_limit = payload.get("scroll_rounds_limit")
         scroll_limit = int(str(raw_scroll_limit or 8))
@@ -226,6 +292,7 @@ def _run_action(
             str(payload["url"]),
             scroll_limit,
             closed,
+            deadline,
         )
     else:
         raise ValueError("不支持的动作")
@@ -233,15 +300,26 @@ def _run_action(
 
 
 def _error_payload(error: Exception) -> dict[str, str]:
+    if isinstance(error, InterruptedError):
+        return {
+            "error": "tieba_browser_cancelled",
+            "message": "已停止贴吧浏览器读取。",
+        }
     if isinstance(error, PermissionError):
-        code = (
-            "tieba_browser_auth_interrupted"
-            if "interrupted" in str(error)
-            else "tieba_browser_auth_required"
+        code = str(error)
+        if code not in {
+            "tieba_browser_auth_interrupted",
+            "tieba_browser_auth_unverified",
+        }:
+            code = "tieba_browser_auth_required"
+        message = (
+            "贴吧页面可读，但无法独立确认专用会话的认证状态；本轮未继续采集。"
+            if code == "tieba_browser_auth_unverified"
+            else "专用贴吧登录或验证未完成，请在打开的官方页面完成后说“继续”。"
         )
         return {
             "error": code,
-            "message": "专用贴吧登录或验证未完成，请在打开的官方页面完成后说“继续”。",
+            "message": message,
         }
     if isinstance(error, BrowserTimeoutError):
         return {
@@ -258,6 +336,7 @@ def main() -> None:
     profile = Path(sys.argv[1])
     closed = threading.Event()
     requests: queue.Queue[dict[str, object] | None] = queue.Queue()
+    request_tracker = BrowserRequestTracker(closed, emit)
 
     def read_requests() -> None:
         try:
@@ -267,7 +346,13 @@ def main() -> None:
                     break
                 try:
                     payload = json.loads(line)
-                    requests.put(payload if isinstance(payload, dict) else {})
+                    if isinstance(payload, dict) and payload.get("type") == "request_decision":
+                        request_tracker.decide(
+                            int(payload.get("request_id", -1)),
+                            payload.get("allowed") is True,
+                        )
+                    else:
+                        requests.put(payload if isinstance(payload, dict) else {})
                 except (ValueError, TypeError):
                     requests.put({})
         finally:
@@ -276,24 +361,56 @@ def main() -> None:
 
     threading.Thread(target=read_requests, daemon=True).start()
     try:
+        if account_profile_is_fenced(profile):
+            emit(
+                {
+                    "error": "tieba_browser_account_deleting",
+                    "message": "账户正在删除，贴吧专用会话不可继续使用。",
+                }
+            )
+            return
         with (
             DataDirectoryLock(profile),
-            sync_playwright() as playwright,
-            playwright.chromium.launch_persistent_context(
-                str(profile), channel="chrome", headless=False, chromium_sandbox=True
-            ) as context,
         ):
-            page = context.pages[0] if context.pages else context.new_page()
-            while not closed.is_set():
-                payload = requests.get()
-                if payload is None:
-                    break
-                try:
-                    result, page = _run_action(context, page, payload, closed)
-                    emit(result)
-                except Exception as error:  # 每个请求独立失败，保留本账户浏览器上下文
-                    emit(_error_payload(error))
-                    page = context.pages[-1] if context.pages else context.new_page()
+            if account_profile_is_fenced(profile):
+                emit(
+                    {
+                        "error": "tieba_browser_account_deleting",
+                        "message": "账户正在删除，贴吧专用会话不可继续使用。",
+                    }
+                )
+                return
+            with (
+                sync_playwright() as playwright,
+                playwright.chromium.launch_persistent_context(
+                    str(profile), channel="chrome", headless=False,
+                    chromium_sandbox=True
+                ) as context,
+            ):
+                page = context.pages[0] if context.pages else context.new_page()
+                request_tracker.install(context)
+                while not closed.is_set():
+                    if account_profile_is_fenced(profile):
+                        break
+                    try:
+                        payload = requests.get(timeout=0.1)
+                    except queue.Empty:
+                        continue
+                    if payload is None:
+                        break
+                    try:
+                        result, page = _run_action(context, page, payload, closed)
+                        raw_deadline = payload.get("deadline_monotonic")
+                        deadline = (
+                            float(raw_deadline)
+                            if isinstance(raw_deadline, (float, int))
+                            else None
+                        )
+                        request_tracker.wait_until_idle(context, deadline)
+                        emit(result)
+                    except Exception as error:  # 每个请求独立失败，保留本账户浏览器上下文
+                        emit(_error_payload(error))
+                        page = context.pages[-1] if context.pages else context.new_page()
     except RuntimeLockError:
         emit(
             {

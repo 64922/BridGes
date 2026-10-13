@@ -21,7 +21,15 @@ from bridges.resources.kernel import (
 )
 from bridges.storage.database import BridgesDatabase
 from tests.chat.test_chat_api import _create_conversation, _register
-from tests.kernel.test_node_kernel import ACCOUNT, ASSISTANT, CONVERSATION, NOW, RUN, _inputs, _seed
+from tests.kernel.support import (
+    ACCOUNT,
+    ASSISTANT,
+    CONVERSATION,
+    NOW,
+    RUN,
+    recipe_inputs,
+    seed_generation_run,
+)
 from tests.resources.test_resources_module_flow import (
     BEGINNER_BOOK,
     _FakeBookSource,
@@ -51,7 +59,7 @@ def execute(database: BridgesDatabase, source: _FakeBookSource):
     )
     return kernel.execute(
         recipe=build_resources_recipe(),
-        inputs=_inputs(user_content="我是零基础，快速了解深度学习，只要书"),
+        inputs=recipe_inputs(user_content="我是零基础，快速了解深度学习，只要书"),
     )
 
 
@@ -59,7 +67,7 @@ def test_resources_resume_without_calls_and_reject_old_recipe(tmp_path: Path) ->
     path = tmp_path / "bridges.db"
     database = BridgesDatabase(path)
     database.initialize()
-    _seed(database)
+    seed_generation_run(database)
     source = _FakeBookSource(candidates=[BEGINNER_BOOK])
     original = execute(database, source)
     assert original.status is KernelStatus.COMPLETED
@@ -88,7 +96,7 @@ def test_resources_resume_without_calls_and_reject_old_recipe(tmp_path: Path) ->
 def test_resources_export_and_delete_are_account_scoped(tmp_path: Path) -> None:
     database = BridgesDatabase(tmp_path / "bridges.db")
     database.initialize()
-    _seed(database)
+    seed_generation_run(database)
     result = execute(database, _FakeBookSource(candidates=[BEGINNER_BOOK]))
     unrelated = replace(
         result.artifacts[0], account_id="another-account", artifact_id="another-artifact",

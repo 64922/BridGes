@@ -22,32 +22,46 @@ from datetime import UTC, datetime
 from threading import Event
 from time import monotonic
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 from pydantic import SecretStr
 
 from bridges import public_search_budget as search_budget
+from bridges.public_search_budget import report_request_outcome, track_request
 from bridges.web_search.client import (
     WebSearchError,
     _connection_error_code,
     _http_status_category,
     _read_bounded,
     _remaining_timeout,
-    _unsafe_url_code,
     _user_cancelled,
 )
 from bridges.web_search.contracts import (
     WebSearchHealth,
     WebSearchHealthStatus,
-    WebSearchPageClassification,
     WebSearchResult,
     WebSearchVerification,
 )
 from bridges.web_search.scope import query_scopes, url_in_scopes
+from bridges.web_search.tavily_support import (
+    _SOURCE_SUMMARY_MAX_CHARS,
+    TAVILY_SEARCH_PROVIDER,
+    TAVILY_SEARCH_PROVIDER_VERSION,
+    TavilySearchResults,
+)
+from bridges.web_search.tavily_support import (
+    bounded_text as _bounded_text,
+)
+from bridges.web_search.tavily_support import (
+    health_status as _health_status,
+)
+from bridges.web_search.tavily_support import (
+    parse_tavily_results as _parse_tavily_results,
+)
+from bridges.web_search.tavily_support import (
+    raise_request_denial as _raise_request_denial,
+)
 
-TAVILY_SEARCH_PROVIDER = "tavily"
-TAVILY_SEARCH_PROVIDER_VERSION = "tavily-search-api-v1"
 TAVILY_REQUEST_PROFILE_VERSION = "tavily-api-v1"
 TAVILY_SEARCH_ENDPOINT = "https://api.tavily.com/search"
 TAVILY_EXTRACT_ENDPOINT = "https://api.tavily.com/extract"
@@ -55,27 +69,11 @@ TAVILY_MAX_RESULTS = 5
 TAVILY_MAX_RESPONSE_BYTES = 1_000_000
 TAVILY_EXTRACT_MAX_RESPONSE_BYTES = 2_000_000
 TAVILY_EXTRACT_DEPTH = "basic"
-_SOURCE_SUMMARY_MAX_CHARS = 4_000
 _TAVILY_REQUEST_HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
     "Accept-Encoding": "gzip",
 }
-
-
-class TavilySearchResults(list[WebSearchResult]):
-    """带结构化响应分类的兼容结果列表。"""
-
-    def __init__(
-        self,
-        results: list[WebSearchResult],
-        *,
-        page_classification: WebSearchPageClassification,
-        http_status_category: str | None = None,
-    ) -> None:
-        super().__init__(results)
-        self.page_classification = page_classification
-        self.http_status_category = http_status_category
 
 
 class TavilySearchClient:
@@ -203,21 +201,25 @@ class TavilySearchClient:
             payload["include_domains"] = list(dict.fromkeys(domain for domain, _ in scopes))
             payload["include_domains_mode"] = "restrict"
         try:
-            with self._client.stream(
-                "POST",
-                TAVILY_SEARCH_ENDPOINT,
-                json=payload,
-                headers=self._authorization_headers(),
-                follow_redirects=False,
-                timeout=(
-                    _remaining_timeout(deadline)
-                    if deadline is not None
-                    else self._timeout
-                ),
-            ) as response:
-                self._validate_response(response, self._max_response_bytes)
-                body = _read_bounded(response, self._max_response_bytes)
-                status_category = _http_status_category(response.status_code)
+            with track_request("tavily_search") as denial:
+                if denial is not None:
+                    _raise_request_denial(denial)
+                with self._client.stream(
+                    "POST",
+                    TAVILY_SEARCH_ENDPOINT,
+                    json=payload,
+                    headers=self._authorization_headers(),
+                    follow_redirects=False,
+                    timeout=(
+                        _remaining_timeout(deadline)
+                        if deadline is not None
+                        else self._timeout
+                    ),
+                ) as response:
+                    report_request_outcome(f"http_{response.status_code}")
+                    self._validate_response(response, self._max_response_bytes)
+                    body = _read_bounded(response, self._max_response_bytes)
+                    status_category = _http_status_category(response.status_code)
         except httpx.TimeoutException as exc:
             raise WebSearchError(
                 "web_search_timeout", "联网搜索超时，请重试。"
@@ -267,22 +269,26 @@ class TavilySearchClient:
             "extract_depth": TAVILY_EXTRACT_DEPTH,
         }
         try:
-            with self._client.stream(
-                "POST",
-                TAVILY_EXTRACT_ENDPOINT,
-                json=payload,
-                headers=self._authorization_headers(),
-                follow_redirects=False,
-                timeout=(
-                    _remaining_timeout(deadline)
-                    if deadline is not None
-                    else self._timeout
-                ),
-            ) as response:
-                self._validate_response(
-                    response, TAVILY_EXTRACT_MAX_RESPONSE_BYTES
-                )
-                body = _read_bounded(response, TAVILY_EXTRACT_MAX_RESPONSE_BYTES)
+            with track_request("tavily_extract") as denial:
+                if denial is not None:
+                    _raise_request_denial(denial)
+                with self._client.stream(
+                    "POST",
+                    TAVILY_EXTRACT_ENDPOINT,
+                    json=payload,
+                    headers=self._authorization_headers(),
+                    follow_redirects=False,
+                    timeout=(
+                        _remaining_timeout(deadline)
+                        if deadline is not None
+                        else self._timeout
+                    ),
+                ) as response:
+                    report_request_outcome(f"http_{response.status_code}")
+                    self._validate_response(
+                        response, TAVILY_EXTRACT_MAX_RESPONSE_BYTES
+                    )
+                    body = _read_bounded(response, TAVILY_EXTRACT_MAX_RESPONSE_BYTES)
         except WebSearchError as exc:
             # 凭据/配置类错误必须透传（错误分类语义一致，不得吞掉）；其余
             # 提取失败属于增强步骤，保留搜索响应的结构化内容摘要即可。
@@ -395,109 +401,3 @@ class TavilySearchClient:
                 "公网搜索请求未完成，请重试。",
                 http_status_category=category,
             )
-
-
-def _parse_tavily_results(
-    body: bytes,
-    status_category: str,
-    max_results: int,
-) -> TavilySearchResults:
-    """解析 Tavily 结构化响应；契约不符单独成类（``web_search_contract``）。"""
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise WebSearchError(
-            "web_search_contract",
-            "搜索结果结构不符合已登记合同（Tavily），无法解析。",
-            page_classification=WebSearchPageClassification.INVALID,
-            http_status_category=status_category,
-            retryable=False,
-        ) from exc
-    raw_results = payload.get("results") if isinstance(payload, dict) else None
-    if not isinstance(raw_results, list):
-        raise WebSearchError(
-            "web_search_contract",
-            "搜索结果结构不符合已登记合同（Tavily），无法解析。",
-            page_classification=WebSearchPageClassification.INVALID,
-            http_status_category=status_category,
-            retryable=False,
-        )
-    if not raw_results:
-        return TavilySearchResults(
-            [],
-            page_classification=WebSearchPageClassification.NORMAL_EMPTY,
-            http_status_category=status_category,
-        )
-
-    accessed_at = datetime.now(UTC)
-    parsed: list[WebSearchResult] = []
-    seen_urls: set[str] = set()
-    for item in raw_results:
-        if not isinstance(item, dict):
-            continue
-        title = _clean_text(item.get("title"))
-        url = item.get("url")
-        if not title or not isinstance(url, str) or _unsafe_url_code(url) is not None:
-            continue
-        normalized_url = url.strip()
-        if normalized_url in seen_urls:
-            continue
-        host = (urlparse(normalized_url).netloc or "").lower().removeprefix("www.")
-        if not host:
-            continue
-        seen_urls.add(normalized_url)
-        content = _clean_text(item.get("content"))
-        parsed.append(
-            WebSearchResult(
-                result_id=f"web-{len(parsed) + 1}",
-                title=title,
-                site=host,
-                url=normalized_url,
-                snippet=content,
-                content_summary=content[:_SOURCE_SUMMARY_MAX_CHARS],
-                accessed_at=accessed_at,
-                verification=WebSearchVerification.STRUCTURED,
-                provider=TAVILY_SEARCH_PROVIDER,
-                provider_version=TAVILY_SEARCH_PROVIDER_VERSION,
-            )
-        )
-    if not parsed:
-        raise WebSearchError(
-            "web_search_contract",
-            "搜索结果未返回可安全引用的来源（Tavily）。",
-            page_classification=WebSearchPageClassification.INVALID,
-            http_status_category=status_category,
-            retryable=False,
-        )
-    return TavilySearchResults(
-        parsed[:max_results],
-        page_classification=WebSearchPageClassification.NORMAL_RESULTS,
-        http_status_category=status_category,
-    )
-
-
-def _clean_text(value: Any) -> str:
-    if not isinstance(value, str):
-        return ""
-    return " ".join(value.split()).strip()
-
-
-def _bounded_text(value: str, max_chars: int) -> str:
-    return value[:max_chars]
-
-
-def _health_status(code: str) -> WebSearchHealthStatus:
-    if code == "web_search_credentials":
-        return WebSearchHealthStatus.AUTH_ERROR
-    if code.endswith("_dns"):
-        return WebSearchHealthStatus.DNS_ERROR
-    if code.endswith("_connect") or code.endswith("_offline"):
-        return WebSearchHealthStatus.CONNECT_ERROR
-    if code.endswith("_configuration") or code.endswith("_permission"):
-        return WebSearchHealthStatus.AUTH_ERROR
-    if code.endswith("_rate_limit"):
-        return WebSearchHealthStatus.RATE_LIMITED
-    if code.endswith("_quota"):
-        # 用量上限同样"现在别重试"，但原因与瞬时限流分开（页面文案据此区分）。
-        return WebSearchHealthStatus.RATE_LIMITED
-    return WebSearchHealthStatus.UPSTREAM_ERROR

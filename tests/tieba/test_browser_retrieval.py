@@ -1,28 +1,26 @@
-"""专用会话的账户边界、检索范围与真实读取范围回归。"""
+"""专用浏览器检索、实际读取范围和工作进程生命周期回归。"""
+
+from __future__ import annotations
 
 import queue
 import threading
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from bridges.contracts.modules import ModuleQueryStatus
 from bridges.runtime.lock import DataDirectoryLock
-from bridges.tieba.browser import BrowserTiebaSearch, browser_terms, read_projection
+from bridges.tieba.browser import browser_terms, read_projection
 from bridges.tieba.browser_runtime import (
+    ACCOUNT_DELETION_MARKER,
     TiebaBrowserError,
     TiebaBrowserRuntime,
     _BrowserWorker,
+    fence_account_profile,
     profile_path,
 )
 from bridges.tieba.browser_worker import wait_for_thread_page_or_auth
-from bridges.tieba.contracts import ReadStatus, TiebaReadResult, TiebaReply, TiebaSearchHit
-from bridges.tieba.evidence import SearchAttempts, read_candidates, search_candidates
-from bridges.tieba.parsing import parse_tieba_request
-from bridges.tieba.searching import HitDiagnostics, SearchOutcome, query_record
 
 
 def test_profiles_are_account_isolated_and_paths_cannot_escape(tmp_path: Path) -> None:
@@ -107,176 +105,6 @@ def test_empty_thread_is_the_only_browser_read_marked_complete() -> None:
     assert (result.scroll_rounds, result.scroll_rounds_limit) == (3, 8)
 
 
-def test_read_auth_failure_is_waitable_and_retried_after_auth() -> None:
-    url = "https://tieba.baidu.com/p/123"
-    hit = TiebaSearchHit(url=url, title="宿舍条件讨论", snippet="")
-    attempts = SearchAttempts(hits=(hit,), rejected=(), records=[])
-
-    class Reader:
-        calls = 0
-
-        def read(self, requested_url: str, **_: Any) -> TiebaReadResult:
-            self.calls += 1
-            if self.calls == 1:
-                return TiebaReadResult(
-                    url=requested_url,
-                    status=ReadStatus.ACCESS_RESTRICTED,
-                    error_code="tieba_browser_auth_required",
-                    error_message="需要登录",
-                    retrieved_at=datetime.now(UTC),
-                )
-            return TiebaReadResult(
-                url=requested_url,
-                status=ReadStatus.READ,
-                forum_name="华东交通大学吧",
-                title="宿舍条件讨论",
-                replies=[TiebaReply(content="宿舍热水不稳定")],
-                retrieved_at=datetime.now(UTC),
-            )
-
-    reader = Reader()
-    analysis = parse_tieba_request("华东交通大学吧 宿舍条件")
-    first = read_candidates(
-        reader,
-        attempts,
-        analysis=analysis,
-        stop_event=None,
-        deadline_seconds=5,
-    )
-    assert first.partial is True
-    assert first.retry_urls == (url,)
-    assert first.unconfirmed[0].read_error_code == "tieba_browser_auth_required"
-
-    resumed = read_candidates(
-        reader,
-        attempts,
-        analysis=analysis,
-        stop_event=None,
-        deadline_seconds=5,
-        resume={
-            "confirmed": [],
-            "rejected": [],
-            "unconfirmed": [item.model_dump(mode="json") for item in first.unconfirmed],
-            "attempted_urls": list(first.attempted_urls),
-            "retry_urls": list(first.retry_urls),
-            "unreadable": first.unreadable,
-        },
-    )
-    assert reader.calls == 2
-    assert resumed.retry_urls == ()
-    assert len(resumed.confirmed) == 1
-    assert not resumed.unconfirmed
-
-
-def test_auth_link_survives_candidate_link_limit() -> None:
-    hits = tuple(
-        TiebaSearchHit(
-            url=f"https://tieba.baidu.com/p/{index}",
-            title=f"宿舍条件讨论 {index}",
-            snippet="",
-        )
-        for index in range(1, 8)
-    )
-    attempts = SearchAttempts(hits=hits, rejected=(), records=[])
-
-    class Reader:
-        def read(self, requested_url: str, **_: Any) -> TiebaReadResult:
-            if requested_url.endswith("/7"):
-                return TiebaReadResult(
-                    url=requested_url,
-                    status=ReadStatus.ACCESS_RESTRICTED,
-                    error_code="tieba_browser_auth_required",
-                    error_message="需要登录",
-                    retrieved_at=datetime.now(UTC),
-                )
-            return TiebaReadResult(
-                url=requested_url,
-                status=ReadStatus.ACCESS_RESTRICTED,
-                error_code="tieba_browser_unavailable",
-                error_message="页面暂不可读",
-                retrieved_at=datetime.now(UTC),
-            )
-
-    outcome = read_candidates(
-        Reader(),
-        attempts,
-        analysis=parse_tieba_request("华东交通大学吧 宿舍条件"),
-        stop_event=None,
-        deadline_seconds=5,
-    )
-
-    assert outcome.unconfirmed_total == 7
-    assert len(outcome.unconfirmed) == 6
-    assert outcome.unconfirmed[-1].url == hits[-1].url
-    assert outcome.unconfirmed[-1].read_error_code == "tieba_browser_auth_required"
-
-
-def test_auth_search_failure_is_kept_as_a_partial_artifact_input() -> None:
-    class Port:
-        def search_public(self, _account_id: str, *, query: str, **_: Any) -> SearchOutcome:
-            return SearchOutcome(
-                record=query_record(
-                    query=query,
-                    status=ModuleQueryStatus.ERROR,
-                    evidence_count=0,
-                    error_code="tieba_browser_auth_required",
-                    error_message="需要登录",
-                    retryable=False,
-                ),
-                hits=(),
-                candidates=(),
-                rejected=(),
-                diagnostics=HitDiagnostics(),
-            )
-
-    attempts = search_candidates(
-        Port(),
-        "account",
-        parse_tieba_request("华东交通大学吧 宿舍条件"),
-        stop_event=None,
-        deadline_seconds=5,
-    )
-
-    assert attempts.partial is True
-    assert attempts.records[0].error_code == "tieba_browser_auth_required"
-
-
-def test_manual_auth_wait_extends_deadline_for_remaining_reads() -> None:
-    hits = tuple(
-        TiebaSearchHit(
-            url=f"https://tieba.baidu.com/p/{index}",
-            title=f"宿舍条件讨论 {index}",
-            snippet="",
-        )
-        for index in (1, 2)
-    )
-    deadlines: list[float | None] = []
-
-    class Reader:
-        def read(self, requested_url: str, **kwargs: Any) -> TiebaReadResult:
-            deadlines.append(kwargs.get("deadline"))
-            return TiebaReadResult(
-                url=requested_url,
-                status=ReadStatus.READ,
-                forum_name="华东交通大学吧",
-                title="宿舍条件讨论",
-                replies=[TiebaReply(content="宿舍条件讨论")],
-                excluded_wait_ms=60_000 if len(deadlines) == 1 else 0,
-                retrieved_at=datetime.now(UTC),
-            )
-
-    read_candidates(
-        Reader(),
-        SearchAttempts(hits=hits, rejected=(), records=[]),
-        analysis=parse_tieba_request("华东交通大学吧 宿舍条件"),
-        stop_event=None,
-        deadline_seconds=5,
-    )
-
-    assert deadlines[0] is not None and deadlines[1] is not None
-    assert deadlines[1] - deadlines[0] >= 59
-
-
 def test_forum_sidebar_cannot_confirm_a_different_thread() -> None:
     result = read_projection(
         "https://tieba.baidu.com/p/123",
@@ -312,6 +140,7 @@ def test_runtime_reuses_worker_context_between_requests(
     workers: list[_BrowserWorker] = []
     sent: list[dict[str, Any]] = []
     disposed: list[object] = []
+
     def spawn(profile: Path) -> _BrowserWorker:
         spawned.append(profile)
         worker = _BrowserWorker(Process(), queue.Queue())  # type: ignore[arg-type]
@@ -405,6 +234,92 @@ def test_runtime_checks_deadline_after_starting_worker_before_sending(
     assert sent == []
 
 
+def test_lock_wait_reports_deadline_expiry_as_timeout(tmp_path: Path) -> None:
+    runtime = TiebaBrowserRuntime(tmp_path)
+    lock = threading.Lock()
+    lock.acquire()
+    runtime._account_locks["alice"] = lock
+    try:
+        with pytest.raises(TiebaBrowserError) as failure:
+            runtime.request(
+                "alice",
+                {"action": "search"},
+                deadline=time.monotonic() + 0.01,
+            )
+        assert failure.value.code == "tieba_browser_timeout"
+    finally:
+        lock.release()
+
+
+def test_remove_account_stops_worker_and_deletes_only_its_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Process:
+        def poll(self) -> None:
+            return None
+
+    runtime = TiebaBrowserRuntime(tmp_path)
+    profile = profile_path(tmp_path, "alice")
+    (profile / "Default").mkdir(parents=True)
+    (profile / "Default" / "Cookies").write_text("account session", encoding="utf-8")
+    other_profile = profile_path(tmp_path, "bob")
+    other_profile.mkdir(parents=True)
+    worker = _BrowserWorker(Process(), queue.Queue())  # type: ignore[arg-type]
+    runtime._workers["alice"] = worker
+    runtime._last_used["alice"] = time.monotonic()
+    disposed: list[_BrowserWorker] = []
+    monkeypatch.setattr(runtime, "_dispose", disposed.append)
+
+    runtime.remove_account("alice")
+
+    assert disposed == [worker]
+    assert profile.exists()
+    assert {entry.name for entry in profile.iterdir()} == {
+        ".bridges.lock",
+        ACCOUNT_DELETION_MARKER,
+    }
+    assert other_profile.exists()
+
+
+def test_account_deletion_fence_blocks_request_waiting_for_account_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = TiebaBrowserRuntime(tmp_path)
+    held_lock = threading.Lock()
+    held_lock.acquire()
+    attempted_lock = threading.Event()
+
+    class ObservedLock:
+        def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+            attempted_lock.set()
+            return held_lock.acquire(blocking, timeout)
+
+        def release(self) -> None:
+            held_lock.release()
+
+    runtime._account_locks["alice"] = ObservedLock()  # type: ignore[assignment]
+    spawned: list[Path] = []
+    monkeypatch.setattr(runtime, "_spawn", lambda profile: spawned.append(profile))
+    failures: list[TiebaBrowserError] = []
+
+    def request() -> None:
+        try:
+            runtime.request("alice", {"action": "search"})
+        except TiebaBrowserError as error:
+            failures.append(error)
+
+    waiter = threading.Thread(target=request)
+    waiter.start()
+    assert attempted_lock.wait(timeout=1)
+    fence_account_profile(tmp_path, "alice")
+    held_lock.release()
+    waiter.join(timeout=2)
+
+    assert not waiter.is_alive()
+    assert [failure.code for failure in failures] == ["tieba_browser_account_deleting"]
+    assert spawned == []
+
+
 def test_thread_page_wait_accepts_auth_marker_without_waiting_for_post_body() -> None:
     class Locator:
         def __init__(self, count: int) -> None:
@@ -429,7 +344,7 @@ def test_thread_page_wait_accepts_auth_marker_without_waiting_for_post_body() ->
             assert self.waited_for_state
             return Locator(1 if selector == ".login-guide-placeholder" else 0)
 
-    assert wait_for_thread_page_or_auth(LoginPage()) == "login"
+    assert wait_for_thread_page_or_auth(LoginPage(), threading.Event()) == "login"
 
 
 def test_expired_or_cancelled_work_does_not_launch_chrome(tmp_path: Path) -> None:
@@ -445,65 +360,3 @@ def test_expired_or_cancelled_work_does_not_launch_chrome(tmp_path: Path) -> Non
     with pytest.raises(TiebaBrowserError) as failure:
         runtime.request("alice", {"action": "search", "terms": "国庆"}, stop_event=stopped)
     assert failure.value.code == "tieba_browser_cancelled"
-
-
-def test_browser_failure_is_kept_when_falling_back_to_scoped_index() -> None:
-    class Unavailable:
-        def request(self, *args: Any, **kwargs: Any) -> Any:
-            raise TiebaBrowserError("tieba_browser_setup_required", "请登录")
-
-    class Public:
-        def search_public(self, account_id: str, *, query: str, **kwargs: Any) -> SearchOutcome:
-            assert account_id == "alice" and query.startswith("site:tieba.baidu.com/p/")
-            return SearchOutcome(
-                query_record(query=query, status=ModuleQueryStatus.EMPTY, evidence_count=0),
-                (),
-                (),
-                (),
-            )
-
-    search = BrowserTiebaSearch(Unavailable(), Public())  # type: ignore[arg-type]
-    outcome = search.search_public(
-        "alice", query="site:tieba.baidu.com/p/ 华东交通大学吧 国庆", reason="测试"
-    )
-    assert outcome.prior_records[0].source == "tieba_browser"
-    assert outcome.prior_records[0].error_code == "tieba_browser_setup_required"
-
-
-def test_auth_interruption_is_not_hidden_by_public_search_fallback() -> None:
-    class NeedsLogin:
-        def request(self, *args: Any, **kwargs: Any) -> Any:
-            raise TiebaBrowserError(
-                "tieba_browser_auth_interrupted", "登录未完成", excluded_wait_ms=4200
-            )
-
-    class MustNotFallback:
-        def search_public(self, *args: Any, **kwargs: Any) -> SearchOutcome:
-            raise AssertionError("认证中断不能回退成普通公开索引成功")
-
-    result = BrowserTiebaSearch(NeedsLogin(), MustNotFallback()).search_public(  # type: ignore[arg-type]
-        "alice", query="site:tieba.baidu.com/p/ 华东交通大学吧 宿舍", reason="测试"
-    )
-    assert result.record.error_code == "tieba_browser_auth_interrupted"
-    assert result.excluded_wait_ms == 4200
-
-
-def test_official_query_never_uses_the_tieba_login_session() -> None:
-    class Unused:
-        def request(self, *args: Any, **kwargs: Any) -> Any:
-            raise AssertionError("官方页面不能读取贴吧账户会话")
-
-    class Public:
-        def search_public(self, account_id: str, *, query: str, **kwargs: Any) -> SearchOutcome:
-            assert query.startswith("site:ecjtu.edu.cn")
-            return SearchOutcome(
-                query_record(query=query, status=ModuleQueryStatus.EMPTY, evidence_count=0),
-                (),
-                (),
-                (),
-            )
-
-    result = BrowserTiebaSearch(Unused(), Public()).search_public(  # type: ignore[arg-type]
-        "alice", query="site:ecjtu.edu.cn 国庆", reason="测试"
-    )
-    assert result.record.source == "tavily"

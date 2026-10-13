@@ -222,12 +222,18 @@ def _classify_api_failure(output: str) -> str:
 
 @pytest.fixture(scope="session")
 def venv_python() -> str:
-    """显式返回仓库虚拟环境中的 Python 可执行文件（issue 01 步骤 1）。
+    """返回 API 子进程 Python；支持 BRIDGES_PYTHON 显式选择项目环境。
 
-    优先仓库 ``.venv``；不存在时回退 ``sys.executable`` 并提示（当前测试
-    进程本身由什么 Python 启动就由什么启动子进程，避免 PATH 上的
-    Anaconda/系统 Python 混入）。
+    显式路径优先，其次仓库 ``.venv``；不存在时回退 ``sys.executable``，
+    避免测试进程与 API 子进程使用不同的环境。
     """
+    configured = os.environ.get("BRIDGES_PYTHON", "").strip()
+    if configured:
+        executable = Path(configured).expanduser().resolve()
+        if not executable.is_file():
+            raise RuntimeError(f"BRIDGES_PYTHON 不存在：{executable}")
+        return str(executable)
+
     candidate = (
         REPO_ROOT / ".venv" / "Scripts" / "python.exe"
         if os.name == "nt"

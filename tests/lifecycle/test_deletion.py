@@ -149,6 +149,70 @@ def test_delete_partial_failure_is_retryable_not_success(tmp_path) -> None:
     assert harness.identity.get_account(harness.acc1) is None
 
 
+def test_account_session_cleanup_failure_is_retryable(tmp_path) -> None:
+    harness = Harness(tmp_path)
+    attempts: list[str] = []
+
+    def clean_session(account_id: str) -> None:
+        attempts.append(account_id)
+        if len(attempts) == 1:
+            raise OSError("专用浏览器仍在使用")
+
+    class SessionLifecycle:
+        def fence(self, _account_id: str) -> None:
+            pass
+
+        def remove(self, account_id: str) -> None:
+            clean_session(account_id)
+
+    harness.deletion._account_session_lifecycle = SessionLifecycle()  # type: ignore[attr-defined]
+    with pytest.raises(DataLifecycleError):
+        harness.deletion.delete_account(harness.acc1)
+
+    status = harness.deletion.get_status(harness.acc1)
+    assert status is not None
+    assert status.status == AccountDeletionStatus.FAILED
+    assert "专用浏览器仍在使用" in (status.last_error or "")
+
+    result = harness.deletion.retry_deletion(status.deletion_id)
+    assert result.status == AccountDeletionStatus.COMPLETED
+    assert attempts == [harness.acc1, harness.acc1]
+
+
+def test_account_session_fence_is_reapplied_by_background_retry(tmp_path) -> None:
+    harness = Harness(tmp_path)
+    harness.seed_everything()
+    attempts: list[str] = []
+
+    def fence_session(account_id: str) -> None:
+        attempts.append(account_id)
+        if len(attempts) == 1:
+            raise OSError("会话栅栏暂不可写")
+
+    class SessionLifecycle:
+        def fence(self, account_id: str) -> None:
+            fence_session(account_id)
+
+        def remove(self, _account_id: str) -> None:
+            pass
+
+    harness.deletion._account_session_lifecycle = SessionLifecycle()  # type: ignore[attr-defined]
+    with pytest.raises(DataLifecycleError):
+        harness.deletion.delete_account(harness.acc1)
+
+    status = harness.deletion.get_status(harness.acc1)
+    assert status is not None
+    assert status.status == AccountDeletionStatus.FAILED
+    assert harness.identity.get_account(harness.acc1) is not None
+
+    assert "处理 1 次" in harness.deletion.process_pending_retries()
+    retried = harness.deletion.get_status(harness.acc1)
+    assert retried is not None
+    assert retried.status == AccountDeletionStatus.COMPLETED
+    assert harness.identity.get_account(harness.acc1) is None
+    assert attempts == [harness.acc1, harness.acc1]
+
+
 def test_delete_retry_runs_full_pipeline_when_transaction_failed(tmp_path) -> None:
     harness = Harness(tmp_path)
     harness.seed_everything()

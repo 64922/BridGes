@@ -13,18 +13,12 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from typing import Any
 
 import pytest
 
-from bridges.chat.repository import ConversationRepository
 from bridges.kernel.contracts import (
     ArtifactTrust,
-    InputDependency,
     KernelStatus,
     NodeArtifact,
     NodeExecution,
@@ -34,93 +28,27 @@ from bridges.kernel.contracts import (
     QualityGateResult,
     QualityVerdict,
     RecipeDefinition,
-    RecipeInputs,
-    RecoveryPolicy,
 )
-from bridges.kernel.executor import NodeKernel
-from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.registry import RecipeRegistry, RecipeValidationError
 from bridges.kernel.repository import NodeKernelRepository
 from bridges.storage.database import BridgesDatabase
-
-NOW = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
-ACCOUNT = "acc-1"
-CONVERSATION = "conv-1"
-RUN = "run-1"
-ASSISTANT = "msg-assistant"
-WORKER = "worker-1"
-
-CAPABILITIES = ("test.a", "test.b", "test.c")
-GATES = ("gate.required",)
-
-
-def _spec(name: str, *, depends_on: tuple[str, ...] = ()) -> NodeSpec:
-    def key(inputs: RecipeInputs) -> str:
-        digest = inputs.user_content
-        for dependency in depends_on:
-            digest += ":" + inputs.artifacts[dependency].content_hash
-        return f"{name}:{digest}"
-
-    return NodeSpec(
-        name=name,
-        capability=f"test.{name}",
-        artifact_type=f"test.{name}",
-        capability_version=f"{name}-v1",
-        input_key=key,
-        depends_on=depends_on,
-        required_gates=GATES if name == "c" else (),
-        recovery=RecoveryPolicy.RETRY_NODE,
-    )
-
-
-def _recipe() -> RecipeDefinition:
-    return RecipeDefinition(
-        recipe_id="test-recipe",
-        recipe_version="v1",
-        nodes=(
-            _spec("a"),
-            _spec("b", depends_on=("a",)),
-            _spec("c", depends_on=("b",)),
-        ),
-    )
-
-
-def _artifact(
-    invocation: NodeInvocation,
-    *,
-    payload: dict[str, Any] | None = None,
-    trust: ArtifactTrust = ArtifactTrust.QUALIFIED,
-    error: dict[str, Any] | None = None,
-) -> NodeArtifact:
-    return NodeArtifact.build(
-        account_id=invocation.account_id,
-        conversation_id=invocation.conversation_id,
-        run_id=invocation.run_id,
-        task_id=None,
-        task_version=None,
-        recipe_id="test-recipe",
-        recipe_version="v1",
-        node=invocation.spec.name,
-        artifact_type=invocation.spec.artifact_type,
-        capability_version=invocation.spec.capability_version,
-        trust_state=trust,
-        input_key=invocation.spec.input_key(invocation.inputs),
-        input_deps=tuple(
-            InputDependency(
-                node=name,
-                artifact_id=artifact.artifact_id,
-                content_hash=artifact.content_hash,
-            )
-            for name, artifact in invocation.dependencies.items()
-        ),
-        source_refs=(),
-        read_scope="test",
-        requirement_coverage=(),
-        unconfirmed=(),
-        error=error,
-        payload=payload or {"node": invocation.spec.name},
-        now=NOW,
-    )
+from tests.kernel.support import (
+    ACCOUNT,
+    ASSISTANT,
+    CAPABILITIES,
+    CONVERSATION,
+    GATES,
+    NOW,
+    RUN,
+    Runner,
+    execute_node_recipe,
+    node_artifact,
+    node_kernel,
+    node_recipe,
+    node_spec,
+    recipe_inputs,
+    seed_generation_run,
+)
 
 
 def test_partial_trusted_artifacts_remain_reusable_for_delivery() -> None:
@@ -151,178 +79,10 @@ def test_partial_trusted_artifacts_remain_reusable_for_delivery() -> None:
         assert artifact.reusable is True
 
 
-class _Runner:
-    """可注入失败/副作用的节点执行体：记录调用顺序并返回类型化产物。"""
-
-    def __init__(self, on_call: Any = None, partial_nodes: tuple[str, ...] = ()) -> None:
-        self.calls: list[str] = []
-        self.fail_next: dict[str, int] = {}
-        self.invalidate: dict[str, tuple[str, ...]] = {}
-        self.on_call = on_call
-        self.partial_nodes = set(partial_nodes)
-
-    def __call__(self, invocation: NodeInvocation) -> NodeExecution:
-        name = invocation.spec.name
-        self.calls.append(name)
-        if self.on_call is not None:
-            self.on_call(name)
-        if self.fail_next.get(name, 0) > 0:
-            self.fail_next[name] -= 1
-            return NodeExecution(
-                artifact=_artifact(
-                    invocation,
-                    trust=ArtifactTrust.INVALIDATED,
-                    error={"code": "test_failure", "message": "注入失败"},
-                ),
-                verdict=QualityVerdict.REPAIRABLE_FAILURE,
-                status=NodeReceiptStatus.FAILED,
-                detail={
-                    "code": "test_failure",
-                    "message": "注入失败",
-                    "retryable": True,
-                },
-                stop_recipe=True,
-            )
-        return NodeExecution(
-            artifact=_artifact(
-                invocation,
-                payload=(
-                    {"node": name, "partial": True}
-                    if name in self.partial_nodes
-                    else None
-                ),
-            ),
-            verdict=QualityVerdict.PASS,
-            status=NodeReceiptStatus.COMPLETED,
-            invalidate_nodes=self.invalidate.get(name, ()),
-        )
-
-
-def _seed(
-    database: BridgesDatabase,
-    *,
-    account_id: str = ACCOUNT,
-    conversation_id: str = CONVERSATION,
-    run_id: str = RUN,
-    assistant_message_id: str = ASSISTANT,
-    run_status: str = "running",
-    lease_owner: str | None = WORKER,
-    message_status: str = "streaming",
-    run_stop_requested: int = 0,
-) -> None:
-    stamp = NOW.isoformat()
-    with database.transaction():
-        database.connection.execute(
-            "INSERT OR IGNORE INTO conversations"
-            "(conversation_id, account_id, title, mode, created_at, updated_at)"
-            " VALUES (?, ?, '', 'companion', ?, ?)",
-            (conversation_id, account_id, stamp, stamp),
-        )
-        database.connection.execute(
-            "INSERT OR IGNORE INTO messages"
-            "(message_id, conversation_id, account_id, role, status, content,"
-            " created_at, updated_at)"
-            " VALUES (?, ?, ?, 'assistant', ?, '', ?, ?)",
-            (assistant_message_id, conversation_id, account_id, message_status, stamp, stamp),
-        )
-        database.connection.execute(
-            "INSERT OR IGNORE INTO generation_runs"
-            "(run_id, account_id, conversation_id, user_message_id,"
-            " assistant_message_id, status, lease_owner, lease_expires_at,"
-            " stop_requested, created_at, updated_at)"
-            " VALUES (?, ?, ?, 'msg-user', ?, ?, ?, ?, ?, ?, ?)",
-            (
-                run_id,
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                run_status,
-                lease_owner,
-                (NOW + timedelta(minutes=5)).isoformat(),
-                run_stop_requested,
-                stamp,
-                stamp,
-            ),
-        )
-
-
-@pytest.fixture
-def database(tmp_path: Path) -> BridgesDatabase:
-    db = BridgesDatabase(tmp_path / "bridges.db")
-    assert db.initialize() > 0
-    return db
-
-
-def _kernel(
-    database: BridgesDatabase,
-    runner: _Runner,
-    *,
-    gates: dict[str, Any] | None = None,
-    stop_event: Any = None,
-    account_id: str = ACCOUNT,
-    conversation_id: str = CONVERSATION,
-    run_id: str = RUN,
-    assistant_message_id: str = ASSISTANT,
-) -> NodeKernel:
-    return NodeKernel(
-        registry=RecipeRegistry(capabilities=CAPABILITIES, gates=GATES),
-        repository=NodeKernelRepository(database),
-        guard=RunCommitGuard(
-            ConversationRepository(database),
-            account_id=account_id,
-            run_id=run_id,
-            conversation_id=conversation_id,
-            assistant_message_id=assistant_message_id,
-            stop_event=stop_event,
-            clock=lambda: NOW,
-        ),
-        gates=gates
-        or {
-            "gate.required": lambda invocation, execution: QualityGateResult(
-                gate="gate.required", verdict=QualityVerdict.PASS
-            )
-        },
-        runner=runner,
-        clock=lambda: NOW,
-    )
-
-
-def _inputs(*, user_content: str = "hello", run_id: str = RUN) -> RecipeInputs:
-    return RecipeInputs(
-        account_id=ACCOUNT,
-        conversation_id=CONVERSATION,
-        run_id=run_id,
-        user_message_id="msg-user",
-        user_content=user_content,
-        task_id=None,
-        task_version=None,
-        wait_identity=None,
-        artifacts={},
-    )
-
-
-def _execute(
-    kernel: NodeKernel,
-    events: list[Any] | None = None,
-    *,
-    stop_event: Any = None,
-):
-    return kernel.execute(
-        recipe=_recipe(),
-        inputs=_inputs(),
-        event_sink=(
-            (lambda node, status, duration: events.append((node, status, duration)))
-            if events is not None
-            else None
-        ),
-        stop_event=stop_event,
-    )
-
-
 def test_registry_rejects_unknown_capability_and_gate() -> None:
     registry = RecipeRegistry(capabilities=("test.a",), gates=())
     with pytest.raises(RecipeValidationError, match="unknown_capability"):
-        registry.register(_recipe())
+        registry.register(node_recipe())
 
     unknown_gate = RecipeDefinition(
         recipe_id="gated",
@@ -344,13 +104,13 @@ def test_contract_upgrade_reruns_nodes_and_preserves_old_receipts(
     database: BridgesDatabase,
 ) -> None:
     """相同输入升级配方/能力后不得复用旧版本，并保留原完成证明。"""
-    _seed(database)
-    runner = _Runner()
-    _execute(_kernel(database, runner))
+    seed_generation_run(database)
+    runner = Runner()
+    execute_node_recipe(node_kernel(database, runner))
     repository = NodeKernelRepository(database)
     old_receipts = repository.list_receipts(ACCOUNT, RUN)
-    upgraded = replace(_recipe(), recipe_version="v2", nodes=tuple(
-        replace(spec, capability_version=f"{spec.name}-v2") for spec in _recipe().nodes
+    upgraded = replace(node_recipe(), recipe_version="v2", nodes=tuple(
+        replace(spec, capability_version=f"{spec.name}-v2") for spec in node_recipe().nodes
     ))
 
     def run(invocation: NodeInvocation) -> NodeExecution:
@@ -358,14 +118,14 @@ def test_contract_upgrade_reruns_nodes_and_preserves_old_receipts(
         return replace(execution, artifact=replace(execution.artifact, recipe_version="v2"))
 
     runner.calls.clear()
-    result = _kernel(database, run).execute(recipe=upgraded, inputs=_inputs())
+    result = node_kernel(database, run).execute(recipe=upgraded, inputs=recipe_inputs())
     assert result.status is KernelStatus.COMPLETED
     assert runner.calls == ["a", "b", "c"]
     assert all(item.recipe_version == "v2" for item in result.artifacts)
     assert len(repository.list_receipts(ACCOUNT, RUN)) == 6
     assert repository.list_receipts(ACCOUNT, RUN)[:3] == old_receipts
     runner.calls.clear()
-    _kernel(database, run).execute(recipe=upgraded, inputs=_inputs())
+    node_kernel(database, run).execute(recipe=upgraded, inputs=recipe_inputs())
     assert runner.calls == []
 
 
@@ -373,8 +133,8 @@ def test_recomputation_preserves_payload_referenced_by_old_receipt(
     database: BridgesDatabase,
 ) -> None:
     """失效后的重新计算保存新版本，旧收据继续指向旧内容。"""
-    _seed(database)
-    first = _execute(_kernel(database, _Runner()))
+    seed_generation_run(database)
+    first = execute_node_recipe(node_kernel(database, Runner()))
     repository = NodeKernelRepository(database)
     old = first.artifacts[0]
     old_receipt = repository.list_receipts(ACCOUNT, RUN)[0]
@@ -383,11 +143,11 @@ def test_recomputation_preserves_payload_referenced_by_old_receipt(
 
     def changed(invocation: NodeInvocation) -> NodeExecution:
         return NodeExecution(
-            artifact=_artifact(invocation, payload={"response": "新的外部结果"}),
+            artifact=node_artifact(invocation, payload={"response": "新的外部结果"}),
             verdict=QualityVerdict.PASS, status=NodeReceiptStatus.COMPLETED,
         )
 
-    result = _execute(_kernel(database, changed))
+    result = execute_node_recipe(node_kernel(database, changed))
     assert result.status is KernelStatus.COMPLETED
     assert result.artifacts[0].artifact_id != old.artifact_id
     preserved = repository.get_artifact(ACCOUNT, old_receipt.artifact_id)
@@ -457,11 +217,11 @@ def test_registry_rejects_skipped_prerequisite_and_cycle() -> None:
 
 
 def test_completed_receipts_reuse_without_rerun(database: BridgesDatabase) -> None:
-    _seed(database)
-    runner = _Runner()
+    seed_generation_run(database)
+    runner = Runner()
     events: list[tuple[str, str, int | None]] = []
-    kernel = _kernel(database, runner)
-    first = _execute(kernel, events)
+    kernel = node_kernel(database, runner)
+    first = execute_node_recipe(kernel, events)
     assert first.status is KernelStatus.COMPLETED
     assert runner.calls == ["a", "b", "c"]
 
@@ -471,10 +231,10 @@ def test_completed_receipts_reuse_without_rerun(database: BridgesDatabase) -> No
     assert [item.node for item in artifacts_after_first] == ["a", "b", "c"]
 
     # 「收据已提交而检查点未保存」：同一运行用新内核从头执行，只读收据回填。
-    second_runner = _Runner()
-    second_kernel = _kernel(database, second_runner)
+    second_runner = Runner()
+    second_kernel = node_kernel(database, second_runner)
     replay_events: list[tuple[str, str, int | None]] = []
-    second = _execute(second_kernel, replay_events)
+    second = execute_node_recipe(second_kernel, replay_events)
     assert second.status is KernelStatus.COMPLETED
     assert second_runner.calls == []
     assert all(state.reused for state in second.nodes)
@@ -489,26 +249,26 @@ def test_completed_receipts_reuse_without_rerun(database: BridgesDatabase) -> No
 def test_failed_receipt_is_not_reused_and_retries_only_that_node(
     database: BridgesDatabase,
 ) -> None:
-    _seed(database)
-    runner = _Runner()
+    seed_generation_run(database)
+    runner = Runner()
     runner.fail_next["b"] = 1
-    kernel = _kernel(database, runner)
-    failed = _execute(kernel)
+    kernel = node_kernel(database, runner)
+    failed = execute_node_recipe(kernel)
     assert failed.status is KernelStatus.FAILED
     assert failed.failure is not None and failed.failure.code == "test_failure"
     assert runner.calls == ["a", "b"]
 
-    retry_runner = _Runner()
-    retry_kernel = _kernel(database, retry_runner)
-    recovered = _execute(retry_kernel)
+    retry_runner = Runner()
+    retry_kernel = node_kernel(database, retry_runner)
+    recovered = execute_node_recipe(retry_kernel)
     assert recovered.status is KernelStatus.COMPLETED
     # a 从收据回填；b 的失败收据不复用，只重跑 b 与其必经下游 c。
     assert retry_runner.calls == ["b", "c"]
 
 
 def test_required_gate_failure_invalidates_artifact(database: BridgesDatabase) -> None:
-    _seed(database)
-    runner = _Runner()
+    seed_generation_run(database)
+    runner = Runner()
     calls: list[str] = []
 
     def blocked(invocation: NodeInvocation, execution: NodeExecution) -> QualityGateResult:
@@ -520,8 +280,8 @@ def test_required_gate_failure_invalidates_artifact(database: BridgesDatabase) -
             message="必要门未通过",
         )
 
-    kernel = _kernel(database, runner, gates={"gate.required": blocked})
-    result = _execute(kernel)
+    kernel = node_kernel(database, runner, gates={"gate.required": blocked})
+    result = execute_node_recipe(kernel)
     assert result.status is KernelStatus.BLOCKED
     assert result.failure is not None and result.failure.code == "test_blocked"
     assert calls == ["c"]
@@ -535,15 +295,15 @@ def test_required_gate_failure_invalidates_artifact(database: BridgesDatabase) -
 def test_invalidate_nodes_marks_history_and_forces_rerun(
     database: BridgesDatabase,
 ) -> None:
-    _seed(database)
-    runner = _Runner()
+    seed_generation_run(database)
+    runner = Runner()
     runner.invalidate["b"] = ("a",)
-    kernel = _kernel(database, runner)
-    result = _execute(kernel)
+    kernel = node_kernel(database, runner)
+    result = execute_node_recipe(kernel)
     assert result.status is KernelStatus.COMPLETED
     repository = NodeKernelRepository(database)
     invalidated = repository.find_artifact(
-        ACCOUNT, CONVERSATION, "a", _recipe().node("a").input_key(_inputs())
+        ACCOUNT, CONVERSATION, "a", node_recipe().node("a").input_key(recipe_inputs())
     )
     assert invalidated is not None
     assert invalidated.trust_state is ArtifactTrust.INVALIDATED
@@ -561,22 +321,21 @@ def test_invalidate_nodes_marks_history_and_forces_rerun(
     assert payload["nodes"] == ["a"]
     assert payload["artifact_ids"] == [invalidated.artifact_id]
 
-    retry_runner = _Runner()
-    retry_kernel = _kernel(database, retry_runner)
-    _execute(retry_kernel)
+    retry_runner = Runner()
+    retry_kernel = node_kernel(database, retry_runner)
+    execute_node_recipe(retry_kernel)
     # 失效产物不可复用：a 重新执行；a 的新产物内容哈希相同，b/c 按收据回填。
     assert retry_runner.calls == ["a"]
 
 
 def test_stop_request_rejects_without_artifacts(database: BridgesDatabase) -> None:
-    import threading
 
-    _seed(database)
+    seed_generation_run(database)
     stop_event = threading.Event()
     stop_event.set()
-    runner = _Runner()
-    kernel = _kernel(database, runner, stop_event=stop_event)
-    result = _execute(kernel, stop_event=stop_event)
+    runner = Runner()
+    kernel = node_kernel(database, runner, stop_event=stop_event)
+    result = execute_node_recipe(kernel, stop_event=stop_event)
     assert result.status is KernelStatus.STOPPED
     assert result.stopped_at == "a"
     assert runner.calls == [], "停止在节点边界生效，不进入任何节点"
@@ -586,7 +345,7 @@ def test_stop_request_rejects_without_artifacts(database: BridgesDatabase) -> No
 
 
 def test_lease_transfer_rejects_late_result(database: BridgesDatabase) -> None:
-    _seed(database)
+    seed_generation_run(database)
 
     def transfer_lease(name: str) -> None:
         # 节点执行期间（提交之前）租约转给新执行者：旧执行者的提交被拒绝。
@@ -597,9 +356,9 @@ def test_lease_transfer_rejects_late_result(database: BridgesDatabase) -> None:
                 (ACCOUNT, RUN),
             )
 
-    runner = _Runner(on_call=transfer_lease)
-    kernel = _kernel(database, runner)
-    result = _execute(kernel)
+    runner = Runner(on_call=transfer_lease)
+    kernel = node_kernel(database, runner)
+    result = execute_node_recipe(kernel)
     assert result.status is KernelStatus.REJECTED
     assert result.rejection_code == "lease_lost"
     assert runner.calls == ["a"]
@@ -611,11 +370,11 @@ def test_lease_transfer_rejects_late_result(database: BridgesDatabase) -> None:
 def test_final_commit_check_rejects_transfer_after_last_node(
     database: BridgesDatabase,
 ) -> None:
-    _seed(database)
+    seed_generation_run(database)
     recipe = RecipeDefinition(
         recipe_id="single",
         recipe_version="v1",
-        nodes=(_spec("a"),),
+        nodes=(node_spec("a"),),
     )
 
     def transfer(node: str, status: str, duration: int | None) -> None:
@@ -630,95 +389,63 @@ def test_final_commit_check_rejects_transfer_after_last_node(
                 (ACCOUNT, RUN),
             )
 
-    runner = _Runner()
-    kernel = _kernel(database, runner)
-    result = kernel.execute(recipe=recipe, inputs=_inputs(), event_sink=transfer)
+    runner = Runner()
+    kernel = node_kernel(database, runner)
+    result = kernel.execute(recipe=recipe, inputs=recipe_inputs(), event_sink=transfer)
     assert result.status is KernelStatus.REJECTED
     assert result.rejection_code == "lease_lost"
     assert runner.calls == ["a"]
 
 
 def test_message_terminal_rejects_late_result(database: BridgesDatabase) -> None:
-    _seed(database)
+    seed_generation_run(database)
     with database.transaction():
         database.connection.execute(
             "UPDATE messages SET status = 'done'"
             " WHERE account_id = ? AND message_id = ?",
             (ACCOUNT, ASSISTANT),
         )
-    runner = _Runner()
-    kernel = _kernel(database, runner)
-    result = _execute(kernel)
+    runner = Runner()
+    kernel = node_kernel(database, runner)
+    result = execute_node_recipe(kernel)
     assert result.status is KernelStatus.REJECTED
     assert result.rejection_code == "message_terminal"
 
 
 def test_cross_run_artifact_reuse_and_invalidation(database: BridgesDatabase) -> None:
-    _seed(database)
-    runner = _Runner()
-    kernel = _kernel(database, runner)
-    assert _execute(kernel).status is KernelStatus.COMPLETED
+    seed_generation_run(database)
+    runner = Runner()
+    kernel = node_kernel(database, runner)
+    assert execute_node_recipe(kernel).status is KernelStatus.COMPLETED
 
     # 新运行（新 run_id）复用同一会话的合格产物：不重复执行。
-    second_runner = _Runner()
-    second_kernel = NodeKernel(
-        registry=RecipeRegistry(capabilities=CAPABILITIES, gates=GATES),
-        repository=NodeKernelRepository(database),
-        guard=RunCommitGuard(
-            ConversationRepository(database),
-            account_id=ACCOUNT,
-            run_id="run-2",
-            conversation_id=CONVERSATION,
-            assistant_message_id=ASSISTANT,
-            clock=lambda: NOW,
-        ),
-        gates={"gate.required": lambda invocation, execution: QualityGateResult(
-            gate="gate.required", verdict=QualityVerdict.PASS
-        )},
-        runner=second_runner,
-        clock=lambda: NOW,
-    )
-    _seed(database, run_id="run-2")
-    result = second_kernel.execute(recipe=_recipe(), inputs=_inputs(run_id="run-2"))
+    second_runner = Runner()
+    second_kernel = node_kernel(database, second_runner, run_id="run-2")
+    seed_generation_run(database, run_id="run-2")
+    result = second_kernel.execute(recipe=node_recipe(), inputs=recipe_inputs(run_id="run-2"))
     assert result.status is KernelStatus.COMPLETED
     assert second_runner.calls == []
 
     # 输入变化（内容不同）只让输入键变化的节点重跑。
-    third_runner = _Runner()
-    third_kernel = NodeKernel(
-        registry=RecipeRegistry(capabilities=CAPABILITIES, gates=GATES),
-        repository=NodeKernelRepository(database),
-        guard=RunCommitGuard(
-            ConversationRepository(database),
-            account_id=ACCOUNT,
-            run_id="run-3",
-            conversation_id=CONVERSATION,
-            assistant_message_id=ASSISTANT,
-            clock=lambda: NOW,
-        ),
-        gates={"gate.required": lambda invocation, execution: QualityGateResult(
-            gate="gate.required", verdict=QualityVerdict.PASS
-        )},
-        runner=third_runner,
-        clock=lambda: NOW,
-    )
-    _seed(database, run_id="run-3")
+    third_runner = Runner()
+    third_kernel = node_kernel(database, third_runner, run_id="run-3")
+    seed_generation_run(database, run_id="run-3")
     changed = third_kernel.execute(
-        recipe=_recipe(), inputs=_inputs(user_content="changed", run_id="run-3")
+        recipe=node_recipe(), inputs=recipe_inputs(user_content="changed", run_id="run-3")
     )
     assert changed.status is KernelStatus.COMPLETED
     assert third_runner.calls == ["a", "b", "c"]
 
 
 def test_cross_run_partial_artifact_is_recomputed(database: BridgesDatabase) -> None:
-    _seed(database)
-    first_runner = _Runner(partial_nodes=("a",))
-    assert _execute(_kernel(database, first_runner)).status is KernelStatus.COMPLETED
+    seed_generation_run(database)
+    first_runner = Runner(partial_nodes=("a",))
+    assert execute_node_recipe(node_kernel(database, first_runner)).status is KernelStatus.COMPLETED
 
-    _seed(database, run_id="run-2")
-    second_runner = _Runner()
-    result = _kernel(database, second_runner, run_id="run-2").execute(
-        recipe=_recipe(), inputs=_inputs(run_id="run-2")
+    seed_generation_run(database, run_id="run-2")
+    second_runner = Runner()
+    result = node_kernel(database, second_runner, run_id="run-2").execute(
+        recipe=node_recipe(), inputs=recipe_inputs(run_id="run-2")
     )
 
     assert result.status is KernelStatus.COMPLETED
@@ -726,153 +453,12 @@ def test_cross_run_partial_artifact_is_recomputed(database: BridgesDatabase) -> 
 
 
 def test_account_isolation_for_artifacts(database: BridgesDatabase) -> None:
-    _seed(database)
-    runner = _Runner()
-    kernel = _kernel(database, runner)
-    assert _execute(kernel).status is KernelStatus.COMPLETED
+    seed_generation_run(database)
+    runner = Runner()
+    kernel = node_kernel(database, runner)
+    assert execute_node_recipe(kernel).status is KernelStatus.COMPLETED
     repository = NodeKernelRepository(database)
     assert repository.list_artifacts("acc-2", CONVERSATION) == []
     assert repository.find_artifact(
-        "acc-2", CONVERSATION, "a", _recipe().node("a").input_key(_inputs())
+        "acc-2", CONVERSATION, "a", node_recipe().node("a").input_key(recipe_inputs())
     ) is None
-
-
-# ---------------------------------------------------------------------------
-# 并行组（工单 25：书/视频两路独立检索共用并行上限）
-# ---------------------------------------------------------------------------
-
-
-def _parallel_recipe(*, parallel_limit: int = 2) -> RecipeDefinition:
-    """a → (b ∥ c)：b、c 互不依赖，登记在同一并行组。
-
-    配方 ID 与 ``_artifact`` 的测试产物一致（测试产物硬编码 test-recipe）。
-    """
-    return RecipeDefinition(
-        recipe_id="test-recipe",
-        recipe_version="v1",
-        nodes=(
-            _spec("a"),
-            replace(_spec("b", depends_on=("a",)), parallel_group="search"),
-            replace(_spec("c", depends_on=("a",)), parallel_group="search"),
-        ),
-        parallel_limit=parallel_limit,
-    )
-
-
-def test_parallel_group_rejects_intra_group_dependency() -> None:
-    registry = RecipeRegistry(capabilities=CAPABILITIES, gates=GATES)
-    recipe = RecipeDefinition(
-        recipe_id="bad-parallel",
-        recipe_version="v1",
-        nodes=(
-            _spec("a"),
-            replace(_spec("b"), parallel_group="search"),
-            replace(_spec("c", depends_on=("b",)), parallel_group="search"),
-        ),
-        parallel_limit=2,
-    )
-    with pytest.raises(RecipeValidationError, match="parallel_group_dependency"):
-        registry.register(recipe)
-
-
-def test_parallel_group_rejects_split_registration() -> None:
-    registry = RecipeRegistry(capabilities=CAPABILITIES, gates=GATES)
-    recipe = RecipeDefinition(
-        recipe_id="split-parallel",
-        recipe_version="v1",
-        nodes=(
-            replace(_spec("a"), parallel_group="search"),
-            _spec("b", depends_on=("a",)),
-            replace(_spec("c", depends_on=("b",)), parallel_group="search"),
-        ),
-        parallel_limit=2,
-    )
-    with pytest.raises(RecipeValidationError, match="parallel_group_split"):
-        registry.register(recipe)
-
-
-def test_parallel_group_runs_concurrently_and_keeps_recipe_order(
-    database: BridgesDatabase,
-) -> None:
-    """组内节点真实并发（两侧互相等待才能通过），提交顺序仍是配方顺序。"""
-    _seed(database)
-    barrier = threading.Barrier(2, timeout=5)
-    overlap: list[str] = []
-    lock = threading.Lock()
-
-    def on_call(name: str) -> None:
-        if name not in {"b", "c"}:
-            return
-        with lock:
-            overlap.append(name)
-        barrier.wait()
-
-    runner = _Runner(on_call=on_call)
-    result = _kernel(database, runner).execute(
-        recipe=_parallel_recipe(), inputs=_inputs()
-    )
-    assert result.status is KernelStatus.COMPLETED
-    assert sorted(overlap) == ["b", "c"]
-    assert [state.node for state in result.nodes] == ["a", "b", "c"]
-    assert result.delivery is not None and result.delivery.node == "c"
-
-
-def test_parallel_group_enforces_limit(database: BridgesDatabase) -> None:
-    """并行上限为 2 时三个互不依赖节点最多同时执行两个（分批执行完）。"""
-    _seed(database)
-    lock = threading.Lock()
-    active = 0
-    peak = 0
-
-    class _LimitRunner(_Runner):
-        def __call__(self, invocation: NodeInvocation) -> NodeExecution:
-            nonlocal active, peak
-            with lock:
-                active += 1
-                peak = max(peak, active)
-            try:
-                time.sleep(0.02)
-                return super().__call__(invocation)
-            finally:
-                with lock:
-                    active -= 1
-
-    recipe = RecipeDefinition(
-        recipe_id="limited-parallel",
-        recipe_version="v1",
-        nodes=(
-            replace(_spec("a"), parallel_group="search"),
-            replace(_spec("b"), parallel_group="search"),
-            replace(_spec("c"), parallel_group="search"),
-        ),
-        parallel_limit=2,
-    )
-    runner = _LimitRunner()
-    result = _kernel(database, runner).execute(recipe=recipe, inputs=_inputs())
-    assert result.status is KernelStatus.COMPLETED
-    assert peak == 2
-    assert sorted(runner.calls) == ["a", "b", "c"]
-
-
-def test_parallel_group_failure_keeps_sibling_artifact(
-    database: BridgesDatabase,
-) -> None:
-    """一侧失败不抹掉另一侧：同组已提交的兄弟产物保留，下游不执行。"""
-    _seed(database)
-    runner = _Runner()
-    runner.fail_next["c"] = 1
-    result = _kernel(database, runner).execute(
-        recipe=_parallel_recipe(), inputs=_inputs()
-    )
-    assert result.status is KernelStatus.FAILED
-    assert result.failure is not None and result.failure.node == "c"
-    assert runner.calls == ["a", "b", "c"]
-    assert [artifact.node for artifact in result.artifacts] == ["a", "b", "c"]
-
-    # 重新执行同一运行：b 的完成收据与产物照常复用，只重跑失败的 c。
-    retry_runner = _Runner()
-    retried = _kernel(database, retry_runner).execute(
-        recipe=_parallel_recipe(), inputs=_inputs()
-    )
-    assert retried.status is KernelStatus.COMPLETED
-    assert retry_runner.calls == ["c"]

@@ -23,7 +23,7 @@ import secrets
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from bridges.contracts.lifecycle import (
     AccountDeletionProjection,
@@ -55,6 +55,14 @@ _DELETION_QUEUE = "deletion"
 ObjectFileCleaner = Callable[[str], None]
 
 
+class AccountSessionLifecycle(Protocol):
+    """账户删除时撤销并清理某个外部专用会话。"""
+
+    def fence(self, account_id: str) -> None: ...
+
+    def remove(self, account_id: str) -> None: ...
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -75,6 +83,7 @@ class DeletionService:
         observability_service: ObservabilityService,
         object_file_cleaner: ObjectFileCleaner | None = None,
         task_queue: TaskQueue | None = None,
+        account_session_lifecycle: AccountSessionLifecycle | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
@@ -82,6 +91,7 @@ class DeletionService:
         self._smtp_credentials = smtp_credential_store
         self._observability = observability_service
         self._file_cleaner = object_file_cleaner
+        self._account_session_lifecycle = account_session_lifecycle
         # 失败重试走统一领取型任务契约（Issue 43）：租约/退避/崩溃恢复
         # 由 TaskQueue 承担，本服务只提供「重试这一件删除」的 handler。
         # 默认不设重试预算（default_max_attempts=0）：失败删除在业务表
@@ -156,6 +166,7 @@ class DeletionService:
             raise DataLifecycleError(
                 "deletion_unavailable", str(exc), 503
             ) from exc
+        self._fence_account_session(deletion_id, account_id)
         try:
             # 事务删除全部数据行：失败整体回滚，状态行仍可观察并重试。
             delete_account_rows(self._database, account_id)
@@ -196,6 +207,7 @@ class DeletionService:
                 " retry_count + 1 WHERE deletion_id = ?",
                 (AccountDeletionStatus.FAILED.value, deletion_id),
             )
+        self._fence_account_session(deletion_id, account_id)
         pending_hashes = json.loads(row["pending_hashes"] or "[]")
         # 数据库行若仍在（上次在事务前失败），重跑事务删除；已删除则
         # 只补文件系统清理阶段。
@@ -269,6 +281,8 @@ class DeletionService:
         try:
             self._cleanup_object_files(pending_hashes)
             self._cleanup_credentials(account_id)
+            if self._account_session_lifecycle is not None:
+                self._account_session_lifecycle.remove(account_id)
             if self._identity is not None:
                 self._identity.delete_account(account_id)
         except Exception as exc:  # noqa: BLE001 - 清理失败可重试
@@ -320,6 +334,17 @@ class DeletionService:
         账户 Qwen Key 已由启动清退整体退役，删除流程不再持有或处理它。
         """
         self._smtp_credentials.delete(account_id)
+
+    def _fence_account_session(self, deletion_id: str, account_id: str) -> None:
+        """在事务删除前阻止新会话请求，并在失败重试时重新确认栅栏。"""
+        if self._account_session_lifecycle is None:
+            return
+        try:
+            self._account_session_lifecycle.fence(account_id)
+        except Exception as exc:  # noqa: BLE001 - 栅栏失败时保留账户数据
+            self._mark_failed(
+                deletion_id, account_id, "贴吧会话隔离失败", str(exc)
+            )
 
     def _mark_failed(
         self,

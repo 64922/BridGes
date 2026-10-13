@@ -13,7 +13,7 @@ from bridges.contracts.modules import ModuleQueryStatus
 from bridges.tieba.contracts import ReadStatus, TiebaReply, TiebaSearchHit
 from bridges.tieba.parsing import parse_tieba_request
 from bridges.tieba.searching import HitDiagnostics, SearchOutcome, plan_queries, query_record
-from tests.chat.test_chat_api import _register
+from tests.tieba.support import _register
 
 
 def test_legacy_manual_browser_setup_routes_return_410(
@@ -43,8 +43,7 @@ def test_original_question_uses_account_bound_browser_through_chat(
     from bridges.tieba.browser import BrowserTiebaSearch, BrowserTiebaThreadReader
     from bridges.tieba.reading import HttpTiebaThreadReader
     from bridges.tieba.service import TiebaResearchService
-    from tests.chat.test_chat_api import _create_conversation
-    from tests.tieba.test_tieba_module_flow import _run_and_read, _send
+    from tests.tieba.support import _create_conversation, _run_and_read, _send
 
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'browser-chat.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "browser-chat-test-secret")
@@ -106,8 +105,8 @@ def test_continue_retries_auth_and_reuses_completed_read_evidence(
     monkeypatch: pytest.MonkeyPatch,
     generation_helpers: dict[str, Any],
 ) -> None:
-    from tests.chat.test_chat_api import _create_conversation
-    from tests.tieba.test_tieba_module_flow import (
+    from tests.tieba.support import (
+        _create_conversation,
         _FakeReader,
         _install_tieba_service,
         _read_result,

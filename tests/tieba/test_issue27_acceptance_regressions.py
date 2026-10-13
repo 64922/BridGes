@@ -5,13 +5,16 @@ from datetime import UTC, datetime
 import pytest
 
 from bridges.contracts.modules import ModuleQueryStatus
-from bridges.tieba import evidence
 from bridges.tieba.contracts import ReadStatus, TiebaOfficialCheck, TiebaPostProjection, TiebaReply
-from bridges.tieba.kernel import build_evidence_plan, run_verification
+from bridges.tieba.evidence_official import assess_applicability, detect_conflicts, verify_official
+from bridges.tieba.evidence_projection import build_projection
+from bridges.tieba.evidence_search import search_candidates
+from bridges.tieba.evidence_time import time_filter_state
+from bridges.tieba.evidence_verification import build_evidence_plan, run_verification
 from bridges.tieba.parsing import parse_tieba_request
 from bridges.tieba.presenting import build_sections
 from bridges.tieba.searching import plan_queries, query_record
-from tests.tieba.test_tieba_module_flow import _FakeOfficialReader, _FakeSearchPort
+from tests.tieba.support import _FakeOfficialReader, _FakeSearchPort
 
 
 def _check(excerpt: str, title: str = "华东交通大学转专业管理办法") -> TiebaOfficialCheck:
@@ -83,7 +86,7 @@ def _post(
 def test_unconfirmed_official_scope_cannot_be_applicable(
     question: str, title: str, excerpt: str
 ) -> None:
-    assert not evidence.assess_applicability(
+    assert not assess_applicability(
         _check(excerpt, title), parse_tieba_request(question)
     ).applicable
 
@@ -106,16 +109,14 @@ def test_no_proven_supersession_keeps_both(
 ) -> None:
     analysis = parse_tieba_request(question)
     check = _check(excerpt)
-    check = check.model_copy(
-        update={"applicability": evidence.assess_applicability(check, analysis)}
-    )
-    conflicts = evidence.detect_conflicts(analysis, [check], [_post(posted_at)])
+    check = check.model_copy(update={"applicability": assess_applicability(check, analysis)})
+    conflicts = detect_conflicts(analysis, [check], [_post(posted_at)])
     assert conflicts and conflicts[0].resolution == "kept_both"
 
 
 def test_matching_negative_statements_are_not_a_conflict() -> None:
     analysis = parse_tieba_request("华东交通大学吧 转专业 规定")
-    assert not evidence.detect_conflicts(
+    assert not detect_conflicts(
         analysis, [_check("转专业不用缴费。")], [_post(content="转专业不用缴费。")]
     )
 
@@ -126,14 +127,14 @@ def test_changed_reply_date_is_rejected_by_verification() -> None:
     projected = post.model_copy(
         update={"replies": [post.replies[0].model_copy(update={"posted_at": "2020-01-01"})]}
     )
-    projection = evidence.build_projection(
+    projection = build_projection(
         analysis=analysis,
         records=[],
         confirmed=[projected],
         rejected=[],
         unconfirmed=[],
         sections=[],
-        time_filter=evidence.time_filter_state(analysis, [post]),
+        time_filter=time_filter_state(analysis, [post]),
         official_checks=[],
     ).model_copy(update={"official_unverified_note": "规定未核实。"})
     verification = run_verification(
@@ -151,7 +152,7 @@ def test_real_search_payload_reuses_successful_empty_query() -> None:
     queries = plan_queries(analysis)
     record = query_record(query=queries[0], status=ModuleQueryStatus.EMPTY, evidence_count=0)
     port = _FakeSearchPort()
-    attempts = evidence.search_candidates(
+    attempts = search_candidates(
         port,
         "acc-27",
         analysis,
@@ -173,7 +174,7 @@ def test_official_resume_reuses_discovery_and_read_pages() -> None:
     check = _check("转专业申请由教务处统一审批。")
     port = _FakeSearchPort()
     reader = _FakeOfficialReader()
-    outcome = evidence.verify_official(
+    outcome = verify_official(
         port,
         reader,
         "acc-27",
@@ -192,7 +193,7 @@ def test_official_resume_reuses_discovery_and_read_pages() -> None:
 
 
 def test_section_cannot_cite_wrong_post_or_floor() -> None:
-    from bridges.tieba.kernel import _quotes_traceable
+    from bridges.tieba.evidence_verification import _quotes_traceable
 
     post = _post(content="我转专业每年申请一次。")
     sections = build_sections([post])
@@ -203,19 +204,17 @@ def test_section_cannot_cite_wrong_post_or_floor() -> None:
 def test_conflict_cannot_change_resolution_or_quote() -> None:
     analysis = parse_tieba_request("华东交通大学吧 转专业 规定")
     check = _check("转专业申请由教务处统一审批。")
-    check = check.model_copy(
-        update={"applicability": evidence.assess_applicability(check, analysis)}
-    )
+    check = check.model_copy(update={"applicability": assess_applicability(check, analysis)})
     post = _post()
-    conflicts = evidence.detect_conflicts(analysis, [check], [post])
-    projection = evidence.build_projection(
+    conflicts = detect_conflicts(analysis, [check], [post])
+    projection = build_projection(
         analysis=analysis,
         records=[],
         confirmed=[post],
         rejected=[],
         unconfirmed=[],
         sections=build_sections([post]),
-        time_filter=evidence.time_filter_state(analysis, [post]),
+        time_filter=time_filter_state(analysis, [post]),
         official_checks=[check],
         conflicts=[conflicts[0].model_copy(update={"resolution": "official_newer"})],
     )

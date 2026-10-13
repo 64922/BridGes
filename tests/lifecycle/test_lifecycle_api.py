@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.api.auth import SESSION_COOKIE_NAME
 from bridges.api.main import create_app
 from bridges.config import get_settings
 from bridges.lifecycle.backup import BACKUP_MAGIC
@@ -58,12 +59,11 @@ def _expire_recent_auth(client: TestClient) -> None:
 
 
 def _create_chat(client: TestClient) -> str:
-    response = client.post(
-        "/chat/conversations",
-        json={"title": "API 测试对话", "mode": "companion"},
-    )
-    assert response.status_code == 201
-    return response.json()["conversation_id"]
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert session_token is not None
+    subject = client.app.state.identity_service.resolve_session(session_token).subject
+    conversation = client.app.state.chat_service.create_conversation(subject.account_id)
+    return conversation.conversation_id
 
 
 # ---------------------------------------------------------------------------

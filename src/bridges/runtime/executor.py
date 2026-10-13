@@ -26,28 +26,12 @@ from pydantic import SecretStr
 if TYPE_CHECKING:
     from bridges.lifecycle.deletion import DeletionService
 
-from bridges.ai import (
-    CapabilityRegistry,
-    CassetteStore,
-    ModelGateway,
-    QwenApiClient,
-    QwenImageAdapter,
-    QwenVisionAdapter,
-    QwenWanAdapter,
-)
-from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID, VISION_MODEL_ID
+from bridges.ai import QwenApiClient
 from bridges.ai.production import build_production_composition
 from bridges.ai.run_model_config import RunModelConfigProvider
 from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.chat.attachments import ChatAttachmentService
-from bridges.chat.repository import ConversationRepository
 from bridges.config import Settings
-from bridges.contracts.ai import (
-    CapabilityKind,
-    CapabilityRecord,
-    CapabilityStatus,
-    RetryPolicy,
-)
 from bridges.credentials.global_credential import is_global_qwen_key_configured
 from bridges.credentials.runtime_resolver import RuntimeCredentialResolver
 from bridges.credentials.store import (
@@ -69,6 +53,8 @@ from bridges.persistence import (
     build_state_store,
     resolve_database_path,
 )
+from bridges.runtime.executor_cleanup import sweep_expired_attachments
+from bridges.runtime.executor_media import build_image_service, build_video_service
 from bridges.runtime.loop import supervised_loop
 from bridges.storage import (
     SCHEMA_VERSION,
@@ -330,14 +316,6 @@ class BackgroundExecutor:
         return self._ingestion
 
     def _ensure_image_service(self) -> ImageService | None:
-        """惰性建立图片任务处理服务（Issue 31）。
-
-        与 API 进程共享同一数据目录：图片任务按租约领取、提交/轮询
-        DashScope 云端任务、完成转存账户对象库并更新消息投影。GQ-01
-        启动硬门保证规范运行下 API 与 worker 使用同一全局百炼凭据；
-        库级兜底在缺少凭据时待机（无凭据不假成功，任务保持排队等待
-        用户处理）。
-        """
         if self._image is not None or self._idle_reason is not None:
             return self._image
         repository = self._ensure_repository()
@@ -348,68 +326,13 @@ class BackgroundExecutor:
             self._idle_reason = _IDLE_NO_QWEN_KEY_IMAGE
             return None
         try:
-            cassette_store = None
-            # Issue 39 AC5 / GQ-04：cassette 录制禁令与 API 进程同一语义——
-            # production 强制禁止录制（私人提示或响应正文绝不落盘）。
-            record_mode = (
-                settings.qwen_record_cassettes
-                and settings.environment.lower() != "production"
-            )
-            if settings.qwen_cassette_dir is not None:
-                cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
-            client = QwenApiClient(
-                api_key=settings.qwen_api_key,
-                workspace_id=settings.qwen_workspace_id,
-                region=settings.qwen_region,
-                cassette_store=cassette_store,
-                record_mode=record_mode,
-            )
-            registry = CapabilityRegistry()
-            registry.register(
-                CapabilityRecord(
-                    name="qwen_image",
-                    version="1",
-                    kind=CapabilityKind.MODEL,
-                    vendor="qwen",
-                    region="cn-beijing",
-                    model_id=IMAGE_MODEL_ID,
-                    input_schema_version="image-prompt-v1",
-                    output_schema_version="image-task-v1",
-                    status=CapabilityStatus.VERIFIED,
-                    retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-                    prompt_version="2026-08-05",
-                )
-            )
-            # 替代文本由核心视觉模型（qwen_vision，Issue 09 与核心对话
-            # 对齐同一固定快照）自动生成：注册同一能力，失败时服务层
-            # 确定性降级，不阻断生成完成。
-            registry.register(
-                CapabilityRecord(
-                    name="qwen_vision",
-                    version="1",
-                    kind=CapabilityKind.MODEL,
-                    vendor="qwen",
-                    region="cn-beijing",
-                    model_id=VISION_MODEL_ID,
-                    input_schema_version="image-vision-v1",
-                    output_schema_version="vision-text-v1",
-                    status=CapabilityStatus.VERIFIED,
-                    retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-                    prompt_version="2026-08-05",
-                )
-            )
-            gateway = ModelGateway(
-                registry, model_config_provider=self._run_model_config_provider()
-            )
-            gateway.register_adapter("qwen_image", "1", QwenImageAdapter(client))
-            gateway.register_adapter("qwen_vision", "1", QwenVisionAdapter(client))
             assert self._database is not None
-            self._image = ImageService(
-                database=self._database,
-                gateway=gateway,
-                object_repository=repository,
-                chat_repository=ConversationRepository(self._database),
-                observability_service=ObservabilityService(),
+            self._image = build_image_service(
+                settings,
+                self._database,
+                repository,
+                self._run_model_config_provider(),
+                client_factory=QwenApiClient,
             )
         except (StorageError, PersistenceError, ValueError) as exc:
             self._idle_reason = f"error: {exc}"
@@ -417,14 +340,6 @@ class BackgroundExecutor:
         return self._image
 
     def _ensure_video_service(self) -> VideoService | None:
-        """惰性建立视频任务处理服务（Issue 32，ADR-0007 Wan 例外）。
-
-        与 API 进程共享同一数据目录：视频任务按租约领取、提交/轮询
-        DashScope 云端任务、完成转存账户对象库并更新消息投影。GQ-01
-        启动硬门保证规范运行下 API 与 worker 使用同一全局百炼凭据；
-        库级兜底在缺少凭据时待机（无凭据不假成功，任务保持排队等待
-        用户处理）。
-        """
         if self._video is not None or self._idle_reason is not None:
             return self._video
         repository = self._ensure_repository()
@@ -435,52 +350,13 @@ class BackgroundExecutor:
             self._idle_reason = _IDLE_NO_QWEN_KEY_VIDEO
             return None
         try:
-            cassette_store = None
-            # Issue 39 AC5 / GQ-04：cassette 录制禁令与 API 进程同一语义——
-            # production 强制禁止录制（私人提示或响应正文绝不落盘）。
-            record_mode = (
-                settings.qwen_record_cassettes
-                and settings.environment.lower() != "production"
-            )
-            if settings.qwen_cassette_dir is not None:
-                cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
-            client = QwenApiClient(
-                api_key=settings.qwen_api_key,
-                workspace_id=settings.qwen_workspace_id,
-                region=settings.qwen_region,
-                cassette_store=cassette_store,
-                record_mode=record_mode,
-            )
-            registry = CapabilityRegistry()
-            # Issue 32: Wan 是模型矩阵唯一非 Qwen 系列例外（ADR-0007），
-            # 仍使用同一全局百炼运行凭据（GQ-01/GQ-04），遵守单类别单
-            # 快照合同。
-            registry.register(
-                CapabilityRecord(
-                    name="qwen_wan",
-                    version="1",
-                    kind=CapabilityKind.MODEL,
-                    vendor="wan",
-                    region="cn-beijing",
-                    model_id=VIDEO_MODEL_ID,
-                    input_schema_version="video-prompt-v1",
-                    output_schema_version="video-task-v1",
-                    status=CapabilityStatus.VERIFIED,
-                    retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-                    prompt_version="2026-08-05",
-                )
-            )
-            gateway = ModelGateway(
-                registry, model_config_provider=self._run_model_config_provider()
-            )
-            gateway.register_adapter("qwen_wan", "1", QwenWanAdapter(client))
             assert self._database is not None
-            self._video = VideoService(
-                database=self._database,
-                gateway=gateway,
-                object_repository=repository,
-                chat_repository=ConversationRepository(self._database),
-                observability_service=ObservabilityService(),
+            self._video = build_video_service(
+                settings,
+                self._database,
+                repository,
+                self._run_model_config_provider(),
+                client_factory=QwenApiClient,
             )
         except (StorageError, PersistenceError, ValueError) as exc:
             self._idle_reason = f"error: {exc}"
@@ -500,6 +376,7 @@ class BackgroundExecutor:
         # 函数内延迟导入：DeletionService 反向依赖 runtime.queue（Issue
         # 43），顶层导入会在 runtime 包初始化期间形成循环。
         from bridges.lifecycle.deletion import DeletionService
+        from bridges.tieba.account_sessions import TiebaAccountSessionLifecycle
 
         repository = self._ensure_repository()
         if repository is None:
@@ -527,6 +404,9 @@ class BackgroundExecutor:
                 identity_service=identity_service,
                 smtp_credential_store=smtp_credential_store,
                 observability_service=ObservabilityService(),
+                account_session_lifecycle=TiebaAccountSessionLifecycle(
+                    data_dir=data_dir
+                ),
             )
         except (StorageError, PersistenceError, ValueError) as exc:
             self._idle_reason = f"error: {exc}"
@@ -534,14 +414,13 @@ class BackgroundExecutor:
         return self._deletion
 
     def _ensure_attachment_cleanup(self) -> ChatAttachmentService | None:
-        """惰性建立聊天附件服务（Issue 04 孤儿附件清理用）。"""
-        if self._attachment_cleanup is not None or self._idle_reason is not None:
-            return self._attachment_cleanup
-        repository = self._ensure_repository()
-        if repository is None:
-            return None
-        assert self._database is not None
-        self._attachment_cleanup = ChatAttachmentService(self._database, repository)
+        if self._attachment_cleanup is None and self._idle_reason is None:
+            repository = self._ensure_repository()
+            if repository is not None:
+                assert self._database is not None
+                self._attachment_cleanup = ChatAttachmentService(
+                    self._database, repository
+                )
         return self._attachment_cleanup
 
     def run_tick(self) -> str:
@@ -595,26 +474,10 @@ class BackgroundExecutor:
         # 期限窗口内经会话页恢复草稿；已绑定对象绝不进入清理范围）。
         attachment_cleanup = self._ensure_attachment_cleanup()
         if attachment_cleanup is not None:
-            try:
-                swept = attachment_cleanup.sweep_unbound(
-                    datetime.now(UTC)
-                    - timedelta(hours=self._settings.unbound_attachment_ttl_hours)
-                )
-                if swept:
-                    summaries.append(f"worker: 清理 {swept} 个过期未绑定附件。")
-            except Exception as exc:  # noqa: BLE001 - 清理失败记录但不退出循环
-                summaries.append(f"worker: 附件清理出错：{exc}")
-            # V2 Issue 05：账户级附件草稿按同一安全期限清理（已绑定附件
-            # 不在草稿域，绝不误删）。
-            try:
-                swept = attachment_cleanup.sweep_drafts(
-                    datetime.now(UTC)
-                    - timedelta(hours=self._settings.unbound_attachment_ttl_hours)
-                )
-                if swept:
-                    summaries.append(f"worker: 清理 {swept} 个过期附件草稿。")
-            except Exception as exc:  # noqa: BLE001 - 清理失败记录但不退出循环
-                summaries.append(f"worker: 草稿清理出错：{exc}")
+            cutoff = datetime.now(UTC) - timedelta(
+                hours=self._settings.unbound_attachment_ttl_hours
+            )
+            summaries.extend(sweep_expired_attachments(attachment_cleanup, cutoff=cutoff))
         return " ".join(summaries)
 
     def run_loop(
@@ -624,10 +487,8 @@ class BackgroundExecutor:
         stop: threading.Event | None = None,
         emit: Callable[[str], None] = print,
     ) -> None:
-        """受监督循环：每轮执行一次任务，收到停止信号后平滑退出。"""
+        """受监督循环：每轮执行一次任务并平滑响应停止信号。"""
         supervised_loop(
-            tick=self.run_tick,
-            stop=stop or threading.Event(),
-            interval=interval,
-            emit=emit,
+            tick=self.run_tick, stop=stop or threading.Event(),
+            interval=interval, emit=emit,
         )

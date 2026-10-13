@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import re
-import time
 from datetime import UTC, datetime
 from html import unescape
 from typing import Protocol
@@ -16,6 +15,7 @@ from typing import Protocol
 import httpx
 
 from bridges.tieba.contracts import TiebaOfficialCheck, TiebaQuestionAnalysis
+from bridges.tieba.http_requests import TiebaHttpRequestError, tracked_get
 from bridges.tieba.lexicon import (
     OFFICIAL_DOMAIN_SUFFIX,
     OFFICIAL_TRIGGERS,
@@ -105,6 +105,8 @@ def is_official_url(url: str) -> bool:
 class HttpOfficialSiteReader:
     """官方页面读取实现（公开 GET，固定 UA，有界体积与时间）。"""
 
+    uses_per_request_budget = True
+
     def __init__(
         self,
         *,
@@ -148,11 +150,17 @@ class HttpOfficialSiteReader:
             return _failed(
                 url, host, fetched_at, "tieba_official_cancelled", "已停止，未读取官方页面。"
             )
-        timeout = OFFICIAL_FETCH_TIMEOUT_SECONDS
-        if deadline is not None:
-            timeout = max(0.5, min(timeout, deadline - time.monotonic()))
         try:
-            response = self._client.get(url, timeout=timeout)
+            response = tracked_get(
+                self._client,
+                url,
+                purpose="tieba_official_fetch",
+                timeout=OFFICIAL_FETCH_TIMEOUT_SECONDS,
+                allowed_url=is_official_url,
+                deadline=deadline,
+            )
+        except TiebaHttpRequestError as exc:
+            return _failed(url, host, fetched_at, exc.code, exc.message)
         except httpx.TimeoutException:
             return _failed(
                 url,

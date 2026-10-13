@@ -278,6 +278,8 @@ class WebSearchServiceAdapter:
     页面本来就常被访问限制挡住，正文由 ``tieba.read`` 自己按真实结果判断。
     """
 
+    uses_per_request_budget = True
+
     def __init__(self, service: object, *, max_results: int = 6) -> None:
         self._service = service
         self._max_results = max_results

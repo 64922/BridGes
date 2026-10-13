@@ -22,7 +22,8 @@ from bridges.web_search.tavily import TAVILY_SEARCH_ENDPOINT, TavilySearchClient
 def test_holiday_discussion_keeps_the_topic_and_experience_intent() -> None:
     analysis = parse_tieba_request("我想了解国庆节假期的讨论")
     assert analysis.topic_terms == ["国庆节", "假期"]
-    assert analysis.question_kind.value == "mixed"
+    assert analysis.question_kind.value == "experience"
+    assert not analysis.needs_official_check
 
 
 def test_both_forum_queries_stay_inside_tieba() -> None:

@@ -11,66 +11,56 @@
 from __future__ import annotations
 
 import threading
-import time
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from bridges.contracts.chat import ChatMessageStatus
-from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
+from bridges.contracts.ai import ModelCallResult
+from bridges.contracts.modules import ModuleWaitState
 from bridges.kernel.contracts import (
-    ArtifactTrust,
-    KernelResult,
-    KernelStatus,
     RecipeInputs,
 )
 from bridges.kernel.executor import NodeKernel
 from bridges.kernel.guard import RunCommitGuard
 from bridges.kernel.repository import NodeKernelRepository
+from bridges.tieba.budget import TiebaBudget, bind_request_guard
 from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaResearchProjection,
     TiebaResearchStatus,
 )
-from bridges.tieba.evidence import (
-    FORUM_NAME,
-    topic_of,
-)
-from bridges.tieba.evidence import (
-    apply_time_condition as _apply_time_condition,
-)
-from bridges.tieba.evidence import (
-    official_candidates as _official_candidates,
-)
-from bridges.tieba.evidence import (
-    time_filter_state as _time_filter_state,
-)
-from bridges.tieba.kernel import (
+from bridges.tieba.delivery import TiebaResultDelivery, stopped_result
+from bridges.tieba.evidence import READ_DEADLINE_SECONDS
+from bridges.tieba.evidence_official import OFFICIAL_DEADLINE_SECONDS
+from bridges.tieba.evidence_search import SEARCH_DEADLINE_SECONDS, search_candidates
+from bridges.tieba.kernel import TiebaNodeFlow
+from bridges.tieba.message_audit import verify_tieba_message
+from bridges.tieba.official import TiebaOfficialReader
+from bridges.tieba.parsing import is_continue_request
+from bridges.tieba.quality_gates import TIEBA_GATE_HANDLERS
+from bridges.tieba.reading import TiebaThreadReader
+from bridges.tieba.recipe import (
     NODE_PARSE,
     NODE_SEARCH,
     NODE_SYNTHESIZE,
     NODE_VERIFY,
-    TIEBA_GATE_HANDLERS,
     TIEBA_RECIPE_ID,
     TIEBA_RECIPE_VERSION,
-    TiebaBudget,
-    TiebaNodeFlow,
     build_tieba_recipe,
     tieba_recipe_registry,
-    verified_projection,
 )
-from bridges.tieba.official import TiebaOfficialReader
-from bridges.tieba.parsing import is_continue_request, pending_payload
-from bridges.tieba.presenting import (
-    render_clarification_content,
-    render_empty_content,
-    render_result_content,
-    render_stopped_content,
-    render_waiting_auth_content,
-)
-from bridges.tieba.reading import TiebaThreadReader
 from bridges.tieba.searching import TiebaSearchPort
+from bridges.tieba.service_contract import (
+    TIEBA_MODULE_ID,
+    TIEBA_NODE_LABELS,
+    TIEBA_TOTAL_BUDGET_MS,
+    WAIT_KIND_AUTH,
+    WAIT_KIND_CLARIFICATION,
+    WAIT_REASON_AUTH,
+    WAIT_REASON_CLARIFICATION,
+    TiebaModuleError,
+    TiebaRunOutcome,
+)
 from bridges.tieba.summary import TiebaSummaryGenerator
 
 if TYPE_CHECKING:
@@ -78,57 +68,21 @@ if TYPE_CHECKING:
     from bridges.chat.task_materials import ModuleTaskContext
 
 #: 节点名称与中文标签（进度事件与失败定位共用）。
-TIEBA_NODE_LABELS: dict[str, str] = {
-    "tieba.parse": "贴吧解析",
-    "tieba.plan": "取证计划",
-    "tieba.verify_official": "官方核验",
-    "tieba.search": "贴吧搜索",
-    "tieba.read": "贴吧读取",
-    "tieba.synthesize": "贴吧归纳",
-    "tieba.verify": "证据核验",
-}
 
 #: 显式模块标识与等待原因（父图与前端都依赖）。
-TIEBA_MODULE_ID = "tieba"
-WAIT_KIND_CLARIFICATION = "clarification"
-WAIT_KIND_AUTH = "authentication"
-WAIT_REASON_CLARIFICATION = "tieba_clarification"
-WAIT_REASON_AUTH = "tieba_authentication"
-TIEBA_TOTAL_BUDGET_MS = 300_000
-_AUTH_WAIT_ERROR_CODES = frozenset(
-    {"tieba_browser_auth_required", "tieba_browser_auth_interrupted"}
-)
 
 #: 各阶段的墙钟预算（节点内核按剩余运行预算再收紧）。
-SEARCH_DEADLINE_SECONDS = 25.0
-READ_DEADLINE_SECONDS = 12.0
-OFFICIAL_DEADLINE_SECONDS = 12.0
 
 
-class TiebaModuleError(Exception):
-    """模块内的稳定失败（定位到具体节点）。"""
-
-    def __init__(
-        self, node: str, code: str, message: str, *, retryable: bool = True
-    ) -> None:
-        super().__init__(message)
-        self.node = node
-        self.code = code
-        self.message = message
-        self.retryable = retryable
-
-
-def _is_auth_wait_error(code: str | None) -> bool:
-    return code in _AUTH_WAIT_ERROR_CODES
-
-
-@dataclass(frozen=True)
-class TiebaRunOutcome:
-    """一轮贴吧模块的收敛结果（父图据此写等待原因与判断终态）。"""
-
-    status: TiebaResearchStatus
-    wait_reason: str | None = None
-    queries: list[ModuleQueryRecord] = field(default_factory=list)
+def _browser_request_block_code(guard: RunCommitGuard) -> str | None:
+    decision = guard.verify()
+    if decision.ok:
+        return None
+    if decision.code == "run_stopped":
+        return "tieba_browser_cancelled"
+    if decision.code == "task_version_changed":
+        return "tieba_browser_task_changed"
+    return "tieba_browser_run_invalidated"
 
 
 class TiebaResearchService:
@@ -159,11 +113,10 @@ class TiebaResearchService:
         self._official_deadline_seconds = official_deadline_seconds
         self._task_version_provider = task_version_provider
         self._clock = clock or (lambda: datetime.now(UTC))
-        self._summary_generator = (
-            TiebaSummaryGenerator(model_gateway) if model_gateway is not None else None
-        )
+        self._model_gateway = model_gateway
         self._registry = tieba_recipe_registry()
         self._recipe = build_tieba_recipe()
+        self._delivery = TiebaResultDelivery(clock=self._clock)
 
     def close(self) -> None:
         for candidate in (self._reader, self._official_reader):
@@ -213,7 +166,6 @@ class TiebaResearchService:
             and isinstance(pending.context, dict)
         ):
             remaining_budget_ms = pending.context.get("remaining_work_ms")
-        budget = self._load_budget(repo, account_id, run_id, max_work_ms=remaining_budget_ms)
         task_ref = self._current_task_ref(account_id, conversation_id)
         guard = RunCommitGuard(
             repo,
@@ -226,6 +178,32 @@ class TiebaResearchService:
             stop_event=stop_event,
             clock=self._clock,
         )
+        budget = self._load_budget(
+            repo,
+            account_id,
+            run_id,
+            max_work_ms=remaining_budget_ms,
+            request_guard=lambda: _browser_request_block_code(guard),
+        )
+        summary_attempt = 0
+
+        def record_summary_call(call: ModelCallResult) -> None:
+            nonlocal summary_attempt
+            # 回调仅绑定当前运行，不能放在跨账户共享的服务实例上。
+            if call.lock is None:
+                return  # 网关在调用前拒绝时没有实际模型运行锁。
+            if call.lock.account_id != account_id or call.lock.run_id != (run_id or ""):
+                raise ValueError("贴吧模型审计锁与当前账户或运行不一致")
+            summary_attempt += 1
+            repo.insert_run_lock(
+                account_id,
+                call.lock,
+                object_id=assistant_message_id,
+                operation="tieba_summary",
+                attempt_ordinal=summary_attempt,
+                is_primary=False,
+            )
+
         flow = TiebaNodeFlow(
             search=self._search,
             reader=(
@@ -242,7 +220,11 @@ class TiebaResearchService:
             read_deadline_seconds=self._read_deadline_seconds,
             official_deadline_seconds=self._official_deadline_seconds,
             repository=NodeKernelRepository(repo.database),
-            summary_generator=self._summary_generator,
+            summary_generator=(
+                TiebaSummaryGenerator(self._model_gateway, on_result=record_summary_call)
+                if self._model_gateway is not None
+                else None
+            ),
             run_context=run_context,
             run_model_id=run_model_id,
             model_quota=model_quota,
@@ -255,26 +237,27 @@ class TiebaResearchService:
             runner=flow.run_node,
             clock=self._clock,
         )
-        result = kernel.execute(
-            recipe=self._recipe,
-            inputs=RecipeInputs(
-                account_id=account_id,
-                conversation_id=conversation_id,
-                run_id=run_id or "",
-                user_message_id=user_message_id,
-                user_content=user_message.content,
-                task_id=task_ref[0] if task_ref is not None else None,
-                task_version=task_ref[1] if task_ref is not None else None,
-                wait_identity=self._wait_identity(pending),
-                artifacts={},
-                prior_digest=flow.prior_digest,
-            ),
-            remaining_budget_ms=(
-                budget.remaining_work_ms() if budget is not None else None
-            ),
-            event_sink=emit_node,
-            stop_event=stop_event,
-        )
+        with bind_request_guard(lambda: _browser_request_block_code(guard)):
+            result = kernel.execute(
+                recipe=self._recipe,
+                inputs=RecipeInputs(
+                    account_id=account_id,
+                    conversation_id=conversation_id,
+                    run_id=run_id or "",
+                    user_message_id=user_message_id,
+                    user_content=user_message.content,
+                    task_id=task_ref[0] if task_ref is not None else None,
+                    task_version=task_ref[1] if task_ref is not None else None,
+                    wait_identity=self._wait_identity(pending),
+                    artifacts={},
+                    prior_digest=flow.prior_digest,
+                ),
+                remaining_budget_ms=(
+                    budget.remaining_work_ms() if budget is not None else None
+                ),
+                event_sink=emit_node,
+                stop_event=stop_event,
+            )
         # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
         with NodeKernelRepository(repo.database).transaction():
             decision = guard.verify()
@@ -286,9 +269,9 @@ class TiebaResearchService:
                         "本轮结果在提交前已失效（运行已转交或任务已变更），未写入。",
                         retryable=True,
                     )
-                result = _stopped_result(result)
+                result = stopped_result(result)
             try:
-                return self._deliver(
+                return self._delivery.deliver(
                     repo,
                     account_id=account_id,
                     assistant_message_id=assistant_message_id,
@@ -303,159 +286,6 @@ class TiebaResearchService:
                 delivery_error = error
         raise delivery_error
 
-    # -- 交付（既有终态收敛路径） ----------------------------------------
-
-    def _deliver(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-        stop_event: threading.Event | None,
-        remaining_budget_ms: int | None,
-    ) -> TiebaRunOutcome:
-        if result.status is KernelStatus.COMPLETED:
-            return self._deliver_completed(
-                repo, account_id, assistant_message_id, result,
-                remaining_budget_ms=remaining_budget_ms,
-            )
-        if result.status is KernelStatus.NEEDS_INPUT:
-            return self._deliver_clarification(
-                repo, account_id, assistant_message_id, result
-            )
-        if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
-            stop_event is not None and stop_event.is_set()
-        ):
-            return self._deliver_stopped(repo, account_id, assistant_message_id, result)
-        if result.status is KernelStatus.REJECTED:
-            raise TiebaModuleError(
-                result.stopped_at or NODE_PARSE,
-                result.rejection_code or "generation_superseded",
-                "本轮结果在提交前已失效（运行已转交或任务已变更），未写入。",
-                retryable=True,
-            )
-        return self._deliver_failure(repo, account_id, assistant_message_id, result)
-
-    def _deliver_completed(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-        *,
-        remaining_budget_ms: int | None,
-    ) -> TiebaRunOutcome:
-        projection = verified_projection(result)
-        if projection is None:
-            raise TiebaModuleError(
-                NODE_VERIFY,
-                "tieba_delivery_missing",
-                "贴吧模块缺少已核验的结果产物，本轮未提交。",
-                retryable=True,
-            )
-        needs_auth = any(
-            _is_auth_wait_error(record.error_code) for record in projection.queries
-        ) or any(
-            _is_auth_wait_error(post.read_error_code) for post in projection.confirmed_posts
-        ) or any(
-            _is_auth_wait_error(link.read_error_code) for link in projection.candidate_links
-        )
-        if needs_auth:
-            analysis = _analysis_of(result)
-            if analysis is not None:
-                return self._deliver_auth_wait(
-                    repo,
-                    account_id,
-                    assistant_message_id,
-                    projection,
-                    analysis,
-                    remaining_budget_ms=remaining_budget_ms,
-                )
-        if projection.status is TiebaResearchStatus.ERROR:
-            self._finalize(
-                repo,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                status=ChatMessageStatus.ERROR,
-                projection=projection,
-                content=render_empty_content(projection),
-            )
-            raise TiebaModuleError(
-                NODE_SEARCH,
-                projection.error_code or "tieba_search_failed",
-                projection.error_message or "贴吧检索失败，请稍后重试。",
-                retryable=projection.retryable,
-            )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            projection=projection,
-            content=(
-                render_result_content(projection)
-                if projection.confirmed_posts
-                else render_empty_content(projection)
-            ),
-        )
-        return TiebaRunOutcome(
-            status=projection.status,
-            wait_reason=None,
-            queries=list(projection.queries),
-        )
-
-    def _deliver_auth_wait(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        projection: TiebaResearchProjection,
-        analysis: TiebaQuestionAnalysis,
-        *,
-        remaining_budget_ms: int | None,
-    ) -> TiebaRunOutcome:
-        now = self._clock()
-        context = pending_payload(analysis)
-        context["remaining_work_ms"] = max(
-            0,
-            min(
-                TIEBA_TOTAL_BUDGET_MS,
-                TIEBA_TOTAL_BUDGET_MS if remaining_budget_ms is None else remaining_budget_ms,
-            ),
-        )
-        pending = ModuleWaitState(
-            module_id=TIEBA_MODULE_ID,
-            kind=WAIT_KIND_AUTH,
-            question="已打开当前账户专用的百度贴吧登录或安全验证页面。完成后在聊天中说“继续”，我会接着原话题检索。",
-            origin_message_id=assistant_message_id,
-            context=context,
-            created_at=now,
-        )
-        waiting = projection.model_copy(
-            update={
-                "status": TiebaResearchStatus.WAITING_AUTH,
-                "pending": pending,
-                "completed_at": now,
-                "error_code": None,
-                "error_message": None,
-                "retryable": False,
-            }
-        )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            projection=waiting,
-            content=render_waiting_auth_content(waiting),
-        )
-        return TiebaRunOutcome(
-            status=TiebaResearchStatus.WAITING_AUTH,
-            wait_reason=WAIT_REASON_AUTH,
-            queries=list(waiting.queries),
-        )
-
     def verify_message(
         self,
         repo: ConversationRepository,
@@ -466,175 +296,12 @@ class TiebaResearchService:
         assistant_message_id: str,
     ) -> bool:
         """父图根据本轮完成收据复验可信产物与最终正文。"""
-        repository = NodeKernelRepository(repo.database)
-        receipts = repository.list_receipts(account_id, run_id)
-        artifacts = tuple(
-            artifact
-            for receipt in receipts
-            if (artifact := repository.get_artifact(account_id, receipt.artifact_id or ""))
-            is not None
-            and artifact.recipe_id == TIEBA_RECIPE_ID
-        )
-        result = KernelResult(
-            status=KernelStatus.COMPLETED, nodes=(), artifacts=artifacts, delivery=None
-        )
-        projection = verified_projection(result)
-        message = repo.get_message(account_id, assistant_message_id)
-        verify = result.artifact(NODE_VERIFY)
-        if (
-            projection is None
-            or message is None
-            or verify is None
-            or verify.conversation_id != conversation_id
-            or verify.trust_state is not ArtifactTrust.QUALIFIED
-            or message.status is not ChatMessageStatus.DONE
-        ):
-            return False
-        expected = (
-            render_result_content(projection)
-            if projection.confirmed_posts
-            else render_empty_content(projection)
-        )
-        try:
-            actual = TiebaResearchProjection.model_validate(message.tieba_research)
-        except ValueError:
-            return False
-        if actual.status is TiebaResearchStatus.WAITING_AUTH:
-            pending = actual.pending
-            return bool(
-                pending is not None
-                and pending.kind == WAIT_KIND_AUTH
-                and pending.context.get("original_question") == actual.original_question
-                and (
-                    any(
-                        _is_auth_wait_error(record.error_code)
-                        for record in actual.queries
-                    )
-                    or any(
-                        _is_auth_wait_error(post.read_error_code)
-                        for post in actual.confirmed_posts
-                    )
-                    or any(
-                        _is_auth_wait_error(link.read_error_code)
-                        for link in actual.candidate_links
-                    )
-                )
-                and actual.confirmed_posts == projection.confirmed_posts
-                and message.content == render_waiting_auth_content(actual)
-            )
-        # 完成时间由终态事务填写，证据字段与正文仍逐项相等。
-        return (
-            actual.completed_at is not None
-            and actual.model_copy(update={"completed_at": projection.completed_at}) == projection
-            and message.content == expected
-        )
-
-    def _deliver_clarification(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-    ) -> TiebaRunOutcome:
-        analysis = _analysis_of(result)
-        if analysis is None or analysis.clarification is None:
-            return self._deliver_failure(
-                repo, account_id, assistant_message_id, result
-            )
-        now = self._clock()
-        projection = _base_projection(
-            analysis,
-            status=TiebaResearchStatus.CLARIFICATION,
-            pending=ModuleWaitState(
-                module_id=TIEBA_MODULE_ID,
-                kind=WAIT_KIND_CLARIFICATION,
-                question=analysis.clarification.question,
-                origin_message_id=assistant_message_id,
-                context=pending_payload(analysis),
-                created_at=now,
-            ),
-            completed_at=now,
-        )
-        self._finalize(
+        return verify_tieba_message(
             repo,
             account_id=account_id,
+            run_id=run_id,
+            conversation_id=conversation_id,
             assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.DONE,
-            projection=projection,
-            content=render_clarification_content(analysis),
-        )
-        return TiebaRunOutcome(
-            status=projection.status,
-            wait_reason=WAIT_REASON_CLARIFICATION,
-            queries=[],
-        )
-
-    def _deliver_stopped(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-    ) -> TiebaRunOutcome:
-        analysis = _analysis_of(result)
-        if analysis is None:
-            analysis = _empty_analysis()
-        projection = _base_projection(
-            analysis,
-            status=TiebaResearchStatus.STOPPED,
-            queries=_records_of(result),
-            confirmed=_confirmed_of(result),
-            evidence_boundary=["你已停止本轮搜集，未继续读取页面。"],
-            completed_at=self._clock(),
-        )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.STOPPED,
-            projection=projection,
-            content=render_stopped_content(projection),
-        )
-        return TiebaRunOutcome(
-            status=TiebaResearchStatus.STOPPED,
-            wait_reason=None,
-            queries=list(projection.queries),
-        )
-
-    def _deliver_failure(
-        self,
-        repo: ConversationRepository,
-        account_id: str,
-        assistant_message_id: str,
-        result: KernelResult,
-    ) -> TiebaRunOutcome:
-        analysis = _analysis_of(result) or _empty_analysis()
-        projection = _projection_of(result)
-        if projection is None:
-            failure = result.failure
-            projection = _base_projection(
-                analysis,
-                status=TiebaResearchStatus.ERROR,
-                queries=_records_of(result),
-                completed_at=self._clock(),
-                error_code=(failure.code if failure else "") or "tieba_failed",
-                error_message=(failure.message if failure else "")
-                or "贴吧信息搜集失败，请稍后重试。",
-                retryable=failure.retryable if failure else True,
-            )
-        self._finalize(
-            repo,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            status=ChatMessageStatus.ERROR,
-            projection=projection,
-            content=render_empty_content(projection),
-        )
-        raise TiebaModuleError(
-            (result.failure.node if result.failure else NODE_SEARCH),
-            projection.error_code or "tieba_failed",
-            projection.error_message or "贴吧信息搜集失败，请稍后重试。",
-            retryable=projection.retryable,
         )
 
     # -- 恢复与预算 ------------------------------------------------------
@@ -647,8 +314,6 @@ class TiebaResearchService:
         stop_event: threading.Event | None,
     ) -> Any:
         """兼容入口：直接执行有界检索（不经过运行账本，供确定性单测使用）。"""
-        from bridges.tieba.evidence import search_candidates
-
         return search_candidates(
             self._search,
             account_id,
@@ -695,8 +360,13 @@ class TiebaResearchService:
         return self._task_version_provider(account_id, conversation_id)
 
     def _load_budget(
-        self, repo: ConversationRepository, account_id: str, run_id: str | None,
-        *, max_work_ms: int | None = None,
+        self,
+        repo: ConversationRepository,
+        account_id: str,
+        run_id: str | None,
+        *,
+        max_work_ms: int | None = None,
+        request_guard: Callable[[], str | None] | None = None,
     ) -> TiebaBudget | None:
         """从持久账本加载共享预算（缺失行时按无预算模式保留本地截止）。"""
         if run_id is None:
@@ -743,152 +413,12 @@ class TiebaResearchService:
             run_id=run_id,
             work_deadline=work_deadline,
             model_budget=model_budget,
-        )
-
-    # -- 落库 ------------------------------------------------------------
-
-    def _finalize(
-        self,
-        repo: ConversationRepository,
-        *,
-        account_id: str,
-        assistant_message_id: str,
-        status: ChatMessageStatus,
-        projection: TiebaResearchProjection,
-        content: str,
-    ) -> None:
-        now = self._clock()
-        projection = projection.model_copy(
-            update={"completed_at": projection.completed_at or now}
-        )
-        # 局部导入：模块子图与 chat 服务互相引用（父图调用子图、子图复用消息
-        # 终态收敛），模块级导入会形成包级循环。``finalize_message`` 会并入
-        # 外层提交守卫事务（存在时），因此这里的终态与产物同一事务提交。
-        from bridges.chat.turn import finalize_message
-
-        finalize_message(
-            repo,
-            account_id,
-            assistant_message_id,
-            status=status,
-            error_code=projection.error_code,
-            error_message=projection.error_message,
-            duration_ms=None,
-            model_id=None,
-            run_lock_id=None,
-            lock=None,
-            started=time.monotonic(),
-            now=now,
-            final_content=content or None,
-            tieba_research=projection.model_dump(mode="json"),
+            request_guard=request_guard,
         )
 
 
 # ---------------------------------------------------------------------------
-# 结果读取与基础投影
 # ---------------------------------------------------------------------------
-
-
-def _delivery_artifact(result: KernelResult) -> Any:
-    return result.artifact(NODE_VERIFY) or result.artifact(NODE_SYNTHESIZE)
-
-
-def _projection_of(result: KernelResult) -> TiebaResearchProjection | None:
-    artifact = _delivery_artifact(result)
-    if artifact is None:
-        return None
-    raw = artifact.payload.get("projection")
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return TiebaResearchProjection.model_validate(raw)
-    except ValueError:
-        return None
-
-
-def _analysis_of(result: KernelResult) -> TiebaQuestionAnalysis | None:
-    artifact = result.artifact(NODE_PARSE)
-    if artifact is None:
-        return None
-    raw = artifact.payload.get("analysis")
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return TiebaQuestionAnalysis.model_validate(raw)
-    except ValueError:
-        return None
-
-
-def _records_of(result: KernelResult) -> list[ModuleQueryRecord]:
-    artifact = result.artifact(NODE_SEARCH)
-    if artifact is None:
-        return []
-    records: list[ModuleQueryRecord] = []
-    for raw in artifact.payload.get("records", []):
-        try:
-            records.append(ModuleQueryRecord.model_validate(raw))
-        except ValueError:
-            continue
-    return records
-
-
-def _confirmed_of(result: KernelResult) -> list[Any]:
-    from bridges.tieba.contracts import TiebaPostProjection
-
-    artifact = result.artifact("tieba.read")
-    if artifact is None:
-        return []
-    posts: list[TiebaPostProjection] = []
-    for raw in artifact.payload.get("confirmed", []):
-        try:
-            posts.append(TiebaPostProjection.model_validate(raw))
-        except ValueError:
-            continue
-    return posts
-
-
-def _base_projection(
-    analysis: TiebaQuestionAnalysis,
-    *,
-    status: TiebaResearchStatus,
-    queries: Sequence[ModuleQueryRecord] = (),
-    confirmed: Sequence[Any] = (),
-    evidence_boundary: Sequence[str] = (),
-    pending: ModuleWaitState | None = None,
-    completed_at: datetime | None = None,
-    error_code: str | None = None,
-    error_message: str | None = None,
-    retryable: bool = False,
-) -> TiebaResearchProjection:
-    return TiebaResearchProjection(
-        status=status,
-        topic=topic_of(analysis) or FORUM_NAME,
-        original_question=analysis.original_question,
-        topic_terms=list(analysis.topic_terms),
-        place_or_event=list(analysis.place_or_event),
-        question_kind=analysis.question_kind,
-        campus_terms=list(analysis.campus_terms),
-        time_filter=_time_filter_state(analysis, list(confirmed)),
-        queries=list(queries),
-        confirmed_posts=list(confirmed),
-        official_check_requested=analysis.needs_official_check,
-        evidence_boundary=list(evidence_boundary),
-        pending=pending,
-        completed_at=completed_at,
-        error_code=error_code,
-        error_message=error_message,
-        retryable=retryable,
-    )
-
-
-def _empty_analysis() -> TiebaQuestionAnalysis:
-    return TiebaQuestionAnalysis(original_question="", topic_terms=[])
-
-
-def _stopped_result(result: KernelResult) -> KernelResult:
-    from dataclasses import replace
-
-    return replace(result, status=KernelStatus.STOPPED)
 
 
 __all__ = [
@@ -907,8 +437,4 @@ __all__ = [
     "WAIT_KIND_AUTH",
     "WAIT_REASON_CLARIFICATION",
     "WAIT_REASON_AUTH",
-    # 兼容既有测试与调用方的确定性规则入口。
-    "_apply_time_condition",
-    "_official_candidates",
-    "_time_filter_state",
 ]

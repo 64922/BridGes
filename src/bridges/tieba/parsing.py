@@ -2,8 +2,8 @@
 
 原词逐字保留：检索查询词由原始名词组成，不把用户说法替换成别的词。信息
 不足到无法检索时只问一个问题，并把恢复载荷写回消息，下一条回复从该处继续。
-问题类型（规定／体验／混合）只由确定性词表判定：命中官方触发词且没有体验
-信号是规定类，两者都有是混合类，其余是体验类。
+问题类型（规定／体验／混合）由词表和来源意图判定：单纯搜集讨论只查贴吧；
+明确核实、确认或查官方信息时才追加官方路径，规定查询保留既有分类。
 """
 
 from __future__ import annotations
@@ -82,7 +82,20 @@ def parse_tieba_request(
         year = detect_time_year(time_requirement)
     official_topics = detect_official_topics(original_question, terms)
     experience_signals = detect_experience_signals(original_question, terms)
-    question_kind = _classify(official_topics, experience_signals)
+    # 主题涉及规定不等于请求核实规定；讨论搜集的来源仍默认限定贴吧。
+    verification_requested = any(
+        marker in original_question
+        for marker in ("核实", "核验", "查证", "确认", "真伪", "属实", "官网", "官方")
+    )
+    discussion_requested = any(
+        marker in original_question for marker in ("讨论", "搜集", "收集", "吐槽", "经历", "评价")
+    )
+    question_kind = _classify(
+        official_topics if verification_requested or not discussion_requested else [],
+        experience_signals,
+    )
+    if verification_requested and question_kind is TiebaQuestionKind.EXPERIENCE:
+        question_kind = TiebaQuestionKind.MIXED
 
     analysis = TiebaQuestionAnalysis(
         original_question=original_question,
@@ -119,9 +132,7 @@ def pending_payload(analysis: TiebaQuestionAnalysis) -> dict[str, Any]:
     return {PENDING_ORIGINAL_QUESTION: analysis.original_question}
 
 
-def _classify(
-    official_topics: list[str], experience_signals: list[str]
-) -> TiebaQuestionKind:
+def _classify(official_topics: list[str], experience_signals: list[str]) -> TiebaQuestionKind:
     if official_topics and experience_signals:
         return TiebaQuestionKind.MIXED
     if official_topics:
@@ -131,10 +142,7 @@ def _classify(
 
 def _has_substantive(terms: list[str]) -> bool:
     """当前消息是否自带实质名词（只有官方触发词／体验信号时视为没有）。"""
-    return any(
-        term not in OFFICIAL_TRIGGERS and term not in EXPERIENCE_SIGNALS
-        for term in terms
-    )
+    return any(term not in OFFICIAL_TRIGGERS and term not in EXPERIENCE_SIGNALS for term in terms)
 
 
 def _task_topic(module_context: ModuleTaskContext | None) -> str:

@@ -107,7 +107,7 @@ class ModuleRegistry:
             RESOURCES_RECIPE_ID,
             RESOURCES_RECIPE_VERSION,
         )
-        from bridges.tieba.kernel import (
+        from bridges.tieba.recipe import (
             TIEBA_CAPABILITY_VERSIONS,
             TIEBA_RECIPE_ID,
             TIEBA_RECIPE_VERSION,

@@ -17,12 +17,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
 from typing import Any, Protocol
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
 from bridges.tieba.contracts import ReadStatus, TiebaReadResult, TiebaReply
-from bridges.tieba.lexicon import TARGET_FORUM_NAME
+from bridges.tieba.http_requests import TiebaHttpRequestError, tracked_get
+from bridges.tieba.lexicon import TARGET_FORUM_NAME, TIEBA_HOST
 from bridges.tieba.searching import canonical_url, thread_id_of
 
 #: 一轮里单帖最多读取的页数（分页受限时如实记录实际页数）。
@@ -99,6 +100,8 @@ class ParsedThread:
 
 class HttpTiebaThreadReader:
     """公开页面读取实现（httpx，固定 UA，有界页数与体积）。"""
+
+    uses_per_request_budget = True
 
     def __init__(
         self,
@@ -243,11 +246,18 @@ class HttpTiebaThreadReader:
         )
 
     def _get(self, url: str, *, page: int, deadline: float | None) -> httpx.Response:
-        timeout = READ_DEADLINE_SECONDS
-        if deadline is not None:
-            timeout = max(0.5, min(timeout, deadline - time.monotonic()))
         try:
-            return self._client.get(url, params={"pn": page}, timeout=timeout)
+            return tracked_get(
+                self._client,
+                url,
+                params={"pn": page},
+                purpose="tieba_thread_read",
+                timeout=READ_DEADLINE_SECONDS,
+                allowed_url=_is_tieba_url,
+                deadline=deadline,
+            )
+        except TiebaHttpRequestError as exc:
+            raise TiebaReadError(exc.code, exc.message) from exc
         except httpx.TimeoutException as exc:
             raise TiebaReadError(
                 "tieba_read_timeout", "读取超时，未取得回复内容。"
@@ -256,6 +266,14 @@ class HttpTiebaThreadReader:
             raise TiebaReadError(
                 "tieba_read_unavailable", "当前无法连接贴吧页面，未取得回复内容。"
             ) from exc
+
+
+def _is_tieba_url(url: str) -> bool:
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    return parts.scheme in {"http", "https"} and (
+        host == TIEBA_HOST or host.endswith(f".{TIEBA_HOST}")
+    )
 
 
 def _result(
