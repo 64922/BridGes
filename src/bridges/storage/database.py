@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 71
+SCHEMA_VERSION = 72
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3193,10 +3193,75 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # Issue 03：待答问题与学习证据。待答问题每个会话只保留当前一个
+    # （账户+会话主键）；评价依据随问题在展示前冻结，只供服务端与模型
+    # 评价使用，不进入用户投影。证据在成功终态与消息同事务写入，
+    # 独立完成/提示后完成/未验证/无法判断的语义按实际记录冻结，
+    # 不直接晋升长期掌握。
+    71: [
+        """
+        CREATE TABLE study_pending_checks (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            check_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('open_probe', 'formal_check')),
+            question TEXT NOT NULL,
+            knowledge_context TEXT NOT NULL DEFAULT '',
+            basis_json TEXT NOT NULL DEFAULT '{}',
+            hint_history_json TEXT NOT NULL DEFAULT '[]',
+            source_message_id TEXT NOT NULL,
+            version INTEGER NOT NULL CHECK (version >= 1),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, conversation_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE TABLE study_evidence (
+            evidence_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            check_id TEXT NOT NULL,
+            check_kind TEXT NOT NULL CHECK (check_kind IN ('open_probe', 'formal_check')),
+            check_version INTEGER NOT NULL CHECK (check_version >= 1),
+            question TEXT NOT NULL,
+            knowledge_context TEXT NOT NULL DEFAULT '',
+            basis_protocol_version TEXT NOT NULL DEFAULT '',
+            answered INTEGER NOT NULL CHECK (answered IN (0, 1)),
+            outcome TEXT NOT NULL CHECK (outcome IN
+                ('correct', 'partial', 'misconception', 'undetermined', 'no_answer')),
+            semantics TEXT NOT NULL CHECK (semantics IN
+                ('independent_completion', 'hinted_completion', 'partial_understanding',
+                 'misconception', 'undetermined', 'unverified', 'understanding_clue')),
+            assistance TEXT NOT NULL CHECK (assistance IN
+                ('independent', 'after_hint', 'none')),
+            reasoning_note TEXT NOT NULL DEFAULT '',
+            supporting_json TEXT NOT NULL DEFAULT '[]',
+            missing_json TEXT NOT NULL DEFAULT '[]',
+            hint_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            source_message_ids_json TEXT NOT NULL DEFAULT '[]',
+            source_refs_json TEXT NOT NULL DEFAULT '[]',
+            evidence_contract_version TEXT NOT NULL DEFAULT '',
+            answer_message_id TEXT,
+            feedback_message_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, answer_message_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_evidence_conversation
+            ON study_evidence (account_id, conversation_id, created_at)
+        """,
+    ],
     # Issue 07：账户级长期学习目标、可调整的导师路线（含修订历史）与
     # 会话到目标的引用。目标独立于会话标识；路线只由规划提交写入，保留
     # 修订前版本供历史读取。无旧数据回填。
-    71: [
+    72: [
         """
         CREATE TABLE study_goals (
             goal_id TEXT PRIMARY KEY,
@@ -3256,6 +3321,15 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "conversations",
     "study_states",
     "study_local_progress",
+    # Issue 03：会话投影与验证规划无条件读取待答问题与学习证据；
+    # 迁移半执行时须在启动阶段失败关闭，而不是让学习对话持续报错。
+    "study_pending_checks",
+    "study_evidence",
+    # Issue 07：学习目标与路线投影随对话详情无条件读取，迁移半执行时须在
+    # 启动阶段失败关闭，而不是让学习详情静默缺目标。
+    "study_goals",
+    "study_goal_routes",
+    "study_conversation_goals",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3289,11 +3363,6 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "conversation_summaries",
     "conversation_summary_generations",
     "conversation_summary_sync_attempts",
-    # Issue 07：学习目标与路线投影随对话详情无条件读取，迁移半执行时须在
-    # 启动阶段失败关闭，而不是让学习详情静默缺目标。
-    "study_goals",
-    "study_goal_routes",
-    "study_conversation_goals",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。
@@ -3304,6 +3373,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_profile_items_account_fact_key",
     "idx_profile_item_migrations_account",
     "idx_profile_item_feedback_item",
+    "idx_study_evidence_conversation",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3350,6 +3420,46 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "goal_id",
         "created_at",
         "updated_at",
+    }),
+    "study_pending_checks": frozenset({
+        "account_id",
+        "conversation_id",
+        "check_id",
+        "kind",
+        "question",
+        "knowledge_context",
+        "basis_json",
+        "hint_history_json",
+        "source_message_id",
+        "version",
+        "created_at",
+        "updated_at",
+    }),
+    "study_evidence": frozenset({
+        "evidence_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "check_id",
+        "check_kind",
+        "check_version",
+        "question",
+        "knowledge_context",
+        "basis_protocol_version",
+        "answered",
+        "outcome",
+        "semantics",
+        "assistance",
+        "reasoning_note",
+        "supporting_json",
+        "missing_json",
+        "hint_message_ids_json",
+        "source_message_ids_json",
+        "source_refs_json",
+        "evidence_contract_version",
+        "answer_message_id",
+        "feedback_message_id",
+        "created_at",
     }),
     "profile_items": frozenset({
         "profile_item_id",

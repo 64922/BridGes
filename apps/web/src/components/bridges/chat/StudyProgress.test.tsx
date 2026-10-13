@@ -22,6 +22,34 @@ describe("学习阶段与页级证据", () => {
     expect(screen.queryByText("书页识别")).toBeNull();
   });
 
+  it("展示当前待答问题与实际帮助状态", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 2,
+        runtime_run_id: "run-2",
+        updated_at: "2026-10-13T00:00:00Z",
+      }}
+      studyPendingCheck={{
+        check_id: "check-1",
+        kind: "formal_check",
+        question: "如果 A、B 互斥，P(A∩B) 是多少？为什么？",
+        knowledge_context: "互斥与独立",
+        assistance: "hinted",
+        version: 1,
+        source_message_id: "assistant-2",
+        created_at: "2026-10-13T00:00:00Z",
+      }}
+    />);
+
+    expect(screen.getByText(/待答：如果 A、B 互斥/)).toBeTruthy();
+    expect(screen.getByText(/已提供提示，本次将按提示后完成记录/)).toBeTruthy();
+    expect(screen.queryByText("书页识别")).toBeNull();
+  });
+
   it("旧状态显示只读说明并保留可解释阶段", () => {
     render(<StudyProgress
       study={{ subsection_id: "s", stage: "tutoring", state_version: 4 }}

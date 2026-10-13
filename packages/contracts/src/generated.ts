@@ -9640,6 +9640,8 @@ export interface components {
             study_local_progress?: components["schemas"]["StudyLocalProgressProjection"] | null;
             /** @description 本对话当前关联的账户级学习目标与路线；局部问题对话为 null。 */
             study_goal?: components["schemas"]["StudyGoalProjection"] | null;
+            /** @description 当前待答问题与帮助状态；只含已展示的问题，不含评价依据或未提出的问题。 */
+            study_pending_check?: components["schemas"]["StudyPendingCheckProjection"] | null;
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
@@ -24619,6 +24621,18 @@ export interface components {
          */
         StoryboardStatus: "draft" | "designing" | "source_generated" | "static_validated" | "sandbox_rendering" | "completed" | "repairable" | "repair_exhausted" | "quarantined" | "failed";
         /**
+         * StudyCheckAssistance
+         * @description 待答问题实际获得过的帮助状态（按确实提供的提示派生）。
+         * @enum {string}
+         */
+        StudyCheckAssistance: "none" | "hinted";
+        /**
+         * StudyCheckKind
+         * @description 检查类型：开放探查记录理解线索，正式练习有固定评价依据。
+         * @enum {string}
+         */
+        StudyCheckKind: "open_probe" | "formal_check";
+        /**
          * StudyContentCheck
          * @description 关键定义/公式/关系与书页原文的逐点核对结果（与结构门分开）。
          */
@@ -25001,6 +25015,51 @@ export interface components {
             scope?: components["schemas"]["StudyScope"] | null;
             /** Scope History */
             scope_history?: components["schemas"]["StudyScope"][];
+        };
+        /**
+         * StudyPendingCheckProjection
+         * @description 待答问题的用户可见投影；不含评价依据或未提出的问题。
+         */
+        StudyPendingCheckProjection: {
+            /**
+             * Check Id
+             * @description 稳定检查标识。
+             */
+            check_id: string;
+            /** @description 检查类型：开放探查或正式练习。 */
+            kind: components["schemas"]["StudyCheckKind"];
+            /**
+             * Question
+             * @description 已经展示给用户的题目或探查问题。
+             */
+            question: string;
+            /**
+             * Knowledge Context
+             * @description 展示问题时固定的知识上下文摘要。
+             * @default
+             */
+            knowledge_context: string;
+            /**
+             * @description 本问题至今实际提供过的帮助状态。
+             * @default none
+             */
+            assistance: components["schemas"]["StudyCheckAssistance"];
+            /**
+             * Version
+             * @description 同一对话内检查的递增版本。
+             */
+            version: number;
+            /**
+             * Source Message Id
+             * @description 展示该问题的助手消息标识。
+             */
+            source_message_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 问题首次展示时间。
+             */
+            created_at: string;
         };
         /**
          * StudyPointCheck

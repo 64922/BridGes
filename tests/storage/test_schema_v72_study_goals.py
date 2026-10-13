@@ -67,7 +67,7 @@ def _route(version: int = 1) -> StudyRouteProjection:
 def test_study_goals_migration_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    assert SCHEMA_VERSION == 71
+    assert SCHEMA_VERSION == 72
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "issue07-goals-secret")
     monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")

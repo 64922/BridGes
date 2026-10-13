@@ -37,6 +37,7 @@ from bridges.study.goal_planning import StudyGoalPlanner
 from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
 from bridges.study.goals import StudyGoalRepository
 from bridges.study.local_progress import StudyLocalProgressRepository
+from bridges.study.verification import StudyVerificationRepository
 from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 
 if TYPE_CHECKING:
@@ -97,8 +98,21 @@ class _ServiceStreamMixin:
                 )
                 if goal_turn is not None:
                     study_goal_block = goal_turn.prompt_block or None
+                verification_repository = StudyVerificationRepository(
+                    self._repo.database
+                )
 
                 def persist_study_progress(content: str) -> None:
+                    # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
+                    # 局部进展；两者与消息 streaming→done 同事务，原子可见。
+                    # 停止/失败路径不进入本回调，未展示的问题绝不激活。
+                    verification_repository.commit_turn_in_transaction(
+                        self._repo,
+                        run,
+                        user_message,
+                        assistant_message_id,
+                        content,
+                    )
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
                     )

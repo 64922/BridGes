@@ -68,7 +68,12 @@ def _plan_json(**overrides: Any) -> str:
 
 
 class _GoalTutorAdapter:
-    """规划结构化调用与流式导师回复的确定性替身。"""
+    """规划结构化调用与流式导师回复的确定性替身。
+
+    Issue 03 的验证规划与目标规划共用 ``qwen_structured_output``：本替身
+    只脚本化 ``study.goal_planning``，对验证规划返回「不验证」的合法输出，
+    保持目标/路线断言不被验证子系统干扰。
+    """
 
     def __init__(self, answer: str = "我们先从向量与线性组合开始。") -> None:
         self.answer = answer
@@ -82,6 +87,29 @@ class _GoalTutorAdapter:
     def call(
         self, capability: CapabilityRecord, run_context: Any, payload: dict[str, Any]
     ) -> AdapterResult:
+        if payload.get("task") != "study.goal_planning":
+            return AdapterResult(
+                actual_model_id=capability.model_id,
+                output={
+                    "action": "none",
+                    "intent": "other",
+                    "outcome": "",
+                    "equivalent_accepted": False,
+                    "reasoning_note": "",
+                    "supporting": [],
+                    "missing": [],
+                    "feedback_direction": "",
+                    "check_kind": "",
+                    "check_question": "",
+                    "check_knowledge_context": "",
+                    "evaluation_points": [],
+                    "accepted_equivalents": [],
+                    "key_misconceptions": [],
+                    "assumptions": [],
+                    "expected_answer": "",
+                    "teaching_direction": "",
+                },
+            )
         self.plan_payloads.append(payload)
         if self.plan_failure is not None:
             raise self.plan_failure
@@ -272,7 +300,8 @@ def test_systematic_goal_creates_goal_route_and_stays_lightweight_for_questions(
             assert "向量与线性组合" in chat_system["content"]
             assert "未经验证的内容不得称为已掌握" in chat_system["content"]
 
-            # 角色调用计入同一运行预算账本：规划 1 次 + 流式 1 次。
+            # 角色调用计入同一运行预算账本：目标规划 1 次 + 验证规划 1 次
+            # （Issue 03 在每次学习导师轮执行）+ 流式 1 次。
             run = app.state.chat_service._repo.get_run_by_message(
                 account["id"], detail["messages"][-1]["message_id"]
             )
@@ -280,7 +309,7 @@ def test_systematic_goal_creates_goal_route_and_stays_lightweight_for_questions(
                 app.state.bridges_database
             ).load(account["id"], run.run_id)
             assert snapshot is not None
-            assert snapshot.model_calls_used == 2
+            assert snapshot.model_calls_used == 3
 
             # 普通提问不触发完整规划，路线与目标保持不变。
             _send(client, conversation_id, "什么是特征值？", "issue07-question")

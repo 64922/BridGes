@@ -39,6 +39,7 @@ from bridges.contracts.study_history import (
     StudyHistoryStatusProjection,
 )
 from bridges.contracts.study_local_progress import StudyLocalProgressProjection
+from bridges.contracts.study_verification import StudyPendingCheckProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
@@ -559,6 +560,11 @@ class ChatConversationProjection(BaseModel):
     study_goal: StudyGoalProjection | None = Field(
         default=None,
         description="本对话当前关联的账户级学习目标与路线；局部问题对话为 null。",
+    )
+    study_pending_check: StudyPendingCheckProjection | None = Field(
+        default=None,
+        description="当前待答问题与帮助状态；只含已展示的问题，"
+        "不含评价依据或未提出的问题。",
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,

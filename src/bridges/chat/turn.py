@@ -4244,6 +4244,35 @@ class TurnOrchestrator:
                     *file_gaps,
                 ],
             )
+            # Issue 03：学习导师轮的验证规划——评价待答作答、记录帮助、
+            # 在关键位置提出一个理解检查或不做验证。规划快照随本轮提交
+            # （成功终态）生效；未展示的问题不激活。指令进入系统规则块，
+            # 评价依据只供模型使用，不写入消息、投影或清单正文。
+            if study_tutor:
+                verification_directive = self._prepare_study_verification(
+                    account_id=account_id,
+                    conversation_id=conversation_id,
+                    assistant_message_id=assistant_message_id,
+                    user_message=route_owner,
+                    run_context=run_context,
+                    gateway=gateway,
+                    model_override=model_override,
+                    model_quota=model_quota,
+                    budget=budget,
+                    history=history,
+                    retrieval_round=retrieval_round,
+                )
+                if verification_directive and history:
+                    if history[0].get("role") == "system":
+                        history[0]["content"] += "\n" + verification_directive
+                    else:
+                        history.insert(
+                            0,
+                            {
+                                "role": "system",
+                                "content": verification_directive,
+                            },
+                        )
             history_range, summary_instance = self._manifest_scope(context_budget)
             compile_floor_exceeded = bool(
                 context_budget and context_budget.get("budget_floor_exceeded")
@@ -5249,6 +5278,54 @@ class TurnOrchestrator:
     # ------------------------------------------------------------------
     # 检索（全部编排路径的单一实现）
     # ------------------------------------------------------------------
+
+    def _prepare_study_verification(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        user_message: MessageRecord | None,
+        run_context: RunContextEnvelope,
+        gateway: ModelGateway,
+        model_override: str | None,
+        model_quota: RunModelQuota | None,
+        budget: RunBudget,
+        history: list[dict[str, Any]],
+        retrieval_round: RetrievalRoundProjection | None,
+    ) -> str | None:
+        """Issue 03：学习导师轮的验证规划（评价/帮助/出题）。
+
+        规划在生成前完成，评价快照写入运行配置（重试沿用同一快照）；
+        待答问题只在成功终态由终态回调激活，停止、失败或未实际展示的
+        问题绝不提前生效。规划失败静默降级：回答照常，既有待答问题
+        保持，不伪造评价。
+        """
+
+        from bridges.study.local_progress import StudyLocalProgressRepository
+        from bridges.study.verification import (
+            StudyVerificationPlanner,
+            StudyVerificationRepository,
+        )
+
+        planner = StudyVerificationPlanner(
+            self._repo,
+            StudyVerificationRepository(self._repo.database),
+            StudyLocalProgressRepository(self._repo.database),
+        )
+        return planner.plan(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message_id,
+            user_message=user_message,
+            history=history,
+            run_context=run_context,
+            gateway=gateway,
+            model_override=model_override,
+            model_quota=model_quota,
+            budget=budget,
+            retrieval_round=retrieval_round,
+        )
 
     def _run_retrieval(
         self,
