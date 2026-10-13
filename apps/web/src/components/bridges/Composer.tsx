@@ -115,9 +115,7 @@ export function Composer({
   // 有文字或已有附件即可发送；上传未完成的批次禁止提前发送。
   const hasStudyFile = mode === "study" && drafts.some((draft) => !isPhotoAttachment(draft.media_type));
   const canSend = !hasStudyFile &&
-    (mode === "study" && variant === "new-chat"
-      ? drafts.length > 0
-      : text.trim().length > 0 || drafts.length > 0) &&
+    (text.trim().length > 0 || drafts.length > 0) &&
     dictationPhase === "idle" &&
     uploadingCount === 0;
 
@@ -632,7 +630,7 @@ export function Composer({
             addFiles(files);
           }}
           placeholder={mode === "study"
-            ? variant === "new-chat" ? "上传本节书页照片开始预习" : "哪里不懂就问，也可以追加同节书页"
+            ? "哪里不清楚就问，或说说你想学什么"
             : "输入消息，开始日常对话"}
           style={{
             width: "100%",

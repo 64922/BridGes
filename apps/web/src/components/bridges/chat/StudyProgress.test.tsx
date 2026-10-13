@@ -6,6 +6,22 @@ import { StudyProgress } from "./StudyProgress";
 afterEach(cleanup);
 
 describe("学习阶段与页级证据", () => {
+  it("新学习进展展示主题而不显示书页阶段条", () => {
+    render(<StudyProgress studyLocalProgress={{
+      topic: "互斥与独立",
+      knowledge_context: "两个事件不能同时发生。",
+      current_focus: "互斥是不是独立？",
+      source_message_ids: ["user-1", "assistant-1"],
+      version: 1,
+      runtime_run_id: "run-1",
+      updated_at: "2026-10-13T00:00:00Z",
+    }} />);
+
+    expect(screen.getByText("正在学习：互斥与独立")).toBeTruthy();
+    expect(screen.getByText("当前关注：互斥是不是独立？")).toBeTruthy();
+    expect(screen.queryByText("书页识别")).toBeNull();
+  });
+
   it("旧状态显示只读说明并保留可解释阶段", () => {
     render(<StudyProgress
       study={{ subsection_id: "s", stage: "tutoring", state_version: 4 }}

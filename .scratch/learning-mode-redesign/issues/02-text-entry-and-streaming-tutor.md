@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — 分离学习历史读取与教学执行边界。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-**发布状态：** 用户已确认拆分与依赖，正式发布；尚未实施。
+**发布状态：** 用户已确认拆分与依赖；本票已实施并完成验证，新学习模式尚未上线。
 
 **对应合同：** D01、D02、D03、D06、D09；AC01、AC03、AC16；C01。
 
@@ -41,16 +41,16 @@
 
 ## 验收标准
 
-- [ ] 纯文字首轮与后续发送均能生成学习回复，无照片门禁残留。
-- [ ] 局部问题未自动创建长期目标、固定课程或入门测验。
-- [ ] 真实模型请求中包含必要前文和已授权相关信息，保持统一预算与模型快照。
-- [ ] 基础概念未无条件联网，模型解释未冒充来源。
-- [ ] 提示词允许讲解与调整方式，未复制参考项目提示词定义或实现。
-- [ ] 进展、消息和终态原子一致，停止/失败不虚增学习成果。
-- [ ] 幂等重试与迟到响应不产生重复会话、消息或覆盖。
-- [ ] 新主题提示、流式、停止、错误与刷新恢复端到端可用。
-- [ ] 账户隔离、模式锁定和三个日常模块无新增回归。
-- [ ] 适用的数据迁移、生命周期和生成合同已同步。
+- [x] 纯文字首轮与后续发送均能生成学习回复，无照片门禁残留。
+- [x] 局部问题未自动创建长期目标、固定课程或入门测验。
+- [x] 真实模型请求中包含必要前文和已授权相关信息，保持统一预算与模型快照。
+- [x] 基础概念未无条件联网，模型解释未冒充来源。
+- [x] 提示词允许讲解与调整方式，未复制参考项目提示词定义或实现。
+- [x] 进展、消息和终态原子一致，停止/失败不虚增学习成果。
+- [x] 幂等重试与迟到响应不产生重复会话、消息或覆盖。
+- [x] 新主题提示、流式、停止、错误与刷新恢复端到端可用。
+- [x] 账户隔离、模式锁定和三个日常模块无新增回归。
+- [x] 适用的数据迁移、生命周期和生成合同已同步。
 
 ## 验证与交付证据
 
@@ -64,3 +64,18 @@
 2026-10-13：完整局部辅导切片草稿，待拆分确认。
 
 2026-10-13：用户确认「按此发布」，本票发布到本地问题跟踪器。分诊状态表示信息齐备；须待直接阻塞票验收完成后实施，本轮未开始编码。
+
+2026-10-13：工单 02 在独立分支 `codex/issue-02-text-entry-and-streaming-tutor` 实施并完成验证（依赖票 01 的实现已合入 main `361bed5d`，其工单状态 `ready-for-human` 保持不变，本票不代其宣称独立验收）。
+
+- **实现与所有权：** 学习模式新增纯文字局部辅导路径。`_ServiceGenerationRecordsMixin._study_graph_version` 决定图版本：已有会话局部进展 → `study-local-tutor-v1`；本会话带附件或已有页级学习状态 → 原 `study-tutoring-review-v6`；其余文本请求 → 导师版本。导师版本复用日常父图的执行、上下文编译、运行快照与预算（`run_daily_turn` 接受该版本），`StudyWorkflow` 明确排除该版本，照片/页级旧流程原样保留。`TurnOrchestrator.stream_turn` 以 `study_tutor` 参数区分：注入本票自研导师系统提示词，跳过教学卡与三层材料证据门，联网仍按原路由判定（基础概念不无条件联网）。
+- **局部进展：** 新增 `bridges.study.local_progress.StudyLocalProgressRepository` 与公开合同 `StudyLocalProgressProjection`（主题、最近讲解短摘录、当前关注点、来源消息、递增版本、运行关联、更新时间；不含提示词或完整模型上下文）。成功回复经 `ConversationRepository.finalize_message` 的 `persist_study_progress` 回调在同一事务内提交（消息 streaming→done 与进展写入原子一致）；停止、失败不写进展；重试沿用上一运行图版本并复用幂等身份。
+- **接口与合同：** `ChatConversationProjection` 新增可空 `study_local_progress`；`openapi.json` 与 `packages/contracts/src/generated.ts` 已同步。`STUDY_TUTOR_GRAPH_VERSION` 登记进 `bridges.study.versions` 的已知学习图版本；旧版/未知版历史读取行为不变。
+- **持久化与生命周期：** `SCHEMA_VERSION` 升至 70，新增 `study_local_progress` 表（账户/会话复合主键、版本约束、运行关联、会话级联删除），登记进 `REQUIRED_TABLES`/`REQUIRED_TABLE_COLUMNS`；账户删除、导出类别、逻辑清单、快照备份与恢复均已接入并用测试覆盖。旧库经启动迁移升级，无回填。
+- **发送入口与前端：** 原子首轮入口与服务端已有会话发送均移除文本照片前置门禁（照片仍可用，页级流程不回归）；`Composer` 学习模式允许纯文字发送、占位文案更新，`NewChatHome` 空白态改为问题/目标均可开始，`StudyProgress` 对局部进展展示「正在学习：<主题>／当前关注」且不再渲染书页五阶段条；流式、停止、错误与重试沿用聊天合同。
+- **验收标准证据：** ①两种入口 201/200 并流式完成，无 `study_pages_required`；②新测试断言 `study_states` 不新增、`teaching` 为空；③追问请求载荷包含首轮问题与回答（必要前文），预算/模型快照沿用统一路径；④基础概念回合 `web_search` 为空且提示词禁止冒充来源；⑤提示词为本项目自研文本（见 C01）；⑥失败/停止后进展版本不变，成功与进展同事务；⑦重复首轮幂等重放、错误后重试仅产生一次进展写入；⑧主题提示、流式 delta、停止、错误与刷新投影端到端测试通过；⑨模式锁定断言与新会话唯一性通过，日常三模块无回归；⑩迁移、导出、删除、恢复合同同步。
+- **C01：** 对照参考项目 `D:\参考项目\Socratic-Education-System-main\multi_agent_tutor.py`：其提示词为「绝不直接给答案」的固定单轮追问，请求只带当前输入；本票提示词与实现按本项目合同重新设计（允许启发与讲解、使用 BridGes 网关/预算/会话上下文与 SQLite 存储），无代码、提示词、配置或依赖移植。
+- **后端验证（conda `agent`，Python 3.11.15）：** 本票新增/修改的关键回归 65 通过、1 项基线失败对称排除（见下）；学习流程模块（v2_18/19/20、improvement30/31/32/35、识别/夹具/38 结果与快照）120 通过；`tests/storage`、`tests/lifecycle`、`tests/contracts`、`tests/learning` 274 通过；日常模块 `tests/paper`、`tests/commute`、`tests/tieba` 478 通过。全量 `tests/chat` 与 main 对照：两树失败集合逐条一致（94 项均为既有失败），本票新增 5 项通过（1377→1382）。
+- **基线失败（不归因本票）：** `tests/chat/test_issue03_atomic_first_turn.py::test_ordinary_text_persists_without_auto_selecting_legacy_modules` 期望 career-development 提示进入 clarify，实际返回 ordinary；在干净 main 以相同命令复现，属既有基线问题，最终验证对本票聚焦集对称 deselect 该单项。
+- **前端验证（Node v24.14.0）：** worktree 依赖由与 main 相同 lockfile 的本地安装补齐；`tsc --noEmit` 干净，`vitest run` 34 文件/259 项通过（含本票新增进展展示用例），`next build` 生产构建通过，`next lint` 仅 3 条既有警告（未改动的 img/Hook 告警）。
+- **静态检查：** 改动文件 Ruff 无新增发现（4 项既有发现与 main 逐条一致）；改动文件 mypy 无报错，且将 `STUDY_GRAPH_VERSION` 改从 `bridges.study.versions` 导入后修复了 2 项 main 既有 `attr-defined` 报错；其余 mypy 报错（含 `turn.py` 一处 `str | None` 字典索引）在 main 上以同命令同样存在。`git diff --check` 通过。
+- **剩余限制与后续：** 全仓 pytest 未重跑（本票以全量 `tests/chat` 双树对账替代）；已建立局部进展的学习会话后续再加照片仍沿导师路径执行（照片作为本轮多模态输入，不切换页级流程），如需切换语义由后续票定义；真实教学效果与体验由 13 独立验收，本票只证机制与回归。工单 01 状态与验收记录未在本票内改动。

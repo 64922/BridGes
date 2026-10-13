@@ -184,7 +184,9 @@ def _first(client: TestClient, attachments: list[str], key: str = "study-first-1
     )
 
 
-def test_study_needs_photo_and_rejects_daily_module(tmp_path: Any, monkeypatch: Any) -> None:
+def test_study_accepts_text_without_photo_and_rejects_daily_module(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
     app = _app(tmp_path, monkeypatch)
     with TestClient(app) as client:
         _register(client, "studyphoto")
@@ -192,7 +194,8 @@ def test_study_needs_photo_and_rejects_daily_module(tmp_path: Any, monkeypatch: 
             "/chat/first-turn",
             json={"mode": "study", "content": "先讲这个", "idempotency_key": "study-text-1"},
         )
-        assert text_only.status_code == 422
+        assert text_only.status_code == 201, text_only.text
+        assert text_only.json()["conversation"]["mode"] == "study"
         draft = _upload_draft(client, upload_id="study-a").json()
         mixed = client.post(
             "/chat/first-turn",
@@ -205,7 +208,8 @@ def test_study_needs_photo_and_rejects_daily_module(tmp_path: Any, monkeypatch: 
             },
         )
         assert mixed.status_code == 422
-        assert client.get("/chat/conversations").json()["conversations"] == []
+        conversations = client.get("/chat/conversations").json()["conversations"]
+        assert len(conversations) == 1
 
 
 def test_two_pages_preview_survives_reload_and_is_private(tmp_path: Any, monkeypatch: Any) -> None:

@@ -261,10 +261,10 @@ def test_first_turn_failure_leaves_no_draft(client: TestClient) -> None:
     assert after == before, "失败不得留下空草稿或部分会话"
 
 
-def test_study_first_turn_needs_photo_and_daily_rejects_unrecognized_modules(
+def test_study_first_turn_accepts_text_and_daily_rejects_unrecognized_modules(
     client: TestClient,
 ) -> None:
-    """学习模式不能纯文字启动；未知日常模块不能绕过首轮入口。"""
+    """纯文字学习首轮成功创建；未知日常模块不能绕过首轮入口。"""
     _register(client)
     before = client.get("/chat/conversations").json()["conversations"]
 
@@ -276,8 +276,10 @@ def test_study_first_turn_needs_photo_and_daily_rejects_unrecognized_modules(
             "mode": "study",
         },
     )
-    assert study_status == 422
-    assert study_body["detail"]["error"] == "study_pages_required"
+    assert study_status == 201, study_body
+    after_study = client.get("/chat/conversations").json()["conversations"]
+    assert len(after_study) == len(before) + 1
+    assert after_study[0]["mode"] == "study"
 
     module_status, _ = _first_turn(
         client,
@@ -288,7 +290,7 @@ def test_study_first_turn_needs_photo_and_daily_rejects_unrecognized_modules(
         },
     )
     assert module_status == 422
-    assert client.get("/chat/conversations").json()["conversations"] == before
+    assert client.get("/chat/conversations").json()["conversations"] == after_study
 
     create_study = client.post(
         "/chat/conversations", json={"title": "学习草稿", "mode": "study"}
@@ -298,7 +300,7 @@ def test_study_first_turn_needs_photo_and_daily_rejects_unrecognized_modules(
         "/chat/conversations", json={"title": "普通会话", "module_id": "unrecognized"}
     )
     assert create_module.status_code == 422
-    assert client.get("/chat/conversations").json()["conversations"] == before
+    assert client.get("/chat/conversations").json()["conversations"] == after_study
 
 
 def test_message_request_rejects_mode_tampering_and_invalid_module(

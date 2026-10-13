@@ -943,6 +943,7 @@ class ConversationRepository:
         arxiv_search: dict[str, Any] | None = None,
         teaching: dict[str, Any] | None = None,
         persist_learning: Callable[[], None] | None = None,
+        persist_study_progress: Callable[[], None] | None = None,
         final_content: str | None = None,
         paper_search: dict[str, Any] | None = None,
         module_suggestion: dict[str, Any] | None = None,
@@ -1150,6 +1151,8 @@ class ConversationRepository:
                 )
             if cursor.rowcount and persist_learning is not None:
                 persist_learning()
+            if cursor.rowcount and persist_study_progress is not None:
+                persist_study_progress()
             return cursor.rowcount
 
     def message_count(self, account_id: str, conversation_id: str) -> int:

@@ -97,24 +97,17 @@ describe("Composer 输入框", () => {
     }
   );
 
-  it("学习首轮必须先上传照片，文字会保留", async () => {
-    vi.mocked(uploadChatAttachmentDraft).mockResolvedValue(
-      draftProjection("study-photo", "书页.png"),
-    );
+  it("学习首轮可直接发送文字", async () => {
     const onSend = vi.fn().mockResolvedValue(true);
     render(<Composer variant="new-chat" mode="study" onSend={onSend} />);
 
     const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
     const send = screen.getByRole("button", { name: "发送消息" }) as HTMLButtonElement;
-    expect(textbox.placeholder).toBe("上传本节书页照片开始预习");
+    expect(textbox.placeholder).toBe("哪里不清楚就问，或说说你想学什么");
     fireEvent.change(textbox, { target: { value: "这是本节第一张" } });
-    expect(send.disabled).toBe(true);
-
-    pickFiles([pngFile("书页.png")]);
-    await waitForThumb("书页.png");
     expect(send.disabled).toBe(false);
     fireEvent.click(send);
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("这是本节第一张", ["study-photo"]));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("这是本节第一张", []));
   });
 
   it.each(["new-chat", "conversation"] as const)("学习 %s 不能把文件作为书页发送", async (variant) => {

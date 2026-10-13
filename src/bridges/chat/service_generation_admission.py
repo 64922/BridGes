@@ -29,7 +29,6 @@ from bridges.state_copy import (
     WAIT_GENERATION_IN_PROGRESS_TEXT,
 )
 from bridges.storage.errors import StorageError
-from bridges.study.service import StudyRepository
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
@@ -119,16 +118,6 @@ class _ServiceGenerationAdmissionMixin:
         mode = ChatMode(record.mode)
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
-            study = StudyRepository(self._repo.database).get(account_id, conversation_id)
-            if not attachment_ids and (
-                study is None
-                or study.stage not in {"awaiting_pages", "tutoring", "review", "summary"}
-            ):
-                raise ChatDomainError(
-                    "study_pages_required",
-                    "当前阶段请上传本节书页，或重试尚未完成的识别与预习。",
-                    422,
-                )
         user_message_id = secrets.token_urlsafe(16)
         understanding = self._understand_turn(
             account_id=account_id,
@@ -164,6 +153,7 @@ class _ServiceGenerationAdmissionMixin:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
+            has_attachments=bool(attachment_ids),
             module_id=module_id,
             idempotency_key=idempotency_key,
             understanding=understanding,

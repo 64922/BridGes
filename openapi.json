@@ -32619,6 +32619,17 @@
             ],
             "description": "学习小节的持久化阶段、页级证据和预习问题。"
           },
+          "study_local_progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyLocalProgressProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "会话局部学习进展；仅含公开摘要和来源消息标识。"
+          },
           "study_history_status": {
             "anyOf": [
               {
@@ -57695,6 +57706,66 @@
         ],
         "title": "StudyHistoryStatusProjection",
         "description": "旧版、未知版或不可解码学习状态的公开说明。"
+      },
+      "StudyLocalProgressProjection": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Topic",
+            "description": "当前对话主题。"
+          },
+          "knowledge_context": {
+            "type": "string",
+            "maxLength": 1600,
+            "title": "Knowledge Context",
+            "description": "最近一次已完成讲解的短摘录。",
+            "default": ""
+          },
+          "current_focus": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Current Focus",
+            "description": "最近一次成功回复对应的问题。"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Message Ids",
+            "description": "进展所依据的用户与助手消息标识。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "局部进展的递增版本。"
+          },
+          "runtime_run_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Runtime Run Id",
+            "description": "最近一次成功写入进展的运行标识。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近一次成功更新进展的时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "current_focus",
+          "version",
+          "runtime_run_id",
+          "updated_at"
+        ],
+        "title": "StudyLocalProgressProjection",
+        "description": "单个学习对话的轻量进展，不包含模型提示词或完整上下文。"
       },
       "StudyMaterialStatusProjection": {
         "properties": {

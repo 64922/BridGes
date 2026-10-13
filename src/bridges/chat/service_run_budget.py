@@ -125,10 +125,6 @@ class _ServiceRunBudgetMixin:
                 )
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
-            if not attachment_ids:
-                raise ChatDomainError(
-                    "study_pages_required", "请至少上传一张本节书页照片开始学习。", 422
-                )
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
         if attachment_ids:
             self._validate_draft_attachments(
@@ -176,6 +172,7 @@ class _ServiceRunBudgetMixin:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
+            has_attachments=bool(attachment_ids),
             module_id=module_id,
             understanding=understanding,
             user_message_id=user_message_id,
