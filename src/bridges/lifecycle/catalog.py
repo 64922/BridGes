@@ -63,6 +63,11 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "node_receipts",
     "node_artifacts",
     "retrieval_decisions",
+    # Issue 07：学习目标与路线。会话引用与路线版本先于目标删除（外键
+    # 无 CASCADE 时也保持显式顺序安全）。
+    "study_conversation_goals",
+    "study_goal_routes",
+    "study_goals",
     "study_local_progress",
     # Issue 03：待答问题与学习证据。证据先于待答问题删除，二者都先于
     # conversations（外键 CASCADE，仍显式删除不依赖级联）。
@@ -186,6 +191,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "study_verification",
         "学习验证与证据",
         ("study_pending_checks", "study_evidence"),
+        1024,
+    ),
+    # Issue 07：账户级学习目标、路线修订历史与会话引用；整行导出即可读，
+    # 保留修订前的历史版本。
+    ExportCategory(
+        "study_goals",
+        "学习目标与路线",
+        ("study_goals", "study_goal_routes", "study_conversation_goals"),
         1024,
     ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
@@ -409,6 +422,9 @@ def logical_summary(
         "study_local_progress",
         "study_pending_checks",
         "study_evidence",
+        "study_goals",
+        "study_goal_routes",
+        "study_conversation_goals",
         "image_tasks",
         "image_versions",
         "image_assets",

@@ -444,3 +444,19 @@
 .studySummaryNote {
   margin: var(--space-2) 0 0;
 }
+
+.studyGoalStatement {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.studyRoute {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+}
+
+.studyRoutePrereq {
+  display: block;
+  color: var(--color-text-secondary);
+}

@@ -32630,6 +32630,17 @@
             ],
             "description": "会话局部学习进展；仅含公开摘要和来源消息标识。"
           },
+          "study_goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyGoalProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本对话当前关联的账户级学习目标与路线；局部问题对话为 null。"
+          },
           "study_pending_check": {
             "anyOf": [
               {
@@ -57656,6 +57667,101 @@
         ],
         "title": "StudyFragment"
       },
+      "StudyGoalProjection": {
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Goal Id",
+            "description": "稳定目标标识。"
+          },
+          "statement": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Statement",
+            "description": "用户目标原话。"
+          },
+          "observable_result": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Observable Result",
+            "description": "用户明确说出的可观察结果。",
+            "default": ""
+          },
+          "scope": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Scope",
+            "description": "用户明确说出的适用范围。",
+            "default": ""
+          },
+          "constraints": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Constraints",
+            "description": "用户明确说出的限制条件。",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "completed"
+            ],
+            "title": "Status",
+            "description": "目标活动状态。",
+            "default": "active"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "目标递增版本。"
+          },
+          "source_message_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Message Id",
+            "description": "用户目标原话的来源消息。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyRouteProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前生效的学习路线；尚未形成时为 null。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "goal_id",
+          "statement",
+          "version",
+          "source_message_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "StudyGoalProjection",
+        "description": "账户级长期学习目标；身份独立于会话，会话通过引用关联。"
+      },
       "StudyGradeRecord": {
         "properties": {
           "protocol_version": {
@@ -58344,6 +58450,101 @@
           "fragment_ids"
         ],
         "title": "StudyReviewQuestion"
+      },
+      "StudyRouteNode": {
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Node Id",
+            "description": "路线内稳定节点标识。"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title",
+            "description": "知识点名称。"
+          },
+          "prerequisites": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prerequisites",
+            "description": "前置知识点的节点标识；只引用本路线内节点。"
+          },
+          "depth": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Depth",
+            "description": "该节点的教学深度提示。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_id",
+          "title"
+        ],
+        "title": "StudyRouteNode",
+        "description": "路线中的一个知识点；不含掌握状态，跳节点不代表前面已完成。"
+      },
+      "StudyRouteProjection": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "路线递增版本；修订保留历史版本。"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/StudyRouteNode"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "description": "按教学顺序排列的知识点。"
+          },
+          "current_node_id": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Current Node Id",
+            "description": "当前推进的节点标识。",
+            "default": ""
+          },
+          "revision_reason": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Revision Reason",
+            "description": "形成或修订本版本的依据。",
+            "default": ""
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "assistant_proposal",
+              "user_request"
+            ],
+            "title": "Origin",
+            "description": "路线来源：导师方案或按用户要求调整。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "本版本创建时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "origin",
+          "created_at"
+        ],
+        "title": "StudyRouteProjection",
+        "description": "某一目标版本的学习路线（简短、可调整的导师方案）。"
       },
       "StudyScope": {
         "properties": {

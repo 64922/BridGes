@@ -2735,6 +2735,7 @@ class TurnOrchestrator:
         context_budget: dict[str, Any] | None = None,
         web_search_allowed: bool = True,
         study_tutor: bool = False,
+        study_goal_block: str | None = None,
         persist_study_progress: Callable[[str], None] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
@@ -2824,13 +2825,18 @@ class TurnOrchestrator:
                 )
             )
             if study_tutor:
+                # Issue 07：目标/路线区块是规划角色的结构化结果，注入导师
+                # 提示词；无规划时保持 02 的导师提示词不变。
+                tutor_prompt = STUDY_TUTOR_SYSTEM_PROMPT
+                if study_goal_block:
+                    tutor_prompt = f"{tutor_prompt}\n\n{study_goal_block}"
                 history = [dict(message) for message in history]
                 if history and history[0].get("role") == "system":
-                    history[0]["content"] = STUDY_TUTOR_SYSTEM_PROMPT
+                    history[0]["content"] = tutor_prompt
                 else:
                     history.insert(
                         0,
-                        {"role": "system", "content": STUDY_TUTOR_SYSTEM_PROMPT},
+                        {"role": "system", "content": tutor_prompt},
                     )
             # 改进工单 14：按编译记录里的读取计划读取本轮实际原图（当前照片 +
             # 按问题定位的同会话历史原图）。图片部件只在载荷组装时进入内存，

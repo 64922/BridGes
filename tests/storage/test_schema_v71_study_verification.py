@@ -43,7 +43,9 @@ _EVIDENCE_COLUMNS = (
 def test_study_verification_migration_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    assert SCHEMA_VERSION == 71
+    # Issue 03 引入 v71 结构；后续版本（Issue 07 起）在其上追加，本测试
+    # 只要求当前模式不早于 v71。
+    assert SCHEMA_VERSION >= 71
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "issue03-verification-secret")
     monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")

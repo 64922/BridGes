@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING
 
 from bridges.ai.adapters import StreamEvent
 from bridges.ai.model_quota import (
+    RUN_MODEL_QUOTA_CONFIG_KEY,
     RunModelQuota,
 )
+from bridges.chat.budget import load_run_budget
+from bridges.chat.repository import GenerationRunRecord, MessageRecord
 from bridges.chat.run_budget_ledger import (
     RunBudgetLedgerRepository,
 )
@@ -30,6 +33,9 @@ from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.study.goal_planning import StudyGoalPlanner
+from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
+from bridges.study.goals import StudyGoalRepository
 from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.verification import StudyVerificationRepository
 from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
@@ -80,10 +86,18 @@ class _ServiceStreamMixin:
             run is not None and run.graph_version == STUDY_TUTOR_GRAPH_VERSION
         )
         persist_study_progress = None
+        study_goal_block: str | None = None
         if study_tutor and run is not None:
             user_message = self._repo.get_message(account_id, run.user_message_id)
             if user_message is not None:
                 progress_repository = StudyLocalProgressRepository(self._repo.database)
+                # Issue 07：只有新系统目标或确需修订的回合才调用规划角色；
+                # 规划失败/普通提问返回 None，行为与 02 导师一致。
+                goal_service, goal_turn = self._plan_study_goal_turn(
+                    run, user_message, compiled_messages
+                )
+                if goal_turn is not None:
+                    study_goal_block = goal_turn.prompt_block or None
                 verification_repository = StudyVerificationRepository(
                     self._repo.database
                 )
@@ -102,6 +116,9 @@ class _ServiceStreamMixin:
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
                     )
+                    if goal_turn is not None:
+                        # 同一终态事务：目标/路线与消息 done、局部进展一起提交。
+                        goal_service.commit(goal_turn, run, user_message)
 
         understanding = understanding_from_snapshot(
             (run.config or {}).get("understanding") if run is not None else None
@@ -126,6 +143,7 @@ class _ServiceStreamMixin:
             context_budget=context_budget,
             web_search_allowed=web_search_allowed,
             study_tutor=study_tutor,
+            study_goal_block=study_goal_block,
             persist_study_progress=persist_study_progress,
         )
         # 改进工单 17：不在执行器后台链路上的直接编排（测试/脚本）同样
@@ -134,6 +152,38 @@ class _ServiceStreamMixin:
         self._schedule_profile_extraction_after_turn(
             account_id, assistant_message_id
         )
+
+    def _plan_study_goal_turn(
+        self: ChatService,
+        run: GenerationRunRecord,
+        user_message: MessageRecord,
+        compiled_messages: list[dict[str, str]] | None,
+    ) -> tuple[StudyGoalTurnService, StudyGoalTurn | None]:
+        """按已读取的目标/路线状态决定是否调用规划角色（Issue 07）。
+
+        规划调用经统一网关与运行预算账本计数（与 02 导师同一账本）；
+        规划失败返回 None，由调用方按导师正常教学并如实降级。
+        """
+
+        service = StudyGoalTurnService(
+            StudyGoalRepository(self._repo.database),
+            StudyGoalPlanner(self._gateway),
+        )
+        quota = RunModelQuota.from_config(
+            (run.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)
+        )
+        budget = load_run_budget(
+            self._repo, run.account_id, run.run_id, mode_hint="study"
+        )
+        turn = service.plan_for_turn(
+            run=run,
+            user_message=user_message,
+            compiled_messages=compiled_messages,
+            model_quota=quota,
+            budget=budget,
+        )
+        return service, turn
+
     def _schedule_profile_extraction_after_turn(
         self: ChatService, account_id: str, assistant_message_id: str
     ) -> None:

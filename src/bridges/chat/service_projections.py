@@ -53,6 +53,7 @@ from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
+from bridges.study.goals import StudyGoalRepository
 from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.verification import StudyVerificationRepository
 from bridges.study.versions import KNOWN_STUDY_GRAPH_VERSION_SET
@@ -391,6 +392,13 @@ class _ServiceProjectionsMixin:
             if mode == ChatMode.STUDY
             else None
         )
+        study_goal = (
+            StudyGoalRepository(self._repo.database).get_linked_goal(
+                account_id, conversation_id
+            )
+            if mode == ChatMode.STUDY
+            else None
+        )
         study_pending_check = (
             StudyVerificationRepository(self._repo.database).pending_projection(
                 account_id, conversation_id
@@ -404,6 +412,7 @@ class _ServiceProjectionsMixin:
             mode=mode,
             study=study_history.study if study_history is not None else None,
             study_local_progress=study_local_progress,
+            study_goal=study_goal,
             study_pending_check=study_pending_check,
             study_history_status=(
                 study_history.status if study_history is not None else None

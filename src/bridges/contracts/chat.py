@@ -33,6 +33,7 @@ from bridges.contracts.retrieval import (
 )
 from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.study_goals import StudyGoalProjection
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
     StudyHistoryStatusProjection,
@@ -555,6 +556,10 @@ class ChatConversationProjection(BaseModel):
     )
     study_local_progress: StudyLocalProgressProjection | None = Field(
         default=None, description="会话局部学习进展；仅含公开摘要和来源消息标识。"
+    )
+    study_goal: StudyGoalProjection | None = Field(
+        default=None,
+        description="本对话当前关联的账户级学习目标与路线；局部问题对话为 null。",
     )
     study_pending_check: StudyPendingCheckProjection | None = Field(
         default=None,

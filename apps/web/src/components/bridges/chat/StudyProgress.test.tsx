@@ -269,3 +269,73 @@ describe("学习阶段与页级证据", () => {
     expect(screen.queryByText(/本次复盘没有判定为正确的题目/)).toBeNull();
   });
 });
+
+describe("系统性目标与学习路线", () => {
+  const goal = {
+    goal_id: "goal-1",
+    statement: "我想学线性代数，主要为了理解机器学习里的矩阵",
+    observable_result: "能读懂机器学习里的矩阵运算",
+    scope: "线性代数基础",
+    constraints: "不要布置作业",
+    status: "active" as const,
+    version: 1,
+    source_message_id: "user-1",
+    created_at: "2026-10-13T00:00:00Z",
+    updated_at: "2026-10-13T00:00:00Z",
+    route: {
+      version: 2,
+      nodes: [
+        { node_id: "n1", title: "向量与线性组合", prerequisites: [], depth: "基础" },
+        { node_id: "n2", title: "矩阵与矩阵乘法", prerequisites: ["n1"], depth: "基础" },
+        { node_id: "n3", title: "特征值与特征向量", prerequisites: ["n2"], depth: "加深" },
+      ],
+      current_node_id: "n2",
+      revision_reason: "按你的要求先学矩阵",
+      origin: "user_request" as const,
+      created_at: "2026-10-13T00:00:00Z",
+    },
+  };
+
+  it("顶部展示目标与当前知识点，路线按需展开且不宣称已掌握", () => {
+    render(<StudyProgress studyGoal={goal} />);
+
+    expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("当前知识点：矩阵与矩阵乘法");
+    screen.getByText(/学习路线（版本 2，3 个知识点）/).click();
+    expect(screen.getByText(/^矩阵与矩阵乘法/).getAttribute("aria-current")).toBe("step");
+    expect(screen.getByText(/^向量与线性组合/).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByText(/前置：向量与线性组合/)).toBeTruthy();
+    expect(screen.getByText(/修订依据：按你的要求先学矩阵/)).toBeTruthy();
+    expect(screen.getByText(/跳到某节点不代表前面的内容已完成/)).toBeTruthy();
+    expect(screen.queryByText(/已掌握/)).toBeNull();
+  });
+
+  it("尚未形成路线时如实说明，不虚构知识点", () => {
+    render(<StudyProgress studyGoal={{ ...goal, route: null }} />);
+
+    expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("学习路线尚未形成");
+    expect(screen.queryByText(/学习路线（版本/)).toBeNull();
+  });
+
+  it("有目标时同时展示最近关注，刷新后状态一致", () => {
+    const localProgress = {
+      topic: "线性代数",
+      knowledge_context: "矩阵乘法规则。",
+      current_focus: "继续讲矩阵乘法",
+      source_message_ids: ["user-1", "assistant-1"],
+      version: 2,
+      runtime_run_id: "run-1",
+      updated_at: "2026-10-13T00:00:00Z",
+    };
+    const { unmount } = render(
+      <StudyProgress studyGoal={goal} studyLocalProgress={localProgress} />,
+    );
+    expect(screen.getByText("当前关注：继续讲矩阵乘法")).toBeTruthy();
+    expect(screen.queryByText("正在学习：线性代数")).toBeNull();
+    unmount();
+    render(<StudyProgress studyGoal={goal} studyLocalProgress={localProgress} />);
+    expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
+    expect(screen.getByText("当前关注：继续讲矩阵乘法")).toBeTruthy();
+  });
+});
