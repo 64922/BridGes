@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 70
+SCHEMA_VERSION = 71
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3193,6 +3193,59 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # Issue 07：账户级长期学习目标、可调整的导师路线（含修订历史）与
+    # 会话到目标的引用。目标独立于会话标识；路线只由规划提交写入，保留
+    # 修订前版本供历史读取。无旧数据回填。
+    71: [
+        """
+        CREATE TABLE study_goals (
+            goal_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            statement TEXT NOT NULL,
+            observable_result TEXT NOT NULL DEFAULT '',
+            scope TEXT NOT NULL DEFAULT '',
+            constraints TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'paused', 'completed')),
+            source_message_id TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE TABLE study_goal_routes (
+            account_id TEXT NOT NULL,
+            goal_id TEXT NOT NULL,
+            version INTEGER NOT NULL CHECK (version >= 1),
+            nodes_json TEXT NOT NULL,
+            current_node_id TEXT NOT NULL,
+            revision_reason TEXT NOT NULL DEFAULT '',
+            origin TEXT NOT NULL
+                CHECK (origin IN ('assistant_proposal', 'user_request')),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, goal_id, version),
+            FOREIGN KEY (goal_id) REFERENCES study_goals(goal_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE TABLE study_conversation_goals (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            goal_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, conversation_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (goal_id) REFERENCES study_goals(goal_id)
+                ON DELETE CASCADE
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3236,6 +3289,11 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "conversation_summaries",
     "conversation_summary_generations",
     "conversation_summary_sync_attempts",
+    # Issue 07：学习目标与路线投影随对话详情无条件读取，迁移半执行时须在
+    # 启动阶段失败关闭，而不是让学习详情静默缺目标。
+    "study_goals",
+    "study_goal_routes",
+    "study_conversation_goals",
 })
 
 #: 启动完整性校验要求必须存在的核心契约索引。
@@ -3261,6 +3319,36 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "source_message_ids_json",
         "version",
         "runtime_run_id",
+        "updated_at",
+    }),
+    "study_goals": frozenset({
+        "goal_id",
+        "account_id",
+        "statement",
+        "observable_result",
+        "scope",
+        "constraints",
+        "status",
+        "source_message_id",
+        "version",
+        "created_at",
+        "updated_at",
+    }),
+    "study_goal_routes": frozenset({
+        "account_id",
+        "goal_id",
+        "version",
+        "nodes_json",
+        "current_node_id",
+        "revision_reason",
+        "origin",
+        "created_at",
+    }),
+    "study_conversation_goals": frozenset({
+        "account_id",
+        "conversation_id",
+        "goal_id",
+        "created_at",
         "updated_at",
     }),
     "profile_items": frozenset({

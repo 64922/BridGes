@@ -9638,6 +9638,8 @@ export interface components {
             study?: components["schemas"]["StudyState"] | null;
             /** @description 会话局部学习进展；仅含公开摘要和来源消息标识。 */
             study_local_progress?: components["schemas"]["StudyLocalProgressProjection"] | null;
+            /** @description 本对话当前关联的账户级学习目标与路线；局部问题对话为 null。 */
+            study_goal?: components["schemas"]["StudyGoalProjection"] | null;
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
@@ -24783,6 +24785,71 @@ export interface components {
             interpretation: string;
         };
         /**
+         * StudyGoalProjection
+         * @description 账户级长期学习目标；身份独立于会话，会话通过引用关联。
+         */
+        StudyGoalProjection: {
+            /**
+             * Goal Id
+             * @description 稳定目标标识。
+             */
+            goal_id: string;
+            /**
+             * Statement
+             * @description 用户目标原话。
+             */
+            statement: string;
+            /**
+             * Observable Result
+             * @description 用户明确说出的可观察结果。
+             * @default
+             */
+            observable_result: string;
+            /**
+             * Scope
+             * @description 用户明确说出的适用范围。
+             * @default
+             */
+            scope: string;
+            /**
+             * Constraints
+             * @description 用户明确说出的限制条件。
+             * @default
+             */
+            constraints: string;
+            /**
+             * Status
+             * @description 目标活动状态。
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "paused" | "completed";
+            /**
+             * Version
+             * @description 目标递增版本。
+             */
+            version: number;
+            /**
+             * Source Message Id
+             * @description 用户目标原话的来源消息。
+             */
+            source_message_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+            /** @description 当前生效的学习路线；尚未形成时为 null。 */
+            route?: components["schemas"]["StudyRouteProjection"] | null;
+        };
+        /**
          * StudyGradeRecord
          * @description 一次作答判定的逐项核对与必要复核记录（工单 34，仅内部保存）。
          *
@@ -25098,6 +25165,73 @@ export interface components {
              * @default false
              */
             unanswered: boolean;
+        };
+        /**
+         * StudyRouteNode
+         * @description 路线中的一个知识点；不含掌握状态，跳节点不代表前面已完成。
+         */
+        StudyRouteNode: {
+            /**
+             * Node Id
+             * @description 路线内稳定节点标识。
+             */
+            node_id: string;
+            /**
+             * Title
+             * @description 知识点名称。
+             */
+            title: string;
+            /**
+             * Prerequisites
+             * @description 前置知识点的节点标识；只引用本路线内节点。
+             */
+            prerequisites?: string[];
+            /**
+             * Depth
+             * @description 该节点的教学深度提示。
+             * @default
+             */
+            depth: string;
+        };
+        /**
+         * StudyRouteProjection
+         * @description 某一目标版本的学习路线（简短、可调整的导师方案）。
+         */
+        StudyRouteProjection: {
+            /**
+             * Version
+             * @description 路线递增版本；修订保留历史版本。
+             */
+            version: number;
+            /**
+             * Nodes
+             * @description 按教学顺序排列的知识点。
+             */
+            nodes?: components["schemas"]["StudyRouteNode"][];
+            /**
+             * Current Node Id
+             * @description 当前推进的节点标识。
+             * @default
+             */
+            current_node_id: string;
+            /**
+             * Revision Reason
+             * @description 形成或修订本版本的依据。
+             * @default
+             */
+            revision_reason: string;
+            /**
+             * Origin
+             * @description 路线来源：导师方案或按用户要求调整。
+             * @enum {string}
+             */
+            origin: "assistant_proposal" | "user_request";
+            /**
+             * Created At
+             * Format: date-time
+             * @description 本版本创建时间。
+             */
+            created_at: string;
         };
         /**
          * StudyScope

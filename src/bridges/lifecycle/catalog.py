@@ -63,6 +63,11 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "node_receipts",
     "node_artifacts",
     "retrieval_decisions",
+    # Issue 07：学习目标与路线。会话引用与路线版本先于目标删除（外键
+    # 无 CASCADE 时也保持显式顺序安全）。
+    "study_conversation_goals",
+    "study_goal_routes",
+    "study_goals",
     "study_local_progress",
     "study_states",
     "image_tasks",
@@ -175,6 +180,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ExportCategory("study", "学习小节状态", ("study_states",), 4096),
     ExportCategory(
         "study_local_progress", "会话局部学习进展", ("study_local_progress",), 1024
+    ),
+    # Issue 07：账户级学习目标、路线修订历史与会话引用；整行导出即可读，
+    # 保留修订前的历史版本。
+    ExportCategory(
+        "study_goals",
+        "学习目标与路线",
+        ("study_goals", "study_goal_routes", "study_conversation_goals"),
+        1024,
     ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
@@ -395,6 +408,9 @@ def logical_summary(
         "graph_checkpoint_writes",
         "retrieval_decisions",
         "study_local_progress",
+        "study_goals",
+        "study_goal_routes",
+        "study_conversation_goals",
         "image_tasks",
         "image_versions",
         "image_assets",

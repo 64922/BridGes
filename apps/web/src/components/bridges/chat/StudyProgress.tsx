@@ -62,14 +62,70 @@ function evidenceLabels(
   return labels;
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, historyStatus, busy = false, onAction }: {
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, historyStatus, busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
+  studyGoal?: ChatConversationProjection["study_goal"];
   historyStatus?: ChatConversationProjection["study_history_status"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
 }) {
   const [sending, setSending] = useState(false);
+  if (studyGoal) {
+    // Issue 07：顶部固定显示长期目标与当前知识点，路线按需展开；
+    // 只呈现已提交的真实状态——无路线不虚报，跳节点不标掌握。
+    const route = studyGoal.route;
+    const nodes = route?.nodes ?? [];
+    const currentNode = nodes.find((node) => node.node_id === route?.current_node_id);
+    return (
+      <section className={styles.studyProgress} aria-label="学习目标">
+        <p className={styles.studyGoalStatement}>目标：{studyGoal.statement}</p>
+        {currentNode ? (
+          <p role="status">当前知识点：{currentNode.title}</p>
+        ) : nodes.length > 0 ? (
+          <p role="status">学习路线尚未推进到具体知识点。</p>
+        ) : (
+          <p role="status">学习路线尚未形成，导师会依据你的目标继续教学。</p>
+        )}
+        {studyLocalProgress?.current_focus && (
+          <p role="status">当前关注：{studyLocalProgress.current_focus}</p>
+        )}
+        {route && nodes.length > 0 && (
+          <details>
+            <summary>
+              学习路线（版本 {route.version}，{nodes.length} 个知识点）
+            </summary>
+            <ol className={styles.studyRoute}>
+              {nodes.map((node) => (
+                <li
+                  key={node.node_id}
+                  aria-current={node.node_id === route.current_node_id ? "step" : undefined}
+                  className={node.node_id === route.current_node_id
+                    ? styles.studyStageCurrent : undefined}
+                >
+                  {node.title}
+                  {node.depth && ` · ${node.depth}`}
+                  {(node.prerequisites?.length ?? 0) > 0 && (
+                    <span className={styles.studyRoutePrereq}>
+                      前置：{(node.prerequisites ?? [])
+                        .map((id) => nodes.find((item) => item.node_id === id)?.title ?? id)
+                        .join("、")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+            {route.revision_reason && (
+              <p className={styles.studySummaryNote}>修订依据：{route.revision_reason}</p>
+            )}
+            <p className={styles.studySummaryNote}>
+              路线是可调整的导师方案；跳到某节点不代表前面的内容已完成。
+            </p>
+          </details>
+        )}
+      </section>
+    );
+  }
   if (studyLocalProgress) {
     return (
       <section className={styles.studyProgress} aria-label="局部学习进展">
