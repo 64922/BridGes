@@ -136,6 +136,75 @@ const ANSWER_ASSISTANCE_LABEL: Record<string, string> = {
   none: "无提示",
 };
 
+// Issue 09：采用学情的调整方向；呈现真实生效的教学调整，不是能力等级。
+const ADJUSTMENT_LABEL: Record<string, string> = {
+  prerequisite_review: "补讲前置知识点",
+  independent_application: "安排独立应用",
+  transfer_application: "改用迁移应用",
+  recheck: "安排复核",
+  hint_granularity: "改用更小粒度提示",
+};
+
+// Issue 09：学习详情按需查看本轮采用依据——采用了哪些已核验学情、按什么
+// 方向调整；只展示真实生效的采用记录，不含模型提示词或内部推理。
+function StudyAdoptionBasis({
+  adoptions,
+}: {
+  adoptions: NonNullable<ChatConversationProjection["study_record_adoptions"]>;
+}) {
+  if (adoptions.length === 0) return null;
+  return (
+    <details className={styles.studySummary}>
+      <summary>教学采用的学情依据（{adoptions.length} 次）</summary>
+      <ul>
+        {adoptions.map((adoption) => {
+          const entries = adoption.entries ?? [];
+          return (
+            <li key={adoption.adoption_id}>
+              {entries.length > 0 ? (
+                <ul>
+                  {entries.map((entry) => {
+                    const adjustments = entry.adjustments ?? [];
+                    return (
+                      <li key={entry.record_id}>
+                        「{entry.title}」
+                        ：{DIAGNOSIS_VERDICT_LABEL[entry.verdict] ?? entry.verdict}
+                        {adjustments.length > 0 && (
+                          <span>
+                            {" · 调整："}
+                            {adjustments
+                              .map((item) => ADJUSTMENT_LABEL[item] ?? item)
+                              .join("、")}
+                          </span>
+                        )}
+                        {entry.reason && (
+                          <span className={styles.studySummaryNote}>
+                            （{entry.reason}）
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className={styles.studySummaryNote}>
+                  本轮未采用具体学情，仅保留待进一步验证的说明。
+                </p>
+              )}
+              {adoption.uncertainty_note && (
+                <p className={styles.studySummaryNote}>{adoption.uncertainty_note}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className={styles.studySummaryNote}>
+        学情依据只影响讲法、例子与检查；一次完成不代表长期掌握，纠正或删除记录后不再用于后续教学。
+      </p>
+    </details>
+  );
+}
+
 // Issue 06：删除先按既有用户管理规范确认；撤回判断与旧证据的采用，
 // 原聊天历史仍可查看。
 const DELETE_RECORD_CONFIRM =
@@ -379,7 +448,7 @@ function StudyGoalPausedStatus({
   );
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyGoalNotice, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, historyStatus, busy = false, onAction, onRetryDiagnosis, onCorrectRecord, onDeleteRecord }: {
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyGoalNotice, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, studyRecordAdoptions, historyStatus, busy = false, onAction, onRetryDiagnosis, onCorrectRecord, onDeleteRecord }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   studyGoal?: ChatConversationProjection["study_goal"];
@@ -391,6 +460,7 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
   historyStatus?: ChatConversationProjection["study_history_status"];
   studyDiagnosisTasks?: ChatConversationProjection["study_diagnosis_tasks"];
   studyLearningRecord?: ChatConversationProjection["study_learning_record"];
+  studyRecordAdoptions?: ChatConversationProjection["study_record_adoptions"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
   onRetryDiagnosis?: (taskId: string) => Promise<void>;
@@ -437,6 +507,7 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
           studyPause={studyPause}
           studySummary={studySummary}
         />
+        <StudyAdoptionBasis adoptions={studyRecordAdoptions ?? []} />
         {route && nodes.length > 0 && (
           <details>
             <summary>
@@ -502,6 +573,7 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
           studyPause={studyPause}
           studySummary={studySummary}
         />
+        <StudyAdoptionBasis adoptions={studyRecordAdoptions ?? []} />
         <StudyDiagnosisPanel
           tasks={studyDiagnosisTasks ?? []}
           records={studyLearningRecord ?? []}

@@ -33,6 +33,7 @@ from bridges.contracts.retrieval import (
 )
 from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.study_adaptation import StudyAdoptionProjection
 from bridges.contracts.study_controls import (
     StudyControlProjection,
     StudySessionPauseProjection,
@@ -605,6 +606,11 @@ class ChatConversationProjection(BaseModel):
         default_factory=list,
         description="与本对话核验证据相关的账户级学习档案；"
         "单次完成不是长期掌握，同名不同上下文的知识点不合并。",
+    )
+    study_record_adoptions: list[StudyAdoptionProjection] = Field(
+        default_factory=list,
+        description="本对话真实生效的学情采用记录（采用了哪些学情、"
+        "按什么方向调整教学）；不含模型提示词或内部推理。",
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,

@@ -327,6 +327,11 @@ class _ServiceRetryMixin:
         verification_snapshot = (previous_config or {}).get("study_verification")
         if isinstance(verification_snapshot, dict):
             run_config["study_verification"] = verification_snapshot
+        # Issue 09：重试沿用本轮采用快照——重试期间发生的纠正/删除由
+        # 调用前复验撤回，不静默换成另一份学情。
+        adaptation_snapshot = (previous_config or {}).get("study_adaptation")
+        if isinstance(adaptation_snapshot, dict):
+            run_config["study_adaptation"] = adaptation_snapshot
         run_record = GenerationRunRecord(
             run_id=run_id,
             account_id=account_id,

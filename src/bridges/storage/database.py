@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 77
+SCHEMA_VERSION = 78
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3600,6 +3600,39 @@ MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE study_evidence ADD COLUMN goal_id TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE study_diagnosis_tasks ADD COLUMN goal_id TEXT NOT NULL DEFAULT ''",
     ],
+    # Issue 09：按学情调整后续教法的采用记录。每轮成功交付写入一条：
+    # 冻结采用标识、来源运行/消息、目标与路线版本、实际采用的记录引用
+    # （标识/版本/结论/调整方向）与不确定性说明。记录不被后续纠正/删除
+    # 重写（历史含义保留），但快照失效后不再进入新的采用；不存学情正文。
+    78: [
+        """
+        CREATE TABLE study_record_adoptions (
+            adoption_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            assistant_message_id TEXT NOT NULL,
+            goal_id TEXT NOT NULL DEFAULT '',
+            goal_version INTEGER NOT NULL DEFAULT 0 CHECK (goal_version >= 0),
+            route_version INTEGER NOT NULL DEFAULT 0 CHECK (route_version >= 0),
+            status TEXT NOT NULL CHECK (status IN ('applied', 'invalidated')),
+            invalid_reason TEXT NOT NULL DEFAULT '',
+            entries_json TEXT NOT NULL DEFAULT '[]',
+            uncertainty_note TEXT NOT NULL DEFAULT '',
+            contract_version TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_record_adoptions_conversation
+            ON study_record_adoptions (account_id, conversation_id, created_at)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3638,6 +3671,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # Issue 08：目标关联/切换事件在对话详情中无条件读取（恢复/切换/冲突
     # 反馈），迁移半执行时须在启动阶段失败关闭。
     "study_goal_events",
+    # Issue 09：学习详情按需读取本轮采用依据；采用写入发生在回复终态
+    # 事务内，迁移半执行时须在启动阶段失败关闭。
+    "study_record_adoptions",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3690,6 +3726,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_study_learning_records_updated",
     "idx_study_record_controls_account",
     "idx_study_goal_events_conversation",
+    "idx_study_record_adoptions_conversation",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3939,6 +3976,23 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "superseded_record_version",
         "record_version",
         "created_at",
+    }),
+    "study_record_adoptions": frozenset({
+        "adoption_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "assistant_message_id",
+        "goal_id",
+        "goal_version",
+        "route_version",
+        "status",
+        "invalid_reason",
+        "entries_json",
+        "uncertainty_note",
+        "contract_version",
+        "created_at",
+        "updated_at",
     }),
     "profile_items": frozenset({
         "profile_item_id",

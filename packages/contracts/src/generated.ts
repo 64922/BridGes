@@ -9748,6 +9748,11 @@ export interface components {
              * @description 与本对话核验证据相关的账户级学习档案；单次完成不是长期掌握，同名不同上下文的知识点不合并。
              */
             study_learning_record?: components["schemas"]["StudyLearningRecordProjection"][];
+            /**
+             * Study Record Adoptions
+             * @description 本对话真实生效的学情采用记录（采用了哪些学情、按什么方向调整教学）；不含模型提示词或内部推理。
+             */
+            study_record_adoptions?: components["schemas"]["StudyAdoptionProjection"][];
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
@@ -30077,6 +30082,122 @@ export interface components {
          * @enum {string}
          */
         bridges__contracts__workflows__ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
+        /**
+         * StudyAdaptationAdjustment
+         * @description 一条学情影响教学的具体调整方向（不是能力等级）。
+         * @enum {string}
+         */
+        StudyAdaptationAdjustment: "prerequisite_review" | "independent_application" | "transfer_application" | "recheck" | "hint_granularity";
+        /**
+         * StudyAdoptedRecord
+         * @description 采用快照中的一条已核验学情（身份、版本与调整方向）。
+         */
+        StudyAdoptedRecord: {
+            /**
+             * Record Id
+             * @description 档案条目标识。
+             */
+            record_id: string;
+            /**
+             * Record Version
+             * @description 采用时的记录版本；变化即使快照失效。
+             */
+            record_version: number;
+            /**
+             * Subject
+             * @description 知识点所属学科。
+             * @default
+             */
+            subject: string;
+            /**
+             * Title
+             * @description 知识点标题。
+             * @default
+             */
+            title: string;
+            /**
+             * Usage Context
+             * @description 知识点用途上下文（同名区分依据）。
+             * @default
+             */
+            usage_context: string;
+            /** @description 已核验的当前知识判断。 */
+            verdict: components["schemas"]["StudyDiagnosisVerdict"];
+            /**
+             * Performance
+             * @description 最近一次核验到的具体表现。
+             * @default
+             */
+            performance: string;
+            /**
+             * Adjustments
+             * @description 本条学情对本轮教学的具体调整方向。
+             */
+            adjustments?: components["schemas"]["StudyAdaptationAdjustment"][];
+            /**
+             * Reason
+             * @description 简短的调整原因（可展示给用户）。
+             * @default
+             */
+            reason: string;
+        };
+        /**
+         * StudyAdoptionProjection
+         * @description 用户可见的一次采用记录：采用了哪些学情、按什么方向调整。
+         */
+        StudyAdoptionProjection: {
+            /**
+             * Adoption Id
+             * @description 采用记录标识。
+             */
+            adoption_id: string;
+            /**
+             * Goal Id
+             * @description 采用时的学习目标。
+             * @default
+             */
+            goal_id: string;
+            /**
+             * Goal Version
+             * @description 采用时的目标版本。
+             * @default 0
+             */
+            goal_version: number;
+            /**
+             * Route Version
+             * @description 采用时的路线版本。
+             * @default 0
+             */
+            route_version: number;
+            /**
+             * Status
+             * @description 采用状态：applied / invalidated。
+             */
+            status: string;
+            /**
+             * Invalid Reason
+             * @description 失效的真实原因；正常生效时为空。
+             * @default
+             */
+            invalid_reason: string;
+            /**
+             * Entries
+             * @description 正式采用的已核验学情与调整方向。
+             */
+            entries?: components["schemas"]["StudyAdoptedRecord"][];
+            /**
+             * Uncertainty Note
+             * @description 相关但待进一步验证的学情说明。
+             * @default
+             */
+            uncertainty_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 采用发生时间。
+             */
+            created_at: string;
+        };
     };
     responses: never;
     parameters: never;
