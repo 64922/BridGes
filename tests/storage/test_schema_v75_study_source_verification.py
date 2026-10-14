@@ -38,7 +38,7 @@ def test_study_source_verification_migration_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     # Issue 11 引入 v75 结构（与 04/05 并行交付后重编号对齐）；后续版
-    # 本在其上追加时本测试放宽为 >= 75（v76 为目标事件迁移）。
+    # 本在其上追加时本测试放宽为 >= 75（v76 为档案控制迁移、v77 为目标事件迁移）。
     assert SCHEMA_VERSION >= 75
     assert 75 in MIGRATIONS
     assert "study_source_verifications" in REQUIRED_TABLES

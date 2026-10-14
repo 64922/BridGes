@@ -66,6 +66,7 @@ from bridges.study.diagnosis_repository import StudyDiagnosisRepository
 from bridges.study.goal_events import StudyGoalEventRepository
 from bridges.study.goals import StudyGoalRepository
 from bridges.study.local_progress import StudyLocalProgressRepository
+from bridges.study.record_controls import StudyRecordControlService
 from bridges.study.verification import StudyVerificationRepository
 from bridges.study.versions import KNOWN_STUDY_GRAPH_VERSION_SET
 from bridges.tieba.contracts import TiebaResearchProjection
@@ -445,6 +446,8 @@ class _ServiceProjectionsMixin:
         )
         # Issue 05：学习详情按需展示诊断任务真实状态与账户级档案；
         # 非学习模式不读取，也不把队列内部字段暴露给用户。
+        # Issue 06：档案读取经用户控制服务——已删除记录不显示，纠正与
+        # 来源不可用按真实状态标注。
         study_diagnosis_tasks: list[StudyDiagnosisTaskProjection] = []
         study_learning_record: list[StudyLearningRecordProjection] = []
         if mode == ChatMode.STUDY:
@@ -452,9 +455,9 @@ class _ServiceProjectionsMixin:
             study_diagnosis_tasks = diagnosis_repository.list_tasks(
                 account_id, conversation_id
             )
-            study_learning_record = diagnosis_repository.record_projections(
-                account_id, conversation_id
-            )
+            study_learning_record = StudyRecordControlService(
+                self._repo.database
+            ).record_projections(account_id, conversation_id)
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,

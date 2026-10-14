@@ -75,6 +75,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     # accounts/conversations（外键 CASCADE，仍显式删除不依赖级联）。
     "study_diagnosis_results",
     "study_diagnosis_tasks",
+    # Issue 06：用户纠正/删除事件外键指向学习档案，先于档案删除。
+    "study_record_controls",
     "study_learning_records",
     # Issue 03：待答问题与学习证据。证据先于待答问题删除，二者都先于
     # conversations（外键 CASCADE，仍显式删除不依赖级联）。
@@ -251,6 +253,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
             "study_learning_records",
         ),
         1024,
+    ),
+    # Issue 06：档案的用户纠正与删除事件（主动来源、被取代结论与操作版本）；
+    # 记录行的当前状态与撤回标记随「学习诊断与档案」类别导出。
+    ExportCategory(
+        "study_record_controls",
+        "学习档案管理记录",
+        ("study_record_controls",),
+        256,
     ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
     ExportCategory("model_run_locks", "模型运行记录", ("model_run_locks",), 512),
@@ -483,6 +493,7 @@ def logical_summary(
         "study_session_summaries",
         "study_diagnosis_tasks",
         "study_diagnosis_results",
+        "study_record_controls",
         "study_learning_records",
         "image_tasks",
         "image_versions",

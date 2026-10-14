@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 — 后台独立诊断与学习档案。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **发布状态：** 用户已确认拆分与依赖，正式发布；尚未实施。
 
@@ -65,3 +65,22 @@
 2026-10-13：档案管理与用户权威切片草稿，待拆分确认。
 
 2026-10-13：用户确认「按此发布」，本票发布到本地问题跟踪器。分诊状态表示信息齐备；须待直接阻塞票验收完成后实施，本轮未开始编码。
+
+2026-10-14：开始实施。前置票 05 已交付并合入 main（`e81b90de`/`7fffab9a` → 合并 `6644f35a`，验收状态 ready-for-human），05 的诊断任务、账户级档案与 `record_version` 乐观锁均已在 main 落地，本票直接消费。固定 Git 基线为 main `c04c2c2b`（含 11 交付）；工作树 `.worktrees/06-learning-record-controls`，分支 `codex/issue-06-learning-record-controls`，开发与验证使用 conda `agent`（Python 3.11.15）。本票负责的共享接缝：账户级档案的用户控制状态（`state`/`user_note`/`corrected_at`/`deleted_at`/撤回证据集）、纠正与删除接口、诊断提交守卫、迁移 v76、生命周期接入，以及 09 唯一可用的有效档案读取边界；09 是本票的下游消费者，本票不修改 10 的材料作答复核语义、不接触画像开关。
+
+2026-10-14（实施与验证记录）：
+- **合同与状态机：** `contracts/study_diagnosis.py` 新增 `StudyRecordState`（active/corrected/deleted）、`StudyRecordCorrectionRequest`（`note` 1–500 + `expected_version`，`extra=forbid`）、`StudyRecordDeletionRequest`（`expected_version`）与 `StudyRecordBoundaryEntry`（record_id/record_version/effective/reason/verified）；证据投影新增 `source_available`/`source_note` 且 `occurred_at` 变为可空（来源不可读时不伪造时间与引文），档案投影新增 `record_version`/`state`/`user_note`/`corrected_at`/`superseded_verdict`/`superseded_performance`/`source_available`。
+- **持久化 v76：** `study_learning_records` 补 5 列（`state`（默认 active）、`user_note`、`corrected_at`、`deleted_at`、`retracted_evidence_ids_json`），新增 `study_record_controls` 操作留痕表（纠正/删除各留一条，含操作版本与时间）与账户索引；`MIGRATION_ADDED_COLUMNS`、`REQUIRED_TABLES`/`REQUIRED_TABLE_COLUMNS`/`REQUIRED_INDEXES` 全部登记；旧库经启动迁移升级，既有 v75 断言按先例放宽为 `>= 75`。
+- **服务与守卫：** 新增 `bridges.study.record_controls.StudyRecordControlService`：纠正按 `expected_version` 乐观锁写入用户自评、保留被取代结论与操作版本，删除写撤回标记（`deleted_at`+`retracted_evidence_ids_json`）并停止该记录与旧证据的采用；`effective_records`/`record_boundary` 是 09 唯一有效读取边界（`user_corrected`/`user_deleted`/`source_unavailable` 与 `verified` 语义）。`diagnosis_repository` 提交守卫：迟到结果命中撤回证据/发生时间早于删除 → `_RecordRetractedError` 整体拒绝并把任务如实标记 `invalidated`；纠正前证据迟到完成只登记观察不覆盖用户操作；纠正后新观察合并但保留 `pending_confirmation`，自动结论不冒充比用户纠正更权威；删除后真正的新作答（晚于删除）形成新观察并清空旧控制。`chat/service_projections.py` 改用控制服务投影，删除记录不再进入会话视图。
+- **API 与生命周期：** `POST /chat/conversations/{id}/study/records/{rid}/corrections`（返回更新后的档案投影）、`DELETE /chat/conversations/{id}/study/records/{rid}`（204）；404 `record_not_found`、409 `record_version_conflict`/`record_deleted`、422 `record_note_required`，账户作用域与私有字段不泄漏。`ACCOUNT_TABLES` 接入 `study_record_controls`（先于档案表）、新导出类别 `study_record_controls`（「学习档案管理记录」）与逻辑清单/快照恢复/账户删除贯通。`openapi.json` 以合并前版本为基线全量重生成后位置式最小合并（相对基线纯追加 360 行/仅 7 行既有字段变更 = `occurred_at` 可空），与新鲜 spec 逐字段相等；`packages/contracts/src/generated.ts` 经 openapi-typescript 7.13.0 重新生成（+280/-3）。
+- **前端：** `lib/api/chat.ts` 新增 `correctStudyRecord`/`deleteStudyRecord`；`StudyProgress` 学习档案面板新增「纠正」（行内 textarea + 保存/取消，失败保留草稿、成功后按新投影刷新）、「删除」（`window.confirm` 明示「不再用于后续教学」）、来源不可读的证据与记录如实标注、纠正态展示自评与被取代原结论；`page.tsx` 新增 `correctRecord`/`deleteRecord` 处理器（版本冲突如实提示并刷新，不把失败显示为成功）。
+- **验收标准证据（映射 45–53 行）：** ①查看依据/来源不可用：`test_view_evidence_locates_real_sources_and_marks_unavailable`（来源删除后 `source_available=false`、说明真实、不伪造引文）；②纠正与版本：`test_user_correction_keeps_source_and_late_diagnosis_cannot_overwrite`（主动来源、被取代结论、`record_version` 递增，旧版本提交 409 且原记录保留）；③删除生效与刷新不恢复：`test_deletion_persists_and_late_results_cannot_revive`（删除后投影消失、同证据迟到结果被拒写、任务 `invalidated`）；④迟到/缓存/回放守同一撤回范围：守卫在提交点拒绝，迟到任务不写结果不复活判断；⑤新作答身份：`test_new_answer_after_deletion_forms_new_observation`（晚于删除的新作答形成新观察，旧历史不冒充）；⑥自评不冒充已核验、冲突保留：纠正态展示「用户纠正（自评，未经核验）」且纠正后新观察保留待确认（`test_corrected_record_new_observation_coexists_with_user_note`）；⑦重复/冲突/隔离：`test_version_conflict_duplicate_and_account_isolation`（重复删除 409、跨账户 404、版本冲突不覆盖）；⑧界面旅程：`e2e/issue06-learning-record-controls.spec.ts` 两条桌面旅程（纠正保存与刷新保持；删除确认、迟到成功不恢复）。取消编辑、失败保留输入由 `StudyProgress.test.tsx` 新增 6 项覆盖（纠正提交/失败保留草稿/纠正态展示/删除确认/取消不提交/来源不可读标注）。
+- **验证（conda `agent`）：** 聚焦 10 项通过（`test_issue06_learning_record_controls.py` 6、`test_schema_v76_study_record_controls.py` 2、`test_openapi_sync.py` 2）。四目录回归对照（`tests/chat tests/storage tests/lifecycle tests/contracts`）：基线 `c04c2c2b` 95 失败/1623 通过，本分支 95 失败/1631 通过（Δ通过 +8 = 本票新增；一次运行中 `test_improvement13_acceptance.py::test_121_...` 单条负载抖动，单独 5/5 与整文件 8/8 复跑通过、复跑后失败名单与基线逐条 0 差）。全量 pytest（排除 `tests/career_plan`——该目录在 main 与基线均既有收集错误：测试引用 `CareerBackgroundLoader` 而 src 两侧均无定义）333 失败/5694 通过/37 跳过，失败均在未触及的既有模块（MCP 退役 410、retirement、security 的 issue42 脚本凭据扫描、retrieval 等），与四目录对照结论一致。静态：改动文件 Ruff 仅剩 3 项既有问题（`api/chat.py` F401/F841、`database.py:1671` E501），改动模块 mypy 无报错（修复一处 `no-redef`）。前端：`tsc --noEmit` 干净、`vitest run` 34 文件/277 项通过（含 `StudyProgress.test.tsx` 30 项）、`next build` 通过、`next lint` 仅 3 条既有警告；`playwright test e2e/issue06-learning-record-controls.spec.ts` 2 项通过（本机以 `BRIDGES_PYTHON=agent`、`PYTHONPATH=<worktree>/src`、`PORT=3100`/`API_PORT=8100` 运行避开共享端口；真实链路守卫由 pytest 覆盖）。
+- **C01：** 纠正/删除的输出语义与守卫为按 BridGes 需求实现，未复制参考项目代码；未新增第三方依赖（前端 openapi-typescript 为既有依赖）。
+- **剩余限制与后续：** 诊断文本质量由 13 验收；09 必须以 `record_boundary`/`effective_records` 读取，不得直读已删除业务行；撤回范围对历史摘要/缓存的旁路复用在本票以「唯一读取边界 + 提交守卫」覆盖，13 端到端验收时复核。
+
+2026-10-14（合并与推送记录）：
+- 合并前 main 已推进到 `9af3c325`（含 10 材料作答复核合入 `c034f69e` 与 11 的交付记录）；本票基线 `c04c2c2b`。三方合并**零冲突**：10 在 `StudyProgress` 两个视图的 `source_status` 待答提示与本票的档案面板/签名改动自动并置（合并后两处提示与 `onCorrectRecord`/`onDeleteRecord` 同时在场），`openapi.json`/`generated.ts` 文本并置后 `test_openapi_sync` 逐字段通过，合同产物无需重生成。
+- Git 记录：功能提交 `0daf8add`（`feat(study): add learning record correction, deletion and late-result protection`，20 文件 +3323/−246）；合并提交 `44c472f0`（`merge: issue 06 learning record controls`）。
+- 合并后验证（主工作区，conda `agent`）：`tests/contracts tests/storage tests/lifecycle` + 本票/05/10/02/03/07 聊天用例共 **239 项通过**（以独占 `--basetemp` 运行——主工作区共享 `.tmp/pytest-basetemp` 有其他会话进程持有数据库文件，Windows 文件锁会令无关用例在清理阶段报错；换独占目录后全绿）；前端 `tsc --noEmit` 干净、`vitest run` 34 文件/**278 项通过**（含 10 的 1 项与本票 6 项）、`next build` 通过。
+- 推送：本地 main 经代理 `http://127.0.0.1:7890` 推送 `origin/main`，推送后 `git rev-parse` 两侧一致。

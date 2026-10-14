@@ -4460,6 +4460,235 @@
         }
       }
     },
+    "/chat/conversations/{conversation_id}/study/records/{record_id}/corrections": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Correct Study Record",
+        "description": "保存用户对一条学习记录的主动纠正（用户自评，未经独立核验）。\n\n按记录版本做并发校验：版本不一致返回 409，如实提示并保留原记录；\n纠正保留被取代结论与操作版本，自动诊断不能无条件覆盖。",
+        "operationId": "correct_study_record_chat_conversations__conversation_id__study_records__record_id__corrections_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRecordCorrectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyLearningRecordProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/study/records/{record_id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Delete Study Record",
+        "description": "删除一条学习记录并保留撤回标记；迟到诊断不能恢复该判断。\n\n删除停止该判断及关联旧证据在学情归档/个性化中的采用；原聊天仍可\n按历史读取义务查看。重复删除或版本冲突如实返回 409。",
+        "operationId": "delete_study_record_chat_conversations__conversation_id__study_records__record_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRecordDeletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/chat/conversations/{conversation_id}/messages/{message_id}/retry": {
       "post": {
         "tags": [
@@ -58438,6 +58667,60 @@
             "format": "date-time",
             "title": "Updated At",
             "description": "档案条目最近更新时间。"
+          },
+          "record_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Record Version",
+            "description": "记录版本；纠正与删除按该版本做并发校验。",
+            "default": 1
+          },
+          "state": {
+            "$ref": "#/components/schemas/StudyRecordState",
+            "description": "记录的用户控制状态。",
+            "default": "active"
+          },
+          "user_note": {
+            "type": "string",
+            "title": "User Note",
+            "description": "用户主动纠正的内容（用户自评，未经核验）；未纠正时为空。",
+            "default": ""
+          },
+          "corrected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected At",
+            "description": "用户最近一次纠正的时间。"
+          },
+          "superseded_verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyDiagnosisVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "被用户纠正取代的原核验结论；不再用于后续教学。"
+          },
+          "superseded_performance": {
+            "type": "string",
+            "title": "Superseded Performance",
+            "description": "被取代结论的原表现描述（保留作对照）。",
+            "default": ""
+          },
+          "source_available": {
+            "type": "boolean",
+            "title": "Source Available",
+            "description": "本条档案的全部依据来源是否仍可读取。",
+            "default": true
           }
         },
         "type": "object",
@@ -58448,7 +58731,7 @@
           "updated_at"
         ],
         "title": "StudyLearningRecordProjection",
-        "description": "账户级档案中一条知识点判断的最小可用投影。\n\n知识点身份包含学科与用途上下文；同名但上下文不同的概念是不同\n档案条目。单次完成只是当前证据下的判断，不表示长期掌握。"
+        "description": "账户级档案中一条知识点判断的最小可用投影。\n\n知识点身份包含学科与用途上下文；同名但上下文不同的概念是不同\n档案条目。单次完成只是当前证据下的判断，不表示长期掌握。\n用户纠正与原始核验结论分开呈现：纠正保留主动来源与被取代结论，\n用户自评不冒充已核验掌握。"
       },
       "StudyLocalProgressProjection": {
         "properties": {
@@ -58849,6 +59132,48 @@
         "title": "StudyQuestionCheck",
         "description": "出题前的内容核验结果（工单 33）：题干/评分依据/答案逐项裁决。\n\n只由出题前的独立核验写入；已判定题目不回写、不随用户答案临时修改。"
       },
+      "StudyRecordCorrectionRequest": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Note",
+            "description": "用户说明的正确理解或判断依据；作为主动来源保存。"
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "description": "用户编辑时看到的记录版本；冲突时拒绝覆盖。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "note",
+          "expected_version"
+        ],
+        "title": "StudyRecordCorrectionRequest",
+        "description": "用户对一条学习记录的主动纠正（用户自评，未经独立核验）。"
+      },
+      "StudyRecordDeletionRequest": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "description": "用户确认删除时看到的记录版本；冲突时拒绝删除。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_version"
+        ],
+        "title": "StudyRecordDeletionRequest",
+        "description": "用户删除一条学习记录；按既有用户管理规范确认后提交。"
+      },
       "StudyRecordEvidenceProjection": {
         "properties": {
           "evidence_id": {
@@ -58909,19 +59234,47 @@
             "description": "当轮反馈消息标识。"
           },
           "occurred_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Occurred At",
-            "description": "证据发生时间（归并顺序依据）。"
+            "description": "证据发生时间（归并顺序依据）；来源不可读时为 null。"
+          },
+          "source_available": {
+            "type": "boolean",
+            "title": "Source Available",
+            "description": "来源消息是否仍可读取；不可读时如实标注。",
+            "default": true
+          },
+          "source_note": {
+            "type": "string",
+            "title": "Source Note",
+            "description": "来源不可用的真实说明；可用时为空。",
+            "default": ""
           }
         },
         "type": "object",
         "required": [
-          "evidence_id",
-          "occurred_at"
+          "evidence_id"
         ],
         "title": "StudyRecordEvidenceProjection",
-        "description": "档案中一条已核验证据的定位；不复制回答正文或私有依据。"
+        "description": "档案中一条已核验证据的定位；不复制回答正文或私有依据。\n\n来源（回答/反馈消息）已删除或不可读时 ``source_available`` 为 false\n并给出真实说明，不伪造引文。"
+      },
+      "StudyRecordState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "corrected",
+          "deleted"
+        ],
+        "title": "StudyRecordState",
+        "description": "学习档案的用户控制状态；纠正与删除都是账户级真实持久状态。"
       },
       "StudyReview": {
         "properties": {

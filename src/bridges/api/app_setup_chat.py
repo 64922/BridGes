@@ -12,6 +12,7 @@ from bridges.chat.summary import ChatSummaryService, GatewaySummaryExtractor
 from bridges.commute.service import CommuteService
 from bridges.commute.sources import AmapRouteClient
 from bridges.study.diagnosis import StudyDiagnosisService
+from bridges.study.record_controls import StudyRecordControlService
 from bridges.tasks.repository import TaskRepository
 from bridges.tasks.service import TaskService
 
@@ -66,6 +67,11 @@ def configure_chat_services(app: FastAPI) -> None:
     # 在回复事务之外驱动，不占用前台等待。缺凭据时网关拒绝并如实失败。
     app.state.study_diagnosis_service = StudyDiagnosisService(
         bridges_database, model_gateway
+    )
+    # Issue 06：档案纠正/删除与有效读取边界。用户操作按记录版本乐观并发，
+    # 诊断提交守卫拒绝撤回范围内的迟到结果；本服务不调用模型。
+    app.state.study_record_control_service = StudyRecordControlService(
+        bridges_database
     )
     app.state.chat_service = ChatService(
         repository=ConversationRepository(bridges_database),

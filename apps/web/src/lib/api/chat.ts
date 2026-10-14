@@ -387,6 +387,50 @@ export async function retryStudyDiagnosis(
 }
 
 /**
+ * Issue 06：保存用户对一条学习记录的主动纠正（用户自评，未经核验）。
+ * 携带编辑时看到的记录版本做并发校验：409 时服务端拒绝覆盖，前端保留
+ * 当前输入并刷新最新状态；纠正保留被取代结论与操作版本。
+ */
+export async function correctStudyRecord(
+  conversationId: string,
+  recordId: string,
+  request: { note: string; expected_version: number }
+): Promise<NonNullable<ChatConversationProjection["study_learning_record"]>[number]> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/study/records/${encodeURIComponent(recordId)}/corrections`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * Issue 06：删除一条学习记录并保留撤回标记；迟到诊断不会恢复该判断。
+ * 按既有用户管理规范先确认，版本冲突（409）时如实提示并刷新。
+ */
+export async function deleteStudyRecord(
+  conversationId: string,
+  recordId: string,
+  expectedVersion: number
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/study/records/${encodeURIComponent(recordId)}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ expected_version: expectedVersion }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+}
+
+/**
  * 单条引用的证据详情（Issue 20）：点击引用时实时校验授权并给出
  * 打开原文入口；原文已删除或权限变化时返回安全中文状态。
  */

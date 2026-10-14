@@ -56,7 +56,12 @@ from bridges.contracts.feedback import (
 )
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.retrieval import CitationDetailProjection
-from bridges.contracts.study_diagnosis import StudyDiagnosisTaskProjection
+from bridges.contracts.study_diagnosis import (
+    StudyDiagnosisTaskProjection,
+    StudyLearningRecordProjection,
+    StudyRecordCorrectionRequest,
+    StudyRecordDeletionRequest,
+)
 from bridges.contracts.study_goals import StudyGoalListProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
@@ -71,6 +76,10 @@ from bridges.retirement import (
 )
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 from bridges.study.diagnosis import StudyDiagnosisError, StudyDiagnosisService
+from bridges.study.record_controls import (
+    StudyRecordControlError,
+    StudyRecordControlService,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -135,6 +144,26 @@ def _get_diagnosis_service(request: Request) -> StudyDiagnosisService:
 
 DiagnosisServiceDep = Annotated[
     StudyDiagnosisService, Depends(_get_diagnosis_service)
+]
+
+
+def _get_record_control_service(request: Request) -> StudyRecordControlService:
+    service: StudyRecordControlService | None = getattr(
+        request.app.state, "study_record_control_service", None
+    )
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ChatError(
+                error="record_control_unavailable",
+                message="学习档案管理未启用，当前实例拒绝该操作。",
+            ).model_dump(),
+        )
+    return service
+
+
+RecordControlServiceDep = Annotated[
+    StudyRecordControlService, Depends(_get_record_control_service)
 ]
 
 
@@ -1270,6 +1299,83 @@ def retry_study_diagnosis(
             status_code=exc.status_code,
             detail=ChatError(error=exc.code, message=exc.message).model_dump(),
         ) from exc
+
+
+def _record_control_error(exc: StudyRecordControlError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail=ChatError(error=exc.code, message=exc.message).model_dump(),
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/study/records/{record_id}/corrections",
+    response_model=StudyLearningRecordProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def correct_study_record(
+    conversation_id: str,
+    record_id: str,
+    request: StudyRecordCorrectionRequest,
+    controls: RecordControlServiceDep,
+    subject: SubjectDep,
+) -> StudyLearningRecordProjection:
+    """保存用户对一条学习记录的主动纠正（用户自评，未经独立核验）。
+
+    按记录版本做并发校验：版本不一致返回 409，如实提示并保留原记录；
+    纠正保留被取代结论与操作版本，自动诊断不能无条件覆盖。
+    """
+    try:
+        return controls.correct_record(
+            subject.account_id,
+            conversation_id,
+            record_id,
+            request.note,
+            request.expected_version,
+        )
+    except StudyRecordControlError as exc:
+        raise _record_control_error(exc) from exc
+
+
+@router.delete(
+    "/conversations/{conversation_id}/study/records/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def delete_study_record(
+    conversation_id: str,
+    record_id: str,
+    request: StudyRecordDeletionRequest,
+    controls: RecordControlServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """删除一条学习记录并保留撤回标记；迟到诊断不能恢复该判断。
+
+    删除停止该判断及关联旧证据在学情归档/个性化中的采用；原聊天仍可
+    按历史读取义务查看。重复删除或版本冲突如实返回 409。
+    """
+    try:
+        controls.delete_record(
+            subject.account_id,
+            conversation_id,
+            record_id,
+            request.expected_version,
+        )
+    except StudyRecordControlError as exc:
+        raise _record_control_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
