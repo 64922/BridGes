@@ -20,6 +20,7 @@ import {
   getChatConversation,
   isChatStreamEventOf,
   retryChatRun,
+  retryStudyDiagnosis,
   stopChatMessage,
   subscribeChatRunEvents,
   startFirstTurn,
@@ -253,6 +254,21 @@ export default function ChatConversationPage() {
       window.clearTimeout(stop);
     };
   }, [pendingFileParse, load]);
+
+  // Issue 05：后台诊断独立于回复交付执行——只要还有待核验/核验中的任务就
+  // 轮流刷新真实状态（有界兜底 2 分钟，与附件解析轮询同一节奏）；终态即停。
+  const pendingDiagnosis = (conversation?.study_diagnosis_tasks ?? []).some(
+    (task) => task.status === "pending" || task.status === "running"
+  );
+  useEffect(() => {
+    if (!pendingDiagnosis) return;
+    const poll = window.setInterval(() => void load(true), 3000);
+    const stop = window.setTimeout(() => window.clearInterval(poll), 120_000);
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(stop);
+    };
+  }, [pendingDiagnosis, load]);
 
   // Issue 02：组件卸载（切换账户导致 AppShell 重挂载/离开页面）只中断
   // 本地订阅（移除订阅者），绝不调用停止接口——生成由后台执行器持有，
@@ -660,6 +676,20 @@ export default function ChatConversationPage() {
     await load();
   }, [conversationId, load]);
 
+  // Issue 05：失败诊断任务的手动重试（同一任务、同一幂等单元）；重试后
+  // 刷新对话，核验状态与档案由轮询推进到真实终态。
+  const retryDiagnosis = useCallback(async (taskId: string) => {
+    try {
+      await retryStudyDiagnosis(conversationId, taskId);
+      await load(true);
+      setAnnouncement("已重新排队核验");
+    } catch (error) {
+      setSendError({
+        message: error instanceof Error ? error.message : "重试核验失败。",
+      });
+    }
+  }, [conversationId, load]);
+
   const retry = useCallback(
     async (messageId: string, moduleOverride?: ChatModuleId) => {
       setSendError(null);
@@ -835,7 +865,10 @@ export default function ChatConversationPage() {
                   studyGoal={conversation.study_goal}
                   studyPendingCheck={conversation.study_pending_check}
                   historyStatus={conversation.study_history_status}
+                  studyDiagnosisTasks={conversation.study_diagnosis_tasks}
+                  studyLearningRecord={conversation.study_learning_record}
                   busy={generating} onAction={sendMessage}
+                  onRetryDiagnosis={retryDiagnosis}
                 />
               )}
               <ChatThread

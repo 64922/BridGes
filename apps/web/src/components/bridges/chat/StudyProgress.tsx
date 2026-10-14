@@ -62,14 +62,127 @@ function evidenceLabels(
   return labels;
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, historyStatus, busy = false, onAction }: {
+// Issue 05：后台核验状态与学习档案文案。诊断结论是证据语义（完成方式、
+// 具体误解与不确定性），不渲染百分比、人格或整体能力标签；一次完成不
+// 代表长期掌握，来源失效如实标注而不冒充结论。
+const DIAGNOSIS_STATUS_LABEL: Record<string, string> = {
+  pending: "待后台核验",
+  running: "后台核验中",
+  failed: "核验失败",
+  invalidated: "来源已失效，未形成诊断",
+};
+
+const DIAGNOSIS_VERDICT_LABEL: Record<string, string> = {
+  independent_completion: "独立完成",
+  hinted_completion: "提示后完成",
+  misconception: "存在具体误解",
+  unverified: "尚未验证",
+  undetermined: "当前无法判断",
+};
+
+const ANSWER_ASSISTANCE_LABEL: Record<string, string> = {
+  independent: "作答前无提示",
+  after_hint: "提示后作答",
+  none: "无提示",
+};
+
+function StudyDiagnosisPanel({ tasks, records, busy, onRetry }: {
+  tasks: NonNullable<ChatConversationProjection["study_diagnosis_tasks"]>;
+  records: NonNullable<ChatConversationProjection["study_learning_record"]>;
+  busy: boolean;
+  onRetry?: (taskId: string) => Promise<void>;
+}) {
+  const [retrying, setRetrying] = useState<string | null>(null);
+  if (tasks.length === 0 && records.length === 0) return null;
+  return (
+    <div className={styles.studySummary} aria-label="学习档案">
+      <p className={styles.studySummaryNote}>
+        后台独立核验只针对当时的实际作答；一次完成不代表长期掌握，结论会随新证据更新。
+      </p>
+      {tasks.length > 0 && (
+        <div className={styles.studySummarySection}>
+          <h3>核验状态</h3>
+          <ul>
+            {tasks.map((task) => (
+              <li key={task.task_id}>
+                {task.question ? `「${task.question}」：` : ""}
+                {DIAGNOSIS_STATUS_LABEL[task.status] ?? task.status}
+                {task.failure_reason && ` · ${task.failure_reason}`}
+                {task.status === "failed" && task.retryable && onRetry && (
+                  <Button variant="secondary" size="sm"
+                    disabled={busy || retrying === task.task_id}
+                    onClick={async () => {
+                      setRetrying(task.task_id);
+                      try { await onRetry(task.task_id); } finally { setRetrying(null); }
+                    }}>
+                    重试核验
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {records.length > 0 && (
+        <div className={styles.studySummarySection}>
+          <h3>已核验的知识点</h3>
+          <ul>
+            {records.map((record) => (
+              <li key={record.record_id}>
+                <strong>{record.title}</strong>
+                {record.subject && `（${record.subject}`
+                  + `${record.usage_context ? ` · ${record.usage_context}` : ""}）`}
+                ：{DIAGNOSIS_VERDICT_LABEL[record.verdict] ?? record.verdict}
+                {record.pending_confirmation && "，证据方向冲突，待进一步验证"}
+                {record.performance && <span> · 表现：{record.performance}</span>}
+                <details>
+                  <summary>依据与证据（{record.evidence_count} 条）</summary>
+                  {((record.supporting ?? []).length > 0
+                    || (record.refuting ?? []).length > 0
+                    || record.uncertainty) && (
+                    <ul>
+                      {(record.supporting ?? []).map((item, index) => (
+                        <li key={`supporting-${index}`}>支持：{item}</li>
+                      ))}
+                      {(record.refuting ?? []).map((item, index) => (
+                        <li key={`refuting-${index}`}>抵触：{item}</li>
+                      ))}
+                      {record.uncertainty && <li>不确定性：{record.uncertainty}</li>}
+                    </ul>
+                  )}
+                  <ol>
+                    {(record.evidences ?? []).map((evidence) => (
+                      <li key={evidence.evidence_id}>
+                        「{evidence.question}」
+                        {ANSWER_ASSISTANCE_LABEL[evidence.assistance]
+                          && `（${ANSWER_ASSISTANCE_LABEL[evidence.assistance]}）`}
+                        {evidence.verdict
+                          && ` · 核验：${DIAGNOSIS_VERDICT_LABEL[evidence.verdict]
+                            ?? evidence.verdict}`}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, historyStatus, studyDiagnosisTasks, studyLearningRecord, busy = false, onAction, onRetryDiagnosis }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   studyGoal?: ChatConversationProjection["study_goal"];
   studyPendingCheck?: ChatConversationProjection["study_pending_check"];
   historyStatus?: ChatConversationProjection["study_history_status"];
+  studyDiagnosisTasks?: ChatConversationProjection["study_diagnosis_tasks"];
+  studyLearningRecord?: ChatConversationProjection["study_learning_record"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
+  onRetryDiagnosis?: (taskId: string) => Promise<void>;
 }) {
   const [sending, setSending] = useState(false);
   if (studyGoal) {
@@ -130,6 +243,12 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
             </p>
           </details>
         )}
+        <StudyDiagnosisPanel
+          tasks={studyDiagnosisTasks ?? []}
+          records={studyLearningRecord ?? []}
+          busy={busy}
+          onRetry={onRetryDiagnosis}
+        />
       </section>
     );
   }
@@ -146,6 +265,12 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
             {studyPendingCheck.assistance === "hinted" && "（已提供提示，本次将按提示后完成记录）"}
           </p>
         )}
+        <StudyDiagnosisPanel
+          tasks={studyDiagnosisTasks ?? []}
+          records={studyLearningRecord ?? []}
+          busy={busy}
+          onRetry={onRetryDiagnosis}
+        />
       </section>
     );
   }

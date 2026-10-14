@@ -33,6 +33,10 @@ from bridges.contracts.retrieval import (
 )
 from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.study_diagnosis import (
+    StudyDiagnosisTaskProjection,
+    StudyLearningRecordProjection,
+)
 from bridges.contracts.study_goals import StudyGoalProjection
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
@@ -565,6 +569,15 @@ class ChatConversationProjection(BaseModel):
         default=None,
         description="当前待答问题与帮助状态；只含已展示的问题，"
         "不含评价依据或未提出的问题。",
+    )
+    study_diagnosis_tasks: list[StudyDiagnosisTaskProjection] = Field(
+        default_factory=list,
+        description="本对话的诊断任务真实业务状态；队列领取状态不是正式学情。",
+    )
+    study_learning_record: list[StudyLearningRecordProjection] = Field(
+        default_factory=list,
+        description="与本对话核验证据相关的账户级学习档案；"
+        "单次完成不是长期掌握，同名不同上下文的知识点不合并。",
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,

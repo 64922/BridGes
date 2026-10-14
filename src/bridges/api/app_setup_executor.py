@@ -21,6 +21,7 @@ def configure_generation_executor(app: FastAPI) -> None:
         bridges_database,
         profile_extraction_service=app.state.automatic_profile_service,
         summary_service=app.state.chat_summary_service,
+        diagnosis_service=app.state.study_diagnosis_service,
     )
     app.state.generation_executor_stop = threading.Event()
 
