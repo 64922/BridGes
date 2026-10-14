@@ -76,3 +76,11 @@
 - **验证（conda `agent`）：** 聚焦 `tests/chat/test_issue09_adaptive_teaching.py` 6 项 + `tests/storage/test_schema_v78_study_record_adoptions.py` 2 项全部通过；`tests/contracts tests/lifecycle tests/storage` 196 项通过；Issue 02–11 学习链路 13 个测试文件共 86 项通过。静态：改动文件 Ruff 干净（仓库既有 UP042/E501 与基线一致），`python -m mypy src` 141 项与基线逐条一致（无新增）。前端：`tsc --noEmit` 干净、`vitest run` 34 文件/280 项通过、`next build` 通过。全量 pytest：350 失败/5812 通过/37 跳过，失败均为未触及的既有模块（MCP、插件、orchestration 37、career、resources 等；已抽样在基线 main 复现同样失败集合：`tests/mcp/test_mcp_service.py` 31、chat 10 文件 79 项逐条一致），`tests/career_plan` 4 个文件的收集错误在 main 亦存在（引用未定义的 `CareerBackgroundLoader`）。
 - **C01：** 采用选择/复验/渲染/审计为按 BridGes 需求自主设计，未复制参考项目代码或提示词；未新增第三方依赖。
 - **剩余限制与后续：** 本票 UI 为只读依据展示，未新增 Playwright 旅程（交互与模型载荷由上述 pytest 覆盖）；诊断文本质量与真实收益由 13 端到端实测；采用行保留历史含义（撤回只停止后续采用并审计，不重写已提交行）。
+
+2026-10-14（合并与推送记录）：
+- 合并前 main 已推进到 `cbbcb27d`（含 Issue 08 交付与合并记录）；本票基线 `0534f0db`。08 同样新增了迁移 77（`study_goal_events`），故本票迁移在合并解析中顺延为 **v78**（`SCHEMA_VERSION=78`，升级链 v76→v77→v78 连续），`tests/storage/test_schema_v77_study_record_adoptions.py` 改名 `test_schema_v78_study_record_adoptions.py`，工单文本同步更正。
+- 三方合并 3 处文本冲突：`storage/database.py`（保留 08 的 77 块，本票 78 块与 `REQUIRED_TABLES`/`REQUIRED_INDEXES` 并入）；`chat/service_stream.py`（保留 08 提前的 `goal_turn` 终态提交位置，删除分支侧同内容重复提交块避免双提交，采用行/路线修订提交块并入同一 done 事务）；`StudyProgress.tsx`（08 的 `StudyGoalNotice`/`StudyGoalPausedStatus` 与本票签名/`StudyAdoptionBasis` 并置）。其余重叠文件（catalog、service_projections、contracts/chat、verification、page.tsx、测试文件）自动并置后逐文件复核两侧特性同时在场。
+- `openapi.json`/`generated.ts` 自动并置后 `test_openapi_sync` 逐字段通过；`openapi-typescript` 重新生成 `generated.ts` 与提交内容零差异。
+- 合并后验证（主工作区，conda `agent`，独占 basetemp）：`tests/contracts tests/lifecycle tests/storage` **198 项通过**；Issue 02–11 学习链路 16 个测试文件 **130 项通过**（含 08 的跨会话续学与目标切换、本票 6 项）；前端 `tsc --noEmit` 干净、`vitest run` 34 文件/**284 项通过**、`next build` 通过。
+- Git 记录：功能提交 `76090449`（`feat(study): adapt teaching to verified learning records`，20 文件 +2354/−3）；合并提交 `7ead2a8c`（`merge: issue 09 adaptive teaching from learning records`）。
+- 推送：本地 main 经代理 `http://127.0.0.1:7890` 推送 `origin/main`（`cbbcb27d..7ead2a8c`），推送后 `git rev-parse` 两侧一致。
