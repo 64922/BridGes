@@ -34,6 +34,7 @@ from bridges.chat.run_budget_ledger import (
 from bridges.chat.service_contract import ChatDomainError
 from bridges.chat.service_helpers import (
     _TITLE_MAX,
+    _attachment_message_title,
 )
 from bridges.contracts.chat import (
     ChatFirstTurnResponse,
@@ -126,10 +127,9 @@ class _ServiceRunBudgetMixin:
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
         # V2 Issue 05：附件来自账户级草稿域，随首轮在同一事务内绑定新会话。
+        # Issue 10：学习模式接受同一份附件合同（照片与文件）。
         if attachment_ids:
-            self._validate_draft_attachments(
-                account_id, attachment_ids, photos_only=mode == ChatMode.STUDY,
-            )
+            self._validate_draft_attachments(account_id, attachment_ids)
         target_conversation_id = conversation_id or secrets.token_urlsafe(16)
         user_message_id = secrets.token_urlsafe(16)
         understanding = self._understand_turn(
@@ -148,13 +148,15 @@ class _ServiceRunBudgetMixin:
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
         )
-        # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
+        # 纯附件消息没有正文：照片沿用占位标题，文件用首个附件文件名。
         if content:
             title = (
                 content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
             )
         else:
-            title = "照片消息"
+            title = _attachment_message_title(
+                self._attachments, account_id, attachment_ids
+            )
         (
             user_message,
             assistant_message,
@@ -172,7 +174,6 @@ class _ServiceRunBudgetMixin:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
-            has_attachments=bool(attachment_ids),
             module_id=module_id,
             understanding=understanding,
             user_message_id=user_message_id,

@@ -85,6 +85,7 @@ from bridges.chat.material_reading import (
     is_file_detail_request,
     material_read_gaps_from_record,
     material_reads_from_record,
+    material_source_refs,
     read_evidence_block,
     read_photo_payloads,
     select_file_segments,
@@ -4498,6 +4499,10 @@ class TurnOrchestrator:
                     history=history,
                     retrieval_round=retrieval_round,
                     source_verification=study_source_snapshot,
+                    material_refs=material_source_refs(photo_reads, file_segments),
+                    has_new_material=self._has_new_material(
+                        account_id, conversation_id, route_owner
+                    ),
                 )
                 # Issue 11：查证结果作为生成硬约束——实际来源/读取范围、
                 # 缺口与「搜索成功不等于已核实」的边界都由此注入。
@@ -5541,6 +5546,8 @@ class TurnOrchestrator:
         history: list[dict[str, Any]],
         retrieval_round: RetrievalRoundProjection | None,
         source_verification: Mapping[str, Any] | None = None,
+        material_refs: list[dict[str, Any]] | None = None,
+        has_new_material: bool = False,
     ) -> str | None:
         """Issue 03：学习导师轮的验证规划（评价/帮助/出题）。
 
@@ -5551,6 +5558,8 @@ class TurnOrchestrator:
 
         Issue 11：``source_verification`` 是同一轮冻结的公开查证快照；
         查证未完成时不再冻结依赖外部证据的正式练习与误解判定。
+        Issue 10：本轮实际读取的资料引用与「是否携带新材料」随规划
+        冻结进快照，供依据绑定与补拍/失效判定。
         """
 
         from bridges.study.local_progress import StudyLocalProgressRepository
@@ -5577,6 +5586,25 @@ class TurnOrchestrator:
             budget=budget,
             retrieval_round=retrieval_round,
             source_verification=source_verification,
+            material_refs=material_refs,
+            has_new_material=has_new_material,
+        )
+
+    def _has_new_material(
+        self,
+        account_id: str,
+        conversation_id: str,
+        user_message: MessageRecord | None,
+    ) -> bool:
+        """本轮学生消息是否携带附件（照片或文件）——补拍/更新判定用。"""
+
+        if user_message is None or self._attachments is None:
+            # 无附件服务（测试桩/极简装配）时无法确认新资料，保守为否。
+            return False
+        return bool(
+            self._attachments.list_for_message(
+                account_id, conversation_id, user_message.message_id
+            )
         )
 
     def _run_retrieval(

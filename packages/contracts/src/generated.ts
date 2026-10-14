@@ -25289,6 +25289,11 @@ export interface components {
              */
             assistance: components["schemas"]["StudyCheckAssistance"];
             /**
+             * @description 题目所依据资料当前是否仍可访问；已失效的题目不按过期依据评价。
+             * @default not_applicable
+             */
+            source_status: components["schemas"]["StudyPendingSourceStatus"];
+            /**
              * Version
              * @description 同一对话内检查的递增版本。
              */
@@ -25305,6 +25310,12 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * StudyPendingSourceStatus
+         * @description 待答问题所依据资料的可访问状态（读取时解析，不写回历史）。
+         * @enum {string}
+         */
+        StudyPendingSourceStatus: "not_applicable" | "available" | "unavailable";
         /**
          * StudyPointCheck
          * @description 判定时逐项核对评分要点的一条记录（工单 34）。

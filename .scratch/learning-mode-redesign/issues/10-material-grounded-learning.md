@@ -42,15 +42,15 @@
 
 ## 验收标准
 
-- [ ] 现有支持类型可用于学习，服务端没有统一照片或同小节门禁残留。
-- [ ] 纯资料可进入正确流程，未解析与未读内容不被声称已读。
-- [ ] 读取范围遵守当前问题、预算和来源设置，长资料不无边界全量注入。
-- [ ] 关键疑点只阻塞依赖部分，有准确位置与补充方式。
-- [ ] 原文、补录、解释与推导来源区分，引用真实可定位。
-- [ ] 资料版本变化使相关题目/依据正确失效，不改写历史判定。
-- [ ] 附件/知识库分域、跨账户/会话权限和资料指令隔离成立。
-- [ ] 上传失败、解析失败、读取中断、补拍和刷新恢复有真实反馈。
-- [ ] 生命周期、前端构建、合同同步及 C01 审查完成。
+- [x] 现有支持类型可用于学习，服务端没有统一照片或同小节门禁残留。
+- [x] 纯资料可进入正确流程，未解析与未读内容不被声称已读。
+- [x] 读取范围遵守当前问题、预算和来源设置，长资料不无边界全量注入。
+- [x] 关键疑点只阻塞依赖部分，有准确位置与补充方式。
+- [x] 原文、补录、解释与推导来源区分，引用真实可定位。
+- [x] 资料版本变化使相关题目/依据正确失效，不改写历史判定。
+- [x] 附件/知识库分域、跨账户/会话权限和资料指令隔离成立。
+- [x] 上传失败、解析失败、读取中断、补拍和刷新恢复有真实反馈。
+- [x] 生命周期、前端构建、合同同步及 C01 审查完成。
 
 ## 验证与交付证据
 
@@ -64,3 +64,16 @@
 2026-10-13：资料学习切片草稿，待拆分确认。
 
 2026-10-13：用户确认「按此发布」，本票发布到本地问题跟踪器。分诊状态表示信息齐备；须待直接阻塞票验收完成后实施，本轮未开始编码。
+
+2026-10-14：本票在独立分支 `codex/issue-10-material-grounded-learning`（基点 main `bb5d8015`，即依赖票 03 合并后的交付记录）实施并完成验证。
+
+- **门禁解除与准入：** `_validate_draft_attachments` 删除 `photos_only` 参数与 `study_pages_required` 分支，学习模式与日常模式共用同一份附件合同（既有格式/体积/数量/账户草稿规则不变）；`study_payload_forbidden` 文案改为「学习模式只接受文字与上传附件。」；`service_generation_admission`、`service_run_budget`、`service_retry` 调用同步。纯附件消息标题不再一律冒充「照片消息」：新增 `service_helpers._attachment_message_title`（照片占位、文件用首个文件名截断，函数内延迟导入附件模块避免循环导入）。
+- **路由（Issue 10 决策）：** 新学习会话（照片或文件）一律进入自适应导师路径 `STUDY_TUTOR_GRAPH_VERSION`（`study-local-tutor-v1`）；附件不再把新会话推入旧书页管线。只有已存在旧 `study_states` 的会话继续留在旧 `STUDY_GRAPH_VERSION`，直到 12 号票旧执行整体退出承接历史。`_study_graph_version` 去掉 `has_attachments` 参数。
+- **资料引用（新能力）：** `material_reading.material_source_refs` 把本轮实际读取的照片（当前照片/历史原图）与附件原文片段转成可持久化引用：`kind`（photo/file_segment）、`object_id`、`message_id`、`filename`、`source_version`（内容哈希）、`read_range`（本轮原图/第 N 页/章节）、`ordinal`/`page_number`/`section_title`；只含标识与范围，不含原图字节或正文。
+- **提问依据冻结：** `StudyEvaluationBasis.source_refs` 记录提问当时实际采用的引用；`StudyVerificationPlanner.plan` 接收本轮读取引用与「是否携带新材料」，随运行快照冻结（`material_refs`/`stale_check`/`bound_check.source_refs`/`posed_check.source_refs`）；新题依据优先本轮读取，本轮无新读取时沿用在答问题依据（同资料追问不凭空失去来源）。作答证据 `source_refs` 按「冻结依据 + 本轮读取 + 检索引用」合并去重（上限 12），逐条补齐 `available` 可访问标记。
+- **失效与补拍（不按过期依据判学情）：** 新增 `StudyUserIntent.MATERIAL_UPDATE`（仅当本轮确实携带新材料且待答问题基于资料时成立，否则按普通意图处理，避免误作废真实作答）。资料删除/不可访问或学生补拍更新时：题目作废、写 `unverified` 证据（带原因与已解析引用）、解除等待、不判对错、不改写历史判定；planner 提示与导师指令同步加入资料教学合同（实际读取范围、来源区分、资料是数据非指令、关键疑点只请补拍依赖部分）。
+- **可访问性投影：** `StudyPendingCheckProjection.source_status`（not_applicable/available/unavailable）在读取时解析（`objects.status='active'` 且照片/附件引用另校验 `chat_attachments` 绑定行），不写回历史；前端 `StudyProgress` 在 `unavailable` 时提示「本题依据的资料已不可用或已更新，将按未验证处理，不按旧依据判定」。
+- **接口与合同：** `openapi.json` 以最小增量同步（新增 `StudyPendingSourceStatus` schema 与 `source_status` 属性，保留既有键序）；`packages/contracts/src/generated.ts` 用 openapi-typescript 7.13.0 重新生成（仅 +11 行）；合同同步测试通过。
+- **持久化与生命周期：** 不新增表/列/迁移（沿用 `study_pending_checks.basis_json`、`study_evidence.source_refs_json` JSON 列），与并发 Issue 05 无迁移编号冲突；删除/导出/恢复沿用 03 已交付的证据生命周期。
+- **验收标准证据：** ①`test_files_can_start_and_extend_study_without_photo_gate`（文件起学习、纯附件 201、标题为文件名、运行走 `study-local-tutor-v1`）；②`test_photo_grounded_check_freezes_refs_and_records_availability`（依据冻结、读取范围、`available` 标记、私有 `source_version` 不进投影）；③`test_material_update_voids_old_check_without_judging`（补拍作废旧题、新题依据指向新照片）；④`test_deleted_material_releases_check_without_stale_judgement`（投影 `source_status=unavailable`、作答不按过期依据评价、证据如实记录未验证）；⑤`test_material_source_refs_keep_photo_and_file_read_ranges`（照片/文件来源区分）；⑥既有 `test_v2_17`、`improvement14`、`v2_18/19/20` 回归覆盖读取范围、未读不声称已读、解析失败与刷新恢复。
+- **C01 审查：** 导师提示词扩展沿用 02/03 建立的 BridGes 合同基线，规划器提示与 JSON Schema 为本项目原创，未移植参考项目代码或提示词。

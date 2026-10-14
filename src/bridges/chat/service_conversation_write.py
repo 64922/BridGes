@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 
 from bridges import __version__
 from bridges.chat.attachments import (
-    PHOTO_MEDIA_TYPES,
     ChatAttachmentError,
     ChatAttachmentService,
 )
@@ -60,23 +59,20 @@ class _ServiceConversationWriteMixin:
             )
         return self._attachments
     def _validate_draft_attachments(
-        self: ChatService, account_id: str, attachment_ids: list[str], *, photos_only: bool = False,
+        self: ChatService, account_id: str, attachment_ids: list[str],
     ) -> None:
-        """V2 Issue 05：校验账户级照片草稿并统一转成会话域错误。"""
+        """V2 Issue 05：校验账户级附件草稿并统一转成会话域错误。
+
+        Issue 10：学习模式与日常模式接受同一份附件合同（照片与文件、
+        既有格式/体积/数量/账户规则），服务端不再有统一照片门禁；读取
+        范围与真实状态由学习回合的按问题读取与解析状态投影承担。
+        """
         try:
             self._require_attachment_service().validate_draft_ids(
                 account_id, attachment_ids
             )
         except ChatAttachmentError as exc:
             raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
-        if photos_only:
-            attachments = self._require_attachment_service()
-            for object_id in attachment_ids:
-                draft = attachments.get_draft(account_id, object_id)
-                if draft is None or draft.media_type not in PHOTO_MEDIA_TYPES:
-                    raise ChatDomainError(
-                        "study_pages_required", "学习模式只接受本节书页照片，请移除文件附件。", 422
-                    )
     def create_conversation(
         self: ChatService,
         account_id: str,
@@ -141,7 +137,7 @@ class _ServiceConversationWriteMixin:
             )
         if any(item is not None for item in (image_payload, video_payload, mcp_call_payload)):
             raise ChatDomainError(
-                "study_payload_forbidden", "学习模式只接受本节书页照片和文字。", 422
+                "study_payload_forbidden", "学习模式只接受文字与上传附件。", 422
             )
     def set_conversation_mode(
         self: ChatService,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -45,6 +46,8 @@ class StudyUserIntent(StrEnum):
     EXPLAIN_REQUEST = "explain_request"
     DIGRESSION = "digression"
     SKIP = "skip"
+    #: Issue 10：学生补拍、重新上传或更正了用于当前问题的资料，不是作答。
+    MATERIAL_UPDATE = "material_update"
     FULL_EXPLANATION = "full_explanation"
     PAUSE = "pause"
     RESUME = "resume"
@@ -82,6 +85,14 @@ class StudyEvidenceAssistance(StrEnum):
     NONE = "none"
 
 
+class StudyPendingSourceStatus(StrEnum):
+    """待答问题所依据资料的可访问状态（读取时解析，不写回历史）。"""
+
+    NOT_APPLICABLE = "not_applicable"
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
 class StudyPendingCheckProjection(BaseModel):
     """待答问题的用户可见投影；不含评价依据或未提出的问题。"""
 
@@ -94,6 +105,12 @@ class StudyPendingCheckProjection(BaseModel):
     assistance: StudyCheckAssistance = Field(
         default=StudyCheckAssistance.NONE,
         description="本问题至今实际提供过的帮助状态。",
+    )
+    source_status: StudyPendingSourceStatus = Field(
+        default=StudyPendingSourceStatus.NOT_APPLICABLE,
+        description=(
+            "题目所依据资料当前是否仍可访问；已失效的题目不按过期依据评价。"
+        ),
     )
     version: int = Field(ge=1, description="同一对话内检查的递增版本。")
     source_message_id: str = Field(description="展示该问题的助手消息标识。")
@@ -127,6 +144,13 @@ class StudyEvaluationBasis(BaseModel):
         description=(
             "冻结时依赖外部证据但公开查证未完成（失败/空/冲突/仅摘要或用户限制）；"
             "据此评价不得把学生判成错，也不得给出伪标准答案。"
+        ),
+    )
+    material_refs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Issue 10：提问当时实际采用的资料引用（对象、来源版本与读取范围）。"
+            "资料删除或版本更新后，依据失效的题目不按过期依据评价。"
         ),
     )
     contract_version: str = Field(

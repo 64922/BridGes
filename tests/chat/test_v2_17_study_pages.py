@@ -11,7 +11,15 @@ from fastapi.testclient import TestClient
 
 from bridges.contracts.ai import ModelCallResult, ModelCallStatus
 from bridges.study.scope import assign_unit_id
-from tests.chat.test_v2_05_photo_attachments import PNG_BYTES, _app, _register, _upload_draft
+from bridges.study.versions import STUDY_GRAPH_VERSION
+from tests.chat.test_issue02_text_tutor import _TextTutorAdapter
+from tests.chat.test_v2_05_photo_attachments import (
+    PNG_BYTES,
+    _app,
+    _gateway_with,
+    _register,
+    _upload_draft,
+)
 
 
 class StudyGateway:
@@ -173,7 +181,7 @@ class StudyGateway:
 
 
 def _first(client: TestClient, attachments: list[str], key: str = "study-first-1") -> Any:
-    return client.post(
+    response = client.post(
         "/chat/first-turn",
         json={
             "mode": "study",
@@ -182,6 +190,17 @@ def _first(client: TestClient, attachments: list[str], key: str = "study-first-1
             "idempotency_key": key,
         },
     )
+    # Issue 10：新学习会话默认走自适应导师路径；本文件的用例验证的是旧书页
+    # 管线本身（历史识别/范围/预习/辅导），因此把刚创建的运行显式固定到旧图
+    # 版本后再驱动执行器——旧图只服务已有历史状态，由 12 负责整体退出。
+    if response.status_code == 201:
+        conversation_id = response.json()["conversation"]["conversation_id"]
+        client.app.state.bridges_database.connection.execute(
+            "UPDATE generation_runs SET graph_version = ?"
+            " WHERE conversation_id = ? AND status = 'queued'",
+            (STUDY_GRAPH_VERSION, conversation_id),
+        )
+    return response
 
 
 def test_study_accepts_text_without_photo_and_rejects_daily_module(
@@ -431,31 +450,60 @@ def test_mixed_duplicate_page_is_reported(tmp_path: Any, monkeypatch: Any) -> No
         assert "重复书页" in projection["messages"][-1]["content"]
 
 
-def test_files_cannot_start_or_extend_study_and_remain_drafts(
-    tmp_path: Any, monkeypatch: Any,
+def test_files_can_start_and_extend_study_without_photo_gate(
+    tmp_path: Any, monkeypatch: Any, generation_helpers: Any,
 ) -> None:
+    """Issue 10：文件与照片都可启动/扩展学习，不再有统一照片门禁。
+
+    新学习会话走自适应导师路径（附件由导师按当前问题读取）；本用例验证
+    服务端准入不再拦截文件、草稿随消息绑定、文件消息标题不再冒充照片。
+    """
     app = _app(tmp_path, monkeypatch)
-    app.state.chat_service._gateway = StudyGateway()
+    app.state.chat_service._gateway = _gateway_with(
+        _TextTutorAdapter("我看到了这份讲义，你想理解哪一部分？")
+    )
     with TestClient(app) as client:
         _register(client, "studyfile")
         document = _upload_draft(
             client, filename="notes.txt", upload_id="study-file", content=b"notes",
         ).json()
-        rejected = _first(client, [document["object_id"]])
-        assert rejected.status_code == 422
-        assert client.get("/chat/conversations").json()["conversations"] == []
-        photo = _upload_draft(client, upload_id="study-photo").json()
-        first = _first(client, [photo["object_id"]], "study-photo-first")
-        conversation_id = first.json()["conversation"]["conversation_id"]
-        app.state.generation_executor.run_tick()
-        rejected = client.post(
-            f"/chat/conversations/{conversation_id}/messages",
-            json={"content": "", "attachment_ids": [document["object_id"]]},
+        accepted = client.post(
+            "/chat/first-turn",
+            json={
+                "mode": "study",
+                "content": "",
+                "attachment_ids": [document["object_id"]],
+                "idempotency_key": "study-file-first",
+            },
         )
-        assert rejected.status_code == 422
-        assert client.get(
-            f"/chat/attachment-drafts/{document['object_id']}/content"
-        ).status_code == 200
+        assert accepted.status_code == 201, accepted.text
+        conversation = accepted.json()["conversation"]
+        conversation_id = conversation["conversation_id"]
+        assert conversation["title"] == "notes.txt"
+        run_rows = app.state.bridges_database.connection.execute(
+            "SELECT graph_version FROM generation_runs WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchall()
+        assert [row["graph_version"] for row in run_rows] == ["study-local-tutor-v1"]
+        generation_helpers["drive"](app)
+        extended = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={
+                "content": "继续讲这段",
+                "attachment_ids": [
+                    _upload_draft(
+                        client,
+                        filename="chapter2.md",
+                        upload_id="study-file-2",
+                        content="## 第二章".encode(),
+                    ).json()["object_id"]
+                ],
+                "idempotency_key": "study-file-next",
+            },
+        )
+        assert extended.status_code == 200, extended.text
+        detail = client.get(f"/chat/conversations/{conversation_id}").json()
+        assert detail["messages"][0]["attachments"][0]["original_filename"] == "notes.txt"
 
 
 def test_appended_page_failure_preserves_confirmed_scope(tmp_path: Any, monkeypatch: Any) -> None:

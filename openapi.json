@@ -58515,6 +58515,11 @@
             "description": "本问题至今实际提供过的帮助状态。",
             "default": "none"
           },
+          "source_status": {
+            "$ref": "#/components/schemas/StudyPendingSourceStatus",
+            "description": "题目所依据资料当前是否仍可访问；已失效的题目不按过期依据评价。",
+            "default": "not_applicable"
+          },
           "version": {
             "type": "integer",
             "minimum": 1.0,
@@ -58544,6 +58549,16 @@
         ],
         "title": "StudyPendingCheckProjection",
         "description": "待答问题的用户可见投影；不含评价依据或未提出的问题。"
+      },
+      "StudyPendingSourceStatus": {
+        "type": "string",
+        "enum": [
+          "not_applicable",
+          "available",
+          "unavailable"
+        ],
+        "title": "StudyPendingSourceStatus",
+        "description": "待答问题所依据资料的可访问状态（读取时解析，不写回历史）。"
       },
       "StudyPointCheck": {
         "properties": {
