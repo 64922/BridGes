@@ -1,0 +1,57 @@
+{
+  "corpus_version": "study-journey-corpus-v1",
+  "corpus_sha256": "25f0825073862aceeab5e8d7509172769e56afb9daba7595b3588e40bc50f3b6",
+  "checks": {
+    "probability_facts": {
+      "check": "probability_facts",
+      "mutually_exclusive_intersection": "0",
+      "independent_example": {
+        "p_a": "1/2",
+        "p_b": "1/3",
+        "p_intersection": "1/6"
+      },
+      "mutually_exclusive_implies_dependent": true,
+      "statements": [
+        "互斥 ⇒ P(A∩B)=0；当 P(A)>0 且 P(B)>0 时 0 ≠ P(A)P(B)，故不独立。",
+        "独立 ⇔ P(A∩B)=P(A)P(B)（P(B)>0 时等价于 P(A|B)=P(A)）。"
+      ]
+    },
+    "limit_facts": {
+      "check": "limit_facts",
+      "numeric_values": {
+        "0.9999": 1.9998999999994975,
+        "0.999999": 1.9999990000221217,
+        "1.000001": 2.0000010000889006,
+        "1.0001": 2.0000999999993923
+      },
+      "limit_approaches": 2.0,
+      "closest_value": 1.9999990000221217,
+      "factorization_identity_holds": true,
+      "function_undefined_at_x1": true,
+      "divisible_after_cancelling": true,
+      "statements": [
+        "x≠1 时 (x²−1)/(x−1)=x+1，数值逼近极限为 2。",
+        "x=1 处原式分母为 0，函数值无定义；极限存在且等于 2，是可去间断点。"
+      ]
+    },
+    "programming_facts": {
+      "check": "programming_facts",
+      "original": {
+        "returncode": 0,
+        "stdout": "[1]\n[1, 2]",
+        "stderr": ""
+      },
+      "fixed": {
+        "returncode": 0,
+        "stdout": "[1]\n[2]",
+        "stderr": ""
+      },
+      "expected_original_output": true,
+      "statements": [
+        "原始片段输出 [1] 与 [1, 2]：默认参数在函数定义时求值一次，两次调用共享同一列表。",
+        "哨兵写法（bucket=None 内建新列表）输出 [1] 与 [2]，每次调用得到新列表。",
+        "默认参数求值发生在 def 执行时，不是每次调用时。"
+      ]
+    }
+  }
+}

@@ -83,3 +83,15 @@
 - **剩余限制与后续：** 全仓 pytest 未重跑（以全量 chat/lifecycle 双树对账替代）；规划器依赖已注册的 `qwen_structured_output` 能力，缺失或失败时验证静默降级不写数据（回答不受影响）；用户主动解除等待的界面动作由 04 消费本票语义；正式诊断由 05 消费证据；真实教学效果由 13 独立验收。
 
 2026-10-14（交付记录）：本票提交 `9717baeb`（19 文件），以 `--no-ff` 无冲突合入 main，合并提交 `e9427573ad8c7b7567ff14ecc7cdb3aff176508b`（合并树 `558dc08c` 与本票分支树一致）；合并前经代理 `http://127.0.0.1:7890` fetch 确认远端 main 与本票基点同为 `101ccaa4`。合并后在 main 复跑 `test_issue03_embedded_verification.py`、`test_schema_v71_study_verification.py`、`test_schema_v70_study_local_progress.py`、`test_openapi_sync.py`、`test_issue02_text_tutor.py` 共 22 项通过。推送：`git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main`（`101ccaa4..e9427573`），`git ls-remote origin refs/heads/main` 与本地 main 三方一致为 `e9427573`。随后删除本票 worktree（`.worktrees/03-embedded-verification-and-feedback`）与本地分支 `codex/issue-03-embedded-verification-and-feedback`（曾为 `9717baeb`），`git worktree prune` 后仅剩主工作树与 07 票的 worktree；其他任务的分支与目录未触碰。
+
+### 2026-10-14 工单 13 回交缺陷：F2 误解作答漏登记 / 纠正后作答独立性判定存疑
+
+- **现象（真实模型，语料 `study-journey-corpus-v1`，commit `a51f62a3`）：** `programming-mutable-default` 情境中学员先给出明确误解作答（c2：「第二次输出 [2]……每次调用都会重新创建默认的空列表」），随后在导师完整纠正讲解后自我纠偏（c3：「跑了一下确实是 [1] 然后 [1, 2]……定义时只求值一次」）。3 次独立运行中：
+  - `122751`：证据来自 c2（`9xzf06…`，outcome=misconception，assistance=independent）——误解被正确登记；
+  - `123300`：该会话唯一证据来自 c3（`YLhAZ…`，outcome=correct，assistance=independent）；
+  - `123822`：该会话唯一证据来自 c3（`6JZn78…`，outcome=correct，assistance=independent）。
+- **问题一（漏登记）：** 2/3 次运行中首次误解作答未生成任何证据（无 `study_evidence` 行、无诊断），同一待答检查最终由后续消息作答。检查与答案的匹配在「先错后改」的连续消息上不稳定。
+- **问题二（独立性判定）：** c3 作答时导师已给出完整机制讲解与验证建议，但记录 `assistance=independent`；按 AC02「被提示/被讲解的复述不能算独立完成」，该判定存疑（如属诊断判定归属请与 05 协查）。
+- **影响：** AC02 与 D05/D10 在编程情境的部分不成立（误解漏诊断、独立性可能夸大）。
+- **证据：** `validation/13-release-acceptance/failure-cases.md`（F2）、`journeys-20261014T{122751,123300,123822}Z.*` 与 SQLite 证据表（`study_evidence`/`study_diagnosis_tasks`/`study_record_adoptions`）。复验建议：修复后复跑本票 `scripts/run_issue13_learning_journeys.py` 的编程情境，检查 c2 是否形成 misconception 证据、c3 的 assistance 是否为 after_hint/讲解后语义。
+- **建议方向（供本票评估，非强制）：** 为待答检查的答案匹配引入显式判定（例如「该消息是否回答当前检查」的分类先于评分），并把「检查展示后发生讲解」纳入 assistance 计算。

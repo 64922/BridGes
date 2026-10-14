@@ -84,3 +84,12 @@
 - 合并后验证（主工作区，conda `agent`，独占 basetemp）：`tests/contracts tests/lifecycle tests/storage` **198 项通过**；Issue 02–11 学习链路 16 个测试文件 **130 项通过**（含 08 的跨会话续学与目标切换、本票 6 项）；前端 `tsc --noEmit` 干净、`vitest run` 34 文件/**284 项通过**、`next build` 通过。
 - Git 记录：功能提交 `76090449`（`feat(study): adapt teaching to verified learning records`，20 文件 +2354/−3）；合并提交 `7ead2a8c`（`merge: issue 09 adaptive teaching from learning records`）。
 - 推送：本地 main 经代理 `http://127.0.0.1:7890` 推送 `origin/main`（`cbbcb27d..7ead2a8c`），推送后 `git rev-parse` 两侧一致。
+
+### 2026-10-14 工单 13 回交缺陷：F1 跨主题采用（记录相关性过宽）
+
+- **现象（真实模型，语料 `study-journey-corpus-v1`，commit `a51f62a3`）：** `programming-mutable-default` 会话的 3 次独立运行（`123822`/`123300`/`122751`）中，导师全部 3 个回合（c2 `PCTGq…`、c3 `h6TFE1…`、c4 `iigqs5…`）的采用记录都带上了极限情境的记录 `lr-UnSdGJVk4XvPooeJhrIE_A`（「代数分式化简与定义域分析」，verdict=misconception），与当前编程内容无关。
+- **机制：** `src/bridges/study/adaptation.py` 的 `select_relevant_records` 以 2 字词重叠计相关性（`_TITLE_TERM_MIN=1`），「函数」「定义」等高频词即可把极限记录匹配进编程会话。
+- **更早观察：** 本票更早一次完整运行中，编程会话回复还出现过「之前的核验显示你在这里有一个具体误解」的错误本地化表述（该运行文件已按保留策略删除）；本次 3 次运行文本未复现该措辞，但采用污染始终在。
+- **影响：** D04/D10 的「学习记忆带实际依据、诊断反馈教学」在跨主题时质量受损；存在把无关误解反馈进其他主题教学的风险。
+- **证据：** `validation/13-release-acceptance/failure-cases.md`（F1）与三次运行的 `journeys-*.json` + SQLite `study_record_adoptions`。复验建议：修复后复跑本票 `scripts/run_issue13_learning_journeys.py`，断言编程会话采用列表不含极限记录。
+- **建议方向（供本票评估，非强制）：** 收紧相关性（最小词长/重叠数阈值、排除高频繁用词）、按主题/学科分域过滤候选记录，或把「无关记录被带入」纳入采用前的复验判据。
