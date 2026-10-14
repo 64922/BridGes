@@ -69,6 +69,8 @@ def scenario_coverage() -> tuple[CoverageItem, ...]:
         if scenario.scenario_id in _EXTERNAL_SCENARIOS:
             note += " 依赖真实外部门，当前证据到机制层。"
         evidence = tuple(scenario.tests) or ("docs/workflow/delivery-and-validation.md",)
+        if scenario.retired:
+            note += " 场景随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。"
         items.append(
             CoverageItem(
                 item_id=scenario.scenario_id,
@@ -77,6 +79,7 @@ def scenario_coverage() -> tuple[CoverageItem, ...]:
                 evidence=evidence,
                 status=status,
                 note=note,
+                retired=scenario.retired,
             )
         )
     return tuple(items)
@@ -164,6 +167,8 @@ def validate_coverage_reconciliation(repo_root: Path | None = None) -> list[str]
         for ticket in item.owner_tickets:
             if ticket < 1 or ticket > 43:
                 problems.append(f"{item.item_id} 负责票越界：{ticket}")
+        if item.retired:
+            continue
         for ref in item.evidence:
             if not _test_node_exists(root, ref):
                 problems.append(f"{item.item_id} 证据锚点不存在：{ref}")
@@ -196,6 +201,7 @@ class CoverageReport:
                     "evidence": list(item.evidence),
                     "status": item.status.value,
                     "note": item.note,
+                    "retired": item.retired,
                 }
                 for item in self.items
             ],

@@ -179,34 +179,18 @@ def test_topic_mismatch_entries_keep_actual_terminal_states() -> None:
     assert "partial" not in resources.states
 
 
-def test_review_completion_is_not_user_stop() -> None:
-    """实际题目计划结束与用户停止分别登记。"""
-    from bridges.contracts.study import StudyReview
-    from bridges.study.review import next_question
-
-    review = StudyReview()
-    answer = next_question(review)
-    assert review.complete is True
-    assert "复盘已结束" in answer
-    entry = STATE_COPY_REGISTRY["study.review.next_question"]
-    assert "complete" in entry.states
-    assert "stopped" not in entry.states
-    assert render_state_copy("study.stopped") == "学习处理已停止。"
-
-
-def test_study_fixed_explanations_have_auditable_sources() -> None:
-    """学习等待、预习、追加、暂停和当前题的既有来源都可定位。"""
+def test_study_history_copy_has_auditable_sources() -> None:
+    """退役后保留的学习固定文案（历史只读解释）都有可定位来源与说明。"""
     for path in (
-        "study.pages.wait",
-        "study.preview.scope_and_questions",
-        "study.pages.updated",
-        "study.review.paused",
-        "study.review.current_question",
+        "study.history.legacy",
+        "study.history.unsupported",
+        "study.history.unreadable",
     ):
         entry = STATE_COPY_REGISTRY[path]
-        assert entry.renderer == "bridges.study.service.StudyWorkflow.run"
-        assert callable(_resolve(entry.renderer))
-        assert "run." in entry.note
+        assert entry.strategy is CopyStrategy.FIXED_TEMPLATE
+        assert entry.text.strip()
+        assert entry.note.strip()
+        assert entry.states
 
 
 def test_missing_fallback_credentials_keep_actionable_chat_copy() -> None:

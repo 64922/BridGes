@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/design-system/Button";
 import type { ChatConversationProjection } from "@/lib/api";
 
+import { StudyRestartPanel, type StudyRestartPanelProps } from "./StudyRestartPanel";
 import styles from "./chat.module.css";
 
 const STAGES = [
@@ -448,7 +449,7 @@ function StudyGoalPausedStatus({
   );
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyGoalNotice, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, studyRecordAdoptions, historyStatus, busy = false, onAction, onRetryDiagnosis, onCorrectRecord, onDeleteRecord }: {
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyGoalNotice, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, studyRecordAdoptions, historyStatus, restart, busy = false, onRetryDiagnosis, onCorrectRecord, onDeleteRecord }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   studyGoal?: ChatConversationProjection["study_goal"];
@@ -461,8 +462,9 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
   studyDiagnosisTasks?: ChatConversationProjection["study_diagnosis_tasks"];
   studyLearningRecord?: ChatConversationProjection["study_learning_record"];
   studyRecordAdoptions?: ChatConversationProjection["study_record_adoptions"];
+  /** 工单 12：旧学习会话的主动续学面板（由页面接线 API 与导航）。 */
+  restart?: StudyRestartPanelProps;
   busy?: boolean;
-  onAction?: (text: string) => Promise<boolean>;
   onRetryDiagnosis?: (taskId: string) => Promise<void>;
   onCorrectRecord?: (
     recordId: string,
@@ -471,7 +473,6 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
   ) => Promise<boolean>;
   onDeleteRecord?: (recordId: string, expectedVersion: number) => Promise<void>;
 }) {
-  const [sending, setSending] = useState(false);
   if (studyGoal) {
     // Issue 07：顶部固定显示长期目标与当前知识点，路线按需展开；
     // 只呈现已提交的真实状态——无路线不虚报，跳节点不标掌握。
@@ -589,18 +590,12 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
     return (
       <section className={styles.studyProgress} aria-label="学习历史">
         <p className={styles.studySummaryNote} role="status">{historyStatus.message}</p>
+        {restart && <StudyRestartPanel {...restart} />}
       </section>
     );
   }
   if (!state) return null;
   const current = state?.stage === "awaiting_pages" ? "recognizing" : state?.stage ?? "recognizing";
-  const action = state?.stage === "review" ? "暂停复盘回辅导"
-    : state?.review ? "继续复盘" : "开始复盘";
-  async function act() {
-    if (!onAction || sending || busy) return;
-    setSending(true);
-    try { await onAction(action); } finally { setSending(false); }
-  }
   const summary = state?.summary;
   const labels = summary && state ? evidenceLabels(state) : null;
   return (
@@ -608,6 +603,9 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
       {historyStatus && (
         <p className={styles.studySummaryNote} role="status">{historyStatus.message}</p>
       )}
+      <p className={styles.studySummaryNote} role="note">
+        本节是按原始记录只读展示的历史；旧流程不会再执行。
+      </p>
       <ol className={styles.studyStages}>
         {STAGES.map((stage) => (
           <li
@@ -652,23 +650,8 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
             );
           })}
           <p className={styles.studySummaryNote}>
-            总结依据本节书页与已判定题；可以继续追问本节内容，学新小节请新建学习对话。
+            总结依据本节书页与已判定题；本节为只读历史记录，继续学习请使用下方「主动续学」。
           </p>
-        </div>
-      )}
-      {onAction && !state?.page_update && (state?.stage === "tutoring" || state?.stage === "review") && (
-        <div className={styles.studyReviewActions}>
-          {(!state.review?.complete || state.stage === "review") && (
-            <Button variant="secondary" size="sm" disabled={busy || sending}
-              onClick={() => void act()}>{action}</Button>
-          )}
-          <span role="status">{state.review?.complete
-            ? "本节复盘已结束，作答与判定已保存。"
-            : state.stage === "review"
-              ? "请在下方回答当前一题；不知道也可以直说。"
-              : state.review
-                ? "复盘已暂停，继续时从未问题开始；未作答题不计为已掌握。"
-                : "学完本节后，可以开始逐题复盘。"}</span>
         </div>
       )}
       {state?.wait_reason && <p role="status">{state.wait_reason === "page_order"
@@ -731,6 +714,7 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
           </ol>
         </details>
       )}
+      {restart && <StudyRestartPanel {...restart} />}
     </section>
   );
 }

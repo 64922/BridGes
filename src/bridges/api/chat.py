@@ -63,6 +63,10 @@ from bridges.contracts.study_diagnosis import (
     StudyRecordDeletionRequest,
 )
 from bridges.contracts.study_goals import StudyGoalListProjection
+from bridges.contracts.study_restart import (
+    StudyRestartOptionsProjection,
+    StudyRestartRequest,
+)
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
@@ -1562,6 +1566,61 @@ def list_study_goals(
 ) -> StudyGoalListProjection:
     """列出本人学习目标（活动/暂停，最近在前），供续学选择。"""
     return service.list_study_goals(subject.account_id)
+
+
+@router.get(
+    "/conversations/{conversation_id}/study/restart-options",
+    response_model=StudyRestartOptionsProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+    },
+)
+def get_study_restart_options(
+    conversation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> StudyRestartOptionsProjection:
+    """旧学习会话的主动续学选项：本人目标候选与仍可访问的旧材料。"""
+    try:
+        return service.study_restart_options(subject.account_id, conversation_id)
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+
+
+@router.post(
+    "/conversations/{conversation_id}/study/restart",
+    response_model=ChatFirstTurnResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": ChatFirstTurnResponse,
+            "description": "幂等重放：同键已存在，返回既有新会话（不产生新数据）",
+        },
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+    },
+)
+def restart_study_conversation(
+    conversation_id: str,
+    body: StudyRestartRequest,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+    response: Response,
+) -> ChatFirstTurnResponse:
+    """用户主动续学：创建新模式会话并复用所选目标与材料（幂等）。"""
+    try:
+        first_turn = service.restart_study_conversation(
+            subject.account_id, conversation_id, body
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+    if first_turn.idempotent_replay:
+        response.status_code = status.HTTP_200_OK
+    return first_turn
 
 
 @router.post(

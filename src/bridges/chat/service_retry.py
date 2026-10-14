@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.chat.graph import DAILY_GRAPH_VERSION
+from bridges.chat.graph_contracts import STUDY_LEGACY_RETIRED
 from bridges.chat.repository import (
     GenerationRunRecord,
     MessageRecord,
@@ -48,9 +49,10 @@ from bridges.routing import (
 )
 from bridges.state_copy import (
     WAIT_GENERATION_IN_PROGRESS_TEXT,
+    render_state_copy,
 )
-from bridges.study.service import StudyRepository
-from bridges.study.versions import STUDY_GRAPH_VERSION, STUDY_TUTOR_GRAPH_VERSION
+from bridges.study.history import legacy_study_conversation
+from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 
 if TYPE_CHECKING:
@@ -97,6 +99,16 @@ class _ServiceRetryMixin:
             raise ChatDomainError(
                 "conversation_not_found", "对话不存在或没有访问权限。", 404
             )
+        # 改进工单 12：旧五阶段学习会话（含旧版本运行）只读退出；旧重试
+        # 入口不能重新执行旧流程，恢复方式是用户主动续学。
+        if record.mode == ChatMode.STUDY.value and legacy_study_conversation(
+            self._repo.database, account_id, conversation_id
+        ):
+            raise ChatDomainError(
+                STUDY_LEGACY_RETIRED,
+                render_state_copy(f"error.{STUDY_LEGACY_RETIRED}"),
+                410,
+            )
         # V2 Issue 02：同幂等键重试复用稳定运行标识（含仍在进行中的运行）。
         if idempotency_key:
             replay = self._repo.get_run_by_idempotency_key(
@@ -141,19 +153,6 @@ class _ServiceRetryMixin:
                 "module_not_allowed", "该模块已取消，历史结果可查看，请发送新的消息。", 400
             )
         if record.mode == ChatMode.STUDY.value:
-            study = StudyRepository(self._repo.database).get(account_id, conversation_id)
-            if study is not None and study.review is not None:
-                latest_user = next(
-                    (item for item in reversed(existing) if item.role == ChatMessageRole.USER),
-                    None,
-                )
-                if (latest_user is None or latest_user.message_id != owner.message_id
-                        or any(item.status == ChatMessageStatus.DONE
-                               for item in attempt_group(existing, owner.message_id))):
-                    raise ChatDomainError(
-                        "study_review_retry_stale",
-                        "本轮已完成或学习进度已更新，请继续当前题或回辅导提问。", 409,
-                    )
             for previous_attempt in attempt_group(existing, owner.message_id):
                 if previous_attempt.status != ChatMessageStatus.DONE:
                     continue
@@ -352,18 +351,7 @@ class _ServiceRetryMixin:
             created_at=now,
             updated_at=now,
             graph_version=(
-                (
-                    STUDY_TUTOR_GRAPH_VERSION
-                    if previous_run is not None
-                    and previous_run.graph_version == STUDY_TUTOR_GRAPH_VERSION
-                    else STUDY_GRAPH_VERSION
-                    if previous_run is not None
-                    and (previous_run.graph_version or "").startswith("study-")
-                    else self._study_graph_version(
-                        account_id,
-                        conversation_id,
-                    )
-                )
+                STUDY_TUTOR_GRAPH_VERSION
                 if mode == ChatMode.STUDY
                 else DAILY_GRAPH_VERSION
             ),

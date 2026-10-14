@@ -43,8 +43,17 @@ def expected_junit_key(node: str) -> tuple[str, str]:
 
 
 def manifest_nodes() -> tuple[str, ...]:
-    """全部场景与守卫涉及的测试节点（去重、稳定排序）。"""
-    nodes = {node for scenario in WORKFLOW_SCENARIOS for node in scenario.tests}
+    """全部现行场景与守卫涉及的测试节点（去重、稳定排序）。
+
+    改进工单 12：退役场景（旧五阶段学习）不进入现行执行节点集；其编号
+    与历史证据映射仍保留在清单中供冻结放行产物校验。
+    """
+    nodes = {
+        node
+        for scenario in WORKFLOW_SCENARIOS
+        if not scenario.retired
+        for node in scenario.tests
+    }
     nodes.update(node for guard in ZERO_TOLERANCE_GUARDS for node in guard.tests)
     return tuple(sorted(nodes))
 
@@ -142,6 +151,20 @@ def build_evidence_report(
 def _scenario_entry(
     scenario: Scenario, junit: dict[tuple[str, str], list[NodeOutcome]], problems: list[str]
 ) -> dict[str, Any]:
+    if scenario.retired:
+        # 改进工单 12：退役场景不执行、不作为现行证据；编号保留。
+        return {
+            "scenario_id": scenario.scenario_id,
+            "title": scenario.title,
+            "layers": [],
+            "external_gates": [],
+            "zero_tolerance": [kind.value for kind in scenario.zero_tolerance],
+            "evidence": {},
+            "missing": [],
+            "failed": [],
+            "ok": True,
+            "retired": True,
+        }
     evidence, missing, failed = _node_evidence(scenario.tests, junit)
     ok = not missing and not failed
     if not ok:

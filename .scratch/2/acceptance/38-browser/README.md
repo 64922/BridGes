@@ -53,3 +53,11 @@ npm run test:e2e -- --config playwright.issue38.config.ts
 仅重验学习流程及生成截图：在最后一行增加 `--grep '学习照片'`。
 本目录 `partial-<宽>x<高>.png` 为三视口真实部分交付界面截图；账户和
 教材内容均为本轮合成夹具，不使用真实个人资料。
+
+## 后续变更（工单 12，2026-10-14）
+
+旧五阶段学习执行整体退役：`tests/chat/issue38_browser_api.py` 固定来源
+验收服务依赖的旧学习替身（`Ticket36Gateway`/课页与复盘夹具）随专用测试
+删除，本目录的三视口学习验收路径（`playwright.issue38.config.ts` 与
+`e2e/issue38-domain-paths.spec.ts`）一并退役；论文/GitHub 专业路径改由
+现行模块验收覆盖。以上 2026-10-06 的运行结果保留为当时历史记录。

@@ -1317,6 +1317,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/study/restart-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Study Restart Options
+         * @description 旧学习会话的主动续学选项：本人目标候选与仍可访问的旧材料。
+         */
+        get: operations["get_study_restart_options_chat_conversations__conversation_id__study_restart_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/study/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart Study Conversation
+         * @description 用户主动续学：创建新模式会话并复用所选目标与材料（幂等）。
+         */
+        post: operations["restart_study_conversation_chat_conversations__conversation_id__study_restart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations/{conversation_id}/feedback/{feedback_id}/resolve": {
         parameters: {
             query?: never;
@@ -9680,6 +9720,18 @@ export interface components {
              * @description 摄取失败的中文原因（无失败时为 None）。
              */
             ingestion_error?: string | null;
+            /**
+             * Adopted From Conversation Id
+             * @description 主动续学来源会话标识（工单 12）；非采用材料为空串。
+             * @default
+             */
+            adopted_from_conversation_id: string;
+            /**
+             * Adopted From Object Id
+             * @description 主动续学来源对象标识（工单 12）；非采用材料为空串。
+             * @default
+             */
+            adopted_from_object_id: string;
             /**
              * Created At
              * Format: date-time
@@ -24732,6 +24784,122 @@ export interface components {
          */
         StoryboardStatus: "draft" | "designing" | "source_generated" | "static_validated" | "sandbox_rendering" | "completed" | "repairable" | "repair_exhausted" | "quarantined" | "failed";
         /**
+         * StudyAdaptationAdjustment
+         * @description 一条学情影响教学的具体调整方向（不是能力等级）。
+         * @enum {string}
+         */
+        StudyAdaptationAdjustment: "prerequisite_review" | "independent_application" | "transfer_application" | "recheck" | "hint_granularity";
+        /**
+         * StudyAdoptedRecord
+         * @description 采用快照中的一条已核验学情（身份、版本与调整方向）。
+         */
+        StudyAdoptedRecord: {
+            /**
+             * Record Id
+             * @description 档案条目标识。
+             */
+            record_id: string;
+            /**
+             * Record Version
+             * @description 采用时的记录版本；变化即使快照失效。
+             */
+            record_version: number;
+            /**
+             * Subject
+             * @description 知识点所属学科。
+             * @default
+             */
+            subject: string;
+            /**
+             * Title
+             * @description 知识点标题。
+             * @default
+             */
+            title: string;
+            /**
+             * Usage Context
+             * @description 知识点用途上下文（同名区分依据）。
+             * @default
+             */
+            usage_context: string;
+            /** @description 已核验的当前知识判断。 */
+            verdict: components["schemas"]["StudyDiagnosisVerdict"];
+            /**
+             * Performance
+             * @description 最近一次核验到的具体表现。
+             * @default
+             */
+            performance: string;
+            /**
+             * Adjustments
+             * @description 本条学情对本轮教学的具体调整方向。
+             */
+            adjustments?: components["schemas"]["StudyAdaptationAdjustment"][];
+            /**
+             * Reason
+             * @description 简短的调整原因（可展示给用户）。
+             * @default
+             */
+            reason: string;
+        };
+        /**
+         * StudyAdoptionProjection
+         * @description 用户可见的一次采用记录：采用了哪些学情、按什么方向调整。
+         */
+        StudyAdoptionProjection: {
+            /**
+             * Adoption Id
+             * @description 采用记录标识。
+             */
+            adoption_id: string;
+            /**
+             * Goal Id
+             * @description 采用时的学习目标。
+             * @default
+             */
+            goal_id: string;
+            /**
+             * Goal Version
+             * @description 采用时的目标版本。
+             * @default 0
+             */
+            goal_version: number;
+            /**
+             * Route Version
+             * @description 采用时的路线版本。
+             * @default 0
+             */
+            route_version: number;
+            /**
+             * Status
+             * @description 采用状态：applied / invalidated。
+             */
+            status: string;
+            /**
+             * Invalid Reason
+             * @description 失效的真实原因；正常生效时为空。
+             * @default
+             */
+            invalid_reason: string;
+            /**
+             * Entries
+             * @description 正式采用的已核验学情与调整方向。
+             */
+            entries?: components["schemas"]["StudyAdoptedRecord"][];
+            /**
+             * Uncertainty Note
+             * @description 相关但待进一步验证的学情说明。
+             * @default
+             */
+            uncertainty_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 采用发生时间。
+             */
+            created_at: string;
+        };
+        /**
          * StudyCheckAssistance
          * @description 待答问题实际获得过的帮助状态（按确实提供的提示派生）。
          * @enum {string}
@@ -25668,6 +25836,64 @@ export interface components {
          * @enum {string}
          */
         StudyRecordState: "active" | "corrected" | "deleted";
+        /**
+         * StudyRestartOptionsProjection
+         * @description 旧会话的续学选项：本人目标候选与仍可访问材料，逐项如实标注。
+         */
+        StudyRestartOptionsProjection: {
+            /**
+             * Conversation Id
+             * @description 旧会话标识。
+             */
+            conversation_id: string;
+            /**
+             * Can Restart
+             * @description 是否至少存在一个可选目标或一份仍可访问的材料。
+             */
+            can_restart: boolean;
+            /**
+             * Linked Goal Id
+             * @description 旧会话曾关联的目标标识；从未关联时为 None。
+             */
+            linked_goal_id?: string | null;
+            /**
+             * Goals
+             * @description 本人活动/暂停目标（最近在前）。
+             */
+            goals?: components["schemas"]["StudyGoalSummaryProjection"][];
+            /**
+             * Materials
+             * @description 旧会话内仍可访问的已绑定材料（来源身份只读呈现）。
+             */
+            materials?: components["schemas"]["ChatAttachmentProjection"][];
+        };
+        /**
+         * StudyRestartRequest
+         * @description 主动续学请求：目标与材料至少选择一项；说明为选填。
+         */
+        StudyRestartRequest: {
+            /**
+             * Idempotency Key
+             * @description 客户端生成的一次性幂等键；同账户同键重放复用同一新会话。
+             */
+            idempotency_key: string;
+            /**
+             * Goal Id
+             * @description 选择继续的本人学习目标；不选择时为 None。
+             */
+            goal_id?: string | null;
+            /**
+             * Object Ids
+             * @description 选择采用的旧材料对象标识（来源会话内已绑定且仍可访问）。
+             */
+            object_ids?: string[];
+            /**
+             * Message
+             * @description 补充说明（选填）；无材料时必填，作为新会话首条消息正文。
+             * @default
+             */
+            message: string;
+        };
         /** StudyReview */
         StudyReview: {
             /** Questions */
@@ -30082,122 +30308,6 @@ export interface components {
          * @enum {string}
          */
         bridges__contracts__workflows__ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
-        /**
-         * StudyAdaptationAdjustment
-         * @description 一条学情影响教学的具体调整方向（不是能力等级）。
-         * @enum {string}
-         */
-        StudyAdaptationAdjustment: "prerequisite_review" | "independent_application" | "transfer_application" | "recheck" | "hint_granularity";
-        /**
-         * StudyAdoptedRecord
-         * @description 采用快照中的一条已核验学情（身份、版本与调整方向）。
-         */
-        StudyAdoptedRecord: {
-            /**
-             * Record Id
-             * @description 档案条目标识。
-             */
-            record_id: string;
-            /**
-             * Record Version
-             * @description 采用时的记录版本；变化即使快照失效。
-             */
-            record_version: number;
-            /**
-             * Subject
-             * @description 知识点所属学科。
-             * @default
-             */
-            subject: string;
-            /**
-             * Title
-             * @description 知识点标题。
-             * @default
-             */
-            title: string;
-            /**
-             * Usage Context
-             * @description 知识点用途上下文（同名区分依据）。
-             * @default
-             */
-            usage_context: string;
-            /** @description 已核验的当前知识判断。 */
-            verdict: components["schemas"]["StudyDiagnosisVerdict"];
-            /**
-             * Performance
-             * @description 最近一次核验到的具体表现。
-             * @default
-             */
-            performance: string;
-            /**
-             * Adjustments
-             * @description 本条学情对本轮教学的具体调整方向。
-             */
-            adjustments?: components["schemas"]["StudyAdaptationAdjustment"][];
-            /**
-             * Reason
-             * @description 简短的调整原因（可展示给用户）。
-             * @default
-             */
-            reason: string;
-        };
-        /**
-         * StudyAdoptionProjection
-         * @description 用户可见的一次采用记录：采用了哪些学情、按什么方向调整。
-         */
-        StudyAdoptionProjection: {
-            /**
-             * Adoption Id
-             * @description 采用记录标识。
-             */
-            adoption_id: string;
-            /**
-             * Goal Id
-             * @description 采用时的学习目标。
-             * @default
-             */
-            goal_id: string;
-            /**
-             * Goal Version
-             * @description 采用时的目标版本。
-             * @default 0
-             */
-            goal_version: number;
-            /**
-             * Route Version
-             * @description 采用时的路线版本。
-             * @default 0
-             */
-            route_version: number;
-            /**
-             * Status
-             * @description 采用状态：applied / invalidated。
-             */
-            status: string;
-            /**
-             * Invalid Reason
-             * @description 失效的真实原因；正常生效时为空。
-             * @default
-             */
-            invalid_reason: string;
-            /**
-             * Entries
-             * @description 正式采用的已核验学情与调整方向。
-             */
-            entries?: components["schemas"]["StudyAdoptedRecord"][];
-            /**
-             * Uncertainty Note
-             * @description 相关但待进一步验证的学情说明。
-             * @default
-             */
-            uncertainty_note: string;
-            /**
-             * Created At
-             * Format: date-time
-             * @description 采用发生时间。
-             */
-            created_at: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -33589,6 +33699,139 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_study_restart_options_chat_conversations__conversation_id__study_restart_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyRestartOptionsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restart_study_conversation_chat_conversations__conversation_id__study_restart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudyRestartRequest"];
+            };
+        };
+        responses: {
+            /** @description 幂等重放：同键已存在，返回既有新会话（不产生新数据） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatFirstTurnResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatFirstTurnResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
                 };
             };
         };

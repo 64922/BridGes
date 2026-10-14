@@ -5175,6 +5175,204 @@
         }
       }
     },
+    "/chat/conversations/{conversation_id}/study/restart-options": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Study Restart Options",
+        "description": "旧学习会话的主动续学选项：本人目标候选与仍可访问的旧材料。",
+        "operationId": "get_study_restart_options_chat_conversations__conversation_id__study_restart_options_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyRestartOptionsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/study/restart": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Restart Study Conversation",
+        "description": "用户主动续学：创建新模式会话并复用所选目标与材料（幂等）。",
+        "operationId": "restart_study_conversation_chat_conversations__conversation_id__study_restart_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatFirstTurnResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "幂等重放：同键已存在，返回既有新会话（不产生新数据）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatFirstTurnResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/chat/conversations/{conversation_id}/feedback/{feedback_id}/resolve": {
       "post": {
         "tags": [
@@ -32945,6 +33143,18 @@
             "title": "Ingestion Error",
             "description": "摄取失败的中文原因（无失败时为 None）。"
           },
+          "adopted_from_conversation_id": {
+            "type": "string",
+            "title": "Adopted From Conversation Id",
+            "description": "主动续学来源会话标识（工单 12）；非采用材料为空串。",
+            "default": ""
+          },
+          "adopted_from_object_id": {
+            "type": "string",
+            "title": "Adopted From Object Id",
+            "description": "主动续学来源对象标识（工单 12）；非采用材料为空串。",
+            "default": ""
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -57815,6 +58025,151 @@
         "title": "StoryboardStatus",
         "description": "结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。"
       },
+      "StudyAdaptationAdjustment": {
+        "type": "string",
+        "enum": [
+          "prerequisite_review",
+          "independent_application",
+          "transfer_application",
+          "recheck",
+          "hint_granularity"
+        ],
+        "title": "StudyAdaptationAdjustment",
+        "description": "一条学情影响教学的具体调整方向（不是能力等级）。"
+      },
+      "StudyAdoptedRecord": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "title": "Record Id",
+            "description": "档案条目标识。"
+          },
+          "record_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Record Version",
+            "description": "采用时的记录版本；变化即使快照失效。"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "知识点所属学科。",
+            "default": ""
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "知识点标题。",
+            "default": ""
+          },
+          "usage_context": {
+            "type": "string",
+            "title": "Usage Context",
+            "description": "知识点用途上下文（同名区分依据）。",
+            "default": ""
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/StudyDiagnosisVerdict",
+            "description": "已核验的当前知识判断。"
+          },
+          "performance": {
+            "type": "string",
+            "title": "Performance",
+            "description": "最近一次核验到的具体表现。",
+            "default": ""
+          },
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/StudyAdaptationAdjustment"
+            },
+            "type": "array",
+            "title": "Adjustments",
+            "description": "本条学情对本轮教学的具体调整方向。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "简短的调整原因（可展示给用户）。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "record_id",
+          "record_version",
+          "verdict"
+        ],
+        "title": "StudyAdoptedRecord",
+        "description": "采用快照中的一条已核验学情（身份、版本与调整方向）。"
+      },
+      "StudyAdoptionProjection": {
+        "properties": {
+          "adoption_id": {
+            "type": "string",
+            "title": "Adoption Id",
+            "description": "采用记录标识。"
+          },
+          "goal_id": {
+            "type": "string",
+            "title": "Goal Id",
+            "description": "采用时的学习目标。",
+            "default": ""
+          },
+          "goal_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Goal Version",
+            "description": "采用时的目标版本。",
+            "default": 0
+          },
+          "route_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Route Version",
+            "description": "采用时的路线版本。",
+            "default": 0
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "采用状态：applied / invalidated。"
+          },
+          "invalid_reason": {
+            "type": "string",
+            "title": "Invalid Reason",
+            "description": "失效的真实原因；正常生效时为空。",
+            "default": ""
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/StudyAdoptedRecord"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "正式采用的已核验学情与调整方向。"
+          },
+          "uncertainty_note": {
+            "type": "string",
+            "title": "Uncertainty Note",
+            "description": "相关但待进一步验证的学情说明。",
+            "default": ""
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "采用发生时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "adoption_id",
+          "status",
+          "created_at"
+        ],
+        "title": "StudyAdoptionProjection",
+        "description": "用户可见的一次采用记录：采用了哪些学情、按什么方向调整。"
+      },
       "StudyCheckAssistance": {
         "type": "string",
         "enum": [
@@ -59283,6 +59638,102 @@
         ],
         "title": "StudyRecordState",
         "description": "学习档案的用户控制状态；纠正与删除都是账户级真实持久状态。"
+      },
+      "StudyRestartOptionsProjection": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Conversation Id",
+            "description": "旧会话标识。"
+          },
+          "can_restart": {
+            "type": "boolean",
+            "title": "Can Restart",
+            "description": "是否至少存在一个可选目标或一份仍可访问的材料。"
+          },
+          "linked_goal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Goal Id",
+            "description": "旧会话曾关联的目标标识；从未关联时为 None。"
+          },
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/StudyGoalSummaryProjection"
+            },
+            "type": "array",
+            "title": "Goals",
+            "description": "本人活动/暂停目标（最近在前）。"
+          },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachmentProjection"
+            },
+            "type": "array",
+            "title": "Materials",
+            "description": "旧会话内仍可访问的已绑定材料（来源身份只读呈现）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "can_restart"
+        ],
+        "title": "StudyRestartOptionsProjection",
+        "description": "旧会话的续学选项：本人目标候选与仍可访问材料，逐项如实标注。"
+      },
+      "StudyRestartRequest": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "description": "客户端生成的一次性幂等键；同账户同键重放复用同一新会话。"
+          },
+          "goal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Id",
+            "description": "选择继续的本人学习目标；不选择时为 None。"
+          },
+          "object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Object Ids",
+            "description": "选择采用的旧材料对象标识（来源会话内已绑定且仍可访问）。"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 8000,
+            "title": "Message",
+            "description": "补充说明（选填）；无材料时必填，作为新会话首条消息正文。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "StudyRestartRequest",
+        "description": "主动续学请求：目标与材料至少选择一项；说明为选填。"
       },
       "StudyReview": {
         "properties": {
@@ -66743,151 +67194,6 @@
         ],
         "title": "ArtifactTrustStatus",
         "description": "Lifecycle status of the scientific artifact produced by a run."
-      },
-      "StudyAdaptationAdjustment": {
-        "type": "string",
-        "enum": [
-          "prerequisite_review",
-          "independent_application",
-          "transfer_application",
-          "recheck",
-          "hint_granularity"
-        ],
-        "title": "StudyAdaptationAdjustment",
-        "description": "一条学情影响教学的具体调整方向（不是能力等级）。"
-      },
-      "StudyAdoptedRecord": {
-        "properties": {
-          "record_id": {
-            "type": "string",
-            "title": "Record Id",
-            "description": "档案条目标识。"
-          },
-          "record_version": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Record Version",
-            "description": "采用时的记录版本；变化即使快照失效。"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject",
-            "description": "知识点所属学科。",
-            "default": ""
-          },
-          "title": {
-            "type": "string",
-            "title": "Title",
-            "description": "知识点标题。",
-            "default": ""
-          },
-          "usage_context": {
-            "type": "string",
-            "title": "Usage Context",
-            "description": "知识点用途上下文（同名区分依据）。",
-            "default": ""
-          },
-          "verdict": {
-            "$ref": "#/components/schemas/StudyDiagnosisVerdict",
-            "description": "已核验的当前知识判断。"
-          },
-          "performance": {
-            "type": "string",
-            "title": "Performance",
-            "description": "最近一次核验到的具体表现。",
-            "default": ""
-          },
-          "adjustments": {
-            "items": {
-              "$ref": "#/components/schemas/StudyAdaptationAdjustment"
-            },
-            "type": "array",
-            "title": "Adjustments",
-            "description": "本条学情对本轮教学的具体调整方向。"
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "简短的调整原因（可展示给用户）。",
-            "default": ""
-          }
-        },
-        "type": "object",
-        "required": [
-          "record_id",
-          "record_version",
-          "verdict"
-        ],
-        "title": "StudyAdoptedRecord",
-        "description": "采用快照中的一条已核验学情（身份、版本与调整方向）。"
-      },
-      "StudyAdoptionProjection": {
-        "properties": {
-          "adoption_id": {
-            "type": "string",
-            "title": "Adoption Id",
-            "description": "采用记录标识。"
-          },
-          "goal_id": {
-            "type": "string",
-            "title": "Goal Id",
-            "description": "采用时的学习目标。",
-            "default": ""
-          },
-          "goal_version": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Goal Version",
-            "description": "采用时的目标版本。",
-            "default": 0
-          },
-          "route_version": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Route Version",
-            "description": "采用时的路线版本。",
-            "default": 0
-          },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "description": "采用状态：applied / invalidated。"
-          },
-          "invalid_reason": {
-            "type": "string",
-            "title": "Invalid Reason",
-            "description": "失效的真实原因；正常生效时为空。",
-            "default": ""
-          },
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/StudyAdoptedRecord"
-            },
-            "type": "array",
-            "title": "Entries",
-            "description": "正式采用的已核验学情与调整方向。"
-          },
-          "uncertainty_note": {
-            "type": "string",
-            "title": "Uncertainty Note",
-            "description": "相关但待进一步验证的学情说明。",
-            "default": ""
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "采用发生时间。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "adoption_id",
-          "status",
-          "created_at"
-        ],
-        "title": "StudyAdoptionProjection",
-        "description": "用户可见的一次采用记录：采用了哪些学情、按什么方向调整。"
       }
     }
   }

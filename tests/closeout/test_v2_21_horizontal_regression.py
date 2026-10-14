@@ -1,16 +1,19 @@
 """Issue 21 AC6：横向回归收口门。
 
-覆盖设计文档（``docs/v2/delivery-plan.md``）要求横向复验的六条反例/正例：
-跨模块上下文、模式锁、学习错题、画像删除、密钥失败保留、外部证据不可得
-降级。每条只断言合同层的最小事实（谁能不能发生），模块内部细节仍由各模块
+覆盖设计文档（``docs/v2/delivery-plan.md``）要求横向复验的反例/正例：
+跨模块上下文、模式锁、画像删除、密钥失败保留、外部证据不可得降级。
+每条只断言合同层的最小事实（谁能不能发生），模块内部细节仍由各模块
 自己的套件覆盖——本文件的作用是让任何一条在收口时被改坏都会红：
 
 - 跨模块上下文：``tests/chat/test_v2_03_conversation_context.py``
 - 模式锁：``tests/chat/test_issue03_atomic_first_turn.py``
-- 学习错题与总结：``tests/chat/test_v2_19_study_review.py``、``test_v2_20_study_summary.py``
 - 画像删除：``tests/profiles/test_v2_08_atomic_profile.py``
 - 密钥失败保留：``tests/api/test_qwen_credential_settings.py``
 - 外部证据不可得：``tests/chat/test_arxiv_search_chat.py``
+
+原「学习错题与总结」一项随旧五阶段学习执行退役（工单 12）；退役后的
+只读边界与续学入口由 ``tests/retirement/test_issue12_legacy_study_retirement.py``
+与 ``tests/chat/test_issue01_history_read_boundary.py`` 覆盖。
 """
 
 from __future__ import annotations
@@ -31,15 +34,6 @@ from bridges.chat.repository import MessageRecord
 from bridges.config import get_settings
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus, ChatMode
 from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
-from bridges.contracts.study import (
-    StudyFragment,
-    StudyPage,
-    StudyReview,
-    StudyReviewQuestion,
-    StudyState,
-)
-from bridges.study.review import next_question
-from bridges.study.summary import build_summary, render_summary
 from tests.api.test_qwen_credential_settings import (
     _NEW_KEY,
     _OLD_KEY,
@@ -173,116 +167,7 @@ def test_first_turn_locks_mode_and_switching_is_retired(tmp_path: Path, monkeypa
 
 
 # ---------------------------------------------------------------------------
-# 3. 学习错题
-# ---------------------------------------------------------------------------
-
-
-def _study_state(*judgements: str | None) -> StudyState:
-    fragments = [
-        StudyFragment(
-            fragment_id=f"f{index}",
-            kind="text",
-            position=f"第{index}行",
-            text=f"第 {index} 个知识点",
-            confidence=0.95,
-        )
-        for index in range(1, len(judgements) + 1)
-    ]
-    questions = [
-        StudyReviewQuestion(
-            question_id=f"q{index}",
-            question=f"第 {index} 题？",
-            coverage_units=[f"u{index}"],
-            fragment_ids=[f"f{index}"],
-            asked=True,
-            answer=f"我的第 {index} 个回答",
-            judgement=judgement,
-            canonical_answer=f"第 {index} 题的正确答案",
-            explanation="简短解释",
-        )
-        for index, judgement in enumerate(judgements, start=1)
-    ]
-    return StudyState(
-        subsection_id="subsection-1",
-        stage="review",
-        pages=[
-            StudyPage(
-                object_id="obj-1",
-                ordinal=1,
-                content_hash="hash-1",
-                model_id="qwen-vl",
-                page_number=12,
-                fragments=fragments,
-            )
-        ],
-        review=StudyReview(questions=questions, active_question_id=questions[-1].question_id),
-    )
-
-
-class _StubCompiler:
-    """只满足总结调用所需的上下文编译契约（证据块必被采用）。"""
-
-    def compile_turn_context(self, run: Any, *, system_prompt: str, evidence: Any) -> Any:
-        adopted = [item.evidence_id for item in evidence]
-        return (
-            [{"role": "system", "content": system_prompt}],
-            {"budget_floor_exceeded": False, "adopted_evidence_ids": adopted},
-        )
-
-
-def test_wrong_or_unanswered_questions_never_count_as_mastered() -> None:
-    state = _study_state("correct", "incorrect", None)
-
-    # 错题与未作答题不进「已掌握」，只进「待补的理解点」。
-    with pytest.raises(ValueError, match="掌握结论超出"):
-        build_summary(
-            _StubCompiler(),
-            object(),
-            state,
-            invoke=lambda task, payload: {
-                "points": [
-                    {"kind": "mastered", "text": "全部掌握", "question_ids": ["q1", "q2", "q3"]}
-                ]
-            },
-        )
-
-    # 正确写法（只把判定正确的题算已掌握）通过校验，且未作答题在正文里标明。
-    summary = build_summary(
-        _StubCompiler(),
-        object(),
-        state,
-        invoke=lambda task, payload: {
-            "points": [
-                {
-                    "kind": "learned",
-                    "text": "本节讲了三个知识点。",
-                    "fragment_ids": ["f1"],
-                },
-                {"kind": "mastered", "text": "第一题掌握。", "question_ids": ["q1"]},
-                {
-                    "kind": "gap",
-                    "text": "第二、三题待补。",
-                    "question_ids": ["q2", "q3"],
-                },
-            ]
-        },
-    )
-    rendered = render_summary(summary, state)
-    assert "第3题「第 3 题？」未作答" in rendered
-    assert "第2题「第 2 题？」判定为错误" in rendered
-
-    # 复盘收尾：未作答的题不计为已掌握。
-    finished = state.review
-    assert finished is not None
-    for question in finished.questions:
-        question.asked = True
-    closing = next_question(finished)
-    assert finished.complete is True
-    assert "未作答的题不计为已掌握" in closing
-
-
-# ---------------------------------------------------------------------------
-# 4. 画像删除
+# 3. 画像删除
 # ---------------------------------------------------------------------------
 
 
@@ -314,7 +199,7 @@ def test_deleted_profile_item_does_not_come_back_from_old_messages() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. 密钥失败保留
+# 4. 密钥失败保留
 # ---------------------------------------------------------------------------
 
 
@@ -337,7 +222,7 @@ def test_failed_key_probe_keeps_previous_credential(monkeypatch: pytest.MonkeyPa
 
 
 # ---------------------------------------------------------------------------
-# 6. 外部证据不可得
+# 5. 外部证据不可得
 # ---------------------------------------------------------------------------
 
 

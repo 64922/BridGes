@@ -114,6 +114,9 @@ class ChatAttachmentRecord:
     ingestion_raw_status: str | None = None
     ingestion_lease_expires_at: str | None = None
     ingestion_error: str | None = None
+    #: 主动续学来源标注（工单 12）；非采用材料为空串。
+    adopted_from_conversation_id: str = ""
+    adopted_from_object_id: str = ""
 
     def projection(self) -> ChatAttachmentProjection:
         return ChatAttachmentProjection(
@@ -130,6 +133,8 @@ class ChatAttachmentRecord:
                 self.ingestion_raw_status, self.ingestion_lease_expires_at
             ).value,
             ingestion_error=self.ingestion_error,
+            adopted_from_conversation_id=self.adopted_from_conversation_id,
+            adopted_from_object_id=self.adopted_from_object_id,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
@@ -321,6 +326,15 @@ class ChatAttachmentService:
     ) -> list[ChatAttachmentRecord]:
         rows = self._attachments.rows_for_message(
             account_id, conversation_id, message_id
+        )
+        return [self._row_to_record(row) for row in rows]
+
+    def list_bound_materials(
+        self, account_id: str, conversation_id: str
+    ) -> list[ChatAttachmentRecord]:
+        """返回会话内全部仍可访问的已绑定附件（工单 12 续学材料候选）。"""
+        rows = self._attachments.bound_rows_for_conversation(
+            account_id, conversation_id
         )
         return [self._row_to_record(row) for row in rows]
 
@@ -650,6 +664,55 @@ class ChatAttachmentService:
                 "attachment_not_found", "附件不存在或没有访问权限。", 404
             )
 
+    def adopt_bound_attachment(
+        self,
+        account_id: str,
+        *,
+        source_conversation_id: str,
+        source_object_id: str,
+    ) -> ChatAttachmentDraftRecord:
+        """把旧会话中仍可访问的绑定附件复制为账户级新草稿（工单 12 续学）。
+
+        原附件、原对象与原消息不改写：新对象共享同一内容寻址文件，来源
+        身份由调用方在绑定新消息时标注。来源不可访问（跨账户、对象已
+        删除或未绑定消息）按 404 拒绝；草稿写入失败时回收新对象，绝不
+        留下孤立引用。
+        """
+        source = self.get(account_id, source_conversation_id, source_object_id)
+        if source is None or source.message_id is None:
+            raise ChatAttachmentError(
+                "attachment_not_found", "附件不存在或没有访问权限。", 404
+            )
+        try:
+            clone = self._objects.clone_object(account_id, source_object_id)
+        except StorageError as exc:
+            raise ChatAttachmentError(
+                "attachment_save_failed", "附件保存失败，请稍后重试。", 503
+            ) from exc
+        now = datetime.now(UTC).isoformat()
+        try:
+            with self._database.transaction():
+                self._drafts.insert_uploaded(
+                    account_id=account_id,
+                    object_id=clone.object_id,
+                    upload_id=secrets.token_urlsafe(18),
+                    original_filename=clone.original_filename,
+                    media_type=clone.media_type,
+                    content_length=clone.content_length,
+                    content_hash=clone.content_hash,
+                    created_at=now,
+                )
+        except (StorageError, sqlite3.Error) as exc:
+            with suppress(StorageError):
+                self._objects.delete_object(account_id, clone.object_id)
+            raise ChatAttachmentError(
+                "attachment_save_failed", "附件保存失败，请稍后重试。", 503
+            ) from exc
+        self._enqueue_parse(account_id, clone.object_id, clone.media_type)
+        record = self.get_draft(account_id, clone.object_id)
+        assert record is not None
+        return record
+
     def sweep_drafts(self, older_than: datetime) -> int:
         """清理超过安全期限仍未发送的草稿（已绑定附件绝不进入本路径）。
 
@@ -746,6 +809,8 @@ class ChatAttachmentService:
             ingestion_error=(
                 str(row["failure_reason"]) if row["failure_reason"] is not None else None
             ),
+            adopted_from_conversation_id=str(row["adopted_from_conversation_id"]),
+            adopted_from_object_id=str(row["adopted_from_object_id"]),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
         )

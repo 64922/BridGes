@@ -1334,6 +1334,7 @@ class ConversationRepository:
         run_record: GenerationRunRecord,
         events: list[tuple[str, dict[str, Any]]],
         attachment_ids: list[str] | None = None,
+        adoption_sources: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         """事务内的轮次落库：消息、运行、初始事件与附件绑定（须已持锁）。
 
@@ -1408,11 +1409,16 @@ class ConversationRepository:
             now = _iso(user_record.updated_at)
             for ordinal, object_id in enumerate(attachment_ids, start=1):
                 draft = drafts[object_id]
+                # 工单 12：主动续学的材料在新绑定行上标注来源（会话+对象）；
+                # 普通附件无来源，两列保持空串。
+                adopted_from = (adoption_sources or {}).get(object_id, ("", ""))
                 self._db.scoped(user_record.account_id).execute(
                     "INSERT INTO chat_attachments"
                     " (object_id, account_id, conversation_id, message_id,"
-                    "  upload_id, media_type, status, ordinal, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, 'bound', ?, ?, ?)",
+                    "  upload_id, media_type, status, ordinal,"
+                    "  adopted_from_conversation_id, adopted_from_object_id,"
+                    "  created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, 'bound', ?, ?, ?, ?, ?)",
                     (
                         object_id,
                         user_record.account_id,
@@ -1421,6 +1427,8 @@ class ConversationRepository:
                         str(draft["upload_id"]),
                         str(draft["media_type"]),
                         ordinal,
+                        adopted_from[0],
+                        adopted_from[1],
                         str(draft["created_at"]),
                         now,
                     ),
@@ -1495,6 +1503,7 @@ class ConversationRepository:
         run_record: GenerationRunRecord,
         events: list[tuple[str, dict[str, Any]]],
         attachment_ids: list[str] | None = None,
+        adoption_sources: dict[str, tuple[str, str]] | None = None,
     ) -> tuple[str, bool, bool]:
         """同一事务原子创建会话与首轮（Issue 03，幂等）。
 
@@ -1582,6 +1591,7 @@ class ConversationRepository:
                     run_record,
                     events,
                     attachment_ids,
+                    adoption_sources,
                 )
             return conversation_id, True, False
         except StorageError:

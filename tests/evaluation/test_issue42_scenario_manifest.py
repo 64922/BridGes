@@ -34,7 +34,7 @@ def test_every_scenario_binds_executable_test_evidence() -> None:
 
 
 def test_every_manifest_test_node_resolves_to_a_real_test() -> None:
-    nodes = [node for scenario in WORKFLOW_SCENARIOS for node in scenario.tests]
+    nodes = [node for scenario in WORKFLOW_SCENARIOS if not scenario.retired for node in scenario.tests]
     nodes += [node for guard in ZERO_TOLERANCE_GUARDS for node in guard.tests]
     for node in sorted(set(nodes)):
         path_part, _, test_name = node.partition("::")

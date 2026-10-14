@@ -1,4 +1,11 @@
-"""学习复盘场景的证据绑定。"""
+"""学习复盘场景的证据绑定。
+
+改进工单 12：旧五阶段学习执行退出后，L01–L13 的测试节点随旧执行与
+专用测试删除；场景登记保留（编号、标题与历史证据映射供工单 42 的冻结
+放行产物校验），整体标记 ``retired``，现行执行与锚点校验跳过。
+"""
+
+from dataclasses import replace
 
 from bridges.evaluation.workflow_scenario_contracts import ExternalGate, Scenario, ZeroTolerance
 
@@ -144,3 +151,7 @@ STUDY_SCENARIOS: tuple[Scenario, ...] = (
         ),
     ),
 )
+
+# 改进工单 12：L01–L13 随旧五阶段执行整体退役（见文件头说明）。
+STUDY_SCENARIOS = tuple(replace(scenario, retired=True) for scenario in STUDY_SCENARIOS)
+

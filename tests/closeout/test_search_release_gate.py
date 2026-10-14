@@ -386,9 +386,11 @@ def test_web_probe_without_key_marks_body_fetch_not_run(
 def test_release_gate_includes_golden_routes_and_degradation_semantics() -> None:
     """金标路由（Issue 03）与降级语义（Issue 02）作为门禁组成部分被执行。
 
-    降级语义的「零进度推进」由 ``test_issue03_learning_evidence_chat.py``
-    的 ``test_chat_搜索成功但无覆盖时不伪造引用也不写入学习进度`` 断言
-    （``teaching.learning_progress is None``），该文件同样在门禁清单中。
+    降级语义的「失败不伪造引用、不误判」由
+    ``test_issue11_demand_driven_verification.py`` 的
+    ``test_failed_verification_downgrades_check_and_never_marks_wrong``
+    断言（检索失败 → 零采用来源 + 如实记录），该文件同样在门禁清单中；
+    会话续学与目标切换由 ``test_issue08_resume_and_goal_switch.py`` 覆盖。
     """
     tests = set(RELEASE_GATE_PYTHON_TESTS)
     assert "tests/chat/test_golden_intent_routes.py" in tests, (
@@ -397,7 +399,8 @@ def test_release_gate_includes_golden_routes_and_degradation_semantics() -> None
     assert "tests/learning/test_teaching_gate.py" in tests, (
         "Issue 02 降级语义（本地不足 + 搜索失败 → 带标注降级）必须纳入门禁"
     )
-    assert "tests/chat/test_issue03_learning_evidence_chat.py" in tests
+    assert "tests/chat/test_issue11_demand_driven_verification.py" in tests
+    assert "tests/chat/test_issue08_resume_and_goal_switch.py" in tests
     assert "tests/closeout/test_search_release_gate.py" in tests
 
 

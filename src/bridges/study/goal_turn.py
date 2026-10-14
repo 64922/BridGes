@@ -63,6 +63,10 @@ _MODE_SWITCH: Literal["switch"] = "switch"
 _MODE_REACTIVATE: Literal["reactivate"] = "reactivate"
 _MODE_LAPSED: Literal["clarification_lapsed"] = "clarification_lapsed"
 
+#: 主动续学的运行配置键（工单 12）：用户在续学入口显式选择继续的目标，
+#: 已在生成前确定，不再经规划角色判别归属（也不产生第二次模型调用）。
+STUDY_RESUME_GOAL_CONFIG_KEY = "study_resume_goal_id"
+
 _PLANNING_FAILED_BLOCK = (
     "【学习目标】\n"
     "用户目标原话：{statement}\n"
@@ -112,6 +116,20 @@ class StudyGoalTurnService:
         model_quota: RunModelQuota | None,
         budget: RunBudget | None,
     ) -> StudyGoalTurn | None:
+        # 工单 12：主动续学的目标由用户在续学入口选定并随运行配置冻结——
+        # 直接按显式标识恢复（暂停目标在终态提交时一并恢复为活动），
+        # 不经规划模型判别，也不把旧会话的旧进展当成新会话的进展。
+        resume_goal_id = str(
+            (run.config or {}).get(STUDY_RESUME_GOAL_CONFIG_KEY) or ""
+        ).strip()
+        if resume_goal_id:
+            target = self._goals.get_goal(run.account_id, resume_goal_id)
+            if target is not None and target.status != "completed":
+                return self._resume_turn(
+                    target=target,
+                    run=run,
+                    plan=StudyGoalPlan(kind="resume", target_goal_id=target.goal_id),
+                )
         goal = self._goals.get_linked_goal(run.account_id, run.conversation_id)
         if goal is None:
             return self._plan_without_goal(

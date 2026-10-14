@@ -68,6 +68,10 @@ DAILY_GRAPH_VERSION = "daily-parent-v3"
 #: 安全结束并保留历史；用户明确重试创建绑定当前版本的新运行。
 DAILY_GRAPH_VERSION_CHANGED = "daily_graph_version_changed"
 
+#: 改进工单 12：旧五阶段学习运行的只读退出码。旧检查点、旧图版本与旧
+#: 重试一律从这个码安全收尾；恢复方式是用户主动续学，不是点击重试。
+STUDY_LEGACY_RETIRED = "study_legacy_retired"
+
 NODE_VALIDATE_TURN = "validate_turn"
 NODE_COMPILE_CONTEXT = "compile_context"
 NODE_SELECT_EXPLICIT_MODULE = "select_explicit_module"

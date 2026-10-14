@@ -44,9 +44,7 @@ from bridges.routing import (
     MainCapability,
     RouteStatus,
 )
-from bridges.study.local_progress import StudyLocalProgressRepository
-from bridges.study.service import StudyRepository
-from bridges.study.versions import STUDY_GRAPH_VERSION, STUDY_TUTOR_GRAPH_VERSION
+from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
@@ -71,6 +69,7 @@ class _ServiceGenerationRecordsMixin:
         idempotency_key: str | None = None,
         understanding: MainUnderstanding | None = None,
         user_message_id: str | None = None,
+        extra_run_config: dict[str, Any] | None = None,
     ) -> tuple[MessageRecord, MessageRecord, GenerationRunRecord, dict[str, Any]]:
         """组装一轮的用户消息、助手占位、queued 运行与 started 载荷。
 
@@ -154,6 +153,10 @@ class _ServiceGenerationRecordsMixin:
         }
         if understanding is not None:
             run_config["understanding"] = understanding.model_dump(mode="json")
+        # 改进工单 12：主动续学的确定性目标引用随运行配置持久化（执行器
+        # 恢复时读取同一份；普通首轮/续轮不携带，行为不变）。
+        if extra_run_config:
+            run_config.update(extra_run_config)
         # V2 Issue 09 + 改进工单 03：本轮启动时锁定主模型 ID 与完整额度快照。
         self._apply_run_model_lock(run_config)
         if (
@@ -184,7 +187,7 @@ class _ServiceGenerationRecordsMixin:
             created_at=now,
             updated_at=now,
             graph_version=(
-                self._study_graph_version(account_id, conversation_id)
+                STUDY_TUTOR_GRAPH_VERSION
                 if mode == ChatMode.STUDY
                 else DAILY_GRAPH_VERSION
             ),
@@ -199,28 +202,6 @@ class _ServiceGenerationRecordsMixin:
             message=assistant_message,
         )
         return user_message, assistant_message, run_record, started_payload
-
-    def _study_graph_version(
-        self: ChatService,
-        account_id: str,
-        conversation_id: str,
-    ) -> str:
-        """Route study turns to the adaptive tutor; keep legacy page sessions.
-
-        Issue 10：附件的存在不再把新会话推入旧书页管线——照片与文件都
-        由导师路径按当前问题读取（照片直读、文件按解析片段检索）。只有
-        已经拥有旧 ``study_states`` 的会话继续留在旧工作流，直到 12 的
-        旧执行退出承接历史。
-        """
-        if StudyLocalProgressRepository(self._repo.database).get(
-            account_id, conversation_id
-        ) is not None:
-            return STUDY_TUTOR_GRAPH_VERSION
-        if StudyRepository(self._repo.database).get(
-            account_id, conversation_id
-        ) is not None:
-            return STUDY_GRAPH_VERSION
-        return STUDY_TUTOR_GRAPH_VERSION
 
     def _apply_task_understanding(
         self: ChatService,

@@ -16,7 +16,9 @@ LEARNING_QUERY = "我想学习Transformer架构的相关知识"
 PROFILE_ACADEMIC_QUERY = (
     "我是一名人工智能专业的大三学生，目标是考一个211院校的相关专业，给我规划一下考研"
 )
-PAPER_QUERY = "给我找几篇Transformer方向相关的论文"
+# 工单 24：孤立的「Transformer」先消歧再检索；旅程用带领域限定的完整请求，
+# 走论文模块的解析→检索→筛选→交付链路。
+PAPER_QUERY = "找几篇 Transformer 注意力机制相关的论文"
 
 
 @pytest.fixture
@@ -82,12 +84,18 @@ def test_three_journeys_persist_profile_and_isolate_accounts(
         learning_conversation = _first_turn(client, LEARNING_QUERY, mode="study")
         _drive(sqlite_app, generation_helpers)
         learning_assistant = _assistant(client, learning_conversation)
-        teaching = learning_assistant["teaching"]
+        # 工单 12：学习对话由本地导师执行，不再产生旧教学门投影；答案如实
+        # 生成且不落任何无来源绑定的伪引用。
         assert learning_assistant["status"] == "done"
-        assert teaching["can_answer_reliably"] is True
-        assert teaching["evidence_gate"]["external_sources"]
-        assert teaching["evidence_gate"]["status"] == "sufficient"
-        assert "本轮未联网核实" not in str(teaching)
+        assert learning_assistant["teaching"] is None
+        assert "[reference:" not in learning_assistant["content"]
+        learning_detail = client.get(
+            f"/chat/conversations/{learning_conversation}"
+        ).json()
+        learning_progress = learning_detail["study_local_progress"]
+        assert learning_progress is not None
+        assert learning_progress["topic"] == LEARNING_QUERY
+        assert learning_progress["knowledge_context"]
 
         _first_turn(client, PROFILE_ACADEMIC_QUERY)
         _drive(sqlite_app, generation_helpers)
@@ -95,11 +103,14 @@ def test_three_journeys_persist_profile_and_isolate_accounts(
         paper_conversation = _first_turn(client, PAPER_QUERY)
         _drive(sqlite_app, generation_helpers)
         paper_assistant = _assistant(client, paper_conversation)
-        paper_search = paper_assistant["arxiv_search"]
+        paper_search = paper_assistant["paper_search"]
         assert paper_assistant["status"] == "done"
         assert paper_search["status"] == "success"
-        assert paper_search["papers"]
-        assert any("Transformer" in paper["title"] for paper in paper_search["papers"])
+        assert paper_search["selected"]
+        assert any(
+            "Transformer" in paper["title"] for paper in paper_search["selected"]
+        )
+        assert all(paper["arxiv_id"] for paper in paper_search["selected"])
 
         profile_response = client.get("/profiles/four-dimensions")
         assert profile_response.status_code == 200, profile_response.text

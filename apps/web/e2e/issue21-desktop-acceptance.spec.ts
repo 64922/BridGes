@@ -8,8 +8,8 @@ import { signUp, uniqueCredentials } from "./helpers/auth";
  * 与既有专项脚本的分工：issue12/13/23/25 等各自核对一个切片，大多用协议
  * mock 驱动；本脚本是「正式界面验收」的合并口径——只经真实 HTTP 链路
  * （API + 后台执行器 + 前端），核对 AC4 的六个面（模式、三模块、附件、
- * 学习阶段、画像、设置）与 AC7 的六项桌面回归（`+` 菜单顺序与说明、输入框
- * 与菜单键盘操作、消息来源行、学习阶段条、画像空态、模型验证结果），并在
+ * 学习进展、画像、设置）与 AC7 的六项桌面回归（`+` 菜单顺序与说明、输入框
+ * 与菜单键盘操作、消息来源行、学习局部进展、画像空态、模型验证结果），并在
  * 1280×720、1440×900、1920×1080 三个视口各跑一遍。
  *
  * 外部证据来源按运行配置取值：默认配置下 arXiv／贴吧／GitHub 走真实网络，
@@ -335,7 +335,8 @@ for (const viewport of VIEWPORTS) {
       ).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId("ingestion-status-error")).toHaveCount(0);
 
-      // 学习阶段：真实学习模式首轮（书页照片）→ 学习阶段条五个阶段与当前阶段。
+      // 学习模式：真实学习模式首轮（书页照片）→ 本地导师接手；旧五阶段
+      // 执行与教学门均已退役，公开投影只给真实局部进展。
       await backToNewChat(page);
       await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).click();
       await expect(page.getByText("上传本节书页照片开始预习")).toBeVisible();
@@ -346,22 +347,15 @@ for (const viewport of VIEWPORTS) {
       const studyTurn = await sendFirstTurn(page);
       expect(studyTurn.mode).toBe("study");
 
-      const progress = page.getByRole("region", { name: "学习阶段" });
-      await expect(progress).toBeVisible({ timeout: 60_000 });
-      for (const stage of ["书页识别", "辅助预习", "辅导", "复盘", "总结"]) {
-        await expect(progress.getByText(stage, { exact: true })).toBeVisible();
-      }
-      // 当前阶段是书页识别：识别没完成就不冒充进入辅导/复盘。
-      await expect(progress.getByText("书页识别", { exact: true })).toHaveAttribute(
-        "aria-current",
-        "step"
+      await expect(page.getByTestId("turn-result").last()).toHaveAttribute(
+        "data-outcome",
+        /complete|partial/,
+        { timeout: 90_000 }
       );
-      for (const later of ["辅助预习", "辅导", "复盘", "总结"]) {
-        await expect(progress.getByText(later, { exact: true })).not.toHaveAttribute(
-          "aria-current",
-          "step"
-        );
-      }
+      const progress = page.getByRole("region", { name: "局部学习进展" });
+      await expect(progress).toBeVisible({ timeout: 60_000 });
+      await expect(progress).toContainText("正在学习：");
+      await expect(page.getByRole("region", { name: "学习阶段" })).toHaveCount(0);
 
       await page.screenshot({ path: testInfo.outputPath(`study-${size}.png`) });
     });

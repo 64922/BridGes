@@ -14,3 +14,20 @@ KNOWN_STUDY_GRAPH_VERSIONS = (
     "study-tutoring-review-v5",
 )
 KNOWN_STUDY_GRAPH_VERSION_SET = frozenset(KNOWN_STUDY_GRAPH_VERSIONS)
+
+#: 改进工单 12：旧五阶段图（含无版本记录的更早运行）已退出执行，只保留
+#: 历史读取；这些版本不得再启动、重试或恢复。当前导师版本不在其中。
+LEGACY_STUDY_GRAPH_VERSION_SET = frozenset(
+    version
+    for version in KNOWN_STUDY_GRAPH_VERSIONS
+    if version != STUDY_TUTOR_GRAPH_VERSION
+)
+
+
+def is_legacy_study_graph_version(version: str | None) -> bool:
+    """旧五阶段执行版本（含无版本记录的旧运行）判定。
+
+    ``None`` 表示运行记录早于图版本字段，无法证明是新导师路径；学习模式
+    下按旧流程安全收尾，不冒险套用新节点。
+    """
+    return version is None or version in LEGACY_STUDY_GRAPH_VERSION_SET

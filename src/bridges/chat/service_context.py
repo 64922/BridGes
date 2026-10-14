@@ -18,7 +18,7 @@ from bridges.ai.payload_budget import CallMaterialManifest
 from bridges.career_plan.service import CareerPlanService
 from bridges.chat.context_compiler import CompiledTurnContext, ContextEvidence
 from bridges.chat.context_compiler import compile_turn_context as _compile_turn_context
-from bridges.chat.graph import run_daily_turn
+from bridges.chat.graph import run_daily_turn, settle_retired_study_run
 from bridges.chat.lightweight_policy import (
     DEFAULT_OUTPUT_TOKENS,
     continuation_source_text,
@@ -56,8 +56,6 @@ from bridges.github.service import GithubProjectsService
 from bridges.paper.service import PaperSearchService
 from bridges.resources.service import LearningResourcesService
 from bridges.retrieval.decision import capability_route_for_request
-from bridges.study.ports import StudyExecutionPorts
-from bridges.study.service import StudyWorkflow
 from bridges.study.versions import STUDY_TUTOR_GRAPH_VERSION
 from bridges.tieba.service import TiebaResearchService
 
@@ -66,20 +64,6 @@ if TYPE_CHECKING:
 
 
 class _ServiceContextMixin:
-    def _study_execution_ports(self: ChatService) -> StudyExecutionPorts:
-        """把聊天服务能力一次性适配为学习图的显式执行端口。"""
-        return StudyExecutionPorts(
-            repository=self._repo,
-            attachments=self._require_attachment_service(),
-            gateway=self._gateway,
-            context_compiler=self.compile_turn_context,
-            quota_provider=self.run_model_quota,
-            atomic_profiles=self._atomic_profiles,
-            automatic_profiles=self._automatic_profiles,
-            retrieval=self._retrieval,
-            web_search=self._web_search,
-        )
-
     def ensure_turn_context(self: ChatService, run: GenerationRunRecord) -> None:
         """编译本轮上下文基础：检索决策（幂等；Issue 03 扩展为编译器）。
 
@@ -394,6 +378,10 @@ class _ServiceContextMixin:
 
         执行器把 ``on_event`` 接到游标事件持久化上；停止信号与终态收敛
         语义见 :mod:`bridges.chat.graph`。
+
+        改进工单 12：学习模式的旧五阶段运行（含无版本记录的更早运行）
+        不再启动旧图——无论从执行器、租约恢复还是任何入口到达，都安全
+        收敛为 ``study_legacy_retired`` 只读退出；当前导师版本走日常父图。
         """
         conversation = self._repo.get_conversation(
             run.account_id, run.conversation_id
@@ -403,8 +391,8 @@ class _ServiceContextMixin:
             and conversation.mode == ChatMode.STUDY.value
         ) or (run.graph_version or "").startswith("study-")
         if is_study and run.graph_version != STUDY_TUTOR_GRAPH_VERSION:
-            return StudyWorkflow(self._study_execution_ports()).run(
-                run, on_event=on_event, stop_event=stop_event
+            return settle_retired_study_run(
+                self, run, on_event=on_event, stop_event=stop_event
             )
         return run_daily_turn(
             self,

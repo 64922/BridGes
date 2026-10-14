@@ -28,7 +28,7 @@ PYTEST_TARGETS=(
   tests/chat/test_issue04_attachment_contract.py
   tests/chat/test_issue06_budget.py
   tests/chat/test_issue06_latency_budget.py
-  tests/chat/test_issue08_conversational_learning.py
+  tests/chat/test_issue08_resume_and_goal_switch.py
   tests/chat/test_issue09_career_resilience.py
   tests/humanizer
   tests/reminder/test_verification_state_machine.py
@@ -41,7 +41,6 @@ E2E_SPECS=(
   e2e/issue04-atomic-attachment.spec.ts
   e2e/issue06-latency-stages.spec.ts
   e2e/issue07-humanizer-delivery.spec.ts
-  e2e/issue08-conversational-learning.spec.ts
   e2e/issue09-career-planner-resilience.spec.ts
   e2e/issue22-arxiv-paper-search.spec.ts
   e2e/issue33-smtp-reminders.spec.ts

@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 78
+SCHEMA_VERSION = 79
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3632,6 +3632,15 @@ MIGRATIONS: dict[int, list[str]] = {
         CREATE INDEX IF NOT EXISTS idx_study_record_adoptions_conversation
             ON study_record_adoptions (account_id, conversation_id, created_at)
         """,
+    ],
+    # 工单 12：主动续学的材料来源标注。旧会话材料被用户采用后在新会话生成
+    # 克隆对象与绑定行，来源会话/来源对象只作审计与展示（无外键——来源会话
+    # 或对象被删除不影响新会话材料）；无来源的行保持空串。
+    79: [
+        "ALTER TABLE chat_attachments ADD COLUMN adopted_from_conversation_id"
+        " TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE chat_attachments ADD COLUMN adopted_from_object_id"
+        " TEXT NOT NULL DEFAULT ''",
     ],
 }
 

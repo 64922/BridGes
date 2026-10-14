@@ -214,8 +214,7 @@ PROFILE_COVERAGE: tuple[CoverageItem, ...] = (
         "P-25",
         "自述基础与实际答题知识状态分开，一次困惑/答题不形成永久标签",
         (2, 19, 36, 41),
-        ("tests/chat/test_improvement36_status_acceptance.py",
-         "tests/evaluation/test_issue41_profile_quality.py"),
+        ("tests/evaluation/test_issue41_profile_quality.py",),
         CoverageStatus.MECHANISM,
     ),
     CoverageItem(

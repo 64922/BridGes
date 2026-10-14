@@ -20,12 +20,6 @@ from bridges.evaluation.expression_path_receipts import (
 from bridges.evaluation.expression_policy_arms import StrategyArm
 from bridges.evaluation.expression_real_run import ArmRunResult, RealArmSender
 from bridges.evaluation.expression_spec import ExpressionCategory, ExpressionScenario
-from bridges.evaluation.expression_study_receipts import (
-    run_study_review_receipt,
-    run_study_scope_receipt,
-    run_study_summary_receipt,
-    run_study_tutoring_receipt,
-)
 
 CHAT_PROBE = ExpressionScenario(
     scenario_id="receipt-chat-companion",
@@ -57,16 +51,8 @@ def _transcript_text(result: ArmRunResult) -> str:
     return "\n".join(lines)
 
 
-def _seeded_study_sender(gateway: Any) -> RealArmSender:
-    from bridges.evaluation.expression_study_receipts import _seed_study_state
-
-    return RealArmSender(gateway, conversation_seed=_seed_study_state)
-
-
 def _run_receipt(path_id: str, gateway: Any, scenario: ExpressionScenario) -> dict[str, Any]:
-    sender = (
-        _seeded_study_sender(gateway) if scenario.mode == "study" else RealArmSender(gateway)
-    )
+    sender = RealArmSender(gateway)
     result = sender.run(scenario, StrategyArm.CURRENT)
     failed_turns = [
         measurement
@@ -197,10 +183,6 @@ def run_model_path_receipts(gateway: Any, quota: Any) -> list[dict[str, Any]]:
     runners: list[tuple[str, Any]] = [
         ("chat.companion", lambda: _run_receipt("chat.companion", gateway, CHAT_PROBE)),
         ("chat.study", lambda: _run_receipt("chat.study", gateway, STUDY_PROBE)),
-        ("study.tutoring", lambda: run_study_tutoring_receipt(gateway)),
-        ("study.review", lambda: run_study_review_receipt(gateway)),
-        ("study.summary", lambda: run_study_summary_receipt(gateway)),
-        ("study.scope", lambda: run_study_scope_receipt(gateway, quota)),
         ("paper.summary", lambda: run_paper_receipt(gateway, quota)),
         ("github.insights", lambda: run_github_receipt(gateway, quota)),
         ("composite", run_composite_receipt),

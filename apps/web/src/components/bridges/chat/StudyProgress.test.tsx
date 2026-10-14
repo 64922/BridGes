@@ -121,44 +121,15 @@ describe("学习阶段与页级证据", () => {
     expect(screen.getByText(/已删除材料的历史记录：上传第1页/)).toBeTruthy();
   });
 
-  it("开始操作等待请求完成，失败后仍可重试", async () => {
-    let finish!: (value: boolean) => void;
-    const onAction = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
-    render(<StudyProgress study={{ subsection_id: "s", stage: "tutoring", state_version: 4 }}
-      onAction={onAction} />);
-    const button = screen.getByRole("button", { name: "开始复盘" });
-    fireEvent.click(button);
-    expect(onAction).toHaveBeenCalledWith("开始复盘");
-    expect(button.hasAttribute("disabled")).toBe(true);
-    finish(false);
-    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
-  });
-
-  it("复盘中可暂停，生成时禁用阶段操作", () => {
-    const onAction = vi.fn(async () => true);
+  it("旧记录只读展示当前阶段，不提供启动五阶段的操作", () => {
     const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "review",
-      state_version: 4 }} onAction={onAction} busy />);
-    const button = screen.getByRole("button", { name: "暂停复盘回辅导" });
-    expect(button.hasAttribute("disabled")).toBe(true);
+      state_version: 4 }} busy />);
     expect(screen.getByText("复盘").getAttribute("aria-current")).toBe("step");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText(/按原始记录只读展示的历史/)).toBeTruthy();
     rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring", state_version: 4,
       review: { complete: false, needs_replan: false,
-        scope_version_id: "", protocol_version: "study-review-v1" } }}
-      onAction={onAction} />);
-    fireEvent.click(screen.getByRole("button", { name: "继续复盘" }));
-    expect(onAction).toHaveBeenCalledWith("继续复盘");
-  });
-
-  it("复盘结束不重新开题，追加页待确认时不提供复盘操作", () => {
-    const onAction = vi.fn(async () => true);
-    const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "tutoring",
-      state_version: 4,
-      review: { complete: true, needs_replan: false,
-        scope_version_id: "", protocol_version: "study-review-v1" } }} onAction={onAction} />);
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("复盘已结束");
-    rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring", state_version: 4,
-      page_update: { pages: [] } }} onAction={onAction} />);
+        scope_version_id: "", protocol_version: "study-review-v1" } }} />);
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -273,7 +244,7 @@ describe("学习阶段与页级证据", () => {
     expect(screen.getByText(/第2题「b 如何影响图像？」判定为错误/)).toBeTruthy();
     expect(screen.getByText(/第3题「c 的作用是什么？」已作答（尚未判定）/)).toBeTruthy();
     expect(screen.getByText(/上传第1页（书上第12页） · 中部公式/)).toBeTruthy();
-    expect(screen.getByText(/学新小节请新建学习对话/)).toBeTruthy();
+    expect(screen.getByText(/本节为只读历史记录，继续学习请使用下方「主动续学」/)).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -890,5 +861,108 @@ describe("按学情调整教法的可见依据", () => {
     />);
 
     expect(screen.queryByText(/教学采用的学情依据/)).toBeNull();
+  });
+});
+
+// 工单 12：旧学习记录只读退出与主动续学——历史不改写，新对话由用户主动
+// 选择目标/材料创建；失败逐项说明失效选择，其余选择保留。
+describe("旧记录只读与主动续学", () => {
+  const legacyStudy = { subsection_id: "s", stage: "tutoring" as const, state_version: 4 };
+  const options = {
+    conversation_id: "old-1",
+    can_restart: true,
+    linked_goal_id: "goal-1",
+    goals: [
+      { goal_id: "goal-1", statement: "系统学概率论", status: "active" as const,
+        current_node_title: "条件概率", route_version: 2,
+        updated_at: "2026-10-14T00:00:00Z" },
+      { goal_id: "goal-2", statement: "复习线性代数", status: "paused" as const,
+        current_node_title: "", route_version: 0,
+        updated_at: "2026-10-13T00:00:00Z" },
+    ],
+    materials: [
+      { object_id: "obj-1", original_filename: "书页-1.png", media_type: "image/png",
+        content_length: 2048, content_hash: "h1", conversation_id: "old-1",
+        status: "bound", ingestion_status: "none", adopted_from_conversation_id: "",
+        adopted_from_object_id: "", created_at: "2026-10-12T00:00:00Z",
+        updated_at: "2026-10-12T00:00:00Z" },
+    ],
+  };
+
+  it("旧流程历史只读呈现，主动续学按用户点击读取并提交选择", async () => {
+    const onLoadOptions = vi.fn();
+    const onSubmit = vi.fn(async () => true);
+    const { rerender } = render(<StudyProgress
+      study={legacyStudy}
+      restart={{ options: null, optionsLoading: false, optionsError: null,
+        submitting: false, submitError: null, removedNotes: [],
+        onLoadOptions, onSubmit }}
+    />);
+    expect(screen.getByText(/按原始记录只读展示的历史/)).toBeTruthy();
+    expect(onLoadOptions).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "主动续学" }));
+    expect(onLoadOptions).toHaveBeenCalledTimes(1);
+    rerender(<StudyProgress
+      study={legacyStudy}
+      restart={{ options, optionsLoading: false, optionsError: null,
+        submitting: false, submitError: null, removedNotes: [],
+        onLoadOptions, onSubmit }}
+    />);
+    expect(screen.getByRole("radio", { name: /系统学概率论/, checked: true })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: /书页-1\.png/ }));
+    fireEvent.change(screen.getByLabelText("补充说明"),
+      { target: { value: "从条件概率继续" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建新学习对话" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+      goalId: "goal-1", objectIds: ["obj-1"], message: "从条件概率继续",
+    }));
+  });
+
+  it("没有所选材料时必须补充说明，且没有可沿用项时不显示创建动作", () => {
+    const onLoadOptions = vi.fn();
+    render(<StudyProgress
+      study={legacyStudy}
+      restart={{ options: { ...options, materials: [] }, optionsLoading: false,
+        optionsError: null, submitting: false, submitError: null, removedNotes: [],
+        onLoadOptions, onSubmit: vi.fn(async () => true) }}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "主动续学" }));
+    const button = screen.getByRole("button", { name: "创建新学习对话" });
+    fireEvent.change(screen.getByLabelText("补充说明"), { target: { value: "  " } });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByLabelText("补充说明"),
+      { target: { value: "继续学概率论" } });
+    expect(button.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("没有可续学目标与材料时如实说明，不伪造创建入口", () => {
+    render(<StudyProgress
+      historyStatus={{ status: "legacy", version: 3,
+        message: "此学习记录采用旧格式（版本 3）；已按原记录只读展示。" }}
+      restart={{ options: { conversation_id: "old-1", can_restart: false,
+        linked_goal_id: null, goals: [], materials: [] }, optionsLoading: false,
+        optionsError: null, submitting: false, submitError: null, removedNotes: [],
+        onLoadOptions: vi.fn(), onSubmit: vi.fn(async () => true) }}
+    />);
+    expect(screen.getByRole("status").textContent).toContain("旧格式");
+    fireEvent.click(screen.getByRole("button", { name: "主动续学" }));
+    expect(screen.getByText(/当前没有可沿用的学习目标/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "创建新学习对话" })).toBeNull();
+  });
+
+  it("提交失败如实提示并逐项列出已移除的失效选择", () => {
+    render(<StudyProgress
+      study={legacyStudy}
+      restart={{ options: { ...options, materials: [] }, optionsLoading: false,
+        optionsError: null, submitting: false,
+        submitError: "材料「书页-1.png」已不可访问，已从选择中移除。",
+        removedNotes: ["材料「书页-1.png」已不可访问，已从选择中移除。"],
+        onLoadOptions: vi.fn(), onSubmit: vi.fn(async () => false) }}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "主动续学" }));
+    expect(screen.getByRole("alert").textContent)
+      .toContain("材料「书页-1.png」已不可访问");
+    expect(screen.getByLabelText("已移除的失效选择").textContent)
+      .toContain("已从选择中移除");
   });
 });

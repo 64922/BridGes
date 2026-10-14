@@ -139,6 +139,8 @@ EXPRESSION_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement30_study_pages_recognition.py",
          "tests/chat/test_improvement32_study_tutoring_evidence.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "H-16",

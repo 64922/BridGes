@@ -18,7 +18,12 @@ class CoverageStatus(StrEnum):
 
 @dataclass(frozen=True)
 class CoverageItem:
-    """一条覆盖项：来源需求、负责票、证据锚点与真实状态。"""
+    """一条覆盖项：来源需求、负责票、证据锚点与真实状态。
+
+    ``retired``：需求本身随旧执行退役（如旧五阶段学习场景）。编号、
+    标题与历史证据锚点在账本中保留，但不再要求锚点可执行；现行执行与
+    对账只校验未退役项。
+    """
 
     item_id: str
     requirement: str
@@ -26,6 +31,7 @@ class CoverageItem:
     evidence: tuple[str, ...]
     status: CoverageStatus
     note: str = ""
+    retired: bool = False
 
     def __post_init__(self) -> None:
         if not self.item_id or not self.requirement:

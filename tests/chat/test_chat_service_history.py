@@ -19,7 +19,6 @@ from tests.chat.chat_service_support import (
     _start,
     _with_chunks,
 )
-from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def test_model_history_excludes_failed_and_stopped_attempts(service: ChatService) -> None:
@@ -252,21 +251,6 @@ def test_stopped_generation_keeps_steps_with_chinese_quality(service: ChatServic
         "组织并生成回答",
     ]
     assert final.thinking.quality == ["已停止生成，保留已生成内容。"]
-
-
-def test_study_mode_initial_thinking_mentions_learning_contract(service: ChatService) -> None:
-    created = service.create_conversation("alice", mode=ChatMode.STUDY)
-    seed_recognized_study_state(service, "alice", created.conversation_id)
-    _, assistant = _start(service, created.conversation_id, "讲解一个概念")
-    service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="回答")])
-    list(
-        service.stream_generation(
-            "alice", created.conversation_id, assistant.message_id, _context()
-        )
-    )
-    final = service.message_projection("alice", assistant.message_id)
-    assert final is not None and final.thinking is not None
-    assert final.thinking.steps[0] == "按学习目标分析你的问题与已有知识"
 
 
 # ---------------------------------------------------------------------------

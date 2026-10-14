@@ -19,6 +19,7 @@ from bridges.ai.run_model_config import factory_run_model_config
 from bridges.chat.attachments import (
     PHOTO_MEDIA_TYPES,
 )
+from bridges.chat.graph_contracts import STUDY_LEGACY_RETIRED
 from bridges.chat.repository import (
     GenerationRunRecord,
 )
@@ -48,6 +49,8 @@ from bridges.routing import (
     MainCapability,
     RouteStatus,
 )
+from bridges.state_copy import render_state_copy
+from bridges.study.history import legacy_study_conversation
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
@@ -73,6 +76,8 @@ class _ServiceRunBudgetMixin:
         use_knowledge_base: bool = True,
         use_profile: bool = True,
         module_id: str | None = None,
+        extra_run_config: dict[str, Any] | None = None,
+        adoption_sources: dict[str, tuple[str, str]] | None = None,
     ) -> ChatFirstTurnResponse:
         """原子创建新会话首轮（Issue 03）：会话、用户消息、助手占位与
         queued 运行在同一事务内落库，返回完整投影。
@@ -123,6 +128,16 @@ class _ServiceRunBudgetMixin:
                     "conversation_mode_locked",
                     "该会话模式已锁定，请新建另一个会话以使用其他模式。",
                     409,
+                )
+            # 改进工单 12：预建会话路径也不能把旧五阶段会话当新首轮目标，
+            # 历史保持只读；续学须由用户主动发起的专用入口建立新会话。
+            if mode == ChatMode.STUDY and legacy_study_conversation(
+                self._repo.database, account_id, conversation_id
+            ):
+                raise ChatDomainError(
+                    STUDY_LEGACY_RETIRED,
+                    render_state_copy(f"error.{STUDY_LEGACY_RETIRED}"),
+                    410,
                 )
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
@@ -177,6 +192,7 @@ class _ServiceRunBudgetMixin:
             module_id=module_id,
             understanding=understanding,
             user_message_id=user_message_id,
+            extra_run_config=extra_run_config,
         )
         created_id, created, conflict_not_empty = self._repo.insert_first_turn(
             account_id=account_id,
@@ -196,6 +212,7 @@ class _ServiceRunBudgetMixin:
             run_record=run_record,
             events=[(ChatStreamEventKind.STARTED.value, started_payload)],
             attachment_ids=attachment_ids or None,
+            adoption_sources=adoption_sources,
         )
         if conflict_not_empty:
             with self._repo.connection_lock():

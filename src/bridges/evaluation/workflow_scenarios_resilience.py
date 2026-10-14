@@ -24,9 +24,8 @@ RESILIENCE_SCENARIOS: tuple[Scenario, ...] = (
         title="节点产物已提交，图检查点尚未保存时进程失败",
         expectation="从完成收据恢复，已完成本地效果不重复",
         fault_injection_tests=(
-            "tests/chat/test_improvement30_study_pages_recognition.py::test_retry_recovers_committed_pages_from_receipts",
+            "tests/kernel/test_node_kernel.py::test_completed_receipts_reuse_without_rerun",
             "tests/chat/test_terminal_recovery_and_replay.py::test_message_commit_window_recovery_repairs_without_second_model_call",
-            "tests/chat/test_study_recognition_failures.py::test_restart_after_partial_failure_recovers_without_duplicating_pages",
         ),
     ),
     Scenario(
@@ -34,10 +33,10 @@ RESILIENCE_SCENARIOS: tuple[Scenario, ...] = (
         title="旧租约执行者晚返回，或用户已经停止",
         expectation="拒绝旧尝试/取消后的提交，不覆盖新版本",
         fault_injection_tests=(
-            "tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit",
-            "tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material",
-            "tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change",
-            "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing",
+            "tests/chat/test_v2_02_resumable_runs.py::test_stop_terminates_at_cancellable_node_and_replays_to_final_state",
+            "tests/chat/test_issue03_embedded_verification.py::test_stopped_turn_does_not_activate_or_release_pending",
+            "tests/chat/test_issue06_stream_replay_consistency.py::test_late_update_after_finish_is_rejected",
+            "tests/kernel/test_node_kernel.py::test_lease_transfer_rejects_late_result",
         ),
         zero_tolerance=(ZeroTolerance.WRITE_AFTER_STOP,),
     ),
@@ -70,8 +69,8 @@ RESILIENCE_SCENARIOS: tuple[Scenario, ...] = (
         expectation="安全结束或迁移到明确新运行，不盲目套新图继续",
         deterministic_tests=(
             "tests/resources/test_issue25_lifecycle_acceptance.py::test_resources_resume_without_calls_and_reject_old_recipe",
-            "tests/chat/test_improvement33_acceptance.py::test_old_graph_run_is_rejected_then_explicit_retry_uses_new_verification",
-            "tests/chat/test_improvement35_acceptance.py::test_previous_graph_cannot_replay_pre_versioned_update",
+            "tests/chat/test_improvement43_legacy_graph_guard.py::test_old_daily_graph_run_ends_safely_and_retry_uses_current_graph",
+            "tests/retirement/test_issue12_legacy_study_retirement.py::test_executor_converges_legacy_runs_without_executing_them",
             "tests/kernel/test_node_kernel.py::test_contract_upgrade_reruns_nodes_and_preserves_old_receipts",
         ),
     ),
