@@ -85,3 +85,5 @@
 - **前端验证（Node v24.14.0）：** `StudyProgress.test.tsx` 20 项、全套 `vitest run` 34 文件 267 项通过；`tsc --noEmit` 干净；`next build` 生产构建通过（仅 3 条既有 lint 警告，无本票新告警）。
 - **静态检查：** 改动文件 Ruff 通过（修复本票引入的 2 项：import 排序、未用变量；`database.py` 1 项 E501 为 main 既有同文行）；改动 11 个源文件 mypy strict 干净。
 - **剩余限制与后续：** 正式诊断由 05 消费证据（小结中如实标注待确认）；跨会话继续与目标切换由 08 完成；真实教学效果由 13 独立验收；规划器依赖已注册的 `qwen_structured_output`，缺失或失败时小结不生成、控制不生效但回答照常（不伪造）。
+
+2026-10-14（交付记录）：本票提交 `e81b90de`（20 文件），以 `--no-ff` 无冲突合入 main，合并提交 `7fffab9a`（合并树 `8bea279c` 与本票分支树一致）；合并前经代理 `http://127.0.0.1:7890` fetch 确认远端 main 与本票基点同为 `bb5d8015`。合并后在 main 复跑本票行为 10 项、v73 迁移 2 项与 issue03 回归 13 项通过；05 票合并完成、main 推进到 `daf77a5f` 后，追加 v72 迁移与 openapi 同步复跑，本票相关 29 项全部通过。推送：`git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main`（`bb5d8015..7fffab9a`），`git ls-remote origin refs/heads/main` 确认远端一致；随后 05 票的合并与交付推送把 main 推进到 `daf77a5f`，本票提交仍在其历史中。交付期间另一会话并发实施并合并 05 票，双方未互相改写提交内容；本条记录按约定在 05 合并完成、main 工作树恢复干净后补写。随后删除本票 worktree（`.worktrees/04-learner-control-and-summary`）与本地分支 `codex/issue-04-learner-control-and-summary`（曾为 `e81b90de`），`git worktree prune` 后主工作树与 05/10/11 票的 worktree 保持不变；其他任务的分支与目录未触碰。
