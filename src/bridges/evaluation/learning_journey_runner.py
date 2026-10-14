@@ -490,26 +490,42 @@ class JourneyEvidenceCollector:
             }
         )
         records_after = self._records()
-        deleted_id = None
-        for record in records_after:
-            if record["record_id"] != first["record_id"] and record["state"] == "active":
-                deletion = self._client.request(
-                    "DELETE",
-                    f"/chat/conversations/{conversation_id}/study/records/"
-                    f"{record['record_id']}",
-                    json={"expected_version": int(record["record_version"])},
-                )
-                result["deletions"].append(
-                    {
-                        "record_id": record["record_id"],
-                        "status_code": deletion.status_code,
-                        "body": deletion.json() if deletion.status_code < 300 else None,
-                    }
-                )
-                deleted_id = record["record_id"]
-                break
-        if deleted_id is None:
-            result["problems"].append("没有第二条活动记录可删除；删除示范未执行。")
+        # 优先删除另一条活动记录，保留被纠正的那条；只有一条记录时
+        # 删除已纠正的记录本身，保证真实删除路径一定被演练。
+        target = next(
+            (
+                record
+                for record in records_after
+                if record["record_id"] != first["record_id"]
+                and record["state"] == "active"
+            ),
+            None,
+        )
+        if target is None:
+            target = next(
+                (record for record in records_after if record["state"] != "deleted"),
+                None,
+            )
+        if target is None:
+            result["problems"].append("没有可删除的记录；删除示范未执行。")
+        else:
+            deletion = self._client.request(
+                "DELETE",
+                f"/chat/conversations/{conversation_id}/study/records/"
+                f"{target['record_id']}",
+                json={"expected_version": int(target["record_version"])},
+            )
+            result["deletions"].append(
+                {
+                    "record_id": target["record_id"],
+                    "status_code": deletion.status_code,
+                    "body": (
+                        deletion.json()
+                        if deletion.status_code < 300 and deletion.status_code != 204
+                        else None
+                    ),
+                }
+            )
         result["records_after"] = self._records()
         return result
 

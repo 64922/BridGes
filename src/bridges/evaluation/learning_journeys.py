@@ -170,21 +170,20 @@ PROBABILITY_SCENARIO = LearningScenario(
             expectation="纯文字启动局部辅导；先探查理解或给出最小必要引导，不要求资料。",
         ),
         LearnerTurn(
-            turn_id="p2-misconception",
+            turn_id="p2-hint",
+            content="这题我有点拿不准，先给我一个小提示，我再自己想想。",
+            expectation="给出恰当提示，不直接公布答案；待答问题保持未验证。",
+        ),
+        LearnerTurn(
+            turn_id="p3-misconception",
             content=(
                 "互斥就是独立吧？事件不能同时发生，说明它们互不影响，"
                 "所以应该是独立的。"
             ),
-            expectation="定位「不能同时发生⇒互不影响⇒独立」这一具体误解并澄清。",
-        ),
-        LearnerTurn(
-            turn_id="p3-hinted",
-            content=(
-                "我猜是不是这样：互斥说的是交集为空，P(A∩B)=0；"
-                "独立说的是 P(A∩B)=P(A)P(B)。如果 P(A)、P(B) 都大于 0，"
-                "互斥时右边是正的、左边是 0，所以互斥就不独立了。"
+            expectation=(
+                "定位「不能同时发生⇒互不影响⇒独立」这一具体误解并澄清；"
+                "作答发生在此前提示之后，证据须按提示后作答如实记录。"
             ),
-            expectation="接受正确推理；若此前有提示，按提示后完成如实记录，不宣称已掌握。",
         ),
         LearnerTurn(
             turn_id="p4-independent",
@@ -193,7 +192,7 @@ PROBABILITY_SCENARIO = LearningScenario(
                 "P(A∩B)=0；但 P(A)P(B)=1/4，所以它们不独立，"
                 "而且反面出现的概率会因为正面出现而变成 1。"
             ),
-            expectation="在无提示情况下独立给出正确应用，记录为本次独立完成。",
+            expectation="在无提示情况下独立给出正确应用；口误部分由导师纠正，不宣称已掌握。",
         ),
     ),
     rubric_focus=_focus(
@@ -204,7 +203,10 @@ PROBABILITY_SCENARIO = LearningScenario(
         "diagnosis_feedback_to_teaching",
     ),
     independent_checks=("probability_facts",),
-    notes="误解先于正确理解出现；p3 与 p4 的提示程度差异是「提示后完成/独立完成」的实际样本。",
+    notes=(
+        "误解（p3）出现在提示请求（p2）之后：该证据按 after_hint 记录，"
+        "提示后作答不晋升长期掌握。p4 含一处概率口误，导师应纠正。"
+    ),
 )
 
 LIMIT_SCENARIO = LearningScenario(
