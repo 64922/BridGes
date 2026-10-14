@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
@@ -16,11 +16,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
+  ApiError,
   correctStudyRecord,
   createChatRun,
   deleteStudyRecord,
   getChatConversation,
+  getStudyRestartOptions,
   isChatStreamEventOf,
+  restartStudyConversation,
   retryChatRun,
   retryStudyDiagnosis,
   stopChatMessage,
@@ -32,6 +35,7 @@ import {
   type ChatModuleId,
   type ChatStreamEvent,
   type ArxivSearchProjection,
+  type StudyRestartOptionsProjection,
   type TeachingTurnProjection,
   type WebSearchProjection,
   type TurnResultProjection,
@@ -144,6 +148,7 @@ function activeRunFromAssistant(
 export default function ChatConversationPage() {
   const params = useParams<{ conversationId: string }>();
   const conversationId = params.conversationId;
+  const router = useRouter();
 
   const [conversation, setConversation] = useState<ChatConversationProjection | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
@@ -159,6 +164,15 @@ export default function ChatConversationPage() {
   const [announcement, setAnnouncement] = useState<string | null>(null);
   // V2 Issue 11：输入区的显式模块选择（随每条消息保存，不回溯改写历史）。
   const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
+  // 工单 12：旧学习会话主动续学面板状态（选项/失败与失效选择逐项标注）。
+  const [restartOptions, setRestartOptions] =
+    useState<StudyRestartOptionsProjection | null>(null);
+  const [restartOptionsLoading, setRestartOptionsLoading] = useState(false);
+  const [restartOptionsError, setRestartOptionsError] = useState<string | null>(null);
+  const [restartSubmitting, setRestartSubmitting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const [restartRemovedNotes, setRestartRemovedNotes] = useState<string[]>([]);
+  const restartIdempotencyRef = useRef<{ signature: string; key: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
   // 每条新终态只恢复一次澄清模块；同一终态刷新不覆盖用户移除/切换。
@@ -233,6 +247,12 @@ export default function ChatConversationPage() {
     setPendingUser(null);
     setSendError(null);
     setModuleId(null);
+    // 工单 12：切换会话时不复用上一份续学选项与失败标注。
+    setRestartOptions(null);
+    setRestartOptionsError(null);
+    setRestartError(null);
+    setRestartRemovedNotes([]);
+    restartIdempotencyRef.current = null;
     void load();
   }, [load]);
 
@@ -736,6 +756,113 @@ export default function ChatConversationPage() {
     [conversationId, load]
   );
 
+  // 工单 12：旧学习会话的续学选项按用户主动请求读取；失败如实提示可重试。
+  const loadRestartOptions = useCallback(async () => {
+    setRestartOptionsLoading(true);
+    setRestartOptionsError(null);
+    try {
+      const options = await getStudyRestartOptions(conversationId);
+      setRestartOptions(options);
+      return options;
+    } catch (error) {
+      setRestartOptionsError(
+        error instanceof Error ? error.message : "读取续学选项失败，请稍后重试。"
+      );
+      return null;
+    } finally {
+      setRestartOptionsLoading(false);
+    }
+  }, [conversationId]);
+
+  // 工单 12：主动续学——目标与材料至少一项（无材料时需补充说明）；同选择
+  // 的失败重试复用同一幂等键（服务端复用同一新会话，不重复创建）。
+  const restartStudy = useCallback(
+    async (selection: {
+      goalId: string | null;
+      objectIds: string[];
+      message: string;
+    }) => {
+      setRestartSubmitting(true);
+      setRestartError(null);
+      setRestartRemovedNotes([]);
+      const signature = JSON.stringify([
+        selection.goalId,
+        [...selection.objectIds].sort(),
+        selection.message,
+      ]);
+      if (restartIdempotencyRef.current?.signature !== signature) {
+        restartIdempotencyRef.current = {
+          signature,
+          key: crypto.randomUUID(),
+        };
+      }
+      try {
+        const firstTurn = await restartStudyConversation(conversationId, {
+          idempotency_key: restartIdempotencyRef.current.key,
+          goal_id: selection.goalId,
+          object_ids: selection.objectIds,
+          message: selection.message,
+        });
+        restartIdempotencyRef.current = null;
+        setRestartOptions(null);
+        window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
+        router.push(`/chat/${firstTurn.conversation.conversation_id}`);
+        return true;
+      } catch (error) {
+        const apiError = error instanceof ApiError ? error : null;
+        setRestartError(
+          error instanceof Error ? error.message : "创建新学习对话失败，请稍后重试。"
+        );
+        // 目标/材料已不可用：重新读取选项并逐项说明被移除的选择；
+        // 传输类失败（503/断网）保留全部选择，用户可直接重试。
+        if (
+          apiError?.code === "study_restart_goal_unavailable"
+          || apiError?.code === "attachment_not_found"
+        ) {
+          const previousGoalId = selection.goalId;
+          const previousGoals = restartOptions?.goals ?? [];
+          const previousMaterials = restartOptions?.materials ?? [];
+          const refreshed = await loadRestartOptions();
+          if (refreshed) {
+            const notes: string[] = [];
+            if (
+              previousGoalId
+              && !(refreshed.goals ?? []).some((goal) => goal.goal_id === previousGoalId)
+            ) {
+              const statement = previousGoals.find(
+                (goal) => goal.goal_id === previousGoalId
+              )?.statement;
+              notes.push(
+                statement
+                  ? `学习目标「${statement}」已不可用，已从选择中移除。`
+                  : "所选学习目标已不可用，已从选择中移除。"
+              );
+            }
+            const available = new Set(
+              (refreshed.materials ?? []).map((material) => material.object_id)
+            );
+            for (const objectId of selection.objectIds) {
+              if (available.has(objectId)) continue;
+              const filename = previousMaterials.find(
+                (material) => material.object_id === objectId
+              )?.original_filename;
+              notes.push(
+                filename
+                  ? `材料「${filename}」已不可访问，已从选择中移除。`
+                  : "一份所选材料已不可访问，已从选择中移除。"
+              );
+            }
+            setRestartRemovedNotes(notes);
+          }
+        }
+        return false;
+      } finally {
+        setRestartSubmitting(false);
+      }
+    },
+    [conversationId, loadRestartOptions, restartOptions, router]
+  );
+
   const retry = useCallback(
     async (messageId: string, moduleOverride?: ChatModuleId) => {
       setSendError(null);
@@ -918,7 +1045,17 @@ export default function ChatConversationPage() {
             studyDiagnosisTasks={conversation.study_diagnosis_tasks}
             studyLearningRecord={conversation.study_learning_record}
             studyRecordAdoptions={conversation.study_record_adoptions}
-            busy={generating} onAction={sendMessage}
+            restart={{
+              options: restartOptions,
+              optionsLoading: restartOptionsLoading,
+              optionsError: restartOptionsError,
+              submitting: restartSubmitting,
+              submitError: restartError,
+              removedNotes: restartRemovedNotes,
+              onLoadOptions: () => void loadRestartOptions(),
+              onSubmit: restartStudy,
+            }}
+            busy={generating}
             onRetryDiagnosis={retryDiagnosis}
             onCorrectRecord={correctRecord}
             onDeleteRecord={deleteRecord}

@@ -28,15 +28,20 @@ test("真实浏览器链路：学习、画像、论文三条旅程与画像回�
   const credentials = uniqueCredentials("release-gate");
   await signUp(page, credentials.username, credentials.qqEmail, PASSWORD);
 
-  // 旅程一：学习模式必须显示真实公开来源与证据门通过状态。
+  // 旅程一：学习模式由本地导师执行并如实交付——不再产生旧教学门证据卡；
+  // 会话公开投影给出真实局部进展，且不显示未核实的掌握宣称。
   await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).click();
   await sendFromNewChat(page, LEARNING_QUERY);
-  const teachingCard = page.getByTestId("teaching-card");
-  await expect(teachingCard).toContainText("证据检查完成", { timeout: 45_000 });
-  await expect(teachingCard).toContainText("Transformer 架构公开资料");
-  await expect(teachingCard).toContainText("证据门：证据充足");
-  await expect(teachingCard).not.toContainText("本轮未联网核实");
-  await expect(teachingCard).not.toContainText("本轮没有完成完整回答");
+  await expect(page.getByTestId("turn-result").last()).toHaveAttribute(
+    "data-outcome",
+    /complete|partial/,
+    { timeout: 45_000 }
+  );
+  const studyProgress = page.getByRole("region", { name: "局部学习进展" });
+  await expect(studyProgress).toBeVisible();
+  await expect(studyProgress).toContainText("正在学习：");
+  await expect(page.getByTestId("teaching-card")).toHaveCount(0);
+  await expect(page.getByTestId("chat-thread")).not.toContainText("证据门：证据充足");
 
   // 画像相关的两轮必须来自不同聊天，但保持同一浏览器账户。
   await openNewChat(page);

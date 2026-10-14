@@ -109,6 +109,8 @@ describe("MessageList 附件卡片（V2 Issue 05/06）", () => {
       ordinal: 1,
       ingestion_status: "ready",
       ingestion_error: null,
+      adopted_from_conversation_id: "",
+      adopted_from_object_id: "",
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
       ...overrides,

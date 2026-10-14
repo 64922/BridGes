@@ -1,4 +1,4 @@
-import type { AnswerFeedback, ChatAttachmentDraftProjection, ChatConversationListProjection, ChatConversationProjection, ChatFirstTurnInput, ChatFirstTurnResponse, ChatModuleId, ChatRunStartedResponse, ChatStopResponse, ChatStreamEvent, CitationDetailProjection, DocumentIngestionProjection, FeedbackKind, IndexStatusProjection } from "./types";
+import type { AnswerFeedback, ChatAttachmentDraftProjection, ChatConversationListProjection, ChatConversationProjection, ChatFirstTurnInput, ChatFirstTurnResponse, ChatModuleId, ChatRunStartedResponse, ChatStopResponse, ChatStreamEvent, CitationDetailProjection, DocumentIngestionProjection, FeedbackKind, IndexStatusProjection, StudyRestartOptionsProjection, StudyRestartRequest } from "./types";
 import { API_BASE, parseApiError } from "./core";
 
 // ---------------------------------------------------------------------------
@@ -428,6 +428,44 @@ export async function deleteStudyRecord(
     }
   );
   if (!res.ok) throw await parseApiError(res);
+}
+
+/**
+ * 工单 12：旧学习会话的主动续学选项（本人目标候选与仍可访问旧材料）。
+ *
+ * 服务端只对旧版学习会话返回选项（409 表示无需续学）；材料逐项如实标注
+ * 来源身份，两者都为空时 ``can_restart`` 为 false，界面不提供续学动作。
+ */
+export async function getStudyRestartOptions(
+  conversationId: string
+): Promise<StudyRestartOptionsProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/study/restart-options`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 工单 12：由用户主动发起的续学——以所选目标/材料原子创建新的学习模式
+ * 会话；重复请求携带同一幂等键，服务端复用既有新会话（不产生新数据）。
+ */
+export async function restartStudyConversation(
+  conversationId: string,
+  request: StudyRestartRequest
+): Promise<ChatFirstTurnResponse> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/study/restart`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 /**
