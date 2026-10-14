@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -26,6 +27,7 @@ from bridges.chat.repository import (
     GenerationRunRecord,
     MessageRecord,
 )
+from bridges.contracts.study_source_verification import StudyVerificationSourceRef
 from bridges.contracts.study_verification import (
     VERIFICATION_CONTRACT_VERSION,
     StudyCheckAssistance,
@@ -40,6 +42,7 @@ from bridges.contracts.study_verification import (
     StudyUserIntent,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.study.demand_verification import snapshot_incomplete, snapshot_source_refs
 from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.tutor_prompt import (
     STUDY_VERIFICATION_PLAN_JSON_SCHEMA,
@@ -276,6 +279,12 @@ class StudyVerificationRepository:
         snapshot = config.get("study_verification")
         if not isinstance(snapshot, dict):
             return
+        # Issue 11：同一轮公开查证快照。查证未完成（空命中、不可达、
+        # 冲突、仅摘要、用户限制或预算耗尽）时不再冻结依赖外部证据的
+        # 标准答案与误解判定；实际采用的来源版本随评价依据一起冻结。
+        source_snapshot = config.get("study_source_verification")
+        verification_incomplete = snapshot_incomplete(source_snapshot)
+        source_refs = _source_refs_from_snapshot(source_snapshot)
         timestamp = now or datetime.now(UTC)
         action = str(snapshot.get("action") or "")
         intent = str(snapshot.get("intent") or "")
@@ -285,7 +294,13 @@ class StudyVerificationRepository:
             self._release_skipped_check(run, user_message, bound, timestamp)
         if action == "evaluate" and isinstance(bound, dict):
             self._write_answer_evidence(
-                run, user_message, assistant_message_id, bound, snapshot, timestamp
+                run,
+                user_message,
+                assistant_message_id,
+                bound,
+                snapshot,
+                timestamp,
+                verification_incomplete=verification_incomplete,
             )
         elif (
             action == "help"
@@ -296,7 +311,13 @@ class StudyVerificationRepository:
         posed = snapshot.get("posed_check")
         if isinstance(posed, dict):
             self._activate_posed_check(
-                run, assistant_message_id, posed, content, timestamp
+                run,
+                assistant_message_id,
+                posed,
+                content,
+                timestamp,
+                source_refs=source_refs,
+                verification_incomplete=verification_incomplete,
             )
 
     # ------------------------------------------------------------------
@@ -311,6 +332,8 @@ class StudyVerificationRepository:
         bound: dict[str, Any],
         snapshot: dict[str, Any],
         now: datetime,
+        *,
+        verification_incomplete: bool = False,
     ) -> None:
         evaluation = snapshot.get("evaluation")
         if not isinstance(evaluation, dict):
@@ -322,6 +345,16 @@ class StudyVerificationRepository:
             return
         if outcome == StudyEvidenceOutcome.NO_ANSWER:
             return
+        if outcome == StudyEvidenceOutcome.MISCONCEPTION and verification_incomplete:
+            # Issue 11：本轮公开查证未完成——学生是否确实答错外部事实
+            # 无从核实，如实记录待确认，不把学生判成错。
+            outcome = StudyEvidenceOutcome.UNDETERMINED
+        elif outcome == StudyEvidenceOutcome.MISCONCEPTION and self._basis_incomplete(
+            run, str(bound.get("check_id") or "")
+        ):
+            # Issue 11：待答问题在冻结时公开查证未完成（依据标记为不完整）：
+            # 依据不可靠，评价不得据此判学生错。
+            outcome = StudyEvidenceOutcome.UNDETERMINED
         assistance_value = str(
             snapshot.get("assistance") or StudyEvidenceAssistance.INDEPENDENT.value
         )
@@ -375,6 +408,18 @@ class StudyVerificationRepository:
             run.account_id, run.conversation_id, evidence.check_id
         )
 
+    def _basis_incomplete(self, run: GenerationRunRecord, check_id: str) -> bool:
+        """当前待答问题是否冻结于未完成的公开查证（依据不可判错）。"""
+
+        if not check_id:
+            return False
+        current = self.get_pending(run.account_id, run.conversation_id)
+        return (
+            current is not None
+            and current.check_id == check_id
+            and current.basis.evidence_incomplete
+        )
+
     def _append_hint(
         self,
         run: GenerationRunRecord,
@@ -423,6 +468,9 @@ class StudyVerificationRepository:
         posed: dict[str, Any],
         content: str,
         now: datetime,
+        *,
+        source_refs: list[StudyVerificationSourceRef] | None = None,
+        verification_incomplete: bool = False,
     ) -> None:
         try:
             kind = StudyCheckKind(str(posed.get("kind") or ""))
@@ -432,6 +480,12 @@ class StudyVerificationRepository:
         if not question or not _question_displayed(question, content):
             # 未实际展示（失配、截断或改写）：不激活未展示的问题。
             return
+        expected_answer = _short_text(str(posed.get("expected_answer") or ""), 300)
+        if verification_incomplete and kind == StudyCheckKind.FORMAL_CHECK:
+            # Issue 11：本轮查证未完成时不得冻结依赖外部证据的标准答案；
+            # 正式练习降级为开放探查（不判分、不设唯一答案）。
+            kind = StudyCheckKind.OPEN_PROBE
+            expected_answer = ""
         current = self.get_pending(run.account_id, run.conversation_id)
         if current is not None and current.check_id != str(posed.get("check_id") or ""):
             self._write_unverified_evidence(run, current, now)
@@ -441,7 +495,9 @@ class StudyVerificationRepository:
             accepted_equivalents=_text_list(posed.get("accepted_equivalents")),
             key_misconceptions=_text_list(posed.get("key_misconceptions")),
             assumptions=_text_list(posed.get("assumptions")),
-            expected_answer=_short_text(str(posed.get("expected_answer") or ""), 300),
+            expected_answer=expected_answer,
+            source_refs=list(source_refs or []),
+            evidence_incomplete=verification_incomplete,
         )
         self._database.scoped(run.account_id).execute(
             "INSERT INTO study_pending_checks"
@@ -630,6 +686,7 @@ class StudyVerificationPlanner:
         model_quota: Any,
         budget: Any,
         retrieval_round: Any | None,
+        source_verification: Mapping[str, Any] | None = None,
     ) -> str | None:
         # 重试（或租约恢复重放）沿用本轮冻结的评价快照：旧作答始终绑定
         # 当时的待答问题与版本，不会被判到之后的新问题上，也不重复记账。
@@ -659,7 +716,17 @@ class StudyVerificationPlanner:
         output = self._invoke(request, run_context, gateway, model_override, model_quota, budget)
         if output is None:
             return None
-        plan = _normalize_plan(output, pending, stuck)
+        # Issue 11：本轮查证未完成，或待答问题本身冻结于未完成的查证
+        # （依据标记不完整）时：不冻结伪标准答案，也不判学生错。
+        verification_incomplete = snapshot_incomplete(source_verification) or (
+            pending is not None and pending.basis.evidence_incomplete
+        )
+        plan = _normalize_plan(
+            output,
+            pending,
+            stuck,
+            verification_incomplete=verification_incomplete,
+        )
         snapshot = _build_snapshot(
             plan,
             pending,
@@ -808,6 +875,8 @@ def _normalize_plan(
     output: _PlannerOutput,
     pending: StudyCheckRecord | None,
     stuck: bool,
+    *,
+    verification_incomplete: bool = False,
 ) -> _NormalizedPlan:
     action = output.action if output.action in _ACTIONS else "none"
     intent = (
@@ -826,6 +895,13 @@ def _normalize_plan(
                 if output.outcome in _OUTCOMES
                 else StudyEvidenceOutcome.UNDETERMINED
             )
+            if (
+                outcome == StudyEvidenceOutcome.MISCONCEPTION
+                and verification_incomplete
+            ):
+                # Issue 11：本轮公开查证未完成，外部事实对错无从核实：
+                # 不判误解，保留待确认。
+                outcome = StudyEvidenceOutcome.UNDETERMINED
             evaluation = StudyCheckEvaluation(
                 outcome=outcome,
                 equivalent_accepted=bool(output.equivalent_accepted),
@@ -836,8 +912,15 @@ def _normalize_plan(
             )
     posed: StudyCheckDraft | None = None
     if output.check_kind in _KINDS and output.check_question.strip():
+        kind = StudyCheckKind(output.check_kind)
+        expected_answer = _short_text(output.expected_answer, 300)
+        if verification_incomplete and kind == StudyCheckKind.FORMAL_CHECK:
+            # Issue 11：查证未完成时不冻结伪标准答案；正式练习降级为
+            # 开放探查，由模型在回复中作为理解检查提出。
+            kind = StudyCheckKind.OPEN_PROBE
+            expected_answer = ""
         posed = StudyCheckDraft(
-            kind=StudyCheckKind(output.check_kind),
+            kind=kind,
             question=_short_text(output.check_question, _QUESTION_LIMIT),
             knowledge_context=_short_text(
                 output.check_knowledge_context, _KNOWLEDGE_CONTEXT_LIMIT
@@ -846,7 +929,7 @@ def _normalize_plan(
             accepted_equivalents=_text_list(output.accepted_equivalents),
             key_misconceptions=_text_list(output.key_misconceptions),
             assumptions=_text_list(output.assumptions),
-            expected_answer=_short_text(output.expected_answer, 300),
+            expected_answer=expected_answer,
         )
         # 一次只推进一个检查：存在待答问题时，只有「评价并推进」或
         # 「学生明确跳过/转向」才允许提出下一题；否则新题被抑制，
@@ -1150,6 +1233,20 @@ def _source_refs(retrieval_round: Any | None) -> list[dict[str, Any]]:
         }
         for citation in citations[:_SOURCE_REF_LIMIT]
     ]
+
+
+def _source_refs_from_snapshot(
+    snapshot: Mapping[str, Any] | None,
+) -> list[StudyVerificationSourceRef]:
+    """从查证快照取「实际采用」来源的版本引用；损坏项跳过，不伪造引用。"""
+
+    refs: list[StudyVerificationSourceRef] = []
+    for item in snapshot_source_refs(snapshot):
+        try:
+            refs.append(StudyVerificationSourceRef.model_validate(item))
+        except ValidationError:
+            continue
+    return refs
 
 
 def _evidence_records(rows: Any) -> list[StudyEvidenceRecord]:

@@ -146,6 +146,7 @@ from bridges.contracts.retrieval import (
     RetrievalSourceLayer,
 )
 from bridges.contracts.routing import RouteDecision, RouteOperation
+from bridges.contracts.study_source_verification import StudySourceVerificationStatus
 from bridges.contracts.teaching import (
     TeachingCardStatus,
     TeachingEvidenceSourceType,
@@ -185,6 +186,16 @@ from bridges.state_copy import (
     WEB_SEARCH_CANCELLED_TEXT,
     WEB_SEARCH_INTERNAL_TEXT,
     WEB_SEARCH_STAGE_TIMEOUT_TEXT,
+)
+from bridges.study.demand_verification import (
+    StudyVerificationDemand,
+    build_verification_snapshot,
+    persist_verification_snapshot,
+    plan_study_verification_search,
+    plan_verification_demand,
+)
+from bridges.study.demand_verification import (
+    verification_directive as study_source_verification_directive,
 )
 from bridges.study.tutor_prompt import STUDY_TUTOR_SYSTEM_PROMPT
 from bridges.web_search.client import WebSearchError
@@ -2805,6 +2816,9 @@ class TurnOrchestrator:
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
         allow_model_knowledge_fallback = False
+        #: Issue 11：本轮学习查证需求与冻结快照（仅学习导师轮使用）。
+        study_demand: StudyVerificationDemand | None = None
+        study_source_snapshot: dict[str, Any] | None = None
         #: Issue 02：降级回答可保留的真实本地来源数（0 表示无本地锚点）。
         degraded_local_count = 0
         #: Issue 02：降级轮网络引用不变量告警只记一次（防逐 token 刷屏）。
@@ -3732,6 +3746,15 @@ class TurnOrchestrator:
                 )
                 paper_arxiv_plan = None
                 paper_search_plan = None
+                #: Issue 11：学习导师轮的按需公开查证计划（与论文/公网分支互斥）。
+                study_search_plan: SearchPlan | None = None
+                study_demand = (
+                    plan_verification_demand(
+                        round_query, network_allowed=web_search_allowed
+                    )
+                    if study_tutor and not paper_route
+                    else None
+                )
                 public_search_entered = False
                 if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
                     public_search_entered = True
@@ -3771,6 +3794,7 @@ class TurnOrchestrator:
                         and route.web_search_allowed
                         and web_search_allowed
                         and not paper_route
+                        and not study_tutor
                         and web_search_projection is None
                     ):
                         paper_web_planned = _plan_task_web_search(
@@ -3800,6 +3824,122 @@ class TurnOrchestrator:
                                         stage_deadline=lambda: paper_search_stage_deadline,
                                     ),
                                 )
+                            )
+                    if study_demand is not None and study_demand.needed:
+                        # Issue 11：按需公开查证。基础概念直接教学；论文、
+                        # 时效、精确外部数据、争议与明确核实要求才取证。
+                        # 用户禁止或关闭联网是硬边界：不再外呼，缺口如实
+                        # 保留（由来源指令块与终态记录承接）。
+                        if study_demand.blocked_reason:
+                            study_source_snapshot = build_verification_snapshot(
+                                demand=study_demand,
+                                plan=None,
+                                projection=None,
+                                assistant_message_id=assistant_message_id,
+                                status_override=StudySourceVerificationStatus.BLOCKED,
+                            )
+                            persist_verification_snapshot(
+                                self._repo,
+                                account_id,
+                                run_context.run_id,
+                                study_source_snapshot,
+                            )
+                        elif web_search_projection is not None:
+                            # 重试复用已提交的有效搜索产物：不重新外呼，
+                            # 只按既有真实来源重新冻结查证快照。
+                            study_source_snapshot = build_verification_snapshot(
+                                demand=study_demand,
+                                plan=None,
+                                projection=web_search_projection,
+                                assistant_message_id=assistant_message_id,
+                            )
+                            persist_verification_snapshot(
+                                self._repo,
+                                account_id,
+                                run_context.run_id,
+                                study_source_snapshot,
+                            )
+                        elif self._web_search is None:
+                            study_source_snapshot = build_verification_snapshot(
+                                demand=study_demand,
+                                plan=None,
+                                projection=None,
+                                assistant_message_id=assistant_message_id,
+                                status_override=StudySourceVerificationStatus.UNCONFIGURED,
+                            )
+                            persist_verification_snapshot(
+                                self._repo,
+                                account_id,
+                                run_context.run_id,
+                                study_source_snapshot,
+                            )
+                        elif public_query:
+                            study_search_plan = plan_study_verification_search(
+                                self._web_search,
+                                study_demand,
+                                round_query,
+                                public_query,
+                                mode_for_plan,
+                            )
+                            if study_search_plan.should_search:
+                                loading = _initial_web_search_projection(
+                                    self._web_search, study_search_plan
+                                )
+                                if loading is not None:
+                                    self._repo.update_message_web_search(
+                                        account_id,
+                                        assistant_message_id,
+                                        loading.model_dump(mode="json"),
+                                        datetime.now(UTC),
+                                    )
+                                paper_calls.append(
+                                    (
+                                        "web",
+                                        _make_search_call(
+                                            self._web_search,
+                                            account_id,
+                                            study_search_plan,
+                                            stop_event=paper_search_stop_event,
+                                            deadline=lambda: paper_search_deadline,
+                                            stage_deadline=lambda: paper_search_stage_deadline,
+                                        ),
+                                    )
+                                )
+                            else:
+                                study_search_plan = None
+                                study_source_snapshot = build_verification_snapshot(
+                                    demand=study_demand,
+                                    plan=None,
+                                    projection=None,
+                                    assistant_message_id=assistant_message_id,
+                                    status_override=StudySourceVerificationStatus.ERROR,
+                                    note_override=(
+                                        "未能形成不含私人内容的公开查询，本轮未外发。"
+                                    ),
+                                )
+                                persist_verification_snapshot(
+                                    self._repo,
+                                    account_id,
+                                    run_context.run_id,
+                                    study_source_snapshot,
+                                )
+                        else:
+                            # 公开查询为空：不把原文当查询外发（隐私硬边界）。
+                            study_source_snapshot = build_verification_snapshot(
+                                demand=study_demand,
+                                plan=None,
+                                projection=None,
+                                assistant_message_id=assistant_message_id,
+                                status_override=StudySourceVerificationStatus.ERROR,
+                                note_override=(
+                                    "未能形成不含私人内容的公开查询，本轮未外发。"
+                                ),
+                            )
+                            persist_verification_snapshot(
+                                self._repo,
+                                account_id,
+                                run_context.run_id,
+                                study_source_snapshot,
                             )
                     paper_search_deadlines = budget.public_search_deadlines(
                         {name for name, call in paper_calls if call is not None}
@@ -3980,6 +4120,83 @@ class TurnOrchestrator:
                                 # 普通公网搜索失败不阻断回答；下方 payload 会明确
                                 # 告知模型本轮未核实，质量检查也不会要求伪造引用。
                                 allow_model_knowledge_fallback = True
+                    if study_search_plan is not None and study_demand is not None:
+                        # Issue 11：学习查证结果映射为真实状态投影与冻结快照。
+                        # 失败不阻断回答：正文按未核实交付（剥离伪造引用与
+                        # URL），指令块与终态记录如实保留缺口。
+                        study_loading = _initial_web_search_projection(
+                            self._web_search, study_search_plan
+                        )
+                        if study_loading is None:
+                            study_loading = WebSearchProjection(
+                                status=WebSearchStatus.LOADING,
+                                trigger_reason=study_search_plan.reason,
+                                query_summary=study_search_plan.query,
+                            )
+                        study_result = paper_search_results.get("web")
+                        if study_result is _SEARCH_CANCELLED:
+                            web_search_projection = study_loading.model_copy(
+                                update={
+                                    "status": WebSearchStatus.CANCELLED,
+                                    "searched_at": datetime.now(UTC),
+                                    "error_code": "web_search_cancelled",
+                                    "error_message": WEB_SEARCH_CANCELLED_TEXT,
+                                    "can_retry": False,
+                                    "can_cancel": False,
+                                }
+                            )
+                        else:
+                            web_search_projection = _web_search_projection_from_result(
+                                study_search_plan, study_result, loading=study_loading
+                            )
+                        self._repo.update_message_web_search(
+                            account_id,
+                            assistant_message_id,
+                            web_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        if (
+                            web_search_projection.status
+                            == WebSearchStatus.CANCELLED
+                        ):
+                            finalize_message(
+                                self._repo,
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.STOPPED,
+                                error_code=None,
+                                error_message=None,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=stopped_thinking(thinking),
+                                web_search=web_search_projection.model_dump(
+                                    mode="json"
+                                ),
+                            )
+                            return
+                        thinking = web_search_thinking(
+                            thinking, web_search_projection
+                        )
+                        study_source_snapshot = build_verification_snapshot(
+                            demand=study_demand,
+                            plan=study_search_plan,
+                            projection=web_search_projection,
+                            assistant_message_id=assistant_message_id,
+                        )
+                        persist_verification_snapshot(
+                            self._repo,
+                            account_id,
+                            run_context.run_id,
+                            study_source_snapshot,
+                        )
+                        if web_search_projection.status not in {
+                            WebSearchStatus.SUCCESS,
+                            WebSearchStatus.PARTIAL,
+                        }:
+                            allow_model_knowledge_fallback = True
                 if public_search_entered:
                     budget.exit(
                         RunStage.PUBLIC_SEARCH,
@@ -3999,6 +4216,25 @@ class TurnOrchestrator:
                         "done",
                         duration_ms=budget.metrics()[-1].duration_ms,
                     )
+            if (
+                study_demand is not None
+                and study_demand.needed
+                and not public_search_entered
+                and not stop_event.is_set()
+            ):
+                # Issue 11：预算没有进入公开搜索阶段时如实记录未完成，
+                # 由指令块保留缺口，不以模型记忆冒充已核实。
+                study_source_snapshot = build_verification_snapshot(
+                    demand=study_demand,
+                    plan=None,
+                    projection=None,
+                    assistant_message_id=assistant_message_id,
+                    status_override=StudySourceVerificationStatus.ERROR,
+                    note_override="本轮公开查证预算已耗尽，未完成联网核实。",
+                )
+                persist_verification_snapshot(
+                    self._repo, account_id, run_context.run_id, study_source_snapshot
+                )
             if stop_event.is_set():
                 finalize_message(
                     self._repo,
@@ -4261,16 +4497,27 @@ class TurnOrchestrator:
                     budget=budget,
                     history=history,
                     retrieval_round=retrieval_round,
+                    source_verification=study_source_snapshot,
                 )
-                if verification_directive and history:
+                # Issue 11：查证结果作为生成硬约束——实际来源/读取范围、
+                # 缺口与「搜索成功不等于已核实」的边界都由此注入。
+                source_directive = study_source_verification_directive(
+                    study_source_snapshot
+                )
+                combined_directive = "\n".join(
+                    part
+                    for part in (verification_directive, source_directive)
+                    if part
+                )
+                if combined_directive and history:
                     if history[0].get("role") == "system":
-                        history[0]["content"] += "\n" + verification_directive
+                        history[0]["content"] += "\n" + combined_directive
                     else:
                         history.insert(
                             0,
                             {
                                 "role": "system",
-                                "content": verification_directive,
+                                "content": combined_directive,
                             },
                         )
             history_range, summary_instance = self._manifest_scope(context_budget)
@@ -5293,6 +5540,7 @@ class TurnOrchestrator:
         budget: RunBudget,
         history: list[dict[str, Any]],
         retrieval_round: RetrievalRoundProjection | None,
+        source_verification: Mapping[str, Any] | None = None,
     ) -> str | None:
         """Issue 03：学习导师轮的验证规划（评价/帮助/出题）。
 
@@ -5300,6 +5548,9 @@ class TurnOrchestrator:
         待答问题只在成功终态由终态回调激活，停止、失败或未实际展示的
         问题绝不提前生效。规划失败静默降级：回答照常，既有待答问题
         保持，不伪造评价。
+
+        Issue 11：``source_verification`` 是同一轮冻结的公开查证快照；
+        查证未完成时不再冻结依赖外部证据的正式练习与误解判定。
         """
 
         from bridges.study.local_progress import StudyLocalProgressRepository
@@ -5325,6 +5576,7 @@ class TurnOrchestrator:
             model_quota=model_quota,
             budget=budget,
             retrieval_round=retrieval_round,
+            source_verification=source_verification,
         )
 
     def _run_retrieval(

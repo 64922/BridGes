@@ -73,6 +73,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     # conversations（外键 CASCADE，仍显式删除不依赖级联）。
     "study_evidence",
     "study_pending_checks",
+    # Issue 11：按需公开查证的产物记录（按助手消息唯一，先于 conversations）。
+    "study_source_verifications",
     "study_states",
     "image_tasks",
     "image_versions",
@@ -191,6 +193,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "study_verification",
         "学习验证与证据",
         ("study_pending_checks", "study_evidence"),
+        1024,
+    ),
+    # Issue 11：按需公开查证的产物记录（脱敏查询概述、来源与实际读取
+    # 范围、采用关系、结果状态与缺口说明；不含私人原文与凭据）。
+    ExportCategory(
+        "study_source_verification",
+        "学习公开查证记录",
+        ("study_source_verifications",),
         1024,
     ),
     # Issue 07：账户级学习目标、路线修订历史与会话引用；整行导出即可读，
@@ -422,6 +432,7 @@ def logical_summary(
         "study_local_progress",
         "study_pending_checks",
         "study_evidence",
+        "study_source_verifications",
         "study_goals",
         "study_goal_routes",
         "study_conversation_goals",

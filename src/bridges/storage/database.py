@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 72
+SCHEMA_VERSION = 73
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3311,6 +3311,42 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # Issue 11：按需公开查证的产物记录。只在具体需要（论文、时效、精确
+    # 外部数据、争议结论或明确核实要求）时写入；冻结目的、脱敏查询概述、
+    # 实际来源及读取范围（全文/结构化/仅摘要）、采用关系、结果状态与
+    # 版本。记录只追加不重写——来源失效只停止后续采用，历史引用保持
+    # 原读取含义；未取得来源的限制/失败轮次如实保留缺口。
+    73: [
+        """
+        CREATE TABLE study_source_verifications (
+            verification_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            assistant_message_id TEXT NOT NULL,
+            purpose TEXT NOT NULL CHECK (purpose IN
+                ('explicit_request', 'paper', 'freshness', 'precise_data', 'controversy')),
+            status TEXT NOT NULL CHECK (status IN
+                ('success', 'partial', 'empty', 'insufficient', 'fetch_error',
+                 'conflict', 'error', 'unconfigured', 'blocked', 'cancelled')),
+            query_summary TEXT NOT NULL DEFAULT '',
+            sources_json TEXT NOT NULL DEFAULT '[]',
+            adopted_source_ids_json TEXT NOT NULL DEFAULT '[]',
+            has_conflicts INTEGER NOT NULL DEFAULT 0 CHECK (has_conflicts IN (0, 1)),
+            gap_note TEXT NOT NULL DEFAULT '',
+            can_retry INTEGER NOT NULL DEFAULT 0 CHECK (can_retry IN (0, 1)),
+            contract_version TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, assistant_message_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_source_verifications_conversation
+            ON study_source_verifications (account_id, conversation_id, created_at)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3325,6 +3361,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 迁移半执行时须在启动阶段失败关闭，而不是让学习对话持续报错。
     "study_pending_checks",
     "study_evidence",
+    # Issue 11：学习消息投影会按助手消息读取公开查证记录，迁移半执行时
+    # 须在启动阶段失败关闭，而不是让学习对话投影静默缺查证来源。
+    "study_source_verifications",
     # Issue 07：学习目标与路线投影随对话详情无条件读取，迁移半执行时须在
     # 启动阶段失败关闭，而不是让学习详情静默缺目标。
     "study_goals",
@@ -3374,6 +3413,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_profile_item_migrations_account",
     "idx_profile_item_feedback_item",
     "idx_study_evidence_conversation",
+    "idx_study_source_verifications_conversation",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3420,6 +3460,23 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "goal_id",
         "created_at",
         "updated_at",
+    }),
+    "study_source_verifications": frozenset({
+        "verification_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "assistant_message_id",
+        "purpose",
+        "status",
+        "query_summary",
+        "sources_json",
+        "adopted_source_ids_json",
+        "has_conflicts",
+        "gap_note",
+        "can_retry",
+        "contract_version",
+        "created_at",
     }),
     "study_pending_checks": frozenset({
         "account_id",

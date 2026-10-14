@@ -33,6 +33,7 @@ from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.study.demand_verification import StudySourceVerificationRepository
 from bridges.study.goal_planning import StudyGoalPlanner
 from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
 from bridges.study.goals import StudyGoalRepository
@@ -101,17 +102,27 @@ class _ServiceStreamMixin:
                 verification_repository = StudyVerificationRepository(
                     self._repo.database
                 )
+                source_verification_repository = StudySourceVerificationRepository(
+                    self._repo.database
+                )
 
                 def persist_study_progress(content: str) -> None:
                     # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
                     # 局部进展；两者与消息 streaming→done 同事务，原子可见。
                     # 停止/失败路径不进入本回调，未展示的问题绝不激活。
+                    # Issue 11：公开查证记录在同一事务内提交（只在成功终态；
+                    # 停止/失败/被取代的轮次不写记录，重试不覆盖有效状态）。
                     verification_repository.commit_turn_in_transaction(
                         self._repo,
                         run,
                         user_message,
                         assistant_message_id,
                         content,
+                    )
+                    source_verification_repository.commit_turn_in_transaction(
+                        self._repo,
+                        run,
+                        assistant_message_id,
                     )
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content

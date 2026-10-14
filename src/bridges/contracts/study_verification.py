@@ -12,6 +12,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from bridges.contracts.study_source_verification import StudyVerificationSourceRef
+
 #: 本模块语义的协议版本；证据行随诊断消费记录同一版本。
 VERIFICATION_CONTRACT_VERSION = "study-verification-v1"
 
@@ -107,6 +109,17 @@ class StudyEvaluationBasis(BaseModel):
     )
     expected_answer: str = Field(
         default="", description="数值或推导题的核验依据；无法核验时为空。"
+    )
+    source_refs: list[StudyVerificationSourceRef] = Field(
+        default_factory=list,
+        description="本轮实际采用并允许引用的公开来源版本；无查证时为空。",
+    )
+    evidence_incomplete: bool = Field(
+        default=False,
+        description=(
+            "冻结时依赖外部证据但公开查证未完成（失败/空/冲突/仅摘要或用户限制）；"
+            "据此评价不得把学生判成错，也不得给出伪标准答案。"
+        ),
     )
     contract_version: str = Field(
         default=VERIFICATION_CONTRACT_VERSION,
