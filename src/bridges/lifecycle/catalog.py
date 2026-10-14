@@ -73,6 +73,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     # conversations（外键 CASCADE，仍显式删除不依赖级联）。
     "study_evidence",
     "study_pending_checks",
+    # Issue 04：学习控制、暂停与阶段小结（先于 conversations 删除）。
+    "study_session_summaries",
+    "study_session_pauses",
+    "study_session_controls",
     "study_states",
     "image_tasks",
     "image_versions",
@@ -199,6 +203,18 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "study_goals",
         "学习目标与路线",
         ("study_goals", "study_goal_routes", "study_conversation_goals"),
+        1024,
+    ),
+    # Issue 04：用户学习控制、暂停状态与阶段小结（规范原文、依据引用与
+    # 交付状态），随账户导出与删除。
+    ExportCategory(
+        "study_controls",
+        "学习控制与小结",
+        (
+            "study_session_controls",
+            "study_session_pauses",
+            "study_session_summaries",
+        ),
         1024,
     ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
@@ -425,6 +441,9 @@ def logical_summary(
         "study_goals",
         "study_goal_routes",
         "study_conversation_goals",
+        "study_session_controls",
+        "study_session_pauses",
+        "study_session_summaries",
         "image_tasks",
         "image_versions",
         "image_assets",

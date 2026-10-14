@@ -31,7 +31,11 @@ class StudyCheckAssistance(StrEnum):
 
 
 class StudyUserIntent(StrEnum):
-    """用户消息相对待答问题的关系；只有作答进入评价。"""
+    """用户消息相对待答问题的关系；只有作答进入评价。
+
+    Issue 04 起学习控制（直接讲解、跳过、暂停、继续、要求小结）也由本
+    枚举携带，供终态事务按冻结快照记录控制；控制不是作答。
+    """
 
     ANSWER = "answer"
     QUESTION = "question"
@@ -39,6 +43,10 @@ class StudyUserIntent(StrEnum):
     EXPLAIN_REQUEST = "explain_request"
     DIGRESSION = "digression"
     SKIP = "skip"
+    FULL_EXPLANATION = "full_explanation"
+    PAUSE = "pause"
+    RESUME = "resume"
+    SUMMARY_REQUEST = "summary_request"
     OTHER = "other"
 
 

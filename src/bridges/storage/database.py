@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 72
+SCHEMA_VERSION = 73
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3311,6 +3311,76 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # Issue 04：用户学习控制、暂停与阶段小结。控制记录与来源消息/进展
+    # 版本绑定（同轮重试唯一不重复）；暂停保留可恢复位置与暂停时的问题
+    # 处置；小结保存规范原文、依据引用与生成时进展，后续学习不覆盖历史。
+    # 全部随会话级联删除，无旧数据回填。
+    73: [
+        """
+        CREATE TABLE study_session_controls (
+            control_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN
+                ('full_explanation', 'skip', 'pause', 'resume', 'summary_request')),
+            bound_check_id TEXT NOT NULL DEFAULT '',
+            bound_check_version INTEGER NOT NULL DEFAULT 0,
+            bound_question TEXT NOT NULL DEFAULT '',
+            released INTEGER NOT NULL CHECK (released IN (0, 1)),
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, source_message_id, kind)
+        )
+        """,
+        """
+        CREATE TABLE study_session_pauses (
+            pause_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            topic TEXT NOT NULL DEFAULT '',
+            position TEXT NOT NULL DEFAULT '',
+            pending_check_id TEXT NOT NULL DEFAULT '',
+            pending_question TEXT NOT NULL DEFAULT '',
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            paused_at TEXT NOT NULL,
+            resumed_at TEXT,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, source_message_id)
+        )
+        """,
+        """
+        CREATE TABLE study_session_summaries (
+            summary_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            assistant_message_id TEXT NOT NULL DEFAULT '',
+            trigger TEXT NOT NULL CHECK (trigger IN
+                ('explicit_request', 'natural_completion', 'pause')),
+            status TEXT NOT NULL CHECK (status IN ('complete', 'partial')),
+            content TEXT NOT NULL,
+            basis_json TEXT NOT NULL DEFAULT '{}',
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, source_message_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_session_summaries_conversation
+            ON study_session_summaries (account_id, conversation_id, created_at)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3330,6 +3400,11 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "study_goals",
     "study_goal_routes",
     "study_conversation_goals",
+    # Issue 04：学习控制、暂停与阶段小结随对话详情无条件读取，迁移半执行
+    # 时须在启动阶段失败关闭，而不是让学习详情静默缺状态。
+    "study_session_controls",
+    "study_session_pauses",
+    "study_session_summaries",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3374,6 +3449,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_profile_item_migrations_account",
     "idx_profile_item_feedback_item",
     "idx_study_evidence_conversation",
+    "idx_study_session_summaries_conversation",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3418,6 +3494,49 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "account_id",
         "conversation_id",
         "goal_id",
+        "created_at",
+        "updated_at",
+    }),
+    "study_session_controls": frozenset({
+        "control_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "source_message_id",
+        "kind",
+        "bound_check_id",
+        "bound_check_version",
+        "bound_question",
+        "released",
+        "progress_version",
+        "created_at",
+    }),
+    "study_session_pauses": frozenset({
+        "pause_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "source_message_id",
+        "topic",
+        "position",
+        "pending_check_id",
+        "pending_question",
+        "progress_version",
+        "paused_at",
+        "resumed_at",
+    }),
+    "study_session_summaries": frozenset({
+        "summary_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "source_message_id",
+        "assistant_message_id",
+        "trigger",
+        "status",
+        "content",
+        "basis_json",
+        "progress_version",
         "created_at",
         "updated_at",
     }),

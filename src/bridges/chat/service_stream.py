@@ -33,6 +33,7 @@ from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.study.controls import StudyControlRepository
 from bridges.study.goal_planning import StudyGoalPlanner
 from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
 from bridges.study.goals import StudyGoalRepository
@@ -101,6 +102,9 @@ class _ServiceStreamMixin:
                 verification_repository = StudyVerificationRepository(
                     self._repo.database
                 )
+                control_repository = StudyControlRepository(
+                    self._repo.database
+                )
 
                 def persist_study_progress(content: str) -> None:
                     # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
@@ -115,6 +119,15 @@ class _ServiceStreamMixin:
                     )
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
+                    )
+                    # Issue 04：用户控制、暂停与阶段小结在同一终态事务内
+                    # 落库；进展版本以已保存的本轮进展为准。
+                    control_repository.commit_turn_in_transaction(
+                        self._repo,
+                        run,
+                        user_message,
+                        assistant_message_id,
+                        content,
                     )
                     if goal_turn is not None:
                         # 同一终态事务：目标/路线与消息 done、局部进展一起提交。

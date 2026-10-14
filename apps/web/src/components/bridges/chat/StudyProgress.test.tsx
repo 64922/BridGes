@@ -339,3 +339,116 @@ describe("系统性目标与学习路线", () => {
     expect(screen.getByText("当前关注：继续讲矩阵乘法")).toBeTruthy();
   });
 });
+
+describe("Issue 04 学习控制、暂停与阶段小结", () => {
+  const localProgress = {
+    topic: "互斥与独立",
+    knowledge_context: "两个事件不能同时发生。",
+    current_focus: "今天先到这里吧。",
+    source_message_ids: ["user-1", "assistant-1"],
+    version: 3,
+    runtime_run_id: "run-1",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+  const question = "如果 A、B 互斥，P(A∩B) 是多少？为什么？";
+
+  it("暂停状态如实展示可继续位置与保留问题，小结按需展开", () => {
+    render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyPause={{
+          pause_id: "pause-1",
+          topic: "互斥与独立",
+          position: "今天先到这里吧。",
+          pending_question: question,
+          progress_version: 3,
+          source_message_id: "user-2",
+          paused_at: "2026-10-14T00:00:00Z",
+        }}
+        studySummary={{
+          summary_id: "summary-1",
+          trigger: "pause",
+          status: "complete",
+          content: "【本阶段小结】\n本次验证（即时反馈）：无。",
+          source_message_id: "user-2",
+          assistant_message_id: "assistant-2",
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    const status = screen.getByLabelText("暂停状态");
+    expect(status.textContent).toContain("已暂停在「今天先到这里吧。」");
+    expect(status.textContent).toContain("进展已保存");
+    expect(status.textContent).toContain(`保留问题「${question}」保持未验证`);
+    expect(screen.getByText(/暂停时生成/)).toBeTruthy();
+    expect(screen.getByText(/已随回复完整交付/)).toBeTruthy();
+    expect(screen.getByText(/【本阶段小结】/)).toBeTruthy();
+  });
+
+  it("跳过与直接讲解标注保持未验证，解除等待时提示可以继续", () => {
+    const { rerender } = render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyLastControl={{
+          control_id: "control-1",
+          kind: "full_explanation",
+          question,
+          released: true,
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    let status = screen.getByLabelText("跳过状态");
+    expect(status.textContent).toContain("已直接讲解");
+    expect(status.textContent).toContain(`「${question}」保持未验证`);
+    expect(status.textContent).toContain("可以继续下一步");
+
+    rerender(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyLastControl={{
+          control_id: "control-2",
+          kind: "skip",
+          question,
+          released: false,
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+    status = screen.getByLabelText("跳过状态");
+    expect(status.textContent).toContain("已跳过");
+    expect(status.textContent).not.toContain("可以继续下一步");
+  });
+
+  it("小结未完整交付时如实标注 partial 并提示重试", () => {
+    render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studySummary={{
+          summary_id: "summary-2",
+          trigger: "explicit_request",
+          status: "partial",
+          content: "【本阶段小结】\n本次没有已完成验证的作答记录。",
+          source_message_id: "user-3",
+          assistant_message_id: "assistant-3",
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/按你的要求生成/)).toBeTruthy();
+    expect(screen.getByText(/回复未完整包含原文，可重试该消息补全/)).toBeTruthy();
+    expect(screen.queryByLabelText("暂停状态")).toBeNull();
+    expect(screen.queryByLabelText("跳过状态")).toBeNull();
+  });
+
+  it("没有控制状态时不虚构暂停或小结", () => {
+    render(<StudyProgress studyLocalProgress={localProgress} />);
+
+    expect(screen.queryByLabelText("暂停状态")).toBeNull();
+    expect(screen.queryByLabelText("跳过状态")).toBeNull();
+    expect(screen.queryByText(/阶段小结/)).toBeNull();
+  });
+});
