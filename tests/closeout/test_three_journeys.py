@@ -82,12 +82,18 @@ def test_three_journeys_persist_profile_and_isolate_accounts(
         learning_conversation = _first_turn(client, LEARNING_QUERY, mode="study")
         _drive(sqlite_app, generation_helpers)
         learning_assistant = _assistant(client, learning_conversation)
-        teaching = learning_assistant["teaching"]
+        # 工单 12：学习对话由本地导师执行，不再产生旧教学门投影；答案如实
+        # 生成且不落任何无来源绑定的伪引用。
         assert learning_assistant["status"] == "done"
-        assert teaching["can_answer_reliably"] is True
-        assert teaching["evidence_gate"]["external_sources"]
-        assert teaching["evidence_gate"]["status"] == "sufficient"
-        assert "本轮未联网核实" not in str(teaching)
+        assert learning_assistant["teaching"] is None
+        assert "[reference:" not in learning_assistant["content"]
+        learning_detail = client.get(
+            f"/chat/conversations/{learning_conversation}"
+        ).json()
+        learning_progress = learning_detail["study_local_progress"]
+        assert learning_progress is not None
+        assert learning_progress["topic"] == LEARNING_QUERY
+        assert learning_progress["knowledge_context"]
 
         _first_turn(client, PROFILE_ACADEMIC_QUERY)
         _drive(sqlite_app, generation_helpers)

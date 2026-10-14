@@ -29,7 +29,6 @@ from bridges.evaluation.workflow_semantics import (  # noqa: E402
     fingerprint,
     run_semantic_cases,
 )
-from bridges.evaluation.workflow_semantics_scope import run_scope_cases  # noqa: E402
 from scripts.run_issue42_external_probes import (  # noqa: E402
     DEFAULT_DATA_DIR,
     _load_model_config,
@@ -111,13 +110,10 @@ def main() -> int:
         for repeat in range(args.repeats):
             try:
                 report = run_semantic_cases(invoke, quota=build_run_model_quota(snapshot))
-                scope = run_scope_cases(invoke)
                 reports.append(
                     {
                         "repeat": repeat,
                         **report,
-                        "scope": scope,
-                        "passed": report["passed"] and scope["passed"],
                     }
                 )
             except Exception as exc:  # noqa: BLE001 - 真实执行失败也保留收据
@@ -139,10 +135,7 @@ def main() -> int:
             name: fingerprint((REPO_ROOT / name).read_text(encoding="utf-8"))
             for name in (
                 "src/bridges/evaluation/workflow_semantics.py",
-                "src/bridges/evaluation/workflow_semantics_scope.py",
                 "src/bridges/paper/assessment.py",
-                "src/bridges/study/review.py",
-                "src/bridges/study/summary.py",
                 "scripts/run_issue42_workflow_semantics.py",
             )
         },

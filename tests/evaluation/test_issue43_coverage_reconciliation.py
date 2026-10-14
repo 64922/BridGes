@@ -58,6 +58,8 @@ def test_every_item_has_owner_and_existing_evidence_anchor() -> None:
         assert item.owner_tickets, item.item_id
         assert min(item.owner_tickets) >= 1
         assert max(item.owner_tickets) <= 43
+        if item.retired:
+            continue
         for ref in item.evidence:
             path_part = ref.partition("::")[0]
             assert (root / path_part).exists(), f"{item.item_id}: {ref}"

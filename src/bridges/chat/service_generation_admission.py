@@ -8,6 +8,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from bridges.chat.graph_contracts import STUDY_LEGACY_RETIRED
 from bridges.chat.repository import (
     ConversationModeLockConflict,
     GenerationRunRecord,
@@ -28,8 +29,10 @@ from bridges.contracts.chat import (
 )
 from bridges.state_copy import (
     WAIT_GENERATION_IN_PROGRESS_TEXT,
+    render_state_copy,
 )
 from bridges.storage.errors import StorageError
+from bridges.study.history import legacy_study_conversation
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
@@ -94,6 +97,16 @@ class _ServiceGenerationAdmissionMixin:
         if record is None:
             raise ChatDomainError(
                 "conversation_not_found", "对话不存在或没有访问权限。", 404
+            )
+        # 改进工单 12：旧五阶段学习会话只读退出——服务端拒绝任何旧写入，
+        # 不依赖前端隐藏按钮；历史保持可读，续学须由用户主动发起。
+        if record.mode == ChatMode.STUDY.value and legacy_study_conversation(
+            self._repo.database, account_id, conversation_id
+        ):
+            raise ChatDomainError(
+                STUDY_LEGACY_RETIRED,
+                render_state_copy(f"error.{STUDY_LEGACY_RETIRED}"),
+                410,
             )
         # V2 Issue 02：同一会话同幂等键重试复用稳定运行标识——命中即返回
         # 既有投影，不重复写用户/助手消息（运行仍在进行中也按重放处理）。

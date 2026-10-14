@@ -3,9 +3,8 @@
 验证：生成前按对话模式编译最小画像切片并注入模型请求（捕获适配器
 载荷，确认只含期望切片）；发送前关闭画像后请求、披露与审计均不含
 画像内容；「本次上下文说明」披露快照固化在消息上；「初始回答—用户
-纠正—画像更新—后续回答改变」固定多轮回放；学习与日常模式注入不同
-切片；编译失败不阻断生成；审计不复制画像正文；反馈幂等、账户隔离、
-修正说明可记录。
+纠正—画像更新—后续回答改变」固定多轮回放；编译失败不阻断生成；
+审计不复制画像正文；反馈幂等、账户隔离、修正说明可记录。
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ from bridges.chat.service import ChatService
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
 from bridges.contracts.chat import (
     ChatMessageStatus,
-    ChatMode,
     ContextNoteState,
 )
 from bridges.contracts.feedback import (
@@ -44,7 +42,6 @@ from bridges.observability.service import ObservabilityService
 from bridges.profiles import ProfileService
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.storage.database import BridgesDatabase
-from tests.chat.study_state_fixtures import seed_recognized_study_state
 
 
 def _context(run_id: str = "run-1") -> RunContextEnvelope:
@@ -96,77 +93,6 @@ class _BrokenProfileService(ProfileService):
         raise RuntimeError("profile store broken")
 
 
-class _PermissiveTeachingService:
-    """放行证据门的假教学服务：让学习模式走到模型调用（测切片注入）。"""
-
-    @staticmethod
-    def is_missing_goal(text: str) -> bool:
-        """测试桩默认把输入视为已有主题，避免触发目标澄清分支。"""
-        return False
-
-    @staticmethod
-    def has_executable_goal(text: str) -> bool:
-        """测试桩不模拟显式换目标，保持切片测试只关注模型载荷。"""
-        return False
-
-    @staticmethod
-    def goal_for_query(query: str) -> str:
-        """提供学习进度发布所需的稳定目标。"""
-        return f"学习“{query}”并理解其核心机制"
-
-    def required_search(
-        self, query: str, retrieval: Any
-    ) -> Any:
-        from bridges.contracts.teaching import TeachingSearchSource
-
-        return TeachingSearchSource.NONE
-
-    def initial(self, query: str, *, recovery: bool = False) -> Any:
-        return self._ready_projection()
-
-    def classify_intent(self, text: str, mission: Any) -> Any:
-        # Issue 08：放行桩不建立 mission，事实提问直接走 prepare。
-        from bridges.contracts.teaching import TeachingIntent
-
-        return TeachingIntent.FACT_QUESTION
-
-    def prepare(self, query: str, **kwargs: object) -> Any:
-        return self._ready_projection()
-
-    def publish_lesson_content(self, projection: Any, content: str) -> Any:
-        return projection
-
-    @staticmethod
-    def _ready_projection() -> Any:
-        from datetime import UTC, datetime
-
-        from bridges.contracts.teaching import (
-            TeachingCardStatus,
-            TeachingEvidenceGate,
-            TeachingEvidenceStatus,
-            TeachingSearchSource,
-            TeachingTurnProjection,
-        )
-
-        gate = TeachingEvidenceGate(
-            status=TeachingEvidenceStatus.SUFFICIENT,
-            reason="测试材料充分。",
-            required_search=TeachingSearchSource.NONE,
-            checked_at=datetime.now(UTC),
-        )
-        return TeachingTurnProjection(
-            status=TeachingCardStatus.READY,
-            goal="理解目标",
-            level_assumption="当前水平假设",
-            steps=["第一步"],
-            check_method="复述",
-            evidence_gate=gate,
-            next_prompt="下一步",
-            can_answer_reliably=True,
-            can_retry=True,
-        )
-
-
 @pytest.fixture
 def env(tmp_path: Path) -> dict[str, Any]:
     database = BridgesDatabase(tmp_path / "bridges.db")
@@ -191,31 +117,6 @@ def env(tmp_path: Path) -> dict[str, Any]:
         "profile": profile_service,
         "adapter": adapter,
         "observability": observability,
-        "account": "alice",
-    }
-
-
-@pytest.fixture
-def study_env(tmp_path: Path) -> dict[str, Any]:
-    """学习模式环境：放行证据门，让模型请求可被捕获。"""
-    database = BridgesDatabase(tmp_path / "study.db")
-    database.initialize()
-    profile_service = ProfileService(SqliteProfileRepository(database))
-    registry = CapabilityRegistry()
-    registry.register(_chat_capability())
-    gateway = ModelGateway(registry)
-    adapter = _CapturingStreamAdapter()
-    gateway.register_adapter("qwen_text_chat", "1", adapter)
-    service = ChatService(
-        repository=ConversationRepository(database),
-        gateway=gateway,
-        profile_service=profile_service,
-        teaching_service=_PermissiveTeachingService(),
-    )
-    return {
-        "chat": service,
-        "profile": profile_service,
-        "adapter": adapter,
         "account": "alice",
     }
 
@@ -277,39 +178,6 @@ def _audit_events(env: dict[str, Any], action: AuditAction) -> list[Any]:
     return env["observability"].list_audit_events(
         account_id=env["account"], action=action
     )
-
-
-def test_study_mode_injects_only_expected_slice(study_env: dict[str, Any]) -> None:
-    """学习模式只注入目标/知识/兴趣切片；日常偏好维度不进入请求。"""
-    profile: ProfileService = study_env["profile"]
-    profile.manual_create_assertion(
-        study_env["account"], _manual(ProfileDimension.KNOWLEDGE_STATE, "已掌握极限与导数")
-    )
-    profile.manual_create_assertion(
-        study_env["account"], _manual(ProfileDimension.EXPRESSION_HABIT, "喜欢简洁回答")
-    )
-    conversation = study_env["chat"].create_conversation(
-        study_env["account"], mode=ChatMode.STUDY
-    )
-    seed_recognized_study_state(
-        study_env["chat"], study_env["account"], conversation.conversation_id
-    )
-    _, final = _send(study_env, conversation.conversation_id, "请讲解洛必达法则")
-
-    blocks = _slice_system_blocks(study_env["adapter"].payloads[-1])
-    assert len(blocks) == 1
-    assert "已掌握极限与导数" in blocks[0]
-    assert "喜欢简洁回答" not in blocks[0]  # 日常偏好不进入学习模式
-    # 披露快照：ready 态、类别标签、来源链接与使用时间
-    note = final.context_note
-    assert note is not None
-    assert note.state == ContextNoteState.READY
-    assert note.profile_enabled is True
-    assert note.profile_item_count == 1
-    assert note.material_categories == []
-    assert "你已授权的用户背景信息" in note.note
-    assert "仅用于当前任务" in note.note
-    assert "少量内容" in note.note
 
 
 def test_companion_mode_injects_only_preference_slice(env: dict[str, Any]) -> None:

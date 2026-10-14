@@ -40,7 +40,13 @@ class ZeroTolerance(StrEnum):
 
 @dataclass(frozen=True)
 class Scenario:
-    """一个固定场景及其证据绑定。"""
+    """一个固定场景及其证据绑定。
+
+    ``retired``：改进工单 12 起旧五阶段学习执行退出，L01–L13 的测试绑定
+    随旧执行删除。登记保留编号、标题与历史证据映射（工单 42 的冻结放行
+    产物按同一清单校验），但不再要求节点在库、不再进入现行执行与覆盖
+    锚点校验。
+    """
 
     scenario_id: str
     title: str
@@ -51,6 +57,7 @@ class Scenario:
     external_gates: tuple[ExternalGate, ...] = ()
     zero_tolerance: tuple[ZeroTolerance, ...] = ()
     availability_note: str = ""
+    retired: bool = False
 
     @property
     def tests(self) -> tuple[str, ...]:

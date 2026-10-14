@@ -151,7 +151,9 @@ class CloseoutQwenAdapter(StubQwenAdapter):
         if "arXiv" in material or "论文" in material:
             content = "基于 [arxiv-1] 返回的真实论文结果，Transformer 是本轮确认的主题。"
         elif "教学" in material or "证据门" in material:
-            content = "基于 [reference:1] 的公开资料，Transformer 使用注意力机制建模序列关系。"
+            # 工单 12：旧教学门已退役，学习导师轮无证据门来源可绑定，
+            # fixture 如实返回不带引用编号的导师回答。
+            content = "Transformer 使用自注意力机制建模序列关系；如需出处，可让我联网核实。"
         else:
             content = "这是一条来自本地替身模式的确定性测试回答。"
         return AdapterResult(

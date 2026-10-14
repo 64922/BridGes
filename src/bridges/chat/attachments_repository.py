@@ -21,7 +21,9 @@ from bridges.storage.database import BridgesDatabase
 #: 投影，写路径仍归属主仓库（BridgesObjectRepository / ingestion）。
 _ATTACHMENT_SELECT = (
     "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
-    " a.upload_id, a.media_type, a.status, a.ordinal, a.created_at, a.updated_at,"
+    " a.upload_id, a.media_type, a.status, a.ordinal,"
+    " a.adopted_from_conversation_id, a.adopted_from_object_id,"
+    " a.created_at, a.updated_at,"
     " o.original_filename, o.content_length, o.content_hash,"
     " r.status AS ingestion_raw_status, r.lease_expires_at, r.failure_reason"
     " FROM chat_attachments a"
@@ -137,6 +139,23 @@ class AttachmentRepository:
             " WHERE message_id IS NULL AND status = 'uploaded' AND updated_at < ?"
             " ORDER BY updated_at",
             (cutoff_iso,),
+        ).fetchall()
+        return list(rows)
+
+    def bound_rows_for_conversation(
+        self, account_id: str, conversation_id: str
+    ) -> list[sqlite3.Row]:
+        """返回会话内全部仍可访问的已绑定附件行（续学材料候选）。
+
+        只含对象活跃且已绑定消息的附件；已删除对象不出现在候选中（续学
+        只采用仍可访问的材料）。跨账户或不存在返回空集。
+        """
+        rows = self._database.scoped(account_id).execute(
+            _ATTACHMENT_SELECT
+            + " WHERE a.account_id = ? AND a.conversation_id = ?"
+            " AND a.message_id IS NOT NULL AND o.status = 'active'"
+            " ORDER BY a.created_at, a.object_id",
+            (account_id, conversation_id),
         ).fetchall()
         return list(rows)
 

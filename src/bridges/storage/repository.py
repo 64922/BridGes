@@ -165,6 +165,38 @@ class BridgesObjectRepository:
             raise
         return self.get_object(account_id, object_id)
 
+    def clone_object(self, account_id: str, object_id: str) -> StoredObject:
+        """复制一个活跃对象为同账户新对象，共享内容寻址文件（不重写密文）。
+
+        供主动续学采用旧会话材料：来源对象与绑定保持不动，新对象可独立
+        删除；物理文件按内容哈希共享，引用计数保证最后由删除者回收。
+        来源不存在、跨账户或非活跃一律按同一中文错误拒绝。
+        """
+        source = self._select_row(account_id, object_id)
+        clone_id = _new_id()
+        now = _now()
+        try:
+            with self._database.transaction():
+                self._database.scoped(account_id).execute(
+                    "INSERT INTO objects(object_id, account_id, content_hash,"
+                    " original_filename, media_type, content_length, status,"
+                    " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        clone_id,
+                        account_id,
+                        str(source["content_hash"]),
+                        str(source["original_filename"]),
+                        str(source["media_type"]),
+                        int(source["content_length"]),
+                        OBJECT_STATUS_ACTIVE,
+                        now,
+                        now,
+                    ),
+                )
+        except sqlite3.Error as exc:
+            raise StorageError("对象元数据写入失败，请检查数据目录。") from exc
+        return self.get_object(account_id, clone_id)
+
     def get_object(self, account_id: str, object_id: str) -> StoredObject:
         """按账户读取对象元数据；跨账户或不存在返回同一中文错误。"""
         return self._row_to_object(self._select_row(account_id, object_id))

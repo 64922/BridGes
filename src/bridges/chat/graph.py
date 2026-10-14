@@ -26,6 +26,7 @@ from bridges.chat.graph_contracts import (
     NODE_SELECT_EXPLICIT_MODULE,
     NODE_VALIDATE_TURN,
     NODE_VERIFY_OUTPUT,
+    STUDY_LEGACY_RETIRED,
     DailyGraphStop,
     DailyGraphSuperseded,
     DailyTurnError,
@@ -202,12 +203,38 @@ def run_daily_turn(
     return deps.last_kind
 
 
+def settle_retired_study_run(
+    service: ChatService,
+    run: GenerationRunRecord,
+    *,
+    on_event: Callable[[StreamEvent], None],
+    stop_event: threading.Event | None = None,
+) -> str | None:
+    """改进工单 12：把旧五阶段学习运行安全收敛为只读退出。
+
+    旧检查点、旧图版本与旧租约不得套任何节点集恢复，也不得启动旧执行：
+    消息、终态事件与运行状态经生成终态 module 一次性收敛为
+    ``study_legacy_retired``，历史全部保留。恢复方式是用户主动续学
+    （新会话），因此终态不可点击重试。
+    """
+    deps = _GraphDeps(service, run, on_event=on_event, stop_event=stop_event)
+    deps.converge_error(
+        DailyTurnError(
+            NODE_VALIDATE_TURN,
+            STUDY_LEGACY_RETIRED,
+            render_state_copy(f"error.{STUDY_LEGACY_RETIRED}"),
+            retryable=False,
+        )
+    )
+    return deps.last_kind
+
+
 __all__ = [
     "AVAILABLE_MODULE_IDS", "DAILY_GRAPH_NODES", "DAILY_GRAPH_VERSION",
-    "DAILY_GRAPH_VERSION_CHANGED", "NODE_LABELS", "DailyGraphStop",
-    "DailyGraphSuperseded", "DailyTurnError", "DailyTurnState",
+    "DAILY_GRAPH_VERSION_CHANGED", "NODE_LABELS", "STUDY_LEGACY_RETIRED",
+    "DailyGraphStop", "DailyGraphSuperseded", "DailyTurnError", "DailyTurnState",
     "_composite_github_requirement", "_node_invoke_subgraph_or_chat",
     "_node_persist_result", "_node_validate_turn", "_node_verify_output",
     "build_daily_graph", "detect_paper_suggestion", "node_failure_message",
-    "node_label", "run_daily_turn",
+    "node_label", "run_daily_turn", "settle_retired_study_run",
 ]

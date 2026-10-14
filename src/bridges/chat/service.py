@@ -32,6 +32,7 @@ from bridges.chat.service_projections import _ServiceProjectionsMixin
 from bridges.chat.service_retry import _ServiceRetryMixin
 from bridges.chat.service_run_budget import _ServiceRunBudgetMixin
 from bridges.chat.service_stream import _ServiceStreamMixin
+from bridges.chat.service_study_restart import _ServiceStudyRestartMixin
 from bridges.chat.service_turn_routing import _ServiceTurnRoutingMixin
 from bridges.chat.summary import ChatSummaryService
 from bridges.chat.terminal import GenerationTerminal
@@ -81,7 +82,8 @@ class ChatService(
     _ServiceContextMixin,
     _ServiceMcpMixin,
     _ServiceFeedbackMixin,
-    _ServiceProjectionsMixin
+    _ServiceProjectionsMixin,
+    _ServiceStudyRestartMixin
 ):
     """对话与生成编排服务；所有操作都限定在传入的账户 ID 内。"""
 

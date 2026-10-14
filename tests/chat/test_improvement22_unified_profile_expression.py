@@ -2,8 +2,7 @@
 
 覆盖验收行为：无类别的「简短直接」偏好进入表达策略且模型上下文不再同时
 声称没有画像；不相关背景不进入策略，当前明确要求覆盖默认偏好且元数据与
-实际输入一致；偏好修改/删除后后续调用与旧重试不再采用，两账户隔离；
-普通聊天与实际学习辅导复用同一采用快照语义。
+实际输入一致；偏好修改/删除后后续调用与旧重试不再采用，两账户隔离。
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.lightweight_policy import (
@@ -38,19 +36,11 @@ from tests.chat.test_improvement19_purpose_aware_slice import (
     _context,
     _Env,
 )
-from tests.chat.test_v2_05_photo_attachments import (
-    _app,
-    _register,
-    _upload_draft,
-)
-from tests.chat.test_v2_17_study_pages import _first
-from tests.chat.test_v2_18_study_tutoring import TutorGateway
 
 DETAIL = "我喜欢详细回答"
 TONE = "回答我的时候幽默一点"
 _MIXED = "我喜欢简短回答，先看例子，先给结论，保留公式，以后称呼我老王"
 _POLICY_MARKER = "【全局轻量有人味表达策略】"
-_SLICE_MARKER = "以下是本轮为你参考的已授权信息"
 
 
 # ---------------------------------------------------------------------------
@@ -346,237 +336,3 @@ def test_chat_policy_failure_drops_profile_and_updates_disclosure(
     assert env.slice_audits()[-1].details["item_count"] == 0
     config = env.chat._repo.get_run_by_message(ACCOUNT, final.message_id).config  # noqa: SLF001
     assert "adopted_profile_slice" not in config
-
-
-# ---------------------------------------------------------------------------
-# 学习辅导：真实应用接线复用同一采用快照
-# ---------------------------------------------------------------------------
-
-
-def _start_study(client: TestClient, app: Any, tag: str) -> tuple[str, str]:
-    account = _register(client, tag)["id"]
-    draft = _upload_draft(
-        client, filename=f"{tag}.png", upload_id=f"{tag}-upload-1"
-    )
-    assert draft.status_code == 201, draft.text
-    photo = draft.json()
-    first = _first(client, [photo["object_id"]], key=f"{tag}-first")
-    assert first.status_code == 201, first.text
-    app.state.generation_executor.run_tick()
-    endpoint = f"/chat/conversations/{first.json()['conversation']['conversation_id']}"
-    return account, endpoint
-
-
-def _ask_tutor(
-    client: TestClient, app: Any, endpoint: str, content: str, key: str
-) -> dict[str, Any]:
-    response = client.post(
-        endpoint + "/messages", json={"content": content, "idempotency_key": key}
-    )
-    assert response.status_code == 200, response.text
-    app.state.generation_executor.run_tick()
-    return client.get(endpoint).json()
-
-
-def test_study_tutoring_injects_policy_and_profile_from_same_snapshot(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
-    app = _app(tmp_path, monkeypatch)
-    gateway = TutorGateway()
-    app.state.chat_service._gateway = gateway
-    with TestClient(app) as client:
-        account, endpoint = _start_study(client, app, "tutorpolicy")
-        app.state.atomic_profile_service.remember(
-            account, BREVITY, source_message_id="m-brevity"
-        )
-        result = _ask_tutor(
-            client, app, endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-tutor-1"
-        )
-        assistant = result["messages"][-1]
-        assert assistant["status"] == "done", assistant
-
-        payload = gateway.tutor_payloads[-1]
-        system_blocks = [
-            message["content"]
-            for message in payload["messages"]
-            if message["role"] == "system"
-        ]
-        policy_blocks = [block for block in system_blocks if _POLICY_MARKER in block]
-        profile_blocks = [block for block in system_blocks if _SLICE_MARKER in block]
-        assert len(policy_blocks) == 1 and len(profile_blocks) == 1
-        assert "用户长期偏好简短直接" in policy_blocks[0]
-        assert "本轮没有可用画像信息" not in "\n".join(system_blocks)
-        assert BREVITY in profile_blocks[0]
-
-        run = app.state.chat_service._repo.get_run_by_message(  # noqa: SLF001
-            account, assistant["message_id"]
-        )
-        stored_policy = run.config["global_writing_policy"]
-        stored_slice = run.config["adopted_profile_slice"]
-        # 学习辅导直接使用低层编译器，也必须保持未放行候选停用。
-        assert stored_policy["version"] == RELEASE_BASELINE_POLICY_VERSION
-        assert "release-task-baseline" in stored_policy["rule_ids"]
-        assert "answer-first" not in stored_policy["rule_ids"]
-        assert RELEASE_BASELINE_POLICY_VERSION in policy_blocks[0]
-        assert stored_policy["profile_decisions"] == ["expression_length"]
-        assert stored_policy["profile_slice_id"] == stored_slice["slice_id"]
-        assert (
-            stored_policy["profile_revocation_version"]
-            == stored_slice["revocation_version"]
-        )
-
-
-def test_study_tutoring_next_question_after_delete_does_not_adopt(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
-    app = _app(tmp_path, monkeypatch)
-    gateway = TutorGateway()
-    app.state.chat_service._gateway = gateway
-    with TestClient(app) as client:
-        account, endpoint = _start_study(client, app, "tutordelete")
-        app.state.atomic_profile_service.remember(
-            account, BREVITY, source_message_id="m-brevity"
-        )
-        first = _ask_tutor(
-            client, app, endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-del-1"
-        )
-        assert first["messages"][-1]["status"] == "done", first["messages"][-1]
-
-        item = app.state.atomic_profile_service.list_items(account)[0]
-        app.state.atomic_profile_service.delete_item(
-            account, item.profile_item_id, item.version
-        )
-        second = _ask_tutor(
-            client, app, endpoint, "那第12页的 b 又代表什么？", "i22-del-2"
-        )
-        assistant = second["messages"][-1]
-        assert assistant["status"] == "done", assistant
-        assert len(gateway.tutor_payloads) == 2
-
-        payload = gateway.tutor_payloads[-1]
-        assert BREVITY not in str(payload["messages"])
-        stored = app.state.chat_service._repo.get_run_by_message(  # noqa: SLF001
-            account, assistant["message_id"]
-        ).config
-        assert stored["global_writing_policy"]["profile_decisions"] == []
-        assert "本轮没有可用画像信息" in stored["global_writing_policy"]["system_block"]
-        assert stored["adopted_profile_slice"]["adopted_items"] == []
-
-
-@pytest.mark.parametrize("failure", ["profile", "policy"])
-def test_study_tutoring_profile_failure_falls_back_to_baseline(
-    tmp_path: Path, monkeypatch: Any, failure: str
-) -> None:
-    app = _app(tmp_path, monkeypatch)
-    gateway = TutorGateway()
-    app.state.chat_service._gateway = gateway
-
-    def boom(*args: Any, **kwargs: Any) -> Any:
-        raise RuntimeError("profile store unavailable")
-
-    if failure == "profile":
-        monkeypatch.setattr(
-            app.state.atomic_profile_service, "compile_adopted_slice", boom
-        )
-    else:
-        original = ChatLightweightPolicyCompiler.compile
-
-        def fail_normal(self: Any, *args: Any, **kwargs: Any) -> Any:
-            if kwargs.get("adopted_slice") is not None:
-                return boom()
-            return original(self, *args, **kwargs)
-
-        monkeypatch.setattr(ChatLightweightPolicyCompiler, "compile", fail_normal)
-    with TestClient(app) as client:
-        account, endpoint = _start_study(client, app, "tutorfallback")
-        app.state.atomic_profile_service.remember(
-            account, BREVITY, source_message_id="m-fallback"
-        )
-        result = _ask_tutor(
-            client, app, endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-fallback-1"
-        )
-        assistant = result["messages"][-1]
-        assert assistant["status"] == "done", assistant
-
-    payload = gateway.tutor_payloads[-1]
-    system_blocks = [
-        message["content"]
-        for message in payload["messages"]
-        if message["role"] == "system"
-    ]
-    assert any("安全基线" in block for block in system_blocks)
-    assert all(_SLICE_MARKER not in block for block in system_blocks)
-    run = app.state.chat_service._repo.get_run_by_message(  # noqa: SLF001
-        account, assistant["message_id"],
-    )
-    assert run.config["global_writing_policy"]["fallback_reason"] is not None
-    assert "adopted_profile_slice" not in run.config
-
-
-def test_study_tutoring_delete_during_context_compilation_drops_profile(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
-    """真实上下文编译结束后撤回，最终辅导调用和配置都应走无画像基线。"""
-    app = _app(tmp_path, monkeypatch)
-    gateway = TutorGateway()
-    service = app.state.chat_service
-    service._gateway = gateway  # noqa: SLF001
-    with TestClient(app) as client:
-        account, endpoint = _start_study(client, app, "tutorrace")
-        atomic = app.state.atomic_profile_service
-        atomic.remember(account, BREVITY, source_message_id="m-race")
-        original = service.compile_turn_context
-        revoked = False
-
-        def compile_then_revoke(run: Any, **kwargs: Any) -> Any:
-            nonlocal revoked
-            result = original(run, **kwargs)
-            if not revoked and _SLICE_MARKER in kwargs.get("system_prompt", ""):
-                item = atomic.list_items(account)[0]
-                atomic.delete_item(account, item.profile_item_id, item.version)
-                revoked = True
-            return result
-
-        monkeypatch.setattr(service, "compile_turn_context", compile_then_revoke)
-        result = _ask_tutor(
-            client, app, endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-race"
-        )
-        assistant = result["messages"][-1]
-        assert assistant["status"] == "done", assistant
-        assert revoked
-        assert len(gateway.tutor_payloads) == 1
-        payload = str(gateway.tutor_payloads[-1]["messages"])
-        assert BREVITY not in payload
-        assert "用户长期偏好简短直接" not in payload
-        run = service._repo.get_run_by_message(account, assistant["message_id"])  # noqa: SLF001
-        assert run.config["global_writing_policy"]["profile_items"] == []
-        assert "adopted_profile_slice" not in run.config
-
-
-def test_study_tutoring_isolates_accounts(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
-    app = _app(tmp_path, monkeypatch)
-    with TestClient(app) as client:
-        alice_gateway = TutorGateway()
-        app.state.chat_service._gateway = alice_gateway
-        alice, _ = _start_study(client, app, "tutorisoalice")
-        app.state.atomic_profile_service.remember(
-            alice, BREVITY, source_message_id="m-alice"
-        )
-        bob_gateway = TutorGateway()
-        app.state.chat_service._gateway = bob_gateway
-        bob, bob_endpoint = _start_study(client, app, "tutorisobob")
-        result = _ask_tutor(
-            client, app, bob_endpoint, "第12页 y=ax+b 里的 a 是什么意思？", "i22-iso-1"
-        )
-        assistant = result["messages"][-1]
-        assert assistant["status"] == "done", assistant
-
-        payload = bob_gateway.tutor_payloads[-1]
-        assert BREVITY not in str(payload["messages"])
-        stored = app.state.chat_service._repo.get_run_by_message(  # noqa: SLF001
-            bob, assistant["message_id"]
-        ).config
-        assert stored["adopted_profile_slice"]["adopted_items"] == []
-        assert stored["global_writing_policy"]["profile_decisions"] == []

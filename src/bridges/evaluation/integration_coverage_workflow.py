@@ -18,8 +18,7 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         "W-D01",
         "保留菜单+明确自然语言直启、歧义澄清、可停止",
         (1, 12, 38),
-        ("tests/chat/test_improvement12_hybrid_entry.py",
-         "tests/chat/test_issue38_acceptance_paths.py"),
+        ("tests/chat/test_improvement12_hybrid_entry.py",),
         CoverageStatus.MECHANISM,
     ),
     CoverageItem(
@@ -70,6 +69,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement34_verified_grading_feedback.py",
          "tests/chat/test_improvement35_study_pause_and_appended_versions.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-D08",
@@ -77,6 +78,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         (32,),
         ("tests/chat/test_improvement32_study_tutoring_evidence.py",),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-D09",
@@ -85,6 +88,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement33_preverified_questions.py",
          "tests/chat/test_improvement34_verified_grading_feedback.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-D10",
@@ -147,10 +152,9 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         "W-D17",
         "公共内核共享，模式策略/领域写模型独立，学习当前小节/阶段门",
         (10, 12, 30, 31, 32, 33, 34, 35, 36, 43),
-        ("tests/kernel/test_node_kernel.py",
-         "tests/chat/test_improvement30_study_pages_recognition.py",
-         "tests/chat/test_issue31_independent_acceptance.py"),
+        ("tests/kernel/test_node_kernel.py",),
         CoverageStatus.MECHANISM,
+        "学习阶段门随旧五阶段执行退役（工单 12），内核共享仍由内核锚点覆盖。",
     ),
     CoverageItem(
         "W-18",
@@ -180,8 +184,7 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         "W-21",
         "任务关系 new/continue/revise/pause/cancel、建议点击绑定",
         (8, 12, 35),
-        ("tests/chat/test_improvement12_task_relations.py",
-         "tests/chat/test_improvement35_study_pause_and_appended_versions.py"),
+        ("tests/chat/test_improvement12_task_relations.py",),
         CoverageStatus.MECHANISM,
     ),
     CoverageItem(
@@ -230,16 +233,14 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         "W-27",
         "收据事务先于可能后到的检查点，至少一次外部、本地唯一键防重复",
         (10, 34, 42),
-        ("tests/kernel/test_node_kernel.py",
-         "tests/chat/test_improvement34_verified_grading_feedback.py"),
+        ("tests/kernel/test_node_kernel.py::test_completed_receipts_reuse_without_rerun",),
         CoverageStatus.MECHANISM,
     ),
     CoverageItem(
         "W-28",
         "提交前租约/停止/任务版本/权限守卫，迟到拒绝；图引用为权威",
         (10, 30, 34, 35, 36, 43),
-        ("tests/chat/test_improvement30_study_pages_recognition.py",
-         "tests/chat/test_v2_02_resumable_runs.py",
+        ("tests/chat/test_v2_02_resumable_runs.py",
          "tests/chat/test_improvement43_legacy_graph_guard.py"),
         CoverageStatus.MECHANISM,
         "本票补齐日常旧图版本守卫（R06 同语义）。",
@@ -297,8 +298,7 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         "W-35",
         "资料书视频独立并行、目录/介绍证据、主线/补充/先修、可选失败不凑数",
         (25,),
-        ("tests/resources/test_issue25_acceptance_regressions.py",
-         "tests/chat/test_improvement32_study_tutoring_evidence.py"),
+        ("tests/resources/test_issue25_acceptance_regressions.py",),
         CoverageStatus.MECHANISM,
     ),
     CoverageItem(
@@ -342,6 +342,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
          "tests/chat/test_improvement31_study_scope_preview.py",
          "tests/chat/test_improvement36_evidence_bound_summary.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-41",
@@ -350,7 +352,9 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement30_study_pages_recognition.py",
          "tests/chat/test_improvement32_evidence_review.py"),
         CoverageStatus.MECHANISM,
-        "42 deep 深读 0/5 如实记录；关键符号门为确定性路径。",
+        "42 deep 深读 0/5 如实记录；关键符号门为确定性路径。"
+        " 随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-42",
@@ -358,6 +362,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         (31,),
         ("tests/chat/test_improvement31_study_scope_preview.py",),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-43",
@@ -366,6 +372,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement32_tutoring_gate.py",
          "tests/chat/test_improvement32_study_tutoring_evidence.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-44",
@@ -373,6 +381,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         (33,),
         ("tests/chat/test_improvement33_preverified_questions.py",),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-45",
@@ -380,6 +390,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         (34,),
         ("tests/chat/test_improvement34_verified_grading_feedback.py",),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-46",
@@ -388,6 +400,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement35_study_pause_and_appended_versions.py",
          "tests/chat/test_improvement35_acceptance.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-47",
@@ -396,6 +410,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement35_acceptance.py",
          "tests/chat/test_improvement36_evidence_bound_summary.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-48",
@@ -404,6 +420,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         ("tests/chat/test_improvement36_evidence_bound_summary.py",
          "tests/chat/test_improvement36_status_acceptance.py"),
         CoverageStatus.MECHANISM,
+        "随旧五阶段学习执行退役（工单 12），编号与历史锚点保留。",
+        retired=True,
     ),
     CoverageItem(
         "W-49",
@@ -440,7 +458,8 @@ WORKFLOW_COVERAGE: tuple[CoverageItem, ...] = (
         "回滚停新写保历史，不清库/丢任务/恢复退役，三桌面视口真实 API",
         (38, 43),
         (_38_BROWSER,
-         "tests/chat/test_issue38_acceptance_paths.py",
+         "tests/retirement/test_issue12_legacy_study_retirement.py"
+         "::test_executor_converges_legacy_runs_without_executing_them",
          "src/bridges/evaluation/rollback_rehearsal.py",
          "apps/web/e2e/issue21-desktop-acceptance.spec.ts"),
         CoverageStatus.MECHANISM,

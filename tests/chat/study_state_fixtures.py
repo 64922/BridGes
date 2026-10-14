@@ -1,185 +1,47 @@
-"""合法学习夹具：真实照片经双路径识别、持久质量门和预习进入辅导。"""
+"""学习测试夹具：账户补齐与旧状态直接播种（工单 12 起旧执行退役）。
+
+旧五阶段执行（``bridges.study`` 的识别/辅导/复盘/总结）已删除，测试不再
+经旧图播种状态：账户外键用 :func:`ensure_test_account` 补齐，历史只读
+样本用 :func:`seed_study_state` 直接写入 ``study_states``。
+"""
 
 from __future__ import annotations
 
-import base64
-import json
-import re
-from dataclasses import replace
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
-from bridges.chat.attachments import ChatAttachmentService
-from bridges.contracts.ai import ModelCallResult, ModelCallStatus
 from bridges.contracts.study import StudyState
-from bridges.storage import BridgesObjectRepository, EncryptedFileObjectStore
-from bridges.study.scope import assign_unit_id
-from bridges.study.service import StudyRepository, StudyWorkflow
-from bridges.study.versions import STUDY_GRAPH_VERSION
 
 
-class _RecognizedPageGateway:
-    """仅替换外部模型响应；附件、识别节点、质量门和阶段迁移均执行正式代码。"""
+def ensure_test_account(service: Any, account_id: str) -> None:
+    """补齐 accounts 行，使学习目标/进度等账户外键在本进程内可写。"""
 
-    def __init__(self, text: str, page_number: int) -> None:
-        self.text = text
-        self.page_number = page_number
-        self.calls: list[str] = []
-        self.unit_ids: list[str] = []
-
-    def invoke(
-        self, capability: str, *args: Any, payload: dict[str, Any], **kwargs: Any
-    ) -> ModelCallResult:
-        self.calls.append(capability)
-        if capability == "qwen_ocr":
-            output = {"content": self.text}
-        elif capability == "qwen_vision":
-            output = {
-                "content": json.dumps(
-                    {
-                        "same_section": True,
-                        "page_number": self.page_number,
-                        "fragments": [
-                            {
-                                "kind": "text",
-                                "position": "顶部",
-                                "text": self.text,
-                                "confidence": 0.95,
-                            }
-                        ],
-                        "unclear": [],
-                    },
-                    ensure_ascii=False,
-                )
-            }
-        elif capability == "qwen_structured_output":
-            task = payload.get("task")
-            if task == "study.verify_tutoring":
-                output = {"checks": [
-                    {"index": index, "supported": True, "formulas_valid": True,
-                     "conditions_preserved": True, "gaps_respected": True}
-                    for index, _ in enumerate(payload["parts"])
-                ]}
-            elif task == "study.assess_evidence":
-                sources = payload.get("sources", [])
-                output = {
-                    "key_points": ["本节概念"],
-                    "supported": [
-                        {
-                            "point": "本节概念",
-                            "source_ids": [sources[0]["source_id"]] if sources else [],
-                        }
-                    ],
-                    "gaps": [],
-                }
-            elif task == "study.map":
-                refs = re.findall(r'"fragment_id":\s*"([^"]+:[^"]+)"', payload["prompt"])
-                self.unit_ids = [assign_unit_id("concept", "线性函数", refs)]
-                output = {
-                    "units": [
-                        {
-                            "title": "线性函数",
-                            "kind": "concept",
-                            "core": True,
-                            "fragment_ids": refs,
-                        }
-                    ],
-                    "exclusions": [],
-                }
-            elif task == "study.verify_scope":
-                output = {
-                    "checks": [
-                        {"unit_id": unit_id, "status": "consistent", "detail": ""}
-                        for unit_id in dict.fromkeys(
-                            re.findall(r'"unit_id":\s*"(ku_[^"]+)"', payload["prompt"])
-                        )
-                    ]
-                }
-            elif task == "study.preview":
-                output = {
-                    "questions": [
-                        {
-                            "question": "请阅读本节并思考核心概念的关系。",
-                            "unit_ids": list(self.unit_ids),
-                        }
-                    ]
-                }
-            else:
-                raise AssertionError(task)
-        else:
-            raise AssertionError(capability)
-        return ModelCallResult(status=ModelCallStatus.SUCCESS, output=output)
+    database = service._repo.database
+    now = datetime.now(UTC).isoformat()
+    with database.transaction():
+        database.connection.execute(
+            "INSERT OR IGNORE INTO accounts(account_id, email, created_at)"
+            " VALUES (?, ?, ?)",
+            (account_id, f"{account_id}@study-fixture.example", now),
+        )
 
 
-def seed_recognized_study_state(
+def seed_study_state(
     service: Any,
     account_id: str,
     conversation_id: str,
-    *,
-    object_id: str = "study-photo-page-1",
-    text: str = "线性函数 y=ax+b，斜率 a 表示变化率。",
-    page_number: int = 12,
-) -> StudyState:
-    """上传真实照片并执行完整识别/预习；object_id 参数保留为照片名称标识。"""
+    state: StudyState,
+) -> None:
+    """把已构造的学习状态写入 ``study_states``，作为历史只读样本。"""
+
     database = service._repo.database
-    if service._attachments is None:
-        objects = BridgesObjectRepository(
-            database,
-            EncryptedFileObjectStore(
-                Path(database.path).parent / "study-fixture-objects",
-                encryption_key="study-fixture-secret",
-            ),
-        )
-        account = (
-            database.scoped(account_id)
-            .execute("SELECT email FROM accounts WHERE account_id = ?", (account_id,))
-            .fetchone()
-        )
-        objects.ensure_account(
-            account_id, str(account["email"]) if account else f"{account_id}@study-fixture.example"
-        )
-        service._attachments = ChatAttachmentService(database, objects)
-    attachments = service._require_attachment_service()
-    photo = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6"
-        "NAAAAABJRU5ErkJggg=="
-    )
-    draft, _ = attachments.upload_draft(account_id, f"{object_id}.png", photo)
-    gateway = _RecognizedPageGateway(text, page_number)
-    original_gateway = service._gateway
-    service._gateway = gateway
-    try:
-        _, assistant, _ = service.start_generation(
-            account_id,
-            conversation_id,
-            "",
-            attachment_ids=[draft.object_id],
-            use_knowledge_base=False,
-            use_profile=False,
-        )
-        run = service._repo.get_run_by_message(account_id, assistant.message_id)
-        assert run is not None
-        # Issue 10：新会话不再因附件进入旧书页管线；本夹具显式把运行固定到
-        # 旧图版本，直接执行 §StudyWorkflow 验证历史识别链路（12 负责退出）。
+    now = datetime.now(UTC).isoformat()
+    with database.transaction():
         database.scoped(account_id).execute(
-            "UPDATE generation_runs SET graph_version = ?"
-            " WHERE account_id = ? AND run_id = ?",
-            (STUDY_GRAPH_VERSION, account_id, run.run_id),
+            "INSERT INTO study_states"
+            " (account_id, conversation_id, state_json, updated_at)"
+            " VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(account_id, conversation_id) DO UPDATE SET"
+            " state_json = excluded.state_json, updated_at = excluded.updated_at",
+            (account_id, conversation_id, state.model_dump_json(), now),
         )
-        run = replace(run, graph_version=STUDY_GRAPH_VERSION)
-        StudyWorkflow(service._study_execution_ports()).run(
-            run, on_event=lambda event: None, stop_event=None
-        )
-    finally:
-        service._gateway = original_gateway
-    state = StudyRepository(database).get(account_id, conversation_id)
-    assert state is not None and state.stage == "tutoring"
-    assert not state.pending_object_ids and not any(page.unclear for page in state.pages)
-    assert gateway.calls == [
-        "qwen_ocr",
-        "qwen_vision",
-        "qwen_structured_output",
-        "qwen_structured_output",
-        "qwen_structured_output",
-    ]
-    return state

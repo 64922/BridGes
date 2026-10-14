@@ -19,20 +19,23 @@ from bridges.chat.repository import GenerationRunRecord, MessageRecord
 from bridges.chat.run_budget_ledger import (
     RunBudgetLedgerRepository,
 )
+from bridges.chat.graph_contracts import STUDY_LEGACY_RETIRED
 from bridges.chat.service_contract import ChatDomainError
 from bridges.chat.service_helpers import (
     logger,
 )
-from bridges.chat.terminal import stopped_outcome
+from bridges.chat.terminal import TerminalOutcome, stopped_outcome
 from bridges.contracts.chat import (
     ChatMessageProjection,
     ChatMessageStatus,
+    ChatMode,
     ChatRunStatus,
 )
 from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.state_copy import render_state_copy
 from bridges.study.controls import StudyControlRepository
 from bridges.study.demand_verification import StudySourceVerificationRepository
 from bridges.study.goal_events import StudyGoalEventRepository
@@ -85,6 +88,37 @@ class _ServiceStreamMixin:
         # 改进工单 12：正文硬条件（不要联网/只用本地/只查论文）进入生成门禁；
         # 学习模式的强制补搜索同样受该门禁约束，语义扩展不得放宽。
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        # 改进工单 12：旧五阶段学习运行在这个同步流入口同样只读退出——
+        # 排队/中断的旧运行与没有版本记录的旧会话都不进入旧分支，也不
+        # 套用当前节点；消息与运行经生成终态 module 一次性收敛。
+        legacy_study = run is not None and (
+            (run.graph_version or "").startswith("study-")
+            and run.graph_version != STUDY_TUTOR_GRAPH_VERSION
+        )
+        if not legacy_study and run is None:
+            conversation = self._repo.get_conversation(account_id, conversation_id)
+            legacy_study = (
+                conversation is not None
+                and conversation.mode == ChatMode.STUDY.value
+            )
+        if legacy_study:
+            retired_message = render_state_copy(f"error.{STUDY_LEGACY_RETIRED}")
+            commit = self.terminal.converge(
+                account_id,
+                run.run_id if run is not None else None,
+                assistant_message_id,
+                fallback=TerminalOutcome(
+                    status=ChatMessageStatus.ERROR,
+                    error_code=STUDY_LEGACY_RETIRED,
+                    error_message=retired_message,
+                ),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code=STUDY_LEGACY_RETIRED,
+                error_message=commit.outcome.error_message or retired_message,
+            )
+            return
         study_tutor = (
             run is not None and run.graph_version == STUDY_TUTOR_GRAPH_VERSION
         )

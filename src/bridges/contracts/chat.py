@@ -170,6 +170,14 @@ class ChatAttachmentProjection(BaseModel):
     ingestion_error: str | None = Field(
         default=None, description="摄取失败的中文原因（无失败时为 None）。"
     )
+    adopted_from_conversation_id: str = Field(
+        default="",
+        description="主动续学来源会话标识（工单 12）；非采用材料为空串。",
+    )
+    adopted_from_object_id: str = Field(
+        default="",
+        description="主动续学来源对象标识（工单 12）；非采用材料为空串。",
+    )
     created_at: datetime = Field(description="上传时间。")
     updated_at: datetime = Field(description="最近更新时间。")
 

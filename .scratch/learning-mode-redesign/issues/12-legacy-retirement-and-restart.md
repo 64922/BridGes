@@ -66,3 +66,10 @@
 2026-10-13：历史承接与旧模式退出切片草稿，待拆分确认。
 
 2026-10-13：用户确认「按此发布」，本票发布到本地问题跟踪器。分诊状态表示信息齐备；须待直接阻塞票验收完成后实施，本轮未开始编码。
+
+2026-10-14：开始实施（执行者：OpenCode 智能体，conda `agent` 环境）。
+- 基线：main `cbbcb27d`（直接阻塞票 08 合并 `15c807ca`、10 合并 `c034f69e` 均已验收并集成）。
+- 分支/工作树：`codex/issue-12-legacy-retirement-and-restart` / `.worktrees/12-legacy-retirement-and-restart`。
+- 本次负责的共享接缝：`chat/service_context.py`、`chat/service_generation_records.py`、`chat/service_generation_admission.py`、`chat/service_retry.py`、`chat/graph.py`、`chat/repository.py`（首轮事务）、`storage/database.py`（迁移 v78）、`state_copy/catalog.py`、`apps/web`（聊天页与 StudyProgress）、`tests/evaluation`（表达式评测与工作流清单的学习部分适配）。
+- 迁移编号：v78（当前 v77），仅新增 `chat_attachments` 采用来源列，不新增表；无其他执行者并发修改同一迁移。
+- 退出范围：删除 `bridges/study` 旧五阶段执行模块（`service/kernel/scope/review/review_kernel/grade_kernel/summary/tutoring/evidence/turn_result/ports`）及其专用测试与评测学习部分；保留历史读取合同（`contracts.study`、`study/history.py`）与只读渲染；冻结的 V2 放行产物校验保留（清单标记退役，历史报告仍可读）。

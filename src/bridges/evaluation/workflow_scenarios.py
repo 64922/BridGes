@@ -52,9 +52,9 @@ ZERO_TOLERANCE_GUARDS: tuple[ZeroToleranceGuard, ...] = (
         kind=ZeroTolerance.SYSTEM_FAILURE_AS_ERROR,
         description="批改/调用系统失败不得推进题号或记为学生错答",
         tests=(
-            "tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once",
-            "tests/chat/test_improvement34_verified_grading_feedback.py::test_judgement_and_next_question_have_separate_commit_boundaries",
-            "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing",
+            "tests/chat/test_issue03_embedded_verification.py::test_failed_turn_does_not_activate_check_and_retry_commits_once",
+            "tests/chat/test_issue03_embedded_verification.py::test_planner_failure_degrades_without_writing",
+            "tests/chat/test_issue05_durable_diagnosis.py::test_late_older_result_does_not_overwrite_newer_evidence_and_marks_conflict",
         ),
     ),
     ZeroToleranceGuard(
@@ -63,17 +63,17 @@ ZERO_TOLERANCE_GUARDS: tuple[ZeroToleranceGuard, ...] = (
         tests=(
             "tests/chat/test_v2_02_resumable_runs.py::test_send_idempotency_replays_same_run_without_duplicates",
             "tests/chat/test_v2_02_resumable_runs.py::test_retry_idempotency_reuses_run",
-            "tests/chat/test_improvement34_verified_grading_feedback.py::test_grade_failure_keeps_question_then_retry_commits_once",
+            "tests/chat/test_issue03_embedded_verification.py::test_old_answer_retry_stays_bound_to_old_check",
         ),
     ),
     ZeroToleranceGuard(
         kind=ZeroTolerance.WRITE_AFTER_STOP,
         description="停止或租约转移后迟到提交必须被拒绝，不得覆盖新版本",
         tests=(
-            "tests/chat/test_improvement30_study_pages_recognition.py::test_stop_during_recognition_does_not_commit_material",
-            "tests/chat/test_improvement30_study_pages_recognition.py::test_lease_transfer_rejects_stale_commit",
-            "tests/chat/test_improvement35_acceptance.py::test_append_final_transaction_rejects_late_authority_change",
-            "tests/chat/test_improvement34_verified_grading_feedback.py::test_late_lease_loss_rejects_grade_without_advancing",
+            "tests/chat/test_v2_02_resumable_runs.py::test_stop_terminates_at_cancellable_node_and_replays_to_final_state",
+            "tests/chat/test_issue03_embedded_verification.py::test_stopped_turn_does_not_activate_or_release_pending",
+            "tests/chat/test_issue06_stream_replay_consistency.py::test_late_update_after_finish_is_rejected",
+            "tests/chat/test_issue06_stream_replay_consistency.py::test_late_delta_after_terminal_event_is_dropped",
             "tests/evaluation/test_issue42_scenario_gaps.py::test_r07_stop_has_no_auto_continue_and_explicit_continue_reuses_task",
             "tests/chat/test_improvement12_hybrid_entry.py::test_stop_generation_pauses_current_task",
         ),

@@ -22,6 +22,36 @@ from bridges.contracts.study_history import (
 )
 from bridges.state_copy.registry import render_state_copy
 from bridges.storage.database import BridgesDatabase
+from bridges.study.versions import LEGACY_STUDY_GRAPH_VERSION_SET
+
+
+def legacy_study_conversation(
+    database: BridgesDatabase, account_id: str, conversation_id: str
+) -> bool:
+    """会话是否仍带旧五阶段执行痕迹（状态行或旧版本运行）。
+
+    改进工单 12 的禁写判定只认同账户内的实际记录：新建会话与只有新导师
+    进展的会话不受影响；命中任一旧痕迹即拒绝发送、重试与图恢复，直到用户
+    以「主动续学」建立新会话。
+    """
+    scoped = database.scoped(account_id)
+    row = scoped.execute(
+        "SELECT 1 FROM study_states"
+        " WHERE account_id = ? AND conversation_id = ? LIMIT 1",
+        (account_id, conversation_id),
+    ).fetchone()
+    if row is not None:
+        return True
+    legacy = sorted(LEGACY_STUDY_GRAPH_VERSION_SET)
+    placeholders = ", ".join("?" for _ in legacy)
+    row = scoped.execute(
+        "SELECT 1 FROM generation_runs"
+        " WHERE account_id = ? AND conversation_id = ?"
+        f" AND (graph_version IS NULL OR graph_version IN ({placeholders}))"
+        " LIMIT 1",
+        (account_id, conversation_id, *legacy),
+    ).fetchone()
+    return row is not None
 
 
 @dataclass(frozen=True, slots=True)

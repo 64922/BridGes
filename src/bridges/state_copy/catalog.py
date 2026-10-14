@@ -65,7 +65,6 @@ WAIT_DELETE_IN_PROGRESS_TEXT = "回答仍在生成中，请先停止后再删除
 
 STREAM_INTERRUPTED_TEXT = "连接中断，已保留已接收内容，可点击重试。"
 USER_STOPPED_TEXT = "生成已停止。"
-STUDY_STOPPED_TEXT = "学习处理已停止。"
 ROUTE_REJECTED_FALLBACK_TEXT = "请求未通过参数校验，请调整后重试。"
 
 RETRIEVAL_ATTACHMENTS_PENDING_TEXT = "附件仍在处理中或暂无可检索内容。"
@@ -172,6 +171,11 @@ ERROR_TEMPLATES: tuple[ErrorTemplate, ...] = (
     # 工单 35：追加页原子切换失败码；原有效书页与范围保留，可重试。
     _error("study_page_update_changed", "小节书页状态已变化，本次追加未提交，请重试。",
            FailureClass.STATE_CONFLICT, RecoveryAction.REFRESH_STATE, contextual=True),
+    # 改进工单 12：旧五阶段学习执行退出。服务端拒绝旧写入口，并从任何
+    # 入口安全收敛未完成旧运行；历史保持只读，续学由用户主动发起，
+    # 因此不登记可点击重试类恢复方式。
+    _error("study_legacy_retired", "该学习会话使用旧版流程，已停止执行；历史记录仍可查看，请使用「主动续学」创建新的学习对话。",
+           FailureClass.UNSUPPORTED, RecoveryAction.NONE, contextual=True),
     # -- 聊天领域码 --------------------------------------------------------
     # 工单 43：旧日常图版本的运行不套当前节点集恢复；安全结束并保留历史，
     # 明确重试创建绑定当前版本的新运行（与学习图同语义）。
@@ -1057,120 +1061,9 @@ _MODULE_ENTRIES: tuple[CopyEntry, ...] = (
 )
 
 _STUDY_ENTRIES: tuple[CopyEntry, ...] = (
-    CopyEntry(
-        "study.scope.failure", CopyCategory.STUDY, "study",
-        CopyStrategy.DETERMINISTIC_RENDERER, ("failure",),
-        renderer="bridges.study.scope.StudyScopeNodeFlow",
-        note="工单 31：范围结构、关键内容和排除理由核验详情及预习密度缺口。",
-    ),
-    CopyEntry(
-        "study.pages.wait",
-        CopyCategory.WAIT,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("waiting", "awaiting_pages"),
-        renderer="bridges.study.service.StudyWorkflow.run",
-        note="工单 30：run.recognize 按实际书页缺失、页序或识别缺口说明等待原因。",
-    ),
-    CopyEntry(
-        "study.preview.scope_and_questions",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("success", "tutoring"),
-        renderer="bridges.study.service.StudyWorkflow.run",
-        note="工单 31：run.preview 从实际范围、页级定位和既有生成问题拼装预习说明。",
-    ),
-    CopyEntry(
-        "study.pages.updated",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("success", "tutoring"),
-        renderer="bridges.study.service.StudyWorkflow.run",
-        note="工单 35：run.finish_pages 说明追加后的真实页数与范围，保留既有问答来源。",
-    ),
-    CopyEntry(
-        "study.review.paused",
-        CopyCategory.WAIT,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("paused", "tutoring"),
-        renderer="bridges.study.service.StudyWorkflow.run",
-        note="工单 35：run.review 的 pause 分支说明回辅导及题目、判定保留，不是生成停止。",
-    ),
-    CopyEntry(
-        "study.review.current_question",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("waiting", "review"),
-        renderer="bridges.study.service.StudyWorkflow.run",
-        note="工单 34：run.review 的 start 分支复述已保存的当前题，不重复出题。",
-    ),
-    CopyEntry(
-        "study.stopped",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.FIXED_TEMPLATE,
-        ("stopped",),
-        text=STUDY_STOPPED_TEXT,
-        note="学习处理实际收到停止信号时使用，不把复盘完成或暂停当作停止。",
-    ),
-    CopyEntry(
-        "study.tutoring.answer",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.MODEL_ADAPTED,
-        ("success", "partial"),
-        renderer="bridges.study.tutoring.tutor",
-        note="工单 32：在既有辅导生成调用中接入表达约束，材料证据先于表达。",
-    ),
-    CopyEntry(
-        "study.review.question",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.MODEL_ADAPTED,
-        ("success",),
-        renderer="bridges.study.review.plan_review",
-        note="工单 33：题干由冻结的覆盖计划生成，不向用户提前暴露评分要点。",
-    ),
-    CopyEntry(
-        "study.review.feedback",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.MODEL_ADAPTED,
-        ("success", "partial", "failure"),
-        renderer="bridges.study.review.render_feedback",
-        note="工单 34：判定证据先于表达，正确/不完整/错误如实反馈。",
-    ),
-    CopyEntry(
-        "study.review.next_question",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("success", "complete"),
-        renderer="bridges.study.review.next_question",
-        note="工单 34：选择未问题；无下一题时标记复盘完成，不代表用户停止。",
-    ),
-    CopyEntry(
-        "study.summary.render",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("success", "partial"),
-        renderer="bridges.study.summary.render_summary",
-        note="工单 36：本次覆盖/答对/漏洞/未判定按真实记录分节渲染。",
-    ),
-    CopyEntry(
-        "study.failure.model_error",
-        CopyCategory.STUDY,
-        "study",
-        CopyStrategy.DETERMINISTIC_RENDERER,
-        ("failure",),
-        renderer="bridges.study.service.model_failure_message",
-        note="工单 30–36：学习模型失败复用共享错误映射，按可重试性给真实恢复方式。",
-    ),
+    # 改进工单 12：旧五阶段执行退出后，学习注册表只保留历史只读说明
+    # （study.history.*，见下方追加）与错误模板；旧执行渲染器随旧模块
+    # 一并删除，不再登记。
 )
 
 _STUDY_ENTRIES += STUDY_HISTORY_COPY_ENTRIES
