@@ -25,7 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.api.auth import SESSION_COOKIE_NAME
-from tests.chat.test_issue08_resume_and_goal_switch import _TutorAdapter, _gateway
+from tests.chat.test_issue08_resume_and_goal_switch import _gateway, _TutorAdapter
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 LEGACY_GRAPH_VERSION = "study-tutoring-review-v6"

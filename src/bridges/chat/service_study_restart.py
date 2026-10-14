@@ -21,8 +21,8 @@ from bridges.contracts.study_restart import (
     StudyRestartOptionsProjection,
     StudyRestartRequest,
 )
-from bridges.study.goals import StudyGoalRepository
 from bridges.study.goal_turn import STUDY_RESUME_GOAL_CONFIG_KEY
+from bridges.study.goals import StudyGoalRepository
 from bridges.study.history import legacy_study_conversation
 
 if TYPE_CHECKING:

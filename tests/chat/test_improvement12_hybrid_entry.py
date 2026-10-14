@@ -15,8 +15,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from bridges.chat.repository import MessageRecord
 from bridges.chat.understanding import MainAgentUnderstanding, task_turn_request
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus, ChatMode
